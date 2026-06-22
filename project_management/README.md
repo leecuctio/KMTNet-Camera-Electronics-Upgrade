@@ -8,12 +8,14 @@
 
 현재 관리 기준은 로컬 작업 폴더에 정리된 다음 산출물이다.
 
-- `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx`
+- `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx`
 - `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`
 - `README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md`
 - `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md`
-- `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`
+- `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`
 - `KMT_CEU_L0AmpRaw_Converter_v2.1.1_release.zip`
+
+MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행/구버전 기준은 `mef_fits_spec/README.md`를 따른다.
 
 ## 현재 기준선
 
@@ -24,8 +26,8 @@
 | Converter | `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` |
 | Software/Product version | `v2.1.1` |
 | Geometry version | `CEU-L0AMP-v2.1` |
-| ICD 기준 | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` |
-| Keyword 기준 | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` |
+| ICD 기준 | `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` |
+| Keyword 기준 | `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` |
 | 검증 raw | `KMTN.20260116.000001.MK.fits`, `KMTN.20260116.000001.NT.fits` |
 | 검증 output | `kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits.gz` |
 | gzip SHA256 | `7a55e7573eac899cd4b3c50b5dc747efe362a49bef505c1f0f90f53f68760289` |

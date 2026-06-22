@@ -9,7 +9,7 @@
 
 기준 ICD 문서:
 
-- `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx`
+- `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx`
 
 기준 converter:
 
