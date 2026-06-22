@@ -1,0 +1,19 @@
+# Normalize text sources.
+*.md text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.txt text eol=lf
+
+# Office/PDF artifacts are binary.
+*.docx binary
+*.pdf binary
+
+# FITS and archives are binary even when explicitly force-added.
+*.fits binary
+*.fits.gz binary
+*.fit binary
+*.fit.gz binary
+*.fts binary
+*.fts.gz binary
+*.zip binary
+

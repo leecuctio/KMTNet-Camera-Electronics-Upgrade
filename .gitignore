@@ -1,0 +1,39 @@
+# macOS / editor noise
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Python cache / local runtime
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Large FITS data products are managed outside Git.
+*.fits
+*.fits.gz
+*.fit
+*.fit.gz
+*.fts
+*.fts.gz
+
+# Generated conversion sidecars
+*.fits.summary.txt
+*.fits.gz.sha256.txt
+*.fit.summary.txt
+*.fit.gz.sha256.txt
+*.fts.summary.txt
+*.fts.gz.sha256.txt
+
+# Generated release archives
+*.zip
+*.zip.sha256.txt
+
+# Temporary outputs
+*.tmp
+*.part
+*.log
+test.*
+
