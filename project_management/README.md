@@ -59,6 +59,7 @@
 | `BACKLOG.md` | 남은 일, 우선순위, 완료 조건 |
 | `DECISION_LOG.md` | 확정된 기술 결정과 근거 |
 | `RELEASE_CHECKLIST.md` | 버전 릴리스 전 점검 절차 |
+| `SITE_UPGRADE_MILESTONES.md` | SSO, CTIO, SAAO 사이트별 업그레이드 마일스톤 |
 
 ## Git 관리 기준
 
