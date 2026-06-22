@@ -64,7 +64,7 @@ Expected HDU count:
 From the project directory:
 
 ```bash
-python3 kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
+python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
   KMTN.20260116.000001.MK.fits \
   -o kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits \
   -f --gzip
@@ -73,7 +73,7 @@ python3 kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 One-line version:
 
 ```bash
-python3 kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py KMTN.20260116.000001.MK.fits -o kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits -f --gzip
+python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py KMTN.20260116.000001.MK.fits -o kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits -f --gzip
 ```
 
 Options:

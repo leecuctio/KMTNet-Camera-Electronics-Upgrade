@@ -25,7 +25,7 @@
 | --- | --- |
 | Product | KMT-CEU L0 64-amplifier raw MEF |
 | Geometry version (`GEOMVER`) | `CEU-L0AMP-v2.1` |
-| 기준 converter | `../kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.1) |
+| 기준 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.1) |
 | HDU count | 69 = PRIMARY + 64 amp IMAGE + 4 BINTABLE |
 | Binary tables | `AMPINFO`, `XTALKINFO`, `VOLTINFO`, `TELEMETRY` |
 
@@ -69,9 +69,9 @@ v3.0 → v4.0의 product 재정의 근거는 `../project_management/governance/D
 
 | 문서 | 위치 |
 | --- | --- |
-| Converter | `../kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` |
-| Converter README | `../README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md` |
-| 작업 정리 | `../KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` |
+| Converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` |
+| Converter README | `../mef_converter/README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md` |
+| 작업 정리 | `../mef_converter/KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` |
 | 기술 결정 기록 | `../project_management/governance/DECISION_LOG.md` |
 | Calibration 추적 | `../project_management/science/CALIBRATION_TRACKER.md` |
 | Release 점검 | `../project_management/release/RELEASE_CHECKLIST.md` |

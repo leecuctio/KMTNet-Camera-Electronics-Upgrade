@@ -9,9 +9,9 @@
 현재 관리 기준은 로컬 작업 폴더에 정리된 다음 산출물이다.
 
 - `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx`
-- `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`
-- `README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md`
-- `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md`
+- `mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`
+- `mef_converter/README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md`
+- `mef_converter/KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md`
 - `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`
 - `KMT_CEU_L0AmpRaw_Converter_v2.1.1_release.zip`
 
@@ -23,7 +23,7 @@ MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행
 | --- | --- |
 | Product | KMT-CEU L0 64-amplifier raw MEF |
 | Primary raw archive | 64 amp IMAGE extensions + binary tables |
-| Converter | `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` |
+| Converter | `mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` |
 | Software/Product version | `v2.1.1` |
 | Geometry version | `CEU-L0AMP-v2.1` |
 | ICD 기준 | `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` |
