@@ -60,6 +60,7 @@
 | `DECISION_LOG.md` | 확정된 기술 결정과 근거 |
 | `RELEASE_CHECKLIST.md` | 버전 릴리스 전 점검 절차 |
 | `SITE_UPGRADE_MILESTONES.md` | SSO, CTIO, SAAO 사이트별 업그레이드 마일스톤 |
+| `SOURCE_DOCUMENTS.md` | 외부 유입 문서, 원본 위치, 해시, 내용 요약 |
 
 ## Git 관리 기준
 
