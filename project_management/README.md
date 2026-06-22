@@ -52,15 +52,47 @@
 | READDIR | flat/star sequence test로 최종 확인 필요 |
 | 운영 telemetry | Archon/TCS/auxiliary 실데이터 연동 필요 |
 
-## 관리 파일
+## 디렉토리 구조
+
+| 디렉토리 | 용도 |
+| --- | --- |
+| `planning/` | backlog, WBS, action item 관리 |
+| `governance/` | 의사결정, RACI, gate review, 변경관리 |
+| `schedule/` | master milestone, site upgrade 일정 |
+| `sites/` | SSO, CTIO, SAAO 사이트별 실행 계획 |
+| `logistics/` | 배송, 통관, 장비/예비품 추적 |
+| `configuration/` | configuration baseline, software freeze, 변경 통제 |
+| `science/` | science verification, calibration 추적 |
+| `operations/` | recovery/rollback, 회의/커뮤니케이션 운영 |
+| `release/` | converter/release package 점검 |
+| `documents/` | 외부 유입 원본문서와 문서 인벤토리 |
+| `templates/` | 주간보고, site log, gate review template |
+
+## 핵심 관리 파일
 
 | 파일 | 용도 |
 | --- | --- |
-| `BACKLOG.md` | 남은 일, 우선순위, 완료 조건 |
-| `DECISION_LOG.md` | 확정된 기술 결정과 근거 |
-| `RELEASE_CHECKLIST.md` | 버전 릴리스 전 점검 절차 |
-| `SITE_UPGRADE_MILESTONES.md` | SSO, CTIO, SAAO 사이트별 업그레이드 마일스톤 |
-| `SOURCE_DOCUMENTS.md` | 외부 유입 문서, 원본 위치, 해시, 내용 요약 |
+| `planning/BACKLOG.md` | 남은 일, 우선순위, 완료 조건 |
+| `planning/WBS.md` | work package와 주요 산출물 |
+| `planning/ACTION_REGISTER.md` | 담당자별 action item 추적 |
+| `governance/DECISION_LOG.md` | 확정된 기술 결정과 근거 |
+| `governance/RACI.md` | 역할과 책임 |
+| `governance/GATE_REVIEW_PLAN.md` | Gate 1-4 승인 기준 |
+| `governance/CHANGE_CONTROL.md` | freeze 이후 변경 승인/rollback 기록 |
+| `governance/RISK_REGISTER.md` | 주요 리스크와 완화 조치 |
+| `schedule/SITE_UPGRADE_MILESTONES.md` | SSO, CTIO, SAAO 사이트별 업그레이드 마일스톤 |
+| `sites/SSO/SITE_PLAN.md` | SSO 현장 적용 계획 |
+| `sites/CTIO/SITE_PLAN.md` | CTIO 현장 적용 계획 |
+| `sites/SAAO/SITE_PLAN.md` | SAAO 현장 적용 계획 |
+| `logistics/LOGISTICS_PLAN.md` | 해운/항공 배송 계획 |
+| `logistics/EQUIPMENT_TRACKER.md` | 주요 장비와 현장 도착 상태 |
+| `configuration/CONFIGURATION_CONTROL.md` | repository, baseline, freeze 관리 |
+| `science/SCIENCE_VERIFICATION_PLAN.md` | 과학 검증 항목과 합격 기준 |
+| `operations/RECOVERY_ROLLBACK_PLAN.md` | 장애 단계별 복구/rollback 절차 |
+| `operations/SAFETY_HANDLING_PLAN.md` | 현장 안전과 카메라 취급 기준 |
+| `release/RELEASE_CHECKLIST.md` | 버전 릴리스 전 점검 절차 |
+| `documents/SOURCE_DOCUMENTS.md` | 외부 유입 문서, 원본 위치, 해시, 내용 요약 |
+| `documents/DOCUMENTATION_PLAN.md` | QA 기록, site report, closeout 문서 관리 |
 
 ## Git 관리 기준
 
@@ -71,11 +103,12 @@
 
 ## 작업 흐름
 
-1. 변경 전 `BACKLOG.md`에서 작업 ID를 확인한다.
+1. 변경 전 `planning/BACKLOG.md`에서 작업 ID를 확인한다.
 2. 코드, ICD, keyword, sample output 중 영향을 받는 산출물을 함께 확인한다.
 3. 변경 후 converter 실행, FITS 검증, HDU/keyword/summary/checksum을 확인한다.
-4. geometry 또는 product 정책이 바뀌면 `DECISION_LOG.md`에 결정 기록을 남긴다.
-5. 배포 전 `RELEASE_CHECKLIST.md`를 기준으로 release 폴더와 ZIP을 다시 만든다.
+4. geometry 또는 product 정책이 바뀌면 `governance/DECISION_LOG.md`에 결정 기록을 남긴다.
+5. configuration이나 software freeze 이후 변경은 `governance/CHANGE_CONTROL.md`와 `configuration/CONFIGURATION_CONTROL.md`에 남긴다.
+6. 배포 전 `release/RELEASE_CHECKLIST.md`를 기준으로 release 폴더와 ZIP을 다시 만든다.
 
 ## 버전 규칙
 

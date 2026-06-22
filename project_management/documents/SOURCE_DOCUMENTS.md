@@ -4,7 +4,7 @@
 
 ## 관리 원칙
 
-- 외부에서 받은 PDF, DOCX, 발표/공유본은 `project_management/source_documents/` 아래에 보관한다.
+- 외부에서 받은 PDF, DOCX, 발표/공유본은 `project_management/documents/source_documents/` 아래에 보관한다.
 - 동일 문서가 여러 파일명으로 유입되면 SHA256을 비교한 뒤 하나의 관리본만 남긴다.
 - 문서에서 추출한 일정, gate, risk, deliverable은 별도 관리 문서에 구조화해서 반영한다.
 
@@ -22,12 +22,12 @@
 
 관리 파일:
 
-- `project_management/source_documents/KMTNet_CEU_PMP_Final_v1.0.pdf`
+- `project_management/documents/source_documents/KMTNet_CEU_PMP_Final_v1.0.pdf`
 
 판정:
 
 - Downloads 유입본은 기존 프로젝트 루트의 `KMTNet_CEU_PMP_Final_v1.0.pdf`와 SHA256이 동일했다.
-- 중복 파일을 늘리지 않기 위해 기존 Git 관리본을 `project_management/source_documents/` 아래로 이동했다.
+- 중복 파일을 늘리지 않기 위해 기존 Git 관리본을 `project_management/documents/source_documents/` 아래로 이동했다.
 
 내용 요약:
 
@@ -42,7 +42,6 @@
 
 관리 반영:
 
-- 사이트별 일정과 gate는 `SITE_UPGRADE_MILESTONES.md`에 구조화했다.
-- 남은 calibration, telemetry, validation 작업은 `BACKLOG.md`에서 추적한다.
-- 확정된 product/geometry/software 관리 정책은 `DECISION_LOG.md`에 기록한다.
-
+- 사이트별 일정과 gate는 `schedule/SITE_UPGRADE_MILESTONES.md`에 구조화했다.
+- 남은 calibration, telemetry, validation 작업은 `planning/BACKLOG.md`에서 추적한다.
+- 확정된 product/geometry/software 관리 정책은 `governance/DECISION_LOG.md`에 기록한다.

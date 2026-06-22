@@ -79,8 +79,7 @@ python3 kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 
 ## 7. 릴리스 후 기록
 
-- [ ] `BACKLOG.md`의 완료 항목을 갱신했다.
-- [ ] Product 또는 geometry 정책 변경이 있으면 `DECISION_LOG.md`를 갱신했다.
+- [ ] `planning/BACKLOG.md`의 완료 항목을 갱신했다.
+- [ ] Product 또는 geometry 정책 변경이 있으면 `governance/DECISION_LOG.md`를 갱신했다.
 - [ ] Release ZIP 파일명과 checksum을 README 또는 work summary에 기록했다.
 - [ ] 다음 P0/P1 작업을 명확히 남겼다.
-

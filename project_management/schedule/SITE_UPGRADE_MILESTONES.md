@@ -2,7 +2,7 @@
 
 최종 갱신일: 2026-06-22
 
-기준 문서: `KMTNet_CEU_PMP_Final_v1.0.docx`
+기준 문서: `documents/source_documents/KMTNet_CEU_PMP_Final_v1.0.pdf`, `KMTNet_CEU_PMP_Final_v1.0.docx`
 
 ## 1. 전체 적용 전략
 
@@ -182,4 +182,3 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 | 진공/냉각 문제 | 현장 acceptance 실패 | O-ring/seal, leak test, PCC fallback 준비 |
 | Configuration 혼선 | 사이트별 동작 차이 및 rollback 어려움 | 단일 repository, baseline, software freeze 적용 |
 | 과학 데이터 품질 미달 | 다음 사이트 진행 불가 | rehearsal와 각 site acceptance에서 조기 검증 |
-
