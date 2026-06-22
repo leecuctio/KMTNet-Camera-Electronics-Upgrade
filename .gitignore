@@ -31,6 +31,10 @@ __pycache__/
 *.zip
 *.zip.sha256.txt
 
+# Generated release directories (unpacked release packages are regenerable;
+# rebuild from project_management/release/RELEASE_CHECKLIST.md)
+*_release/
+
 # Temporary outputs
 *.tmp
 *.part
