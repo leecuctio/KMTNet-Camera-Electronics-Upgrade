@@ -78,7 +78,8 @@ MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행
 | `planning/WBS.md` | work package와 주요 산출물 |
 | `planning/ACTION_REGISTER.md` | 담당자별 action item 추적 |
 | `governance/DECISION_LOG.md` | 확정된 기술 결정과 근거 |
-| `governance/RACI.md` | 역할과 책임 |
+| `governance/RACI.md` | work package별 책임 매트릭스 |
+| `governance/TEAM_ROLES_AND_RESPONSIBILITIES.md` | 참여 연구원별 역할·책임·대리 |
 | `governance/GATE_REVIEW_PLAN.md` | Gate 1-4 승인 기준 |
 | `governance/CHANGE_CONTROL.md` | freeze 이후 변경 승인/rollback 기록 |
 | `governance/RISK_REGISTER.md` | 주요 리스크와 완화 조치 |
