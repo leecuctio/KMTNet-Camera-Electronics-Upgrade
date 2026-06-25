@@ -77,6 +77,7 @@ MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행
 | `planning/BACKLOG.md` | 남은 일, 우선순위, 완료 조건 |
 | `planning/WBS.md` | work package와 주요 산출물 |
 | `planning/ACTION_REGISTER.md` | 담당자별 action item 추적 |
+| `planning/SSO_READINESS_PUNCH_LIST.md` | SSO 적용 전 2주 단위 진행상태 점검 펀치리스트 |
 | `governance/DECISION_LOG.md` | 확정된 기술 결정과 근거 |
 | `governance/RACI.md` | work package별 책임 매트릭스 |
 | `governance/TEAM_ROLES_AND_RESPONSIBILITIES.md` | 참여 연구원별 역할·책임·대리 |
