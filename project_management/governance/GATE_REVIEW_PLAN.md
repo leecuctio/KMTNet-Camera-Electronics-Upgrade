@@ -1,6 +1,6 @@
 # KMTNet-CEU Gate Review Plan
 
-최종 갱신일: 2026-06-22
+최종 갱신일: 2026-06-30
 
 ## Gate Summary
 
@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- |
 | Gate 1 Software Demonstration | 2026-08 중 | Archon/prototype 또는 production electronics 준비 | Bias, Dark, FITS, legacy software control 성공 | 이충욱 |
 | Gate 2 Full Rehearsal | 2026-09 | Production Wallboard, release candidate software, HE Box 준비 | Full observatory simulation 및 burn-in 성공 | 이충욱 |
-| Gate 3 SSO Acceptance | 2026-10 말 | SSO 설치 완료 | Engineering observation 및 김재우 데이터 품질 승인 | 이충욱, 김재우 |
+| Gate 3 SSO Acceptance | 2026-10-29 (현장) | SSO 전자부 교체·카메라 시험 완료 | 현장 시험관측 결과 기반 GO/NOGO + 김재우 science acceptance | 이충욱, 김재우 |
 | Gate 4 Final Acceptance | 2026-12 말 | 3개 사이트 설치 완료 | Science Acceptance 및 문서화 완료 | 이충욱 |
 
 ## Gate Package Checklist

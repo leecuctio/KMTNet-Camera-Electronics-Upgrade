@@ -1,6 +1,6 @@
 # CTIO Site Plan
 
-최종 갱신일: 2026-06-22
+최종 갱신일: 2026-06-30
 
 역할: Second Site  
 목표 일정: 2026-11-17 to 2026-11-20
@@ -8,7 +8,7 @@
 ## 선행 조건
 
 - [ ] SSO Engineering/Science Acceptance 완료
-- [ ] SSO 운영 데이터 최소 1주일 이상 검토 완료
+- [ ] SSO 현장 시험관측/GO-NOGO 결과 및 교훈 검토 완료
 - [ ] SSO 교훈을 SOP에 반영
 - [ ] SSO에서 확인된 누락 품목, spare, cable, tool 보완
 - [ ] CTIO 적용 전 software/configuration baseline 고정
