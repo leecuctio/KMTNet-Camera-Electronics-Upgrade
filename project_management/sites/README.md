@@ -7,7 +7,7 @@
 | 순서 | Site | 역할 | 목표 일정 | 관리 파일 |
 | --- | --- | --- | --- | --- |
 | 1 | SSO | Prototype Site | 2026-10-19 to 2026-11-01 | `SSO/SITE_PLAN.md` |
-| 2 | CTIO | Second Site | 2026-11-14 to 2026-11-26 | `CTIO/SITE_PLAN.md` |
+| 2 | CTIO | Second Site | 2026-11-12 to 2026-11-26 | `CTIO/SITE_PLAN.md` |
 | 3 | SAAO | Final Site | 2026-12-06 to 2026-12-20 | `SAAO/SITE_PLAN.md` |
 
 ## Cross-Site 원칙
