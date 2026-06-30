@@ -11,7 +11,7 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 | 순서 | 사이트 | 역할 | 목표 일정 | 핵심 판단 |
 | --- | --- | --- | --- | --- |
 | 1 | SSO | Prototype Site | 2026-10-19 to 2026-11-01 | 첫 현장 적용, 절차 검증, 현장 시험관측·GO/NOGO |
-| 2 | CTIO | Second Site | 2026-11-17 to 2026-11-20 | SSO 교훈 반영 후 반복 적용 |
+| 2 | CTIO | Second Site | 2026-11-14 to 2026-11-26 | SSO 교훈 반영 + 첫 온스카이 commissioning |
 | 3 | SAAO | Final Site | 2026-12-08 to 2026-12-11 | 최종 사이트 적용 및 프로젝트 closeout 준비 |
 
 핵심 원칙:
@@ -20,6 +20,7 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 - SSO에서 발견된 문제, 부품 누락, 절차 개선사항은 CTIO 작업 전 SOP에 반영한다.
 - CTIO 결과는 SAAO 작업 전 최종 절차 보정에 반영한다.
 - Science Acceptance는 기술 동작 확인과 별도로 김재우 주관 데이터 품질 검증을 통과해야 한다.
+- SSO acceptance는 기능시험 기반이며, 신규 전자부의 첫 온스카이 영상 확인은 CTIO에서 수행한다. SSO 온스카이 commissioning은 2027-02 예정이다.
 
 ## 2. Master Milestones
 
@@ -37,7 +38,7 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 | M10 | Go/No-Go Review | 2026-09 말 | 이충욱 | SSO 출국 승인 |
 | M11 | SSO Upgrade | 2026-10-19 to 2026-11-01 | 전체 | Prototype Site |
 | M12 | SSO Acceptance (GO/NOGO) | 2026-10-29 (현장) | 이충욱, 김재우 | 현장 시험관측 결과 기반, CTIO 진행 승인 |
-| M13 | CTIO Upgrade | 2026-11-17 to 2026-11-20 | 전체 | SSO 교훈 반영 |
+| M13 | CTIO Upgrade | 2026-11-14 to 2026-11-26 | 전체 | SSO 교훈 반영, 첫 온스카이 |
 | M14 | SAAO Upgrade | 2026-12-08 to 2026-12-11 | 전체 | 최종 사이트 |
 | M15 | Final Acceptance | 2026-12 말 | 이충욱, 김재우 | Gate 4 |
 
@@ -49,6 +50,8 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 | Gate 2 Full Rehearsal | 2026-09 | Production Wallboard, release candidate software, HE Box 준비 | Full observatory simulation 및 burn-in 성공 | 이충욱 |
 | Gate 3 SSO Acceptance | 2026-10-29 (현장) | SSO 전자부 교체·카메라 시험 완료 | 현장 시험관측 결과 기반 GO/NOGO + 김재우 science acceptance | 이충욱, 김재우 |
 | Gate 4 Final Acceptance | 2026-12 말 | 3개 사이트 설치 완료 | Science Acceptance 및 문서화 완료 | 이충욱 |
+
+> SSO 온스카이 commissioning·science acceptance는 2027-02 예정으로, Gate 4(2026-12) 이후 별도 진행한다.
 
 추가 일정 통제:
 
@@ -106,7 +109,7 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 ## 5. Site 2: CTIO Upgrade
 
 역할: Second Site  
-목표 일정: 2026-11-17 to 2026-11-20
+목표 일정: 2026-11-14 to 2026-11-26
 
 ### 선행 조건
 
@@ -121,20 +124,29 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 
 ### 현장 작업 마일스톤
 
-| Phase | Task | Acceptance |
-| --- | --- | --- |
-| Pre-site | 화물, 작업공간, 클린부스, 네트워크, 전원 확인 | 작업 가능 상태 확인 |
-| Day 1 | 카메라 탈거 및 작업공간 이동 | 카메라 안전 탈거 |
-| Day 2 | 카메라 분해 및 Wallboard 교체 | 전자부 체결 및 1차 검사 |
-| Day 3 | 재조립, 진공 형성, PCC 운용 판단 | 진공 및 냉각 안정화 |
-| Day 4 | Readout test, engineering observation, site acceptance | CTIO Acceptance |
+| 날짜 | 요일 | 작업 | 비고 |
+| --- | --- | --- | --- |
+| 11-14 | 토 | 한국 출발 (파리 경유 → 칠레) | 이동 |
+| 11-15 | 일 | 냉각기 off | 현지 관측자가 사전 요청대로 실행 |
+| 11-16 | 월 | 오전 도착 → 클린부스 제작 / 카메라 제거 / HE박스 제거 | 다인원 분담 병행 |
+| 11-17 | 화 | HE박스 교체 / 월보드 교체 후 진공펌핑 | 핵심 작업 |
+| 11-18 | 수 | HE박스 설치 / 카메라 설치 후 냉각 | |
+| 11-19 | 목 | 시험관측 | |
+| 11-20 | 금 | 영상확인 / 캘리브레이션 / 시험관측 | |
+| 11-21 | 토 | 온스카이 시험관측 | 첫 온스카이 영상 |
+| 11-22 | 일 | 마무리 및 온스카이 관측, 김재우 영상 검토 요청 | acceptance 판정 |
+| 11-23 | 월 | 천문대 출발 (영상 정상 시) | 비정상 시 일정 연장 |
+| 11-24~26 | 화~목 | 산티아고 → 파리 → 한국 도착 | 이동 |
+
+- 11-22 온스카이 관측 후 김재우 영상 검토 → **정상이면 11-23 예정대로 출발, 비정상이면 출장 일정을 연장하여 문제 해결**. 도착일(11-16)은 다인원이 작업을 분담해 병행한다. 주말 휴식 없이 연속 작업.
 
 ### CTIO 완료 조건
 
 - SSO에서 갱신한 SOP가 현장에서 문제 없이 적용된다.
+- HE박스/월보드 교체, 진공/냉각이 정상이다.
 - Bias, Dark, FITS, readout, data transfer가 정상 동작한다.
+- 첫 온스카이 시험관측 영상을 확보하고 김재우 영상 검토(정상 판정)를 통과한다.
 - CTIO site-specific metadata, controller ID/SN/FW, network/configuration 기록이 남는다.
-- Science Verification에서 다음 사이트 진행에 문제가 없다고 판단한다.
 - SAAO 작업 전 최종 절차 보정 사항이 정리된다.
 
 ## 6. Site 3: SAAO Upgrade
