@@ -4,6 +4,9 @@
 *.sh text eol=lf
 *.txt text eol=lf
 
+# iCal must use CRLF line endings (RFC 5545).
+*.ics text eol=crlf
+
 # Office/PDF artifacts are binary.
 *.docx binary
 *.pdf binary
