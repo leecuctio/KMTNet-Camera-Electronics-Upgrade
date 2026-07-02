@@ -1,6 +1,6 @@
 # KMTNet-CEU Decision Log
 
-최종 갱신일: 2026-06-22
+최종 갱신일: 2026-07-02
 
 ## D-001: Primary raw archive product는 L0 64-amplifier MEF로 한다
 
@@ -104,4 +104,68 @@
 
 - Calibration 관련 작업은 P0 backlog로 유지한다.
 - Release note와 README에 placeholder 상태를 명시한다.
+
+## D-006: L1 픽셀 단위는 electrons로 한다
+
+날짜: 2026-07-02
+
+상태: Accepted
+
+결정:
+
+- L1 `SCI` 픽셀은 amp별 `GAIN`을 적용한 electrons 단위(`BUNIT='electron'`)로 기록한다.
+- `GAIN`이 placeholder(<=0)면 1.0 e-/ADU를 적용하고 primary header에 `GAINAPPL=F`로 기록한다.
+
+근거:
+
+- amp 간 gain 차이를 조립 전에 제거해 amp seam을 최소화한다.
+- downstream 분석에서 amp별 gain을 다시 다룰 필요가 없다.
+
+영향:
+
+- variance plane은 electrons²로 초기화(RN² + Poisson)하고 flat에서 전파한다.
+- 실측 gain 반영(KMT-001)은 파이프라인 코드 수정 없이 L0 헤더 갱신만으로 적용된다.
+
+## D-007: L1 제품은 단일 MEF(SCI/VAR/MASK ×CCD + CALHIST)로 한다
+
+날짜: 2026-07-02
+
+상태: Accepted
+
+결정:
+
+- L1 제품은 노출당 1개 MEF로 하며, 구조는 `PRIMARY` + `CHIPLIST` 순서의
+  `SCI_x`/`VAR_x`/`MASK_x`(x=M,K,N,T) 12 image HDU + `CALHIST` binary table이다.
+- 파일명은 `<prefix>.<YYYYMMDD>.<NNNNNN>.ceu.l1ccd.mef.fits`로 한다.
+
+근거:
+
+- 노출 단위 관리·전송·provenance 추적이 단순하다.
+- calibration history(단계·교정자료 버전·파라미터)를 제품 내부에 보존해야 한다 (규격 §12).
+
+영향:
+
+- L1 파일 크기는 노출당 약 3 GB(float32 SCI+VAR ×4 CCD)이며 보관 정책은 KMT-009와 함께 다룬다.
+- MASK bits: 1=BAD, 2=SATURATED, 4=NONLINEAR, 8=XTALK, 16=AMP_SEAM, 32=NO_OVERSCAN_FIT.
+
+## D-008: 전처리 파이프라인의 종점은 CCD 조립 + 근사 WCS로 한다
+
+날짜: 2026-07-02
+
+상태: Accepted
+
+결정:
+
+- L0→L1 전처리는 amp 교정 후 CCD 조립과 L0에서 물려받은 근사 WCS(`WCSAPPRX=T`) 기록까지 수행한다.
+- 정밀 astrometry와 photometric zeropoint는 후단 파이프라인 몫이다.
+- dark 보정은 구조만 두고 기본 off로 한다 (Rehearsal dark 특성 확인 후 결정).
+
+근거:
+
+- 전처리와 astrometry의 외부 의존성(기준 성표, 매칭 도구)을 분리해 freeze 위험을 줄인다.
+
+영향:
+
+- L1 소비자는 `WCSAPPRX=T`인 WCS를 근사값으로 취급해야 한다.
+- CR rejection은 전처리에 포함하지 않는다 (후단, 필요 시 옵션).
 
