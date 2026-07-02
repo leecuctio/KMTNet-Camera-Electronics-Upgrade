@@ -12,13 +12,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from astropy.io import fits
 
-from . import MASK_BAD, MASK_SAT
+from . import MASK_BAD, MASK_NOOVSC, MASK_SAT
+from .astrometry import (AstrometryResult, load_astrom_template, load_refcat,
+                         parse_pointing, rescale_cd_to_nominal, solve_field,
+                         template_wcs_header)
 from .geometry import ccd_detsec, fmtsec, section_slices
 from .io_l0 import L0Exposure
-from .io_l1 import (IncrementalMEFWriter, build_plane_header,
-                    build_primary_header, calhist_hdu)
+from .io_l1 import (IncrementalMEFWriter, build_mask_primary_header,
+                    build_plane_header, build_primary_header, calhist_hdu,
+                    mask_name_for)
 from .steps import CalHistRow
+from .steps.ampmatch import match_amps
 from .steps.assemble import assemble_ccd, ccd_wcs_cards, flag_seams, seam_metrics
 from .steps.bias import bias_calhist, subtract_bias
 from .steps.bpm import apply_bpm, bpm_calhist
@@ -39,10 +45,17 @@ class PipelineConfig:
     overscan_cols: int | None = None    # None: auto (32 for mock, all columns otherwise)
     overscan_smooth: int = 51
     overscan_clip: float = 3.0
+    overscan_max_dev_adu: float = 100.0  # contamination guard vs master-bias OVSCLVL
     do_bias: bool = True
     do_dark: bool = False               # design doc open question #2: default off
     do_flat: bool = True
     do_bpm: bool = True
+    with_var: bool = False              # VAR is reconstructible; omitted by default (D-007 amendment)
+    with_mask_file: bool = False        # write MASK planes to a separate .mask.mef.fits
+    ampmatch: str = "auto"              # amp-boundary harmonization: auto|multiplicative|additive|off
+    ampmatch_width: int = 32            # boundary zone width [pixels]
+    ampmatch_sky_min_e: float = 100.0   # auto: below this sky level use additive matching
+    refcat: str | None = None           # astrometric reference catalog (FITS RA/DEC table)
     default_gain: float = 1.0           # used when GAIN is a placeholder (<= 0)
     min_flat_response: float = 0.1
     expected_amps: int | None = 64
@@ -56,6 +69,35 @@ def l1_name_for(l0_path) -> str:
         return f"{m.group('prefix')}.{m.group('date')}.{m.group('num')}.ceu.l1ccd.mef.fits"
     stem = Path(l0_path).name.replace(".fits", "")
     return f"{stem}.l1ccd.fits"
+
+
+def _ampmatch_calhist(config: "PipelineConfig", chip_planes: dict) -> CalHistRow:
+    if config.ampmatch == "off":
+        return CalHistRow("AMPMATCH", False, params="disabled")
+    applied = [p["ampmatch"] for p in chip_planes.values()
+               if p.get("ampmatch") and p["ampmatch"].applied]
+    if not applied:
+        return CalHistRow("AMPMATCH", False, params="no usable boundaries")
+    modes = ",".join(sorted({a.mode for a in applied}))
+    max_dev = max(a.max_deviation() for a in applied)
+    return CalHistRow("AMPMATCH", True,
+                      params=f"mode={modes}, width={config.ampmatch_width}, "
+                             f"max_corr={max_dev:.4g}")
+
+
+def _astrometry_calhist(config: "PipelineConfig", chip_planes: dict) -> CalHistRow:
+    results = {c: p["astro"] for c, p in chip_planes.items()}
+    solved = [c for c, a in results.items() if a.solved]
+    if not config.refcat:
+        return CalHistRow("ASTROMETRY", False, params="no reference catalog (WCSSOLVE=F)")
+    cat = Path(config.refcat).name
+    if solved:
+        rms = np.median([results[c].rms_arcsec for c in solved])
+        return CalHistRow("ASTROMETRY", True, calfile=cat,
+                          params=f"solved {len(solved)}/{len(results)} CCDs, "
+                                 f"median rms {rms:.3f} arcsec")
+    reasons = ",".join(sorted({a.reason for a in results.values()}))
+    return CalHistRow("ASTROMETRY", False, calfile=cat, params=f"failed: {reasons}"[:80])
 
 
 def _masked_stats(arr: np.ndarray, mask: np.ndarray) -> dict:
@@ -95,6 +137,16 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
         bpm = caldb.open("BPM", site=site, date=dateobs) if config.do_bpm else None
         xmat, xen = exp.xtalk_matrix()
 
+        refcat = None
+        refcat_fail = "NO_REFCAT"
+        if config.refcat:
+            try:
+                refcat = load_refcat(config.refcat)
+            except Exception as err:
+                refcat_fail = f"REFCAT_ERROR({err})"
+        astrom_template = load_astrom_template() if refcat is not None else None
+        pointing = parse_pointing(primary) if refcat is not None else None
+
         qa: dict = {
             "l0_file": exp.path.name,
             "l1_file": out_path.name,
@@ -117,6 +169,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
         try:
             gain_all_measured = True
             xtalk_row = None
+            n_ovsc_fallback = 0
+            fallback_amps: set[str] = set()
             chip_planes: dict[str, dict] = {}
 
             for group in exp.ctrl_groups():
@@ -130,7 +184,13 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     n_nl = flag_nonlinear(raw, g, mask)
                     stats, _ = correct_overscan(
                         raw, g, use_cols=ovsc_cols,
-                        clip=config.overscan_clip, smooth=config.overscan_smooth)
+                        clip=config.overscan_clip, smooth=config.overscan_smooth,
+                        reference_level=(bias.ovsc_level(g.extname) if bias else None),
+                        max_dev=config.overscan_max_dev_adu)
+                    if stats["ovsc_fallback"]:
+                        mask |= MASK_NOOVSC
+                        n_ovsc_fallback += 1
+                        fallback_amps.add(g.extname)
                     sci = np.ascontiguousarray(raw[section_slices(g.datasec)])
                     del raw
                     if bias is not None:
@@ -149,7 +209,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     gval, measured = to_electrons(sci_by[g.extname], g, config.default_gain)
                     gain_all_measured &= measured
                     rn_e = read_noise_e(g.rdnoise, ovsc_by[g.extname]["ovsc_rms_adu"], gval)
-                    var = init_variance(sci_by[g.extname], rn_e)
+                    var = init_variance(sci_by[g.extname], rn_e) if config.with_var else None
                     n_flatbad = 0
                     if flat is not None:
                         n_flatbad = divide_flat(sci_by[g.extname], var, mask_by[g.extname],
@@ -157,7 +217,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     n_bpm = 0
                     if bpm is not None:
                         n_bpm = apply_bpm(mask_by[g.extname], g.extname, bpm)
-                    var_by[g.extname] = var
+                    if var is not None:
+                        var_by[g.extname] = var
                     qa["amps"][g.extname].update({
                         "gain_e_adu": gval, "gain_measured": measured,
                         "rn_e": rn_e, "n_flat_bad": n_flatbad, "n_bpm": n_bpm,
@@ -165,20 +226,62 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
 
                 for chip in [c for c in exp.chips if any(g.chip == c for g in group)]:
                     geoms = [g for g in group if g.chip == chip]
+                    am = None
+                    if config.ampmatch != "off":
+                        # amps recovered via the OVSCLVL fallback carry additive
+                        # baseline errors that can exceed the multiplicative cap:
+                        # force additive matching anchored on the healthy amps
+                        chip_fb = {g.extname for g in geoms} & fallback_amps
+                        am = match_amps(
+                            geoms, sci_by, mask_by,
+                            mode="additive" if chip_fb else config.ampmatch,
+                            width=config.ampmatch_width,
+                            sky_min_e=config.ampmatch_sky_min_e,
+                            max_add=2000.0 if chip_fb else 200.0,
+                            anchor=({g.extname for g in geoms} - chip_fb) or None)
+                        if am.applied and config.with_var and am.mode == "multiplicative":
+                            for ext, factor in am.corrections.items():
+                                if factor != 1.0:
+                                    var_by[ext] *= np.float32(factor * factor)
                     sci_ccd = assemble_ccd(geoms, sci_by, np.float32)
-                    var_ccd = assemble_ccd(geoms, var_by, np.float32)
+                    var_ccd = assemble_ccd(geoms, var_by, np.float32) if config.with_var else None
                     mask_ccd = assemble_ccd(geoms, mask_by, np.uint8)
                     for g in geoms:
                         sci_by.pop(g.extname)
-                        var_by.pop(g.extname)
+                        var_by.pop(g.extname, None)
                         mask_by.pop(g.extname)
                     seams = seam_metrics(sci_ccd, geoms, mask_ccd)
                     flag_seams(mask_ccd, geoms)
                     ref = geoms[0]
+                    wcs_cards = ccd_wcs_cards(ref, exp.hdul[ref.extname].header)
+                    init_src = None
+                    if refcat is None:
+                        astro = AstrometryResult(False, reason=refcat_fail)
+                    else:
+                        whdr = None
+                        if astrom_template is not None and pointing is not None:
+                            whdr = template_wcs_header(
+                                chip, pointing[0], pointing[1],
+                                sci_ccd.shape[1], sci_ccd.shape[0], astrom_template)
+                            init_src = "template"
+                        if whdr is None and wcs_cards:
+                            whdr = fits.Header()
+                            whdr["NAXIS"] = 2
+                            whdr["NAXIS2"], whdr["NAXIS1"] = sci_ccd.shape
+                            for item in wcs_cards:
+                                whdr[item[0]] = item[1]
+                            rescale_cd_to_nominal(whdr)
+                            init_src = "l0"
+                        if whdr is None:
+                            astro = AstrometryResult(False, reason="NO_INITIAL_WCS")
+                        else:
+                            astro = solve_field(sci_ccd, mask_ccd, whdr, refcat)
                     chip_planes[chip] = {
                         "sci": sci_ccd, "var": var_ccd, "mask": mask_ccd,
                         "seams": seams,
-                        "wcs": ccd_wcs_cards(ref, exp.hdul[ref.extname].header),
+                        "ampmatch": am,
+                        "astro": astro,
+                        "wcs": wcs_cards,
                         "detsec": ccd_detsec(geoms),
                         "namps": len(geoms),
                     }
@@ -189,6 +292,11 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                         "seam_max_abs_e": max((abs(v) for v in seams.values()), default=0.0),
                         "n_sat": int(np.count_nonzero(mask_ccd & MASK_SAT)),
                         "n_bad": int(np.count_nonzero(mask_ccd & MASK_BAD)),
+                        "ampmatch": ({"mode": am.mode, "sky_e": am.sky_e,
+                                      "max_corr": am.max_deviation(),
+                                      "corr": am.corrections}
+                                     if am and am.applied else None),
+                        "astrometry": {**astro.qa(), "init": init_src},
                     }
 
             n_measured = sum(1 for a in qa["amps"].values() if a["gain_measured"])
@@ -196,7 +304,9 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 CalHistRow("SATURATION", True, params="flagged on raw ADU (SATURAT)"),
                 CalHistRow("OVERSCAN", True,
                            params=f"row-wise clipped mean, cols={ovsc_cols or 'all'}, "
-                                  f"smooth={config.overscan_smooth}"),
+                                  f"smooth={config.overscan_smooth}"
+                                  + (f"; contaminated->OVSCLVL fallback: {n_ovsc_fallback} amps"
+                                     if n_ovsc_fallback else "")),
                 bias_calhist(bias),
                 dark_calhist(None, config.do_dark),
                 linearity_calhist(None),
@@ -205,10 +315,14 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                            params=f"to electrons; measured {n_measured}/{len(qa['amps'])} amps"),
                 flat_calhist(flat, config.min_flat_response),
                 bpm_calhist(bpm),
+                _ampmatch_calhist(config, chip_planes),
                 CalHistRow("ASSEMBLE", True,
                            params="CCDSEC placement, CHIPFLP=None, approx WCS"),
+                _astrometry_calhist(config, chip_planes),
             ]
 
+            n_solved = sum(1 for p in chip_planes.values() if p["astro"].solved)
+            mask_name = mask_name_for(out_path.name) if config.with_mask_file else ""
             prov = {
                 "l0file": exp.path.name,
                 "l0sha256": exp.sha256() if config.compute_sha256 else "",
@@ -218,24 +332,65 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 "bpm": (bpm.name, bpm.calver) if bpm else ("", ""),
                 "gainappl": gain_all_measured,
                 "xtalkapl": bool(xtalk_row and xtalk_row.applied),
+                "varincl": config.with_var,
+                "maskfile": mask_name,
+                "wcscat": Path(config.refcat).name if (config.refcat and refcat is not None) else "",
+                "wcsnsolv": n_solved,
                 "bunit": "electron",
             }
+            mask_writer = None
             with IncrementalMEFWriter(out_path, build_primary_header(primary, prov)) as writer:
-                for chip in exp.chips:
+              try:
+                if config.with_mask_file:
+                    mask_writer = IncrementalMEFWriter(
+                        out_path.with_name(mask_name),
+                        build_mask_primary_header(primary, out_path.name))
+                for chip in exp.chips:  # noqa: E999 - indented under try
                     planes = chip_planes.pop(chip)
+                    astro = planes["astro"]
                     extras = [
                         ("DETSEC", fmtsec(*planes["detsec"]), "CCD placement in mosaic"),
                         ("NAMPS", planes["namps"], "amplifiers assembled"),
                         ("SEAMMAX", max((abs(v) for v in planes["seams"].values()), default=0.0),
                          "max |median seam step| [e-]"),
-                    ] + planes["wcs"]
+                    ]
+                    am = planes["ampmatch"]
+                    if am and am.applied:
+                        extras.append(("AMMODE", am.mode, "amp-boundary match mode"))
+                        for ext, val in am.corrections.items():
+                            extras.append((f"AMC{ext}"[:8], val,
+                                           "amp match factor" if am.mode == "multiplicative"
+                                           else "amp match offset [e-]"))
+                    extras += planes["wcs"]
+                    # solved WCS cards come last so they override the approximate ones
+                    extras += astro.cards
+                    extras.append(("WCSSOLVE", astro.solved,
+                                   "astrometric solution succeeded"))
+                    if astro.solved:
+                        extras += [
+                            ("WCSRMS", round(astro.rms_arcsec, 4), "astrometric fit rms [arcsec]"),
+                            ("WCSNSTAR", astro.n_det, "stars detected"),
+                            ("WCSNREF", astro.n_ref, "reference catalog stars"),
+                            ("WCSNMAT", astro.n_match, "matched star pairs"),
+                        ]
+                    else:
+                        extras.append(("WCSFAIL", astro.reason[:60],
+                                       "why the astrometric solution failed"))
                     writer.append_image(planes["sci"],
                                         build_plane_header("SCI", chip, extras))
-                    writer.append_image(planes["var"], build_plane_header("VAR", chip))
-                    writer.append_image(planes["mask"], build_plane_header("MASK", chip))
+                    if planes["var"] is not None:
+                        writer.append_image(planes["var"], build_plane_header("VAR", chip))
+                    if mask_writer is not None:
+                        mask_writer.append_image(planes["mask"],
+                                                 build_plane_header("MASK", chip))
                     del planes
                 writer.append_hdu(calhist_hdu(calhist))
+                if mask_writer is not None:
+                    mask_writer.finalize()
                 writer.finalize()
+              finally:
+                if mask_writer is not None:
+                    mask_writer.__exit__(None, None, None)  # removes tmp unless finalized
         finally:
             for m in (bias, flat, bpm):
                 if m is not None:

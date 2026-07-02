@@ -50,6 +50,27 @@ class TestOverscan(unittest.TestCase):
         correct_overscan(raw, geom, smooth=1)
         self.assertLess(abs(float(np.median(raw[10, :24]))), 3.0)
 
+    def test_contamination_fallback(self):
+        geom = make_geom()
+        # overscan flooded to sky level (real legacy artifact): row fit would
+        # subtract the sky; the guard must fall back to the bias-epoch level
+        raw = np.full((40, 30), 500.0, dtype=np.float32)
+        raw[:, :24] += 2000.0          # data = bias 500 + sky 2000
+        raw[:, 24:] = 2500.0           # overscan follows the sky
+        stats, _ = correct_overscan(raw, geom, smooth=1,
+                                    reference_level=500.0, max_dev=100.0)
+        self.assertTrue(stats["ovsc_fallback"])
+        self.assertAlmostEqual(float(np.median(raw[:, :24])), 2000.0, delta=0.01)
+
+    def test_no_fallback_when_level_normal(self):
+        geom = make_geom()
+        raw = np.full((40, 30), 500.0, dtype=np.float32)
+        raw[:, :24] += 2000.0
+        stats, _ = correct_overscan(raw, geom, smooth=1,
+                                    reference_level=520.0, max_dev=100.0)
+        self.assertFalse(stats["ovsc_fallback"])
+        self.assertAlmostEqual(float(np.median(raw[:, :24])), 2000.0, delta=0.01)
+
     def test_sliding_median(self):
         a = np.array([1.0, 1.0, 10.0, 1.0, 1.0])
         out = sliding_median(a, 3)

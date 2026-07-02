@@ -40,6 +40,15 @@ def _config_from(args) -> PipelineConfig:
         cfg.do_flat = False
     if getattr(args, "no_bpm", False):
         cfg.do_bpm = False
+    if getattr(args, "with_var", False):
+        cfg.with_var = True
+    ampmatch = getattr(args, "ampmatch", None)
+    if ampmatch:
+        cfg.ampmatch = {"mult": "multiplicative", "add": "additive"}.get(ampmatch, ampmatch)
+    if getattr(args, "mask_file", False):
+        cfg.with_mask_file = True
+    if getattr(args, "refcat", None):
+        cfg.refcat = args.refcat
     if getattr(args, "amps", None) is not None:
         cfg.expected_amps = args.amps or None
     if getattr(args, "no_strict", False):
@@ -80,6 +89,15 @@ def main(argv=None) -> int:
     p.add_argument("--no-bias", action="store_true")
     p.add_argument("--no-flat", action="store_true")
     p.add_argument("--no-bpm", action="store_true")
+    p.add_argument("--with-var", action="store_true",
+                   help="also write VAR planes (omitted by default; reconstructible)")
+    p.add_argument("--ampmatch", choices=["auto", "mult", "add", "off"], default="auto",
+                   help="amp-boundary harmonization mode (default auto)")
+    p.add_argument("--mask-file", action="store_true",
+                   help="also write MASK planes to a separate .mask.mef.fits")
+    p.add_argument("--refcat", default=None,
+                   help="astrometric reference catalog (FITS RA/DEC table); "
+                        "without it WCSSOLVE=F is flagged")
     p.add_argument("--no-strict", action="store_true",
                    help="continue despite L0 validation issues")
     p.add_argument("--no-sha256", action="store_true",
@@ -88,6 +106,26 @@ def main(argv=None) -> int:
                    help="override number of BIASSEC columns used in the fit")
     p.add_argument("--amps", type=int, default=64,
                    help="expected amp count (0 disables the check)")
+    _add_common(p)
+
+    p = sub.add_parser("fetch-gaia",
+                       help="download a Gaia DR3 reference catalog cone (VizieR; network)")
+    p.add_argument("--like", default=None,
+                   help="FITS file whose primary RA/DEC keywords set the cone center")
+    p.add_argument("--ra", type=float, default=None, help="cone center RA [deg]")
+    p.add_argument("--dec", type=float, default=None, help="cone center DEC [deg]")
+    p.add_argument("--radius", type=float, default=100.0,
+                   help="cone radius [arcmin] (mosaic diagonal ~96')")
+    p.add_argument("--gmax", type=float, default=19.0, help="Gmag limit")
+    p.add_argument("-o", "--output", default=None)
+    _add_common(p)
+
+    p = sub.add_parser("make-refcat",
+                       help="extract an astrometric reference catalog from L1 file(s)")
+    p.add_argument("l1file", nargs="+")
+    p.add_argument("-o", "--output", default=None, help="output catalog FITS path")
+    p.add_argument("--nmax", type=int, default=200, help="max stars per chip")
+    p.add_argument("--sigma", type=float, default=5.0, help="detection threshold [sigma]")
     _add_common(p)
 
     p = sub.add_parser("qa-summary", help="aggregate QA JSON records to markdown")
@@ -162,6 +200,32 @@ def main(argv=None) -> int:
         if failed:
             print(f"{len(failed)}/{len(args.inputs)} exposures failed", file=sys.stderr)
             return 1
+        return 0
+
+    if args.command == "fetch-gaia":
+        from .astrometry import fetch_gaia_cone, parse_pointing
+        if args.like:
+            pt = parse_pointing(fits.getheader(args.like, 0))
+            if pt is None:
+                print(f"ERROR: no usable RA/DEC keywords in {args.like}", file=sys.stderr)
+                return 1
+            ra, dec = pt
+        elif args.ra is not None and args.dec is not None:
+            ra, dec = args.ra, args.dec
+        else:
+            print("ERROR: give --like FILE or --ra/--dec", file=sys.stderr)
+            return 1
+        out = Path(args.output) if args.output else outroot / "caldb" / "refcat_gaia.fits"
+        data = fetch_gaia_cone(ra, dec, radius_arcmin=args.radius,
+                               gmax=args.gmax, out_path=out)
+        print(f"{out}  n_stars={len(data)}  center=({ra:.4f},{dec:+.4f}) r={args.radius}'")
+        return 0
+
+    if args.command == "make-refcat":
+        from .astrometry import make_refcat
+        out = Path(args.output) if args.output else outroot / "caldb" / "refcat.fits"
+        res = make_refcat(args.l1file, out, nmax_per_chip=args.nmax, sigma=args.sigma)
+        print(f"{out}  n_stars={res['n_stars']}")
         return 0
 
     if args.command == "qa-summary":

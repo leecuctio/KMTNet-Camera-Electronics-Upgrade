@@ -31,6 +31,11 @@ v2.1.2 changes:
   - write header floats with shortest round-trip representation; the old
     %.10G formatting truncated JD by ~30 s and made JD inconsistent with
     MJD-OBS in the primary header (same fix as kmt_ceu_legacy32_to_l0amp_mef_v2)
+
+v2.1.3 changes:
+  - PIX_SCALE 0.400 -> 0.395 arcsec/px: plate scale measured against Gaia DR3
+    (16 chip solutions on 2026-06-30 frames: 0.3952 +/- 0.00001 arcsec/px);
+    affects the PIXSCALE card and the placeholder CD matrix
 """
 from __future__ import annotations
 
@@ -47,7 +52,7 @@ from pathlib import Path
 import numpy as np
 
 BLOCK = 2880
-SOFTWARE_VERSION = "v2.1.2"
+SOFTWARE_VERSION = "v2.1.3"
 PRODUCT_VERSION = "v2.1.1"  # L0 MEF format unchanged by v2.1.2 float-precision fix
 GEOMETRY_VERSION = "CEU-L0AMP-v2.1"
 
@@ -64,7 +69,7 @@ PRESCAN_X = 0
 ACTIVE_HALF_ROWS = 4616
 MIDDLE_OVERSCAN_Y = 168
 PIX_SIZE = 10.0
-PIX_SCALE = 0.400
+PIX_SCALE = 0.395  # arcsec/px, measured vs Gaia DR3 (was 0.400 nominal)
 
 CHIP_ORDER = ["M", "K", "N", "T"]
 TAG_TO_CHIPS = {"MK": ["M", "K"], "NT": ["N", "T"]}

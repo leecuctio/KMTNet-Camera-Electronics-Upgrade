@@ -33,8 +33,17 @@ $PP calib-flat "${FLATI[@]}" -d "$OUT"
 echo "== bad pixel mask (from I-band flat)"
 $PP bpm --flat "$OUT/caldb/master_flat_I.fits" -d "$OUT"
 
-echo "== science frames (${#OBJ[@]} exposures)"
-$PP run "${OBJ[@]}" -d "$OUT" -f
+echo "== pass 1: science frames without catalog (approximate WCS, WCSSOLVE=F)"
+# --mask-file so the bootstrap catalog uses the same masked star detection
+# (saturated blooming excluded) as the pass-2 astrometry
+$PP run "${OBJ[@]}" -d "$OUT" -f --mask-file
+
+echo "== bootstrap reference catalog from all pass-1 L1s (covers every field)"
+L1S=(); for n in $(seq 11103 11130); do L1S+=("$OUT/kmtc.20260630.0$n.ceu.l1ccd.mef.fits"); done
+$PP make-refcat "${L1S[@]}" -o "$OUT/caldb/refcat_night.fits" -d "$OUT"
+
+echo "== pass 2: science frames with astrometry"
+$PP run "${OBJ[@]}" -d "$OUT" -f --refcat "$OUT/caldb/refcat_night.fits"
 
 echo "== QA summary"
 $PP qa-summary -d "$OUT"

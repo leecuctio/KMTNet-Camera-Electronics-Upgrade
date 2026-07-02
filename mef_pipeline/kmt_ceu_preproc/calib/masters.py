@@ -29,15 +29,18 @@ def clipped_mean_stack(stack: np.ndarray, clip: float = 3.0) -> np.ndarray:
     return np.where(cnt > 0, mean, med).astype(np.float32)
 
 
-def _corrected_plane(exp: L0Exposure, geom: AmpGeom, config) -> np.ndarray:
+def _corrected_plane(exp: L0Exposure, geom: AmpGeom, config,
+                     reference_level: float | None = None) -> tuple[np.ndarray, dict]:
     """Overscan-corrected, DATASEC-trimmed amp plane in ADU (float32)."""
     raw = exp.read_amp(geom.extname)
     use_cols = config.overscan_cols
     if use_cols is None and exp.is_mock:
         use_cols = 32  # trailing 16 of 48 mock overscan cols are mirrored
-    correct_overscan(raw, geom, use_cols=use_cols,
-                     clip=config.overscan_clip, smooth=config.overscan_smooth)
-    return np.ascontiguousarray(raw[section_slices(geom.datasec)])
+    stats, _ = correct_overscan(raw, geom, use_cols=use_cols,
+                                clip=config.overscan_clip, smooth=config.overscan_smooth,
+                                reference_level=reference_level,
+                                max_dev=config.overscan_max_dev_adu)
+    return np.ascontiguousarray(raw[section_slices(geom.datasec)]), stats
 
 
 def _master_primary(caltype: str, exps: list[L0Exposure], calver: str,
@@ -82,19 +85,23 @@ def build_master_bias(inputs, out_path, caldb: CalDB, config,
         stats = {}
         with IncrementalMEFWriter(out_path, phdr) as writer:
             for g in exps[0].amps:
-                stack = np.stack([
-                    _corrected_plane(e, gb[g.extname], config)
-                    for e, gb in zip(exps, geoms_by_exp)])
+                planes_stats = [_corrected_plane(e, gb[g.extname], config)
+                                for e, gb in zip(exps, geoms_by_exp)]
+                stack = np.stack([p for p, _ in planes_stats])
+                ovsc_level = float(np.median([s["ovsc_mean_adu"] for _, s in planes_stats]))
                 plane = clipped_mean_stack(stack, clip=3.0)
-                del stack
+                del stack, planes_stats
                 hdr = fits.Header()
                 hdr["EXTNAME"] = g.extname
                 hdr["BUNIT"] = ("ADU", "overscan-corrected bias level")
                 hdr["BIASMED"] = (float(np.median(plane)), "median residual bias [ADU]")
                 hdr["BIASRMS"] = (float(1.4826 * np.median(np.abs(plane - np.median(plane)))),
                                   "robust RMS of master bias [ADU]")
+                hdr["OVSCLVL"] = (ovsc_level,
+                                  "bias-epoch raw overscan level [ADU]")
                 writer.append_image(plane, hdr)
-                stats[g.extname] = {"med": hdr["BIASMED"], "rms": hdr["BIASRMS"]}
+                stats[g.extname] = {"med": hdr["BIASMED"], "rms": hdr["BIASRMS"],
+                                    "ovsc_level": ovsc_level}
             writer.finalize()
         site = str(exps[0].primary.get("OBSERVAT", ""))
         caldb.register(out_path, "MBIAS", site=site,
@@ -117,8 +124,13 @@ def build_master_flat(inputs, out_path, caldb: CalDB, config,
         filt = filters.pop()
         geoms_by_exp = [{g.extname: g for g in e.amps} for e in exps]
 
+        fallbacks: list[str] = []
+
         def corrected(e, geom):
-            plane = _corrected_plane(e, geom, config)
+            ref = bias.ovsc_level(geom.extname) if bias is not None else None
+            plane, stats = _corrected_plane(e, geom, config, reference_level=ref)
+            if stats["ovsc_fallback"]:
+                fallbacks.append(f"{e.path.name}[{geom.extname}]")
             if bias is not None:
                 plane -= bias.plane(geom.extname)
             to_electrons(plane, geom, config.default_gain)
@@ -165,6 +177,8 @@ def build_master_flat(inputs, out_path, caldb: CalDB, config,
         site = str(exps[0].primary.get("OBSERVAT", ""))
         caldb.register(out_path, "MFLAT", site=site, filt=filt,
                        dateobs=str(exps[0].primary.get("DATE-OBS", "")), calver=calver)
+        if fallbacks:
+            warnings.append(f"overscan contamination fallback used: {sorted(set(fallbacks))}")
         return {"calver": calver, "filter": filt, "warnings": warnings,
                 "chip_norm_e": chip_norm, "amps": stats}
     finally:

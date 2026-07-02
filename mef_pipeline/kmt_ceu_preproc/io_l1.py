@@ -1,8 +1,12 @@
 """L1 CCD-level MEF writer.
 
-Layout: PRIMARY + (SCI_x, VAR_x, MASK_x) per chip in CHIPLIST order + CALHIST.
-HDUs are appended incrementally to a temporary file (bounding memory to one
-CCD's planes) and the finished file replaces the target atomically."""
+Layout: PRIMARY + SCI_x[, VAR_x] per chip in CHIPLIST order + CALHIST.
+The VAR plane is written only on request (--with-var); MASK planes go to a
+separate .mask.mef.fits file, only on request (--mask-file) — both defaults
+keep the science product lean, and the reconstruction/consumption recipes
+are documented as COMMENT cards in the primary header. HDUs are appended
+incrementally to a temporary file (bounding memory to one CCD's planes) and
+the finished file replaces the target atomically."""
 from __future__ import annotations
 
 import datetime as dt
@@ -14,7 +18,30 @@ from astropy.io import fits
 
 from . import MASK_BIT_DOC, PIPENAME, VERSION
 
-L1_PRODVER = "v1.0"
+L1_PRODVER = "v1.2"
+
+# processing methods and formulas, recorded verbatim in every L1 primary header
+PROCESSING_DOC = [
+    "---- processing methods (kmt_ceu_preproc) ----",
+    "OVERSCAN: row-wise clipped mean of BIASSEC, running-median smoothed.",
+    "  Guard: if |level - OVSCLVL(master bias)| > 100 ADU the overscan is",
+    "  contaminated (follows the sky); OVSCLVL constant is subtracted",
+    "  instead and the amp is flagged NO_OVERSCAN_FIT.",
+    "BIAS: SCI -= master bias plane (overscan-corrected, per amp, ADU).",
+    "GAIN: SCI[e-] = ADU * GAIN(amp). GAINAPPL=F means nominal 1.0 e-/ADU.",
+    "FLAT: SCI /= response (chip median response = 1); resp<0.1 -> BAD.",
+    "AMPMATCH: per-CCD least squares over amp-boundary zone medians m,",
+    "  multiplicative: s_a*m_a = s_b*m_b, mean(log s)=0 (level preserved);",
+    "  additive: o_a+m_a = o_b+m_b. Overscan-fallback chips are matched",
+    "  additively, anchored on healthy amps. Factors: AMC* in SCI headers.",
+    "ASTROMETRY: stars matched to WCSCAT; TAN fit of CD+CRPIX (CRVAL",
+    "  fixed): (xi,eta) = CD @ (pix - CRPIX). Solved: WCSSOLVE=T + WCSRMS;",
+    "  failed: WCSSOLVE=F + reason in WCSFAIL (approximate WCS kept).",
+    "VAR (see VARINCL) = (RDNOISE**2 + SCI*flat) / flat**2 [electron**2],",
+    "  flat from CALFLAT plane, RDNOISE [e-] from L0 amp header/AMPINFO.",
+    "MASK (separate file, see MASKFILE): bits 1=BAD 2=SATURATED",
+    "  4=NONLINEAR 8=XTALK 16=AMP_SEAM 32=NO_OVERSCAN_FIT.",
+]
 
 # Keywords carried from the L0 primary header into the L1 primary header.
 CARRY_KEYS = (
@@ -51,7 +78,12 @@ def build_primary_header(l0_primary, prov: dict) -> fits.Header:
     h["GAINAPPL"] = (bool(prov.get("gainappl", False)),
                      "measured amp gains applied (F: nominal 1.0)")
     h["XTALKAPL"] = (bool(prov.get("xtalkapl", False)), "crosstalk correction applied")
-    for line in MASK_BIT_DOC:
+    h["VARINCL"] = (bool(prov.get("varincl", False)), "variance planes included")
+    h["MASKFILE"] = (prov.get("maskfile", ""),
+                     "separate mask MEF ('' = not produced)")
+    h["WCSCAT"] = (prov.get("wcscat", ""), "astrometric reference catalog")
+    h["WCSNSOLV"] = (int(prov.get("wcsnsolv", 0)), "CCDs with solved WCS")
+    for line in PROCESSING_DOC:
         h.add_comment(line)
     return h
 
@@ -79,6 +111,25 @@ def build_plane_header(kind: str, chip: str, extras=None) -> fits.Header:
                 key, value = item
                 h[key] = value
     return h
+
+
+def build_mask_primary_header(l0_primary, l1_name: str) -> fits.Header:
+    h = fits.Header()
+    h["DATAPROD"] = ("L1_MASK", "data product type")
+    h["PRODVER"] = (L1_PRODVER, "L1 product format version")
+    h["CREATOR"] = (f"{PIPENAME}_{VERSION}", "mask creation program")
+    h["DATE"] = (utcnow_iso(), "date mask file was generated")
+    h["L1FILE"] = (l1_name, "science L1 MEF this mask belongs to")
+    for k in ("OBSERVAT", "OBJECT", "FILTER", "EXPTIME", "DATE-OBS", "MJD-OBS", "MOCKDATA"):
+        if k in l0_primary:
+            h[k] = (l0_primary[k], l0_primary.comments[k])
+    for line in MASK_BIT_DOC:
+        h.add_comment(line)
+    return h
+
+
+def mask_name_for(l1_name: str) -> str:
+    return l1_name.replace(".mef.fits", ".mask.mef.fits")
 
 
 def calhist_hdu(rows, timestamp: str | None = None) -> fits.BinTableHDU:

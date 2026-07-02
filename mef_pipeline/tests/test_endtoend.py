@@ -58,7 +58,7 @@ class TestEndToEnd(unittest.TestCase):
         cls.out = root / "l1"
         cls.caldb = CalDB(cls.out / "caldb")
         cls.config = PipelineConfig(expected_amps=4, overscan_smooth=5,
-                                    compute_sha256=False)
+                                    compute_sha256=False, with_mask_file=True)
         biases = [make_synth_l0(root / f"bias{i}.fits", "BIAS", bias_adu, exptime=0)
                   for i in range(3)]
         flats = [make_synth_l0(root / f"flat{i}.fits", "FLAT", flat_adu) for i in range(2)]
@@ -73,6 +73,17 @@ class TestEndToEnd(unittest.TestCase):
                                 cls.out / "caldb" / "bpm.fits", cls.caldb)
         cls.qa = process_exposure(cls.obj, cls.caldb, cls.out, cls.config)
         cls.l1_path = cls.out / cls.qa["l1_file"]
+        cls.mask_path = cls.out / cls.l1_path.name.replace(".mef.fits", ".mask.mef.fits")
+        # second run with VAR planes enabled, mask file off (defaults elsewhere)
+        var_config = PipelineConfig(expected_amps=4, overscan_smooth=5,
+                                    compute_sha256=False, with_var=True)
+        cls.out_var = root / "l1var"
+        qa_var = process_exposure(cls.obj, cls.caldb, cls.out_var, var_config)
+        cls.l1_var_path = cls.out_var / qa_var["l1_file"]
+
+    def read_mask(self, chip="M"):
+        with fits.open(self.mask_path) as hdul:
+            return np.asarray(hdul[f"MASK_{chip}"].data)
 
     @classmethod
     def tearDownClass(cls):
@@ -99,12 +110,24 @@ class TestEndToEnd(unittest.TestCase):
         with fits.open(self.l1_path) as hdul:
             hdul.verify("exception")
             names = [h.name for h in hdul]
-            self.assertEqual(names, ["PRIMARY", "SCI_M", "VAR_M", "MASK_M", "CALHIST"])
+            self.assertEqual(names, ["PRIMARY", "SCI_M", "CALHIST"])
             ph = hdul[0].header
             self.assertEqual(ph["DATAPROD"], "L1_CCD")
             self.assertEqual(ph["BUNIT"], "electron")
             self.assertTrue(ph["GAINAPPL"])
             self.assertFalse(ph["XTALKAPL"])
+            self.assertFalse(ph["VARINCL"])
+            self.assertEqual(ph["MASKFILE"], self.mask_path.name)
+            self.assertEqual(ph["WCSNSOLV"], 0)
+            # processing methods documented as COMMENT cards
+            comments = "\n".join(str(c) for c in ph["COMMENT"])
+            self.assertIn("AMPMATCH", comments)
+            self.assertIn("(RDNOISE**2 + SCI*flat) / flat**2", comments)
+            self.assertIn("s_a*m_a = s_b*m_b", comments)
+            self.assertIn("(xi,eta) = CD @ (pix - CRPIX)", comments)
+            sh = hdul["SCI_M"].header
+            self.assertFalse(sh["WCSSOLVE"])
+            self.assertEqual(sh["WCSFAIL"], "NO_REFCAT")
             self.assertEqual(ph["CALBIAS"], "master_bias.fits")
             self.assertEqual(hdul["SCI_M"].header["BUNIT"], "electron")
             self.assertEqual(hdul["SCI_M"].data.shape, (80, 48))
@@ -116,37 +139,131 @@ class TestEndToEnd(unittest.TestCase):
             self.assertTrue(applied["BIAS"])
             self.assertFalse(applied["DARK"])
             self.assertFalse(applied["XTALK"])
+            self.assertTrue(applied["AMPMATCH"])
+            self.assertEqual(hdul["SCI_M"].header["AMMODE"], "multiplicative")
+
+    def test_mask_file_layout(self):
+        self.assertTrue(self.mask_path.exists())
+        with fits.open(self.mask_path) as hdul:
+            hdul.verify("exception")
+            self.assertEqual([h.name for h in hdul], ["PRIMARY", "MASK_M"])
+            self.assertEqual(hdul[0].header["DATAPROD"], "L1_MASK")
+            self.assertEqual(hdul[0].header["L1FILE"], self.l1_path.name)
+            self.assertEqual(hdul["MASK_M"].data.dtype, np.uint8)
+
+    def test_mask_file_off_by_default(self):
+        mask_sibling = self.l1_var_path.with_name(
+            self.l1_var_path.name.replace(".mef.fits", ".mask.mef.fits"))
+        self.assertFalse(mask_sibling.exists())
+        with fits.open(self.l1_var_path) as hdul:
+            self.assertEqual(hdul[0].header["MASKFILE"], "")
+            self.assertNotIn("MASK_M", [h.name for h in hdul])
 
     def test_sky_level_in_electrons(self):
         with fits.open(self.l1_path) as hdul:
             sci = np.asarray(hdul["SCI_M"].data)
-            mask = np.asarray(hdul["MASK_M"].data)
+            mask = self.read_mask()
             sky = np.median(sci[(mask == 0)])
             self.assertAlmostEqual(float(sky), SKY_ADU * GAIN, delta=3.0)
 
     def test_star_and_saturation(self):
         with fits.open(self.l1_path) as hdul:
             sci = np.asarray(hdul["SCI_M"].data)
-            mask = np.asarray(hdul["MASK_M"].data)
+            mask = self.read_mask()
             # M01T ccdsec y 41:80, star at amp (y 10:14, x 5:9) -> ccd rows 50:54
             star = sci[50:54, 5:9] - SKY_ADU * GAIN
             self.assertAlmostEqual(float(np.median(star)), STAR_ADU * GAIN,
                                    delta=0.02 * STAR_ADU * GAIN)
             self.assertTrue(mask[70, 3] & MASK_SAT)  # amp y 30 -> ccd row 70
 
-    def test_variance_plane(self):
-        with fits.open(self.l1_path) as hdul:
-            sci = np.asarray(hdul["SCI_M"].data)
+    def test_variance_plane_with_var(self):
+        with fits.open(self.l1_var_path) as hdul:
+            names = [h.name for h in hdul]
+            self.assertEqual(names, ["PRIMARY", "SCI_M", "VAR_M", "CALHIST"])
+            self.assertTrue(hdul[0].header["VARINCL"])
+            self.assertEqual(hdul["VAR_M"].header["BUNIT"], "electron**2")
             var = np.asarray(hdul["VAR_M"].data)
-            mask = np.asarray(hdul["MASK_M"].data)
-            good = mask == 0
+            good = self.read_mask() == 0
             expected = SKY_ADU * GAIN + RDNOISE ** 2
             self.assertAlmostEqual(float(np.median(var[good])), expected,
                                    delta=0.05 * expected)
 
+    def test_var_and_default_sci_identical(self):
+        with fits.open(self.l1_path) as h1, fits.open(self.l1_var_path) as h2:
+            self.assertTrue(np.array_equal(h1["SCI_M"].data, h2["SCI_M"].data))
+
+    def test_astrometry_failure_flag_with_refcat(self):
+        root = Path(self.tmp.name)
+        cat = root / "tiny_refcat.fits"
+        cols = fits.ColDefs([fits.Column("RA", "D", array=[150.0, 150.001]),
+                             fits.Column("DEC", "D", array=[-30.0, -30.001])])
+        fits.HDUList([fits.PrimaryHDU(),
+                      fits.BinTableHDU.from_columns(cols)]).writeto(cat)
+        cfg = PipelineConfig(expected_amps=4, overscan_smooth=5,
+                             compute_sha256=False, refcat=str(cat))
+        qa = process_exposure(cls_obj := self.obj, self.caldb, root / "l1ast", cfg)
+        astro = qa["ccds"]["M"]["astrometry"]
+        self.assertFalse(astro["solved"])
+        self.assertTrue(astro["reason"].startswith(("FEW_", "NO_")))
+        with fits.open(root / "l1ast" / qa["l1_file"]) as hdul:
+            self.assertFalse(hdul["SCI_M"].header["WCSSOLVE"])
+            self.assertTrue(str(hdul["SCI_M"].header["WCSFAIL"]).startswith(("FEW_", "NO_")))
+            self.assertEqual(hdul[0].header["WCSNSOLV"], 0)
+
     def test_seams_small(self):
         for chip, rec in self.qa["ccds"].items():
             self.assertLess(rec["seam_max_abs_e"], 2.0)
+
+    def test_ampmatch_corrects_gain_drift(self):
+        root = Path(self.tmp.name)
+
+        def drift_adu(extname):
+            adu = bias_adu(extname)
+            adu[:, :NDATA] += SKY_ADU * (1.05 if extname == "M02T" else 1.0)
+            return adu
+
+        obj = make_synth_l0(root / "kmtc.20260630.000002.ceu.l0amp.mock64.mef.fits",
+                            "OBJECT", drift_adu)
+        qa = process_exposure(obj, self.caldb, self.out, self.config)
+        ccd = qa["ccds"]["M"]
+        am = ccd["ampmatch"]
+        self.assertEqual(am["mode"], "multiplicative")
+        self.assertLess(am["corr"]["M02T"], 1.0)   # drifted amp scaled back down
+        # a 5% gain drift would leave a ~10 e- seam; matching removes it
+        self.assertLess(ccd["seam_max_abs_e"], 1.0)
+
+    def test_overscan_contamination_recovery(self):
+        root = Path(self.tmp.name)
+
+        def contaminated_adu(extname):
+            adu = bias_adu(extname)
+            adu[:, :NDATA] += SKY_ADU
+            if extname == "M01T":
+                adu += 300.0                     # whole-amp baseline jump
+                adu[:, NDATA:] += SKY_ADU        # overscan follows the sky too
+            return adu
+
+        obj = make_synth_l0(root / "kmtc.20260630.000003.ceu.l0amp.mock64.mef.fits",
+                            "OBJECT", contaminated_adu)
+        qa = process_exposure(obj, self.caldb, self.out, self.config)
+        self.assertTrue(qa["amps"]["M01T"]["ovsc_fallback"])
+        self.assertFalse(qa["amps"]["M02T"]["ovsc_fallback"])
+        ccd = qa["ccds"]["M"]
+        # fallback chip is matched additively, anchored on the healthy amps
+        self.assertEqual(ccd["ampmatch"]["mode"], "additive")
+        self.assertLess(ccd["seam_max_abs_e"], 2.0)
+        from kmt_ceu_preproc import MASK_NOOVSC
+        mask_file = self.out / qa["l1_file"].replace(".mef.fits", ".mask.mef.fits")
+        with fits.open(self.out / qa["l1_file"]) as hdul, fits.open(mask_file) as mh:
+            sci = np.asarray(hdul["SCI_M"].data)
+            mask = np.asarray(mh["MASK_M"].data)
+            # M01T occupies ccd rows 41:80, cols 1:24; the whole amp carries the
+            # NO_OVERSCAN_FIT flag (expected), so only exclude the other bits
+            sel = (mask[45:75, 12:22] & ~np.uint8(MASK_NOOVSC)) == 0
+            zone = sci[45:75, 12:22][sel]
+            self.assertAlmostEqual(float(np.median(zone)), SKY_ADU * GAIN, delta=5.0)
+            self.assertTrue((mask[45:75, 2:22] & MASK_NOOVSC).all())
+            self.assertEqual(int(mask[10, 10]) & MASK_NOOVSC, 0)
 
     def test_qa_record(self):
         self.assertEqual(self.qa["masters"]["bias"], "master_bias.fits")
