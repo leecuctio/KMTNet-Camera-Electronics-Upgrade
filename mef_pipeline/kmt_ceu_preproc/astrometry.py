@@ -532,16 +532,23 @@ def solve_field(sci: np.ndarray, mask: np.ndarray | None, wcs_header,
         pi, pj = match(w, r_det < R, GROW_TOL_PX)
         if len(pi) >= 12:
             deg = 2 if len(pi) < 120 else 3
-            for _ in range(2):
-                sky = SkyCoord(ref_radec[pj, 0] * u.deg, ref_radec[pj, 1] * u.deg)
-                w2 = fit_wcs_from_points((stars[pi, 0], stars[pi, 1]), sky,
-                                         projection="TAN", sip_degree=deg)
-                px = _all_w2p(w2, ref_radec[pj])
-                d = np.hypot(*(stars[pi, :2] - px).T)
-                good = d <= CLIP_PX
-                if good.all():
-                    break
-                pi, pj = pi[good], pj[good]
+            try:
+                for _ in range(2):
+                    sky = SkyCoord(ref_radec[pj, 0] * u.deg, ref_radec[pj, 1] * u.deg)
+                    w2 = fit_wcs_from_points((stars[pi, 0], stars[pi, 1]), sky,
+                                             projection="TAN", sip_degree=deg)
+                    px = _all_w2p(w2, ref_radec[pj])
+                    d = np.hypot(*(stars[pi, :2] - px).T)
+                    good = d <= CLIP_PX
+                    if good.all():
+                        break
+                    pi, pj = pi[good], pj[good]
+            except Exception as err:
+                # pathological correspondences (e.g. focus-sweep frames) can
+                # make the astropy fitter throw; fail gracefully with a flag
+                return AstrometryResult(False, reason=f"FIT_ERROR({str(err)[:45]})",
+                                        n_det=len(stars), n_ref=len(ref_radec),
+                                        n_match=len(pi))
             w = w2
             fitted = True
         if R > 20000:
