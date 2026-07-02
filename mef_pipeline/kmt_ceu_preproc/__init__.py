@@ -10,14 +10,15 @@ Output: L1 CCD-level calibrated MEF
 
 Processing order follows KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md section 12:
 overscan -> bias -> (dark) -> linearity/saturation -> crosstalk -> gain ->
-flat -> bad pixel mask -> CCD assembly (+ approximate WCS, provenance).
+flat -> bad pixel mask -> amp-boundary match (AMPMATCH) -> CCD assembly
+(+ approximate WCS, provenance).
 
 All amplifier geometry is taken from the L0 headers/AMPINFO table
 (DATASEC/BIASSEC/CCDSEC/DETSEC), so mock uniform DATA_LEFT packing and the
 real ICD packing are both handled without code changes.
 """
 
-VERSION = "v1.1"
+VERSION = "v1.2"
 PIPENAME = "kmt_ceu_preproc"
 
 # L1 MASK bit definitions

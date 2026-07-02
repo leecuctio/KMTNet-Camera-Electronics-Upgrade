@@ -42,6 +42,9 @@ def _config_from(args) -> PipelineConfig:
         cfg.do_bpm = False
     if getattr(args, "with_var", False):
         cfg.with_var = True
+    ampmatch = getattr(args, "ampmatch", None)
+    if ampmatch:
+        cfg.ampmatch = {"mult": "multiplicative", "add": "additive"}.get(ampmatch, ampmatch)
     if getattr(args, "amps", None) is not None:
         cfg.expected_amps = args.amps or None
     if getattr(args, "no_strict", False):
@@ -84,6 +87,8 @@ def main(argv=None) -> int:
     p.add_argument("--no-bpm", action="store_true")
     p.add_argument("--with-var", action="store_true",
                    help="also write VAR planes (omitted by default; reconstructible)")
+    p.add_argument("--ampmatch", choices=["auto", "mult", "add", "off"], default="auto",
+                   help="amp-boundary harmonization mode (default auto)")
     p.add_argument("--no-strict", action="store_true",
                    help="continue despite L0 validation issues")
     p.add_argument("--no-sha256", action="store_true",

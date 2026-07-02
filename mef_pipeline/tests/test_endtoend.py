@@ -123,6 +123,8 @@ class TestEndToEnd(unittest.TestCase):
             self.assertTrue(applied["BIAS"])
             self.assertFalse(applied["DARK"])
             self.assertFalse(applied["XTALK"])
+            self.assertTrue(applied["AMPMATCH"])
+            self.assertEqual(hdul["SCI_M"].header["AMMODE"], "multiplicative")
 
     def test_sky_level_in_electrons(self):
         with fits.open(self.l1_path) as hdul:
@@ -162,6 +164,56 @@ class TestEndToEnd(unittest.TestCase):
     def test_seams_small(self):
         for chip, rec in self.qa["ccds"].items():
             self.assertLess(rec["seam_max_abs_e"], 2.0)
+
+    def test_ampmatch_corrects_gain_drift(self):
+        root = Path(self.tmp.name)
+
+        def drift_adu(extname):
+            adu = bias_adu(extname)
+            adu[:, :NDATA] += SKY_ADU * (1.05 if extname == "M02T" else 1.0)
+            return adu
+
+        obj = make_synth_l0(root / "kmtc.20260630.000002.ceu.l0amp.mock64.mef.fits",
+                            "OBJECT", drift_adu)
+        qa = process_exposure(obj, self.caldb, self.out, self.config)
+        ccd = qa["ccds"]["M"]
+        am = ccd["ampmatch"]
+        self.assertEqual(am["mode"], "multiplicative")
+        self.assertLess(am["corr"]["M02T"], 1.0)   # drifted amp scaled back down
+        # a 5% gain drift would leave a ~10 e- seam; matching removes it
+        self.assertLess(ccd["seam_max_abs_e"], 1.0)
+
+    def test_overscan_contamination_recovery(self):
+        root = Path(self.tmp.name)
+
+        def contaminated_adu(extname):
+            adu = bias_adu(extname)
+            adu[:, :NDATA] += SKY_ADU
+            if extname == "M01T":
+                adu += 300.0                     # whole-amp baseline jump
+                adu[:, NDATA:] += SKY_ADU        # overscan follows the sky too
+            return adu
+
+        obj = make_synth_l0(root / "kmtc.20260630.000003.ceu.l0amp.mock64.mef.fits",
+                            "OBJECT", contaminated_adu)
+        qa = process_exposure(obj, self.caldb, self.out, self.config)
+        self.assertTrue(qa["amps"]["M01T"]["ovsc_fallback"])
+        self.assertFalse(qa["amps"]["M02T"]["ovsc_fallback"])
+        ccd = qa["ccds"]["M"]
+        # fallback chip is matched additively, anchored on the healthy amps
+        self.assertEqual(ccd["ampmatch"]["mode"], "additive")
+        self.assertLess(ccd["seam_max_abs_e"], 2.0)
+        with fits.open(self.out / qa["l1_file"]) as hdul:
+            from kmt_ceu_preproc import MASK_NOOVSC
+            sci = np.asarray(hdul["SCI_M"].data)
+            mask = np.asarray(hdul["MASK_M"].data)
+            # M01T occupies ccd rows 41:80, cols 1:24; the whole amp carries the
+            # NO_OVERSCAN_FIT flag (expected), so only exclude the other bits
+            sel = (mask[45:75, 12:22] & ~np.uint8(MASK_NOOVSC)) == 0
+            zone = sci[45:75, 12:22][sel]
+            self.assertAlmostEqual(float(np.median(zone)), SKY_ADU * GAIN, delta=5.0)
+            self.assertTrue((mask[45:75, 2:22] & MASK_NOOVSC).all())
+            self.assertEqual(int(mask[10, 10]) & MASK_NOOVSC, 0)
 
     def test_qa_record(self):
         self.assertEqual(self.qa["masters"]["bias"], "master_bias.fits")

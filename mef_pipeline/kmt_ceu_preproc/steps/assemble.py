@@ -27,18 +27,35 @@ def seam_positions(geoms: list[AmpGeom]) -> tuple[list[int], list[int]]:
 
 
 SEAM_EXCLUDE_BITS = MASK_BAD | MASK_SAT | MASK_NONLIN
+SEAM_SKIP = 1   # boundary columns/rows skipped (fixed-pattern edge artifacts)
+SEAM_BAND = 4   # columns/rows averaged on each side
 
 
-def _masked_median_step(a: np.ndarray, b: np.ndarray,
-                        ma: np.ndarray | None, mb: np.ndarray | None) -> float:
-    diff = a - b
-    if ma is not None:
-        good = ((ma & SEAM_EXCLUDE_BITS) == 0) & ((mb & SEAM_EXCLUDE_BITS) == 0)
-        if not good.any():
-            # a fully-flagged side (e.g. dead amp): calibration seam unmeasurable
-            return 0.0
-        diff = diff[good]
-    return float(np.median(diff))
+def _band_profile(sci: np.ndarray, mask: np.ndarray | None, band_slice: slice,
+                  axis: int) -> np.ndarray:
+    """Per-row (axis=1) or per-column (axis=0) median over a narrow band."""
+    band = np.take(sci, range(*band_slice.indices(sci.shape[axis])), axis=axis)
+    if mask is not None:
+        mband = np.take(mask, range(*band_slice.indices(mask.shape[axis])), axis=axis)
+        band = np.where((mband & SEAM_EXCLUDE_BITS) == 0, band, np.nan)
+    with np.errstate(all="ignore"):
+        return np.nanmedian(band.astype(np.float64), axis=axis)
+
+
+def _masked_median_step(sci: np.ndarray, mask: np.ndarray | None,
+                        pos: int, axis: int) -> float:
+    """Median step across a boundary at index pos (first pixel of the upper/
+    right side), measured between SEAM_BAND-wide bands that skip SEAM_SKIP
+    edge pixels, so fixed-pattern edge-column artifacts (already MASK_SEAM
+    flagged) do not masquerade as amp-level calibration errors."""
+    lo = _band_profile(sci, mask, slice(pos - SEAM_SKIP - SEAM_BAND, pos - SEAM_SKIP), axis)
+    hi = _band_profile(sci, mask, slice(pos + SEAM_SKIP, pos + SEAM_SKIP + SEAM_BAND), axis)
+    diff = hi - lo
+    good = np.isfinite(diff)
+    if not good.any():
+        # a fully-flagged side (e.g. dead amp): calibration seam unmeasurable
+        return 0.0
+    return float(np.median(diff[good]))
 
 
 def seam_metrics(sci: np.ndarray, geoms: list[AmpGeom],
@@ -49,15 +66,9 @@ def seam_metrics(sci: np.ndarray, geoms: list[AmpGeom],
     xs, ys = seam_positions(geoms)
     metrics = {}
     for x in xs:
-        metrics[f"x{x + 1}"] = _masked_median_step(
-            sci[:, x], sci[:, x - 1],
-            None if mask is None else mask[:, x],
-            None if mask is None else mask[:, x - 1])
+        metrics[f"x{x + 1}"] = _masked_median_step(sci, mask, x, axis=1)
     for y in ys:
-        metrics[f"y{y + 1}"] = _masked_median_step(
-            sci[y, :], sci[y - 1, :],
-            None if mask is None else mask[y, :],
-            None if mask is None else mask[y - 1, :])
+        metrics[f"y{y + 1}"] = _masked_median_step(sci, mask, y, axis=0)
     return metrics
 
 

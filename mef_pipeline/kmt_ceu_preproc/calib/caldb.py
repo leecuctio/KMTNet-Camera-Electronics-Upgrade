@@ -34,6 +34,11 @@ class MasterFile:
     def plane(self, extname: str) -> np.ndarray:
         return np.asarray(self.hdul[extname].data, dtype=np.float32)
 
+    def ovsc_level(self, extname: str) -> float | None:
+        """Bias-epoch raw overscan level (OVSCLVL, master bias only)."""
+        v = self.hdul[extname].header.get("OVSCLVL")
+        return float(v) if v is not None else None
+
     def extnames(self) -> list[str]:
         return [h.name for h in self.hdul[1:]]
 

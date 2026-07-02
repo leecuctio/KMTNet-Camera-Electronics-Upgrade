@@ -13,12 +13,13 @@ from pathlib import Path
 
 import numpy as np
 
-from . import MASK_BAD, MASK_SAT
+from . import MASK_BAD, MASK_NOOVSC, MASK_SAT
 from .geometry import ccd_detsec, fmtsec, section_slices
 from .io_l0 import L0Exposure
 from .io_l1 import (IncrementalMEFWriter, build_plane_header,
                     build_primary_header, calhist_hdu)
 from .steps import CalHistRow
+from .steps.ampmatch import match_amps
 from .steps.assemble import assemble_ccd, ccd_wcs_cards, flag_seams, seam_metrics
 from .steps.bias import bias_calhist, subtract_bias
 from .steps.bpm import apply_bpm, bpm_calhist
@@ -39,11 +40,15 @@ class PipelineConfig:
     overscan_cols: int | None = None    # None: auto (32 for mock, all columns otherwise)
     overscan_smooth: int = 51
     overscan_clip: float = 3.0
+    overscan_max_dev_adu: float = 100.0  # contamination guard vs master-bias OVSCLVL
     do_bias: bool = True
     do_dark: bool = False               # design doc open question #2: default off
     do_flat: bool = True
     do_bpm: bool = True
     with_var: bool = False              # VAR is reconstructible; omitted by default (D-007 amendment)
+    ampmatch: str = "auto"              # amp-boundary harmonization: auto|multiplicative|additive|off
+    ampmatch_width: int = 32            # boundary zone width [pixels]
+    ampmatch_sky_min_e: float = 100.0   # auto: below this sky level use additive matching
     default_gain: float = 1.0           # used when GAIN is a placeholder (<= 0)
     min_flat_response: float = 0.1
     expected_amps: int | None = 64
@@ -57,6 +62,20 @@ def l1_name_for(l0_path) -> str:
         return f"{m.group('prefix')}.{m.group('date')}.{m.group('num')}.ceu.l1ccd.mef.fits"
     stem = Path(l0_path).name.replace(".fits", "")
     return f"{stem}.l1ccd.fits"
+
+
+def _ampmatch_calhist(config: "PipelineConfig", chip_planes: dict) -> CalHistRow:
+    if config.ampmatch == "off":
+        return CalHistRow("AMPMATCH", False, params="disabled")
+    applied = [p["ampmatch"] for p in chip_planes.values()
+               if p.get("ampmatch") and p["ampmatch"].applied]
+    if not applied:
+        return CalHistRow("AMPMATCH", False, params="no usable boundaries")
+    modes = ",".join(sorted({a.mode for a in applied}))
+    max_dev = max(a.max_deviation() for a in applied)
+    return CalHistRow("AMPMATCH", True,
+                      params=f"mode={modes}, width={config.ampmatch_width}, "
+                             f"max_corr={max_dev:.4g}")
 
 
 def _masked_stats(arr: np.ndarray, mask: np.ndarray) -> dict:
@@ -118,6 +137,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
         try:
             gain_all_measured = True
             xtalk_row = None
+            n_ovsc_fallback = 0
+            fallback_amps: set[str] = set()
             chip_planes: dict[str, dict] = {}
 
             for group in exp.ctrl_groups():
@@ -131,7 +152,13 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     n_nl = flag_nonlinear(raw, g, mask)
                     stats, _ = correct_overscan(
                         raw, g, use_cols=ovsc_cols,
-                        clip=config.overscan_clip, smooth=config.overscan_smooth)
+                        clip=config.overscan_clip, smooth=config.overscan_smooth,
+                        reference_level=(bias.ovsc_level(g.extname) if bias else None),
+                        max_dev=config.overscan_max_dev_adu)
+                    if stats["ovsc_fallback"]:
+                        mask |= MASK_NOOVSC
+                        n_ovsc_fallback += 1
+                        fallback_amps.add(g.extname)
                     sci = np.ascontiguousarray(raw[section_slices(g.datasec)])
                     del raw
                     if bias is not None:
@@ -167,6 +194,23 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
 
                 for chip in [c for c in exp.chips if any(g.chip == c for g in group)]:
                     geoms = [g for g in group if g.chip == chip]
+                    am = None
+                    if config.ampmatch != "off":
+                        # amps recovered via the OVSCLVL fallback carry additive
+                        # baseline errors that can exceed the multiplicative cap:
+                        # force additive matching anchored on the healthy amps
+                        chip_fb = {g.extname for g in geoms} & fallback_amps
+                        am = match_amps(
+                            geoms, sci_by, mask_by,
+                            mode="additive" if chip_fb else config.ampmatch,
+                            width=config.ampmatch_width,
+                            sky_min_e=config.ampmatch_sky_min_e,
+                            max_add=2000.0 if chip_fb else 200.0,
+                            anchor=({g.extname for g in geoms} - chip_fb) or None)
+                        if am.applied and config.with_var and am.mode == "multiplicative":
+                            for ext, factor in am.corrections.items():
+                                if factor != 1.0:
+                                    var_by[ext] *= np.float32(factor * factor)
                     sci_ccd = assemble_ccd(geoms, sci_by, np.float32)
                     var_ccd = assemble_ccd(geoms, var_by, np.float32) if config.with_var else None
                     mask_ccd = assemble_ccd(geoms, mask_by, np.uint8)
@@ -180,6 +224,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     chip_planes[chip] = {
                         "sci": sci_ccd, "var": var_ccd, "mask": mask_ccd,
                         "seams": seams,
+                        "ampmatch": am,
                         "wcs": ccd_wcs_cards(ref, exp.hdul[ref.extname].header),
                         "detsec": ccd_detsec(geoms),
                         "namps": len(geoms),
@@ -191,6 +236,10 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                         "seam_max_abs_e": max((abs(v) for v in seams.values()), default=0.0),
                         "n_sat": int(np.count_nonzero(mask_ccd & MASK_SAT)),
                         "n_bad": int(np.count_nonzero(mask_ccd & MASK_BAD)),
+                        "ampmatch": ({"mode": am.mode, "sky_e": am.sky_e,
+                                      "max_corr": am.max_deviation(),
+                                      "corr": am.corrections}
+                                     if am and am.applied else None),
                     }
 
             n_measured = sum(1 for a in qa["amps"].values() if a["gain_measured"])
@@ -198,7 +247,9 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 CalHistRow("SATURATION", True, params="flagged on raw ADU (SATURAT)"),
                 CalHistRow("OVERSCAN", True,
                            params=f"row-wise clipped mean, cols={ovsc_cols or 'all'}, "
-                                  f"smooth={config.overscan_smooth}"),
+                                  f"smooth={config.overscan_smooth}"
+                                  + (f"; contaminated->OVSCLVL fallback: {n_ovsc_fallback} amps"
+                                     if n_ovsc_fallback else "")),
                 bias_calhist(bias),
                 dark_calhist(None, config.do_dark),
                 linearity_calhist(None),
@@ -207,6 +258,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                            params=f"to electrons; measured {n_measured}/{len(qa['amps'])} amps"),
                 flat_calhist(flat, config.min_flat_response),
                 bpm_calhist(bpm),
+                _ampmatch_calhist(config, chip_planes),
                 CalHistRow("ASSEMBLE", True,
                            params="CCDSEC placement, CHIPFLP=None, approx WCS"),
             ]
@@ -231,7 +283,15 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                         ("NAMPS", planes["namps"], "amplifiers assembled"),
                         ("SEAMMAX", max((abs(v) for v in planes["seams"].values()), default=0.0),
                          "max |median seam step| [e-]"),
-                    ] + planes["wcs"]
+                    ]
+                    am = planes["ampmatch"]
+                    if am and am.applied:
+                        extras.append(("AMMODE", am.mode, "amp-boundary match mode"))
+                        for ext, val in am.corrections.items():
+                            extras.append((f"AMC{ext}"[:8], val,
+                                           "amp match factor" if am.mode == "multiplicative"
+                                           else "amp match offset [e-]"))
+                    extras += planes["wcs"]
                     writer.append_image(planes["sci"],
                                         build_plane_header("SCI", chip, extras))
                     if planes["var"] is not None:
