@@ -1,6 +1,6 @@
 # KMTNet-CEU Backlog
 
-최종 갱신일: 2026-06-22
+최종 갱신일: 2026-07-02
 
 상태 값: `Todo`, `In Progress`, `Blocked`, `Done`
 
@@ -27,7 +27,7 @@
 
 | ID | 영역 | 우선순위 | 상태 | 다음 행동 | 완료 조건 |
 | --- | --- | --- | --- | --- | --- |
-| KMT-010 | L1 pipeline | P2 | Todo | L0 amp MEF에서 L1 CCD-level calibrated product 생성 설계 | `SCI_M`, `SCI_K`, `SCI_N`, `SCI_T` 생성 규칙과 calibration history 정의 |
+| KMT-010 | L1 pipeline | P2 | Done | (완료) `mef_pipeline/` v1.0: 설계 + full chain 구현 + mock 야간 검증 | `SCI_M`, `SCI_K`, `SCI_N`, `SCI_T` 생성 규칙과 calibration history 정의 |
 | KMT-011 | Operations | P2 | Todo | 운영 command template와 failure recovery 절차 정리 | 관측일별 batch conversion과 실패 재시도 기준이 문서화됨 |
 | KMT-012 | Provenance | P2 | Todo | raw input, converter, calibration DB, output checksum provenance 모델 정리 | 각 output이 입력 raw와 calibration 버전을 추적 가능 |
 
@@ -39,4 +39,5 @@
 | KMT-D002 | Geometry | 2026-06-22 | MK -> M,K 및 NT -> N,T raw grouping과 19200 x 9400 geometry 검증 |
 | KMT-D003 | Converter | 2026-06-22 | Converter v2.1.1 sample run 및 FITS verification 통과 |
 | KMT-D004 | Release | 2026-06-22 | v2.1.1 release ZIP 및 checksum 생성 |
+| KMT-D005 | L1 pipeline | 2026-07-02 | L0→L1 전처리 파이프라인 v1.0 구현 (`mef_pipeline/`), electrons/단일 MEF/근사 WCS 확정 (D-006~D-008), mock 야간(40노출) 검증 |
 

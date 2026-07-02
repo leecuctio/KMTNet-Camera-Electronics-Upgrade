@@ -80,6 +80,7 @@ ls -1 | grep -E '^kmtc\.[0-9]{8}\.[0-9]{6}\.fits$' \
 | 문서 | 위치 |
 | --- | --- |
 | 데이터 규격 (keyword/ICD) | `../mef_fits_spec/README.md` |
+| L0→L1 전처리 파이프라인 | `../mef_pipeline/README.md` |
 | 기술 결정 기록 | `../project_management/governance/DECISION_LOG.md` |
 | Release 점검 | `../project_management/release/RELEASE_CHECKLIST.md` |
 | Calibration 추적 | `../project_management/science/CALIBRATION_TRACKER.md` |
