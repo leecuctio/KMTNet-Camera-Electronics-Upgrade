@@ -318,3 +318,306 @@ def make_refcat(l1_paths, out_path, nmax_per_chip: int = MAX_STARS,
     tbl.header["SRCFILE"] = (Path(l1_paths[0]).name, "first source L1 file")
     fits.HDUList([fits.PrimaryHDU(), tbl]).writeto(out_path, overwrite=True)
     return {"n_stars": int(len(keep)), "path": str(out_path)}
+
+
+# ============================================================================
+# Full-field TAN-SIP solver and per-chip template initial values (v1.4).
+# Procedure established on 011103-011107 vs Gaia DR3: KMTNet prime-focus
+# distortion reaches 17-54 arcsec at chip corners, so the linear solve_tan is
+# only used as a seed; the field is grown annulus by annulus from the
+# best-matching zone and fitted with SIP order 3. All matching/evaluation is
+# SIP-aware (all_world2pix; wcs_world2pix would silently ignore SIP).
+# ============================================================================
+
+NOMINAL_PIX_SCALE = 0.395          # arcsec/px, measured vs Gaia DR3 (2026-07-02)
+SOLVE_NMAX = 800
+SOLVE_SIGMA = 4.0
+FAMILY_SEP_PX = 25                 # blooming families: keep brightest only
+SEED_ZONES = 4
+SEED_SEARCH_PX = 700.0
+SEED_MIN_VOTES = 8
+GROW_START_PX = 2500.0
+GROW_STEP_PX = 1500.0
+GROW_TOL_PX = 12.0
+CLIP_PX = 2.5
+FINAL_TOL_PX = 5.0
+FIELD_MIN_MATCH = 50
+
+
+def clean_families(stars: np.ndarray, sep: int = FAMILY_SEP_PX) -> np.ndarray:
+    """Keep only the brightest detection within `sep` px (saturated blooms
+    produce several wing peaks around one star)."""
+    if not len(stars):
+        return stars
+    order = np.argsort(stars[:, 2])[::-1]
+    keep: list[int] = []
+    for i in order:
+        if all(max(abs(stars[i, 0] - stars[j, 0]),
+                   abs(stars[i, 1] - stars[j, 1])) >= sep for j in keep):
+            keep.append(int(i))
+    return stars[np.array(keep, int)]
+
+
+def tan_plane_inverse(xi_deg: float, eta_deg: float,
+                      ra0_deg: float, dec0_deg: float) -> tuple[float, float]:
+    """Inverse gnomonic: tangent-plane offsets (deg) about (ra0, dec0) -> sky."""
+    xi, eta = np.radians(xi_deg), np.radians(eta_deg)
+    ra0, dec0 = np.radians(ra0_deg), np.radians(dec0_deg)
+    den = np.cos(dec0) - eta * np.sin(dec0)
+    ra = ra0 + np.arctan2(xi, den)
+    dec = np.arctan((np.sin(dec0) + eta * np.cos(dec0)) / np.hypot(xi, den))
+    return float(np.degrees(ra)) % 360.0, float(np.degrees(dec))
+
+
+def parse_pointing(header) -> tuple[float, float] | None:
+    """Telescope pointing from RA/DEC keywords (sexagesimal or degrees)."""
+    ra, dec = header.get("RA"), header.get("DEC")
+    if ra is None or dec is None:
+        return None
+    try:
+        if isinstance(ra, str) and ":" in ra:
+            h, m, s = (float(x) for x in ra.split(":"))
+            ra_deg = 15.0 * (h + m / 60 + s / 3600)
+        else:
+            ra_deg = float(ra)
+        if isinstance(dec, str) and ":" in dec:
+            p = dec.strip()
+            sign = -1.0 if p.startswith("-") else 1.0
+            d, m, s = (float(x) for x in p.lstrip("+-").split(":"))
+            dec_deg = sign * (d + m / 60 + s / 3600)
+        else:
+            dec_deg = float(dec)
+    except (TypeError, ValueError):
+        return None
+    if not (0.0 <= ra_deg < 360.0 and -90.0 <= dec_deg <= 90.0):
+        return None
+    return ra_deg, dec_deg
+
+
+def load_astrom_template() -> dict | None:
+    """Per-chip representative initial WCS (data/astrom_template.json),
+    derived from Gaia solutions of frames 011103-011106."""
+    path = Path(__file__).parent / "data" / "astrom_template.json"
+    if not path.exists():
+        return None
+    import json
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def template_wcs_header(chip: str, ra_pointing: float, dec_pointing: float,
+                        nx: int, ny: int, template: dict) -> fits.Header | None:
+    """Initial-guess header from the per-chip template + telescope pointing.
+    Includes the mean SIP distortion, so the remaining error is mostly the
+    TCS pointing offset (absorbed by the seed shift)."""
+    t = template.get("chips", {}).get(chip)
+    if t is None:
+        return None
+    ra_c, dec_c = tan_plane_inverse(t["dxi_deg"], t["deta_deg"],
+                                    ra_pointing, dec_pointing)
+    h = fits.Header()
+    h["NAXIS"] = 2
+    h["NAXIS1"], h["NAXIS2"] = nx, ny
+    h["CTYPE1"], h["CTYPE2"] = "RA---TAN-SIP", "DEC--TAN-SIP"
+    h["CRVAL1"], h["CRVAL2"] = ra_c, dec_c
+    h["CRPIX1"], h["CRPIX2"] = template["crpix"]
+    (h["CD1_1"], h["CD1_2"]), (h["CD2_1"], h["CD2_2"]) = t["cd"]
+    h["A_ORDER"] = h["B_ORDER"] = int(template.get("sip_order", 3))
+    for k, v in t.get("sip_a", {}).items():
+        h[k] = v
+    for k, v in t.get("sip_b", {}).items():
+        h[k] = v
+    h["WCSAPPRX"] = True
+    return h
+
+
+def rescale_cd_to_nominal(header: fits.Header) -> fits.Header:
+    """Force the initial CD matrix to the measured plate scale (0.395)."""
+    try:
+        cd = np.array([[header["CD1_1"], header["CD1_2"]],
+                       [header["CD2_1"], header["CD2_2"]]], dtype=float)
+    except KeyError:
+        return header
+    scale = np.sqrt(abs(np.linalg.det(cd))) * 3600.0
+    if 0.2 < scale < 0.8 and abs(scale - NOMINAL_PIX_SCALE) > 1e-4:
+        cd *= NOMINAL_PIX_SCALE / scale
+        (header["CD1_1"], header["CD1_2"]), (header["CD2_1"], header["CD2_2"]) = cd
+    return header
+
+
+def _match_closest(det_xy: np.ndarray, ref_px: np.ndarray,
+                   tol: float) -> tuple[np.ndarray, np.ndarray]:
+    """Nearest match keeping the closest claim per reference star."""
+    d2 = ((det_xy[:, None, :] - ref_px[None, :, :]) ** 2).sum(axis=2)
+    jr = d2.argmin(axis=1)
+    dm = d2[np.arange(len(det_xy)), jr]
+    ok = dm <= tol * tol
+    best: dict[int, int] = {}
+    for k in np.nonzero(ok)[0]:
+        j = int(jr[k])
+        if j not in best or dm[k] < dm[best[j]]:
+            best[j] = int(k)
+    ks = np.array(sorted(best.values()), int)
+    if len(ks) == 0:
+        return np.array([], int), np.array([], int)
+    return ks, jr[ks]
+
+
+def _all_w2p(w: WCS, radec: np.ndarray) -> np.ndarray:
+    return np.column_stack(w.all_world2pix(radec[:, 0], radec[:, 1], 0,
+                                           quiet=True, tolerance=1e-6, maxiter=30))
+
+
+def solve_field(sci: np.ndarray, mask: np.ndarray | None, wcs_header,
+                ref_radec: np.ndarray, min_match: int = FIELD_MIN_MATCH,
+                max_rms: float = MAX_RMS_ARCSEC) -> AstrometryResult:
+    """Full-chip TAN-SIP(3) solution against a reference catalog."""
+    from astropy.coordinates import SkyCoord
+    from astropy.wcs.utils import fit_wcs_from_points
+    import astropy.units as u
+
+    try:
+        w = WCS(wcs_header)
+    except Exception as err:
+        return AstrometryResult(False, reason=f"BAD_WCS({err})")
+    if not w.has_celestial:
+        return AstrometryResult(False, reason="NO_INITIAL_WCS")
+
+    ny, nx = sci.shape
+    stars = clean_families(detect_stars(sci, mask, nmax=SOLVE_NMAX, sigma=SOLVE_SIGMA))
+    if len(stars) < min_match:
+        return AstrometryResult(False, reason=f"FEW_STARS({len(stars)})",
+                                n_det=len(stars), n_ref=len(ref_radec))
+
+    # seed: strongest zone of the detection-reference offset histogram
+    ref_px0 = _all_w2p(w, ref_radec)
+    best = None
+    for zi in range(SEED_ZONES):
+        for zj in range(SEED_ZONES):
+            x0, x1 = zj * nx / SEED_ZONES, (zj + 1) * nx / SEED_ZONES
+            y0, y1 = zi * ny / SEED_ZONES, (zi + 1) * ny / SEED_ZONES
+            ds = stars[(stars[:, 0] >= x0) & (stars[:, 0] < x1)
+                       & (stars[:, 1] >= y0) & (stars[:, 1] < y1)]
+            rs = ref_px0[(ref_px0[:, 0] >= x0 - SEED_SEARCH_PX)
+                         & (ref_px0[:, 0] < x1 + SEED_SEARCH_PX)
+                         & (ref_px0[:, 1] >= y0 - SEED_SEARCH_PX)
+                         & (ref_px0[:, 1] < y1 + SEED_SEARCH_PX)]
+            if len(ds) < 5 or len(rs) < 5:
+                continue
+            dx, dy, votes = _estimate_shift(ds[:, :2], rs,
+                                            search=SEED_SEARCH_PX, bin_px=8.0)
+            if best is None or votes > best[0]:
+                best = (votes, dx, dy, (x0 + x1) / 2, (y0 + y1) / 2)
+    if best is None or best[0] < SEED_MIN_VOTES:
+        return AstrometryResult(False, n_det=len(stars), n_ref=len(ref_radec),
+                                reason=f"NO_SEED_ZONE({0 if best is None else best[0]})")
+    _, dx, dy, sx, sy = best
+    w.wcs.crpix = w.wcs.crpix + np.array([dx, dy])
+    r_det = np.hypot(stars[:, 0] - sx, stars[:, 1] - sy)
+
+    def match(wq, sel, tol):
+        ref_px = _all_w2p(wq, ref_radec)
+        inb = ((ref_px[:, 0] > -50) & (ref_px[:, 0] < nx + 50)
+               & (ref_px[:, 1] > -50) & (ref_px[:, 1] < ny + 50))
+        ridx = np.nonzero(inb)[0]
+        ds = np.nonzero(sel)[0]
+        if not len(ds) or not len(ridx):
+            return np.array([], int), np.array([], int)
+        ki, kj = _match_closest(stars[ds][:, :2], ref_px[ridx], tol)
+        return ds[ki], ridx[kj]
+
+    fitted = False
+    pi = pj = np.array([], int)
+    R = GROW_START_PX
+    while True:
+        pi, pj = match(w, r_det < R, GROW_TOL_PX)
+        if len(pi) >= 12:
+            deg = 2 if len(pi) < 120 else 3
+            for _ in range(2):
+                sky = SkyCoord(ref_radec[pj, 0] * u.deg, ref_radec[pj, 1] * u.deg)
+                w2 = fit_wcs_from_points((stars[pi, 0], stars[pi, 1]), sky,
+                                         projection="TAN", sip_degree=deg)
+                px = _all_w2p(w2, ref_radec[pj])
+                d = np.hypot(*(stars[pi, :2] - px).T)
+                good = d <= CLIP_PX
+                if good.all():
+                    break
+                pi, pj = pi[good], pj[good]
+            w = w2
+            fitted = True
+        if R > 20000:
+            break
+        R += GROW_STEP_PX
+    if not fitted:
+        return AstrometryResult(False, reason="NO_FIT",
+                                n_det=len(stars), n_ref=len(ref_radec))
+
+    pi, pj = match(w, np.ones(len(stars), bool), FINAL_TOL_PX)
+    if len(pi) < min_match:
+        return AstrometryResult(False, reason=f"FEW_MATCHES({len(pi)})",
+                                n_det=len(stars), n_ref=len(ref_radec),
+                                n_match=len(pi))
+    cd = w.pixel_scale_matrix
+    scale = float(np.sqrt(abs(np.linalg.det(cd))) * 3600.0)
+    px = _all_w2p(w, ref_radec[pj])
+    d = np.hypot(*(stars[pi, :2] - px).T) * scale
+    rms = float(np.sqrt(np.mean(d ** 2)))
+    if rms > max_rms:
+        return AstrometryResult(False, reason=f"HIGH_RMS({rms:.2f}as)",
+                                n_det=len(stars), n_ref=len(ref_radec),
+                                n_match=len(pi), rms_arcsec=rms)
+    h = w.to_header(relax=True)
+    cards = [("CTYPE1", "RA---TAN-SIP", "solved WCS"),
+             ("CTYPE2", "DEC--TAN-SIP", "solved WCS"),
+             ("CRVAL1", float(h["CRVAL1"]), "solved WCS"),
+             ("CRVAL2", float(h["CRVAL2"]), "solved WCS"),
+             ("CRPIX1", float(h["CRPIX1"]), "solved WCS"),
+             ("CRPIX2", float(h["CRPIX2"]), "solved WCS"),
+             ("CD1_1", float(cd[0, 0]), "solved WCS"),
+             ("CD1_2", float(cd[0, 1]), "solved WCS"),
+             ("CD2_1", float(cd[1, 0]), "solved WCS"),
+             ("CD2_2", float(cd[1, 1]), "solved WCS"),
+             ("A_ORDER", int(h["A_ORDER"]), "SIP order"),
+             ("B_ORDER", int(h["B_ORDER"]), "SIP order")]
+    for k in sorted(h.keys()):
+        if k.startswith(("A_", "B_")) and not k.endswith("ORDER"):
+            cards.append((k, float(h[k]), "SIP distortion"))
+    cards.append(("WCSAPPRX", False, "WCS solved against reference catalog"))
+    return AstrometryResult(True, n_det=len(stars), n_ref=len(ref_radec),
+                            n_match=len(pi), rms_arcsec=rms, cards=cards)
+
+
+def fetch_gaia_cone(ra_deg: float, dec_deg: float, radius_arcmin: float = 100.0,
+                    gmax: float = 19.0, out_path=None, timeout: int = 240):
+    """Gaia DR3 cone from VizieR (network required) -> (n,3) array or FITS."""
+    import subprocess
+    url = ("https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=I/355/gaiadr3"
+           f"&-c={ra_deg:.5f}%20{dec_deg:+.5f}&-c.rm={radius_arcmin:.1f}"
+           f"&-out=RA_ICRS,DE_ICRS,Gmag&Gmag=%3C{gmax:g}&-out.max=200000")
+    raw = subprocess.run(["curl", "-s", "--max-time", str(timeout), url],
+                         capture_output=True, text=True, check=True).stdout
+    rows = []
+    for line in raw.splitlines():
+        if not line or line.startswith(("#", "-", "RA_", "deg")):
+            continue
+        p = line.split("\t")
+        if len(p) >= 3:
+            try:
+                rows.append((float(p[0]), float(p[1]), float(p[2])))
+            except ValueError:
+                continue
+    data = np.array(rows)
+    if out_path is None:
+        return data
+    cols = fits.ColDefs([
+        fits.Column("RA", "D", unit="deg", array=data[:, 0]),
+        fits.Column("DEC", "D", unit="deg", array=data[:, 1]),
+        fits.Column("GMAG", "E", array=data[:, 2]),
+    ])
+    tbl = fits.BinTableHDU.from_columns(cols, name="REFCAT")
+    tbl.header["CATALOG"] = ("GaiaDR3(VizieR)", "source catalog")
+    tbl.header["CONERA"] = (ra_deg, "cone center RA [deg]")
+    tbl.header["CONEDEC"] = (dec_deg, "cone center DEC [deg]")
+    tbl.header["CONERAD"] = (radius_arcmin, "cone radius [arcmin]")
+    tbl.header["GMAGMAX"] = (gmax, "magnitude limit")
+    fits.HDUList([fits.PrimaryHDU(), tbl]).writeto(out_path, overwrite=True)
+    return data

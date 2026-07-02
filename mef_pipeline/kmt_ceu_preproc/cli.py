@@ -108,6 +108,18 @@ def main(argv=None) -> int:
                    help="expected amp count (0 disables the check)")
     _add_common(p)
 
+    p = sub.add_parser("fetch-gaia",
+                       help="download a Gaia DR3 reference catalog cone (VizieR; network)")
+    p.add_argument("--like", default=None,
+                   help="FITS file whose primary RA/DEC keywords set the cone center")
+    p.add_argument("--ra", type=float, default=None, help="cone center RA [deg]")
+    p.add_argument("--dec", type=float, default=None, help="cone center DEC [deg]")
+    p.add_argument("--radius", type=float, default=100.0,
+                   help="cone radius [arcmin] (mosaic diagonal ~96')")
+    p.add_argument("--gmax", type=float, default=19.0, help="Gmag limit")
+    p.add_argument("-o", "--output", default=None)
+    _add_common(p)
+
     p = sub.add_parser("make-refcat",
                        help="extract an astrometric reference catalog from L1 file(s)")
     p.add_argument("l1file", nargs="+")
@@ -188,6 +200,25 @@ def main(argv=None) -> int:
         if failed:
             print(f"{len(failed)}/{len(args.inputs)} exposures failed", file=sys.stderr)
             return 1
+        return 0
+
+    if args.command == "fetch-gaia":
+        from .astrometry import fetch_gaia_cone, parse_pointing
+        if args.like:
+            pt = parse_pointing(fits.getheader(args.like, 0))
+            if pt is None:
+                print(f"ERROR: no usable RA/DEC keywords in {args.like}", file=sys.stderr)
+                return 1
+            ra, dec = pt
+        elif args.ra is not None and args.dec is not None:
+            ra, dec = args.ra, args.dec
+        else:
+            print("ERROR: give --like FILE or --ra/--dec", file=sys.stderr)
+            return 1
+        out = Path(args.output) if args.output else outroot / "caldb" / "refcat_gaia.fits"
+        data = fetch_gaia_cone(ra, dec, radius_arcmin=args.radius,
+                               gmax=args.gmax, out_path=out)
+        print(f"{out}  n_stars={len(data)}  center=({ra:.4f},{dec:+.4f}) r={args.radius}'")
         return 0
 
     if args.command == "make-refcat":

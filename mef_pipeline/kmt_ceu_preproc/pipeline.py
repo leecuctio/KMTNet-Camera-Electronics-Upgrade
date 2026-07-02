@@ -15,7 +15,9 @@ import numpy as np
 from astropy.io import fits
 
 from . import MASK_BAD, MASK_NOOVSC, MASK_SAT
-from .astrometry import AstrometryResult, load_refcat, solve_tan
+from .astrometry import (AstrometryResult, load_astrom_template, load_refcat,
+                         parse_pointing, rescale_cd_to_nominal, solve_field,
+                         template_wcs_header)
 from .geometry import ccd_detsec, fmtsec, section_slices
 from .io_l0 import L0Exposure
 from .io_l1 import (IncrementalMEFWriter, build_mask_primary_header,
@@ -142,6 +144,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 refcat = load_refcat(config.refcat)
             except Exception as err:
                 refcat_fail = f"REFCAT_ERROR({err})"
+        astrom_template = load_astrom_template() if refcat is not None else None
+        pointing = parse_pointing(primary) if refcat is not None else None
 
         qa: dict = {
             "l0_file": exp.path.name,
@@ -250,17 +254,28 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     flag_seams(mask_ccd, geoms)
                     ref = geoms[0]
                     wcs_cards = ccd_wcs_cards(ref, exp.hdul[ref.extname].header)
+                    init_src = None
                     if refcat is None:
                         astro = AstrometryResult(False, reason=refcat_fail)
-                    elif not wcs_cards:
-                        astro = AstrometryResult(False, reason="NO_INITIAL_WCS")
                     else:
-                        whdr = fits.Header()
-                        whdr["NAXIS"] = 2
-                        whdr["NAXIS2"], whdr["NAXIS1"] = sci_ccd.shape
-                        for item in wcs_cards:
-                            whdr[item[0]] = item[1]
-                        astro = solve_tan(sci_ccd, mask_ccd, whdr, refcat)
+                        whdr = None
+                        if astrom_template is not None and pointing is not None:
+                            whdr = template_wcs_header(
+                                chip, pointing[0], pointing[1],
+                                sci_ccd.shape[1], sci_ccd.shape[0], astrom_template)
+                            init_src = "template"
+                        if whdr is None and wcs_cards:
+                            whdr = fits.Header()
+                            whdr["NAXIS"] = 2
+                            whdr["NAXIS2"], whdr["NAXIS1"] = sci_ccd.shape
+                            for item in wcs_cards:
+                                whdr[item[0]] = item[1]
+                            rescale_cd_to_nominal(whdr)
+                            init_src = "l0"
+                        if whdr is None:
+                            astro = AstrometryResult(False, reason="NO_INITIAL_WCS")
+                        else:
+                            astro = solve_field(sci_ccd, mask_ccd, whdr, refcat)
                     chip_planes[chip] = {
                         "sci": sci_ccd, "var": var_ccd, "mask": mask_ccd,
                         "seams": seams,
@@ -281,7 +296,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                                       "max_corr": am.max_deviation(),
                                       "corr": am.corrections}
                                      if am and am.applied else None),
-                        "astrometry": astro.qa(),
+                        "astrometry": {**astro.qa(), "init": init_src},
                     }
 
             n_measured = sum(1 for a in qa["amps"].values() if a["gain_measured"])
