@@ -126,17 +126,18 @@
 - variance plane은 electrons²로 초기화(RN² + Poisson)하고 flat에서 전파한다.
 - 실측 gain 반영(KMT-001)은 파이프라인 코드 수정 없이 L0 헤더 갱신만으로 적용된다.
 
-## D-007: L1 제품은 단일 MEF(SCI/MASK ×CCD + CALHIST, VAR는 옵션)로 한다
+## D-007: L1 제품은 단일 MEF(SCI ×CCD + CALHIST; VAR/MASK는 옵션)로 한다
 
-날짜: 2026-07-02 (같은 날 개정: VAR 기본 제외)
+날짜: 2026-07-02 (같은 날 개정 2회: VAR 기본 제외, MASK 별도 파일 분리)
 
-상태: Accepted (Amended)
+상태: Accepted (Amended ×2)
 
 결정:
 
 - L1 제품은 노출당 1개 MEF로 하며, 기본 구조는 `PRIMARY` + `CHIPLIST` 순서의
-  `SCI_x`/`MASK_x`(x=M,K,N,T) 8 image HDU + `CALHIST` binary table이다.
+  `SCI_x`(x=M,K,N,T) 4 image HDU + `CALHIST` binary table이다.
 - 파일명은 `<prefix>.<YYYYMMDD>.<NNNNNN>.ceu.l1ccd.mef.fits`로 한다.
+- 주요 보정 방법·수식은 primary header COMMENT("processing methods")로 제품 안에 기록한다.
 
 개정 (2026-07-02, VAR 기본 제외):
 
@@ -144,9 +145,16 @@
   (`VAR = (RDNOISE² + SCI×flat) / flat²`; flat은 `CALFLAT` 참조, RDNOISE는 L0
   amp header/AMPINFO) 기본 제외한다. `VARINCL=F`와 재구성식을 primary header에 기록한다.
 - 필요 시 `run --with-var`로 생성한다 (`VARINCL=T`).
-- MASK는 raw ADU 기준으로 판정한 SATURATED/NONLINEAR 비트가 L1에서 재구성
-  불가하므로 유지한다 (전체의 ~11%, 압축 시 미미).
 - L1 `PRODVER`: v1.0 → v1.1.
+
+개정 2 (2026-07-02, MASK 별도 파일 분리):
+
+- MASK plane은 본 MEF에서 제외하고, `run --mask-file` 옵션 시 별도
+  `*.l1ccd.mask.mef.fits`(PRIMARY + MASK×4, uint8)로 생성한다. 기본은 미생성.
+- 본 MEF의 `MASKFILE` 키워드가 연결을 기록한다 ('' = 미생성).
+- 주의: MASK의 SATURATED/NONLINEAR 비트는 raw ADU 기준 판정이라 L1에서 재구성
+  불가하다. 마스크가 필요한 후속 처리를 계획하면 `--mask-file`을 켜야 한다.
+- L1 `PRODVER`: v1.1 → v1.2 (기본 노출당 약 1.36 GB).
 
 근거:
 
@@ -156,28 +164,37 @@
 
 영향:
 
-- L1 파일 크기는 노출당 약 1.7 GB(float32 SCI ×4 + uint8 MASK ×4)이며 보관 정책은 KMT-009와 함께 다룬다.
+- 기본 L1 파일 크기는 노출당 약 1.36 GB(float32 SCI ×4)이며 보관 정책은 KMT-009와 함께 다룬다.
 - MASK bits: 1=BAD, 2=SATURATED, 4=NONLINEAR, 8=XTALK, 16=AMP_SEAM, 32=NO_OVERSCAN_FIT.
-- 추가 절감이 필요하면 fpack 타일 압축(MASK 무손실, SCI 양자화)을 후속 검토한다.
+- 추가 절감이 필요하면 fpack 타일 압축(SCI 양자화)을 후속 검토한다.
 
-## D-008: 전처리 파이프라인의 종점은 CCD 조립 + 근사 WCS로 한다
+## D-008: 전처리 파이프라인의 종점은 CCD 조립 + astrometry로 한다
 
-날짜: 2026-07-02
+날짜: 2026-07-02 (같은 날 개정: astrometry를 전처리에 포함)
 
-상태: Accepted
+상태: Accepted (Amended)
 
 결정:
 
-- L0→L1 전처리는 amp 교정 후 CCD 조립과 L0에서 물려받은 근사 WCS(`WCSAPPRX=T`) 기록까지 수행한다.
-- 정밀 astrometry와 photometric zeropoint는 후단 파이프라인 몫이다.
+- L0→L1 전처리는 amp 교정 후 CCD 조립, 그리고 조립된 CCD에 대한 astrometric
+  solution까지 수행한다: L0에서 물려받은 근사 WCS를 초기값으로 별을 검출해
+  기준성표(`--refcat`, FITS RA/DEC 테이블)와 매칭하고 TAN 6-parameter fit
+  ((ξ,η)=CD·(pix−CRPIX), CRVAL 고정)으로 WCS 키워드를 갱신한다.
+- 성공 시 `WCSSOLVE=T`/`WCSAPPRX=F` + `WCSRMS`/`WCSNMAT`; 실패(성표 없음, 별/매칭
+  부족, RMS 초과) 시 근사 WCS를 유지하고 `WCSSOLVE=F` + 사유(`WCSFAIL`)를 기록한다.
+- 기준성표는 `make-refcat`(첫 노출 부트스트랩) 또는 외부 성표(Gaia 추출)로 공급한다.
+- photometric zeropoint는 후단 파이프라인 몫이다.
 - dark 보정은 구조만 두고 기본 off로 한다 (Rehearsal dark 특성 확인 후 결정).
 
 근거:
 
-- 전처리와 astrometry의 외부 의존성(기준 성표, 매칭 도구)을 분리해 freeze 위험을 줄인다.
+- CCD 전체 영상이 조립되는 시점이 astrometry의 자연스러운 위치이며, 순수
+  numpy+astropy 구현으로 외부 solver 의존성이 없다.
+- 실패를 명시적으로 플래그하면 후단이 unsolved WCS를 오용하지 않는다.
 
 영향:
 
-- L1 소비자는 `WCSAPPRX=T`인 WCS를 근사값으로 취급해야 한다.
+- L1 소비자는 `WCSSOLVE`로 solved/approximate WCS를 구분해야 한다.
+- 절대 astrometry 품질은 기준성표 품질에 종속된다 (부트스트랩 성표는 상대 정렬).
 - CR rejection은 전처리에 포함하지 않는다 (후단, 필요 시 옵션).
 

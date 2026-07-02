@@ -12,12 +12,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from astropy.io import fits
 
 from . import MASK_BAD, MASK_NOOVSC, MASK_SAT
+from .astrometry import AstrometryResult, load_refcat, solve_tan
 from .geometry import ccd_detsec, fmtsec, section_slices
 from .io_l0 import L0Exposure
-from .io_l1 import (IncrementalMEFWriter, build_plane_header,
-                    build_primary_header, calhist_hdu)
+from .io_l1 import (IncrementalMEFWriter, build_mask_primary_header,
+                    build_plane_header, build_primary_header, calhist_hdu,
+                    mask_name_for)
 from .steps import CalHistRow
 from .steps.ampmatch import match_amps
 from .steps.assemble import assemble_ccd, ccd_wcs_cards, flag_seams, seam_metrics
@@ -46,9 +49,11 @@ class PipelineConfig:
     do_flat: bool = True
     do_bpm: bool = True
     with_var: bool = False              # VAR is reconstructible; omitted by default (D-007 amendment)
+    with_mask_file: bool = False        # write MASK planes to a separate .mask.mef.fits
     ampmatch: str = "auto"              # amp-boundary harmonization: auto|multiplicative|additive|off
     ampmatch_width: int = 32            # boundary zone width [pixels]
     ampmatch_sky_min_e: float = 100.0   # auto: below this sky level use additive matching
+    refcat: str | None = None           # astrometric reference catalog (FITS RA/DEC table)
     default_gain: float = 1.0           # used when GAIN is a placeholder (<= 0)
     min_flat_response: float = 0.1
     expected_amps: int | None = 64
@@ -76,6 +81,21 @@ def _ampmatch_calhist(config: "PipelineConfig", chip_planes: dict) -> CalHistRow
     return CalHistRow("AMPMATCH", True,
                       params=f"mode={modes}, width={config.ampmatch_width}, "
                              f"max_corr={max_dev:.4g}")
+
+
+def _astrometry_calhist(config: "PipelineConfig", chip_planes: dict) -> CalHistRow:
+    results = {c: p["astro"] for c, p in chip_planes.items()}
+    solved = [c for c, a in results.items() if a.solved]
+    if not config.refcat:
+        return CalHistRow("ASTROMETRY", False, params="no reference catalog (WCSSOLVE=F)")
+    cat = Path(config.refcat).name
+    if solved:
+        rms = np.median([results[c].rms_arcsec for c in solved])
+        return CalHistRow("ASTROMETRY", True, calfile=cat,
+                          params=f"solved {len(solved)}/{len(results)} CCDs, "
+                                 f"median rms {rms:.3f} arcsec")
+    reasons = ",".join(sorted({a.reason for a in results.values()}))
+    return CalHistRow("ASTROMETRY", False, calfile=cat, params=f"failed: {reasons}"[:80])
 
 
 def _masked_stats(arr: np.ndarray, mask: np.ndarray) -> dict:
@@ -114,6 +134,14 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
         flat = caldb.open("MFLAT", site=site, filt=filt, date=dateobs) if config.do_flat else None
         bpm = caldb.open("BPM", site=site, date=dateobs) if config.do_bpm else None
         xmat, xen = exp.xtalk_matrix()
+
+        refcat = None
+        refcat_fail = "NO_REFCAT"
+        if config.refcat:
+            try:
+                refcat = load_refcat(config.refcat)
+            except Exception as err:
+                refcat_fail = f"REFCAT_ERROR({err})"
 
         qa: dict = {
             "l0_file": exp.path.name,
@@ -221,11 +249,24 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     seams = seam_metrics(sci_ccd, geoms, mask_ccd)
                     flag_seams(mask_ccd, geoms)
                     ref = geoms[0]
+                    wcs_cards = ccd_wcs_cards(ref, exp.hdul[ref.extname].header)
+                    if refcat is None:
+                        astro = AstrometryResult(False, reason=refcat_fail)
+                    elif not wcs_cards:
+                        astro = AstrometryResult(False, reason="NO_INITIAL_WCS")
+                    else:
+                        whdr = fits.Header()
+                        whdr["NAXIS"] = 2
+                        whdr["NAXIS2"], whdr["NAXIS1"] = sci_ccd.shape
+                        for item in wcs_cards:
+                            whdr[item[0]] = item[1]
+                        astro = solve_tan(sci_ccd, mask_ccd, whdr, refcat)
                     chip_planes[chip] = {
                         "sci": sci_ccd, "var": var_ccd, "mask": mask_ccd,
                         "seams": seams,
                         "ampmatch": am,
-                        "wcs": ccd_wcs_cards(ref, exp.hdul[ref.extname].header),
+                        "astro": astro,
+                        "wcs": wcs_cards,
                         "detsec": ccd_detsec(geoms),
                         "namps": len(geoms),
                     }
@@ -240,6 +281,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                                       "max_corr": am.max_deviation(),
                                       "corr": am.corrections}
                                      if am and am.applied else None),
+                        "astrometry": astro.qa(),
                     }
 
             n_measured = sum(1 for a in qa["amps"].values() if a["gain_measured"])
@@ -261,8 +303,11 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 _ampmatch_calhist(config, chip_planes),
                 CalHistRow("ASSEMBLE", True,
                            params="CCDSEC placement, CHIPFLP=None, approx WCS"),
+                _astrometry_calhist(config, chip_planes),
             ]
 
+            n_solved = sum(1 for p in chip_planes.values() if p["astro"].solved)
+            mask_name = mask_name_for(out_path.name) if config.with_mask_file else ""
             prov = {
                 "l0file": exp.path.name,
                 "l0sha256": exp.sha256() if config.compute_sha256 else "",
@@ -273,11 +318,21 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 "gainappl": gain_all_measured,
                 "xtalkapl": bool(xtalk_row and xtalk_row.applied),
                 "varincl": config.with_var,
+                "maskfile": mask_name,
+                "wcscat": Path(config.refcat).name if (config.refcat and refcat is not None) else "",
+                "wcsnsolv": n_solved,
                 "bunit": "electron",
             }
+            mask_writer = None
             with IncrementalMEFWriter(out_path, build_primary_header(primary, prov)) as writer:
-                for chip in exp.chips:
+              try:
+                if config.with_mask_file:
+                    mask_writer = IncrementalMEFWriter(
+                        out_path.with_name(mask_name),
+                        build_mask_primary_header(primary, out_path.name))
+                for chip in exp.chips:  # noqa: E999 - indented under try
                     planes = chip_planes.pop(chip)
+                    astro = planes["astro"]
                     extras = [
                         ("DETSEC", fmtsec(*planes["detsec"]), "CCD placement in mosaic"),
                         ("NAMPS", planes["namps"], "amplifiers assembled"),
@@ -292,14 +347,35 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                                            "amp match factor" if am.mode == "multiplicative"
                                            else "amp match offset [e-]"))
                     extras += planes["wcs"]
+                    # solved WCS cards come last so they override the approximate ones
+                    extras += astro.cards
+                    extras.append(("WCSSOLVE", astro.solved,
+                                   "astrometric solution succeeded"))
+                    if astro.solved:
+                        extras += [
+                            ("WCSRMS", round(astro.rms_arcsec, 4), "astrometric fit rms [arcsec]"),
+                            ("WCSNSTAR", astro.n_det, "stars detected"),
+                            ("WCSNREF", astro.n_ref, "reference catalog stars"),
+                            ("WCSNMAT", astro.n_match, "matched star pairs"),
+                        ]
+                    else:
+                        extras.append(("WCSFAIL", astro.reason[:60],
+                                       "why the astrometric solution failed"))
                     writer.append_image(planes["sci"],
                                         build_plane_header("SCI", chip, extras))
                     if planes["var"] is not None:
                         writer.append_image(planes["var"], build_plane_header("VAR", chip))
-                    writer.append_image(planes["mask"], build_plane_header("MASK", chip))
+                    if mask_writer is not None:
+                        mask_writer.append_image(planes["mask"],
+                                                 build_plane_header("MASK", chip))
                     del planes
                 writer.append_hdu(calhist_hdu(calhist))
+                if mask_writer is not None:
+                    mask_writer.finalize()
                 writer.finalize()
+              finally:
+                if mask_writer is not None:
+                    mask_writer.__exit__(None, None, None)  # removes tmp unless finalized
         finally:
             for m in (bias, flat, bpm):
                 if m is not None:

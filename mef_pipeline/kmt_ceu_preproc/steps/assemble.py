@@ -5,6 +5,8 @@ flips. Amp boundary pixels are flagged MASK_SEAM and per-boundary seam
 metrics (median of adjacent-column/row differences) are returned for QA."""
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from .. import MASK_BAD, MASK_NONLIN, MASK_SAT, MASK_SEAM
@@ -38,7 +40,8 @@ def _band_profile(sci: np.ndarray, mask: np.ndarray | None, band_slice: slice,
     if mask is not None:
         mband = np.take(mask, range(*band_slice.indices(mask.shape[axis])), axis=axis)
         band = np.where((mband & SEAM_EXCLUDE_BITS) == 0, band, np.nan)
-    with np.errstate(all="ignore"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN slice (dead amp)
         return np.nanmedian(band.astype(np.float64), axis=axis)
 
 

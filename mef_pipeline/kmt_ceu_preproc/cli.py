@@ -45,6 +45,10 @@ def _config_from(args) -> PipelineConfig:
     ampmatch = getattr(args, "ampmatch", None)
     if ampmatch:
         cfg.ampmatch = {"mult": "multiplicative", "add": "additive"}.get(ampmatch, ampmatch)
+    if getattr(args, "mask_file", False):
+        cfg.with_mask_file = True
+    if getattr(args, "refcat", None):
+        cfg.refcat = args.refcat
     if getattr(args, "amps", None) is not None:
         cfg.expected_amps = args.amps or None
     if getattr(args, "no_strict", False):
@@ -89,6 +93,11 @@ def main(argv=None) -> int:
                    help="also write VAR planes (omitted by default; reconstructible)")
     p.add_argument("--ampmatch", choices=["auto", "mult", "add", "off"], default="auto",
                    help="amp-boundary harmonization mode (default auto)")
+    p.add_argument("--mask-file", action="store_true",
+                   help="also write MASK planes to a separate .mask.mef.fits")
+    p.add_argument("--refcat", default=None,
+                   help="astrometric reference catalog (FITS RA/DEC table); "
+                        "without it WCSSOLVE=F is flagged")
     p.add_argument("--no-strict", action="store_true",
                    help="continue despite L0 validation issues")
     p.add_argument("--no-sha256", action="store_true",
@@ -97,6 +106,14 @@ def main(argv=None) -> int:
                    help="override number of BIASSEC columns used in the fit")
     p.add_argument("--amps", type=int, default=64,
                    help="expected amp count (0 disables the check)")
+    _add_common(p)
+
+    p = sub.add_parser("make-refcat",
+                       help="extract an astrometric reference catalog from L1 file(s)")
+    p.add_argument("l1file", nargs="+")
+    p.add_argument("-o", "--output", default=None, help="output catalog FITS path")
+    p.add_argument("--nmax", type=int, default=200, help="max stars per chip")
+    p.add_argument("--sigma", type=float, default=5.0, help="detection threshold [sigma]")
     _add_common(p)
 
     p = sub.add_parser("qa-summary", help="aggregate QA JSON records to markdown")
@@ -171,6 +188,13 @@ def main(argv=None) -> int:
         if failed:
             print(f"{len(failed)}/{len(args.inputs)} exposures failed", file=sys.stderr)
             return 1
+        return 0
+
+    if args.command == "make-refcat":
+        from .astrometry import make_refcat
+        out = Path(args.output) if args.output else outroot / "caldb" / "refcat.fits"
+        res = make_refcat(args.l1file, out, nmax_per_chip=args.nmax, sigma=args.sigma)
+        print(f"{out}  n_stars={res['n_stars']}")
         return 0
 
     if args.command == "qa-summary":
