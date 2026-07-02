@@ -26,6 +26,11 @@ v2.1.1 changes:
   - write FITS logical values in standard right-aligned format
   - parse FITS card comments without splitting quoted string values
   - write output through a temporary file before atomic replacement
+
+v2.1.2 changes:
+  - write header floats with shortest round-trip representation; the old
+    %.10G formatting truncated JD by ~30 s and made JD inconsistent with
+    MJD-OBS in the primary header (same fix as kmt_ceu_legacy32_to_l0amp_mef_v2)
 """
 from __future__ import annotations
 
@@ -42,8 +47,8 @@ from pathlib import Path
 import numpy as np
 
 BLOCK = 2880
-SOFTWARE_VERSION = "v2.1.1"
-PRODUCT_VERSION = "v2.1.1"
+SOFTWARE_VERSION = "v2.1.2"
+PRODUCT_VERSION = "v2.1.1"  # L0 MEF format unchanged by v2.1.2 float-precision fix
 GEOMETRY_VERSION = "CEU-L0AMP-v2.1"
 
 CCD_COLS = 9216
@@ -87,7 +92,12 @@ def fits_value(v):
     if isinstance(v, int) and not isinstance(v, bool):
         return f"{v:20d}"
     if isinstance(v, float):
-        return f"{v:20.10G}"
+        # Shortest round-trip representation (full double precision). The old
+        # %.10G formatting truncated JD by ~30 s and CRVAL by ~1e-4 arcsec.
+        s = repr(v).upper()
+        if len(s) <= 20:
+            return f"{s:>20}"
+        return f"{v:20.16G}"
     if v is None:
         return "''"
     s = str(v).replace("'", "''")
