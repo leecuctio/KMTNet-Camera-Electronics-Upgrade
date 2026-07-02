@@ -1,8 +1,11 @@
 """L1 CCD-level MEF writer.
 
-Layout: PRIMARY + (SCI_x, VAR_x, MASK_x) per chip in CHIPLIST order + CALHIST.
-HDUs are appended incrementally to a temporary file (bounding memory to one
-CCD's planes) and the finished file replaces the target atomically."""
+Layout: PRIMARY + (SCI_x[, VAR_x], MASK_x) per chip in CHIPLIST order +
+CALHIST. The VAR plane is written only on request (config.with_var); it is
+reconstructible from SCI + calibration references, and the recipe is
+documented in the primary header. HDUs are appended incrementally to a
+temporary file (bounding memory to one CCD's planes) and the finished file
+replaces the target atomically."""
 from __future__ import annotations
 
 import datetime as dt
@@ -14,7 +17,7 @@ from astropy.io import fits
 
 from . import MASK_BIT_DOC, PIPENAME, VERSION
 
-L1_PRODVER = "v1.0"
+L1_PRODVER = "v1.1"
 
 # Keywords carried from the L0 primary header into the L1 primary header.
 CARRY_KEYS = (
@@ -51,6 +54,11 @@ def build_primary_header(l0_primary, prov: dict) -> fits.Header:
     h["GAINAPPL"] = (bool(prov.get("gainappl", False)),
                      "measured amp gains applied (F: nominal 1.0)")
     h["XTALKAPL"] = (bool(prov.get("xtalkapl", False)), "crosstalk correction applied")
+    h["VARINCL"] = (bool(prov.get("varincl", False)), "variance planes included")
+    if not prov.get("varincl", False):
+        h.add_comment("VAR omitted; reconstruct as")
+        h.add_comment("VAR = (RDNOISE**2 + SCI*flat) / flat**2  [electron**2]")
+        h.add_comment("flat: CALFLAT product plane; RDNOISE [e-]: L0 amp header/AMPINFO")
     for line in MASK_BIT_DOC:
         h.add_comment(line)
     return h

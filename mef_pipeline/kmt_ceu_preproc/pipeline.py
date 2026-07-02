@@ -43,6 +43,7 @@ class PipelineConfig:
     do_dark: bool = False               # design doc open question #2: default off
     do_flat: bool = True
     do_bpm: bool = True
+    with_var: bool = False              # VAR is reconstructible; omitted by default (D-007 amendment)
     default_gain: float = 1.0           # used when GAIN is a placeholder (<= 0)
     min_flat_response: float = 0.1
     expected_amps: int | None = 64
@@ -149,7 +150,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     gval, measured = to_electrons(sci_by[g.extname], g, config.default_gain)
                     gain_all_measured &= measured
                     rn_e = read_noise_e(g.rdnoise, ovsc_by[g.extname]["ovsc_rms_adu"], gval)
-                    var = init_variance(sci_by[g.extname], rn_e)
+                    var = init_variance(sci_by[g.extname], rn_e) if config.with_var else None
                     n_flatbad = 0
                     if flat is not None:
                         n_flatbad = divide_flat(sci_by[g.extname], var, mask_by[g.extname],
@@ -157,7 +158,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     n_bpm = 0
                     if bpm is not None:
                         n_bpm = apply_bpm(mask_by[g.extname], g.extname, bpm)
-                    var_by[g.extname] = var
+                    if var is not None:
+                        var_by[g.extname] = var
                     qa["amps"][g.extname].update({
                         "gain_e_adu": gval, "gain_measured": measured,
                         "rn_e": rn_e, "n_flat_bad": n_flatbad, "n_bpm": n_bpm,
@@ -166,11 +168,11 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 for chip in [c for c in exp.chips if any(g.chip == c for g in group)]:
                     geoms = [g for g in group if g.chip == chip]
                     sci_ccd = assemble_ccd(geoms, sci_by, np.float32)
-                    var_ccd = assemble_ccd(geoms, var_by, np.float32)
+                    var_ccd = assemble_ccd(geoms, var_by, np.float32) if config.with_var else None
                     mask_ccd = assemble_ccd(geoms, mask_by, np.uint8)
                     for g in geoms:
                         sci_by.pop(g.extname)
-                        var_by.pop(g.extname)
+                        var_by.pop(g.extname, None)
                         mask_by.pop(g.extname)
                     seams = seam_metrics(sci_ccd, geoms, mask_ccd)
                     flag_seams(mask_ccd, geoms)
@@ -218,6 +220,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 "bpm": (bpm.name, bpm.calver) if bpm else ("", ""),
                 "gainappl": gain_all_measured,
                 "xtalkapl": bool(xtalk_row and xtalk_row.applied),
+                "varincl": config.with_var,
                 "bunit": "electron",
             }
             with IncrementalMEFWriter(out_path, build_primary_header(primary, prov)) as writer:
@@ -231,7 +234,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     ] + planes["wcs"]
                     writer.append_image(planes["sci"],
                                         build_plane_header("SCI", chip, extras))
-                    writer.append_image(planes["var"], build_plane_header("VAR", chip))
+                    if planes["var"] is not None:
+                        writer.append_image(planes["var"], build_plane_header("VAR", chip))
                     writer.append_image(planes["mask"], build_plane_header("MASK", chip))
                     del planes
                 writer.append_hdu(calhist_hdu(calhist))

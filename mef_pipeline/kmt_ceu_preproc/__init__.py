@@ -3,7 +3,10 @@
 Input : L0 amp raw MEF (kmt_ceu_archon_mknt_to_l0_amp_mef v2.1.x products,
         or mock64 products from kmt_ceu_legacy32_to_l0amp_mef v2.x).
 Output: L1 CCD-level calibrated MEF
-        PRIMARY + (SCI_x, VAR_x, MASK_x) for x in CHIPLIST + CALHIST table.
+        PRIMARY + (SCI_x, MASK_x) for x in CHIPLIST + CALHIST table.
+        The variance plane is fully reconstructible from SCI + calibration
+        references (var = (RDNOISE^2 + SCI*flat)/flat^2), so it is omitted
+        by default (D-007 amendment); --with-var re-enables it.
 
 Processing order follows KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md section 12:
 overscan -> bias -> (dark) -> linearity/saturation -> crosstalk -> gain ->
@@ -14,7 +17,7 @@ All amplifier geometry is taken from the L0 headers/AMPINFO table
 real ICD packing are both handled without code changes.
 """
 
-VERSION = "v1.0"
+VERSION = "v1.1"
 PIPENAME = "kmt_ceu_preproc"
 
 # L1 MASK bit definitions

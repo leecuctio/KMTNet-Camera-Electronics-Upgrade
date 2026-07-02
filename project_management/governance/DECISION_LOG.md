@@ -126,27 +126,39 @@
 - variance plane은 electrons²로 초기화(RN² + Poisson)하고 flat에서 전파한다.
 - 실측 gain 반영(KMT-001)은 파이프라인 코드 수정 없이 L0 헤더 갱신만으로 적용된다.
 
-## D-007: L1 제품은 단일 MEF(SCI/VAR/MASK ×CCD + CALHIST)로 한다
+## D-007: L1 제품은 단일 MEF(SCI/MASK ×CCD + CALHIST, VAR는 옵션)로 한다
 
-날짜: 2026-07-02
+날짜: 2026-07-02 (같은 날 개정: VAR 기본 제외)
 
-상태: Accepted
+상태: Accepted (Amended)
 
 결정:
 
-- L1 제품은 노출당 1개 MEF로 하며, 구조는 `PRIMARY` + `CHIPLIST` 순서의
-  `SCI_x`/`VAR_x`/`MASK_x`(x=M,K,N,T) 12 image HDU + `CALHIST` binary table이다.
+- L1 제품은 노출당 1개 MEF로 하며, 기본 구조는 `PRIMARY` + `CHIPLIST` 순서의
+  `SCI_x`/`MASK_x`(x=M,K,N,T) 8 image HDU + `CALHIST` binary table이다.
 - 파일명은 `<prefix>.<YYYYMMDD>.<NNNNNN>.ceu.l1ccd.mef.fits`로 한다.
+
+개정 (2026-07-02, VAR 기본 제외):
+
+- VAR plane은 L1에 이미 있는 정보로 완전 재구성 가능하므로
+  (`VAR = (RDNOISE² + SCI×flat) / flat²`; flat은 `CALFLAT` 참조, RDNOISE는 L0
+  amp header/AMPINFO) 기본 제외한다. `VARINCL=F`와 재구성식을 primary header에 기록한다.
+- 필요 시 `run --with-var`로 생성한다 (`VARINCL=T`).
+- MASK는 raw ADU 기준으로 판정한 SATURATED/NONLINEAR 비트가 L1에서 재구성
+  불가하므로 유지한다 (전체의 ~11%, 압축 시 미미).
+- L1 `PRODVER`: v1.0 → v1.1.
 
 근거:
 
 - 노출 단위 관리·전송·provenance 추적이 단순하다.
 - calibration history(단계·교정자료 버전·파라미터)를 제품 내부에 보존해야 한다 (규격 §12).
+- VAR 제거로 노출당 약 3.1 GB → 1.7 GB (44% 절감), 정보 손실 없음.
 
 영향:
 
-- L1 파일 크기는 노출당 약 3 GB(float32 SCI+VAR ×4 CCD)이며 보관 정책은 KMT-009와 함께 다룬다.
+- L1 파일 크기는 노출당 약 1.7 GB(float32 SCI ×4 + uint8 MASK ×4)이며 보관 정책은 KMT-009와 함께 다룬다.
 - MASK bits: 1=BAD, 2=SATURATED, 4=NONLINEAR, 8=XTALK, 16=AMP_SEAM, 32=NO_OVERSCAN_FIT.
+- 추가 절감이 필요하면 fpack 타일 압축(MASK 무손실, SCI 양자화)을 후속 검토한다.
 
 ## D-008: 전처리 파이프라인의 종점은 CCD 조립 + 근사 WCS로 한다
 

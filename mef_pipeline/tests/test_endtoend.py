@@ -73,6 +73,12 @@ class TestEndToEnd(unittest.TestCase):
                                 cls.out / "caldb" / "bpm.fits", cls.caldb)
         cls.qa = process_exposure(cls.obj, cls.caldb, cls.out, cls.config)
         cls.l1_path = cls.out / cls.qa["l1_file"]
+        # second run with VAR planes enabled (non-default)
+        var_config = PipelineConfig(expected_amps=4, overscan_smooth=5,
+                                    compute_sha256=False, with_var=True)
+        cls.out_var = root / "l1var"
+        qa_var = process_exposure(cls.obj, cls.caldb, cls.out_var, var_config)
+        cls.l1_var_path = cls.out_var / qa_var["l1_file"]
 
     @classmethod
     def tearDownClass(cls):
@@ -99,12 +105,13 @@ class TestEndToEnd(unittest.TestCase):
         with fits.open(self.l1_path) as hdul:
             hdul.verify("exception")
             names = [h.name for h in hdul]
-            self.assertEqual(names, ["PRIMARY", "SCI_M", "VAR_M", "MASK_M", "CALHIST"])
+            self.assertEqual(names, ["PRIMARY", "SCI_M", "MASK_M", "CALHIST"])
             ph = hdul[0].header
             self.assertEqual(ph["DATAPROD"], "L1_CCD")
             self.assertEqual(ph["BUNIT"], "electron")
             self.assertTrue(ph["GAINAPPL"])
             self.assertFalse(ph["XTALKAPL"])
+            self.assertFalse(ph["VARINCL"])
             self.assertEqual(ph["CALBIAS"], "master_bias.fits")
             self.assertEqual(hdul["SCI_M"].header["BUNIT"], "electron")
             self.assertEqual(hdul["SCI_M"].data.shape, (80, 48))
@@ -134,15 +141,23 @@ class TestEndToEnd(unittest.TestCase):
                                    delta=0.02 * STAR_ADU * GAIN)
             self.assertTrue(mask[70, 3] & MASK_SAT)  # amp y 30 -> ccd row 70
 
-    def test_variance_plane(self):
-        with fits.open(self.l1_path) as hdul:
-            sci = np.asarray(hdul["SCI_M"].data)
+    def test_variance_plane_with_var(self):
+        with fits.open(self.l1_var_path) as hdul:
+            names = [h.name for h in hdul]
+            self.assertEqual(names, ["PRIMARY", "SCI_M", "VAR_M", "MASK_M", "CALHIST"])
+            self.assertTrue(hdul[0].header["VARINCL"])
+            self.assertEqual(hdul["VAR_M"].header["BUNIT"], "electron**2")
             var = np.asarray(hdul["VAR_M"].data)
             mask = np.asarray(hdul["MASK_M"].data)
             good = mask == 0
             expected = SKY_ADU * GAIN + RDNOISE ** 2
             self.assertAlmostEqual(float(np.median(var[good])), expected,
                                    delta=0.05 * expected)
+
+    def test_var_and_default_sci_identical(self):
+        with fits.open(self.l1_path) as h1, fits.open(self.l1_var_path) as h2:
+            self.assertTrue(np.array_equal(h1["SCI_M"].data, h2["SCI_M"].data))
+            self.assertTrue(np.array_equal(h1["MASK_M"].data, h2["MASK_M"].data))
 
     def test_seams_small(self):
         for chip, rec in self.qa["ccds"].items():

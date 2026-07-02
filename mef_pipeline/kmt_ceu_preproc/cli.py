@@ -40,6 +40,8 @@ def _config_from(args) -> PipelineConfig:
         cfg.do_flat = False
     if getattr(args, "no_bpm", False):
         cfg.do_bpm = False
+    if getattr(args, "with_var", False):
+        cfg.with_var = True
     if getattr(args, "amps", None) is not None:
         cfg.expected_amps = args.amps or None
     if getattr(args, "no_strict", False):
@@ -80,6 +82,8 @@ def main(argv=None) -> int:
     p.add_argument("--no-bias", action="store_true")
     p.add_argument("--no-flat", action="store_true")
     p.add_argument("--no-bpm", action="store_true")
+    p.add_argument("--with-var", action="store_true",
+                   help="also write VAR planes (omitted by default; reconstructible)")
     p.add_argument("--no-strict", action="store_true",
                    help="continue despite L0 validation issues")
     p.add_argument("--no-sha256", action="store_true",
