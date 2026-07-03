@@ -161,6 +161,64 @@ gain/RN/linearity/crosstalk가 실측되면 **코드 수정 없이** L0 헤더/`
 caldb의 교정자료 교체만으로 반영된다 (`GAINAPPL`/`XTALKAPL`로 상태 추적).
 placeholder 정책은 DECISION_LOG D-005를 따른다.
 
+## Linux 서버 배포·운영 가이드
+
+### 요구사항
+
+| 항목 | 요구/권장 | 비고 |
+| --- | --- | --- |
+| Python | **≥3.10** (개발·검증 3.10.8; 3.11/3.12 권장 — 순수 파이썬 구간 10–20% 빠름) | 구형 배포판 기본 python3(3.6/3.8) 불가 → conda/pyenv/배포판 모듈 |
+| numpy | ≥1.22 | `sliding_window_view` 사용 |
+| astropy | ≥5.3 (개발 6.1.7) | `fit_wcs_from_points`(SIP), TAN–SIP WCS |
+| 그 외 | 없음 | scipy·pytest 불필요(테스트는 stdlib unittest), GUI 불필요 |
+| curl | `fetch-gaia`에만 필요 | `--gaia-local` 오프라인 경로는 불필요 |
+
+UTF-8 로케일(`LANG=C.UTF-8`) 확인. `run_mock_night.sh`는 bash 전용. 패키지 설치
+없이 `python3 mef_pipeline/kmt_preproc.py ...`로 바로 실행된다.
+
+### 설치와 검증
+
+```bash
+python3 -m venv ~/venv/kmtceu && source ~/venv/kmtceu/bin/activate
+pip install "numpy>=1.22" "astropy>=5.3"
+git clone https://github.com/leecuctio/KMTNet-Camera-Electronics-Upgrade.git
+cd KMTNet-Camera-Electronics-Upgrade
+python3 -m unittest discover -s mef_pipeline/tests   # 데이터 없이 도는 설치 검증
+```
+
+### git에 없는 것 (별도 준비)
+
+1. **원본 FITS** — `raw/`로 전송 (MK/NT·legacy/mock64 쌍은 같은 디렉토리 유지).
+2. **마스터 교정자료(caldb)** — 서버에서 재생성 권장(`calib-bias`/`calib-flat`/`bpm`,
+   수 분). 기존 caldb를 rsync로 옮길 경우 **`caldb/index.json`이 절대경로**이므로
+   새 경로로 수정해야 한다.
+3. **로컬 Gaia 스토어** — `gaia-ingest`로 구축: ESA `gaia_source` bulk csv.gz →
+   전천 G<19 약 20 GB, 관측(서베이) 필드만이면 수십 MB. 칩별 astrometry 템플릿은
+   repo에 포함(`data/astrom_template.json`)되어 clone만으로 따라온다.
+4. 오프라인 동작은 소켓 차단 테스트로 실증됨 — astropy의 숨은 다운로드(IERS 등) 없음.
+
+### 성능 (노출당 실측: I/O 지배, 20–30초/노출 = 0.7 GB 읽기 + 연산 + 1.36 GB 쓰기)
+
+1. **로컬 NVMe/SSD 스크래치에서 처리** — memmap 임의접근이 많아 **NFS 위에서는
+   크게 느려진다**. 원본·caldb·산출물을 로컬에 두고 완료 후 아카이브로 이동.
+2. **노출 단위 병렬화**(노출 간 완전 독립; L1/QA 파일명이 노출별이라 동시 실행 안전,
+   caldb·Gaia 스토어는 처리 중 읽기 전용):
+
+   ```bash
+   export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+   ls raw/*.mock64.mef.fits | xargs -P 8 -n 1 -I{} \
+     python3 mef_pipeline/kmt_preproc.py run {} -d mef_pipeline_out -f \
+       --gaia-local mef_pipeline_out/caldb/gaia_local
+   ```
+
+   워커당 메모리 ~3–4 GB 기준으로 병렬수를 정한다(예: 16 병렬 ≈ 64 GB RAM).
+   8–16 병렬이면 야간 300노출도 10–20분 수준이며 그 이상은 디스크 대역폭이 한계.
+   **단, 마스터 생성(`calib-*`)은 병렬 실행 전에 단독으로** 먼저 끝낼 것
+   (`index.json` 쓰기 경합 방지).
+3. 마스터(~5 GB)·Gaia 셀은 페이지 캐시에 올라가므로 RAM 여유가 곧 성능.
+4. 처리량 최우선이면 `--no-sha256`(노출당 ~2초 절약; provenance 약화 트레이드오프).
+5. 보관 용량이 부담이면 fpack 타일 압축을 후속 검토(D-007 후속 항목).
+
 ## 관련 문서
 
 | 문서 | 위치 |
