@@ -100,26 +100,26 @@ bash mef_pipeline/run_mock_night.sh raw ./mef_pipeline_out
 
 ```bash
 PP="python3 mef_pipeline/kmt_preproc.py"
-$PP calib-bias  bias1.fits bias2.fits ...   -d l1_out          # master bias
-$PP calib-flat  flatV1.fits flatV2.fits ... -d l1_out          # master flat (필터 자동)
-$PP bpm         --flat l1_out/caldb/master_flat_I.fits -d l1_out
-$PP run         object*.fits -d l1_out -f                      # L0 -> L1
-$PP gaia-ingest cones/*.fits --store l1_out/caldb/gaia_local -d l1_out  # 로컬 스토어 구축
-$PP run         object*.fits -d l1_out -f \
-                --gaia-local l1_out/caldb/gaia_local           # 오프라인 astrometry(권장)
-$PP fetch-gaia  --like KMTN...MK.fits -d l1_out                # Gaia DR3 개별 콘(네트워크)
-$PP make-refcat l1_out/*.ceu.l1ccd.mef.fits -d l1_out          # 오프라인 부트스트랩(대안)
-$PP run         object*.fits -d l1_out -f \
-                --refcat l1_out/caldb/refcat.fits              # astrometry 포함 처리
-$PP qa-summary  -d l1_out                                      # QA markdown
+$PP calib-bias  bias1.fits bias2.fits ...   -d mef_pipeline_out          # master bias
+$PP calib-flat  flatV1.fits flatV2.fits ... -d mef_pipeline_out          # master flat (필터 자동)
+$PP bpm         --flat mef_pipeline_out/caldb/master_flat_I.fits -d mef_pipeline_out
+$PP run         object*.fits -d mef_pipeline_out -f                      # L0 -> L1
+$PP gaia-ingest cones/*.fits --store mef_pipeline_out/caldb/gaia_local -d mef_pipeline_out  # 로컬 스토어 구축
+$PP run         object*.fits -d mef_pipeline_out -f \
+                --gaia-local mef_pipeline_out/caldb/gaia_local           # 오프라인 astrometry(권장)
+$PP fetch-gaia  --like KMTN...MK.fits -d mef_pipeline_out                # Gaia DR3 개별 콘(네트워크)
+$PP make-refcat mef_pipeline_out/*.ceu.l1ccd.mef.fits -d mef_pipeline_out          # 오프라인 부트스트랩(대안)
+$PP run         object*.fits -d mef_pipeline_out -f \
+                --refcat mef_pipeline_out/caldb/refcat.fits              # astrometry 포함 처리
+$PP qa-summary  -d mef_pipeline_out                                      # QA markdown
 ```
 
 `run` 주요 옵션: `--with-var`(VAR 포함), `--mask-file`(별도 MASK 파일 생성),
 `--refcat PATH`(astrometry 기준성표; FITS RA/DEC 테이블 — `make-refcat` 산출물
 또는 외부 Gaia 추출), `--ampmatch off|mult|add|auto`.
 
-교정자료는 `l1_out/caldb/`(JSON index로 site+필터+최근접 날짜 선택), QA JSON은
-`l1_out/qa/`에 쌓인다. 대용량 산출물은 `.gitignore` 대상이며 별도 보관 정책을 따른다.
+교정자료는 `mef_pipeline_out/caldb/`(JSON index로 site+필터+최근접 날짜 선택), QA JSON은
+`mef_pipeline_out/qa/`에 쌓인다. 대용량 산출물은 `.gitignore` 대상이며 별도 보관 정책을 따른다.
 
 ## 단위 테스트
 
