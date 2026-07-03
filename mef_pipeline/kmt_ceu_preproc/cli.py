@@ -26,7 +26,7 @@ from .qa.report import batch_summary, write_qa
 
 
 def _add_common(p):
-    p.add_argument("-d", "--outroot", default="l1_out",
+    p.add_argument("-d", "--outroot", default="mef_pipeline_out",
                    help="output root (caldb/, qa/, L1 files)")
 
 
