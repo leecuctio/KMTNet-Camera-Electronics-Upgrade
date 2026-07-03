@@ -6,11 +6,11 @@
 # Usage: bash mef_pipeline/run_mock_night.sh [DATA_DIR] [OUT_DIR]
 #   DATA_DIR: directory containing kmtc.20260630.NNNNNN.ceu.l0amp.mock64.mef.fits
 #             (default: current directory)
-#   OUT_DIR : output root for caldb/, qa/ and L1 files (default: DATA_DIR/l1_mock)
+#   OUT_DIR : output root for caldb/, qa/ and L1 files (default: DATA_DIR/mef_pipeline_out)
 set -euo pipefail
 
 DATA=${1:-$(pwd)}
-OUT=${2:-$DATA/l1_mock}
+OUT=${2:-$DATA/mef_pipeline_out}
 PIPE_DIR="$(cd "$(dirname "$0")" && pwd)"
 PP="python3 $PIPE_DIR/kmt_preproc.py"
 

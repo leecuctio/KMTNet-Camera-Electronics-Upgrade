@@ -133,7 +133,7 @@ mef_pipeline/
   FLAT V/I 각 3 → master flat, BPM, OBJECT 28 → L1 28개 전부 구조·표준 검증 통과.
   amp seam은 무보정 조립 대비 5–75배 감소(28노출 max|seam| 중앙값 201 e- ≈ sky의 4%).
   QA가 구형 N칩의 죽은 비디오 채널(legacy N02)을 검출해 해당 strip 1,063만 픽셀을
-  BAD 플래그 — placeholder/이상 검출 경로가 실데이터로 확인됨. 결과: `l1_mock/qa/`.
+  BAD 플래그 — placeholder/이상 검출 경로가 실데이터로 확인됨. 결과: `mef_pipeline_out/qa/`.
 
 
 ## 7.1 검증에서 확인된 데이터 특성 (교훈 기록)
