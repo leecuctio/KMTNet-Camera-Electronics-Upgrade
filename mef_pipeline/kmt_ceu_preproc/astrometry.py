@@ -599,7 +599,7 @@ def fetch_gaia_cone(ra_deg: float, dec_deg: float, radius_arcmin: float = 100.0,
     import subprocess
     url = ("https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=I/355/gaiadr3"
            f"&-c={ra_deg:.5f}%20{dec_deg:+.5f}&-c.rm={radius_arcmin:.1f}"
-           f"&-out=RA_ICRS,DE_ICRS,Gmag&Gmag=%3C{gmax:g}&-out.max=200000")
+           f"&-out=RA_ICRS,DE_ICRS,Gmag,pmRA,pmDE&Gmag=%3C{gmax:g}&-out.max=200000")
     raw = subprocess.run(["curl", "-s", "--max-time", str(timeout), url],
                          capture_output=True, text=True, check=True).stdout
     rows = []
@@ -609,7 +609,8 @@ def fetch_gaia_cone(ra_deg: float, dec_deg: float, radius_arcmin: float = 100.0,
         p = line.split("\t")
         if len(p) >= 3:
             try:
-                rows.append((float(p[0]), float(p[1]), float(p[2])))
+                pm = [float(x) if x.strip() else np.nan for x in p[3:5]] + [np.nan, np.nan]
+                rows.append((float(p[0]), float(p[1]), float(p[2]), pm[0], pm[1]))
             except ValueError:
                 continue
     data = np.array(rows)
@@ -619,6 +620,8 @@ def fetch_gaia_cone(ra_deg: float, dec_deg: float, radius_arcmin: float = 100.0,
         fits.Column("RA", "D", unit="deg", array=data[:, 0]),
         fits.Column("DEC", "D", unit="deg", array=data[:, 1]),
         fits.Column("GMAG", "E", array=data[:, 2]),
+        fits.Column("PMRA", "E", unit="mas/yr", array=data[:, 3]),
+        fits.Column("PMDEC", "E", unit="mas/yr", array=data[:, 4]),
     ])
     tbl = fits.BinTableHDU.from_columns(cols, name="REFCAT")
     tbl.header["CATALOG"] = ("GaiaDR3(VizieR)", "source catalog")

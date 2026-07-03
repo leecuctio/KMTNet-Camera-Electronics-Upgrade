@@ -49,6 +49,8 @@ def _config_from(args) -> PipelineConfig:
         cfg.with_mask_file = True
     if getattr(args, "refcat", None):
         cfg.refcat = args.refcat
+    if getattr(args, "gaia_local", None):
+        cfg.gaia_local = args.gaia_local
     if getattr(args, "amps", None) is not None:
         cfg.expected_amps = args.amps or None
     if getattr(args, "no_strict", False):
@@ -98,6 +100,10 @@ def main(argv=None) -> int:
     p.add_argument("--refcat", default=None,
                    help="astrometric reference catalog (FITS RA/DEC table); "
                         "without it WCSSOLVE=F is flagged")
+    p.add_argument("--gaia-local", default=None,
+                   help="local Gaia store directory (gaia-ingest); the "
+                        "reference cone is resolved per exposure from the "
+                        "pointing keywords - no network needed")
     p.add_argument("--no-strict", action="store_true",
                    help="continue despite L0 validation issues")
     p.add_argument("--no-sha256", action="store_true",
@@ -106,6 +112,15 @@ def main(argv=None) -> int:
                    help="override number of BIASSEC columns used in the fit")
     p.add_argument("--amps", type=int, default=64,
                    help="expected amp count (0 disables the check)")
+    _add_common(p)
+
+    p = sub.add_parser("gaia-ingest",
+                       help="build/extend a local Gaia store from FITS refcats "
+                            "or ESA gaia_source csv(.gz) files")
+    p.add_argument("inputs", nargs="+", help="refcat FITS or gaia_source csv(.gz)")
+    p.add_argument("--store", required=True, help="local Gaia store directory")
+    p.add_argument("--gmax", type=float, default=None,
+                   help="magnitude cut applied while ingesting csv files")
     _add_common(p)
 
     p = sub.add_parser("fetch-gaia",
@@ -200,6 +215,22 @@ def main(argv=None) -> int:
         if failed:
             print(f"{len(failed)}/{len(args.inputs)} exposures failed", file=sys.stderr)
             return 1
+        return 0
+
+    if args.command == "gaia-ingest":
+        from .gaialocal import GaiaLocal, ingest_fits_refcat, ingest_gaia_csv
+        cat = GaiaLocal(args.store)
+        total = 0
+        for inp in args.inputs:
+            if inp.endswith((".csv", ".csv.gz")):
+                n = ingest_gaia_csv(cat, inp, gmax=args.gmax)
+            else:
+                n = ingest_fits_refcat(cat, inp)
+            total += n
+            print(f"  {Path(inp).name}: +{n} rows")
+        st = cat.stats()
+        print(f"{args.store}: {st['rows']} rows in {st['cells']} cells "
+              f"({st['size_mb']} MB); added {total}")
         return 0
 
     if args.command == "fetch-gaia":

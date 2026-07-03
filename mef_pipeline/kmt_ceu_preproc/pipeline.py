@@ -56,6 +56,10 @@ class PipelineConfig:
     ampmatch_width: int = 32            # boundary zone width [pixels]
     ampmatch_sky_min_e: float = 100.0   # auto: below this sky level use additive matching
     refcat: str | None = None           # astrometric reference catalog (FITS RA/DEC table)
+    gaia_local: str | None = None       # local Gaia store (gaialocal); auto cone per pointing
+    gaia_radius_deg: float = 100.0 / 60.0   # cone radius covering the mosaic
+    gaia_gmax: float = 19.0
+    gaia_max_refs: int = 120000
     default_gain: float = 1.0           # used when GAIN is a placeholder (<= 0)
     min_flat_response: float = 0.1
     expected_amps: int | None = 64
@@ -139,13 +143,35 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
 
         refcat = None
         refcat_fail = "NO_REFCAT"
+        wcscat_name = ""
+        pointing = parse_pointing(primary)
         if config.refcat:
             try:
                 refcat = load_refcat(config.refcat)
+                wcscat_name = Path(config.refcat).name
             except Exception as err:
                 refcat_fail = f"REFCAT_ERROR({err})"
+        elif config.gaia_local:
+            if pointing is None:
+                refcat_fail = "NO_POINTING"
+            else:
+                try:
+                    from .gaialocal import GaiaLocal
+                    epoch = None
+                    if "MJD-OBS" in primary:
+                        epoch = 2000.0 + (float(primary["MJD-OBS"]) - 51544.5) / 365.25
+                    cone = GaiaLocal(config.gaia_local).cone(
+                        pointing[0], pointing[1], config.gaia_radius_deg,
+                        gmax=config.gaia_gmax, max_refs=config.gaia_max_refs,
+                        epoch=epoch)
+                    if len(cone) >= 10:
+                        refcat = cone
+                        wcscat_name = f"gaia_local:{Path(config.gaia_local).name}"
+                    else:
+                        refcat_fail = f"GAIA_LOCAL_EMPTY({len(cone)})"
+                except Exception as err:
+                    refcat_fail = f"GAIA_LOCAL_ERROR({str(err)[:40]})"
         astrom_template = load_astrom_template() if refcat is not None else None
-        pointing = parse_pointing(primary) if refcat is not None else None
 
         qa: dict = {
             "l0_file": exp.path.name,
@@ -334,7 +360,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 "xtalkapl": bool(xtalk_row and xtalk_row.applied),
                 "varincl": config.with_var,
                 "maskfile": mask_name,
-                "wcscat": Path(config.refcat).name if (config.refcat and refcat is not None) else "",
+                "wcscat": wcscat_name if refcat is not None else "",
                 "wcsnsolv": n_solved,
                 "bunit": "electron",
             }
