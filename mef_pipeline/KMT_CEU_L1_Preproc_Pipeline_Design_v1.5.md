@@ -1,6 +1,6 @@
 # KMT-CEU L0→L1 전처리 파이프라인 설계 (v1.5)
 
-최종 갱신일: 2026-07-02
+최종 갱신일: 2026-07-03
 
 관련 항목: BACKLOG `KMT-010` (L1 pipeline), `KMT-011` (Operations), `KMT-012` (Provenance),
 keyword 규격 §12 "L1 Product 생성 시 주의" (`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`),
