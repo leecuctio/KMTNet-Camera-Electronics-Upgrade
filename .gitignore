@@ -31,6 +31,10 @@ __pycache__/
 *.zip
 *.zip.sha256.txt
 
+# Local data directories (inputs/samples and pipeline products; managed outside Git)
+raw/
+mef_pipeline_out/
+
 # Temporary outputs
 *.tmp
 *.part
