@@ -93,7 +93,7 @@ QA seam 지표는 경계 바로 옆 1픽셀(고정 패턴 edge-column, `MASK_SEA
 repo 루트에서 (mock 야간 전체: master bias/flat/BPM → OBJECT 28장 → QA summary):
 
 ```bash
-bash mef_pipeline/run_mock_night.sh . ./mef_pipeline_out
+bash mef_pipeline/run_mock_night.sh raw ./mef_pipeline_out
 ```
 
 개별 명령:
