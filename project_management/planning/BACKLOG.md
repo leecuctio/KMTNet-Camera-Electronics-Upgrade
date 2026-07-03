@@ -1,6 +1,6 @@
 # KMTNet-CEU Backlog
 
-최종 갱신일: 2026-07-02
+최종 갱신일: 2026-07-03
 
 상태 값: `Todo`, `In Progress`, `Blocked`, `Done`
 
@@ -40,4 +40,5 @@
 | KMT-D003 | Converter | 2026-06-22 | Converter v2.1.1 sample run 및 FITS verification 통과 |
 | KMT-D004 | Release | 2026-06-22 | v2.1.1 release ZIP 및 checksum 생성 |
 | KMT-D005 | L1 pipeline | 2026-07-02 | L0→L1 전처리 파이프라인 v1.0 구현 (`mef_pipeline/`), electrons/단일 MEF/근사 WCS 확정 (D-006~D-008), mock 야간(40노출) 검증 |
+| KMT-D006 | Astrometry | 2026-07-03 | Gaia DR3 절대 astrometry (TAN–SIP3, 칩별 템플릿 초기값, plate scale 0.3952″/px 실측→CR-002), 야간 105/112칩 해결(rms 중앙값 0.31″), 로컬 Gaia 스토어(`gaia-ingest`/`--gaia-local`)로 사이트 오프라인 지원 |
 
