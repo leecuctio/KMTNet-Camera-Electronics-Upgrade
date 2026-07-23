@@ -138,17 +138,18 @@ class GaiaLocal:
     # -- read path -------------------------------------------------------------
     def cone(self, ra0: float, dec0: float, radius_deg: float,
              gmax: float | None = None, max_refs: int | None = None,
-             epoch: float | None = None) -> np.ndarray:
-        """(n, 2) [ra, dec] within the cone; brightest-first magnitude cut
-        when max_refs is exceeded; proper motion propagated to `epoch`
-        (decimal year) where pm values exist."""
+             epoch: float | None = None, with_gmag: bool = False) -> np.ndarray:
+        """(n, 2) [ra, dec] — or (n, 3) [ra, dec, gmag] with with_gmag=True —
+        within the cone; brightest-first magnitude cut when max_refs is
+        exceeded; proper motion propagated to `epoch` (decimal year) where
+        pm values exist."""
         parts = []
         for band, rb_ in self._cells_for_cone(ra0, dec0, radius_deg):
             path = self.root / _cell_name(band, rb_)
             if path.exists():
                 parts.append(np.load(path))
         if not parts:
-            return np.empty((0, 2))
+            return np.empty((0, 3 if with_gmag else 2))
         rec = np.concatenate(parts)
         if gmax is not None:
             rec = rec[np.where(np.isnan(rec["gmag"]), True, rec["gmag"] < gmax)]
@@ -166,6 +167,8 @@ class GaiaLocal:
             pmdec = np.where(np.isnan(rec["pmdec"]), 0.0, rec["pmdec"])
             ra = ra + dt * pmra / (3.6e6 * np.cos(np.radians(dec)))
             dec = dec + dt * pmdec / 3.6e6
+        if with_gmag:
+            return np.column_stack([ra, dec, rec["gmag"].astype(np.float64)])
         return np.column_stack([ra, dec])
 
     def stats(self) -> dict:

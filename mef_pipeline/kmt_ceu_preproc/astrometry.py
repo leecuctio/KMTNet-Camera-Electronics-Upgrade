@@ -25,7 +25,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 
-from . import MASK_BAD, MASK_NONLIN, MASK_SAT
+from . import MASK_BAD, MASK_CR, MASK_NONLIN, MASK_SAT
 
 DETECT_SIGMA = 5.0
 MAX_STARS = 200
@@ -36,7 +36,7 @@ MIN_MATCH = 10
 MAX_RMS_ARCSEC = 1.5
 SHIFT_SEARCH_PX = 600.0           # global-offset search radius (TCS repeatability)
 SHIFT_BIN_PX = 8.0
-DETECT_EXCLUDE = MASK_BAD | MASK_SAT | MASK_NONLIN
+DETECT_EXCLUDE = MASK_BAD | MASK_SAT | MASK_NONLIN | MASK_CR
 
 
 @dataclass
@@ -242,14 +242,18 @@ def solve_tan(sci: np.ndarray, mask: np.ndarray | None, wcs_header: fits.Header,
 # -- reference catalog I/O -----------------------------------------------------
 
 def load_refcat(path) -> np.ndarray:
-    """FITS bintable with RA/DEC columns (deg) -> (n, 2) array."""
+    """FITS bintable with RA/DEC columns (deg) -> (n, 2) array, or (n, 3)
+    [RA, DEC, GMAG] when a GMAG column is present (used by the photometric
+    zero-point step; the extra column is ignored by the WCS solvers)."""
     with fits.open(path) as hdul:
         for hdu in hdul[1:]:
             names = {n.upper(): n for n in hdu.columns.names}
             if "RA" in names and "DEC" in names:
-                return np.column_stack([
-                    np.asarray(hdu.data[names["RA"]], dtype=np.float64),
-                    np.asarray(hdu.data[names["DEC"]], dtype=np.float64)])
+                cols = [np.asarray(hdu.data[names["RA"]], dtype=np.float64),
+                        np.asarray(hdu.data[names["DEC"]], dtype=np.float64)]
+                if "GMAG" in names:
+                    cols.append(np.asarray(hdu.data[names["GMAG"]], dtype=np.float64))
+                return np.column_stack(cols)
     raise ValueError(f"No RA/DEC binary table in {path}")
 
 

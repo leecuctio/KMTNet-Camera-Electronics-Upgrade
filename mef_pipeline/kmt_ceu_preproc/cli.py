@@ -1,10 +1,12 @@
 """Command-line interface.
 
-    kmt_preproc.py calib-bias  bias1.fits ...      -d OUTROOT
-    kmt_preproc.py calib-flat  flat1.fits ...      -d OUTROOT [--bias PATH]
-    kmt_preproc.py bpm         [--flat PATH]       -d OUTROOT
-    kmt_preproc.py run         object1.fits ...    -d OUTROOT [-f] [--no-flat ...]
-    kmt_preproc.py qa-summary                      -d OUTROOT [-o OUT.md]
+    kmt_preproc.py calib-bias   bias1.fits ...      -d OUTROOT
+    kmt_preproc.py calib-flat   flat1.fits ...      -d OUTROOT [--bias PATH]
+    kmt_preproc.py calib-fringe object1.fits ...    -d OUTROOT [--bias/--flat PATH]
+    kmt_preproc.py calib-illum  object1.fits ...    -d OUTROOT [--bias/--flat PATH]
+    kmt_preproc.py bpm          [--flat PATH]       -d OUTROOT
+    kmt_preproc.py run          object1.fits ...    -d OUTROOT [-f] [--no-flat ...]
+    kmt_preproc.py qa-summary                       -d OUTROOT [-o OUT.md]
 
 OUTROOT holds the calibration DB (OUTROOT/caldb), L1 products (OUTROOT) and
 QA records (OUTROOT/qa)."""
@@ -20,7 +22,8 @@ from astropy.io import fits
 from . import VERSION
 from .calib.bpm import build_bpm
 from .calib.caldb import CalDB
-from .calib.masters import build_master_bias, build_master_flat
+from .calib.masters import (build_master_bias, build_master_flat,
+                            build_master_fringe, build_master_illum)
 from .pipeline import PipelineConfig, process_exposure
 from .qa.report import batch_summary, write_qa
 
@@ -38,8 +41,20 @@ def _config_from(args) -> PipelineConfig:
         cfg.do_bias = False
     if getattr(args, "no_flat", False):
         cfg.do_flat = False
+    if getattr(args, "no_fringe", False):
+        cfg.do_fringe = False
+    if getattr(args, "no_illum", False):
+        cfg.do_illum = False
     if getattr(args, "no_bpm", False):
         cfg.do_bpm = False
+    if getattr(args, "cr", None):
+        cfg.cr_mode = args.cr
+    if getattr(args, "cr_sigma", None):
+        cfg.cr_sigma = args.cr_sigma
+    if getattr(args, "sky", None):
+        cfg.sky_mode = args.sky
+    if getattr(args, "no_zp", False):
+        cfg.do_zp = False
     if getattr(args, "with_var", False):
         cfg.with_var = True
     ampmatch = getattr(args, "ampmatch", None)
@@ -78,6 +93,28 @@ def main(argv=None) -> int:
     p.add_argument("-o", "--output", default=None)
     _add_common(p)
 
+    p = sub.add_parser("calib-fringe",
+                       help="build a master fringe pattern from flat-fielded "
+                            "science frames of different pointings (one filter)")
+    p.add_argument("inputs", nargs="+")
+    p.add_argument("--bias", default="auto",
+                   help="master bias path, 'auto' (caldb), or 'none'")
+    p.add_argument("--flat", default="auto",
+                   help="master flat path, 'auto' (caldb), or 'none'")
+    p.add_argument("-o", "--output", default=None)
+    _add_common(p)
+
+    p = sub.add_parser("calib-illum",
+                       help="build a dark-sky illumination correction from "
+                            "flat-fielded science frames of different pointings")
+    p.add_argument("inputs", nargs="+")
+    p.add_argument("--bias", default="auto",
+                   help="master bias path, 'auto' (caldb), or 'none'")
+    p.add_argument("--flat", default="auto",
+                   help="master flat path, 'auto' (caldb), or 'none'")
+    p.add_argument("-o", "--output", default=None)
+    _add_common(p)
+
     p = sub.add_parser("bpm", help="build bad pixel mask from a master flat")
     p.add_argument("--flat", default="auto", help="master flat path or 'auto'")
     p.add_argument("--low", type=float, default=0.5)
@@ -90,7 +127,21 @@ def main(argv=None) -> int:
     p.add_argument("-f", "--force", action="store_true", help="overwrite existing L1")
     p.add_argument("--no-bias", action="store_true")
     p.add_argument("--no-flat", action="store_true")
+    p.add_argument("--no-fringe", action="store_true",
+                   help="skip fringe subtraction even when a master exists")
+    p.add_argument("--no-illum", action="store_true",
+                   help="skip illumination correction even when a master exists")
     p.add_argument("--no-bpm", action="store_true")
+    p.add_argument("--cr", choices=["flag", "off"], default="flag",
+                   help="cosmic-ray flagging into MASK bit 64 (default flag; "
+                        "pixel values are never modified)")
+    p.add_argument("--cr-sigma", type=float, default=None,
+                   help="CR detection significance (default 6.0)")
+    p.add_argument("--sky", choices=["measure", "sub", "off"], default="measure",
+                   help="sky model: measure keywords only (default), "
+                        "sub also subtracts, off disables")
+    p.add_argument("--no-zp", action="store_true",
+                   help="skip the approximate Gaia-G photometric zero point")
     p.add_argument("--with-var", action="store_true",
                    help="also write VAR planes (omitted by default; reconstructible)")
     p.add_argument("--ampmatch", choices=["auto", "mult", "add", "off"], default="auto",
@@ -182,6 +233,37 @@ def main(argv=None) -> int:
         print(f"{out}  CALVER={res['calver']}  filter={res['filter']}")
         return 0
 
+    if args.command in ("calib-fringe", "calib-illum"):
+        def resolve(kind, value):
+            if value == "auto":
+                filt = str(fits.getheader(args.inputs[0], 0).get("FILTER", "")).strip()
+                rec = caldb.find(kind, filt=filt if kind == "MFLAT" else None)
+                if rec is None:
+                    print(f"WARNING: no {kind} in caldb; building without it",
+                          file=sys.stderr)
+                    return None
+                return rec["path"]
+            if value.lower() == "none":
+                return None
+            return value
+        bias_path = resolve("MBIAS", args.bias)
+        flat_path = resolve("MFLAT", args.flat)
+        kind = "fringe" if args.command == "calib-fringe" else "illum"
+        if args.output:
+            out = Path(args.output)
+        else:
+            filt = str(fits.getheader(args.inputs[0], 0).get("FILTER", "X")).strip() or "X"
+            out = outroot / "caldb" / f"master_{kind}_{filt}.fits"
+        builder = build_master_fringe if kind == "fringe" else build_master_illum
+        res = builder(args.inputs, out, caldb, PipelineConfig(),
+                      bias_path=bias_path, flat_path=flat_path)
+        for w in res["warnings"]:
+            print(f"WARNING: {w}", file=sys.stderr)
+        extra = (f"median_amp={res['median_amp']:.2e}" if kind == "fringe"
+                 else f"max_dev={res['max_dev']:.4f}")
+        print(f"{out}  CALVER={res['calver']}  filter={res['filter']}  {extra}")
+        return 0
+
     if args.command == "bpm":
         if args.flat == "auto":
             rec = caldb.find("MFLAT")
@@ -205,8 +287,12 @@ def main(argv=None) -> int:
                 qa = process_exposure(inp, caldb, outroot, cfg, force=args.force)
                 write_qa(qa, outroot / "qa")
                 seam = max((c["seam_max_abs_e"] for c in qa["ccds"].values()), default=0.0)
+                import numpy as _np
+                zps = [c["photzp"]["zp"] for c in qa["ccds"].values()
+                       if c.get("photzp", {}).get("measured")]
+                zptxt = f"  ZP={_np.median(zps):6.3f}" if zps else ""
                 print(f"{qa['l1_file']}  {qa['imagetyp']:>6} {qa['filter']:>2} "
-                      f"{qa['exptime']:5.0f}s  max|seam|={seam:6.2f} e-  "
+                      f"{qa['exptime']:5.0f}s  max|seam|={seam:6.2f} e-{zptxt}  "
                       f"{qa['runtime_s']:.0f}s")
             except Exception as err:
                 failed.append((inp, err))

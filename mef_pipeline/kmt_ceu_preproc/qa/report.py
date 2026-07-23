@@ -44,8 +44,8 @@ def batch_summary(qa_dir, out_path=None) -> Path:
         "",
         f"Exposures: {len(records)}",
         "",
-        "| L1 file | type | filter | exptime | sky med [e-] | sky rms [e-] | max seam [e-] | sat px | bad px | ovsc rms [ADU] | sec |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| L1 file | type | filter | exptime | sky med [e-] | sky rms [e-] | max seam [e-] | sat px | bad px | CR px | ZP | ovsc rms [ADU] | sec |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in records:
         ccds = r.get("ccds", {})
@@ -55,11 +55,15 @@ def batch_summary(qa_dir, out_path=None) -> Path:
         seam = max((c["seam_max_abs_e"] for c in ccds.values()), default=0.0)
         nsat = sum(c["n_sat"] for c in ccds.values())
         nbad = sum(c["n_bad"] for c in ccds.values())
+        ncr = sum(c.get("n_cr", 0) for c in ccds.values())
+        zps = [c["photzp"]["zp"] for c in ccds.values()
+               if c.get("photzp", {}).get("measured")]
+        zptxt = f"{np.median(zps):.3f}" if zps else "-"
         ovsc = np.median([a["ovsc_rms_adu"] for a in amps.values()]) if amps else 0.0
         lines.append(
             f"| {r.get('l1_file','')} | {r.get('imagetyp','')} | {r.get('filter','')} "
             f"| {r.get('exptime',0):.0f} | {sky:.1f} | {rms:.1f} | {seam:.2f} "
-            f"| {nsat} | {nbad} | {ovsc:.2f} | {r.get('runtime_s',0):.0f} |")
+            f"| {nsat} | {nbad} | {ncr} | {zptxt} | {ovsc:.2f} | {r.get('runtime_s',0):.0f} |")
     lines.append("")
     out_path.write_text("\n".join(lines), encoding="utf-8")
     return out_path

@@ -9,18 +9,20 @@ Output: L1 CCD-level calibrated MEF
         by default; --with-var re-enables it. MASK planes go to a separate
         .mask.mef.fits file, produced only with --mask-file (D-007).
 
-Processing order follows KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md section 12:
+Processing order follows KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md section 12,
+extended in v1.6 with the survey-standard optional detrending steps:
 overscan -> bias -> (dark) -> linearity/saturation -> crosstalk -> gain ->
-flat -> bad pixel mask -> amp-boundary match (AMPMATCH) -> CCD assembly ->
-astrometry against a reference catalog (WCSSOLVE flag on failure;
-provenance in CALHIST).
+flat -> fringe -> illumination -> bad pixel mask -> amp-boundary match
+(AMPMATCH) -> CCD assembly -> cosmic-ray flagging -> sky background model ->
+astrometry against a reference catalog (WCSSOLVE flag on failure) ->
+approximate Gaia-G photometric zero point (provenance in CALHIST).
 
 All amplifier geometry is taken from the L0 headers/AMPINFO table
 (DATASEC/BIASSEC/CCDSEC/DETSEC), so mock uniform DATA_LEFT packing and the
 real ICD packing are both handled without code changes.
 """
 
-VERSION = "v1.5"
+VERSION = "v1.6"
 PIPENAME = "kmt_ceu_preproc"
 
 # L1 MASK bit definitions
@@ -30,8 +32,9 @@ MASK_NONLIN = 4     # bit2: above linearity limit (correction applied or not)
 MASK_XTALK = 8      # bit3: significantly affected by crosstalk correction
 MASK_SEAM = 16      # bit4: amplifier boundary pixel
 MASK_NOOVSC = 32    # bit5: overscan fit unavailable for this row
+MASK_CR = 64        # bit6: cosmic-ray candidate (flag only; pixels unchanged)
 
 MASK_BIT_DOC = [
     "MASK bits: 1=BAD 2=SATURATED 4=NONLINEAR 8=XTALK",
-    "MASK bits: 16=AMP_SEAM 32=NO_OVERSCAN_FIT",
+    "MASK bits: 16=AMP_SEAM 32=NO_OVERSCAN_FIT 64=COSMIC_RAY",
 ]

@@ -18,7 +18,7 @@ from astropy.io import fits
 
 from . import MASK_BIT_DOC, PIPENAME, VERSION
 
-L1_PRODVER = "v1.2"
+L1_PRODVER = "v1.3"
 
 # processing methods and formulas, recorded verbatim in every L1 primary header
 PROCESSING_DOC = [
@@ -30,17 +30,30 @@ PROCESSING_DOC = [
     "BIAS: SCI -= master bias plane (overscan-corrected, per amp, ADU).",
     "GAIN: SCI[e-] = ADU * GAIN(amp). GAINAPPL=F means nominal 1.0 e-/ADU.",
     "FLAT: SCI /= response (chip median response = 1); resp<0.1 -> BAD.",
+    "FRINGE (see CALFRNG): SCI -= a * fringe_plane[fraction of sky]; the",
+    "  scale a is a clipped LSQ fit per amp; negligible templates skipped.",
+    "ILLUM (see CALILLM): SCI /= smooth dark-sky response (chip median 1).",
     "AMPMATCH: per-CCD least squares over amp-boundary zone medians m,",
     "  multiplicative: s_a*m_a = s_b*m_b, mean(log s)=0 (level preserved);",
     "  additive: o_a+m_a = o_b+m_b. Overscan-fallback chips are matched",
     "  additively, anchored on healthy amps. Factors: AMC* in SCI headers.",
+    "CRFLAG (CRMODE): 3x3-median Laplacian significance > sigma AND",
+    "  sharper than 2x its 3x3-median -> MASK bit 64 (flag only, grown 1px;",
+    "  pixel values unchanged). CRCOUNT per SCI header.",
+    "SKYMODEL (SKYSUB): 256px clipped-median mesh, bilinear; measured to",
+    "  SKYLVL/SKYRMS/SKYGRADX/SKYGRADY; subtracted only when SKYSUB=T.",
     "ASTROMETRY: stars matched to WCSCAT; TAN fit of CD+CRPIX (CRVAL",
     "  fixed): (xi,eta) = CD @ (pix - CRPIX). Solved: WCSSOLVE=T + WCSRMS;",
     "  failed: WCSSOLVE=F + reason in WCSFAIL (approximate WCS kept).",
+    "PHOTZP: ZPMAG = median(Gaia G + 2.5 log10(flux_e/EXPTIME)) of aperture",
+    "  (r=4px, annulus 8-12px) stars matched to WCSCAT. APPROXIMATE: Gaia G",
+    "  reference, no color term; use for relative/QA photometry only.",
     "VAR (see VARINCL) = (RDNOISE**2 + SCI*flat) / flat**2 [electron**2],",
     "  flat from CALFLAT plane, RDNOISE [e-] from L0 amp header/AMPINFO.",
+    "  (fringe/illum/sky corrections perturb this reconstruction by their",
+    "  own small amplitudes; --with-var stores the exact propagated VAR.)",
     "MASK (separate file, see MASKFILE): bits 1=BAD 2=SATURATED",
-    "  4=NONLINEAR 8=XTALK 16=AMP_SEAM 32=NO_OVERSCAN_FIT.",
+    "  4=NONLINEAR 8=XTALK 16=AMP_SEAM 32=NO_OVERSCAN_FIT 64=COSMIC_RAY.",
 ]
 
 # Keywords carried from the L0 primary header into the L1 primary header.
@@ -69,9 +82,11 @@ def build_primary_header(l0_primary, prov: dict) -> fits.Header:
             h[k] = (l0_primary[k], l0_primary.comments[k])
     h["L0FILE"] = (prov.get("l0file", ""), "source L0 amp MEF")
     if prov.get("l0sha256"):
-        h["L0SHA256"] = (prov["l0sha256"], "SHA256 of source L0 file")
+        # no comment: the 64-char digest plus any comment exceeds one card
+        h["L0SHA256"] = prov["l0sha256"]
     for key, label in (("bias", "CALBIAS"), ("dark", "CALDARK"),
-                       ("flat", "CALFLAT"), ("bpm", "CALBPM")):
+                       ("flat", "CALFLAT"), ("bpm", "CALBPM"),
+                       ("fringe", "CALFRNG"), ("illum", "CALILLM")):
         name, ver = prov.get(key, ("", ""))
         h[label] = (name, f"master {key} file")
         h[label + "V"] = (ver, f"master {key} version")
@@ -79,10 +94,14 @@ def build_primary_header(l0_primary, prov: dict) -> fits.Header:
                      "measured amp gains applied (F: nominal 1.0)")
     h["XTALKAPL"] = (bool(prov.get("xtalkapl", False)), "crosstalk correction applied")
     h["VARINCL"] = (bool(prov.get("varincl", False)), "variance planes included")
-    h["MASKFILE"] = (prov.get("maskfile", ""),
-                     "separate mask MEF ('' = not produced)")
+    h["MASKFILE"] = (prov.get("maskfile", ""), "mask MEF ('': none)")
+    h["CRMODE"] = (prov.get("crmode", "off"), "cosmic-ray flagging mode")
+    h["SKYSUB"] = (bool(prov.get("skysub", False)),
+                   "sky background model subtracted from SCI")
     h["WCSCAT"] = (prov.get("wcscat", ""), "astrometric reference catalog")
     h["WCSNSOLV"] = (int(prov.get("wcsnsolv", 0)), "CCDs with solved WCS")
+    h["ZPNMEAS"] = (int(prov.get("zpnmeas", 0)),
+                    "CCDs with measured photometric zero point")
     for line in PROCESSING_DOC:
         h.add_comment(line)
     return h
@@ -119,7 +138,7 @@ def build_mask_primary_header(l0_primary, l1_name: str) -> fits.Header:
     h["PRODVER"] = (L1_PRODVER, "L1 product format version")
     h["CREATOR"] = (f"{PIPENAME}_{VERSION}", "mask creation program")
     h["DATE"] = (utcnow_iso(), "date mask file was generated")
-    h["L1FILE"] = (l1_name, "science L1 MEF this mask belongs to")
+    h["L1FILE"] = (l1_name, "science L1 of this mask")
     for k in ("OBSERVAT", "OBJECT", "FILTER", "EXPTIME", "DATE-OBS", "MJD-OBS", "MOCKDATA"):
         if k in l0_primary:
             h[k] = (l0_primary[k], l0_primary.comments[k])

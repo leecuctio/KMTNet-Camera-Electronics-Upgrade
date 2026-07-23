@@ -1,9 +1,11 @@
 """Science-frame preprocessing chain (track A): L0 amp MEF -> L1 CCD MEF.
 
-Order (keyword spec section 12): saturation/linearity flagging on raw ADU ->
-overscan -> bias -> (dark) -> crosstalk -> gain -> flat -> BPM -> CCD assembly.
-Amps are processed per controller group (the crosstalk coupling domain), so
-peak memory stays at ~one group's planes plus one CCD's assembled planes."""
+Order (keyword spec section 12, survey-standard extensions in v1.6):
+saturation/linearity flagging on raw ADU -> overscan -> bias -> (dark) ->
+crosstalk -> gain -> flat -> fringe -> illumination -> BPM -> AMPMATCH ->
+CCD assembly -> cosmic-ray flagging -> sky model -> astrometry -> photometric
+zero point. Amps are processed per controller group (the crosstalk coupling
+domain), so peak memory stays at ~one group's planes plus one CCD's planes."""
 from __future__ import annotations
 
 import re
@@ -28,12 +30,17 @@ from .steps.ampmatch import match_amps
 from .steps.assemble import assemble_ccd, ccd_wcs_cards, flag_seams, seam_metrics
 from .steps.bias import bias_calhist, subtract_bias
 from .steps.bpm import apply_bpm, bpm_calhist
+from .steps.crflag import CR_MAX_FRACTION, cr_calhist, flag_cosmics
 from .steps.dark import dark_calhist
 from .steps.flat import divide_flat, flat_calhist
+from .steps.fringe import fringe_calhist, subtract_fringe
 from .steps.gain import to_electrons
+from .steps.illum import divide_illum, illum_calhist
 from .steps.linearity import flag_nonlinear, linearity_calhist
 from .steps.overscan import correct_overscan
+from .steps.photzp import ZPResult, measure_zp, photzp_calhist
 from .steps.saturation import flag_saturation
+from .steps.sky import sky_calhist, sky_model
 from .steps.xtalk import apply_crosstalk
 from .variance import init_variance, read_noise_e
 
@@ -49,7 +56,13 @@ class PipelineConfig:
     do_bias: bool = True
     do_dark: bool = False               # design doc open question #2: default off
     do_flat: bool = True
+    do_fringe: bool = True              # applied when a MFRINGE master exists (v1.6)
+    do_illum: bool = True               # applied when a MILLUM master exists (v1.6)
     do_bpm: bool = True
+    cr_mode: str = "flag"               # cosmic-ray flagging: flag|off (never edits pixels)
+    cr_sigma: float = 6.0
+    sky_mode: str = "measure"           # sky model: measure|sub|off
+    do_zp: bool = True                  # Gaia-G zero point when refcat carries GMAG
     with_var: bool = False              # VAR is reconstructible; omitted by default (D-007 amendment)
     with_mask_file: bool = False        # write MASK planes to a separate .mask.mef.fits
     ampmatch: str = "auto"              # amp-boundary harmonization: auto|multiplicative|additive|off
@@ -89,19 +102,19 @@ def _ampmatch_calhist(config: "PipelineConfig", chip_planes: dict) -> CalHistRow
                              f"max_corr={max_dev:.4g}")
 
 
-def _astrometry_calhist(config: "PipelineConfig", chip_planes: dict) -> CalHistRow:
+def _astrometry_calhist(wcscat_name: str, chip_planes: dict) -> CalHistRow:
     results = {c: p["astro"] for c, p in chip_planes.items()}
     solved = [c for c, a in results.items() if a.solved]
-    if not config.refcat:
+    if not wcscat_name:
         return CalHistRow("ASTROMETRY", False, params="no reference catalog (WCSSOLVE=F)")
-    cat = Path(config.refcat).name
     if solved:
         rms = np.median([results[c].rms_arcsec for c in solved])
-        return CalHistRow("ASTROMETRY", True, calfile=cat,
+        return CalHistRow("ASTROMETRY", True, calfile=wcscat_name[:80],
                           params=f"solved {len(solved)}/{len(results)} CCDs, "
                                  f"median rms {rms:.3f} arcsec")
     reasons = ",".join(sorted({a.reason for a in results.values()}))
-    return CalHistRow("ASTROMETRY", False, calfile=cat, params=f"failed: {reasons}"[:80])
+    return CalHistRow("ASTROMETRY", False, calfile=wcscat_name[:80],
+                      params=f"failed: {reasons}"[:80])
 
 
 def _masked_stats(arr: np.ndarray, mask: np.ndarray) -> dict:
@@ -138,6 +151,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
 
         bias = caldb.open("MBIAS", site=site, date=dateobs) if config.do_bias else None
         flat = caldb.open("MFLAT", site=site, filt=filt, date=dateobs) if config.do_flat else None
+        fringe = caldb.open("MFRINGE", site=site, filt=filt, date=dateobs) if config.do_fringe else None
+        illum = caldb.open("MILLUM", site=site, filt=filt, date=dateobs) if config.do_illum else None
         bpm = caldb.open("BPM", site=site, date=dateobs) if config.do_bpm else None
         xmat, xen = exp.xtalk_matrix()
 
@@ -163,7 +178,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     cone = GaiaLocal(config.gaia_local).cone(
                         pointing[0], pointing[1], config.gaia_radius_deg,
                         gmax=config.gaia_gmax, max_refs=config.gaia_max_refs,
-                        epoch=epoch)
+                        epoch=epoch, with_gmag=True)
                     if len(cone) >= 10:
                         refcat = cone
                         wcscat_name = f"gaia_local:{Path(config.gaia_local).name}"
@@ -186,6 +201,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
             "masters": {
                 "bias": bias.name if bias else None,
                 "flat": flat.name if flat else None,
+                "fringe": fringe.name if fringe else None,
+                "illum": illum.name if illum else None,
                 "bpm": bpm.name if bpm else None,
             },
             "amps": {},
@@ -198,6 +215,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
             n_ovsc_fallback = 0
             fallback_amps: set[str] = set()
             chip_planes: dict[str, dict] = {}
+            fringe_scales_all: dict[str, float] = {}
+            illum_dev_max = 0.0
 
             for group in exp.ctrl_groups():
                 sci_by: dict[str, np.ndarray] = {}
@@ -252,6 +271,30 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
 
                 for chip in [c for c in exp.chips if any(g.chip == c for g in group)]:
                     geoms = [g for g in group if g.chip == chip]
+                    # fringe subtraction and illumination division (v1.6),
+                    # after flat and before amp-boundary harmonization
+                    fr_scales: dict[str, float] = {}
+                    il_dev = 0.0
+                    if fringe is not None or illum is not None:
+                        sky_chip = float(np.median(
+                            [np.median(sci_by[g.extname][::8, ::8]) for g in geoms]))
+                        for g in geoms:
+                            if fringe is not None:
+                                ok, scale = subtract_fringe(
+                                    sci_by[g.extname], mask_by[g.extname],
+                                    g.extname, fringe, sky_chip)
+                                if ok:
+                                    fr_scales[g.extname] = scale
+                                    fringe_scales_all[g.extname] = scale
+                                qa["amps"][g.extname]["fringe_scale_e"] = (
+                                    scale if ok else 0.0)
+                            if illum is not None:
+                                dev, _n_cl = divide_illum(
+                                    sci_by[g.extname], var_by.get(g.extname),
+                                    g.extname, illum)
+                                il_dev = max(il_dev, dev)
+                                illum_dev_max = max(illum_dev_max, dev)
+                                qa["amps"][g.extname]["illum_max_dev"] = dev
                     am = None
                     if config.ampmatch != "off":
                         # amps recovered via the OVSCLVL fallback carry additive
@@ -278,6 +321,19 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                         mask_by.pop(g.extname)
                     seams = seam_metrics(sci_ccd, geoms, mask_ccd)
                     flag_seams(mask_ccd, geoms)
+                    # cosmic-ray flagging (flag-only) on the assembled CCD,
+                    # before star detection so CR hits are excluded from it
+                    n_cr = 0
+                    if config.cr_mode == "flag":
+                        rn_med = float(np.median(
+                            [qa["amps"][g.extname]["rn_e"] for g in geoms]))
+                        n_cr = flag_cosmics(sci_ccd, mask_ccd, rn_med,
+                                            sigma=config.cr_sigma)
+                    # sky background model (measured by default; --sky sub subtracts)
+                    sky_stats = None
+                    if config.sky_mode != "off":
+                        sky_stats = sky_model(sci_ccd, mask_ccd,
+                                              subtract=(config.sky_mode == "sub"))
                     ref = geoms[0]
                     wcs_cards = ccd_wcs_cards(ref, exp.hdul[ref.extname].header)
                     init_src = None
@@ -302,6 +358,17 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                             astro = AstrometryResult(False, reason="NO_INITIAL_WCS")
                         else:
                             astro = solve_field(sci_ccd, mask_ccd, whdr, refcat)
+                    # approximate photometric zero point vs the reference
+                    # catalog's Gaia G magnitudes (v1.6; no color term)
+                    if not config.do_zp:
+                        zp = ZPResult(False, reason="disabled")
+                    elif not astro.solved:
+                        zp = ZPResult(False, reason="WCS_NOT_SOLVED")
+                    elif refcat is None or refcat.ndim != 2 or refcat.shape[1] < 3:
+                        zp = ZPResult(False, reason="NO_REF_MAG")
+                    else:
+                        zp = measure_zp(sci_ccd, mask_ccd, astro.cards, refcat,
+                                        qa["exptime"])
                     chip_planes[chip] = {
                         "sci": sci_ccd, "var": var_ccd, "mask": mask_ccd,
                         "seams": seams,
@@ -310,6 +377,12 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                         "wcs": wcs_cards,
                         "detsec": ccd_detsec(geoms),
                         "namps": len(geoms),
+                        "cr": n_cr,
+                        "sky": sky_stats,
+                        "zp": zp,
+                        "fringe_scale": (float(np.median(list(fr_scales.values())))
+                                         if fr_scales else None),
+                        "illum_dev": il_dev if illum is not None else None,
                     }
                     stats = _masked_stats(sci_ccd, mask_ccd)
                     qa["ccds"][chip] = {
@@ -318,11 +391,18 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                         "seam_max_abs_e": max((abs(v) for v in seams.values()), default=0.0),
                         "n_sat": int(np.count_nonzero(mask_ccd & MASK_SAT)),
                         "n_bad": int(np.count_nonzero(mask_ccd & MASK_BAD)),
+                        "n_cr": n_cr,
+                        "cr_warning": bool(n_cr > CR_MAX_FRACTION * sci_ccd.size),
+                        "sky": sky_stats,
+                        "fringe_scale_e": (float(np.median(list(fr_scales.values())))
+                                           if fr_scales else None),
+                        "illum_max_dev": il_dev if illum is not None else None,
                         "ampmatch": ({"mode": am.mode, "sky_e": am.sky_e,
                                       "max_corr": am.max_deviation(),
                                       "corr": am.corrections}
                                      if am and am.applied else None),
                         "astrometry": {**astro.qa(), "init": init_src},
+                        "photzp": zp.qa(),
                     }
 
             n_measured = sum(1 for a in qa["amps"].values() if a["gain_measured"])
@@ -340,11 +420,23 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 CalHistRow("GAIN", True,
                            params=f"to electrons; measured {n_measured}/{len(qa['amps'])} amps"),
                 flat_calhist(flat, config.min_flat_response),
+                fringe_calhist(fringe, fringe_scales_all, config.do_fringe),
+                illum_calhist(illum, config.do_illum, illum_dev_max),
                 bpm_calhist(bpm),
                 _ampmatch_calhist(config, chip_planes),
                 CalHistRow("ASSEMBLE", True,
                            params="CCDSEC placement, CHIPFLP=None, approx WCS"),
-                _astrometry_calhist(config, chip_planes),
+                cr_calhist(config.cr_mode, config.cr_sigma,
+                           {c: p["cr"] for c, p in chip_planes.items()},
+                           sum(p["sci"].size for p in chip_planes.values())),
+                sky_calhist(config.sky_mode,
+                            {c: p["sky"] for c, p in chip_planes.items()
+                             if p["sky"] is not None}),
+                _astrometry_calhist(wcscat_name if refcat is not None else "",
+                                    chip_planes),
+                photzp_calhist(config.do_zp,
+                               {c: p["zp"] for c, p in chip_planes.items()},
+                               wcscat_name if refcat is not None else ""),
             ]
 
             n_solved = sum(1 for p in chip_planes.values() if p["astro"].solved)
@@ -355,13 +447,18 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 "bias": (bias.name, bias.calver) if bias else ("", ""),
                 "dark": ("", ""),
                 "flat": (flat.name, flat.calver) if flat else ("", ""),
+                "fringe": (fringe.name, fringe.calver) if fringe else ("", ""),
+                "illum": (illum.name, illum.calver) if illum else ("", ""),
                 "bpm": (bpm.name, bpm.calver) if bpm else ("", ""),
                 "gainappl": gain_all_measured,
                 "xtalkapl": bool(xtalk_row and xtalk_row.applied),
                 "varincl": config.with_var,
                 "maskfile": mask_name,
+                "crmode": config.cr_mode,
+                "skysub": config.sky_mode == "sub",
                 "wcscat": wcscat_name if refcat is not None else "",
                 "wcsnsolv": n_solved,
+                "zpnmeas": sum(1 for p in chip_planes.values() if p["zp"].measured),
                 "bunit": "electron",
             }
             mask_writer = None
@@ -379,7 +476,22 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                         ("NAMPS", planes["namps"], "amplifiers assembled"),
                         ("SEAMMAX", max((abs(v) for v in planes["seams"].values()), default=0.0),
                          "max |median seam step| [e-]"),
+                        ("CRCOUNT", planes["cr"], "cosmic-ray flagged pixels (MASK bit 64)"),
                     ]
+                    if planes["fringe_scale"] is not None:
+                        extras.append(("FRNGSCL", round(planes["fringe_scale"], 2),
+                                       "median fringe scale subtracted [e-]"))
+                    if planes["illum_dev"] is not None:
+                        extras.append(("ILLUMDEV", round(planes["illum_dev"], 5),
+                                       "max |illumination response - 1|"))
+                    sk = planes["sky"]
+                    if sk is not None:
+                        extras += [
+                            ("SKYLVL", round(sk["sky_med_e"], 3), "sky model median [e-]"),
+                            ("SKYRMS", round(sk["sky_rms_e"], 3), "residual rms about sky model [e-]"),
+                            ("SKYGRADX", round(sk["grad_x_e"], 3), "sky change across X [e-]"),
+                            ("SKYGRADY", round(sk["grad_y_e"], 3), "sky change across Y [e-]"),
+                        ]
                     am = planes["ampmatch"]
                     if am and am.applied:
                         extras.append(("AMMODE", am.mode, "amp-boundary match mode"))
@@ -402,6 +514,14 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     else:
                         extras.append(("WCSFAIL", astro.reason[:60],
                                        "why the astrometric solution failed"))
+                    zp = planes["zp"]
+                    if zp.measured:
+                        extras += [
+                            ("ZPMAG", round(zp.zp, 4),
+                             "approx zero point vs Gaia G [mag]"),
+                            ("ZPRMS", round(zp.rms, 4), "zero point scatter [mag]"),
+                            ("ZPNSTAR", zp.n_star, "stars in the zero point"),
+                        ]
                     writer.append_image(planes["sci"],
                                         build_plane_header("SCI", chip, extras))
                     if planes["var"] is not None:
@@ -418,7 +538,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 if mask_writer is not None:
                     mask_writer.__exit__(None, None, None)  # removes tmp unless finalized
         finally:
-            for m in (bias, flat, bpm):
+            for m in (bias, flat, fringe, illum, bpm):
                 if m is not None:
                     m.close()
 
