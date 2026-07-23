@@ -9,16 +9,27 @@ Layout (pure numpy, no external dependencies):
     <root>/d{DD}_r{RRR}.npy              one structured array per sky cell
                                          (dec band x RA bin), fields:
                                          ra, dec [deg, f8], gmag [f4],
-                                         pmra, pmdec [mas/yr, f4; NaN=none]
+                                         pmra, pmdec [mas/yr, f4; NaN=none],
+                                         ruwe [f4; NaN=none] (v2),
+                                         vmag, imag [JKC mag, f4; NaN=none] (v2)
 
-Sizing: Gaia DR3 G<19 all-sky is ~7e8 rows -> ~20 GB in this format
-(28 B/row); a cone of the KMTNet mosaic (r~1.7 deg) touches a handful of
-cells and reads in well under a second from local disk.
+Store version 2 (pipeline v1.7) adds the photometric zero-point columns:
+RUWE (astrometric quality, Lindegren 2018) and GSPC synthetic Johnson-
+Kron-Cousins V/I magnitudes (Gaia Collaboration, Montegriffo et al. 2023,
+A&A 674, A33) already filtered at ingest by the GSPC validated-range flag
+and the |C*| < 3 sigma_C*(G) blend cut (Riello et al. 2021). Version-1
+cells read transparently (missing fields -> NaN).
+
+Sizing: 40 B/row (v2); Gaia DR3 G<19 all-sky ~7e8 rows -> ~28 GB; a cone
+of the KMTNet mosaic (r~1.7 deg) touches a handful of cells and reads in
+well under a second from local disk.
 
 Build paths (gaia-ingest CLI):
-  - FITS refcat tables (RA/DEC[/GMAG/PMRA/PMDEC]) e.g. fetch-gaia output
+  - FITS refcat tables (RA/DEC[/GMAG/PMRA/PMDEC/RUWE/VMAG/IMAG]) e.g.
+    fetch-gaia output (which joins I/355/gaiadr3 with GSPC I/360/syntphot)
   - ESA Gaia bulk csv(.gz) files (gaia_source: ra, dec, phot_g_mean_mag,
-    pmra, pmdec columns are picked by header name)
+    pmra, pmdec, ruwe columns are picked by header name; GSPC V/I are not
+    in gaia_source and stay NaN on this path)
 Ingest deduplicates by ~0.3 arcsec cell (keeps the first/brightest entry),
 so overlapping cones can be ingested safely."""
 from __future__ import annotations
@@ -34,9 +45,24 @@ DEC_BAND_DEG = 1.0
 RA_BIN_DEG = 15.0
 GAIA_EPOCH = 2016.0
 DEDUP_ARCSEC = 0.3
+STORE_VERSION = 2
 
 DTYPE = np.dtype([("ra", "f8"), ("dec", "f8"), ("gmag", "f4"),
-                  ("pmra", "f4"), ("pmdec", "f4")])
+                  ("pmra", "f4"), ("pmdec", "f4"),
+                  ("ruwe", "f4"), ("vmag", "f4"), ("imag", "f4")])
+
+
+def _upgrade_rec(rec: np.ndarray) -> np.ndarray:
+    """Promote a cell array to the current DTYPE (missing fields -> NaN)."""
+    if rec.dtype == DTYPE:
+        return rec
+    out = np.zeros(len(rec), dtype=DTYPE)
+    for name in DTYPE.names:
+        if name in rec.dtype.names:
+            out[name] = rec[name]
+        else:
+            out[name] = np.float32(np.nan)
+    return out
 
 
 def _cell_name(dec_band: int, ra_bin: int) -> str:
@@ -52,7 +78,7 @@ class GaiaLocal:
         if meta_path.exists():
             self.meta = json.loads(meta_path.read_text(encoding="utf-8"))
         else:
-            self.meta = {"version": 1, "dec_band_deg": DEC_BAND_DEG,
+            self.meta = {"version": STORE_VERSION, "dec_band_deg": DEC_BAND_DEG,
                          "ra_bin_deg": RA_BIN_DEG, "epoch": GAIA_EPOCH,
                          "n_rows": 0, "source": []}
 
@@ -85,18 +111,24 @@ class GaiaLocal:
 
     # -- write path ----------------------------------------------------------
     def ingest_arrays(self, ra, dec, gmag=None, pmra=None, pmdec=None,
+                      ruwe=None, vmag=None, imag=None,
                       source: str = "") -> int:
         """Merge rows into the store (per-cell concat + positional dedup)."""
         n = len(ra)
+
+        def _f4(values):
+            return (np.asarray(values, dtype=np.float32)
+                    if values is not None else np.float32(np.nan))
+
         rec = np.zeros(n, dtype=DTYPE)
         rec["ra"] = np.asarray(ra, dtype=np.float64) % 360.0
         rec["dec"] = np.asarray(dec, dtype=np.float64)
-        rec["gmag"] = (np.asarray(gmag, dtype=np.float32)
-                       if gmag is not None else np.float32(np.nan))
-        rec["pmra"] = (np.asarray(pmra, dtype=np.float32)
-                       if pmra is not None else np.float32(np.nan))
-        rec["pmdec"] = (np.asarray(pmdec, dtype=np.float32)
-                        if pmdec is not None else np.float32(np.nan))
+        rec["gmag"] = _f4(gmag)
+        rec["pmra"] = _f4(pmra)
+        rec["pmdec"] = _f4(pmdec)
+        rec["ruwe"] = _f4(ruwe)
+        rec["vmag"] = _f4(vmag)
+        rec["imag"] = _f4(imag)
         self.root.mkdir(parents=True, exist_ok=True)
         added = 0
         dband, rbin = self._cell_of(rec["ra"], rec["dec"])
@@ -105,7 +137,7 @@ class GaiaLocal:
             path = self.root / _cell_name(band, rb_)
             n_old = 0
             if path.exists():
-                old = np.load(path)
+                old = _upgrade_rec(np.load(path))
                 n_old = len(old)
                 merged = np.concatenate([old, sel])
             else:
@@ -115,6 +147,7 @@ class GaiaLocal:
             added += len(merged) - n_old
         # recount lazily: track approximate additions
         self.meta["n_rows"] = int(self.meta.get("n_rows", 0)) + max(added, 0)
+        self.meta["version"] = STORE_VERSION
         if source:
             self.meta.setdefault("source", []).append(source)
         (self.root / "meta.json").write_text(
@@ -138,18 +171,24 @@ class GaiaLocal:
     # -- read path -------------------------------------------------------------
     def cone(self, ra0: float, dec0: float, radius_deg: float,
              gmax: float | None = None, max_refs: int | None = None,
-             epoch: float | None = None, with_gmag: bool = False) -> np.ndarray:
-        """(n, 2) [ra, dec] — or (n, 3) [ra, dec, gmag] with with_gmag=True —
-        within the cone; brightest-first magnitude cut when max_refs is
-        exceeded; proper motion propagated to `epoch` (decimal year) where
-        pm values exist."""
+             epoch: float | None = None, with_gmag: bool = False,
+             with_phot: bool = False) -> np.ndarray:
+        """Stars within the cone, brightest-first magnitude cut when max_refs
+        is exceeded; proper motion propagated to `epoch` (decimal year) where
+        pm values exist. Returns
+          (n, 2) [ra, dec]                              default
+          (n, 3) [ra, dec, gmag]                        with_gmag=True
+          (n, 6) [ra, dec, gmag, vmag, imag, ruwe]      with_phot=True
+        vmag/imag are GSPC JKC magnitudes (NaN where unavailable, e.g. in a
+        version-1 store); ruwe is NaN where unknown."""
+        ncol = 6 if with_phot else (3 if with_gmag else 2)
         parts = []
         for band, rb_ in self._cells_for_cone(ra0, dec0, radius_deg):
             path = self.root / _cell_name(band, rb_)
             if path.exists():
-                parts.append(np.load(path))
+                parts.append(_upgrade_rec(np.load(path)))
         if not parts:
-            return np.empty((0, 3 if with_gmag else 2))
+            return np.empty((0, ncol))
         rec = np.concatenate(parts)
         if gmax is not None:
             rec = rec[np.where(np.isnan(rec["gmag"]), True, rec["gmag"] < gmax)]
@@ -167,6 +206,12 @@ class GaiaLocal:
             pmdec = np.where(np.isnan(rec["pmdec"]), 0.0, rec["pmdec"])
             ra = ra + dt * pmra / (3.6e6 * np.cos(np.radians(dec)))
             dec = dec + dt * pmdec / 3.6e6
+        if with_phot:
+            return np.column_stack([ra, dec,
+                                    rec["gmag"].astype(np.float64),
+                                    rec["vmag"].astype(np.float64),
+                                    rec["imag"].astype(np.float64),
+                                    rec["ruwe"].astype(np.float64)])
         if with_gmag:
             return np.column_stack([ra, dec, rec["gmag"].astype(np.float64)])
         return np.column_stack([ra, dec])
@@ -182,7 +227,8 @@ class GaiaLocal:
 # -- ingest sources -------------------------------------------------------------
 
 def ingest_fits_refcat(cat: GaiaLocal, path) -> int:
-    """FITS bintable with RA/DEC (deg) and optional GMAG/PMRA/PMDEC columns."""
+    """FITS bintable with RA/DEC (deg) and optional GMAG/PMRA/PMDEC/RUWE/
+    VMAG/IMAG columns (e.g. fetch-gaia output)."""
     with fits.open(path) as hdul:
         for hdu in hdul[1:]:
             names = {n.upper(): n for n in hdu.columns.names}
@@ -193,6 +239,8 @@ def ingest_fits_refcat(cat: GaiaLocal, path) -> int:
                         if key in names else None)
             return cat.ingest_arrays(col("RA"), col("DEC"), col("GMAG"),
                                      col("PMRA"), col("PMDEC"),
+                                     ruwe=col("RUWE"), vmag=col("VMAG"),
+                                     imag=col("IMAG"),
                                      source=Path(path).name)
     raise ValueError(f"No RA/DEC binary table in {path}")
 
@@ -200,14 +248,16 @@ def ingest_fits_refcat(cat: GaiaLocal, path) -> int:
 def ingest_gaia_csv(cat: GaiaLocal, path, gmax: float | None = None,
                     chunk_rows: int = 500_000) -> int:
     """ESA Gaia bulk csv(.gz) (gaia_source): picks ra, dec,
-    phot_g_mean_mag, pmra, pmdec by header name; streams in chunks."""
+    phot_g_mean_mag, pmra, pmdec, ruwe by header name; streams in chunks.
+    GSPC V/I magnitudes are not in gaia_source and remain NaN on this path
+    (use fetch-gaia or a GSPC-joined FITS refcat for the ZP columns)."""
     path = Path(path)
     opener = gzip.open if path.suffix == ".gz" else open
     added = 0
     with opener(path, "rt") as f:
         header = f.readline().strip().split(",")
         idx = {name: header.index(name) for name in
-               ("ra", "dec", "phot_g_mean_mag", "pmra", "pmdec")
+               ("ra", "dec", "phot_g_mean_mag", "pmra", "pmdec", "ruwe")
                if name in header}
         if "ra" not in idx or "dec" not in idx:
             raise ValueError(f"{path.name}: no ra/dec columns")
@@ -217,7 +267,7 @@ def ingest_gaia_csv(cat: GaiaLocal, path, gmax: float | None = None,
                 return 0
             arr = np.array(buf, dtype=np.float64)
             return cat.ingest_arrays(arr[:, 0], arr[:, 1], arr[:, 2],
-                                     arr[:, 3], arr[:, 4],
+                                     arr[:, 3], arr[:, 4], ruwe=arr[:, 5],
                                      source=path.name)
 
         def fval(parts, key):
@@ -233,7 +283,8 @@ def ingest_gaia_csv(cat: GaiaLocal, path, gmax: float | None = None,
             if gmax is not None and not (np.isnan(g) or g < gmax):
                 continue
             buf.append((fval(parts, "ra"), fval(parts, "dec"), g,
-                        fval(parts, "pmra"), fval(parts, "pmdec")))
+                        fval(parts, "pmra"), fval(parts, "pmdec"),
+                        fval(parts, "ruwe")))
             if len(buf) >= chunk_rows:
                 added += flush(buf)
                 buf = []

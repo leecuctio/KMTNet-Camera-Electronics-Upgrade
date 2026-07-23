@@ -1,18 +1,25 @@
-"""Approximate photometric zero point against the astrometric catalog.
+"""Photometric zero point against the astrometric reference catalog.
 
 After a successful WCS solution the detected stars are re-measured with a
 small circular aperture (local annulus sky), matched to the reference
 catalog, and the zero point
 
-    ZPMAG = median( G_ref + 2.5 log10(flux_e / EXPTIME) )
+    ZPMAG = clipped median( m_ref + 2.5 log10(flux_e / EXPTIME) )
 
-is recorded per CCD (ZPMAG/ZPRMS/ZPNSTAR keywords + QA). This is an
-*approximate* calibration: the reference magnitude is Gaia G with no color
-term, so the absolute scale carries a filter-dependent offset — but the
-night-to-night and chip-to-chip *relative* behaviour (transparency, clouds,
-illumination residuals) is tracked, which is what the survey QA and the
-difference-imaging photometry need first. A proper filter transformation
-belongs to the later photometric-calibration stage."""
+is recorded per CCD (ZPMAG/ZPRMS/ZPNSTAR/ZPREF keywords + QA).
+
+Reference magnitudes m_ref (v1.7, select_zp_refs):
+  1. Filter-native GSPC synthetic Johnson-Kron-Cousins V/I (Gaia DR3
+     Synthetic Photometry Catalogue; Gaia Collaboration, Montegriffo et
+     al. 2023, A&A 674, A33), already standardized to the Landolt system —
+     no color-term transformation needed. Quality: GSPC validated-range
+     flag and |C*| < 3 sigma_C*(G) applied at catalog build (fetch-gaia),
+     RUWE <= zp_ruwe_max (Lindegren 2018; tunable, relaxed with a recorded
+     note when too few stars survive in crowded fields) applied here.
+  2. Fallback: raw Gaia G with no color transformation (approximate,
+     relative-tracking only) when the filter has no native band or too few
+     GSPC stars survive; the reason is recorded (ZPREF='GaiaG', QA note).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,6 +39,7 @@ MATCH_TOL_PX = 3.0
 MIN_ZP_STARS = 10
 MAX_ZP_STARS = 400
 ZP_CLIP = 2.5
+ZP_RUWE_MAX = 1.4         # Lindegren 2018 empirical single-star criterion
 _EXCLUDE = MASK_BAD | MASK_SAT | MASK_NONLIN | MASK_CR
 
 
@@ -42,11 +50,60 @@ class ZPResult:
     zp: float = 0.0
     rms: float = 0.0
     n_star: int = 0
+    ref: str = ""             # reference magnitude set (ZPREF)
+    note: str = ""            # reference selection note (fallback/relaxation)
 
     def qa(self) -> dict:
         return {"measured": self.measured, "reason": self.reason,
                 "zp": round(self.zp, 4), "rms": round(self.rms, 4),
-                "n_star": self.n_star}
+                "n_star": self.n_star, "ref": self.ref, "note": self.note}
+
+
+def _apply_ruwe(sel: np.ndarray, ruwe: np.ndarray, ruwe_max: float,
+                min_stars: int) -> tuple[np.ndarray, str]:
+    """RUWE cut where known; auto-relaxed (with note) if it starves the set.
+    Crowded bulge fields legitimately push most RUWE above 1.4, so the cut
+    is tunable and never allowed to kill the zero point outright."""
+    known = np.isfinite(ruwe)
+    if not known.any():
+        return sel, "ruwe unknown (no cut)"
+    cut = sel & known & (ruwe <= ruwe_max)
+    if int(cut.sum()) >= min_stars:
+        return cut, f"ruwe<={ruwe_max:g}"
+    return sel, f"ruwe<={ruwe_max:g} relaxed ({int(cut.sum())}<{min_stars})"
+
+
+def select_zp_refs(ref: np.ndarray, filt: str, ruwe_max: float = ZP_RUWE_MAX,
+                   min_stars: int = MIN_ZP_STARS) -> tuple[np.ndarray, str, str]:
+    """Build the (n, 3) [ra, dec, m_ref] zero-point reference set.
+
+    ref: (n, >=2) with columns [ra, dec(, gmag, vmag, imag, ruwe)].
+    Returns (ref3, refname, note); ref3 is empty when no magnitudes exist."""
+    ref = np.asarray(ref, dtype=np.float64)
+    if ref.ndim != 2 or ref.shape[1] < 3:
+        return np.empty((0, 3)), "", "NO_REF_MAG"
+    ruwe = ref[:, 5] if ref.shape[1] >= 6 else np.full(len(ref), np.nan)
+
+    if ref.shape[1] >= 6:
+        col = {"V": 3, "I": 4}.get(str(filt).strip().upper())
+        if col is not None:
+            sel = np.isfinite(ref[:, col])
+            sel, note = _apply_ruwe(sel, ruwe, ruwe_max, min_stars)
+            if int(sel.sum()) >= min_stars:
+                return (np.column_stack([ref[sel, 0], ref[sel, 1], ref[sel, col]]),
+                        f"GSPC-{str(filt).strip().upper()}jkc", note)
+            fallback_note = f"GSPC_FALLBACK(n={int(sel.sum())})"
+        else:
+            fallback_note = f"NO_NATIVE_BAND({str(filt).strip()})"
+    else:
+        fallback_note = "REF_HAS_G_ONLY"
+
+    sel = np.isfinite(ref[:, 2])
+    sel, ruwe_note = _apply_ruwe(sel, ruwe, ruwe_max, min_stars)
+    if not sel.any():
+        return np.empty((0, 3)), "", "NO_REF_MAG"
+    return (np.column_stack([ref[sel, 0], ref[sel, 1], ref[sel, 2]]),
+            "GaiaG", f"{fallback_note}; {ruwe_note}")
 
 
 def _aperture_grids():
@@ -83,7 +140,8 @@ def aperture_photometry(sci: np.ndarray, mask: np.ndarray | None,
 
 def measure_zp(sci: np.ndarray, mask: np.ndarray | None, wcs_cards: list,
                ref: np.ndarray, exptime: float) -> ZPResult:
-    """Zero point of one assembled CCD. `ref` is (n, >=3): RA, DEC, GMAG.
+    """Zero point of one assembled CCD. `ref` is (n, >=3): RA, DEC, m_ref
+    (select_zp_refs output: GSPC JKC V/I or fallback Gaia G).
     wcs_cards: solved WCS cards for this CCD (from AstrometryResult)."""
     if exptime <= 0:
         return ZPResult(False, reason="NO_EXPTIME")
@@ -150,9 +208,10 @@ def photzp_calhist(enabled: bool, results: dict[str, ZPResult],
     done = {c: r for c, r in results.items() if r.measured}
     if not done:
         reasons = ",".join(sorted({r.reason for r in results.values()})) or "no CCDs"
-        return CalHistRow("PHOTZP", False, calfile=catname,
+        return CalHistRow("PHOTZP", False, calfile=catname[:80],
                           params=f"not measured: {reasons}"[:80])
     med = float(np.median([r.zp for r in done.values()]))
-    return CalHistRow("PHOTZP", True, calfile=catname,
-                      params=f"Gaia-G aperture ZP (no color term), "
-                             f"{len(done)} CCDs, median {med:.3f}")
+    refs = ",".join(sorted({r.ref for r in done.values() if r.ref})) or "?"
+    return CalHistRow("PHOTZP", True, calfile=catname[:80],
+                      params=f"aperture ZP vs {refs}, "
+                             f"{len(done)} CCDs, median {med:.3f}"[:80])

@@ -38,7 +38,8 @@ from .steps.gain import to_electrons
 from .steps.illum import divide_illum, illum_calhist
 from .steps.linearity import flag_nonlinear, linearity_calhist
 from .steps.overscan import correct_overscan
-from .steps.photzp import ZPResult, measure_zp, photzp_calhist
+from .steps.photzp import (ZPResult, measure_zp, photzp_calhist,
+                           select_zp_refs)
 from .steps.saturation import flag_saturation
 from .steps.sky import sky_calhist, sky_model
 from .steps.xtalk import apply_crosstalk
@@ -62,7 +63,8 @@ class PipelineConfig:
     cr_mode: str = "flag"               # cosmic-ray flagging: flag|off (never edits pixels)
     cr_sigma: float = 6.0
     sky_mode: str = "measure"           # sky model: measure|sub|off
-    do_zp: bool = True                  # Gaia-G zero point when refcat carries GMAG
+    do_zp: bool = True                  # photometric ZP when refcat carries mags
+    zp_ruwe_max: float = 1.4            # RUWE cut for ZP reference stars (tunable)
     with_var: bool = False              # VAR is reconstructible; omitted by default (D-007 amendment)
     with_mask_file: bool = False        # write MASK planes to a separate .mask.mef.fits
     ampmatch: str = "auto"              # amp-boundary harmonization: auto|multiplicative|additive|off
@@ -178,7 +180,7 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     cone = GaiaLocal(config.gaia_local).cone(
                         pointing[0], pointing[1], config.gaia_radius_deg,
                         gmax=config.gaia_gmax, max_refs=config.gaia_max_refs,
-                        epoch=epoch, with_gmag=True)
+                        epoch=epoch, with_phot=True)
                     if len(cone) >= 10:
                         refcat = cone
                         wcscat_name = f"gaia_local:{Path(config.gaia_local).name}"
@@ -187,6 +189,27 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                 except Exception as err:
                     refcat_fail = f"GAIA_LOCAL_ERROR({str(err)[:40]})"
         astrom_template = load_astrom_template() if refcat is not None else None
+
+        # zero-point reference set for this exposure's filter (v1.7):
+        # filter-native GSPC JKC V/I with a tunable RUWE cut, falling back
+        # to raw Gaia G with the reason recorded (select_zp_refs docstring)
+        zp_ref = None
+        zp_refname = ""
+        zp_note = ""
+        zp_ref_fb = None            # per-chip Gaia-G fallback set
+        if config.do_zp and refcat is not None:
+            zp_ref, zp_refname, zp_note = select_zp_refs(
+                refcat, filt, ruwe_max=config.zp_ruwe_max)
+            if len(zp_ref) == 0:
+                zp_ref = None
+            if zp_refname != "GaiaG":
+                # GSPC coverage (G < 17.65 + quality cuts) thins out in the
+                # densest bulge chips; keep the raw-G set ready so a chip
+                # whose GSPC measurement fails still gets a (flagged) ZP
+                fb, fb_name, _fb_note = select_zp_refs(
+                    refcat, "G", ruwe_max=config.zp_ruwe_max)
+                if fb_name == "GaiaG" and len(fb):
+                    zp_ref_fb = fb
 
         qa: dict = {
             "l0_file": exp.path.name,
@@ -198,6 +221,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
             "date_obs": dateobs,
             "mock": exp.is_mock,
             "validation_issues": issues,
+            "zp_ref": {"name": zp_refname, "note": zp_note,
+                       "n_refs": 0 if zp_ref is None else int(len(zp_ref))},
             "masters": {
                 "bias": bias.name if bias else None,
                 "flat": flat.name if flat else None,
@@ -358,17 +383,28 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                             astro = AstrometryResult(False, reason="NO_INITIAL_WCS")
                         else:
                             astro = solve_field(sci_ccd, mask_ccd, whdr, refcat)
-                    # approximate photometric zero point vs the reference
-                    # catalog's Gaia G magnitudes (v1.6; no color term)
+                    # photometric zero point vs the selected reference set
+                    # (v1.7: GSPC JKC V/I with RUWE cut, Gaia-G fallback)
                     if not config.do_zp:
                         zp = ZPResult(False, reason="disabled")
                     elif not astro.solved:
                         zp = ZPResult(False, reason="WCS_NOT_SOLVED")
-                    elif refcat is None or refcat.ndim != 2 or refcat.shape[1] < 3:
-                        zp = ZPResult(False, reason="NO_REF_MAG")
+                    elif zp_ref is None:
+                        zp = ZPResult(False, reason=zp_note or "NO_REF_MAG")
                     else:
-                        zp = measure_zp(sci_ccd, mask_ccd, astro.cards, refcat,
+                        zp = measure_zp(sci_ccd, mask_ccd, astro.cards, zp_ref,
                                         qa["exptime"])
+                        zp.ref = zp_refname
+                        zp.note = zp_note
+                        if not zp.measured and zp_ref_fb is not None:
+                            # chip-level fallback: too few GSPC stars on this
+                            # chip -> raw Gaia G (approximate), reason kept
+                            fb = measure_zp(sci_ccd, mask_ccd, astro.cards,
+                                            zp_ref_fb, qa["exptime"])
+                            if fb.measured:
+                                fb.ref = "GaiaG"
+                                fb.note = f"chip fallback: {zp.reason}"
+                                zp = fb
                     chip_planes[chip] = {
                         "sci": sci_ccd, "var": var_ccd, "mask": mask_ccd,
                         "seams": seams,
@@ -518,9 +554,10 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     if zp.measured:
                         extras += [
                             ("ZPMAG", round(zp.zp, 4),
-                             "approx zero point vs Gaia G [mag]"),
+                             "photometric zero point [mag] (see ZPREF)"),
                             ("ZPRMS", round(zp.rms, 4), "zero point scatter [mag]"),
                             ("ZPNSTAR", zp.n_star, "stars in the zero point"),
+                            ("ZPREF", zp.ref[:20], "zero point reference mags"),
                         ]
                     writer.append_image(planes["sci"],
                                         build_plane_header("SCI", chip, extras))

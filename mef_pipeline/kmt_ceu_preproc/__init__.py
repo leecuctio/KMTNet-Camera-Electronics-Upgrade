@@ -22,7 +22,7 @@ All amplifier geometry is taken from the L0 headers/AMPINFO table
 real ICD packing are both handled without code changes.
 """
 
-VERSION = "v1.6"
+VERSION = "v1.7"
 PIPENAME = "kmt_ceu_preproc"
 
 # L1 MASK bit definitions

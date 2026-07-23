@@ -55,6 +55,8 @@ def _config_from(args) -> PipelineConfig:
         cfg.sky_mode = args.sky
     if getattr(args, "no_zp", False):
         cfg.do_zp = False
+    if getattr(args, "zp_ruwe", None) is not None:
+        cfg.zp_ruwe_max = args.zp_ruwe
     if getattr(args, "with_var", False):
         cfg.with_var = True
     ampmatch = getattr(args, "ampmatch", None)
@@ -141,7 +143,11 @@ def main(argv=None) -> int:
                    help="sky model: measure keywords only (default), "
                         "sub also subtracts, off disables")
     p.add_argument("--no-zp", action="store_true",
-                   help="skip the approximate Gaia-G photometric zero point")
+                   help="skip the photometric zero point")
+    p.add_argument("--zp-ruwe", type=float, default=None,
+                   help="RUWE cut for ZP reference stars (default 1.4; "
+                        "auto-relaxed with a recorded note when too few "
+                        "stars survive in crowded fields)")
     p.add_argument("--with-var", action="store_true",
                    help="also write VAR planes (omitted by default; reconstructible)")
     p.add_argument("--ampmatch", choices=["auto", "mult", "add", "off"], default="auto",

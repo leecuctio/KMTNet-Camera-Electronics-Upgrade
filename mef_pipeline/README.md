@@ -16,12 +16,12 @@ CR 플래그, sky 모델, 근사 photometric ZP)를 추가했다.
 
 | 구분 | 값 |
 | --- | --- |
-| 파이프라인 | `kmt_ceu_preproc` **v1.6** (순수 Python + NumPy + astropy) |
-| L1 제품 | `PRODVER=v1.3`, 단일 MEF: PRIMARY + SCI×4 CCD + CALHIST (~1.36 GB/노출). 보정 수식은 primary COMMENT 기록 |
+| 파이프라인 | `kmt_ceu_preproc` **v1.7** (순수 Python + NumPy + astropy) |
+| L1 제품 | `PRODVER=v1.4`, 단일 MEF: PRIMARY + SCI×4 CCD + CALHIST (~1.36 GB/노출). 보정 수식은 primary COMMENT 기록 |
 | VAR plane | 기본 제외 (`VARINCL=F`; 재구성식 header 기록, `run --with-var`로 생성 가능) |
 | MASK plane | 기본 미생성; `run --mask-file` 시 별도 `*.l1ccd.mask.mef.fits` 생성 (`MASKFILE` 기록) |
 | Astrometry | Gaia 기준 **TAN–SIP(3)** 해 (칩별 대표 템플릿 초기값, scale 0.3952″/px); 성공 `WCSSOLVE=T`+`WCSRMS`(~0.25″), 실패 `WCSSOLVE=F`+`WCSFAIL` |
-| Photometric ZP | astrometry 성공 칩에서 **Gaia G 기준 근사 zero point** (`ZPMAG`/`ZPRMS`/`ZPNSTAR`; 색항 없음 — 상대/QA용) |
+| Photometric ZP | astrometry 성공 칩에서 **GSPC 합성 JKC V/I 기준 zero point** (`ZPMAG`/`ZPRMS`/`ZPNSTAR`/`ZPREF`; 필터 대응 등급이라 색항 불필요). 품질컷: GSPC flag + \|C*\|<3σ(수집 시) + RUWE≤1.4(`--zp-ruwe`, 혼잡 필드 자동 완화·기록). GSPC 부족 시 Gaia G로 fallback(사유 기록) |
 | L1 픽셀 단위 | electrons (`BUNIT='electron'`, amp별 GAIN 적용, placeholder면 1.0 + `GAINAPPL=F`) |
 | 종점 | CCD 조립 + astrometry + 근사 ZP (절대 측광 보정은 후단) |
 | L1 파일명 | `<prefix>.<YYYYMMDD>.<NNNNNN>.ceu.l1ccd.mef.fits` |
@@ -47,7 +47,7 @@ CR 플래그, sky 모델, 근사 photometric ZP)를 추가했다.
 | 15 | **CR 플래그** (v1.6) | 단일 프레임 우주선 검출(3×3 median Laplacian 유의도 + 8-이웃 ring + van Dokkum fine-structure 판정, 타일 처리) → **MASK bit 64 기록만** (픽셀값 불변, `CRCOUNT`). `--cr off`로 비활성 | 동작 |
 | 16 | **Sky 모델** (v1.6) | 256px clipped-median mesh + bilinear 배경 모델 — 기본은 **측정만**(`SKYLVL`/`SKYRMS`/`SKYGRADX`/`SKYGRADY`), `--sky sub` 시 감산(`SKYSUB=T`). DIA를 위해 기본은 하늘 보존 | 동작 |
 | 17 | Astrometry | 별 검출(≤800, CR 제외) → 칩별 템플릿 초기값 → 구역 seed + annulus 확장 → **TAN–SIP(3) fit**, WCS 키워드 갱신. 실패 시 `WCSSOLVE=F`+`WCSFAIL` 플래그 | 동작 |
-| 18 | **Photometric ZP** (v1.6) | WCS 성공 칩에서 aperture 측광(r=4px, annulus 8–12px) ↔ Gaia G 매칭 → clipped median `ZPMAG`(+`ZPRMS`/`ZPNSTAR`). **근사값**(Gaia G 기준, 색항 없음) — 투명도/칩간 상대 추적·QA용 | 동작 |
+| 18 | **Photometric ZP** (v1.6, v1.7 개정) | WCS 성공 칩에서 aperture 측광(r=4px, annulus 8–12px) ↔ 기준성표 매칭 → clipped median `ZPMAG`(+`ZPRMS`/`ZPNSTAR`/`ZPREF`). 기준 등급은 **GSPC 합성 JKC V/I**(필터 대응, 색항 불필요; RUWE≤1.4 조정형 컷) 우선, 부족 시 Gaia G fallback(근사, 사유 기록) | 동작 |
 | 19 | 출력 | provenance(`CALHIST` 17행, 수식 COMMENT), 임시파일→원자적 교체 | 동작 |
 
 MASK bits: 1=BAD, 2=SATURATED, 4=NONLINEAR, 8=XTALK, 16=AMP_SEAM, 32=NO_OVERSCAN_FIT, **64=COSMIC_RAY**
@@ -107,8 +107,15 @@ QA seam 지표는 경계 바로 옆 1픽셀(고정 패턴 edge-column, `MASK_SEA
   실제로 검출·제거된다. 템플릿 진폭이 무시 수준(<0.01%)인 amp는 자동 no-op.
 - **CR 플래그는 픽셀을 바꾸지 않는다** — BPM과 같은 flag-only 정책. 언더샘플 PSF(FWHM
   ~2.5px)에서 별 어깨 오검출을 막는 fine-structure 판정이 들어 있다(단위테스트로 검증).
-- **ZPMAG는 근사값**: Gaia G 기준·색항 없음. 밤사이 투명도, 칩간·노출간 상대 변화 추적과
-  QA용이며, 절대 등급 보정(필터 변환식)은 후단 측광 보정에서 확정한다.
+- **ZPMAG 기준 등급 (v1.7)**: `ZPREF`가 `GSPC-Vjkc`/`GSPC-Ijkc`면 Gaia DR3 합성측광
+  카탈로그(GSPC, Montegriffo+23)의 **필터 대응 JKC 등급**이라 색항이 필요 없다
+  (Landolt 체계 표준화; V 산포 ≲15 mmag, I 정확도 <3 mmag). 품질컷은 수집 시
+  GSPC 검증범위 flag + \|C*\|<3σ(블렌딩 제거), 실행 시 RUWE≤1.4(`--zp-ruwe`,
+  혼잡 팽대부에서 별 부족 시 자동 완화 + 기록). GSPC 별 부족/부재 시 Gaia G로
+  fallback하며 `ZPREF='GaiaG'` + QA `zp_ref.note`에 사유가 남는다 — 이 경우만
+  근사값(색항 없음)이다. 로컬 Gaia 스토어는 **v2 스키마**(ruwe/vmag/imag 포함,
+  40 B/행)가 필요하다 — `fetch-gaia`(I/355+GSPC I/360 조인) 산출물을
+  `gaia-ingest`로 재구축; v1 스토어도 동작하나 ZP는 G-fallback으로만 측정된다.
 - **Sky는 기본 보존**: 차감영상(DIA)측 처리에 하늘 통계가 필요하므로 기본은 측정만.
 
 ## 실행
@@ -195,10 +202,13 @@ CR 플래그(언더샘플 σ=1.2px 별 미오검출 + 1·2px CR 검출 + 포화 
     혼잡 필드 잔여). >0.2% `cr_warning` 13개 칩은 전부 알려진 손상 칩(011107 T·
     011108 M·011112 M)과 늦은 시각 프레임(011126–011130 일부)으로 QA가 정확히 표적
   - **Sky 모델**: 전 칩 `SKYLVL`/`SKYRMS`/`SKYGRAD*` 기록 (하늘 중앙값 ~4,700 e-)
-  - **Photometric ZP**: WCS 성공 **105개 칩 전부**에서 측정 — I 중앙값 24.69,
-    V 중앙값 23.41, `ZPRMS` 중앙값 0.30 mag(Gaia G 대비 색항 없음에 따른 색 산포;
-    상대 추적용으로 충분). 같은 필드 반복 방문 간 ZP 차 69–382 mmag로 야간 투명도
-    변화 추적 가능
+  - **Photometric ZP (v1.7, GSPC 기준)**: WCS 성공 **105개 칩 전부** 측정 —
+    **GSPC JKC 85칩**(I 중앙값 23.73/`ZPRMS` 0.035 mag, V 23.68/0.041 mag) +
+    GSPC 별 부족 칩 20개는 Gaia-G **칩 fallback**(`ZPREF='GaiaG'`, ZPRMS
+    0.19–0.38 — 같은 야간에서 색항 산포 대비 **8–10배 개선**이 실측 확인).
+    반복 방문 ZP 차 11–168 mmag (BLG12 11 mmag) — 투명도 변화를 수십 mmag
+    정밀도로 추적. RUWE≤1.4 컷은 전 노출에서 완화 없이 적용됨(콘당 기준별
+    중앙값 ~10,400개)
 - 처리 속도: v1.5 노출당 ~10초 → **v1.6 ~24초**(4병렬 유효; 단독 ~90초 — CR·sky·
   ZP·fringe/illum 추가 비용, 검증·SHA256·astrometry·1.36 GB L1 쓰기 포함, Apple SSD 기준)
 

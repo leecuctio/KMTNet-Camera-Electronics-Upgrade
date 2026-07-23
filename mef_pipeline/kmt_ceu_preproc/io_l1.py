@@ -18,7 +18,7 @@ from astropy.io import fits
 
 from . import MASK_BIT_DOC, PIPENAME, VERSION
 
-L1_PRODVER = "v1.3"
+L1_PRODVER = "v1.4"
 
 # processing methods and formulas, recorded verbatim in every L1 primary header
 PROCESSING_DOC = [
@@ -45,9 +45,12 @@ PROCESSING_DOC = [
     "ASTROMETRY: stars matched to WCSCAT; TAN fit of CD+CRPIX (CRVAL",
     "  fixed): (xi,eta) = CD @ (pix - CRPIX). Solved: WCSSOLVE=T + WCSRMS;",
     "  failed: WCSSOLVE=F + reason in WCSFAIL (approximate WCS kept).",
-    "PHOTZP: ZPMAG = median(Gaia G + 2.5 log10(flux_e/EXPTIME)) of aperture",
-    "  (r=4px, annulus 8-12px) stars matched to WCSCAT. APPROXIMATE: Gaia G",
-    "  reference, no color term; use for relative/QA photometry only.",
+    "PHOTZP: ZPMAG = clipped median(m_ref + 2.5 log10(flux_e/EXPTIME)) of",
+    "  aperture (r=4px, annulus 8-12px) stars matched to WCSCAT. m_ref per",
+    "  ZPREF: 'GSPC-Vjkc'/'GSPC-Ijkc' = Gaia DR3 synthetic JKC photometry",
+    "  (Montegriffo+23; validated-range flag, |C*|<3sig blend cut, RUWE",
+    "  cut) - filter-native, no color term; 'GaiaG' = raw G fallback",
+    "  (approximate, relative tracking only; reason in QA zp_ref note).",
     "VAR (see VARINCL) = (RDNOISE**2 + SCI*flat) / flat**2 [electron**2],",
     "  flat from CALFLAT plane, RDNOISE [e-] from L0 amp header/AMPINFO.",
     "  (fringe/illum/sky corrections perturb this reconstruction by their",

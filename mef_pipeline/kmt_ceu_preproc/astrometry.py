@@ -242,17 +242,25 @@ def solve_tan(sci: np.ndarray, mask: np.ndarray | None, wcs_header: fits.Header,
 # -- reference catalog I/O -----------------------------------------------------
 
 def load_refcat(path) -> np.ndarray:
-    """FITS bintable with RA/DEC columns (deg) -> (n, 2) array, or (n, 3)
-    [RA, DEC, GMAG] when a GMAG column is present (used by the photometric
-    zero-point step; the extra column is ignored by the WCS solvers)."""
+    """FITS bintable with RA/DEC columns (deg) -> (n, 2) array; (n, 3)
+    [RA, DEC, GMAG] when a GMAG column is present; or (n, 6)
+    [RA, DEC, GMAG, VMAG, IMAG, RUWE] when the photometric zero-point
+    columns exist (fetch-gaia output). The WCS solvers only ever use the
+    first two columns, so any width passes through them unchanged."""
     with fits.open(path) as hdul:
         for hdu in hdul[1:]:
             names = {n.upper(): n for n in hdu.columns.names}
             if "RA" in names and "DEC" in names:
-                cols = [np.asarray(hdu.data[names["RA"]], dtype=np.float64),
-                        np.asarray(hdu.data[names["DEC"]], dtype=np.float64)]
+                def col(key):
+                    return np.asarray(hdu.data[names[key]], dtype=np.float64)
+                cols = [col("RA"), col("DEC")]
                 if "GMAG" in names:
-                    cols.append(np.asarray(hdu.data[names["GMAG"]], dtype=np.float64))
+                    cols.append(col("GMAG"))
+                    if "VMAG" in names and "IMAG" in names:
+                        cols.append(col("VMAG"))
+                        cols.append(col("IMAG"))
+                        cols.append(col("RUWE") if "RUWE" in names
+                                    else np.full(len(cols[0]), np.nan))
                 return np.column_stack(cols)
     raise ValueError(f"No RA/DEC binary table in {path}")
 
@@ -597,27 +605,109 @@ def solve_field(sci: np.ndarray, mask: np.ndarray | None, wcs_header,
                             n_match=len(pi), rms_arcsec=rms, cards=cards)
 
 
-def fetch_gaia_cone(ra_deg: float, dec_deg: float, radius_arcmin: float = 100.0,
-                    gmax: float = 19.0, out_path=None, timeout: int = 240):
-    """Gaia DR3 cone from VizieR (network required) -> (n,3) array or FITS."""
+GSPC_CSTAR_NSIG = 3.0     # |C*| < N sigma_C*(G): reject blended BP/RP photometry
+
+
+def cstar_sigma(gmag) -> np.ndarray:
+    """1-sigma scatter of the corrected BP/RP flux excess factor C* for
+    well-behaved isolated sources (Riello et al. 2021, A&A 649, A3, Eq. 18)."""
+    return 0.0059898 + 8.817481e-12 * np.power(np.asarray(gmag, dtype=np.float64),
+                                               7.618399)
+
+
+def _vizier_tsv(source: str, ra_deg: float, dec_deg: float,
+                radius_arcmin: float, out_cols: list[str], extra: str = "",
+                timeout: int = 240) -> dict[str, list[str]]:
+    """One VizieR cone query -> {column name: list of raw strings}."""
     import subprocess
-    url = ("https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=I/355/gaiadr3"
+    url = (f"https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source={source}"
            f"&-c={ra_deg:.5f}%20{dec_deg:+.5f}&-c.rm={radius_arcmin:.1f}"
-           f"&-out=RA_ICRS,DE_ICRS,Gmag,pmRA,pmDE&Gmag=%3C{gmax:g}&-out.max=200000")
+           f"&-out={','.join(out_cols)}{extra}&-out.max=200000")
     raw = subprocess.run(["curl", "-s", "--max-time", str(timeout), url],
                          capture_output=True, text=True, check=True).stdout
-    rows = []
+    header: list[str] | None = None
+    in_data = False
+    columns: dict[str, list[str]] = {}
     for line in raw.splitlines():
-        if not line or line.startswith(("#", "-", "RA_", "deg")):
+        if not line.strip() or line.startswith("#"):
             continue
-        p = line.split("\t")
-        if len(p) >= 3:
-            try:
-                pm = [float(x) if x.strip() else np.nan for x in p[3:5]] + [np.nan, np.nan]
-                rows.append((float(p[0]), float(p[1]), float(p[2]), pm[0], pm[1]))
-            except ValueError:
-                continue
-    data = np.array(rows)
+        if header is None:
+            header = [h.strip() for h in line.split("\t")]
+            columns = {h: [] for h in header}
+            continue
+        if not in_data:
+            if line.startswith("-"):
+                in_data = True          # units line(s) skipped until the dashes
+            continue
+        parts = line.split("\t")
+        if len(parts) != len(header):
+            continue
+        for h, v in zip(header, parts):
+            columns[h].append(v.strip())
+    return columns
+
+
+def _floats(columns: dict, key: str, n: int) -> np.ndarray:
+    vals = columns.get(key)
+    if vals is None or len(vals) != n:
+        return np.full(n, np.nan)
+    return np.array([float(v) if v else np.nan for v in vals])
+
+
+def fetch_gaia_cone(ra_deg: float, dec_deg: float, radius_arcmin: float = 100.0,
+                    gmax: float = 19.0, out_path=None, timeout: int = 240):
+    """Gaia DR3 cone from VizieR (network required) -> array or FITS refcat.
+
+    Two queries joined on the Gaia source id:
+      I/355/gaiadr3   -> RA/DEC/G/pm/RUWE          (astrometry + quality)
+      I/360/syntphot  -> GSPC JKC V and I + flags  (photometric zero point)
+    GSPC magnitudes (Gaia Collaboration, Montegriffo et al. 2023) are kept
+    only when the validated-range flag is set and |C*| < 3 sigma_C*(G)
+    (Riello et al. 2021 blend criterion) — otherwise NaN. The output refcat
+    carries RA/DEC/GMAG/PMRA/PMDEC/RUWE/VMAG/IMAG."""
+    main = _vizier_tsv("I/355/gaiadr3", ra_deg, dec_deg, radius_arcmin,
+                       ["Source", "RA_ICRS", "DE_ICRS", "Gmag", "pmRA",
+                        "pmDE", "RUWE"],
+                       extra=f"&Gmag=%3C{gmax:g}", timeout=timeout)
+    n = len(main.get("Source", []))
+    ra = _floats(main, "RA_ICRS", n)
+    dec = _floats(main, "DE_ICRS", n)
+    good = np.isfinite(ra) & np.isfinite(dec)
+    src = np.array(main.get("Source", []), dtype=object)[good]
+    ra, dec = ra[good], dec[good]
+    gmag = _floats(main, "Gmag", n)[good]
+    pmra = _floats(main, "pmRA", n)[good]
+    pmdec = _floats(main, "pmDE", n)[good]
+    ruwe = _floats(main, "RUWE", n)[good]
+
+    vmag = np.full(len(ra), np.nan)
+    imag = np.full(len(ra), np.nan)
+    try:
+        gspc = _vizier_tsv("I/360/syntphot", ra_deg, dec_deg, radius_arcmin,
+                           ["Source", "Vmag", "Imag", "VFlag", "IFlag",
+                            "E(BP/RP)corr"], timeout=timeout)
+        m = len(gspc.get("Source", []))
+        g_v = _floats(gspc, "Vmag", m)
+        g_i = _floats(gspc, "Imag", m)
+        g_vf = _floats(gspc, "VFlag", m)
+        g_if = _floats(gspc, "IFlag", m)
+        g_cs = _floats(gspc, "E(BP/RP)corr", m)
+        by_src = {s: k for k, s in enumerate(gspc.get("Source", []))}
+        idx = np.array([by_src.get(s, -1) for s in src])
+        has = idx >= 0
+        gi = idx[has]
+        # blend guard: |C*| < N * sigma_C*(G) with G from the main catalog
+        cs_ok = np.abs(g_cs[gi]) < GSPC_CSTAR_NSIG * cstar_sigma(gmag[has])
+        v_ok = cs_ok & (g_vf[gi] == 1) & np.isfinite(g_v[gi])
+        i_ok = cs_ok & (g_if[gi] == 1) & np.isfinite(g_i[gi])
+        vtgt = np.where(v_ok, g_v[gi], np.nan)
+        itgt = np.where(i_ok, g_i[gi], np.nan)
+        vmag[has] = vtgt
+        imag[has] = itgt
+    except Exception:
+        pass    # GSPC unavailable: refcat still valid for astrometry/G-ZP
+
+    data = np.column_stack([ra, dec, gmag, pmra, pmdec, ruwe, vmag, imag])
     if out_path is None:
         return data
     cols = fits.ColDefs([
@@ -626,12 +716,19 @@ def fetch_gaia_cone(ra_deg: float, dec_deg: float, radius_arcmin: float = 100.0,
         fits.Column("GMAG", "E", array=data[:, 2]),
         fits.Column("PMRA", "E", unit="mas/yr", array=data[:, 3]),
         fits.Column("PMDEC", "E", unit="mas/yr", array=data[:, 4]),
+        fits.Column("RUWE", "E", array=data[:, 5]),
+        fits.Column("VMAG", "E", unit="mag", array=data[:, 6]),
+        fits.Column("IMAG", "E", unit="mag", array=data[:, 7]),
     ])
     tbl = fits.BinTableHDU.from_columns(cols, name="REFCAT")
-    tbl.header["CATALOG"] = ("GaiaDR3(VizieR)", "source catalog")
+    tbl.header["CATALOG"] = ("GaiaDR3+GSPC(VizieR)", "source catalogs")
     tbl.header["CONERA"] = (ra_deg, "cone center RA [deg]")
     tbl.header["CONEDEC"] = (dec_deg, "cone center DEC [deg]")
     tbl.header["CONERAD"] = (radius_arcmin, "cone radius [arcmin]")
     tbl.header["GMAGMAX"] = (gmax, "magnitude limit")
+    tbl.header["GSPCPOL"] = (f"flag=1 & |C*|<{GSPC_CSTAR_NSIG:g}sig",
+                             "GSPC V/I quality policy (Riello+21 Eq.18)")
+    tbl.header["NGSPC"] = (int(np.isfinite(data[:, 6] + data[:, 7]).sum()),
+                           "rows with both V and I JKC magnitudes")
     fits.HDUList([fits.PrimaryHDU(), tbl]).writeto(out_path, overwrite=True)
     return data
