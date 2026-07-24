@@ -658,8 +658,31 @@ def primary_cards(ph: dict, legacy_path: Path, out_path: Path):
 # --------------------------------------------------------------------------- #
 # Amplifier image extension header
 # --------------------------------------------------------------------------- #
-def amp_cards(chip: str, amp: int, ph: dict, strip_info: dict):
+def load_ampchar(path) -> dict:
+    """amp characterization CSV (cam_char/results schema) -> {EXTNAME: row}.
+    Values <= 0 or missing keep the default/placeholder."""
+    import csv
+    table = {}
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            key = str(row.get("EXTNAME", "")).strip()
+            if key:
+                table[key] = row
+    return table
+
+
+def _ac_val(ac: dict, key: str, default, cast=float):
+    try:
+        v = cast(float(ac.get(key, "")))
+    except (TypeError, ValueError):
+        return default
+    return v if v > 0 else default
+
+
+def amp_cards(chip: str, amp: int, ph: dict, strip_info: dict,
+              ampchar: dict | None = None):
     ext = extname_for(chip, amp)
+    ac = (ampchar or {}).get(ext, {})
     cx1, cx2, cy1, cy2 = ccdsec(amp)
     dx1, dx2, dy1, dy2 = detsec(chip, amp)
     global_amp = AMP_BASE[chip] + amp
@@ -754,10 +777,18 @@ def amp_cards(chip: str, amp: int, ph: dict, strip_info: dict):
         card("OVERSCNX", OVERSCAN_X, "X overscan columns per amp tile"),
         card("PRESCANX", PRESCAN_X, "X prescan columns per amp tile"),
         card("MIDOVSCY", NA_INT, "middle Y overscan rows (-1 = na)"),
-        card("GAIN", strip_info["gain"], "amp gain [e-/ADU] (legacy 32-amp value)"),
-        card("RDNOISE", strip_info["rdnoise"], "read noise [e-] (legacy 32-amp value)"),
-        card("SATURAT", 62000, "saturation level placeholder [ADU]"),
-        card("LINMAX", 58000, "linearity maximum placeholder [ADU]"),
+        card("GAIN", _ac_val(ac, "GAIN", strip_info["gain"]),
+             "amp gain [e-/ADU]" + (" (measured)" if "GAIN" in ac
+                                    else " (legacy 32-amp value)")),
+        card("RDNOISE", _ac_val(ac, "RDNOISE", strip_info["rdnoise"]),
+             "read noise [e-]" + (" (measured)" if "RDNOISE" in ac
+                                  else " (legacy 32-amp value)")),
+        card("SATURAT", _ac_val(ac, "SATURAT", 62000, int),
+             "saturation level [ADU]" + ("" if _ac_val(ac, "SATURAT", 0, int)
+                                         else " placeholder")),
+        card("LINMAX", _ac_val(ac, "LINMAX", 58000, int),
+             "linearity maximum [ADU]" + ("" if _ac_val(ac, "LINMAX", 0, int)
+                                          else " placeholder")),
         card("FILTER", sv(ph, "FILTER"), "filter name in beam"),
         card("PROJID", sv(ph, "PROJID"), "project ID"),
         card("IMAGETYP", sv(ph, "IMAGETYP"), "type of observation"),
@@ -823,11 +854,12 @@ def table_defs():
     return amp_cols, xtalk_cols, volt_cols, tel_cols
 
 
-def ampinfo_rows(strips: dict):
+def ampinfo_rows(strips: dict, ampchar: dict | None = None):
     rows = []
     for chip in CHIP_ORDER:
         for amp in range(1, 17):
             ext = extname_for(chip, amp)
+            ac = (ampchar or {}).get(ext, {})
             info = strips[chip][strip_id(amp)]
             cx1, cx2, cy1, cy2 = ccdsec(amp)
             dx1, dx2, dy1, dy2 = detsec(chip, amp)
@@ -855,10 +887,10 @@ def ampinfo_rows(strips: dict):
                 "TRIMSEC": DATASEC_UNIFORM,
                 "CHIPFLP": CHIPFLP,
                 "READDIR": "-Y" if amp <= 8 else "+Y",
-                "GAIN": info["gain"],
-                "RDNOISE": info["rdnoise"],
-                "SATLEVEL": 62000,
-                "LINMAX": 58000,
+                "GAIN": _ac_val(ac, "GAIN", info["gain"]),
+                "RDNOISE": _ac_val(ac, "RDNOISE", info["rdnoise"]),
+                "SATLEVEL": _ac_val(ac, "SATURAT", 62000, int),
+                "LINMAX": _ac_val(ac, "LINMAX", 58000, int),
                 "RAWX0": NA_INT, "RAWX1": NA_INT, "RAWY0": NA_INT, "RAWY1": NA_INT,
                 "AMPX0": cx1, "AMPX1": cx2, "AMPY0": cy1, "AMPY1": cy2,
                 "DETX0": dx1, "DETX1": dx2, "DETY0": dy1, "DETY1": dy2,
@@ -900,7 +932,8 @@ def default_output_name(legacy_path: Path, primary_hdr: dict, outdir: Path) -> P
     return outdir / f"{root}.ceu.l0amp.mock64.mef.fits"
 
 
-def convert(legacy_path: Path, out_path: Path) -> Path:
+def convert(legacy_path: Path, out_path: Path,
+            ampchar: dict | None = None, ampchar_name: str = "") -> Path:
     primary_hdr, strips = read_legacy(legacy_path)
     for chip in CHIP_ORDER:
         for s in strips[chip]:
@@ -909,14 +942,21 @@ def convert(legacy_path: Path, out_path: Path) -> Path:
     tmp_path = out_path.with_name(f".{out_path.name}.tmp-{os.getpid()}")
     try:
         with tmp_path.open("wb") as fout:
-            fout.write(header_bytes(primary_cards(primary_hdr, legacy_path, out_path)))
+            pcards = primary_cards(primary_hdr, legacy_path, out_path)
+            if ampchar:
+                pcards.append(card(
+                    "AMPCHAR", ampchar_name[:40],
+                    "amp characterization table stamped into headers"))
+            fout.write(header_bytes(pcards))
             for chip in CHIP_ORDER:
                 for amp in range(1, 17):
                     info = strips[chip][strip_id(amp)]
-                    fout.write(header_bytes(amp_cards(chip, amp, primary_hdr, info)))
+                    fout.write(header_bytes(amp_cards(chip, amp, primary_hdr,
+                                                      info, ampchar)))
                     fout.write(pad_data(build_amp_image(info, amp).tobytes(order="C")))
             amp_cols, xtalk_cols, volt_cols, tel_cols = table_defs()
-            fout.write(bintable_bytes("AMPINFO", amp_cols, ampinfo_rows(strips), [
+            fout.write(bintable_bytes("AMPINFO", amp_cols,
+                                      ampinfo_rows(strips, ampchar), [
                 card("NAMP", 64, "number of amplifier rows"),
                 card("GEOMVER", GEOMETRY_VERSION, "geometry version (mock uniform packing)"),
                 card("AMPPACK", AMPPACK, "mock packing: data [1:1152], overscan [1153:1200]"),
@@ -954,7 +994,13 @@ def main():
     p.add_argument("-o", "--output", default=None,
                    help="explicit output path (only valid with a single input)")
     p.add_argument("-f", "--force", action="store_true", help="overwrite existing output")
+    p.add_argument("--ampchar", default=None,
+                   help="amp characterization CSV (cam_char/results schema): "
+                        "stamps measured GAIN/RDNOISE/SATURAT/LINMAX into the "
+                        "amp headers and AMPINFO instead of the placeholders")
     args = p.parse_args()
+    ampchar = load_ampchar(args.ampchar) if args.ampchar else None
+    ampchar_name = Path(args.ampchar).name if args.ampchar else ""
 
     if args.output and len(args.inputs) != 1:
         p.error("--output can only be used with a single input file")
@@ -969,7 +1015,7 @@ def main():
         out = Path(args.output).resolve() if args.output else default_output_name(legacy, phdr, outdir)
         if out.exists() and not args.force:
             raise FileExistsError(f"Output exists: {out}; use -f to overwrite")
-        convert(legacy, out)
+        convert(legacy, out, ampchar=ampchar, ampchar_name=ampchar_name)
         print(f"{legacy.name} -> {out}")
 
 
