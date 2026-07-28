@@ -45,10 +45,10 @@
 | `ICG` | 가이드 카메라 상위 제어 | `ICS`의 가이드용 대응물, `G.IC`에 명령 전파 |
 | `G.IC` | 가이드 CCD 4개 통합 제어 | 과학 CCD와 별도 계통. 가이드 CCD 4개를 이 노드 하나가 전부 제어 (개별 가이드 CCD별 노드 없음) |
 | `K.CB`,`M.CB`,`T.CB`,`N.CB`,`G.CB` | 디바이스별 Camera Body 컨트롤러 | 디스크 초기화/마운트/파일 전송(`TRANSFER`) 담당, 실측정 데이터 쓰기(`Wrote LASTFILE=...`) 보고 |
-| `TC` | 망원경 제어(Telescope Control) | 좌표·상태 텔레메트리(`TSTAT`/`ASTAT`) 응답, `AUXSTATUS`/`TCSSTATUS` 소스 |
-| `OBS` | 관측 시퀀서/옵저버 콘솔 | 사람 또는 스크립트가 명령을 입력하는 최상위 클라이언트. `ICS`/`TC`에 명령 발행 |
+| `TC` | 망원경 제어(Telescope Control) | 좌표·상태 텔레메트리(`TSTAT`/`ASTAT`) 응답, `AUXSTATUS`/`TCSSTATUS` 소스. **실체는 TCS Agent(`pctcs`) — [../TCSAgent/tcsagent_report.md](../TCSAgent/tcsagent_report.md)에서 별도 분석** |
+| `OBS` | 관측 시퀀서/옵저버 콘솔 | 사람 또는 스크립트가 명령을 입력하는 최상위 클라이언트. `ICS`/`TC`에 명령 발행. **실체는 OBS Agent(`obstool`) — [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md)에서 별도 분석** |
 | `ABC` | 자동관측 제어기 | `ICG`에 가이드 노출/`GO` 명령 발행 (자동화된 관측 스케줄러로 추정) |
-| `GMON` | 모니터링 클라이언트 | `OBS`에 `sysstatus`를 초당 폴링해 카메라·망원경 통합 상태 조회 (대시보드/모니터링용) |
+| `GMON` | 모니터링 클라이언트 | `OBS`에 `sysstatus`를 초당 폴링해 카메라·망원경 통합 상태 조회 (대시보드/모니터링용). 응답 문자열은 OBSAgent의 `GetSysStatus()`가 생성하며, 같은 정보가 `/data/Logs/ObsStatus.txt`에도 5초마다 기록된다 ([OBSAgent 보고서](../OBSAgent/obsagent_report.md) 7절) |
 | `AL` / `ALL` | 브로드캐스트 예약 주소 | 모든 노드에 메시지 전파 |
 
 포트 관례 (로그에서 관측):
@@ -56,6 +56,7 @@
 - CB 계열(`*.CB`): 10601
 - `TC`: 6606
 - `OBS`: 6650
+- `XIS`(허브 자신): 6660 (CTIO 기준 — OBSAgent의 런타임 설정 `ISISPort 6660`에서 확인, [OBSAgent 보고서](../OBSAgent/obsagent_report.md) 3.1절)
 - `ICS`: 시리얼(`/dev/ttyS0`), 사이트에 따라 소켓일 수도 있음
 
 > **전송 계층은 TCP가 아니라 UDP다** (근거: `ISISclient.zip`의 `isissocket.c`, 아래 7절 참고). 각 노드는 `SOCK_DGRAM` 소켓 하나를 자기 포트에 bind하고 `sendto`/`recvfrom`으로만 통신한다 — 연결(connection) 개념 자체가 없다. 1.2절의 "노드 등록/대체" 동작은 사실 이 UDP 특성의 직접적 결과다: XIS는 단지 "노드ID → 가장 최근에 그 ID로 데이터그램을 보낸 (IP,port)" 매핑 테이블을 유지할 뿐이고, 같은 ID로 새 데이터그램이 오면 그 주소로 덮어쓴다. TCP처럼 세션을 맺고 끊는 절차가 없으니 "충돌 감지·거부"라는 개념 자체가 성립하지 않는다.
@@ -353,7 +354,7 @@ OBS>GMON DONE: CamStatus=READY FitsSaved=1 ExpSet=0 ExpRem=0 TelStatus=TRACKINGS
   RA=03:44:13.15 DEC=-16:02:53.1 ... TELID=KMTC FILTER=V SHUTTER=CLOSED FOCUS=-1.105 ... FAN=ON
 ```
 
-`GMON`은 초당 `sysstatus`를 `OBS`에 폴링해 카메라·망원경 통합 상태를 하나의 요약 메시지로 받는다 (대시보드/모니터링 전용 경량 조회 채널로 추정, 명령어 문서에는 없고 로그에서만 확인됨).
+`GMON`은 초당 `sysstatus`를 `OBS`에 폴링해 카메라·망원경 통합 상태를 하나의 요약 메시지로 받는다. 이 채널의 정체는 이후 OBSAgent 분석으로 확정됐다: `sysstatus`는 OBSAgent(OBS 노드)의 정식 명령이고, 응답 문자열(`CamStatus=... TelStatus=... ...`)은 OBSAgent 내부의 `GetSysStatus()`가 생성한다. 같은 정보가 `/data/Logs/ObsStatus.txt` 파일로도 5초마다 기록된다 — 상세 포맷과 상태값 정의는 [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 6~7절 참고.
 
 ---
 
@@ -444,7 +445,8 @@ K.CB>OBS WARNING: FITS file '/mnt/ICSData/KMTNk.20250902.050666.fits' already ex
 | `__ICIMACS/original codes/ISISclient.zip` | **검토 완료** — 범용 C 클라이언트 라이브러리(`libisis.a`) 원본. 7.1~7.3절 근거 |
 | `__ICIMACS/original codes/pctcs.zip` | **검토 완료** — PC-TCS 망원경 제어기용 IMPv2 "agent" 프로그램 원본 (Yale1m/Sim 두 배포본). 7.4절 근거 |
 | `__ICIMACS/osu etc/mosaic.pdf` | **검토 완료, KMTNet과 무관** — OSU의 별개 적외선 카메라 "MOSAIC"(MDM/KPNO용) SPIE 논문. ICIMACS가 여러 계측기에 재사용된 사례 중 하나일 뿐, KMTNet 배포본과 직접 관련 없음 |
-| `__ICIMACS/osu etc/P-atwood-poster.pdf`, `spie3.pdf` | 미검토 — 파일명·크기상 OSU 계측기 관련 학회 포스터/논문으로 추정, 배경자료 성격이라 낮은 우선순위로 보류 |
+| `__ICIMACS/osu etc/spie3.pdf` | **검토 완료** — OSU ISL(Imaging Sciences Laboratory) 연구소 소개 논문(~1998). ICIMACS를 만든 조직의 배경: "소프트웨어 최소화" 철학, IFPS/OSIRIS/MOSAIC/ANDICAM 등 계측기 목록. ANDICAM(CTIO 1m)이 여기 등장 — [TCSAgent](../TCSAgent/tcsagent_report.md)의 원조(pctcs Agent, Yale 1m/ANDICAM용)와 연결되는 배경. KMTNet 직접 관련 정보는 없음 |
+| `__ICIMACS/osu etc/P-atwood-poster.pdf` | **검토 완료** — "Early Results from the MODS 8k x 3k CCDs"(B. Atwood, OSU) 포스터. LBT MODS 분광기용 e2v CCD231-68 + ICIMACS 검출기 전자부 초기 결과(2009년경). KMTNet 직접 관련 없음, 배경자료로 마감 |
 | `__ICIMACS/osu etc/*.url`, `__ICIMACS/*.url` | OSU 웹페이지 바로가기(오래된 링크, 대부분 접속 불가 추정) — 미검토 |
 | `__sample_isislog/isislog.{ctio,saao,sso}/isis.*.log` | 3개 사이트, 2024~2025년 실제 ISIS 런타임 로그 샘플 (본 보고서 4~5절의 실측 근거) |
 
@@ -482,6 +484,8 @@ K.CB>OBS WARNING: FITS file '/mnt/ICSData/KMTNk.20250902.050666.fits' already ex
 ### 7.4 "filter/agent" 패턴 실례 — `pctcs`
 
 2.5절에서 언급한 "비호환 장치는 별도 filter/agent 프로그램으로 변환" 관례의 실제 사례다. `pctcs`(PC-TCS agent)는 ComSoft社 PC-TCS 망원경 컨트롤러가 시리얼로 약 200ms 간격으로 계속 흘려보내는 텔레메트리를 읽어, IMPv2 호환 `STATUS:` 메시지로 번역해 배포하는 독립 프로그램이다 (Yale 1m/시뮬레이터 두 배포본 확인). `select()`로 시리얼 포트·표준입력(readline 기반 콘솔)·UDP 소켓을 동시에 감시하는 구조이며, ISIS 클라이언트 모드/standalone 모드 양쪽으로 실행 가능하다. 소스 주석에 "based on fwagent"라는 기록이 있어, 이런 "레거시 장비 ↔ IMPv2 번역기" agent가 여러 종류(필터휠 등) 존재했던 것으로 보인다.
+
+**후속 확인**: KMTNet이 실제 운영 중인 `TC` 노드가 바로 이 `pctcs`의 직계 후손이다 — KASI가 시리얼 직결을 Telcom TCP + AUX TCP로 바꾸고 크게 확장한 버전(v1.7.2)을 별도 분석했다. [../TCSAgent/tcsagent_report.md](../TCSAgent/tcsagent_report.md) 참고. 나아가 관측 콘솔 `OBS` 노드(OBSAgent)도 그 TCSAgent 코드베이스를 다시 포크해 만든 것이다([../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md)) — 즉 여기서 분석한 `pctcs` 소스가 KMTNet 레거시 제어 프로그램 전체 계보의 뿌리다.
 
 ### 7.5 발신 메시지 큐잉 패턴 — `dispatcher.cpp/h` (MODS Qt GUI 클라이언트)
 

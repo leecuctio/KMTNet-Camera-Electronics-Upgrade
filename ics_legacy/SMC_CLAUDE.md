@@ -18,8 +18,8 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 
 **목표**: 기존(legacy) ICS/ISIS 카메라 제어 시스템을 문서화하고, 이를 바탕으로 신규 Python 기반 ICS를 새로 개발한다.
 
-**현재 상태 (2026-07-28 기준)**
-- 이 폴더의 자료(프로토콜 스펙, 명령어 문서, ISIS 클라이언트 라이브러리 문서, 1998년 원조 ICIMACS 논문, 실측 로그 샘플, 원본 소스코드)를 **전부 검토 완료**하고 분석 보고서로 정리해 둠. 조사 단계는 사실상 마무리.
+**현재 상태 (2026-07-29 기준)**
+- 이 폴더의 자료(프로토콜 스펙, 명령어 문서, ISIS 클라이언트 라이브러리 문서, 1998년 원조 ICIMACS 논문, 실측 로그 샘플, 원본 소스코드, 배경 논문/포스터까지)를 **전부 검토 완료**하고 분석 보고서로 정리해 둠. 마지막까지 미검토로 남아있던 `spie3.pdf`(OSU ISL 연구소 소개)와 `P-atwood-poster.pdf`(MODS CCD 포스터)도 2026-07-29에 검토·색인 마감 — 조사 단계는 완전히 종료.
 - **핵심 산출물**: [ics_legacy_report.md](ics_legacy_report.md) — **레거시 시스템을 파악할 때는 원본 문서를 다시 파기 전에 이 보고서부터 읽을 것.** 구성:
   - 1절 시스템 개요(1998년 ICIMACS 기원 포함) · 2절 IMPv2.5 프로토콜 · 3절 ICS/IC 명령어 레퍼런스
   - 4절 실측 로그 기반 트랜잭션 분석(DARK 노출, BLG 과학노출+자동가이딩, 가이드계통, GMON)
@@ -31,7 +31,7 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 - 대상: KMTNet(칠레 CTIO / 남아공 SAAO / 호주 SSO) 배포본. 사이트별 카메라 = 과학 CCD 4개(K/M/T/N, 각각 별도 `.IC`/`.CB` 노드, K=master, CCD당 리드아웃 채널 8개) + 가이드 CCD 4개(전부 `G.IC` 노드 하나가 통합 제어, CCD당 리드아웃 채널 2개). 이 리드아웃 채널 수는 legacy 기준이며, 신규 Archon 업그레이드 스펙([../README.md](../README.md))과는 별개.
 - 통신 허브: 스펙상 명칭 **ISIS**, 실제 런타임에서는 **XIS**로 동작.
 - 프로토콜: **IMPv2.5** — 텍스트 기반, `src>dest Message_Type Command_Word Message_Body\r` 포맷, `REQ:/EXEC:/DONE:/STATUS:/ERROR:/WARNING:/FATAL:` 7종 메시지 타입, `key=value` 파라미터. **전송 계층은 UDP**(connectionless, `sendto`/`recvfrom`) — 노드 등록이 "최신 연결이 이전 것을 대체"하는 방식으로 동작하는 근본 원인.
-- 노드 디렉토리: `ICS`(카메라 통합제어) / `{K,M,T,N,G}.IC`(디바이스별 제어) / `{K,M,T,N,G}.CB`(디바이스별 디스크·전송 컨트롤러) / `TC`(망원경 제어 → [TCSAgent](../TCSAgent/SMC_CLAUDE.md)) / `OBS`(관측 콘솔 → [OBSAgent](../OBSAgent/SMC_CLAUDE.md)) / `ICG`(가이드용 ICS) / `ABC`(가이드용 자동관측 제어기) / `GMON`(상태 모니터링 — 실체는 OBSAgent가 5초마다 쓰는 `/data/Logs/ObsStatus.txt` 내용을 폴링하는 것, [OBSAgent 보고서](../OBSAgent/obsagent_report.md) 7절 참고).
+- 노드 디렉토리: `ICS`(카메라 통합제어) / `{K,M,T,N,G}.IC`(디바이스별 제어) / `{K,M,T,N,G}.CB`(디바이스별 디스크·전송 컨트롤러) / `TC`(망원경 제어 → [TCSAgent](../TCSAgent/SMC_CLAUDE.md)) / `OBS`(관측 콘솔 → [OBSAgent](../OBSAgent/SMC_CLAUDE.md)) / `ICG`(가이드용 ICS) / `ABC`(가이드용 자동관측 제어기) / `GMON`(상태 모니터링 — UDP로 OBS 노드에 `sysstatus`를 초당 질의하고, OBSAgent의 `GetSysStatus()` 응답 문자열을 받는 방식. 같은 정보가 `/data/Logs/ObsStatus.txt` 파일로도 5초마다 기록됨, [OBSAgent 보고서](../OBSAgent/obsagent_report.md) 7절 참고).
 - 알려진 캐비어트: ICS 6자리 vs CCD 4자리 EXPNUM 불일치(→ `INITIALIZE`로 우회), `BIN/ROI/DISPL/STOP/ABORT/MOVIE`는 명령어만 있고 미구현. 메시지 타입/커맨드 워드는 대소문자 무관 매칭, `REQ:`는 관례상 리터럴로 안 보냄.
 
 ## 자료 위치와 git 상태

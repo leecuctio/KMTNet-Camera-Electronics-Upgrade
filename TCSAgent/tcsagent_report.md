@@ -66,6 +66,8 @@ TCS/AUX 두 링크는 독립적으로 상태를 관리한다: PC-TCS 시리얼 �
 - **실행**: `./pctcs [설정파일경로]` — 인자를 안 주면 기본값 `/home/dts/Config/pctcs.ini` 사용
 - **KASI 운영 설치 위치**: ICS 서버의 `/home/dts/Agents/pctcs/KMTNet`(소스), `/home/dts/bin/pctcs`(실행파일), `/home/dts/Config/pctcs.ini`(설정) — 유지보수 계정 `kasi`/`kasimain`. 구버전 압축파일은 `Backup.KMTNet/`에 보관.
 - KMTN_Startup 스크립트가 기동 시 `/home/dts/bin/pctcs`로 TCS Agent를 실행한다.
+- **실행 서버(운영 배치)**: 관측자는 **Guide server(ICGui)** 터미널에서 `tcstart` 명령으로 실행한다(작은 xterm에 `pctcs` 창이 뜸). Guide server 불능 시 Spare/Science server에서도 실행 가능. 관측 후에도 계속 켜두고, 관측 전에 한 번 재실행하는 것이 운영 관례다. 신버전에 문제가 있으면 `tcstart.old`로 직전 버전을 실행한다. (OBSAgent 릴리스노트 v1.1.3의 운영 안내 기준 — [obsagent_report.md](../OBSAgent/obsagent_report.md) 참고)
+- **배포 스크립트 (`scr/tcupdate`)가 배포 구조의 정본이다**: 개발 트리는 `/home/kasi/TCSAgent/KMTNet/`이고, `tcupdate`가 실행파일→`/home/dts/bin/`, 사이트별 ini→`/home/dts/Config/pctcs.ini`, 카탈로그(`pctcs.<site>.cat`, `blg.cat`, `NEA_TF-*.cat` 등)→`/home/dts/catalog/`, **사이트별 보정 테이블 `cortable/offset_<site>.table`→`/home/dts/cortable/offset_blg.table`(고정 이름)**으로 복사한다. 즉 런타임의 `offset_blg.table`은 항상 "현재 사이트용 테이블의 사본"이며, 소스 트리에 있는 `cortable/offset_blg.table`도 그 산출물이다. 이 저장소의 스냅샷은 `tcupdate`에 `sysid="kmtnt"`(TestBed)가 활성화된 상태로 저장돼 있다.
 
 ## 5. 런타임 설정 파일 (`pctcs.ini`)
 
@@ -84,7 +86,17 @@ ISIS 클라이언트 표준 설정 포맷(`Keyword Value`, `#` 주석, 대소문
 | HW 스펙 | `TCS_Guide_Step_RA/Dec`(arcsec/encoder count), `TCS_Guide_MinOff_RA/Dec`, `AUX_FS_Filter/Shutter_OpTime`, `AUX_FA_ActNum_South/East/West` | 가이딩 스텝 크기, 최소 오프셋(이보다 작으면 무시), 필터/셔터 동작 소요시간, tip-tilt 액추에이터 번호 매핑 |
 | 실행 플래그 | `VERBOSE`, `DEBUG`, `DOLOG`, `LOGFILE` | 콘솔 출력/디버그/로깅 설정 |
 
-실제 사이트별 설정은 `TCSAgent.latest/KMTNet/ini/pctcs.kmtn{a,c,s,t}.ini`(및 `.sta.ini`)로 나뉘어 있다 — 사이트 코드가 4개(`a,c,s,t`) 존재하는데, [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md)에서 확인한 3개 관측소(CTIO/SAAO/SSO) 외 테스트/예비 사이트가 하나 더 있는 것으로 보인다(정확한 사이트-코드 매핑은 각 ini 파일의 `TCS_Host`/`AUX_Host` 값과 실제 관측소 배정을 대조해 확인 필요).
+실제 사이트별 설정은 `TCSAgent.latest/KMTNet/ini/pctcs.kmtn{a,c,s,t}.ini`(및 `.sta.ini`)로 나뉘어 있다. **사이트-코드 매핑은 각 ini 파일 헤더 주석으로 확정**된다:
+
+| 파일 | 시스템 명칭 (ini 헤더) | 관측소 |
+|---|---|---|
+| `pctcs.kmtnc.ini` | KMTNet-CTIO (KMTNC) | 칠레 CTIO |
+| `pctcs.kmtns.ini` | KMTNet-SAAO (KMTNS) | 남아공 SAAO |
+| `pctcs.kmtna.ini` | KMTNet-SSO (KMTNA) | 호주 SSO (**A**ustralia) |
+| `pctcs.kmtnt.ini` | KMTNet-**TestBed** | 테스트베드 (실관측소 아님) |
+
+- `.sta.ini` 변형(예: `pctcs.kmtnc.sta.ini`)은 **Standalone 모드용** 설정이다 — `Mode Standalone`, 노드 ID `TC.STA`, 포트 5755(운영용 6606과 분리), 로깅 주기 30초(운영용 5초보다 느슨). ISIS 허브 없이 시험 구동할 때 쓰는 것으로, 운영 설정과 나란히 유지된다.
+- 실전 ini에는 R4.0 매뉴얼의 키워드 표에 없는 항목도 있다: `LoggingInt_TCS`/`LoggingInt_AUX`(상태 로깅 주기, 운영 5.0초), `VERLOG`(verbose 로그), `CATFILE`(기동 시 자동 로드할 카탈로그 파일, 기본 `/home/dts/catalog/pctcs.cat` — 9절의 `catalog` 명령과 연동).
 
 ## 6. 명령어 레퍼런스 (공식 매뉴얼 R4.0 기준)
 
@@ -166,9 +178,10 @@ ISIS 클라이언트 표준 설정 포맷(`Keyword Value`, `#` 주석, 대소문
 | `tstow` (`stow`) | 망원경을 스토우(파킹) 위치로 이동 (`MOVSTOW` 원본 명령 전송) |
 | `oo`, `cc <x> <y>` | 포인팅 모델링 보조 유틸리티 (v1.5.5 도입) |
 | `concise` (`con`) | verbose 모드 강제 해제 |
-| `dtiltp`, `fttgotop` | tip-tilt 관련 변형 명령(접미사 `p` — 세부 동작은 추가 소스 확인 필요) |
-| `tick` | (세부 동작은 추가 소스 확인 필요) |
-| `treq` | (세부 동작은 추가 소스 확인 필요) |
+| `treq` | `<키워드>` — PCTCS-NG **REQUEST** 패킷을 Telcom에 직접 전송해 텔레메트리 개별 값(RA/DEC/HA/EL/AZ/SECZ/JD 등)을 조회. `tcmd`가 COMMAND(제어) 패킷을 보내는 것과 대비되는 조회 전용 통로 (v1.3.0, 소스 주석에 "for Skip's UI") |
+| `tick` | `0`으로 기준점을 잡고 이후 호출마다 경과시간을 측정·출력하는 시간 태그 유틸리티 (v1.4.4, 성능/타이밍 진단용) |
+
+> **정정 (비활성 명령)**: `dtiltp`/`fttgotop`은 소스에 함수(`cmd_adtiltp`/`cmd_afttgotop` — `dtilt`/`fttgoto`의 극좌표(theta/tilt) 버전)가 존재하지만, **명령 테이블 등록이 주석 처리되어 v1.7.2에서 실행되지 않는다**(`commands.h` 149-150행). help 텍스트에서도 주석 처리돼 있다. 즉 "구현됐다가 비활성화된" 명령이며, 위 표의 나머지 명령들처럼 실제로 동작하는 것은 아니다.
 
 ### 9.1 포인팅 보정 옵션(`copt`) — `tmradec`/`tmobject`의 핵심 기능
 
@@ -187,6 +200,32 @@ BLG02  17:54:52.760  -29:01:25.10  1
 ```
 필드명(`BLG01`, `BLG02`...)이 [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.3절 실측 로그에서 본 `OBJECT BLG11` 등과 동일한 명명 체계임을 확인했다 — 즉 카메라(ICS)가 FITS 헤더/파일명에 쓰는 필드 이름과 TCS Agent가 실제 지향에 쓰는 카탈로그가 같은 필드 코드를 공유한다(단, 실제로 어느 소프트웨어가 두 시스템에 필드명을 배포하는지는 OBSAgent 쪽 분석에서 확인 필요).
 
+## 9.2 저수준 프로토콜 요약 — `tcmd`/`treq`/`acmd`가 실어나르는 것
+
+`__reference/`의 원본 규격 3종을 직접 검토한 결과다. TCS Agent(그리고 이를 감싸는 OBSAgent)의 명령이 최종적으로 어떤 원시 프로토콜로 변환되는지의 정본.
+
+**(1) PCTCS-NG 패킷 (Telcom, TCP 5750)** — `COMSOFT Legacy PC-TCS Communications` 문서 기준:
+```
+<TELID> <SYSID> <PID> COMMAND <Native명령...>   ← tcmd 경로 (제어)
+<TELID> <SYSID> <PID> REQUEST <키워드>          ← treq 경로 (조회)
+```
+- `TELID`는 Telcom 실행 인자로 지정(예: KMTNET), `SYSID`는 항상 `TCS`, `PID`는 응답에 그대로 반사되는 시퀀스 번호. CR 종단.
+- REQUEST 키워드: `ALL`(150자 텔레메트리 전체)/`RA`/`DEC`/`HA`/`ST`/`EL`/`AZ`/`SECZ`/`EQ`/`JD`/`MOTION`/`FOCUS`/`DOME` 등.
+- Telcom(`telcom.exe`, WinXP 콘솔 앱, C.Johnson 2013)은 이 TCP 패킷을 PC-TCS의 RS-232(9600,N,8,1) Native 프로토콜로 중계하는 브리지일 뿐이다.
+
+**(2) COMSOFT Native 프로토콜 (PC-TCS 본체)**:
+- PC-TCS는 **150자 고정 컬럼 텔레메트리 스트림**을 계속 방송한다 — `traw` 명령이 돌려주는 그 문자열이다. 컬럼 위치로 파싱: 1=이동상태, 4-12=RA, 14-22=Dec, 25-33=HA, 44-48=고도, 57-61=SecZ, 63-70=COM채널별 **명령 실행코드**(E/e=실행됨, 1=Bogus Request, 2=Bogus Data, 3=Unrecognized, C=checksum 오류 — 6.4절 `EXECODE`의 원천), 72-75=리밋/드라이브, 85-93=JD, 97=초점, 111-120=UT.
+- 명령은 대문자 ASCII + CR. TCS Agent 명령과의 대응: `tstop`→`CANCEL`, `tstow`→`MOVSTOW`, `tdi`→`DECLAREINIT`, `tguide`→`RADECGUIDE`, `tmelaz`→`ELAZ`, 좌표 이동→`MANUAL`+`NEXTRA`/`NEXTDEC`+`MOVNEXT` 계열, `tsync`→`SETTIME`/`SETDATE`(**두 명령이 분리돼 있어서** 자정 부근 동기화에 주의가 필요한 것).
+- Telcom 문서판 명령 목록에는 Native 문서판에 없는 확장도 있다: `ASTEROID`/`COMET`/`ORBIT`(궤도 요소로 이동+자동 비항성 레이트), 행성/달/태양 위치 명령, `BIASRA`/`BIASDEC`(축별 바이어스 레이트 — OBSAgent NST 기능의 하부 수단), `STEPRA`/`STEPDEC`(엔코더 스텝 단위 이동) 등.
+
+**(3) AUX 원격명령 (TCP 5752)** — `KMTNet AUX control remote commands(v20140908)`(작성: 차상목/KASI) 기준:
+```
+<TELID> AUX <PID> <SUBSYSTEM> <COMMAND> [인자...]   (LF 종단 — Telcom의 CR와 다름!)
+```
+- 서브시스템 6종: `FOCUSER`(3-액추에이터 초점/tip-tilt, ±10mm, `GOTO_A1~3`/`GOTO_ALL`/`OFFSET`/`HOME`), `SHUTTER`(돔셔터, `BOTH/UPPER/LOWER OPEN|CLOSE`, `GOTO <고도>`, **Auto-sync 모드**=`SET_ASYNC ON` 시 망원경 고도를 자동 추종), `FILTERS`(필터 슬라이드 4개 `SET_F1~4 IN|OUT` + 카메라 셔터 리밋 감시), `M1COVER`(주경 커버 0~100%), `CHILLER`(냉각수 온도/전원), `ENVIRON`(온습도 센서 7개 + 거울셀 팬).
+- 공통 응답: `OK`(ACK) / `BAD`(NACK) / `WAIT`(이전 동작 미완) / `ERROR`, `STATUS` 조회 응답: `NC`/`STANDBY`/`RUNNING`/`ERROR`. TELID/System이 틀리면 **무응답**.
+- **카메라 셔터의 정체가 이 문서에 상세히 나온다**: Full(하단)/Half(상단) 2중 블레이드 구조로, ICS→HE box의 TTL 신호(HIGH=열기 시작, LOW=닫기 시작)로만 구동된다(6.3절 주의사항의 근거). 개방/폐쇄 각 5초, 닫힘 후 재장전(reloading) 시퀀스 존재 — [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 로그의 `SHUTTER_OPSTAT`(STANDBY/OPENING/OPENED/CLOSING/RELOADING) 상태 명칭이 이 문서의 OpStatus 정의와 정확히 일치한다. 노출시간이 5초보다 짧으면 Full 블레이드가 다 열리기 전에 Half 블레이드가 닫히기 시작하는 "이동 슬릿" 동작이 된다.
+
 ## 10. 참고 원본 자료 색인
 
 | 경로 | 내용 | 상태 |
@@ -196,9 +235,10 @@ BLG02  17:54:52.760  -29:01:25.10  1
 | `TCSAgent.latest/KMTNet/` | v1.7.2 소스코드, ini/catalog/cortable 설정·데이터 | 검토 완료 (핵심 소스 함수 확인) |
 | `TCSAgent.latest/UpdateNotes.v1.7.2.txt` | v1.5.2~v1.7.2 버전별 변경 이력 | 검토 완료 |
 | `TCSAgent.v1.7.2.zip` | 위 소스와 동일 버전의 압축 배포본 | 압축 파일이라 미압축, 내용은 `.latest`와 동일 추정 |
-| `__reference/KMTNet AUX control remote commands(v20140908).pdf` | AUX 제어 SW 저수준 원격명령 규격 (`acmd`가 전달하는 실제 프로토콜) | 미검토 (R4.0이 요약 설명함) |
-| `__reference/PCTCS Communications.pdf`, `PC_TCS_version_6.pdf` | PC-TCS/Telcom 저수준 프로토콜(PCTCS-NG, COMSOFT Native) 원본 규격 | 미검토 (R4.0이 요약 설명함) |
-| `__reference/TelcomDoc.pdf` | Telcom 프로그램 자체 문서 | 미검토 |
+| `__reference/KMTNet AUX control remote commands(v20140908).pdf` | AUX 제어 SW 저수준 원격명령 규격 (`acmd`가 전달하는 실제 프로토콜, 작성: 차상목/KASI) | **검토 완료** — 9.2절 (3)에 요약 |
+| `__reference/PCTCS Communications.pdf` | COMSOFT Native(150자 텔레메트리+명령) + PCTCS-NG(TELID/SYSID/PID 패킷) 원본 규격 | **검토 완료** — 9.2절 (1)(2)에 요약 |
+| `__reference/TelcomDoc.pdf` | Telcom(telcom.exe) 사용법 + NG 프로토콜/REQUEST 키워드/직접명령 목록 (C.Johnson, 2013) | **검토 완료** — 9.2절에 반영 |
+| `__reference/PC_TCS_version_6.pdf` | 상용 PC-TCS v6 자체 사용자 매뉴얼 | 미검토 (상용 SW 자체 문서 — 마운트 제어 내부까지 팔 때만 필요) |
 | `__reference/IMPv2.5Protocol1.pdf` | [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 2절에서 이미 상세 분석한 것과 동일 파일 | 기존 분석으로 대체 |
 | `__reference/ISISclient/` | 빌드 의존 라이브러리 사본 — OBSAgent 쪽 `ISISclient/`와 **동일 파일** 확인 | [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 7절 분석으로 대체 |
 | `__reference/hiredis/` | Redis C 클라이언트 라이브러리 사본 (외부 오픈소스). TCS Agent 자체는 Redis를 쓰지 않으므로 참고용으로 함께 보관된 것으로 보임 — 실제 Redis 사용처는 [OBSAgent](../OBSAgent/obsagent_report.md) | 미검토 |
