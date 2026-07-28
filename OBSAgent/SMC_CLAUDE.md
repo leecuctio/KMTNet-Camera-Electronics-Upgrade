@@ -42,6 +42,14 @@
 
 **git 상태 주의**: 이 폴더는 **아직 git에 커밋되지 않았다**(전체 untracked). 다른 컴퓨터에서 clone하면 이 폴더 자체가 없다. 커밋하더라도 `*.zip`(배포본), `test.*`(테스트 ini/osc), `.o`/`.a`(hiredis 빌드산출물)는 `.gitignore`로 제외된다 — 특히 `osc/` 안의 `test.*.osc` 몇 개가 제외 대상이니 주의.
 
+## 신규 Python 시스템에서 OBSAgent의 위치 (2026-07-29 확정)
+
+- 신규 카메라 SW는 `ics`(과학: ICS+IC×4+CB×4 통합)와 `icg`(가이드: ICG+G.IC+G.CB 통합) 두 프로그램으로 분리 개발한다.
+- **OBSAgent는 개정하지 않기로 확정됐다.** 대신 신규 `ics`가 **기존과 동일한 메시지를 그대로 발신**해서(특히 CCD별 "Acquisition Complete." 4회) OBSAgent의 `CamStatus` 상태머신이 무개정으로 동작하게 한다.
+- 따라서 이 폴더의 [obsagent_report.md](obsagent_report.md) **6절 "상태 전이의 정확한 규약"**이 사실상 **신규 `ics`가 지켜야 할 인터페이스 규격서**가 된다. 소스(`commands.c` 748~865행) 실측 기반이며, 신규 개발 측 정리는 [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 8.0.1절에 있다.
+- 그 과정에서 발견한 **문서-소스 불일치**: 릴리스노트와 `obstool.h` 주석은 `READY`를 "Disk Write Complete on all ICs"로 설명하지만 소스에 그 파서가 없다. 실제로는 `IDLE_3` 후 ~12.2초 타이머로만 전이된다(6절 참고).
+- OBSAgent를 나중에 개편하게 된다면 최우선 후보: `IDLE_1`/`IDLE_2`의 "4개 IC" 전제 제거, `READY` 12초 지연 단축, 원시 문자열 파싱 → 구조화 이벤트 전환.
+
 ## 관련 문서 (같은 시스템의 다른 조각)
 
 - [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) — **ICS**(카메라 통합제어) + IMPv2.5 프로토콜 + ISIS/XIS 허브. 이 프로그램이 `OBS>ICS ...`로 보내는 명령의 수신측.

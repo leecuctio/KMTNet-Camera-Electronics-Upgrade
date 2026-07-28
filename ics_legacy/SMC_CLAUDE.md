@@ -8,11 +8,11 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 
 | 폴더 | 프로그램 | ICIMACS 노드 | 역할 |
 |---|---|---|---|
-| **`ics_legacy/`** (이 폴더) | ICS / ISIS(XIS) | `ICS`, `XIS`, `*.IC`, `*.CB` | 카메라 통합제어 + 메시지 허브 + 프로토콜 |
+| **`ics_legacy/`** (이 폴더) | ICS / ICG / ISIS(XIS) | `ICS`, `ICG`, `XIS`, `*.IC`, `*.CB` | 카메라 통합제어(과학+가이드) + 메시지 허브 + 프로토콜 |
 | [`../TCSAgent/`](../TCSAgent/SMC_CLAUDE.md) | TCS Agent (`pctcs`) | `TC` | 망원경/부속장치 제어 브리지 |
 | [`../OBSAgent/`](../OBSAgent/SMC_CLAUDE.md) | OBS Agent (`obstool`) | `OBS` | 관측자 CLI + 스크립트 자동관측 |
 
-이 폴더는 **시스템의 토대**(프로토콜·허브·카메라)를 다루므로, 셋 중 **먼저 읽어야 할 문서**다.
+이 폴더는 **시스템의 토대**(프로토콜·허브·카메라)를 다루므로, 셋 중 **먼저 읽어야 할 문서**다. 이 폴더 안에는 보고서가 **2종**(전체 시스템용 + ICG 전용) 있다 — 아래 참고.
 
 ## 진행 중인 작업: 레거시 조사 → 신규 Python ICS 개발
 
@@ -20,11 +20,26 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 
 **현재 상태 (2026-07-29 기준)**
 - 이 폴더의 자료(프로토콜 스펙, 명령어 문서, ISIS 클라이언트 라이브러리 문서, 1998년 원조 ICIMACS 논문, 실측 로그 샘플, 원본 소스코드, 배경 논문/포스터까지)를 **전부 검토 완료**하고 분석 보고서로 정리해 둠. 마지막까지 미검토로 남아있던 `spie3.pdf`(OSU ISL 연구소 소개)와 `P-atwood-poster.pdf`(MODS CCD 포스터)도 2026-07-29에 검토·색인 마감 — 조사 단계는 완전히 종료.
-- **핵심 산출물**: [ics_legacy_report.md](ics_legacy_report.md) — **레거시 시스템을 파악할 때는 원본 문서를 다시 파기 전에 이 보고서부터 읽을 것.** 구성:
-  - 1절 시스템 개요(1998년 ICIMACS 기원 포함) · 2절 IMPv2.5 프로토콜 · 3절 ICS/IC 명령어 레퍼런스
-  - 4절 실측 로그 기반 트랜잭션 분석(DARK 노출, BLG 과학노출+자동가이딩, 가이드계통, GMON)
-  - 5절 출력/에러 메시지 패턴 · 6절 자료 색인 · 7절 레퍼런스 C 클라이언트 라이브러리 소스 분석 · 8절 신규 Python 구현 고려사항
-- 신규 Python ICS 구현은 **아직 시작 전**.
+- **핵심 산출물 (2종)**: **레거시 시스템을 파악할 때는 원본 문서를 다시 파기 전에 이 보고서들부터 읽을 것.**
+  - [ics_legacy_report.md](ics_legacy_report.md) — 시스템 전체. 1절 개요(1998년 ICIMACS 기원) · 2절 IMPv2.5 프로토콜 · 3절 ICS/IC 명령어 · 4절 실측 트랜잭션(DARK, BLG 과학노출+가이딩, GMON) · 5절 에러 패턴 · 6절 자료 색인 · 7절 C 클라이언트 라이브러리 소스 분석 · **8절 신규 Python 구현(8.0절에 확정 구조)**
+  - [icg_legacy_report.md](icg_legacy_report.md) — **`ICG` 노드 전용 기술 레퍼런스**(2026-07-29 신규 작성). ICG는 자체 문서·소스가 없어 **XIS 로그 실측이 유일한 근거**다. 가이드 노출 오케스트레이션, `G.IC`/`G.CB` 디스크 계층, ICS와의 상세 비교(7절), 신규 `icg` 구현 명세(9절).
+- 신규 Python ICS 구현은 **아직 시작 전** (설계 방향은 아래 확정).
+
+## 신규 Python 시스템 구조 (2026-07-29 사용자 확정)
+
+레거시의 다수 노드를 **두 개의 Python 프로그램으로 통합**한다:
+
+| 신규 프로그램 | 흡수하는 레거시 노드 | 노드 수 |
+|---|---|---|
+| **`ics`** (과학) | `ICS` + `K/M/T/N.IC`(4) + `K/M/T/N.CB`(4) | 9 |
+| **`icg`** (가이드) | `ICG` + `G.IC` + `G.CB` | 3 |
+
+- 두 프로그램은 **분리 유지**(제어 주체·타이밍·명령 세트가 다름 — icg 보고서 7절에 근거 정리). 단 **공통 로직은 공유 라이브러리로** 뺄 것(IMPv2 노드, TC 질의·FITS 헤더 중계, SYNCHRONIZE, 디스크 이중버퍼) — 레거시도 동일 코드베이스(`KX` 빌드)로 추정되므로 원 구조에도 부합.
+- **구현 순서 권고**: 단순한 `icg`(단일 IC/CB, 동기화 문제 없음)를 먼저 만들어 골격 검증 → `ics`로 확장.
+- **OBSAgent는 개정하지 않는다 (확정)**. 통합 `ics`가 내부적으로 4개 CCD를 한 프로그램에서 다루더라도, **바깥으로는 기존과 동일하게 CCD별 메시지("Acquisition Complete." 4회 등)를 그대로 발신**해 OBSAgent의 `CamStatus`가 무개정으로 동작하게 한다. 지켜야 할 정확한 발신 규약은 [ics_legacy_report.md](ics_legacy_report.md) **8.0.1절**에 표로 정리돼 있다(소스 실측 기반).
+  - 핵심: 발신 노드 ID는 `ICS`/`{K,M,T,N}.IC`/`{K,M,T,N}.CB` 중 하나여야 필터를 통과(통합 노드가 전부 `ICS` 이름으로 보내도 OK) · `Acquisition Complete.`(마침표 포함)와 `Wrote`는 **각 4회** 필요 · 파일명 `KMTN<CCD>.<yyyymmdd>.<nnnnnn>.fits` 형식이 `FitsNum` 파싱에 물려 있음 · `READY`는 메시지가 아니라 **`IDLE_3` 후 12.2초 타이머**로 전이(소스에 `Disk Write Complete` 파서 없음 — 문서/주석과 실제 구현이 어긋나는 지점).
+  - **비대칭 주의**: OBSAgent는 `ICG`/`G.IC`/`G.CB` 발신 메시지를 명시적으로 무시(v0.3.2~)하므로 **신규 `icg`는 이 하위호환 부담이 전혀 없다** — 메시지 형식을 자유롭게 현대화 가능.
+- 미결정 사항: 계통 간 `SYNCHRONIZE` 채널 존치 여부, 디스크 이중화(DISK0/DISK1) 존치 여부, 가이드 파일명 규칙 통일 여부, ABC 존치 여부.
 
 ## 핵심 아키텍처 요약 (자세한 근거는 보고서 참고)
 
@@ -46,8 +61,7 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 
 ## 다음에 이어서 할 만한 일
 
-- **신규 Python ICS 설계/구현 착수** — 레거시 조사는 충분히 완료된 상태. 설계 인풋은 세 보고서의 "신규 Python 구현 시 고려사항" 절에 모여 있다:
-  - [ics_legacy_report.md](ics_legacy_report.md) 8절 (프로토콜/전송/파싱/디스크 이중화 등)
-  - [../TCSAgent/tcsagent_report.md](../TCSAgent/tcsagent_report.md) 11절 (망원경 인터페이스, `copt` 보정 스펙화 필요성)
-  - [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 11절 (상태머신, `.osc` 호환 파서, Redis 상태버스 검토)
-- `TCSAgent`/`OBSAgent` 폴더 git 커밋 (아직 untracked 상태)
+- **신규 `icg` 설계/구현 착수** (권고 순서상 먼저) — 명세는 [icg_legacy_report.md](icg_legacy_report.md) 9절에 정리돼 있다: 흡수할 3개 층의 책임(9.1), 내부화되어 사라지는 통신 경계(9.2), 유지해야 할 외부 인터페이스(9.3), 설계 권고(9.4).
+- **신규 `ics` 설계** — [ics_legacy_report.md](ics_legacy_report.md) 8.0절(확정 구조·내부화 경계·OBSAgent 제약) + 8.1절(프로토콜/파싱/디스크 등 세부).
+- 선행 결정 필요: OBSAgent 개편 여부(위 "가장 큰 제약" 참고), SYNCHRONIZE·디스크이중화·파일명·ABC 존치 여부.
+- 주변 시스템 설계 인풋: [../TCSAgent/tcsagent_report.md](../TCSAgent/tcsagent_report.md) 11절(망원경 인터페이스, `copt` 스펙화) · [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 11절(상태머신, `.osc` 파서, Redis 상태버스).

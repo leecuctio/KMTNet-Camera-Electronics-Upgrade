@@ -278,6 +278,7 @@ OBS>ICS go
 - 노출 상태 머신은 `AUXSTATUS`/`TCSSTATUS`의 `EXPSTATUS` 필드로 추적 가능: `ERASE → INTEGRATING → READOUT → WRITING/IDLE`.
 - 파일 쓰기 완료는 `K.IC`가 아니라 `K.CB`(카메라 바디 컨트롤러)가 `DONE: Wrote LASTFILE=...`로 보고한다. 디스크는 `DISK0`/`DISK1` 이중화되어 있고, 쓰기 후 `REQ SWAP`/`ACK SWAP`으로 다음 노출을 위해 디스크를 교대한다.
 - `K.IC>XIS PING`/`PONG` 왕복은 실제 파일 전송(disk write) 완료를 알리는 타이밍 신호로 재사용되고 있다 (`STATUS: GO Disk Write Complete    (( after PONG response from XIS ))`) — 프로토콜 스펙에는 없는, 이 배포본만의 관례적 사용법.
+  > **주의**: 이 `Disk Write Complete` 메시지는 레거시에 실재하지만, **OBSAgent는 이 문자열을 파싱하지 않는다**(소스에 핸들러 없음 — [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 6절 정정 참고). OBSAgent가 파일 저장 완료를 판단하는 근거는 `K.CB`의 `Wrote` 메시지 **4회 누적**이고, `READY` 전이는 타이머다. 신규 `ics`가 이 메시지를 계속 보낼지는 자유(보내도 무해하나 OBSAgent 동작에는 영향 없음).
 
 ### 4.3 실제 과학 노출(BLG 서베이 필드) 트랜잭션 — 자동 가이딩 연동
 
@@ -344,7 +345,11 @@ abc>icg go
   G.CB>ABC DONE: Wrote LASTFILE=/mnt/ICSData/KMTNgs.20240102T002045.0001.fits RATE=634908 KB/sec
 ```
 
-가이드 계통은 과학 CCD(K/M/T/N)와 완전히 분리된 병렬 구조다: `ICG`가 `ICS`의 역할을, `ABC`가 `OBS`의 역할을 하며, `G.IC` 하나가 가이드 CCD 4개를 전부 통합 제어한다(1.1절). 파일명 형식도 다르다(`KMTNgs.<timestamp>.<seq>.fits`, ISO 타임스탬프 기반 suffix). `ICG`도 `ICS`와 마찬가지로 `TC`에 자체적으로 `AUXSTATUS`/`TCSSTATUS`를 조회해 `G.IC`에 전달하는 것으로 보이나(4.3절), 그 정확한 타이밍까지는 로그로 확인하지 못했다.
+가이드 계통은 과학 CCD(K/M/T/N)와 분리된 병렬 구조다: `ICG`가 `ICS`의 역할을, `ABC`가 `OBS`의 역할을 하며, `G.IC` 하나가 가이드 CCD 4개를 전부 통합 제어한다(1.1절). 파일명 형식도 다르다(`KMTNgs.<timestamp>.<seq>.fits`, ISO 타임스탬프 기반 suffix).
+
+> **→ ICG 노드 전용 심화 분석은 [icg_legacy_report.md](icg_legacy_report.md)** 참고. 위에서 "로그로 확인하지 못했다"고 남겨둔 `ICG`의 `TC` 질의 타이밍은 그 보고서에서 확정됐다(**GO 접수 직후·노출 시작 전**에 `AUXSTATUS`+`TCSSTATUS`를 페어로 질의 — 과학 계통이 셔터 OPEN 시 질의하는 것과 다름). 그 밖에 ICG의 전체 명령어 목록, 기동 시퀀스, `G.CB` 디스크 계층, ICS와의 상세 비교도 그쪽에 정리돼 있다.
+>
+> 또한 두 계통이 "완전 분리"라는 서술에는 **예외가 하나 있다**: `ICG`는 자기 설정 스냅샷(`STATUS: SYNCHRONIZE`)을 `G.IC`뿐 아니라 **과학 IC 4개에도** 브로드캐스트한다(icg 보고서 5.1절). 계통 간 유일한 결합 지점이다.
 
 ### 4.5 모니터링 (GMON)
 
@@ -450,6 +455,13 @@ K.CB>OBS WARNING: FITS file '/mnt/ICSData/KMTNk.20250902.050666.fits' already ex
 | `__ICIMACS/osu etc/*.url`, `__ICIMACS/*.url` | OSU 웹페이지 바로가기(오래된 링크, 대부분 접속 불가 추정) — 미검토 |
 | `__sample_isislog/isislog.{ctio,saao,sso}/isis.*.log` | 3개 사이트, 2024~2025년 실제 ISIS 런타임 로그 샘플 (본 보고서 4~5절의 실측 근거) |
 
+**이 폴더의 산출 문서 (분석 결과물)**
+
+| 문서 | 범위 |
+|---|---|
+| `ics_legacy_report.md` (본 문서) | 시스템 전체 — 아키텍처, IMPv2.5 프로토콜, ICS/IC 명령어, 과학 노출 트랜잭션, ISIS 클라이언트 라이브러리 |
+| [`icg_legacy_report.md`](icg_legacy_report.md) | **`ICG` 노드 전용 기술 레퍼런스** — 가이드 계통 오케스트레이션, `G.IC`/`G.CB` 계층, ICS와의 상세 비교, 신규 `icg` 구현 명세. 근거는 전적으로 위 XIS 로그 실측 |
+
 ---
 
 ## 7. 레퍼런스 C 클라이언트 라이브러리 분석 (`ISISclient.zip`, `pctcs.zip`)
@@ -498,6 +510,58 @@ K.CB>OBS WARNING: FITS file '/mnt/ICSData/KMTNk.20250902.050666.fits' already ex
 ---
 
 ## 8. 신규 Python ICS 개발 시 고려사항 (메모)
+
+### 8.0 확정된 신규 구조 (2026-07-29)
+
+신규 시스템은 **`ics`와 `icg` 두 프로그램으로 분리**하되, 각각이 레거시의 여러 노드를 흡수한다:
+
+| 신규 프로그램 | 흡수하는 레거시 노드 | 노드 수 |
+|---|---|---|
+| **`ics`** (과학) | `ICS` + `K/M/T/N.IC` + `K/M/T/N.CB` | **9** |
+| **`icg`** (가이드) | `ICG` + `G.IC` + `G.CB` | **3** ([icg_legacy_report.md](icg_legacy_report.md) 참고) |
+
+**신규 `ics` 관점에서 내부화되어 사라지는 경계** (아래 절들에서 분석한 프로토콜이 함수 호출로 대체됨):
+- `ICS → K/M/T/N.IC`: 4개 CCD에 대한 동기화된 명령 전파(`GO`, `INITIALIZE`, 설정 브로드캐스트) — 4노드 동시 제어가 **프로그램 내부의 병렬 처리 문제**로 바뀐다. 지금 로그에서 보이는 "4개 IC의 응답을 각각 기다렸다가 다음 단계로" 하는 조율이 내부 상태머신으로 흡수된다.
+- `K/M/T/N.IC ↔ K/M/T/N.CB`: `TRANSFER DISK<n> 1 ICS` / `DONE DISK<n>` / `REQ SWAP`↔`ACK SWAP` / 디스크 초기화 핸드셰이크(4.2절) — 전부 내부 이벤트·큐로 대체
+- `K.IC>XIS PING/PONG`을 디스크 쓰기 완료 신호로 쓰던 관례(4.2절) — 내부 완료 콜백으로 대체되어 이 편법 자체가 불필요해진다
+
+**유지해야 할 외부 인터페이스**:
+- **`OBS`(OBSAgent)와의 메시지 호환 — 확정 방침**: 통합 후에도 **OBSAgent는 개정하지 않는다.** 신규 `ics`가 내부적으로는 4개 CCD를 한 프로그램에서 다루더라도, **바깥으로는 기존과 동일하게 CCD별 메시지(특히 "Acquisition Complete." 4회)를 그대로 발신**해 OBSAgent의 `CamStatus` 상태머신이 무개정으로 동작하게 한다. 구체적 규약은 아래 8.0.1절.
+- `TC`(TCS Agent) 질의, `XIS` 허브 등록, 신규 `icg`와의 `SYNCHRONIZE`(유지/폐지 결정 필요)
+
+#### 8.0.1 OBSAgent 호환 규약 (신규 `ics`가 지켜야 할 발신 규칙)
+
+OBSAgent v1.2.0 소스(`commands.c` 748~865행, `main.c` 주기 루프)를 실측해 도출한 **정확한 규약**이다. 상세 근거는 [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 6절 참고.
+
+**(1) 발신 노드 ID**: `CamStatus`에 영향을 주려면 발신자가 `ICS` / `{K,M,T,N}.IC` / `{K,M,T,N}.CB` 중 하나여야 한다(대소문자 무관). **통합 `ics`가 단일 노드 `ICS`로 등록해 모든 메시지를 `ICS` 이름으로 보내도 전부 이 필터를 통과**하므로, CCD별 가짜 노드 ID를 유지할 필요는 없다. (단 `ICG`/`G.IC`/`G.CB` 이름으로는 무시되므로, 신규 `icg`는 이 규약과 무관하다 — 아래 (5)번.)
+
+**(2) 노출 1회당 반드시 발신해야 할 메시지 시퀀스** (`STATUS:` 타입, 본문에 해당 문자열 포함):
+
+| 순서 | 메시지 본문 키 | 유발되는 CamStatus | 발신 횟수 |
+|---|---|---|---|
+| 1 | `EXPSTATUS=INITIALIZING` | `PREP_I` | 1 |
+| 2 | `EXPSTATUS=ERASE` | `PREP_E` | 1 |
+| 3 | `EXPSTATUS=INTEGRATING` | `INT_1` | 1 |
+| 4 | `Shutter=Open` | `INT_2` (노출 시작 시각 기록) | 1 |
+| 5 | `Remaining=` | `INT_3` | 1회 이상(주기 갱신) |
+| 6 | `Shutter=Closed` | `CLOSING` | 1 |
+| 7 | `EXPSTATUS=READOUT` | `READ_1` | 1 |
+| 8 | `PCTREAD=` | `READ_2` → `READ_3` (카운터 리셋) | **2회 이상** |
+| 9 | `Acquisition Complete.` | `IDLE_1` → 4회째에 `IDLE_2` | **정확히 4회 이상** |
+| 10 | `EXPSTATUS=IDLE` | `IDLE_3` | 1 |
+| 11 | `Wrote ... KMTNx.yyyymmdd.nnnnnn.fits ...` | 4회째에 `FitsSaved=1` | **4회 이상** |
+
+**(3) 개수 규약이 핵심**: `Acquisition Complete.`(**마침표 포함**)와 `Wrote`는 각각 **4회 누적**되어야 `IDLE_2`/`FitsSaved=1`에 도달한다. 통합 후에도 CCD 4개분을 각각 보내면 기존 동작이 그대로 재현된다. `PCTREAD=` 수신이 두 카운터를 0으로 리셋하므로, 노출 사이클 순서를 지키는 것도 중요하다.
+
+**(4) 형식 의존성 2건**:
+- `Wrote` 메시지에서 `"KMTN"` 문자열 위치+6부터 15자를 잘라 `FitsNum`으로 표시한다 → **파일명 `KMTN<CCD>.<8자리날짜>.<6자리번호>.fits` 형식 유지 필수**.
+- `READY`는 메시지가 아니라 **`IDLE_3` 후 약 12.2초 타이머**로 전이된다(소스에 `Disk Write Complete` 파서가 없음). 즉 신규 `ics`가 "저장 완료" 메시지를 새로 만들어 보내도 `READY`를 앞당길 수 없다 — 노출 간 최소 12초 간격은 OBSAgent 쪽 상수(`force_ready=270`)에 의해 정해진다는 뜻이다. 이 지연이 신규 시스템에서 문제가 된다면 그때는 OBSAgent 개정이 필요하다.
+
+**(5) 신규 `icg`는 이 규약에서 자유롭다**: OBSAgent는 v0.3.2부터 `ICG`/`G.IC`/`G.CB` 발신 메시지를 **명시적으로 무시**한다(가이드가 같은 문자열을 뿌려도 과학 상태머신이 오염되지 않도록). 따라서 신규 `icg`는 메시지 형식을 자유롭게 현대화해도 OBSAgent에 영향이 없다 — `ics`와 `icg`의 하위호환 부담이 **비대칭**이라는 뜻이다.
+
+**공통 로직은 공유 라이브러리로**: IMPv2 노드(UDP·파서·등록), `TC` 질의와 FITS 헤더 중계, `SYNCHRONIZE`, 디스크 이중버퍼, 파일명 fail-safe는 `ics`/`icg`가 사실상 동일하다. 레거시도 동일 코드베이스(`KX` 빌드)로 추정되므로 이 공유는 원 구조에도 부합한다. 구현 순서는 **단순한 `icg`를 먼저** 만들어 골격을 검증한 뒤 `ics`로 확장하는 편이 안전하다([icg_legacy_report.md](icg_legacy_report.md) 7.3절).
+
+### 8.1 프로토콜·구현 세부 고려사항
 
 - 프로토콜(IMPv2.5) 자체는 언어/OS 무관, ASCII 텍스트 기반이라 Python 구현에 특별한 장벽 없음. `\r` 종료, 최대 2048자, `key=value` 파싱만 구현하면 됨.
 - **전송은 UDP** (7.3절) — Python에서는 `socket.SOCK_DGRAM` + `sendto`/`recvfrom`으로 구현. TCP처럼 연결·재연결·소켓 유지 로직을 고민할 필요가 없는 대신, 메시지 유실/중복에 대한 방어(타임아웃 재시도 등)는 애플리케이션 레벨에서 직접 챙겨야 한다.

@@ -167,7 +167,20 @@ morning.bias - - - bias bias n - - -
 OBSAgent는 ICS가 보내는 원시 메시지(`EXPSTATUS=...`, `Shutter=Open`, `PCTREAD=...`, `Wrote ...` 등, [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 5절 참고)를 실시간으로 해석해서 **자체적인 상태 머신**을 유지한다. 스크립트 관측 프로세스는 이 상태만 보고 다음 행동(다음 노출 준비, GO 명령 등)을 결정한다 — ICS 원시 메시지를 직접 파싱하지 않는다.
 
 **`CamStatus`** (ICS/IC 메시지 기반):
-`NC`(미연결) → `PREP_I`(초기화중) → `PREP_E`(플러싱) → `INT_1`(적분 시작, ICS 기준) → `INT_2`(K.IC로부터 "Shutter=Open" 수신) → `INT_3`(K.IC로부터 "Remaining=" 수신) → `CLOSING`("Shutter=Closed") → `READ_1`(ICS의 "EXPSTATUS=READOUT") → `READ_2`/`READ_3`(K.IC의 1번째/2번째 "PCTREAD=") → `IDLE_1`(1번째 IC의 "Acquisition Complete") → `IDLE_2`(4번째, 즉 전 채널의 "Acquisition Complete") → `IDLE_3`(ICS의 "EXPSTATUS=IDLE") → **`READY`**(모든 IC의 "Disk Write Complete" 수신, 또는 `IDLE_3` 도달 12초 후 강제 전환) — 그 외 `CHECK`(알수없음), `CRASHED`(IC 응답 없음/초기화 실패 등)
+`NC`(미연결) → `PREP_I`(초기화중) → `PREP_E`(플러싱) → `INT_1`(적분 시작, ICS 기준) → `INT_2`(K.IC로부터 "Shutter=Open" 수신) → `INT_3`(K.IC로부터 "Remaining=" 수신) → `CLOSING`("Shutter=Closed") → `READ_1`(ICS의 "EXPSTATUS=READOUT") → `READ_2`/`READ_3`(K.IC의 1번째/2번째 "PCTREAD=") → `IDLE_1`(1번째 IC의 "Acquisition Complete.") → `IDLE_2`(4번째, 즉 전 채널의 "Acquisition Complete.") → `IDLE_3`(ICS의 "EXPSTATUS=IDLE") → **`READY`** — 그 외 `CHECK`(알수없음), `CRASHED`(IC 응답 없음/초기화 실패 등)
+
+> **정정 — `READY`는 메시지가 아니라 타이머로 전이된다**: 공식 릴리스노트와 `obstool.h`의 주석은 `READY`를 "모든 IC의 Disk Write Complete 수신"으로 설명하지만, **소스에는 그런 문자열을 파싱하는 코드가 아예 없다**(`obstool.h` 439행 주석에만 등장). 실제 구현은 `main.c`의 주기 루프에서 **`IDLE_3` 도달 후 `force_ready=270` 카운트(약 12.2초)가 지나면 무조건 `READY`로 전이**시키는 것뿐이다. 예외적으로 `CamStatus==NC` 상태에서 ISIS 서버 연결(PONG)이 확인되면 곧바로 `READY`가 된다. 파일 저장 완료는 `CamStatus`가 아니라 **별도 플래그 `FitsSaved`**(아래)로 추적된다.
+
+**상태 전이의 정확한 규약** (`commands.c` 748~865행 실측 — 신규 카메라 SW가 반드시 지켜야 할 사항):
+
+1. **발신 노드 필터** (757~759행): `CamStatus`에 영향을 주는 `STATUS:` 메시지는 발신자가 **`ICS` / `K.IC`·`M.IC`·`T.IC`·`N.IC` / `K.CB`·`M.CB`·`T.CB`·`N.CB`** 중 하나일 때만 처리된다(대소문자 무관). v0.3.2에서 **`ICG`/`G.IC`/`G.CB`를 무시하기 위해** 도입된 필터다 — 가이드 계통이 같은 문자열(`EXPSTATUS=...`, `Acquisition Complete.`)을 뿌려도 과학 상태머신이 오염되지 않는 이유.
+2. **본문 부분문자열 매칭**(`strstr`, if/else-if 체인이라 **순서가 의미를 갖는다**): `EXPSTATUS=IDLE` → `Wrote` → `Acquisition Complete.`(마침표 포함) → `PCTREAD=` → `EXPSTATUS=READOUT` → `Shutter=Closed` → `Remaining=` → `Shutter=Open` → `EXPSTATUS=INTEGRATING` → `EXPSTATUS=ERASE` → `EXPSTATUS=INITIALIZING`.
+3. **개수를 센다 — 여기에 "IC가 4개"라는 전제가 박혀 있다**:
+   - `Acquisition Complete.` 누적 **4회 이상** → `IDLE_2` (그 전까지는 `IDLE_1`)
+   - `Wrote` 누적 **4회 이상** → `FitsSaved=1` (파일 저장 완료 플래그)
+   - `PCTREAD=` 수신 시 두 카운터 모두 0으로 리셋 (다음 노출 준비)
+4. **타이머 강제 전이**(`main.c`, 1카운트≈0.045초): `IDLE_1`/`IDLE_2`에서 `force_idle=40`(≈1.8초) 경과 → `IDLE_3`, `IDLE_3`에서 `force_ready=270`(≈12.2초) 경과 → `READY`.
+5. **`FitsNum` 파싱이 파일명 형식에 의존**: `Wrote` 메시지 본문에서 `"KMTN"`을 찾아 **그 지점+6에서 15자**를 잘라 `FitsNum`으로 쓴다. 즉 `KMTN<CCD 1글자>.<8자리 날짜>.<6자리 일련번호>` 형식이 깨지면 표시가 망가진다.
 
 > **중요 제약**: `EXP`/`OBJECT`/`DARK`/`BIAS`/`FLAT`/`PROJID`/`OBSERVER` 명령은 `CamStatus`가 `READY`일 때만 유효하고, **`GO` 명령은 `IDLE_3` 또는 `READY`일 때만** 실행 가능하다 — 즉 이전 노출의 파일 저장까지 다 끝나야 다음 설정 변경/노출 시작이 허용된다. 이는 [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.3절에서 확인한 "readout 도중 다음 필드 명령이 이미 들어옴" 파이프라이닝과는 다른 층위의 이야기다 — ICS 자체는 readout 중에도 명령을 받아주지만, **OBSAgent는 안전을 위해 `READY` 상태 전까지 다음 스크립트 라인 실행을 미룬다**(단 "다음 노출 준비"용 망원경 이동/필터 변경은 `oprepare` 옵션에 따라 readout 중에 미리 실행될 수 있다, §7 참고).
 
