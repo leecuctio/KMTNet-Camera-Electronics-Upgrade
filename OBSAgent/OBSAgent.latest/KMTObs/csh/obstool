@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#-- Start the OBS Agent on the local machine
+
+#/home/dts/bin/obstool
+
+/home/kasi/OBSAgent/KMTObs/obstool /home/kasi/OBSAgent/ini/obstool.ini
+

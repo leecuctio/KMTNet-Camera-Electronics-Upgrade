@@ -1,0 +1,175 @@
+
+________________________________________________________________
+<< File Info >>
+Format: ASCII text
+Size: 2,230 Bytes
+Path: /data/Logs/ObsStatus.txt
+
+________________________________________________________________
+<< Sample >>
+
+--------------------------------Beginning of File
+OBSERVATION STATUS
+
+Updated=2024-07-15T04:22:48.484
+
+CamStatus=INT_3  
+FitsSaved=1 
+ExpSet=60  
+ExpRem=19  
+
+TelStatus=TRACKINGS  
+RA=17:54:25.37
+DEC=-31:07:40.7
+HA=+01:17:40
+SecZ=1.04
+Alt=73.3
+Az=-81.2 
+Move=IDLE   
+Limit=NO       
+Drive=ENABLED 
+
+TELID=KMTC    
+FILTSTAT=STANDBY
+FILTER=I      
+ACTFILT=I      
+SHUTSTAT=OPENED   
+SHUTTER=OPEN   
+FOCUS=-0.941 
+TILT=-262,+51    
+SENS=+10.8,+10.8,+12.1,009.3,+12.3,+12.8,+00.0
+FAN=ON 
+DomeRot=IDLE    
+DomeShut=IDLE   
+
+OscStatus=RUNNING 
+LINE#=0156/0332
+CMD#=0000/0000
+EXP#=0156/0332
+
+ExpStatus=EXPOSURE
+ExpNum=20240715.008439
+ExpStart=2024-07-15T04:22:07.220
+ExpProg=41/60    
+FitsNum=20240715.008438
+FitsOsc=NO   
+
+[0]  LINE#0156  EXP#0156  BLG  BLG01(I,133)  17:54:24.000 -31:08:00.00  1 OBJECT   BLG01  I    60.0        -    0    +0.00000   +0.00000   ALT 72.95  HA +1.32                                                                                                   
+[1]  LINE#0157  EXP#0157  BLG  BLG02(I,134)  17:54:24.000 -29:01:30.00  1 OBJECT   BLG02  I    60.0        -    0    +0.00000   +0.00000   ALT 72.75  HA +1.32                                                                                                   
+[2]  LINE#0158  EXP#0158  BLG  BLG03(I,135)  18:02:00.000 -27:56:30.00  1 OBJECT   BLG03  I    60.0        -    0    +0.00000   +0.00000   ALT 74.20  HA +1.19                                                                                                   
+[3]  LINE#0159  EXP#0159  BLG  BLG04(I,136)  18:03:50.000 -30:03:00.00  1 OBJECT   BLG04  I    60.0        -    0    +0.00000   +0.00000   ALT 74.91  HA +1.16                                                                                                   
+[4]  LINE#0160  EXP#0160  BLG  BLG22(I,137)  17:54:24.000 -33:15:00.00  1 OBJECT   BLG22  I    60.0        -    0    +0.00000   +0.00000   ALT 72.89  HA +1.32                                                                                                   
+[5]  LINE#0161  EXP#0161  BLG  BLG17(I,138)  17:44:40.000 -33:15:00.00  1 OBJECT   BLG17  I    60.0        -    0    +0.00000   +0.00000   ALT 70.86  HA +1.48                                                                                                   
+     
+EOF
+--------------------------------End of File
+
+
+________________________________________________________________
+<< Status key/value list >>
+
+CamStatus=
+          NC
+          PREP_I
+          PREP_E
+          INT_1
+          INT_2
+          INT_3
+          CLOSING
+          READ_1
+          READ_2
+          READ_3
+          IDLE_1
+          IDLE_2
+          IDLE_3
+          READY
+          CHECK
+          CRASHED
+          UNKNOWN
+
+TelStatus=
+          NC
+          CHECKING
+          STOW
+          HOLDING
+          TRACKING
+          TRACKINGS
+          SLEW
+          SETTLING
+          OSCILLATE
+          DISABLED
+          UNKNOWN
+
+Move=
+     IDLE
+     RA
+     DEC
+     RA+DEC
+     UNKNOWN
+
+Limit=
+      NO
+      RA
+      DEC
+      RA+DEC
+      ELEVATION
+      RA+EL
+      DEC+EL
+      RA+DEC+EL
+      UNKNOWN
+
+Drive=
+      ENABLED
+      DISABLED
+      UNKNOWN
+
+FILTSTAT=
+         NC
+         STANDBY
+         RUNNING
+         ERROR
+
+SHUTSTAT=
+         NC
+         STANDBY
+         OPENING
+         OPENED
+         CLOSING
+         RELOADING
+         ERROR
+
+SHUTTER=
+        OPEN
+        CLOSED
+        UNKNOWN
+
+DomeRot=
+        IDLE
+        ROTATING
+
+DomeShut=
+        IDLE
+        MOVING
+
+OscStatus=
+          IDLE
+          RUNNING
+          PAUSED
+
+ExpStatus=
+          CHECK
+          STANDBY
+          CMDED
+          WAITING
+          FLUSH
+          EXPOSURE
+          READOUT
+          FINISH
+          ERROR
+
+FitsOsc=
+        YES  
+        NO   
+
+____________________________________
+

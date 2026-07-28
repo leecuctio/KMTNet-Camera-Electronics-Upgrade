@@ -1,0 +1,170 @@
+#############
+
+# KMTNet script by Vedant Chandra to observe WD+WD binaries. 
+# Co-Is: Yuan-Sen Ting, Hsiang-Chih Hwang, Kareem El-Badry, J.J Hermes
+
+##########################################
+# Target 1: ZTF J0347−1802, Gaia EDR3 5107322396824711680
+# Hermes WD with transiting debris, G = 17.4
+# Measuring transits, recurrence period
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDTD  target1 03:47:03.36   -18:02:53.70  - OBJECT  J0347m1802  V 60 - -
+
++ostart 1
+
+# Repeat the observations until the object falls to airmass less that 2, or twilight.
+# Repeat on two consecutive or near-consecutive nights
+# The target is at high airmass all night in November, so it should be observed for a total of 
+# around 12 hours across 2 nights. If this is cut short due to weather, then kindly repeat the observations on 
+# another night until the total monitored time is around 12 hours. 
+
+##########################################
+# Target 2: Gaia EDR3 3076962575704962176
+# Short period WD+WD with Gemini Follow-up, G = 17.9
+# Monitoring for eclipses/ellipsoidal
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID	LABEL 	RA		DEC		COPT	IMGTYP	OBJECT		FILTER EXPTIME	UTOBS	UTTOL
+
+  WDWD	target2	08:31:07.92 +00:13:31.37	-	OBJECT	J0831p0013	V	60	-	-
+
++ostart 3
+
+# Repeat the observations until the object falls to airmass less that 2, or twilight. 
+
+##########################################
+# Target 3: Gaia EDR3 3064766376117338880
+# El-Badry target, G = 16.42
+# Measuring ellipsoidal variation
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID	LABEL 	RA		DEC		COPT	IMGTYP	OBJECT		FILTER EXPTIME	UTOBS	UTTOL
+
+  WDWD	target3	08:27:26.26  -06:25:39.32	-	OBJECT	J0827m0625	V	60	-	-
+
++ostart 5
+
+# Repeat the observations until the object falls to airmass less that 2, or twilight. 
+
+##########################################
+# Target 4: EB2021 P_3.90a, Gaia EDR3 3053571840222008192
+# Pre-ELM with short-term scatter, G = 15.7
+# Search for pulsations
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDWD  target4 07:29:9.35  -8:35:31.50  - OBJECT  J0729m0835  V 60 - -
+
++ostart 7
+
+# Repeat observations until the object falls to airmass less than 2, or twilight. 
+
+##########################################
+# Target 5: Gaia EDR3 5153771948438163712
+# Pre-ELM, G = 16.8
+# Measure ellipsoidal variation
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDWD  target5 02:54:20.66  -16:17:43.57  - OBJECT  J0254m1617  V 60 - -
+
++ostart 9
+
+# Repeat observations until the object falls to airmass less than 2, or twilight. 
+
+##########################################
+# Target 6: Gaia EDR3 2467074539612904832
+# Pre-ELM, G = 16.8
+# Measure ellipsoidal variation
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDWD  target6 01:48:53.38  -07:06:6.05  - OBJECT  J0148m0706  V 60 - -
+
++ostart 11
+
+# Repeat observations until the object falls to airmass less than 2, or twilight. 
+
+##########################################
+# Target 7: Gaia EDR3 2453564290487329280
+# Pre-ELM, G = 16.9
+# Measure ellipsoidal variation
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDWD  target7 01:37:47.9  -14:20:53.31  - OBJECT  J0137m1420  V 60 - -
+
++ostart 13
+
+# Repeat observations until the object falls to airmass less than 2, or twilight. 
+
+##########################################
+# Target 8: Gaia EDR3 2477944857025864192
+# Pre-ELM, G = 16.6
+# Measure ellipsoidal variation
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDWD  target8 01:33:16.7  -06:50:6.86   - OBJECT  J0133m0650  V 60 - -
+
++ostart 15
+
+# Repeat observations until the object falls to airmass less than 2, or twilight. 
+
+##########################################
+# Target 9: Gaia EDR3 5717210604722373248
+# Pre-ELM, G = 17.6
+# Measure ellipsoidal variation
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDWD  target9 07:40:59.72  -17:45:6.94    - OBJECT  J0740m1745  V 60 - -
+
++ostart 17
+
+# Repeat observations until the object falls to airmass less than 2, or twilight. 
+
+##########################################
+# Target 10: Gaia EDR3 3106121585420422784
+# Pre-ELM, G = 17.5
+# Measure ellipsoidal variation
+##########################################
+
+# Start the observations once the target rises to airmass less than 2.  
+
+# PID LABEL   RA    DEC   COPT  IMGTYP  OBJECT    FILTER EXPTIME  UTOBS UTTOL
+
+  WDWD  target10 06:49:49.51  -02:28:30.95    - OBJECT  J0649m0228  V 60 - -
+
++ostart 19
+
+# Repeat observations until the object falls to airmass less than 2, or twilight. 
+
+# EOF

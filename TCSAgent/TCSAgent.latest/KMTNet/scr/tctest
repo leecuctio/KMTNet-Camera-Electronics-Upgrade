@@ -1,0 +1,9 @@
+#!/bin/bash
+
+#-- Start the TCS Agent on the local machine
+
+xterm -e "/home/kasi/TCSAgent/KMTNet/pctcs /home/kasi/TCSAgent/KMTNet/ini/pctcs.kmtnt.sta.ini" &
+
+#/home/kasi/TCSAgent/KMTNet/pctcs /home/kasi/TCSAgent/KMTNet/ini/pctcs.kmtnt.sta.ini
+
+

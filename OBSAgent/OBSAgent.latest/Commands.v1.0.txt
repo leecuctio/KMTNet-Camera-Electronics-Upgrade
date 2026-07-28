@@ -1,0 +1,118 @@
+
+              <<  KMTNet OBS Agent interactive commands  >>                    
+_______________________________________________________________________________
+Client commands:
+  quit            - quit OBS Agent application
+  init    / reset - quit OBS Agent application to restart
+  info            - report client information
+  version / ver   - report client version & compile info
+  timetag         - toggle time tag display on console
+  verbose         - toggle verbose output mode
+  concise         - disable verbose output mode
+  debug           - toggle debugging output
+  history         - show command history
+  !!              - repeat last command
+  !cmd            - repeat last command matching 'cmd'
+  help      / ?   - view this TCS Agent commands list
+_______________________________________________________________________________
+TCS commands:
+  tcsinit         - initialize PC-TCS Telcom link
+  tcsreset        - reset/restart PC-TCS Telcom link
+  tcsclose        - close PC-TCS Telcom link
+  tcsarc          - toggle AutoRecovery mode for TCS link
+  tcsstatus       - query TCS status with the telemetry data
+  tstat           - query lightweight TCS status without keywords
+  traw            - return lastest raw PC-TCS telemetry packet string
+  tsync           - synch PC-TCS clock with the system UTC clock
+  tcmd            - send a raw PC-TCS command, arg: <tcmd>
+  treq            - send a raw PC-TCS request, arg: <treq>
+  tmradec  / tmr  - move to J2000 RA/Dec, args: <ra> <dec> (<copt>)
+  tmobject / tmo  - move to object, defined in catalog, arg: <obj>
+  tmelaz   / tme  - move to elevation/azimuth, args: <el> <az>
+  tmoffset / toff - move to offset RA/Dec, args: <RA_offset> <DEC_offset>
+  tguide   / tgui - guiding offset move, args: <ra_offset> <dec_offset>
+  tstop    / stop - cancel command and stop telescope for commanded motions
+  tstow    / stow - tracking off & move telescope to stow position(zenith)
+  tdi             - synch the current position with the commanded position
+  cc / oo         - utility for the pointing model measurement observation
+  nstset          - set RA/Dec velocity for non-sidereal tracking
+  nston           - enable the non-sidereal tracking
+  nstoff          - disable the non-sidereal tracking
+_______________________________________________________________________________
+AUX control commands:
+  auxinit         - initialize AUX control link
+  auxreset        - reset/restart AUX control link
+  auxclose        - close AUX control link
+  auxarc          - toggle the auto recovery mode for AUX link
+  auxstatus       - query AUX status with the telemetry data
+  astat           - query lightweight AUX status without keywords
+  acmd            - send a raw AUX control remote command, arg: <acmd>
+  fsastat  /fs    - query & return AUX Filter/Shutter status
+  filter          - change filters to arg # or name, arg: <fnum/fname>
+  filname         - query & return the filter names for 4 slides
+  fttstat  /ft    - query & return AUX Focuse/TipTilt/Limit/Position(S/E/W)
+  dfocus          - adjust the focus position of PFI, arg: <dfoc>
+  dtilt           - adjust the tip-tilt angle ofg PFI, args: <dtns> <dtew>
+  fttgoto         - goto abs focus & tip-tilt, args: <foc> (<tns> <tew>)
+_______________________________________________________________________________
+ICS commands:
+  status          - query ICS  status and check connection to ICS
+  kstatus         - query K.IC status and check connection to K.IC
+  mstatus         - query M.IC status and check connection to M.IC
+  tstatus         - query T.IC status and check connection to T.IC
+  nstatus         - query N.IC status and check connection to N.IC
+  gstatus         - query G.IC status and check connection to G.IC
+  acqstatus       - query acqusition ready status for Sci.CCDs(K/M/T/N.IC)
+  filename        - query & set filename of FITS data
+  expnum          - query & set file serial number, arg: <filenum>
+  dmawait         - query & set DMAWAIT of Master IC, arg: <dmawait>
+  datasource      - query & set DATASOUECE of each CCD, arg: 'adc'/'ctc'
+  ledflash        - query and set projector LED flashing time, arg: <cnt>
+  observer        - query and set observer's name, arg: <observer's name>
+  projid          - query and set project ID, arg: <projid>
+  exp             - query and set exposure time, arg: <exptime> in sec
+  object / bias / dark / flat / sky / domeflat / standard
+                  - query & set image type and object name, arg: <objname>
+  go              - start exposure and readout sequence, arg: <framenum>
+_______________________________________________________________________________
+Status and sub-system commands:
+  expinfo  / ee   - query information for current exposure
+  sysstat  / ss   - query observation system status
+  domestat / dstat- dome status update from Redis/Relay/AuxStatus
+  override / ovr  - toggle override for link failed, arg: 'i'/'t'/'a'/'*'/'?'
+  dlamp           - set domeflat lamp power, args: 'on'/'off'
+  dlight          - set dome LED light power, args: 'on'/'off'
+  mcfan           - set mirror cell fan power, args: 'on'/'off'
+  tpad            - set TCS paddle N/S/E/W buttons, args: 'on'/'off' x 4
+  drot     / dr   - get and update the dome rotation status
+_______________________________________________________________________________
+Utility commands:
+  ecmd     / ec   - execute a external command line on shell, arg: <ecmd>
+  dtchk           - check data transfer & quit OBSAgent, arg: 'last'/<yyyymmdd>
+  redisget / rget - get a value from redis server on newTCS, arg: <key>
+  warning         - activate/deactivate warning blinking
+  msgout          - output message on console & into log file, arg: <msg>
+  sleep           - sleep all the process as specified, arg: <sleep_sec>
+  tick            - time tag output and measure elapse times, arg: '0'/<n>
+  noop            - no operation and response, for dummy command line in osc
+  getut    / ut   - get UT string & seconds since epoch(1970Jan01)
+  getjd    / jd   - get Julian date at input UT, arg: (<ut>)
+  getlst   / lst  - get Local sidereal time at input UT, arg: (<ut>)
+  getalt   / alt  - get Alt/Az/HA/Airmass at input UT, args: <ra> <dec> (<ut>)
+_______________________________________________________________________________
+Script observation commands:
+  oscript  / osc  - query & import an observation script, arg: (<file>)
+  oline           - query script lines, args: (cmd/exp) <line#>/-<lines> (<ut>)
+  olabel          - search for labels containing keyword, args: <word> (<ut>)
+  oobject         - search for objects containing keyword, args: <word> (<ut>)
+  ostat    / os   - query script observation status
+  olast           - query last completed script line number
+  ostart          - start obs script running, arg: (<start line#>)
+  ostop           - stop obs script running after current exposure complete
+  oabort          - abort obs script running (immediately stop all process)
+  opause   / op   - pause obs script running
+  oresume  / or   - resume obs script running
+  oprepare        - toggle next exposure preparation
+  odelay  / delay - delay script observation process, arg: <delay_sec>
+_______________________________________________________________________________
+                                                                       (v1.0.2)

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#-- Start the OBS Agent on the local machine
+
+/home/kasi/OBSAgent/KMTObs/obstool /home/kasi/OBSAgent/KMTObs/ini/test.ini
+
+#xterm -e "/home/kasi/OBSAgent/KMTObs/obstool /home/kasi/OBSAgent/KMTObs/ini/test.ini" &
+

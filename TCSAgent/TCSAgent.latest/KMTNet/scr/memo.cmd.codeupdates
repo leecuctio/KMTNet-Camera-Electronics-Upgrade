@@ -1,0 +1,5 @@
+scp commands.c kasi@139.229.22.12:TCSAgent/KMTNet/
+scp commands.c kasi@196.21.94.26:TCSAgent/KMTNet/
+scp commands.c kasi@150.203.153.243:TCSAgent/KMTNet/
+
+

@@ -1,0 +1,205 @@
+//// Function lists in command.c
+////  & declaration in obstool.h and command.h
+//// Ver.1.0.3 / updated on 2024-07-01
+
+//------------------------------------------------------------------------------
+// Command event callback and handling functions
+
+void KeyboardCommand(char *line);
+void SocketCommand(char *buf);
+int SendISISMsg(const char *msg, MsgType type, const char *dest, char *reply);
+
+//------------------------------------------------------------------------------
+// Command action functions
+//
+// Format: int cmd_xxxx(char *args, MsgType msgtype, char *reply);
+//
+
+// *** Client commands
+int cmd_quit
+int cmd_init
+int cmd_info
+int cmd_version
+int cmd_timetag
+int cmd_verbose
+int cmd_concise
+int cmd_debug
+int cmd_history
+int cmd_help
+int cmd_ping
+int cmd_pong
+
+// *** TC.TCS & TC.AUX commands
+int cmd_tc
+int cmd_nstset
+int cmd_nston
+int cmd_nstoff
+
+// *** ISIS/ICS commands
+int cmd_ics
+int cmd_ics_go
+int cmd_ics_exp
+
+// *** ISIS/ICs(K/M/T/N/G) commands
+int cmd_dmawait
+int cmd_datasource
+int cmd_kstatus
+int cmd_mstatus
+int cmd_tstatus
+int cmd_nstatus
+int cmd_gstatus
+
+// *** Status and sub-system(via Redis/Relay) commands
+int cmd_expinfo
+int cmd_sysstat
+int cmd_domestat
+int cmd_override
+int cmd_dlamp
+int cmd_dlight
+int cmd_mcfan
+int cmd_tpad
+int cmd_drot
+
+// *** Utility commands
+cmd_warning
+cmd_msgout
+cmd_sleep
+cmd_dtchk
+cmd_ecmd
+cmd_redisget
+cmd_redisset
+cmd_redislocal
+cmd_test
+cmd_noop
+cmd_tick
+cmd_getut
+cmd_getjd
+cmd_getlst
+cmd_getalt
+
+// *** Script observation commands
+cmd_oscscript
+cmd_oscline
+cmd_osclabel
+cmd_oscobject
+cmd_oscstatus
+cmd_osclast
+cmd_oscstart
+cmd_oscstop
+cmd_oscabort
+cmd_oscpause
+cmd_oscresume
+cmd_oscprepare
+cmd_oscdelay
+
+
+//------------------------------------------------------------------------------
+// Script observation subroutine/utility functions
+
+int GetOscLine(int nLineNum, int nOption, char *strUT, char *strRtn);
+char *GetOscStatus(void);
+int OscCommand(const char *cmdline);
+int OscSetDatasource(const int nDatasource);
+int ProcOsc(COSC *posc, obssystem_t *psys, obsagent_t *pagent, char *reply);
+
+
+//------------------------------------------------------------------------------
+// Client Info and Config/Status data handling utility functions
+
+void GetAgentInfo(char *info);
+char *GetExpInfo(void);
+void InitExpInfo(CEXP *pexpinfo);
+char *GetSysStatus(void);
+void InitSysConfig(obssystem_t *psys);
+void ResetTcsData(obssystem_t *psys);
+void ResetAuxData(obssystem_t *psys);
+int QueryTcsData(obssystem_t *psys, char *reply);
+int UpdateTcsData(obssystem_t *psys, char *args, char *reply);
+int QueryAuxData(obssystem_t *psys, char *reply);
+int UpdateAuxData(obssystem_t *psys, char *args, char *reply);
+int QueryFilterLabels(obssystem_t *psys, char *reply);
+int UpdateFilterLabels(obssystem_t *psys, char *args, char *reply);
+int UpdateDomeStatus(obssystem_t *psys, char *reply);
+int WriteObsStatus(void);
+
+
+
+
+//------------------------------------------------------------------------------
+// Utility functions
+
+// *** Generic utility functions
+double StopWatch(int flag, const char *title);
+char *GetUTCTime(void);
+char *GetUTCDateTime(smctime_t *datime);
+char *strupr(const char *s) ;
+void _msgout(char *msg);
+void _vmsgout(char *msg);
+void _dbgmsgout(char *msg);
+void _eventlog(const char *msg);
+void _debuglog(const char *msg);
+void _scrobslog(const char *msg);
+
+// *** Correction functions
+int offset_blg(double *ra, double *dec, double ha, const char *table);
+
+
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// Declaration in commands.h
+//
+
+// Utilites functions only used in commands.c
+int SendISISMsg(const char *, MsgType, const char *, char *);  // send a ISIS message to ICIMACS node
+int GetOscLine(int, int, char*, char*);
+int OscSetDatasource(const int nDatasource);
+int UpdateTcsData(obssystem_t*, char*, char*);
+int UpdateAuxData(obssystem_t*, char*, char*);
+int UpdateFilterLabels(obssystem_t*, char*, char*);
+int UpdateDomeStatus(obssystem_t*, char*);
+int offset_blg(double*, double*, double, const char*);
+
+
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// Declaration in obstool.h
+//
+
+// common utilities in commands.c
+
+  void  KeyboardCommand(char *);                      // process keyboard commands
+  void  SocketCommand(char *);                        // process message from an ISIS server/client
+  char *GetOscStatus(void);                           // get string for script observation status
+   int  OscCommand(const char*);                      // process a command line for script observation process
+   int  ProcOsc(COSC *, obssystem_t *, obsagent_t *, char *);
+  void  GetAgentInfo(char *info);                     // get information string for OBSAgent config and info
+  char *GetExpInfo(void);                             // Get information string for current exposure
+  void  InitExpInfo(CEXP *);                          // reset the exposure information data
+  char *GetSysStatus(void);                           // get string for observation system status
+  void  InitSysConfig(obssystem_t *);                 // reset the observation system configuration data
+  void  ResetTcsData(obssystem_t *);                  // reset the TCS data
+  void  ResetAuxData(obssystem_t *);                  // reset the AUX data
+   int  QueryTcsData(obssystem_t *, char *);          // send a request msg 'tstat' to TC node for the TCS data update
+   int  QueryAuxData(obssystem_t *, char *);          // send a request msg 'tstat' to TC node for the TCS data update
+   int  QueryFilterLabels(obssystem_t *, char *);     // send a request msg 'filname' to TC node for the filter names update
+   int  WriteObsStatus(void);                         // write observation status file (SYS.STATUS/EXP.INFO/OBS.Script)
+
+// common generic utilities in commands.c
+
+  double StopWatch(int, const char *);
+  char *GetUTCTime(void);
+  char *GetUTCDateTime(smctime_t *);
+  char *strupr(const char *);
+  void _msgout(char *);
+  void _vmsgout(char *);
+  void _dbgmsgout(char *);
+  void _eventlog(const char *);
+  void _debuglog(const char *);
+  void _scrobslog(const char *);
+
+
+
+//------------------------------------------------------------------------------
+// EOF

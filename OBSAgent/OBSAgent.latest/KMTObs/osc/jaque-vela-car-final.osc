@@ -1,0 +1,56 @@
+#
+# KMTNet observation script
+#  - Sample for repeat
+#
+
+ # LABEL      RA       DEC        COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL    # comments 
+
+ ## Set 1  (start with "ostart 1")
+ 
+ NGC2579_B    08:18:00 -36:00:00  0     object  GUM10   B       10       -      -        # Line number =  1
+ NGC2579_B    08:18:00 -36:00:00  0     object  GUM10   B      100       -      -        # Line number =  2
+ NGC2579_B    08:18:00 -36:00:00  0     object  GUM10   B      100       -      -        # Line number =  3
+ NGC2579_B    08:18:00 -36:00:00  0     object  GUM10   B      100       -      -        # Line number =  4
+ NGC2579_B    08:18:00 -36:00:00  0     object  GUM10   B      100       -      -        # Line number =  5
+ NGC2579_R    08:18:00 -36:00:00  0     object  GUM10   R        1       -      -        # Line number =  6
+ NGC2579_R    08:18:00 -36:00:00  0     object  GUM10   R      100       -      -        # Line number =  7
+ NGC2579_R    08:18:00 -36:00:00  0     object  GUM10   R      100       -      -        # Line number =  8
+ NGC2579_I    08:18:00 -36:00:00  0     object  GUM10   I        1       -      -        # Line number =  9
+ NGC2579_I    08:18:00 -36:00:00  0     object  GUM10   I      100       -      -        # Line number = 10
+ NGC2579_I    08:18:00 -36:00:00  0     object  GUM10   I      100       -      -        # Line number = 11
+ NGC2579_V_1  08:18:00 -36:00:00  0     object  GUM10   V        1       -      -        # Line number = 12
+ NGC2579_V_2  08:18:00 -36:00:00  0     object  GUM10   V       10       -      -        # Line number = 13
+
+ +ostart 13   # repeat only 'NGC2579_V_2' line(#13) until UTC 2:00  /  Line number = 14
+
+ ## NOTES
+ ##  - Start Set 1 observation in the evening with "ostart 1" command input on OBSAgent.
+ ##  - The Set 1 observation starts at the sunset, and 'NGC2579_V_2' line(#13) is repeated until UTC 2:00.
+ ##  - Stop the Set 1 observation at UTC 2:00 with 'ostop' command
+
+
+ ## Set 2  (start with "ostart 15")
+ 
+ WD2_B        10:21:00 -57:17:00  0     object  WD2     B       10       -      -        # Line number = 15
+ WD2_B        10:21:00 -57:17:00  0     object  WD2     B      100       -      -        # Line number = 16
+ WD2_B        10:21:00 -57:17:00  0     object  WD2     B      100       -      -        # Line number = 17
+ WD2_B        10:21:00 -57:17:00  0     object  WD2     B      100       -      -        # Line number = 18
+ WD2_B        10:21:00 -57:17:00  0     object  WD2     B      100       -      -        # Line number = 19
+ WD2_R        10:21:00 -57:17:00  0     object  WD2     R        1       -      -        # Line number = 20
+ WD2_R        10:21:00 -57:17:00  0     object  WD2     R      100       -      -        # Line number = 21
+ WD2_R        10:21:00 -57:17:00  0     object  WD2     R      100       -      -        # Line number = 22
+ WD2_I        10:21:00 -57:17:00  0     object  WD2     I        1       -      -        # Line number = 23
+ WD2_I        10:21:00 -57:17:00  0     object  WD2     I      100       -      -        # Line number = 24
+ WD2_I        10:21:00 -57:17:00  0     object  WD2     I      100       -      -        # Line number = 25
+ WD2_V_1      10:21:00 -57:17:00  0     object  WD2     V        1       -      -        # Line number = 26
+ WD2_V_2      10:21:00 -57:17:00  0     object  WD2     V       10       -      -        # Line number = 27
+ 
+ +ostart 27   # repeat only 'WD2_V_2' line(#27) until sunrise  /  Line number = 28
+
+ ## NOTES
+ ##  - Start Set 2 observation at UTC 2:00 with "ostart 15" command input on OBSAgent.
+ ##  - The Set 2 observation starts at UTC 2:00, and 'WD2_V_2' line(#27) is repeated until sunrise.
+ ##  - Continue the Set 2 observation until the sunrise.
+
+
+# END

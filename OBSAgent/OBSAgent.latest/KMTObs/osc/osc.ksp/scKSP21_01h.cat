@@ -1,0 +1,45 @@
+# KMTNet Observation script
+# ProjectID    LABEL         RA          DEC     COPT  IMGTYP   OBJECT_NAME FILTER EXPTIME      UTOBS          UTTOL #Comments
+#---------- ------------ ----------- ----------- ---- -------- ------------ ------ ------- ------------------- ----- ---------
+
+KSP         ZN7090-1(B)     21:32:50   -53:40:00    0   OBJECT     ZN7090-1      B      60                   -     0 #1
+KSP         ZN7090-1(V)     21:32:50   -53:40:00    0   OBJECT     ZN7090-1      V      60                   -     0
+KSP         ZN7090-1(I)     21:32:50   -53:40:00    0   OBJECT     ZN7090-1      I      60                   -     0
+
+KSP         ZIC5201-1(B)    22:16:40   -45:20:00    0   OBJECT    ZIC5201-1      B      60                   -     0 #4
+KSP         ZIC5201-1(V)    22:16:40   -45:20:00    0   OBJECT    ZIC5201-1      V      60                   -     0
+KSP         ZIC5201-1(I)    22:16:40   -45:20:00    0   OBJECT    ZIC5201-1      I      60                   -     0
+
+KSP         ZN7314-1(B)     22:33:35   -25:30:00    0   OBJECT     ZN7314-1      B      60                   -     0 #7
+KSP         ZN7314-1(V)     22:33:35   -25:30:00    0   OBJECT     ZN7314-1      V      60                   -     0
+KSP         ZN7314-1(I)     22:33:35   -25:30:00    0   OBJECT     ZN7314-1      I      60                   -     0
+
+KSP         ZN7424-1(B)     22:59:00   -40:23:00    0   OBJECT     ZN7424-1      B      60                   -     0 #10
+KSP         ZN7424-1(V)     22:59:00   -40:23:00    0   OBJECT     ZN7424-1      V      60                   -     0
+KSP         ZN7424-1(I)     22:59:00   -40:23:00    0   OBJECT     ZN7424-1      I      60                   -     0
+
+KSP         ZN7412-1(B)     22:53:30   -43:10:00    0   OBJECT     ZN7412-1      B      60                   -     0 #13
+KSP         ZN7412-1(V)     22:53:30   -43:10:00    0   OBJECT     ZN7412-1      V      60                   -     0
+KSP         ZN7412-1(I)     22:53:30   -43:10:00    0   OBJECT     ZN7412-1      I      60                   -     0
+
+KSP         ZN7713-1(B)     23:39:00   -38:20:00    0   OBJECT     ZN7713-1      B      60                   -     0 #16
+KSP         ZN7713-1(V)     23:39:00   -38:20:00    0   OBJECT     ZN7713-1      V      60                   -     0
+KSP         ZN7713-1(I)     23:39:00   -38:20:00    0   OBJECT     ZN7713-1      I      60                   -     0
+
+KSP         ZIC5332-1(B)    23:32:50   -35:44:00    0   OBJECT    ZIC5332-1      B      60                   -     0 #19
+KSP         ZIC5332-1(V)    23:32:50   -35:44:00    0   OBJECT    ZIC5332-1      V      60                   -     0
+KSP         ZIC5332-1(I)    23:32:50   -35:44:00    0   OBJECT    ZIC5332-1      I      60                   -     0
+
+KSP         N7793-2(B)      23:59:30   -33:00:00    0   OBJECT      N7793-2      B      60                   -     0 #22
+KSP         N7793-2(V)      23:59:30   -33:00:00    0   OBJECT      N7793-2      V      60                   -     0
+KSP         N7793-2(I)      23:59:30   -33:00:00    0   OBJECT      N7793-2      I      60                   -     0
+
+KSP         N300-1(B)       00:53:24   -37:20:30    0   OBJECT       N300-1      B      60                   -     0 #25
+KSP         N300-1(V)       00:53:24   -37:20:30    0   OBJECT       N300-1      V      60                   -     0
+KSP         N300-1(I)       00:53:24   -37:20:30    0   OBJECT       N300-1      I      60                   -     0
+
+KSP         UKSP19-1(B)     00:12:46   +20:38:21    0   OBJECT     UKSP19-1      B      60                   -     0 #28
+KSP         UKSP19-1(V)     00:12:46   +20:38:21    0   OBJECT     UKSP19-1      V      60                   -     0
+KSP         UKSP19-1(I)     00:12:46   +20:38:21    0   OBJECT     UKSP19-1      I      60                   -     0
++ostart 1
+

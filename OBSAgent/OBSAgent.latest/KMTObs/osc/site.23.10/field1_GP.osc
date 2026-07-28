@@ -1,0 +1,20 @@
+##########################################################################################
+
+ # PROJID  LABEL         RA           DEC          COPT  IMGTYP  OBJECT      FILTER  EXPTIME  UTOBS                UTTOL  # comments
+
+   GP     field1-R   00:34:45     -08:23:12  -     OBJECT  field1   R       120       2023-10-22T00:00:00  -      # line 1
+   GP     field1-I   00:34:45     -08:23:12  -     OBJECT  field1   I       120       -                    -      # line 2
+
+
+# Go back to the line number 1 ("field1-R" in this script) and start the loop again.
+# Note that this loop is infinite --- therefore, the operator should stop the loop manually.
+
++ostart 1  # line 5
+
+
+# Usually, additional messages to the observer or operator are given as comments at the end of the script as follows.
+# They include the desired operation period and how many loops one should perform, etc.
+
+## NOTE: start the following observation with "ostart 1" command input at UT 00:00:00
+## NOTE: The idea is observe the field1  until UT 03:30:00 and then move to field2 
+# EOF

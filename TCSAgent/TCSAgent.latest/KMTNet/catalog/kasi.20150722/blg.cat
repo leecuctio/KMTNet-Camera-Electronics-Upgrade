@@ -1,0 +1,41 @@
+# KMTNet TCSAgent RA/DEC object catalogue
+# Columns: OBJECT  RA  DEC  (default COPT)  #comments..
+
+#
+# Object: BLG
+# Default correction: BLG offset correction
+#
+
+BLG01  17:54:52.760  -31:10:58.70  1
+BLG02  17:54:52.760  -29:01:25.10  1
+BLG03  18:04:23.100  -27:56:38.30  1
+BLG04  18:04:35.150  -30:06:11.90  1
+
+BLG11  17:25:45.590  -30:06:11.90  1
+BLG12  17:26:21.750  -27:56:38.30  1
+BLG13  17:34:31.180  -34:25:19.10  1
+BLG14  17:35:40.360  -29:01:25.10  1
+BLG15  17:36:03.170  -26:51:51.50  1
+BLG16  17:36:23.560  -24:42:17.90  1
+BLG17  17:44:41.970  -34:25:19.10  1
+BLG18  17:45:27.970  -26:51:51.50  1
+BLG19  17:45:38.160  -24:42:17.90  1
+BLG20  17:45:47.230  -22:32:44.30  1
+BLG21  17:54:52.760  -35:30:05.90  1
+BLG22  17:54:52.760  -33:20:32.30  1
+
+BLG31  18:13:31.860  -25:47:04.70  1
+BLG32  18:13:53.440  -27:56:38.30  1
+BLG33  18:14:17.540  -30:06:11.90  1
+
+
+#
+# Notes
+#  - RA/DEC: J2000
+#  - COPT: Correction option, 0 = No correction, 1 = BLG offset correction
+#  - Line length must be less than 120 characters
+#
+
+# END
+
+

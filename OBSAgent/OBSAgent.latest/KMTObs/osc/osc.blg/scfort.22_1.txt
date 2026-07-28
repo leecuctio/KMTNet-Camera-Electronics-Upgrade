@@ -1,0 +1,403 @@
+# KMTNet Observation script
+# ProjectID    LABEL         RA          DEC     COPT  IMGTYP   OBJECT_NAME FILTER EXPTIME      UTOBS          UTTOL #Comments
+#---------- ------------ ----------- ----------- ---- -------- ------------ ------ ------- ------------------- ----- ---------
+
+BLG         BLG11(I,-1)     17:27:30   -29:57:00    1   OBJECT        BLG11      I      60                   -     0 #1
+BLG         BLG12(I,-2)     17:27:35   -27:50:00    1   OBJECT        BLG12      I      60                   -     0
+BLG         BLG13(I,-3)     17:34:50   -34:21:00    1   OBJECT        BLG13      I      60                   -     0
+BLG         BLG14(I,-4)     17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0
+BLG         BLG15(I,-5)     17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0
+
+BLG         BLG16(I,-6)     17:37:00   -24:40:00    1   OBJECT        BLG16      I      60                   -     0 #6
+BLG         BLG37(I,-7)     17:44:32   -35:22:00    1   OBJECT        BLG37      I      60                   -     0
+BLG         BLG17(I,-8)     17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG52(I,-9)     17:46:17   -29:42:30    1   OBJECT        BLG52      I      60                   -     0
+BLG         BLG51(I,-10)    17:46:00   -29:01:30    1   OBJECT        BLG51      I      60                   -     0
+
+BLG         BLG18(I,-11)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0 #11
+BLG         BLG19(I,-12)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+BLG         BLG20(I,-13)    17:46:00   -22:32:30    1   OBJECT        BLG20      I      60                   -     0
+BLG         BLG41(V,454)    17:54:07   -31:15:30    1   OBJECT        BLG41      V      90                   -     0
+BLG         BLG12(V,455)    17:27:35   -27:50:00    1   OBJECT        BLG12      V      90                   -     0
+
+BLG         BLG12(I,456)    17:27:35   -27:50:00    1   OBJECT        BLG12      I      60                   -     0 #16
+BLG         BLG42(I,457)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,458)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG11(I,459)    17:27:30   -29:57:00    1   OBJECT        BLG11      I      60                   -     0
+BLG         BLG35(I,460)    18:04:23   -25:50:00    1   OBJECT        BLG35      I      60                   -     0
+
+BLG         BLG02(I,461)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #21
+BLG         BLG03(I,462)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,463)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG04(I,464)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG42(I,465)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+
+BLG         BLG43(I,466)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #26
+BLG         BLG22(I,467)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0
+BLG         BLG17(I,468)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG02(I,469)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,470)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG41(I,471)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0 #31
+BLG         BLG18(I,472)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+BLG         BLG42(I,473)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,474)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG15(I,475)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0
+
+BLG         BLG14(I,476)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0 #36
+BLG         BLG02(I,477)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,478)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,479)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG19(I,480)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+
+BLG         BLG42(I,481)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0 #41
+BLG         BLG43(I,482)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG31(I,483)    18:13:32   -25:50:00    1   OBJECT        BLG31      I      60                   -     0
+BLG         BLG32(I,484)    18:11:15   -27:56:30    1   OBJECT        BLG32      I      60                   -     0
+BLG         BLG02(I,485)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+
+BLG         BLG03(I,486)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #46
+BLG         BLG41(I,487)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG33(I,488)    18:13:15   -30:03:00    1   OBJECT        BLG33      I      60                   -     0
+BLG         BLG42(I,489)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,490)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+
+BLG         BLG34(I,491)    18:04:00   -32:10:00    1   OBJECT        BLG34      I      60                   -     0 #51
+BLG         BLG21(I,492)    17:54:25   -35:22:00    1   OBJECT        BLG21      I      60                   -     0
+BLG         BLG02(I,493)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG02(V,494)    17:54:24   -29:01:30    1   OBJECT        BLG02      V      90                   -     0
+BLG         BLG03(V,495)    18:02:00   -27:56:30    1   OBJECT        BLG03      V      90                   -     0
+
+BLG         BLG03(I,496)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #56
+BLG         BLG01(I,497)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG01(V,498)    17:54:24   -31:08:00    1   OBJECT        BLG01      V      90                   -     0
+BLG         BLG04(V,499)    18:03:50   -30:03:00    1   OBJECT        BLG04      V      90                   -     0
+BLG         BLG04(I,500)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+
+BLG         BLG42(I,501)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0 #61
+BLG         BLG43(I,502)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG22(I,503)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0
+BLG         BLG17(I,504)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG02(I,505)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+
+BLG         BLG03(I,506)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #66
+BLG         BLG41(I,507)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG18(I,508)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+BLG         BLG42(I,509)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,510)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+
+BLG         BLG15(I,511)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0 #71
+BLG         BLG14(I,512)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0
+BLG         BLG02(I,513)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,514)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,515)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+
+BLG         BLG19(I,516)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0 #76
+BLG         BLG42(I,517)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,518)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG37(I,519)    17:44:32   -35:22:00    1   OBJECT        BLG37      I      60                   -     0
+BLG         BLG38(I,520)    17:55:00   -22:32:30    1   OBJECT        BLG38      I      60                   -     0
+
+BLG         BLG02(I,521)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #81
+BLG         BLG03(I,522)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,523)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG20(I,524)    17:46:00   -22:32:30    1   OBJECT        BLG20      I      60                   -     0
+BLG         BLG42(I,525)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+
+BLG         BLG43(I,526)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #86
+BLG         BLG16(I,527)    17:37:00   -24:40:00    1   OBJECT        BLG16      I      60                   -     0
+BLG         BLG11(I,528)    17:27:30   -29:57:00    1   OBJECT        BLG11      I      60                   -     0
+BLG         BLG02(I,529)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,530)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG01(I,531)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0 #91
+BLG         BLG04(I,532)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG42(I,533)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,534)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG22(I,535)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0
+
+BLG         BLG17(I,536)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0 #96
+BLG         BLG02(I,537)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,538)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,539)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG18(I,540)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+
+BLG         BLG42(I,541)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0 #101
+BLG         BLG42(V,542)    17:54:07   -29:09:00    1   OBJECT        BLG42      V      90                   -     0
+BLG         BLG43(V,543)    18:01:43   -28:04:00    1   OBJECT        BLG43      V      90                   -     0
+BLG         BLG43(I,544)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG15(I,545)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0
+
+BLG         BLG15(V,546)    17:36:50   -26:47:00    1   OBJECT        BLG15      V      90                   -     0 #106
+BLG         BLG14(V,547)    17:36:50   -28:54:00    1   OBJECT        BLG14      V      90                   -     0
+BLG         BLG14(I,548)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0
+BLG         BLG02(I,549)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,550)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG01(I,551)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0 #111
+BLG         BLG19(I,552)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+BLG         BLG42(I,553)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,554)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG35(I,555)    18:04:23   -25:50:00    1   OBJECT        BLG35      I      60                   -     0
+
+BLG         BLG31(I,556)    18:13:32   -25:50:00    1   OBJECT        BLG31      I      60                   -     0 #116
+BLG         BLG02(I,557)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,558)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,559)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG36(I,560)    18:15:51   -23:44:00    1   OBJECT        BLG36      I      60                   -     0
+
+BLG         BLG42(I,561)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0 #121
+BLG         BLG43(I,562)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG32(I,563)    18:11:15   -27:56:30    1   OBJECT        BLG32      I      60                   -     0
+BLG         BLG33(I,564)    18:13:15   -30:03:00    1   OBJECT        BLG33      I      60                   -     0
+BLG         BLG02(I,565)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+
+BLG         BLG03(I,566)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #126
+BLG         BLG01(I,567)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG04(I,568)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG42(I,569)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,570)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+
+BLG         BLG22(I,571)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0 #131
+BLG         BLG17(I,572)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG02(I,573)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,574)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,575)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+
+BLG         BLG18(I,576)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0 #136
+BLG         BLG42(I,577)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,578)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG15(I,579)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0
+BLG         BLG14(I,580)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0
+
+BLG         BLG02(I,581)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #141
+BLG         BLG03(I,582)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,583)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG19(I,584)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+BLG         BLG42(I,585)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+
+BLG         BLG42(V,586)    17:54:07   -29:09:00    1   OBJECT        BLG42      V      90                   -     0 #146
+BLG         BLG43(V,587)    18:01:43   -28:04:00    1   OBJECT        BLG43      V      90                   -     0
+BLG         BLG43(I,588)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG34(I,589)    18:04:00   -32:10:00    1   OBJECT        BLG34      I      60                   -     0
+BLG         BLG34(V,590)    18:04:00   -32:10:00    1   OBJECT        BLG34      V      90                   -     0
+
+BLG         BLG21(V,591)    17:54:25   -35:22:00    1   OBJECT        BLG21      V      90                   -     0 #151
+BLG         BLG21(I,592)    17:54:25   -35:22:00    1   OBJECT        BLG21      I      60                   -     0
+BLG         BLG02(I,593)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,594)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,595)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+
+BLG         BLG37(I,596)    17:44:32   -35:22:00    1   OBJECT        BLG37      I      60                   -     0 #156
+BLG         BLG42(I,597)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,598)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG13(I,599)    17:34:50   -34:21:00    1   OBJECT        BLG13      I      60                   -     0
+BLG         BLG38(I,600)    17:55:00   -22:32:30    1   OBJECT        BLG38      I      60                   -     0
+
+BLG         BLG02(I,601)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #161
+BLG         BLG03(I,602)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,603)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG04(I,604)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG42(I,605)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+
+BLG         BLG43(I,606)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #166
+BLG         BLG22(I,607)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0
+BLG         BLG17(I,608)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG02(I,609)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,610)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG41(I,611)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0 #171
+BLG         BLG18(I,612)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+BLG         BLG42(I,613)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,614)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG15(I,615)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0
+
+BLG         BLG14(I,616)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0 #176
+BLG         BLG02(I,617)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,618)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,619)    17:54:24   -31:08:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG19(I,620)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+
+BLG         BLG42(I,621)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0 #181
+BLG         BLG43(I,622)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG20(I,623)    17:46:00   -22:32:30    1   OBJECT        BLG20      I      60                   -     0
+BLG         BLG16(I,624)    17:37:00   -24:40:00    1   OBJECT        BLG16      I      60                   -     0
+BLG         BLG02(I,625)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+
+BLG         BLG03(I,626)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #186
+BLG         BLG41(I,627)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG12(I,628)    17:27:35   -27:50:00    1   OBJECT        BLG12      I      60                   -     0
+BLG         BLG42(I,629)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG42(V,630)    17:54:07   -29:09:00    1   OBJECT        BLG42      V      90                   -     0
+
+BLG         BLG43(V,631)    18:01:43   -28:04:00    1   OBJECT        BLG43      V      90                   -     0 #191
+BLG         BLG43(I,632)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG11(I,633)    17:27:30   -29:57:00    1   OBJECT        BLG11      I      60                   -     0
+BLG         BLG11(V,634)    17:27:30   -29:57:00    1   OBJECT        BLG11      V      90                   -     0
+BLG         BLG35(V,635)    18:04:23   -25:50:00    1   OBJECT        BLG35      V      90                   -     0
+
+BLG         BLG35(I,636)    18:04:23   -25:50:00    1   OBJECT        BLG35      I      60                   -     0 #196
+BLG         BLG02(I,637)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,638)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,639)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG04(I,640)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+
+BLG         BLG42(I,641)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0 #201
+BLG         BLG43(I,642)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG22(I,643)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0
+BLG         BLG17(I,644)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG02(I,645)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+
+BLG         BLG03(I,646)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #206
+BLG         BLG41(I,647)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG18(I,648)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+BLG         BLG42(I,649)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,650)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+
+BLG         BLG15(I,651)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0 #211
+BLG         BLG14(I,652)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0
+BLG         BLG02(I,653)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,654)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,655)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0
+
+BLG         BLG19(I,656)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0 #216
+BLG         BLG42(I,657)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,658)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG31(I,659)    18:13:32   -25:50:00    1   OBJECT        BLG31      I      60                   -     0
+BLG         BLG32(I,660)    18:11:15   -27:56:30    1   OBJECT        BLG32      I      60                   -     0
+
+BLG         BLG02(I,661)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #221
+BLG         BLG03(I,662)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,663)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG33(I,664)    18:13:15   -30:03:00    1   OBJECT        BLG33      I      60                   -     0
+BLG         BLG42(I,665)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+
+BLG         BLG43(I,666)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #226
+BLG         BLG34(I,667)    18:04:00   -32:10:00    1   OBJECT        BLG34      I      60                   -     0
+BLG         BLG21(I,668)    17:54:25   -35:22:00    1   OBJECT        BLG21      I      60                   -     0
+BLG         BLG02(I,669)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,670)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG01(I,671)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0 #231
+BLG         BLG04(I,672)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG42(I,673)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG42(V,674)    17:54:07   -29:09:00    1   OBJECT        BLG42      V      90                   -     0
+BLG         BLG43(V,675)    18:01:43   -28:04:00    1   OBJECT        BLG43      V      90                   -     0
+
+BLG         BLG43(I,676)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #236
+BLG         BLG22(I,677)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0
+BLG         BLG22(V,678)    17:54:24   -33:15:00    1   OBJECT        BLG22      V      90                   -     0
+BLG         BLG17(V,679)    17:44:40   -33:15:00    1   OBJECT        BLG17      V      90                   -     0
+BLG         BLG17(I,680)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+
+BLG         BLG02(I,681)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #241
+BLG         BLG03(I,682)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,683)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG18(I,684)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+BLG         BLG42(I,685)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+
+BLG         BLG43(I,686)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #246
+BLG         BLG15(I,687)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0
+BLG         BLG14(I,688)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0
+BLG         BLG02(I,689)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,690)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG01(I,691)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0 #251
+BLG         BLG19(I,692)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+BLG         BLG42(I,693)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,694)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG37(I,695)    17:44:32   -35:22:00    1   OBJECT        BLG37      I      60                   -     0
+
+BLG         BLG38(I,696)    17:55:00   -22:32:30    1   OBJECT        BLG38      I      60                   -     0 #256
+BLG         BLG02(I,697)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,698)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,699)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+BLG         BLG20(I,700)    17:46:00   -22:32:30    1   OBJECT        BLG20      I      60                   -     0
+
+BLG         BLG42(I,701)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0 #261
+BLG         BLG43(I,702)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG16(I,703)    17:37:00   -24:40:00    1   OBJECT        BLG16      I      60                   -     0
+BLG         BLG11(I,704)    17:27:30   -29:57:00    1   OBJECT        BLG11      I      60                   -     0
+BLG         BLG02(I,705)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+
+BLG         BLG03(I,706)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #266
+BLG         BLG01(I,707)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG04(I,708)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG42(I,709)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,710)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+
+BLG         BLG22(I,711)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0 #271
+BLG         BLG17(I,712)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG02(I,713)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,714)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,715)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+
+BLG         BLG18(I,716)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0 #276
+BLG         BLG42(I,717)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,718)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG15(I,719)    17:36:50   -26:47:00    1   OBJECT        BLG15      I      60                   -     0
+BLG         BLG14(I,720)    17:36:50   -28:54:00    1   OBJECT        BLG14      I      60                   -     0
+
+BLG         BLG02(I,721)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #281
+BLG         BLG02(V,722)    17:54:24   -29:01:30    1   OBJECT        BLG02      V      90                   -     0
+BLG         BLG03(V,723)    18:02:00   -27:56:30    1   OBJECT        BLG03      V      90                   -     0
+BLG         BLG03(I,724)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,725)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0
+
+BLG         BLG01(V,726)    17:36:50   -26:47:00    1   OBJECT        BLG01      V      90                   -     0 #286
+BLG         BLG19(V,727)    17:46:00   -24:40:00    1   OBJECT        BLG19      V      90                   -     0
+BLG         BLG19(I,728)    17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+BLG         BLG42(I,729)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,730)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+
+BLG         BLG35(I,731)    18:04:23   -25:50:00    1   OBJECT        BLG35      I      60                   -     0 #291
+BLG         BLG31(I,732)    18:13:32   -25:50:00    1   OBJECT        BLG31      I      60                   -     0
+BLG         BLG02(I,733)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,734)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG41(I,735)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+
+BLG         BLG36(I,736)    18:15:51   -23:44:00    1   OBJECT        BLG36      I      60                   -     0 #296
+BLG         BLG42(I,737)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG43(I,738)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0
+BLG         BLG32(I,739)    18:11:15   -27:56:30    1   OBJECT        BLG32      I      60                   -     0
+BLG         BLG33(I,740)    18:13:15   -30:03:00    1   OBJECT        BLG33      I      60                   -     0
+
+BLG         BLG02(I,741)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0 #301
+BLG         BLG03(I,742)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+BLG         BLG01(I,743)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG04(I,744)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG42(I,745)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+
+BLG         BLG43(I,746)    18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #306
+BLG         BLG22(I,747)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0
+BLG         BLG17(I,748)    17:44:40   -33:15:00    1   OBJECT        BLG17      I      60                   -     0
+BLG         BLG02(I,749)    17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG03(I,750)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG41(I,751)    17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0 #311
+BLG         BLG18(I,752)    17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+BLG         BLG42(I,753)    17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG01(I,-1)     17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG02(I,-2)     17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+
+BLG         BLG03(I,-3)     18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0 #316
+BLG         BLG19(I,-4)     17:46:00   -24:40:00    1   OBJECT        BLG19      I      60                   -     0
+BLG         BLG18(I,-5)     17:46:00   -26:45:00    1   OBJECT        BLG18      I      60                   -     0
+BLG         BLG42(I,-6)     17:54:07   -29:09:00    1   OBJECT        BLG42      I      60                   -     0
+BLG         BLG41(I,-7)     17:54:07   -31:15:30    1   OBJECT        BLG41      I      60                   -     0
+
+BLG         BLG43(I,-8)     18:01:43   -28:04:00    1   OBJECT        BLG43      I      60                   -     0 #321
+BLG         BLG02(I,-9)     17:54:24   -29:01:30    1   OBJECT        BLG02      I      60                   -     0
+BLG         BLG35(I,-10)    18:04:23   -25:50:00    1   OBJECT        BLG35      I      60                   -     0
+BLG         BLG01(I,-11)    17:36:50   -26:47:00    1   OBJECT        BLG01      I      60                   -     0
+BLG         BLG03(I,-12)    18:02:00   -27:56:30    1   OBJECT        BLG03      I      60                   -     0
+
+BLG         BLG22(I,-13)    17:54:24   -33:15:00    1   OBJECT        BLG22      I      60                   -     0 #326
+BLG         BLG21(I,-14)    17:54:25   -35:22:00    1   OBJECT        BLG21      I      60                   -     0
+BLG         BLG04(I,-15)    18:03:50   -30:03:00    1   OBJECT        BLG04      I      60                   -     0
+BLG         BLG36(I,-16)    18:15:51   -23:44:00    1   OBJECT        BLG36      I      60                   -     0
+BLG         BLG34(I,-17)    18:04:00   -32:10:00    1   OBJECT        BLG34      I      60                   -     0
+
+BLG         BLG31(I,-18)    18:13:32   -25:50:00    1   OBJECT        BLG31      I      60                   -     0 #331
+BLG         BLG32(I,-19)    18:11:15   -27:56:30    1   OBJECT        BLG32      I      60                   -     0
+BLG         BLG33(I,-20)    18:13:15   -30:03:00    1   OBJECT        BLG33      I      60                   -     0  

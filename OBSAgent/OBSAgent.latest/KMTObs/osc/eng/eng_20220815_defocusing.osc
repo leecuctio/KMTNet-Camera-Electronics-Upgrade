@@ -1,0 +1,301 @@
+# PID  LABEL        RA          DEC        COP IMGTYP OBJECT   FIL EXP  UT_OBS         UT_TOL   V_RA    V_DEC   #  Azi    Elev   HA
+
+# Intializing the Focus Actuator 
+#   fttstat (memo current <tns> & <tew>)
+#   acmd focuser home
+#   fttgoto <focus> <tns> <tew>
+# Finding best focus on sci image at Zenith
+
++noop 
++noop 
++noop 
++noop 
+
++tcmd track on
+
+#+acmd shutter set_async off
+#+acmd shutter both open
++noop
++noop 
+
++tcmd autodome on
+
++tme 60 +120
++odelay 180
+
++tcmd autodome off
+
++tme 88 +120       # NEE Zenith
++odelay 60
+
++tcmd autodome on
++odelay 20
+
++tme 88 +120       # NEE Zenith
++noop 
+
++tcmd autodome on
++noop 
+
++dfocus -0.60
+ENG  001_EZ_f-60  - - -  OBJECT E88_f-60  I  80  - 0  # LINE 021  EXP 001
++dfocus +0.10
+ENG  002_EZ_f-50  - - -  OBJECT E88_f-50  I  70  - 0  # LINE 023  EXP 002
+
++tme 88 +120       # NEE Zenith
++odelay 10
+
++dfocus +0.10
+ENG  003_EZ_f-40  - - -  OBJECT E88_f-40  I  60  - 0  # LINE 027  EXP 003
++dfocus +0.05
+ENG  004_EZ_f-35  - - -  OBJECT E88_f-35  I  60  - 0  # LINE 029  EXP 004
++dfocus +0.05
+ENG  005_EZ_f-30  - - -  OBJECT E88_f-30  I  60  - 0  # LINE 031  EXP 005
++dfocus +0.05
+ENG  006_EZ_f-25  - - -  OBJECT E88_f-25  I  60  - 0  # LINE 033  EXP 006
+
++tme 88 +120       # NEE Zenith
++odelay 10
+
++dfocus +0.10
+ENG  007_EZ_f-15  - - -  OBJECT E88_f-15  I  40  - 0  # LINE 037  EXP 007
++dfocus +0.10
+ENG  008_EZ_f-05  - - -  OBJECT E88_f-05  I  30  - 0  # LINE 039  EXP 008
++dfocus +0.05
+ENG  009_EZ_f+00  - - -  OBJECT E88_f+00  I  30  - 0  # LINE 041  EXP 009
++dfocus +0.05
+ENG  010_EZ_f+05  - - -  OBJECT E88_f+05  I  30  - 0  # LINE 043  EXP 010
++dfocus +0.10
+ENG  011_EZ_f+15  - - -  OBJECT E88_f+15  I  40  - 0  # LINE 045  EXP 011
+
++tme 88 +120       # NEE Zenith
++odelay 10
+
++dfocus +0.10
+ENG  012_EZ_f+25  - - -  OBJECT E88_f+25  I  60  - 0  # LINE 049  EXP 012
++dfocus +0.05
+ENG  013_EZ_f+30  - - -  OBJECT E88_f+30  I  60  - 0  # LINE 051  EXP 013
++dfocus +0.05
+ENG  014_EZ_f+35  - - -  OBJECT E88_f+35  I  60  - 0  # LINE 053  EXP 014
++dfocus +0.05
+ENG  015_EZ_f+40  - - -  OBJECT E88_f+40  I  60  - 0  # LINE 055  EXP 015
+
++tme 88 +120       # NEE Zenith
++odelay 10
+
++dfocus +0.10
+ENG  016_EZ_f+50  - - -  OBJECT E88_f+50  I  70  - 0  # LINE 059  EXP 016
++dfocus +0.10
+ENG  017_EZ_f+60  - - -  OBJECT E88_f+60  I  80  - 0  # LINE 061  EXP 017
+
++dfocus -0.60
+
++tcmd autodome off
+
++tme 45.1 +120       # NEE low altitude
++odelay 80
+
++tcmd autodome on
+
++tme 45.1 +120       # NEE low altitude
++odelay 20
+
++tcmd autodome on
+
++dfocus -0.60
+ENG  018_EL_f-60  - - -  OBJECT E45_f-60  I  80  - 0  # LINE 071  EXP 018
++dfocus +0.10
+ENG  019_EL_f-50  - - -  OBJECT E45_f-50  I  70  - 0  # LINE 073  EXP 019
+
++tme 45.1 +120       # NEE low altitude
++odelay 10
+
++dfocus +0.10
+ENG  020_EL_f-40  - - -  OBJECT E45_f-40  I  60  - 0  # LINE 077  EXP 020
++dfocus +0.05
+ENG  021_EL_f-35  - - -  OBJECT E45_f-35  I  60  - 0  # LINE 079  EXP 021
++dfocus +0.05
+ENG  022_EL_f-30  - - -  OBJECT E45_f-30  I  60  - 0  # LINE 081  EXP 022
++dfocus +0.05
+ENG  023_EL_f-25  - - -  OBJECT E45_f-25  I  60  - 0  # LINE 083  EXP 023
+
++tme 45.1 +120       # NEE low altitude
++odelay 10
+
++dfocus +0.10
+ENG  024_EL_f-15  - - -  OBJECT E45_f-15  I  40  - 0  # LINE 087  EXP 024
++dfocus +0.10
+ENG  025_EL_f-05  - - -  OBJECT E45_f-05  I  30  - 0  # LINE 089  EXP 025
++dfocus +0.05
+ENG  026_EL_f+00  - - -  OBJECT E45_f+00  I  30  - 0  # LINE 091  EXP 026
++dfocus +0.05
+ENG  027_EL_f+05  - - -  OBJECT E45_f+05  I  30  - 0  # LINE 093  EXP 027
++dfocus +0.10
+ENG  028_EL_f+15  - - -  OBJECT E45_f+15  I  40  - 0  # LINE 095  EXP 028
+
++tme 45.1 +120       # NEE low altitude
++odelay 10
+
++dfocus +0.10
+ENG  029_EL_f+25  - - -  OBJECT E45_f+25  I  60  - 0  # LINE 099  EXP 029
++dfocus +0.05
+ENG  030_EL_f+30  - - -  OBJECT E45_f+30  I  60  - 0  # LINE 101  EXP 030
++dfocus +0.05
+ENG  031_EL_f+35  - - -  OBJECT E45_f+35  I  60  - 0  # LINE 103  EXP 031
++dfocus +0.05
+ENG  032_EL_f+40  - - -  OBJECT E45_f+40  I  60  - 0  # LINE 105  EXP 032
+
++tme 45.1 +120       # NEE low altitude
++odelay 10
+
++dfocus +0.10
+ENG  033_EL_f+50  - - -  OBJECT E45_f+50  I  70  - 0  # LINE 109  EXP 033
++dfocus +0.10
+ENG  034_EL_f+60  - - -  OBJECT E45_f+60  I  80  - 0  # LINE 111  EXP 034
+
++dfocus -0.60
+
++tme 60 -90
++odelay 180
+
++tcmd autodome off
+
++tme 88 -90       # W Zenith
++odelay 60
+
++tcmd autodome on
++tme 88 -90       # W Zenith
+
++dfocus -0.60
+ENG  035_WZ_f-60  - - -  OBJECT W88_f-60  I  80  - 0  # LINE 121  EXP 035
++dfocus +0.10
+ENG  036_WZ_f-50  - - -  OBJECT W88_f-50  I  70  - 0  # LINE 123  EXP 036
+
++tme 88 -90       # W Zenith
++odelay 10
+
++dfocus +0.10
+ENG  037_WZ_f-40  - - -  OBJECT W88_f-40  I  60  - 0  # LINE 127  EXP 037
++dfocus +0.05
+ENG  038_WZ_f-35  - - -  OBJECT W88_f-35  I  60  - 0  # LINE 129  EXP 038
++dfocus +0.05
+ENG  039_WZ_f-30  - - -  OBJECT W88_f-30  I  60  - 0  # LINE 131  EXP 039
++dfocus +0.05
+ENG  040_WZ_f-25  - - -  OBJECT W88_f-25  I  60  - 0  # LINE 133  EXP 040
+
++tme 88 -90       # W Zenith
++odelay 10
+
++dfocus +0.10
+ENG  041_WZ_f-15  - - -  OBJECT W88_f-15  I  40  - 0  # LINE 137  EXP 041
++dfocus +0.10
+ENG  042_WZ_f-05  - - -  OBJECT W88_f-05  I  30  - 0  # LINE 139  EXP 042
++dfocus +0.05
+ENG  043_WZ_f+00  - - -  OBJECT W88_f+00  I  30  - 0  # LINE 141  EXP 043
++dfocus +0.05
+ENG  044_WZ_f+05  - - -  OBJECT W88_f+05  I  30  - 0  # LINE 143  EXP 044
++dfocus +0.10
+ENG  045_WZ_f+15  - - -  OBJECT W88_f+15  I  40  - 0  # LINE 145  EXP 045
+
++tme 88 -90       # W Zenith
++odelay 10
+
++dfocus +0.10
+ENG  046_WZ_f+25  - - -  OBJECT W88_f+25  I  60  - 0  # LINE 149  EXP 046
++dfocus +0.05
+ENG  047_WZ_f+30  - - -  OBJECT W88_f+30  I  60  - 0  # LINE 151  EXP 047
++dfocus +0.05
+ENG  048_WZ_f+35  - - -  OBJECT W88_f+35  I  60  - 0  # LINE 153  EXP 048
++dfocus +0.05
+ENG  049_WZ_f+40  - - -  OBJECT W88_f+40  I  60  - 0  # LINE 155  EXP 049
+
++tme 88 -90       # W Zenith
++odelay 10
+
++dfocus +0.10
+ENG  050_WZ_f+50  - - -  OBJECT W88_f+50  I  70  - 0  # LINE 159  EXP 050
++dfocus +0.10
+ENG  051_WZ_f+60  - - -  OBJECT W88_f+60  I  80  - 0  # LINE 161  EXP 051
+
++dfocus -0.60
+
++tcmd autodome off
+
++tme 45.1 -90       # W low altitude
++odelay 80
+
++tcmd autodome on
+
++tme 45.1 -90       # W low altitude
++odelay 20
+
++noop
+
++dfocus -0.60
+ENG  052_WL_f-60  - - -  OBJECT W45_f-60  I  80  - 0  # LINE 171  EXP 052
++dfocus +0.10
+ENG  053_WL_f-50  - - -  OBJECT W45_f-50  I  70  - 0  # LINE 173  EXP 053
+
++tme 45.1 -90       # W low altitude
++odelay 10
+
++dfocus +0.10
+ENG  054_WL_f-40  - - -  OBJECT W45_f-40  I  60  - 0  # LINE 177  EXP 054
++dfocus +0.05
+ENG  055_WL_f-35  - - -  OBJECT W45_f-35  I  60  - 0  # LINE 179  EXP 055
++dfocus +0.05
+ENG  056_WL_f-30  - - -  OBJECT W45_f-30  I  60  - 0  # LINE 181  EXP 056
++dfocus +0.05
+ENG  057_WL_f-25  - - -  OBJECT W45_f-25  I  60  - 0  # LINE 183  EXP 057
+
++tme 45.1 -90       # W low altitude
++odelay 10
+
++dfocus +0.10
+ENG  058_WL_f-15  - - -  OBJECT W45_f-15  I  40  - 0  # LINE 187  EXP 058
++dfocus +0.10
+ENG  059_WL_f-05  - - -  OBJECT W45_f-05  I  30  - 0  # LINE 189  EXP 059
++dfocus +0.05
+ENG  060_WL_f+00  - - -  OBJECT W45_f+00  I  30  - 0  # LINE 191  EXP 060
++dfocus +0.05
+ENG  061_WL_f+05  - - -  OBJECT W45_f+05  I  30  - 0  # LINE 193  EXP 061
++dfocus +0.10
+ENG  062_WL_f+15  - - -  OBJECT W45_f+15  I  40  - 0  # LINE 195  EXP 062
+
++tme 45.1 -90       # W low altitude
++odelay 10
+
++dfocus +0.10
+ENG  063_WL_f+25  - - -  OBJECT W45_f+25  I  60  - 0  # LINE 199  EXP 063
++dfocus +0.05
+ENG  064_WL_f+30  - - -  OBJECT W45_f+30  I  60  - 0  # LINE 201  EXP 064
++dfocus +0.05
+ENG  065_WL_f+35  - - -  OBJECT W45_f+35  I  60  - 0  # LINE 203  EXP 065
++dfocus +0.05
+ENG  066_WL_f+40  - - -  OBJECT W45_f+40  I  60  - 0  # LINE 205  EXP 066
+
++tme 45.1 -90       # W low altitude
++odelay 10
+
++dfocus +0.10
+ENG  067_WL_f+50  - - -  OBJECT W45_f+50  I  70  - 0  # LINE 209  EXP 067
++dfocus +0.10
+ENG  068_WL_f+60  - - -  OBJECT W45_f+60  I  80  - 0  # LINE 211  EXP 068
+
++dfocus -0.60
+
++noop 
++noop 
+
++tcmd stowdome
++tstow
+
++noop 
++noop 
+
++noop 
++noop 
+
+# Total 230 Lines
+
+#END

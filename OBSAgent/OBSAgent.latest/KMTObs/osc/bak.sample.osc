@@ -1,0 +1,125 @@
+#
+# KMTNet observation script
+#  
+#  - Obs.site: CTIO
+#  - Obs.date: 2017-08-08
+#  - Revisied: 2017-08-05 by ..
+#
+
+#
+# Camera and FITS data configuration
+#
+   +ProjID       ALL
+   +Datasource   CTC
+   +DMAWait      500
+   +Observer     KMTNet observer
+
+#
+# BLG observation start
+#
+   +projid       BLG
+#  +Autoguider   on    // ..reserved command
+
+ # LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+ BLG-NORMAL-1015  17:54:24 -31:08:00  1  object  BLG01  I 60  - -  # Line number = 6
+ BLG-NORMAL-1016  17:54:24 -29:01:30  1  object  BLG02  I 60  - -  
+ BLG-NORMAL-1017  18:02:00 -27:56:30  1  object  BLG03  I 60  - -  
+ BLG-NORMAL-1018  17:46:00 -24:40:00  1  object  BLG19  I 60  - -  # comments..
+ BLG-NORMAL-1019  18:13:32 -25:50:00  1  object  BLG31  I 60  - -  
+ BLG-NORMAL-1020  18:11:15 -27:56:30  1  object  BLG32  I 60  - -  
+ BLG-NORMAL-1021  17:54:07 -31:15:30  1  object  BLG41  I 60  - -  
+
++ostart 6   # loop from 'BLG-NORMAL-1015' line to 'BLG-NORMAL-1021' line
+
+#
+# NEO observation (no loop) start
+# 
+
+   +ProjID       NEO
+#  +Autoguider   off   // ..reserved command
+
+# LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+
+2011WO41  00:53:20.0  -27:00:00.0  0   object  S29000  R  42   2017-08-08T05:50:00  20    # Exposure will start within UTOBS +/-20 seconds.
+2011WO41  00:53:20.0  -27:00:00.0  0   object  S29000  R  42   2017-08-08T05:52:42  20    
+2011WO41  00:53:20.0  -27:00:00.0  0   object  S29000  R  42   2017-08-08T05:55:24  20    
+
+2003WR21  22:33:06.2  -51:00:00.0  -   OBJECT  S38318  R  34   2017-08-08T05:58:06  10    # Exposure will start within UTOBS +/-10 seconds.
+2003WR21  22:33:06.2  -51:00:00.0  -   OBJECT  S38318  R  34   2017-08-08T06:00:40  10  
+2003WR21  22:33:06.2  -51:00:00.0  -   OBJECT  S38318  R  34   2017-08-08T06:03:14  10  
+
+2011WO41  00:53:20.0  -27:00:00.0  0   OBJECT  S29000  R  42   2017-08-08T06:05:48   0    # Exposure will start on time at UTOBS.
+2011WO41  00:53:20.0  -27:00:00.0  0   OBJECT  S29000  R  42   2017-08-08T06:08:30   0
+2011WO41  00:53:20.0  -27:00:00.0  0   OBJECT  S29000  R  42   2017-08-08T06:11:12   0
+
+
+#
+# Preprocess images
+#
+   +ProjID       ALL
+
+#+MoveToDomeFlat   # move the telescope to dome flat position ..reserved command
+# observer need to manually move the telescope to the domeflat position here..
+morning.domeflat  - - -  domeflat  dflat  r  20  - -
+morning.domeflat  - - -  domeflat  dflat  r  20  - -
+morning.domeflat  - - -  domeflat  dflat  r  20  - -
+morning.domeflat  - - -  domeflat  dflat  i  32  - -
+morning.domeflat  - - -  domeflat  dflat  i  32  - -
+morning.domeflat  - - -  domeflat  dflat  i  32  - -
+
++stow
++opause      # pause the script running, the observer should check for the command running at this stage and put 'oresume'
+
++acmd         m1cover close
++opause      # waitting for the mirror cover closing
+
+morning.dark  - - -  dark  dark  n  60  - -
+morning.dark  - - -  dark  dark  n  60  - -
+morning.dark  - - -  dark  dark  n  60  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+
+
+# 
+# NOTES:
+#
+# Structure of KMTNet observation script
+#   - The observation script is imported with a text file including command lines and exposure lines.
+#   - Command lines are defined with '+' identifier. (ex. "+cmd arg1 arg2 ..")
+#   - Command line syntax
+#     Format  ) "+<command_word> <arguments_string>"
+#     Examples) "+projid eng"
+#                "+tguide +50 -50"
+#   - Exposure line syntax
+#     Columns ) LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+#     Examples) BLG-NORMAL-1015  17:54:24 -31:08:00  1  object  BLG01  I 60  - -  # comments..
+#               2011WO41  00:53:20.0  -27:00:00.0  0   object  S29000  R  42   2017-08-08T05:52:42  20    
+#   - Exposure lines can be repeated by putting the 'ostart <line#>' command line between the script lines
+#   - Script observation can be stopped or paused by putting the 'ostop' or 'opause' command line between the script lines
+#
+# Descriptions of the exposure configuration line
+#   - 1 line = 1 exposure, line length: not to exceed 240 characters
+#   - Not case sensitive, colnum spliter = 0x20(space)
+#   - Columns: LABEL RA DEC COPT IMGTYP OBJECT FILTER EXPTIME UTOBS UTTOL
+#
+# Descriptions of columns of exposure configuration lines
+#   - LABLE  : description of the line or exposure, not FITS header keyword, 
+#              ex. index#, serial#, target ID, any infomation of frame, etc.
+#   - RA/DEC : J2000 RA/Dec coordinate, hh:mm:ss.ss / +dd:mm:ss.s
+#   - COPT   : pointing correction option, 0 = No / 1 = BLG offset
+#   - IMGTYP : image type, object / bias / dark / flat / domeflat / sky
+#   - OBJECT : object name to record in FITS header
+#   - FILTER : I / R / V / B / N // z / i / r / z / n // Ha // 1 / 2 / 3 / 4 / 0
+#   - EXPTIME: Exposure time in seconds, Min. 0.1 seconds
+#   - UTOBS  : ISO UT string to start exposure, yyyy-mm-ssThh:mm:ss.s
+#   - UTTOL  : tolerance for UTOBS in seconds
+#   * If UTOBS is defined, the exposure starts at UTOBS +/-UTTOL.
+# 
+
+
+# END
+
+

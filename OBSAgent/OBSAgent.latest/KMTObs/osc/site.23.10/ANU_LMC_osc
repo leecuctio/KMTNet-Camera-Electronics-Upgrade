@@ -1,0 +1,33 @@
+# A sample KMTNet observation script for 1-position pointing 
+#
+# This sample shows a series of exposures with the same position
+#
+# The line (LMC-1-V) corresponds to exposures at the position:
+# (RA, DEC) = (05:07:37.63, -74:14:16.3) (hh:mm:ss.ss, +dd:mm:ss.s),
+# with the filter V and exposure times 90 seconds.
+#
+# After finishing the above set of exposure,
+# the script returns start the exposures again.
+#
+###########################################################################################
+
+
+# First set of the exposure at the center position (RA,DEC) = (05:07:37.63, -74:14:16.3).
+# It consists of exposure with V filters and 90-second exposure times.
+#
+
+ # PROJID  LABEL       RA           DEC           COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL    # comments
+
+  ANU-KMT  LMC-1-V  05:07:37.63  -74:14:16.3       -    object   LMC       V       90       -      -           
+
+
+# Go back to the line number 1 ("LMC-1-V" in this script) and start the loop again.
+# Note that this loop is infinite --- therefore, the operator should stop the loop manually.
+
+ +ostart 1   
+
+
+## NOTE: This loop of observation will occupy 40 nights: 22-31st October, 28th Nov-7th Dec, 5-14th Jan, 10-19th February
+## NOTE: We aim to conduct observations of our target field with a minimum of 100 repetitions per night, striving for as many repetitions as possible
+ 
+# EOF

@@ -1,0 +1,42 @@
+#
+# KMTNet observation script
+#  
+#  - Obs.site: CTIO
+#  - Obs.date: 2021-01-05
+#
+
+#
+# observation start
+#
+
+ # LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+
++projid  SITE  #line number 1
+55638(2002VE95)  6:23:58.0  6:52:33.0  0  object  TNO1  N  600   -   -  #line number 2
++ostart 1  # repeat from 00:30 to 05:00
+
++projid  SITE  #line number 4
+55565(2002AW197)  10:03:03.0  -4:49:31.0  0  object  TNO1  N  600   -   -  #line number 5
++ostart  4  # repeat from 05:00 to 09:00
+
+
+#
+# Preprocess images
+#
+
+# NOTE: 
+#   - Input "ostart  7" for take the dark & bias images.
+#   - When the sky is bright, close dome shutter
+
+  +ProjID     ALL  # line number 7
+
+morning.dark  - - -  dark  dark  n  600  - -
+morning.dark  - - -  dark  dark  n  600  - -
+morning.dark  - - -  dark  dark  n  600  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+morning.bias  - - -  bias  bias  n   -  - -
+
+

@@ -1,0 +1,72 @@
+##########################################################################################
+# The first set of lines (DITHER-1-V) corresponds to exposures at the center position:
+# (RA, DEC) = (23:26:00.00, -5:00:00.0) (hh:mm:ss.ss, +dd:mm:ss.s),
+# with filter V and exposure times 90 seconds.
+#
+# The second set of lines (DITHER-2-V) corresponds to the exposures
+# with the same filters and exposure times to the first set,
+# but at a new position (RA,DEC) = (23:18:00.00, -7:00:00.0).
+# 
+# The third, fourth, and fifth sets of four lines (DITHER-3/4/5-V) correspond to the exposures
+# at the dithered positions to 
+# (RA,DEC) = (23:20:00.00, -3:00:00.0), (23:34:00.00, -7:30:00.0), 
+# and (23:36:00.00, -3:30:00.0), respectively.
+#
+# After finishing the above five sets of exposures,
+# the script returns to the center position and start the exposures again.
+###########################################################################################
+
+
+# First set of the exposures at the center position (RA,DEC) = (23:26:00.00, -5:00:00.0).
+# It consists of exposure with V filter and 90-second exposure time.
+#
+# Note that the line labeled "DITHER-1-V"  is the line number 1,
+
+ # PROJID  LABEL       RA           DEC           COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL    # comments
+
+   ANU_FIELD    DITHER-1-V  23:26:00.00  -5:00:00.0   -     object  obj1   V       90       -      -        
+
+
+# Second set of the exposures at the (RA,DEC) = (23:18:00.00, -7:00:00.0).
+
+ # PROJID  LABEL       RA           DEC           COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL    # comments
+      
+   ANU_FIELD    DITHER-2-V  23:18:00.00  -7:00:00.0   -     object  obj2   V       90       -      -        
+   
+
+
+# Third set of the exposures at the position (RA,DEC) = (23:20:00.00, -3:00:00.0).
+
+ # PROJID  LABEL       RA           DEC           COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL    # comments
+     
+   ANU_FIELD    DITHER-3-V  23:20:00.00  -3:00:00.0   -     object  obj3   V       90       -      -          
+
+
+# Fourth set of the exposures at the northeast position (RA,DEC) = (23:34:00.00, -7:30:00.0).
+
+ # PROJID  LABEL       RA           DEC           COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL    # comments
+   
+   ANU_FIELD    DITHER-4-V  23:34:00.00  -7:30:00.0   -     object  obj4   V       90       -      -          
+
+
+# Fifth set of the exposures at the southeast position (RA,DEC) = (23:36:00.00, -3:30:00.0).
+
+ # PROJID  LABEL       RA           DEC           COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL    # comments
+     
+   ANU_FIELD    DITHER-5-V  23:36:00.00  -3:30:00.0   -     object  obj5   V       90       -      -          
+
+
+# Go back to the line number 1 ("DITHER-1-V" in this script) and start the loop again.
+# Note that this loop is infinite --- therefore, the operator should stop the loop manually.
+
+ +ostart 1   
+
+
+# Usually, additional messages to the operator are given as comments at the end of the script as follows.
+# They include the desired operation period and how many loops one should perform, etc.
+
+## NOTE: Start at the the evning twilight - Finish when the LMC can be detected by the KMTnet (after about 4 hours, 
+## when the HA of LMC is -4.5h)) 
+
+ 
+# EOF

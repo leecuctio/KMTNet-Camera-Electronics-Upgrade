@@ -1,0 +1,30 @@
+# KMTNet Observation script
+# ProjID  LABEL        RA        DEC       COPT  IMGTYP   OBJECT_NAME   FIL  EXP  UTOBS UTTOL #Comments
+#------- ------------  --------  --------- ----  -------- ------------  ---- ---  ----- ----- -------------------------
+# ENG    ZN7090-1(I)   21:32:50  -53:40:00    0  OBJECT     ZN7090-1    I     60    -     0   #--   ALT 59.20  HA +1.97
+  ENG    ZIC5201-1(I)  22:16:40  -45:20:00    0  OBJECT    ZIC5201-1    I     60    -     0   #01   ALT 69.86  HA +1.24
+# ENG    ZN7314-1(I)   22:33:35  -25:30:00    0  OBJECT     ZN7314-1    I     60    -     0   #--   ALT 76.17  HA +0.95
+  ENG    ZN7424-1(I)   22:59:00  -40:23:00    0  OBJECT     ZN7424-1    I     60    -     0   #02   ALT 78.85  HA +0.53
+# ENG    ZN7412-1(I)   22:53:30  -43:10:00    0  OBJECT     ZN7412-1    I     60    -     0   #--   ALT 76.00  HA +0.62
+# ENG    ZN7713-1(I)   23:39:00  -38:20:00    0  OBJECT     ZN7713-1    I     60    -     0   #--   ALT 82.74  HA -0.14
+  ENG    ZIC5332-1(I)  23:32:50  -35:44:00    0  OBJECT    ZIC5332-1    I     60    -     0   #03   ALT 85.52  HA -0.03
+  ENG    N7793-2(I)    23:59:30  -33:00:00    0  OBJECT      N7793-2    I     60    -     0   #04   ALT 83.68  HA -0.48
+  ENG    N300-1(I)     00:53:24  -37:20:30    0  OBJECT       N300-1    I     60    -     0   #05   ALT 71.94  HA -1.38
+# ENG    UKSP19-1(I)   00:12:46  +20:38:21    0  OBJECT     UKSP19-1    I     60    -     0   #--   ALT 37.12  HA -0.70
+  ENG    ZN908-1(I)    02:24:00  -20:35:00    0  OBJECT      ZN908-1    I     60    -     0   #06   ALT 49.89  HA -2.89
+# ENG    ZN988-1(I)    02:37:40  -08:55:00    0  OBJECT      ZN988-1    I     60    -     0   #--   ALT 41.25  HA -3.11
+# ENG    ZN1068-1(I)   02:44:47  +00:14:00    0  OBJECT     ZN1068-1    I     60    -     0   #--   ALT 34.35  HA -3.23
+# ENG    ZN1097-1(I)   02:44:30  -29:45:00    0  OBJECT     ZN1097-1    I     60    -     0   #--   ALT 48.59  HA -3.23
+# ENG    ZN1187-1(I)   03:05:10  -22:25:00    0  OBJECT     ZN1187-1    I     60    -     0   #--   ALT 41.83  HA -3.57
+# ENG    ZN1433-1(I)   03:39:00  -46:44:30    0  OBJECT     ZN1433-1    I     60    -     0   #--   ALT 40.73  HA -4.14
+# ENG    ZN1512-1(I)   04:01:00  -43:50:00    0  OBJECT     ZN1512-1    I     60    -     0   #--   ALT 36.51  HA -4.50
+##ENG    ZN1553-1(I)   04:13:50  -55:20:00    0  OBJECT     ZN1553-1    I     60    -     0   #--   ALT 35.95  HA -4.72
+# ENG    ZN1792-1(I)   05:06:40  -37:45:00    0  OBJECT     ZN1792-1    I     60    -     0   #--   ALT 22.88  HA -5.60
+# ENG    ZN986-1(I)    02:31:00  -38:34:00    0  OBJECT      ZN986-1    I     60    -     0   #--   ALT 52.73  HA -3.00
+# ENG    ZN1291-1(I)   03:20:00  -41:40:00    0  OBJECT     ZN1291-1    I     60    -     0   #--   ALT 43.63  HA -3.82
+
+#+ ostart 1
+
+## fields in scKSP21_01h.cat & scKSP02_06h.cat
+## ALT/HA at UTC 2022-10-07T12:30:00, KMTNet-SSO
+

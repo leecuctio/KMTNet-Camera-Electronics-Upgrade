@@ -1,0 +1,83 @@
+#!/bin/bash
+
+#-- TC UPDATE SCR for KMTNet-CTIO/SAAO/SSO/TestBed
+
+#-- Setting system id -- used for runtime config file (.ini)
+#sysid="kmtnc"
+#sysid="kmtns"
+#sysid="kmtna"
+sysid="kmtnt"
+
+#-- Setting site code -- used for catalog file (.cat) / offset table (.table)
+if   [ "kmtnc" == $sysid ]
+then site="ctio"
+elif [ "kmtns" == $sysid ]
+then site="saao"
+elif [ "kmtna" == $sysid ]
+then site="sso"
+elif [ "kmtnt" == $sysid ]
+then site="test"
+fi
+
+echo
+echo
+
+echo "    Site = $site  System = $sysid"
+echo
+
+#-- Update the TCS Agent bin/ini/catalog in dts directories
+cp -f  /home/kasi/TCSAgent/KMTNet/pctcs  /home/dts/bin/pctcs
+
+cp -f  /home/kasi/TCSAgent/KMTNet/ini/pctcs.$sysid.ini  /home/dts/Config/
+cp -f  /home/kasi/TCSAgent/KMTNet/ini/pctcs.$sysid.ini  /home/dts/Config/pctcs.ini
+
+cp -f  /home/dts/catalog/pctcs.cat  /home/dts/catalog/pctcs.old.cat
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/pctcs.$site.cat  /home/dts/catalog/pctcs.cat
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/blg.cat          /home/dts/catalog/
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/blg.nc.cat       /home/dts/catalog/
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/NEA_TF-NW.cat    /home/dts/catalog/
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/NEA_TF-OC.cat    /home/dts/catalog/
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/NEA_TF-S1.cat    /home/dts/catalog/
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/NEA_TF-S2.cat    /home/dts/catalog/
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/NEA_TF-TO.cat    /home/dts/catalog/
+cp -f  /home/kasi/TCSAgent/KMTNet/catalog/sample.cat       /home/dts/catalog/
+
+cp -f  /home/kasi/TCSAgent/KMTNet/cortable/offset_$site.table  /home/dts/cortable/offset_blg.table
+
+####cp -f  /home/kasi/TCSAgent/KMTNet/ini/pctcs.$sysid.ini     /home/kasi/TCSAgent/KMTNet/pctcs.ini
+####cp -f  /home/kasi/TCSAgent/KMTNet/catalog/pctcs.$site.cat  /home/kasi/TCSAgent/KMTNet/catalog/pctcs.cat
+cp -f  /home/kasi/TCSAgent/KMTNet/cortable/offset_$site.table  /home/kasi/TCSAgent/KMTNet/offset_blg.table
+
+#-- Setting the owner & permites in dts directories
+chown  dts:dts   /home/dts/bin/pctcs
+chown  dts:dts   /home/dts/Config/pctcs.ini
+chown  kasi:kasi /home/dts/Config/pctcs.$sysid.ini
+chown  kasi:kasi /home/dts/catalog/*.cat
+chown  dts:dts   /home/dts/catalog/pctcs.cat
+
+chown  kasi:kasi /home/dts/cortable/offset_blg.table
+
+####chown  kasi:kasi /home/kasi/TCSAgent/KMTNet/pctcs.ini
+####chown  kasi:kasi /home/kasi/TCSAgent/KMTNet/catalog/pctcs.cat
+chown  kasi:kasi /home/kasi/TCSAgent/KMTNet/offset_blg.table
+
+chmod  775  /home/dts/bin/pctcs
+chmod  666  /home/dts/Config/pctcs.ini
+chmod  644  /home/dts/Config/pctcs.$sysid.ini
+chmod  644  /home/dts/catalog/*.cat
+chmod  666  /home/dts/catalog/pctcs.cat
+chmod  644  /home/dts/cortable/offset_blg.table
+
+echo "    TC updated in dts directories.."
+echo "    New TC will be launched.."
+echo
+
+#-- Start the TCS Agent with all default setting
+xterm -e "/home/dts/bin/pctcs" &
+
+echo "    TC update & launching complete."
+echo
+
+
+#END
+

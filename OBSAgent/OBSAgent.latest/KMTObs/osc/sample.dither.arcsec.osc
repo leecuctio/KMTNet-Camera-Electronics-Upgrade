@@ -1,0 +1,46 @@
+#
+# KMTNet observation script
+#  - Sample for 5-position dithering of 15 arcsec
+#
+
+## Original field center:  RA 00:10:30.00  DEC -60:00:30
+## Dithering position: 1=Center, 2=NE, 3=SE, 4=SW, 5=NW (5 positions)
+## Dithering angular distance: 15 arcsec
+## Dithering delta_RA = 15" / 15"/s / cos DEC = 15 / 15 / cos -60 = 1 / 0.5 = 2 seconds
+
+
+ # PROJID  LABEL       RA           DEC           COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL    # comments
+
+   SITE    DITHER-1-B  00:10:30.00  -60:00:30.0   -     object  obj123   B       60       -      -        # Line number =  1
+   SITE    DITHER-1-V  00:10:30.00  -60:00:30.0   -     object  obj123   V       40       -      -        
+   SITE    DITHER-1-R  00:10:30.00  -60:00:30.0   -     object  obj123   R       30       -      -        
+   SITE    DITHER-1-I  00:10:30.00  -60:00:30.0   -     object  obj123   I       20       -      -        # Line number =  4
+
+   SITE    DITHER-2-B  00:10:28.00  -60:00:45.0   -     object  obj123   B       60       -      -        # Telescope moves to SW
+   SITE    DITHER-2-V  00:10:28.00  -60:00:45.0   -     object  obj123   V       40       -      -        
+   SITE    DITHER-2-R  00:10:28.00  -60:00:45.0   -     object  obj123   R       30       -      -        
+   SITE    DITHER-2-I  00:10:28.00  -60:00:45.0   -     object  obj123   I       20       -      -        # Line number =  8
+
+   SITE    DITHER-3-B  00:10:28.00  -60:00:15.0   -     object  obj123   B       60       -      -        # Telescope moves to N
+   SITE    DITHER-3-V  00:10:28.00  -60:00:15.0   -     object  obj123   V       40       -      -        
+   SITE    DITHER-3-R  00:10:28.00  -60:00:15.0   -     object  obj123   R       30       -      -        
+   SITE    DITHER-3-I  00:10:28.00  -60:00:15.0   -     object  obj123   I       20       -      -        # Line number =  12
+
+   SITE    DITHER-4-B  00:10:32.00  -60:00:15.0   -     object  obj123   B       60       -      -        # Telescope moves to E
+   SITE    DITHER-4-V  00:10:32.00  -60:00:15.0   -     object  obj123   V       40       -      -        
+   SITE    DITHER-4-R  00:10:32.00  -60:00:15.0   -     object  obj123   R       30       -      -        
+   SITE    DITHER-4-I  00:10:32.00  -60:00:15.0   -     object  obj123   I       20       -      -        # Line number =  16
+
+   SITE    DITHER-5-B  00:10:32.00  -60:00:45.0   -     object  obj123   B       60       -      -        # Telescope moves to S
+   SITE    DITHER-5-V  00:10:32.00  -60:00:45.0   -     object  obj123   V       40       -      -        
+   SITE    DITHER-5-R  00:10:32.00  -60:00:45.0   -     object  obj123   R       30       -      -        
+   SITE    DITHER-5-I  00:10:32.00  -60:00:45.0   -     object  obj123   I       20       -      -        # Line number =  20
+
+ +ostart 1   # loop from 'DITHER-1-B' line(#1) to 'DITHER-5-I' line(#20)
+
+ 
+## NOTE: Start at UT 00:00 - Finish at UT 00:00    ( message to observer )
+## NOTE: repeat the observation 40 times           ( message to observer )
+ 
+
+# EOF

@@ -1,0 +1,126 @@
+#
+# KMTNet observation script
+#  
+#  - Obs.site: CTIO
+#  - Obs.date: 2021-04-05
+#
+
+
+# 
+# Example for a common observation mode
+# 
+
+# PROJID  LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL  # comments
+
+BLG  F37(I,1747)  17:44:32  -35:22:00  1   OBJECT        BLG37      I      60   - -   # Line number = 1
+BLG  F38(I,1748)  17:55:00  -22:32:30  1   OBJECT        BLG38      I      60   - -
+BLG  F02(I,1749)  17:54:24  -29:01:30  1   OBJECT        BLG02      I      60   - -
+BLG  F03(I,1750)  18:02:00  -27:56:30  1   OBJECT        BLG03      I      60   - -
+BLG  F41(I,1751)  17:54:07  -31:15:30  1   OBJECT        BLG41      I      60   - -
+
+BLG  F42(I,1753)  17:54:07  -29:09:00  1   OBJECT        BLG42      I      60   - -   # Line number = 6
+BLG  F42(V,1754)  17:54:07  -29:09:00  1   OBJECT        BLG42      V      90   - -
+BLG  F43(V,1755)  18:01:43  -28:04:00  1   OBJECT        BLG43      V      90   - -
+BLG  F43(I,1756)  18:01:43  -28:04:00  1   OBJECT        BLG43      I      60   - -
+
++ostart  1     # restart observation from Line #1 (loop from line #1 to line #9)     # Line number = 10
+
+## NOTE: repeat the observation 40 times    ( message to observer )
+
+
+# 
+# Example for a scheduling observation 
+# 
+
+# PROJID  LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL  # comments
+
+DEEPS  LS2021038(R)  11:08:28.00 +05:31:20.0  0  OBJECT  E00166   R  100  2021-04-05T09:33:40  50   #11
+DEEPS  LS2021040(R)  10:50:32.00 +05:12:40.0  0  OBJECT  S02162   R  100  2021-04-05T09:37:00  50
+DEEPS  LS2021041(R)  10:57:57.00 +04:26:53.0  0  OBJECT  S02164   R  100  2021-04-05T09:40:20  50
+DEEPS  LS2021042(R)  11:05:21.00 +03:40:42.0  0  OBJECT  S02166   R  100  2021-04-05T09:43:40  50
+DEEPS  2004MN4(B)    08:06:18.00 +12:46:30.0  0  OBJECT  TF00032  B   15  2021-04-05T09:43:40  50
+
+DEEPS  2004MN4(V)    08:06:18.00 +12:46:30.0  0  OBJECT  TF00032  V   15  2021-04-05T09:48:15  50   #16
+DEEPS  2004MN4(R)    08:06:18.00 +12:46:30.0  0  OBJECT  TF00032  R   15  2021-04-05T09:49:30  50
+DEEPS  2004MN4(I)    08:06:18.00 +12:46:30.0  0  OBJECT  TF00032  I   15  2021-04-05T09:50:45  50
+DEEPS  LS2021044(R)  10:56:41.00 +08:54:32.0  0  OBJECT  N02162   R  100  2021-04-05T09:52:00  50
+DEEPS  LS2021045(R)  11:04:09.00 +08:08:25.0  0  OBJECT  N02164   R  100  2021-04-05T09:55:20  50
+
++ostop
+
+
+# 
+# Example for start time assigned and observation repeated
+# 
+
+# PROJID  LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL  # comments
+
+KSP  ZIC5201-1-B   22:16:40  -45:20:00  -  OBJECT    ZIC5201-1      B      60   2021-04-05T12:30:00  -  #22
+KSP  ZIC5201-1-V   22:16:40  -45:20:00  -  OBJECT    ZIC5201-1      V      60   - -
+KSP  ZIC5201-1-I   22:16:40  -45:20:00  -  OBJECT    ZIC5201-1      I      60   - -
+
++ostart 22  # start observation from Line #22 (loop from line #22 to line #24)
+
+
+KSP  ZN7314-1-B   22:33:35  -25:30:00  -  OBJECT     ZN7314-1      B      60   2021-04-05T15:00:00  -   #26
+KSP  ZN7314-1-V   22:33:35  -25:30:00  -  OBJECT     ZN7314-1      V      60   - -
+KSP  ZN7314-1-I   22:33:35  -25:30:00  -  OBJECT     ZN7314-1      I      60   - -
+
++ostart 26
+
+## NOTE: start the following observation with "ostart 22" command input at UT 12:30:00
+## NOTE: stop the previous observation with "ostop", and start the following observation with "ostart 26" at UT 15:00:00
+
+
+
+# 
+# NOTES
+#
+#  - Script format: 
+#       The column separator is a space character(ASCII 0x20).
+#       Comments or notes can be entered with a '#' character.
+#       The script is case insensitive except the OBJECT column.
+#       The observation script consists of exposure lines and command lines.
+#       Command lines start with a '+' character. (e.g. "+command arg1 arg2 ..")
+#       1 exposure line = 1 exposure = 1 MEF file
+#   - Exposure line columns: 
+#       PROJID  LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+#   - Exposure line example: 
+#       BLG   NORMAL-1015-I  17:54:24 -31:08:00  1  object  blg01  I  60  - -
+#       SN  2011WO41  00:53:20.0 -27:00:00.0  0  object  S29000  R  42  2017-08-08T05:52:42  20
+#   - Descriptions of columns: 
+#       PROJID : Project ID about the observation program
+#       LABEL  : description of an exposure line, not recorded in FITS header, 
+#                e.g. index#, serial#, field ID, or any information about the exposure
+#       RA/DEC : J2000 RA/Dec coordinate, hh:mm:ss.ss / +dd:mm:ss.s
+#       COPT   : pointing correction option, 
+#                '-'  No correction
+#                '0'  No correction
+#                '1'  BLG offset correction
+#                'k'  RA/Dec = K CCD center
+#                'm'  RA/Dec = M CCD center
+#                't'  RA/Dec = T CCD center
+#                'n'  RA/Dec = N CCD center
+#       IMGTYP : image type = object / bias / dark / flat / domeflat / sky
+#       OBJECT : object name to record in FITS header
+#       FILTER : 'I' / 'R' / 'V' / 'B'  (Johnson-Cousins filter set)
+#                'z' / 'i' / 'r' / 'z'  (SDSS filter set)
+#                '1' / '2' / '3' / '4'  (filter slide number)
+#                'Ha' / M000 (H-alpha / Mid-band filters)
+#                'no' / 'n' / 'N' / '0'  (No filter)
+#       EXPTIME: Exposure time in seconds, mininum 0.1s except bias image
+#       UTOBS  : UT to start the observation, put a hyphen if specific observing time is not necessary.
+#       UTTOL  : Tolerance for UTOBS in seconds, put a hyphen if the tolerance is not critical.
+#   - Commanding to start/stop/repeat script lines: 
+#       Exposure lines can be repeated with "+ostart <line#>" command line.
+#       The observation can be stopped by '+ostop' command line.
+#       The observation can be paused by 'opause' command line.
+#       The observer can resume the observation with 'oresume' or 'ostart' commands.
+#
+#
+
+
+
+
+# END
+

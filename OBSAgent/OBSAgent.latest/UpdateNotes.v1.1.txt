@@ -1,0 +1,835 @@
+________________________________________________________________________________
+KMTNet OBSAgent -- Reserved items
+
+- new commands or upgrade
+    - dlamp/dlight/mcfan/tpad: return actual status of DIO ports when no argument
+    * Funutions for motor drive / window / HVAC are NOT implemented at this version.
+- updated functions
+    - UTOBS/UTTOL func upgrade
+        - DeltaSec -= MAX(TelMovingSec,DomMovingSec)
+        - Applying to preparation for next exposure
+        - Modify // UT_OBS check and proceed to do
+    - Guide CCD acquisition function & GUIDECCD ON/OFF command implementation
+    - Horizontal coordinate(HA/Alt/Azm) conversion in oscscript(), oscline(), osclable(), oscobject() with cmd_getlst(), not to use TCS info
+    - Add ConfigRedisTimeout into runtime configuration file
+    - Add ConfigRotChkMaxAlt into runtime configuration file
+
+- modification/debugging
+    - Status messages upgrade: including status of relays, status of NST, VEL_RA/VEL_DEC, and etc.
+    - Getting actual status of all the web relays dlamp/dlight/mcfan/tpad commands with ezCurl Lib.
+
+________________________________________________________________________________
+KMTNet OBSAgent v1.1 update notes (2024-08-13)
+
+- updated functions
+    - Add flag labels '+DROTCOMP' or '+DROTSHUT' to RemainingProc status in OscStatus string line, during waiting dome rotation or dome shutter complete (v1.1.0)
+    - Append secz, az, expnum, and oscillation info columms into scrobs log (v1.1.0)
+
+- modification/debugging
+    - Modify secz, alt, az, ha to status at the starting of exposure (v1.1.0)
+    - Add set ExpStatus to WAITING in Obs. script Line finishing routine during script observation (v1.1.1)
+    - Add set ExpStatus to ERROR when writing FITS has not been completed (v1.1.2)
+    - Add set ExpStatus to STANDBY when no script obs mode (v1.1.2)
+    - Fix momentary unmatch of ExpNum and ExpStatus (v1.1.3)
+    - Fix missing ExpNum/ExpStart update in dark/bias mode (v1.1.3)
+    - Modify altitude limit for waiting dome rotation from 85-->82 deg (v1.1.4)
+
+________________________________________________________________________________
+KMTNet OBSAgent v1.0 update notes (2024-07-12)
+
+- new commands or upgrade
+    - expinfo: query information about current exposure and FITS file
+      (return) "DONE:/EXP.INFO: ExpStatus=EXPOSURE ExpNum=20240628.012345  ExpStart=2024-07-01T12:34:56.789  ExpProg=40/60     FitsNum=20231002.012344"
+
+- updated functions
+    - Add definition of exposure status and expinfo structure(CEXP) to share information for current exposure in obstool.h (v1.0.0)
+    - Add expinfo declaration and initialization for exposure information structure(CEXP) in main.c (v1.0.0)
+    - Add setting expinfo.nStatus/strExpStart with CamStatus setting, Add 'expinfo' command/function for ExpInfo string in command.c (v1.0.0)
+    - Add ExpNum query to ICS and ExpNum(strNextNum/strCurNum) update into CEXP in command.c (v1.0.1)
+    - Add EXP.INFO string logging just before the ProcOsc() call whether script observing or not in main.c (v1.0.2)
+    - Add overwriting obs status(SYS.STATUS/OSC.STATUS/EXP.INFO/OBS.Script) on /data/Logs/ObsStatus.txt at 5 sec intervals (v1.0.3-v1.0.4)
+    * For details on the observation status file format, refer to Ref.ObsStatus.txt in OBSAgent directory.
+    - Add a flag about oscillating during exposure into exposure information, set to "YES" if oscillating more than 5% of exposure time (v1.0.9)
+
+- definition of Exp/Sys status
+
+  << ExpStatus in ExpInfo string >>
+     CHECK    : Init. or sys.camstatus == CAMSTATUS_CHECK, when script observation is not in progress
+     STANDBY  : sys.camstatus==CAMSTATUS_READY, when script observation is not in progress
+     WAITING  : sys.camstatus==CAMSTATUS_READY, in preparing Tel during script observation
+     CMDED    : sys.camstatus==CAMSTATUS_CHECK, at Go commanded by script observation process
+     FLUSH    : sys.camstatus>=CAMSTATUS_PREP_I -- "EXPSTATUS=INITIALIZING"
+     EXPOSURE : sys.camstatus>=CAMSTATUS_INT_1  -- "EXPSTATUS=INTEGRATING"
+     READOUT  : sys.camstatus>=CAMSTATUS_READ_1 -- "EXPSTATUS=READOUT"
+     FINISH   : sys.camstatus>=CAMSTATUS_IDLE_1 -- 1st "Acquisition Complete"
+     ERROR    : sys.camstatus<0(CAMSTATUS_CRASHED/DEAD/NC)
+
+  << CamStatus in SysStatus string >>
+     NC      : not connected to ICS
+     PREP_I  : "EXPSTATUS=INITIALIZING" message from ICS
+     PREP_E  : "EXPSTATUS=ERASE" message from ICS
+     INT_1   : "EXPSTATUS=INTEGRATING" message from ICS
+     INT_2   : "Shutter=Open" message from K.IC
+     INT_3   : "Remaining=" message from K.IC
+     CLOSING : "Shutter=Closed" message from K.IC
+     READ_1  : "EXPSTATUS=READOUT" message from ICS
+     READ_2  : 1st "PCTREAD=" message from K.IC
+     READ_3  : 2nd "PCTREAD=" message from K.IC
+     IDLE_1  : 1st "Acquisition Complete" from each ICs
+     IDLE_2  : 4th "Acquisition Complete" from each ICs
+     IDLE_3  : "EXPSTATUS=IDLE" message from ICS, only 'GO' command available
+     READY   : "Disk Write Complete" message on all ICs
+     CHECK   : unknown status
+     CRASHED : "Failed to Start acquisition on one or more ICs", 
+               or "Failed to initialize one or more ICs",
+               or when the status become not IDLE2 or IDLE3.
+   * Note
+      - 'EXP'/'OBJECT'/'DARK'/'BIAS'/'FLAT'/'PROJID'/'OBSERVER' commands are available only in READY status.
+      - CamStatus is forcibly set to 'READY' status 12 seconds after setting to 'IDLE_3' by "EXPSTATUS=IDLE" message. 
+
+- modification/debugging
+    - Remove labels(ALT/HA/EXPSTART) in obs.scrobs log, Add functions for expinfo initialization and string edition in command.c (v1.0.0)
+    - Debug GetOscLine-strUT error: input to strUT removed because making Segmentation fault (core dumped) when strUT==NULL though EXP type (v1.0.4)
+    - Improve printing format for Obs.script lines into ObsStatus.txt, and debug WriteObsStatus() using test function (v1.0.5)
+    - Debug missing set expinfo.dStartTime for ExpProg status (v1.0.6)
+    - Debug ExpNum/FitsNum setting error at SSO that has other K.IC version (v1.0.7-v1.0.8)
+    - Add strFitsOsc setting by force in main() for other K.IC version at SSO (v1.0.9)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.9 update notes (2024-06-27)
+
+- modification/debugging
+    - Modify Redis dome shutter status definition following newTCS upgrade
+      (TCS.Redis) redis domeshut('SHUTTER' in newTCS Redis) 
+        = 1: positioned(green) / 0: near position(yellow) / -1: far position or open/closing(red) / -2: Unknown
+      redis domeshut = near position: shutter is positioned within 10 sec, and we can Go since CCD flushing time < 10 sec
+    - Change conditions for determining dome shutter status in UpdateDomeStatus() 
+      so that we can Go when the dome shutter position is near telescope position
+      ('Go' will be commanded to exposure if redis domeshut is 1: positioned and 0:near position.)
+    - Add function to disable the Dome rotation status check when the telescope is near the zenith(Alt>85deg)
+    - Change conditions for determining dome rotation status from Relay (in case Unknown, set IDLE)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.6-v0.9.8 update notes (2024-06-26)
+
+- modification/debugging
+    - Modify cmd_drot() to get dome rotation status from Web relay with applying easy Curl library, 
+    - Modify message output about waiting for dome moving to complete during script observation
+    - Refactory definitions for relay commands in obstool.h
+    - Refactory setting relay commands string and URL string for Curl option in loadconfig.c
+    - Modify definition of dome status value (v0.9.7)
+      (TCS.Relay) relay_dctrl_state_drot(dome rotation activity in WebRelay) =  0: Idle / 1: Left / 2: Right / 3: Both / -1: Unknown
+    - Append new default for Maximum operation time for dome rotation/shutter (v0.9.8)
+    - Add anomaly handling for waiting time during waiting for dome moving to complete in ProcOsc() (v0.9.8)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.5 update notes (2024-06-21)
+
+- new commands or upgrade
+    - domestat: query dome status on Redis/Relay/AuxStatus, update some status if possible
+
+- modification/debugging
+    - Disable old codes in cmd_drot() due to Error 24, It uses external Curl command to access Relay and frequent file In/Out to get state stream
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.4 update notes (2024-06-20)
+
+- new commands or upgrade
+    - olast: query last completed script line number, return: LastExpCompleted, LastFitsSaved
+
+- updated functions
+    - Complement dome status update for system status (sys.domerot/sys.domeshut)
+    - Append new default for Redis values and error handling for Dome status monitoring in obstool.h
+    - Add new members for monitoring and importing dome status for Redis, Relay, Aux DS into system_config in obstool.h
+    - Waiting for dome rotation and shutter moving completed before starting exposure during script observation in ProcOsc()
+    * NOTE: if dome status update is not available, the status is set to IDLE and the exposure starts regardless of dome status.
+    - New function: UpdateDomeStatus() in command.h
+          Description: 
+            obssys.UpdateDomeStatus - Update Dome status from Web relay & Redis server
+          Func: 
+            update dome status in TCS/AUX data and dome data for SYS.STATUS
+          Parameters: 
+            (TCS.Redis) redis_domerot('dome_error' in newTCS Redis) = 0: positioned(green) / 2: rotating(orange) / 3: stowing or halted(red)
+            (TCS.Redis) redis domeshut('SHUTTER' in newTCS Redis) = 1: positioned(green) / 0: moving(orange) / -1: stowing or error>tolerance(red)
+            (TCS.Relay) relay_dctrl_state_drot(dome rotation activity in WebRelay) =  0: Idle / 1: Rotating / -1: Unknown
+            (AUX.STATUS) aux_domeshut(DS:STATUS) = AUX_STATUS_NC/AUX_STATUS_STANDBY/AUX_STATUS_RUNNING/AUX_STATUS_ERROR/AUX_STATUS_UNKNOWN
+            (SYS.STATUS) domerot(dome rotation status for ProcOsc() & RemHost) = 0: Idle / 1: Rotating / -1: Unknown
+            (SYS.STATUS) domeshut(dome shutter status for ProcOsc() & RemHost) = 0: Idle / 1: Moving / -1: Unknown
+          Notes: 
+            This function is called in GetSysStatus(), which is called periodically(1s), 
+            whether OSC is running or not. If running, called just before ProcOsc().
+            GetSysStatus() is called in main() after UpdateTcsData()/UpdateAuxData().
+
+- modification/debugging
+    - Modify cmd_drot() for updating dome rotation status from Relay
+    - Modify cmd_redisget() for updating dome rotation status from Redis
+    - Code refactoring for Dome status update (Redis/Relay/Aux/Sys)
+    - Code refactoring in command.c and command.h
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.3 update notes (2024-06-18)
+
+- new commands or upgrade
+    - redisget: get a value from the redis server on newTCS, arg: <key>
+    - redisset: set key=value pair to redis server on newTCS, arg: <key> <val>
+    - redislocal: set redis host name to loopback ip addr "127.0.0.1"
+
+- updated functions
+    - Complement Relay/Redis/Aux dome status update
+    - Append DomeRot/DomeShut keys to SYS.STATUS string
+    - Add hiredis lib and Add func cmd_redisget/set()
+    - Add setting TCS redis server configuration in loadconfig.c
+    - Append mecros and Add parameters in system_config for redis server configurations
+
+- modification/debugging
+    - Modify cmd_drot() for updating dome rotation status from Relay
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.2 update notes (2023-11-06)
+
+- modification/debugging
+    - modify DBG message for checking importing when loading UTOBS
+    - Modify DBG message for checking importing when loading an obs.script
+    - Add an option to omit UTObs & UTTol columns in the observation script
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.1 update notes (2023-03-04)
+
+- updated functions
+    - Change allowance_unstable to tcs_allowance_unstable in sysconfig, 
+      initialized with DEFAULT_TCS_ALLOWANCE_UNSTABLE and imported from the realtime configuration
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.9.0 update notes (2023-02-22)
+
+* Change syntex of notes to the git style from now on
+
+- updated functions
+    - Append REPORT_TPFAILED string into debugging log
+    - Add Warning and Logging in case oscillation during exposure (v0.9.0)
+        "WARNING: Oscillation on RA axis during the exposure !"
+        "WARNING: Oscillation on DEC axis during the exposure !"
+        "WARNING: Oscillation on Both RA/DEC axes during the exposure !"
+        (cyan color text on the console)
+
+- modification/debugging
+    - Increase allowance for RA/Dec axes unstability from 2 to 3 (TelStatus=OSCILLATE after three 'TelStatus=CHECKING')
+    - Modify CHK_POSERR string - moved after NST calculation, NST correction values applied, and tolerance value appended
+    - Modify the message "Telescope failed to point .." to report which axis fails to point or is oscillating, as following..
+      (OLD)
+        "ERROR: Telescope failed to point at the RA/DEC for current exposure !! "
+          + " The script observation is paused now.  Please check RA/Dec axes & TCS status, and do pointing manually."
+      (NEW)
+        "ERROR: Telescope failed to point due to OSCILLATION on RA axis !! "
+        "ERROR: Telescope failed to point due to OSCILLATION on DEC axis !! "
+        "ERROR: Telescope failed to point due to OSCILLATION on Both RA/DEC axes !! "
+        "ERROR: Telescope failed to point at the RA !! "
+        "ERROR: Telescope failed to point at the DEC !! "
+        "ERROR: Telescope failed to point at Both RA/DEC !! "
+        "ERROR: Telescope failed to point at the coordinates !! "
+          + " The script observation is paused now.  Please check RA/Dec axes & TCS status, and do pointing manually."
+          + " The script observation is paused now.  Please check RA/Dec axes & TCS status, and do pointing manually for NEXT expousre."
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.8.8-v0.8.9 update notes (2022-10-13)
+
+- new commands or upgrade
+    - getjd/jd: get Julian date at input UT, arg: (<ut>)
+    - getlst/lst: get Local sidereal time at input UT, arg: (<ut>)
+    - getalt/alt: get Alt/Az/HA/Airmass at input UT, args: <ra> <dec> (<ut>)
+
+- updated functions
+    - calculation.c with USNO NOVAS codes imported
+    - HA & Altitude calculated with RA/Dec/UT calculation.c in the GetOscLine(), 
+      PC-TCS link is not necessary for calculating HA anymore.
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.8.4-v0.8.7 update notes (2022-08-29)
+
+- modification/debugging
+    - OSC_MINIMUM_UTTOL/OSC_DEFAULT_UTTOL adjusted (v0.8.4)
+    - Debugging UT_TOL importing error in case UT_TOL=0 (v0.8.4)
+    - web relay commands including XML port numbers for port forwarding (v0.8.5)
+    - Removed opause in case NST-off control failed for non-stop obs even if the relay failed (v0.8.6)
+    - default telescope spec updated for slew & settling down time and dome rotation & shutter speed (v0.8.7)
+    - UTOBS/UTTOL func upgrade: check for UT_OBS including Telescope slew and settling down time (v0.8.7)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.8.3 update notes (2022-08-26)
+
+- modification/debugging
+    - To avoid possibility not to set for following exposure after script line skips
+    - default configuration adjusted, for CCD preparation and readout+overhead time
+    * UT_OBS check that including Telscope & Dome moving time is not yet applied at this version.
+    - Founding 20s delay on averaged (DATE-OBS - UT_OBS) error, it is caused by UT_OBS interval (no error on UT_OBS code)
+    * NOTE: optimized UT_TOL = UT_OBS_INT/2
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.8.2 update notes (2022-08-24)
+
+- modification/debugging
+    - debugging for " KEY IN : .." message logging to the event log
+    - debugging for setting default obs script dir
+    - debugging for logging scrobs in case script running stopped
+    - minimum UTTOL applied
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.7.9-v0.8.1 update notes (2022-08-12)
+
+- new commands or upgrade
+    - ovron/ovroff: override enable/disable all the sys
+
+- updated functions
+    - UTOBS/UTTOL function implemented, UTOBS/UTTOL applied in the srcipt observation
+    - function getting actual status of the dome rotation relay
+    - setting the default obs script dir to '/home/dts/osc/' if no input absolute path, 
+      which is not starting with '/', '.', or '~'.
+
+- modification/debugging
+    - UT_OBS function tested/debugged/modified for current exposure 
+      (UT_OBS check is not yet applied to the preparation routine for next exposure)
+    - Exposure starting time logging on the script observation log
+    - OscCommand "tpad on/off off on/off off" replaced with "nston/nstoff"
+    - minor modification for index printing in OSC.STATUS: message
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.7.8 update notes (2022-07-18)
+
+- new commands or upgrade
+    - drot: return actual status about the dome rotation
+    * Funutions for motor drive / window / HVAC are NOT implemented at this version.
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.7.5-v0.7.7 update notes (2022-07-15)
+
+- new commands or upgrade
+    - nston: enable non-sidereal tracking, used instead of "tpad on off on off" (v0.7.6)
+    - nstoff: disable non-sidereal tracking, used instead of "tpad off off off off" (v0.7.6)
+
+- modification/debugging
+    - TCS paddle off(disable NST) right before OscCommand("opause"); or OSC_FINISH (v0.7.5)
+    - Last commanded VELRA/VELDEC applied to the telposition & tolerence using timestamps 
+      in case of NST both in the script obs and in checking the tracking stability in 
+      UpdateTcsData(), for calculating the time interval, timestamp is used (v0.7.5)
+    - debugging for cmd_velra/cmd_verdec reset problem (v0.7.6)
+    - telstatus/tracking checking codes modified (v0.7.6)
+    - count_tmrwaiting applied to prevent frequently commanding tmr (v0.7.7)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.7.0-v0.7.4 update notes (2022-07-14)
+
+- updated functions
+    - Addtion of SECSE(seconds since epoch, (UINT)timaval.tm_sec) as member variable in obsscript_line structure (v0.7.0)
+    - UTOBS/UTTOL importing, and checking codes (v0.7.0)
+    - Addition of override arguments 'on'/'off' to enable/disable all the sys (v0.7.4)
+    - cmd_help() updated (v0.7.4)
+
+- modification/debugging
+    - COPT variable type changed to string from char, and 
+      Cx COPT applied temporary in the tel position correction routine (v0.7.0)
+    - UTOBS string key-input parse and converting codes (v0.7.1-v0.7.3)
+    - Debugging for reply message buffer reset (v0.7.2)
+    - Debugging for NST setup codes in ProcOsc() (v0.7.1-v0.7.3)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.6.8-v0.6.9 update notes (2022-07-12)
+
+- new commands or upgrade
+    - nstset: setting RA/DEC velocity for the non-sidereal tracking
+    - dlamp: domeflat lamp power relay control
+    - dlight: dome LED light power relay control
+    - mcfan: mirror cell fan power relay control
+    - tpad: PC-TCS paddle N/S/E/W button control
+    - drot: getting and update dome rotation status, not fully implemented
+    - getut/ut: getting the UT string & seconds since epoch(1970Jan01)
+    * refer to Commands.v_._._.txt, or 'help' command
+
+- updated functions
+    - Web relay configurations & preset commands strings in the system structure (v0.6.8)
+    - Web relay control codes, and dlamp/dlight/mcfan/tpad/drot commands implementation (v0.6.8)
+    - VELRA/VELDEC importing from the observation script (v0.6.9)
+    - Functions to setup VELRA/VELDEC and to control TCS paddle relay, 
+      NST function implementation in the script observation (v0.6.9)
+
+- modification/debugging
+    - Mecros and code for external command, set/get commands setup, 
+      and default relay configuration, for Web relay control (v0.6.8)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.6.7 update notes (2021-06-21)
+
+- modification/debugging
+    - TCS_TOLERANCE_POINTING increasing routine is improved for near-pole target.
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.6.6 update notes (2021-06-21)
+
+- updated functions
+  - Datasource commanding at the beginning of script observation
+  - Datasource setting added in runtime configuration(.ini)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.6.4-v0.6.5 update notes (2021-04-08)
+
+- updated functions (v0.6.4)
+    - ProjID column is included in the observation script, 
+      and ProjID is configured at every exposure line.
+    - Acceptance of space at the beginning of lines in runtime configuration(.ini)
+    - When loading obs script, error message output even if there is only one invalid.
+
+- modification/debugging (v0.6.5)
+    - command retry routine added in ProcOsc()
+    - Response check added for commanding by observation script process
+    - removal of spaces at the end of args in cmd_tc() for 'ERROR: incorrect filter name/initial' dubugging, 
+    - i-band domeflat script revised
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.6.2-v0.6.3 update notes (2021-04-01)
+
+- new commands or upgrade
+    - oline: another option to print first few lines (v0.6.2)
+    - dechk: 'quit' execution after dtchk process (v0.6.3)
+
+- modification/debugging
+    - script loading function(oscript) is modified for printing command line, 
+      and for the script having command lines only (v0.6.2)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.5.6-v0.6.1 update notes (2021-03-19)
+
+- modification/debugging
+    - rollback to v0.5.3 for flag_paused/flag_running/flag_expcomplete settings, 
+      to debug tel-mov-during-exp error (v0.5.6)
+    - debugging the one-more-exposure error when ostop commanded (v0.5.7)
+    - debugging the filter-change-for-next error that occurs right after 'Go' commanding
+      with flag_exposing settings (v0.5.8) and camstatus = CAMSTATUS_CHECK setting (v0.5.9) 
+    - debugging the serial commanding error such as commanding 'tmr' or 'filter' before 
+      a response could be received for provious commanding with modification of flag_responseok settings (v0.6.0)
+    - check for all the command about about message type and execution option for remote/script operation (v0.6.0)
+    - i-band domeflat script revised (v0.6.1)
+    
+________________________________________________________________________________
+KMTNet OBSAgent v0.5.3-v0.5.5 update notes (2021-03-11)
+
+- modification/debugging
+    - cmd_oscdelay() for 'delay' command is modified for response message process
+    - cmd_oscript() modified for debugging the "incorrect command data number in the osc data" error
+    - try to debug one-more-exposure error when ostop commanded (v0.5.4-v0.5.5)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.5.2 update notes (2021-03-09)
+
+- new commands or upgrade
+    - dtchk: to move FITS data from /data to /data/YYYYDDMM and check for data transfer from ICS to DTS, 
+             argument: 'last' or <yyyymmdd>,  if arg == 'last', the date will be set to last observation date 
+             if Local time < 20:00(+/- 1h), but the date will be set to current date in UT if local time >= 20:00(+/- 1h)
+    - odelay(='delay'): sleep the observation script process, but the other process will be not blocked
+    - noop: no operation and response for dummy command line in the observation script
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.5.1 update notes (2021-03-03)
+
+- new commands or upgrade
+    - dlamp: domeflat lamp on/off
+    - mcfan: mirror cell fan on/off
+    - ecmd: external command input and execution with system()
+    - sleep: sleep all the process as specified seconds
+
+- modification/debugging
+    - 'delay' command is changed to 'sleep', this sleep all the process as specified seconds
+    
+________________________________________________________________________________
+KMTNet OBSAgent v0.5.0 update notes (2020-12-01)
+
+- commands upgrade
+    - oline/oobject/olabel: UT string input and Alt/HA at input UT calculation function added
+    - overide:  ISIS only & All ISIS/TCS/AUX connection error overide function added
+    
+- updated functions
+    - oscript/oobject/olabel commands functionally improved to adjust object & label field length for display/logging
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.9 update notes (2020-11-26)
+
+- commands upgrade
+    - oline/oobject/olable:  Alt & HA calculation and display function added
+    - overide:  TCS connection error overide function added
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.7/v0.4.8 update notes (2020-10-14)
+
+- updated functions
+    - TCS_TOLERANCE_POINTING is increased when the number of tmr tries increases. (v0.4.7)
+    - Debugging for tcs_tolerance_pointing_corr setting for the current exposure
+    - 'EXP' command is ignored when the CamStatus is NOT READ / READY with a warning message.
+
+- modification/debugging
+    - TCS_TOLERANCE_POINTING/_TRACKING in obstool.ini adjusted to optimize to the TCS_TOLERANCE_POINTING increasing function.
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.5/v0.4.6 update notes (2020-10-12/14)
+
+- updated functions
+    - READY status added at CamStatus, 
+        -- The READY status is forced 12 seconds later after the IDLE_3 status.
+        -- All the camera ICS commands are available when the CamStatus is INT / READ / READY except PREP / IDLE.
+        -- GO command is available only when CamStatus is either IDLE_3 / READY.
+    - All the ICS commands are ignored except 'GO' when the CamStatus is NOT INT / READ / READY with a warning message.
+    - 'GO' command is ignored when the CamStatus is NOT IDLE_3 / READY with a warning messag.e
+    - DEST_RA(destination RA in hours) & CMD_NUM(the number of tmr commanded) included in the CHK_POSERR log
+    - TCS_TOLERANCE_POINTING is increased when the Dec is large and the tmr command is aleady tried several times.
+    - Modification for the near limit warning to output once when the telstatus changed from CHECKING 
+      to TRACKING/HOLDING/OSCILLATE, but always flag on during telescope moving
+      (output when the TCS data update with 1 sec interval in the previous version)
+
+- modification/debugging
+    - Auto recovery to white screen using 5 sec timer for the black screen bug of warning blinking
+    - Criterion for "WARNING: Writing FITS data is not fully completed !! ... " modified 18 --> 25 sec
+      Typically the acquisition Completed("EXPSTATUS=IDLE" received) in 0.4~0.5s
+    - Criterion for "ERROR: Acquisition is not fully completed" rollback 3 --> 2 sec    
+      Typically the acquisition Completed("EXPSTATUS=IDLE" received) in 0.4~0.5s
+    - debugging for "WARNING: Writing FITS data is not fully completed !! .." message error during the "go n" process 
+    - debugging for the unit of "WARNING: Near HA limit, clearance = 0.0 min"
+    - debugging for updating the line index in the case of the some next lines are skipped
+    - debugging for condition to increase the TCS_TOLERANCE_POINTING (v0.4.6)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.4 update notes (2020-09-29)
+
+- modification/debugging
+    - SAAO/SSO TCS_TOLERANCE_POINTING updated using 2020-09-23..28 observation data: 3.0" --> 0.7"
+    - Debugging for destination HA used for BLG offset correction function, 
+      regarding to the "Input Data Error: Beyond the Range of Offset Table [-5.0,5.0]" error
+    - DIFF_RA calculation modified and DEST_DEC in deg included in the CHK_POSERR log
+    - DIFF_RA & DIFF_DEC direction reversed (difference = current position - destination position)
+    - cancellation of commanding flags for the skipped next exposure, and re-configuration 
+      of flags for another next exposure line when an exposure skipped during the script observation
+    - FSA subsystem status(fsastatus) usage to debug the 'WAIT' response error about filter change,
+      instead of FilterOpStatus
+    - Criterion for "ERROR: Acquisition is not fully completed" is changed 2 --> 3 sec
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.3 update notes (2020-09-23)
+
+- updated functions
+    - Logging Ra/Dec position error into the debugging log with 'CHK_POSERR:' keyword, 
+      and display the message in debugging mode
+
+- modification/debugging
+    - Debugging for "WARNING: AUX data request commanded.." message/log 
+      instead of  "Destination .... the limit, LINE#0000 exposure skipped !!" when 
+      skipping the exposure when the destination is out of the limit during the script observation
+    - Ra/Dec position error and destination HA output into the debugging log & 
+      display in debugging mode instead of verbose mode
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.2 update notes (2020-09-23)
+
+- updated functions
+    - Logging the information of client/process/configuration at the beginning
+    - Logging the RA/Dec pointing error when commanding to move telescope
+
+- modification/debugging
+    - RA pointing error check using angular distance
+    - TCS tolerance for poing/tracking error changed: 0.4 --> 2.0 arcsec
+    - TelStatus Tracking/Stable conditions enhanced for waiting for telescope pointing start
+    
+- new commands or upgrade
+    - ver/con/dbg: removed
+    
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.1 update notes (2020-09-19)
+
+- updated functions
+    - TCS tolerance for poing/tracking error included into system configuration with obstool.ini
+    - Info fields updated for new configurations
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.4.0 update notes (2020-09-18)
+
+- updated functions
+    - Warning when the destination is near the PC-TCS limit during the script observation
+    - Warning and skipping the exposure when the destination is out of the limit during the script observation
+    - Telescope position (latitude/longitude/elevation) included into system configuration with obstool.ini
+    - SYS.STATUS logging when no script observation as well
+
+- new commands or upgrade
+    - getalt:  get altitude with HA/Dec input
+
+- modification/debugging
+    - The near-limit warning enhanced for HA & Alt when HA>0
+      (red text warning at west side and blinking on if 40% remaining at west side)
+    - Zero setting for OscProc & AUX update tick (osc.count_process & sys.checknum_auxdata) modified
+      TCS/AUX/SYS STATUS logged between each other
+    - GetUTCDateTime() improved
+    - Debugging for the case of CRLF line in osc
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.3.6 update notes (2020-09-17)
+
+- modification/debugging
+    - Debugging for warning blinking function
+    - Telescope RA/Dec checking when commanding Go (for setting OSC_CMDBIT_STARTEXP)
+      
+________________________________________________________________________________
+KMTNet OBSAgent v0.3.5 update notes (2020-07-27)
+
+- updated functions
+    - warning blinking when osc pause/error or other critical issues
+
+- new commands or upgrade
+    - warning:  set the warning blinking to on
+                the warning blinking is off with any key input
+    - delay:  sleep all the process as specified with arg in seconds
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.3.4 update notes (2019-05-03)
+
+- modification/debugging
+    - FSA error warning message output only once at the error occurred using flag_fsaerror
+      The warning messages were output a second at the previous version.
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.3.3 update notes (2019-03-19)
+
+- new commands or upgrade
+    - EXPREM (exposure time remaining) is added in SYSSTATUS string
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.3.2 update notes (2018-03-20)
+
+- new commands or upgrade
+    - acqstatus (to ICS)
+    - expnum    (to ICS)
+    - kstatus   (to K.IC)
+    - mstatus   (to M.IC)
+    - tstatus   (to T.IC)
+    - nstatus   (to N.IC)
+    - gstatus   (to G.IC)
+
+- modification/debugging
+    - ICS commands are added, which is input without '>ICS'
+    - ICs commands are added, which is input without '>k.ic/>m.ic/>t.ic/>n.ic'
+    - TC commands are added
+    - response check keyword modification for ICS/TC.TCS/TC.AUX commands
+    - scrID check is added to ignore msg from ICG/G.IC for EXPSTATUS update in SocketCommand()
+    - The "WARNING: FITS data is not fully completed.." message display in case of no 4 Wrote msg if not SSO
+    - In the script obsertion, current RA/DEC check routine using BLG-offset corrected RA/DEC
+    - help messages modification
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.3.0 update notes (2018-02-01)
+
+- modification/debugging
+    - OSC IN message display in concise mode
+    - checked for using ostart directly in RUNNING or PAUSE status without ostop 
+    - detecting 'EXPSTATUS=IDLE' message in STATUS: socket message process for 'go n' command
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.2.9 update notes (2018-01-31)
+
+- modification/debugging
+    - optimization for SSO ICS version which is no 'Wrote' message (v0.2.9)
+      removal of routine to set the fitssaving status to -1 and display warning message and 
+      replacement with routine forcing fits saved 
+      (not monitoring and assume FITS saved 18s later after EXPSTATUS=IDLE)
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.2.8 update notes (2018-01-25)
+
+- updated functions
+    - realtime logging for the script observation result
+
+- modification/debugging
+    - debugging for image type & object name setting during integration
+    - debugging frequent tmr command sending in OSCILLATION status, 
+      with setting telstatus to CHECKING after commanding tmr in OscProc()
+    - debugging log modified
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.2.7 update notes (2018-01-12 released)
+
+- updated functions
+    - In case of the acquisition completion error due to IC crash, 
+      the script observation is paused and a ERROR message is displayed
+    - TCS limit information update with runtime configuration for each site
+
+- new configuration words
+    - TCS limit information(site-dependent setup):
+          TCS_LIMIT_HA       (hour)
+          TCS_LIMIT_DEC_N    (deg)
+          TCS_LIMIT_DEC_S    (deg)
+          TCS_LIMIT_SECZ     (secZ)
+          TCS_LIMIT_ALT      (deg)
+          TCS_LIMIT_WARNING  (deg)
+
+- modification/debugging
+    - Temp log files removal before exit main
+    - debugging unexpected TCS/AUX data updating error due to not enough arguments number
+    - logging KEY IN and OSC IN message into the event log
+    - several ERROR/WARNING message output modification
+    - correction of FILTCMD --> ACTFILT in SysStatus
+    - improvement for handling the Acquisition completion error due to IC crash
+      In case of the acquisition completion error due to IC crash, 
+      now the script observation is paused and a ERROR message is displayed
+    - debugging for the routine monitoring the FITS Writing error
+    - debugging for event logging before the client.doLogging flag is ON
+    - Improvement of message in case of no initial observation script file
+    - debugging "Wrote" counting error due to appended message "EXPSTATUS=.."
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.2.3 update notes (2018-01-09 released)
+
+- updated functions
+    - Script observation logging function implementation
+
+- modification/debugging
+    - default ini files modification for operation - DBGLOG/OBSLOG off
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.2.2 update notes (2018-01-03 released, only @CTIO)
+
+- updated functions
+
+- new commands or upgrade
+    - olabel: quiry the line that has a label string including input string
+    - oobject: quiry the line that has a object string including input string
+
+- modification/debugging
+    - Slew/Filter commands when status >= READ_1
+      (No error at IDLE_3 if TC commands)
+    - debugging for pointing before every exposure 
+    - ostop command --> stop after complete the current exposure
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.1.9 update notes (2018-01-02)
+
+- updated functions
+    - script observation running - command line excution
+    - script observation running - exposure line excution
+
+- new commands or upgrade
+    - oprepare: toggle next exposure preparation
+    - oabort: abort obs script running (immediately stop all the process
+
+- new configuration words
+
+- code development
+
+- modification/debugging
+    - script running routine/function debugging/modification
+    - 1st line error at 2nd oscript running
+    - current filter checking routine in ProcOsc()
+    - toggle next exposure preparation routine
+    - Go response check (exposure start check) with count
+      and pause in case no response(failure to exp start)
+    - disable to set exptime in the case of BIAS image type
+    - disagle to prepare next exp in the case cur type == CMD
+    - RA/DEC pointing check with count and 
+      pause in the case of failure
+    - output messages check and check and modification
+    - tuning RA/DEC pointing and checking
+    - OscStatus string modification
+    - filter checking debugging and warning message
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.1.0 update notes (2018-01-01)
+KMTNet OBSAgent v0.0.9 update notes (2017-12-31)
+
+- updated functions
+    - debugging message logging
+    - script observation logging
+
+- new commands or upgrade
+    - script check command: sline
+    - script running commands: sstat/sstart/sstop/spause(sp)/sresume(sr)
+    - override: set flags to override subsys error, 
+                just now only to override aux connection error
+    - datasource <adc/ctc>  (to K/M/T/N.IC)
+    - dmawait               (to K.IC)
+
+- new configuration words
+    - DBGLOG: on/off to log debugging messages on the 'debug' log 
+              (making another log file for debugging message log)
+    - OBSLOG: on/off to log script obs results on the 'scrobs' log, 
+              (making another log file for script obs results log)
+
+- code development
+    - script running routine/function
+    - TC with AUX connection and AUX link in TC monitoring routine
+    - AUX data update function
+    - Debugging message logging routine
+    - Script obs results logging routine
+
+- modification/debugging
+    - script load/display func
+    - _msgout()/_vmsgout() review and modification
+    - ISIS message sending function
+    - ICs commands are added, which is input without '>k.ic/>m.ic/>t.ic/>n.ic'
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.0.8 update notes (2017-12-26)
+
+- updated functions
+    - TC/PC-TCS/AUX connection and link monitoring
+    - Limit monitoring and warning routine
+
+- new commands or upgrade
+    - script (=scr/osc)
+    - systemstatus (=sysstatus/sysstat/sys)
+
+- code development
+    - TC/PC-TCS/AUX connection monitoring and data update routine
+    - TelStatus update: NC/CHECKING/STOW/HOLDING/TRACKING/SLEW/SETTLING/OSCILLATE/DISABLED
+    - CamStatus update: NC/PREP_I/PREP_E/INT_1-3/CLOSING/READ_1-3/IDLE_1-3/CHECK/CRASHED/DEAD
+    - Cam IC crash error handling routine - warning message to observer
+    - Cam data acqustion completion check after readout
+    - Cam fits data writing completion check after idle
+    - TelStatus update: TRACKINGS (stable tracking state) and bumper for oscillation and disconnection determination
+
+- modification/debugging
+    - KEY IN, ISIS IN, REMC IN, ISIS OUT, REMC OUT messages changed to debug msg from verbose msg
+  
+________________________________________________________________________________
+KMTNet OBSAgent v0.0.7 update notes (2017-12-22)
+
+- new commands or upgrade
+    - script
+
+- code development
+    - Observation script structure(v1), loading function, and command 
+
+- modification/debugging
+    - ISIS connection checking/monitoring/warning routine updated (isISISconnected check with PONG response from ISIS)
+    - Observation configuration data update/status monitoring/warning (obssystem_t update and flag check)
+________________________________________________________________________________
+KMTNet OBSAgent v0.0.6 update notes (2017-11-01)
+
+- code development
+    - Observation script structure(v0) and command added 
+
+________________________________________________________________________________
+KMTNet OBSAgent v0.0.5 update notes (2017-08-07 released)
+
+- updated functions
+    - Command history fucntion improved with repetitions skip in history addition
+
+- new commands or upgrade
+    - 'history' command upgrade: last entries display option and entries clearing
+      option are now available. (usage: "history" / "history 3" / "history -c" )
+    - 'timetag' to toggle time tag [yyyy-mm-ddThh:mm:ss.sss] display on console
+
+- new configuration words
+    - no
+
+- modification/debugging
+    - OBSAgent v0.0 re-creation, re-using TCSAgent flatform and code of TCSAgent v1.6.1
+    - Replaced old code with new improved code of TCSAgent v1.6.6
+
+
+________________________________________________________________________________
+
+
+
+________________________________________________________________________________
+EOF

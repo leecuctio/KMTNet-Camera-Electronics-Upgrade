@@ -1,0 +1,45 @@
+# PROJID  LABEL         RA          DEC          COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS  UTTOL  # comments
+
+# 11 biases  
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+   FT2023B-26 BIAS       -           -             0    BIAS    BIAS   	  r      0       -      -    
+
+# 11 darks  
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+   FT2023B-26 DARK       -           -             0    DARK    DARK   	  r      60      -      -    
+
++opause
+
+# IF POSSIBLE 11 (sky or dome) flats, please check signal and eventually adjust EXPTIME
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+   FT2023B-26 FLAT       -           -             0    FLAT    FLAT   	  r      5       -      -    
+
++ostop
+

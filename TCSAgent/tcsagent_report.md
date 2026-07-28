@@ -1,0 +1,213 @@
+# TCS Agent (KMTNet) — 기술 분석 보고서
+
+이 문서는 `TCSAgent/` 폴더에 있는 자료(공식 매뉴얼, 원본 소스코드, 설정 파일, 참고 문서)를 바탕으로 KMTNet TCS Agent 소프트웨어를 분석한 것이다. **배경지식이 없는 사람도 읽을 수 있도록** 관련 용어와 맥락부터 설명한다.
+
+- 근거 자료: `KMTNet TCS Agent R4.0.pdf`(공식 매뉴얼, KASI 차상목 작성), `TCSAgent.latest/KMTNet/*`(v1.7.2 소스코드 및 설정/데이터 파일), `__reference/*`(저수준 프로토콜 원본 문서)
+- 대상 버전: **v1.7.2** (소스코드 `pctcs.h`의 `APP_VER` 확인, `TCSAgent.v1.7.2.zip`과 일치)
+- 공식 매뉴얼 버전: Rev.4 (2020-11-10) — 단, 아래 9절에서 설명하듯 매뉴얼이 다루지 못하는 v1.5.2~v1.7.2 사이 추가 기능이 존재한다.
+
+---
+
+## 1. 한눈에 보기
+
+**TCS Agent**는 "망원경(TCS, Telescope Control System)"과 "카메라/관측 제어 시스템(ICIMACS)" 사이를 이어주는 다리 역할을 하는 프로그램이다. 실행 파일 이름은 `pctcs`이고, ICIMACS 네트워크 안에서는 노드 이름 **`TC`**로 불린다 — [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md)에서 정리한 노드 디렉토리의 `TC` 항목이 바로 이 프로그램이다.
+
+역할을 한 줄씩 풀면:
+- 카메라 쪽(ICS 등)이 이해하는 메시지 프로토콜(**IMPv2**, 텍스트 기반 `src>dest 메시지` 형식)과 망원경 하드웨어가 이해하는 저수준 프로토콜을 서로 통역한다.
+- 사람이 터미널에서 직접 타이핑해 망원경을 제어/점검할 수 있는 명령줄 인터페이스(TC%)도 제공한다.
+- 망원경의 상태(좌표, 추적 여부 등)와 부속장치(필터, 셔터, 돔, 포커서 등) 상태를 계속 수집해 카메라 쪽에 알려준다.
+- 통신이 끊기면 자동으로 재연결을 시도한다.
+
+**원본**: 이 프로그램의 뿌리는 OSU(Ohio State University) 천문학과 Richard Pogge가 만든 **pctcs Agent**(정확히는 v3.3.1)로, 원래 미국 Yale 1-m 망원경/ANDICAM 계측기에서 쓰이던 것이다. [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 7.4절에서 다룬 `pctcs`(ComSoft PC-TCS 전용 filter/agent)의 **KMTNet 맞춤 개조판**이 바로 이 TCS Agent다. KASI KMTNet팀의 차상목이 KMTNet 시스템에 맞게 대폭 수정·확장해왔다(2014년부터 현재 v1.7.2까지).
+
+---
+
+## 2. 왜 이런 프로그램이 필요한가 — KMTNet 망원경 제어 하드웨어 구조
+
+KMTNet 망원경의 제어 시스템은 원래 **ComSoft社의 PC-TCS**라는 상용 망원경 제어 소프트웨어를 기반으로 한다. PC-TCS는 원래 시리얼(RS-232)로만 통신하도록 만들어진 오래된(Windows 98 시절) 프로그램이라, 요즘 네트워크 기반 시스템과 바로 연결할 수 없다. KMTNet은 이를 해결하기 위해 다음과 같은 2단 구조를 쓴다:
+
+```
+[ICIMACS 쪽]                        [망원경 제어 시스템(TCS) 쪽]
+GUI ↔ ICG.IS(가이드) ↔                PCTCS (Win98)
+        TCS Agent(TC)  ─UDP(IMP)─       └─ 망원경 마운트(가대) 직접 구동
+        ↔ ICS.IS(과학)                   │  RS-232, ComSoft Native 프로토콜
+                                          ▼
+                                   AUX (WinXP) 컴퓨터
+                                   ├─ Telcom (TCP 서버) — PCTCS를 TCP로 중계
+                                   └─ AUX 제어 GUI SW (TCP 서버) — 필터/셔터/
+                                       포커서/돔셔터/거울냉각 등 부속장치 제어
+```
+
+- **PC-TCS**: 망원경 마운트(가대, mount) 자체의 구동을 담당하는 원조 상용 소프트웨어. 지금도 Windows 98 위에서 그대로 돌아가며, 시리얼로만 통신한다.
+- **Telcom**: PC-TCS의 시리얼 신호를 네트워크(TCP)로 중계해주는 별도 프로그램("PCTCS-NG Network Protocol"이라는 규격을 씀). AUX 컴퓨터(WinXP) 위에서 실행된다.
+- **AUX 제어 소프트웨어**: 필터/셔터, 포커서(초점 액추에이터), 돔 셔터, 거울 냉각기(chiller), 환경 센서 등 "망원경 부속장치"를 제어하는 별도 GUI 프로그램. 이것도 TCP 서버를 내장하고 있다(자체 "KMTNet Auxiliary control software – Remote commands" 규격).
+- **TCS Agent**: 이 두 TCP 서버(Telcom, AUX)의 **클라이언트**이면서, 동시에 ICIMACS 쪽으로는 UDP로 IMPv2 메시지를 주고받는 **노드(TC)** 역할을 한다. 즉 TCS Agent 혼자서 "TCP 클라이언트 2개 + UDP 노드 1개"를 겸한다.
+
+## 3. 원본(pctcs Agent) 대비 KMTNet 개조 내역
+
+R4.0 매뉴얼(2.2절)에 정리된 원본 대비 주요 개조 사항:
+
+| 항목 | 원본 (Yale 1-m/ANDICAM) | KMTNet 개조 |
+|---|---|---|
+| PC-TCS 통신 | RS-232 시리얼 직접 연결 | Telcom을 거친 TCP/IP (PCTCS-NG 프로토콜) |
+| 부속장치 제어 | 없음 | AUX TCP/IP 통신 신설 |
+| 링크 복구 | — | 자동 재연결(auto recovery) 루틴 + 링크 상태 모니터링 신설 |
+| 텔레메트리 | PC-TCS만 | PC-TCS + AUX 양쪽 다 |
+| 고수준 명령 | 기본 이동 명령 위주 | 가이딩 오프셋, goto, offset, 필터 교체, 포커스/tip-tilt 조정 등 신설 |
+| 설정 파일 | 기본 항목 | Telcom/AUX 서버 정보, 통신 제어, HW 스펙 등으로 확장 |
+
+TCS/AUX 두 링크는 독립적으로 상태를 관리한다: PC-TCS 시리얼 스트림이 죽으면 TCS 링크는 `IDLE`, Telcom과의 TCP 연결이 끊기면 `DOWN`. AUX는 명령 송수신 실패나 TCP 단절 시 `DOWN`. 자동복구(ArcMode)가 켜져 있으면 `ArcInt` 간격으로 재연결을 시도한다.
+
+## 4. 설치와 빌드
+
+- **소스 구성 (10개 파일)**: `00README.txt`, `pctcs.h`(헤더), `main.c`(메인 루프), `loadconfig.c`(설정 파일 로더), `comsoft.c`(PC-TCS/AUX 통신 유틸리티), `commands.h`/`commands.c`(명령어 처리), `pctcs.ini`(기본 설정), `Makefile`, `build`(빌드 스크립트), `pctcs`(빌드된 실행파일)
+- **빌드 의존성**: OSU ISIS 클라이언트 라이브러리(`/home/dts/ISIS/client`에 설치, [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 7절에서 분석한 그 `libisis.a`와 동일 계보) + GNU Readline 라이브러리
+- **빌드 방법**: `make`가 아니라 전용 `build` 스크립트 사용 (`g++`로 컴파일, `-lisis -lreadline -lhistory -lncurses -lm` 링크)
+- **실행**: `./pctcs [설정파일경로]` — 인자를 안 주면 기본값 `/home/dts/Config/pctcs.ini` 사용
+- **KASI 운영 설치 위치**: ICS 서버의 `/home/dts/Agents/pctcs/KMTNet`(소스), `/home/dts/bin/pctcs`(실행파일), `/home/dts/Config/pctcs.ini`(설정) — 유지보수 계정 `kasi`/`kasimain`. 구버전 압축파일은 `Backup.KMTNet/`에 보관.
+- KMTN_Startup 스크립트가 기동 시 `/home/dts/bin/pctcs`로 TCS Agent를 실행한다.
+
+## 5. 런타임 설정 파일 (`pctcs.ini`)
+
+ISIS 클라이언트 표준 설정 포맷(`Keyword Value`, `#` 주석, 대소문자 무관)을 확장한 것이다. 주요 키워드:
+
+| 구분 | 키워드 | 의미 |
+|---|---|---|
+| 동작모드 | `Mode` | `Standalone`(임의 IMPv2 클라이언트 응답) 또는 `ISISclient`(지정된 ISIS 허브만 응답) |
+| ISIS 서버 | `ISISID`, `ISISHost`, `ISISPort` | (ISISclient 모드일 때만 의미 있음) — [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md)의 `XIS` 허브에 해당 |
+| 자기 자신 | `ID`(=`TC`), `Port`(기본 6606) | TCS Agent 자신의 노드명/UDP 포트 |
+| TCS(Telcom) 서버 | `TCS_Host`, `TCS_Port`(기본 5750), `TCS_TelID`, `TCS_SysID` | Telcom 접속 정보 |
+| AUX 서버 | `AUX_Host`, `AUX_Port`(기본 5752), `AUX_TelID`, `AUX_SysID` | AUX 제어 SW 접속 정보 |
+| 타임아웃 | `Timeout_PCTCS`, `Timeout_Telcom` | 링크를 IDLE/DOWN으로 판단하는 기준 시간(초) |
+| 갱신주기 | `UpdateInt_TCS`(최소 0.5초), `UpdateInt_AUX`(최소 0.1초) | 텔레메트리 갱신 간격 |
+| 자동복구 | `AutoRecovery_TCS/AUX`, `ArcInt`(최소 0.5초) | 링크 자동 재연결 여부/간격 |
+| HW 스펙 | `TCS_Guide_Step_RA/Dec`(arcsec/encoder count), `TCS_Guide_MinOff_RA/Dec`, `AUX_FS_Filter/Shutter_OpTime`, `AUX_FA_ActNum_South/East/West` | 가이딩 스텝 크기, 최소 오프셋(이보다 작으면 무시), 필터/셔터 동작 소요시간, tip-tilt 액추에이터 번호 매핑 |
+| 실행 플래그 | `VERBOSE`, `DEBUG`, `DOLOG`, `LOGFILE` | 콘솔 출력/디버그/로깅 설정 |
+
+실제 사이트별 설정은 `TCSAgent.latest/KMTNet/ini/pctcs.kmtn{a,c,s,t}.ini`(및 `.sta.ini`)로 나뉘어 있다 — 사이트 코드가 4개(`a,c,s,t`) 존재하는데, [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md)에서 확인한 3개 관측소(CTIO/SAAO/SSO) 외 테스트/예비 사이트가 하나 더 있는 것으로 보인다(정확한 사이트-코드 매핑은 각 ini 파일의 `TCS_Host`/`AUX_Host` 값과 실제 관측소 배정을 대조해 확인 필요).
+
+## 6. 명령어 레퍼런스 (공식 매뉴얼 R4.0 기준)
+
+명령은 로컬 콘솔(키보드)과 원격(IMPv2, 다른 노드가 UDP로 보내는 메시지) 양쪽에서 동일하게 쓸 수 있다. `EXEC:`류 명령(예: `quit`)은 원격에서는 명시적 `EXEC:` 타입으로만 허용되고 권장되지 않는다.
+
+### 6.1 Client 명령 (프로그램 자체 제어)
+`quit`(종료) · `init`/`reset`(TCS+AUX 링크 초기화) · `close`(링크 닫기) · `arc`(자동복구 토글) · `info`(설정 조회) · `version` · `verbose`/`debug`(출력모드 토글) · `history` · `!!`/`!cmd`(직전 명령 반복) · `help`/`?`
+
+### 6.2 TCS 명령 (망원경 마운트)
+| 명령 | 인자 | 설명 |
+|---|---|---|
+| `tcsinit`/`tcsreset`/`tcsclose`/`tcsarc` | - | TCS(Telcom) 링크 제어 |
+| `tcsstatus` | - | TCS 상태를 IMPv2 형식으로 반환 |
+| `tstat` | - | TCS 상태를 경량(사람 아닌 기계용) 형식으로 반환 |
+| `traw` | - | 가장 최근 PC-TCS 원본 텔레메트리 문자열 그대로 반환(디버깅용) |
+| `tsync` | - | PC-TCS 시계를 로컬 시스템 시계와 동기화 (자정 근처엔 주의) |
+| `tcmd` | `<원본명령>` | PC-TCS "COMSOFT Native Protocol" 원본 명령을 그대로 전달 |
+| `tguide` | `<RA_offset> <Dec_offset>` [arcsec] | 가이딩 오프셋(RA/Dec 축 각각 별도 명령됨) |
+| `tgoto` | `<RA> <Dec>` [J2000] | 절대 좌표로 이동 |
+| `toffset` | `<RA_offset> <Dec_offset>` | 상대 오프셋 이동 |
+| `tstop` | - | 이동 중지 |
+| `tdi` | - | 현재 위치를 명령된 위치로 강제 동기화(망원경 없이 SW 테스트용) |
+
+### 6.3 AUX 명령 (부속장치: 필터/셔터/포커서/돔/거울냉각/환경)
+| 명령 | 인자 | 설명 |
+|---|---|---|
+| `auxinit`/`auxreset`/`auxclose`/`auxarc` | - | AUX 링크 제어 |
+| `auxstatus`/`astat` | - | AUX 전체 상태(IMPv2 형식 / 경량 형식) |
+| `acmd` | `<원본명령>` | AUX 제어 SW 원본 명령 그대로 전달 |
+| `filter` | `<fnum>` (0~4) | 필터 교체 |
+| `fsastat` | - | 필터/셔터 상태만 경량 조회 |
+| `dfocus` | `<Δfocus>` [mm] | 초점 상대 이동 |
+| `dtilt` | `<Δtilt_NS> <Δtilt_EW>` [arcsec] | tip-tilt 상대 조정 (원격은 EXEC만) |
+| `fttgoto` | `<focus>` (`<tilt_NS> <tilt_EW>`) | 초점/tip-tilt 절대 위치 이동 |
+| `fttstat` | - | 초점/tip-tilt 상태 경량 조회 |
+
+> **주의(운영상 중요)**: 카메라 셔터 자체는 TCS Agent가 제어하지 않는다! 셔터는 ICS가 HE(Head Electronics) box를 통해 TTL 신호(HIGH/LOW)로 직접 여닫는다. TCS Agent/AUX의 "Filter/Shutter" 상태는 그 결과를 **모니터링**할 뿐이다 — 카메라 제어 소프트웨어는 셔터를 열기 전 `STANDBY` 상태를 확인하고, 닫을 때는 `OPENING`/`OPENED` 상태를 확인해야 한다(R4.0 6.1절).
+
+### 6.4 상태/텔레메트리 문자열 필드 요약
+
+- **TCS**: `DATE-OBS/TIME-OBS`(조회 시각) `DATE-UP/TIME-UP`(수신 시각) `RA/DEC/EQUINOX/HA/ST/SECZ/ALT/AZ`(좌표) `TCSLINK`(Up/Idle/Down) `TELMOVE`(이동축) `TCSLIMIT`(리밋 상태) `TCSDRIVE`(구동 활성화 여부) `EXECODE`(명령 실행결과 코드)
+- **AUX**: 하위시스템별로 접두어가 붙는다 — `FS:`(Filter/Shutter), `FA:`(Focus Actuator, 남/동/서 3개 액추에이터의 절대위치·리밋), `DS:`(Dome Shutter), `MC:`(Mirror Cover), `CH:`(거울냉각 Chiller), `EN:`(환경센서 7개 + 팬)
+
+## 7. 소프트웨어 테스트/시뮬레이션
+
+망원경/부속장치 없이도 소프트웨어만 테스트할 수 있도록 지원한다:
+- PC-TCS는 데모(DEMO) 버전을 쓰면 좋고, 원본 버전을 써도 `tstop`/`tdi` 명령으로 "가짜 이동 완료" 처리가 가능하다.
+- AUX 쪽은 전용 데모 프로그램이 있고, 원본에는 없는 시뮬레이션 명령을 추가로 제공한다: `acmd simul cshut high/low`(카메라 셔터 TTL 입력 흉내), `acmd simul staterr <subsys>`(특정 서브시스템 에러 흉내), `acmd simul clearerr`(에러 해제).
+- `netcat`(nc)으로 Telcom/AUX 서버에 직접 접속해 원본 프로토콜 메시지를 주고받아보는 것도 매뉴얼에 예시로 나온다 (`nc <IP> 5750` 등).
+
+## 8. 버전 이력 요약 (`UpdateNotes.v1.7.2.txt` 기준, v1.5.2 ~ v1.7.2)
+
+| 버전 | 주요 변경 |
+|---|---|
+| v1.5.2 | `catalog`, `tmradec`/`tmr`, `tmobject`/`tmo`, `tmelaz`/`tme` 명령 신설 — RA/Dec 객체 카탈로그 도입 |
+| v1.5.3/4 | HA 문자열 버그 수정, BLG 오프셋 보정에 목적지 HA 적용하도록 수정 |
+| v1.5.5 | 포인팅 모델링 유틸리티 `oo`, `cc <x> <y>` 추가 |
+| v1.6.0 | 이벤트 로그 파일 출력 추가, `tgoto` Dec 부호 버그 수정 |
+| v1.6.1 | TSTAT/ASTAT 로그 파일 분리 출력, `LoggingInt_TCS/AUX`·`VERLOG` 설정 추가, AUXSTATUS의 `FILTER` 필드 정리 |
+| v1.6.2 | `traw`(원본 텔레메트리 문자열)를 로그에 추가 |
+| v1.6.3 | 텔레메트리 필드(Alt/Az/SecZ/RA/DEC) 검증·오류 로깅 강화 |
+| v1.6.4 | 좌표 변환 함수 `trans1060()` 반올림 오차 개선 |
+| v1.6.5 | 텔레메트리 패킷 디코딩 실패 시 재시도 로직 추가 |
+| v1.6.6 | 카탈로그 입력 유연화, `TCSLIMIT`/`LimitStatus`에 복합 상태(RA+Dec 등) 라벨 추가, `history` 명령 개선 |
+| v1.6.7~1.6.9 | K/M/T/N CCD 중심 오프셋 보정 기준점을 N→K→C(모자이크 중심)로 순차 변경 |
+| v1.7.0 | `tstow`(`stow`) 명령 신설 — 망원경 스토우(파킹) 위치 이동 |
+| v1.7.2 (2018-01-01) | `acmd` 응답 포맷 정리 |
+
+## 9. 공식 매뉴얼(R3/R4)에 없는 실제 기능 — 소스코드 대조 결과
+
+공식 매뉴얼 R4.0(2020-11-10 개정)의 명령어 표(5.1절)와 실제 v1.7.2 소스(`commands.h`)의 명령어 목록을 대조한 결과, **아래 명령들은 실제로 존재하고 동작하지만 R3/R4 매뉴얼 어디에도 문서화되어 있지 않다.** 신규 Python 구현이나 향후 유지보수 시 이 문서(및 소스코드)를 반드시 참고해야 한다.
+
+| 명령 | 기능 (소스코드 `commands.c` 확인) |
+|---|---|
+| `catalog` (`cat`) | RA/Dec 객체 카탈로그 파일(기본 `/home/dts/Config/pctcs.cat`)을 메모리에 로드. 인자 없이 실행하면 로드된 카탈로그 데이터 목록 출력 |
+| `tmradec` (`tmr`) | `<RA> <DEC> (<copt>)` — 좌표로 이동하되, 보정 옵션(`copt`)에 따라 좌표를 실시간으로 보정한 뒤 이동. 아래 9.1절 참고 |
+| `tmobject` (`tmobj`/`tmo`) | `<객체명> (<copt>)` — `catalog`로 로드해둔 카탈로그에서 객체명으로 좌표를 찾아 `tmradec`와 동일하게 이동 |
+| `tmelaz` (`tme`) | 고도/방위각(El/Az)으로 직접 이동 |
+| `tstow` (`stow`) | 망원경을 스토우(파킹) 위치로 이동 (`MOVSTOW` 원본 명령 전송) |
+| `oo`, `cc <x> <y>` | 포인팅 모델링 보조 유틸리티 (v1.5.5 도입) |
+| `concise` (`con`) | verbose 모드 강제 해제 |
+| `dtiltp`, `fttgotop` | tip-tilt 관련 변형 명령(접미사 `p` — 세부 동작은 추가 소스 확인 필요) |
+| `tick` | (세부 동작은 추가 소스 확인 필요) |
+| `treq` | (세부 동작은 추가 소스 확인 필요) |
+
+### 9.1 포인팅 보정 옵션(`copt`) — `tmradec`/`tmobject`의 핵심 기능
+
+`tmradec <RA> <DEC> <copt>`의 `copt` 인자는 단순 이동이 아니라 **KMTNet 모자이크 카메라의 물리적 구조를 반영한 좌표 보정**을 수행한다:
+
+- **`0`(기본값)**: 보정 없음, 입력 좌표로 그대로 이동
+- **`1` (BLG 보정)**: **KMTNet Bulge(BLG) 서베이 필드 전용 포인팅 보정.** 목적지의 시각각(HA, Hour Angle)을 계산한 뒤, 사이트별 보정 테이블(`cortable/offset_{ctio,saao,sso}.table.<날짜>`, HA에 따른 RA/Dec 보정값 3열 텍스트)을 참조해 망원경 마운트의 알려진 비선형 지향 오차를 보정한다. `ics_legacy_report.md`의 4.3절에서 실측 로그로 확인한 실제 BLG 서베이 관측(`OBJECT BLG11` 등)이 바로 이 보정을 거쳐 지향된 것으로 보인다.
+- **`k/K`, `m/M`, `t/T`, `n/N`**: 모자이크 중심(C) 대신 **특정 CCD(K/M/T/N)를 시야 중심에 오도록** 하는 오프셋. 소스코드 상수로 CCD 간 각거리가 `ad_ra = 63'/15(시간각 환산)`, `ad_dec = 66'`로 정의돼 있다 — 즉 인접 CCD 사이 간격이 약 63~66각분(약 1도)임을 의미한다. 버전 이력(9.1~1.6.9)을 보면 이 보정의 기준점이 "N에서 본 오프셋" → "K에서 본 오프셋" → "모자이크 중심(C)에서 본 오프셋"으로 여러 차례 재정의되었다 — 실측 지오메트리를 다듬어온 과정으로 보인다.
+
+`catalog` 파일(`pctcs.cat`)의 실제 예시:
+```
+# Columns: OBJECT  RA  DEC  (default COPT)  #comments..
+BLG01  17:54:52.760  -31:10:58.70  1
+BLG02  17:54:52.760  -29:01:25.10  1
+...
+```
+필드명(`BLG01`, `BLG02`...)이 [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.3절 실측 로그에서 본 `OBJECT BLG11` 등과 동일한 명명 체계임을 확인했다 — 즉 카메라(ICS)가 FITS 헤더/파일명에 쓰는 필드 이름과 TCS Agent가 실제 지향에 쓰는 카탈로그가 같은 필드 코드를 공유한다(단, 실제로 어느 소프트웨어가 두 시스템에 필드명을 배포하는지는 OBSAgent 쪽 분석에서 확인 필요).
+
+## 10. 참고 원본 자료 색인
+
+| 경로 | 내용 | 상태 |
+|---|---|---|
+| `KMTNet TCS Agent R4.0.pdf` | 공식 매뉴얼 최신판(2020-11-10, S. Cha) | 검토 완료, 본 보고서의 주 근거 |
+| `KMTNet TCS Agent R3.pdf` | 공식 매뉴얼 구판 | 미검토(R4.0으로 대체됨) |
+| `TCSAgent.latest/KMTNet/` | v1.7.2 소스코드, ini/catalog/cortable 설정·데이터 | 검토 완료 (핵심 소스 함수 확인) |
+| `TCSAgent.latest/UpdateNotes.v1.7.2.txt` | v1.5.2~v1.7.2 버전별 변경 이력 | 검토 완료 |
+| `TCSAgent.v1.7.2.zip` | 위 소스와 동일 버전의 압축 배포본 | 압축 파일이라 미압축, 내용은 `.latest`와 동일 추정 |
+| `__reference/KMTNet AUX control remote commands(v20140908).pdf` | AUX 제어 SW 저수준 원격명령 규격 (`acmd`가 전달하는 실제 프로토콜) | 미검토 (R4.0이 요약 설명함) |
+| `__reference/PCTCS Communications.pdf`, `PC_TCS_version_6.pdf` | PC-TCS/Telcom 저수준 프로토콜(PCTCS-NG, COMSOFT Native) 원본 규격 | 미검토 (R4.0이 요약 설명함) |
+| `__reference/TelcomDoc.pdf` | Telcom 프로그램 자체 문서 | 미검토 |
+| `__reference/IMPv2.5Protocol1.pdf` | [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 2절에서 이미 상세 분석한 것과 동일 파일 | 기존 분석으로 대체 |
+| `__reference/ISISclient/` | 빌드 의존 라이브러리 사본 — OBSAgent 쪽 `ISISclient/`와 **동일 파일** 확인 | [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 7절 분석으로 대체 |
+| `__reference/hiredis/` | Redis C 클라이언트 라이브러리 사본 (외부 오픈소스). TCS Agent 자체는 Redis를 쓰지 않으므로 참고용으로 함께 보관된 것으로 보임 — 실제 Redis 사용처는 [OBSAgent](../OBSAgent/obsagent_report.md) | 미검토 |
+
+## 11. 신규 Python 구현 시 참고 사항
+
+- TCS Agent는 본질적으로 "**두 개의 TCP 클라이언트(Telcom, AUX) + 한 개의 UDP IMPv2 노드**"라는 조합이다. Python으로 재구현한다면 `asyncio`로 TCP 클라이언트 2개와 UDP 소켓 1개를 동시에 다루는 구조가 자연스럽다.
+- TCS 링크와 AUX 링크는 **완전히 독립적으로 상태를 관리**해야 한다(Up/Idle/Down 각각 다른 타임아웃 기준). 이 분리를 신규 구현에서도 유지할 가치가 있다.
+- **셔터는 TCS Agent/AUX가 아니라 ICS가 직접 TTL로 제어**한다는 구조(6절 주의사항)는 신규 시스템에서도 그대로 가져갈지, 아니면 통합할지 결정이 필요한 지점이다.
+- `copt` 기반 좌표 보정(9.1절)은 **공식 문서화가 안 된 채로 운영에 쓰이고 있는 로직**이다. 신규 구현 시 이 보정 테이블(`cortable/offset_*.table`)과 알고리즘을 그대로 이식할지, 정식으로 스펙을 정리해 재구현할지 결정하고 문서화해야 한다 — 현재는 소스코드가 유일한 정본(source of truth)이다.
+- 카탈로그(`pctcs.cat`)의 필드 코드가 OBSAgent 쪽(관측 스크립트)의 필드 코드와 겹치는 것으로 보이므로, 신규 구현에서는 "필드 이름 → 좌표" 테이블을 TCS 쪽과 카메라 쪽이 이중 관리하지 않도록 단일 소스로 통합하는 것을 고려할 만하다.
+- 버전 이력(8절)에서 보듯 이 프로그램은 10년 넘게 실운영 중 발견된 자잘한 버그(반올림 오차, 부호 오류, 자정 처리 등)를 계속 고쳐온 결과물이다. 신규 구현 시 이런 엣지케이스들을 자체적으로 다시 겪지 않도록, 버전별 변경 이력을 회귀 테스트 체크리스트로 활용할 만하다.

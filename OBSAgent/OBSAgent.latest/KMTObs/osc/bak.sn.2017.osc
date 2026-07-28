@@ -1,0 +1,164 @@
+#  KMTNet Observation script
+#  Columns: LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL  #comments..
+
+#
+#  Object: SN
+#  Default correction: No
+#
+
+#+ProjID  SN
+
+##ostart 1
+ N247-1(B)   00:48:40  -20:20:00  -  OBJECT  N247-1   B  60   -  -  #01
+ N247-1(V)   00:48:40  -20:20:00  -  OBJECT  N247-1   V  60   -  -  
+ N247-1(I)   00:48:40  -20:20:00  -  OBJECT  N247-1   I  60   -  -  
+ N59-1(B)    00:13:30  -21:13:00  -  OBJECT  N59-1    B  60   -  -  
+ N59-1(V)    00:13:30  -21:13:00  -  OBJECT  N59-1    V  60   -  -  
+ N59-1(I)    00:13:30  -21:13:00  -  OBJECT  N59-1    I  60   -  -  
+ N300-1(B)   00:53:24  -37:20:30  -  OBJECT  N300-1   B  60   -  -  
+ N300-1(V)   00:53:24  -37:20:30  -  OBJECT  N300-1   V  60   -  -  
+ N300-1(I)   00:53:24  -37:20:30  -  OBJECT  N300-1   I  60   -  -  
+ N55-1(B)    00:12:50  -38:50:00  -  OBJECT  N55-1    B  60   -  -  
+ N55-1(V)    00:12:50  -38:50:00  -  OBJECT  N55-1    V  60   -  -  
+ N55-1(I)    00:12:50  -38:50:00  -  OBJECT  N55-1    I  60   -  -  
+ N7793-1(B)  23:55:50  -32:14:00  -  OBJECT  N7793-1  B  60   -  -  
+ N7793-1(V)  23:55:50  -32:14:00  -  OBJECT  N7793-1  V  60   -  -  
+ N7793-1(I)  23:55:50  -32:14:00  -  OBJECT  N7793-1  I  60   -  -  
+ E149-1(B)   23:50:00  -52:11:00  -  OBJECT  E149-1   B  60   -  -  
+ E149-1(V)   23:50:00  -52:11:00  -  OBJECT  E149-1   V  60   -  -  
+ E149-1(I)   23:50:00  -52:11:00  -  OBJECT  E149-1   I  60   -  -  
+ I5152-1(B)  22:00:40  -50:56:00  -  OBJECT  I5152-1  B  60   -  -  
+ I5152-1(V)  22:00:40  -50:56:00  -  OBJECT  I5152-1  V  60   -  -  
+ I5152-1(I)  22:00:40  -50:56:00  -  OBJECT  I5152-1  I  60   -  -  
+
+#+ostart 1
+#+ostop
+
+##ostart 22
+ N2207-9(B)  06:14:34  -22:07:00  -  OBJECT  N2207-9  B  60   -  -  #22
+ N2207-9(V)  06:14:34  -22:07:00  -  OBJECT  N2207-9  V  60   -  -  
+ N2207-9(I)  06:14:34  -22:07:00  -  OBJECT  N2207-9  I  60   -  -  
+ E489-1(B)   06:17:00  -24:10:00  -  OBJECT  E489-1   B  60   -  -  
+ E489-1(V)   06:17:00  -24:10:00  -  OBJECT  E489-1   V  60   -  -  
+ E489-1(I)   06:17:00  -24:10:00  -  OBJECT  E489-1   I  60   -  -  
+ N2217-1(B)  06:19:36  -26:50:00  -  OBJECT  N2217-1  B  60   -  -  
+ N2217-1(V)  06:19:36  -26:50:00  -  OBJECT  N2217-1  V  60   -  -  
+ N2217-1(I)  06:19:36  -26:50:00  -  OBJECT  N2217-1  I  60   -  -  
+ CGMW1-1(B)  06:36:00  -15:30:00  -  OBJECT  CGMW1-1  B  60   -  -  
+ CGMW1-1(V)  06:36:00  -15:30:00  -  OBJECT  CGMW1-1  V  60   -  -  
+ CGMW1-1(I)  06:36:00  -15:30:00  -  OBJECT  CGMW1-1  I  60   -  -  
+ N2280-1(B)  06:41:30  -27:00:00  -  OBJECT  N2280-1  B  60   -  -  
+ N2280-1(V)  06:41:30  -27:00:00  -  OBJECT  N2280-1  V  60   -  -  
+ N2280-1(I)  06:41:30  -27:00:00  -  OBJECT  N2280-1  I  60   -  -  
+ N2283-1(B)  06:43:50  -18:40:00  -  OBJECT  N2283-1  B  60   -  -  
+ N2283-1(V)  06:43:50  -18:40:00  -  OBJECT  N2283-1  V  60   -  -  
+ N2283-1(I)  06:43:50  -18:40:00  -  OBJECT  N2283-1  I  60   -  -  
+ N2325-1(B)  07:04:45  -29:10:00  -  OBJECT  N2325-1  B  60   -  -  
+ N2325-1(V)  07:04:45  -29:10:00  -  OBJECT  N2325-1  V  60   -  -  
+ N2325-1(I)  07:04:45  -29:10:00  -  OBJECT  N2325-1  I  60   -  -  
+ N2380-1(B)  07:21:49  -27:02:32  -  OBJECT  N2380-1  B  60   -  -  
+ N2380-1(V)  07:21:49  -27:02:32  -  OBJECT  N2380-1  V  60   -  -  
+ N2380-1(I)  07:21:49  -27:02:32  -  OBJECT  N2380-1  I  60   -  -  
+ ESO494-1(B) 08:04:05  -27:02:30  -  OBJECT  ESO494-1 B  60   -  -  
+ ESO494-1(V) 08:04:05  -27:02:30  -  OBJECT  ESO494-1 V  60   -  -  
+ ESO494-1(I) 08:04:05  -27:02:30  -  OBJECT  ESO494-1 I  60   -  -  
+ N2559-1(B)  08:15:00  -27:00:00  -  OBJECT  N2559-1  B  60   -  -  
+ N2559-1(V)  08:15:00  -27:00:00  -  OBJECT  N2559-1  V  60   -  -  
+ N2559-1(I)  08:15:00  -27:00:00  -  OBJECT  N2559-1  I  60   -  -  
+
+#+ostop
++ostart 22
+
+
+##ostart 52
+ N2292-1(B)  06:45:40  -26:24:00  -  OBJECT  N2292-1  B  60   -  -  #52
+ N2292-1(V)  06:45:40  -26:24:00  -  OBJECT  N2292-1  V  60   -  -  
+ N2292-1(I)  06:45:40  -26:24:00  -  OBJECT  N2292-1  I  60   -  -  
+ N2188-1(B)  06:08:00  -33:40:00  -  OBJECT  N2188-1  B  60   -  -  
+ N2188-1(V)  06:08:00  -33:40:00  -  OBJECT  N2188-1  V  60   -  -  
+ N2188-1(I)  06:08:00  -33:40:00  -  OBJECT  N2188-1  I  60   -  -  
+ N2223-1(B)  06:22:30  -22:21:05  -  OBJECT  N2223-1  B  60   -  -  
+ N2223-1(V)  06:22:30  -22:21:05  -  OBJECT  N2223-1  V  60   -  -  
+ N2223-1(I)  06:22:30  -22:21:05  -  OBJECT  N2223-1  I  60   -  -  
+
+##ostart 61
+ N2997-1(B)  09:43:40  -30:50:00  -  OBJECT  N2997-1  B  60   -  -  #61
+ N2997-1(V)  09:43:40  -30:50:00  -  OBJECT  N2997-1  V  60   -  -  
+ N2997-1(I)  09:43:40  -30:50:00  -  OBJECT  N2997-1  I  60   -  -  
+ N3056-1(B)  09:52:35  -28:00:00  -  OBJECT  N3056-1  B  60   -  -  
+ N3056-1(V)  09:52:35  -28:00:00  -  OBJECT  N3056-1  V  60   -  -  
+ N3056-1(I)  09:52:35  -28:00:00  -  OBJECT  N3056-1  I  60   -  -  
+ N3175-1(B)  10:12:42  -28:30:00  -  OBJECT  N3175-1  B  60   -  -  
+ N3175-1(V)  10:12:42  -28:30:00  -  OBJECT  N3175-1  V  60   -  -  
+ N3175-1(I)  10:12:42  -28:30:00  -  OBJECT  N3175-1  I  60   -  -  
+
+##ostart 70
+ N3511-2(B)  11:05:20  -23:30:00  -  OBJECT  N3511-2  B  60   -  -  #70
+ N3511-2(V)  11:05:20  -23:30:00  -  OBJECT  N3511-2  V  60   -  -  
+ N3511-2(I)  11:05:20  -23:30:00  -  OBJECT  N3511-2  I  60   -  -  
+ N3585-2(B)  11:15:15  -27:05:00  -  OBJECT  N3585-2  B  60   -  -  
+ N3585-2(V)  11:15:15  -27:05:00  -  OBJECT  N3585-2  V  60   -  -  
+ N3585-2(I)  11:15:15  -27:05:00  -  OBJECT  N3585-2  I  60   -  -  
+ N3621-2(B)  11:20:00  -33:14:00  -  OBJECT  N3621-2  B  60   -  -  
+ N3621-2(V)  11:20:00  -33:14:00  -  OBJECT  N3621-2  V  60   -  -  
+ N3621-2(I)  11:20:00  -33:14:00  -  OBJECT  N3621-2  I  60   -  -  
+ N3717-2(B)  11:33:30  -30:44:00  -  OBJECT  N3717-2  B  60   -  -  
+ N3717-2(V)  11:33:30  -30:44:00  -  OBJECT  N3717-2  V  60   -  -  
+ N3717-2(I)  11:33:30  -30:44:00  -  OBJECT  N3717-2  I  60   -  -  
+ N3923-1(B)  11:49:02  -28:27:00  -  OBJECT  N3923-1  B  60   -  -  
+ N3923-1(V)  11:49:02  -28:27:00  -  OBJECT  N3923-1  V  60   -  -  
+ N3923-1(I)  11:49:02  -28:27:00  -  OBJECT  N3923-1  I  60   -  -  
+
+##ostart 85
+ N5128-1(B)  13:23:10  -43:20:00  -  OBJECT  N5128-1  B  60   -  -  #85
+ N5128-1(V)  13:23:10  -43:20:00  -  OBJECT  N5128-1  V  60   -  -  
+ N5128-1(I)  13:23:10  -43:20:00  -  OBJECT  N5128-1  I  60   -  -  
+ N5026-1(B)  13:11:00  -42:40:00  -  OBJECT  N5026-1  B  60   -  -  
+ N5026-1(V)  13:11:00  -42:40:00  -  OBJECT  N5026-1  V  60   -  -  
+ N5026-1(I)  13:11:00  -42:40:00  -  OBJECT  N5026-1  I  60   -  -  
+ K196-1(B)   13:24:30  -45:50:00  -  OBJECT  K196-1   B  60   -  -  
+ K196-1(V)   13:24:30  -45:50:00  -  OBJECT  K196-1   V  60   -  -  
+ K196-1(I)   13:24:30  -45:50:00  -  OBJECT  K196-1   I  60   -  -  #93
+
+
+
+# 
+# NOTES:
+#
+# Structure of KMTNet observation script
+#   - The observation script is imported with a text file including command lines and exposure lines.
+#   - Command lines are defined with '+' identifier. (ex. "+cmd arg1 arg2 ..")
+#   - Command line syntax
+#     Format  ) "+<command_word> <arguments_string>"
+#     Examples) "+projid eng"
+#                "+tguide +50 -50"
+#   - Exposure line syntax
+#     Columns ) LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+#     Examples) BLG-NORMAL-1015  17:54:24 -31:08:00  1  object  BLG01  I 60  - -  # comments..
+#               2011WO41  00:53:20.0  -27:00:00.0  0   object  S29000  R  42   2017-08-08T05:52:42  20    
+#   - Exposure lines can be repeated by putting the 'ostart <line#>' command line between the script lines
+#   - Script observation can be stopped or paused by putting the 'ostop' or 'opause' command line between the script lines
+#
+# Descriptions of the exposure configuration line
+#   - 1 line = 1 exposure, line length: not to exceed 240 characters
+#   - Not case sensitive, colnum spliter = 0x20(space)
+#   - Columns: LABEL RA DEC COPT IMGTYP OBJECT FILTER EXPTIME UTOBS UTTOL
+#
+# Descriptions of columns of exposure configuration lines
+#   - LABLE  : description of the line or exposure, not FITS header keyword, 
+#              ex. index#, serial#, target ID, any infomation of frame, etc.
+#   - RA/DEC : J2000 RA/Dec coordinate, hh:mm:ss.ss / +dd:mm:ss.s
+#   - COPT   : pointing correction option, 0 = No / 1 = BLG offset
+#   - IMGTYP : image type, object / bias / dark / flat / domeflat / sky
+#   - OBJECT : object name to record in FITS header
+#   - FILTER : I / R / V / B / N // z / i / r / z / n // Ha // 1 / 2 / 3 / 4 / 0
+#   - EXPTIME: Exposure time in seconds, Min. 0.1 seconds
+#   - UTOBS  : ISO UT string to start exposure, yyyy-mm-ssThh:mm:ss.s
+#   - UTTOL  : tolerance for UTOBS in seconds
+#   * If UTOBS is defined, the exposure starts at UTOBS +/-UTTOL.
+# 
+
+
+# END
+
+

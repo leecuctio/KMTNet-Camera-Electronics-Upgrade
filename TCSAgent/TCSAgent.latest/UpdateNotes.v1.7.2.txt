@@ -1,0 +1,255 @@
+____________________________________________________________________
+KMTNet TCSAgent v1.7.2 update notes (2018-01-01)
+
+- new commands
+    - stow (tstow)  (v1.7.0)
+
+- modification/debugging
+    - reply of ACMD changed to ACMD <args> OK from AUX CMD '<args>' OK
+____________________________________________________________________
+KMTNet TCSAgent v1.6.9 update notes
+
+- updated functions
+    - Offset correction to move to K/M/T/N from C
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.8 update notes
+
+- updated functions
+    - Offset correction to move to K/M/T/N from K
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.7 update notes
+
+- updated functions
+    - Offset correction to move to K/M/T from N
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.6 update notes
+
+- updated functions
+    - print of catalog data number at 'catalog' command input.
+    - more flexible catalog input, refer to pctcs.cat for details
+    - TSTAT: LimitStatus was modified with bit masking for simultaneous events.
+      <Old version>
+        LimitStatus = 0:No / 1:RA / 2:Dec / 3:Horizon / -1:Unknown
+      <New version> 
+        LimitStatus = 0:No / 1:RA / 2:Dec / 3:RA+Dec / 4:Horizon / 5:RA+Horizon / 
+                      6:Dec+Horizon / 7:RA+Dec+Horizon / -1:Unknown
+    - TCSSTATUS: LimitStatus Lables are added for simultaneous events.
+      <Old version> 
+        TCSLIMIT=No/RA/Dec/Horizon/Unknown
+      <New version> 
+        TCSLIMIT=No/RA/Dec/Horizon/RA+Dec/RA+Horizon/Dec+Horizon/
+                  RA+Dec+Horizon/Unknown
+     - 'history' command upgrade: last entries display option and entries clearing
+       option are now available. (usage: "history" / "history 3" / "history -c" )
+
+- modification/debugging
+    - Catalog loading routine improved for more flexible catalog file input
+    - Internal code improvement, String lengths, mecro names and constant values were redefined
+      to allocated/stack memory problems and to meet condition for using ISIS Lib func
+    - Command history fucntion improved with repetitions skip in history addition
+    - Readline prompt reset routine improved both in key cmd proc and socket cmd proc
+    - Some minor debugging and improvement for message output
+    - cmd_tsync() code modified, time setting first before date setting
+
+
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.5 update notes
+
+- updated functions
+    - changed the keyword for telemetry data check result from NOERR to NORMAL
+    - logging the number of attempts for packet decoding and TSTAT/TCSSTATUS string encoding
+      <Examples for tcs log>
+          [2017-02-11T10:02:18.459]  UP 1 2017-02-11T10:02:18.459 UTC 2017-02-11T10:02:17.856 05:24:45.74 -31:09:50.9 2000.000 +00:00:00 05:25:12  1.00 90.0   +0.0  0  0  1 E    "0  052445.74 -310950.9  +00:00:00 05:25:12 90.0    +0.0  1.00  E          12000.000           2   170211"    1  0  NORMAL
+      <Examples for event log>
+          [2016-01-16T00:02:30.118]  ISIS IN : ICS>TC TCSSTATUS
+          [2016-01-16T00:02:30.118]  ISIS OUT: TC>ICS DONE: TCSSTATUS TCSQDATE=2016-01-16T00:02:30.118 TIMESYS=UTC TCSLINK=Up TCSARC=Enabled TCSUDATE=2016-01-16T00:02:29.976 RA=02:32:31.67 DEC=-24:19:07.5 EQUINOX=2000.000 HA=+00:25:36 ST=02:58:47 SECZ=1.01 ALT=81.9 AZ=-133.8 TELMOVE=Idle TCSLIMIT=No TCSDRIVE=Enabled EXECODE=E
+          [2016-01-16T00:02:30.118]  TRAW STR: "0  023231.67 -241907.5  +00:25:36 02:58:47 81.9  -133.8  1.01  E           2000.000           2   160116"    1  0  NORMAL
+
+- modification/debugging
+    - The codes were modified/added for inspection/correction of string/data/value 
+      of RA/DEC/HA/Alt/Az pctcs telemetry data in parse_comsoft()
+    - Telemetry data decoding routine was modified 
+      with rerun packet-decoding routine (recall parse_comsoft())
+      in case of the telemetry data/string error, and logging history
+    - TSTAT/TCSSTATUS string encoding routine was modified with string length 
+      inspection and recalling sprintf() to build the string, and logging the histories
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.4 update notes
+
+- modification/debugging
+    - a new argument nDP in trans1060() for rounding dSec down to the designated 
+      decimal places for debugging the round off errors in sprintf()
+    - trans1060() modified using tricks with a tunning term and new conversion code
+    - trans1060() tunned and modified with robust and simplified code
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.3 update notes
+
+- updated functions
+    - Inspection and correction of Alt, Az, SecZ, RA and DEC values/string in telemetry data
+    - Logging the check result for telemetry data field (Alt, Az, SecZ, RA and DEC values/string)
+      <Examples for tcs log>
+          [2017-02-11T10:02:18.459]  UP 1 2017-02-11T10:02:18.459 UTC 2017-02-11T10:02:17.856 05:24:45.74 -31:09:50.9 2000.000 +00:00:00 05:25:12  1.00 90.0   +0.0  0  0  1 E    "0  052445.74 -310950.9  +00:00:00 05:25:12 90.0    +0.0  1.00  E          12000.000           2   170211"    NOERR
+       or [2017-02-11T10:02:18.459]  UP 1 2017-02-11T10:02:18.459 UTC 2017-02-11T10:02:17.856 05:24:45.74 -31:09:50.9 2000.000 +00:00:00 05:25:12  1.00 90.0   +0.0  0  0  1 E    "0  052445.74 -310950.9  +00:00:00 05:25:12 90.0    +0.0  1.00  E          12000.000           2   170211"    ERR_DECS
+       or [2017-02-11T10:02:18.459]  UP 1 2017-02-11T10:02:18.459 UTC 2017-02-11T10:02:17.856 05:24:45.74 -31:09:50.9 2000.000 +00:00:00 05:25:12  1.00 90.0   +0.0  0  0  1 E    "0  052445.74 -310950.9  +00:00:00 05:25:12 90.0    +0.0  1.00  E          12000.000           2   170211"    ERR_NOAL_NOAZ_NOSZ_DECL
+       or [2017-02-11T10:02:18.459]  IDLE 1 2017-02-11T10:02:18.459 UTC 
+      <Examples for event log>
+          [2016-01-16T00:02:30.118]  ISIS IN : ICS>TC TCSSTATUS
+          [2016-01-16T00:02:30.118]  ISIS OUT: TC>ICS DONE: TCSSTATUS TCSQDATE=2016-01-16T00:02:30.118 TIMESYS=UTC TCSLINK=Up TCSARC=Enabled TCSUDATE=2016-01-16T00:02:29.976 RA=02:32:31.67 DEC=-24:19:07.5 EQUINOX=2000.000 HA=+00:25:36 ST=02:58:47 SECZ=1.01 ALT=81.9 AZ=-133.8 TELMOVE=Idle TCSLIMIT=No TCSDRIVE=Enabled EXECODE=E
+          [2016-01-16T00:02:30.118]  TRAW STR: "0  023231.67 -241907.5  +00:25:36 02:58:47 81.9  -133.8  1.01  E           2000.000           2   160116"    NOERR
+       or [2016-01-16T00:02:30.118]  TRAW STR: "0  023231.67 -241907.5  +00:25:36 02:58:47 81.9  -133.8  1.01  E           2000.000           2   160116"    ERR_DECS
+       or [2016-01-16T00:02:30.118]  TRAW STR: "0  023231.67 -241907.5  +00:25:36 02:58:47 81.9  -133.8  1.01  E           2000.000           2   160116"    ERR_NOAL_NOAZ_NOSZ_DECL
+      <Examples for event log in the case of IDLE status>
+          [2016-01-16T00:02:30.118]  ISIS IN : ICS>TC TCSSTATUS
+          [2016-01-16T00:02:30.118]  ISIS OUT: TC>ICS DONE: TCSSTATUS TCSQDATE=2016-01-16T00:02:30.118 TIMESYS=UTC TCSLINK=Idle TCSARC=Enabled
+          [2016-01-16T00:02:30.118]  TRAW STR: "TCS Link is IDLE/DOWN, No telemetry data"    ERR_NODATA
+
+- new commands
+    - no
+
+- new configuration words
+    - no
+
+- (minor) modification/debugging
+    - parse_comsoft() to checking for RA/DEC values & string length and Alt/Az data, 
+      and to add of return options in parse_comsoft()
+    - GetTstatStr() to remove unnecessary message in traw field in tcslog
+      <Before modification>
+      [2017-02-11T10:01:15.980]  DOWN 1 2017-02-11T10:01:15.980 UTC    "TCS Link is IDLE/DOWN, telemetry unavailable"
+      [2017-02-11T10:01:48.424]  IDLE 1 2017-02-11T10:01:48.424 UTC    "TCS Link is IDLE/DOWN, telemetry unavailable"
+      [2017-02-11T10:02:18.459]  UP 1 2017-02-11T10:02:18.459 UTC 2017-02-11T10:02:17.856 05:24:45.74 -31:09:50.9 2000.000 +00:00:00 05:25:12  1.00 90.0   +0.0  0  0  1 E    "0  052445.74 -310950.9  +00:00:00 05:25:12 90.0    +0.0  1.00  E          12000.000           2   170211"
+      <After  modification>
+      [2017-02-11T10:01:15.980]  DOWN 1 2017-02-11T10:01:15.980 UTC
+      [2017-02-11T10:01:48.424]  IDLE 1 2017-02-11T10:01:48.424 UTC
+      [2017-02-11T10:02:18.459]  UP 1 2017-02-11T10:02:18.459 UTC 2017-02-11T10:02:17.856 05:24:45.74 -31:09:50.9 2000.000 +00:00:00 05:25:12  1.00 90.0   +0.0  0  0  1 E    "0  052445.74 -310950.9  +00:00:00 05:25:12 90.0    +0.0  1.00  E          12000.000           2   170211"
+    - Change "TRAW STRING:" tag to "TRAW STR:" in _msgout() for legibility of event log
+      <Before modification>
+      [2016-01-16T00:02:30.118]  ISIS IN : ICS>TC TCSSTATUS
+      [2016-01-16T00:02:30.118]  ISIS OUT: TC>ICS DONE: TCSSTATUS TCSQDATE=2016-01-16T00:02:30.118 TIMESYS=UTC TCSLINK=Up TCSARC=Enabled TCSUDATE=2016-01-16T00:02:29.976 RA=02:32:31.67 DEC=-24:19:07.5 EQUINOX=2000.000 HA=+00:25:36 ST=02:58:47 SECZ=1.01 ALT=81.9 AZ=-133.8 TELMOVE=Idle TCSLIMIT=No TCSDRIVE=Enabled EXECODE=E
+      [2016-01-16T00:02:30.118]  TRAW STRING: "0  023231.67 -241907.5  +00:25:36 02:58:47 81.9  -133.8  1.01  E           2000.000           2   160116"
+      [2016-01-16T00:06:32.569]   KEY IN : tme 64.4 117.5
+      [2016-01-16T00:06:32.569]   TCS OUT: KMTNET TCS 900 COMMAND ELAZ 64.40 +117.50
+      [2016-01-16T00:06:32.992]   TCS IN : KMTNET TCS 900 OK
+      [2016-01-16T00:06:32.992]  DONE: move to el/az commanded
+      [2016-01-16T00:06:33.010]  3 RA=02:32:31.62 Dec=-24:19:07.4 HA=+00:29:40 ST=03:02:51 UTC=00:06:33.010
+      <After modification>
+      [2016-01-16T00:02:30.118]  ISIS IN : ICS>TC TCSSTATUS
+      [2016-01-16T00:02:30.118]  ISIS OUT: TC>ICS DONE: TCSSTATUS TCSQDATE=2016-01-16T00:02:30.118 TIMESYS=UTC TCSLINK=Up TCSARC=Enabled TCSUDATE=2016-01-16T00:02:29.976 RA=02:32:31.67 DEC=-24:19:07.5 EQUINOX=2000.000 HA=+00:25:36 ST=02:58:47 SECZ=1.01 ALT=81.9 AZ=-133.8 TELMOVE=Idle TCSLIMIT=No TCSDRIVE=Enabled EXECODE=E
+      [2016-01-16T00:02:30.118]  TRAW STR: "0  023231.67 -241907.5  +00:25:36 02:58:47 81.9  -133.8  1.01  E           2000.000           2   160116"
+      [2016-01-16T00:06:32.569]   KEY IN : tme 64.4 117.5
+      [2016-01-16T00:06:32.569]   TCS OUT: KMTNET TCS 900 COMMAND ELAZ 64.40 +117.50
+      [2016-01-16T00:06:32.992]   TCS IN : KMTNET TCS 900 OK
+      [2016-01-16T00:06:32.992]  DONE: move to el/az commanded
+      [2016-01-16T00:06:33.010]  3 RA=02:32:31.62 Dec=-24:19:07.4 HA=+00:29:40 ST=03:02:51 UTC=00:06:33.010
+    - Debugging cat coord converting error that changes 00:10:00.000 to 00:09:59.999
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.2 update notes
+
+- updated functions
+    - Added traw string (raw telemetry data from PC-TCS) in TSTAT/Event log
+
+- debugging
+    - Cat coord input error
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.1 update notes
+
+- updated functions
+    - Event log output: /data/Logs/TC/tc.event.yyyymmdd.hhmmss.log
+    - TSTAT log output: /data/Logs/TC/tc.tstat.yyyymmdd.hhmmss.log
+    - ASTAT log output: /data/Logs/TC/tc.astat.yyyymmdd.hhmmss.log
+    - FILTER in AUXSTATUS was replaced with commanded filter name, 
+      but FILNUM still reflects the real-time filter status.
+    - FILTNUM/FILTNAME, old keywords, not used in AUXSTATUS message
+      were removed.
+
+- new configuration words
+    - LoggingInt_TCS: TCS status(TSTAT) logging interval
+    - LoggingInt_AUX: AUX status(ASTAT) logging interval 
+    - VERLOG: verbose log mode on/off
+
+- debugging
+    - minor, etc
+
+____________________________________________________________________
+KMTNet TCSAgent v1.6.0 update notes
+
+- updated functions
+    - Event log output: /data/Logs/TC/tc.event.yyyy-mm-ddThh:mm:ss.log
+
+- debugging
+    - tgoto Dec string error was fixed (-0000-0.00 -> +000000.00)
+    - minor, etc
+
+____________________________________________________________________
+KMTNet TCSAgent v1.5.5 update notes
+
+- updated functions
+    - Pointing modeling utilities oo/cc
+
+- new commands
+    - oo
+    - cc <x> <y>
+
+____________________________________________________________________
+KMTNet TCSAgent v1.5.3/4 update notes
+
+- debugging
+    - tmradec about HA string
+    - appling HA of destination for BLG offset correction
+
+____________________________________________________________________
+KMTNet TCSAgent v1.5.2 update notes
+
+- debugging
+    - tmradec/tmoffset
+    - tguide
+    - etc
+
+- new commands
+    - catalog (<cat>)
+    - tmradec  / tmr <ra> <dec> (<copt>) = tgoto
+    - tmobject / tmo <object> (<copt>)
+    - tmelaz   / tme <el> <az>
+
+- 'catalog' command description
+    - to import a catalogue file for update catalogue data
+    - to display catalogue data after importing
+    - Exec only for display and handling carefully
+      --> Romote command is also enabled, but
+          DONE message for remote host notifies only overall results,
+          detailed results is shown on TCSAgent console.
+
+- RA/Dec object catalogue file notes
+    - line length must be less than 80
+    - default file path: /home/dts/Config/pctcs.cat
+    - file path setting in rcfile --> replace default file path
+    - avilable <copt> in catfile, with putting the end of lines
+
+- script revision
+    - tcupdate
+    - tctest
+
+- installation on ICG
+
+    - mkdir dts/catalog (at the first time)
+    - mkdir dts/cortable (at the first time)
+    - delete old ini files (at the first time)
+
+    - rename old KMTNet directory
+    - make tcstart.old & modification
+
+    - unzip KMTNet.v1.5.2.zip
+    - ./build
+    - chown kasi:kasi
+
+    - scr/tcsupdate modification for each site
+    - scr/tcsupdate
+
+

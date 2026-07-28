@@ -1,0 +1,70 @@
+#  KMTNet Observation script
+#  Columns: LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL  #comments..
+
+#
+#  Object: SN
+#  Default correction: No
+#
+
+#+ProjID  SN
+
+##ostart 1
+ KSP  N247-1(B)   00:48:40  -20:20:00  -  OBJECT  N247-1   N  60   -  -  +1.23456 +5.6789  #01
+ KSP  N247-1(V)   00:48:40  -20:20:00  -  OBJECT  N247-1   n  60   -  -  -9.8765  -4.3210 
+ KSP  N247-1(I)   00:48:40  -20:20:00  -  OBJECT  N247-1   I  60   -  -  
+ KSP  N59-1(B)    00:13:30  -21:13:00  -  OBJECT  N59-1    N  60   -  -  
+ KSP  N59-1(V)    00:13:30  -21:13:00  -  OBJECT  N59-1    n  60   -  -  
+ KSP  N59-1(I)    00:13:30  -21:13:00  -  OBJECT  N59-1    I  60   -  -  
+ KSP  N300-1(B)   00:53:24  -37:20:30  -  OBJECT  N300-1   N  60   -  -  
+ KSP  N300-1(V)   00:53:24  -37:20:30  -  OBJECT  N300-1   n  60   -  -  
+ KSP  N300-1(I)   00:53:24  -37:20:30  -  OBJECT  N300-1   I  60   -  -  
+ KSP  N55-1(B)    00:12:50  -38:50:00  -  OBJECT  N55-1    N  60   -  -  
+ KSP  N55-1(V)    00:12:50  -38:50:00  -  OBJECT  N55-1    n  60   -  -  
+ KSP  N55-1(I)    00:12:50  -38:50:00  -  OBJECT  N55-1    I  60   -  -  
+ KSP  N7793-1(B)  23:55:50  -32:14:00  -  OBJECT  N7793-1  N  60   -  -  
+ KSP  N7793-1(V)  23:55:50  -32:14:00  -  OBJECT  N7793-1  n  60   -  -  
+ KSP  N7793-1(I)  23:55:50  -32:14:00  -  OBJECT  N7793-1  I  60   -  -  
+ KSP  E149-1(B)   23:50:00  -52:11:00  -  OBJECT  E149-1   N  60   -  -  
+ KSP  E149-1(V)   23:50:00  -52:11:00  -  OBJECT  E149-1   n  60   -  -  
+ KSP  E149-1(I)   23:50:00  -52:11:00  -  OBJECT  E149-1   I  60   -  -  
+ KSP  I5152-1(B)  22:00:40  -50:56:00  -  OBJECT  I5152-1  N  60   -  -  
+ KSP  I5152-1(V)  22:00:40  -50:56:00  -  OBJECT  I5152-1  n  60   -  -  
+ KSP  I5152-1(I)  22:00:40  -50:56:00  -  OBJECT  I5152-1  I  60   -  -  
+
+#+ostart 1
+#+ostop
+
+##ostart 22
+ KSP  N2207-9(B)  06:14:34  -22:07:00  -  OBJECT  N2207-9  N  60   -  -  #22
+ KSP  N2207-9(V)  06:14:34  -22:07:00  -  OBJECT  N2207-9  n  60   -  -  
+ KSP  N2207-9(I)  06:14:34  -22:07:00  -  OBJECT  N2207-9  I  60   -  -  -1.23456 +5.6789
+ KSP  E489-1(B)   06:17:00  -24:10:00  -  OBJECT  E489-1   N  60   -  -  +9.8765  -4.3210 
+ KSP  E489-1(V)   06:17:00  -24:10:00  -  OBJECT  E489-1   n  60   -  -  
+ KSP  E489-1(I)   06:17:00  -24:10:00  -  OBJECT  E489-1   I  60   -  -  
+ KSP  N2217-1(B)  06:19:36  -26:50:00  -  OBJECT  N2217-1  N  60   -  -  
+ KSP  N2217-1(V)  06:19:36  -26:50:00  -  OBJECT  N2217-1  n  60   -  -  
+ KSP  N2217-1(I)  06:19:36  -26:50:00  -  OBJECT  N2217-1  I  60   -  -  
+ KSP  CGMW1-1(B)  06:36:00  -15:30:00  -  OBJECT  CGMW1-1  N  60   -  -  
+ KSP  CGMW1-1(V)  06:36:00  -15:30:00  -  OBJECT  CGMW1-1  n  60   -  -  
+ KSP  CGMW1-1(I)  06:36:00  -15:30:00  -  OBJECT  CGMW1-1  I  60   -  -  
+ KSP  N2280-1(B)  06:41:30  -27:00:00  -  OBJECT  N2280-1  N  60   -  -  
+ KSP  N2280-1(V)  06:41:30  -27:00:00  -  OBJECT  N2280-1  n  60   -  -  
+ KSP  N2280-1(I)  06:41:30  -27:00:00  -  OBJECT  N2280-1  I  60   -  -  
+ KSP  N2283-1(B)  06:43:50  -18:40:00  -  OBJECT  N2283-1  N  60   -  -  
+ KSP  N2283-1(V)  06:43:50  -18:40:00  -  OBJECT  N2283-1  n  60   -  -  
+ KSP  N2283-1(I)  06:43:50  -18:40:00  -  OBJECT  N2283-1  I  60   -  -  
+ KSP  N2325-1(B)  07:04:45  -29:10:00  -  OBJECT  N2325-1  N  60   -  -  
+ KSP  N2325-1(V)  07:04:45  -29:10:00  -  OBJECT  N2325-1  n  60   -  -  
+ KSP  N2325-1(I)  07:04:45  -29:10:00  -  OBJECT  N2325-1  I  60   -  -  
+ KSP  N2380-1(B)  07:21:49  -27:02:32  -  OBJECT  N2380-1  N  60   -  -  
+ KSP  N2380-1(V)  07:21:49  -27:02:32  -  OBJECT  N2380-1  n  60   -  -  
+ KSP  N2380-1(I)  07:21:49  -27:02:32  -  OBJECT  N2380-1  I  60   -  -  
+ KSP  ESO494-1(B) 08:04:05  -27:02:30  -  OBJECT  ESO494-1 B  60   -  -  
+ KSP  ESO494-1(V) 08:04:05  -27:02:30  -  OBJECT  ESO494-1 V  60   -  -  
+ KSP  ESO494-1(I) 08:04:05  -27:02:30  -  OBJECT  ESO494-1 I  60   -  -  
+ KSP  N2559-1(B)  08:15:00  -27:00:00  -  OBJECT  N2559-1  N  60   -  -  
+ KSP  N2559-1(V)  08:15:00  -27:00:00  -  OBJECT  N2559-1  n  60   -  -  
+ KSP  N2559-1(I)  08:15:00  -27:00:00  -  OBJECT  N2559-1  I  60   -  -  
+
+#+ostop
++ostart 22

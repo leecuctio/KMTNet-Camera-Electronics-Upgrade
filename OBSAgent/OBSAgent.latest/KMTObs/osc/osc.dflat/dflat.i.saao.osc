@@ -1,0 +1,187 @@
+### KMTNet i-band domeflat observation script
+###  - No-stowing version
+###  - Observatory site: SAAO
+###  - Revisied: 2023-02-17 by chasm
+###
+
+
+## setting for domeflat dataset
+
+   +msgout  "I-BAND DOMEFLAT SCRIPT START"                           # LINE#0001 CMD#0001
+
+#  +Datasource   CTC        # CTIO/SSO                               # LINE#0002 CMD#0002
+   +Datasource   ADC        # SAAO                                   # LINE#0002 CMD#0002
+
+   +dlamp    ON             # turn domeflat lamp on for checking     # LINE#0003 CMD#0003
+   +dlight   ON             # turn dome LED light on for monitoring  # LINE#0004 CMD#0004
+
+   +tcmd     track off      # disable telescope tracking             # LINE#0005 CMD#0005
+   +delay    10             # blank time                             # LINE#0006 CMD#0006
+   +tcmd     unkill         # enable tcs servo                       # LINE#0007 CMD#0007
+   +delay    10             # blank time                             # LINE#0008 CMD#0008
+   +tcmd     homedome       # home dome (Max. 360s)                  # LINE#0009 CMD#0009
+                            # (dome Rotating speed = Typ. 1.0 deg/sec)
+   +delay    20             # blank time                             # LINE#0010 CMD#0010
+
+   +acmd     shutter both close  # close dome shutter (Typ. 230s)    # LINE#0011 CMD#0011
+   +delay    40                  # blank time                        # LINE#0012 CMD#0012
+
+   +acmd     m1cover open   # open mirror cover (Typ. 31s)           # LINE#0013 CMD#0013
+   +delay    40             # waiting for mirror cover open          # LINE#0014 CMD#0014
+
+#  +tme      48     89      # move telescope to domeflat position at CTIO
+   +tme      46     81      # move telescope to domeflat position at SAAO
+#  +tme      43.0  270      # move telescope to domeflat position at SSO
+                            # (Max. 140s for 8h, RA speed = Typ. 1.0 deg/s)
+
+   +delay    250            # waiting for telescope slew completed   # LINE#0016 CMD#0016   
+                            # and for homedome fully completed
+
+   +noop                    # dummy command line, reserved           # LINE#0017 CMD#0017
+   +noop                    # dummy command line, reserved           # LINE#0018 CMD#0018
+
+   +tcmd     kill           # disable tcs servo                      # LINE#0019 CMD#0019
+
+   +delay    40             # waiting for CCTV to take images        # LINE#0020 CMD#0020
+   +dlight   OFF            # turn dome LED light off                # LINE#0021 CMD#0021
+
+   +noop                    # dummy command line, reserved           # LINE#0022 CMD#0022
+   +noop                    # dummy command line, reserved           # LINE#0023 CMD#0023
+
+
+## i-band domeflat dataset acquisition
+
++msgout  "I-BAND DOMEFLAT INTEGRATION START"          # LINE#0024 CMD#0024
+
++dlamp   OFF       # turn domeflat lamp off           # LINE#0025 CMD#0025
+
+ALL  DFLAT-BIAS-B1  - - -  bias  dflat  i    -   - -  # LINE#0026 EXP#0001
+ALL  DFLAT-BIAS-B2  - - -  bias  dflat  i    -   - -  # LINE#0027 EXP#0002
+ALL  DFLAT-BIAS-B3  - - -  bias  dflat  i    -   - -  # LINE#0028 EXP#0003
+ALL  DFLAT-BIAS-B4  - - -  bias  dflat  i    -   - -  # LINE#0029 EXP#0004
+ALL  DFLAT-BIAS-B5  - - -  bias  dflat  i    -   - -  # LINE#0030 EXP#0005
+
++dlamp   ON        # turn domeflat lamp on            # LINE#0031 CMD#0026
++delay   60        # waiting for lamp heat            # LINE#0032 CMD#0027
+
+ALL  DFLAT-SC-1A    - - -  flat  dflat  i   12   - -  # LINE#0033 EXP#0006
+ALL  DFLAT-SC-1B    - - -  flat  dflat  i   12   - -  # LINE#0034 EXP#0007
+
+ALL  DFLAT-03s-1    - - -  flat  dflat  i    3   - -  # LINE#0035 EXP#0008
+ALL  DFLAT-03s-2    - - -  flat  dflat  i    3   - -  # LINE#0036 EXP#0009
+ALL  DFLAT-03s-3    - - -  flat  dflat  i    3   - -  # LINE#0037 EXP#0010
+ALL  DFLAT-03s-4    - - -  flat  dflat  i    3   - -  # LINE#0038 EXP#0011
+ALL  DFLAT-03s-5    - - -  flat  dflat  i    3   - -  # LINE#0039 EXP#0012
+
+ALL  DFLAT-SC-2A    - - -  flat  dflat  i   12   - -  # LINE#0040 EXP#0013
+ALL  DFLAT-SC-2B    - - -  flat  dflat  i   12   - -  # LINE#0041 EXP#0014
+
+ALL  DFLAT-06s-1    - - -  flat  dflat  i    6   - -  # LINE#0042 EXP#0015
+ALL  DFLAT-06s-2    - - -  flat  dflat  i    6   - -  # LINE#0043 EXP#0016
+ALL  DFLAT-06s-3    - - -  flat  dflat  i    6   - -  # LINE#0044 EXP#0017
+ALL  DFLAT-06s-4    - - -  flat  dflat  i    6   - -  # LINE#0045 EXP#0018
+ALL  DFLAT-06s-5    - - -  flat  dflat  i    6   - -  # LINE#0046 EXP#0019
+
+ALL  DFLAT-SC-3A    - - -  flat  dflat  i   12   - -  # LINE#0047 EXP#0020
+ALL  DFLAT-SC-3B    - - -  flat  dflat  i   12   - -  # LINE#0048 EXP#0021
+
+ALL  DFLAT-09s-1    - - -  flat  dflat  i    9   - -  # LINE#0049 EXP#0022
+ALL  DFLAT-09s-2    - - -  flat  dflat  i    9   - -  # LINE#0050 EXP#0023
+ALL  DFLAT-09s-3    - - -  flat  dflat  i    9   - -  # LINE#0051 EXP#0024
+ALL  DFLAT-09s-4    - - -  flat  dflat  i    9   - -  # LINE#0052 EXP#0025
+ALL  DFLAT-09s-5    - - -  flat  dflat  i    9   - -  # LINE#0053 EXP#0026
+
+ALL  DFLAT-12s-1    - - -  flat  dflat  i   12   - -  # LINE#0054 EXP#0027
+ALL  DFLAT-12s-2    - - -  flat  dflat  i   12   - -  # LINE#0055 EXP#0028
+ALL  DFLAT-12s-3    - - -  flat  dflat  i   12   - -  # LINE#0056 EXP#0029
+ALL  DFLAT-12s-4    - - -  flat  dflat  i   12   - -  # LINE#0057 EXP#0030
+ALL  DFLAT-12s-5    - - -  flat  dflat  i   12   - -  # LINE#0058 EXP#0031
+
+ALL  DFLAT-15s-1    - - -  flat  dflat  i   15   - -  # LINE#0059 EXP#0032
+ALL  DFLAT-15s-2    - - -  flat  dflat  i   15   - -  # LINE#0060 EXP#0033
+ALL  DFLAT-15s-3    - - -  flat  dflat  i   15   - -  # LINE#0061 EXP#0034
+ALL  DFLAT-15s-4    - - -  flat  dflat  i   15   - -  # LINE#0062 EXP#0035
+ALL  DFLAT-15s-5    - - -  flat  dflat  i   15   - -  # LINE#0063 EXP#0036
+
+ALL  DFLAT-SC-4A    - - -  flat  dflat  i   12   - -  # LINE#0064 EXP#0037
+ALL  DFLAT-SC-4B    - - -  flat  dflat  i   12   - -  # LINE#0065 EXP#0038
+
+ALL  DFLAT-18s-1    - - -  flat  dflat  i   18   - -  # LINE#0066 EXP#0039
+ALL  DFLAT-18s-2    - - -  flat  dflat  i   18   - -  # LINE#0067 EXP#0040
+ALL  DFLAT-18s-3    - - -  flat  dflat  i   18   - -  # LINE#0068 EXP#0041
+ALL  DFLAT-18s-4    - - -  flat  dflat  i   18   - -  # LINE#0069 EXP#0042
+ALL  DFLAT-18s-5    - - -  flat  dflat  i   18   - -  # LINE#0070 EXP#0043
+
+ALL  DFLAT-SC-5A    - - -  flat  dflat  i   12   - -  # LINE#0071 EXP#0044
+ALL  DFLAT-SC-5B    - - -  flat  dflat  i   12   - -  # LINE#0072 EXP#0045
+
+ALL  DFLAT-21s-1    - - -  flat  dflat  i   21   - -  # LINE#0073 EXP#0046
+ALL  DFLAT-21s-2    - - -  flat  dflat  i   21   - -  # LINE#0074 EXP#0047
+ALL  DFLAT-21s-3    - - -  flat  dflat  i   21   - -  # LINE#0075 EXP#0048
+ALL  DFLAT-21s-4    - - -  flat  dflat  i   21   - -  # LINE#0076 EXP#0049
+ALL  DFLAT-21s-5    - - -  flat  dflat  i   21   - -  # LINE#0077 EXP#0050
+
+ALL  DFLAT-SC-6A    - - -  flat  dflat  i   12   - -  # LINE#0078 EXP#0051
+ALL  DFLAT-SC-6B    - - -  flat  dflat  i   12   - -  # LINE#0079 EXP#0052
+
+ALL  DFLAT-24s-1    - - -  flat  dflat  i   24   - -  # LINE#0080 EXP#0053
+ALL  DFLAT-24s-2    - - -  flat  dflat  i   24   - -  # LINE#0081 EXP#0054
+ALL  DFLAT-24s-3    - - -  flat  dflat  i   24   - -  # LINE#0082 EXP#0055
+ALL  DFLAT-24s-4    - - -  flat  dflat  i   24   - -  # LINE#0083 EXP#0056
+ALL  DFLAT-24s-5    - - -  flat  dflat  i   24   - -  # LINE#0084 EXP#0057
+
+ALL  DFLAT-SC-7A    - - -  flat  dflat  i   12   - -  # LINE#0085 EXP#0058
+ALL  DFLAT-SC-7B    - - -  flat  dflat  i   12   - -  # LINE#0086 EXP#0059
+
++dlamp   OFF       # turn domeflat lamp off           # LINE#0087 CMD#0028
+
+ALL  DFLAT-BIAS-E1  - - -  bias  dflat  i    -   - -  # LINE#0088 EXP#0060
+ALL  DFLAT-BIAS-E2  - - -  bias  dflat  i    -   - -  # LINE#0089 EXP#0061
+ALL  DFLAT-BIAS-E3  - - -  bias  dflat  i    -   - -  # LINE#0090 EXP#0062
+ALL  DFLAT-BIAS-E4  - - -  bias  dflat  i    -   - -  # LINE#0091 EXP#0063
+ALL  DFLAT-BIAS-E5  - - -  bias  dflat  i    -   - -  # LINE#0092 EXP#0064
+
+
+## finishing
+
+   +msgout  "I-BAND DOMEFLAT ACQUISITION FINISHING"                     # LINE#0093 CMD#0029
+
+   OBS  END-DARK-30s  - - -  dark  end  v  30  - -                      # LINE#0094 EXP#0065
+   +filter n                                                            # LINE#0095 EXP#0030
+
+   +dlight   ON             # turn dome LED light on                    # LINE#0096 CMD#0031
+   +delay    40             # waiting for CCTV to take images           # LINE#0097 CMD#0032
+
+#  +tcmd     unkill         # enable tcs servo                          # LINE#0098 CMD#0033
+#  +delay    20             # blank time                                # LINE#0099 CMD#0034
+   +noop                    # dummy command line
+   +noop                    # dummy command line
+
+#  +tstow                   # stow telescope (= "+tcmd movstow")        # LINE#0100 CMD#0035
+#  +delay    60             # waiting for telescope & dome stowed       # LINE#0101 CMD#0036
+                            # (Max. 60s for 4h at RA Typ. 1.0 deg/s)
+   +noop                    # dummy command line
+   +noop                    # dummy command line
+
+   +acmd     m1cover close  # close mirror cover (Typ. 28s)             # LINE#0102 CMD#0037
+   +delay    40             # waiting for mirror cover closed           # LINE#0103 CMD#0038
+
+#  +tcmd     kill           # disable tcs servo                         # LINE#0104 CMD#0039
+   +noop                    # dummy command line
+
+   +dtchk    last           # move /data/*.fits to /data/YYYYMMDD, and  # LINE#0105 CMD#0040
+                            # check for data transfer to DTS complete
+
+   +delay    10             # blank time                                # LINE#0106 CMD#0041
+
+   +msgout   "I-BAND DOMEFLAT SCRIPT COMPLETE"                          # LINE#0107 CMD#0042
+
+   +delay    10             # blank time                                # LINE#0108 CMD#0043
+
+   +quit                    # quit OBSAgent process                     # LINE#0109 CMD#0044
+
+
+## END
+
+
+

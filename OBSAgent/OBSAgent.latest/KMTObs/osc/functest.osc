@@ -1,0 +1,51 @@
+#
+# KMTNet observation script
+#  
+#  - Obs.site: SAAO
+#  - Obs.date: 2020-09-24
+#
+
+#
+# Camera and FITS data configuration
+#
+   +ProjID       ALL
+   +Datasource   ADC
+   +DMAWait      500
+   +Observer     G.D. Hong
+   
+   +acmd         m1cover open
+
++opause
+
+#
+# BLG observation start
+#
+   +projid       ENG
+
+# LABEL        RA           DEC           COPT  IMGTYP  OBJECT     FILTER  EXPTIME  UTOBS  UTTOL
+  TEST-WEST-1  15:12:34.561 -30:12:34.51   0    object  test.w.01     I       1       -      -
+  TEST-WEST-2  14:00:00.001 -35:00:00.01   1    object  test.w.02     R       2       -      -
+  TEST-WEST-3  12:12:34.561 -40:12:34.51   0    object  test.w.03     V       3       -      -
+  TEST-WEST-4  10:00:00.001 -45:00:00.01   1    object  test.w.04     B       4       -      -
+  TEST-WEST-5  11:12:34.561 -50:12:34.51   0    object  test.w.05     I       5       -      -
+  TEST-WEST-6  12:00:00.001 -60:00:00.01   1    object  test.w.06     R       6       -      -
+  TEST-WEST-7  12:00:00.001 -60:00:00.01   0    object  test.w.06     V       7       -      -
+  TEST-WEST-8  12:00:00.001 -60:00:00.01   1    object  test.w.06     B       8       -      -
+
++opause
+
+# LABEL        RA           DEC           COPT  IMGTYP  OBJECT     FILTER  EXPTIME  UTOBS  UTTOL
+  TEST-EAST-1  16:12:34.561 -40:12:34.51   1    object  test.e.01     I       1       -      -
+  TEST-EAST-2  17:00:00.001 -35:00:00.01   0    object  test.e.02     R       2       -      -
+  TEST-EAST-3  19:12:34.561 -30:12:34.51   1    object  test.e.03     V       3       -      -
+  TEST-EAST-4  21:00:00.001 -25:00:00.01   0    object  test.e.04     B       4       -      -
+  TEST-EAST-5  20:12:34.561 -20:12:34.51   1    object  test.e.05     I       5       -      -
+  TEST-EAST-6  19:00:00.001 -10:00:00.01   0    object  test.e.06     R       6       -      -
+  TEST-EAST-7  19:00:00.001 -10:00:00.01   1    object  test.e.06     V       7       -      -
+  TEST-EAST-8  19:00:00.001 -10:00:00.01   0    object  test.e.06     B       8       -      -
+
++stow
++acmd         m1cover close
++opause
+
+# END
