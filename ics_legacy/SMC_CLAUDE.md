@@ -52,6 +52,7 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 ## 자료 위치와 git 상태
 
 - **이 폴더의 문서·소스는 git에 커밋·push 완료** — 다른 컴퓨터에서 clone하면 그대로 따라온다. (반면 `../TCSAgent/`, `../OBSAgent/`는 **아직 커밋 전**이라 clone에 포함되지 않는다.)
+- **`__sample_isislog/samples_for_bug.txt` 는 예외적으로 커밋한다** — 사용자가 직접 추린 메시지 오염 사례 2,755행이고, `.txt` 라 `*.log` 규칙에 걸리지 않는다. `ics_legacy_report.md` 5.6절의 근거이며, 여기서 파생한 테스트 픽스처가 `../ics_sim/tests/fixtures/bug_patterns.txt` 에 있다.
 - **로그 자료는 git 미포함, 로컬 전용**:
   - `__sample_isislog/` (이 폴더 바로 아래) — 3개 사이트 XIS(ISIS) 런타임 로그 샘플. 저장소 `.gitignore`의 `*.log` 규칙으로 git 미추적, 이 컴퓨터 로컬에만 존재. **ICS는 자체 로그가 없으므로 ICS 동작을 보려면 이 XIS 로그를 봐야 한다.**
   - `../../__localonly_isislogs/` — 저장소 **바깥**(`CEU/` 폴더 직속)에 있는 전체 원본 로그 아카이브. 참고용 로컬 보관, git과 무관.
@@ -59,9 +60,32 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 - `KMTNx.yyyymmdd.nnnnnn.fits`는 ICS가 획득한 **실제 관측 영상 파일**이지 로그가 아니다(실물은 이 저장소에 없고, 로그 안에 파일명만 기록됨).
 - `CCD status (20220826.emaitoSET).pdf`는 2026-07-28에 이 폴더에서 제거되어 [`../OBSAgent/`](../OBSAgent/)로 이동함(ICS 범주 밖으로 판단) — 이 폴더에 없어도 정상.
 
+## 진행 상황 갱신 (2026-08-03) — 신규 `ics` 착수, 시뮬레이터 완성
+
+**조사 단계는 끝났고 구현이 시작됐다.** 결과물은 [`../ics_sim/`](../ics_sim/) 이다.
+
+- 신규 `ics` 의 **첫 실행 산출물**로 레거시 호환 시뮬레이터를 만들었다. 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계가 동작하고 **테스트 107개가 통과**한다.
+- 다음 단계는 `ics_sim/hardware/archon.py` 에 실제 CCD 구동 코드를 넣는 것이다. 시퀀서·명령 처리부·메시지 규약은 **무개정**으로 간다.
+- **[`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 가 신규 개발의 중심 문서**다. 사양·판단 근거·조사 이력·정정 이력·백로그가 전부 들어 있다.
+
+이 과정에서 **로그 아카이브 전량**(`__localonly_isislogs/`, 48GB, 1,113일분)을 스캔해 이 폴더의 보고서를 보강·정정했다:
+
+| 갱신 | 위치 |
+|---|---|
+| **ICS 메시지 오염 버그** — 커맨드워드 슬롯이 비워지지 않는 문제. 이번 조사 최대 발견 | `ics_legacy_report.md` **5.6절 신설** |
+| **`GO n` 다중 노출 시퀀스** — 샘플엔 0건이었다 | 〃 **3.5절 신설** |
+| **OBSAgent 규약 6개 항목 추가** — `ExpNum` 자동 질의, 수신 9노드, 타임아웃 4종, `Wrote` 중계 경로, 텔레메트리 역순, 상태 전이 실측 | 〃 **8.0.1절 보강** |
+| **정정: 디스크는 이중이 아니라 최대 4중** (그리고 신규에선 폐지) | 〃 1.4·4.2절 |
+| `CHA`/`C1` 노드, AUXSTATUS 사이트별 차이, 새 에러·경고, 형식 변형 | 〃 1.3·5.2·5.3·5.4절 |
+| 가이드 계통에 적용되는 결론 (디스크 폐지, 오염 방지 규칙, 제약 비대칭) | `icg_legacy_report.md` **9.5절 신설** |
+| `ExpNum` 왕복의 목적과 내력, 상태 전이 정정, `GO n` 경로 | `../OBSAgent/obsagent_report.md` **6.1절 신설** · 7절 보강 |
+
+스캔 도구는 [`../ics_sim/tools/scan_legacy_logs.py`](../ics_sim/tools/scan_legacy_logs.py) 에 남아 있어 로그가 있는 컴퓨터에서 재검증할 수 있다.
+
 ## 다음에 이어서 할 만한 일
 
-- **신규 `icg` 설계/구현 착수** (권고 순서상 먼저) — 명세는 [icg_legacy_report.md](icg_legacy_report.md) 9절에 정리돼 있다: 흡수할 3개 층의 책임(9.1), 내부화되어 사라지는 통신 경계(9.2), 유지해야 할 외부 인터페이스(9.3), 설계 권고(9.4).
-- **신규 `ics` 설계** — [ics_legacy_report.md](ics_legacy_report.md) 8.0절(확정 구조·내부화 경계·OBSAgent 제약) + 8.1절(프로토콜/파싱/디스크 등 세부).
-- 선행 결정 필요: OBSAgent 개편 여부(위 "가장 큰 제약" 참고), SYNCHRONIZE·디스크이중화·파일명·ABC 존치 여부.
+- **실제 OBSAgent 연동 시험** — XIS 허브를 띄우고 `ics_sim` 을 `--xis-host` 로 붙여 `.osc` 스크립트를 돌려 본다. 8.0.1절 규약 검증이 실물로 완결된다.
+- **`ics_sim/hardware/archon.py` 구현** — 실제 CCD 구동. 계약과 참고 자산은 [DevNote 9장](../ics_sim/DevNote.md).
+- **신규 `icg` 착수** — 명세는 [icg_legacy_report.md](icg_legacy_report.md) 9절(+2026-08-03에 추가된 9.5절). `ics_sim` 의 공통 로직(IMPv2 노드, 텔레메트리 중계, 메시지 위생 규칙, 설정 체계)을 그대로 가져다 쓸 수 있다.
+- 선행 결정 필요: SYNCHRONIZE 존치 여부, 가이드 파일명 규칙, ABC 존치 여부. (**디스크 이중화는 폐지로 확정**됐다 — 1.4절)
 - 주변 시스템 설계 인풋: [../TCSAgent/tcsagent_report.md](../TCSAgent/tcsagent_report.md) 11절(망원경 인터페이스, `copt` 스펙화) · [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 11절(상태머신, `.osc` 파서, Redis 상태버스).

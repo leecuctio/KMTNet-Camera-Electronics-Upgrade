@@ -1,0 +1,23 @@
+# Legacy ICS message-contamination samples.
+# 생성: tools/scan_legacy_logs.py patterns <logdir>
+# 원본: ics_legacy/__sample_isislog/ (+ __localonly_isislogs/)
+# 각 줄은 ics_sim.emitter.validate() 가 위반으로 잡아야 한다.
+# 형식: <관측 건수>\t<메시지 원문>
+46622	K.IC>OBS STATUS: FLASHNOW  Integration Remaining=9 sec.
+28217	ICS>OBS STATUS:  STATUS: EXPSTATUS=INTEGRATING
+18842	K.IC>OBS STATUS: SHOPEN  Integration Remaining=14 sec.
+15434	K.IC>OBS STATUS: REQ  Integration Remaining=54 sec.
+9314	K.IC>ICS DONE: REQ  Erase Cycle Complete.
+4729	K.IC>OBS STATUS: FLASHNOW  Shutter=Closed Integration Remaining=0 sec.
+4167	K.IC>OBS STATUS: DATASOURCE  Integration Remaining=7 sec.
+688	K.IC>OBS STATUS: REQ  Shutter=Closed Integration Remaining=0 sec.
+529	K.IC>OBS STATUS: DATASOURCE  Shutter=Closed Integration Remaining=0 sec.
+129	ICS>OBS STATUS:  STATUS:
+87	K.IC>OBS STATUS: SHOPEN  Shutter=Closed Integration Remaining=0 sec.
+42	K.IC>ICS DONE: DONE  Erase Cycle Complete.
+37	K.IC>ICS STATUS: FOUND  Integration Remaining=228 sec.
+9	K.IC>OBS STATUS: DONE  Integration Remaining=79 sec.
+8	K.IC>ICS DONE: DATASOURCE  Erase Cycle Complete.
+2	K.IC>ICS STATUS: FOUND  Shutter=Closed Integration Remaining=0 sec.
+1	K.IC>OBS DONE: SHOPEN  Shutter=Closed Integration Remaining=0 sec.
+1	ICS>OBS STATUS: SYNCHRONIZE STATUS:

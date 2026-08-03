@@ -189,6 +189,73 @@ OBSAgent는 ICS가 보내는 원시 메시지(`EXPSTATUS=...`, `Shutter=Open`, `
 - `IDLE_3` 상태(EXPSTATUS=IDLE 직후, `READY` 전)에서 `EXP`를 입력하면 **실제 노출시간에는 적용되지만 FITS 헤더에는 반영되지 않는** 불일치가 생긴다 — 수동 관측에서 명령 입력 시점을 주의해야 하는 이유.
 - `INT`(노출 진행) 상태에서 `OBJECT`/`PROJID`/`OBSERVER`를 입력하면 **진행 중인 노출**의 해당 값이 변경된다(FITS 헤더 기준). 단 image type과 실제 노출시간은 변경되지 않고, `PREP` 상태에서는 오류가 난다.
 
+### 6.1 보강 (2026-08-03) — 신규 ICS 구현·검증에서 확인된 사항
+
+레거시 규약을 실제로 구현해 돌려본 결과([`../ics_sim/`](../ics_sim/))와 48GB 로그 전량 스캔에서 아래가 추가로 확인됐다. 상세 근거는 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3장.
+
+#### (a) `ExpNum` 자동 질의 — ICS 쪽에서 반드시 응답해야 한다
+
+`commands.c` 797~803행: readout 중 **첫 `PCTREAD=`** 를 받아 `READ_1` 일 때 OBSAgent가 **스스로** `OBS>ICS ExpNum` 을 발행한다.
+
+```
+OBS>ICS ExpNum
+ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
+```
+
+- 응답의 `Filename=` 값(**정확히 15자**, `strncpy(expinfo.strNextNum, pstr+9, 15)`)이 `expinfo.strNextNum` 이 되고, 다음 노출의 `Shutter=Open`(또는 `EXPSTATUS=INTEGRATING`) 시점에 `strCurNum` 으로 승격된다(831~850행).
+- **목적**: 카메라 제어가 아니라 **상태 표시용**이다. 아래 §7의 `EXP.INFO:` 줄과 `expinfo`/`ee` 명령의 `ExpNum` 필드를 채우는 **유일한 경로**다 — 지금까지 이 문서는 두 사실(`expinfo` 가 ExpNum을 보여준다 / ICS가 EXPNUM 명령을 갖는다)을 따로 적어 두었고 그 연결고리가 빠져 있었다.
+- **내력** (소스 서두 개정이력 주석 218~229행):
+  - **v1.0.0 (2024-06-29)** `expinfo` 명령/함수 추가
+  - **v1.0.1 (2024-07-01)** *"Add ExpNum query to ICS and ExpNum(strNextNum/strCurNum) update"* ← 이 질의가 도입된 시점
+  - **v1.0.3~1.0.4 (2024-07-05)** `/data/Logs/ObsStatus.txt` 출력 추가
+  - **v1.0.6** `expinfo.dStartTime` 누락 디버깅(ExpProg) · **v1.0.7~1.0.8** SSO에서의 ExpNum 오류 · **v1.0.9** `strPreNum`/`FitsOsc` 추가
+  - **v1.1.3 (2024-07-18)** *"Debug momentary unmatch of ExpNum and ExpStatus, Debug missing ExpNum/ExpStart update in dark/bias mode"*
+- **ICS가 응답하지 않으면**: 카메라 동작은 정상이지만 ExpNum 표시가 이전 값이나 `00000000.000000` 에 머문다.
+- 실측: CTIO 아카이브에서 **125,451회**. **2024-03 로그에는 없고 2025 로그에만 있는 것이 v1.0.1 도입 시점과 정확히 일치한다.**
+
+#### (b) 타임아웃 상수 보강 — `force_fitssaved` 와 `IDLE_1` 초과 시의 `opause`
+
+위 4번 항목에 두 가지를 더한다(`commands.c` 7236~7250행이 기본값, `main.c` 650~708행이 적용부):
+
+| 조건 | 상수 | 시간 | 초과 시 |
+|---|---|---|---|
+| `IDLE_1`(1번째 `Acquisition Complete.`) → 4번째 | `force_idle=40` | ≈1.8초 | `IDLE_3` 강제 + **`OscCommand("opause")` — 스크립트 관측이 실제로 멈춘다** + `ERROR: Acquisition is not fully completed !!` (main.c 650~659) |
+| `IDLE_2`(4번째) → `EXPSTATUS=IDLE` | `count_idle=force_idle/2=20` | ≈0.9초 | `IDLE_3` 강제 + `WARNING: No 'EXPSTATUS=IDLE' message from ICS` (662~669) |
+| `IDLE_3` 진입 → 4번째 `Wrote` | **`force_fitssaved=560`** | **≈25초** | `FitsSaved=1` 강제 + `WARNING: Writing FITS data is not fully completed !!` + `expinfo.nStatus = EXPSTATUS_ERROR` (677~708) |
+| `IDLE_3` → `READY` | `force_ready=270` | ≈12.2초 | 정상 전이 |
+
+`force_fitssaved` 경로에는 사이트 분기가 있다(694행): ISIS 호스트 IP가 SSO(`192.168.15.109`)면 경고 없이 `FitsSaved=1` 로 넘어가고 `FitsNum` 을 `strPreNum` 에서 채운다 — SSO의 IC 버전이 `Wrote` 를 보내지 않던 시기(v0.2.9)의 잔재다.
+
+#### (c) 정정 — 상태 전이는 선형이 아니다
+
+위 `CamStatus` 서술은 `NC → PREP_I → … → READY` 를 순서대로 밟는 것처럼 읽히지만, **실측에서는 건너뜀이 일상적**이다. 샘플 로그(3사이트 9개월, 노출 약 28,200회)에 이 체인을 재생한 결과 (**`dest ∈ {OBS, AL, ALL}` 필터 적용** — OBSAgent는 자기 앞으로 온 메시지만 본다):
+
+| 전이 | 트리거 | 횟수 |
+|---|---|---:|
+| `INT_1 → INT_2` | `Shutter=Open` | 26,701 |
+| `INT_2 → INT_3` | `Remaining=` | 26,706 |
+| `INT_3 → CLOSING` | `Shutter=Closed` | 27,073 |
+| **`INT_1 → CLOSING`** (INT_2·INT_3 건너뜀) | `Shutter=Closed` | **1,252** |
+| **`INT_1 → INT_3`** (INT_2 건너뜀) | `Remaining=` | **262** |
+| **`INT_2 → CLOSING`** (INT_3 건너뜀) | `Shutter=Closed` | **91** |
+| **역행 (`INT_3 → INT_1` 등)** | — | **0** |
+
+- `Shutter=Closed Integration Remaining=0 sec.` 은 `Remaining=` 을 품고 있어도 **체인 순서상 항상 `CLOSING`** 이 된다. 다만 앞선 순수 `Remaining=` 카운트다운이 이미 `INT_3` 을 만들어 두므로 `INT_2 → CLOSING` 직행은 0.34%뿐이다.
+- **흔한 건너뜀은 `INT_1 → CLOSING`** — DARK/BIAS는 셔터를 열지 않아 `Shutter=Open` 이 없다. 그래도 ICS가 `Shutter=Closed …` 는 보내므로 `CLOSING` 은 정상적으로 밟힌다.
+- **역행은 0건**이다. 레거시가 `EXPSTATUS=` 를 담은 텔레메트리 중계를 IC들에게 뿌려도 안전했던 것은 그것이 `OBS` 앞으로 오지 않았기 때문이다. 신규 통합 ICS가 그런 메시지를 `OBS` 로도 보내면 `CamStatus` 가 `INT_1` 으로 역행해 스크립트 관측이 깨진다.
+
+#### (d) `GO n` 다중 노출의 종료 알림은 `STATUS:` 다
+
+764~765행 주석(*"msg type of 'EXPSTATUS=IDLE' is STATUS in the case of 'go n' command, added here at v0.3.0"*)이 가리키는 실제 시퀀스를 전량 스캔에서 확인했다. `GO 5` 의 경우 중간 프레임은
+
+```
+ICS>OBS STATUS: Image 1 of 5 complete. EXPSTATUS=IDLE
+```
+
+로 끝나고 **마지막 프레임만** `ICS>OBS DONE: EXPSTATUS=IDLE` 이다. CTIO에서 `Image 1~4 of 5` 가 각 1,244~1,254회 관측되고 `5 of 5` 는 **0건**인 것이 근거다. 자세한 전개는 [`../ics_legacy/ics_legacy_report.md`](../ics_legacy/ics_legacy_report.md) 3.5절.
+
+주의할 점은 **프레임 N의 `Wrote` 4개가 프레임 N+1의 준비 중에 도착한다**는 것이다(파이프라인). 프레임 N+1의 `PCTREAD=` 가 `count_wrote` 를 0으로 리셋하기 전에 다 들어와야 `FitsSaved` 가 선다.
+
 **`ExpStatus`** (`CamStatus`를 스크립트 관측 관점으로 재분류한 것, `expinfo` 명령으로 조회):
 `CHECK`/`STANDBY`(스크립트 미실행 중 대기)/`CMDED`(GO 명령 직후)/`WAITING`(스크립트 실행 중 망원경 준비 대기)/`FLUSH`/`EXPOSURE`/`READOUT`/`FINISH`/`ERROR`(FITS 쓰기 미완료 등)
 
@@ -204,6 +271,10 @@ OBSAgent는 백그라운드에서 5초 간격으로 카메라·망원경·돔 �
 같은 상태 문자열들은 Debug log에도 1초 간격으로 기록된다: `DOME.STATUS:` / `SYS.STATUS:` / `EXP.INFO:`, 스크립트 관측 중에는 `OSC.STATUS:`까지 4종이 동시 갱신·기록된다(v1.0.2). 스크립트 관측 결과는 별도의 `/data/Logs/OBS/obs.scrobs.<일시>.log`에 한 노출당 한 줄(시각, LINE#/EXP#, ProjID, 대상, 좌표, 노출 시작 시점의 SecZ/Alt/Az/HA, ExpNum, 안정화 여부)로 남는다(v1.1.0).
 
 파일 구성(`Ref.ObsStatus.txt` 근거): `CamStatus`/`FitsSaved`/`ExpSet`/`ExpRem`(카메라) · `TelStatus`/`RA`/`DEC`/`HA`/`SecZ`/`Alt`/`Az`/`Move`/`Limit`/`Drive`(망원경) · `FILTSTAT`/`FILTER`/`SHUTSTAT`/`SHUTTER`/`FOCUS`/`TILT`/`SENS`/`FAN`(AUX) · `DomeRot`/`DomeShut`(돔, 2024년 추가) · `OscStatus`/`LINE#`/`CMD#`/`EXP#`(스크립트 진행) · `ExpStatus`/`ExpNum`/`ExpStart`/`ExpProg`/`FitsNum`/`FitsOsc`(현재 노출) · 그리고 스크립트의 다음 실행 예정 줄들을 미리보기로 몇 줄 덧붙임.
+
+> **`ExpNum` 은 어디서 오는가 (2026-08-03 보강)**: `EXP.INFO:` 줄의 `ExpNum` 필드는 **§6.1(a)의 `ExpNum` 자동 질의**로만 채워진다. readout 중 첫 `PCTREAD=` 를 받으면 OBSAgent가 `OBS>ICS ExpNum` 을 스스로 보내고, 응답의 `Filename=` 뒤 15자를 `strNextNum` 에 담았다가 다음 노출 시작 시 `strCurNum` 으로 승격한다. `ObsStatus.txt` 출력(v1.0.3~1.0.4)과 이 질의(v1.0.1)가 나흘 간격으로 추가된 것도 같은 맥락이다 — **상태 표시 기능 한 묶음으로 들어온 것**이다.
+>
+> 따라서 **신규 ICS가 `EXPNUM` 질의에 응답하지 않으면 이 파일의 `ExpNum`/`FitsNum` 이 갱신되지 않는다.** 카메라 동작 자체에는 영향이 없어 눈치채기 어려운 종류의 고장이다.
 
 `TelStatus` 값 중 `TRACKINGS`("안정적으로 추적 중")는 [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md)의 실측 GMON 로그에서 본 `TelStatus=TRACKINGS`와 정확히 일치한다.
 

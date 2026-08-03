@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Application wiring.
+
+9개 노드(ICS + K/M/T/N.IC + K/M/T/N.CB)를 한 프로세스에서 대표한다.  수신은
+9개 ID 전부로 받고(그래야 OBSAgent 의 kstatus/dmawait/datasource 가 도달한다),
+발신 이름은 emit_node_mode 에 따라 노드별 또는 전부 ICS 로 낸다 (DevNote 3.1).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Awaitable
+
+from .commands import Dispatcher
+from .config import SimConfig
+from .emitter import Emitter
+from .hardware import make_backend
+from .impv2 import Message
+from .nodes import NodeRouter, Role
+from .sequencer import Sequencer
+from .state import IcsState
+from .telemetry import TelemetryRelay
+from .transport import UdpEndpoint
+
+log = logging.getLogger('ics_sim.app')
+
+
+class IcsSim:
+    """시뮬레이터 본체."""
+
+    def __init__(self, cfg: SimConfig) -> None:
+        self.cfg = cfg
+        self.router = NodeRouter(cfg.node)
+        self.state = IcsState()
+        self.state.init_channels(cfg.node.ccds)
+        self.state.guide_build = ''
+
+        self.transport = UdpEndpoint(cfg, self._on_message)
+        self.emit = Emitter(cfg, self.router, self.transport.send)
+        self.telem = TelemetryRelay(cfg, self._send_query)
+        self.backend = make_backend(cfg)
+        self.seq = Sequencer(cfg, self.state, self.emit, self.router,
+                             self.telem, self.backend)
+        self.dispatch = Dispatcher(self)
+
+        self._tasks: set[asyncio.Task] = set()
+
+    # -- 생명주기 ---------------------------------------------------------
+
+    async def start(self) -> None:
+        for note in self.cfg.validate():
+            log.warning('config: %s', note)
+        await self.transport.start()
+        self.register()
+        log.info('ICS simulator ready -- nodes: %s, backend=%s',
+                 ', '.join(self.router.registered_ids), self.backend.name)
+
+    def register(self) -> None:
+        """XIS 에 노드를 등록한다 -- 수신하려는 **9개 ID 전부**로 PING 을 보낸다.
+
+        IMPv2 에는 등록 API 가 없다.  노드가 자기 이름으로 아무 메시지나 보내면
+        XIS 가 "노드ID -> (IP,port)" 를 기억하는 것이 전부다.  ICS 이름으로만
+        보내면 K.IC 앞으로 오는 kstatus/dmawait/datasource 가 도달하지 않는다
+        (DevNote 3.1.1).
+
+        **미해결 질문**: 여기서 9개 ID 가 전부 같은 (IP,port) 를 가리키게 된다.
+        레거시 배치에서는 노드마다 포트가 달랐으므로 이 구성은 실측 사례가 없고,
+        XIS 서버 소스가 없어 안전한지 확인할 수 없다.  XIS 가 클라이언트 테이블을
+        주소 기준으로도 관리한다면 뒤 등록이 앞 등록을 덮어쓸 수 있다.
+        그 경우 노드마다 소켓을 따로 여는 방식(2안)으로 전환한다 -- 자세한 배경과
+        판단 근거는 DevNote 3.1.1절.
+        """
+        if not self.cfg.transport.register_all_nodes:
+            self.emit.register_ping(self.cfg.node.ics_id)
+            log.warning('register_all_nodes=false -- %s 만 등록합니다. '
+                        'kstatus/dmawait/datasource 는 도달하지 않습니다',
+                        self.cfg.node.ics_id)
+            return
+        for node_id in self.router.registered_ids:
+            self.emit.register_ping(node_id)
+
+    async def stop(self) -> None:
+        for task in list(self._tasks):
+            task.cancel()
+        if self._tasks:
+            await asyncio.gather(*self._tasks, return_exceptions=True)
+            self._tasks.clear()
+        await self.transport.stop()
+
+    def spawn(self, coro: Awaitable) -> asyncio.Task:
+        """부수 작업을 백그라운드로 돌린다 (참조를 유지해 GC 를 막는다)."""
+        task = asyncio.ensure_future(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    # -- 수신 -------------------------------------------------------------
+
+    def _send_query(self, dest: str, cmdword: str) -> None:
+        """TelemetryRelay 가 TC 에 질의할 때 쓰는 콜백."""
+        self.emit.emit_req(dest, cmdword)
+
+    def _on_message(self, msg: Message, addr) -> None:  # noqa: ANN001
+        # TC 응답부터 걸러낸다 -- 우리가 먼저 질의한 것에 대한 답이다.
+        if msg.mtype == 'DONE' and msg.src.upper() == 'TC':
+            if self.telem.on_tc_reply(msg):
+                return
+
+        target = self.router.resolve(msg)
+
+        if target.role is Role.GUIDE:
+            # G.IC 는 범위 밖이다.  ICG 가 별도 프로그램으로 존재하므로 여기서
+            # 답하면 오히려 충돌한다.
+            return
+        if not target.is_ours:
+            return
+
+        if msg.mtype in ('REQ', 'EXEC'):
+            self.dispatch.handle(msg, target)
+            return
+
+        # DONE/STATUS/ERROR/WARNING 은 다른 노드의 보고다.  통합 구조에서는
+        # 우리가 스스로에게 보낼 일이 없으므로 기록만 한다.
+        log.debug('unhandled %s from %s: %s', msg.mtype, msg.src, msg.payload)

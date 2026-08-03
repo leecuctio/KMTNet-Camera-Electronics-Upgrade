@@ -5,6 +5,14 @@
 - 대상 시스템: **ICIMACS** (Instrument Control & IMage ACquisition System, OSU 개발) 계열, KMTNet(칠레 CTIO/남아공 SAAO/호주 SSO 3개 사이트) 배포본
 - 근거 자료: `IMPv2.5Protocol1.pdf`, `IC_commands_R20220302.docx`, `__sample_isislog/{isislog.ctio,isislog.saao,isislog.sso}/*.log`
 
+> **2026-08-03 개정**: 로그 아카이브 **전량**(`__localonly_isislogs/`, CTIO 634일 + SAAO 273일 + SSO 206일 = 48GB, 1,113일분)을 기계적으로 스캔해 샘플 9개월치에 없던 시퀀스와 메시지를 찾아냈다. 그 결과 아래가 새로 들어가거나 정정됐다:
+> - **5.6절 신설** — ICS 메시지 오염 버그(커맨드워드 슬롯이 비워지지 않는 문제). 이번 조사에서 가장 실질적인 발견이다.
+> - **3.5절 신설** — `GO n` 다중 노출 시퀀스(`Image n of N complete.`). 샘플에는 한 건도 없었다.
+> - **정정** — 디스크는 이중화가 아니라 **최대 4중화**(1.4/4.2절)
+> - **보강** — `CHA`/`C1` 노드(1.3절) · AUXSTATUS 필드셋의 사이트별 차이와 중계 실패 형태(5.3절) · 새 에러·경고(5.4절) · 형식 변형(5.2절) · 8.0.1절의 OBSAgent 규약 6개 항목
+>
+> 스캔 도구는 [`../ics_sim/tools/scan_legacy_logs.py`](../ics_sim/tools/scan_legacy_logs.py) 에 남겨 두어 원본 로그가 있는 컴퓨터에서 재검증할 수 있다. 로그 자체는 `__localonly_*` 규약에 따라 비커밋이다. 신규 시뮬레이터 구현과 그 판단 근거는 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 참고.
+
 ---
 
 ## 1. 시스템 개요
@@ -50,6 +58,12 @@
 | `ABC` | 자동관측 제어기 | `ICG`에 가이드 노출/`GO` 명령 발행 (자동화된 관측 스케줄러로 추정) |
 | `GMON` | 모니터링 클라이언트 | `OBS`에 `sysstatus`를 초당 폴링해 카메라·망원경 통합 상태 조회 (대시보드/모니터링용). 응답 문자열은 OBSAgent의 `GetSysStatus()`가 생성하며, 같은 정보가 `/data/Logs/ObsStatus.txt`에도 5초마다 기록된다 ([OBSAgent 보고서](../OBSAgent/obsagent_report.md) 7절) |
 | `AL` / `ALL` | 브로드캐스트 예약 주소 | 모든 노드에 메시지 전파 |
+| `CHA` | **미확정 — 엔지니어링/운영자 콘솔로 추정** | 전량 스캔에서 새로 발견(SSO, 2024-06-28 전후 2,441회). `ICS`와 개별 IC 양쪽에 `EXPNUM`·`INITIALIZE`를 보내고 응답을 받는다: `ICS>CHA DONE: EXPNUM  Filename=20240628.021488`, `M.IC>CHA DONE: INITIALIZE  Initialization Complete.` |
+| `C1` | **미확정 — 전송 요청 주체** | `T.IC>T.CB TRANSFER DISK0 <n> C1` (CTIO 3~6회). `ICS`/`OBS`/`ABC` 외의 sourceID |
+
+> **문서에 없는 노드가 실재한다는 점이 신규 설계에 함의가 있다.** IMPv2에는 노드 인증 개념이 없고 레거시도 발신자를 가리지 않았다. 운영 중 임시 도구를 붙이는 관행이 있었다는 뜻이므로, **신규 구현도 발신 노드 화이트리스트를 두지 않는 편이 낫다** — 프로토콜에 맞는 메시지면 누가 보냈든 처리하고 요청자에게 응답한다.
+>
+> (덧붙여 `K.IC>0 STATUS: ...` 처럼 수신 노드명이 `0` 으로 파괴된 사례도 1건 있으나, 이는 실재 노드가 아니라 5.6절의 전송 손상 사례다.)
 
 포트 관례 (로그에서 관측):
 - IC 계열(`*.IC`, `ICG`): 6600
@@ -66,7 +80,17 @@
 노드 이름·디스크 이중화 패턴 등 지금 KMTNet 배포본에 남아있는 관례들이 어디서 비롯됐는지, 1998년 OSU의 원조 ICIMACS 발표 논문(Atwood, Mason, et al., SPIE Vol. 3355)으로 확인된다.
 
 - **노드 이름의 유래**: 원래 ICIMACS는 PC/Unix 혼합 네트워크로, 역할별 컴퓨터에 다음과 같은 이름을 붙였다 — `IC`(**I**nstrument **C**omputer, 검출기 시퀀서 구동·실시간 처리), `HE`(**H**ead **E**lectronics, 검출기/셔터/LED 신호 처리), `IE`(**I**nstrument **E**lectronics, 메커니즘 모터 제어), `WC`(**W**orkstation **C**omputer, Unix 워크스테이션과의 이더넷 연결 + FITS 변환), `CB`(**C**aliban 프로그램, WC와 Sparcstation 사이 SCSI 버스의 데이터를 Sparcstation 파일시스템으로 옮기는 프로그램). **KMTNet의 `K.IC`/`K.CB` 노드 이름은 바로 이 `IC`/`CB` 계보를 그대로 물려받은 것.**
-- **디스크 이중화의 유래**: 1998년 당시 SCSI-2(10Mbyte/sec) 버스 한 쌍에 디스크 2개를 연결해, 한쪽에 쓰는 동안 다른 쪽을 읽어 스왑하는 방식으로 "헤드 재배치 시간"을 감추는 성능 최적화였다. **지금 KMTNet 로그의 `DISK0`/`DISK1` + `TRANSFER`/`REQ SWAP`/`ACK SWAP` 패턴(4.2절)은 이 1998년 SCSI 하드웨어 제약의 논리적 흔적**이다 — `mnt/ICSData`처럼 네트워크 스토리지를 쓰는 지금 환경에서는 원래의 성능상 이유가 그대로 적용되지 않을 가능성이 크다.
+- **디스크 다중화의 유래**: 1998년 당시 SCSI-2(10Mbyte/sec) 버스 한 쌍에 디스크 2개를 연결해, 한쪽에 쓰는 동안 다른 쪽을 읽어 스왑하는 방식으로 "헤드 재배치 시간"을 감추는 성능 최적화였다. **지금 KMTNet 로그의 `DISK<n>` + `TRANSFER`/`REQ SWAP`/`ACK SWAP` 패턴(4.2절)은 이 1998년 SCSI 하드웨어 제약의 논리적 흔적**이다 — `/mnt/ICSData`처럼 네트워크 스토리지를 쓰는 지금 환경에서는 원래의 성능상 이유가 그대로 적용되지 않는다.
+
+  > **정정 (2026-08-03, 전량 스캔)**: 샘플 로그에 `DISK0`/`DISK1`만 나와 "이중화"로 서술했으나, 실제로는 **최대 4중(`DISK0`~`DISK3`)** 이다.
+  >
+  > | 사이트 | K master | M/T/N |
+  > |---|---|---|
+  > | CTIO | `DISK0`(85,940) · `DISK2`(258) | 주로 `DISK0` |
+  > | SSO | `DISK1`(20,470) · `DISK2`(14,823) · **`DISK3`(177)** | `DISK0`/`DISK1` |
+  > | SAAO | `DISK0`/`DISK1` | `DISK0`/`DISK1` |
+  >
+  > **신규 설계에서는 폐지한다.** 다중화의 두 근거가 모두 사라지기 때문이다 — (1) SCSI 시절 성능 최적화는 현대 스토리지에서 의미가 없고, (2) NFS로 Science server에 옮기는 시간 확보는 **관측자료 취합 서버 역할과 기기제어·자료획득 역할(`x.IC`)을 단일 PC에 통합**하면 불필요하다. 신규는 설정파일에 저장 경로 하나만 둔다([`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 6.2·11.1절).
 - **초기 메시지 프로토콜(IMPv1 원형)**: 이 논문이 설명하는 프로토콜은 `주소헤더 메시지\r` 형태(`XX>YY`, 2글자 고정 노드명)에 `STATUS/DONE/WARNING/ERROR/FATAL` 5종 메시지 타입만 있고 `REQ:`/`EXEC:`는 아직 없다 — IMPv2.5(2절)의 시조 격인 초기 버전.
 - **`OBS`의 원조는 Ariel/Prospero**: 논문에서 언급된 사용자 인터페이스 프로그램 "Ariel"과 "Prospero"(Unix 워크스테이션에서 대화형으로 명령을 내리는 프론트엔드, `obsguide.pdf` 참고)가 지금 KMTNet의 `OBS` 노드 역할의 원형이다.
 
@@ -225,6 +249,36 @@ Go
 - `LEDFLASH` 관련 이슈가 SAAO 현장 테스트(2018-03-15)에서 보고됨: OSU 원본 코드에서 문제였던 현상이 재현 안 됨 (IC2.img 버전 차이로 추정), `LEDFLASH 0` 설정도 문제없이 동작 확인됨.
 - `OBSAgent`에 `ACQSTATUS`, `EXPNUM` 명령 그룹 추가 필요 (미해결 항목으로 문서에 기록됨).
 - `BIN`, `ROI`, `DISPL`, `STOP`, `ABORT`, `MOVIE`는 명령어 리스트/파서에는 존재하나 실제 구현되어 있지 않음 — 신규 구현 시 "명령이 정의돼 있다고 곧 동작한다는 뜻은 아님"을 유의해야 함.
+  - **전량 스캔 확인 (2026-08-03)**: 이 6개 명령은 48GB 로그 전량에서 **송수신 0건**이다. 문서상 "미구현"이 운용에서도 한 번도 시도되지 않았음이 확인된다. 같은 스캔에서 `FATAL:` 메시지도 **0건**으로, 샘플 기준 관찰이 전량에서도 유지된다.
+
+### 3.5 `GO n` 다중 노출 시퀀스 (2026-08-03 신규)
+
+`GO` 에 프레임 수를 주면 ICS가 **`GO` 재발행 없이 스스로** 다음 프레임을 이어간다. 샘플 로그 9개월치에는 한 건도 없었고 전량 스캔에서 처음 확인됐다.
+
+핵심은 **중간 프레임의 종료 알림이 `DONE:` 이 아니라 `STATUS:` 라는 점**이다:
+
+```
+ICS>OBS STATUS: Image 1 of 5 complete. EXPSTATUS=IDLE     ← 프레임 1 종료 (STATUS:)
+ICS>OBS STATUS: EXPSTATUS=INITIALIZING                    ← 프레임 2 시작 (자동)
+ICS>OBS STATUS: EXPSTATUS=ERASE
+ICS>OBS STATUS: Wrote LASTFILE=…KMTNm.20240103.023885.fits …   ← 프레임 1의 저장 완료가
+ICS>OBS STATUS: Wrote LASTFILE=…KMTNk…                          ← 프레임 2 준비 중에 도착
+ICS>OBS STATUS: Wrote LASTFILE=…KMTNn…                          ← (파이프라인)
+ICS>OBS STATUS: Wrote LASTFILE=…KMTNt…
+ICS>OBS STATUS: EXPSTATUS=INTEGRATING
+ICS>OBS STATUS: Shutter=Closed Integration Remaining=0 sec. EXPSTATUS=INTEGRATING
+ICS>OBS STATUS: EXPSTATUS=READOUT
+ICS>OBS STATUS: Image 2 of 5 complete. EXPSTATUS=IDLE
+…
+ICS>OBS DONE: EXPSTATUS=IDLE                              ← 마지막 프레임만 DONE:
+```
+
+**근거**
+- CTIO에서 `Image 1 of 5`(1,254) · `2 of 5`(1,250) · `3 of 5`(1,246) · `4 of 5`(1,244)가 관측되고 **`5 of 5`는 0건**이다 → 마지막 프레임은 일반 `DONE: EXPSTATUS=IDLE` 로 끝난다. `of 4`(13) · `of 3`(8) · `of 2`(23)도 같은 패턴.
+- **OBSAgent 소스가 이를 뒷받침한다** — `commands.c` 765행 주석: *"msg type of 'EXPSTATUS=IDLE' is STATUS in the case of 'go n' command, added here at v0.3.0"*. v0.3.0이 바로 이 경로 때문에 `STATUS:` 에도 `EXPSTATUS=IDLE` 핸들러를 넣었다.
+- SSO에서는 `GO` 접수 직후 `ICS>OBS STATUS: GO  EXPSTATUS=INITIALIZING` 형태도 7회 관측된다.
+
+**신규 구현 시 주의할 타이밍 제약**: 프레임 N의 `Wrote` 4개가 프레임 N+1의 `INITIALIZING`/`ERASE` **이후**에 도착하지만, 프레임 N+1의 `EXPSTATUS=READOUT`/`PCTREAD=` 가 OBSAgent의 `count_wrote` 를 0으로 리셋하기 **전**에는 다 들어와야 한다. 어기면 `FitsSaved` 가 영영 1이 되지 않는다(8.0.1절).
 
 ---
 
@@ -388,6 +442,16 @@ STATUS: GO  Acquisition Complete
 STATUS: GO  Disk Write Complete    (( XIS PONG 응답 후 ))
 ```
 
+**전량 스캔에서 추가로 확인된 형식 변형 (2026-08-03)**
+
+| 변형 | 내용 |
+|---|---|
+| `-FIBERS` | `K.IC>ICS DONE: STATUS  Inst=KMTNk … **-FIBERS** +SYNCH …` — 광케이블 미연결 상태. 샘플엔 `+FIBERS`만 있었다. `Driving=0`/`1` 도 함께 변한다 |
+| `FLASHNOW` 실사용 | `K.IC>ICS DONE: FLASHNOW  LED Flash Done.` (CTIO 4,700+회). 3.3절의 LED 프로젝터 점검 시퀀스가 실제 운용에서 정기적으로 돈다 |
+| `EXP=0` 인 DARK | `ICS>OBS DONE: DARK  ImageType=DARK ObjectName='end' EXP=0` — 관측 종료 시 관례적으로 찍는 이름 `end` |
+| `SYNCHRONIZE` 두 타입 | `DONE:`(CTIO 2,230회)와 `STATUS:`(1,284회) **양쪽 모두**로 발신된다. 샘플엔 `STATUS:` 만 있었다 |
+| `Wrote` 타입의 사이트 차이 | CTIO는 `K.CB>ICS DONE: Wrote …`, SSO는 `K.CB>ICS STATUS: Wrote …`. 빌드 차이로 보인다. **OBSAgent 동작에는 영향이 없다** — `case DONE:` 에는 `Wrote` 핸들러가 없어서, 어느 쪽이든 OBSAgent가 세는 것은 `ICS>OBS STATUS: Wrote …` **중계**뿐이다(8.0.1절) |
+
 ### 5.3 상태 덤프 — AUXSTATUS / TCSSTATUS (FITS 헤더용 텔레메트리)
 
 ```
@@ -413,6 +477,35 @@ STATUS: TCSSTATUS  DATE-OBS=... EXECODE=E TCSDRIVE=Disabled TCSLIMIT=No TELMOVE=
 3. **TCSSTATUS는 곧바로 전달되지 않는다.** `ERASE` 사이클이 끝나 셔터가 열릴 때(`SHOPEN`, 실제 노출의 경우)까지 기다렸다가 전달된다 — 메시지에 `EXPSTATUS=INTEGRATING` 태그가 붙고, 메시지 안의 `DATE-OBS` 값은 (질의 시각이 아니라) 실제 셔터 개방 시각과 일치한다. 즉 TCS 조회 자체는 미리 해두지만, **셔터가 실제로 열린 시점의 타임스탬프를 `DATE-OBS`로 확정한 뒤에야** 각 CCD로 내보낸다 — FITS 헤더의 `DATE-OBS`/좌표가 "노출 시작 순간"을 정확히 반영하도록 하기 위한 설계로 보인다.
 4. DARK/BIAS처럼 셔터를 열지 않는 노출도 `ERASE` 완료 시점을 "논리적 노출 시작"으로 취급해 동일하게 TCSSTATUS를 전달한다(4.2절 예시 참고).
 
+#### 5.3.1 필드 순서가 역순으로 뒤집힌다 (2026-08-03 신규)
+
+`TC>ICS DONE: AUXSTATUS` 의 필드 순서와 `ICS>*.IC STATUS: AUXSTATUS` 의 순서가 **정확히 역순**이다. 스택에 쌓았다 빼는 구현으로 보인다.
+
+```
+TC→ICS : AUXQDATE=.. TIMESYS=.. TELID=.. AUXLINK=.. ... ENS2=.. ENS1=..
+ICS→IC : ENS7=.. ENS6=.. ... AUXLINK=.. TELID=.. TIMESYS=.. AUXQDATE=..
+         + KBUILD=.. MBUILD=.. TBUILD=.. NBUILD=.. GBUILD=.. ICSBUILD=.. EXPSTATUS=..
+```
+
+TCSSTATUS도 마찬가지이며, ICS가 `DATE-OBS` 를 **맨 앞에** 덧붙이고 `EXPSTATUS` 를 맨 뒤에 붙인다.
+
+#### 5.3.2 필드 집합이 사이트마다 다르다 (2026-08-03 신규)
+
+| | CTIO / SAAO | SSO |
+|---|---|---|
+| 돔 필드 | 없음 | `DSSTAT` 앞에 `DSTEL DSALT DSAUTO DSSAF DSLW DSUP` 추가 |
+| `GBUILD` | 빈 값 (`GBUILD=`) | 채워짐 (`GBUILD=KG2016-06-02:1407`) |
+
+**신규 구현 권고**: 사이트별 필드 테이블을 따로 두지 말고 **받은 `key=value` 를 순서 그대로 보존해 역순으로 되돌려 보낸다**(pass-through). ICS가 알아야 할 것은 "어디까지가 TC 필드이고 어디부터 내가 붙이는 꼬리인지"뿐이다. FITS 헤더 생성에 특정 필드가 필요한데 없으면 **없다는 것이 드러나는 sentinel**(수치 `0`, 문자열 `NC`)로 채운다 — 레거시의 `GBUILD=`(빈 값)·`DSSTAT=NC` 관례와 같은 방식이다. 테이블을 유지하면 사이트가 늘거나 AUX 펌웨어가 바뀔 때마다 코드를 고쳐야 한다.
+
+#### 5.3.3 TC 질의 실패 시의 중계 형태 (2026-08-03 신규)
+
+```
+ICS>N.IC STATUS: AUXSTATUS  KBUILD=… MBUILD=… TBUILD=… NBUILD=… GBUILD= ICSBUILD=… EXPSTATUS=ERASE
+```
+
+TC 질의가 실패하면 **TC 필드 전체가 비고 ICS가 덧붙이는 꼬리만** 남은 채 그대로 중계된다(CTIO 4회, SSO 144회). **노출은 중단되지 않고 진행되며**, 그 노출의 FITS 헤더는 망원경 정보가 빈 채로 저장된다. 신규 구현에서도 이 동작(진행 우선)을 유지하되, 헤더가 비었다는 사실이 사후에 드러나도록 sentinel을 쓰는 편이 낫다.
+
 ### 5.4 에러(ERROR) 패턴 — 실제 발생 사례
 
 ```
@@ -425,6 +518,28 @@ G.IC>ABC ERROR: GO  DMA WAIT TIMEOUT. EXPOSURES ABORTED. EXPSTATUS=ERROR
 ```
 → 가이드 CCD에서 DMA(광케이블) 응답 타임아웃 시 발생, 자동으로 노출이 중단되고 `EXPSTATUS=ERROR`로 천이. 로그 샘플에서 반복적으로 (수 분 간격) 발생한 사례가 다수 확인됨 — 운영 중 흔한 장애 패턴으로 보인다.
 
+**전량 스캔에서 새로 확인된 에러 (2026-08-03)**
+
+```
+ICS>OBS ERROR: GO  Data acquisition already in progress! EXPSTATUS=<현재상태>
+```
+→ 노출 진행 중 `GO` 재발행을 거부한다. OBSAgent도 `CamStatus` 가 `IDLE_3`/`READY` 가 아니면 `GO` 를 막지만(8.0.1절), **ICS 자체 방어선이 따로 있다.**
+
+```
+*.IC>OBS ERROR: DATASOURCE  Invalid selection for DataSource. ADC, CTC, and SIM are valid. DataSource=<현재값>
+```
+→ **문서에 없던 제3의 값 `SIM` 이 존재한다.** 3.2절 명령표에는 `ADC`/`CTC` 만 적혀 있으나 파서는 `SIM` 도 받는다. 신규 설계에서 **시뮬레이션 데이터 소스로 재활용할 가치가 크다** — 실제로 신규 시뮬레이터의 백엔드가 자신을 `DataSource=SIM` 으로 보고한다.
+
+```
+K.CB>ICS ERROR: No SIMPLE card in FITS file #2, skipping...        (SSO)
+```
+→ CB가 쓰다 만/손상된 FITS를 만났을 때. 디스크 슬롯 번호가 함께 나온다.
+
+```
+*.IC>ICS ERROR: <cmd>  Didn't understand <cmd> <args> ?
+```
+→ 파서가 인식하지 못한 명령의 거부 형식. 실제로는 전송 손상으로 명령어가 깨졌을 때 주로 나타난다(5.6.3절).
+
 ### 5.5 경고(WARNING) 패턴 — 파일명 충돌
 
 ```
@@ -432,7 +547,88 @@ K.CB>OBS WARNING: FITS file '/mnt/ICSData/KMTNk.20250902.050666.fits' already ex
 ```
 → 계산된 파일명이 이미 존재할 경우, 덮어쓰지 않고 대체 파일명(`<yymmdd>.<순번>.fits`)으로 자동 저장 후 WARNING으로 통지. 데이터 유실 방지 목적의 안전장치.
 
-> 샘플 로그 전체(9개월치, 3개 사이트)에서 `FATAL:` 메시지는 관측되지 않았다 — 실제 운영 중 물리적 개입이 필요한 심각 오류는 드물게 발생하거나 별도 채널로 처리되는 것으로 보인다.
+> **정정 (2026-08-03)**: 이 경고는 `OBS` 뿐 아니라 **`ICS` 로도 발신된다** — `N.CB>ICS WARNING: FITS file '...' already exists, ...`. 두 수신자 모두 실측됐다.
+
+> 샘플 로그 전체(9개월치, 3개 사이트)에서 `FATAL:` 메시지는 관측되지 않았다 — 실제 운영 중 물리적 개입이 필요한 심각 오류는 드물게 발생하거나 별도 채널로 처리되는 것으로 보인다. **전량 스캔(48GB, 1,113일)에서도 `FATAL:` 은 0건**으로, 이 관찰이 유지된다.
+
+---
+
+## 5.6 ICS 메시지 오염 버그 (2026-08-03 신규)
+
+> 48GB 전량 스캔의 가장 실질적인 발견이다. 신규 구현이 **재현하지 말아야 할** 동작이므로 별도 절로 정리한다. 신규 시뮬레이터의 대응은 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 5장.
+
+IMPv2 메시지는 `src>dest <TYPE> <커맨드워드> <본문>` 구조다. **레거시 ICS/IC는 이 커맨드워드 슬롯을 "가장 최근에 처리한 메시지"의 것으로 채운 채 비우지 않는다.** 명령에 대한 직접 응답이 아닌 **비동기 상태 메시지**(카운트다운, `EXPSTATUS` 전이 등)에서 그 잔재가 그대로 드러난다.
+
+### 5.6.1 현상 A — 스테일 커맨드워드 (결정론적, 대량)
+
+CTIO 634일 기준 실측:
+
+| 오염된 발신 | 건수 |
+|---|---:|
+| `ICS>OBS STATUS:  STATUS: EXPSTATUS=INTEGRATING` | 173,635 |
+| `K.IC>OBS STATUS: REQ  Integration Remaining=54 sec.` | 148,430 |
+| `K.IC>OBS STATUS: SHOPEN  Integration Remaining=14 sec.` | 93,724 |
+| `K.IC>OBS STATUS: DATASOURCE  Integration Remaining=5 sec.` | 39,614 |
+| `K.IC>ICS DONE: REQ  Erase Cycle Complete.` | 31,604 |
+| `K.IC>OBS STATUS: FLASHNOW  Integration Remaining=… sec.` | 4,522 |
+| `K.IC>ICS DONE: DONE  Erase Cycle Complete.` | 276 |
+| `ICS>OBS ERROR: SYNCHRONIZE  Failed to Start acquisition on one or more ICs` | 122 |
+| `K.IC>OBS STATUS: SHCLOSE  Integration Remaining=165 sec.` | 113 |
+| `K.IC>ICS DONE: DATASOURCE  Erase Cycle Complete.` | 101 |
+| `K.IC>{OBS,ICS} STATUS: FOUND  Integration Remaining=…` | 103 |
+| `K.IC>OBS STATUS: {DONE,PROJID,OBJECT,PING,PONG,STATUS,EXP}  Integration Remaining=…` | 각 1~154 |
+| `ICS>OBS STATUS: PING  Remaining=24 sec. of 30 sec.` | 5 |
+| `ICS>OBS ERROR: EXPNUM  Failed to Start acquisition on one or more ICs` | 1 |
+
+**올바른 형태**는 같은 본문이 빈 커맨드워드로 나가는 것이다 — `K.IC>OBS STATUS: Integration Remaining=9 sec.`(152,847회), `K.IC>ICS DONE: Erase Cycle Complete.`(141,435회).
+
+**증거 세 가지**
+
+1. **같은 본문이 제각각인 커맨드워드를 달고 나간다.** `Integration Remaining=` 하나만 놓고 봐도 빈 값 / `REQ` / `SHOPEN` / `DATASOURCE` / `FLASHNOW` / `DONE` / `PROJID` / `OBJECT` / `PING` / `PONG` / `FOUND` / `STATUS` / `EXP` 가 모두 관측된다.
+2. **`REQ`·`DONE`·`PONG`·`FOUND` 같은 프로토콜 키워드가 커맨드워드 자리에 나타난다.** 검증된 명령 테이블이 아니라 **직전 파싱 토큰**에서 슬롯이 채워졌다는 뜻이다. `REQ` 가 1위인 것은 IMPv2에서 타입 생략 시 암묵 기본값이 `REQ` 이기 때문으로 보인다.
+3. **인과가 로그에서 직접 보인다.** SSO `isis.20240111.log` 등에서 `OBS>*.IC datasource ctc` → `*.IC>OBS DONE: DATASOURCE  DataSource=…` 직후, 같은 노출의 다음 비동기 카운트다운이 `K.IC>OBS STATUS: DATASOURCE  Integration Remaining=5 sec.` 로 나간다. 명령을 받은 적 없는 `PING`/`PONG` 까지 슬롯에 남는 것도 같은 경로다.
+
+### 5.6.2 현상 B — 누적(2단계 이상) 오염
+
+잔재가 하나로 끝나지 않고 **겹쳐 쌓이며 본문을 밀어내 소실**시킨다:
+
+| 실측 | 사이트/건수 | 해석 |
+|---|---|---|
+| `ICS>OBS STATUS: SYNCHRONIZE STATUS:` | CTIO 14 | 커맨드워드 `SYNCHRONIZE` + 잔재 `STATUS:` + **본문 완전 소실** |
+| `ICS>OBS STATUS: PING STATUS: EXPSTATUS=INTEGRATING` | SSO 1 | 잔재 2개(`PING`,`STATUS:`)가 연달아 |
+| `K.IC>ICS DONE: EXP  FLAT  ImageType=FLAT ObjectName='flat' EXP=30` | CTIO 각 IC 2 | 커맨드워드 **2개**(`EXP`,`FLAT`) 적층 |
+| `ICS>OBS DONE: PROJID  ProjID=ALL BIAS BIAS` | SAAO 5 | 이전 메시지 잔재가 **꼬리에 2회 반복** |
+| `ICS>OBS STATUS: EXPNUM` | CTIO 1 | 슬롯만 남고 본문 전부 소실 |
+| `ICS>OBS STATUS: : EXPSTATUS=INTEGRATING` | CTIO 1 | 슬롯이 콜론 한 글자로 잘림 |
+
+### 5.6.3 현상 C — 버퍼 겹침·전송 절단 (비결정론적, 데이터 손실 동반)
+
+문자열이 **중간부터 겹쳐 쓰여** 토큰이 깨진다. 발신·수신 양쪽에서 관측된다:
+
+```
+K.IC>ICS DONE: INITIALIZitialization Complete.     ← "INITIALIZE"+"Initialization Complete." 겹침
+ICS>T.IC STATUS: TCSSTATUS  DATE5-04-03T06:26:41   ← "DATE-OBS=2025"가 "DATE5"로 (7자 소실)
+ICS>T.IC STATUS: AUXTATUS  ENS7=…                  ← "AUXSTATUS" → "AUXTATUS"
+M.IC>ICS ERROR: OBCT  Didn't understand OBCT BLG37 ?           ← 수신측: "OBJECT"가 "OBCT"로
+K.IC>ICS ERROR: N  Didn't understand N 60 OBS USESTATUS ?      ← "SHOPEN 60 …"이 "N 60 …"로
+K.IC>ICS ERROR: EN  Didn't understand EN 60 OBS USESTATUS ?    ← 〃 (SSO)
+M.IC>ICS ERROR: STATUSTUS  Didn't understand STATUSTUS  DATE-OBS= ?   ← 두 메시지 접합 (SAAO)
+K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드명이 "0"으로 파괴
+```
+
+**운영 영향이 실재한다**: `SHOPEN 60 OBS USESTATUS` 가 `N 60 …` 으로 깨져 K.IC가 거부한 건은 **셔터가 열리지 않은 노출**을 뜻한다.
+
+**원인 추정과 그 함의**: 이 계열 손상은 **`ICS`↔`XIS` 링크에 집중된다.** 1.3절 포트 표에서 보듯 이 구간만 시리얼(`/dev/ttyS0`)이고 나머지 노드는 전부 UDP다. **신규 시스템이 UDP로 가면 이 계열 손상은 구조적으로 사라진다** — 셔터가 열리지 않은 노출 같은 실제 데이터 손실이 없어진다는 뜻이므로, 그 자체로 전환의 근거가 된다.
+
+### 5.6.4 신규 구현이 지켜야 할 규칙
+
+1. **커맨드워드를 매 메시지마다 명시적으로 정한다.** 비동기 상태 메시지는 빈 문자열을 **명시적으로** 넘긴다. 전역/멤버 상태에서 물려받는 경로를 만들지 않는다.
+2. **메시지 조립은 매번 새 버퍼.** 재사용 버퍼 금지.
+3. **`EXPSTATUS=` 알림은 상태 전이 시점에 1회씩만, `OBS` 로만** 보낸다(8.0.1절 (6)).
+4. **송신 직전 자체 검증**을 넣는다 — 본문에 메시지 타입 키워드 재등장 금지, 커맨드워드 적층 금지, 본문과 커맨드워드의 정합 확인.
+5. **수신은 관대하게** — 깨진 명령은 크래시 없이 레거시와 같은 `ERROR: <cmd>  Didn't understand <cmd> <args> ?` 로 거부한다.
+
+> **중요**: 이 버그는 **OBSAgent 동작에 영향이 없다.** OBSAgent의 `CamStatus` 는 커맨드워드가 아니라 본문 부분문자열만 보기 때문이다(8.0.1절). 그래서 레거시가 수년간 이 상태로 운용될 수 있었다. 신규 구현에서 고치는 것은 정확성과 디버깅 편의를 위한 것이지 호환성 때문이 아니다.
 
 ---
 
@@ -453,7 +649,19 @@ K.CB>OBS WARNING: FITS file '/mnt/ICSData/KMTNk.20250902.050666.fits' already ex
 | `__ICIMACS/osu etc/spie3.pdf` | **검토 완료** — OSU ISL(Imaging Sciences Laboratory) 연구소 소개 논문(~1998). ICIMACS를 만든 조직의 배경: "소프트웨어 최소화" 철학, IFPS/OSIRIS/MOSAIC/ANDICAM 등 계측기 목록. ANDICAM(CTIO 1m)이 여기 등장 — [TCSAgent](../TCSAgent/tcsagent_report.md)의 원조(pctcs Agent, Yale 1m/ANDICAM용)와 연결되는 배경. KMTNet 직접 관련 정보는 없음 |
 | `__ICIMACS/osu etc/P-atwood-poster.pdf` | **검토 완료** — "Early Results from the MODS 8k x 3k CCDs"(B. Atwood, OSU) 포스터. LBT MODS 분광기용 e2v CCD231-68 + ICIMACS 검출기 전자부 초기 결과(2009년경). KMTNet 직접 관련 없음, 배경자료로 마감 |
 | `__ICIMACS/osu etc/*.url`, `__ICIMACS/*.url` | OSU 웹페이지 바로가기(오래된 링크, 대부분 접속 불가 추정) — 미검토 |
-| `__sample_isislog/isislog.{ctio,saao,sso}/isis.*.log` | 3개 사이트, 2024~2025년 실제 ISIS 런타임 로그 샘플 (본 보고서 4~5절의 실측 근거) |
+| `__sample_isislog/isislog.{ctio,saao,sso}/isis.*.log` | 3개 사이트, 2024~2025년 실제 ISIS 런타임 로그 샘플 (본 보고서 4~5절의 실측 근거). `*.log` 는 `.gitignore` 로 **비커밋** |
+| `__sample_isislog/samples_for_bug.txt` | **검토 완료** — 사용자가 직접 추린 메시지 오염 사례 2,755행 (5.6절 근거). `.txt` 라 **커밋 대상** |
+| `__sample_isislog/samples_for_bug_integrat.txt` | **검토 완료** — 노출 국면(`INTEGRATING`)·카운트다운 구간 발췌 3,061행. 5.6.1절의 스테일 커맨드워드(`REQ`/`SHOPEN`/`DATASOURCE`)와 "셔터 닫힌 뒤에도 `EXPSTATUS=INTEGRATING` 반복" 패턴의 근거. **커밋 대상** |
+| `__sample_isislog/samples_for_bug_pctread.txt` | **검토 완료** — readout 진행률 발췌 2,940행(노출 294회분). `6·17·28·39·50·61·72·83·94·100` 이 **각각 정확히 294회**로 편차 0 — 레거시 IC 가 진행률을 실제 픽셀 카운트가 아니라 **고정 스텝**으로 보고했음을 보여준다(5.2절). **커밋 대상** |
+| `../../__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **전량 검토 완료 (2026-08-03)** — CTIO 634일(28GB, 2024-01-01~2025-09-30) + SAAO 273일(11GB, 2025) + SSO 206일(8.6GB, 2024-01-01~2024-07-25) = **48GB, 1,113일분**. 3.5·5.2·5.3·5.4·5.6·6절 신규 항목의 근거. `__localonly_*` 규약에 따라 **비커밋** |
+
+> **재검증 방법**: 위 로그가 있는 컴퓨터에서 [`../ics_sim/tools/scan_legacy_logs.py`](../ics_sim/tools/scan_legacy_logs.py) 로 언제든 다시 돌릴 수 있다.
+> ```bash
+> python tools/scan_legacy_logs.py slots     <logdir>   # 커맨드워드 슬롯 분류 (5.6절)
+> python tools/scan_legacy_logs.py shapes    <logdir>   # 메시지 형태 목록 (새 시퀀스 발굴)
+> python tools/scan_legacy_logs.py camstatus <logdir>   # OBSAgent CamStatus 재생 (8.0.1절)
+> ```
+> 로그 없이도 검증이 되도록 발췌본은 `../ics_sim/tests/fixtures/` 에 커밋해 두었다.
 
 **이 폴더의 산출 문서 (분석 결과물)**
 
@@ -461,6 +669,7 @@ K.CB>OBS WARNING: FITS file '/mnt/ICSData/KMTNk.20250902.050666.fits' already ex
 |---|---|
 | `ics_legacy_report.md` (본 문서) | 시스템 전체 — 아키텍처, IMPv2.5 프로토콜, ICS/IC 명령어, 과학 노출 트랜잭션, ISIS 클라이언트 라이브러리 |
 | [`icg_legacy_report.md`](icg_legacy_report.md) | **`ICG` 노드 전용 기술 레퍼런스** — 가이드 계통 오케스트레이션, `G.IC`/`G.CB` 계층, ICS와의 상세 비교, 신규 `icg` 구현 명세. 근거는 전적으로 위 XIS 로그 실측 |
+| [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) | **신규 시뮬레이터 개발 노트** — 본 보고서의 규약을 실제로 구현·검증한 결과. 설계 결정 기록, 정정 이력, 개선 백로그 |
 
 ---
 
@@ -558,6 +767,82 @@ OBSAgent v1.2.0 소스(`commands.c` 748~865행, `main.c` 주기 루프)를 실�
 - `READY`는 메시지가 아니라 **`IDLE_3` 후 약 12.2초 타이머**로 전이된다(소스에 `Disk Write Complete` 파서가 없음). 즉 신규 `ics`가 "저장 완료" 메시지를 새로 만들어 보내도 `READY`를 앞당길 수 없다 — 노출 간 최소 12초 간격은 OBSAgent 쪽 상수(`force_ready=270`)에 의해 정해진다는 뜻이다. 이 지연이 신규 시스템에서 문제가 된다면 그때는 OBSAgent 개정이 필요하다.
 
 **(5) 신규 `icg`는 이 규약에서 자유롭다**: OBSAgent는 v0.3.2부터 `ICG`/`G.IC`/`G.CB` 발신 메시지를 **명시적으로 무시**한다(가이드가 같은 문자열을 뿌려도 과학 상태머신이 오염되지 않도록). 따라서 신규 `icg`는 메시지 형식을 자유롭게 현대화해도 OBSAgent에 영향이 없다 — `ics`와 `icg`의 하위호환 부담이 **비대칭**이라는 뜻이다.
+
+---
+
+#### 8.0.1 보강 (2026-08-03) — 실행 검증에서 추가된 6개 항목
+
+아래는 위 (1)~(5)를 실제로 구현·실행해 검증하는 과정([`../ics_sim/`](../ics_sim/))에서 **새로 확인되거나 빠져 있던** 항목이다. 전부 `ics_sim/tests/test_obsagent_contract.py` 가 자동 검증한다.
+
+**(6) 수신은 9개 노드 ID 전부 필요 — 발신과 비대칭이다**
+
+위 (1)항은 "발신 노드 ID를 전부 `ICS` 로 해도 필터를 통과한다"만 서술했는데, **수신 쪽은 그렇지 않다.** OBSAgent는 명령마다 수신 노드를 달리 지정한다:
+
+| OBSAgent 명령 | 보내는 곳 | 소스 |
+|---|---|---|
+| `status` · `acqstatus` · `filename` · `expnum` · `ledflash` · `observer` · `projid` · `exp` · `go` · 이미지타입 7종 | `ICS` | `commands.c` 1889·1915·1939 |
+| `kstatus` · `mstatus` · `tstatus` · `nstatus` | `K.IC` · `M.IC` · `T.IC` · `N.IC` | 2015~2080 |
+| `dmawait` | `K.IC` | 1968 |
+| `datasource` | `K.IC` · `M.IC` · `T.IC` · `N.IC` (4회) | 1987 |
+
+→ **통합 `ics` 가 `ICS` 하나로만 등록하면 `kstatus`/`dmawait`/`datasource` 가 도달조차 하지 않는다.** 9개 ID(`ICS` + `{K,M,T,N}.IC` + `{K,M,T,N}.CB`) 전부로 받아야 한다.
+
+**(7) `ExpNum` 자동 질의에 반드시 응답해야 한다**
+
+`commands.c` 797~803행: readout 중 **첫 `PCTREAD=`** 를 받아 `READ_1` 일 때 OBSAgent가 **스스로** `OBS>ICS ExpNum` 을 보낸다.
+
+```
+OBS>ICS ExpNum
+ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
+```
+
+- 응답의 `Filename=` 값(**정확히 15자**, `strncpy(expinfo.strNextNum, pstr+9, 15)`)이 `expinfo.strNextNum` 이 되고, 다음 노출의 `Shutter=Open`(또는 `EXPSTATUS=INTEGRATING`) 시점에 `strCurNum` 으로 승격된다.
+- **목적**: 카메라 제어가 아니라 **상태 표시용**이다. `expinfo`/`ee` 명령의 반환 문자열과 `/data/Logs/ObsStatus.txt` 의 `EXP.INFO:` 줄에 있는 `ExpNum` 필드를 채우는 **유일한 경로**다.
+- **내력** (소스 서두 개정이력 주석 218~229행): **v1.0.1(2024-07-01)** *"Add ExpNum query to ICS and ExpNum(strNextNum/strCurNum) update"* 로 추가. `expinfo` 명령은 v1.0.0(2024-06-29), `ObsStatus.txt` 는 v1.0.3~1.0.4(2024-07-05)에 추가됐다. 후속 디버깅: v1.0.6(`dStartTime` 누락) · v1.0.7~1.0.8(SSO ExpNum 오류) · v1.0.9(`strPreNum`/`FitsOsc`) · **v1.1.3(2024-07-18)** *"Debug momentary unmatch of ExpNum and ExpStatus, Debug missing ExpNum/ExpStart update in dark/bias mode"*.
+- **응답하지 않으면**: 카메라 동작 자체는 정상이지만 `ExpNum` 이 갱신되지 않아 `expinfo`·`ObsStatus.txt`·`GMON` 표시가 이전 값이나 `00000000.000000` 에 머문다.
+- 실측: CTIO 아카이브에서 **125,451회**. **2024-03 로그에는 없고 2025 로그에만 있는 것이 v1.0.1 도입 시점(2024-07)과 정확히 일치한다.**
+
+**(8) 하드 타임아웃 4종의 정확한 창** (`main.c` 650~708, 1카운트 ≈ 0.045초)
+
+| 조건 | 상수 | 시간 | 초과 시 |
+|---|---|---|---|
+| 1번째 → 4번째 `Acquisition Complete.` | `force_idle=40` | ≈1.8초 | `IDLE_3` 강제 + **`opause`(스크립트 정지)** + `ERROR: Acquisition is not fully completed !!` |
+| 4번째 `Acquisition Complete.` → `EXPSTATUS=IDLE` | `force_idle/2=20` | ≈0.9초 | `IDLE_3` 강제 + `WARNING: No 'EXPSTATUS=IDLE' message from ICS` |
+| `IDLE_3` 진입 → 4번째 `Wrote` | `force_fitssaved=560` | ≈25초 | `FitsSaved=1` 강제 + `WARNING: Writing FITS data is not fully completed !!` + `ExpStatus=ERROR` |
+| `IDLE_3` → `READY` | `force_ready=270` | ≈12.2초 | (정상 전이, 위 (4)항) |
+
+실측 레거시는 4개 `Acquisition Complete.` 가 ~3ms 안에, `EXPSTATUS=IDLE` 이 0.38초 뒤에 도착한다. **첫 번째 창을 넘기면 야간 스크립트 관측이 실제로 멈춘다**는 점이 특히 중요하다.
+
+**(9) `Wrote` 가 OBSAgent에 닿는 경로는 ICS 중계다**
+
+`K.CB>ICS DONE: Wrote …` 는 **`ICS` 앞으로** 가고, OBSAgent가 실제로 세는 것은 `ICS>OBS STATUS: Wrote LASTFILE=… RATE=…` **중계 메시지 4개**다. 근거: `case DONE:` 블록에는 `Wrote` 핸들러가 없다(`commands.c` 935~966). 위 (2)항 표의 11번 항목이 이 중계를 뜻한다.
+
+**(10) 텔레메트리는 필드 순서를 뒤집어 중계한다**
+
+5.3.1절 참고. 그리고 필드 집합이 사이트마다 다르므로(5.3.2절) **pass-through 로 다루고 없는 필드는 sentinel 로 채우는 편**이 낫다.
+
+**(11) 상태 전이는 선형이 아니며, `EXPSTATUS=` 과다 발신은 역행을 만든다**
+
+샘플 로그(노출 약 28,200회)에 CamStatus 체인을 재생한 실측 결과 (**`dest ∈ {OBS, AL, ALL}` 필터 적용**):
+
+| 전이 | 트리거 | 횟수 |
+|---|---|---:|
+| `INT_1 → INT_2` | `Shutter=Open` | 26,701 |
+| `INT_2 → INT_3` | `Remaining=` | 26,706 |
+| `INT_3 → CLOSING` | `Shutter=Closed` | 27,073 |
+| **`INT_1 → CLOSING`** (INT_2·INT_3 건너뜀) | `Shutter=Closed` | **1,252** |
+| **`INT_1 → INT_3`** (INT_2 건너뜀) | `Remaining=` | **262** |
+| **`INT_2 → CLOSING`** (INT_3 건너뜀) | `Shutter=Closed` | **91** |
+| **역행 (`INT_3 → INT_1` 등)** | — | **0** |
+
+- `Shutter=Closed Integration Remaining=0 sec.` 은 `Remaining=` 을 품고 있어도 체인 순서상 **항상 `CLOSING`** 이 된다. 다만 앞선 순수 `Remaining=` 카운트다운이 이미 `INT_3` 을 만들어 두므로 `INT_2 → CLOSING` 직행은 0.34%에 불과하다.
+- **흔한 건너뜀은 `INT_1 → CLOSING`** 이다 — DARK/BIAS는 `Shutter=Open` 이 없기 때문이다. **그럼에도 `Shutter=Closed` 는 보내므로 `CLOSING` 은 정상적으로 밟힌다.** 신규도 이 관례를 유지해야 한다(없애면 `CLOSING` 을 건너뛴다).
+- **역행이 0건인 이유가 중요하다.** 레거시가 `EXPSTATUS=` 를 담은 텔레메트리 중계를 마구 뿌려도 안전했던 것은 **그것이 `OBS` 가 아니라 `*.IC` 앞으로 갔기 때문**이다. 통합 `ics` 는 IC들이 내부 객체가 되어 그 중계가 사라지는데, 편의상 **브로드캐스트(`AL`)하거나 `OBS` 로도 보내면 `CamStatus` 가 `INT_1` 으로 역행해 스크립트 관측이 깨진다.**
+  → **`EXPSTATUS=` 를 포함한 메시지는 노출 상태가 실제로 전이한 시점에 정확히 1회씩만, `OBS` 로만 보낸다.** 레거시처럼 셔터가 닫힌 뒤에도 `INTEGRATING` 을 반복해서는 안 된다.
+
+**(12) `GO n` 다중 노출의 종료 알림은 `STATUS:` 다**
+
+3.5절 참고 — 중간 프레임은 `STATUS: Image n of N complete. EXPSTATUS=IDLE`, 마지막 프레임만 `DONE: EXPSTATUS=IDLE`. 그리고 프레임 N의 `Wrote` 4개가 프레임 N+1의 `PCTREAD=` **전에** 도착해야 `FitsSaved` 가 선다.
 
 **공통 로직은 공유 라이브러리로**: IMPv2 노드(UDP·파서·등록), `TC` 질의와 FITS 헤더 중계, `SYNCHRONIZE`, 디스크 이중버퍼, 파일명 fail-safe는 `ics`/`icg`가 사실상 동일하다. 레거시도 동일 코드베이스(`KX` 빌드)로 추정되므로 이 공유는 원 구조에도 부합한다. 구현 순서는 **단순한 `icg`를 먼저** 만들어 골격을 검증한 뒤 `ics`로 확장하는 편이 안전하다([icg_legacy_report.md](icg_legacy_report.md) 7.3절).
 
