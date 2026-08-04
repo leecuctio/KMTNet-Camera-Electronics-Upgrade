@@ -101,6 +101,23 @@ python tools/extract_golden.py <logfile> \
     -o tests/fixtures/golden_gon5_ctio_20240102.txt
 ```
 
+**`IC2.img` 에서 ICS 소스 꺼내기 (5.5·6.8·6.9 의 근거)**
+
+이미지는 raw MBR + FAT32 단일 파티션(LBA 63)이라 **마운트도 관리자 권한도 필요 없다.** 7-Zip 이 MBR → FAT 를 자동으로 파고든다:
+
+```bash
+# 안에 뭐가 있는지 (22,000행 남짓)
+7z l "__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_CTIO/IC2.img"
+
+# 소스 트리만 꺼낸다 -- 8GB 이미지지만 0.3초, 31MB
+7z x "…/IC2.img" -o<대상> -y -r \
+   'FREEBASI\KMTX\*' 'FREEBASI\SHARE\*' 'FREEBASI\KMTS\*' 'FREEBASI\KMTG\*'
+```
+
+읽어야 할 것은 `KMTX\PAP7KX.{BAS,CMD,CCD}` 와 `SHARE\PAP7{.INC,COM.INC,.CMD,.DEC}` 다. `PAP3`~`PAP7` 세대가 모두 남아 있으니 **버전 간 diff 로 개정 의도**도 볼 수 있다. 배포 빌드는 `PAP7` — `PAP7KX.EXE` 타임스탬프(2016-03-23 18:59)가 이미지 이름·로그의 `ICSBUILD=KX2016-03-23:1381` 과 일치하는 것으로 확인했다.
+
+> **주의**: 소스는 `__localonly_*` 안에 있으므로 **커밋 대상이 아니다.** 문서에는 인용과 행 번호만 남긴다. 다른 컴퓨터에서 확인하려면 위 절차로 다시 꺼내면 된다.
+
 ### 2.3 자료 취급 규약
 
 - `__localonly_*` 로 시작하는 폴더는 **git 에 올리지 않는다**(사용자 규약).
@@ -777,6 +794,8 @@ ICS→IC : ENS7=.. ENS6=.. ... AUXLINK=.. TELID=.. TIMESYS=.. AUXQDATE=..
 ## 5. 메시지 오염 버그 — 원인 분석과 신규 설계 대응
 
 > **이 장이 이번 조사에서 가장 실질적인 신규 발견이다.**
+>
+> **2026-08-04 — 원인 코드를 확정했다.** 5.1~5.3 은 로그 실측만으로 세운 추론이었고, 이제 `IC2.img` 에서 확보한 ICS 소스로 검증됐다. **추론은 전부 맞았고**, 한 가지는 예상보다 더 나쁜 형태였다(`EXPSTATUS=` 가 상태 통보가 아니라 일괄 접미사였다는 것). 확정 내용은 **5.5절**이다. 앞 절들은 현상 기록으로 그대로 둔다.
 
 48GB 전량 + 사용자 제공 `samples_for_bug.txt` 를 **커맨드워드 슬롯 단위로 분류**해 확인했다. 세 가지 별개 현상이다.
 
@@ -865,6 +884,66 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 6. **레거시 재현 모드**: `[behavior] bug_compat = true` 면 5.1 의 오염을 의도적으로 재현한다(**기본 꺼짐**). 골든 대조에서 레거시와 맞추는 용도이며, **두 모드 모두 OBSAgent 규약 테스트를 통과해야 한다** — 즉 "이 버그는 OBSAgent 동작에 영향이 없다"가 검증 대상이다. 그래서 레거시가 수년간 이 상태로 운용될 수 있었다.
 
 검증: `test_emitter_hygiene.py` 전체. 특히 **역방향 검증** — `tests/fixtures/bug_patterns.txt` 의 레거시 오염 샘플 18종이 전부 위반으로 잡히는지 확인한다. 이게 없으면 검증기가 껍데기여도 정방향 테스트는 통과한다.
+
+### 5.5 원인 코드 확정 (2026-08-04)
+
+`IC2.img` 에서 ICS 본체 소스를 확보했다. 자료의 성격은 2.1 표와 `ics_legacy_report.md` 1.3.1⑤ 에 적었고, 여기서는 **버그와 직접 관련된 코드**만 본다. 상세 인용은 `ics_legacy_report.md` 5.6.6절에 있으니 중복하지 않는다.
+
+#### 5.5.1 세 줄 요약
+
+| 현상 | 원인 코드 | 5.1~5.3 의 추론은 |
+|---|---|---|
+| A. 스테일 커맨드워드 | `SHARE\PAP7COM.INC:797-802` 의 `SUB Prt` 가 `COMS(OutPort).CommandEcho` 를 **무조건** 끼워 넣는다. 삽입 조건이 "응답인가"가 아니라 **"첫 낱말이 콜론으로 끝나는가"** 뿐 | **맞았다.** 다만 슬롯의 출처가 "직전 파싱 토큰"이 아니라 **"직전에 도착한 정식 명령"** 이었다 |
+| B. 누적 오염 | 같은 `SUB Prt` 가 인자를 **BYREF 로 덮어쓴다**. `CALL PRT(Buffer, OutBuffer(Buffer))` 로 부르면 버퍼 자체가 오염된 문자열로 바뀐다 | **맞았다.** "재사용 버퍼" 라고 본 것이 정확히 이 형태 |
+| C. 버퍼 겹침·절단 | 이 코드가 아니다. 수신부(`PAP7COM.INC:735-756`)는 1024자 폭주만 막고 손상 자체는 다루지 않는다 | **맞았다.** 시리얼 구간 원인 추정 유지 |
+
+#### 5.5.2 예상 밖이었던 것 — `EXPSTATUS=` 는 접미사다
+
+이건 추론에 없던 내용이라 따로 적는다. `PAP7COM.INC:809-814`:
+
+```basic
+'-- If we are in an acquisition loop, add the EXPSTATUS= info
+IF GoFlag > 0 OR ShutterOpenFlag > 0 THEN
+   OutgoingMessage = OutgoingMessage + " EXPSTATUS="+TRIM(ExpStatus)
+END IF
+```
+
+그리고 노출 시퀀스에서 상태를 알리는 자리(`KMTX\PAP7KX.CCD:122, 151, 289`)는 **본문이 비어 있고 `EXPSTATUS=` 문자열은 주석 처리돼 있다**:
+
+```basic
+'OutBuffer(Buffer) = ICHost + ">" + AcquisitionInitiator + " STATUS: EXPSTATUS=ERASE"
+OutBuffer(Buffer) = ICHost + ">" + AcquisitionInitiator + " STATUS: "
+```
+
+**즉 레거시의 `EXPSTATUS=` 는 상태 전이를 알리는 메시지가 아니라, 노출 중 모든 콜론 메시지에 붙는 스냅샷 접미사다.**
+
+이게 왜 중요하냐면 — 3.2.2 에서 "셔터 닫힌 뒤에도 `EXPSTATUS=INTEGRATING` 이 반복된다"를 **레거시의 버그성 습관**으로 보고 재현하지 않기로 했는데, 실제로는 **버그라기보다 설계가 그런 것**이었다. `ExpStatus` 변수는 `PAP7KX.CCD:284` 에서야 `"READOUT"` 이 되고 셔터 닫힘 알림은 `:276` 에서 나가니, 그 시점 스냅샷이 `INTEGRATING` 인 게 당연하다.
+
+**결론은 바뀌지 않는다.** OBSAgent 의 `CamStatus` 는 이 접미사를 *전이 트리거*로 쓰므로(3.2), 스냅샷을 그대로 흉내내면 역행이 생긴다. 5.4-3 규칙("전이 시점 1회, `OBS` 로만")은 **레거시 모방이 아니라 레거시보다 엄격한 선택**이라는 점만 분명해졌다. 3.2.1 실측에서 역행이 0건이었던 것은 레거시가 그 접미사를 주로 `*.IC` 앞으로 보냈기 때문이지, 레거시가 규율이 있어서가 아니다.
+
+#### 5.5.3 왜 `REQ`·`PING`·`PONG`·`FOUND` 가 슬롯에 들어가나
+
+5.1 에서 "검증된 명령 테이블이 아니라 직전 파싱 토큰에서 채워진 증거"라고 썼는데, **절반만 맞았다.** `PAP7KX.CMD` 의 `CASE` 100개를 뽑아 보니 `REQ`·`PING`·`PONG`·`FOUND` 가 **전부 정식 명령**이다. 슬롯은 정상적인 명령 테이블에서 채워진다 — 문제는 **비워지지 않는 것**뿐이다.
+
+슬롯 대입부(`PAP7KX.CMD:1496-1504`)에 두 번째 누출 경로도 있다:
+
+```basic
+IF RIGHT(Words(1),1) <> ":" THEN
+   IF LEN(Words(1)) < 16 THEN          ' ← 16자 이상이면 갱신 자체를 건너뛴다
+      COMS(Buffer).CommandEcho = Words(1) + SPACE(16-LEN(Words(1)))
+   END IF
+ELSE
+   Coms(Buffer).CommandEcho = SPACE(16)
+END IF
+```
+
+16자 이상 낱말이 오면 **더 오래된 잔재가 그대로 살아남는다.** 정상 운용 중 슬롯을 비우는 유일한 경로는 콜론으로 끝나는 낱말이 도착하는 경우와 종료 브로드캐스트(`PAP7.INC:3935`)뿐이다.
+
+#### 5.5.4 우리 구현에 대한 확인
+
+`emitter.py` 는 (a) 커맨드워드를 메서드 인자로 매번 받고, (b) 새 `bytes` 를 반환하며, (c) `validate()` 로 적층·재등장을 잡는다. 5.5.1 의 세 경로를 **구조적으로** 갖지 않는다 — 즉 5.4 의 대응은 원인을 모르는 상태에서 세웠는데도 정확히 그 자리를 막고 있었다. 코드 변경은 필요 없었다.
+
+다만 `validate()` 의 `unknown_cmdword` 항목 설명(5.4-4 표)에서 `REQ`/`DONE`/`FOUND`/`PONG` 을 "허용 집합 밖"이라고 적은 것은 **표현이 부정확했다.** 레거시 기준으로 이들은 정식 명령이고, 우리가 잡으려는 것은 "정식 명령어가 **비동기 알림의 커맨드워드 자리에** 나타나는 것"이다. 검사 자체는 원래부터 그렇게 동작한다(`cmdword` 를 명시적으로 넘긴 경우에만 판정).
 
 ---
 
@@ -955,13 +1034,79 @@ TC 질의가 실패하면 **TC 필드 전체가 비고 ICS 가 덧붙이는 꼬�
 - **`FLASHNOW` 실사용 확인** — `K.IC>ICS DONE: FLASHNOW  LED Flash Done.` (CTIO 4,700+회). LED 프로젝터 점검 시퀀스가 실제 운용에서 정기적으로 돈다.
 - `ICS>OBS DONE: DARK  ImageType=DARK ObjectName='end' EXP=0` — `EXP=0` 인 DARK(관측 종료 시 관례적으로 찍는 이름 `end`).
 - `SYNCHRONIZE` 가 `DONE:`(CTIO 2,230회)와 `STATUS:`(1,284회) 두 타입 모두로 발신.
-- `K.CB>ICS STATUS: Wrote …`(SSO) vs `DONE: Wrote …`(CTIO) — 사이트/빌드별 타입 차이.
+- `K.CB>ICS STATUS: Wrote …`(SSO) vs `DONE: Wrote …`(CTIO) — ~~사이트/빌드별 타입 차이~~ → **SSO 고유 결함이었다. 6.9절.**
 - `ICS>OBS STATUS: GO  EXPSTATUS=INITIALIZING`(SSO 7회) 형태.
 
 ### 6.7 전량에서도 "없음"이 확인된 것
 
 - **`FATAL:` 메시지 0건.** 샘플 기준 관찰이 48GB 전량에서도 유지된다.
-- **`STOP`/`ABORT`/`BIN`/`ROI`/`DISPL`/`MOVIE` 송수신 0건.** 문서상 "미구현"이 운용에서도 한 번도 쓰이지 않았음이 확인된다. 신규에서는 스텁 + 구현 자리를 마련했다(9.2).
+- **`STOP`/`ABORT`/`BIN`/`ROI`/`DISPL`/`MOVIE` 송수신 0건.** ~~문서상 "미구현"이 운용에서도 한 번도 쓰이지 않았음이 확인된다.~~ → **0건인 것은 맞지만 이유가 달랐다. 6.8절.**
+
+### 6.8 명령 테이블 실측 — "미구현" 서술의 정정 (2026-08-04)
+
+`IC2.img` 의 ICS 소스에서 디스패치 테이블을 그대로 뽑았다. 전제가 틀렸다.
+
+**ICS 는 공용 명령 세트를 포함하지 않는다.** `KMTX\PAP7KX.BAS` 는 명령 파서로 `KMTX\PAP7KX.CMD`(`CASE` 100개) **하나만** `#INCLUDE` 한다. 소스 주석이 명시한다 — *"This is the only IC that doesn't use the shared command set code"*. 과학 IC(`KMTS\PAP7KS.BAS`)는 `SHARE\PAP7.CMD`(202개)를 넣는다.
+
+그래서 6개 명령은 **두 가지 다른 상황**이 뭉뚱그려져 있었다:
+
+| 명령 | ICS | 공용 | 실제 |
+|---|:---:|:---:|---|
+| `BIN` `STOP` `ABORT` | ✅ | ✅ | **레거시 ICS 에 구현되어 있다.** 로그 0건은 "안 썼다"는 뜻 |
+| `ROI` `DISPL` `MOVIE` | ❌ | ✅ | **ICS 에 아예 없다.** 레거시 ICS 는 `ERROR: … Didn't understand … ?` 로 거부 |
+
+`STOP`/`ABORT` 의 레거시 동작도 소스에 그대로 있다(`PAP7KX.CMD:279-302`) — 진행 중이면 플래그를 내리고 `AbortHost` 를 기록, 아니면 `ERROR: No integration in progress. Nothing to stop.` / `ERROR: No acquisition in progress. Nothing to abort.`
+
+**코드 반영 (`commands.py`)**
+
+- `UNIMPLEMENTED` 상수를 **`NOT_YET_IMPLEMENTED = ('BIN','STOP','ABORT')`** 로 좁혔다. "레거시가 미구현" 이 아니라 "**우리가** 아직 안 만들었다" 이므로 이름도 바꿨다.
+- **`cmd_roi` / `cmd_displ` / `cmd_movie` 핸들러를 삭제했다.** 핸들러가 없으면 디스패처가 기본 경로로 `ERROR: … Didn't understand …` 를 내는데, 그게 바로 레거시 ICS 의 동작이다. **핸들러를 두는 것이 오히려 레거시와 어긋났다.**
+- `cmd_stop`/`cmd_abort` 의 docstring 에 레거시 분기와 거부 문자열을 그대로 적어 두었다. 구현할 때 그대로 옮기면 된다.
+- 참고용 `IC_ONLY` 상수를 추가했다 — ICS 범위 밖 명령 목록(`ROI` `DISPL` `MOVIE` `SNAP` `DMAWAIT` `FLASHNOW`). 핸들러를 실수로 추가하지 않도록 하는 표지다.
+
+> **13장 백로그 조정**: `STOP`/`ABORT` 는 "레거시에 없던 기능을 새로 넣는 일"이 아니라 **"레거시에 있는 기능을 아직 안 옮긴 것"** 이다. 우선순위를 올린다.
+
+### 6.9 SSO 의 `Wrote` 중계 단절 — 사이트 고유 결함 (2026-08-04)
+
+6.6 에서 `CB>ICS` 의 `Wrote` 타입이 CTIO(`DONE:`)와 SSO(`STATUS:`)가 다른 것을 "빌드 차이"로 적고 넘어갔다. **영향이 없다고 본 것이 틀렸다.**
+
+ICS 의 중계 코드(`KMTX\PAP7KX.CMD:1327-1335`)는 `DONE:` 을 `STATUS:` 로 바꿔 노출 개시자에게 되돌리는데, 분기 조건이 `Words(1) = "DONE:"` 이다. CB 가 `STATUS: Wrote` 로 보내면 **중계가 아예 일어나지 않는다.** 로그 실측이 정확히 그렇다:
+
+| 사이트 | ICS 빌드 | `CB>ICS DONE:` | `CB>ICS STATUS:` | `ICS>OBS` 중계 |
+|---|---|---:|---:|---:|
+| CTIO | `KX2016-03-23:1381` | 1,176 / 908 | 0 | **1,176 / 908** |
+| SAAO | 〃 | 1,058 / 1,007 | 0 | **1,058 / 1,007** |
+| SSO | 〃 | 0 | 546 / 872 | **0** |
+
+세 사이트 ICS 빌드는 같다. 원인은 **Caliban 쪽**이고, 커밋해둔 사이트별 소스에 그대로 있다 — `__dts_legacy/dts.icsci.20190326.<site>/dts.icsci/Agents/Caliban/src/GetFITS.c:532` 가 CTIO·SAAO 는 `"DONE: Wrote …"`, SSO 만 `"STATUS: Wrote …"` 다.
+
+**운영상의 의미 — 처음에 과장했다가 바로잡은 부분**
+
+`FitsSaved` 는 `Wrote` 4회로 서므로(3.2) SSO 에서는 `force_fitssaved=560`(≈25초) 타임아웃으로만 세워진다. 여기까지 확인하고 **"SSO 는 매 노출 `WARNING` 과 `ExpStatus=ERROR` 가 뜬다"고 적었는데, 틀렸다.** OBSAgent `main.c:692-708` 에 **SSO 전용 분기가 이미 있다**:
+
+```c
+if( sys.force_fitssaved < sys.count_fitssaving ) {
+  sys.status_fitssaved = 1;
+  if( strcasecmp(client.isisHost,"192.168.15.109") ) {   // SSO 가 아니면
+    … "WARNING: Writing FITS data is not fully completed !!"
+    expinfo.nStatus = EXPSTATUS_ERROR;
+  }
+  else {                       // SSO 면 조용히 통과
+    strcpy(expinfo.strFitsNum, expinfo.strPreNum);
+  }  // added in v1.0.6 for SSO
+}
+```
+
+`obsagent_report.md` §6.1 에 이 분기를 이미 적어 두었는데도 놓쳤다 — **내가 쓴 문서를 확인하지 않고 새 발견의 파급을 추정한 것**이다. 12.11 에 기록한다.
+
+**실제로 남는 영향**은 둘이다:
+
+1. **노출 후 `FitsSaved` 까지 항상 ≈25초.** 메시지로 앞당길 수 없어 SSO 의 노출 간격에 하한이 생긴다(CTIO·SAAO 는 마지막 `Wrote` 도착 즉시, 통상 16초).
+2. **`FitsNum` 이 `strPreNum`(직전 번호) 추정값**이다. 실제 저장 파일명이 아니다.
+
+**그리고 진짜 문제는 원인 진단이 틀려 있다는 것이다.** 소스 주석은 원인을 *"no 'Wrote' message anymore due to IC upgrade at v0.2.9 at SSO"* — **IC 버전 문제**로 적었다. 실제 원인은 **Caliban 의 메시지 타입 한 단어**이고 IC 와 무관하다. 그래서 주석의 *"should be removed after SSO IC version is upgraded"* 는 영영 충족되지 않고, 우회는 **IP 주소 하드코딩**에 매달려 있다. 고칠 곳은 SSO Caliban `GetFITS.c:532` 의 `STATUS:` → `DONE:` 한 단어다.
+
+**설계 결정**: `ics_sim` 은 **CB 측 타입과 무관하게 항상 `ICS>OBS STATUS: Wrote …` 를 4회 방출한다.** 사이트별 분기를 두지 않는다 — 이 결함은 재현 대상이 아니라 회피 대상이다. `[node] site` 값이 `sso` 여도 마찬가지다. 현재 구현이 이미 그렇게 동작하므로 코드 변경은 없다.
 
 ---
 
@@ -1157,22 +1302,25 @@ class DetectorBackend(Protocol):
 
 ### 9.2 명령 처리부는 전부 "구현 자리"를 갖는다
 
-`commands.py` 는 명령마다 핸들러 함수를 **하나씩 실제로 만들어 뒀다.** 지금 동작하지 않는 것도 docstring 과 레거시 근거 주석을 갖춘 스텁으로 존재한다:
+`commands.py` 는 명령마다 핸들러 함수를 **하나씩 실제로 만들어 뒀다.** 아직 동작하지 않는 것도 docstring 과 레거시 근거 주석을 갖춘 스텁으로 존재한다:
 
 ```python
 def cmd_abort(self, msg, target) -> Reply:
     """ABORT -- 전체 중지, readout/저장 안 함.
 
-    레거시 상태: 미구현.  48GB 로그 전량 0건.
+    레거시 상태: **구현되어 있다** (PAP7KX.CMD:291-302).
+        IF GoFlag = 1 THEN PauseFlag=0 : ExpLoopFlag=0 : GoFlag=0
+                            AbortHost = 발신자
+        ELSE  ERROR: No acquisition in progress. Nothing to abort.
     구현 시: self.app.seq.cancel(save=False) 후 EXPSTATUS=IDLE 을 발신한다.
              진행 중이던 저장 태스크도 정리해야 한다.
     """
     return self._unimplemented(msg, target)
 ```
 
-대상: `BIN` · `ROI` · `DISPL` · `STOP` · `ABORT` · `MOVIE`.
+**대상은 `BIN` · `STOP` · `ABORT` 세 개다** (2026-08-04 정정, 6.8절). 전에는 `ROI`/`DISPL`/`MOVIE` 도 같은 묶음이었는데, 소스를 보니 이 셋은 **ICS 명령 테이블에 아예 없어서** 레거시가 `ERROR: … Didn't understand … ?` 로 거부한다. 그래서 **핸들러를 삭제했다** — 없는 편이 레거시와 같다. 참고용 `IC_ONLY` 상수에 목록만 남겼다.
 
-`strict_legacy=true` 면 레거시와 똑같이 **무응답**이다 — "명령이 정의돼 있다고 곧 동작한다는 뜻은 아니다"라는 레거시의 성질을 그대로 재현한다. `false` 면 `ERROR:` 를 돌려주는 현대화 모드가 되고, 실제 구현을 넣을 때는 스텁 본문만 채우면 된다.
+`strict_legacy=true` 면 세 스텁은 **무응답**이다. 레거시가 이들을 어떤 형식으로 응답하는지 48GB 로그에 한 건도 없어 재현할 근거가 없기 때문이지, "레거시가 미구현이라서"가 아니다. `false` 면 `ERROR:` 를 돌려주는 현대화 모드가 되고, 실제 구현을 넣을 때는 스텁 본문만 채우면 된다 — 레거시 분기와 거부 문자열이 docstring 에 이미 적혀 있다.
 
 ### 9.3 FITS 경로
 
@@ -1310,6 +1458,8 @@ python -m pytest tests -q
 
 `K.CB>ICS DONE: Wrote …` 를 보고 CB 가 직접 보고한다고 생각했으나, OBSAgent 가 실제로 세는 것은 `ICS>OBS STATUS: Wrote …` **중계**다. `case DONE:` 에 `Wrote` 핸들러가 없다는 점이 결정적 근거다(4.1).
 
+**2026-08-04 — ICS 소스로 중계 코드를 직접 확인했다**(`PAP7KX.CMD:1327-1335`). 동시에 **후속 오류 하나가 드러났다**: 6.6 에서 CTIO(`DONE:`)/SSO(`STATUS:`) 타입 차이를 "빌드 차이, 영향 없음"으로 적었는데, 중계 분기가 `Words(1)="DONE:"` 조건이라 **SSO 에서는 중계가 통째로 안 일어난다**(6.9). "영향 없음"이 틀렸다.
+
 ### 12.5 "공백 개수가 규약" → **의미 없음**
 
 로그의 `STATUS:` 뒤 2칸/3칸/4칸을 규약으로 오해했으나, 수신측이 공백을 토큰 구분자로만 쓰고 개수는 무시한다. 실제 제약은 `Acquisition Complete.` 의 마침표, `" STATUS"` 의 앞 공백, `Filename=`/`KMTN…` 의 문자 위치뿐이다(3장 서두).
@@ -1365,6 +1515,27 @@ PING이 로그에 없는 진짜 이유는 `handShake()` 가 `write()`/`sendto()`
 
 레거시가 IC/CB 를 별도 프로세스로 두어 우연히 피했던 문제가, 통합 구조에서는 명시적으로 다뤄야 하는 문제로 바뀐 사례다.
 
+### 12.11 ICS 소스로 확정된 것 — 로그 추론들의 최종 판정 (2026-08-04)
+
+12.9 가 XIS 서버 소스로 등록 관련 추론을 판정했다면, 이번은 **ICS 본체 소스**로 5·6장을 판정한 것이다. 12.9 와 같은 형식으로 정리한다.
+
+| 로그로 세웠던 추론 | 판정 | 근거 |
+|---|---|---|
+| 커맨드워드 슬롯이 비워지지 않는다 | **맞음** | `PAP7COM.INC:797-802` + `PAP7KX.CMD:1496-1504` (5.5.1) |
+| 슬롯이 "검증된 명령 테이블이 아니라 직전 파싱 토큰"에서 온다 | **절반 틀림** | `REQ`·`PING`·`PONG`·`FOUND` 는 **정식 `CASE` 레이블**이다. 출처는 정상이고 **비워지지 않는 것**만 문제였다 (5.5.3) |
+| 누적 오염은 "재사용 버퍼" 때문 | **맞음** | `SUB Prt` 가 인자를 BYREF 로 덮어쓴다 (5.5.1 B) |
+| 현상 C 는 시리얼 구간 손상 | **맞음(유지)** | 소스에 대응 코드가 없다. 수신부는 폭주만 막는다 (5.5.1 C) |
+| `EXPSTATUS=` 반복은 레거시의 나쁜 습관 | **성격이 달랐음** | 습관이 아니라 **일괄 접미사 설계**였다. 결론(전이 시 1회)은 그대로 (5.5.2) |
+| `BIN`/`ROI`/`DISPL`/`STOP`/`ABORT`/`MOVIE` 는 레거시 미구현 | **틀림** | `BIN`/`STOP`/`ABORT` 는 구현되어 있고, `ROI`/`DISPL`/`MOVIE` 는 ICS 에 아예 없다 (6.8). **코드도 고쳤다** |
+| `Wrote` 타입의 사이트 차이는 영향 없음 | **틀림** | SSO 는 중계가 0건이고 매 노출 25초 타임아웃을 탄다 (6.9) |
+| `GO n` 마지막 프레임만 `DONE:` | **맞음** | `PAP7KX.CMD:1355-1376` 의 `ImageCount=0` 분기 (6.1) |
+
+**패턴이 12.9 와 같다.** 로그에서 *무엇이 일어나는가*는 잘 읽혔고, *왜*를 추정한 대목에서 절반이 어긋났다. 특히 **"영향 없음"이라고 단정한 두 건**(12.4 의 `Wrote` 타입 차이, 그리고 5.4 끝의 "이 버그는 OBSAgent 에 영향 없음")이 위험했다 — 뒤엣것은 다행히 맞았지만 앞엣것은 틀렸고, **둘 다 같은 수준의 근거로 적혀 있었다.** 근거의 강도를 문장에 드러내야 한다는 12.7 의 교훈이 반복된다.
+
+**그리고 같은 실수를 반대 방향으로 한 번 더 했다.** 6.9 를 처음 쓸 때 "SSO 는 매 노출 `WARNING` + `ExpStatus=ERROR` 가 뜬다"고 단정했는데, OBSAgent `main.c:694` 에 **SSO 전용 우회 분기가 이미 있어서** 실제로는 조용히 통과한다. 더 나쁜 것은 **그 분기를 내가 `obsagent_report.md` §6.1 에 이미 적어 두었다는 점**이다 — 새 발견의 파급을 추정하면서 **내가 쓴 문서를 확인하지 않았다.**
+
+교훈을 갱신한다: 근거의 강도를 표시하는 것만으로 부족하고, **새 발견이 기존 결론과 만나는 지점에서는 기존 문서를 되짚어야 한다.** 특히 "이 발견 때문에 X 가 깨진다"는 형태의 주장은, X 를 다루는 절을 열어 보기 전에는 쓰지 않는다.
+
 ---
 
 ## 13. 개선 제안 · 백로그
@@ -1377,9 +1548,11 @@ PING이 로그에 없는 진짜 이유는 `handShake()` 가 `write()`/`sendto()`
 | **XIS 콘솔 `info` 로 `MaxPreset` 실측** | 위 항목의 선행 조건. `commands.c` 가 `NumPreset=? MaxPreset=?` 를 출력한다 | **최우선** |
 | 주기적 재등록 | preset 목록에 등록되면 필수는 아니나 안전망으로 유효 | 중간 |
 | Caliban(`*.CB`) 소스 검토 | `__dts_legacy/.../Agents_V1/Caliban/src/` 에 CB 노드 소스가 있다(`TransferDisk.c` 등). 신규는 CB 계층을 내부화하므로 우선순위는 낮지만, 디스크 핸드셰이크·파일명 fail-safe 의 실제 구현이다 | 낮음 |
-| **`IC2.img` 에서 `\KMTX` 추출** | 5장 오염 버그의 코드 위치 확정. 이미지는 확보돼 있다(`__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img`, 각 8 GB). 7-Zip 이나 loop 마운트로 `\KMTX`(ICS)·`\KMTS`(IC) 를 꺼내 **문자열·`printf` 포맷만 추출**한다. 역어셈블은 실용성 없음 | 중간 |
-| **실물 XIS 연동 시험** | 위 항목의 가장 빠른 확인법이자, `transport.feed()` 로는 검증할 수 없는 라우팅 경로 전체를 처음으로 실증하는 일 | **최우선** |
-| **`STOP`/`ABORT` 실제 구현** | 레거시 미구현. 관측 중단 시 운영 편의가 크다. 스텁과 구현 지침은 이미 `commands.py` 에 있다 | 높음 |
+| ~~**`IC2.img` 에서 `\KMTX` 추출**~~ | **완료 (2026-08-04).** 예상과 달리 바이너리가 아니라 **FreeBASIC 소스**가 통째로 들어 있어 역어셈블이 불필요했다. 결과: 5.5(오염 원인 코드) · 6.8(명령 테이블) · 6.9(SSO `Wrote` 단절) | 완료 |
+| **`\KMTS`·`\KMTG` 소스 정독** | 위 작업의 후속. ICS(`\KMTX`)만 읽었고 과학/가이드 IC 는 미검토다. **IC 쪽 고유 동작**(`SHOPEN` 카운트다운 주기, `DATASOURCE` 처리, `TRANSFER`/`REQ SWAP` 핸드셰이크)을 확정하려면 필요. SAAO 이미지와의 빌드 차이 비교도 함께 | 중간 |
+| **실물 XIS 연동 시험** | `transport.feed()` 로는 검증할 수 없는 라우팅 경로 전체를 처음으로 실증하는 일 | **최우선** |
+| **`STOP`/`ABORT` 실제 구현** | ~~레거시 미구현.~~ **레거시에 구현되어 있다**(6.8). 즉 "새 기능 추가"가 아니라 **"있는 기능을 아직 안 옮긴 것"** 이다. 분기 로직과 거부 문자열이 `commands.py` docstring 에 그대로 적혀 있어 옮기기만 하면 된다 | **높음** |
+| **SSO `Wrote` 결함 운영측 보고** | 6.9 — SSO Caliban 의 `GetFITS.c:532` 가 `STATUS:` 로 고쳐져 있어 ICS 중계가 끊겼고, 그 결과 **매 노출 `FitsSaved` 가 25초 타임아웃으로만 서고 있다.** 레거시를 계속 쓰는 동안은 한 단어(`STATUS:`→`DONE:`) 수정으로 고쳐진다. 신규 `ics` 에는 해당 없음 | 중간 |
 | **`EXPNUM` 자릿수 통일** | 레거시는 ICS 6자리 / IC 4자리라 `INITIALIZE` 로 우회했다. 신규는 이미 6자리로 통일했으니, 외부 문서도 갱신 필요 | 완료(신규) |
 | **구조화 로깅(JSON) 병행** | 이번 48GB 스캔 같은 사후 분석 비용을 크게 낮춘다. 사람이 읽는 로그와 병행 출력 | 높음 |
 | **상태 조회 API(HTTP/JSON)** | `GMON` 이 UDP 로 초당 폴링하는 방식의 현대적 대안. IMPv2 채널은 그대로 두고 추가 | 중간 |

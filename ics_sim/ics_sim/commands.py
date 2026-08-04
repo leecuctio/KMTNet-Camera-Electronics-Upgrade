@@ -59,9 +59,24 @@ class Reply:
         return Reply(ReplyKind.IGNORE)
 
 
-#: 레거시 명령 테이블에는 있으나 구현되지 않은 명령들.
-#: 48GB 로그 전량에서 송수신 0건 -- 운용에서 한 번도 쓰이지 않았다(DevNote 6.7).
-UNIMPLEMENTED = ('BIN', 'ROI', 'DISPL', 'STOP', 'ABORT', 'MOVIE')
+#: 레거시 ICS 에는 핸들러가 있지만 이 시뮬레이터가 아직 만들지 않은 명령들.
+#:
+#: 2026-08-04 정정 -- 전에는 ROI/DISPL/MOVIE 까지 한 묶음으로 "레거시 미구현"
+#: 이라고 적어 두었는데, IC2.img 의 ICS 소스를 읽어 보니 사실과 달랐다
+#: (ics_legacy_report 3.4.1, DevNote 6.8).  두 가지가 뒤섞여 있었다:
+#:
+#:   * BIN/STOP/ABORT -- KMTX\PAP7KX.CMD 에 CASE 가 있고 실제로 동작한다.
+#:     STOP 은 ExpLoopFlag=1 이면 SoftStop=1, ABORT 는 GoFlag=0 으로 만든다.
+#:     로그 0건은 "미구현"이 아니라 "아무도 안 썼다"는 뜻이었다.
+#:   * ROI/DISPL/MOVIE -- 공용 SHARE\PAP7.CMD 에만 있다.  ICS 는 그 파일을
+#:     포함하지 않으므로(PAP7KX.BAS 주석: "the only IC that doesn't use the
+#:     shared command set code") 레거시 ICS 는 이들을 ERROR 로 거부한다.
+#:     따라서 핸들러를 두지 않고 아래 디스패처의 기본 경로로 흘려보낸다.
+NOT_YET_IMPLEMENTED = ('BIN', 'STOP', 'ABORT')
+
+#: ICS 범위 밖 -- 과학/가이드 IC 전용 명령.  레거시 ICS 와 동일하게 거부한다.
+#: 핸들러를 정의하지 않는 것 자체가 구현이므로, 참고용으로만 적어 둔다.
+IC_ONLY = ('ROI', 'DISPL', 'MOVIE', 'SNAP', 'DMAWAIT', 'FLASHNOW')
 
 
 class Dispatcher:
@@ -86,7 +101,7 @@ class Dispatcher:
 
         handler = getattr(self, f'cmd_{cmd.lower().replace(".", "_")}', None)
         if handler is None:
-            if cmd in UNIMPLEMENTED:
+            if cmd in NOT_YET_IMPLEMENTED:
                 handler = self._unimplemented
             else:
                 self._reply(msg, target, Reply.error(
@@ -452,63 +467,60 @@ class Dispatcher:
     # -- 미구현 (구현 자리를 남겨 둔다) ------------------------------------
 
     def _unimplemented(self, msg: Message, target: Target) -> Reply:
-        """레거시 명령 테이블에는 있으나 동작하지 않는 명령들.
+        """레거시 ICS 에는 있지만 이 시뮬레이터가 아직 만들지 않은 명령들.
 
-        strict_legacy=true 면 레거시와 똑같이 **무응답**이다.  "명령이 정의돼
-        있다고 곧 동작한다는 뜻은 아니다"라는 레거시의 성질을 그대로 재현하기
-        위해서다 (ics_legacy_report 3.4절).  끄면 ERROR 를 돌려준다.
+        strict_legacy=true 면 **무응답**이다.  레거시가 이들을 어떤 형태로
+        응답하는지 로그에 한 건도 없어(48GB 전량 0건) 재현할 근거가 없기
+        때문이지, "레거시가 미구현이라서"가 아니다 -- 그 서술은 2026-08-04 에
+        정정됐다(ics_legacy_report 3.4.1).  끄면 ERROR 를 돌려준다.
         """
         if self.cfg.behavior.strict_legacy:
             log.debug('unimplemented command ignored: %s', msg.cmdword)
             return Reply.ignore()
         return Reply.error(msg.cmdword.upper(), 'not implemented yet')
 
+    # ROI / DISPL / MOVIE 는 일부러 핸들러를 두지 않는다.
+    # 레거시 ICS 의 명령 테이블(KMTX\PAP7KX.CMD, CASE 100개)에 이들이 없어서
+    # "ERROR: <cmd>  Didn't understand ... ?" 로 거부되기 때문이다.  위쪽
+    # IC_ONLY 주석 참고.  핸들러를 추가하면 그 레거시 동작이 깨진다.
+
     def cmd_bin(self, msg: Message, target: Target) -> Reply:
         """BIN <n> -- CCD binning.
 
-        레거시 상태: 명령 목록에만 존재, 미구현.  48GB 로그 전량 0건.
+        레거시 상태: **구현되어 있다** (PAP7KX.CMD 에 CASE "BIN").
+                     다만 48GB 로그 전량 0건이라 응답 형식을 알 수 없다.
         구현 시: backend 에 set_binning(ccd, n) 을 추가하고 FITS 헤더의
-        CCDSUM/BINNING 키워드를 함께 갱신할 것.
+                 CCDSUM/BINNING 키워드를 함께 갱신할 것.
         """
-        return self._unimplemented(msg, target)
-
-    def cmd_roi(self, msg: Message, target: Target) -> Reply:
-        """ROI <x1> <x2> <y1> <y2> -- region of interest.
-
-        레거시 상태: 예약만 되고 미동작.  48GB 로그 전량 0건.
-        구현 시: backend.set_roi() + FITS 의 DATASEC/DETSEC 갱신.
-        """
-        return self._unimplemented(msg, target)
-
-    def cmd_displ(self, msg: Message, target: Target) -> Reply:
-        """DISPL -- 표시용 축소 영상 전송.  레거시 예약, 미동작."""
         return self._unimplemented(msg, target)
 
     def cmd_stop(self, msg: Message, target: Target) -> Reply:
         """STOP -- integration 중지 후 readout/저장은 수행.
 
-        레거시 상태: 미구현.  48GB 로그 전량 0건.
-        구현 시: 셔터를 닫고 카운트다운을 끊은 뒤 정상 readout 경로로 합류한다.
-                 sequencer 에 stop_integration() 을 추가하면 된다.
-                 운영 편의상 실제 구현 가치가 높다 (DevNote 13장 백로그).
+        레거시 상태: **구현되어 있다** (PAP7KX.CMD:279-290).
+            IF ExpLoopFlag = 1 THEN PauseFlag=0 : ExpLoopFlag=0 : SoftStop=1
+                                    AbortHost = 발신자
+            ELSE  ERROR: No integration in progress. Nothing to stop.
+        구현 시: 위 두 갈래를 그대로 따라가면 된다.  셔터를 닫고 카운트다운을
+                 끊은 뒤 정상 readout 경로로 합류한다(sequencer.stop_integration()).
+                 거부 문구는 레거시 문자열을 그대로 쓸 것.
         """
         return self._unimplemented(msg, target)
 
     def cmd_abort(self, msg: Message, target: Target) -> Reply:
         """ABORT -- 전체 중지, readout/저장 안 함.
 
-        레거시 상태: 미구현.  48GB 로그 전량 0건.
+        레거시 상태: **구현되어 있다** (PAP7KX.CMD:291-302).
+            IF GoFlag = 1 THEN PauseFlag=0 : ExpLoopFlag=0 : GoFlag=0
+                                AbortHost = 발신자
+            ELSE  ERROR: No acquisition in progress. Nothing to abort.
         구현 시: self.app.seq.cancel(save=False) 후 EXPSTATUS=IDLE 을 발신한다.
                  진행 중이던 저장 태스크도 정리해야 한다.
         """
-        return self._unimplemented(msg, target)
-
-    def cmd_movie(self, msg: Message, target: Target) -> Reply:
-        """MOVIE -- 연속 촬영 모드.  레거시 예약, 미동작."""
         return self._unimplemented(msg, target)
 
 
 #: 참고용 -- 이 디스패처가 아는 명령 전부.
 KNOWN = tuple(sorted(
     {n[4:].upper() for n in dir(Dispatcher) if n.startswith('cmd_')}
-    | set(UNIMPLEMENTED) | set(IMAGE_TYPES)))
+    | set(NOT_YET_IMPLEMENTED) | set(IMAGE_TYPES)))

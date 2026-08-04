@@ -98,14 +98,24 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - **`ICS` 는 IC 와 같은 소프트웨어**(`INSTRUMENT=ICS`, 디렉토리만 `\KMTX`). → 메시지 오염 버그가 ICS·IC 양쪽에 똑같이 나타나는 이유.
 - BUILD 접두어 = 프로그램 디렉토리: `KX`=\KMTX, `KS`=\KMTS, `KG`=\KMTG.
 - `SP` 노드(`KMTNsp`) = 과학 계열 예비 IC, XIS preset 의 `.107` 자리로 보인다.
-- **IC(VDOS) 본체 소스는 백업에 없다** — 오염 버그의 코드 위치는 여전히 미확인. 다만 **디스크 이미지는 있다**: `__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` (각 8 GB, 비커밋). 마운트해 `\KMTX` 를 꺼내면 문자열·포맷 추출까지는 가능하다.
+- **IC(VDOS) 본체 소스를 `IC2.img` 에서 확보했다 (2026-08-04).** `__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` (각 8 GB, 비커밋). **C 가 아니라 FreeBASIC** 이고 실행파일과 소스가 함께 들어 있어 역어셈블이 필요 없었다. 꺼내는 절차는 [DevNote 2.2](DevNote.md) — 7-Zip 으로 0.3초면 된다.
 
 논의 전 과정(문제 발견 → 내 근거 없는 단언 → 사용자 지적 → 로그 실측 → 결정)은 [DevNote 3.1.1](DevNote.md) 과 12.7절에 남겨 뒀다.
+
+## ICS 소스로 확정된 것 (2026-08-04)
+
+로그 추론으로 세웠던 5·6장이 소스 검증을 거쳤다. 판정표는 [DevNote 12.11](DevNote.md).
+
+- **오염 버그의 원인 코드** — `SHARE\PAP7COM.INC:797-802` 의 `SUB Prt`. 첫 낱말이 콜론으로 끝나기만 하면 `COMS(OutPort).CommandEcho` 를 **무조건** 끼워 넣는다. 슬롯은 포트별로 살아남고 정상 운용 중 비워지지 않는다. → DevNote 5.5
+- **`EXPSTATUS=` 는 상태 통보가 아니라 접미사다** — 같은 `SUB Prt` 가 노출 중 모든 콜론 메시지에 붙인다. 노출 시퀀스 쪽은 본문이 빈 `STATUS: ` 껍데기이고 `EXPSTATUS=` 는 주석 처리돼 있다. **"전이 시 1회" 규칙은 레거시 모방이 아니라 레거시보다 엄격한 선택**이다.
+- **`STOP`/`ABORT`/`BIN` 은 레거시에 구현되어 있다** — "미구현"은 틀린 서술이었다. 반대로 `ROI`/`DISPL`/`MOVIE` 는 ICS 명령 테이블에 아예 없다(ICS 는 공용 `PAP7.CMD` 를 포함하지 않는다). **`commands.py` 를 이에 맞게 고쳤다.** → DevNote 6.8
+- **SSO 는 `Wrote` 중계가 끊겨 있다** — SSO Caliban 만 `STATUS: Wrote` 로 보내는데 ICS 중계 분기는 `DONE:` 을 요구한다. 결과적으로 SSO 는 **매 노출 `FitsSaved` 를 25초 타임아웃으로만** 세운다. → DevNote 6.9
 
 ## 다음에 이어서 할 만한 일
 
 1. **실제 OBSAgent·XIS 연동 시험** — XIS 허브를 띄우고 `--xis-host` 로 붙여 `kstatus` 를 쳐 본다. **위 미해결 항목의 가장 빠른 확인법**이자, `transport.feed()` 로는 검증할 수 없는 라우팅 경로 전체를 처음 실증하는 일이다. 이어서 `.osc` 스크립트를 돌리면 규약 검증이 실물로 완결된다.
 2. **`hardware/archon.py` 구현** — DevNote 9장. `cam_char/archon/` 의 기존 스크립트를 옮겨오면 된다.
-3. **`STOP`/`ABORT` 구현** — 운영 편의상 가치가 높다. 스텁에 구현 방향이 적혀 있다.
+3. **`STOP`/`ABORT` 구현** — **레거시에 있는 기능을 아직 안 옮긴 것**이다(새 기능이 아니다). 레거시 분기 로직과 거부 문자열이 `commands.py` docstring 에 그대로 적혀 있으니 옮기기만 하면 된다.
+3b. **`\KMTS`·`\KMTG` 소스 정독** — ICS(`\KMTX`)만 읽었다. IC 쪽 고유 동작(`SHOPEN` 카운트다운 주기, `TRANSFER`/`REQ SWAP` 핸드셰이크)을 확정하려면 필요하다. 꺼내는 절차는 DevNote 2.2.
 4. **`icg` 착수** — 가이드 계통. OBSAgent 가 가이드 발신을 무시하므로 하위호환 부담이 없어 자유롭다. 공통 로직(IMPv2 노드, 텔레메트리 중계, 파일명 fail-safe)은 이 폴더에서 뽑아 쓸 수 있다.
 5. **DevNote 13장 백로그** — 구조화 로깅, 상태 조회 API 등.

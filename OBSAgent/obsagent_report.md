@@ -224,7 +224,17 @@ ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
 | `IDLE_3` 진입 → 4번째 `Wrote` | **`force_fitssaved=560`** | **≈25초** | `FitsSaved=1` 강제 + `WARNING: Writing FITS data is not fully completed !!` + `expinfo.nStatus = EXPSTATUS_ERROR` (677~708) |
 | `IDLE_3` → `READY` | `force_ready=270` | ≈12.2초 | 정상 전이 |
 
-`force_fitssaved` 경로에는 사이트 분기가 있다(694행): ISIS 호스트 IP가 SSO(`192.168.15.109`)면 경고 없이 `FitsSaved=1` 로 넘어가고 `FitsNum` 을 `strPreNum` 에서 채운다 — SSO의 IC 버전이 `Wrote` 를 보내지 않던 시기(v0.2.9)의 잔재다.
+`force_fitssaved` 경로에는 사이트 분기가 있다(694행): ISIS 호스트 IP가 SSO(`192.168.15.109`)면 경고 없이 `FitsSaved=1` 로 넘어가고 `FitsNum` 을 `strPreNum` 에서 채운다.
+
+**이 분기의 실제 원인을 확인했다 (2026-08-04)** — 소스 주석은 *"no 'Wrote' message anymore due to IC upgrade at v0.2.9 at SSO"* 라고 **IC 버전 탓**으로 적어 두었지만, 사실이 아니다. 원인은 **SSO Caliban 의 메시지 타입**이다:
+
+- SSO 의 `Agents/Caliban/src/GetFITS.c:532` 만 `"STATUS: Wrote LASTFILE=…"` 로 되어 있다(CTIO·SAAO 는 `"DONE: …"`).
+- ICS 의 중계 코드(`KMTX\PAP7KX.CMD:1327`)는 `Words(1) = "DONE:"` 일 때만 `STATUS:` 로 바꿔 OBS 에 되돌린다. 따라서 SSO 에서는 **중계가 아예 일어나지 않는다** — 로그 실측 0건.
+- 세 사이트의 **ICS 빌드는 `KX2016-03-23:1381` 로 동일**하다. IC 와 무관하다.
+
+따라서 주석의 *"this phrase should be removed after SSO IC version is upgraded"* 는 **영영 충족되지 않는다.** 고칠 곳은 SSO Caliban 의 그 한 단어(`STATUS:` → `DONE:`)이고, 그러면 세 사이트가 같은 경로가 되어 이 IP 분기 자체를 지울 수 있다. 현 상태에서는 우회가 **IP 주소 하드코딩에 매달려 있어**, SSO XIS 주소가 바뀌면 갑자기 매 노출 경고가 뜬다.
+
+남는 실질적 영향은 (a) SSO 는 `FitsSaved` 까지 항상 ≈25초가 걸리고(다른 사이트는 마지막 `Wrote` 도착 즉시, 통상 16초), (b) `FitsNum` 이 실제 파일명이 아니라 `strPreNum` 추정값이라는 것이다. 상세는 [`../ics_legacy/ics_legacy_report.md`](../ics_legacy/ics_legacy_report.md) 5.2.1절.
 
 #### (c) 정정 — 상태 전이는 선형이 아니다
 
