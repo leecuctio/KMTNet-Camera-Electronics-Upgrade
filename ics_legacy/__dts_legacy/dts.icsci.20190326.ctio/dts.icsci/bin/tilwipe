@@ -1,0 +1,68 @@
+#! /bin/csh
+#
+# tilwipe - wipe a user's directory tree of ~ files (backup junk files from
+#           an Emacs editing session).
+#
+# Overview: tilwipe removes all files with the name "*~" from the user's
+#           either the present working directory or the entire directory
+#           tree under the pwd.  Can be called in the .logout to purge
+#           these nuisance files, but this is not recommended.
+#
+# Usage:  tilwipe [all]
+#
+# where: "all" means wipe the entire tree of *~ files.  By default tilwipe only
+#        wipes the pwd
+#
+# Notes:
+#   A test is made to prevent root from running this script.
+#
+#   This script cannot delete directories, preventing antisocial
+#    possibilities.
+#
+#   'rm' is used to temporarily unalias the rm command, also to
+#    avoid potential ugliness.
+#
+#   this script is named "tilwipe" instead of "~wipe"
+#
+# R. Pogge
+# OSU Astronomy Dept.
+# Last Revision:  1992 June 17
+#
+if ($USER == root) then
+   echo "root cannot run tilwipe -- DEATH!"
+   exit 1
+endif
+if ($#argv == 0) then
+   echo "Wiping ~ files from the present working directory"
+   foreach file (*~)
+      if (! -d $file && -o $file) then
+         'rm' -f $file
+         echo "Deleted File: $file"
+      endif
+   end
+   exit 0
+else if ($#argv == 1) then
+   setenv OPTION $1
+   if ($OPTION == all) then
+      echo "Wiping all ~ files from this directory tree"
+      echo -n "ARE YOU SURE [n]? "; setenv YOW $<
+      if ($YOW == y) then
+         foreach file (`find . \( -name '*~' -o -name '.*~' \) -print`)
+            if (! -d $file && -o $file) then
+               'rm' -f $file
+               echo "Deleted File: $file"
+            endif
+         end
+      else
+         echo "tilwipe aborting..."
+         exit 0          
+      endif
+   else
+      echo "Unrecognized command option"
+      echo "Usage:  tilwipe [all]"
+      exit 1
+   endif
+else
+    echo "Usage:  tilwipe [all]"
+    exit 1
+endif

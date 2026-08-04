@@ -1,0 +1,56 @@
+#!/bin/csh -f
+#
+# stopagent - Stop an ISIS client agent program safely
+#
+# usage: stopagent agentID
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.mps.ohio-state.edu
+# 2010 Sept 22
+#
+# 2013 Apr 12 - Variant for the KMTN testbed [rwp/osu]
+#
+############################################################################
+
+# Who invoked this script?
+
+set userID = $USER
+set hostID = $HOST
+
+# Check for command-line options
+
+if ($#argv == 1) then
+   set agentID = $1
+else
+   printf "Usage: stopagent agentID\n"
+   exit 1
+endif
+
+# Is agentID actually running?
+
+ps h -C $agentID >& /dev/null
+if ($status) then
+   set agentUp = 0
+   printf "$agentID is not running, nothing to stop...\n"
+   exit 0
+else
+   set agentUp = 1
+   set agentUser = `ps eo user h -C $agentID`
+endif
+if (${agentUser} == ${userID}) then
+   printf "Stopping ${agentID}..."
+   killall -s SIGHUP ${agentID}
+   if ($status) then
+      printf "ERROR\n"
+   else
+      printf "Done.\n"
+   endif
+else
+   printf "\nERROR: Cannot stop ${agentID} on ${hostID} because you are not the owner.\n"
+   printf "       The running ${agentID} process is owned by ${agentUser}.\n\n"
+   exit 1
+endif
+
+exit 0
+
+end

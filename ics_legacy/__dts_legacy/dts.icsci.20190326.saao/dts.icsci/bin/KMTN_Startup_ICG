@@ -1,0 +1,59 @@
+#!/bin/bash
+#
+#-- Prepares system resources required for KMTN data acquisition
+#
+#- JAM, April 15, 2013
+#
+# June 14. 2013: Changed folder locations, commented out tasks that will not persist through acquisition system startup. Added socat command.
+# Sept. 20, 2013: Adding new formatted ramdisk for DOS system logs
+# June 27, 2014: Consolidating as much as possible here to make autostartup happen
+
+#-- Destroy any previously running virtual machines
+virsh destroy IC2
+
+#-- Write disk headers to ramdisks
+dd if=/home/dts/VMFolder/datadisklabels/disklabel.txt of=/dev/ram0 count=1 bs=512
+dd if=/home/dts/VMFolder/datadisklabels/disklabel2.txt of=/dev/ram1 count=1 bs=512
+
+#-- Write IC configuration file to shared ramdisk
+dd if=/home/dts/Config/IC.ini of=/dev/ram15 bs=512 count=3
+
+#-- Open permissions to serial port used by ISIS
+#chmod 777 /dev/ttyS1
+
+#-- Add socat session that allows IC in VM to talk to ISIS
+#socat pty,link=/home/dts/VMFolder/socat/pty/ICLink,user=root,group=root,cr pty,link=/home/dts/VMFolder/socat/pty/ISISLink,user=dts,group=dts,cr &
+
+#-- Add socat session for the IC terminal window
+#socat pty,link=/home/dts/VMFolder/socat/pty/ICTerm,user=root,group=root,cr pty,link=/home/dts/VMFolder/socat/pty/XTermLink,user=dts,group=dts,cr &
+
+#-- Start the TCS Agent
+xterm -e "/home/dts/bin/pctcs" & 
+
+#-- Start ISIS in a new window
+#xterm -e "/home/dts/EXEC_ISIS/server/xisis" &
+xterm -e "/home/dts/ISIS/relay/isisrelay" &
+
+#-- Automount the data directory on electron
+#mount 172.16.3.44:/home/data /mnt/electrondata
+
+#-- Mount the data directory on the ICS computer
+mount 192.168.13.109:/home/data /mnt/ICSdata
+
+#-- Set ramdisks to read/write for everybody
+chmod 666 /dev/ram0
+chmod 666 /dev/ram1
+
+#-- Short delay to stabilize startup
+sleep 1
+
+#-- Start caliban in a new window
+#xterm -e "/home/dts/Agents/Caliban/src/caliban" &
+
+virsh start IC2
+
+chmod 666 /dev/ram0
+chmod 666 /dev/ram1
+
+vncviewer :0 &
+

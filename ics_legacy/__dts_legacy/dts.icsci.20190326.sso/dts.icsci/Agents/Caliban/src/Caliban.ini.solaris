@@ -1,0 +1,26 @@
+# Caliban Initialization File
+#
+# for ritchey.mps.ohio-state.edu, Sparc 5 running Solaris 2.6
+# in the OSU Instrument Labs
+#
+# R. Pogge
+# OSU Astronomy
+# 1998 Sept 14
+LOG_FILE_NAME /data/Logs/Caliban.log
+SERIAL_PORT /dev/ttya
+BLOCK_SIZE 512
+VERBOSE
+# DEBUG
+SERIAL_HOST WC
+LOCAL_HOST CB
+MAX_XFER_FILES 150
+# DOARCHIVE
+# DODISPLAY
+# DOAUTOLOG
+# ADDFITS
+SPOOL_DEVICE /dev/sd15a
+SPOOL_DEVICE /dev/sd16a
+DBG_HEADLNG 10
+DBG_DATALNG 8542
+MOUNT UNIX:\CB\/data/isl
+MOUNT UNIX:\CB\/data/observer

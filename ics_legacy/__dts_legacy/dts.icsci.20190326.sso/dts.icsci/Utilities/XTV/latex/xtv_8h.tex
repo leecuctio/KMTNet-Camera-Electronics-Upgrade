@@ -1,0 +1,1300 @@
+\section{xtv.h File Reference}
+\label{xtv_8h}\index{xtv.h@{xtv.h}}
+Header file of global static variables for zimage.c. 
+
+{\tt \#include $<$stdio.h$>$}\par
+{\tt \#include $<$signal.h$>$}\par
+{\tt \#include $<$string.h$>$}\par
+{\tt \#include $<$stdlib.h$>$}\par
+{\tt \#include $<$unistd.h$>$}\par
+{\tt \#include $<$X11/Xlib.h$>$}\par
+{\tt \#include $<$X11/Xutil.h$>$}\par
+{\tt \#include $<$X11/Xresource.h$>$}\par
+{\tt \#include $<$X11/cursorfont.h$>$}\par
+{\tt \#include $<$X11/keysym.h$>$}\par
+\subsection*{Classes}
+\begin{CompactItemize}
+\item 
+struct {\bf imagevector}
+\begin{CompactList}\small\item\em Image vector data structure. \item\end{CompactList}\item 
+struct {\bf imagetext}
+\begin{CompactList}\small\item\em Image text data structure. \item\end{CompactList}\item 
+struct {\bf KEYACTION}
+\begin{CompactList}\small\item\em Action Key data structure. \item\end{CompactList}\end{CompactItemize}
+\subsection*{Defines}
+\begin{CompactItemize}
+\item 
+\#define {\bf \_\-\_\-HAIRS}\label{xtv_8h_a0}
+
+\item 
+\#define {\bf XYZHEIGHT}\ 60\label{xtv_8h_a1}
+
+\item 
+\#define {\bf XYZWIDTH}\ 35\label{xtv_8h_a2}
+
+\item 
+\#define {\bf XYZBORDER}\ 1\label{xtv_8h_a3}
+
+\item 
+\#define {\bf DEFZOOMSIZE}\ 32\label{xtv_8h_a4}
+
+\item 
+\#define {\bf DEFZOOMSIZE}\ 32\label{xtv_8h_a5}
+
+\item 
+\#define {\bf PICTDEFAULT}\ \char`\"{}+10+10\char`\"{}\label{xtv_8h_a6}
+
+\item 
+\#define {\bf DEFAULT\_\-FONT1}\ \char`\"{}6x10\char`\"{}\label{xtv_8h_a7}
+
+\item 
+\#define {\bf DEFAULT\_\-FONT2}\ \char`\"{}fixed\char`\"{}\label{xtv_8h_a8}
+
+\item 
+\#define {\bf DEFZOOMFAC}\ 4\label{xtv_8h_a9}
+
+\begin{CompactList}\small\item\em default zoom factor \item\end{CompactList}\item 
+\#define {\bf MAXCOLORS}\ 121\label{xtv_8h_a10}
+
+\begin{CompactList}\small\item\em maximum number of colors \item\end{CompactList}\item 
+\#define {\bf MAXPALWIDTH}\ 1024\label{xtv_8h_a11}
+
+\begin{CompactList}\small\item\em maximum palette size \item\end{CompactList}\item 
+\#define {\bf MAXVEC}\ 400000\label{xtv_8h_a12}
+
+\begin{CompactList}\small\item\em maximum number of vectors saved \item\end{CompactList}\item 
+\#define {\bf MAXTEXT}\ 100\label{xtv_8h_a13}
+
+\begin{CompactList}\small\item\em maximum number of text saved \item\end{CompactList}\item 
+\#define {\bf MAXZCURS}\ 64\label{xtv_8h_a14}
+
+\begin{CompactList}\small\item\em maximum number of zoom cursor vectors \item\end{CompactList}\item 
+\#define {\bf MAXMESS}\ 7\label{xtv_8h_a15}
+
+\begin{CompactList}\small\item\em maximum number of chars in message \item\end{CompactList}\item 
+\#define {\bf MAXSCREENPIX}\ 1$<$$<$21\label{xtv_8h_a16}
+
+\begin{CompactList}\small\item\em maximum number of screen pixels \item\end{CompactList}\item 
+\#define {\bf MAXZOOMFACTOR}\ 32\label{xtv_8h_a17}
+
+\begin{CompactList}\small\item\em maximum zoom factor \item\end{CompactList}\item 
+\#define {\bf DEFMAXWIDTH}\ 1600\label{xtv_8h_a18}
+
+\begin{CompactList}\small\item\em default maximum image width in pixels \item\end{CompactList}\item 
+\#define {\bf DEFMAXHEIGHT}\ 1024\label{xtv_8h_a19}
+
+\begin{CompactList}\small\item\em default maximum image height in pixels \item\end{CompactList}\item 
+\#define {\bf MAXSTRINGWID}\ 32\label{xtv_8h_a20}
+
+\begin{CompactList}\small\item\em maximum length of a coordinate display string \item\end{CompactList}\item 
+\#define {\bf NXYZ}\ 32\label{xtv_8h_a21}
+
+\begin{CompactList}\small\item\em maximum length of an xyz string \item\end{CompactList}\item 
+\#define {\bf KEYLEN}\ 10\label{xtv_8h_a22}
+
+\item 
+\#define {\bf MIN}(a, b)\ (((a) $<$ (b)) ? (a) : (b))\label{xtv_8h_a23}
+
+\item 
+\#define {\bf MAX}(a, b)\ (((a) $>$ (b)) ? (a) : (b))\label{xtv_8h_a24}
+
+\item 
+\#define {\bf ABS}(a)\ (((a) $>$ 0) ? (a) : -(a))\label{xtv_8h_a25}
+
+\item 
+\#define {\bf USERXCOORD}(x)
+\item 
+\#define {\bf USERYCOORD}(y)
+\item 
+\#define {\bf MAXSTORE}\ 4\label{xtv_8h_a28}
+
+\begin{CompactList}\small\item\em maximum number of images to stor in the ring buffer \item\end{CompactList}\item 
+\#define {\bf curs\_\-width}\ 16\label{xtv_8h_a29}
+
+\item 
+\#define {\bf curs\_\-height}\ 16\label{xtv_8h_a30}
+
+\item 
+\#define {\bf curs\_\-x\_\-hot}\ 7\label{xtv_8h_a31}
+
+\item 
+\#define {\bf curs\_\-y\_\-hot}\ 7\label{xtv_8h_a32}
+
+\item 
+\#define {\bf palcurs\_\-width}\ 16\label{xtv_8h_a33}
+
+\item 
+\#define {\bf palcurs\_\-height}\ 16\label{xtv_8h_a34}
+
+\item 
+\#define {\bf palcurs\_\-x\_\-hot}\ 8\label{xtv_8h_a35}
+
+\item 
+\#define {\bf palcurs\_\-y\_\-hot}\ 7\label{xtv_8h_a36}
+
+\item 
+\#define {\bf ERR\_\-CANT\_\-OPEN\_\-DISPLAY}\ -1\label{xtv_8h_a37}
+
+\begin{CompactList}\small\item\em Cannot open the image display window. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-CANT\_\-CREATE\_\-IMAGE\_\-WINDOW}\ -2\label{xtv_8h_a38}
+
+\begin{CompactList}\small\item\em Cannot create the image window. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-CANT\_\-CREATE\_\-ZOOM\_\-WINDOW}\ -3\label{xtv_8h_a39}
+
+\begin{CompactList}\small\item\em Cannot create the zoom window. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-INSUFF\_\-VECTOR\_\-COLORS}\ -4\label{xtv_8h_a40}
+
+\begin{CompactList}\small\item\em Insufficient colors. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-INSUFF\_\-STATUS\_\-COLORS}\ -5\label{xtv_8h_a41}
+
+\begin{CompactList}\small\item\em Insufficient status light colors. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-INSUFF\_\-IMAGE\_\-COLORS}\ -6\label{xtv_8h_a42}
+
+\begin{CompactList}\small\item\em Insufficient colors for image window. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-BAD\_\-ALLOC\_\-LOOKUP}\ -7\label{xtv_8h_a43}
+
+\begin{CompactList}\small\item\em Cannot allocate VM for lookup table. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-BAD\_\-ALLOC\_\-PALETTE}\ -8\label{xtv_8h_a44}
+
+\begin{CompactList}\small\item\em Cannot allocate VM for the color palette. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-BAD\_\-ALLOC\_\-IMBUF}\ -9\label{xtv_8h_a45}
+
+\begin{CompactList}\small\item\em Cannot allocate VM for the display buffer. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-BAD\_\-ALLOC\_\-ZOOM}\ -10\label{xtv_8h_a46}
+
+\begin{CompactList}\small\item\em Cannot allocate VM for the zoom window. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-NO\_\-DATA}\ -11\label{xtv_8h_a47}
+
+\begin{CompactList}\small\item\em No data to display. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-BAD\_\-DISPLAY\_\-PIPE}\ -12\label{xtv_8h_a48}
+
+\begin{CompactList}\small\item\em Image display pipe failed. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-NOT\_\-INITIALIZED}\ -13\label{xtv_8h_a49}
+
+\begin{CompactList}\small\item\em Windows not created, so cannot draw in them. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-CANT\_\-GET\_\-FONT}\ -14\label{xtv_8h_a50}
+
+\begin{CompactList}\small\item\em Cannot allocate font for windows. \item\end{CompactList}\item 
+\#define {\bf ERR\_\-IMAGE\_\-SIZE\_\-MISMATCH}\ -15\label{xtv_8h_a51}
+
+\begin{CompactList}\small\item\em Image size mismatch. \item\end{CompactList}\end{CompactItemize}
+\subsection*{Typedefs}
+\begin{CompactItemize}
+\item 
+typedef {\bf imagevector} {\bf imagevector\_\-t}\label{xtv_8h_a56}
+
+\begin{CompactList}\small\item\em Image vector data structure. \item\end{CompactList}\item 
+typedef {\bf imagetext} {\bf imagetext\_\-t}\label{xtv_8h_a57}
+
+\begin{CompactList}\small\item\em Image text data structure. \item\end{CompactList}\item 
+typedef {\bf KEYACTION} {\bf keyaction\_\-t}\label{xtv_8h_a58}
+
+\begin{CompactList}\small\item\em Action Key data structure. \item\end{CompactList}\end{CompactItemize}
+\subsection*{Functions}
+\begin{CompactItemize}
+\item 
+int {\bf imageinit} (int $\ast$, int $\ast$, int $\ast$, int, int, char $\ast$, char $\ast$, int, int)
+\begin{CompactList}\small\item\em Initialize the Image. \item\end{CompactList}\item 
+int {\bf createwindows} (char $\ast$, char $\ast$, int, int)
+\begin{CompactList}\small\item\em Create the base window and all its little friends. \item\end{CompactList}\item 
+int {\bf imageupdate} (int, int, int, int, int)
+\begin{CompactList}\small\item\em update the image (or a subset) on the display \item\end{CompactList}\item 
+int {\bf imagedisplay} (int, int, int, int, int, int, int, float $\ast$, int)
+\begin{CompactList}\small\item\em Display an image. \item\end{CompactList}\item 
+void {\bf imagepalette} (int, short $\ast$, short $\ast$, short $\ast$, int)
+\begin{CompactList}\small\item\em Load the X Windows color palette. \item\end{CompactList}\item 
+void {\bf imageclose} ()\label{xtv_8h_a64}
+
+\begin{CompactList}\small\item\em close the image window \item\end{CompactList}\item 
+void {\bf imageerase} ()\label{xtv_8h_a65}
+
+\begin{CompactList}\small\item\em erase the displayed image \item\end{CompactList}\item 
+void {\bf imagemap} (float, float, int)
+\begin{CompactList}\small\item\em Create the color loolup table. \item\end{CompactList}\item 
+void {\bf imageinstallkey} (int, int, void($\ast$)(int, int, int, int, int))
+\begin{CompactList}\small\item\em Install the image cursor action keys. \item\end{CompactList}\item 
+void {\bf imageuninstallkey} (int)\label{xtv_8h_a68}
+
+\begin{CompactList}\small\item\em Uninstall an image cursor action key. \item\end{CompactList}\item 
+void {\bf imagetext} (int, int, char $\ast$, int $\ast$)
+\begin{CompactList}\small\item\em imagetext - draw text over the image \item\end{CompactList}\item 
+void {\bf imagebox} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Draw a box on the image. \item\end{CompactList}\item 
+void {\bf imagecross} (int, int, int)
+\begin{CompactList}\small\item\em Draw a cross (+) on the image. \item\end{CompactList}\item 
+void {\bf imagerelocate} (int, int)
+\begin{CompactList}\small\item\em Move the overlay vector pointer to user X,Y coordinates. \item\end{CompactList}\item 
+void {\bf imagedraw} (int, int, int)
+\begin{CompactList}\small\item\em Draw to user coordinates (X,Y) from the last position. \item\end{CompactList}\item 
+void {\bf imagedrawflush} (int, int, int)
+\begin{CompactList}\small\item\em Draw and immediately refresh the display. \item\end{CompactList}\item 
+void {\bf vecclear} ()
+\begin{CompactList}\small\item\em Clear the overlay plane. \item\end{CompactList}\item 
+void {\bf storeclear} ()
+\begin{CompactList}\small\item\em clears the image storage (ring) buffer \item\end{CompactList}\item 
+void {\bf imagevnull} ()\label{xtv_8h_a77}
+
+\begin{CompactList}\small\item\em Clear (null) the vector and text arrays. \item\end{CompactList}\item 
+void {\bf imagetreplay} ()\label{xtv_8h_a78}
+
+\begin{CompactList}\small\item\em redraw text on the overlay plane \item\end{CompactList}\item 
+void {\bf imagevreplay} ()\label{xtv_8h_a79}
+
+\begin{CompactList}\small\item\em Redraw vectors on the overlay plane. \item\end{CompactList}\item 
+void {\bf lights} (int)
+\begin{CompactList}\small\item\em Work the various status \char`\"{}lights\char`\"{} on the display. \item\end{CompactList}\item 
+void {\bf imagelight} (int, char $\ast$, int)
+\begin{CompactList}\small\item\em Draw an status light on the display. \item\end{CompactList}\item 
+int {\bf imageread} (int $\ast$, int $\ast$, char $\ast$)
+\begin{CompactList}\small\item\em Blocking read from the display of one character. \item\end{CompactList}\item 
+void {\bf updateimage} (int, int, int, int, int, float $\ast$, int, int)
+\begin{CompactList}\small\item\em Update the image and window dimension database. \item\end{CompactList}\item 
+void {\bf updatestore} ()\label{xtv_8h_a84}
+
+\begin{CompactList}\small\item\em extract image information from the ring-buffer store \item\end{CompactList}\item 
+void {\bf updatepan} (int, int, int)
+\begin{CompactList}\small\item\em Update the centering of the image (pan-and-zoom). \item\end{CompactList}\item 
+void {\bf updatesize} (int, int)
+\begin{CompactList}\small\item\em Update all the windows to a new overall size. \item\end{CompactList}\item 
+void {\bf newsizesubwin} (int, int)
+\begin{CompactList}\small\item\em Resize subwindows. \item\end{CompactList}\item 
+void {\bf resizesubwin} ()
+\begin{CompactList}\small\item\em resize the subwindow \item\end{CompactList}\item 
+void {\bf updatename} (char $\ast$, int)
+\begin{CompactList}\small\item\em update the name that appears on the image display \item\end{CompactList}\item 
+void {\bf tvimnum} (char $\ast$, int)
+\begin{CompactList}\small\item\em Update the image number of the displayed image. \item\end{CompactList}\item 
+void {\bf updatecoords} (int, int, int)
+\begin{CompactList}\small\item\em Update the cursor x,y coords on the status window. \item\end{CompactList}\item 
+void {\bf updatebrkpt} (int, int)
+\begin{CompactList}\small\item\em Display the color palette break point vector value on cursor action. \item\end{CompactList}\item 
+void {\bf brkwrite} (char $\ast$, float, int)
+\begin{CompactList}\small\item\em Fit a floating point number into a 7-character string. \item\end{CompactList}\item 
+void {\bf resetcolors} ()
+\begin{CompactList}\small\item\em Reset the color palette. \item\end{CompactList}\item 
+void {\bf newcolors} (int, int)
+\begin{CompactList}\small\item\em Compress the color palette. \item\end{CompactList}\item 
+void {\bf updatenewpal} (int, int)
+\begin{CompactList}\small\item\em update the color palette after modification \item\end{CompactList}\item 
+void {\bf updatepal} (int, int)
+\begin{CompactList}\small\item\em Update the palette. \item\end{CompactList}\item 
+int {\bf updatezoom} (int, int)\label{xtv_8h_a98}
+
+\item 
+void {\bf oldzcursor} (int)
+\begin{CompactList}\small\item\em Old zoom-window cursor position (updatezoom() utility function). \item\end{CompactList}\item 
+void {\bf zcursor} (int)
+\begin{CompactList}\small\item\em New zoom cursor position (updatezoom() utility function). \item\end{CompactList}\item 
+void {\bf writepix} (int, int, int, int)
+\begin{CompactList}\small\item\em Write a portion of the image to the image window. \item\end{CompactList}\item 
+void {\bf keyzoompan} (int, int, int)
+\begin{CompactList}\small\item\em Zoom/Pan Key Action Function. \item\end{CompactList}\item 
+void {\bf keyzoomin} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Zoom In Action Function. \item\end{CompactList}\item 
+void {\bf keyzoomout} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Zoom Out Action Function. \item\end{CompactList}\item 
+void {\bf keypan} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Image Pan Action Function. \item\end{CompactList}\item 
+void {\bf keyrecenter} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Restore Original Zoom/Center Action Function. \item\end{CompactList}\item 
+void {\bf keyzoomprint} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Power Zoom/Pan Action Function. \item\end{CompactList}\item 
+void {\bf keyhelp} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Help Action Function. \item\end{CompactList}\item 
+void {\bf zfreeze} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Freeze Zoom Action Function. \item\end{CompactList}\item 
+void {\bf nextim} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Blink to Next Image Action Function. \item\end{CompactList}\item 
+void {\bf lastim} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Blink to Previous Image Action Function. \item\end{CompactList}\item 
+void {\bf zpeak} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Find Peak Pixel Nearest the Cursor Action Function. \item\end{CompactList}\item 
+void {\bf zhairs} (int, int, int, int, int)
+\begin{CompactList}\small\item\em Toggle Full-Screen Cross Hairs On/Off Action Function. \item\end{CompactList}\item 
+void {\bf vnohair} ()\label{xtv_8h_a114}
+
+\begin{CompactList}\small\item\em ... \item\end{CompactList}\item 
+int {\bf black\-Pixel} (Display $\ast$, int)
+\begin{CompactList}\small\item\em Background pixmap (black). \item\end{CompactList}\item 
+int {\bf white\-Pixel} (Display $\ast$, int)
+\begin{CompactList}\small\item\em Border pixmap (white). \item\end{CompactList}\item 
+int {\bf xtv\_\-refresh} (int)
+\begin{CompactList}\small\item\em Interrupt handler for X Events. \item\end{CompactList}\item 
+int {\bf xy2index} (int, int)
+\begin{CompactList}\small\item\em Convert (x,y) user coordinates into data vector index. \item\end{CompactList}\item 
+void {\bf mapimage} (int, int, int, int, int, float $\ast$, int, int, int, int, unsigned long $\ast$, float $\ast$, unsigned long, unsigned long $\ast$, int, unsigned long)
+\begin{CompactList}\small\item\em Map floating image data into integer display data. \item\end{CompactList}\item 
+void {\bf replicate} (int, int, int, int, char $\ast$, int, int, int, int, int, int, char $\ast$, int, int)
+\begin{CompactList}\small\item\em replicate \item\end{CompactList}\item 
+void {\bf samplicate} (int, int, int, int, char $\ast$, int, int, int, int, int, int, char $\ast$, int, int)
+\begin{CompactList}\small\item\em samplicate an array (sample instead of replicate) \item\end{CompactList}\item 
+void {\bf duplicate} (int, int, int, int, char $\ast$, int, int, int, int, int, char $\ast$, int, int)
+\begin{CompactList}\small\item\em duplicate pixel replication mapping without expansion/compression \item\end{CompactList}\item 
+void {\bf zeroborder} (int, int, int, int, int, int, int, char $\ast$, int)
+\begin{CompactList}\small\item\em fill border with zeros \item\end{CompactList}\item 
+void {\bf locate} (float[$\,$], unsigned long, float, unsigned long $\ast$)\label{xtv_8h_a124}
+
+\begin{CompactList}\small\item\em locate index of x in array xx xx data vector n length of data vector xx x value in xx to find j index of x in xx \item\end{CompactList}\item 
+void {\bf hunt} (float[$\,$], unsigned long, float, unsigned long $\ast$)
+\begin{CompactList}\small\item\em hunt for nearest left index of x in array xx \item\end{CompactList}\item 
+int {\bf xtvopen} (int, int, int, int, int, char $\ast$, char $\ast$)
+\begin{CompactList}\small\item\em Open the XTV display. \item\end{CompactList}\item 
+void {\bf xtvclose} ()
+\begin{CompactList}\small\item\em Close the XTV display. \item\end{CompactList}\item 
+int {\bf xtvload} (float $\ast$, int, int, int, int, int, int, int, float, float, int, int, int)
+\begin{CompactList}\small\item\em load an image onto the image display \item\end{CompactList}\item 
+void {\bf xtvcolorld} (short $\ast$, short $\ast$, short $\ast$, int)
+\begin{CompactList}\small\item\em Load RGB color lookup tables. \item\end{CompactList}\item 
+void {\bf bwcmap} (short $\ast$, short $\ast$, short $\ast$)
+\begin{CompactList}\small\item\em loads a simple black-and-white color map \item\end{CompactList}\item 
+void {\bf ibwcmap} (short $\ast$, short $\ast$, short $\ast$)
+\begin{CompactList}\small\item\em loads a simple inverse black-and-white color map \item\end{CompactList}\end{CompactItemize}
+
+
+\subsection{Detailed Description}
+Header file of global static variables for zimage.c. 
+
+DEFINITION OF X-WINDOWS WINDOW AND IMAGE
+
+\begin{enumerate}
+\item The base window \char`\"{}wbase\char`\"{} exists with size (width,height+XYZHEIGHT). In the portion not covered by subwindows the image is displayed.
+
+\item In the upper left is the image window \char`\"{}wimage\char`\"{} with size (width,height). This is where the images are displayed.
+
+\item At the lower left is the palette subwindow \char`\"{}wpal\char`\"{} with size (palwidth,palheight). It displays the palette, and allows interactive palette control by dragging the mouse.
+
+\item At the lower middle are two light subwindows \char`\"{}wlgt1\char`\"{} (upper) and \char`\"{}wlgt2\char`\"{} with size (lgtwidth,lgtheigt). They display status information with text and color.
+
+\item At the lower right is the xyz display subwindow \char`\"{}wxyz\char`\"{} with size (xyzwidth,xyzheight). This displays the (x,y) coordinates of the mouse as well as the data value at that position and any marker key that has been struck.
+
+\item The zoom window is an independent window with size (zwidth,zheight). It shows a zoomed version of the location of the mouse. \end{enumerate}
+\small\begin{alltt}
+       +-------------------------+      +-------+
+       |                         |      |       |
+       |                         |      | Zoom  |
+       |                         |      |       |
+       |                         |      +-------+
+       |        Image            |
+       |                         |
+       |                         |
+       |                         |
+       |                         |
+       |                         |
+       +-------------------------+
+       | Palette | L1 | x y z    |
+       |         | L2 |          |
+       +-------------------------+
+\end{alltt}\normalsize 
+
+
+All subwindows have the same size XYZHEIGHT with a border size of XYZBORDER (so their size is actually XYZHEIGHT - 2$\ast$XYZBORDER), and are placed along the bottom of the window according to the following scheme: \begin{enumerate}
+\item XYZBORDER exists between all windows. \item xzywidth gets 20$\ast$fontwidth for (4d 4d 6d 1d) display of x y z k \item lgtwidth gets (MAXMESS+1)$\ast$fontwidth for (MAXMESSs) display of message \item palwidth gets the rest. \end{enumerate}
+
+
+There are a number of coordinate systems used here: \begin{enumerate}
+\item USER COORDS: (coordinate system that is gone but not forgotten)
+
+\item DATA COORDS: Data array passed to the image routines by the user Pixel (0,0) is (offx,offy) in USER COORDS dimensions of the data array are (datw,dath)
+
+\item IMAGE COORDS: This the portion of the data which is displayed Pixel (0,0) is (datx,daty) in DATA coords dimensions of the image array are (imw,imh)
+
+\item WINDOW COORDS: This is the display screen window dimensions are (width,height) location of UL of image in window is (winx,winy) location of UL displayed pixel in IMAGE is (imx,imy) \end{enumerate}
+
+
+The IMAGE may be zoomed by a factor of zim.
+
+y may increase downwards (yup==0) or upwards (yup==1)
+
+The transformations between different coordinate systems are \small\begin{alltt}
+   Xi = (Xw - winx) / zim + imx         
+   Yi = (Yw - winy) / zim + imy\end{alltt}\normalsize 
+
+
+\small\begin{alltt}   Xd = Xi + datx                       
+   Yd = Yi + daty                 (yup==0)
+      = imh-1 - Yi +daty          (yup==1)\end{alltt}\normalsize 
+
+
+\small\begin{alltt}   Xu = Xd + offx 
+   Yu = Yd + offy
+   \end{alltt}\normalsize 
+
+
+The data is passed to the imaging routines as floating point with the address of the start of the array saved as \char`\"{}data\char`\"{}, and is immediately converted to (byte) color addresses and saved as \char`\"{}image\char`\"{}. The size of this image is (imw,imh), and the size of the (zoomed) image in the window is (winw,winh). Displayed in the window is a copy of this array that has been expanded by a factor of \char`\"{}zim\char`\"{}, or squashed by a factor of \char`\"{}-zim\char`\"{}. The image may under or overfill the window, and the mapping between image coordinates and window coordinates is provided by (imx,imy), which are the image coordinates of the upper left hand displayed pixel, and (winx,winy) which are the window coordinates of the upper left hand displayed pixel. Note that all coordinates run from left to right and top to bottom, and that an expanded display has the upper left corner of a pixel on an even multiple of window pixels. \small\begin{alltt}
+    +------------------------------------------------------------------------+
+    |        |                                                               |
+    |      offy              Original Data                                   |
+    |        |                                                               |
+    |        +-----------------------------------------------------+ .       |
+    |$<$-offx-$>$|        |                                            | .       |
+    |        |      daty           Data Array                      | .       |
+    |        |        |                                            | .       |
+    |        |        +---------------------------------------+ .  | .       |
+    |        |$<$-datx-$>$|       |                               | .  | .       |
+    |        |        |      imy        Image (if bigger      | .  | .       |
+    |        |        |       |                than display)  | .  | .       |
+    |        |        |       +--------------------------+ .  | .  | .       |
+    |        |        |$<$-imx-$>$|//////|///////////////////| .  | .  | .       |
+    |        |        |       |////(winy)// Display /////| .  | .  | .       |
+    |        |        |       |//////|///////////////////| .  | .  | .       |
+    |        |        |       |(winx)+----------+////////| .  | .  | .       |
+    |        |        |       |//////|Image (if |////////| .  |imh | .       |
+    |        |        |       |//////| smaller  |////////|winh| .  |dath     |
+    |        |        |       |//////|  than    |////////| .  | .  | .       |
+    |        |        |       |//////| display) |////////| .  | .  | .       |
+    |        |        |       |//////+----------+////////| .  | .  | .       |
+    |        |        |       |//////////////////////////| .  | .  | .       |
+    |        |        |       +--------------------------+ .  | .  | .       |
+    |        |        |       ........... winw ...........    | .  | .       |
+    |        |        +---------------------------------------+ .  | .       |
+    |        |        .................. imw ..................    | .       |
+    |        |                                                     | .       |
+    |        +-----------------------------------------------------+ .       |
+    |        ........................ datw .........................         |
+    +\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_+
+\end{alltt}\normalsize 
+
+
+\subsection{Define Documentation}
+\index{xtv.h@{xtv.h}!USERXCOORD@{USERXCOORD}}
+\index{USERXCOORD@{USERXCOORD}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}\#define USERXCOORD(x)}\label{xtv_8h_a26}
+
+
+{\bf Value:}
+
+\footnotesize\begin{verbatim}( (zim > 0) ? \
+       (((x)-winx)/zim+imx+datx+offx) : ((-zim)*((x)-winx)+imx+datx+offx) )
+\end{verbatim}\normalsize 
+\index{xtv.h@{xtv.h}!USERYCOORD@{USERYCOORD}}
+\index{USERYCOORD@{USERYCOORD}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}\#define USERYCOORD(y)}\label{xtv_8h_a27}
+
+
+{\bf Value:}
+
+\footnotesize\begin{verbatim}( ( (zim > 0) ? \
+  ( (yup==0) ? (((y)-winy)/zim+imy)    : (imh-1-((y)-winy)/zim-imy) ) \
+                         : \
+  ( (yup==0) ? ((-zim)*((y)-winy)+imy) : (imh-1-(-zim)*((y)-winy)-imy) ) \
+                         ) + daty+offy )
+\end{verbatim}\normalsize 
+
+
+\subsection{Function Documentation}
+\index{xtv.h@{xtv.h}!blackPixel@{blackPixel}}
+\index{blackPixel@{blackPixel}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int black\-Pixel (Display $\ast$ {\em dpy}, int {\em screen})}\label{xtv_8h_a115}
+
+
+Background pixmap (black). 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em dpy}]Pointer to the display \item[{\em screen}]screen number \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!brkwrite@{brkwrite}}
+\index{brkwrite@{brkwrite}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void brkwrite (char $\ast$ {\em s}, float {\em b}, int {\em left})}\label{xtv_8h_a93}
+
+
+Fit a floating point number into a 7-character string. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em s}]character string to create \item[{\em b}]floating number to pack into 7 digits \item[{\em left}]1=left pad with blanks\end{description}
+\end{Desc}
+Converts a floating number (b) into a 7-character string with the appropriate format to not overrun the string size. The optional left flag is set if the string is to be padded on the left with spaces. \index{xtv.h@{xtv.h}!bwcmap@{bwcmap}}
+\index{bwcmap@{bwcmap}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void bwcmap (short $\ast$ {\em r}, short $\ast$ {\em g}, short $\ast$ {\em b})}\label{xtv_8h_a130}
+
+
+loads a simple black-and-white color map 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em r}]pointer to the red vector \item[{\em g}]pointer to the green vector \item[{\em b}]pointer to the blue vector\end{description}
+\end{Desc}
+\begin{Desc}
+\item[See also:]{\bf xtvcolorld()}{\rm (p.\,\pageref{xtv_8c_a6})}, ibwcamp() \end{Desc}
+\index{xtv.h@{xtv.h}!createwindows@{createwindows}}
+\index{createwindows@{createwindows}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int createwindows (char $\ast$ {\em resourcename}, char $\ast$ {\em windowname}, int {\em xoff}, int {\em yoff})}\label{xtv_8h_a60}
+
+
+Create the base window and all its little friends. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em resourcename}]Name of the X-resource file to use \item[{\em windowname}]Name of the window (appears on the top bar) \item[{\em xoff}]X-axis offset on the desktop \item[{\em yoff}]Y-axis offset on the desktop\end{description}
+\end{Desc}
+\begin{Desc}
+\item[Returns:]0 on success, error codes on failure.\end{Desc}
+Creates the base window and all the little subwindows that are needed by the image display.
+
+$<$ set windows attributes \index{xtv.h@{xtv.h}!duplicate@{duplicate}}
+\index{duplicate@{duplicate}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void duplicate (int {\em x0}, int {\em y0}, int {\em w0}, int {\em h0}, char $\ast$ {\em from}, int {\em x}, int {\em y}, int {\em w}, int {\em h}, int {\em wto}, char $\ast$ {\em to}, int {\em fill}, int {\em bits\_\-per\_\-pixel})}\label{xtv_8h_a122}
+
+
+duplicate pixel replication mapping without expansion/compression 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]X-axis origin of the source image \item[{\em y0}]Y-axis origin of the source image \item[{\em w0}]width (X-axis size) of source image \item[{\em h0}]height (Y-axis size) of source image \item[{\em from}]Source image array \item[{\em x}]X-axis origin of the destination image \item[{\em y}]Y-axis origin of the destination image \item[{\em w}]width (X-axis size) of the destination image \item[{\em h}]height (Y-axis size) of the destination image \item[{\em wto}]dimensions of the destination image \item[{\em to}]Destination image array \item[{\em fill}]Flag: 1=zero rest of the to array \item[{\em bits\_\-per\_\-pixel}]data precision of the arrays\end{description}
+\end{Desc}
+The same as replicate with no expansion or compression \index{xtv.h@{xtv.h}!hunt@{hunt}}
+\index{hunt@{hunt}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void hunt (float {\em xx}[$\,$], unsigned long {\em n}, float {\em x}, unsigned long $\ast$ {\em jlo})}\label{xtv_8h_a125}
+
+
+hunt for nearest left index of x in array xx 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em xx}]data vector \item[{\em n}]length of the data vector xx \item[{\em x}]data value to find in the vector \item[{\em jlo}](returned) index of x \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!ibwcmap@{ibwcmap}}
+\index{ibwcmap@{ibwcmap}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void ibwcmap (short $\ast$ {\em r}, short $\ast$ {\em g}, short $\ast$ {\em b})}\label{xtv_8h_a131}
+
+
+loads a simple inverse black-and-white color map 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em r}]pointer to the red vector \item[{\em g}]pointer to the green vector \item[{\em b}]pointer to the blue vector\end{description}
+\end{Desc}
+\begin{Desc}
+\item[See also:]{\bf xtvcolorld()}{\rm (p.\,\pageref{xtv_8c_a6})}, {\bf bwcmap()}{\rm (p.\,\pageref{xtv_8c_a7})} \end{Desc}
+\index{xtv.h@{xtv.h}!imagebox@{imagebox}}
+\index{imagebox@{imagebox}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagebox (int {\em x}, int {\em y}, int {\em nx}, int {\em ny}, int {\em color})}\label{xtv_8h_a70}
+
+
+Draw a box on the image. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis coordinates of the lower corner of the box \item[{\em y}]Y-axis coordinates of the lower corner of the box \item[{\em nx}]width of the box in X \item[{\em ny}]width of the box in Y \item[{\em color}]color (palette index) to draw\end{description}
+\end{Desc}
+Draw a box on the image (vector plane) with the indicated location, size and color. \index{xtv.h@{xtv.h}!imagecross@{imagecross}}
+\index{imagecross@{imagecross}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagecross (int {\em x}, int {\em y}, int {\em r})}\label{xtv_8h_a71}
+
+
+Draw a cross (+) on the image. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X coordinates of the cross center \item[{\em y}]Y coordinates of the cross center \item[{\em r}]Radius of the cross (pixels)\end{description}
+\end{Desc}
+Draws a cross (+) on the image (vector plane) centered at the given (x,y) coordinates and the given radius. \index{xtv.h@{xtv.h}!imagedisplay@{imagedisplay}}
+\index{imagedisplay@{imagedisplay}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int imagedisplay (int {\em x0}, int {\em y0}, int {\em nx}, int {\em ny}, int {\em awidth}, int {\em xoff}, int {\em yoff}, float $\ast$ {\em a}, int {\em color})}\label{xtv_8h_a62}
+
+
+Display an image. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em a}]Input floating image array \item[{\em x0}]X-axis origin of the area to be displayed \item[{\em y0}]Y-axis origin of the area to be displayed \item[{\em nx}]X-axis size of the area to be displayed \item[{\em ny}]Y-axis size of area to be displayed \item[{\em awidth}]Number of pixels per row in a \item[{\em xoff}]X-axis coordinates to be used for pixel (0,0) \item[{\em yoff}]Y-axis coordinates to be used for pixel (0,0) \item[{\em color}]Color plane to load (1=R,2=G,3=B,0=all?)\end{description}
+\end{Desc}
+Does the dirty work of image display \index{xtv.h@{xtv.h}!imagedraw@{imagedraw}}
+\index{imagedraw@{imagedraw}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagedraw (int {\em xuser}, int {\em yuser}, int {\em color})}\label{xtv_8h_a73}
+
+
+Draw to user coordinates (X,Y) from the last position. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em xuser}]X-axis coordinate in user space \item[{\em yuser}]Y-axis coordinate in user space \item[{\em color}]color to use (from the palette)\end{description}
+\end{Desc}
+Draws a line from the last vector position (previous {\bf imagerelocate()}{\rm (p.\,\pageref{xtv_8h_a72})} or {\bf imagedraw()}{\rm (p.\,\pageref{xtv_8h_a73})} call) to the given (X,Y) location with a particular palette color.
+
+The line will not appear immediately on the overlay plane unless the display is refreshed.
+
+\begin{Desc}
+\item[See also:]{\bf imagerelocate()}{\rm (p.\,\pageref{xtv_8h_a72})}, {\bf imagedrawflush()}{\rm (p.\,\pageref{xtv_8h_a74})} \end{Desc}
+\index{xtv.h@{xtv.h}!imagedrawflush@{imagedrawflush}}
+\index{imagedrawflush@{imagedrawflush}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagedrawflush (int {\em xuser}, int {\em yuser}, int {\em color})}\label{xtv_8h_a74}
+
+
+Draw and immediately refresh the display. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em xuser}]X-axis coordinate in user space \item[{\em yuser}]Y-axis coordinate in user space \item[{\em color}]color to use (from the palette)\end{description}
+\end{Desc}
+Draws a line from the last vector position (previous {\bf imagerelocate()}{\rm (p.\,\pageref{xtv_8h_a72})} or {\bf imagedraw()}{\rm (p.\,\pageref{xtv_8h_a73})} call) to the given (X,Y) location with a particular palette color, and immediately refresh the display.
+
+\begin{Desc}
+\item[See also:]{\bf imagerelocate()}{\rm (p.\,\pageref{xtv_8h_a72})}, {\bf imagedraw()}{\rm (p.\,\pageref{xtv_8h_a73})} \end{Desc}
+\index{xtv.h@{xtv.h}!imageinit@{imageinit}}
+\index{imageinit@{imageinit}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int imageinit (int $\ast$ {\em winit}, int $\ast$ {\em hinit}, int $\ast$ {\em nclrs}, int {\em zfinit}, int {\em yupinit}, char $\ast$ {\em resourcename}, char $\ast$ {\em windowname}, int {\em xoff}, int {\em yoff})}\label{xtv_8h_a59}
+
+
+Initialize the Image. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em winit}]width of the window (request on input, actual returned) \item[{\em hinit}]height of the window (request on input, actual returned) \item[{\em nclrs}]number of image color cells (requested on input, actual returned) \item[{\em zfinit}]initial zoom factor (0 for no zoom window) \item[{\em yupinit}]flag = 0/1 for y increasing down/up \item[{\em resourcename}]name of the X resource for this window \item[{\em windowname}]name of the window (to appear on the top bar) \item[{\em xoff}]X-axis offset on the desktop on startup \item[{\em yoff}]Y-axis offset on the desktop on startup\end{description}
+\end{Desc}
+\begin{Desc}
+\item[Returns:]file descriptor for X events on success, negative error codes on failure.\end{Desc}
+Initializes the window and its resources for the image display and sets up the event handler. \index{xtv.h@{xtv.h}!imageinstallkey@{imageinstallkey}}
+\index{imageinstallkey@{imageinstallkey}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imageinstallkey (int {\em key}, int {\em echo}, void($\ast$)(int, int, int, int, int) {\em function})}\label{xtv_8h_a67}
+
+
+Install the image cursor action keys. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em key}]ASCII code of the key to bind to the action function \item[{\em echo}]flag: 0/1 to echo key in x,y,z display \item[{\em function()}]action function to be called when key is pressed.\end{description}
+\end{Desc}
+The function prototype is \small\begin{alltt}
+  void action(int x, int y, int xuser, int yuser, int key) 
+  \end{alltt}\normalsize 
+ \index{xtv.h@{xtv.h}!imagelight@{imagelight}}
+\index{imagelight@{imagelight}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagelight (int {\em upper}, char $\ast$ {\em mess}, int {\em color})}\label{xtv_8h_a81}
+
+
+Draw an status light on the display. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em upper}]tells which light to draw in (see below) \item[{\em mess}]String to be written (null terminated) \item[{\em color}]0/1 for red/green\end{description}
+\end{Desc}
+Draws a status light. The values of upper give which light is to be operated: \small\begin{alltt}
+  upper = -1 -$>$ redraw all
+  upper = 1  -$>$ top light
+  upper = 2  -$>$ next from top
+  upper = 3  -$>$ next from bottom
+  upper = 4  -$>$ bottom light
+  \end{alltt}\normalsize 
+ Or, graphically \small\begin{alltt}
+  +-------+
+  |   1   |
+  +-------+
+  |   2   |
+  +-------+
+  |   3   |
+  +-------+
+  |   4   |
+  +-------+
+  \end{alltt}\normalsize 
+ \index{xtv.h@{xtv.h}!imagemap@{imagemap}}
+\index{imagemap@{imagemap}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagemap (float {\em zero}, float {\em span}, int {\em ncolors})}\label{xtv_8h_a66}
+
+
+Create the color loolup table. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em zero}]zero point (min) of the intensity mapping \item[{\em span}]span of the intensity mapping (max-min) \item[{\em ncolors}]Number of colors to map\end{description}
+\end{Desc}
+Creates the global breakpts array that is used to quickly map image data values into display colors. The breakpts array contains those data values that map into each \char`\"{}color\char`\"{} index in the palette vector.
+
+The mapping is: \small\begin{alltt}
+  breakpt[i] = zero + (span/(ncolors-2)) * i
+  \end{alltt}\normalsize 
+ Note that this algorithm reserves the top 2 colors in the palette for non-data uses. \index{xtv.h@{xtv.h}!imagepalette@{imagepalette}}
+\index{imagepalette@{imagepalette}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagepalette (int {\em n}, short $\ast$ {\em r}, short $\ast$ {\em g}, short $\ast$ {\em b}, int {\em flag})}\label{xtv_8h_a63}
+
+
+Load the X Windows color palette. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em n}]Number of table entries \item[{\em r}]pointer to the red vector \item[{\em g}]pointer to the green vector \item[{\em b}]pointer to the blue vector \item[{\em flag}]0/1 for image/vector color load\end{description}
+\end{Desc}
+Loads the X-windows color palette given a set of RGB color vectors. \index{xtv.h@{xtv.h}!imageread@{imageread}}
+\index{imageread@{imageread}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int imageread (int $\ast$ {\em x}, int $\ast$ {\em y}, char $\ast$ {\em key})}\label{xtv_8h_a82}
+
+
+Blocking read from the display of one character. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]User X-axis coordinate where the key was struck \item[{\em y}]User Y-axis coordinate where the key was struck \item[{\em key}]ASCII code of the key struck\end{description}
+\end{Desc}
+Puts the cursor on the image and waits for a key to be hit (used, e.g., to prompt for user cursor interaction on the image).
+
+Blocking is rude, so do it sparingly. \index{xtv.h@{xtv.h}!imagerelocate@{imagerelocate}}
+\index{imagerelocate@{imagerelocate}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void imagerelocate (int {\em xuser}, int {\em yuser})}\label{xtv_8h_a72}
+
+
+Move the overlay vector pointer to user X,Y coordinates. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em xuser}]X coordinate in user space \item[{\em yuser}]Y coordinate in user space\end{description}
+\end{Desc}
+Moves the image overlay plane \char`\"{}pen\char`\"{} to a given (X,Y) location in user coordinates. A \char`\"{}relocate\char`\"{} specifies a starting point for a draw.
+
+\begin{Desc}
+\item[See also:]{\bf imagedraw()}{\rm (p.\,\pageref{xtv_8h_a73})} \end{Desc}
+\index{xtv.h@{xtv.h}!imagetext@{imagetext}}
+\index{imagetext@{imagetext}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void {\bf imagetext} (int {\em xuser}, int {\em yuser}, char $\ast$ {\em text}, int $\ast$ {\em textlen})}\label{xtv_8h_a69}
+
+
+imagetext - draw text over the image 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em xuser}]X-axis coordinate (user coords) of the start of the string \item[{\em yuser}]Y-axis coordinate (user coords) of the start of the string \item[{\em text}]string with the text \item[{\em textlen}]length of the string\end{description}
+\end{Desc}
+Draw text over an image. \index{xtv.h@{xtv.h}!imageupdate@{imageupdate}}
+\index{imageupdate@{imageupdate}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int imageupdate (int {\em x0}, int {\em y0}, int {\em nx}, int {\em ny}, int {\em map})}\label{xtv_8h_a61}
+
+
+update the image (or a subset) on the display 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]starting X-axis pixel value of the region to update \item[{\em y0}]starting Y-axis pixel value of the region to update \item[{\em nx}]number of X-axis pixels in the region \item[{\em ny}]number of Y-axis pixels in the region \item[{\em map}]flag, if =1, means to remap data values into display bits\end{description}
+\end{Desc}
+\begin{Desc}
+\item[Returns:]0 on success, error codes on failures.\end{Desc}
+Updates all or part of an image on the display. \index{xtv.h@{xtv.h}!keyhelp@{keyhelp}}
+\index{keyhelp@{keyhelp}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void keyhelp (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a108}
+
+
+Help Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Print the help menu for action keys \index{xtv.h@{xtv.h}!keypan@{keypan}}
+\index{keypan@{keypan}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void keypan (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a105}
+
+
+Image Pan Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Pan the image to center on the cursor position \index{xtv.h@{xtv.h}!keyrecenter@{keyrecenter}}
+\index{keyrecenter@{keyrecenter}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void keyrecenter (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a106}
+
+
+Restore Original Zoom/Center Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+De-Zoom and Recenter the image in the window (aka \char`\"{}restore original zoom/pan on initial display). \index{xtv.h@{xtv.h}!keyzoomin@{keyzoomin}}
+\index{keyzoomin@{keyzoomin}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void keyzoomin (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a103}
+
+
+Zoom In Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Action function to zoom in 1 step \index{xtv.h@{xtv.h}!keyzoomout@{keyzoomout}}
+\index{keyzoomout@{keyzoomout}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void keyzoomout (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a104}
+
+
+Zoom Out Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Action function to zoom out 1 step \index{xtv.h@{xtv.h}!keyzoompan@{keyzoompan}}
+\index{keyzoompan@{keyzoompan}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void keyzoompan (int {\em x}, int {\em y}, int {\em inout})}\label{xtv_8h_a102}
+
+
+Zoom/Pan Key Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis coordinates of the cursor in window space \item[{\em y}]Y-axis coordinates of the cursor in window space \item[{\em inout}]amount to zoom in (+1) or out (-1)\end{description}
+\end{Desc}
+Low-level zoom and pan function. \index{xtv.h@{xtv.h}!keyzoomprint@{keyzoomprint}}
+\index{keyzoomprint@{keyzoomprint}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void keyzoomprint (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a107}
+
+
+Power Zoom/Pan Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Power Zoom/Pan - zooms right in on the pixel under the cursor, recentering on the display. \index{xtv.h@{xtv.h}!lastim@{lastim}}
+\index{lastim@{lastim}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void lastim (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a111}
+
+
+Blink to Previous Image Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Blink back to the previous image in the ring buffer. \index{xtv.h@{xtv.h}!lights@{lights}}
+\index{lights@{lights}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void lights (int {\em state})}\label{xtv_8h_a80}
+
+
+Work the various status \char`\"{}lights\char`\"{} on the display. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em state}]status light to operate and its state: +=on/-=off\end{description}
+\end{Desc}
+The display status lights are numbered 1..4 running from top to bottom. In order: \small\begin{alltt}
+  Light 1: Input State (-1=Asychronous, +1=waiting for key press)
+  Light 2: Image State (-2=no image, 2=image loaded \& ready)
+  Light 3: Zoom Window State (-3=frozen, +3=active)
+  Light 4: Image Zoom State (-4 = normal, +4=zoomed in/out)
+  \end{alltt}\normalsize 
+ In the normal state the light is green, otherwise it is red.
+
+If state=0, it turns all the lights on GREEN (+state) \index{xtv.h@{xtv.h}!mapimage@{mapimage}}
+\index{mapimage@{mapimage}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void mapimage (int {\em x0}, int {\em y0}, int {\em nx}, int {\em ny}, int {\em datw}, float $\ast$ {\em data}, int {\em imx0}, int {\em imy0}, int {\em imw}, int {\em yinv}, unsigned long $\ast$ {\em image}, float $\ast$ {\em breakpts}, unsigned long {\em nbreak}, unsigned long $\ast$ {\em pixels}, int {\em bits\_\-per\_\-pixel}, unsigned long {\em cmask})}\label{xtv_8h_a119}
+
+
+Map floating image data into integer display data. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]X-axis coordinate of origin of image section to map \item[{\em y0}]Y-axis coordinate of origin of image section to map \item[{\em nx}]X-axis size of image section to map \item[{\em ny}]Y-axis size of image section to map \item[{\em datw}]Number of data pixels per row in full image \item[{\em data}]array of data to be mapped \item[{\em imx0}]X-axis origin of the image array \item[{\em imy0}]Y-axis origin of the image array \item[{\em imw}]Number of image pixels per row \item[{\em yinv}]Flag: invert y order of data and image \item[{\em image}]array to receive mapped data \item[{\em breakpts}]lookup table \item[{\em nbreak}]fallback branch table for ambiguous cases \item[{\em pixels}]color cells vector (defined in zimage.h) \item[{\em bits\_\-per\_\-pixel}]data precision (bits per pixel), values: 8, 16, or 24 \item[{\em cmask}]color mask\end{description}
+\end{Desc}
+Uses the lookup table to map image data values into N-bit display values for display. Unlike an older version of {\bf mapimage()}{\rm (p.\,\pageref{xtv_8h_a119})}, this version knows about multiple color planes and color masks (e.g., for RGB color planes in a True\-Color visual like a 24-bit display device). \index{xtv.h@{xtv.h}!newcolors@{newcolors}}
+\index{newcolors@{newcolors}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void newcolors (int {\em n1}, int {\em n2})}\label{xtv_8h_a95}
+
+
+Compress the color palette. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em n1}]index of the new Min in the palette \item[{\em n2}]index of the new Max in the palette.\end{description}
+\end{Desc}
+Repacks the color palette (compresses it) to have the effect of changing the image intensity scaling (zeropoint and span), though at a sacrifice of bit depth, by re-mapping the intensities to only span palette indexes n1..n2 (normally it runs 0..npalette-1). \index{xtv.h@{xtv.h}!newsizesubwin@{newsizesubwin}}
+\index{newsizesubwin@{newsizesubwin}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void newsizesubwin (int {\em wid}, int {\em hgt})}\label{xtv_8h_a87}
+
+
+Resize subwindows. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em wid}]new subwindow width \item[{\em hgt}]new subwindow height \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!nextim@{nextim}}
+\index{nextim@{nextim}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void nextim (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a110}
+
+
+Blink to Next Image Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Blink forward to the next image in the ring buffer. \index{xtv.h@{xtv.h}!oldzcursor@{oldzcursor}}
+\index{oldzcursor@{oldzcursor}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void oldzcursor (int {\em j})}\label{xtv_8h_a99}
+
+
+Old zoom-window cursor position (updatezoom() utility function). 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em j}]the location of the top left of the central pixel \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!replicate@{replicate}}
+\index{replicate@{replicate}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void replicate (int {\em x0}, int {\em y0}, int {\em w0}, int {\em h0}, char $\ast$ {\em from}, int {\em f}, int {\em x}, int {\em y}, int {\em w}, int {\em h}, int {\em wto}, char $\ast$ {\em to}, int {\em fill}, int {\em bits\_\-per\_\-pixel})}\label{xtv_8h_a120}
+
+
+replicate 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]X-axis origin of the source image \item[{\em y0}]Y-axis origin of the source image \item[{\em w0}]width (X-axis size) of source image \item[{\em h0}]height (Y-axis size) of source image \item[{\em from}]Source image array \item[{\em f}]replication factor \item[{\em x}]X-axis origin of the destination image \item[{\em y}]Y-axis origin of the destination image \item[{\em w}]width (X-axis size) of the destination image \item[{\em h}]height (Y-axis size) of the destination image \item[{\em wto}]dimensions of the destination image \item[{\em to}]Destination image array \item[{\em fill}]Flag: 1=zero rest of the to array \item[{\em bits\_\-per\_\-pixel}]data precision of the arrays\end{description}
+\end{Desc}
+Fills the destination array with an arbitrary (square) repetition of each source pixel into Nx\-N pixels in the destination array
+
+Fill array \char`\"{}to\char`\"{} with a piece of \char`\"{}from\char`\"{}, each pixel mapping to fxf pixels If fill != 0, zero any uncovered piece of destination array
+
+Note, this version uses memmove() instead of bcopy() since the latter is now officially deprecated. \index{xtv.h@{xtv.h}!resetcolors@{resetcolors}}
+\index{resetcolors@{resetcolors}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void resetcolors ()}\label{xtv_8h_a94}
+
+
+Reset the color palette. 
+
+Restores the full color palette after compression
+
+\begin{Desc}
+\item[See also:]{\bf newcolors()}{\rm (p.\,\pageref{xtv_8h_a95})} \end{Desc}
+\index{xtv.h@{xtv.h}!resizesubwin@{resizesubwin}}
+\index{resizesubwin@{resizesubwin}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void resizesubwin ()}\label{xtv_8h_a88}
+
+
+resize the subwindow 
+
+Called by higher-level routines to do the actual dirty work \index{xtv.h@{xtv.h}!samplicate@{samplicate}}
+\index{samplicate@{samplicate}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void samplicate (int {\em x0}, int {\em y0}, int {\em w0}, int {\em h0}, char $\ast$ {\em from}, int {\em f}, int {\em x}, int {\em y}, int {\em w}, int {\em h}, int {\em wto}, char $\ast$ {\em to}, int {\em fill}, int {\em bits\_\-per\_\-pixel})}\label{xtv_8h_a121}
+
+
+samplicate an array (sample instead of replicate) 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]X-axis origin of the source image \item[{\em y0}]Y-axis origin of the source image \item[{\em w0}]width (X-axis size) of source image \item[{\em h0}]height (Y-axis size) of source image \item[{\em from}]Source image array \item[{\em f}]sampling factor \item[{\em x}]X-axis origin of the destination image \item[{\em y}]Y-axis origin of the destination image \item[{\em w}]width (X-axis size) of the destination image \item[{\em h}]height (Y-axis size) of the destination image \item[{\em wto}]dimensions of the destination image \item[{\em to}]Destination image array \item[{\em fill}]Flag: 1=zero rest of the to array \item[{\em bits\_\-per\_\-pixel}]data precision of the arrays\end{description}
+\end{Desc}
+fills the destination array with an arbitrary (square) sampling sampling of each Nx\-N source pixels into the destination array \index{xtv.h@{xtv.h}!storeclear@{storeclear}}
+\index{storeclear@{storeclear}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void storeclear ()}\label{xtv_8h_a76}
+
+
+clears the image storage (ring) buffer 
+
+Clears all images from the image ring buffer, used to store multiple images for blinking. \index{xtv.h@{xtv.h}!tvimnum@{tvimnum}}
+\index{tvimnum@{tvimnum}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void tvimnum (char $\ast$ {\em str}, int {\em n})}\label{xtv_8h_a90}
+
+
+Update the image number of the displayed image. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em str}]string with the image number \item[{\em n}]integer version of str\end{description}
+\end{Desc}
+XVista legacy routines, not implemented here but available if someday we want something like it. \index{xtv.h@{xtv.h}!updatebrkpt@{updatebrkpt}}
+\index{updatebrkpt@{updatebrkpt}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updatebrkpt (int {\em x}, int {\em ibut})}\label{xtv_8h_a92}
+
+
+Display the color palette break point vector value on cursor action. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis coorindate of the cursor in the color palette window \item[{\em ibut}]ASCII code of any button pressed \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!updatecoords@{updatecoords}}
+\index{updatecoords@{updatecoords}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updatecoords (int {\em wx}, int {\em wy}, int {\em key})}\label{xtv_8h_a91}
+
+
+Update the cursor x,y coords on the status window. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em wx}]X-axis position of the cursor in window space \item[{\em wy}]Y-axis position of the cursor in window space \item[{\em key}]ASCII code of any action key hit\end{description}
+\end{Desc}
+Updates the X,Y coords and associated data in the status subwindow based on the cursor position and any key that might have been struck. Used as a utility function for any key event action functions that will update the contents of the status window. \index{xtv.h@{xtv.h}!updateimage@{updateimage}}
+\index{updateimage@{updateimage}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updateimage (int {\em x0}, int {\em y0}, int {\em nx}, int {\em ny}, int {\em awidth}, float $\ast$ {\em a}, int {\em x1}, int {\em y1})}\label{xtv_8h_a83}
+
+
+Update the image and window dimension database. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]X-axis location of the image subsection in the data array \item[{\em y0}]X-axis location of the image subsection in the data array \item[{\em nx}]X-axis size of the image subsection in the data array \item[{\em ny}]Y-axis size of the image subsection in the data array \item[{\em awidth}]number of pixels/line in the data array \item[{\em a}]pointer to the floating-point data array \item[{\em x1}]X-axis offset of the data coordinate system \item[{\em y1}]Y-axis offset of the data coordinate system\end{description}
+\end{Desc}
+Updates the image and window dimension database after a resize or other operations that change the size of the window for new images. \index{xtv.h@{xtv.h}!updatename@{updatename}}
+\index{updatename@{updatename}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updatename (char $\ast$ {\em text}, int {\em num})}\label{xtv_8h_a89}
+
+
+update the name that appears on the image display 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em text}]string with the new image name \item[{\em num}]number of the text string to change (1 or 2)\end{description}
+\end{Desc}
+Changes one or other of the label strings for the xyz status subwindow (displays cursor x,y and corresponding data values). \small\begin{alltt}
+  num=1 sets imname1[], the top label
+  num=2 sets imname2[], the middle label
+  \end{alltt}\normalsize 
+ Any other values of num are ignored.
+
+Note that the bottom label in the xzy subwindow is either the position/data readout if the cursor is on the image, or the color lookup table value if the cursor is on the color palette subwindow. \index{xtv.h@{xtv.h}!updatenewpal@{updatenewpal}}
+\index{updatenewpal@{updatenewpal}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updatenewpal (int {\em x0}, int {\em ibut})}\label{xtv_8h_a96}
+
+
+update the color palette after modification 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]position of breakpoint in the color palette \item[{\em ibut}]button pressed (?) \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!updatepal@{updatepal}}
+\index{updatepal@{updatepal}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updatepal (int {\em x}, int {\em ibut})}\label{xtv_8h_a97}
+
+
+Update the palette. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]repack the color palette to this breakpoint \item[{\em ibut}]action button hit (?) \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!updatepan@{updatepan}}
+\index{updatepan@{updatepan}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updatepan (int {\em xc}, int {\em yc}, int {\em in})}\label{xtv_8h_a85}
+
+
+Update the centering of the image (pan-and-zoom). 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em xc}]new image center in X \item[{\em yc}]new image center in Y \item[{\em in}]zoom: 1=zoom in, -1=zoom out\end{description}
+\end{Desc}
+Pans the center of the image to user coordinate (xc,yc) and either zooms in 1 step (in=1) or zooms out 1 step (in=-1). \index{xtv.h@{xtv.h}!updatesize@{updatesize}}
+\index{updatesize@{updatesize}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void updatesize (int {\em wid}, int {\em hgt})}\label{xtv_8h_a86}
+
+
+Update all the windows to a new overall size. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em wid}]new window width \item[{\em hgt}]new window height\end{description}
+\end{Desc}
+Sets the new width and height for the window and its associated subframes. \index{xtv.h@{xtv.h}!vecclear@{vecclear}}
+\index{vecclear@{vecclear}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void vecclear ()}\label{xtv_8h_a75}
+
+
+Clear the overlay plane. 
+
+Erases all lines drawn in the image overlay plane (resets the overlay vector) \index{xtv.h@{xtv.h}!whitePixel@{whitePixel}}
+\index{whitePixel@{whitePixel}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int white\-Pixel (Display $\ast$ {\em dpy}, int {\em screen})}\label{xtv_8h_a116}
+
+
+Border pixmap (white). 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em dpy}]Pointer to the display \item[{\em screen}]screen number \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!writepix@{writepix}}
+\index{writepix@{writepix}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void writepix (int {\em x}, int {\em y}, int {\em wid}, int {\em hgt})}\label{xtv_8h_a101}
+
+
+Write a portion of the image to the image window. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis coordinate of the region to display in window space \item[{\em y}]Y-axis coordinate of the region to display in window space \item[{\em wid}]X-axis width in window space \item[{\em hgt}]Y-axis height in window space\end{description}
+\end{Desc}
+A low-level (window space) image subsection display function, usually called only by functions that do all the conversion from user space.
+
+This is where the pixels hit the screen. \index{xtv.h@{xtv.h}!xtv_refresh@{xtv\_\-refresh}}
+\index{xtv_refresh@{xtv\_\-refresh}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int xtv\_\-refresh (int {\em signo})}\label{xtv_8h_a117}
+
+
+Interrupt handler for X Events. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em signo}]integer signal code to handle\end{description}
+\end{Desc}
+This is the function that actually handles actions on window events (cursor moving over image, buttons getting pressed, etc.) \index{xtv.h@{xtv.h}!xtvclose@{xtvclose}}
+\index{xtvclose@{xtvclose}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void xtvclose ()}\label{xtv_8h_a127}
+
+
+Close the XTV display. 
+
+Convenience function for {\bf xtvopen()}{\rm (p.\,\pageref{xtv_8c_a3})}. Might perform other functions someday, so not totally trivial. \index{xtv.h@{xtv.h}!xtvcolorld@{xtvcolorld}}
+\index{xtvcolorld@{xtvcolorld}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void xtvcolorld (short $\ast$ {\em r}, short $\ast$ {\em g}, short $\ast$ {\em b}, int {\em n})}\label{xtv_8h_a129}
+
+
+Load RGB color lookup tables. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em r}]pointer to the red vector \item[{\em g}]pointer to the green vector \item[{\em b}]pointer to the blue vector \item[{\em n}]number of entries in each RGB table\end{description}
+\end{Desc}
+\begin{Desc}
+\item[See also:]{\bf bwcmap()}{\rm (p.\,\pageref{xtv_8c_a7})}, {\bf ibwcmap()}{\rm (p.\,\pageref{xtv_8c_a8})} \end{Desc}
+\index{xtv.h@{xtv.h}!xtvload@{xtvload}}
+\index{xtvload@{xtvload}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int xtvload (float $\ast$ {\em a}, int {\em nx}, int {\em ny}, int {\em nxfull}, int {\em isx}, int {\em isy}, int {\em psx}, int {\em psy}, float {\em z1}, float {\em z2}, int {\em flip}, int {\em erase}, int {\em color})}\label{xtv_8h_a128}
+
+
+load an image onto the image display 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em a}]Input floating image array \item[{\em nx}]Number of X-axis pixels to be displayed \item[{\em ny}]Number of Y-axis pixels to be displayed \item[{\em nxfull}]Number of X-axis pixels in the full frame \item[{\em isx}]Address of the first X-axis pixel to be displayed (usually 0 = first pixel) \item[{\em isy}]Address of the first Y-axis pixel to be displayed (usually 0 = first pixel) \item[{\em psx}]X-axis image-space coordinate corresponding to isx (typically, if isx=0, psx=1) \item[{\em psy}]Y-axis image-space coordinate corresponding to isy (typically, if isy=0, psy=1) \item[{\em z1}]Intensity mapping lower limit \item[{\em z2}]Intensity mapping upper limit \item[{\em flip}]Flag for up/down image reflection (1=Y increases up, 0=Y increases down or native screen memory order) \item[{\em erase}]Flag to erase screen before display \item[{\em color}]Color plane to load (1=R,2=G,3=B,0=all)\end{description}
+\end{Desc}
+Loads an image into the image display, mapping data values into colors. \index{xtv.h@{xtv.h}!xtvopen@{xtvopen}}
+\index{xtvopen@{xtvopen}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int xtvopen (int {\em nx}, int {\em ny}, int {\em nclrs}, int {\em zoomf}, int {\em parity}, char $\ast$ {\em resource}, char $\ast$ {\em title})}\label{xtv_8h_a126}
+
+
+Open the XTV display. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em nx}]Width of the image display window in screen pixels \item[{\em ny}]Height of the image display window in screen pixels \item[{\em nclrs}]number of colors to use \item[{\em zoomf}]zoom factor for the zoom window (0=no zoom window) \item[{\em parity}]1=flip Y-axis, 0=native order \item[{\em resource}]string with the resource variable (e.g., xtv.geometry) \item[{\em title}]title to appear on the window top banner\end{description}
+\end{Desc}
+\begin{Desc}
+\item[Returns:]file descriptor of X events on success\end{Desc}
+Opens the XTV image display with the requested properties \index{xtv.h@{xtv.h}!xy2index@{xy2index}}
+\index{xy2index@{xy2index}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int xy2index (int {\em xuser}, int {\em yuser})}\label{xtv_8h_a118}
+
+
+Convert (x,y) user coordinates into data vector index. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em xuser}]user X coordinate \item[{\em yuser}]user Y coordinate \end{description}
+\end{Desc}
+\begin{Desc}
+\item[Returns:]array index corresponding to (x,y), or -1 if out of bounds \end{Desc}
+\index{xtv.h@{xtv.h}!zcursor@{zcursor}}
+\index{zcursor@{zcursor}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void zcursor (int {\em j})}\label{xtv_8h_a100}
+
+
+New zoom cursor position (updatezoom() utility function). 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em j}]the location of the top left of the central pixel \end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!zeroborder@{zeroborder}}
+\index{zeroborder@{zeroborder}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void zeroborder (int {\em x0}, int {\em y0}, int {\em w0}, int {\em h0}, int {\em w}, int {\em h}, int {\em wto}, char $\ast$ {\em to}, int {\em nbytes})}\label{xtv_8h_a123}
+
+
+fill border with zeros 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x0}]X-axis origin of the source image \item[{\em y0}]Y-axis origin of the source image \item[{\em w0}]width (X-axis size) of source image \item[{\em h0}]height (Y-axis size) of source image \item[{\em w}]width (X-axis size) of the destination image \item[{\em h}]height (Y-axis size) of the destination image \item[{\em wto}]dimensions of the destination image \item[{\em to}]Destination image array \item[{\em nbytes}]\end{description}
+\end{Desc}
+\index{xtv.h@{xtv.h}!zfreeze@{zfreeze}}
+\index{zfreeze@{zfreeze}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void zfreeze (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a109}
+
+
+Freeze Zoom Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Routine that freezes the zoom window on one location \index{xtv.h@{xtv.h}!zhairs@{zhairs}}
+\index{zhairs@{zhairs}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void zhairs (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a113}
+
+
+Toggle Full-Screen Cross Hairs On/Off Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Toggles between the little cross and full-screen cross hairs. \index{xtv.h@{xtv.h}!zpeak@{zpeak}}
+\index{zpeak@{zpeak}!xtv.h@{xtv.h}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void zpeak (int {\em x}, int {\em y}, int {\em xuser}, int {\em yuser}, int {\em key})}\label{xtv_8h_a112}
+
+
+Find Peak Pixel Nearest the Cursor Action Function. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em x}]X-axis position of the cursor in window space \item[{\em y}]Y-axis position of the cursor in window space \item[{\em xuser}]X-axis position of the cursor in user space \item[{\em yuser}]Y-axis position of the cursor in user space \item[{\em key}]ASCII code of the key pressed\end{description}
+\end{Desc}
+Finds the peak pixel nearest the cursor and puts the cursor on that pixel. Searches +/-7 pixels around the current location. 

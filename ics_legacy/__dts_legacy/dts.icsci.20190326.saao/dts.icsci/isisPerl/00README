@@ -1,0 +1,93 @@
+modsPerl - MODS Command Scripting Engines
+Updated: 2011 Oct 31 [rwp/osu]
+
+Overview
+
+  modsPerl is a suite of Perl scripts that implement the MODS command
+  scripting engines.  
+
+  The 00NOTES file contains the current release notes, but you can
+  also query the version level of any script with the -V (--version)
+  command-line option.
+
+  All scripts are designed so that if executed without arguments they will
+  print a usage message.  This is the same as using the -h (--help) option.
+
+
+Files:
+  ISIS.pm:
+    Perl module that implements IMPv2 protocol UDP socket communications
+    and IMPv2 message handling for all MODS scripts and commands.
+
+  Observing, Acquisition, and Calibration Tools:
+
+  modsCmd:
+    Sends a single command to the backdoor socket interface of the 
+    MODS control panel, and then waits for a reply.  If the -t option
+    is used, it will wait for a reply or timeout, whichever comes first.
+    Was doMODS (see 00NOTES).  Requires that the MODS control panel GUI
+    is running.
+
+  execMODS: 
+    MODS observation scripting engine.  It will execute a MODS
+    observation script file.  Scripts are used by observers to
+    execute observations (.obs), calibrations (.cal) or instrument 
+    procedures (.pro).  Implements a suite of high-level instrument 
+    configuration and observing commands, but excludes target acquisition
+    and telescope presets, although offset motions are permitted.
+    The script engine communicates with the MODS control panel GUI
+    backdoor socket interface, so it requires that the MODS GUI is running.
+    MODS observing scripts are fully re-entrant at the line or block
+    level, permitting straightforward restart on fatal errors.  In default
+    mode, errors prompt the user to Abort/Retry/Ignore an error, giving
+    a high level of runtime control. An unattended option is provided
+    for after-morning calibration so a script won't stall out on
+    the abort/retry/ignore prompt after the observer has gone to bed.
+
+    See www.astronomy.ohio-state.edu/MODS/ObsTools/modsTools/ for a 
+    description of MODS observing and calibration scripts.
+    
+
+  acqMODS:
+    MODS target acquisition scripting engine.  Executes a MODS target
+    acquisition (.acq) script, which will point ("preset") the telescope, 
+    setup the guide star, and take acquisition images of the field and
+    (if required) through the desired slit mask.  It can also apply blind
+    offsets to place faint targets on a slit.  Acquisition is a distinct
+    operation from observation, so all science observations made using MODS
+    will require separate .acq and .obs scripts.  It also communicates
+    with the MODS GUI backdoor socket interface, so it requires that the
+    MODS GUI is running.  Errors prompt the user to abort/retry/ignore
+    the error, and there are various re-entrant execution modes.
+
+    See www.astronomy.ohio-state.edu/MODS/ObsTools/modsTools/ for a 
+    description of MODS acquisition scripts.
+
+
+  listMODS:
+    Lists a MODS observing (.obs), calibration (.cal), or procedure (.pro)
+    script, giving line numbers that can be used to run a script re-entrantly
+    with execMODS.
+
+
+  Engineering and Support Tools:
+
+  isisCmd:
+    Sends a single command to the named ISIS client node or the ISIS 
+    server proper.  The ISIS client address must be a valid and running
+    ISIS node.  Assumes an intimate acquaintance with the IMPv2 protocol,
+    and so is only meant to be used by LBTO or OSU support and engineering
+    personnel for low-level instrument support and testing purposes.
+
+  execISIS:
+    Executes a list of IMPv2 commands (a superset of isisCmd).  Also a
+    low-level engineering tool that should only be used by LBTO and OSU
+    instrument support and engineering personnel. A single line of an
+    isis "script" looks like the command options of isisCmd.
+
+  modsMask:
+    Operate the MODS1 or MODS2 slit mask cassette systems when doing
+    mask exchanges.  Works directly with the instrument ISIS and IE
+    servers, so no control panel needs to be running.  Only implements
+    that subset of mask commands needed for safe mask exchanges.
+    

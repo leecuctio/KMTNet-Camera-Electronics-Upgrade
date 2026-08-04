@@ -1,0 +1,4 @@
+#!/bin/bash
+
+#-- Start the TCS Agent
+xterm -e "/home/dts/bin/pctcs /home/dts/Agents/pctcs/KMTNet/pctcs.kmtnc.sta" &

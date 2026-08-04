@@ -1,0 +1,43 @@
+#!/bin/csh -f
+#
+# Start the KMTN Caliban agent safe and painless
+# Version for the KMTN testbed system
+#
+# usage: cb_kmtn
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.mps.ohio-state.edu
+# 2013 Apr 12
+#
+############################################################################
+
+setenv binDir  /home/dts/Agents/Caliban/bin
+setenv cfgDir  /home/dts/Config
+
+if ($#argv > 0) then
+   echo "Usage: cb_kmtn"
+   exit 1
+endif
+
+set logRoot = /home/data/Logs/Caliban/caliban.log
+set cbExec = "${binDir}/caliban"
+
+# Rotate the logs.  We retain them 9-deep (crudely implemented)
+
+\mv ${logRoot}.8 ${logRoot}.9 >& /dev/null
+\mv ${logRoot}.7 ${logRoot}.8 >& /dev/null
+\mv ${logRoot}.6 ${logRoot}.7 >& /dev/null
+\mv ${logRoot}.5 ${logRoot}.6 >& /dev/null
+\mv ${logRoot}.4 ${logRoot}.5 >& /dev/null
+\mv ${logRoot}.3 ${logRoot}.4 >& /dev/null
+\mv ${logRoot}.2 ${logRoot}.3 >& /dev/null
+\mv ${logRoot}.1 ${logRoot}.2 >& /dev/null
+\mv ${logRoot}   ${logRoot}.1 >& /dev/null
+
+# Launch caliban instance in a detached xterm
+
+set cbTitle = "KMTN Testbed Caliban Command Console"
+
+xterm -T "${cbTitle}" -e ${cbExec} 
+
+exit 0

@@ -1,0 +1,57 @@
+#!/bin/csh -f
+#
+# startisis - wrapper used to invoke the ISIS server in a safe fashion
+#
+# usage: startisis
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.mps.ohio-state.edu
+# 2013 Apr 12 [KMTN Testbest Configuration]
+#
+############################################################################
+
+# Local config
+
+set isisDir = /home/dts/ISIS/bin
+set interactive = 0
+
+# Who invoked this script?
+
+set userID = $USER
+set hostID = $HOST
+
+# first make sure no isis server instance is already running
+
+ps h -C isis >& /dev/null
+if ($status) then
+   set isisUp = 0
+   set isisUser = ${USER}
+else
+   set isisUp = 1
+   set isisUser = `ps eo user h -C isis`
+endif
+if (${isisUser} == ${userID}) set isOwner = 1
+
+# what to do?
+
+if ($isisUp) then
+   echo " "
+   echo "An isis server is already being run by user ${isisUser} on host ${hostID}"
+   echo "You must stop that instance before starting a new one by logging in as"
+   echo "user ${isisUser} on ${hostID} and running 'mods1 stop isis'."
+   echo " "
+   exit 1
+endif
+
+# No isis instance is running, start one in an xterminal if we've enabled
+# interative mode, otherwise launch as a pseudo-daemon in the background
+
+if ($interactive) then
+   xterm -e ${isisDir}/isis 
+else
+   ${isisDir}/isis -d &
+endif
+
+exit 0
+
+end

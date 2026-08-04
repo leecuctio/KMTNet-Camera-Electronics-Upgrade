@@ -1,0 +1,29 @@
+VERSION:sh  = date '+%y%h%d'
+CC          = /usr/local/bin/gcc
+AR          = /usr/bin/ar
+CFLAGS	    = -w -c
+LFLAGS      = -o Caliban
+
+OFILES      = XmitMsg.o AckDisk.o InitDisk.o InitDiskTable.o InitSerial.o IsValidMount.o \
+	      LogMsg.o ConsoleMsg.o Pong.o Prompt.o Status.o TransferDisk.o UseDisk.o    \
+	      UseMount.o Utils.o ParseIniFile.o GetFITS.o ReqMount.o Ping.o CBStatus.o   \
+	      ChkDiskSpace.o
+
+.c.o:       Caliban.h
+	    $(CC) $(CFLAGS) $*.c
+
+all:        libx.a Caliban
+
+Caliban.o:  Caliban.h
+	    $(CC) $(CFLAGS) -DVERSION='"Caliban v2.1 OSU ($(VERSION))"' Caliban.c
+
+libx.a:	    $(OFILES) Caliban.o
+	    /bin/rm -f  libx.a
+	    $(AR) cr libx.a	`lorder $(OFILES) Caliban.o | tsort`
+	    ranlib libx.a
+
+Caliban:    libx.a
+	    $(CC) $(LFLAGS) libx.a /lib/libcurses.a /lib/libtermlib.a
+
+clean:
+	    /bin/rm -f Caliban libx.a *.o *~ #*

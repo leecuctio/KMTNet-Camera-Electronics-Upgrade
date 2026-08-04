@@ -1,0 +1,100 @@
+// XmitMsg Routine                                                             
+// Purpose : Central message multiplexer                                       
+// Requires: Port handle, Destination name, Message format string and buffer   
+// Returns : Nothing                                                           
+
+#include "Caliban.h"
+#include <stdarg.h> // Used for variable length argument list instead of varargs   
+
+//void XmitMsg(va_alist)
+//va_dcl
+
+void XmitMsg(int port, ... )
+{
+  // Note that this routine accepts a variable number of parameters to allow   
+  // for a variable length format string                                       
+
+  int cnt=0;                      // Format string index                       
+  int argcnt=0;                   // Argument index                            
+  char *host;                     // Destination host name                     
+  char *format;                   // Message format string                     
+  char expformat[MED_STR_SIZE];   // Expanded format string                    
+  char arglst[LONG_STR_SIZE];     // Argument list                             
+  char xmitstr[LONG_STR_SIZE];    // Message to be transmitted                 
+  char outstr[LONG_STR_SIZE];     // Generic output buffer                     
+
+  static struct sockaddr_in server;
+
+  va_list paramlist;              // Variable parameter list structure         
+
+
+  // Yow! 
+
+  memset(expformat, 0, sizeof(expformat)); 
+  memset(arglst, 0, sizeof(arglst));
+
+  va_start(paramlist,port);        // Initialize variable length parameter list 
+
+  host = va_arg(paramlist, char *);   // Host is the first optional argument after port
+  format = va_arg(paramlist, char *); // Then the format string                
+
+  // Loop through the format string and replace %s's with the corresponding    
+  // remaining arguments in the list                                           
+
+  while (cnt<strlen(format)) {
+    if (format[cnt]=='%') {
+      cnt += 2;
+      strcat(arglst, va_arg(paramlist, char *));
+      argcnt = strlen(arglst);
+    }
+    arglst[argcnt++]=format[cnt++];
+  }
+
+  sprintf(expformat, "%s %s", "%s>%s", arglst);
+
+  // Format output string including address info    
+
+  sprintf(outstr, expformat, systab->localhost, host);      
+
+  // If this is going to myself, don't even send it 
+
+  if (strcmp(host, systab->localhost)==0) {
+    ConsoleMsg("%s", outstr);
+
+  }
+  else {
+    sprintf(outstr, "%s\r", outstr);
+
+    if (port == systab->fd_serial) {
+      if (write(port, outstr, strlen(outstr)) < 0) {
+	REDTEXT;
+	printf("ERROR: cannot write to serial port - %s\n",strerror(errno));
+	TXTRESET;
+	return;
+      }
+
+    } 
+    else if (port == systab->fd_socket) {
+      server.sin_family = AF_INET;
+      server.sin_addr.s_addr = htonl(systab->serveraddr);
+      server.sin_port = htons(systab->serverport);
+      if (sendto(port,outstr,strlen(outstr),0,
+		 (struct sockaddr *) &server, sizeof(server)) < 0) {
+	REDTEXT;
+	printf("ERROR: cannot send message to socket - %s\n",strerror(errno));
+	TXTRESET;
+	return;
+      }
+    }
+    else {
+      REDTEXT;
+      printf("ERROR: uninitialized port = %d, message not sent\n",port);
+      TXTRESET;
+      return;
+    }
+      
+    if(systab->verbose == cb_TRUE) {
+      ConsoleMsg("OUT: %s", outstr);
+    }
+  }
+}

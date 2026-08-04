@@ -1,0 +1,18 @@
+#Caliban Initialization File
+LOG_FILE_NAME Caliban.log
+SERIAL_PORT /dev/ttya
+BLOCK_SIZE 512
+VERBOSE
+# DEBUG
+SERIAL_HOST WC
+LOCAL_HOST CB
+MAX_XFER_FILES 150
+SPOOL_DEVICE /dev/sd5a
+SPOOL_DEVICE /dev/sd7a
+DBG_HEADLNG 10
+DBG_DATALNG 8542
+MOUNT UNIX:\CB\/home/rowland/dts/data1
+# MOUNT UNIX:\CB\/home/rowland/dts/data2
+# MOUNT UNIX:\CB\/home/rowland/dts/data3
+# MOUNT UNIX:\CB\/home/rowland/dts/data4
+

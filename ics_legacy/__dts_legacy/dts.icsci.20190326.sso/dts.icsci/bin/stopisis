@@ -1,0 +1,41 @@
+#!/bin/csh -f
+#
+# stopisis - Stop the ISIS server safely
+#
+# usage: stopisis
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.mps.ohio-state.edu
+# 2013 Apr 12 [KMTN Testbed Configuration]
+#
+############################################################################
+
+# Who invoked this script?
+
+set userID = $USER
+set hostID = $HOST
+
+# first make sure no lbttcs instance is already running
+
+ps h -C isis >& /dev/null
+if ($status) then
+   set isisUp = 0
+   printf "\nNo ISIS server is running, nothing to stop...\n"
+   exit 0
+else
+   set isisUp = 1
+   set isisUser = `ps eo user h -C isis`
+endif
+if (${isisUser} == ${userID}) then
+   printf "Stopping the ISIS server...\n"
+   killall isis
+else
+   printf "\nERROR: Cannot stop ISIS server on ${hostID}\n"
+   printf "       You are not the owner, owner is user ${isisUser}\n"
+   printf "       You must login as ${isisUser} and then run stopisis\n"
+   exit 1
+endif
+
+exit 0
+
+end

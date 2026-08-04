@@ -1,0 +1,83 @@
+#!/bin/csh -f
+#
+# startagent - wrapper used to invoke an ISIS client agent in a safe fashion
+#
+# usage: startagent agentID [int]
+#
+# Starts agentID on the local host.  If the int argument is given, it
+# starts agentID in an interactive xterm, otherwise agentID is started
+# in the background.
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.mps.ohio-state.edu
+# 2010 Sept 22
+#
+# Modification History:
+#   2010 Dec 15: added int option [rwp/osu]
+#   2013 Apr 12: version for the KMTN testbed [rwp/osu]
+#
+############################################################################
+
+# Where most things live
+
+set binDir = /home/dts/bin
+
+# Who invoked this script?
+
+set userID = $USER
+set hostID = $HOST
+
+# Check for command-line options
+
+if ($#argv == 1) then
+   set agentID = $1
+   set startInt = 0
+else if ($#argv == 2) then
+   set agentID = $1
+   if ($2 == "int") then
+      set startInt = 1
+   else
+      printf "Syntax Error: second argument must be int or nothing\n"
+      printf "Usage: startagent agentID [int]\n";
+      exit 1
+   endif
+else
+   printf "Usage: startagent agentID [int]\n"
+   exit 1
+endif
+
+# First make sure an agentID instance is not already running
+
+ps h -C $agentID >& /dev/null
+if ($status) then
+   set agentUp = 0
+   set agentUser = ${USER}
+else
+   set agentUp = 1
+   set agentUser = `ps eo user h -C $agentID`
+endif
+if (${agentUser} == ${userID}) set isOwner = 1
+
+# what to do?
+
+if ($agentUp) then
+   printf "\n${agentID} is already being run by user ${agentUser} on host ${hostID}\n"
+   printf "You must stop that instance before starting a new one by using the\n"
+   printf "'stopagent $agentID' command when logged in as user ${agentUser}.\n\n"
+   exit 1
+endif
+
+# No agentID is running, start one in a detached xterminal if
+# interactive, otherwise start it in the background
+
+if ($startInt) then
+    printf "Starting ${agentID} in interactive shell mode...\n"
+    xterm -e ${binDir}/${agentID} 
+else
+    printf "Starting ${agentID}...\n"
+    ${binDir}/${agentID} &
+endif
+
+exit 0
+
+end

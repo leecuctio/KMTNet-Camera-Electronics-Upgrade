@@ -1,0 +1,23 @@
+#
+# ISIS Initialization File
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.ohio-state.edu
+# 2003 January 8
+#
+###########################################################################
+
+# Local Server Setup
+
+ServerID   IS
+ServerPort 6600
+ServerLog  ./isis.log
+Verbose
+
+# MS-DOS "WC" PC connected to serial port /dev/ttyS0
+
+TTYPort /dev/ttyS0
+
+# Instrument
+
+Instrument ANDICAM

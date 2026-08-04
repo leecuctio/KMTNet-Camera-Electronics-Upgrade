@@ -1,0 +1,575 @@
+Draft ISIS Command Set
+R. Pogge, OSU Astronomy Dept.
+2003 January 10
+
+This document describes the current ISIS Command Set.  It is currently
+in text format, it will be reformatted into HTML for the final
+documentation.  It is definitely a work-in-progress at this point.
+
+
+Command Summary
+---------------
+
+Executive Commands (keyboard-only)
+------------------
+   QUIT      Terminate the server session and exit
+   HOSTS     Print a table of all currently known client hosts on the screen
+   INFO      Display detailed server information on the screen
+   HELP      List of server commands
+   VERBOSE   Echo all server communications to the screen
+   CONCISE   Suppress echoing of communications (opposite of VERBOSE)
+   HISTORY   List recently typed commands (like Unix history)
+
+Communications Control
+----------------------
+   PING      Communications initialization request, responds with a PONG 
+   PONG      Communications initialization acknowledge, no response required
+   RESTART   Warm restart the server, clear runtime tables, PING fixed ports
+   PORTS     Lists all tty (serial) ports enabled
+   FLUSH n   Flush tty port n of junk
+   REMOVE xx Remove host xx from the client host table
+
+Utilities
+---------
+   VERSION   Return program version info, executable path, compilation info
+   HOST xx   Return info on a specific client host (or "all" hosts)
+   STATUS    Return a server status message (ICIMACS version of INFO)
+   CONFIG    Displays information on known hosts in "config" format
+   TIME      Report the UTC time and date in FITS format
+   -LOG      Disable the server's runtime log temporarily
+   +LOG      (Re)Enable the server's runtime log after -LOG
+
+Telescope Interface Commands
+----------------------------
+   TCINIT    Initialize the TCS interface 
+   TCCLOSE   Close the TCS interface
+   TCSTATUS  Return TCS status
+   TCSCMD    Send a command to the TCS
+
+ICIMACS Protocol Message-Type Codes
+-----------------------------------
+   DONE:     Completion acknowledgment returned by a previous REQ:
+   STATUS:   Information requested or broadcast
+   ERROR:    Error message returned by a previous REQ:
+   WARNING:  Warning message returned by a previous REQ: 
+   FATAL:    Fatal error upstream, maybe in response to an REQ:
+
+
+--------------------------------------------------
+
+Detailed Command Descriptions
+-----------------------------
+    
+Executive (Keyboard-only Commands
+---------------------------------
+
+   QUIT      Terminate the server session and exit
+   HOSTS     Print a table of all currently known client hosts on the screen
+   INFO      Display detailed server information on the screen
+   HELP      List of server commands
+   VERBOSE   Echo all server communications to the screen
+   CONCISE   Suppress echoing of communications (opposite of VERBOSE)
+
+------------------------------
+
+QUIT - Terminate the server session and exit.
+
+Usage: QUIT <no args>
+
+Description:
+   Shuts down the ISIS server and exits the program.  Before exiting, it
+   sends out a broadcast message of the form
+     
+     xx>AL STATUS: XX=DISABLED OFFLINE
+
+   to all known client hosts, and then it tears down the server socket
+   and exits back to the operating system.
+
+Calls:
+   None, but may enable an executive-level remote connection for clean
+   shutdown (as opposed to "kill -9 PID").
+
+------------------------------
+
+HOSTS - Print a table of all known client hosts on the screen
+
+Usage: HOSTS <no args>
+
+Description:
+   Prints a table of the contents of the cli_tab client table struct
+   onto stdout.  Output is formatted for human readability.  See the
+   HOST command for generating ICIMACS-format messages.
+
+Calls:
+   PrintHosts("all");
+
+Notes:
+   Equivalent to the HOST ALL command (see below) if issued from the keyboard.
+
+------------------------------
+
+INFO - Display detailed server information on the screen
+
+Usage: INFO <no args>
+
+Description:
+   Prints information about the current server configuration in
+   human-readable form. Reports all information returned by the VERSION
+   and STATUS commands (see below), plus additional engineering
+   information only accessible at the command-line prompt.
+
+Calls:
+   PrintInfo();
+
+------------------------------
+
+HELP - Print a list of all server commands
+
+Usage: HELP <no args>
+
+Description:
+   Prints a list of all server commands (looks like the summary above)
+   on stdout.  Designed as an aide-memoire, not a comprehensive help
+   utility.
+
+Calls:
+   PrintHelp();
+
+------------------------------
+
+VERBOSE - Echo all server communications to the screen (stdout)
+
+Usage: VERBOSE <no args>
+
+Description:
+   VERBOSE puts the server command-line console into verbose mode.
+   In verbose mode, all server communications are echoed to the
+   server's command-line console (stdout).  It the effect of
+   echoing to the screen what normally is only put into the server's
+   runtime log file.  
+
+   VERBOSE mode is canceled using the CONCISE command.
+
+   VERBOSE mode is often enabled/disabled at startup in the server's
+   initialization file.  It is primarily useful for engineering or when
+   using the server's command-line interface as an engineering command
+   console.  There is no facility for echoing verbose output to
+   other hosts.
+
+Calls:
+   none, handled by ISISCommand()
+
+See Also: CONCISE, LOG
+
+------------------------------
+
+CONCISE - Suppress echoing of server communications to the screen.
+
+Usage: CONCISE <no args>
+
+Description:
+   CONCISE cancels VERBOSE mode, and suppressed echoing of server
+   communications traffic to the command-line console (stdout). In
+   CONCISE mode, only replies to server commands issued at the command-line
+   or messages for the server proper in response to commands are
+   printed on the screen.
+
+   CONCISE mode is canceled by the VERBOSE command.
+
+   CONCISE mode is often enabled/disabled at startup in the server's
+   initialization file.  
+
+Calls:
+   none, handled in ISISCommand();
+
+See Also: VERBOSE
+
+------------------------------
+
+HISTORY - List all recently typed server commands
+
+Usage: HISTORY <no args>
+
+Description:
+   Prints a list of all recently typed server commands on the screen,
+   numbered in order from oldest to most recent.  In operation, it acts
+   like the regular Unix command history utility.
+
+   Like Unix history, the following history commands are available:
+
+   !! 
+     repeat last command
+   !n
+     repeat command n in the history list
+   !string  
+     repeat the most recent command beginning with "string"
+   !
+     begin a history substitution.
+
+   It uses the GNU History Library to provide services.
+
+Calls:
+   GNU History library routines embedded in TTYHandler()
+
+--------------------------------------------------
+
+Communications Control Commands
+-------------------------------
+
+   PING       Communications initialization request, responds with a PONG 
+   PONG       Communications initialization acknowledge, no response required
+   RESTART    Warm restart the server, clear runtime tables, PING fixed ports
+   PORTS      Lists all tty (serial) ports enabled
+   FLUSH n    Flush tty port n of junk
+   REMOVE xx  Remove host xx from the client host table
+
+------------------------------
+
+PING - Communications initialization request
+
+Usage: PING <no args>
+
+Description:
+   A client host will initialize communications with the server by
+   sending a PING.  The server logs the host in the client host
+   table, and responds with a PONG in reply.
+
+Calls:
+   ISISCommand();
+
+See Also: PONG, HOSTS
+
+------------------------------
+
+PONG - Communications initialization acknowledge
+
+Usage: PONG <no args>
+
+Description:
+   If the server sends a PING to a client host, a PONG will be
+   received in reply.  
+
+   On doing a RESTART, the server will broadcast a PING to all fixed
+   ports (serial, fifo, or remote server sockets) and record who
+   PONGs in reply to build an initial client host table.
+
+   PONGS generate no reply messages in return.
+
+Calls:
+   ISISCommand();
+
+See Also: PING, RESTART
+
+------------------------------
+
+RESTART - Reinitialize the server ("warm restart")
+
+Usage: RESTART <no args>
+
+Description:
+   Restarts the server, taking the following actions, in order:
+     1) Re-reads the server initialization file, resetting 
+          it to the original state when started.
+     2) Broadcasts a PING to all previously known clients
+     3) Re-enters the server loop to service incoming PONGs to
+          update the client host table.
+
+   RESTART will attempt a warm restart of the server.  It starts
+   by restoring the runtime defaults setup in the ini file, and then
+   sends a ">AL PING" to all previously known clients to update the
+   client table.
+
+Calls:
+   ParseIniFile() and BroadcastMessage()
+
+See Also: PING, PONG, QUIT
+
+--------------------------------------------------
+
+Utility Commands
+----------------
+
+   VERSION   Return program version info, executable path, compilation info
+   HOST xx   Return info on a specific client host (or "all" hosts)
+   STATUS    Return a server status message (ICIMACS version of INFO)
+   CONFIG    Displays information on known hosts in "config" format
+   TIME      Report the UTC time and date in FITS format
+   -LOG      Disable the server's runtime log temporarily
+   +LOG      (Re)Enable the server's runtime log after -LOG
+
+------------------------------
+
+VERSION - Return program version information
+
+Usage: VERSION <no args>
+
+Description:
+   VERSION returns a string to the calling client with a concise
+   description of the server: program version number, executable
+   path, and date/time of compilation.  Output is in ICIMACS format.
+
+Calls:
+   PrintVersion();
+
+See Also: INFO
+
+------------------------------
+
+HOST - Return information about client hosts
+
+Usage: HOST [hostID|all]
+
+where:
+   hostID = name of a client host
+   all    = return information about all known client hosts
+
+Description:
+   Returns to the calling client concise information about currently 
+   connected client host(s).  There are three ways HOST works:
+
+   "HOST hostID" returns information about a specific client host.
+
+   "HOST all" returns a brief list of all known hosts (without the
+      additional detailed information returned by single HOST query).
+
+   If HOST is given without arguments, it does the same as HOST ALL
+
+   Output is formatted depending on context:
+
+     If the command was from the command-line, it returns detailed
+     information to the screen without message formatting, and HOST
+     without arguments is an alias for HOSTS.
+  
+     If the command was from a client, the information is returned
+     as an ICIMACS message string.
+
+Calls:
+   If TTY: PrintHosts(%s);
+   If Client: HostInfo(%s);
+   
+
+See Also: HOSTS
+
+------------------------------
+
+-LOG - Disable the server's runtime log
+
+Usage: -LOG <no args>
+
+Description:
+   -LOG disables the server's runtime log and closes the log file.
+   Returns with a note that logging is disabled.
+
+   Legacy command providing back compatibility with older systems.  As
+   originally conceived, -LOG is an engineering command only used if
+   there is a compelling need to stop the server's runtime log (e.g.,
+   disk space is critical and we need to delete the current large log to
+   save space).
+
+Calls: 
+   DisableLog();
+   
+See Also: LOG, +LOG
+
+------------------------------
+
++LOG - (Re)Enable the server's runtime logging
+
+Usage: +LOG <no args>
+
+Description:
+   +LOG is used to re-enable logging after a -LOG has been issued,
+   or to enable logging if it was not enabled by the server startup
+   file.
+
+   +LOG is a legacy command for back compatibility with earlier systems,
+   and conceived as an engineering-level command.
+
+
+Calls:
+   EnableLog();
+
+See Also: LOG, -LOG
+
+------------------------------
+
+STATUS - Report the current server status (ICIMACS version of INFO)
+
+Usage: STATUS <no args>
+
+Description:
+
+   Reports back to the calling client the current server status.
+   Information is returned in the form of an ICIMACS format message
+   string.  
+
+   The INFO command provide more detailed information to the server's
+   command-line console.
+
+Calls:
+   ServerInfo();
+
+See Also: INFO, VERSION
+
+------------------------------
+
+TIME - Report the UTC time and date in FITS format
+
+Usage: TIME
+
+Description: 
+
+   Report the current UTC time and date to the calling client in the
+   form of FITS-compliant keyword=value pairs.  This provides a way for
+   clients that do not have access to time services to get consistent
+   time/date info.  Dates and times are reported in ISO-8601 format
+   as follows:
+   
+      TIME=hh:mm:ss.s DATE=CCYY-MM-DD TIMESYS=UTC
+   
+Calls:
+   GetUTCTime();
+
+See Also: 
+
+--------------------------------------------------
+
+Telescope Interface Commands
+----------------------------
+
+   TCINIT    Initialize the TCS interface
+   TCCLOSE   Close the TCS interface
+   TCSTATUS  Return TCS status (pointing info)
+   TCSCMD    Send a command to the TCS
+
+If a telescope control system (TCS) interface is available with the
+server installation, a small subset of TCS commands are available.  This
+allows the server to act as a filter between whatever protocol used by
+the TCS and hosts on the ICIMACS system.
+
+------------------------------
+
+TCINIT - Initialize the TCS interface
+
+Usage: TCINIT <no args>
+
+Description:
+   Initializes the server's TCS interface, reporting back success or
+   failure to the caller.
+
+Calls:
+   XXXTCSInit(); where XXX is the specific interface (e.g., MDM, SOAR, etc)
+
+Notes: 
+   At present TCINIT does not take command-line arguments, but this
+   may be implementation-dependent in the future (e.g., the TCINIT
+   command might require an optional host:port specification).
+
+See Also: TCCLOSE
+
+------------------------------
+
+TCCLOSE - Close the TCS interface
+
+Usage: TCCLOSE <no args>
+
+Description:
+   Close the server's TCS interface and report back success or
+   failure to the caller.
+
+Calls:
+   XXXTCSClose(); where XXX is the specific interface (e.g., MDM, SOAR, etc)
+
+
+See Also: TCINIT
+
+------------------------------
+
+TCSTATUS - Return TCS status
+
+Usage: TCSTATUS <no args>
+
+Description:
+   Queries the TCS for its current status (pointing info, etc.) and
+   returns the status to the caller formatted as a FITS-compliant
+   set of keyword=value pairs.
+
+   ???Does operation block pending TCS response???
+
+Calls:
+   XXXTCSStatus();  where XXX is the specific interface (e.g., MDM, SOAR, etc)
+
+See Also: TCINIT, TCCLOSE
+
+------------------------------
+
+TCSCMD - send a command to the TCS
+
+Usage: TCSCMD [command string]
+
+Description:
+   Pass the given command string to the TCS for execution.  Returns
+   success or failure to the caller, along with any ancillary data
+   returned by the TCS.  Actual returns are implementation-dependent.
+
+   ???Does operation block pending TCS response???
+
+Calls:
+   XXXTCSCmd(); where XXX is the specific interface (e.g., MDM, SOAR, etc)
+
+See Also: TCSTATUS, TCINIT
+
+--------------------------------------------------
+
+ICIMACS Protocol Message-Type Codes:
+-----------------------------------
+
+ICIMACS protocol message strings take the following format
+
+	srcID>destID Message_Type Message_Body\r
+
+where
+	srcID        = ICIMACS name of the sending host (8 chars max)
+	destID       = ICIMACS name of the destination host (8 chars max)
+	Message_Type = type of message being sent (see below)
+	Message_Body = command or message text being sent.
+	\r           = termination character ("return" = ASCII 13)
+
+   There are 5 Message_Type codes that are recognized by ISIS:
+
+   Message_Type  Means this message is ...
+   -------------------------------------------------------------------------
+      DONE:      a completion acknowledgment returned by a previous REQ:
+      STATUS:    an informational message, no action required.
+      ERROR:     an error message, the requested action has been terminated.
+      WARNING:   a warning message, meaning that an unexpected result has 
+                    occurred but the requested action continues.
+      FATAL:     a fatal error message, reserved for error conditions that
+                    preclude acquiring or saving data.
+   -------------------------------------------------------------------------
+
+   If an ICIMACS message directed to the ISIS server proper has one of
+   these 5 tags, it takes the following actions:
+
+   Message_Type   Action
+   --------------------------------------------------------
+      DONE:       Print message body to stdout and log it
+      STATUS:     Print message body to stdout and log it
+      ERROR:      Ring bell, print and log message body
+      WARNING:    Ring bell, print and log message body
+      FATAL:      Ring bell, print and log message body
+   --------------------------------------------------------
+
+   Future versions of the ISIS server will likely implement other
+   actions on receiving any of the error/warning messages.
+
+   A complete description of the ICIMACS protocol is available
+   at this URL:
+
+      http://www.astronomy.ohio-state.edu/~isl/protocol.html
+
+
+------------------------------
+R. Pogge, OSU Astronomy Dept.
+pogge@astronomy.ohio-state.edu
+2003 January 10

@@ -1,0 +1,364 @@
+KMTNet TCS Agent software update notes (2014-04-01 S.Cha)
+
+# KMTNet v1.0 Beta
+- modified from Yale1m version(PCTCS v3.3.1) for KMTNet system
+- KMTNet TCS = PC-TCS with Telcom + AUX control with remote command server
+- Modification of the interface and communication protocol
+  - PC-TCS serial port --> Telcom TCP/IP server + AUX TCP/IP server
+  - COMSOFT Native protocol --> PCTCS-NG Network + AUX remote commands
+
+
+<< Modification notes >>
+
+<build>
+- no
+
+<Makefile>
+- version info setting >> if not defined..
+
+<pctcs.ini>
+- removal of serial port info
+- addition of PCTCS Telcom server and AUX control server info
+- addition of TCS info update intervals
+- modification of timeout and idle time intervals
+- addition of HW configuration
+- addition of guiding step (arcsec/step)
+- addition auto recovery setting flags
+- modification runtime flag for app setting - using on/off
+- addition of arc interval
+- remove aux link timeout
+
+<pctcs.h>
+- default app version info setting to use macro in source code "pctcs.h"
+- addtion of default setting(define) of new runtime config
+    - removed serial port setting
+    - added PCTCS Telcom server and AUX control server info
+    - added TCS info update intervals
+    - modified communication timeout and idle time intervals
+    - add arcint
+    - remove aux timeout
+    - remove aux subsys's update int
+    - add aux common update interval
+- addition Server info and etc into TCS/AUX data structure
+- make new structure for TCS Agent process info
+- remove sip flag
+- remove site information - only KMTNet
+- remove UTCDate, UTCTime and DateTag, not useful @ KMTNet TCS
+- add ArcInterval in agent
+- remove aux timeout
+- remove aux subsys's update interval
+- add aux common update interval
+- add aux filter/shutter op timeout margine
+
+
+<loadconfig.c>
+- addition of new config keywords
+- display for debugging
+- Telcom & AUX server host name check
+
+<comsoft.c>
+- Addition KMTNet TCS substring parsing
+    - PC-TCS Telcom
+    - AUX remote command
+- remove chksum_comsoft() since TCP/IP will be used
+- addition of definitions for telcom command packet ID
+- modification of parse_comsoft() for KMTNet tcs only
+  - PC-TCS serial telemetry stream (PC-TCS Native protocol)
+    --> Telcom tcp telemetry packet (NG network protocol)
+  - add return value, 0(data ok), -1(no AltAz), -2(no data)
+  - time/data --> usage host system time
+  - add -1 value to flags for unknown case
+- addition of ClearPCTCS() function
+- addition of UpdateTcsMoving()
+- add InitAUX()
+- add ClearAUX()
+
+<commands.c>
+- not changed functions
+    - KeyboardCommand() - color setting for important message display
+    - cmd_quit()
+    - cmd_verbose()
+    - cmd_debug()
+    - cmd_ping() & cmd_pong()
+    - cmd_history()
+    - tcinit()-->tcsinit()
+- removed func
+    - cmd_ports() - print port table
+    - cmd_setidle()
+    - cmd_sip()
+- modified func
+    - SocketCommand() - add SocketCmdFlag setting for important msg display
+    - cmd_version()
+      change msg to "KMTNet TCS Agent .." & agent.AppVersion
+    - cmd_info()
+      using agent.AppVersion, tcs port --> tcs server info,
+      TCSLink --> PctcsLink & TelcomLink, add UpdateInt info,
+      add AUX server info, AUXLink, App info in agent structure,
+      add AutoRecoveryMode report
+    - cmd_help()
+      update cmd & descriptions for KMTNet ver, Add AUX cmd
+    - tcclose()-->tcsclose()
+      use ClearPCTCS()
+    - tcstatus()-->tcsstatus()
+      Add TelemDate/Time, add Alt/Azm, add drive sta, add serial com port num,
+      add execode, use local var & curtime for DATE-OBS/TIME-OBS, Add ARCmode
+    - tstat()
+      Add ARCmode 
+    - tcscmd()
+      add inspection/set update flag, remove chksum_comsoft(), 
+      writing serial --> send/receiving TCP port, add inspection of response
+    - tcssynch()
+      EXEC, using cmd_tcscmd() for sending command
+- new func
+    - tguide() - tcsguide RA_offset Dec_offset ==> STEP RA / STEP DEC
+    - tcsraw() - return raw telemetry packet string
+    - tgoto()
+    - toffset()
+    - ..
+    - auxinit()
+    - acmd()
+    - ..
+- utility functions
+    - add aux utility & subroutine functions
+
+<commands.h>
+- tcs cmdtap/functionname modification/addition
+    - tcinit --> tcsinit
+    - reset  --> tcsreset
+    - tcclose --> tcsclose
+    - tcsautore - new
+    - idletime - remove
+    - tcstatus --> tcsstatus
+    - tstat - no change
+    - traw - new
+    - tcsynch --> tsynch, EXEC
+    - tcscmd --> tcmd, no change
+    - tguide - new
+    - tgoto - new
+    - toffset - new
+    - tstop - new
+    - tdi - new
+- aux cmdtap/function addition
+  --> see the code
+
+<main.c>
+- TCS telemetry req cmd send
+- TCS telemetry socket input monitoring instead of serial input monitoring
+- TCS link auto recovery
+- monitoring PC-TCS serial telemetry
+  --> monitoring both TCS Telcom link & PC-TCS telemetry data
+- AUX telemetry & result monitoring, if failed set link to down
+- AUX filter/shutter status monitoring & print warning/error message
+
+
+<< Notes for user >>
+- tcsgoto: Input Epoch must be set to J2000 manually on PC-TCS before this command
+- tcssynch: User must check the UT date will not change soon before using this cmd
+  since if the time is pass on 24:00 in progress, the date will be not correct.
+
+
+<< Memo >>
+
+- PCTCS telemetry Dome error check >> No
+- PCTCS telemetry 95 --> COM number or a part of JD >> COM number 0~
+- need to check both TCP/IP connection & PCTCS link
+    - connection status monitoring
+    - check telemetry data --> link check
+    - in the case telcom server is ok, but data is not ok
+- Telcom BAD --> status check
+- In Telcom telemetry stream, is there 0x00 ?
+
+- Reference for converting IP addr to/from string
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+
+    char *inet_ntoa(struct in_addr in);
+    int inet_aton(const char *cp, struct in_addr *inp);
+    in_addr_t inet_addr(const char *cp);
+
+    * pton()/ntop() --> AF_INET6 is available
+
+- send STATUS when Link is changed to IDLE or DOWN ??
+- auto recover setting flag
+
+MilliSleep(500);  
+
+
+
+
+
+
+-----------------------------------------------------------------
+-----------------------------------------------------------------
+
+  /*
+  // Execution code update between RA and Dec commands
+
+  if( raop && decop ) {  // if both RA and Dec is operated
+
+    // Send the telemetry request CMD for propmt update of execution code
+
+    rtn = send(tcs.FDtel, tcs.RequestMsg, tcs.RequestLen, 0);
+    if( rtn < tcs.RequestLen ) {
+      //if(client.isVerbose) {
+        CYATEXT;
+        printf("\nWarning: Telemetry request CMD send error\n");
+        TXTRESET;
+        rl_refresh_line(0,0);
+      //}
+    }
+
+    // Waitting for telemetry request complete
+
+    tick = SysTimestamp();
+    while(1) {
+      if( tcs.UpdateFlag ) break;
+      if( (SysTimestamp()-tick) > (tcs.UpdateInt*2.0) ) {
+        strcpy(reply, "Guide command failed - update execute code timeout");
+        return CMD_ERR;
+      }
+      MilliSleep(100);
+    }
+
+  }
+  */
+  // This code is inappropriate because recv & update routine is not thread and
+  // this function is blocking the main loop to update telemetry data.
+  // So the code was change to the below code.
+
+-----------------------------------------------------------------
+
+  if( raop && decop ) {  // if both RA and Dec is operated
+
+    // Send the telemetry request CMD for propmt update of execution code
+
+    rtn = send(tcs.FDcmd, tcs.RequestMsg, tcs.RequestLen, 0);
+    if( rtn < tcs.RequestLen ) {
+      REDTEXT;
+      sprintf(reply, "Telemetry request CMD send failed - cmdlen = %d, sentbyte = %d", 
+                     tcs.RequestLen, rtn);
+      TXTRESET;
+      return CMD_ERR;
+    }
+
+    // Waitting and Receive the telemetry data
+
+    rtn = recv(tcs.FDcmd, tcsbuf, BUF_SIZE-1, 0);
+
+    if( rtn < tcs.MinTelemetryLen ) {  // not enough telemetry data length
+      if(rtn>0) tcs.TelcomTick = SysTimestamp();
+      REDTEXT;
+      sprintf(reply, "Telemetry data update failed - recvbyte = %d", rtn);
+      TXTRESET;
+      return CMD_ERR;
+    }
+
+    // Inspection and Update the telemetry data
+
+    tcs.TelcomTick = SysTimestamp();
+    rtn = parse_comsoft(&tcs,(tcsbuf+tcs.ReqHedLen));
+    if(rtn==0) tcs.PctcsTick = SysTimestamp();    // telemetry data ok
+    if(rtn<-4) {                                  // no data
+      REDTEXT;
+      sprintf(reply, "Telemetry data update failed - no data", rtn);
+      TXTRESET;
+      return CMD_ERR;
+    }
+
+  }
+
+--> int TelemetryUpdate(char *reply);
+
+-----------------------------------------------------------------
+
+
+
+
+//-------------------------------------------------------------------------
+//
+// AuxFSUpdate - Update the AUX Filter/Shutter status from limit switch statuses
+//
+// - Filter number is updated with Limit statuses of 4 filter slides
+// - Filter OpStatus is set to RUNNING if all Limit statuses are AUX_BILIMIT_NO(0)
+// - Filter OpStatus is set to ERROR if any filter slide is running longer
+//   than OpTime(operation time)+5s defined in runtime HW config
+//
+// - Status(open/closed status) and OpStatus(operation status) are updated 
+//   through monitoring Limit statuses of both SF(full shutter) & SH(half shutter)
+// - Shutter OpStatus is set to ERROR if the shutter is running longer
+//   than OpTime(operation time)+5s defined in runtime HW config
+//
+// << camera shutter operation and status info >>
+//
+// - Shutter control input Pin11: TTL 5V input, pulled up / Pin10: common
+//
+// - OPEN CMD : LOW-->HIGH: The shutter starts opening when the input goes HIGH
+// - CLOSE CMD: HIGH-->LOW: The shutter starts closing when the input goes LOW
+//
+// - NOTE:
+//   OPEN CMD should be commanded when the operation status is STANDBY
+//   CLOSE CMD should be commanded when the operation status is OPENING or OPENED
+//
+// - Status and OpStatus configuration table
+//
+//  ----------------------------------------------------------------------------
+//   CASE A: exposure time > shutter opening time
+//  ----------------------------------------------------------------------------
+//   Input --  Limit --  Status  --  OpStatus   (duration time)       Remark
+//  ----------------------------------------------------------------------------
+//   LOW   --  2  1  --  closed  --  standby    
+//   HIGH  --  0  1  --  open    --  opening    (5 sec)
+//   HIGH  --  1  1  --  open    --  opened     (ExpTime - 5 sec)
+//   LOW   --  1  0  --  open    --  closing    (5 sec)
+//   LOW   --  1  2  --  closed  --  reloading  (0.5 sec)
+//   LOW   --  0  2  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  1  0  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  0  0  --  closed  --  reloading  (5 sec)
+//   LOW   --  2  0  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  0  1  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  2  1  --  closed  --  standby    
+//  ----------------------------------------------------------------------------
+//
+//  ----------------------------------------------------------------------------
+//   CASE B: exposure time < shutter opening time
+//  ----------------------------------------------------------------------------
+//   Input --  Limit --  Status  --  OpStatus   (duration time)       Remark
+//  ----------------------------------------------------------------------------
+//   LOW   --  2  1  --  closed  --  standby    
+//   HIGH  --  0  1  --  open    --  opening    (ExpTime)
+//   LOW   --  0  0  --  open    --  opening    (5 sec - ExpTime)    & closing
+//   LOW   --  1  0  --  open    --  closing    (ExpTime)
+//   LOW   --  1  2  --  closed  --  reloading  (0.5 sec)
+//   LOW   --  0  2  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  1  0  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  0  0  --  closed  --  reloading  (5 sec)
+//   LOW   --  2  0  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  0  1  --  closed  --  reloading  (0.1 sec)  possibly
+//   LOW   --  2  1  --  closed  --  standby
+// ---------------------------------------------------------------------------- 
+//
+// - Limit status:  SF  SH
+//     SF: Full shutter limit status, SH: Half shutter limit status
+//     Limit status value: 0:no, 1:out, 2:in, 3:both (in-->block, out-->open)
+//
+// - Lookup table for Status/OpStatus with SF/SH
+// ----------------------------------------------------------------------------
+//    SF SH      Status / OpStatus    previous OpStatus or SF SH
+// ---------------------------------------------------------------------------- 
+//    2  1  -->  closed / standby
+//    1  1  -->  open   / opened
+//    0  1  -->  open   / opening     standby* or (opening)
+//          -->  closed / reloading   reloading* or (reloading)
+//    1  0  -->  open   / closing     opened* or opening* or (closing)
+//          -->  closed / reloading   reloading* or closing or (reloading)
+//    0  0  -->  closed / reloading   1 2* or 1 0* or 1 0 or 0 2 or (0 0)
+//          -->  open   / opening     0 1* or 2 1* or (0 0)
+//    1  2  -->  closed / reloading
+//    0  2  -->  closed / reloading
+//    2  0  -->  closed / reloading
+// ---------------------------------------------------------------------------- 
+//
+
+
+

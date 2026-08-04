@@ -1,0 +1,29 @@
+#!/bin/csh -f
+#
+# Start the KMTN PC-TCS simulator agent safe and painless
+# Version for the KMTN testbed system
+#
+# usage: tcs_kmtn
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.mps.ohio-state.edu
+# 2013 Apr 12
+#
+############################################################################
+
+setenv binDir  /home/dts/Agents/pctcs/Sim
+
+if ($#argv > 0) then
+   echo "Usage: tcs_kmtn"
+   exit 1
+endif
+
+set tcsExec = "${binDir}/pctcs"
+
+# Launch caliban instance in a detached xterm
+
+set tcsTitle = "KMTN Testbed PC-TCS Simulator"
+
+xterm -T "${tcsTitle}" -e ${tcsExec} 
+
+exit 0

@@ -487,7 +487,8 @@ if (isis.numPreset == MAXPRESET) {
 
 같은 백업의 설정 파일들로 **로그만으로는 보이지 않던 물리 구조**가 드러났다. 상세는 [`../ics_legacy/ics_legacy_report.md`](../ics_legacy/ics_legacy_report.md) 1.3.1절이고, 신규 설계에 걸리는 부분만 옮긴다.
 
-- **IC/ICS 는 VDOS(DOS 계열) 머신**에서 돌고, 리눅스 `isisrelay` 가 UDP 6600 ↔ 시리얼 9600 으로 중계한다. 로그의 `[192.168.14.102:6600] K.IC>XIS PONG` 은 **relay 가 VDOS IC 의 응답을 올려준 것**이다.
+- **IC/ICS 는 VDOS(DOS 계열) 프로그램**이고, **리눅스 호스트 위의 KVM 게스트**에서 돈다(`IC2.img`, `/var/lib/libvirt/images`). 리눅스 `isisrelay` 가 UDP 6600 ↔ 가상 시리얼 9600 으로 중계한다. 로그의 `[192.168.14.102:6600] K.IC>XIS PONG` 은 **relay 가 게스트의 응답을 올려준 것**이다.
+- **`TRANSFER DISK<n>` 의 디스크는 게스트에 붙인 가상 디스크**다. 1998년 SCSI 이중버퍼 패턴이 가상화 환경에 그대로 이식돼 살아남았다. 신규는 단일 PC 통합이라 이 계층 자체가 사라진다(6.2절).
 - **`ICS` 는 IC 와 같은 소프트웨어다.** `INSTRUMENT=ICS` 로 설정만 다르고, 프로그램 디렉토리가 `\KMTX`(vs 과학 IC `\KMTS`, 가이드 `\KMTG`)일 뿐이다.
   → **5장 메시지 오염 버그가 `ICS` 와 `K.IC` 양쪽에 똑같이 나타나는 이유가 이것이다** — 같은 코드베이스의 단일 결함이다.
 - **BUILD 접두어 = 프로그램 디렉토리**: `ICSBUILD=KX…`(\KMTX) · `KBUILD=KS…`(\KMTS) · `GBUILD=KG…`(\KMTG). 4.3절 텔레메트리 꼬리의 정체가 풀렸다.

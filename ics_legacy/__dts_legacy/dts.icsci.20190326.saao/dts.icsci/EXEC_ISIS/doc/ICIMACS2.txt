@@ -1,0 +1,113 @@
+ICIMACS Protocol Version 2:
+--------------------------
+
+ICIMACS is an acronym for Instrument Control and IMage ACquisition
+System.
+
+The ICIMACS messaging protocol is a simple, lightweight, text-based
+messaging protocol in which messages are passed between processes
+running in a "network" of ICIMACS hosts.  Messages are formatted so as
+to be human-readable and readily machine parsed.
+
+
+Message Format:
+--------------
+
+ICIMACS message strings take the following format
+
+	srcID>destID Message_Type Message_Body\r
+
+where
+	srcID        = ICIMACS name of the sending host (8 chars max)
+	destID       = ICIMACS name of the destination host (8 chars max)
+	Message_Type = type of message being sent (see below)
+	Message_Body = command or message text being sent.
+	\r           = termination character ("carriage return" = ASCII 13)
+
+
+Address Header:
+--------------
+
+   The source and destination host IDs are composed of ASCII characters,
+   8 characters maximum, 2 characters minimum, and are case insensitive.
+   They may be composed of letters [A-Z], numbers [0-9], and the special
+   characters "." and "_".  No other characters may appear as part of a
+   host ID.
+
+   The > character (ASCII 62) is used as the separator and reserved.
+
+   In Version 1 of the protocl, host IDs were 2 characters long.
+   Version 2 allows up to 8 characters maximum.  2 characters is the
+   minimum practical length, and single-character host IDs are
+   deprecated.
+
+   Host IDs are "logical addresses" that are mapped onto physical hosts
+   (be they serial port clients or network IP:port addresses) by the
+   individual applications.
+
+
+Message Types:
+-------------
+
+   There are 7 message types used by the ICIMACS protocol:
+
+   Message_Type  Meaning
+   -------------------------------------------------------------------------
+      REQ:       Message is a command request [implicit if omitted]
+      EXEC:      Message is a command request with executive override
+      DONE:      Completion acknowledgment returned by a previous REQ:
+      STATUS:    An informational message, no action required.
+      ERROR:     An error message, the requested action has been terminated.
+      WARNING:   A warning message, meaning that an unexpected result has 
+                    occurred but the requested action continues.
+      FATAL:     A Fatal error message, reserved for error conditions that
+                    preclude acquiring or saving data.
+   -------------------------------------------------------------------------
+ 
+   The REQ: message type as an explicit type is new to the ICIMACS v2.0
+   specification, but is implicit for all messages if none of the other
+   Message_Type codes appear.  As such, it is often omitted entirely
+   (this is especially convenient when typing interactive commands at a
+   keyboard).
+
+   The EXEC: message type is new to v2, and provides a mechanism by
+   which a remote host can executively override restrictions on commands
+   that would otherwise be locked out.  For example, an ICIMACS client
+   program might be written so that it only accepts the QUIT command (to
+   end the client session) from the program's keyboard interface, but
+   will allow a remote host to issue a QUIT only if it is sent as an
+   EXEC: class request.  EXEC: requests can also be used to define a
+   subset of "expert" commands that are only accessible via the EXEC:
+   mechanism, but otherwise are not executed if sent as normal REQ:
+   class requests.
+
+
+Message Body:
+------------
+
+   The Message_Body can be unstructured but otherwise human readable
+   text (e.g., an informational or error message), or a set of formal,
+   easily parsed keyword=value pairs.
+
+   specification of keyword=value pairs...
+
+
+Termination:
+-----------
+
+   All ICIMACS protocol messages are terminated by a "carrriage return"
+   character, ASCII 13, or "\r" in common POSIX parlance (e.g., C, Perl,
+   etc.).
+
+   No other terminator characters (e.g. NUL = ASCII 0 = \0, or 
+   NL =  ASCII 10 = \n) may appear in a message string.
+
+
+Further Information:
+-------------------
+
+   A complete description of the ICIMACS protocol is available
+   at this URL:
+
+      http://www.astronomy.ohio-state.edu/~isl/protocol.html
+

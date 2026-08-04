@@ -97,7 +97,22 @@ C:\0ICBOOT\IC.BAT            C:\0ICBOOT\IC.BAT          C:\0ICBOOT\IC.BAT
 
 `STATUS` 응답의 `Inst=KMTNk` 값도 이 `INSTRUMENT=` 설정에서 온다.
 
-**③ 리눅스 `isisrelay` 가 UDP↔시리얼을 중계한다.** `Config/isisrelay.ini`:
+**③ VDOS IC 는 별도 하드웨어가 아니라 리눅스 호스트 위의 KVM 게스트다.**
+
+`__localonly_dts.icsci/memo.txt` 에 IC 이미지의 위치가 적혀 있다:
+
+```
+# IC2 path on Sci/Gui/Spa      cd /var/libvirt/images
+# IC2 path on K/M/T/N/G/Sp     cd /var/lib/libvirt/images
+```
+
+`libvirt/images` 는 **KVM 가상머신 디스크 이미지** 경로다. 즉 `IC2.img` 는 VDOS 게스트의 디스크이고, 같은 백업의 `VMFolder/` 에 그 근거가 더 있다 — **SeaBIOS 1.7.4**(QEMU/KVM 게스트용 BIOS)와 데이터 디스크 라벨(`DISK1.BUS1.03/13/13`), 홈 디렉토리의 `.virt-manager` 설정.
+
+이미지 파일명이 빌드를 담고 있다 — `IC2.KX20160323.1381_icsci_ctio` 는 **CTIO icsci 의 ICS 게스트**(빌드 `KX2016-03-23:1381`, ②의 `ICSBUILD` 와 일치)를 뜻한다.
+
+> **`TRANSFER DISK<n>` 의 정체가 여기서 풀린다.** 4.2절의 `DISK0`~`DISK3`(6.2절에서 최대 4중으로 정정)은 물리 SCSI 디스크가 아니라 **VDOS 게스트에 붙인 가상 디스크**다. 1998년 SCSI 이중버퍼 패턴이 가상화 환경으로 그대로 이식돼 살아남은 것이다. 게스트가 가상 디스크에 쓰면 호스트의 Caliban(`*.CB`)이 그것을 읽어 `/mnt/ICSData` 로 옮긴다.
+
+**④ 리눅스 `isisrelay` 가 UDP↔시리얼을 중계한다.** `Config/isisrelay.ini`:
 
 ```
 UDPPort 6600                 # 이 포트로 받아서
@@ -110,18 +125,23 @@ ISISPort 6660
 XIS 설정(`Config/isis.ini`)의 주석도 이를 뒷받침한다 — *"Ping the isisrelays on all the IC machines, **this reaches the VDOS ICs**"*. 즉 로그에 보이는 `[192.168.14.102:6600] K.IC>XIS PONG` 은 **relay 가 VDOS IC 의 응답을 UDP 로 올려준 것**이다. 각 IC 가 자기 로컬 relay 를 `K.IS`/`G.IS`/`ICS.IS` 라는 이름으로 알지만(`ISISHOST=` 항목), relay 가 투명하게 중계하므로 **로그에 `.IS` 노드는 나타나지 않는다.**
 
 ```
-   icsci 서버 (.109)                     IC 머신 (.102~.108)
-   ┌──────────────────┐                  ┌─────────────────────────┐
-   │ XIS  (UDP 6660)  │◄── UDP 6600 ────►│ isisrelay (리눅스)      │
-   │ OBS  (UDP 6650)  │                  │      ▲ 시리얼 9600      │
-   │ /dev/ttyS0 115200│────────┐         │      ▼                  │
-   └──────────────────┘        │         │ IC (VDOS, \KMTS)        │
-                               │         │ Caliban CB (UDP 10601)  │
-                               └────────►│ ICS (VDOS, \KMTX)       │
-                                         └─────────────────────────┘
+   icsci 서버 (.109)              IC 머신 (.102~.108, 리눅스 호스트)
+   ┌──────────────────┐           ┌──────────────────────────────────┐
+   │ XIS  (UDP 6660)  │◄─UDP 6600►│ isisrelay                        │
+   │ OBS  (UDP 6650)  │           │      ▲ 가상 시리얼 9600          │
+   │                  │           │      ▼                           │
+   │ /dev/ttyS0       │           │ ┌────────────────────────────┐   │
+   │   115200 ────────┼───┐       │ │ KVM 게스트 (VDOS)          │   │
+   └──────────────────┘   │       │ │  IC2.img,  \KMTS           │   │
+                          │       │ │  가상디스크 DISK0~3        │   │
+      ICS 게스트 (VDOS)   │       │ └────────────────────────────┘   │
+      IC2.KX…, \KMTX  ◄───┘       │ Caliban CB (UDP 10601)           │
+                                  │   └─ 가상디스크를 읽어           │
+                                  │      /mnt/ICSData 로 전송        │
+                                  └──────────────────────────────────┘
 ```
 
-**④ `SP` 노드가 존재한다 — 예비 IC 로 보인다.** `Config/SP.IC.ini`(`INSTRUMENT=KMTNsp`, `ICHOST=SP.IC`, `CBHOST=SP.CB`, `CD \KMTS`)와 `cb_SP.ini`·`isisSP.ini`·`calibanSP.ini` 가 존재한다. 과학 IC 와 같은 `\KMTS` 를 쓰므로 **과학 CCD 계열의 예비기**로 판단된다. XIS preset 목록의 `192.168.14.107 6600`(로그에 트래픽이 전혀 없는 주소)이 이 노드 자리로 보인다.
+**⑤ `SP` 노드가 존재한다 — 예비 IC 로 보인다.** `Config/SP.IC.ini`(`INSTRUMENT=KMTNsp`, `ICHOST=SP.IC`, `CBHOST=SP.CB`, `CD \KMTS`)와 `cb_SP.ini`·`isisSP.ini`·`calibanSP.ini` 가 존재한다. 과학 IC 와 같은 `\KMTS` 를 쓰므로 **과학 CCD 계열의 예비기**로 판단된다. XIS preset 목록의 `192.168.14.107 6600`(로그에 트래픽이 전혀 없는 주소)이 이 노드 자리로 보인다.
 
 > **신규 설계 함의**: 신규 `ics` 는 이 3계층(VDOS IC + relay + XIS)을 **한 프로그램으로 대체**한다. relay 계층과 시리얼 구간이 통째로 사라지므로 5.6.3절의 전송 손상도 함께 사라진다. 다만 **XIS 와의 인터페이스는 그대로 유지**해야 한다 — XIS 입장에서는 relay 가 있던 자리에 신규 `ics` 가 들어오는 것으로 보여야 한다.
 
@@ -722,7 +742,8 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 | `__sample_isislog/samples_for_bug_integrat.txt` | **검토 완료** — 노출 국면(`INTEGRATING`)·카운트다운 구간 발췌 3,061행. 5.6.1절의 스테일 커맨드워드(`REQ`/`SHOPEN`/`DATASOURCE`)와 "셔터 닫힌 뒤에도 `EXPSTATUS=INTEGRATING` 반복" 패턴의 근거. **커밋 대상** |
 | `__sample_isislog/samples_for_bug_pctread.txt` | **검토 완료** — readout 진행률 발췌 2,940행(노출 294회분). `6·17·28·39·50·61·72·83·94·100` 이 **각각 정확히 294회**로 편차 0 — 레거시 IC 가 진행률을 실제 픽셀 카운트가 아니라 **고정 스텝**으로 보고했음을 보여준다(5.2절). **커밋 대상** |
 | `../../__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **전량 검토 완료 (2026-08-03)** — CTIO 634일(28GB, 2024-01-01~2025-09-30) + SAAO 273일(11GB, 2025) + SSO 206일(8.6GB, 2024-01-01~2024-07-25) = **48GB, 1,113일분**. 3.5·5.2·5.3·5.4·5.6·6절 신규 항목의 근거. `__localonly_*` 규약에 따라 **비커밋** |
-| **`__dts_legacy/dts.icsci.*.{ctio,saao,sso}/`** | **2026-08-04 신규** — ICS 컴퓨터(icsci 서버)의 `dts` 폴더를 사이트별로 백업한 것, 10,285 파일. **ISIS/XIS 서버 소스 전체**를 포함한다. 1.3.1·5.6.5·8.0.1절의 근거 |
+| **`__dts_legacy/dts.icsci.*.{ctio,saao,sso}/`** | **2026-08-04 신규** — ICS 컴퓨터(icsci 서버)의 `dts` 폴더를 사이트별로 백업한 것 중 **소스·설정만 선별**해 커밋(2,830 파일 / 24.7 MB). **ISIS/XIS 서버 소스 전체**를 포함한다. 1.3.1·5.6.5·8.0.1절의 근거 |
+| `../../__localonly_dts.icsci/` | 위 백업의 **원본 전량과 부속 자료**(10,289 파일 / 580 MB). `__localonly_*` 규약에 따라 **비커밋**:<br>· `dts.icsci.20190326.{ctio,saao,sso}/` — 압축 푼 원본 442 MB. 커밋본에서 뺀 `Tools/`(서드파티 109 MB/사이트) · `catalog/` · `osc/` · 빌드산출물(`.o` `.a` `.tar`) · 홈 디렉토리 dotfile(**`.ssh`/`.gnupg` 포함 — 자격증명 우려로 제외**)이 들어 있다<br>· `dts.icsci.20190326.*.zip` — 원본 압축본<br>· `memo.txt` — IC2 이미지 경로 (1.3.1③의 근거)<br>· `IC2.KX20160323.1381_icsci_ctio/` — ICS VM 이미지를 놓을 자리 (현재 비어 있음) |
 
 **`__dts_legacy/` 안에서 특히 중요한 것**
 
@@ -739,7 +760,10 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 
 > **미검토로 남긴 것**: `Agents_V1/Caliban/src/`(CB 노드 소스)와 `Agents_V1/tvdisp/`. 신규 설계에서 CB 계층은 통째로 내부화되어 사라지므로(8.0절) 우선순위가 낮다고 판단했다. 다만 **`TransferDisk.c`/`InitDisk.c` 는 4.2절 디스크 핸드셰이크와 5.5절 파일명 fail-safe 의 실제 구현**이므로, 그 동작을 정확히 알아야 할 일이 생기면 여기부터 볼 것.
 >
-> **IC(VDOS) 본체 소스는 이 백업에 없다** — `\KMTS`/`\KMTX`/`\KMTG` 프로그램은 VDOS 머신에 있고 이 백업은 리눅스 측이다. 5.6절 오염 버그의 코드 위치를 확정하려면 그쪽 백업이 필요하다.
+> **IC(VDOS) 본체 소스는 이 백업에 없다** — `\KMTS`/`\KMTX`/`\KMTG` 프로그램은 KVM 게스트의 디스크 이미지(`IC2.img`, 1.3.1③) 안에 있고 이 백업은 리눅스 호스트 측이다. 5.6절 오염 버그의 코드 위치를 확정하려면 그 이미지가 필요하다.
+>
+> **`IC2.img` 를 확보하면 할 수 있는 것**: 이미지는 8 GB 이지만 실제 프로그램은 `\KMTS`/`\KMTX`/`\KMTG` 디렉토리 몇 MB 다. 7-Zip 이나 loop 마운트로 그 부분만 뽑아내면 (a) 로그에 한 번도 안 나온 메시지까지 포함한 **완전한 메시지 카탈로그**, (b) `printf` 포맷 문자열에서 **메시지 조립 구조** — 5.6절 오염의 메커니즘을 직접 확인할 실마리, (c) 세 디렉토리 비교로 ICS/IC/ICG 의 차이를 얻을 수 있다.
+> 다만 **16비트 DOS 바이너리 역어셈블은 실용적이지 않다.** 소스가 함께 들어 있지 않다면 문자열·포맷 추출까지가 현실적인 선이다.
 
 > **재검증 방법**: 위 로그가 있는 컴퓨터에서 [`../ics_sim/tools/scan_legacy_logs.py`](../ics_sim/tools/scan_legacy_logs.py) 로 언제든 다시 돌릴 수 있다.
 > ```bash

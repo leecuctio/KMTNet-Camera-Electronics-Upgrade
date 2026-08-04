@@ -1,0 +1,104 @@
+#!/bin/csh
+#
+# kmtn - start/stop/check KMTN testbed instrument services
+#
+# usage: kmtn {start|stop} {isis|pctcs|cb|caliban}
+#        kmtn show
+#
+# This script is a wrapper that runs ssh on the kmtn instrument host
+# for KMTN instrument services, or locally starts kmtn data services.
+#
+# R. Pogge, OSU Astronomy Dept
+# pogge@astronomy.ohio-state.edu
+# 2013 Apr 12
+#
+# Modification History:
+#   2013 Apr 12 - based on the MODS startup script
+#
+#---------------------------------------------------------------------------
+
+# Usage message 
+
+set usage = "kmtn {start|stop} {isis|pctcs|cb}\n       kmtn {show|status}\n"
+
+# Process the command-line arguments
+
+if ($#argv == 1) then
+   switch ($1)
+   case 'show':
+   case 'status':
+      chkisis
+      breaksw
+
+   default:
+      printf "\nERROR: unrecognized directive ${1}\n"
+      printf "Usage: $usage\n"
+      exit 1
+      breaksw
+   endsw
+
+else if ($#argv == 2) then
+   switch ($2)
+
+   case 'all':
+      printf "\nThe ${1} all directive is not yet enabled, sorry.\n"
+      printf "coming soon...\n"
+      exit 1
+      breaksw
+
+   # These directive are executed locally
+
+   case 'isis':
+      if (${1} == 'stop') then
+         stopisis
+      else if (${1} == 'start') then
+         startisis
+      else
+         printf "\nERROR: Unrecognized directive ${1} ${2}\n"
+	 printf "Usage: ${usage}\n"
+         exit 1
+      endif
+      breaksw
+
+   # Start a caliban process
+
+   case 'caliban':
+   case 'cb':
+      if (${1} == 'stop') then
+	 stopagent caliban
+      else if (${1} == 'start') then
+         cb_kmtn &
+      else
+         printf "\nERROR: Unrecognized directive ${1} ${2}\n"
+	 printf "Usage: ${usage}\n"
+         exit 1
+      endif
+      breaksw
+
+   # Start/Stop the PC-TCS simulator
+
+   case 'pctcs':
+   case 'tcs':
+      if (${1} == 'stop') then
+         stopagent pctcs
+      else if (${1} == 'start') then
+	 tcs_kmtn &
+      else
+         printf "\nERROR: Unrecognized directive ${1} ${2}\n"
+	 printf "Usage: ${usage}\n"
+         exit 1
+      endif
+      breaksw
+
+   default:
+      printf "\nERROR: Unrecognized directive ${1} ${2}\n"
+      printf "Usage: $usage\n" 
+      breaksw
+
+   endsw
+else
+   printf "\nUsage: $usage\n"
+endif
+
+exit 0
+      

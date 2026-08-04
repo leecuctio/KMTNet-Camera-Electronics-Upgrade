@@ -1,0 +1,30 @@
+#
+# Test ISIS Initialization File
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.ohio-state.edu
+# 2003 January 8
+#
+###########################################################################
+
+# Local Server Setup
+
+#ServerID   ISIS
+ServerID   IS
+ServerPort 6600
+ServerLog  ./isis
+Verbose
+
+# Serial Port handling
+
+# TTYPort /dev/ttyS0
+
+# TCS Stuff
+
+TCS NONE
+OBSERVAT  OSU Lab
+TELESCOP  Meade0.3m
+Latitude  40.000
+Longitude 83.000
+Altitude  200.03
+TimeZone  -5      # EST=GMT-5h

@@ -1,0 +1,13 @@
+#!/bin/bash
+#
+#-- Prepares system resources required for KMTN data acquisition
+#
+#- JAM, April 15, 2013
+#
+# June 14. 2013: This second file added to set permissions on ramdisks after VM starts.
+
+#-- Set ramdisks to read/write for everybody
+chmod 666 /dev/ram0
+chmod 666 /dev/ram1
+
+

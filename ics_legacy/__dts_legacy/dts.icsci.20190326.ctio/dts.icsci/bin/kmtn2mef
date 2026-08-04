@@ -1,0 +1,773 @@
+#!/usr/current/anaconda/bin/python
+#
+# kmtn2mef - convert a single de-interlaced KMTNet camera science
+#           image to a multi-extension FITS image.
+#
+# Derived from kmt2mef, for 1 file to MEF conversion.
+#
+# Uses an explicit invocation of anaconda python
+#
+# This is being tested with anaconda v2.1.0, so version 0.4.2
+# of astropy.coordinates and numpy v1.9.1
+#
+# When the MEF file is displayed in ds9 using the menus as follows:
+#   File .. Open Other .. Open Mosaic WCS
+#
+# The cursor will display the following:
+#        WCS: Nominal RA/Dec position
+#   Detector: Pixel-equivalent location in the full 4-CCD mosaic 
+#             including the inter-detector gaps 
+#   Amplifier: Pixel location within a single CCD detector
+#   Physical:  Pixel location within a single amplifier stripe
+# You need to select these using the "View" menu and checking
+# WCS, Physical, Amplifier, and Detector, and unchecking Image.
+#
+# Note that the definitions used by ds9 and the NOAO Image Data 
+# Structure Definitions document:
+#    iraf.noao.edu/projects/ccdmosaic/imagedef/imagedef.html
+# appear to differ in detail, but it works in practice.  May be
+# a difference in nomenclature between ds9 and NOAO.
+# 
+# The output filename is determined by the ccyymmdd.nnnnnn field
+# and the OBSERVAT keyword, as follows:
+#   CTIO: kmtc.ccyymmdd.######.fits
+#   SAAO: kmts.ccyymmdd.######.fits
+#    SSO: kmta.ccyymmdd.######.fits
+# if OBSERVAT is missing, it writes kmt.ccyymmdd.######.fits
+#
+# Dependencies:
+#   Python v2.7 or later (not any Python 3.x)
+#   numpy v1.9.1 or later
+#   astropy v0.4.2 or later
+#
+# This was written using the Anaconda Scientific Python distribution
+# from Continuum Analytics (continuum.io).  This is our standard
+# Python at OSU, and the one we recommend to all sites using Python
+# with OSU-built instruments.
+#
+# Author:
+#   R. Pogge, OSU Astronomy Dept
+#   pogge.1@osu.edu
+#   2014 Dec 18 [first version]
+#
+# 
+# Modification History:
+#   2014 Dec 19 - changed flipping logic, fixes many issues [rwp/osu]
+#                 preserve original data type on conversion
+#   2014 Dec 20 - Few tweaks to the NOAO-style coordinate transforms
+#                 so that ds9 gives consistent results.  [rwp/osu]
+#   2014 Dec 21 - Fixed the unwanted int-to-float data conversion [rwp/osu]
+#   2015 Feb 09 - Now check the OBSERVAT keyword to determine the
+#                 output MEF filename [rwp/osu]
+#   2015 Feb 27 - Handles case where one or more source images are
+#                 absent.  Fills with zeros, notes in the header [rwp/osu]
+#   2015 Feb 28 - Uses the measured inter-CCD gaps based on an astrometric 
+#                 calibration of the CTIO camera provided by Chung-Uk Lee (KASI)
+#   2015 Mar 15 - Logic to deal with the case of the K image missing, at
+#                 which point we cannot make the primary header as the
+#                 master is missing and we're done.  In this version we
+#                 fail out if K is missing. [rwp/osu]
+#   2015 Mar 26 - Added -o/--outdir to allow setting an output file path
+#                 other than ./.  Also changed logic so that if the input
+#                 SEF files are in a different directory than where this
+#                 program is invoked, it handles it correctly. [rwp/osu]
+#
+#---------------------------------------------------------------------------
+
+import sys, os, math
+import numpy as np
+from astropy.io import fits
+from astropy.io.fits import getval
+from astropy.io.fits import update
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+import getopt
+
+# Version Info
+
+verName = "kmtn2mef v0.11.2"
+verDate = "2015-03-25"
+
+# Ignore a few types of warnings inevitable if there are blank
+# non-conforming keywords in the FITS headers.
+
+import warnings
+warnings.filterwarnings('ignore',category=UserWarning, append=True)
+warnings.filterwarnings('ignore',category=RuntimeWarning, append=True)
+
+# Runtime Defaults
+
+verbose = False
+clobber = False
+convert = False   # if True, convert to floats
+outDir = "./"     # output MEF files are written to ./ by default
+
+# Nominal KMTNet telescope-derived parameters
+
+primaryD = 1.600 # primary mirror diameter in meters
+telFR = 3.22     # telescope focal ratio
+telScale = 40.04 # pixel image in arcsec/mm
+
+# CCD and Focal-Plane Assembly (FPA) physical parameters
+
+ccdCols = 9216 # unbinned active CCD column size in pixels
+ccdRows = 9232 # unbinned active CCD row size in pixels
+pixSize = 10.0 # pixel size in microns
+pixScale = telScale*(pixSize/1000.)  # pixel scale in arcsec/pixel
+
+# Nominal Gaps from the drawings are 454pix horizontal and 918pix vertical
+# 
+#gapCols = 454  # 4.54mm horizontal gap between detector active areas
+#gapRows = 918  # 9.18mm vertical gap between detector active areas
+
+# Astrometry-based estimates of the inter-CCD gaps on the CTIO camera
+# provided by Chung-Uk Lee, 2015 Feb 28.  Units are pixels.
+
+gapCols = 460
+gapRows = 933
+
+# For each detector (KMTN), store metric information we need as a set
+# of dictionaries with the detector ID as the key
+
+# Starting pixels in detector mosaic coordinates
+
+detC1 = {'K':ccdCols+gapCols, 'M':1, 'T':ccdCols+gapCols, 'N':1}
+detR1 = {'K':ccdRows+gapRows, 'M':ccdRows+gapRows, 'T':1, 'N':1}
+
+# Nominal field center in individual CCD pixel coordinates
+
+CRPIX1 = {'K':-(gapCols/2), 'M':ccdCols+(gapCols/2), 'T':-(gapCols/2), 'N':ccdCols+(gapCols/2)}
+CRPIX2 = {'K':-(gapRows/2), 'M':-(gapRows/2), 'T':ccdRows+(gapRows/2), 'N':ccdRows+(gapRows/2)}
+
+# Nominal detector rotations - assume 0,0
+
+CROTA1 = {'K':0.0,'M':0.0,'T':0.0,'N':0.0}
+CROTA2 = {'K':0.0,'M':0.0,'T':0.0,'N':0.0}
+
+# Coordinate trasformation matrix - same for all 4 detectors now - assumes
+# perfect alignment relative to the FPA coordinate system
+
+CDELT1 = -pixScale/3600.0  # x transform scale factor in deg/pixel (- = E left)
+CDELT2 =  pixScale/3600.0  # y transform scale factor in deg/pixel (+ = N up)
+
+CD1_1 = {'K':CDELT1, 'M':CDELT1, 'N':CDELT1, 'T':CDELT1}
+CD1_2 = {'K':0.0,'M':0.0,'T':0.0,'N':0.0}
+CD2_1 = {'K':0.0,'M':0.0,'T':0.0,'N':0.0}
+CD2_2 = {'K':CDELT2, 'M':CDELT2, 'N':CDELT2, 'T':CDELT2}
+
+# Do we have an image file?
+
+haveSEF  = {'K':False, 'M':False, 'N':False, 'T':False}
+numSEF = 0
+requireAll = False  # do not require all 4 images by default
+
+# MEF detector stacking order as-per KASI specifications, and the XY
+# flip directive for each.
+
+ccdList = ['M','K','N','T']
+flipXY  = {'K':True, 'M':False, 'N':True, 'T':False}
+
+# Usage Message
+
+def printUsage(help=False):
+    print "\nUsage: kmtn2mef rawFile [options]"
+    print "\nwhere:"
+    print "   rawFile = one raw KMTNx.ccyymmdd.######.fits filename, x={k,m,n, or t}"
+    print "             It create the names of all 4 files from this one."
+    print "\nCreates kmt?.ccyymmdd.######.fits, a 32-extension MEF file,"
+    print "  where ? is c for CTIO, s for SAAO, and a for SSO."
+    print "The MEF file is written to the current working directory (but see -o)"
+    print "\noptions:"
+    print "   -o outdir = write the MEF file in outdir [default: create in place]"
+    print "   -f = force overwrite of an existing MEF file [default: no overwrite]"
+    print "   -a = require all 4 raw images [default: allow missing images]"
+    print "   -c = convert raw datatype to floating point [default: no conversion]"
+    print "   -h = print more detailed help and exit"
+    print "   -v = verbose output for debugging [default: quiet]"
+    print "   -V = print version info and quit"
+    print ""
+    if help:
+        print "Detailed Help:"
+        print "\nIf no directory path is given as part of the input file name, all of"
+        print "the raw FITS files must be in the current working directory.  If a"
+        print "directory path *is* given (e.g., /data/KMTNk.20150205.001234.fits),"
+        print "then all raw images must be in that directory."
+        print "\nBy default, the output MEF file is created in the current working"
+        print "directory.  You can direct the output to another directory with the"
+        print "-o option (e.g., -o /archive/data).  Note that the target directory"
+        print "must already exist and be writable (this program will not create it)."
+        print "\nIf a raw image is missing, it fills its extension data units"
+        print "with zeros and notes its absence by setting the K/M/T/NFILE='None'"
+        print "keyword in the primary header.  It also sets the NUMFILES keyword to"
+        print "the number of raw files present (<4 means one or more were missing)."
+        print "Note, however, that because the K image contains the master header"
+        print "with critical timing data, if K is missing no MEF is created."
+        print "\nYou can require that all four images must exist for MEF creation by"
+        print "using the -a/--all option."
+        print "\nBy default, the MEF file created preserves the data type of the"
+        print "original raw images.  The -c option allows you to convert raw integer"
+        print "data to 32-bit floating point (BITPIX=-32) data, but note that this"
+        print "will double the size of the output MEF file."
+        print ""
+
+#----------------------------------------------------------------
+#
+# Main Program
+#
+
+
+# Parse the command line
+
+try:
+    opts, files = getopt.gnu_getopt(sys.argv[1:],'Vvfcao:h',
+                                    ['verbose','version','force',
+                                     'convert','all','outdir=','help'])
+
+except getopt.GetoptError, err:
+    print "\n** ERROR: %s" % (err)
+    printUsage()
+    sys.exit(2)
+    
+if len(opts)==0 and len(files)==0:
+    printUsage()
+    sys.exit(1)
+        
+for opt, arg in opts:
+    if opt in ('-V','--version'):
+        print "%s (%s)" % (verName,verDate)
+        sys.exit(0)
+
+    elif opt in ('-v','--verbose'):
+        verbose = True
+
+    elif opt in ('-f','--force'):
+        clobber = True
+
+    elif opt in ('-c','--convert'):
+        convert = True
+
+    elif opt in ('-a','--all'):
+        requireAll = True
+
+    elif opt in ('-o','--outdir'):
+        outDir = arg
+
+    elif opt in ('-h','--help'):
+        printUsage(help=True)
+        sys.exit(0)
+
+# Do we have file arguments remaining?
+
+numFiles = len(files)
+
+if numFiles == 1:
+    kmtFile = files[0]
+else:
+    printUsage()
+    sys.exit(1)
+
+# Dice up the example kmtFile into the base pattern we will use to
+# create the names of the four individual single-extension FITS (SEF)
+# files to dice and stack into the output MEF file name
+
+baseName = os.path.splitext(kmtFile)[0]
+baseBits = baseName.split('.')
+inputDir = os.path.dirname(kmtFile)
+fileRoot = "%s.%s" % (baseBits[1],baseBits[2])
+
+# Extract the OBSERVAT keyword from kmtFile - this is used to create
+# the MEF filename
+
+try:
+    observat = getval(kmtFile,'observat')
+except:
+    print "** ERROR: OBSERVAT keyword not found in %s" % (kmtFile)
+    print "          kmtn2mef aborting with errors"
+    sys.exit(1)
+
+# Build the output MEF Filename, including the output directory path
+
+if observat=='CTIO':
+    mefFile = os.path.join(outDir,"kmtc.%s.fits" % (fileRoot))
+elif observat=='SAAO':
+    mefFile = os.path.join(outDir,"kmts.%s.fits" % (fileRoot))
+elif observat=='SSO':
+    mefFile = os.path.join(outDir,"kmta.%s.fits" % (fileRoot))
+else:
+    print "** ERROR: Unrecognized OBSERVAT value '%s'" % (observat)
+    print "          kmtn2mef aborting with errors"
+    sys.exit(1)
+
+# Does the MEF file already exist?  If it does, and we have not
+# explicitly set -f/--force, complain with a suggestion to use
+# -f/--force to override the no-clobber rule.
+    
+if os.path.isfile(mefFile):
+    if clobber:
+        if verbose:
+            print "**WARNING: Overwriting existing MEF file %s" % (mefFile)
+        os.remove(mefFile)
+    else:
+        print "**ERROR: Output MEF file %s already exists." % (mefFile)
+        print "         Use -f or --force to overwrite it."
+        print "kmtn2mef aborting."
+        sys.exit(1)
+
+# Quick test - are all four images resident in the current working
+# directory?  If any are missing, this is a warning unless
+#   1) the K "master" image is missing.
+#   2) -a/--all was used (requireAll=True)
+# at which point it is a no-go for MEF creation
+
+numErr = 0
+hasK = False
+for ccd in ccdList:
+    sefFile = os.path.join(inputDir,"KMTN%s.%s.fits" % (ccd.lower(),fileRoot))
+    if not os.path.isfile(sefFile):
+        numErr += 1
+    else:
+        haveSEF[ccd] = True
+        numSEF += 1
+        if ccd == 'K':
+            hasK = True
+
+if not hasK:
+    print "** ERROR: The master K image KMTNk.%s.fits is missing" % (fileRoot)
+    print "   Cannot assemble the MEF if the master header is missing."
+    print "   kmtn2mef aborting with errors."
+    sys.exit(1)
+    
+
+if numErr > 0:
+    if requireAll:
+        print "** ERROR: %d of %d raw KMTNx.%s.fits files missing" % (numErr,len(ccdList),fileRoot)
+        print "   Missing File(s):"
+        for ccd in ccdList:
+            if not haveSEF[ccd]:
+                print "      KMTN%s.%s.fits" % (ccd.lower(),fileRoot)
+        print "   Cannot assemble the MEF file, kmtn2mef aborting with errors."
+        sys.exit(1)
+    else:
+        print "** WARNING: %d of %d raw KMTNx.%s.FITS files are missing" % (numErr,len(ccdList),fileRoot)
+        print "   Missing File(s):"
+        for ccd in ccdList:
+            if not haveSEF[ccd]:
+                print "      KMTN%s.%s.fits" % (ccd.lower(),fileRoot)
+        print "   A zero data placeholder will be used instead."
+
+
+# First step, the K header is the Primary header as the K controller
+# is always the "master" controller, and has the shutter timing
+# information that the other three lack.
+
+masterFile = os.path.join(inputDir,"KMTNk.%s.fits" % (fileRoot))
+
+# First step: get BITPIX, this tells us what data conversion if any is
+# required. If this is an integer FITS format and convert=False, then
+# we will not up-convert pixels to float32 but instead allow the
+# original pixels and their scaling to "pass-through" into the output
+# MEF file.
+
+bitpix = getval(masterFile,'bitpix')
+if bitpix==16:
+    bzero = getval(masterFile,'bzero')
+    bscale = getval(masterFile,'bscale')
+elif bitpix==32:
+    bzero = getval(masterFile,'bzero')
+    bscale = getval(masterFile,'bscale')
+else:
+    convert = True  # not an integer, so floating pass-thru
+    
+if verbose:
+    if bitpix > 0:
+        print "Images are bitpix=%d bzero=%d bscale=%d" % (bitpix,bzero,bscale)
+        if convert:
+            print "Will convert to bitpix=-32 on output"
+        else:
+            print "Will preserve bitpix=%d scaling on output" % (bitpix)
+    else:
+        print "Images are floating data with bitpix=%d" % (bitpix)
+
+# Next, open the masterFile and extract and build the primary header
+# unit.
+
+inFITS = fits.open(masterFile) 
+inHdr = inFITS[0].header
+
+# Extract info from the masterFile that tells us how the images are to
+# be diced into stripes.  Set ideal defaults just in case
+
+if 'NAMPS' in inHdr:
+    numAmps = inHdr['NAMPS']
+else:
+    numAmps = 8
+
+if 'OVERSCNX' in inHdr:
+    biasCols = inHdr['OVERSCNX']
+else:
+    biasCols = 32
+
+if 'PRESCANX' in inHdr:
+    preCols = inHdr['PRESCANX']
+else:
+    preCols = 27
+
+naxis1 = inHdr['naxis1']
+dataCols = naxis1 - numAmps*(preCols+biasCols)
+naxis2 = inHdr['naxis2']
+dataRows = naxis2
+
+stripeCols = dataCols/numAmps
+stripeRows = dataRows
+
+# RA and  DEC for the WCS  - convert to  decimal degrees using
+# the astropy.coordinates utilities.  If absent use RA=0 Dec=0
+# as a plaeholder to give at least a nominal WCS.
+
+if 'RA' in inHdr:
+    RA = inHdr['RA']
+else:
+    RA = "00:00:00.0"
+    
+if 'DEC' in inHdr:
+    Dec = inHdr['DEC']
+else:
+    Dec = "+00:00:00.0"
+
+coord = SkyCoord(RA,Dec,'icrs',unit=(u.hour,u.degree))
+CRVAL1 = coord.ra.degree
+CRVAL2 = coord.dec.degree
+
+# Scrub the template header of bits we don't want to copy into the MEF
+# primary header
+
+for i in range(numAmps):
+    preKey = 'PRESCAN%d' % (i+1)
+    dataKey = 'DATA%d' % (i+1)
+    biasKey = 'BIAS%d' % (i+1)
+    if preKey in inHdr:
+        del inHdr[preKey]
+    if dataKey in inHdr:
+        del inHdr[dataKey]
+    if biasKey in inHdr:
+        del inHdr[biasKey]
+    if 'DETID' in inHdr:
+        del inHdr['DETID']
+
+# Finally, replace some keywords from the master with values
+# appropriate to the MEF
+
+if 'FILENAME' in inHdr:
+    inHdr['FILENAME'] = (mefFile,'MEF Filename')
+
+if 'CREATOR' in inHdr:
+    inHdr['CREATOR'] = ('%s %s' % (verName,verDate),'MEF File Creation Program')
+
+# Full Mosaic Size = "DETSIZE"
+
+detCols = gapCols + 2*ccdCols 
+detRows = gapRows + 2*ccdRows 
+
+inHdr['DETSIZE'] = ('[%d:%d,%d:%d]' % (1,detRows,1,detCols),
+                    'KMNT Mosaic size in Pixels')
+
+# These header cards tell us which images were used to create the MEF
+# file.  These are the NUMFILES and xCCDFILE, x={K,M,N,T}
+
+inHdr['NUMFILES'] = (numSEF,'Number of Single-CCD FITS files')
+for ccd in ['K','M','T','N']:
+    sefKey = "%sCCDFILE" % (ccd)
+    if haveSEF[ccd]:
+        sefFile = os.path.join(inputDir,"KMTN%s.%s.fits" % (ccd.lower(),fileRoot))
+        sefComment = "%s CCD FITS File" % (ccd)
+    else:
+        sefFile = 'None'
+        sefComment = "%s CCD FITS File Missing" % (ccd)
+    inHdr[sefKey] = (sefFile,sefComment)
+
+# These keywords record the inter-CCD gap sizes used for
+# the nominal linear WCS applied to the header
+
+inHdr['COLGAP'] = (gapCols,'Horizontal inter-CCD gap in pixels')
+inHdr['ROWGAP'] = (gapRows,'Vertical inter-CCD gap in pixels')
+
+# Create the primary header unit and write it to disk, using the
+# laundered header from the original SEF file as the common header for
+# all extensions.
+
+primary = fits.PrimaryHDU(header=inHdr)
+newHDU = fits.HDUList([primary])
+newHDU.writeto(mefFile)
+
+# All done with the masterFile, close it
+
+inFITS.close()
+
+# We appear to have everything we need to start stacking.  Step
+# through the KMTx raw images in the prescribed stacking order.  Copy
+# the main header info from the first image to use as the basis for
+# the Primary header.
+
+for ccd in ccdList:
+    sefFile = os.path.join(inputDir,"KMTN%s.%s.fits" % (ccd.lower(),fileRoot))
+    if verbose:
+        print "Processing image %s..." % (sefFile)
+
+    # If the file is missing, fill the data sector with zeros.
+
+    if haveSEF[ccd]:
+        # Open the input FITS file and get the header and data
+        inFITS = fits.open(sefFile) 
+        inHdr = inFITS[0].header
+        inData = inFITS[0].data
+
+    detID = ccd.upper()
+
+    doFlip = flipXY[detID]
+    detC0 = detC1[detID]
+    detR0 = detR1[detID]
+    if verbose:
+        if doFlip:
+            print "   Flipping X and Y"
+
+    # Now, dice up the input SEF file into stripes, and put each strip
+    # along with its pre- and over-scan columns into the MEF file as a
+    # separate extension.
+
+    # Last prescan and data columns
+
+    lastPre = numAmps*preCols
+    lastData = lastPre + numAmps*stripeCols
+
+    # Make a blank data array to contain one stripe.  Default is for
+    # astropy.io.fits to convert to floats.  We worry about conversion
+    # back to np.int16 at the end unless convert=True
+
+    stripe = np.zeros((stripeRows,preCols+stripeCols+biasCols),dtype=np.float32)
+
+    for amp in range(numAmps):
+
+        # if unflipped, process stripes in order 1..numAmps
+        # if flipped in XY, process stripes in reverse order
+        # Beware - this is 0-relative indexing!
+
+        if doFlip:
+            i = (numAmps-1) - amp 
+        else:
+            i = amp
+            
+        preBeg = 1 + i*preCols
+        preEnd = preBeg + preCols - 1
+
+        dataBeg = lastPre + 1 + i*stripeCols
+        dataEnd = dataBeg + stripeCols - 1
+
+        biasBeg = lastData + 1 + i*biasCols
+        biasEnd = biasBeg + biasCols - 1
+
+        # zero point for crpix1
+
+        crpix1_0 = 1 + amp*stripeCols
+        
+        if verbose:
+            print "Processing Amplifier %s%02d:" % (detID,i+1)
+            print "    Pre: %d to %d" % (preBeg,preEnd)
+            print "   Data: %d to %d" % (dataBeg,dataEnd)
+            print "   Bias: %d to %d" % (biasBeg,biasEnd)
+
+        # Image sectors to extract (prescan/data/bias)
+        
+        stPreBeg = 1
+        stPreEnd = preCols
+        stDataBeg = 1+stPreEnd
+        stDataEnd = preCols+stripeCols
+        stBiasBeg = 1+stDataEnd
+        stBiasEnd = preCols+stripeCols+biasCols
+
+        # Extract the sectors, flipping as required
+
+        if haveSEF[ccd]:
+            if doFlip:
+                tmp = np.fliplr(inData[:,preBeg-1:preEnd])
+                preScan = np.flipud(tmp)
+                tmp = np.fliplr(inData[:,dataBeg-1:dataEnd])
+                imgData = np.flipud(tmp)
+                tmp = np.fliplr(inData[:,biasBeg-1:biasEnd])
+                imgBias = np.flipud(tmp)
+            else:
+                preScan = inData[:,preBeg-1:preEnd]
+                imgData = inData[:,dataBeg-1:dataEnd]
+                imgBias = inData[:,biasBeg-1:biasEnd]
+
+        # assemble the stripe: [pre|data|bias]
+
+            stripe[:,stPreBeg-1:stPreEnd] = preScan
+            stripe[:,stDataBeg-1:stDataEnd] = imgData
+            stripe[:,stBiasBeg-1:stBiasEnd] = imgBias
+
+        # build the stripe extension FITS header
+
+        hdu = fits.ImageHDU(stripe)
+        hdr = fits.HDUList([hdu])[0].header
+
+        # The REALDATA keyword is T
+        if haveSEF[ccd]:
+            hdr['REALDATA'] = (True,'Actual %s%02d stripe data' % (detID,i+1))
+        else:
+            hdr['REALDATA'] = (False,'Zero placeholder for missing %s data' % (detID))
+
+        hdr['EXTNAME'] = ('%s%02d' % (detID,i+1))
+        hdr['CCDNAME'] = ('KMTNet CCD %s') % (detID)
+        hdr['AMPNAME'] = ('%s%02d' % (detID,i+1))
+        hdr['CCDSUM']  = ('1 1','On-Chip Binning Factors')
+        hdr['CCDSEC']  = ('[%d:%d,%d:%d]' % (preCols+1,preCols+stripeCols,1,stripeRows),
+                          'CCD Data Section')
+        hdr['AMPSEC']  = ('[%d:%d,%d:%d]' % (preCols+1,preCols+stripeCols,1,stripeRows),
+                          'Amplifier Section')
+        hdr['DATASEC'] = ('[%d:%d,%d:%d]' % (preCols+1,preCols+stripeCols,1,stripeRows),
+                          'Data Section')
+
+        detCs = detC0 + amp*stripeCols
+
+        hdr['DETSEC']  = ('[%d:%d,%d:%d]' % (detCs,detCs+stripeCols,detR0,detR0+stripeRows),
+                          'Stripe Coords on Detector')
+        hdr['PRESEC']  = ('[%d:%d,%d:%d]' % (stPreBeg,stPreEnd,1,stripeRows),
+                          'Prescan Section')
+        hdr['BIASSEC'] = ('[%d:%d,%d:%d]' % (stBiasBeg,stBiasEnd,1,stripeRows),
+                          'Bias Overscan Section')
+        hdr['TRIMSEC'] = ('[%d:%d,%d:%d]' % (stDataBeg,stDataEnd,1,stripeRows),
+                              'Trimmed Data Section')
+
+        if doFlip:
+            hdr['IMFLIP'] = ('-X,-Y','Raw Stripe Flip Applied')
+        else:
+            hdr['IMFLIP'] = ('None','Raw Stripe Flip Applied')
+
+        # The WCS stuff - this WCS is related to the position of the device on
+        # the FPA proper.  We also assign the RA/Dec of the field to the
+        # center of the FPA to provide a basic close-to-real-sky WCS when the
+        # MEF file is viewed in ds9 as an WCS Mosaic
+
+        hdr['CTYPE1'] = ('RA---TAN','Coordinate Type')
+        hdr['CTYPE2'] = ('DEC--TAN','Coordinate Type')
+        hdr['CRVAL1'] = (CRVAL1,'Coordinate Reference Value')
+        hdr['CRVAL2'] = (CRVAL2,'Coordinate Reference Values')
+
+        # Because CCDs are read in column stripes, CRPIX1 is relative to
+        # the stripe, not the parent CCD, but CRPIX2 is the same as for
+        # the parent CCD.  Similarly CDi_j are the same as the parent CCD.
+
+        hdr['CRPIX1'] = (CRPIX1[detID]-crpix1_0,'Coordinate Reference Pixel')
+        hdr['CRPIX2'] = (CRPIX2[detID],'Coordinate Reference Pixel')
+        hdr['CD1_1']  = (CD1_1[detID],'Coordinate Transformation Matrix')
+        hdr['CD1_2']  = (CD1_2[detID],'Coordinate Transformation Matrix')
+        hdr['CD2_1']  = (CD2_1[detID],'Coordinate Transformation Matrix')
+        hdr['CD2_2']  = (CD2_2[detID],'Coordinate Transformation Matrix')
+
+        #
+        # Coordinate transform keywords.  The basic document describing
+        # these is "NOAO Image Data Structure Definitions"
+        # (iraf.noao.edu/projects/ccdmosaic/imagedef/imagedef.html).
+        # These are used by ds9 to translate the cursor position into
+        # the current pixel location within the unit detector, stripe,
+        # or the entire 4-detector mosaic.  To say it is mildly
+        # confusing is putting entirely too optimistic a spin on
+        # things.  The way the KMTN Camera system is readout in
+        # stripes, and how the de-interlaced overscan and prescan are
+        # recorded means the definitions for our camera are slightly
+        # different than the original NOAO definition described above.
+        #
+
+        # CCD to Amplifier Transformation Matrix, which is based on
+        # which pixels are read from the full active area of a single
+        # detector in the mosaic.  In our context, this will convert
+        # cursor position in ds9 into pixel location within the full
+        # unit CCD image frame (stripe-independent).  For the flipped
+        # detectors (K and N), it is pixel location in the flipped
+        # (sky-oriented) frame, not the readout frame.
+        #
+        # ds9 displays this transform as "Amplifier" on the GUI
+
+        atv1 = amp*stripeCols
+        hdr['ATV1']   = (atv1,'CCD to Amplifier Transform')
+        hdr['ATV2']   = (0,'CCD to Amplifier Transform')
+        hdr['ATM1_1'] = (1,'CCD to Amplifier Transform')
+        hdr['ATM1_2'] = (0,'CCD to Amplifier Transform')
+        hdr['ATM2_1'] = (0,'CCD to Amplifier Transform')
+        hdr['ATM2_2'] = (1,'CCD to Amplifier Transform')
+
+        # CCD to Image Transformation Matrix.  This is the recorded
+        # image pixel array.  In our context, this converts the cursor
+        # position in ds9 into where you are within a given stripe
+        # (i.e., strip coordinates), which start with (1,1) in the
+        # lower left corner, up to (1152,9232) at the upper right.  In
+        # our context this is "physical" coordinates within the image
+        # subsection in this extension.
+        #
+        # ds9 displays this transform as "Physical" on the GUI
+
+        ltv1 = preCols
+        hdr['LTV1']   = (ltv1,'CCD to Image Transform')
+        hdr['LTV2']   = (0,'CCD to Image Transform')
+        hdr['LTM1_1'] = (1,'CCD to Image Transform')
+        hdr['LTM1_2'] = (0,'CCD to Image Transform')
+        hdr['LTM2_1'] = (0,'CCD to Image Transform')
+        hdr['LTM2_2'] = (1,'CCD to Image Transform')
+
+        # The CCD to Detector (aka "mosaic") transform depends on
+        # which CCD this is and DTV1 additionally depends on which
+        # stripe in the CCD this is.  This is the only one of the
+        # three that makes sense relative to the original NOAO
+        # documentation in the KMTN camera context.  
+        #
+        # Detector (aka "mosaic") coordinates are as-if the entire
+        # 4-CCD mosiac were one big pixel grid with gaps of no-data
+        # between the 4 "active" areas.  Detector pixel (1,1) is the
+        # first pixel of the N detector at the lower lefthand corner.
+        #
+        # ds9 displays this transform as "Detector" on the GUI
+
+        dtv1 = detCs-1
+        hdr['DTV1']   = (dtv1,'CCD to Detector Mosaic Transform')
+        hdr['DTV2']   = (detR0,'CCD to Detector Mosaic Transform')
+        hdr['DTM1_1'] = (1,'CCD to Detector Mosaic Transform')
+        hdr['DTM1_2'] = (0,'CCD to Detector Mosaic Transform')
+        hdr['DTM2_1'] = (0,'CCD to Detector Mosaic Transform')
+        hdr['DTM2_2'] = (1,'CCD to Detector Mosaic Transform')
+        
+        # Last WCS bits ala IRAF
+
+        hdr['WCSDIM']   = (2,'Coordinate System Dimensionality')
+        hdr['WAT0_001'] = ('system=image','Coordinate System')
+        hdr['WAT1_001'] = ('wtype=tan axtype=ra','Coordinate Type')
+        hdr['WAT2_001'] = ('wtype=tan axtype=dec','Coordinate Type')
+
+        # All done, append the stripe to the MEF.  By default
+        # (convert=False), we seek to preserve the original data
+        # scaling, we do this by hand instead of using the
+        # fits.append() method so we can explicitly force scaling.
+        # However, if convert=True, use fits.append().
+
+        if convert:
+            fits.append(mefFile,stripe,hdr)
+        else:
+            f = fits.open(mefFile,mode='append',scale_back=True)
+            hdu.data=stripe
+            hdu.header = hdr
+            if bitpix==16:
+                hdu.scale('int16',bzero=bzero,bscale=bscale)
+            elif bitpix==32:
+                hdu.scale('int32',bzero=bzero,bscale=bscale)
+            f.append(hdu)
+            f.close()
+
+    # Done with this FITS file, close it
+
+    if haveSEF[ccd]:
+        inFITS.close()
+
+# All Done
+print "Done: Created MEF file %s" % (mefFile)
+
+sys.exit(0)
+    

@@ -1,0 +1,68 @@
+#
+# Makefile for ISIS v2
+#
+# Build the package using the "build" script not with make.
+#
+# We now compile with the much stricter g++ compiler instead of gcc.
+#
+# Version 2 now introduces date-based logging and daemon modes
+#
+# R. Pogge, OSU Astronomy Dept.
+# pogge@astronomy.ohio-state.edu
+#
+# Notes:
+#   Version 2 was started 2009 Mar 18 [rwp/osu]
+#   Version 2.6.x is the first to include the isisd daemon version [rwp/osu]3
+#
+VERSION     = 2.7.3
+# MODS root directory
+ROOTDIR = /lhome/dts
+# Directory for installed "public" binaries
+BINDIR = ../bin
+######################################
+CC          = /usr/bin/g++
+AR          = /usr/bin/ar
+INCDIR      = $(ROOTDIR)/include
+#
+CFLAGS      = -w -c
+VFLAGS      = -DISIS_VERSION='"$(VERSION)"' -DISIS_COMPDATE='"$(COMPDATE)"' \
+              -DISIS_COMPTIME='"$(COMPTIME)"' -DISIS_CONFIG='"$(CONFIG)"' \
+              -DISIS_LOGS='"$(LOGS)"' -DISIS_DCONFIG='"$(DCONFIG)"'
+LIBS        = -I$(INCDIR) -lreadline -lhistory -lncurses
+LFLAGS      = -o isis
+LFLAGSD     = -o isisd
+
+#
+OBJS        = interfaces.o messages.o commands.o serverlog.o \
+              clients.o loadconfig.o utils.o
+#
+.c.o:       isisserver.h 
+	    $(CC) $(CFLAGS) $(VFLAGS) $*.c
+#
+all:        isis.a isis isisd
+#
+isis.a:  $(OBJS) 
+	    /bin/rm -f  isis.a
+	    $(AR) cr isis.a $(OBJS)
+	    ranlib isis.a
+#	    \cp isis.a $(ROOTDIR)/ulib
+#
+# Interactive ISIS server
+#
+isis:	    isis.a isisserver.h 
+	    $(CC) $(VFLAGS) $(LFLAGS) main.c isis.a $(LIBS)
+#	    \cp isis ../bin
+#
+# ISIS daemon
+#
+isisd:	    isis.a isisserver.h 
+	    $(CC) $(VFLAGS) $(LFLAGSD) isisd.c isis.a $(LIBS)
+#	    \cp isisd ../bin
+#
+clean:
+	    /bin/rm -f isis isisd isis.a *.o
+
+install:
+	    \cp isis $(BINDIR)/
+	    \cp isisd $(BINDIR)/
+	    /bin/rm -f *.o

@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+#-- Prepares system resources required for KMTN data acquisition
+#
+# JAM, April 15, 2013
+#
+# June 14. 2013: Changed folder locations, commented out tasks that 
+#                will not persist through acquisition system startup. 
+#                Added socat command.
+# Sept. 20, 2013: Adding new formatted ramdisk for DOS system logs
+# June 27, 2014: Consolidating as much as possible here to make 
+#                autostartup happen
+# August 21, 2014: Decided to run XISIS instead of ISIS
+#
+# --------------------------------
+# 2014 Oct 13 - [rwp/osu]
+#
+# This is the ICS launch script (KMTN_Startup_ICS).  It launches
+# the MODS-style ISIS server as XIS, and uses the isisrelay 
+# comm configuration on the remote IC machines.
+#
+# This version can only be run on the ICS host machine (KMT Science).
+#
+# The serial comm between the virtual DOS machine and this Linux host
+# is done by serial-to-serial cable connection.  We get /dev/ttyS0,
+# the virtual DOS gets /dev/ttyS1.
+#
+
+# Write disk headers to ramdisks
+
+dd if=/home/dts/VMFolder/datadisklabels/disklabel.txt of=/dev/ram0 count=1 bs=512
+dd if=/home/dts/VMFolder/datadisklabels/disklabel2.txt of=/dev/ram1 count=1 bs=512
+
+# Write IC configuration file to shared ramdisk
+
+dd if=/home/dts/Config/IC.ini of=/dev/ram15 bs=512 count=3
+
+# Start a MODS-style isis server in an interactive console window
+
+xterm -e "/home/dts/ISIS/server/isis" &
+#xterm -e "/home/dts/ISIS/relay/isisrelay" &
+
+# Automount the data directory on electron
+#mount 172.16.3.44:/home/data /mnt/electrondata
+
+# Mount the data directory on the Rack#2 ICG computer
+mount 192.168.14.108:/home/data /mnt/ICGData
+
+# Mount the data directory on the Rack#3 ICS computer
+#mount 192.168.15.109:/home/data /mnt/ICSData
+
+# Mount the data directory on the Rack#3 ICG computer
+#mount 192.168.15.108:/home/data /mnt/ICGData
+
+# Set ramdisks to read/write for everybody
+
+chmod 666 /dev/ram0
+chmod 666 /dev/ram1
+
+# Start the virtual DOS machine, reset ramdisk permissions, and start
+# the VNC console for the IC instance.
+
+virsh start IC2
+
+chmod 666 /dev/ram0
+chmod 666 /dev/ram1
+
+#vncviewer :0 &
+vncviewer localhost:0 &
+

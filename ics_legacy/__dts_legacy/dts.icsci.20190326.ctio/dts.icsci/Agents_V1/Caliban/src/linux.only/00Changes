@@ -1,0 +1,171 @@
+Changes Log for Caliban v2.0
+
+1997 Apr 14: [rwp]
+
+   Modified InitDiskTable.c to make it a little more sophisticated vis-a-vis
+   errors on trying to validate spool devices.
+
+   Modified Caliban.c as follows: 
+
+1) Call to InitDiskTables now just looks at the number of valid devices
+   detected, now kept out of the disktab structure, but in the new numvalid
+   variable.  
+   If numvalid=0, prints an error 
+   If numvalid<disktab->numdisks, prints a warning to the effect that the
+   Caliban.ini file contains invalid spool devices
+
+2) CHKSTATUS command, now prints the status of all spool devices in the
+   Caliban.ini file.  As before, it would only print the first (0:numvalid) as
+   it did not check the "valid" flag on the loop.  This was confusing, as we
+   had the situation that 4 spool devs were in the .ini file, but only 2 were
+   valid.  If the first 2 spool devices in Caliban.ini were valid, they would
+   get printed, but if the first two were invalid, they were not printed, as
+   the printout only looped 0:1 instead of 0:3.  We need to know if a disk
+   came up invalid on startup, so we now print the whole table
+
+1997 Apr 24: [rwp]
+
+   Modified GetFITS.c to remove the .fits extension for now.  Will adopt
+   a more sensible strategy later.
+
+
+1997 Apr 29: [rwp]
+
+   Modified GetFITS.c to use ICIMACS/Prospero conformal keyword=value pairs
+   in STATUS: messages (so they can be parsed into internal tables in
+   Prospero & friends).  Hook in TransferDisk.c to make Caliban "shutup" has
+   been protected by #ifdef SHUTUP.
+
+
+1997 May 3: [brh]
+
+   Modified GetFITS.c to pad data segment with zeroes instead of spaces.
+   Added support for LASTFILE and PATH serial port commands.
+   Added more descriptive error messages using errno.h facilities
+
+1997 May 8: [brh]
+
+   Added support for VERSION serial port command
+
+1997 May 19: [rwp]
+
+   Added ADDFITS and DOARCHIVE #defs to Caliban.h
+
+   ADDFITS will append .fits to filenames. Normally #undef at OSU, enabled at
+   KPNO to support the [broken] IRAF beta-test FITS kernel that requires a
+   .fits extension.
+
+   DOARCHIVE will enable data archiving via the ARCHIVE_CMD command.
+   Normally #undef at OSU, only enabled at KPNO where the STB archiver is
+   used.
+
+1997 May 27: [brh]
+
+   Improved logging functionality to include all console messages
+   Added "Initiating file transfer iteration #n..." console message
+
+1997 September 4: [brh]
+
+   Fixed problem resulting from embedded nulls in FITS filename and uniquename
+   header cards.  Previously, Caliban assumed the last character of every card
+   value was a quote.  If the filename was less than 8 characters and the
+   filename ended with a null, Caliban was blindly chopping the last
+   character, thinking it was a null.  Now it first checks to make sure the
+   last character is a quote before chopping.
+
+   Fixed problem with null padding on FITS data segment.  Pad buffer contained
+   garbage character in first byte since pad constructor loop control variable
+   initialized to 1 instead of 0.
+
+1997 October 2: [brh]
+
+   Fixed problem with FITS segment padding routine where if header or data
+   segment worked out to an exact multiple of 2880, a pad of 2880 was added.
+
+   Added STATUS: MACHINETYPE=DOWNSTREAM reply to PONG.
+
+   Fixed problem where spurious carriage return (\r) characters appearing on
+   the end of messages sent to XmitMsg routine would cause the message to be
+   displayed and then immediately overwritten on the screen or when viewing
+   the log file, thus making it appear as though the messages were never
+   there.
+
+   Added FITS_DATA_BLOCK_SIZE constant to allow changing block size for FITS
+   data segment transfers.
+
+   Changed the way FITS header segment is read so that once the header size is
+   discovered, a buffer is allocated such that the header segment can be
+   read/written in one chunk.
+
+1998 Jan 12: [rwp]
+
+    Modified GetFITS.c to make the error messages more descriptive if the
+    SIMPLE or END cards are invalid (as it stands, the error message is
+    somewhat misleading).
+
+1998 Jan 22: [brh]
+
+    Added doarchive, dodisplay, doautolog, and addfits parameters to system
+    table, ini file, and keyboard/serial command list (previously used #DEFs).
+
+    Added restore command to reset these new system variables to their default
+    values as in the ini file.
+
+    Added check for available disk space prior to transferring file.
+
+    Changed failover mechanism for filenames and uniquenames such that any
+    problem with a filename will fail over to the unique name (i.e. 
+    file already exists or could not create that file name for any
+    reason).  Subsequent failure to create unique name causes file to be
+    skipped and reported.
+
+1998 Mar 19: [brh]
+
+    Added recognition of "STATUS: MachineType=" messages supporting
+    DOWNSTREAM, UPSTREAM, SWITCHED, and PONG keywords.
+
+    Changed it so that only the serialhost can initiate an INIT DISK
+    with Caliban.
+
+1998 May 5: [rwp]
+
+    Ported to Solaris 2.6.  Sucked in the usual way ports to SysV sucked.
+    Among the features of this voodoo port:
+
+        1) sys_errlist[] is not defined as before, but strerror(errno) works
+           just fine.  Did some ugly #def hacking in Caliban.h to make an
+           ERRSTRING flag which is one or the other if we can use
+           sys_errlist[].
+
+        2) Added more verbose error messages if InitDiskTable() encounters
+           either an invalid disk device or cannot read the word DISK out of
+           the first line of that disk.  Now says why it cannot get a valid
+           disk and what grossed it out, rather than a blind statement about
+           an invalid spool device, which carried essentially no information
+           content (you gotta say which spool device and why!!)
+
+        3) This one is totally weird with the proverbial beard.  For some
+           reason, in the Caliban.c main keystroke parser, it could not do
+           "case '\n':" correctly.  I finally resorted to "case 14:" and it
+           worked.  Something implementation dependent about fgetc() in the
+           solaris edition of gcc?  Dunno.  Weird.
+
+    In other fun:
+
+    Formatting the disks under Solaris was no fun.  The format command behaves
+    differently.  You have to make a new kind of disk with the
+    ``DISK#.BUS#.mm/dd/yy.'' string, and remember to label it, too, the name
+    of the partition is not the name of the disk.  And don't forget to do a
+    save, kids!
+  
+    On kepler (the Solaris 2.6 box going to CTIO), the disks were scsi targets
+    0 and 1 on the second controller, and we partitioned the whole shebang as
+    ``2'' (that's ``c'' to all you in bsd/sunos land).  The full ugly device
+    name is /dev/dsk/c1t0d0s2, which is kindly aliased to /dev/sd15c and
+    similarly for /dev/sd16c for disk on target 1 (that weird name syntax
+    actually has info content: controller#target#disk#segment#, I think).
+
+    Added a prototype autologging hook right after the archiving stuff
+    in GetFITS.c and Caliban.h.  This is commented out right now, but
+    we're close to a prototype autologger script.  Stay tuned...
+

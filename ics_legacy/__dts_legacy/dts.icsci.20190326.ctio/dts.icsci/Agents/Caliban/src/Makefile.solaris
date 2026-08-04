@@ -1,0 +1,31 @@
+VERSION:sh  = date '+%y%h%d'
+CC          = /usr/local/bin/gcc
+AR          = /usr/ccs/bin/ar
+CFLAGS	    = -w -c -DSOLARIS -DVERSION='"Caliban v2.1 OSU ($(VERSION))"'
+LFLAGS      = -o Caliban
+CBHOME      = /opt/local/pkg/dts/Caliban
+
+
+OFILES      = XmitMsg.o AckDisk.o InitDisk.o InitDiskTable.o InitSerial.o IsValidMount.o \
+	      LogMsg.o ConsoleMsg.o Pong.o Prompt.o Status.o TransferDisk.o UseDisk.o    \
+	      UseMount.o Utils.o ParseIniFile.o GetFITS.o ReqMount.o Ping.o CBStatus.o   \
+	      ChkDiskSpace.o CBread.o CBseek.o InitCB.o DoCommand.o
+
+.c.o:       Caliban.h
+	    $(CC) $(CFLAGS) $*.c
+
+all:        libx.a Caliban
+
+Caliban.o:  Caliban.h
+	    $(CC) $(CFLAGS) Caliban.c
+
+libx.a:	    $(OFILES) Caliban.o
+	    /bin/rm -f  libx.a
+	    $(AR) cr libx.a	`lorder $(OFILES) Caliban.o | tsort`
+	    ranlib libx.a
+
+Caliban:    libx.a
+	    $(CC) $(LFLAGS) libx.a -DSOLARIS libx.a -lcurses -ltermlib
+
+clean:
+	    /bin/rm -f Caliban libx.a *.o *~ #*

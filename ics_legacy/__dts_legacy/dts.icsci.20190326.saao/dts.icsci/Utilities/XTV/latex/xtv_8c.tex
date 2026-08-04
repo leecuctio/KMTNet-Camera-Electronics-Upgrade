@@ -1,0 +1,116 @@
+\section{xtv.c File Reference}
+\label{xtv_8c}\index{xtv.c@{xtv.c}}
+XVista TV Display Functions. 
+
+{\tt \#include \char`\"{}xtv.h\char`\"{}}\par
+\subsection*{Functions}
+\begin{CompactItemize}
+\item 
+int {\bf xtvopen} (int nx, int ny, int nclrs, int {\bf zoomf}, int parity, char $\ast$resource, char $\ast$title)
+\begin{CompactList}\small\item\em Open the XTV display. \item\end{CompactList}\item 
+void {\bf xtvclose} ()
+\begin{CompactList}\small\item\em Close the XTV display. \item\end{CompactList}\item 
+int {\bf xtvload} (float $\ast$a, int nx, int ny, int nxfull, int isx, int isy, int psx, int psy, float z1, float z2, int flip, int erase, int color)
+\begin{CompactList}\small\item\em load an image onto the image display \item\end{CompactList}\item 
+void {\bf xtvcolorld} (short $\ast$r, short $\ast$g, short $\ast$b, int n)
+\begin{CompactList}\small\item\em Load RGB color lookup tables. \item\end{CompactList}\item 
+void {\bf bwcmap} (short $\ast$r, short $\ast$g, short $\ast$b)
+\begin{CompactList}\small\item\em loads a simple black-and-white color map \item\end{CompactList}\item 
+void {\bf ibwcmap} (short $\ast$r, short $\ast$g, short $\ast$b)
+\begin{CompactList}\small\item\em loads a simple inverse black-and-white color map \item\end{CompactList}\end{CompactItemize}
+\subsection*{Variables}
+\begin{CompactItemize}
+\item 
+int {\bf TVis\-Open}\label{xtv_8c_a0}
+
+\item 
+int {\bf yup}\label{xtv_8c_a1}
+
+\begin{CompactList}\small\item\em flag = 0/1 for y increasing down/up \item\end{CompactList}\item 
+int {\bf ncolors}\label{xtv_8c_a2}
+
+\begin{CompactList}\small\item\em number of image colors used \item\end{CompactList}\end{CompactItemize}
+
+
+\subsection{Detailed Description}
+XVista TV Display Functions. 
+
+High-level functions that call the myzimage functions for image display. Most applications will call these functions rather than the low-level myzimage routines.
+
+\subsection{Function Documentation}
+\index{xtv.c@{xtv.c}!bwcmap@{bwcmap}}
+\index{bwcmap@{bwcmap}!xtv.c@{xtv.c}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void bwcmap (short $\ast$ {\em r}, short $\ast$ {\em g}, short $\ast$ {\em b})}\label{xtv_8c_a7}
+
+
+loads a simple black-and-white color map 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em r}]pointer to the red vector \item[{\em g}]pointer to the green vector \item[{\em b}]pointer to the blue vector\end{description}
+\end{Desc}
+\begin{Desc}
+\item[See also:]{\bf xtvcolorld()}{\rm (p.\,\pageref{xtv_8c_a6})}, ibwcamp() \end{Desc}
+\index{xtv.c@{xtv.c}!ibwcmap@{ibwcmap}}
+\index{ibwcmap@{ibwcmap}!xtv.c@{xtv.c}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void ibwcmap (short $\ast$ {\em r}, short $\ast$ {\em g}, short $\ast$ {\em b})}\label{xtv_8c_a8}
+
+
+loads a simple inverse black-and-white color map 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em r}]pointer to the red vector \item[{\em g}]pointer to the green vector \item[{\em b}]pointer to the blue vector\end{description}
+\end{Desc}
+\begin{Desc}
+\item[See also:]{\bf xtvcolorld()}{\rm (p.\,\pageref{xtv_8c_a6})}, {\bf bwcmap()}{\rm (p.\,\pageref{xtv_8c_a7})} \end{Desc}
+\index{xtv.c@{xtv.c}!xtvclose@{xtvclose}}
+\index{xtvclose@{xtvclose}!xtv.c@{xtv.c}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void xtvclose ()}\label{xtv_8c_a4}
+
+
+Close the XTV display. 
+
+Convenience function for {\bf xtvopen()}{\rm (p.\,\pageref{xtv_8c_a3})}. Might perform other functions someday, so not totally trivial. \index{xtv.c@{xtv.c}!xtvcolorld@{xtvcolorld}}
+\index{xtvcolorld@{xtvcolorld}!xtv.c@{xtv.c}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}void xtvcolorld (short $\ast$ {\em r}, short $\ast$ {\em g}, short $\ast$ {\em b}, int {\em n})}\label{xtv_8c_a6}
+
+
+Load RGB color lookup tables. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em r}]pointer to the red vector \item[{\em g}]pointer to the green vector \item[{\em b}]pointer to the blue vector \item[{\em n}]number of entries in each RGB table\end{description}
+\end{Desc}
+\begin{Desc}
+\item[See also:]{\bf bwcmap()}{\rm (p.\,\pageref{xtv_8c_a7})}, {\bf ibwcmap()}{\rm (p.\,\pageref{xtv_8c_a8})} \end{Desc}
+\index{xtv.c@{xtv.c}!xtvload@{xtvload}}
+\index{xtvload@{xtvload}!xtv.c@{xtv.c}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int xtvload (float $\ast$ {\em a}, int {\em nx}, int {\em ny}, int {\em nxfull}, int {\em isx}, int {\em isy}, int {\em psx}, int {\em psy}, float {\em z1}, float {\em z2}, int {\em flip}, int {\em erase}, int {\em color})}\label{xtv_8c_a5}
+
+
+load an image onto the image display 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em a}]Input floating image array \item[{\em nx}]Number of X-axis pixels to be displayed \item[{\em ny}]Number of Y-axis pixels to be displayed \item[{\em nxfull}]Number of X-axis pixels in the full frame \item[{\em isx}]Address of the first X-axis pixel to be displayed (usually 0 = first pixel) \item[{\em isy}]Address of the first Y-axis pixel to be displayed (usually 0 = first pixel) \item[{\em psx}]X-axis image-space coordinate corresponding to isx (typically, if isx=0, psx=1) \item[{\em psy}]Y-axis image-space coordinate corresponding to isy (typically, if isy=0, psy=1) \item[{\em z1}]Intensity mapping lower limit \item[{\em z2}]Intensity mapping upper limit \item[{\em flip}]Flag for up/down image reflection (1=Y increases up, 0=Y increases down or native screen memory order) \item[{\em erase}]Flag to erase screen before display \item[{\em color}]Color plane to load (1=R,2=G,3=B,0=all)\end{description}
+\end{Desc}
+Loads an image into the image display, mapping data values into colors. \index{xtv.c@{xtv.c}!xtvopen@{xtvopen}}
+\index{xtvopen@{xtvopen}!xtv.c@{xtv.c}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}int xtvopen (int {\em nx}, int {\em ny}, int {\em nclrs}, int {\em zoomf}, int {\em parity}, char $\ast$ {\em resource}, char $\ast$ {\em title})}\label{xtv_8c_a3}
+
+
+Open the XTV display. 
+
+\begin{Desc}
+\item[Parameters:]
+\begin{description}
+\item[{\em nx}]Width of the image display window in screen pixels \item[{\em ny}]Height of the image display window in screen pixels \item[{\em nclrs}]number of colors to use \item[{\em zoomf}]zoom factor for the zoom window (0=no zoom window) \item[{\em parity}]1=flip Y-axis, 0=native order \item[{\em resource}]string with the resource variable (e.g., xtv.geometry) \item[{\em title}]title to appear on the window top banner\end{description}
+\end{Desc}
+\begin{Desc}
+\item[Returns:]file descriptor of X events on success\end{Desc}
+Opens the XTV image display with the requested properties 

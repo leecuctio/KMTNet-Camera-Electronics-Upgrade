@@ -1,0 +1,1432 @@
+
+
+            /*
+                 Uses the context element's position to calculate the availble height 
+                 above and below it to display its corresponding Overlay.
+            */
+
+            var getDisplayRegionHeight = function () {
+
+                // The Overlay is below the context element
+                if ((oOverlay.cfg.getProperty("y") - scrollY) > nContextElY) {
+                    return (nBottomRegionHeight - nViewportOffset);				
+                }
+                else {	// The Overlay is above the context element
+                    return (nTopRegionHeight - nViewportOffset);				
+                }
+        
+            };
+
+
+            /*
+                Trys to place the Overlay in the best possible position (either above or 
+                below its corresponding context element).
+            */
+        
+            var setVerticalPosition = function () {
+        
+                var nDisplayRegionHeight = getDisplayRegionHeight(),
+                    fnReturnVal;
+                    
+
+                if (nOverlayOffsetHeight > nDisplayRegionHeight) {
+                   
+                    if (bFlipped) {
+        
+                        /*
+                             All possible positions and values for the 
+                             "maxheight" configuration property have been 
+                             tried, but none were successful, so fall back 
+                             to the original size and position.
+                        */
+    
+                        flipVertical();
+                        
+                    }
+                    else {
+        
+                        flipVertical();
+
+                        bFlipped = true;
+        
+                        fnReturnVal = setVerticalPosition();
+        
+                    }
+                
+                }
+        
+                return fnReturnVal;
+        
+            };
+
+
+            if (this.cfg.getProperty("preventcontextoverlap") && aContext && 
+            	oOverlapPositions[(aContext[1] + aContext[2])]) {
+
+                if (bCanConstrain) {
+
+                    oContextEl = aContext[0];
+                    nContextElHeight = oContextEl.offsetHeight;
+                    nContextElY = (Dom.getY(oContextEl) - scrollY);
+    
+                    nTopRegionHeight = nContextElY;
+                    nBottomRegionHeight = (viewPortHeight - (nContextElY + nContextElHeight));
+    
+                    setVerticalPosition();
+                
+                }
+
+                yNew = oOverlay.cfg.getProperty("y");
+
+            }
+            else {
+
+                if (bCanConstrain) {
+    
+                    topConstraint = scrollY + nViewportOffset;
+                    bottomConstraint = 
+                        scrollY + viewPortHeight - nOverlayOffsetHeight - nViewportOffset;
+    
+                    if (y < topConstraint) {
+                        yNew  = topConstraint;
+                    } else if (y  > bottomConstraint) {
+                        yNew  = bottomConstraint;
+                    }
+                } else {
+                    yNew = nViewportOffset + scrollY;
+                }
+
+            }
+
+            return yNew;
+        },
+
+
+        /**
+         * Given x, y coordinate values, returns the calculated coordinates required to 
+         * position the Overlay if it is to be constrained to the viewport, based on the 
+         * current element size, viewport dimensions and scroll values.
+         *
+         * @param {Number} x The X coordinate value to be constrained
+         * @param {Number} y The Y coordinate value to be constrained
+         * @return {Array} The constrained x and y coordinates at index 0 and 1 respectively;
+         */
+        getConstrainedXY: function(x, y) {
+            return [this.getConstrainedX(x), this.getConstrainedY(y)];
+        },
+
+        /**
+        * Centers the container in the viewport.
+        * @method center
+        */
+        center: function () {
+
+            var nViewportOffset = Overlay.VIEWPORT_OFFSET,
+                elementWidth = this.element.offsetWidth,
+                elementHeight = this.element.offsetHeight,
+                viewPortWidth = Dom.getViewportWidth(),
+                viewPortHeight = Dom.getViewportHeight(),
+                x,
+                y;
+
+            if (elementWidth < viewPortWidth) {
+                x = (viewPortWidth / 2) - (elementWidth / 2) + Dom.getDocumentScrollLeft();
+            } else {
+                x = nViewportOffset + Dom.getDocumentScrollLeft();
+            }
+
+            if (elementHeight < viewPortHeight) {
+                y = (viewPortHeight / 2) - (elementHeight / 2) + Dom.getDocumentScrollTop();
+            } else {
+                y = nViewportOffset + Dom.getDocumentScrollTop();
+            }
+
+            this.cfg.setProperty("xy", [parseInt(x, 10), parseInt(y, 10)]);
+            this.cfg.refireEvent("iframe");
+        },
+
+        /**
+        * Synchronizes the Panel's "xy", "x", and "y" properties with the 
+        * Panel's position in the DOM. This is primarily used to update  
+        * position information during drag & drop.
+        * @method syncPosition
+        */
+        syncPosition: function () {
+
+            var pos = Dom.getXY(this.element);
+
+            this.cfg.setProperty("x", pos[0], true);
+            this.cfg.setProperty("y", pos[1], true);
+            this.cfg.setProperty("xy", pos, true);
+
+        },
+
+        /**
+        * Event handler fired when the resize monitor element is resized.
+        * @method onDomResize
+        * @param {DOMEvent} e The resize DOM event
+        * @param {Object} obj The scope object
+        */
+        onDomResize: function (e, obj) {
+
+            var me = this;
+
+            Overlay.superclass.onDomResize.call(this, e, obj);
+
+            setTimeout(function () {
+                me.syncPosition();
+                me.cfg.refireEvent("iframe");
+                me.cfg.refireEvent("context");
+            }, 0);
+        },
+
+        /**
+         * Determines the content box height of the given element (height of the element, without padding or borders) in pixels.
+         *
+         * @method _getComputedHeight
+         * @private
+         * @param {HTMLElement} el The element for which the content height needs to be determined
+         * @return {Number} The content box height of the given element, or null if it could not be determined.
+         */
+        _getComputedHeight : (function() {
+
+            if (document.defaultView && document.defaultView.getComputedStyle) {
+                return function(el) {
+                    var height = null;
+                    if (el.ownerDocument && el.ownerDocument.defaultView) {
+                        var computed = el.ownerDocument.defaultView.getComputedStyle(el, '');
+                        if (computed) {
+                            height = parseInt(computed.height, 10);
+                        }
+                    }
+                    return (Lang.isNumber(height)) ? height : null;
+                };
+            } else {
+                return function(el) {
+                    var height = null;
+                    if (el.style.pixelHeight) {
+                        height = el.style.pixelHeight;
+                    }
+                    return (Lang.isNumber(height)) ? height : null;
+                };
+            }
+        })(),
+
+        /**
+         * autofillheight validator. Verifies that the autofill value is either null 
+         * or one of the strings : "body", "header" or "footer".
+         *
+         * @method _validateAutoFillHeight
+         * @protected
+         * @param {String} val
+         * @return true, if valid, false otherwise
+         */
+        _validateAutoFillHeight : function(val) {
+            return (!val) || (Lang.isString(val) && Overlay.STD_MOD_RE.test(val));
+        },
+
+        /**
+         * The default custom event handler executed when the overlay's height is changed, 
+         * if the autofillheight property has been set.
+         *
+         * @method _autoFillOnHeightChange
+         * @protected
+         * @param {String} type The event type
+         * @param {Array} args The array of arguments passed to event subscribers
+         * @param {HTMLElement} el The header, body or footer element which is to be resized to fill
+         * out the containers height
+         */
+        _autoFillOnHeightChange : function(type, args, el) {
+            this.fillHeight(el);
+        },
+
+        /**
+         * Returns the sub-pixel height of the el, using getBoundingClientRect, if available,
+         * otherwise returns the offsetHeight
+         * @method _getPreciseHeight
+         * @private
+         * @param {HTMLElement} el
+         * @return {Float} The sub-pixel height if supported by the browser, else the rounded height.
+         */
+        _getPreciseHeight : function(el) {
+            var height = el.offsetHeight;
+
+            if (el.getBoundingClientRect) {
+                var rect = el.getBoundingClientRect();
+                height = rect.bottom - rect.top;
+            }
+
+            return height;
+        },
+
+        /**
+         * <p>
+         * Sets the height on the provided header, body or footer element to 
+         * fill out the height of the container. It determines the height of the 
+         * containers content box, based on it's configured height value, and 
+         * sets the height of the autofillheight element to fill out any 
+         * space remaining after the other standard module element heights 
+         * have been accounted for.
+         * </p>
+         * <p><strong>NOTE:</strong> This method is not designed to work if an explicit 
+         * height has not been set on the container, since for an "auto" height container, 
+         * the heights of the header/body/footer will drive the height of the container.</p>
+         *
+         * @method fillHeight
+         * @param {HTMLElement} el The element which should be resized to fill out the height
+         * of the container element.
+         */
+        fillHeight : function(el) {
+            if (el) {
+                var container = this.innerElement || this.element,
+                    containerEls = [this.header, this.body, this.footer],
+                    containerEl,
+                    total = 0,
+                    filled = 0,
+                    remaining = 0,
+                    validEl = false;
+
+                for (var i = 0, l = containerEls.length; i < l; i++) {
+                    containerEl = containerEls[i];
+                    if (containerEl) {
+                        if (el !== containerEl) {
+                            filled += this._getPreciseHeight(containerEl);
+                        } else {
+                            validEl = true;
+                        }
+                    }
+                }
+
+                if (validEl) {
+
+                    if (UA.ie || UA.opera) {
+                        // Need to set height to 0, to allow height to be reduced
+                        Dom.setStyle(el, 'height', 0 + 'px');
+                    }
+
+                    total = this._getComputedHeight(container);
+
+                    // Fallback, if we can't get computed value for content height
+                    if (total === null) {
+                        Dom.addClass(container, "yui-override-padding");
+                        total = container.clientHeight; // Content, No Border, 0 Padding (set by yui-override-padding)
+                        Dom.removeClass(container, "yui-override-padding");
+                    }
+    
+                    remaining = total - filled;
+    
+                    Dom.setStyle(el, "height", remaining + "px");
+    
+                    // Re-adjust height if required, to account for el padding and border
+                    if (el.offsetHeight != remaining) {
+                        remaining = remaining - (el.offsetHeight - remaining);
+                    }
+                    Dom.setStyle(el, "height", remaining + "px");
+                }
+            }
+        },
+
+        /**
+        * Places the Overlay on top of all other instances of 
+        * YAHOO.widget.Overlay.
+        * @method bringToTop
+        */
+        bringToTop: function () {
+
+            var aOverlays = [],
+                oElement = this.element;
+
+            function compareZIndexDesc(p_oOverlay1, p_oOverlay2) {
+
+                var sZIndex1 = Dom.getStyle(p_oOverlay1, "zIndex"),
+                    sZIndex2 = Dom.getStyle(p_oOverlay2, "zIndex"),
+
+                    nZIndex1 = (!sZIndex1 || isNaN(sZIndex1)) ? 0 : parseInt(sZIndex1, 10),
+                    nZIndex2 = (!sZIndex2 || isNaN(sZIndex2)) ? 0 : parseInt(sZIndex2, 10);
+
+                if (nZIndex1 > nZIndex2) {
+                    return -1;
+                } else if (nZIndex1 < nZIndex2) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
+
+            function isOverlayElement(p_oElement) {
+
+                var isOverlay = Dom.hasClass(p_oElement, Overlay.CSS_OVERLAY),
+                    Panel = YAHOO.widget.Panel;
+
+                if (isOverlay && !Dom.isAncestor(oElement, p_oElement)) {
+                    if (Panel && Dom.hasClass(p_oElement, Panel.CSS_PANEL)) {
+                        aOverlays[aOverlays.length] = p_oElement.parentNode;
+                    } else {
+                        aOverlays[aOverlays.length] = p_oElement;
+                    }
+                }
+            }
+
+            Dom.getElementsBy(isOverlayElement, "DIV", document.body);
+
+            aOverlays.sort(compareZIndexDesc);
+
+            var oTopOverlay = aOverlays[0],
+                nTopZIndex;
+
+            if (oTopOverlay) {
+                nTopZIndex = Dom.getStyle(oTopOverlay, "zIndex");
+
+                if (!isNaN(nTopZIndex)) {
+                    var bRequiresBump = false;
+
+                    if (oTopOverlay != oElement) {
+                        bRequiresBump = true;
+                    } else if (aOverlays.length > 1) {
+                        var nNextZIndex = Dom.getStyle(aOverlays[1], "zIndex");
+                        // Don't rely on DOM order to stack if 2 overlays are at the same zindex.
+                        if (!isNaN(nNextZIndex) && (nTopZIndex == nNextZIndex)) {
+                            bRequiresBump = true;
+                        }
+                    }
+                    if (bRequiresBump) {
+                        this.cfg.setProperty("zindex", (parseInt(nTopZIndex, 10) + 2));
+                    }
+                }
+            }
+        },
+
+        /**
+        * Removes the Overlay element from the DOM and sets all child 
+        * elements to null.
+        * @method destroy
+        */
+        destroy: function () {
+
+            if (this.iframe) {
+                this.iframe.parentNode.removeChild(this.iframe);
+            }
+
+            this.iframe = null;
+
+            Overlay.windowResizeEvent.unsubscribe(
+                this.doCenterOnDOMEvent, this);
+    
+            Overlay.windowScrollEvent.unsubscribe(
+                this.doCenterOnDOMEvent, this);
+
+            Module.textResizeEvent.unsubscribe(this._autoFillOnHeightChange);
+
+            Overlay.superclass.destroy.call(this);
+        },
+
+        /**
+        * Returns a String representation of the object.
+        * @method toString
+        * @return {String} The string representation of the Overlay.
+        */
+        toString: function () {
+            return "Overlay " + this.id;
+        }
+
+    });
+}());
+
+(function () {
+
+    /**
+    * OverlayManager is used for maintaining the focus status of 
+    * multiple Overlays.
+    * @namespace YAHOO.widget
+    * @namespace YAHOO.widget
+    * @class OverlayManager
+    * @constructor
+    * @param {Array} overlays Optional. A collection of Overlays to register 
+    * with the manager.
+    * @param {Object} userConfig  The object literal representing the user 
+    * configuration of the OverlayManager
+    */
+    YAHOO.widget.OverlayManager = function (userConfig) {
+        this.init(userConfig);
+    };
+
+    var Overlay = YAHOO.widget.Overlay,
+        Event = YAHOO.util.Event,
+        Dom = YAHOO.util.Dom,
+        Config = YAHOO.util.Config,
+        CustomEvent = YAHOO.util.CustomEvent,
+        OverlayManager = YAHOO.widget.OverlayManager;
+
+    /**
+    * The CSS class representing a focused Overlay
+    * @property OverlayManager.CSS_FOCUSED
+    * @static
+    * @final
+    * @type String
+    */
+    OverlayManager.CSS_FOCUSED = "focused";
+
+    OverlayManager.prototype = {
+
+        /**
+        * The class's constructor function
+        * @property contructor
+        * @type Function
+        */
+        constructor: OverlayManager,
+
+        /**
+        * The array of Overlays that are currently registered
+        * @property overlays
+        * @type YAHOO.widget.Overlay[]
+        */
+        overlays: null,
+
+        /**
+        * Initializes the default configuration of the OverlayManager
+        * @method initDefaultConfig
+        */
+        initDefaultConfig: function () {
+            /**
+            * The collection of registered Overlays in use by 
+            * the OverlayManager
+            * @config overlays
+            * @type YAHOO.widget.Overlay[]
+            * @default null
+            */
+            this.cfg.addProperty("overlays", { suppressEvent: true } );
+
+            /**
+            * The default DOM event that should be used to focus an Overlay
+            * @config focusevent
+            * @type String
+            * @default "mousedown"
+            */
+            this.cfg.addProperty("focusevent", { value: "mousedown" } );
+        },
+
+        /**
+        * Initializes the OverlayManager
+        * @method init
+        * @param {Overlay[]} overlays Optional. A collection of Overlays to 
+        * register with the manager.
+        * @param {Object} userConfig  The object literal representing the user 
+        * configuration of the OverlayManager
+        */
+        init: function (userConfig) {
+
+            /**
+            * The OverlayManager's Config object used for monitoring 
+            * configuration properties.
+            * @property cfg
+            * @type Config
+            */
+            this.cfg = new Config(this);
+
+            this.initDefaultConfig();
+
+            if (userConfig) {
+                this.cfg.applyConfig(userConfig, true);
+            }
+            this.cfg.fireQueue();
+
+            /**
+            * The currently activated Overlay
+            * @property activeOverlay
+            * @private
+            * @type YAHOO.widget.Overlay
+            */
+            var activeOverlay = null;
+
+            /**
+            * Returns the currently focused Overlay
+            * @method getActive
+            * @return {Overlay} The currently focused Overlay
+            */
+            this.getActive = function () {
+                return activeOverlay;
+            };
+
+            /**
+            * Focuses the specified Overlay
+            * @method focus
+            * @param {Overlay} overlay The Overlay to focus
+            * @param {String} overlay The id of the Overlay to focus
+            */
+            this.focus = function (overlay) {
+                var o = this.find(overlay);
+                if (o) {
+                    o.focus();
+                }
+            };
+
+            /**
+            * Removes the specified Overlay from the manager
+            * @method remove
+            * @param {Overlay} overlay The Overlay to remove
+            * @param {String} overlay The id of the Overlay to remove
+            */
+            this.remove = function (overlay) {
+
+                var o = this.find(overlay), 
+                        originalZ;
+
+                if (o) {
+                    if (activeOverlay == o) {
+                        activeOverlay = null;
+                    }
+
+                    var bDestroyed = (o.element === null && o.cfg === null) ? true : false;
+
+                    if (!bDestroyed) {
+                        // Set it's zindex so that it's sorted to the end.
+                        originalZ = Dom.getStyle(o.element, "zIndex");
+                        o.cfg.setProperty("zIndex", -1000, true);
+                    }
+
+                    this.overlays.sort(this.compareZIndexDesc);
+                    this.overlays = this.overlays.slice(0, (this.overlays.length - 1));
+
+                    o.hideEvent.unsubscribe(o.blur);
+                    o.destroyEvent.unsubscribe(this._onOverlayDestroy, o);
+                    o.focusEvent.unsubscribe(this._onOverlayFocusHandler, o);
+                    o.blurEvent.unsubscribe(this._onOverlayBlurHandler, o);
+
+                    if (!bDestroyed) {
+                        Event.removeListener(o.element, this.cfg.getProperty("focusevent"), this._onOverlayElementFocus);
+                        o.cfg.setProperty("zIndex", originalZ, true);
+                        o.cfg.setProperty("manager", null);
+                    }
+
+                    /* _managed Flag for custom or existing. Don't want to remove existing */
+                    if (o.focusEvent._managed) { o.focusEvent = null; }
+                    if (o.blurEvent._managed) { o.blurEvent = null; }
+
+                    if (o.focus._managed) { o.focus = null; }
+                    if (o.blur._managed) { o.blur = null; }
+                }
+            };
+
+            /**
+            * Removes focus from all registered Overlays in the manager
+            * @method blurAll
+            */
+            this.blurAll = function () {
+
+                var nOverlays = this.overlays.length,
+                    i;
+
+                if (nOverlays > 0) {
+                    i = nOverlays - 1;
+                    do {
+                        this.overlays[i].blur();
+                    }
+                    while(i--);
+                }
+            };
+
+            /**
+             * Updates the state of the OverlayManager and overlay, as a result of the overlay
+             * being blurred.
+             * 
+             * @method _manageBlur
+             * @param {Overlay} overlay The overlay instance which got blurred.
+             * @protected
+             */
+            this._manageBlur = function (overlay) {
+                var changed = false;
+                if (activeOverlay == overlay) {
+                    Dom.removeClass(activeOverlay.element, OverlayManager.CSS_FOCUSED);
+                    activeOverlay = null;
+                    changed = true;
+                }
+                return changed;
+            };
+
+            /**
+             * Updates the state of the OverlayManager and overlay, as a result of the overlay 
+             * receiving focus.
+             *
+             * @method _manageFocus
+             * @param {Overlay} overlay The overlay instance which got focus.
+             * @protected
+             */
+            this._manageFocus = function(overlay) {
+                var changed = false;
+                if (activeOverlay != overlay) {
+                    if (activeOverlay) {
+                        activeOverlay.blur();
+                    }
+                    activeOverlay = overlay;
+                    this.bringToTop(activeOverlay);
+                    Dom.addClass(activeOverlay.element, OverlayManager.CSS_FOCUSED);
+                    changed = true;
+                }
+                return changed;
+            };
+
+            var overlays = this.cfg.getProperty("overlays");
+
+            if (! this.overlays) {
+                this.overlays = [];
+            }
+
+            if (overlays) {
+                this.register(overlays);
+                this.overlays.sort(this.compareZIndexDesc);
+            }
+        },
+
+        /**
+        * @method _onOverlayElementFocus
+        * @description Event handler for the DOM event that is used to focus 
+        * the Overlay instance as specified by the "focusevent" 
+        * configuration property.
+        * @private
+        * @param {Event} p_oEvent Object representing the DOM event 
+        * object passed back by the event utility (Event).
+        */
+        _onOverlayElementFocus: function (p_oEvent) {
+
+            var oTarget = Event.getTarget(p_oEvent),
+                oClose = this.close;
+
+            if (oClose && (oTarget == oClose || Dom.isAncestor(oClose, oTarget))) {
+                this.blur();
+            } else {
+                this.focus();
+            }
+        },
+
+        /**
+        * @method _onOverlayDestroy
+        * @description "destroy" event handler for the Overlay.
+        * @private
+        * @param {String} p_sType String representing the name of the event  
+        * that was fired.
+        * @param {Array} p_aArgs Array of arguments sent when the event 
+        * was fired.
+        * @param {Overlay} p_oOverlay Object representing the overlay that 
+        * fired the event.
+        */
+        _onOverlayDestroy: function (p_sType, p_aArgs, p_oOverlay) {
+            this.remove(p_oOverlay);
+        },
+
+        /**
+        * @method _onOverlayFocusHandler
+        *
+        * focusEvent Handler, used to delegate to _manageFocus with the 
+        * correct arguments.
+        *
+        * @private
+        * @param {String} p_sType String representing the name of the event  
+        * that was fired.
+        * @param {Array} p_aArgs Array of arguments sent when the event 
+        * was fired.
+        * @param {Overlay} p_oOverlay Object representing the overlay that 
+        * fired the event.
+        */
+        _onOverlayFocusHandler: function(p_sType, p_aArgs, p_oOverlay) {
+            this._manageFocus(p_oOverlay);
+        },
+
+        /**
+        * @method _onOverlayBlurHandler
+        *
+        * blurEvent Handler, used to delegate to _manageBlur with the 
+        * correct arguments.
+        *
+        * @private
+        * @param {String} p_sType String representing the name of the event  
+        * that was fired.
+        * @param {Array} p_aArgs Array of arguments sent when the event 
+        * was fired.
+        * @param {Overlay} p_oOverlay Object representing the overlay that 
+        * fired the event.
+        */
+        _onOverlayBlurHandler: function(p_sType, p_aArgs, p_oOverlay) {
+            this._manageBlur(p_oOverlay);
+        },
+
+        /**
+         * Subscribes to the Overlay based instance focusEvent, to allow the OverlayManager to
+         * monitor focus state.
+         * 
+         * If the instance already has a focusEvent (e.g. Menu), OverlayManager will subscribe 
+         * to the existing focusEvent, however if a focusEvent or focus method does not exist
+         * on the instance, the _bindFocus method will add them, and the focus method will 
+         * update the OverlayManager's state directly.
+         * 
+         * @method _bindFocus
+         * @param {Overlay} overlay The overlay for which focus needs to be managed
+         * @protected
+         */
+        _bindFocus : function(overlay) {
+            var mgr = this;
+
+            if (!overlay.focusEvent) {
+                overlay.focusEvent = overlay.createEvent("focus");
+                overlay.focusEvent.signature = CustomEvent.LIST;
+                overlay.focusEvent._managed = true;
+            } else {
+                overlay.focusEvent.subscribe(mgr._onOverlayFocusHandler, overlay, mgr);
+            }
+
+            if (!overlay.focus) {
+                Event.on(overlay.element, mgr.cfg.getProperty("focusevent"), mgr._onOverlayElementFocus, null, overlay);
+                overlay.focus = function () {
+                    if (mgr._manageFocus(this)) {
+                        // For Panel/Dialog
+                        if (this.cfg.getProperty("visible") && this.focusFirst) {
+                            this.focusFirst();
+                        }
+                        this.focusEvent.fire();
+                    }
+                };
+                overlay.focus._managed = true;
+            }
+        },
+
+        /**
+         * Subscribes to the Overlay based instance's blurEvent to allow the OverlayManager to
+         * monitor blur state.
+         *
+         * If the instance already has a blurEvent (e.g. Menu), OverlayManager will subscribe 
+         * to the existing blurEvent, however if a blurEvent or blur method does not exist
+         * on the instance, the _bindBlur method will add them, and the blur method 
+         * update the OverlayManager's state directly.
+         *
+         * @method _bindBlur
+         * @param {Overlay} overlay The overlay for which blur needs to be managed
+         * @protected
+         */
+        _bindBlur : function(overlay) {
+            var mgr = this;
+
+            if (!overlay.blurEvent) {
+                overlay.blurEvent = overlay.createEvent("blur");
+                overlay.blurEvent.signature = CustomEvent.LIST;
+                overlay.focusEvent._managed = true;
+            } else {
+                overlay.blurEvent.subscribe(mgr._onOverlayBlurHandler, overlay, mgr);
+            }
+
+            if (!overlay.blur) {
+                overlay.blur = function () {
+                    if (mgr._manageBlur(this)) {
+                        this.blurEvent.fire();
+                    }
+                };
+                overlay.blur._managed = true;
+            }
+
+            overlay.hideEvent.subscribe(overlay.blur);
+        },
+
+        /**
+         * Subscribes to the Overlay based instance's destroyEvent, to allow the Overlay
+         * to be removed for the OverlayManager when destroyed.
+         * 
+         * @method _bindDestroy
+         * @param {Overlay} overlay The overlay instance being managed
+         * @protected
+         */
+        _bindDestroy : function(overlay) {
+            var mgr = this;
+            overlay.destroyEvent.subscribe(mgr._onOverlayDestroy, overlay, mgr);
+        },
+
+        /**
+         * Ensures the zIndex configuration property on the managed overlay based instance
+         * is set to the computed zIndex value from the DOM (with "auto" translating to 0).
+         *
+         * @method _syncZIndex
+         * @param {Overlay} overlay The overlay instance being managed
+         * @protected
+         */
+        _syncZIndex : function(overlay) {
+            var zIndex = Dom.getStyle(overlay.element, "zIndex");
+            if (!isNaN(zIndex)) {
+                overlay.cfg.setProperty("zIndex", parseInt(zIndex, 10));
+            } else {
+                overlay.cfg.setProperty("zIndex", 0);
+            }
+        },
+
+        /**
+        * Registers an Overlay or an array of Overlays with the manager. Upon 
+        * registration, the Overlay receives functions for focus and blur, 
+        * along with CustomEvents for each.
+        *
+        * @method register
+        * @param {Overlay} overlay  An Overlay to register with the manager.
+        * @param {Overlay[]} overlay  An array of Overlays to register with 
+        * the manager.
+        * @return {boolean} true if any Overlays are registered.
+        */
+        register: function (overlay) {
+
+            var zIndex,
+                registered = false,
+                i,
+                n;
+
+            if (overlay instanceof Overlay) {
+
+                overlay.cfg.addProperty("manager", { value: this } );
+
+                this._bindFocus(overlay);
+                this._bindBlur(overlay);
+                this._bindDestroy(overlay);
+                this._syncZIndex(overlay);
+
+                this.overlays.push(overlay);
+                this.bringToTop(overlay);
+
+                registered = true;
+
+            } else if (overlay instanceof Array) {
+
+                for (i = 0, n = overlay.length; i < n; i++) {
+                    registered = this.register(overlay[i]) || registered;
+                }
+
+            }
+
+            return registered;
+        },
+
+        /**
+        * Places the specified Overlay instance on top of all other 
+        * Overlay instances.
+        * @method bringToTop
+        * @param {YAHOO.widget.Overlay} p_oOverlay Object representing an 
+        * Overlay instance.
+        * @param {String} p_oOverlay String representing the id of an 
+        * Overlay instance.
+        */        
+        bringToTop: function (p_oOverlay) {
+
+            var oOverlay = this.find(p_oOverlay),
+                nTopZIndex,
+                oTopOverlay,
+                aOverlays;
+
+            if (oOverlay) {
+
+                aOverlays = this.overlays;
+                aOverlays.sort(this.compareZIndexDesc);
+
+                oTopOverlay = aOverlays[0];
+
+                if (oTopOverlay) {
+                    nTopZIndex = Dom.getStyle(oTopOverlay.element, "zIndex");
+
+                    if (!isNaN(nTopZIndex)) {
+
+                        var bRequiresBump = false;
+
+                        if (oTopOverlay !== oOverlay) {
+                            bRequiresBump = true;
+                        } else if (aOverlays.length > 1) {
+                            var nNextZIndex = Dom.getStyle(aOverlays[1].element, "zIndex");
+                            // Don't rely on DOM order to stack if 2 overlays are at the same zindex.
+                            if (!isNaN(nNextZIndex) && (nTopZIndex == nNextZIndex)) {
+                                bRequiresBump = true;
+                            }
+                        }
+
+                        if (bRequiresBump) {
+                            oOverlay.cfg.setProperty("zindex", (parseInt(nTopZIndex, 10) + 2));
+                        }
+                    }
+                    aOverlays.sort(this.compareZIndexDesc);
+                }
+            }
+        },
+
+        /**
+        * Attempts to locate an Overlay by instance or ID.
+        * @method find
+        * @param {Overlay} overlay  An Overlay to locate within the manager
+        * @param {String} overlay  An Overlay id to locate within the manager
+        * @return {Overlay} The requested Overlay, if found, or null if it 
+        * cannot be located.
+        */
+        find: function (overlay) {
+
+            var isInstance = overlay instanceof Overlay,
+                overlays = this.overlays,
+                n = overlays.length,
+                found = null,
+                o,
+                i;
+
+            if (isInstance || typeof overlay == "string") {
+                for (i = n-1; i >= 0; i--) {
+                    o = overlays[i];
+                    if ((isInstance && (o === overlay)) || (o.id == overlay)) {
+                        found = o;
+                        break;
+                    }
+                }
+            }
+
+            return found;
+        },
+
+        /**
+        * Used for sorting the manager's Overlays by z-index.
+        * @method compareZIndexDesc
+        * @private
+        * @return {Number} 0, 1, or -1, depending on where the Overlay should 
+        * fall in the stacking order.
+        */
+        compareZIndexDesc: function (o1, o2) {
+
+            var zIndex1 = (o1.cfg) ? o1.cfg.getProperty("zIndex") : null, // Sort invalid (destroyed)
+                zIndex2 = (o2.cfg) ? o2.cfg.getProperty("zIndex") : null; // objects at bottom.
+
+            if (zIndex1 === null && zIndex2 === null) {
+                return 0;
+            } else if (zIndex1 === null){
+                return 1;
+            } else if (zIndex2 === null) {
+                return -1;
+            } else if (zIndex1 > zIndex2) {
+                return -1;
+            } else if (zIndex1 < zIndex2) {
+                return 1;
+            } else {
+                return 0;
+            }
+        },
+
+        /**
+        * Shows all Overlays in the manager.
+        * @method showAll
+        */
+        showAll: function () {
+            var overlays = this.overlays,
+                n = overlays.length,
+                i;
+
+            for (i = n - 1; i >= 0; i--) {
+                overlays[i].show();
+            }
+        },
+
+        /**
+        * Hides all Overlays in the manager.
+        * @method hideAll
+        */
+        hideAll: function () {
+            var overlays = this.overlays,
+                n = overlays.length,
+                i;
+
+            for (i = n - 1; i >= 0; i--) {
+                overlays[i].hide();
+            }
+        },
+
+        /**
+        * Returns a string representation of the object.
+        * @method toString
+        * @return {String} The string representation of the OverlayManager
+        */
+        toString: function () {
+            return "OverlayManager";
+        }
+    };
+}());
+
+(function () {
+
+    /**
+    * ContainerEffect encapsulates animation transitions that are executed when 
+    * an Overlay is shown or hidden.
+    * @namespace YAHOO.widget
+    * @class ContainerEffect
+    * @constructor
+    * @param {YAHOO.widget.Overlay} overlay The Overlay that the animation 
+    * should be associated with
+    * @param {Object} attrIn The object literal representing the animation 
+    * arguments to be used for the animate-in transition. The arguments for 
+    * this literal are: attributes(object, see YAHOO.util.Anim for description), 
+    * duration(Number), and method(i.e. Easing.easeIn).
+    * @param {Object} attrOut The object literal representing the animation 
+    * arguments to be used for the animate-out transition. The arguments for  
+    * this literal are: attributes(object, see YAHOO.util.Anim for description), 
+    * duration(Number), and method(i.e. Easing.easeIn).
+    * @param {HTMLElement} targetElement Optional. The target element that  
+    * should be animated during the transition. Defaults to overlay.element.
+    * @param {class} Optional. The animation class to instantiate. Defaults to 
+    * YAHOO.util.Anim. Other options include YAHOO.util.Motion.
+    */
+    YAHOO.widget.ContainerEffect = function (overlay, attrIn, attrOut, targetElement, animClass) {
+
+        if (!animClass) {
+            animClass = YAHOO.util.Anim;
+        }
+
+        /**
+        * The overlay to animate
+        * @property overlay
+        * @type YAHOO.widget.Overlay
+        */
+        this.overlay = overlay;
+    
+        /**
+        * The animation attributes to use when transitioning into view
+        * @property attrIn
+        * @type Object
+        */
+        this.attrIn = attrIn;
+    
+        /**
+        * The animation attributes to use when transitioning out of view
+        * @property attrOut
+        * @type Object
+        */
+        this.attrOut = attrOut;
+    
+        /**
+        * The target element to be animated
+        * @property targetElement
+        * @type HTMLElement
+        */
+        this.targetElement = targetElement || overlay.element;
+    
+        /**
+        * The animation class to use for animating the overlay
+        * @property animClass
+        * @type class
+        */
+        this.animClass = animClass;
+    
+    };
+
+
+    var Dom = YAHOO.util.Dom,
+        CustomEvent = YAHOO.util.CustomEvent,
+        ContainerEffect = YAHOO.widget.ContainerEffect;
+
+
+    /**
+    * A pre-configured ContainerEffect instance that can be used for fading 
+    * an overlay in and out.
+    * @method FADE
+    * @static
+    * @param {YAHOO.widget.Overlay} overlay The Overlay object to animate
+    * @param {Number} dur The duration of the animation
+    * @return {YAHOO.widget.ContainerEffect} The configured ContainerEffect object
+    */
+    ContainerEffect.FADE = function (overlay, dur) {
+
+        var Easing = YAHOO.util.Easing,
+            fin = {
+                attributes: {opacity:{from:0, to:1}},
+                duration: dur,
+                method: Easing.easeIn
+            },
+            fout = {
+                attributes: {opacity:{to:0}},
+                duration: dur,
+                method: Easing.easeOut
+            },
+            fade = new ContainerEffect(overlay, fin, fout, overlay.element);
+
+        fade.handleUnderlayStart = function() {
+            var underlay = this.overlay.underlay;
+            if (underlay && YAHOO.env.ua.ie) {
+                var hasFilters = (underlay.filters && underlay.filters.length > 0);
+                if(hasFilters) {
+                    Dom.addClass(overlay.element, "yui-effect-fade");
+                }
+            }
+        };
+
+        fade.handleUnderlayComplete = function() {
+            var underlay = this.overlay.underlay;
+            if (underlay && YAHOO.env.ua.ie) {
+                Dom.removeClass(overlay.element, "yui-effect-fade");
+            }
+        };
+
+        fade.handleStartAnimateIn = function (type, args, obj) {
+            Dom.addClass(obj.overlay.element, "hide-select");
+
+            if (!obj.overlay.underlay) {
+                obj.overlay.cfg.refireEvent("underlay");
+            }
+
+            obj.handleUnderlayStart();
+
+            Dom.setStyle(obj.overlay.element, "visibility", "visible");
+            Dom.setStyle(obj.overlay.element, "opacity", 0);
+        };
+
+        fade.handleCompleteAnimateIn = function (type,args,obj) {
+            Dom.removeClass(obj.overlay.element, "hide-select");
+
+            if (obj.overlay.element.style.filter) {
+                obj.overlay.element.style.filter = null;
+            }
+
+            obj.handleUnderlayComplete();
+
+            obj.overlay.cfg.refireEvent("iframe");
+            obj.animateInCompleteEvent.fire();
+        };
+
+        fade.handleStartAnimateOut = function (type, args, obj) {
+            Dom.addClass(obj.overlay.element, "hide-select");
+            obj.handleUnderlayStart();
+        };
+
+        fade.handleCompleteAnimateOut =  function (type, args, obj) {
+            Dom.removeClass(obj.overlay.element, "hide-select");
+            if (obj.overlay.element.style.filter) {
+                obj.overlay.element.style.filter = null;
+            }
+            Dom.setStyle(obj.overlay.element, "visibility", "hidden");
+            Dom.setStyle(obj.overlay.element, "opacity", 1);
+
+            obj.handleUnderlayComplete();
+
+            obj.overlay.cfg.refireEvent("iframe");
+            obj.animateOutCompleteEvent.fire();
+        };
+
+        fade.init();
+        return fade;
+    };
+    
+    
+    /**
+    * A pre-configured ContainerEffect instance that can be used for sliding an 
+    * overlay in and out.
+    * @method SLIDE
+    * @static
+    * @param {YAHOO.widget.Overlay} overlay The Overlay object to animate
+    * @param {Number} dur The duration of the animation
+    * @return {YAHOO.widget.ContainerEffect} The configured ContainerEffect object
+    */
+    ContainerEffect.SLIDE = function (overlay, dur) {
+        var Easing = YAHOO.util.Easing,
+
+            x = overlay.cfg.getProperty("x") || Dom.getX(overlay.element),
+            y = overlay.cfg.getProperty("y") || Dom.getY(overlay.element),
+            clientWidth = Dom.getClientWidth(),
+            offsetWidth = overlay.element.offsetWidth,
+
+            sin =  { 
+                attributes: { points: { to: [x, y] } },
+                duration: dur,
+                method: Easing.easeIn 
+            },
+
+            sout = {
+                attributes: { points: { to: [(clientWidth + 25), y] } },
+                duration: dur,
+                method: Easing.easeOut 
+            },
+
+            slide = new ContainerEffect(overlay, sin, sout, overlay.element, YAHOO.util.Motion);
+
+        slide.handleStartAnimateIn = function (type,args,obj) {
+            obj.overlay.element.style.left = ((-25) - offsetWidth) + "px";
+            obj.overlay.element.style.top  = y + "px";
+        };
+
+        slide.handleTweenAnimateIn = function (type, args, obj) {
+        
+            var pos = Dom.getXY(obj.overlay.element),
+                currentX = pos[0],
+                currentY = pos[1];
+        
+            if (Dom.getStyle(obj.overlay.element, "visibility") == 
+                "hidden" && currentX < x) {
+
+                Dom.setStyle(obj.overlay.element, "visibility", "visible");
+
+            }
+        
+            obj.overlay.cfg.setProperty("xy", [currentX, currentY], true);
+            obj.overlay.cfg.refireEvent("iframe");
+        };
+        
+        slide.handleCompleteAnimateIn = function (type, args, obj) {
+            obj.overlay.cfg.setProperty("xy", [x, y], true);
+            obj.startX = x;
+            obj.startY = y;
+            obj.overlay.cfg.refireEvent("iframe");
+            obj.animateInCompleteEvent.fire();
+        };
+        
+        slide.handleStartAnimateOut = function (type, args, obj) {
+    
+            var vw = Dom.getViewportWidth(),
+                pos = Dom.getXY(obj.overlay.element),
+                yso = pos[1];
+    
+            obj.animOut.attributes.points.to = [(vw + 25), yso];
+        };
+        
+        slide.handleTweenAnimateOut = function (type, args, obj) {
+    
+            var pos = Dom.getXY(obj.overlay.element),
+                xto = pos[0],
+                yto = pos[1];
+        
+            obj.overlay.cfg.setProperty("xy", [xto, yto], true);
+            obj.overlay.cfg.refireEvent("iframe");
+        };
+        
+        slide.handleCompleteAnimateOut = function (type, args, obj) {
+            Dom.setStyle(obj.overlay.element, "visibility", "hidden");
+        
+            obj.overlay.cfg.setProperty("xy", [x, y]);
+            obj.animateOutCompleteEvent.fire();
+        };
+
+        slide.init();
+        return slide;
+    };
+
+    ContainerEffect.prototype = {
+
+        /**
+        * Initializes the animation classes and events.
+        * @method init
+        */
+        init: function () {
+
+            this.beforeAnimateInEvent = this.createEvent("beforeAnimateIn");
+            this.beforeAnimateInEvent.signature = CustomEvent.LIST;
+            
+            this.beforeAnimateOutEvent = this.createEvent("beforeAnimateOut");
+            this.beforeAnimateOutEvent.signature = CustomEvent.LIST;
+        
+            this.animateInCompleteEvent = this.createEvent("animateInComplete");
+            this.animateInCompleteEvent.signature = CustomEvent.LIST;
+        
+            this.animateOutCompleteEvent = 
+                this.createEvent("animateOutComplete");
+            this.animateOutCompleteEvent.signature = CustomEvent.LIST;
+        
+            this.animIn = new this.animClass(this.targetElement, 
+                this.attrIn.attributes, this.attrIn.duration, 
+                this.attrIn.method);
+
+            this.animIn.onStart.subscribe(this.handleStartAnimateIn, this);
+            this.animIn.onTween.subscribe(this.handleTweenAnimateIn, this);
+
+            this.animIn.onComplete.subscribe(this.handleCompleteAnimateIn, 
+                this);
+        
+            this.animOut = new this.animClass(this.targetElement, 
+                this.attrOut.attributes, this.attrOut.duration, 
+                this.attrOut.method);
+
+            this.animOut.onStart.subscribe(this.handleStartAnimateOut, this);
+            this.animOut.onTween.subscribe(this.handleTweenAnimateOut, this);
+            this.animOut.onComplete.subscribe(this.handleCompleteAnimateOut, 
+                this);
+
+        },
+        
+        /**
+        * Triggers the in-animation.
+        * @method animateIn
+        */
+        animateIn: function () {
+            this.beforeAnimateInEvent.fire();
+            this.animIn.animate();
+        },
+
+        /**
+        * Triggers the out-animation.
+        * @method animateOut
+        */
+        animateOut: function () {
+            this.beforeAnimateOutEvent.fire();
+            this.animOut.animate();
+        },
+
+        /**
+        * The default onStart handler for the in-animation.
+        * @method handleStartAnimateIn
+        * @param {String} type The CustomEvent type
+        * @param {Object[]} args The CustomEvent arguments
+        * @param {Object} obj The scope object
+        */
+        handleStartAnimateIn: function (type, args, obj) { },
+
+        /**
+        * The default onTween handler for the in-animation.
+        * @method handleTweenAnimateIn
+        * @param {String} type The CustomEvent type
+        * @param {Object[]} args The CustomEvent arguments
+        * @param {Object} obj The scope object
+        */
+        handleTweenAnimateIn: function (type, args, obj) { },
+
+        /**
+        * The default onComplete handler for the in-animation.
+        * @method handleCompleteAnimateIn
+        * @param {String} type The CustomEvent type
+        * @param {Object[]} args The CustomEvent arguments
+        * @param {Object} obj The scope object
+        */
+        handleCompleteAnimateIn: function (type, args, obj) { },
+
+        /**
+        * The default onStart handler for the out-animation.
+        * @method handleStartAnimateOut
+        * @param {String} type The CustomEvent type
+        * @param {Object[]} args The CustomEvent arguments
+        * @param {Object} obj The scope object
+        */
+        handleStartAnimateOut: function (type, args, obj) { },
+
+        /**
+        * The default onTween handler for the out-animation.
+        * @method handleTweenAnimateOut
+        * @param {String} type The CustomEvent type
+        * @param {Object[]} args The CustomEvent arguments
+        * @param {Object} obj The scope object
+        */
+        handleTweenAnimateOut: function (type, args, obj) { },
+
+        /**
+        * The default onComplete handler for the out-animation.
+        * @method handleCompleteAnimateOut
+        * @param {String} type The CustomEvent type
+        * @param {Object[]} args The CustomEvent arguments
+        * @param {Object} obj The scope object
+        */
+        handleCompleteAnimateOut: function (type, args, obj) { },
+        
+        /**
+        * Returns a string representation of the object.
+        * @method toString
+        * @return {String} The string representation of the ContainerEffect
+        */
+        toString: function () {
+            var output = "ContainerEffect";
+            if (this.overlay) {
+                output += " [" + this.overlay.toString() + "]";
+            }
+            return output;
+        }
+    };
+
+    YAHOO.lang.augmentProto(ContainerEffect, YAHOO.util.EventProvider);
+
+})();
+
+YAHOO.register("containercore", YAHOO.widget.Module, {version: "2.6.0", build: "1321"});
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      

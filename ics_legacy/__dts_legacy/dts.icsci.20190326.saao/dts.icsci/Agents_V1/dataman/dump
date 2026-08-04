@@ -1,0 +1,1025 @@
+/bin/rm -f tvdisp *.o
+/usr/bin/g++ -w -c -I/home/darkstar/dts/ISIS/client -I/home/darkstar/dts/Utilities/XTV -I/usr/local/pkg/cfitsio  -DAPP_VERSION='"v0.1.0"' -DAPP_COMPDATE='"2005-May-31"' -DAPP_COMPTIME='"13:08:52"' clientutils.c
+/usr/bin/g++ -w -c -I/home/darkstar/dts/ISIS/client -I/home/darkstar/dts/Utilities/XTV -I/usr/local/pkg/cfitsio  -DAPP_VERSION='"v0.1.0"' -DAPP_COMPDATE='"2005-May-31"' -DAPP_COMPTIME='"13:08:52"' loadconfig.c
+/usr/bin/g++ -w -c -I/home/darkstar/dts/ISIS/client -I/home/darkstar/dts/Utilities/XTV -I/usr/local/pkg/cfitsio  -DAPP_VERSION='"v0.1.0"' -DAPP_COMPDATE='"2005-May-31"' -DAPP_COMPTIME='"13:08:52"' commands.c
+/usr/bin/g++ -o tvdisp -DAPP_VERSION='"v0.1.0"' -DAPP_COMPDATE='"2005-May-31"' -DAPP_COMPTIME='"13:08:52"' main.c clientutils.o loadconfig.o commands.o  -I/home/darkstar/dts/ISIS/client -I/home/darkstar/dts/Utilities/XTV -I/usr/local/pkg/cfitsio -L/home/darkstar/dts/ISIS/client -L/home/darkstar/dts/Utilities/XTV -L/usr/local/pkg/cfitsio -lisis -lxtv -lcfitsio -lreadline -lhistory -lncurses
+clientutils.o(.data+0x0): multiple definition of `waiting_for_key'
+/tmp/ccSEZ4QR.o(.data+0x0): first defined here
+clientutils.o(.data+0xa0): multiple definition of `TVisOpen'
+/tmp/ccSEZ4QR.o(.data+0xa0): first defined here
+clientutils.o(.data+0xa4): multiple definition of `fd_for_X'
+/tmp/ccSEZ4QR.o(.data+0xa4): first defined here
+clientutils.o(.bss+0x0): multiple definition of `dpy'
+/tmp/ccSEZ4QR.o(.bss+0x4): first defined here
+clientutils.o(.bss+0x4): multiple definition of `wbase'
+/tmp/ccSEZ4QR.o(.bss+0x8): first defined here
+clientutils.o(.bss+0x8): multiple definition of `wimage'
+/tmp/ccSEZ4QR.o(.bss+0xc): first defined here
+clientutils.o(.bss+0xc): multiple definition of `wpal'
+/tmp/ccSEZ4QR.o(.bss+0x10): first defined here
+clientutils.o(.bss+0x10): multiple definition of `wxyz'
+/tmp/ccSEZ4QR.o(.bss+0x14): first defined here
+clientutils.o(.bss+0x14): multiple definition of `wzoom'
+/tmp/ccSEZ4QR.o(.bss+0x18): first defined here
+clientutils.o(.bss+0x18): multiple definition of `wlgt1'
+/tmp/ccSEZ4QR.o(.bss+0x1c): first defined here
+clientutils.o(.bss+0x1c): multiple definition of `wlgt2'
+/tmp/ccSEZ4QR.o(.bss+0x20): first defined here
+clientutils.o(.bss+0x20): multiple definition of `wlgt3'
+/tmp/ccSEZ4QR.o(.bss+0x24): first defined here
+clientutils.o(.bss+0x24): multiple definition of `wlgt4'
+/tmp/ccSEZ4QR.o(.bss+0x28): first defined here
+clientutils.o(.bss+0x28): multiple definition of `screen'
+/tmp/ccSEZ4QR.o(.bss+0x2c): first defined here
+clientutils.o(.bss+0x2c): multiple definition of `xwc'
+/tmp/ccSEZ4QR.o(.bss+0x30): first defined here
+clientutils.o(.bss+0x60): multiple definition of `xswa'
+/tmp/ccSEZ4QR.o(.bss+0x60): first defined here
+clientutils.o(.bss+0x9c): multiple definition of `dataimage'
+/tmp/ccSEZ4QR.o(.bss+0x9c): first defined here
+clientutils.o(.bss+0xa0): multiple definition of `palimage'
+/tmp/ccSEZ4QR.o(.bss+0xa0): first defined here
+clientutils.o(.bss+0xa4): multiple definition of `zoomimage'
+/tmp/ccSEZ4QR.o(.bss+0xa4): first defined here
+clientutils.o(.bss+0xa8): multiple definition of `vectorgc'
+/tmp/ccSEZ4QR.o(.bss+0xa8): first defined here
+clientutils.o(.bss+0xac): multiple definition of `textgc'
+/tmp/ccSEZ4QR.o(.bss+0xac): first defined here
+clientutils.o(.bss+0xb0): multiple definition of `imagegc'
+/tmp/ccSEZ4QR.o(.bss+0xb0): first defined here
+clientutils.o(.bss+0xb4): multiple definition of `xorgc'
+/tmp/ccSEZ4QR.o(.bss+0xb4): first defined here
+clientutils.o(.bss+0xb8): multiple definition of `inforoot'
+/tmp/ccSEZ4QR.o(.bss+0xb8): first defined here
+clientutils.o(.bss+0xbc): multiple definition of `infox'
+/tmp/ccSEZ4QR.o(.bss+0xbc): first defined here
+clientutils.o(.bss+0xc0): multiple definition of `infoy'
+/tmp/ccSEZ4QR.o(.bss+0xc0): first defined here
+clientutils.o(.bss+0xc4): multiple definition of `infowidth'
+/tmp/ccSEZ4QR.o(.bss+0xc4): first defined here
+clientutils.o(.bss+0xc8): multiple definition of `infoheight'
+/tmp/ccSEZ4QR.o(.bss+0xc8): first defined here
+clientutils.o(.bss+0xcc): multiple definition of `infoborder'
+/tmp/ccSEZ4QR.o(.bss+0xcc): first defined here
+clientutils.o(.bss+0xd0): multiple definition of `infodepth'
+/tmp/ccSEZ4QR.o(.bss+0xd0): first defined here
+clientutils.o(.bss+0xd4): multiple definition of `display'
+/tmp/ccSEZ4QR.o(.bss+0xd4): first defined here
+clientutils.o(.bss+0xd8): multiple definition of `geometry'
+/tmp/ccSEZ4QR.o(.bss+0xd8): first defined here
+clientutils.o(.bss+0xdc): multiple definition of `filegeometry'
+/tmp/ccSEZ4QR.o(.bss+0xdc): first defined here
+clientutils.o(.bss+0xfa): multiple definition of `zgeometry'
+/tmp/ccSEZ4QR.o(.bss+0xfa): first defined here
+clientutils.o(.bss+0x118): multiple definition of `curs'
+/tmp/ccSEZ4QR.o(.bss+0x118): first defined here
+clientutils.o(.bss+0x11c): multiple definition of `palcurs'
+/tmp/ccSEZ4QR.o(.bss+0x11c): first defined here
+clientutils.o(.bss+0x120): multiple definition of `font'
+/tmp/ccSEZ4QR.o(.bss+0x120): first defined here
+clientutils.o(.bss+0x124): multiple definition of `fontname1'
+/tmp/ccSEZ4QR.o(.bss+0x124): first defined here
+clientutils.o(.bss+0x128): multiple definition of `fontname2'
+/tmp/ccSEZ4QR.o(.bss+0x128): first defined here
+clientutils.o(.bss+0x12c): multiple definition of `fontpath'
+/tmp/ccSEZ4QR.o(.bss+0x12c): first defined here
+clientutils.o(.bss+0x130): multiple definition of `nfont'
+/tmp/ccSEZ4QR.o(.bss+0x130): first defined here
+clientutils.o(.bss+0x134): multiple definition of `fontinfo'
+/tmp/ccSEZ4QR.o(.bss+0x134): first defined here
+clientutils.o(.bss+0x138): multiple definition of `fontheight'
+/tmp/ccSEZ4QR.o(.bss+0x138): first defined here
+clientutils.o(.bss+0x13c): multiple definition of `fontwidth'
+/tmp/ccSEZ4QR.o(.bss+0x13c): first defined here
+clientutils.o(.bss+0x140): multiple definition of `ncolors'
+/tmp/ccSEZ4QR.o(.bss+0x140): first defined here
+clientutils.o(.bss+0x144): multiple definition of `nvcolors'
+/tmp/ccSEZ4QR.o(.bss+0x144): first defined here
+clientutils.o(.bss+0x160): multiple definition of `pixels'
+/tmp/ccSEZ4QR.o(.bss+0x160): first defined here
+clientutils.o(.bss+0x560): multiple definition of `planes'
+/tmp/ccSEZ4QR.o(.bss+0x560): first defined here
+clientutils.o(.bss+0x564): multiple definition of `visual'
+/tmp/ccSEZ4QR.o(.bss+0x564): first defined here
+clientutils.o(.bss+0x568): multiple definition of `depth'
+/tmp/ccSEZ4QR.o(.bss+0x568): first defined here
+clientutils.o(.bss+0x56c): multiple definition of `defcmap'
+/tmp/ccSEZ4QR.o(.bss+0x56c): first defined here
+clientutils.o(.bss+0x580): multiple definition of `cmap'
+/tmp/ccSEZ4QR.o(.bss+0x580): first defined here
+clientutils.o(.bss+0x1180): multiple definition of `stcolor'
+/tmp/ccSEZ4QR.o(.bss+0x1180): first defined here
+clientutils.o(.bss+0x11c0): multiple definition of `palcolors'
+/tmp/ccSEZ4QR.o(.bss+0x11c0): first defined here
+clientutils.o(.bss+0x1780): multiple definition of `vcolor'
+/tmp/ccSEZ4QR.o(.bss+0x1780): first defined here
+clientutils.o(.bss+0x2380): multiple definition of `npalette'
+/tmp/ccSEZ4QR.o(.bss+0x2380): first defined here
+clientutils.o(.bss+0x2384): multiple definition of `pal0'
+/tmp/ccSEZ4QR.o(.bss+0x2384): first defined here
+clientutils.o(.bss+0x2388): multiple definition of `pal1'
+/tmp/ccSEZ4QR.o(.bss+0x2388): first defined here
+clientutils.o(.bss+0x23a0): multiple definition of `branch'
+/tmp/ccSEZ4QR.o(.bss+0x23a0): first defined here
+clientutils.o(.bss+0x47a0): multiple definition of `breakpts'
+/tmp/ccSEZ4QR.o(.bss+0x47a0): first defined here
+clientutils.o(.bss+0x4ba0): multiple definition of `truecolor'
+/tmp/ccSEZ4QR.o(.bss+0x4ba0): first defined here
+clientutils.o(.bss+0x4ba4): multiple definition of `directcolor'
+/tmp/ccSEZ4QR.o(.bss+0x4ba4): first defined here
+clientutils.o(.bss+0x4ba8): multiple definition of `rmask'
+/tmp/ccSEZ4QR.o(.bss+0x4ba8): first defined here
+clientutils.o(.bss+0x4bac): multiple definition of `gmask'
+/tmp/ccSEZ4QR.o(.bss+0x4bac): first defined here
+clientutils.o(.bss+0x4bb0): multiple definition of `bmask'
+/tmp/ccSEZ4QR.o(.bss+0x4bb0): first defined here
+clientutils.o(.bss+0x4bb4): multiple definition of `_XErrorEvent'
+/tmp/ccSEZ4QR.o(.bss+0x4bb4): first defined here
+clientutils.o(.bss+0x4be0): multiple definition of `veclist'
+/tmp/ccSEZ4QR.o(.bss+0x4be0): first defined here
+clientutils.o(.bss+0x24eae0): multiple definition of `xvlast'
+/tmp/ccSEZ4QR.o(.bss+0x24eae0): first defined here
+clientutils.o(.bss+0x24eae4): multiple definition of `yvlast'
+/tmp/ccSEZ4QR.o(.bss+0x24eae4): first defined here
+clientutils.o(.bss+0x24eae8): multiple definition of `vcount'
+/tmp/ccSEZ4QR.o(.bss+0x24eae8): first defined here
+clientutils.o(.bss+0x24eaec): multiple definition of `vlastcolor'
+/tmp/ccSEZ4QR.o(.bss+0x24eaec): first defined here
+clientutils.o(.bss+0x24eb00): multiple definition of `textlist'
+/tmp/ccSEZ4QR.o(.bss+0x24eb00): first defined here
+clientutils.o(.bss+0x250c98): multiple definition of `xtlast'
+/tmp/ccSEZ4QR.o(.bss+0x250c98): first defined here
+clientutils.o(.bss+0x250c9c): multiple definition of `ytlast'
+/tmp/ccSEZ4QR.o(.bss+0x250c9c): first defined here
+clientutils.o(.bss+0x250ca0): multiple definition of `tcount'
+/tmp/ccSEZ4QR.o(.bss+0x250ca0): first defined here
+clientutils.o(.bss+0x250ca4): multiple definition of `tlastcolor'
+/tmp/ccSEZ4QR.o(.bss+0x250ca4): first defined here
+clientutils.o(.bss+0x250ca8): multiple definition of `maxwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ca8): first defined here
+clientutils.o(.bss+0x250cac): multiple definition of `maxheight'
+/tmp/ccSEZ4QR.o(.bss+0x250cac): first defined here
+clientutils.o(.bss+0x250cb0): multiple definition of `width'
+/tmp/ccSEZ4QR.o(.bss+0x250cb0): first defined here
+clientutils.o(.bss+0x250cb4): multiple definition of `height'
+/tmp/ccSEZ4QR.o(.bss+0x250cb4): first defined here
+clientutils.o(.bss+0x250cb8): multiple definition of `resize'
+/tmp/ccSEZ4QR.o(.bss+0x250cb8): first defined here
+clientutils.o(.bss+0x250cbc): multiple definition of `autozoomout'
+/tmp/ccSEZ4QR.o(.bss+0x250cbc): first defined here
+clientutils.o(.bss+0x250cc0): multiple definition of `zoomsample'
+/tmp/ccSEZ4QR.o(.bss+0x250cc0): first defined here
+clientutils.o(.bss+0x250cc4): multiple definition of `to_program'
+/tmp/ccSEZ4QR.o(.bss+0x250cc4): first defined here
+clientutils.o(.bss+0x250cc8): multiple definition of `from_display'
+/tmp/ccSEZ4QR.o(.bss+0x250cc8): first defined here
+clientutils.o(.bss+0x250ccc): multiple definition of `store'
+/tmp/ccSEZ4QR.o(.bss+0x250ccc): first defined here
+clientutils.o(.bss+0x250cd0): multiple definition of `data'
+/tmp/ccSEZ4QR.o(.bss+0x250cd0): first defined here
+clientutils.o(.bss+0x250cd4): multiple definition of `image'
+/tmp/ccSEZ4QR.o(.bss+0x250cd4): first defined here
+clientutils.o(.bss+0x250ce4): multiple definition of `nimage'
+/tmp/ccSEZ4QR.o(.bss+0x250ce4): first defined here
+clientutils.o(.bss+0x250cf4): multiple definition of `imbuf'
+/tmp/ccSEZ4QR.o(.bss+0x250cf4): first defined here
+clientutils.o(.bss+0x250cf8): multiple definition of `outbuf'
+/tmp/ccSEZ4QR.o(.bss+0x250cf8): first defined here
+clientutils.o(.bss+0x250cfc): multiple definition of `yup'
+/tmp/ccSEZ4QR.o(.bss+0x250cfc): first defined here
+clientutils.o(.bss+0x250d00): multiple definition of `datw'
+/tmp/ccSEZ4QR.o(.bss+0x250d00): first defined here
+clientutils.o(.bss+0x250d04): multiple definition of `dath'
+/tmp/ccSEZ4QR.o(.bss+0x250d04): first defined here
+clientutils.o(.bss+0x250d08): multiple definition of `imwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250d08): first defined here
+clientutils.o(.bss+0x250d0c): multiple definition of `imw'
+/tmp/ccSEZ4QR.o(.bss+0x250d0c): first defined here
+clientutils.o(.bss+0x250d10): multiple definition of `imh'
+/tmp/ccSEZ4QR.o(.bss+0x250d10): first defined here
+clientutils.o(.bss+0x250d14): multiple definition of `winw'
+/tmp/ccSEZ4QR.o(.bss+0x250d14): first defined here
+clientutils.o(.bss+0x250d18): multiple definition of `winh'
+/tmp/ccSEZ4QR.o(.bss+0x250d18): first defined here
+clientutils.o(.bss+0x250d1c): multiple definition of `zim'
+/tmp/ccSEZ4QR.o(.bss+0x250d1c): first defined here
+clientutils.o(.bss+0x250d20): multiple definition of `offx'
+/tmp/ccSEZ4QR.o(.bss+0x250d20): first defined here
+clientutils.o(.bss+0x250d24): multiple definition of `offy'
+/tmp/ccSEZ4QR.o(.bss+0x250d24): first defined here
+clientutils.o(.bss+0x250d28): multiple definition of `datx'
+/tmp/ccSEZ4QR.o(.bss+0x250d28): first defined here
+clientutils.o(.bss+0x250d2c): multiple definition of `daty'
+/tmp/ccSEZ4QR.o(.bss+0x250d2c): first defined here
+clientutils.o(.bss+0x250d30): multiple definition of `imx'
+/tmp/ccSEZ4QR.o(.bss+0x250d30): first defined here
+clientutils.o(.bss+0x250d34): multiple definition of `imy'
+/tmp/ccSEZ4QR.o(.bss+0x250d34): first defined here
+clientutils.o(.bss+0x250d38): multiple definition of `winx'
+/tmp/ccSEZ4QR.o(.bss+0x250d38): first defined here
+clientutils.o(.bss+0x250d3c): multiple definition of `winy'
+/tmp/ccSEZ4QR.o(.bss+0x250d3c): first defined here
+clientutils.o(.bss+0x250d40): multiple definition of `imtv'
+/tmp/ccSEZ4QR.o(.bss+0x250d40): first defined here
+clientutils.o(.bss+0x250d44): multiple definition of `sdata'
+/tmp/ccSEZ4QR.o(.bss+0x250d44): first defined here
+clientutils.o(.bss+0x250d54): multiple definition of `sdatw'
+/tmp/ccSEZ4QR.o(.bss+0x250d54): first defined here
+clientutils.o(.bss+0x250d64): multiple definition of `sdath'
+/tmp/ccSEZ4QR.o(.bss+0x250d64): first defined here
+clientutils.o(.bss+0x250d74): multiple definition of `simwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250d74): first defined here
+clientutils.o(.bss+0x250d84): multiple definition of `simw'
+/tmp/ccSEZ4QR.o(.bss+0x250d84): first defined here
+clientutils.o(.bss+0x250d94): multiple definition of `simh'
+/tmp/ccSEZ4QR.o(.bss+0x250d94): first defined here
+clientutils.o(.bss+0x250da4): multiple definition of `swinw'
+/tmp/ccSEZ4QR.o(.bss+0x250da4): first defined here
+clientutils.o(.bss+0x250db4): multiple definition of `swinh'
+/tmp/ccSEZ4QR.o(.bss+0x250db4): first defined here
+clientutils.o(.bss+0x250dc4): multiple definition of `szim'
+/tmp/ccSEZ4QR.o(.bss+0x250dc4): first defined here
+clientutils.o(.bss+0x250dd4): multiple definition of `soffx'
+/tmp/ccSEZ4QR.o(.bss+0x250dd4): first defined here
+clientutils.o(.bss+0x250de4): multiple definition of `soffy'
+/tmp/ccSEZ4QR.o(.bss+0x250de4): first defined here
+clientutils.o(.bss+0x250df4): multiple definition of `sdatx'
+/tmp/ccSEZ4QR.o(.bss+0x250df4): first defined here
+clientutils.o(.bss+0x250e04): multiple definition of `sdaty'
+/tmp/ccSEZ4QR.o(.bss+0x250e04): first defined here
+clientutils.o(.bss+0x250e14): multiple definition of `simx'
+/tmp/ccSEZ4QR.o(.bss+0x250e14): first defined here
+clientutils.o(.bss+0x250e24): multiple definition of `simy'
+/tmp/ccSEZ4QR.o(.bss+0x250e24): first defined here
+clientutils.o(.bss+0x250e34): multiple definition of `swinx'
+/tmp/ccSEZ4QR.o(.bss+0x250e34): first defined here
+clientutils.o(.bss+0x250e44): multiple definition of `swiny'
+/tmp/ccSEZ4QR.o(.bss+0x250e44): first defined here
+clientutils.o(.bss+0x250e54): multiple definition of `simtv'
+/tmp/ccSEZ4QR.o(.bss+0x250e54): first defined here
+clientutils.o(.bss+0x250e80): multiple definition of `imname'
+/tmp/ccSEZ4QR.o(.bss+0x250e80): first defined here
+clientutils.o(.bss+0x250ed0): multiple definition of `palheight'
+/tmp/ccSEZ4QR.o(.bss+0x250ed0): first defined here
+clientutils.o(.bss+0x250ed4): multiple definition of `palwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ed4): first defined here
+clientutils.o(.bss+0x250ed8): multiple definition of `palx'
+/tmp/ccSEZ4QR.o(.bss+0x250ed8): first defined here
+clientutils.o(.bss+0x250edc): multiple definition of `paly'
+/tmp/ccSEZ4QR.o(.bss+0x250edc): first defined here
+clientutils.o(.bss+0x250ee0): multiple definition of `palbrkpt'
+/tmp/ccSEZ4QR.o(.bss+0x250ee0): first defined here
+clientutils.o(.bss+0x250ee4): multiple definition of `palette'
+/tmp/ccSEZ4QR.o(.bss+0x250ee4): first defined here
+clientutils.o(.bss+0x250ee8): multiple definition of `lookup'
+/tmp/ccSEZ4QR.o(.bss+0x250ee8): first defined here
+clientutils.o(.bss+0x250eec): multiple definition of `lgtheight'
+/tmp/ccSEZ4QR.o(.bss+0x250eec): first defined here
+clientutils.o(.bss+0x250ef0): multiple definition of `lgtwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ef0): first defined here
+clientutils.o(.bss+0x250ef4): multiple definition of `lgtx'
+/tmp/ccSEZ4QR.o(.bss+0x250ef4): first defined here
+clientutils.o(.bss+0x250ef8): multiple definition of `lgty'
+/tmp/ccSEZ4QR.o(.bss+0x250ef8): first defined here
+clientutils.o(.bss+0x250f08): multiple definition of `xyzstring'
+/tmp/ccSEZ4QR.o(.bss+0x250f08): first defined here
+clientutils.o(.bss+0x250f26): multiple definition of `numstr'
+/tmp/ccSEZ4QR.o(.bss+0x250f26): first defined here
+clientutils.o(.bss+0x250f3c): multiple definition of `xyzheight'
+/tmp/ccSEZ4QR.o(.bss+0x250f3c): first defined here
+clientutils.o(.bss+0x250f40): multiple definition of `xyzwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250f40): first defined here
+clientutils.o(.bss+0x250f44): multiple definition of `xyzx'
+/tmp/ccSEZ4QR.o(.bss+0x250f44): first defined here
+clientutils.o(.bss+0x250f48): multiple definition of `xyzy'
+/tmp/ccSEZ4QR.o(.bss+0x250f48): first defined here
+clientutils.o(.bss+0x250f4c): multiple definition of `mousex'
+/tmp/ccSEZ4QR.o(.bss+0x250f4c): first defined here
+clientutils.o(.bss+0x250f50): multiple definition of `mousey'
+/tmp/ccSEZ4QR.o(.bss+0x250f50): first defined here
+clientutils.o(.bss+0x250f54): multiple definition of `mousez'
+/tmp/ccSEZ4QR.o(.bss+0x250f54): first defined here
+clientutils.o(.bss+0x250f58): multiple definition of `textx'
+/tmp/ccSEZ4QR.o(.bss+0x250f58): first defined here
+clientutils.o(.bss+0x250f5c): multiple definition of `texty'
+/tmp/ccSEZ4QR.o(.bss+0x250f5c): first defined here
+clientutils.o(.bss+0x250f68): multiple definition of `zimage'
+/tmp/ccSEZ4QR.o(.bss+0x250f68): first defined here
+clientutils.o(.bss+0x250f6c): multiple definition of `zoomf'
+/tmp/ccSEZ4QR.o(.bss+0x250f6c): first defined here
+clientutils.o(.bss+0x250f70): multiple definition of `zwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250f70): first defined here
+clientutils.o(.bss+0x250f74): multiple definition of `zheight'
+/tmp/ccSEZ4QR.o(.bss+0x250f74): first defined here
+clientutils.o(.bss+0x250f78): multiple definition of `lastzoomx'
+/tmp/ccSEZ4QR.o(.bss+0x250f78): first defined here
+clientutils.o(.bss+0x250f7c): multiple definition of `lastzoomy'
+/tmp/ccSEZ4QR.o(.bss+0x250f7c): first defined here
+clientutils.o(.bss+0x250f80): multiple definition of `zcursvec'
+/tmp/ccSEZ4QR.o(.bss+0x250f80): first defined here
+clientutils.o(.bss+0x251100): multiple definition of `whichkey'
+/tmp/ccSEZ4QR.o(.bss+0x251100): first defined here
+clientutils.o(.bss+0x251104): multiple definition of `buttondown'
+/tmp/ccSEZ4QR.o(.bss+0x251104): first defined here
+clientutils.o(.bss+0x251108): multiple definition of `lastx'
+/tmp/ccSEZ4QR.o(.bss+0x251108): first defined here
+clientutils.o(.bss+0x25110c): multiple definition of `lasty'
+/tmp/ccSEZ4QR.o(.bss+0x25110c): first defined here
+clientutils.o(.bss+0x251120): multiple definition of `keyaction'
+/tmp/ccSEZ4QR.o(.bss+0x251120): first defined here
+loadconfig.o(.data+0x0): multiple definition of `waiting_for_key'
+/tmp/ccSEZ4QR.o(.data+0x0): first defined here
+loadconfig.o(.data+0xa0): multiple definition of `TVisOpen'
+/tmp/ccSEZ4QR.o(.data+0xa0): first defined here
+loadconfig.o(.data+0xa4): multiple definition of `fd_for_X'
+/tmp/ccSEZ4QR.o(.data+0xa4): first defined here
+loadconfig.o(.bss+0x0): multiple definition of `dpy'
+/tmp/ccSEZ4QR.o(.bss+0x4): first defined here
+loadconfig.o(.bss+0x4): multiple definition of `wbase'
+/tmp/ccSEZ4QR.o(.bss+0x8): first defined here
+loadconfig.o(.bss+0x8): multiple definition of `wimage'
+/tmp/ccSEZ4QR.o(.bss+0xc): first defined here
+loadconfig.o(.bss+0xc): multiple definition of `wpal'
+/tmp/ccSEZ4QR.o(.bss+0x10): first defined here
+loadconfig.o(.bss+0x10): multiple definition of `wxyz'
+/tmp/ccSEZ4QR.o(.bss+0x14): first defined here
+loadconfig.o(.bss+0x14): multiple definition of `wzoom'
+/tmp/ccSEZ4QR.o(.bss+0x18): first defined here
+loadconfig.o(.bss+0x18): multiple definition of `wlgt1'
+/tmp/ccSEZ4QR.o(.bss+0x1c): first defined here
+loadconfig.o(.bss+0x1c): multiple definition of `wlgt2'
+/tmp/ccSEZ4QR.o(.bss+0x20): first defined here
+loadconfig.o(.bss+0x20): multiple definition of `wlgt3'
+/tmp/ccSEZ4QR.o(.bss+0x24): first defined here
+loadconfig.o(.bss+0x24): multiple definition of `wlgt4'
+/tmp/ccSEZ4QR.o(.bss+0x28): first defined here
+loadconfig.o(.bss+0x28): multiple definition of `screen'
+/tmp/ccSEZ4QR.o(.bss+0x2c): first defined here
+loadconfig.o(.bss+0x2c): multiple definition of `xwc'
+/tmp/ccSEZ4QR.o(.bss+0x30): first defined here
+loadconfig.o(.bss+0x60): multiple definition of `xswa'
+/tmp/ccSEZ4QR.o(.bss+0x60): first defined here
+loadconfig.o(.bss+0x9c): multiple definition of `dataimage'
+/tmp/ccSEZ4QR.o(.bss+0x9c): first defined here
+loadconfig.o(.bss+0xa0): multiple definition of `palimage'
+/tmp/ccSEZ4QR.o(.bss+0xa0): first defined here
+loadconfig.o(.bss+0xa4): multiple definition of `zoomimage'
+/tmp/ccSEZ4QR.o(.bss+0xa4): first defined here
+loadconfig.o(.bss+0xa8): multiple definition of `vectorgc'
+/tmp/ccSEZ4QR.o(.bss+0xa8): first defined here
+loadconfig.o(.bss+0xac): multiple definition of `textgc'
+/tmp/ccSEZ4QR.o(.bss+0xac): first defined here
+loadconfig.o(.bss+0xb0): multiple definition of `imagegc'
+/tmp/ccSEZ4QR.o(.bss+0xb0): first defined here
+loadconfig.o(.bss+0xb4): multiple definition of `xorgc'
+/tmp/ccSEZ4QR.o(.bss+0xb4): first defined here
+loadconfig.o(.bss+0xb8): multiple definition of `inforoot'
+/tmp/ccSEZ4QR.o(.bss+0xb8): first defined here
+loadconfig.o(.bss+0xbc): multiple definition of `infox'
+/tmp/ccSEZ4QR.o(.bss+0xbc): first defined here
+loadconfig.o(.bss+0xc0): multiple definition of `infoy'
+/tmp/ccSEZ4QR.o(.bss+0xc0): first defined here
+loadconfig.o(.bss+0xc4): multiple definition of `infowidth'
+/tmp/ccSEZ4QR.o(.bss+0xc4): first defined here
+loadconfig.o(.bss+0xc8): multiple definition of `infoheight'
+/tmp/ccSEZ4QR.o(.bss+0xc8): first defined here
+loadconfig.o(.bss+0xcc): multiple definition of `infoborder'
+/tmp/ccSEZ4QR.o(.bss+0xcc): first defined here
+loadconfig.o(.bss+0xd0): multiple definition of `infodepth'
+/tmp/ccSEZ4QR.o(.bss+0xd0): first defined here
+loadconfig.o(.bss+0xd4): multiple definition of `display'
+/tmp/ccSEZ4QR.o(.bss+0xd4): first defined here
+loadconfig.o(.bss+0xd8): multiple definition of `geometry'
+/tmp/ccSEZ4QR.o(.bss+0xd8): first defined here
+loadconfig.o(.bss+0xdc): multiple definition of `filegeometry'
+/tmp/ccSEZ4QR.o(.bss+0xdc): first defined here
+loadconfig.o(.bss+0xfa): multiple definition of `zgeometry'
+/tmp/ccSEZ4QR.o(.bss+0xfa): first defined here
+loadconfig.o(.bss+0x118): multiple definition of `curs'
+/tmp/ccSEZ4QR.o(.bss+0x118): first defined here
+loadconfig.o(.bss+0x11c): multiple definition of `palcurs'
+/tmp/ccSEZ4QR.o(.bss+0x11c): first defined here
+loadconfig.o(.bss+0x120): multiple definition of `font'
+/tmp/ccSEZ4QR.o(.bss+0x120): first defined here
+loadconfig.o(.bss+0x124): multiple definition of `fontname1'
+/tmp/ccSEZ4QR.o(.bss+0x124): first defined here
+loadconfig.o(.bss+0x128): multiple definition of `fontname2'
+/tmp/ccSEZ4QR.o(.bss+0x128): first defined here
+loadconfig.o(.bss+0x12c): multiple definition of `fontpath'
+/tmp/ccSEZ4QR.o(.bss+0x12c): first defined here
+loadconfig.o(.bss+0x130): multiple definition of `nfont'
+/tmp/ccSEZ4QR.o(.bss+0x130): first defined here
+loadconfig.o(.bss+0x134): multiple definition of `fontinfo'
+/tmp/ccSEZ4QR.o(.bss+0x134): first defined here
+loadconfig.o(.bss+0x138): multiple definition of `fontheight'
+/tmp/ccSEZ4QR.o(.bss+0x138): first defined here
+loadconfig.o(.bss+0x13c): multiple definition of `fontwidth'
+/tmp/ccSEZ4QR.o(.bss+0x13c): first defined here
+loadconfig.o(.bss+0x140): multiple definition of `ncolors'
+/tmp/ccSEZ4QR.o(.bss+0x140): first defined here
+loadconfig.o(.bss+0x144): multiple definition of `nvcolors'
+/tmp/ccSEZ4QR.o(.bss+0x144): first defined here
+loadconfig.o(.bss+0x160): multiple definition of `pixels'
+/tmp/ccSEZ4QR.o(.bss+0x160): first defined here
+loadconfig.o(.bss+0x560): multiple definition of `planes'
+/tmp/ccSEZ4QR.o(.bss+0x560): first defined here
+loadconfig.o(.bss+0x564): multiple definition of `visual'
+/tmp/ccSEZ4QR.o(.bss+0x564): first defined here
+loadconfig.o(.bss+0x568): multiple definition of `depth'
+/tmp/ccSEZ4QR.o(.bss+0x568): first defined here
+loadconfig.o(.bss+0x56c): multiple definition of `defcmap'
+/tmp/ccSEZ4QR.o(.bss+0x56c): first defined here
+loadconfig.o(.bss+0x580): multiple definition of `cmap'
+/tmp/ccSEZ4QR.o(.bss+0x580): first defined here
+loadconfig.o(.bss+0x1180): multiple definition of `stcolor'
+/tmp/ccSEZ4QR.o(.bss+0x1180): first defined here
+loadconfig.o(.bss+0x11c0): multiple definition of `palcolors'
+/tmp/ccSEZ4QR.o(.bss+0x11c0): first defined here
+loadconfig.o(.bss+0x1780): multiple definition of `vcolor'
+/tmp/ccSEZ4QR.o(.bss+0x1780): first defined here
+loadconfig.o(.bss+0x2380): multiple definition of `npalette'
+/tmp/ccSEZ4QR.o(.bss+0x2380): first defined here
+loadconfig.o(.bss+0x2384): multiple definition of `pal0'
+/tmp/ccSEZ4QR.o(.bss+0x2384): first defined here
+loadconfig.o(.bss+0x2388): multiple definition of `pal1'
+/tmp/ccSEZ4QR.o(.bss+0x2388): first defined here
+loadconfig.o(.bss+0x23a0): multiple definition of `branch'
+/tmp/ccSEZ4QR.o(.bss+0x23a0): first defined here
+loadconfig.o(.bss+0x47a0): multiple definition of `breakpts'
+/tmp/ccSEZ4QR.o(.bss+0x47a0): first defined here
+loadconfig.o(.bss+0x4ba0): multiple definition of `truecolor'
+/tmp/ccSEZ4QR.o(.bss+0x4ba0): first defined here
+loadconfig.o(.bss+0x4ba4): multiple definition of `directcolor'
+/tmp/ccSEZ4QR.o(.bss+0x4ba4): first defined here
+loadconfig.o(.bss+0x4ba8): multiple definition of `rmask'
+/tmp/ccSEZ4QR.o(.bss+0x4ba8): first defined here
+loadconfig.o(.bss+0x4bac): multiple definition of `gmask'
+/tmp/ccSEZ4QR.o(.bss+0x4bac): first defined here
+loadconfig.o(.bss+0x4bb0): multiple definition of `bmask'
+/tmp/ccSEZ4QR.o(.bss+0x4bb0): first defined here
+loadconfig.o(.bss+0x4bb4): multiple definition of `_XErrorEvent'
+/tmp/ccSEZ4QR.o(.bss+0x4bb4): first defined here
+loadconfig.o(.bss+0x4be0): multiple definition of `veclist'
+/tmp/ccSEZ4QR.o(.bss+0x4be0): first defined here
+loadconfig.o(.bss+0x24eae0): multiple definition of `xvlast'
+/tmp/ccSEZ4QR.o(.bss+0x24eae0): first defined here
+loadconfig.o(.bss+0x24eae4): multiple definition of `yvlast'
+/tmp/ccSEZ4QR.o(.bss+0x24eae4): first defined here
+loadconfig.o(.bss+0x24eae8): multiple definition of `vcount'
+/tmp/ccSEZ4QR.o(.bss+0x24eae8): first defined here
+loadconfig.o(.bss+0x24eaec): multiple definition of `vlastcolor'
+/tmp/ccSEZ4QR.o(.bss+0x24eaec): first defined here
+loadconfig.o(.bss+0x24eb00): multiple definition of `textlist'
+/tmp/ccSEZ4QR.o(.bss+0x24eb00): first defined here
+loadconfig.o(.bss+0x250c98): multiple definition of `xtlast'
+/tmp/ccSEZ4QR.o(.bss+0x250c98): first defined here
+loadconfig.o(.bss+0x250c9c): multiple definition of `ytlast'
+/tmp/ccSEZ4QR.o(.bss+0x250c9c): first defined here
+loadconfig.o(.bss+0x250ca0): multiple definition of `tcount'
+/tmp/ccSEZ4QR.o(.bss+0x250ca0): first defined here
+loadconfig.o(.bss+0x250ca4): multiple definition of `tlastcolor'
+/tmp/ccSEZ4QR.o(.bss+0x250ca4): first defined here
+loadconfig.o(.bss+0x250ca8): multiple definition of `maxwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ca8): first defined here
+loadconfig.o(.bss+0x250cac): multiple definition of `maxheight'
+/tmp/ccSEZ4QR.o(.bss+0x250cac): first defined here
+loadconfig.o(.bss+0x250cb0): multiple definition of `width'
+/tmp/ccSEZ4QR.o(.bss+0x250cb0): first defined here
+loadconfig.o(.bss+0x250cb4): multiple definition of `height'
+/tmp/ccSEZ4QR.o(.bss+0x250cb4): first defined here
+loadconfig.o(.bss+0x250cb8): multiple definition of `resize'
+/tmp/ccSEZ4QR.o(.bss+0x250cb8): first defined here
+loadconfig.o(.bss+0x250cbc): multiple definition of `autozoomout'
+/tmp/ccSEZ4QR.o(.bss+0x250cbc): first defined here
+loadconfig.o(.bss+0x250cc0): multiple definition of `zoomsample'
+/tmp/ccSEZ4QR.o(.bss+0x250cc0): first defined here
+loadconfig.o(.bss+0x250cc4): multiple definition of `to_program'
+/tmp/ccSEZ4QR.o(.bss+0x250cc4): first defined here
+loadconfig.o(.bss+0x250cc8): multiple definition of `from_display'
+/tmp/ccSEZ4QR.o(.bss+0x250cc8): first defined here
+loadconfig.o(.bss+0x250ccc): multiple definition of `store'
+/tmp/ccSEZ4QR.o(.bss+0x250ccc): first defined here
+loadconfig.o(.bss+0x250cd0): multiple definition of `data'
+/tmp/ccSEZ4QR.o(.bss+0x250cd0): first defined here
+loadconfig.o(.bss+0x250cd4): multiple definition of `image'
+/tmp/ccSEZ4QR.o(.bss+0x250cd4): first defined here
+loadconfig.o(.bss+0x250ce4): multiple definition of `nimage'
+/tmp/ccSEZ4QR.o(.bss+0x250ce4): first defined here
+loadconfig.o(.bss+0x250cf4): multiple definition of `imbuf'
+/tmp/ccSEZ4QR.o(.bss+0x250cf4): first defined here
+loadconfig.o(.bss+0x250cf8): multiple definition of `outbuf'
+/tmp/ccSEZ4QR.o(.bss+0x250cf8): first defined here
+loadconfig.o(.bss+0x250cfc): multiple definition of `yup'
+/tmp/ccSEZ4QR.o(.bss+0x250cfc): first defined here
+loadconfig.o(.bss+0x250d00): multiple definition of `datw'
+/tmp/ccSEZ4QR.o(.bss+0x250d00): first defined here
+loadconfig.o(.bss+0x250d04): multiple definition of `dath'
+/tmp/ccSEZ4QR.o(.bss+0x250d04): first defined here
+loadconfig.o(.bss+0x250d08): multiple definition of `imwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250d08): first defined here
+loadconfig.o(.bss+0x250d0c): multiple definition of `imw'
+/tmp/ccSEZ4QR.o(.bss+0x250d0c): first defined here
+loadconfig.o(.bss+0x250d10): multiple definition of `imh'
+/tmp/ccSEZ4QR.o(.bss+0x250d10): first defined here
+loadconfig.o(.bss+0x250d14): multiple definition of `winw'
+/tmp/ccSEZ4QR.o(.bss+0x250d14): first defined here
+loadconfig.o(.bss+0x250d18): multiple definition of `winh'
+/tmp/ccSEZ4QR.o(.bss+0x250d18): first defined here
+loadconfig.o(.bss+0x250d1c): multiple definition of `zim'
+/tmp/ccSEZ4QR.o(.bss+0x250d1c): first defined here
+loadconfig.o(.bss+0x250d20): multiple definition of `offx'
+/tmp/ccSEZ4QR.o(.bss+0x250d20): first defined here
+loadconfig.o(.bss+0x250d24): multiple definition of `offy'
+/tmp/ccSEZ4QR.o(.bss+0x250d24): first defined here
+loadconfig.o(.bss+0x250d28): multiple definition of `datx'
+/tmp/ccSEZ4QR.o(.bss+0x250d28): first defined here
+loadconfig.o(.bss+0x250d2c): multiple definition of `daty'
+/tmp/ccSEZ4QR.o(.bss+0x250d2c): first defined here
+loadconfig.o(.bss+0x250d30): multiple definition of `imx'
+/tmp/ccSEZ4QR.o(.bss+0x250d30): first defined here
+loadconfig.o(.bss+0x250d34): multiple definition of `imy'
+/tmp/ccSEZ4QR.o(.bss+0x250d34): first defined here
+loadconfig.o(.bss+0x250d38): multiple definition of `winx'
+/tmp/ccSEZ4QR.o(.bss+0x250d38): first defined here
+loadconfig.o(.bss+0x250d3c): multiple definition of `winy'
+/tmp/ccSEZ4QR.o(.bss+0x250d3c): first defined here
+loadconfig.o(.bss+0x250d40): multiple definition of `imtv'
+/tmp/ccSEZ4QR.o(.bss+0x250d40): first defined here
+loadconfig.o(.bss+0x250d44): multiple definition of `sdata'
+/tmp/ccSEZ4QR.o(.bss+0x250d44): first defined here
+loadconfig.o(.bss+0x250d54): multiple definition of `sdatw'
+/tmp/ccSEZ4QR.o(.bss+0x250d54): first defined here
+loadconfig.o(.bss+0x250d64): multiple definition of `sdath'
+/tmp/ccSEZ4QR.o(.bss+0x250d64): first defined here
+loadconfig.o(.bss+0x250d74): multiple definition of `simwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250d74): first defined here
+loadconfig.o(.bss+0x250d84): multiple definition of `simw'
+/tmp/ccSEZ4QR.o(.bss+0x250d84): first defined here
+loadconfig.o(.bss+0x250d94): multiple definition of `simh'
+/tmp/ccSEZ4QR.o(.bss+0x250d94): first defined here
+loadconfig.o(.bss+0x250da4): multiple definition of `swinw'
+/tmp/ccSEZ4QR.o(.bss+0x250da4): first defined here
+loadconfig.o(.bss+0x250db4): multiple definition of `swinh'
+/tmp/ccSEZ4QR.o(.bss+0x250db4): first defined here
+loadconfig.o(.bss+0x250dc4): multiple definition of `szim'
+/tmp/ccSEZ4QR.o(.bss+0x250dc4): first defined here
+loadconfig.o(.bss+0x250dd4): multiple definition of `soffx'
+/tmp/ccSEZ4QR.o(.bss+0x250dd4): first defined here
+loadconfig.o(.bss+0x250de4): multiple definition of `soffy'
+/tmp/ccSEZ4QR.o(.bss+0x250de4): first defined here
+loadconfig.o(.bss+0x250df4): multiple definition of `sdatx'
+/tmp/ccSEZ4QR.o(.bss+0x250df4): first defined here
+loadconfig.o(.bss+0x250e04): multiple definition of `sdaty'
+/tmp/ccSEZ4QR.o(.bss+0x250e04): first defined here
+loadconfig.o(.bss+0x250e14): multiple definition of `simx'
+/tmp/ccSEZ4QR.o(.bss+0x250e14): first defined here
+loadconfig.o(.bss+0x250e24): multiple definition of `simy'
+/tmp/ccSEZ4QR.o(.bss+0x250e24): first defined here
+loadconfig.o(.bss+0x250e34): multiple definition of `swinx'
+/tmp/ccSEZ4QR.o(.bss+0x250e34): first defined here
+loadconfig.o(.bss+0x250e44): multiple definition of `swiny'
+/tmp/ccSEZ4QR.o(.bss+0x250e44): first defined here
+loadconfig.o(.bss+0x250e54): multiple definition of `simtv'
+/tmp/ccSEZ4QR.o(.bss+0x250e54): first defined here
+loadconfig.o(.bss+0x250e80): multiple definition of `imname'
+/tmp/ccSEZ4QR.o(.bss+0x250e80): first defined here
+loadconfig.o(.bss+0x250ed0): multiple definition of `palheight'
+/tmp/ccSEZ4QR.o(.bss+0x250ed0): first defined here
+loadconfig.o(.bss+0x250ed4): multiple definition of `palwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ed4): first defined here
+loadconfig.o(.bss+0x250ed8): multiple definition of `palx'
+/tmp/ccSEZ4QR.o(.bss+0x250ed8): first defined here
+loadconfig.o(.bss+0x250edc): multiple definition of `paly'
+/tmp/ccSEZ4QR.o(.bss+0x250edc): first defined here
+loadconfig.o(.bss+0x250ee0): multiple definition of `palbrkpt'
+/tmp/ccSEZ4QR.o(.bss+0x250ee0): first defined here
+loadconfig.o(.bss+0x250ee4): multiple definition of `palette'
+/tmp/ccSEZ4QR.o(.bss+0x250ee4): first defined here
+loadconfig.o(.bss+0x250ee8): multiple definition of `lookup'
+/tmp/ccSEZ4QR.o(.bss+0x250ee8): first defined here
+loadconfig.o(.bss+0x250eec): multiple definition of `lgtheight'
+/tmp/ccSEZ4QR.o(.bss+0x250eec): first defined here
+loadconfig.o(.bss+0x250ef0): multiple definition of `lgtwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ef0): first defined here
+loadconfig.o(.bss+0x250ef4): multiple definition of `lgtx'
+/tmp/ccSEZ4QR.o(.bss+0x250ef4): first defined here
+loadconfig.o(.bss+0x250ef8): multiple definition of `lgty'
+/tmp/ccSEZ4QR.o(.bss+0x250ef8): first defined here
+loadconfig.o(.bss+0x250f08): multiple definition of `xyzstring'
+/tmp/ccSEZ4QR.o(.bss+0x250f08): first defined here
+loadconfig.o(.bss+0x250f26): multiple definition of `numstr'
+/tmp/ccSEZ4QR.o(.bss+0x250f26): first defined here
+loadconfig.o(.bss+0x250f3c): multiple definition of `xyzheight'
+/tmp/ccSEZ4QR.o(.bss+0x250f3c): first defined here
+loadconfig.o(.bss+0x250f40): multiple definition of `xyzwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250f40): first defined here
+loadconfig.o(.bss+0x250f44): multiple definition of `xyzx'
+/tmp/ccSEZ4QR.o(.bss+0x250f44): first defined here
+loadconfig.o(.bss+0x250f48): multiple definition of `xyzy'
+/tmp/ccSEZ4QR.o(.bss+0x250f48): first defined here
+loadconfig.o(.bss+0x250f4c): multiple definition of `mousex'
+/tmp/ccSEZ4QR.o(.bss+0x250f4c): first defined here
+loadconfig.o(.bss+0x250f50): multiple definition of `mousey'
+/tmp/ccSEZ4QR.o(.bss+0x250f50): first defined here
+loadconfig.o(.bss+0x250f54): multiple definition of `mousez'
+/tmp/ccSEZ4QR.o(.bss+0x250f54): first defined here
+loadconfig.o(.bss+0x250f58): multiple definition of `textx'
+/tmp/ccSEZ4QR.o(.bss+0x250f58): first defined here
+loadconfig.o(.bss+0x250f5c): multiple definition of `texty'
+/tmp/ccSEZ4QR.o(.bss+0x250f5c): first defined here
+loadconfig.o(.bss+0x250f68): multiple definition of `zimage'
+/tmp/ccSEZ4QR.o(.bss+0x250f68): first defined here
+loadconfig.o(.bss+0x250f6c): multiple definition of `zoomf'
+/tmp/ccSEZ4QR.o(.bss+0x250f6c): first defined here
+loadconfig.o(.bss+0x250f70): multiple definition of `zwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250f70): first defined here
+loadconfig.o(.bss+0x250f74): multiple definition of `zheight'
+/tmp/ccSEZ4QR.o(.bss+0x250f74): first defined here
+loadconfig.o(.bss+0x250f78): multiple definition of `lastzoomx'
+/tmp/ccSEZ4QR.o(.bss+0x250f78): first defined here
+loadconfig.o(.bss+0x250f7c): multiple definition of `lastzoomy'
+/tmp/ccSEZ4QR.o(.bss+0x250f7c): first defined here
+loadconfig.o(.bss+0x250f80): multiple definition of `zcursvec'
+/tmp/ccSEZ4QR.o(.bss+0x250f80): first defined here
+loadconfig.o(.bss+0x251100): multiple definition of `whichkey'
+/tmp/ccSEZ4QR.o(.bss+0x251100): first defined here
+loadconfig.o(.bss+0x251104): multiple definition of `buttondown'
+/tmp/ccSEZ4QR.o(.bss+0x251104): first defined here
+loadconfig.o(.bss+0x251108): multiple definition of `lastx'
+/tmp/ccSEZ4QR.o(.bss+0x251108): first defined here
+loadconfig.o(.bss+0x25110c): multiple definition of `lasty'
+/tmp/ccSEZ4QR.o(.bss+0x25110c): first defined here
+loadconfig.o(.bss+0x251120): multiple definition of `keyaction'
+/tmp/ccSEZ4QR.o(.bss+0x251120): first defined here
+commands.o(.data+0x0): multiple definition of `waiting_for_key'
+/tmp/ccSEZ4QR.o(.data+0x0): first defined here
+commands.o(.data+0xa0): multiple definition of `TVisOpen'
+/tmp/ccSEZ4QR.o(.data+0xa0): first defined here
+commands.o(.data+0xa4): multiple definition of `fd_for_X'
+/tmp/ccSEZ4QR.o(.data+0xa4): first defined here
+commands.o(.bss+0x0): multiple definition of `dpy'
+/tmp/ccSEZ4QR.o(.bss+0x4): first defined here
+commands.o(.bss+0x4): multiple definition of `wbase'
+/tmp/ccSEZ4QR.o(.bss+0x8): first defined here
+commands.o(.bss+0x8): multiple definition of `wimage'
+/tmp/ccSEZ4QR.o(.bss+0xc): first defined here
+commands.o(.bss+0xc): multiple definition of `wpal'
+/tmp/ccSEZ4QR.o(.bss+0x10): first defined here
+commands.o(.bss+0x10): multiple definition of `wxyz'
+/tmp/ccSEZ4QR.o(.bss+0x14): first defined here
+commands.o(.bss+0x14): multiple definition of `wzoom'
+/tmp/ccSEZ4QR.o(.bss+0x18): first defined here
+commands.o(.bss+0x18): multiple definition of `wlgt1'
+/tmp/ccSEZ4QR.o(.bss+0x1c): first defined here
+commands.o(.bss+0x1c): multiple definition of `wlgt2'
+/tmp/ccSEZ4QR.o(.bss+0x20): first defined here
+commands.o(.bss+0x20): multiple definition of `wlgt3'
+/tmp/ccSEZ4QR.o(.bss+0x24): first defined here
+commands.o(.bss+0x24): multiple definition of `wlgt4'
+/tmp/ccSEZ4QR.o(.bss+0x28): first defined here
+commands.o(.bss+0x28): multiple definition of `screen'
+/tmp/ccSEZ4QR.o(.bss+0x2c): first defined here
+commands.o(.bss+0x2c): multiple definition of `xwc'
+/tmp/ccSEZ4QR.o(.bss+0x30): first defined here
+commands.o(.bss+0x60): multiple definition of `xswa'
+/tmp/ccSEZ4QR.o(.bss+0x60): first defined here
+commands.o(.bss+0x9c): multiple definition of `dataimage'
+/tmp/ccSEZ4QR.o(.bss+0x9c): first defined here
+commands.o(.bss+0xa0): multiple definition of `palimage'
+/tmp/ccSEZ4QR.o(.bss+0xa0): first defined here
+commands.o(.bss+0xa4): multiple definition of `zoomimage'
+/tmp/ccSEZ4QR.o(.bss+0xa4): first defined here
+commands.o(.bss+0xa8): multiple definition of `vectorgc'
+/tmp/ccSEZ4QR.o(.bss+0xa8): first defined here
+commands.o(.bss+0xac): multiple definition of `textgc'
+/tmp/ccSEZ4QR.o(.bss+0xac): first defined here
+commands.o(.bss+0xb0): multiple definition of `imagegc'
+/tmp/ccSEZ4QR.o(.bss+0xb0): first defined here
+commands.o(.bss+0xb4): multiple definition of `xorgc'
+/tmp/ccSEZ4QR.o(.bss+0xb4): first defined here
+commands.o(.bss+0xb8): multiple definition of `inforoot'
+/tmp/ccSEZ4QR.o(.bss+0xb8): first defined here
+commands.o(.bss+0xbc): multiple definition of `infox'
+/tmp/ccSEZ4QR.o(.bss+0xbc): first defined here
+commands.o(.bss+0xc0): multiple definition of `infoy'
+/tmp/ccSEZ4QR.o(.bss+0xc0): first defined here
+commands.o(.bss+0xc4): multiple definition of `infowidth'
+/tmp/ccSEZ4QR.o(.bss+0xc4): first defined here
+commands.o(.bss+0xc8): multiple definition of `infoheight'
+/tmp/ccSEZ4QR.o(.bss+0xc8): first defined here
+commands.o(.bss+0xcc): multiple definition of `infoborder'
+/tmp/ccSEZ4QR.o(.bss+0xcc): first defined here
+commands.o(.bss+0xd0): multiple definition of `infodepth'
+/tmp/ccSEZ4QR.o(.bss+0xd0): first defined here
+commands.o(.bss+0xd4): multiple definition of `display'
+/tmp/ccSEZ4QR.o(.bss+0xd4): first defined here
+commands.o(.bss+0xd8): multiple definition of `geometry'
+/tmp/ccSEZ4QR.o(.bss+0xd8): first defined here
+commands.o(.bss+0xdc): multiple definition of `filegeometry'
+/tmp/ccSEZ4QR.o(.bss+0xdc): first defined here
+commands.o(.bss+0xfa): multiple definition of `zgeometry'
+/tmp/ccSEZ4QR.o(.bss+0xfa): first defined here
+commands.o(.bss+0x118): multiple definition of `curs'
+/tmp/ccSEZ4QR.o(.bss+0x118): first defined here
+commands.o(.bss+0x11c): multiple definition of `palcurs'
+/tmp/ccSEZ4QR.o(.bss+0x11c): first defined here
+commands.o(.bss+0x120): multiple definition of `font'
+/tmp/ccSEZ4QR.o(.bss+0x120): first defined here
+commands.o(.bss+0x124): multiple definition of `fontname1'
+/tmp/ccSEZ4QR.o(.bss+0x124): first defined here
+commands.o(.bss+0x128): multiple definition of `fontname2'
+/tmp/ccSEZ4QR.o(.bss+0x128): first defined here
+commands.o(.bss+0x12c): multiple definition of `fontpath'
+/tmp/ccSEZ4QR.o(.bss+0x12c): first defined here
+commands.o(.bss+0x130): multiple definition of `nfont'
+/tmp/ccSEZ4QR.o(.bss+0x130): first defined here
+commands.o(.bss+0x134): multiple definition of `fontinfo'
+/tmp/ccSEZ4QR.o(.bss+0x134): first defined here
+commands.o(.bss+0x138): multiple definition of `fontheight'
+/tmp/ccSEZ4QR.o(.bss+0x138): first defined here
+commands.o(.bss+0x13c): multiple definition of `fontwidth'
+/tmp/ccSEZ4QR.o(.bss+0x13c): first defined here
+commands.o(.bss+0x140): multiple definition of `ncolors'
+/tmp/ccSEZ4QR.o(.bss+0x140): first defined here
+commands.o(.bss+0x144): multiple definition of `nvcolors'
+/tmp/ccSEZ4QR.o(.bss+0x144): first defined here
+commands.o(.bss+0x160): multiple definition of `pixels'
+/tmp/ccSEZ4QR.o(.bss+0x160): first defined here
+commands.o(.bss+0x560): multiple definition of `planes'
+/tmp/ccSEZ4QR.o(.bss+0x560): first defined here
+commands.o(.bss+0x564): multiple definition of `visual'
+/tmp/ccSEZ4QR.o(.bss+0x564): first defined here
+commands.o(.bss+0x568): multiple definition of `depth'
+/tmp/ccSEZ4QR.o(.bss+0x568): first defined here
+commands.o(.bss+0x56c): multiple definition of `defcmap'
+/tmp/ccSEZ4QR.o(.bss+0x56c): first defined here
+commands.o(.bss+0x580): multiple definition of `cmap'
+/tmp/ccSEZ4QR.o(.bss+0x580): first defined here
+commands.o(.bss+0x1180): multiple definition of `stcolor'
+/tmp/ccSEZ4QR.o(.bss+0x1180): first defined here
+commands.o(.bss+0x11c0): multiple definition of `palcolors'
+/tmp/ccSEZ4QR.o(.bss+0x11c0): first defined here
+commands.o(.bss+0x1780): multiple definition of `vcolor'
+/tmp/ccSEZ4QR.o(.bss+0x1780): first defined here
+commands.o(.bss+0x2380): multiple definition of `npalette'
+/tmp/ccSEZ4QR.o(.bss+0x2380): first defined here
+commands.o(.bss+0x2384): multiple definition of `pal0'
+/tmp/ccSEZ4QR.o(.bss+0x2384): first defined here
+commands.o(.bss+0x2388): multiple definition of `pal1'
+/tmp/ccSEZ4QR.o(.bss+0x2388): first defined here
+commands.o(.bss+0x23a0): multiple definition of `branch'
+/tmp/ccSEZ4QR.o(.bss+0x23a0): first defined here
+commands.o(.bss+0x47a0): multiple definition of `breakpts'
+/tmp/ccSEZ4QR.o(.bss+0x47a0): first defined here
+commands.o(.bss+0x4ba0): multiple definition of `truecolor'
+/tmp/ccSEZ4QR.o(.bss+0x4ba0): first defined here
+commands.o(.bss+0x4ba4): multiple definition of `directcolor'
+/tmp/ccSEZ4QR.o(.bss+0x4ba4): first defined here
+commands.o(.bss+0x4ba8): multiple definition of `rmask'
+/tmp/ccSEZ4QR.o(.bss+0x4ba8): first defined here
+commands.o(.bss+0x4bac): multiple definition of `gmask'
+/tmp/ccSEZ4QR.o(.bss+0x4bac): first defined here
+commands.o(.bss+0x4bb0): multiple definition of `bmask'
+/tmp/ccSEZ4QR.o(.bss+0x4bb0): first defined here
+commands.o(.bss+0x4bb4): multiple definition of `_XErrorEvent'
+/tmp/ccSEZ4QR.o(.bss+0x4bb4): first defined here
+commands.o(.bss+0x4be0): multiple definition of `veclist'
+/tmp/ccSEZ4QR.o(.bss+0x4be0): first defined here
+commands.o(.bss+0x24eae0): multiple definition of `xvlast'
+/tmp/ccSEZ4QR.o(.bss+0x24eae0): first defined here
+commands.o(.bss+0x24eae4): multiple definition of `yvlast'
+/tmp/ccSEZ4QR.o(.bss+0x24eae4): first defined here
+commands.o(.bss+0x24eae8): multiple definition of `vcount'
+/tmp/ccSEZ4QR.o(.bss+0x24eae8): first defined here
+commands.o(.bss+0x24eaec): multiple definition of `vlastcolor'
+/tmp/ccSEZ4QR.o(.bss+0x24eaec): first defined here
+commands.o(.bss+0x24eb00): multiple definition of `textlist'
+/tmp/ccSEZ4QR.o(.bss+0x24eb00): first defined here
+commands.o(.bss+0x250c98): multiple definition of `xtlast'
+/tmp/ccSEZ4QR.o(.bss+0x250c98): first defined here
+commands.o(.bss+0x250c9c): multiple definition of `ytlast'
+/tmp/ccSEZ4QR.o(.bss+0x250c9c): first defined here
+commands.o(.bss+0x250ca0): multiple definition of `tcount'
+/tmp/ccSEZ4QR.o(.bss+0x250ca0): first defined here
+commands.o(.bss+0x250ca4): multiple definition of `tlastcolor'
+/tmp/ccSEZ4QR.o(.bss+0x250ca4): first defined here
+commands.o(.bss+0x250ca8): multiple definition of `maxwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ca8): first defined here
+commands.o(.bss+0x250cac): multiple definition of `maxheight'
+/tmp/ccSEZ4QR.o(.bss+0x250cac): first defined here
+commands.o(.bss+0x250cb0): multiple definition of `width'
+/tmp/ccSEZ4QR.o(.bss+0x250cb0): first defined here
+commands.o(.bss+0x250cb4): multiple definition of `height'
+/tmp/ccSEZ4QR.o(.bss+0x250cb4): first defined here
+commands.o(.bss+0x250cb8): multiple definition of `resize'
+/tmp/ccSEZ4QR.o(.bss+0x250cb8): first defined here
+commands.o(.bss+0x250cbc): multiple definition of `autozoomout'
+/tmp/ccSEZ4QR.o(.bss+0x250cbc): first defined here
+commands.o(.bss+0x250cc0): multiple definition of `zoomsample'
+/tmp/ccSEZ4QR.o(.bss+0x250cc0): first defined here
+commands.o(.bss+0x250cc4): multiple definition of `to_program'
+/tmp/ccSEZ4QR.o(.bss+0x250cc4): first defined here
+commands.o(.bss+0x250cc8): multiple definition of `from_display'
+/tmp/ccSEZ4QR.o(.bss+0x250cc8): first defined here
+commands.o(.bss+0x250ccc): multiple definition of `store'
+/tmp/ccSEZ4QR.o(.bss+0x250ccc): first defined here
+commands.o(.bss+0x250cd0): multiple definition of `data'
+/tmp/ccSEZ4QR.o(.bss+0x250cd0): first defined here
+commands.o(.bss+0x250cd4): multiple definition of `image'
+/tmp/ccSEZ4QR.o(.bss+0x250cd4): first defined here
+commands.o(.bss+0x250ce4): multiple definition of `nimage'
+/tmp/ccSEZ4QR.o(.bss+0x250ce4): first defined here
+commands.o(.bss+0x250cf4): multiple definition of `imbuf'
+/tmp/ccSEZ4QR.o(.bss+0x250cf4): first defined here
+commands.o(.bss+0x250cf8): multiple definition of `outbuf'
+/tmp/ccSEZ4QR.o(.bss+0x250cf8): first defined here
+commands.o(.bss+0x250cfc): multiple definition of `yup'
+/tmp/ccSEZ4QR.o(.bss+0x250cfc): first defined here
+commands.o(.bss+0x250d00): multiple definition of `datw'
+/tmp/ccSEZ4QR.o(.bss+0x250d00): first defined here
+commands.o(.bss+0x250d04): multiple definition of `dath'
+/tmp/ccSEZ4QR.o(.bss+0x250d04): first defined here
+commands.o(.bss+0x250d08): multiple definition of `imwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250d08): first defined here
+commands.o(.bss+0x250d0c): multiple definition of `imw'
+/tmp/ccSEZ4QR.o(.bss+0x250d0c): first defined here
+commands.o(.bss+0x250d10): multiple definition of `imh'
+/tmp/ccSEZ4QR.o(.bss+0x250d10): first defined here
+commands.o(.bss+0x250d14): multiple definition of `winw'
+/tmp/ccSEZ4QR.o(.bss+0x250d14): first defined here
+commands.o(.bss+0x250d18): multiple definition of `winh'
+/tmp/ccSEZ4QR.o(.bss+0x250d18): first defined here
+commands.o(.bss+0x250d1c): multiple definition of `zim'
+/tmp/ccSEZ4QR.o(.bss+0x250d1c): first defined here
+commands.o(.bss+0x250d20): multiple definition of `offx'
+/tmp/ccSEZ4QR.o(.bss+0x250d20): first defined here
+commands.o(.bss+0x250d24): multiple definition of `offy'
+/tmp/ccSEZ4QR.o(.bss+0x250d24): first defined here
+commands.o(.bss+0x250d28): multiple definition of `datx'
+/tmp/ccSEZ4QR.o(.bss+0x250d28): first defined here
+commands.o(.bss+0x250d2c): multiple definition of `daty'
+/tmp/ccSEZ4QR.o(.bss+0x250d2c): first defined here
+commands.o(.bss+0x250d30): multiple definition of `imx'
+/tmp/ccSEZ4QR.o(.bss+0x250d30): first defined here
+commands.o(.bss+0x250d34): multiple definition of `imy'
+/tmp/ccSEZ4QR.o(.bss+0x250d34): first defined here
+commands.o(.bss+0x250d38): multiple definition of `winx'
+/tmp/ccSEZ4QR.o(.bss+0x250d38): first defined here
+commands.o(.bss+0x250d3c): multiple definition of `winy'
+/tmp/ccSEZ4QR.o(.bss+0x250d3c): first defined here
+commands.o(.bss+0x250d40): multiple definition of `imtv'
+/tmp/ccSEZ4QR.o(.bss+0x250d40): first defined here
+commands.o(.bss+0x250d44): multiple definition of `sdata'
+/tmp/ccSEZ4QR.o(.bss+0x250d44): first defined here
+commands.o(.bss+0x250d54): multiple definition of `sdatw'
+/tmp/ccSEZ4QR.o(.bss+0x250d54): first defined here
+commands.o(.bss+0x250d64): multiple definition of `sdath'
+/tmp/ccSEZ4QR.o(.bss+0x250d64): first defined here
+commands.o(.bss+0x250d74): multiple definition of `simwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250d74): first defined here
+commands.o(.bss+0x250d84): multiple definition of `simw'
+/tmp/ccSEZ4QR.o(.bss+0x250d84): first defined here
+commands.o(.bss+0x250d94): multiple definition of `simh'
+/tmp/ccSEZ4QR.o(.bss+0x250d94): first defined here
+commands.o(.bss+0x250da4): multiple definition of `swinw'
+/tmp/ccSEZ4QR.o(.bss+0x250da4): first defined here
+commands.o(.bss+0x250db4): multiple definition of `swinh'
+/tmp/ccSEZ4QR.o(.bss+0x250db4): first defined here
+commands.o(.bss+0x250dc4): multiple definition of `szim'
+/tmp/ccSEZ4QR.o(.bss+0x250dc4): first defined here
+commands.o(.bss+0x250dd4): multiple definition of `soffx'
+/tmp/ccSEZ4QR.o(.bss+0x250dd4): first defined here
+commands.o(.bss+0x250de4): multiple definition of `soffy'
+/tmp/ccSEZ4QR.o(.bss+0x250de4): first defined here
+commands.o(.bss+0x250df4): multiple definition of `sdatx'
+/tmp/ccSEZ4QR.o(.bss+0x250df4): first defined here
+commands.o(.bss+0x250e04): multiple definition of `sdaty'
+/tmp/ccSEZ4QR.o(.bss+0x250e04): first defined here
+commands.o(.bss+0x250e14): multiple definition of `simx'
+/tmp/ccSEZ4QR.o(.bss+0x250e14): first defined here
+commands.o(.bss+0x250e24): multiple definition of `simy'
+/tmp/ccSEZ4QR.o(.bss+0x250e24): first defined here
+commands.o(.bss+0x250e34): multiple definition of `swinx'
+/tmp/ccSEZ4QR.o(.bss+0x250e34): first defined here
+commands.o(.bss+0x250e44): multiple definition of `swiny'
+/tmp/ccSEZ4QR.o(.bss+0x250e44): first defined here
+commands.o(.bss+0x250e54): multiple definition of `simtv'
+/tmp/ccSEZ4QR.o(.bss+0x250e54): first defined here
+commands.o(.bss+0x250e80): multiple definition of `imname'
+/tmp/ccSEZ4QR.o(.bss+0x250e80): first defined here
+commands.o(.bss+0x250ed0): multiple definition of `palheight'
+/tmp/ccSEZ4QR.o(.bss+0x250ed0): first defined here
+commands.o(.bss+0x250ed4): multiple definition of `palwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ed4): first defined here
+commands.o(.bss+0x250ed8): multiple definition of `palx'
+/tmp/ccSEZ4QR.o(.bss+0x250ed8): first defined here
+commands.o(.bss+0x250edc): multiple definition of `paly'
+/tmp/ccSEZ4QR.o(.bss+0x250edc): first defined here
+commands.o(.bss+0x250ee0): multiple definition of `palbrkpt'
+/tmp/ccSEZ4QR.o(.bss+0x250ee0): first defined here
+commands.o(.bss+0x250ee4): multiple definition of `palette'
+/tmp/ccSEZ4QR.o(.bss+0x250ee4): first defined here
+commands.o(.bss+0x250ee8): multiple definition of `lookup'
+/tmp/ccSEZ4QR.o(.bss+0x250ee8): first defined here
+commands.o(.bss+0x250eec): multiple definition of `lgtheight'
+/tmp/ccSEZ4QR.o(.bss+0x250eec): first defined here
+commands.o(.bss+0x250ef0): multiple definition of `lgtwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250ef0): first defined here
+commands.o(.bss+0x250ef4): multiple definition of `lgtx'
+/tmp/ccSEZ4QR.o(.bss+0x250ef4): first defined here
+commands.o(.bss+0x250ef8): multiple definition of `lgty'
+/tmp/ccSEZ4QR.o(.bss+0x250ef8): first defined here
+commands.o(.bss+0x250f08): multiple definition of `xyzstring'
+/tmp/ccSEZ4QR.o(.bss+0x250f08): first defined here
+commands.o(.bss+0x250f26): multiple definition of `numstr'
+/tmp/ccSEZ4QR.o(.bss+0x250f26): first defined here
+commands.o(.bss+0x250f3c): multiple definition of `xyzheight'
+/tmp/ccSEZ4QR.o(.bss+0x250f3c): first defined here
+commands.o(.bss+0x250f40): multiple definition of `xyzwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250f40): first defined here
+commands.o(.bss+0x250f44): multiple definition of `xyzx'
+/tmp/ccSEZ4QR.o(.bss+0x250f44): first defined here
+commands.o(.bss+0x250f48): multiple definition of `xyzy'
+/tmp/ccSEZ4QR.o(.bss+0x250f48): first defined here
+commands.o(.bss+0x250f4c): multiple definition of `mousex'
+/tmp/ccSEZ4QR.o(.bss+0x250f4c): first defined here
+commands.o(.bss+0x250f50): multiple definition of `mousey'
+/tmp/ccSEZ4QR.o(.bss+0x250f50): first defined here
+commands.o(.bss+0x250f54): multiple definition of `mousez'
+/tmp/ccSEZ4QR.o(.bss+0x250f54): first defined here
+commands.o(.bss+0x250f58): multiple definition of `textx'
+/tmp/ccSEZ4QR.o(.bss+0x250f58): first defined here
+commands.o(.bss+0x250f5c): multiple definition of `texty'
+/tmp/ccSEZ4QR.o(.bss+0x250f5c): first defined here
+commands.o(.bss+0x250f68): multiple definition of `zimage'
+/tmp/ccSEZ4QR.o(.bss+0x250f68): first defined here
+commands.o(.bss+0x250f6c): multiple definition of `zoomf'
+/tmp/ccSEZ4QR.o(.bss+0x250f6c): first defined here
+commands.o(.bss+0x250f70): multiple definition of `zwidth'
+/tmp/ccSEZ4QR.o(.bss+0x250f70): first defined here
+commands.o(.bss+0x250f74): multiple definition of `zheight'
+/tmp/ccSEZ4QR.o(.bss+0x250f74): first defined here
+commands.o(.bss+0x250f78): multiple definition of `lastzoomx'
+/tmp/ccSEZ4QR.o(.bss+0x250f78): first defined here
+commands.o(.bss+0x250f7c): multiple definition of `lastzoomy'
+/tmp/ccSEZ4QR.o(.bss+0x250f7c): first defined here
+commands.o(.bss+0x250f80): multiple definition of `zcursvec'
+/tmp/ccSEZ4QR.o(.bss+0x250f80): first defined here
+commands.o(.bss+0x251100): multiple definition of `whichkey'
+/tmp/ccSEZ4QR.o(.bss+0x251100): first defined here
+commands.o(.bss+0x251104): multiple definition of `buttondown'
+/tmp/ccSEZ4QR.o(.bss+0x251104): first defined here
+commands.o(.bss+0x251108): multiple definition of `lastx'
+/tmp/ccSEZ4QR.o(.bss+0x251108): first defined here
+commands.o(.bss+0x25110c): multiple definition of `lasty'
+/tmp/ccSEZ4QR.o(.bss+0x25110c): first defined here
+commands.o(.bss+0x251120): multiple definition of `keyaction'
+/tmp/ccSEZ4QR.o(.bss+0x251120): first defined here
+/tmp/ccSEZ4QR.o: In function `main':
+/tmp/ccSEZ4QR.o(.text+0x156): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x161): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x194): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x1c2): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x1cb): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x1d0): more undefined references to `client' follow
+/tmp/ccSEZ4QR.o: In function `main':
+/tmp/ccSEZ4QR.o(.text+0x231): undefined reference to `xtvopen(int, int, int, int, int, char *, char *)'
+/tmp/ccSEZ4QR.o(.text+0x2dd): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x30e): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x336): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x359): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x39c): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x3dd): more undefined references to `client' follow
+/tmp/ccSEZ4QR.o: In function `main':
+/tmp/ccSEZ4QR.o(.text+0x509): undefined reference to `xtv_refresh(int)'
+/tmp/ccSEZ4QR.o(.text+0x531): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x5d2): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x5dc): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x621): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x639): undefined reference to `client'
+/tmp/ccSEZ4QR.o(.text+0x69a): undefined reference to `xtvclose(void)'
+/tmp/ccSEZ4QR.o(.text+0x6a2): undefined reference to `client'
+/tmp/ccSEZ4QR.o: In function `HandleInt(int)':
+/tmp/ccSEZ4QR.o(.text+0x6db): undefined reference to `client'
+clientutils.o: In function `InitDispPars(disp_params *)':
+clientutils.o(.text+0x119): undefined reference to `bwcmap(short *, short *, short *)'
+loadconfig.o: In function `LoadConfig(char *)':
+loadconfig.o(.text+0x10): undefined reference to `client'
+loadconfig.o(.text+0x1e): undefined reference to `client'
+loadconfig.o(.text+0x2f): undefined reference to `client'
+loadconfig.o(.text+0x3d): undefined reference to `client'
+loadconfig.o(.text+0x4e): undefined reference to `client'
+loadconfig.o(.text+0x63): more undefined references to `client' follow
+commands.o: In function `cmd_erase(char *, IMPv2_MsgType, char *)':
+commands.o(.text+0x5d0): undefined reference to `vecclear(void)'
+commands.o(.text+0x611): undefined reference to `imageerase(void)'
+commands.o: In function `KeyboardCommand(char *)':
+commands.o(.text+0x90e): undefined reference to `client'
+commands.o(.text+0x9af): undefined reference to `client'
+commands.o(.text+0x9d8): undefined reference to `client'
+commands.o(.text+0x9e6): undefined reference to `client'
+commands.o: In function `SocketCommand(char *)':
+commands.o(.text+0xc40): undefined reference to `client'
+commands.o(.text+0xd9b): more undefined references to `client' follow
+collect2: ld returned 1 exit status
+make: *** [tvdisp] Error 1
