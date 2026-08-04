@@ -66,6 +66,8 @@
 | `…/samples_for_bug_integrat.txt` | 3,061행 | **커밋 대상** | 노출 국면(`INTEGRATING`)·카운트다운 구간 발췌. 3.2.2 와 5.1 의 근거 |
 | `…/samples_for_bug_pctread.txt` | 2,940행 | **커밋 대상** | readout 진행률 발췌(노출 294회분). 7장 `[readout]` 모델의 근거 |
 | `__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **48GB, 1,113일분** | `__localonly_*` 비커밋 | 전량 스캔 — 샘플에 없던 시퀀스 발굴 |
+| `ics_legacy/__dts_legacy/dts.icsci.*/` | 2,800 파일 / 24.7 MB | **커밋됨** | icsci 서버 `dts` 백업에서 소스·설정만 선별. **ISIS/XIS 서버 소스**(`EXEC_ISIS/server/`)가 12.9 의 등록 방식 확정 근거 |
+| `__localonly_osc_legacy/` | 10,291 파일 / 16.6 GB | `__localonly_*` 비커밋 | 위 백업의 원본 전량 + **`IC2.img` 2개(CTIO/SAAO, 각 8 GB)**. VDOS IC 실행파일이 들어 있어 5장 오염 버그의 코드 위치를 확정할 수 있는 유일한 자료 |
 
 전량 스캔 내역: CTIO 634일 28GB (2024-01-01 ~ 2025-09-30) / SAAO 273일 11GB (2025) / SSO 206일 8.6GB (2024-01-01 ~ 2024-07-25).
 
@@ -497,6 +499,8 @@ if (isis.numPreset == MAXPRESET) {
 > **신규 설계 함의**: 신규 `ics` 는 이 3계층(VDOS IC + relay + 통합 제어)을 **한 프로그램으로 대체**한다. relay 계층과 시리얼 구간이 통째로 사라지므로 5.3절의 전송 손상도 함께 사라진다. **XIS 입장에서는 relay 가 있던 자리에 신규 `ics` 가 들어오는 것으로 보여야 한다** — 그래서 (12)의 등록 규약이 중요하다.
 >
 > **IC(VDOS) 본체 소스는 이 백업에 없다.** 백업이 리눅스 측(icsci 서버)이라 XIS 서버·relay·Caliban 소스는 있으나 `\KMTS`/`\KMTX`/`\KMTG` 프로그램은 빠져 있다. 5장 오염 버그의 **코드 위치는 여전히 미확인**이며 분석은 로그 실측 기반이다.
+>
+> **다만 디스크 이미지 자체는 확보됐다 (2026-08-04)** — `__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img`, 각 8 GB. 마운트해서 `\KMTX`(ICS) 디렉토리를 꺼내면 실행파일의 문자열·`printf` 포맷에서 오염 메커니즘을 직접 볼 수 있다. **16비트 DOS 바이너리 역어셈블은 실용적이지 않으므로 문자열/포맷 추출까지가 현실적인 선**이고, 그것만으로도 (a) 로그에 안 나온 메시지까지 포함한 완전한 카탈로그와 (b) 커맨드워드 슬롯이 어떻게 채워지는지를 얻을 수 있다. 두 사이트분이 있어 빌드 차이 비교도 가능하다.
 
 > **1안의 부수 이점이 드러났다**: preset 목록은 (IP, port) 단위라 **단일 소켓이면 한 줄만 추가하면 되고**, 9개 ID가 모두 그 PING을 받아 PONG할 수 있다. 2안이었다면 `MAXPRESET` 을 9줄이나 잡아먹었을 것이고, ⑧의 제약을 감안하면 들어갈 자리가 없었을 수도 있다.
 
@@ -1373,7 +1377,7 @@ PING이 로그에 없는 진짜 이유는 `handShake()` 가 `write()`/`sendto()`
 | **XIS 콘솔 `info` 로 `MaxPreset` 실측** | 위 항목의 선행 조건. `commands.c` 가 `NumPreset=? MaxPreset=?` 를 출력한다 | **최우선** |
 | 주기적 재등록 | preset 목록에 등록되면 필수는 아니나 안전망으로 유효 | 중간 |
 | Caliban(`*.CB`) 소스 검토 | `__dts_legacy/.../Agents_V1/Caliban/src/` 에 CB 노드 소스가 있다(`TransferDisk.c` 등). 신규는 CB 계층을 내부화하므로 우선순위는 낮지만, 디스크 핸드셰이크·파일명 fail-safe 의 실제 구현이다 | 낮음 |
-| IC(VDOS) 소스 확보 | 5장 오염 버그의 코드 위치 확정에 필요. 현재 백업은 리눅스 측이라 `\KMTS`/`\KMTX` 프로그램이 없다 | 낮음 |
+| **`IC2.img` 에서 `\KMTX` 추출** | 5장 오염 버그의 코드 위치 확정. 이미지는 확보돼 있다(`__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img`, 각 8 GB). 7-Zip 이나 loop 마운트로 `\KMTX`(ICS)·`\KMTS`(IC) 를 꺼내 **문자열·`printf` 포맷만 추출**한다. 역어셈블은 실용성 없음 | 중간 |
 | **실물 XIS 연동 시험** | 위 항목의 가장 빠른 확인법이자, `transport.feed()` 로는 검증할 수 없는 라우팅 경로 전체를 처음으로 실증하는 일 | **최우선** |
 | **`STOP`/`ABORT` 실제 구현** | 레거시 미구현. 관측 중단 시 운영 편의가 크다. 스텁과 구현 지침은 이미 `commands.py` 에 있다 | 높음 |
 | **`EXPNUM` 자릿수 통일** | 레거시는 ICS 6자리 / IC 4자리라 `INITIALIZE` 로 우회했다. 신규는 이미 6자리로 통일했으니, 외부 문서도 갱신 필요 | 완료(신규) |

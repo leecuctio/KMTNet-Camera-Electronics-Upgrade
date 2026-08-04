@@ -99,7 +99,7 @@ C:\0ICBOOT\IC.BAT            C:\0ICBOOT\IC.BAT          C:\0ICBOOT\IC.BAT
 
 **③ VDOS IC 는 별도 하드웨어가 아니라 리눅스 호스트 위의 KVM 게스트다.**
 
-`__localonly_dts.icsci/memo.txt` 에 IC 이미지의 위치가 적혀 있다:
+`__localonly_osc_legacy/memo.txt` 에 IC 이미지의 위치가 적혀 있다:
 
 ```
 # IC2 path on Sci/Gui/Spa      cd /var/libvirt/images
@@ -743,7 +743,7 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 | `__sample_isislog/samples_for_bug_pctread.txt` | **검토 완료** — readout 진행률 발췌 2,940행(노출 294회분). `6·17·28·39·50·61·72·83·94·100` 이 **각각 정확히 294회**로 편차 0 — 레거시 IC 가 진행률을 실제 픽셀 카운트가 아니라 **고정 스텝**으로 보고했음을 보여준다(5.2절). **커밋 대상** |
 | `../../__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **전량 검토 완료 (2026-08-03)** — CTIO 634일(28GB, 2024-01-01~2025-09-30) + SAAO 273일(11GB, 2025) + SSO 206일(8.6GB, 2024-01-01~2024-07-25) = **48GB, 1,113일분**. 3.5·5.2·5.3·5.4·5.6·6절 신규 항목의 근거. `__localonly_*` 규약에 따라 **비커밋** |
 | **`__dts_legacy/dts.icsci.*.{ctio,saao,sso}/`** | **2026-08-04 신규** — ICS 컴퓨터(icsci 서버)의 `dts` 폴더를 사이트별로 백업한 것 중 **소스·설정만 선별**해 커밋(2,830 파일 / 24.7 MB). **ISIS/XIS 서버 소스 전체**를 포함한다. 1.3.1·5.6.5·8.0.1절의 근거 |
-| `../../__localonly_dts.icsci/` | 위 백업의 **원본 전량과 부속 자료**(10,289 파일 / 580 MB). `__localonly_*` 규약에 따라 **비커밋**:<br>· `dts.icsci.20190326.{ctio,saao,sso}/` — 압축 푼 원본 442 MB. 커밋본에서 뺀 `Tools/`(서드파티 109 MB/사이트) · `catalog/` · `osc/` · 빌드산출물(`.o` `.a` `.tar`) · 홈 디렉토리 dotfile(**`.ssh`/`.gnupg` 포함 — 자격증명 우려로 제외**)이 들어 있다<br>· `dts.icsci.20190326.*.zip` — 원본 압축본<br>· `memo.txt` — IC2 이미지 경로 (1.3.1③의 근거)<br>· `IC2.KX20160323.1381_icsci_ctio/` — ICS VM 이미지를 놓을 자리 (현재 비어 있음) |
+| `../../__localonly_osc_legacy/` | 위 백업의 **원본 전량과 부속 자료**(10,291 파일 / 16.6 GB). `__localonly_*` 규약에 따라 **비커밋**:<br>· `dts.icsci.20190326.{ctio,saao,sso}/` — 압축 푼 원본 442 MB. 커밋본에서 뺀 `Tools/`(서드파티 109 MB/사이트) · `catalog/` · `osc/` · 빌드산출물(`.o` `.a` `.tar`) · 홈 디렉토리 dotfile(**`.ssh`/`.gnupg` 포함 — 자격증명 우려로 제외**)이 들어 있다<br>· `dts.icsci.20190326.*.zip` — 원본 압축본<br>· `memo.txt` — IC2 이미지 경로 (1.3.1③의 근거)<br>· `IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` — **ICS VM 디스크 이미지 실물, 각 8.00 GB**. 1.3.1③의 KVM 게스트 구성을 직접 확인할 수 있는 유일한 자료이며, VDOS IC 실행파일(=오염 버그 §5.6의 발생 지점)이 이 안에 있다 |
 
 **`__dts_legacy/` 안에서 특히 중요한 것**
 
@@ -762,7 +762,9 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 >
 > **IC(VDOS) 본체 소스는 이 백업에 없다** — `\KMTS`/`\KMTX`/`\KMTG` 프로그램은 KVM 게스트의 디스크 이미지(`IC2.img`, 1.3.1③) 안에 있고 이 백업은 리눅스 호스트 측이다. 5.6절 오염 버그의 코드 위치를 확정하려면 그 이미지가 필요하다.
 >
-> **`IC2.img` 를 확보하면 할 수 있는 것**: 이미지는 8 GB 이지만 실제 프로그램은 `\KMTS`/`\KMTX`/`\KMTG` 디렉토리 몇 MB 다. 7-Zip 이나 loop 마운트로 그 부분만 뽑아내면 (a) 로그에 한 번도 안 나온 메시지까지 포함한 **완전한 메시지 카탈로그**, (b) `printf` 포맷 문자열에서 **메시지 조립 구조** — 5.6절 오염의 메커니즘을 직접 확인할 실마리, (c) 세 디렉토리 비교로 ICS/IC/ICG 의 차이를 얻을 수 있다.
+> **이미지는 확보되어 있다 (2026-08-04)** — `__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img`, 각 8.00 GB. 아래 작업이 이제 실제로 가능하다. 두 사이트분이 있으므로 **빌드 차이 비교**도 함께 할 수 있다.
+>
+> **`IC2.img` 로 할 수 있는 것**: 이미지는 8 GB 이지만 실제 프로그램은 `\KMTS`/`\KMTX`/`\KMTG` 디렉토리 몇 MB 다. 7-Zip 이나 loop 마운트로 그 부분만 뽑아내면 (a) 로그에 한 번도 안 나온 메시지까지 포함한 **완전한 메시지 카탈로그**, (b) `printf` 포맷 문자열에서 **메시지 조립 구조** — 5.6절 오염의 메커니즘을 직접 확인할 실마리, (c) 세 디렉토리 비교로 ICS/IC/ICG 의 차이를 얻을 수 있다.
 > 다만 **16비트 DOS 바이너리 역어셈블은 실용적이지 않다.** 소스가 함께 들어 있지 않다면 문자열·포맷 추출까지가 현실적인 선이다.
 
 > **재검증 방법**: 위 로그가 있는 컴퓨터에서 [`../ics_sim/tools/scan_legacy_logs.py`](../ics_sim/tools/scan_legacy_logs.py) 로 언제든 다시 돌릴 수 있다.
