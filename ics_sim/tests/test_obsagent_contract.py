@@ -282,6 +282,31 @@ def test_registration_ignores_emit_node_mode(mode):
     assert 'K.IC' in srcs and 'N.CB' in srcs
 
 
+def test_broadcast_ping_answered_by_all_nine_nodes():
+    """`XIS>AL PING` 에 9개 노드 전부로 PONG 을 보내야 한다.
+
+    XIS 는 재시작할 때 `handShake()` 로 `XIS>AL PING` 을 뿌리고 돌아오는 PONG
+    으로 클라이언트 테이블을 다시 채운다(XIS 소스 `interfaces.c`).
+    **이것이 XIS 재시작 후 재등록되는 유일한 경로다.**  레거시는 노드마다
+    프로세스가 따로라 각자 답했지만, 통합 프로그램인 우리가 하나만 답하면
+    `ICS` 만 살아나고 나머지 8개는 죽는다 (DevNote 3.1.1 (9)(12)).
+    """
+    run = drive(['XIS>AL PING'], settle=0.2)
+    startup = 9  # 기동 시 보내는 등록 PING
+    pongs = [m for m in run.sent[startup:] if m.endswith(' PONG')]
+    srcs = [m.split('>', 1)[0] for m in pongs]
+    assert srcs == ['ICS', 'K.IC', 'M.IC', 'T.IC', 'N.IC',
+                    'K.CB', 'M.CB', 'T.CB', 'N.CB'], srcs
+    assert all(m.split('>', 1)[1].startswith('XIS ') for m in pongs)
+
+
+def test_directed_ping_answered_by_that_node_only():
+    """지목된 PING 에는 그 노드로만 답한다."""
+    run = drive(['OBS>K.IC PING'], settle=0.2)
+    pongs = [m for m in run.sent[9:] if m.endswith(' PONG')]
+    assert pongs == ['K.IC>OBS PONG'], pongs
+
+
 def test_register_all_nodes_false_only_registers_ics():
     """스위치를 끄면 ICS 만 등록된다 (음성 테스트).
 

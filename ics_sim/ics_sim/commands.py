@@ -117,7 +117,26 @@ class Dispatcher:
     # -- out-of-band ------------------------------------------------------
 
     def cmd_ping(self, msg: Message, target: Target) -> Reply:
-        """PING -> PONG.  프로토콜 스펙 2.4절의 소프트웨어 핸드셰이킹."""
+        """PING -> PONG.  프로토콜 스펙 2.4절의 소프트웨어 핸드셰이킹.
+
+        **브로드캐스트 PING에는 9개 노드 ID 전부로 PONG을 보낸다.**
+
+        XIS 는 기동/재시작할 때 `handShake()` 에서 `XIS>AL PING` 을 시리얼
+        포트와 preset UDP 목록에 뿌리고, 돌아오는 PONG 으로 클라이언트 테이블을
+        다시 채운다(XIS 소스 `interfaces.c`, DevNote 3.1.1 (12)④).  **이것이
+        XIS 재시작 후 재등록되는 유일한 경로다.**
+
+        레거시는 노드마다 프로세스가 따로라 각자 PONG 을 보냈고, 그래서 12개
+        노드가 전부 살아났다.  통합 프로그램인 우리가 대표로 하나만 답하면
+        `ICS` 만 재등록되고 나머지 8개는 영영 죽는다 -- kstatus/dmawait/
+        datasource 가 도달하지 않게 된다.
+
+        직접 지목된 PING(`OBS>K.IC PING`)에는 그 노드로만 답한다.
+        """
+        if msg.is_broadcast and self.cfg.transport.register_all_nodes:
+            for node_id in self.app.router.registered_ids:
+                self.emit.register_ping(node_id, msg.src, cmdword='PONG')
+            return Reply.noop()
         self.emit.pong(msg.src, target.role, target.ccd)
         return Reply.noop()
 

@@ -431,20 +431,26 @@ class Emitter:
     def ping(self, dest: str) -> str:
         return self.emit_req(dest, 'PING')
 
-    def register_ping(self, node_id: str, dest: str = 'AL') -> str:
-        """노드 등록용 PING.  **src 를 그대로 지정한다** (emit_node_mode 무시).
+    def register_ping(self, node_id: str, dest: str = 'AL',
+                      cmdword: str = 'PING') -> str:
+        """노드 등록용 PING/PONG.  **src 를 그대로 지정한다** (emit_node_mode 무시).
 
         IMPv2 에는 등록 API 가 없다.  노드가 자기 이름으로 아무 메시지나 보내면
         XIS 가 "노드ID -> 그 데이터그램의 (IP,port)" 를 기억하는 것이 전부다
-        (ics_legacy_report 1.2절).  따라서 **수신하려는 이름 전부로 한 번씩
-        보내야** 그 이름 앞으로 오는 메시지가 도착한다.
+        (XIS 소스 `clients.c` updateHosts(), DevNote 3.1.1 (12)②).  따라서
+        **수신하려는 이름 전부로 한 번씩 보내야** 그 이름 앞으로 오는 메시지가
+        도착한다.
 
         emit_node_mode 를 따르지 않는 이유: merged 모드는 **발신 이름**만
         ICS 로 통일하는 옵션이고, 수신은 언제나 9개 ID 전부여야 한다
         (DevNote 3.1).  등록까지 merged 로 하면 K.IC 앞으로 오는
         kstatus/dmawait/datasource 가 영영 도달하지 않는다.
+
+        Args:
+            cmdword: 기동 시 자발적으로 등록하는 것이면 `PING`,
+                XIS 의 `XIS>AL PING` 에 답하는 것이면 `PONG`.
         """
-        payload = impv2.format(node_id, dest, '', 'PING', '')
+        payload = impv2.format(node_id, dest, '', cmdword, '')
         self._send(payload, dest)
         return payload.rstrip(b'\r').decode('ascii', errors='replace')
 

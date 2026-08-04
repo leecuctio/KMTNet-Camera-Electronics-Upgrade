@@ -187,13 +187,44 @@ CTIO 하루치 로그에서 노드별 주소 사용을 집계했다:
 
 > 레거시에서 `K.IC`~`N.IC` 가 전부 6600을 쓸 수 있었던 것은 **각자 다른 호스트**에 있었기 때문이다(.102/.103/.104/.105). 시뮬은 한 호스트라 같은 방식을 쓸 수 없다.
 
-#### (4) 남은 불확실성
+#### (4) XIS 등록 로그 — 테이블은 노드 ID로 키잉된다 (2026-08-04 추가 확인)
 
-- 방향(노드ID→주소)은 확인됐으므로 **이론상** 9개 ID가 같은 주소를 가리켜도 된다.
-- **하지만 XIS 서버 소스가 저장소에 없다.** 있는 건 클라이언트 라이브러리(`ISISclient`)뿐이라 구현을 확인할 수 없다. XIS가 클라이언트 슬롯을 주소 기준으로도 관리한다면(예: 고정 크기 배열을 주소로 인덱싱) 뒤 등록이 앞 등록을 덮어쓸 수 있다.
-- **실제 배치에서 한 번도 시험된 적 없는 구성**이다. 배제할 근거가 없다.
+XIS는 클라이언트를 등록할 때 로그를 남긴다. 이걸 놓치고 있었다:
 
-#### (5) 1안 / 2안
+```
+2025-04-02T23:30:56.783833 [192.168.14.102:10601] K.CB>XIS PONG
+2025-04-02T23:30:56.783850 Added UDP Client K.CB on host 192.168.14.102:10601
+```
+
+CTIO 60일치에서 `Added UDP Client` 99건을 분석한 결과:
+
+| 노드 | 등록 횟수 | 등록에 쓰인 주소 개수 |
+|---|---:|---:|
+| `K.IC`·`M.IC`·`T.IC`·`N.IC`·`*.CB`·`ICG`·`G.IC`·`TC`·`OBS` (고정 포트) | 각 6 | 각 **1** |
+| `ABC`·`GMON` (ephemeral 포트) | 각 7 | 각 **7** |
+
+**결정적 관찰**: `ABC`/`GMON` 은 하루에 수천 개 주소를 쓰는데 `Added` 는 **7번뿐**이고, 그 횟수가 XIS 재시작 횟수와 같다.
+
+→ **XIS는 이미 아는 ID면 주소만 조용히 갱신하고, 처음 보는 ID일 때만 `Added` 를 남긴다.** 테이블이 **주소**로 키잉돼 있었다면 `ABC`/`GMON` 이 포트를 바꿀 때마다(하루 수천 번) `Added` 가 떴어야 한다. 그러지 않는다는 것은 **테이블이 노드 ID로 키잉된다**는 강력한 증거다.
+
+또한 `Added UDP Client` 99건 중 **같은 (IP,port)에 서로 다른 ID가 등록된 사례는 0건**이다 — (3)절 관찰의 재확인.
+
+**부수 관찰**
+- **`ICS` 는 `Added UDP Client` 목록에 없다.** 시리얼이라 UDP 클라이언트가 아니기 때문이다. 우리 시뮬은 `ICS` 를 **UDP로** 등록하는데, 실제 XIS가 한 번도 겪어본 적 없는 구성이다.
+- 등록 직후 `XIS>GMON ERROR: No Route to Destination Host OBS` 가 뜬다 — 재시작 후 `OBS` 가 아직 재등록 전이라 GMON 폴링이 실패한 것이다. `OBS` 는 XIS에 PING을 하루 2회밖에 안 보내므로 **실제 운영에 이 공백이 존재한다.**
+- `Added` 를 유발한 직전 메시지는 PONG이 대부분이지만 `gmon>obs sysstatus`, `abc>tc fttgoto` 같은 **평범한 명령도 등록을 유발**한다. 등록에 특별한 메시지가 필요하지 않다는 뜻이다.
+
+#### (5) 남은 불확실성
+
+(4)로 위험도는 상당히 낮아졌지만 **완전한 증명은 아니다.**
+
+- "테이블이 ID로 키잉된다"와 "같은 주소를 여러 ID가 공유해도 된다"는 **별개 명제**다. 등록 시 같은 주소의 기존 항목을 정리하는 로직이 따로 있을 가능성을 배제할 수 없다.
+- **XIS 서버 소스가 저장소에 없다.** 있는 건 클라이언트 라이브러리(`ISISclient`)뿐이다.
+- **실제 배치에서 한 번도 시험된 적 없는 구성**이라는 사실은 그대로다.
+
+> 에러 문구의 `host is unknown/**unlisted**` 를 보고 "XIS에 정적 호스트 목록이 있을지 모른다"고 우려했으나, (4)의 `Added UDP Client` 로그가 **동적 등록**임을 보여준다. "unlisted" 는 그 동적 목록에 없다는 뜻으로 읽는 것이 자연스럽다. 정적 설정 파일 우려는 낮춰도 될 것 같다 — 다만 소스로 최종 확인한다.
+
+#### (6) 1안 / 2안
 
 | | **1안 — 단일 소켓** | **2안 — 노드별 소켓** |
 |---|---|---|
@@ -211,7 +242,7 @@ K.IC  6601   M.IC  6602   T.IC  6603   N.IC  6604
 K.CB 10601   M.CB 10602   T.CB 10603   N.CB 10604
 ```
 
-#### (6) 결정 — 일단 1안, XIS 소스 확보 후 재검토
+#### (7) 결정 — 일단 1안, XIS 소스 확보 후 재검토
 
 **사용자 결정 (2026-08-04)**: ISIS/XIS 소스를 찾아 공유하기로 했고, 그때까지는 **1안으로 완성해 커밋**한다.
 
@@ -222,7 +253,7 @@ K.CB 10601   M.CB 10602   T.CB 10603   N.CB 10604
 
 검증: `test_startup_registers_all_nine_nodes` · `test_registration_ignores_emit_node_mode`(legacy/merged 양쪽) · `test_register_all_nodes_false_only_registers_ics`.
 
-#### (7) 2안으로 전환해야 하는 조건
+#### (8) 2안으로 전환해야 하는 조건
 
 아래 중 하나라도 확인되면 2안으로 간다.
 
@@ -230,20 +261,249 @@ K.CB 10601   M.CB 10602   T.CB 10603   N.CB 10604
 2. **실물 시험에서** 9개 PING 후 `OBS>K.IC STATUS` 가 도달하지 않는다. 가장 빠른 확인법 — XIS를 띄우고 시뮬을 `--xis-host` 로 붙인 뒤 `kstatus` 를 쳐 본다.
 3. XIS 로그에 등록 교체/거부를 시사하는 메시지가 남는다.
 
-**XIS 소스를 받으면 확인할 것**
+**XIS 소스를 받으면 확인할 것** (우선순위 순)
 
-- 클라이언트 테이블의 자료구조와 **인덱스 키** — 노드ID인지, (IP,port)인지, 둘 다인지
-- 같은 주소로 다른 ID가 등록될 때의 처리 — 추가인가, 교체인가, 거부인가
-- 테이블 최대 크기 — 9개를 더 얹을 여유가 있는지
-- **`AL`/`ALL` 브로드캐스트가 같은 주소의 여러 ID에게 어떻게 나가는지** — 우리 소켓이 하나뿐이라 같은 메시지를 9번 받을 수 있다
+1. **노드 목록이 정적 설정인가 동적 등록인가** — 에러 문구의 `host is unknown/**unlisted**` 가 목록의 존재를 시사한다(아래 (9)절). 설정 파일 기반이라면 시뮬을 **그 목록에 추가**해야 하고 PING만으로는 부족하다. **1안/2안보다 근본적인 문제이므로 이것부터 본다.**
+2. **클라이언트 테이블의 인덱스 키** — 노드ID인지, (IP,port)인지, 둘 다인지
+3. **같은 주소로 다른 ID가 등록될 때의 처리** — 추가인가, 교체인가, 거부인가
+4. **재시작 시 등록 요청의 정확한 형태** — (9)절에서 "PING을 뿌린 뒤 로그를 연다"는 순서까지는 확인됐다. 남은 것은 그것이 `AL` 브로드캐스트 한 방인지 알려진 노드들에 개별 PING인지, 그리고 재시작 직후 XIS의 테이블이 비어 있을 텐데 **누구에게** 보내는지다(= 어딘가에 노드 목록이 있다는 뜻일 수 있다)
+5. **테이블 최대 크기** — 9개를 더 얹을 여유가 있는지
+6. **`AL`/`ALL` 브로드캐스트가 같은 주소의 여러 ID에게 어떻게 나가는지** — 우리 소켓이 하나뿐이라 같은 메시지를 9번 받을 수 있다
 
 마지막 항목은 1안 고유의 부작용이라 실물 시험 때 반드시 같이 볼 것. 지금 코드는 브로드캐스트를 `ICS` 가 대표로 처리하므로(`NodeRouter.resolve`) 중복 수신이 와도 9번 응답하지는 않지만, 수신 트래픽은 9배가 된다.
 
-#### (8) 함께 확인된 포트 설정
+#### (9) XIS 재시작 시의 재등록 — 실측 (2026-08-04)
+
+*"XIS가 재실행될 때 아마도 `>AL ping` 할 것 같은데"* 라는 가설을 로그로 확인했다. **맞다.**
+
+샘플 로그에서 **하루 중간에 XIS가 재시작한 사례 16건**을 찾았고, 16건 전부 같은 패턴이다:
+
+```
+XIS runtime log (re)started at UTC 2024-09-02T06:18:00.059046
+  TC>XIS PONG     M.CB>XIS PONG   G.CB>XIS PONG   K.CB>XIS PONG
+  N.CB>XIS PONG   T.CB>XIS PONG   ICG>XIS PONG    N.IC>XIS PONG
+  K.IC>XIS PONG   T.IC>XIS PONG   M.IC>XIS PONG   G.IC>XIS PONG
+```
+
+**재시작 직후 12개 노드가 전부 `>XIS PONG` 을 보낸다.** PONG은 PING에 대한 응답이므로 XIS가 재시작하면서 등록 요청을 뿌렸다는 뜻이다.
+
+**PING은 로그를 열기 전에 나간다 (확인됨).** 로그에 `XIS>AL PING` 이 찍혀 있지 않다 — 샘플 전체에서 **XIS 발신 PING이 로그에 남은 횟수 0**이다. XIS의 다른 발신은 잘 남는데(`XIS>K.IC PONG` 28,457건) 그 PING만 없다.
+
+로그 재시작을 **첫 로그 항목** 기준으로 분류하면 성격이 갈린다:
+
+| 첫 로그 항목 | 건수 | 정체 |
+|---|---:|---|
+| `K.CB>K.IC REQ INITDISK` | 48 | 시스템 전체 콜드 스타트 — 디스크 초기화가 먼저 |
+| `TC>AL ping` | 33 | 시스템 전체 기동 — TC의 브로드캐스트가 첫 트래픽 |
+| `OBS>TC TSTAT` 등 (PONG 0건) | 17 | **정오 정각 로그 로테이션** — XIS는 계속 실행 중 |
+| **`*.CB>XIS PONG` · `TC>XIS PONG`** | **약 12** | **XIS 단독 재시작** |
+
+마지막 부류가 결정적이다. XIS 단독 재시작에서는 **로그의 맨 첫 줄이 노드의 PONG**이고, 재시작 타임스탬프로부터 **1~1.5 ms** 후다:
+
+```
+XIS runtime log (re)started at UTC 2025-04-02T23:30:56.782917
+2025-04-02T23:30:56.783833  K.CB>XIS PONG      ← 0.9 ms 후, 로그의 첫 항목
+2025-04-02T23:30:56.783850  Added UDP Client K.CB on host 192.168.14.102:10601
+```
+
+PING이 로그에 없는데 PONG이 1 ms 안에 도착하는 것으로 보아 PING이 확실히 나갔다. **왜 로그에 없는지는 (12)④에서 소스로 확인했다** — `handShake()` 가 `write()`/`sendto()` 를 직접 호출하고 `logMessage()` 를 거치지 않기 때문이다. **XIS는 자신이 보내는 handshake PING을 로깅하지 않는다.**
+
+> **정정**: 처음에는 "로그 파일을 열기 전에 보냈을 것"으로 추론했으나 **틀렸다.** `main.c` 의 실제 순서는
+> `loadConfig() → openSocket() → initLog() → 메인 루프 진입 → doStartup=COLD_START → handShake()`
+> 로, **로그가 먼저 열린다.** 12.9절 참고.
+
+**여기서 따라나온 질문 — 테이블이 비었는데 누구에게 보내나?**
+
+재시작 직후 XIS의 클라이언트 테이블은 비어 있다((4)절의 `Added UDP Client` 가 그 뒤에 찍히는 것이 근거다). 그런데도 PING이 모든 노드에 닿는다. 당시 두 가설을 세웠다 — (a) IP 서브넷 브로드캐스트, (b) 어딘가에 노드 목록이 있다.
+
+**(b)가 맞았다.** `isis.ini` 의 preset UDP 목록(`UDPPort <ip> <port>`)에 개별 `sendto` 한다((12)④⑦). IP 브로드캐스트가 아니므로 `bind_host` 가 `127.0.0.1` 이어도 **그 자체로 PING을 놓치지는 않는다** — 다만 외부 장비와 통신하려면 어차피 `0.0.0.0` 이 필요하다.
+
+**평시 재등록 경로도 두 가지 더 있다:**
+
+| 경로 | 빈도 (CTIO 하루) | 성격 |
+|---|---|---|
+| `TC>AL ping` → 전 노드가 `>TC PONG` | 138회 (전체 샘플) | TC 기동 시. 브로드캐스트 한 번에 11개 노드가 각자 이름으로 응답 |
+| `*.IC>XIS PING` → `XIS>*.IC PONG` | 노출당 1회 (K.IC 191, M/T/N.IC 각 189) | 원래 목적은 디스크 쓰기 완료 타이밍 신호(4.1절)지만, **부수 효과로 매 노출마다 등록이 갱신된다** |
+
+즉 레거시는 **노출을 한 번만 해도 스스로 복구**됐다. 우리 시뮬은 통합 구조라 그 PING/PONG 편법이 불필요해 뺐고, 그러면서 **자동 복구 효과도 같이 잃었다.**
+
+**우리 시뮬의 현재 동작 (실측)**
+
+| 받은 메시지 | 시뮬 응답 |
+|---|---|
+| `XIS>AL PING` | `ICS>XIS PONG` — **1개뿐** |
+| `TC>AL ping` | `ICS>TC PONG` — **1개뿐** |
+
+브로드캐스트를 `ICS` 가 대표로 처리하도록 만들어서(`NodeRouter.resolve` 가 `AL` → `ICS`) **XIS 재시작 후 `ICS` 하나만 재등록되고 나머지 8개는 영영 돌아오지 않는다.** 레거시는 노드마다 프로세스가 따로라 각자 PONG을 보냈기에 문제가 없었다.
+
+**→ 고쳐야 할 사항 (미착수)**
+1. **브로드캐스트 PING에는 9개 노드 전부로 PONG** — 레거시와 동일한 동작.
+2. **주기적 재등록** (`register_interval_sec`) — XIS가 조용히 재시작하고 아무도 브로드캐스트를 안 쏘는 경우(주간 대기 시간 등)를 위한 안전망. 레거시는 노출당 PING이 이 역할을 했다.
+
+#### (10) 라우팅 실패는 에러로 통보된다 — 실물 시험의 판정 기준
+
+```
+XIS>OBS  ERROR: No Route to Destination Host K.IC - host is unknown/unlisted
+XIS>GMON ERROR: No Route to Destination Host OBS  - host is unknown/unlisted
+XIS>ICG  ERROR: No Route to Destination Host G.IC - host is unknown/unlisted
+```
+
+등록되지 않은 노드로 메시지를 보내면 **발신자에게** 이 에러가 돌아온다. 실물 시험의 판정이 명확해진다 — 9개 PING 후 `kstatus` 를 쳤을 때 `No Route to Destination Host K.IC` 가 오면 등록 실패다.
+
+> **"unknown/`unlisted`" 라는 단어에 주의.** "unlisted"는 XIS가 **호스트 목록을 갖고 있다**는 뉘앙스다. 순수 동적 등록이 아니라 **설정 파일에 노드 목록이 있을 가능성**이 있고, 그렇다면 시뮬을 그 목록에 **등록해 주어야** 하며 PING만으로는 부족할 수 있다. **1안/2안보다 더 근본적인 문제**이므로 소스 확인 시 최우선으로 볼 것.
+
+> 부수 관찰: 목적지가 깨진 사례도 있다 — `No Route to Destination Host 0<0xef><0xbf><0xbd>ICG`, `Host <0xef><0xbf><0xbd>ZY´ZY<0xef><0xbf><0xbd>`. 5.6.3절의 전송 손상이 라우팅 실패로 드러난 것이다.
+
+#### (12) **XIS 서버 소스 확인 — 결론** (2026-08-04)
+
+사용자가 `ics_legacy/__dts_legacy/` 에 **ICS 컴퓨터(icsci 서버)의 `dts` 폴더 백업**을 3개 사이트분 올려 주었다. `EXEC_ISIS/server/` 에 **XIS 서버 소스 전체**가 들어 있다 — `clients.c` · `messages.c` · `interfaces.c` · `main.c` · `loadconfig.c` · `xisisserver.h`. (클라이언트 라이브러리는 `TCSAgent/__reference/ISISclient` 와 `OBSAgent/OBSAgent.latest/ISISclient` 에도 있다.)
+
+**(8)절의 6개 질문에 전부 답이 나왔다.**
+
+##### ① 정적 목록인가 동적 등록인가 → **둘 다, 역할이 다르다**
+
+- **클라이언트 테이블은 완전 동적**이다. `updateHosts()` 가 메시지를 받을 때마다 호출되어 등록/갱신한다. 정적 화이트리스트는 없다.
+- **다만 재시작 시 PING을 뿌릴 대상은 `isis.ini` 의 preset 목록**(`UDPPort <ip> <port>`)이다. 이 목록에 없으면 XIS 재시작 시 PING을 받지 못한다.
+
+→ (10)절의 `host is unknown/**unlisted**` 는 **동적 목록에 없다**는 뜻이 맞다. 정적 설정 파일 우려는 해소됐다.
+
+##### ② 테이블 인덱스 키 → **노드 ID만. 주소는 비교에 쓰이지 않는다**
+
+```c
+// clients.c  updateHosts()
+strcpy(testStr, hostID);
+upperCase(testStr);                              // ID는 대문자로 정규화해 저장
+
+if (isis.numClients > 0) {
+  for (i=0; i<MAXCLIENTS; i++) {
+    if (strcmp(testStr, clientTab[i].ID)==0) {   // ← ID로만 비교
+      clientTab[i].method = method;
+      clientTab[i].fd     = fd;
+      clientTab[i].addr   = addr;                // ← 주소는 그냥 갱신
+      clientTab[i].port   = port;
+      clientTab[i].tstamp = timeStamp;
+      return (i);
+    }
+  }
+}
+// 없으면 method==UNASSIGNED 인 첫 빈 슬롯에 새로 추가
+```
+
+(4)절에서 로그로 추론한 "ID로 키잉된다"가 소스로 확정됐다.
+
+##### ③ 같은 주소에 여러 ID → **문제없다. 설계상 예상된 상황이다**
+
+- 주소 충돌 검사 로직이 **아예 없다.** 각 ID가 자기 슬롯을 갖는다.
+- 더 결정적인 것은 `messages.c` 의 클라이언트 브로드캐스트 주석이다:
+  > *"it must pass along the message to all known hosts EXCEPT the sending host **and all clients that share the same port as the sending host**"*
+
+  **여러 클라이언트가 한 포트를 공유하는 상황을 코드가 명시적으로 다룬다.** 예상 밖의 구성이 아니다.
+
+→ **1안(단일 소켓 + 9개 ID PING)은 안전하다. 확정.** 2안으로 전환할 이유가 없어졌다.
+
+##### ④ 재시작 시 등록 요청 → **`XIS>AL PING` 을 시리얼 + preset UDP 포트에 개별 전송**
+
+```c
+// interfaces.c  handShake()
+//   "Sends a '>AL PING' message to all open serial ports and all preset
+//    UDP ports. This is a blind broadcast that should lead to 'PONG's back
+//    from any ISIS clients..."
+sprintf(message,"%s>AL PING\r", isis.serverID);      // → "XIS>AL PING\r"
+for (iPort=0; iPort<isis.numSerial; iPort++)  write(ttyTab[iPort].fd, message, ...);
+for (iPort=0; iPort<isis.numPreset; iPort++)  sendto(..., udpTab[iPort], ...);
+```
+
+**사용자 가설이 소스로 확정됐다.** IP 서브넷 브로드캐스트가 아니라 **preset 목록에 개별 `sendto`** 다.
+
+##### ⑤ 테이블 최대 크기 → **`MAXCLIENTS 64`**
+
+현재 운용은 13개 안팎이다. 9개를 더 얹어도 여유가 충분하다. 초과 시 `ERR_HOSTS_FULL(-3)`.
+
+##### ⑥ `AL` 브로드캐스트 중복 수신 → **9개 ID면 9번 받는다**
+
+```c
+// messages.c  broadcastMessage(), sendHost == ISIS_SERVER 인 경우
+for (i=0; i<MAXCLIENTS; i++) {
+  if (clientTab[i].method == SOCKET) {
+    client.sin_addr.s_addr = htonl(clientTab[i].addr);
+    client.sin_port        = htons(clientTab[i].port);
+    sendto(isis.sockFD, message, ...);            // ← 슬롯마다 한 번씩
+  }
+}
+```
+
+슬롯 전수 순회이므로 우리 9개 ID가 같은 주소를 가리키면 **같은 데이터그램을 9번 받는다.** 기능상 문제는 없다 — 현재 코드는 브로드캐스트를 `ICS` 가 대표로 처리하므로(`NodeRouter.resolve`) 9번 응답하지 않는다. 다만 **수신 트래픽이 9배**이고, `XIS>AL PING` 에 대해서도 PONG을 한 번만 보내게 되어 있어 **재등록이 `ICS` 하나만 갱신된다**((9)절의 미착수 항목과 같은 문제).
+
+##### ⑦ 함께 확정된 운영 설정 (CTIO `Config/isis.ini`)
+
+```
+ServerID   XIS
+ServerPort 6660
+ServerLog  /lhome/data/Logs/ISIS/isis
+TTYPort /dev/ttyS0 115200          ← ICS↔XIS 시리얼 링크, 115200 baud
+
+# Ping the isisrelays on all the IC machines
+UDPPort 192.168.14.102 6600  …  .103 .104 .105 .106 .107 .108   (IC 계열 7줄)
+# Ping the caliban data-transfer agents only as needed
+UDPPort 192.168.14.102 10601 …  .103 .104 .105 .106            (CB 계열 5줄)
+# Ping the PC-TCS Agent
+UDPPort 192.168.14.108 6606                                     (TC 1줄)
+
+Instrument KMTC
+```
+
+- **`.109`(OBS)가 preset 목록에 없다** → (10)절에서 본 `XIS>GMON ERROR: No Route to Destination Host OBS` 가 완전히 설명된다. OBS는 XIS 재시작 후 **자기가 먼저 메시지를 보내기 전까지** 등록되지 않는다. `OBS>XIS PING` 이 하루 2회뿐인 것과 맞물려 실제 공백이 생긴다.
+- ICS의 시리얼 링크가 설정으로 확인된다 — `/dev/ttyS0` 115200 baud.
+
+##### ⑧ 미해결로 남은 것 — `MAXPRESET` 불일치
+
+`xisisserver.h` 와 `old_isisserver.h` 모두 `#define MAXPRESET 8` 인데 **CTIO `isis.ini` 에는 `UDPPort` 가 13줄**이고, `loadconfig.c` 는 초과분을 명시적으로 버린다:
+
+```c
+if (isis.numPreset == MAXPRESET) {
+  printf("ERROR: Cannot define more than %d preset UDP socket ports\n", MAXPRESET);
+  printf("       extra port ignored.\n");
+}
+```
+
+8개만 반영된다면 9번째 이후(`M/T/N/G.CB`, `TC`)는 PING을 못 받아야 하는데, **재시작 로그에는 그들도 전부 PONG을 보낸다.** 즉 **배포된 `xisis` 바이너리는 이 백업 소스와 다른 `MAXPRESET` 으로 빌드됐을 가능성이 크다** — `isis.ini` 주석도 "max 32"라고 적혀 있다(헤더는 8).
+
+→ 실물 연동 전에 XIS 콘솔에서 `info` 를 쳐 `NumPreset=? MaxPreset=?` 를 직접 확인할 것(`commands.c` 가 그 값을 출력한다). **우리 시뮬을 preset 목록에 추가할 여유가 있는지가 여기 달렸다.**
+
+##### ⑨ 그래서 시뮬은 무엇을 해야 하나
+
+| 항목 | 조치 | 상태 |
+|---|---|---|
+| 1안 유지 | 소스로 안전 확정. 2안 불필요 | **확정** |
+| `bind_host = 0.0.0.0` | IP 브로드캐스트가 아니므로 필수는 아니지만, 외부 연동에는 여전히 필요 | 설정만 바꾸면 됨 |
+| **`XIS>AL PING` 에 9개 PONG** | 브로드캐스트 PING 에 9개 노드 ID 전부로 PONG 응답 | **구현 완료 (2026-08-04)** |
+| **XIS `isis.ini` 에 시뮬 등록** | `UDPPort <sim_ip> <sim_port>` 한 줄 추가. **1안이라 한 줄이면 된다**(2안이면 9줄 필요) | 운영 측 작업 |
+| 주기적 재등록 | preset에 등록되면 필수는 아니나 안전망으로 유효 | 선택 |
+
+구현: `commands.py` `cmd_ping()` 이 `msg.is_broadcast` 면 `router.registered_ids` 전부로 PONG 을 보낸다. 지목된 PING(`OBS>K.IC PING`)에는 그 노드로만 답한다.
+검증: `test_broadcast_ping_answered_by_all_nine_nodes` · `test_directed_ping_answered_by_that_node_only`.
+
+#### (13) 레거시 실제 배치 구조 — VDOS IC + 리눅스 relay (2026-08-04)
+
+같은 백업의 설정 파일들로 **로그만으로는 보이지 않던 물리 구조**가 드러났다. 상세는 [`../ics_legacy/ics_legacy_report.md`](../ics_legacy/ics_legacy_report.md) 1.3.1절이고, 신규 설계에 걸리는 부분만 옮긴다.
+
+- **IC/ICS 는 VDOS(DOS 계열) 머신**에서 돌고, 리눅스 `isisrelay` 가 UDP 6600 ↔ 시리얼 9600 으로 중계한다. 로그의 `[192.168.14.102:6600] K.IC>XIS PONG` 은 **relay 가 VDOS IC 의 응답을 올려준 것**이다.
+- **`ICS` 는 IC 와 같은 소프트웨어다.** `INSTRUMENT=ICS` 로 설정만 다르고, 프로그램 디렉토리가 `\KMTX`(vs 과학 IC `\KMTS`, 가이드 `\KMTG`)일 뿐이다.
+  → **5장 메시지 오염 버그가 `ICS` 와 `K.IC` 양쪽에 똑같이 나타나는 이유가 이것이다** — 같은 코드베이스의 단일 결함이다.
+- **BUILD 접두어 = 프로그램 디렉토리**: `ICSBUILD=KX…`(\KMTX) · `KBUILD=KS…`(\KMTS) · `GBUILD=KG…`(\KMTG). 4.3절 텔레메트리 꼬리의 정체가 풀렸다.
+- **`SP` 노드**(`INSTRUMENT=KMTNsp`, `\KMTS`)가 설정에 존재한다 — 과학 계열 **예비 IC** 로 보이며, XIS preset 의 `192.168.14.107 6600`(로그에 트래픽 0) 자리로 판단된다.
+
+> **신규 설계 함의**: 신규 `ics` 는 이 3계층(VDOS IC + relay + 통합 제어)을 **한 프로그램으로 대체**한다. relay 계층과 시리얼 구간이 통째로 사라지므로 5.3절의 전송 손상도 함께 사라진다. **XIS 입장에서는 relay 가 있던 자리에 신규 `ics` 가 들어오는 것으로 보여야 한다** — 그래서 (12)의 등록 규약이 중요하다.
+>
+> **IC(VDOS) 본체 소스는 이 백업에 없다.** 백업이 리눅스 측(icsci 서버)이라 XIS 서버·relay·Caliban 소스는 있으나 `\KMTS`/`\KMTX`/`\KMTG` 프로그램은 빠져 있다. 5장 오염 버그의 **코드 위치는 여전히 미확인**이며 분석은 로그 실측 기반이다.
+
+> **1안의 부수 이점이 드러났다**: preset 목록은 (IP, port) 단위라 **단일 소켓이면 한 줄만 추가하면 되고**, 9개 ID가 모두 그 PING을 받아 PONG할 수 있다. 2안이었다면 `MAXPRESET` 을 9줄이나 잡아먹었을 것이고, ⑧의 제약을 감안하면 들어갈 자리가 없었을 수도 있다.
+
+#### (11) 함께 확인된 포트 설정
 
 | 키 | 현재 값 | 비고 |
 |---|---|---|
-| `bind_host` | `127.0.0.1` | **로컬 전용.** 외부 XIS/OBSAgent와 붙이려면 `0.0.0.0` 으로 |
+| `bind_host` | `127.0.0.1` | **로컬 전용.** 외부 XIS/OBSAgent와 붙이려면 `0.0.0.0` 으로. XIS가 재시작 시 IP 서브넷 브로드캐스트로 PING을 뿌린다면((9)절) `0.0.0.0` 이 **필수**다 — 아니면 재등록 기회를 놓친다 |
 | `bind_port` | `6600` | 레거시 IC 계열 관례 포트. 실제 배치의 ICS는 시리얼이라 정해진 UDP 포트가 없어 임의로 고른 값이다. **같은 호스트에 실제 `K.IC` 가 떠 있으면 충돌** |
 | `xis_host` | (빈 값) | 비어 있어 **direct-reply 모드가 기본**. 이 모드에서는 (1)의 등록 문제가 드러나지 않는다 |
 | `xis_port` | `6660` | CTIO 기준 (OBSAgent `ISISPort 6660`) |
@@ -727,7 +987,7 @@ TC 질의가 실패하면 **TC 필드 전체가 비고 ICS 가 덧붙이는 꼬�
 | `peer_ttl_sec` | `3600` | 학습한 피어 주소 유효시간 |
 | `register_all_nodes` | `true` | 기동 시 **9개 노드 ID 전부로 PING** 을 보내 XIS에 등록(3.1.1). `false` 면 `ICS` 만 등록되고 `kstatus`/`dmawait`/`datasource` 가 도달하지 않는다 |
 
-> `bind_host` 기본값이 `127.0.0.1` 이라 **로컬에서만 받는다.** 외부 XIS·OBSAgent와 붙이려면 `0.0.0.0` 으로 바꿀 것. `bind_port=6600` 은 레거시 IC 계열 관례 포트라 **같은 호스트에 실제 `K.IC` 가 있으면 충돌**한다(3.1.1 (8)).
+> `bind_host` 기본값이 `127.0.0.1` 이라 **로컬에서만 받는다.** 외부 XIS·OBSAgent와 붙이려면 `0.0.0.0` 으로 바꿀 것. `bind_port=6600` 은 레거시 IC 계열 관례 포트라 **같은 호스트에 실제 `K.IC` 가 있으면 충돌**한다(3.1.1 (11)).
 
 ### `[paths]` — 저장
 
@@ -924,7 +1184,7 @@ cd ics_sim
 python -m pytest tests -q
 ```
 
-현재 **111개 전부 통과**.
+현재 **113개 전부 통과**.
 
 | 파일 | 지키는 것 |
 |---|---|
@@ -1012,7 +1272,8 @@ python -m pytest tests -q
 - **대안**: (a) 단일 소켓에서 9개 ID로 PING (b) 노드마다 소켓/포트를 따로 열기.
 - **선택**: (a). 단 `register_all_nodes` 스위치를 남기고, XIS 소스 확보 시 재검토하기로 했다.
 - **이유**: 로그 실측으로 XIS가 **노드ID→주소** 방향 테이블을 갖는다는 것은 확인됐다(`ABC`/`GMON` 이 ephemeral 포트로 매번 바꿔 보내는데도 응답을 받는다). 다만 **같은 (IP,port)에 여러 ID를 올린 사례가 48GB 전체에 없고** XIS 서버 소스도 없어 안전을 확신할 수 없다. 구현 비용이 낮은 쪽을 먼저 하고, 실물 시험이나 소스 확인에서 문제가 드러나면 (b)로 간다.
-- **전환 조건과 확인 항목**: 3.1.1 (7)절.
+- **보강 (2026-08-04)**: XIS의 `Added UDP Client` 로그 분석에서 **테이블이 노드 ID로 키잉된다**는 강력한 증거가 나왔다(3.1.1 (4)) — `ABC`/`GMON` 이 하루 수천 번 주소를 바꿔도 `Added` 는 XIS 재시작당 1회뿐이다. 1안의 위험도가 크게 낮아졌지만 "ID로 키잉된다"와 "같은 주소를 여러 ID가 공유해도 된다"는 별개 명제라 소스 확인은 그대로 유지한다.
+- **전환 조건과 확인 항목**: 3.1.1 (8)절.
 
 ---
 
@@ -1061,11 +1322,39 @@ XIS 등록 결함(3.1.1)을 발견하고 해법을 제시하면서 *"XIS는 노�
 - **방향은 맞았다** — `ABC`/`GMON` 이 ephemeral 포트로 매 메시지 주소를 바꾸는데도 응답을 받는다는 사실이, XIS가 노드ID로 주소를 찾는다는 것을 증명한다.
 - **그러나 "문제없다"는 근거가 없었다** — 같은 (IP,port)에 여러 ID가 동시에 올라간 사례가 48GB 전체에 **한 건도 없고**, XIS 서버 소스도 저장소에 없다.
 
-지금은 1안으로 두되 **미해결로 명시**하고, XIS 소스를 받으면 확인하기로 했다(3.1.1 (6)(7)).
+지금은 1안으로 두되 **미해결로 명시**하고, XIS 소스를 받으면 확인하기로 했다(3.1.1 (7)(8)).
+
+**후속 (2026-08-04)**: XIS의 `Added UDP Client` 로그를 찾아 분석한 결과 테이블이 노드 ID로 키잉된다는 강력한 증거가 나왔다(3.1.1 (4)). 처음의 단언이 결과적으로는 맞는 방향이었던 셈이지만, **단언한 시점에 그 근거를 갖고 있지 않았다**는 사실은 달라지지 않는다. 결론이 맞았는지가 아니라 근거의 범위를 지켰는지가 문제다.
 
 교훈: **"동작 원리를 안다"와 "그 구성이 검증됐다"는 다르다.** 방향을 확인한 것만으로 미시험 구성을 안전하다고 말하면 안 됐다. 12.1의 `dest` 필터 누락과 같은 계열의 실수다 — 근거의 범위를 넘어서 결론을 내렸다.
 
-### 12.8 구현 중 발견한 경합 — 파일 일련번호
+### 12.8 "XIS가 PING을 로그 열기 전에 보낸다" → **순서가 반대. 이유가 달랐다**
+
+`XIS>AL PING` 이 로그에 없는데 PONG이 1 ms 안에 도착하는 것을 보고 "PING을 먼저 보내고 그 다음 로그를 연 것"으로 추론했다. **순서는 틀렸다.**
+
+`main.c` 의 실제 기동 순서는 `loadConfig() → openSocket() → initLog() → 메인 루프 → COLD_START → handShake()` 로 **로그가 먼저 열린다.**
+
+PING이 로그에 없는 진짜 이유는 `handShake()` 가 `write()`/`sendto()` 를 직접 호출하고 `logMessage()` 를 거치지 않기 때문이다 — **XIS는 자기가 보내는 handshake PING을 로깅하지 않는다.** 관측(PING 없음 + PONG 1 ms)은 두 설명 모두와 양립했고, 소스를 봐야 갈렸다.
+
+교훈: **관측이 가설과 일치한다고 해서 그 가설만 참인 것은 아니다.** 같은 관측을 낳는 다른 메커니즘이 있는지 먼저 세어봤어야 했다.
+
+### 12.9 XIS 서버 소스로 확정된 것 — 이전 추론들의 최종 판정
+
+`ics_legacy/__dts_legacy/` 의 XIS 서버 소스로 3.1.1 (8)절의 질문에 전부 답이 나왔다((12)절). 이전 단계의 추론이 어떻게 판정됐는지 정리한다:
+
+| 추론 | 근거 단계 | 최종 판정 |
+|---|---|---|
+| XIS 테이블은 노드ID→주소 방향 | `ABC`/`GMON` ephemeral 포트 | **맞음** (`updateHosts()`) |
+| 테이블이 ID로 키잉된다 | `Added UDP Client` 빈도 | **맞음** — 주소는 비교에 아예 안 쓰인다 |
+| 같은 주소에 9개 ID를 올려도 안전 | (근거 없이 단언 → 보류) | **맞음.** 충돌 검사가 없고, 브로드캐스트 코드가 "같은 포트를 공유하는 클라이언트"를 명시적으로 다룬다 |
+| XIS 재시작 시 `>AL PING` 을 뿌린다 | 재시작 16건의 PONG 패턴 | **맞음** (`handShake()`) |
+| PING을 로그 열기 전에 보낸다 | 타임스탬프 1 ms | **틀림** — 12.8 참고 |
+| `unlisted` 가 정적 목록을 시사한다 | 에러 문구 | **틀림** — 클라이언트 테이블은 완전 동적. 다만 **preset PING 목록**은 정적이라, 우려의 방향 자체는 유효했다 |
+| IP 서브넷 브로드캐스트일 수 있다 | 빈 테이블 문제 | **틀림** — preset 목록에 개별 `sendto` |
+
+12.7의 "결론이 맞았는지가 아니라 근거의 범위를 지켰는지가 문제"라는 지적이 여기서도 유효하다. **맞은 추론과 틀린 추론이 섞여 있고, 어느 쪽인지는 소스를 보기 전까지 알 수 없었다.**
+
+### 12.10 구현 중 발견한 경합 — 파일 일련번호
 
 `GO 5` 테스트에서 일련번호가 5개가 아니라 4개만 나왔다. 저장 태스크가 나중에 `ChannelState.suffix` 를 읽는데, 그때는 이미 다음 프레임이 덮어쓴 뒤였다. **파일명을 프레임 시작 시점에 확정해 넘기도록** 고쳤다(`sequencer._store(… , wanted)`).
 
@@ -1077,7 +1366,13 @@ XIS 등록 결함(3.1.1)을 발견하고 해법을 제시하면서 *"XIS는 노�
 
 | 항목 | 내용 | 우선도 |
 |---|---|---|
-| **XIS 등록 방식 확정 (1안 vs 2안)** | **최우선 미해결 항목.** XIS 소스를 확보해 클라이언트 테이블의 인덱스 키를 확인하고, 같은 (IP,port)에 9개 ID를 올려도 되는지 판정한다. 안 되면 노드별 소켓(2안)으로 전환. 확인 항목과 전환 조건은 3.1.1 (7)절 | **최우선** |
+| ~~XIS 등록 방식 확정 (1안 vs 2안)~~ | **해결됨 (2026-08-04).** XIS 서버 소스로 테이블이 노드ID로만 키잉되고 주소 충돌 검사가 없음을 확인 → **1안 확정, 2안 불필요**(3.1.1 (12)) | 완료 |
+| ~~`XIS>AL PING` 에 9개 PONG 응답~~ | **구현 완료 (2026-08-04)** — `cmd_ping()` 이 브로드캐스트면 9개 ID 전부로 PONG(3.1.1 (12)⑨) | 완료 |
+| **XIS `isis.ini` 에 시뮬 등록** | `UDPPort <sim_ip> <sim_port>` 한 줄 추가(운영 측 작업). 단 `MAXPRESET` 여유 확인 필요 — 백업 소스는 8인데 CTIO 설정엔 13줄이라 배포 바이너리가 다를 수 있다(3.1.1 (12)⑧) | **최우선** |
+| **XIS 콘솔 `info` 로 `MaxPreset` 실측** | 위 항목의 선행 조건. `commands.c` 가 `NumPreset=? MaxPreset=?` 를 출력한다 | **최우선** |
+| 주기적 재등록 | preset 목록에 등록되면 필수는 아니나 안전망으로 유효 | 중간 |
+| Caliban(`*.CB`) 소스 검토 | `__dts_legacy/.../Agents_V1/Caliban/src/` 에 CB 노드 소스가 있다(`TransferDisk.c` 등). 신규는 CB 계층을 내부화하므로 우선순위는 낮지만, 디스크 핸드셰이크·파일명 fail-safe 의 실제 구현이다 | 낮음 |
+| IC(VDOS) 소스 확보 | 5장 오염 버그의 코드 위치 확정에 필요. 현재 백업은 리눅스 측이라 `\KMTS`/`\KMTX` 프로그램이 없다 | 낮음 |
 | **실물 XIS 연동 시험** | 위 항목의 가장 빠른 확인법이자, `transport.feed()` 로는 검증할 수 없는 라우팅 경로 전체를 처음으로 실증하는 일 | **최우선** |
 | **`STOP`/`ABORT` 실제 구현** | 레거시 미구현. 관측 중단 시 운영 편의가 크다. 스텁과 구현 지침은 이미 `commands.py` 에 있다 | 높음 |
 | **`EXPNUM` 자릿수 통일** | 레거시는 ICS 6자리 / IC 4자리라 `INITIALIZE` 로 우회했다. 신규는 이미 6자리로 통일했으니, 외부 문서도 갱신 필요 | 완료(신규) |

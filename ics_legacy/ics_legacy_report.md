@@ -65,6 +65,66 @@
 >
 > (덧붙여 `K.IC>0 STATUS: ...` 처럼 수신 노드명이 `0` 으로 파괴된 사례도 1건 있으나, 이는 실재 노드가 아니라 5.6절의 전송 손상 사례다.)
 
+### 1.3.1 실제 배치 구조 — VDOS IC + 리눅스 relay (2026-08-04 신규)
+
+`__dts_legacy/`(ICS 컴퓨터 `dts` 폴더 백업, 6절 참고)의 설정 파일들로 **로그만으로는 보이지 않던 물리 구조**가 드러났다.
+
+**IC/ICS 는 리눅스 프로그램이 아니라 VDOS(DOS 계열) 머신에서 돈다.** `Config/*.IC.ini` 는 그 머신의 부팅·설정 파일이다:
+
+```
+# Config/K.IC.ini            # Config/ICS.ini           # Config/G.IC.ini
+C:\0ICCFG\IC.INI             C:\0ICCFG\IC.INI           C:\0ICCFG\IC.INI
+  INSTRUMENT=KMTNk             INSTRUMENT=ICS             INSTRUMENT=KMTNg
+  ICHOST=K.IC                  ICHOST=ICS                 ICHOST=G.IC
+  CBHOST=K.CB                                             CBHOST=G.CB
+  ISISHOST=K.IS                ISISHOST=ICS.IS            ISISHOST=G.IS
+C:\0ICBOOT\IC.BAT            C:\0ICBOOT\IC.BAT          C:\0ICBOOT\IC.BAT
+  CD \KMTS                     CD \KMTX                   CD \KMTG
+  IC.BAT                       IC.BAT                     IC.BAT
+```
+
+여기서 세 가지가 확정된다.
+
+**① `ICS` 는 IC 와 같은 소프트웨어다.** 별도 프로그램이 아니라 같은 `IC.BAT` 를 `INSTRUMENT=ICS` 로 설정해 돌린다. 프로그램 디렉토리만 `\KMTX`(eXecutive)로 다르다. **이것이 `ICS` 와 `K.IC` 가 5.6절의 메시지 오염 버그를 똑같이 공유하는 이유다** — 같은 코드베이스이기 때문이다.
+
+**② BUILD 문자열의 접두어는 프로그램 디렉토리 이름이다.** 5.3절 AUXSTATUS 꼬리의 정체가 풀린다:
+
+| 노드 | `INSTRUMENT=` | 디렉토리 | 텔레메트리 BUILD |
+|---|---|---|---|
+| `ICS` | `ICS` | `\KMTX` | `ICSBUILD=**KX**2016-03-23:1381` |
+| `K/M/T/N.IC` | `KMTNk` 등 | `\KMTS` | `KBUILD=**KS**2016-01-13:1370` |
+| `G.IC` | `KMTNg` | `\KMTG` | `GBUILD=**KG**2016-06-02:1407` |
+
+`STATUS` 응답의 `Inst=KMTNk` 값도 이 `INSTRUMENT=` 설정에서 온다.
+
+**③ 리눅스 `isisrelay` 가 UDP↔시리얼을 중계한다.** `Config/isisrelay.ini`:
+
+```
+UDPPort 6600                 # 이 포트로 받아서
+TTYPort /dev/ttyS0           # 시리얼로 VDOS IC 에 넘긴다
+Speed 9600  DataBits 8  StopBits 1  Parity 0
+ISISHost 192.168.14.109      # XIS 로 올려보낸다
+ISISPort 6660
+```
+
+XIS 설정(`Config/isis.ini`)의 주석도 이를 뒷받침한다 — *"Ping the isisrelays on all the IC machines, **this reaches the VDOS ICs**"*. 즉 로그에 보이는 `[192.168.14.102:6600] K.IC>XIS PONG` 은 **relay 가 VDOS IC 의 응답을 UDP 로 올려준 것**이다. 각 IC 가 자기 로컬 relay 를 `K.IS`/`G.IS`/`ICS.IS` 라는 이름으로 알지만(`ISISHOST=` 항목), relay 가 투명하게 중계하므로 **로그에 `.IS` 노드는 나타나지 않는다.**
+
+```
+   icsci 서버 (.109)                     IC 머신 (.102~.108)
+   ┌──────────────────┐                  ┌─────────────────────────┐
+   │ XIS  (UDP 6660)  │◄── UDP 6600 ────►│ isisrelay (리눅스)      │
+   │ OBS  (UDP 6650)  │                  │      ▲ 시리얼 9600      │
+   │ /dev/ttyS0 115200│────────┐         │      ▼                  │
+   └──────────────────┘        │         │ IC (VDOS, \KMTS)        │
+                               │         │ Caliban CB (UDP 10601)  │
+                               └────────►│ ICS (VDOS, \KMTX)       │
+                                         └─────────────────────────┘
+```
+
+**④ `SP` 노드가 존재한다 — 예비 IC 로 보인다.** `Config/SP.IC.ini`(`INSTRUMENT=KMTNsp`, `ICHOST=SP.IC`, `CBHOST=SP.CB`, `CD \KMTS`)와 `cb_SP.ini`·`isisSP.ini`·`calibanSP.ini` 가 존재한다. 과학 IC 와 같은 `\KMTS` 를 쓰므로 **과학 CCD 계열의 예비기**로 판단된다. XIS preset 목록의 `192.168.14.107 6600`(로그에 트래픽이 전혀 없는 주소)이 이 노드 자리로 보인다.
+
+> **신규 설계 함의**: 신규 `ics` 는 이 3계층(VDOS IC + relay + XIS)을 **한 프로그램으로 대체**한다. relay 계층과 시리얼 구간이 통째로 사라지므로 5.6.3절의 전송 손상도 함께 사라진다. 다만 **XIS 와의 인터페이스는 그대로 유지**해야 한다 — XIS 입장에서는 relay 가 있던 자리에 신규 `ics` 가 들어오는 것으로 보여야 한다.
+
 포트 관례 (로그에서 관측):
 - IC 계열(`*.IC`, `ICG`): 6600
 - CB 계열(`*.CB`): 10601
@@ -630,6 +690,14 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 
 > **중요**: 이 버그는 **OBSAgent 동작에 영향이 없다.** OBSAgent의 `CamStatus` 는 커맨드워드가 아니라 본문 부분문자열만 보기 때문이다(8.0.1절). 그래서 레거시가 수년간 이 상태로 운용될 수 있었다. 신규 구현에서 고치는 것은 정확성과 디버깅 편의를 위한 것이지 호환성 때문이 아니다.
 
+### 5.6.5 왜 `ICS` 와 `K.IC` 가 같은 버그를 갖는가 (2026-08-04 확인)
+
+5.6.1절 표를 보면 오염이 `ICS` 와 `K.IC` 양쪽에서 똑같은 형태로 나타난다. 처음에는 "같은 코드베이스로 추정"이라고만 적었는데, **1.3.1절에서 확정됐다** — `ICS` 는 별도 프로그램이 아니라 IC 와 **같은 `IC.BAT` 소프트웨어**를 `INSTRUMENT=ICS` 로 설정해 돌리는 것이다(프로그램 디렉토리만 `\KMTX` vs `\KMTS`).
+
+즉 이 버그는 **IC 소프트웨어 한 곳의 결함**이고, ICS·K/M/T/N.IC·G.IC 가 전부 같은 증상을 보이는 것이 당연하다. 빌드 시점이 달라(`KX2016-03-23` vs `KS2016-01-13` vs `KG2016-06-02`) 세부 빈도에는 차이가 있을 수 있다.
+
+**IC(VDOS) 소스는 이 저장소에 없다.** `__dts_legacy/` 는 리눅스 측(icsci 서버) 백업이라 XIS 서버·relay·Caliban 소스는 있으나, VDOS 머신에서 도는 `\KMTS`/`\KMTX`/`\KMTG` 프로그램은 포함되지 않았다. 따라서 **버그의 정확한 코드 위치는 여전히 미확인**이며, 5.6절의 분석은 로그 실측 기반이다.
+
 ---
 
 ## 6. 참고 원본 자료 색인
@@ -654,6 +722,24 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 | `__sample_isislog/samples_for_bug_integrat.txt` | **검토 완료** — 노출 국면(`INTEGRATING`)·카운트다운 구간 발췌 3,061행. 5.6.1절의 스테일 커맨드워드(`REQ`/`SHOPEN`/`DATASOURCE`)와 "셔터 닫힌 뒤에도 `EXPSTATUS=INTEGRATING` 반복" 패턴의 근거. **커밋 대상** |
 | `__sample_isislog/samples_for_bug_pctread.txt` | **검토 완료** — readout 진행률 발췌 2,940행(노출 294회분). `6·17·28·39·50·61·72·83·94·100` 이 **각각 정확히 294회**로 편차 0 — 레거시 IC 가 진행률을 실제 픽셀 카운트가 아니라 **고정 스텝**으로 보고했음을 보여준다(5.2절). **커밋 대상** |
 | `../../__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **전량 검토 완료 (2026-08-03)** — CTIO 634일(28GB, 2024-01-01~2025-09-30) + SAAO 273일(11GB, 2025) + SSO 206일(8.6GB, 2024-01-01~2024-07-25) = **48GB, 1,113일분**. 3.5·5.2·5.3·5.4·5.6·6절 신규 항목의 근거. `__localonly_*` 규약에 따라 **비커밋** |
+| **`__dts_legacy/dts.icsci.*.{ctio,saao,sso}/`** | **2026-08-04 신규** — ICS 컴퓨터(icsci 서버)의 `dts` 폴더를 사이트별로 백업한 것, 10,285 파일. **ISIS/XIS 서버 소스 전체**를 포함한다. 1.3.1·5.6.5·8.0.1절의 근거 |
+
+**`__dts_legacy/` 안에서 특히 중요한 것**
+
+| 경로 | 내용 |
+|---|---|
+| `EXEC_ISIS/server/` | **XIS 서버 소스 전체** — `clients.c`(클라이언트 테이블) · `messages.c`(라우팅·브로드캐스트) · `interfaces.c`(`handShake()`) · `main.c`(기동 순서) · `loadconfig.c` · `xisisserver.h`. 8.0.1절 (13)의 근거 |
+| `ISIS_V1/server/` | 구버전 ISIS 서버 소스 (비교용) |
+| `EXEC_ISIS/client/`, `ISIS_V1/client/` | ISIS 클라이언트 라이브러리. `../TCSAgent/__reference/ISISclient` 와 `../OBSAgent/OBSAgent.latest/ISISclient` 에도 같은 것이 있다 |
+| `Config/isis.ini` | **운영 중인 XIS 설정** — `ServerID XIS` / `ServerPort 6660` / `TTYPort /dev/ttyS0 115200` / `UDPPort` preset 13줄 |
+| `Config/{K,M,T,N,G,SP}.IC.ini`, `Config/ICS.ini` | **VDOS IC 부팅·설정 파일** — 1.3.1절의 근거 |
+| `Config/isisrelay.ini`, `ISIS_V1/relay/` | UDP↔시리얼 중계기 설정과 소스 |
+| `Agents_V1/Caliban/src/` | **`*.CB` 노드(Caliban)의 소스** — `TransferDisk.c` · `InitDisk.c` · `UseDisk.c` · `AckDisk.c` 등. 4.2절 디스크 핸드셰이크의 구현체 (미검토) |
+| `Agents_V1/tvdisp/` | 표시용 에이전트 (미검토) |
+
+> **미검토로 남긴 것**: `Agents_V1/Caliban/src/`(CB 노드 소스)와 `Agents_V1/tvdisp/`. 신규 설계에서 CB 계층은 통째로 내부화되어 사라지므로(8.0절) 우선순위가 낮다고 판단했다. 다만 **`TransferDisk.c`/`InitDisk.c` 는 4.2절 디스크 핸드셰이크와 5.5절 파일명 fail-safe 의 실제 구현**이므로, 그 동작을 정확히 알아야 할 일이 생기면 여기부터 볼 것.
+>
+> **IC(VDOS) 본체 소스는 이 백업에 없다** — `\KMTS`/`\KMTX`/`\KMTG` 프로그램은 VDOS 머신에 있고 이 백업은 리눅스 측이다. 5.6절 오염 버그의 코드 위치를 확정하려면 그쪽 백업이 필요하다.
 
 > **재검증 방법**: 위 로그가 있는 컴퓨터에서 [`../ics_sim/tools/scan_legacy_logs.py`](../ics_sim/tools/scan_legacy_logs.py) 로 언제든 다시 돌릴 수 있다.
 > ```bash
@@ -843,6 +929,23 @@ ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
 **(12) `GO n` 다중 노출의 종료 알림은 `STATUS:` 다**
 
 3.5절 참고 — 중간 프레임은 `STATUS: Image n of N complete. EXPSTATUS=IDLE`, 마지막 프레임만 `DONE: EXPSTATUS=IDLE`. 그리고 프레임 N의 `Wrote` 4개가 프레임 N+1의 `PCTREAD=` **전에** 도착해야 `FitsSaved` 가 선다.
+
+**(13) XIS 노드 등록 — 서버 소스로 확정 (2026-08-04)**
+
+`__dts_legacy/.../EXEC_ISIS/server/` 의 XIS 서버 소스로 신규 통합 `ics` 의 등록 방식이 확정됐다.
+
+- **클라이언트 테이블은 노드 ID 로만 키잉된다.** `clients.c` `updateHosts()` 가 `strcmp(testStr, clientTab[i].ID)==0` 로만 비교하고(ID는 대문자 정규화), 주소는 저장·갱신만 될 뿐 비교에 쓰이지 않는다. **주소 충돌 검사 로직 자체가 없다.**
+  → **통합 `ics` 가 소켓 하나에서 9개 노드 ID 를 전부 등록해도 안전하다.** 노드마다 포트를 따로 열 필요가 없다.
+  → `messages.c` 의 브로드캐스트 코드가 *"clients that share the same port as the sending host"* 를 명시적으로 다루므로, **한 포트를 여러 클라이언트가 공유하는 것은 설계상 예상된 상황**이다.
+- **등록 방법은 "그 이름으로 아무 메시지나 보내기"** 뿐이다. 별도 API 가 없다. 따라서 **수신하려는 9개 ID 전부로 한 번씩 보내야** 그 이름 앞으로 오는 명령(`kstatus`/`dmawait`/`datasource`)이 도달한다.
+- **XIS 재시작 시 재등록**: `interfaces.c` `handShake()` 가 `"<ServerID>>AL PING\r"` 을 **모든 시리얼 포트 + `isis.ini` 의 preset UDP 목록**에 개별 전송한다(IP 브로드캐스트가 아니다). 돌아오는 PONG 으로 테이블을 다시 채운다.
+  → **신규 `ics` 는 이 브로드캐스트 PING 에 9개 ID 전부로 PONG 해야 한다.** 하나만 답하면 나머지 8개가 죽는다. 레거시는 노드마다 프로세스가 따로라 각자 답했다.
+  → **신규 `ics` 의 주소를 XIS `isis.ini` 의 `UDPPort` 목록에 추가**해야 재시작 시 PING 을 받는다. 지금 `.109`(OBS)가 목록에 없어 재시작 직후 `No Route to Destination Host OBS` 가 나는 것과 같은 문제가 생긴다.
+- **테이블 크기는 `MAXCLIENTS 64`** — 현재 13개 안팎이므로 여유는 충분하다.
+- **`AL` 브로드캐스트는 슬롯 전수 순회**라, 9개 ID 가 같은 주소면 같은 데이터그램을 9번 받는다. 기능상 문제는 없으나 수신 트래픽이 9배가 된다.
+- **미해결**: `xisisserver.h` 는 `MAXPRESET 8` 인데 CTIO `isis.ini` 에는 `UDPPort` 가 13줄이고 `loadconfig.c` 는 초과분을 버린다. 그런데 재시작 로그에는 9번째 이후 노드도 PONG 을 보낸다 → **배포 바이너리가 다른 값으로 빌드됐을 가능성**(ini 주석은 "max 32"). 실물에서 XIS 콘솔 `info` 로 `NumPreset/MaxPreset` 을 확인할 것.
+
+> 상세한 조사 과정과 코드 인용은 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.1.1절.
 
 **공통 로직은 공유 라이브러리로**: IMPv2 노드(UDP·파서·등록), `TC` 질의와 FITS 헤더 중계, `SYNCHRONIZE`, 디스크 이중버퍼, 파일명 fail-safe는 `ics`/`icg`가 사실상 동일하다. 레거시도 동일 코드베이스(`KX` 빌드)로 추정되므로 이 공유는 원 구조에도 부합한다. 구현 순서는 **단순한 `icg`를 먼저** 만들어 골격을 검증한 뒤 `ics`로 확장하는 편이 안전하다([icg_legacy_report.md](icg_legacy_report.md) 7.3절).
 

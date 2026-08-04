@@ -45,7 +45,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 ## 상태 (2026-08-03)
 
 - **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종
-- **테스트 111개 전부 통과**
+- **테스트 113개 전부 통과**
 - **미구현(의도적)**: `BIN`/`ROI`/`DISPL`/`STOP`/`ABORT`/`MOVIE` — 레거시도 미구현이고 48GB 로그 전량에서 0건. **스텁과 구현 지침은 `commands.py` 에 있다**
 - **다음 단계**: `hardware/archon.py` (DevNote 9장에 계약과 참고 자산 정리)
 
@@ -72,7 +72,33 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - 현재: **1안(단일 소켓 + 9개 ID PING)** 으로 구현. `[transport] register_all_nodes` 로 끌 수 있다.
 - 문제가 확인되면 **2안(노드별 소켓/포트 9개)** 으로 전환.
 
-**사용자가 ISIS/XIS 소스를 찾아 공유하기로 했다.** 받으면 [DevNote 3.1.1 (7)](DevNote.md) 의 확인 항목부터 볼 것 — 클라이언트 테이블의 인덱스 키, 같은 주소 재등록 시 처리, 테이블 크기, `AL` 브로드캐스트의 중복 수신 여부.
+**XIS 재시작 시 재등록도 미해결이다.** 실측(재시작 16건 전부)에서 XIS가 재시작하면 12개 노드가 각자 `>XIS PONG` 으로 재등록한다. 우리 시뮬은 브로드캐스트를 `ICS` 대표로 처리해 **PONG 하나만** 보내므로, XIS 재시작 후 8개 노드가 영영 죽는다. 고칠 것 두 가지 — (a) 브로드캐스트 PING에 9개 전부 PONG, (b) 주기적 재등록. **아직 미착수.**
+
+**진단 수단**: 등록 안 된 노드로 보내면 XIS가 발신자에게 `ERROR: No Route to Destination Host K.IC - host is unknown/unlisted` 를 돌려준다. 실물 시험의 판정 기준이다.
+
+**2026-08-04 해결 — XIS 서버 소스로 확정.** `ics_legacy/__dts_legacy/`(ICS 컴퓨터 `dts` 폴더 백업, 3개 사이트)의 `EXEC_ISIS/server/` 에 XIS 서버 소스 전체가 있다. 확인 결과:
+
+- **클라이언트 테이블은 노드 ID로만 키잉된다** — `strcmp(testStr, clientTab[i].ID)==0`, 주소는 비교에 안 쓰이고 갱신만 된다. 주소 충돌 검사 로직 자체가 없다.
+- 브로드캐스트 코드가 *"clients that share the same port as the sending host"* 를 명시적으로 다룬다 — **한 포트를 여러 클라이언트가 쓰는 건 설계상 예상된 상황**이다.
+- **→ 1안(단일 소켓 + 9개 ID PING) 안전. 2안 불필요.**
+- `MAXCLIENTS 64`, 현재 운용 13개 안팎이라 여유 충분.
+- XIS 재시작 시 `handShake()` 가 **`XIS>AL PING` 을 시리얼 포트 + `isis.ini` 의 preset UDP 목록에 개별 전송**한다. IP 브로드캐스트가 아니다.
+
+**구현 완료**: 기동 시 9개 ID 로 PING, **`XIS>AL PING` 브로드캐스트에도 9개 전부 PONG**(XIS 재시작 후 재등록의 유일한 경로).
+
+**남은 것 — 운영 측 작업**: 신규 `ics` 의 주소를 XIS `isis.ini` 의 `UDPPort` 목록에 한 줄 추가해야 XIS 재시작 시 PING 을 받는다. 단 `MAXPRESET` 여유를 먼저 확인할 것 — 백업 헤더는 `8` 인데 CTIO 설정엔 13줄이라 배포 바이너리가 다를 수 있다. **XIS 콘솔에서 `info` 를 치면 `NumPreset/MaxPreset` 이 나온다.**
+
+자세한 내용은 [DevNote 3.1.1 (12)](DevNote.md).
+
+## 레거시 실제 구조 (2026-08-04, `__dts_legacy` 로 확인)
+
+신규 설계를 이해하려면 알아야 할 배경이다. 상세는 [`../ics_legacy/ics_legacy_report.md`](../ics_legacy/ics_legacy_report.md) 1.3.1절.
+
+- **IC/ICS 는 VDOS(DOS) 머신**이고 리눅스 `isisrelay` 가 UDP 6600 ↔ 시리얼 9600 으로 중계한다. 신규 `ics` 는 이 3계층을 **한 프로그램으로 대체**한다.
+- **`ICS` 는 IC 와 같은 소프트웨어**(`INSTRUMENT=ICS`, 디렉토리만 `\KMTX`). → 메시지 오염 버그가 ICS·IC 양쪽에 똑같이 나타나는 이유.
+- BUILD 접두어 = 프로그램 디렉토리: `KX`=\KMTX, `KS`=\KMTS, `KG`=\KMTG.
+- `SP` 노드(`KMTNsp`) = 과학 계열 예비 IC, XIS preset 의 `.107` 자리로 보인다.
+- **IC(VDOS) 본체 소스는 백업에 없다** — 오염 버그의 코드 위치는 여전히 미확인.
 
 논의 전 과정(문제 발견 → 내 근거 없는 단언 → 사용자 지적 → 로그 실측 → 결정)은 [DevNote 3.1.1](DevNote.md) 과 12.7절에 남겨 뒀다.
 
