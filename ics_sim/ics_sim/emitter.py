@@ -437,7 +437,7 @@ class Emitter:
 
         IMPv2 에는 등록 API 가 없다.  노드가 자기 이름으로 아무 메시지나 보내면
         XIS 가 "노드ID -> 그 데이터그램의 (IP,port)" 를 기억하는 것이 전부다
-        (XIS 소스 `clients.c` updateHosts(), DevNote 3.1.1 (12)②).  따라서
+        (XIS 소스 `clients.c` updateHosts(), DevNote 3.1.1).  따라서
         **수신하려는 이름 전부로 한 번씩 보내야** 그 이름 앞으로 오는 메시지가
         도착한다.
 

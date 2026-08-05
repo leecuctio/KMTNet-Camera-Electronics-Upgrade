@@ -74,7 +74,9 @@ ICS>AL PING    K.IC>AL PING   M.IC>AL PING   T.IC>AL PING   N.IC>AL PING
 
 `ICS` 하나만 등록하면 OBSAgent 의 `kstatus`/`dmawait`/`datasource` 가 도달하지 않는다 — 그 명령들은 개별 IC 주소로 오기 때문이다.
 
-> **9개 ID 가 같은 (IP,port) 를 써도 된다** — XIS 서버 소스로 확인했다(2026-08-04). 클라이언트 테이블은 **노드 ID 만으로 키잉**되고 주소 충돌 검사가 없으며, `messages.c` 는 여러 클라이언트가 한 포트를 공유하는 경우를 명시적으로 다룬다. 소켓 하나로 9개 ID 를 등록하는 현재 방식이 안전하다. 근거와 논의 전 과정은 [DevNote 3.1.1](DevNote.md).
+> **9개 ID 가 같은 (IP,port) 를 써도 된다** — XIS 서버 소스로 확인했다(2026-08-04). 클라이언트 테이블은 **노드 ID 만으로 키잉**되고 주소 충돌 검사가 없다. 소켓 하나로 9개 ID 를 등록하는 현재 방식이 안전하다. 근거는 [DevNote 3.1.1](DevNote.md), 논의 전 과정은 [xis/xis.md 부록 A](xis/xis.md).
+>
+> 단, 운영 허브는 브로드캐스트를 **송신 슬롯 하나만** 제외하고 뿌린다. 시뮬이 `AL` 로 보내면 자기가 등록한 **나머지 8개 ID 앞으로 같은 메시지가 되돌아온다** — 소스 판정과 함께 [xis/xis.md 6.3](xis/xis.md) 참고.
 >
 > XIS 를 재시작하면 `XIS>AL PING` 이 오고, 시뮬은 여기에 **9개 ID 전부로 PONG** 을 돌려 자동 재등록된다. 다만 그 PING 을 받으려면 시뮬 주소가 XIS `isis.ini` 의 `UDPPort` 목록에 있어야 한다(운영 측 작업, 한 줄).
 >

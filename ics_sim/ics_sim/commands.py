@@ -138,7 +138,7 @@ class Dispatcher:
 
         XIS 는 기동/재시작할 때 `handShake()` 에서 `XIS>AL PING` 을 시리얼
         포트와 preset UDP 목록에 뿌리고, 돌아오는 PONG 으로 클라이언트 테이블을
-        다시 채운다(XIS 소스 `interfaces.c`, DevNote 3.1.1 (12)④).  **이것이
+        다시 채운다(XIS 소스 `interfaces.c`, DevNote 3.1.1).  **이것이
         XIS 재시작 후 재등록되는 유일한 경로다.**
 
         레거시는 노드마다 프로세스가 따로라 각자 PONG 을 보냈고, 그래서 12개

@@ -289,7 +289,7 @@ def test_broadcast_ping_answered_by_all_nine_nodes():
     으로 클라이언트 테이블을 다시 채운다(XIS 소스 `interfaces.c`).
     **이것이 XIS 재시작 후 재등록되는 유일한 경로다.**  레거시는 노드마다
     프로세스가 따로라 각자 답했지만, 통합 프로그램인 우리가 하나만 답하면
-    `ICS` 만 살아나고 나머지 8개는 죽는다 (DevNote 3.1.1 (9)(12)).
+    `ICS` 만 살아나고 나머지 8개는 죽는다 (DevNote 3.1.1).
     """
     run = drive(['XIS>AL PING'], settle=0.2)
     startup = 9  # 기동 시 보내는 등록 PING

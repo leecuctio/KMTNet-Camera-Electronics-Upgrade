@@ -18,6 +18,7 @@
 |---|---|
 | [DevNote.md](DevNote.md) | 설계를 이해하거나 바꿀 때. 15개 장 |
 | [README.md](README.md) | 그냥 돌려보고 싶을 때 |
+| [xis/xis.md](xis/xis.md) | 붙을 상대(레거시 허브)의 소스·설정·기동 방식이 궁금할 때 |
 | [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) | 레거시 원본 동작이 궁금할 때 |
 | [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) | OBSAgent 쪽 사정이 궁금할 때 |
 
@@ -91,7 +92,15 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 
 **남은 것 — 운영 측 작업**: 신규 `ics` 의 주소를 XIS `isis.ini` 의 `UDPPort` 목록에 한 줄 추가해야 XIS 재시작 시 PING 을 받는다. 단 `MAXPRESET` 여유를 먼저 확인할 것 — 백업 헤더는 `8` 인데 CTIO 설정엔 13줄이라 배포 바이너리가 다를 수 있다. **XIS 콘솔에서 `info` 를 치면 `NumPreset/MaxPreset` 이 나온다.**
 
-자세한 내용은 [DevNote 3.1.1 (12)](DevNote.md).
+자세한 내용은 [DevNote 3.1.1](DevNote.md), 논의 전 과정은 [xis/xis.md 부록 A](xis/xis.md).
+
+> **정정 (2026-08-05)** — 위 근거는 `EXEC_ISIS/server/`(XISIS v2.7.3)를 운영 소스로 보고 세운 것인데, **실제 운영본은 `ISIS/server/`(stock ISIS v2.9.1)** 다. 판정 근거 6가지는 [xis/xis.md 3절](xis/xis.md). 등록 관련 결론(ID 키잉·주소 충돌 없음·`MAXCLIENTS 64`·브로드캐스트 9회 수신)은 두 분기가 헤더 이름만 빼고 바이트 동일해서 **그대로 유효**하다.
+>
+> **그리고 위의 `MAXPRESET` 걱정은 해소됐다** — v2.9.1 은 `MAXPRESET 32` 다(v2.7.3 이 8이었다). 사용 중은 CTIO 13 · SAAO 14 · SSO 13 이라 **한 줄 추가에 아무 제약이 없다.** → [xis/xis.md 6.2](xis/xis.md)
+
+## XIS 원본 보관 — `xis/` (2026-08-05 신설)
+
+레거시 허브의 소스·운영 설정·기동 스크립트·실행파일을 `__dts_legacy` 3사이트 백업에서 뽑아 [`xis/`](xis/) 에 모았다(162 파일). **운영본 소스와 빌드 정의는 온전하나 운영 바이너리(`isis` v2.9.1)는 백업에 없다** — 재빌드가 전제다. 중심 문서는 [xis/xis.md](xis/xis.md), 파일 출처는 [xis/MANIFEST.md](xis/MANIFEST.md).
 
 ## 레거시 실제 구조 (2026-08-04, `__dts_legacy` 로 확인)
 
@@ -103,7 +112,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - `SP` 노드(`KMTNsp`) = 과학 계열 예비 IC, XIS preset 의 `.107` 자리로 보인다.
 - **IC(VDOS) 본체 소스를 `IC2.img` 에서 확보했다 (2026-08-04).** `__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` (각 8 GB, 비커밋). **C 가 아니라 FreeBASIC** 이고 실행파일과 소스가 함께 들어 있어 역어셈블이 필요 없었다. 꺼내는 절차는 [DevNote 2.2](DevNote.md) — 7-Zip 으로 0.3초면 된다.
 
-논의 전 과정(문제 발견 → 내 근거 없는 단언 → 사용자 지적 → 로그 실측 → 결정)은 [DevNote 3.1.1](DevNote.md) 과 12.7절에 남겨 뒀다.
+논의 전 과정(문제 발견 → 내 근거 없는 단언 → 사용자 지적 → 로그 실측 → 결정)은 [xis/xis.md 부록 A](xis/xis.md) 와 DevNote 12.7 에 남겨 뒀다.
 
 ## ICS 소스로 확정된 것 (2026-08-04)
 

@@ -73,7 +73,7 @@ class IcsSim:
         (`strcmp` 로 ID 만 비교, 주소는 갱신만 한다) 주소 충돌 검사 자체가 없다.
         브로드캐스트 코드도 *"clients that share the same port as the sending
         host"* 를 명시적으로 다룬다.  한때 검토하던 "노드마다 소켓을 따로
-        여는 방식(2안)"은 불필요하다 -- 논의 전 과정은 DevNote 3.1.1.
+        여는 방식(2안)"은 불필요하다 -- 논의 전 과정은 xis/xis.md 부록 A.
         """
         if not self.cfg.transport.register_all_nodes:
             self.emit.register_ping(self.cfg.node.ics_id)
