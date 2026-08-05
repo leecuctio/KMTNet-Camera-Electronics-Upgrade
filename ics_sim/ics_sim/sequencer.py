@@ -61,13 +61,16 @@ class Sequencer:
     """노출 사이클 하나를 끝까지 몰고 간다."""
 
     def __init__(self, cfg: SimConfig, state: IcsState, emit: Emitter,
-                 router: NodeRouter, telem: TelemetryRelay, backend) -> None:  # noqa: ANN001
+                 router: NodeRouter, telem: TelemetryRelay, backend,  # noqa: ANN001
+                 aux=None) -> None:  # noqa: ANN001  -- AuxControlClient
         self.cfg = cfg
         self.state = state
         self.emit = emit
         self.router = router
         self.telem = telem
         self.backend = backend
+        #: AUX control 연동 (auxcontrol.py).  None 이면 이벤트를 건너뛴다.
+        self.aux = aux
         self._task: asyncio.Task | None = None
         self._writers: list[asyncio.Task] = []
         #: 저장이 끝날 때까지 재사용을 막기 위한 CCD 별 락
@@ -309,6 +312,7 @@ class Sequencer:
         # 확정한 뒤에야 TCSSTATUS 를 중계한다 (ics_legacy_report 5.3절).
         st.exp_start = utcnow()
         self.emit.ic_shutter_open(source, master)
+        await self._aux_event('open')
         await self._relay_tcs(stamp_iso(st.exp_start), ExpStatus.INTEGRATING)
 
         tick = cfg.timing.countdown_tick_shop
@@ -317,6 +321,26 @@ class Sequencer:
 
         await self.backend.close_shutter()
         self.emit.ic_shutter_closed(source, master)
+        await self._aux_event('close')
+
+    async def _aux_event(self, which: str) -> None:
+        """셔터 개폐를 AUX control 서버에 알린다.
+
+        **DARK/BIAS 는 셔터를 열지 않으므로 여기를 지나지 않는다.**  레거시의
+        `SHOPEN`/`SHCLOSE` 도 셔터 경로에만 있으므로 같은 범위다.
+
+        실패해도 노출은 계속한다 -- AUX 는 부가 경로이고, 접속이 없으면
+        auxcontrol 이 경고만 남긴다.
+        """
+        if self.aux is None:
+            return
+        try:
+            if which == 'open':
+                await self.aux.on_shutter_open()
+            else:
+                await self.aux.on_shutter_close()
+        except Exception as exc:  # noqa: BLE001  노출을 죽이지 않는다
+            log.warning('AUX %s event failed: %s', which, exc)
 
     async def _integrate_dark(self, source: str, exptime: float) -> None:
         """셔터를 열지 않는 경로 (DARK/BIAS).

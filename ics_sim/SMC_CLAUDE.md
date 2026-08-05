@@ -42,11 +42,12 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - 송신 전 `validate()` 가 6가지 오염 패턴을 검사한다.
 - `--bug-compat` 로 레거시 오염을 재현할 수 있다(골든 대조용, 기본 꺼짐).
 
-## 상태 (2026-08-03)
+## 상태 (2026-08-05)
 
-- **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종
-- **테스트 113개 전부 통과**
-- **미구현(의도적)**: `BIN`/`ROI`/`DISPL`/`STOP`/`ABORT`/`MOVIE` — 레거시도 미구현이고 48GB 로그 전량에서 0건. **스텁과 구현 지침은 `commands.py` 에 있다**
+- **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2)
+- **테스트 141개 전부 통과**
+- **아직 안 만든 것**: `BIN` 하나. `strict_legacy` 면 무응답이고, 구현 지침은 `commands.py` docstring 에 있다.
+- **일부러 안 만든 것**: `ROI`/`DISPL`/`MOVIE` — **레거시 ICS 명령 테이블에 아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `Didn't understand` 로 거부된다(DevNote 6.8).
 - **다음 단계**: `hardware/archon.py` (DevNote 9장에 계약과 참고 자산 정리)
 
 ## 조사 자료
@@ -123,6 +124,18 @@ VM 이미지가 **5개**로 늘었다(`ICSci` CTIO/SAAO · `ICGui` · `K.IC` · 
 - **`USESTATUS` 는 셔터 닫힘 알림 타입을 `DONE:`→`STATUS:` 로 바꾸는 스위치**였다. 관측자 UI 가 `DONE:` 을 명령 완료로 오해하는 걸 피하려던 조치.
 - **오염 버그는 최소 2017-06-19 까지 안 고쳐졌다** — G.IC 이미지의 더 나중 소스에도 같은 코드가 있다.
 - **`STOP`/`ABORT` 를 구현했다** — 레거시 분기 그대로. 단 수락 시 `DONE:` 본문은 실측 근거가 없어 우리가 정한 것이다. → DevNote 9.2.1
+
+## AUX control 연동 (2026-08-05 신규)
+
+셔터 개폐 때 KMTNet AUX control software 에 TCP 로 알린다. **레거시에는 없던 경로다.**
+
+- 규격: `TCSAgent/__reference/KMTNet AUX control remote commands(v20140908).pdf`
+- 설정 키는 TCSAgent 의 `pctcs.kmtn*.ini` 와 같게 뒀다(같은 서버를 가리킨다). 값 뒤 `(KMTNC)` 같은 괄호 설명도 그대로 받는다.
+- 보내는 것: `KMTNET AUX <pid> FILTERS SET_SH OPEN|CLOSE`. **DARK/BIAS 는 보내지 않는다**(셔터를 안 연다).
+- 응답: `OK` 통과 / `BAD` 빨강 / `WAIT` 청록 / **무응답도 빨강**. 규격 2-4 상 ID 오타면 서버가 침묵하므로 조용한 실패를 눈에 띄게 했다.
+- **어떤 경우에도 노출은 완주한다.** 서버가 없어도 마찬가지.
+
+> ⚠️ **이 경로는 HW 트리거의 시뮬레이션용 대체물이다.** 실기에는 셔터 SW 명령이 없고 HE 박스 TTL 이 그 역할을 한다. `backend = archon` 으로 갈 때 `[auxcontrol] enabled = false` 로 꺼야 구동원이 겹치지 않는다 — `config.validate()` 가 그 조합을 경고한다. → DevNote 9.2.2
 
 ## 다음에 이어서 할 만한 일
 

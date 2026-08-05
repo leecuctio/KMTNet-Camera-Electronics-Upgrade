@@ -176,6 +176,75 @@ class HardwareCfg:
 
 
 @dataclass
+class AuxControlCfg:
+    """KMTNet AUX control software 와의 TCP 연동 (auxcontrol.py).
+
+    규격: `TCSAgent/__reference/KMTNet AUX control remote commands(v20140908).pdf`
+
+    키 이름은 TCSAgent 의 `pctcs.kmtn*.ini` 와 맞췄다 -- **같은 AUX 서버를
+    가리키므로** 두 설정을 나란히 놓고 비교할 수 있어야 한다:
+
+        # AUX control server info
+        AUX_Host   127.0.0.1 (Local)
+        AUX_Port   5752
+        AUX_TelID  KMTNET
+        AUX_SysID  AUX
+
+    실제 사이트 설정은 `192.168.14.60`(KMTNC) · `192.168.13.60`(KMTNS) ·
+    `192.168.15.60`(KMTNA) 처럼 사이트망의 `.60` 이다.  규격 문서의
+    `192.168.24.10` 은 작성 시점 값이라 현행과 다르다.  기본값은 `127.0.0.1`
+    로 둔다 -- 로컬 시험이 기본이고, 현장에서는 명시적으로 채워야 한다.
+
+    **값 뒤의 괄호 주석을 허용한다.** `pctcs` 쪽이 `192.168.14.60 (KMTNC)` 처럼
+    적어 두므로, 그 형식을 그대로 붙여넣어도 되도록 첫 토큰만 취한다.
+
+    **보낼 커맨드는 기본값이 비어 있다.** AUX 프로토콜에는 "카메라 셔터를
+    열어라"에 해당하는 명령이 없다 -- 카메라 셔터는 HE 박스의 TTL 신호로
+    구동되고 AUX 는 `FILTERS LIMIT_SHUT` 으로 상태를 읽기만 한다(문서 4-2).
+    그래서 무엇을 보낼지는 운영에서 정할 값이고, 비어 있으면 아무것도 보내지
+    않는다.
+    """
+
+    enabled: bool = False
+    host: str = '127.0.0.1'
+    port: int = 5752
+    #: 문서 2-4 -- 이 값이 틀리면 서버는 **응답 자체를 하지 않는다**
+    telescope_id: str = 'KMTNET'
+    system: str = 'AUX'
+    #: 패킷 ID 접두어.  뒤에 1씩 올라가는 번호가 붙는다 (`ICS1`, `ICS2`, ...).
+    packet_prefix: str = 'ICS'
+    #: 비우지 않으면 **이 값을 고정으로** 쓴다 (예: 운영 관례가 `00` 인 경우).
+    #: 고정하면 응답 대조가 느슨해지므로 기본은 증가 번호다.
+    packet_id: str = ''
+
+    connect_timeout: float = 3.0
+    ack_timeout: float = 1.0
+    reconnect_sec: float = 2.0
+    reconnect_max_sec: float = 30.0
+    #: true 면 성공(OK)도 콘솔에 찍는다.  기본은 실패만 눈에 띄게.
+    verbose: bool = False
+
+    #: 접속 직후 1회 (예: ALL / ECHO hello).  비우면 생략
+    hello_subsystem: str = ''
+    hello_command: str = ''
+
+    #: 셔터 개방·폐쇄 시 보낼 <SUBSYSTEM> <COMMAND> (2026-08-05 지정):
+    #:     KMTNET AUX 00 FILTERS SET_SH OPEN
+    #:     KMTNET AUX 00 FILTERS SET_SH CLOSE
+    #:
+    #: **이 경로는 하드웨어 트리거의 시뮬레이션용 대체물이다.**  실제 시스템에는
+    #: 셔터를 여닫는 SW 명령이 없다 -- HE 박스의 TTL 신호가 그 역할을 하고,
+    #: AUX 는 `LIMIT_SHUT` 으로 상태를 읽기만 한다(규격 4-2).  `SET_SH` 는
+    #: 하드웨어 없이 시험하려고 AUX 쪽에 새로 넣은 명령이라 v20140908 문서에
+    #: 없다.  실기(archon 백엔드)로 넘어가면 TTL 이 이 자리를 대신하므로
+    #: `enabled = false` 로 꺼야 한다.
+    shopen_subsystem: str = 'FILTERS'
+    shopen_command: str = 'SET_SH OPEN'
+    shclose_subsystem: str = 'FILTERS'
+    shclose_command: str = 'SET_SH CLOSE'
+
+
+@dataclass
 class LoggingCfg:
     level: str = 'info'
     wire: bool = True
@@ -192,6 +261,7 @@ class SimConfig:
     obsagent: ObsAgentCfg = field(default_factory=ObsAgentCfg)
     behavior: BehaviorCfg = field(default_factory=BehaviorCfg)
     hardware: HardwareCfg = field(default_factory=HardwareCfg)
+    auxcontrol: AuxControlCfg = field(default_factory=AuxControlCfg)
     logging: LoggingCfg = field(default_factory=LoggingCfg)
 
     source_path: str = ''
@@ -225,6 +295,14 @@ class SimConfig:
             raise ConfigError('tc_timeout_mode 는 passthrough 또는 canned')
         if self.hardware.backend not in ('sim', 'archon'):
             raise ConfigError('backend 는 sim 또는 archon')
+
+        # AUX 의 SET_SH 는 HW 트리거의 시뮬레이션용 대체물이다.  실기에서는
+        # HE 박스의 TTL 이 셔터를 구동하므로, 둘을 함께 켜면 구동원이 둘이 된다.
+        if self.hardware.backend == 'archon' and self.auxcontrol.enabled:
+            warn.append(
+                'backend=archon 인데 [auxcontrol] enabled=true 입니다 -> '
+                '실기에서는 HE 박스 TTL 이 셔터를 구동하므로 '
+                'AUX SET_SH 와 구동원이 겹칩니다.  끄는 것이 맞는지 확인하세요')
 
         # DevNote 3.3 (2): 4번째 Acquisition Complete. 이후 EXPSTATUS=IDLE 까지
         if t.acq_to_idle > oa.idle_window_sec:
@@ -273,6 +351,19 @@ def _bool(sec: configparser.SectionProxy, key: str, default: bool) -> bool:
     if not raw:
         return default
     return raw.lower() in ('1', 'true', 'yes', 'on', 't')
+
+
+def _head(sec: configparser.SectionProxy, key: str, default: str) -> str:
+    """공백으로 끊어 **첫 토큰만** 돌려준다.
+
+    TCSAgent 의 `pctcs.kmtn*.ini` 가 값 뒤에 설명을 괄호로 붙여 둔다 --
+    `AUX_Host   192.168.14.60 (KMTNC)`.  그 형식을 그대로 복사해 넣어도
+    동작하도록 뒤쪽을 버린다.
+    """
+    raw = sec.get(key, '').strip()
+    if not raw:
+        return default
+    return raw.split()[0]
 
 
 def _floats(sec: configparser.SectionProxy, key: str,
@@ -386,6 +477,38 @@ def load(path: str | None = None) -> SimConfig:
     if cp.has_section('hardware'):
         cfg.hardware.backend = cp['hardware'].get(
             'backend', cfg.hardware.backend).strip().lower()
+
+    if cp.has_section('auxcontrol'):
+        s = cp['auxcontrol']
+        a = cfg.auxcontrol
+        a.enabled = _bool(s, 'enabled', a.enabled)
+        # 키 이름은 pctcs.kmtn*.ini 의 AUX_* 와 같게 두었다(같은 서버를 가리킨다).
+        # 값 뒤의 "(KMTNC)" 같은 괄호 주석은 _head() 가 떼어낸다.
+        a.host = _head(s, 'aux_host', a.host)
+        a.telescope_id = _head(s, 'aux_telid', a.telescope_id)
+        a.system = _head(s, 'aux_sysid', a.system)
+        try:
+            a.port = int(_head(s, 'aux_port', str(a.port)))
+        except ValueError:
+            raise ConfigError(
+                f'[auxcontrol] AUX_Port 를 숫자로 읽을 수 없다: '
+                f'{s.get("aux_port", "")!r}') from None
+
+        a.packet_prefix = _head(s, 'packet_prefix', a.packet_prefix)
+        a.packet_id = _head(s, 'packet_id', a.packet_id)
+        a.verbose = _bool(s, 'verbose', a.verbose)
+        a.connect_timeout = s.getfloat('connect_timeout', a.connect_timeout)
+        a.ack_timeout = s.getfloat('ack_timeout', a.ack_timeout)
+        a.reconnect_sec = s.getfloat('reconnect_sec', a.reconnect_sec)
+        a.reconnect_max_sec = s.getfloat('reconnect_max_sec',
+                                         a.reconnect_max_sec)
+        for key in ('hello', 'shopen', 'shclose'):
+            raw = s.get(f'{key}_cmd', '').strip()
+            if not raw:
+                continue
+            head, _, rest = raw.partition(' ')
+            setattr(a, f'{key}_subsystem', head.strip())
+            setattr(a, f'{key}_command', rest.strip())
 
     if cp.has_section('logging'):
         s = cp['logging']

@@ -1248,11 +1248,32 @@ ELSEIF ICHOST = "ICG" AND AcquisitionCompleteCounter > 0 THEN   ' CCD 1개
 | `console` | `true` | stdin 키보드 인터페이스 |
 | `inject` | (빈 값) | 결함 주입: `init_fail`, `acq_short`, `wrote_drop`, `dma_timeout`, `shopen_corrupt`, `tc_timeout` |
 
+### `[auxcontrol]` — AUX control 서버 (9.2.2)
+
+키 이름은 TCSAgent 의 `pctcs.kmtn*.ini` 와 같다. 값 뒤의 `(KMTNC)` 같은 괄호 설명은 무시된다.
+
+| 키 | 기본값 | 설명 |
+|---|---|---|
+| `enabled` | `false` | 켜야 접속을 시도한다 |
+| `AUX_Host` | `127.0.0.1` | 사이트 실제값: KMTNC `192.168.14.60` · KMTNS `192.168.13.60` · KMTNA `192.168.15.60` |
+| `AUX_Port` | `5752` | |
+| `AUX_TelID` | `KMTNET` | **틀리면 서버가 응답 자체를 안 한다**(규격 2-4) |
+| `AUX_SysID` | `AUX` | 규격상 고정 |
+| `packet_prefix` | `ICS` | 패킷 ID 접두어 → `ICS1`, `ICS2`, … |
+| `packet_id` | (빈 값) | 채우면 고정 사용(예: `00`). 응답 대조가 느슨해진다 |
+| `verbose` | `false` | `true` 면 성공(`OK`)도 콘솔에 표시 |
+| `ack_timeout` | `1.0` | 응답 대기. 넘으면 경고만 남기고 노출은 진행 |
+| `connect_timeout` | `3.0` | |
+| `reconnect_sec` / `reconnect_max_sec` | `2.0` / `30.0` | 재접속 간격(실패할수록 2배씩) |
+| `hello_cmd` | (빈 값) | 접속 직후 1회. 예: `ALL ECHO ics_sim` |
+| `shopen_cmd` | `FILTERS SET_SH OPEN` | 셔터 개방 시 |
+| `shclose_cmd` | `FILTERS SET_SH CLOSE` | 셔터 폐쇄 시 |
+
 ### `[hardware]` / `[logging]`
 
 | 키 | 기본값 | 설명 |
 |---|---|---|
-| `backend` | `sim` | `sim` / `archon`. 실기 전환은 이 한 줄(9장) |
+| `backend` | `sim` | `sim` / `archon`. 실기 전환은 이 한 줄(9장). **`archon` + `auxcontrol.enabled=true` 조합은 검증이 경고한다**(9.2.2) |
 | `level` | `info` | `debug`/`info`/`warning`/`error` |
 | `wire` | `true` | 송수신 메시지를 콘솔에 출력 |
 | `file` | (빈 값) | 파일 로깅 경로 |
@@ -1278,6 +1299,7 @@ ics_sim/
 │   ├── app.py             배선
 │   ├── console.py         로컬 키보드 인터페이스
 │   ├── fitsout.py         FITS 생성
+│   ├── auxcontrol.py      AUX control 서버 TCP 연동 (9.2.2)
 │   ├── __main__.py        CLI
 │   └── hardware/
 │       ├── base.py        DetectorBackend 계약 (9.1)
@@ -1390,6 +1412,72 @@ def cmd_abort(self, msg, target) -> Reply:
 그리고 **중지 후 반드시 `DONE: EXPSTATUS=IDLE` 을 보낸다.** 안 보내면 OBSAgent 의 `CamStatus` 가 `READ_*` 에 갇혀 `force_idle` 타임아웃을 타고 **`opause` 로 스크립트 관측이 멈춘다**(3.3). 레거시가 이 경로를 어떻게 처리했는지는 로그에 한 건도 없어 알 수 없으므로, **3장 규약에서 역산해 정했다.**
 
 > **응답 형식은 근거가 없다.** 두 명령 모두 48GB 전량에서 송수신 0건이라 `DONE:` 본문을 실측할 수 없었다. `Integration stopped by <요청자>` / `Acquisition aborted by <요청자>` 는 **우리가 정한 것**이다(레거시의 `AbortHost` 기록에 대응). 거부 문자열만 레거시 그대로다. 실물 연동에서 관측자 UI 가 이 본문을 파싱한다면 조정이 필요할 수 있다.
+
+### 9.2.2 AUX control 연동 — HW 트리거의 시뮬레이션용 대체물 (2026-08-05)
+
+**레거시에는 없는 경로다.** IC(`\KMTS`)·ICS(`\KMTX`) 소스 어디에도 외부 TCP 발신이 없다 — CEU 에서 새로 붙는다.
+
+규격: `TCSAgent/__reference/KMTNet AUX control remote commands(v20140908).pdf` (Rev.20140908, Sang-Mok Cha, KASI)
+
+```
+요청  <TelID> <SysID> <PacketID> <SUBSYSTEM> <COMMAND>[LF]
+응답  <TelID> <SysID> <PacketID> <RESPONSE>[LF]
+```
+
+#### 이 경로의 성격 — 먼저 짚어야 할 것
+
+**실제 시스템에는 카메라 셔터를 여닫는 SW 명령이 없다.** HE 박스에서 나오는 **TTL 트리거 신호**가 셔터를 구동하고, AUX 는 `FILTERS LIMIT_SHUT` 으로 블레이드 리밋을 **읽기만** 한다(규격 4-2 주석). 여기서 쓰는 `FILTERS SET_SH OPEN|CLOSE` 는 **하드웨어 없이 시험하려고 AUX 쪽에 새로 넣은 명령**이고, 그래서 v20140908 문서에 없다.
+
+→ **실기(`[hardware] backend = archon`)로 넘어가면 `[auxcontrol] enabled = false` 로 꺼야 한다.** 켜 둔 채로 돌리면 셔터에 구동원이 둘 생긴다. `config.validate()` 가 이 조합을 경고한다.
+
+#### 설정 — `pctcs.kmtn*.ini` 와 키 이름을 맞췄다
+
+TCSAgent 가 붙는 AUX 서버와 **대상이 같으므로**, 두 설정을 나란히 놓고 비교할 수 있어야 한다:
+
+```ini
+[auxcontrol]
+enabled     = false
+AUX_Host    = 127.0.0.1 (Local)     # 괄호 설명은 무시된다 (첫 토큰만 읽는다)
+AUX_Port    = 5752
+AUX_TelID   = KMTNET
+AUX_SysID   = AUX
+shopen_cmd  = FILTERS SET_SH OPEN
+shclose_cmd = FILTERS SET_SH CLOSE
+```
+
+`pctcs` 쪽이 값 뒤에 `192.168.14.60 (KMTNC)` 처럼 설명을 붙여 두므로, **그 형식을 그대로 복사해 넣어도 되게** `_head()` 가 첫 토큰만 취한다. 사이트 실제값은 KMTNC `192.168.14.60` · KMTNS `192.168.13.60` · KMTNA `192.168.15.60` 이고, 규격 문서의 `192.168.24.10` 은 작성 시점 값이라 현행과 다르다. 기본값은 로컬 시험을 전제로 `127.0.0.1`.
+
+#### 동작
+
+| 시점 | 보내는 것 |
+|---|---|
+| 셔터 개방 직후 | `KMTNET AUX ICS1 FILTERS SET_SH OPEN` |
+| 셔터 폐쇄 직후 | `KMTNET AUX ICS2 FILTERS SET_SH CLOSE` |
+
+**DARK/BIAS 는 아무것도 보내지 않는다.** 셔터를 열지 않기 때문이고, 레거시의 `SHOPEN`/`SHCLOSE` 도 셔터 경로에만 있으므로 범위가 같다.
+
+응답 등급(사용자 지정):
+
+| 응답 | 처리 | 콘솔 |
+|---|---|---|
+| `OK` `SUCCESS` | 통과 | 조용히 (`verbose=true` 면 흐리게) |
+| `BAD` `FAILURE` `ERROR` | 경고 | **빨강** |
+| `WAIT` | 경고 | **청록** — 거부가 아니라 "아직 못 한다" |
+| **무응답** | 경고 | **빨강** + 설정 확인 안내 |
+
+#### 무응답을 별도 등급으로 둔 이유
+
+규격 2-4: *"If `<Telescope ID>` or `<System>` is incorrect, or the arguments number is insufficient, the server does NOT return any response."*
+
+**오타가 나도 에러가 아니라 침묵이다.** 가장 헷갈리는 실패 형태이므로 타임아웃을 정상적인 실패 경로로 다루고, 경고에 `AUX_TelID`/`AUX_SysID` 를 확인하라는 안내를 붙였다. 테스트도 이 경우를 따로 잡는다(`test_wrong_telescope_id_times_out_rather_than_hanging`).
+
+#### 실패해도 노출은 계속한다
+
+사용자 결정(2026-08-05): ack 를 기다리되 `ack_timeout` 초과 시 경고만 남기고 진행, 접속이 끊겨 있어도 노출은 진행, 재접속은 백그라운드에서 계속. `AuxControlClient` 는 **예외를 밖으로 내보내지 않는다** — 실패는 전부 반환값과 로그로 표현한다. 테스트가 `OK`/`BAD`/`WAIT`/`ERROR`/무응답/서버부재/TelID오타 전부에서 `Acquisition Complete.` 4회와 `Wrote` 4회가 그대로 나오는지 확인한다.
+
+#### 시험 수단
+
+`tests/test_auxcontrol.py` 에 규격대로 대꾸하는 **가짜 AUX 서버**(`FakeAux`)가 있다. 응답을 바꾸거나 `silent=True` 로 규격 2-4 침묵을 흉내낼 수 있고, **실제 TCP 로** 전 경로를 돈다. AUX 실물 없이 연동을 확인할 때 떼어 쓸 수 있다.
 
 ### 9.3 FITS 경로
 

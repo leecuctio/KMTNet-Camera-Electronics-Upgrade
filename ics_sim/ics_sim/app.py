@@ -13,6 +13,7 @@ import asyncio
 import logging
 from typing import Awaitable
 
+from .auxcontrol import AuxControlClient
 from .commands import Dispatcher
 from .config import SimConfig
 from .emitter import Emitter
@@ -41,8 +42,9 @@ class IcsSim:
         self.emit = Emitter(cfg, self.router, self.transport.send)
         self.telem = TelemetryRelay(cfg, self._send_query)
         self.backend = make_backend(cfg)
+        self.aux = AuxControlClient(cfg.auxcontrol)
         self.seq = Sequencer(cfg, self.state, self.emit, self.router,
-                             self.telem, self.backend)
+                             self.telem, self.backend, self.aux)
         self.dispatch = Dispatcher(self)
 
         self._tasks: set[asyncio.Task] = set()
@@ -53,6 +55,7 @@ class IcsSim:
         for note in self.cfg.validate():
             log.warning('config: %s', note)
         await self.transport.start()
+        await self.aux.start()
         self.register()
         log.info('ICS simulator ready -- nodes: %s, backend=%s',
                  ', '.join(self.router.registered_ids), self.backend.name)
@@ -87,6 +90,7 @@ class IcsSim:
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
             self._tasks.clear()
+        await self.aux.stop()
         await self.transport.stop()
 
     def spawn(self, coro: Awaitable) -> asyncio.Task:

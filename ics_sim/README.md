@@ -102,6 +102,36 @@ python -m ics_sim --bug-compat
 
 원인 코드까지 확정돼 있다 — 레거시 ICS 의 `SUB Prt` 가 첫 낱말이 콜론으로 끝나기만 하면 포트별 `CommandEcho` 를 무조건 끼워 넣고, 그 슬롯은 정상 운용 중 비워지지 않는다. 같은 함수가 노출 중 모든 콜론 메시지에 ` EXPSTATUS=` 접미사도 붙인다. `ics_sim` 은 커맨드워드를 매 메시지 인자로 받고 `emitter.validate()` 로 적층·재등장을 잡아 이 경로를 구조적으로 갖지 않는다.
 
+### AUX control 서버 연동
+
+셔터 개폐 때 KMTNet AUX control software 에 TCP 로 커맨드를 보낸다. `ics_sim.ini` 에서 켠다:
+
+```ini
+[auxcontrol]
+enabled     = true
+AUX_Host    = 127.0.0.1 (Local)     # 괄호 설명은 무시된다
+AUX_Port    = 5752
+AUX_TelID   = KMTNET
+AUX_SysID   = AUX
+shopen_cmd  = FILTERS SET_SH OPEN
+shclose_cmd = FILTERS SET_SH CLOSE
+```
+
+키 이름과 형식은 TCSAgent 의 `pctcs.kmtn*.ini` 와 같다 — **같은 AUX 서버를 가리키므로** 그쪽 설정을 그대로 복사해 넣을 수 있다. 오가는 전문은 이렇다:
+
+```
+셔터 열림  →  KMTNET AUX ICS1 FILTERS SET_SH OPEN
+              KMTNET AUX ICS1 OK
+셔터 닫힘  →  KMTNET AUX ICS2 FILTERS SET_SH CLOSE
+              KMTNET AUX ICS2 OK
+```
+
+`OK` 는 통과, `BAD` 는 빨강 경고, `WAIT` 는 청록 경고, **무응답도 빨강 경고**다. 규격상 `AUX_TelID`/`AUX_SysID` 가 틀리면 서버가 **응답 자체를 하지 않으므로**, 조용한 실패를 눈에 띄게 만들었다. 어느 경우든 **노출은 끝까지 진행한다.**
+
+DARK/BIAS 는 셔터를 열지 않으므로 아무것도 보내지 않는다.
+
+> ⚠️ **이 경로는 하드웨어 트리거의 시뮬레이션용 대체물이다.** 실제 시스템에는 셔터를 여닫는 SW 명령이 없고 HE 박스의 TTL 신호가 그 역할을 한다. `--backend archon` 으로 실기를 돌릴 때는 `enabled = false` 로 꺼야 구동원이 겹치지 않는다(설정 검증이 경고한다). 자세한 내용은 [DevNote 9.2.2](DevNote.md).
+
 ### 결함 주입
 
 ```bash
@@ -158,6 +188,7 @@ python -m pytest tests -q
 | `test_emitter_hygiene.py` | 메시지 오염 방지 (정방향 + 레거시 샘플 역방향 검증) |
 | `test_sequence_golden.py` | 레거시 실측 시퀀스와 대조 |
 | `test_stop_abort.py` | STOP/ABORT — 레거시 분기·거부 문자열, 중지 후 IDLE 복귀 |
+| `test_auxcontrol.py` | AUX 연동 — 가짜 AUX 서버로 실제 TCP 왕복, 어떤 응답에도 노출 완주 |
 | `test_impv2.py` | 프로토콜 파싱 |
 
 ---
@@ -211,6 +242,7 @@ ics_sim/
 ├── sequencer.py    노출 상태머신
 ├── commands.py     명령 디스패치
 ├── fitsout.py      FITS 생성 (헤더는 실기와 같은 경로)
+├── auxcontrol.py   AUX control 서버 TCP 연동 (셔터 개폐 통보)
 ├── console.py      로컬 키보드 인터페이스
 ├── obsagent_model.py   OBSAgent CamStatus 모델 (테스트용 재구현)
 └── hardware/       base.py 계약 · sim.py (현재) / archon.py (다음 단계)
