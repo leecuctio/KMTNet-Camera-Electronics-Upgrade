@@ -67,7 +67,19 @@
 | `…/samples_for_bug_pctread.txt` | 2,940행 | **커밋 대상** | readout 진행률 발췌(노출 294회분). 7장 `[readout]` 모델의 근거 |
 | `__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **48GB, 1,113일분** | `__localonly_*` 비커밋 | 전량 스캔 — 샘플에 없던 시퀀스 발굴 |
 | `ics_legacy/__dts_legacy/dts.icsci.*/` | 2,800 파일 / 24.7 MB | **커밋됨** | icsci 서버 `dts` 백업에서 소스·설정만 선별. **ISIS/XIS 서버 소스**(`EXEC_ISIS/server/`)가 12.9 의 등록 방식 확정 근거 |
-| `__localonly_osc_legacy/` | 10,291 파일 / 16.6 GB | `__localonly_*` 비커밋 | 위 백업의 원본 전량 + **`IC2.img` 2개(CTIO/SAAO, 각 8 GB)**. VDOS IC 실행파일이 들어 있어 5장 오염 버그의 코드 위치를 확정할 수 있는 유일한 자료 |
+| `__localonly_osc_legacy/` | 원본 백업 + **VM 이미지 5개** | `__localonly_*` 비커밋 | `IC2.img` × 5, 각 8 GB. **IC/ICS 의 FreeBASIC 소스 전량**이 실행파일과 함께 들어 있다 — 5장·6.8·6.10 의 근거 |
+
+확보된 VM 이미지 5개 (전부 CTIO, SAAO 는 ICSci 하나):
+
+| 이미지 | 빌드 | 실행 | 무엇을 확정했나 |
+|---|---|---|---|
+| `IC2_KX20160323.1381_ICSci_CTIO` | `KX2016-03-23:1381` | `\KMTX` | 5.5 오염 버그 원인 코드, 6.8 명령 테이블 |
+| `IC2_KX20160323.1381_ICSci_SAAO` | 〃 | 〃 | CTIO 판과 프로그램 동일(2.2 말미) |
+| `IC2_KX20160323.1381_ICGui_CTIO` | 〃 | `\KMTX` | **ICG 가 ICS 와 같은 바이너리** (6.11) |
+| `IC2_KS20160113.1370_K.IC_CTIO` | `KS2016-01-13:1370` | `\KMTS` | 6.10 IC 쪽 동작 전부 |
+| `IC2_KG20160602.1407_G.IC_CTIO` | `KG2016-06-02:1407` | `\KMTG` | 가이드 검출기, 2017 개발 스냅샷 |
+
+**역할은 부팅 설정 `0ICCFG\IC.INI` 가 정한다.** 모든 이미지가 세 프로그램(`PAP7KX`/`KS`/`KG`)을 전부 담고 있고, 그 파일의 `ICHOST`/`INSTRUMENT` 와 `CD \KMTx` 한 줄로 무엇이 되는지 갈린다. 상세는 `ics_legacy_report.md` 1.3.1⑧.
 
 전량 스캔 내역: CTIO 634일 28GB (2024-01-01 ~ 2025-09-30) / SAAO 273일 11GB (2025) / SSO 206일 8.6GB (2024-01-01 ~ 2024-07-25).
 
@@ -1114,6 +1126,37 @@ if( sys.force_fitssaved < sys.count_fitssaving ) {
 
 **설계 결정**: `ics_sim` 은 **CB 측 타입과 무관하게 항상 `ICS>OBS STATUS: Wrote …` 를 4회 방출한다.** 사이트별 분기를 두지 않는다 — 이 결함은 재현 대상이 아니라 회피 대상이다. `[node] site` 값이 `sso` 여도 마찬가지다. 현재 구현이 이미 그렇게 동작하므로 코드 변경은 없다.
 
+### 6.10 IC 쪽 동작 확정 — `\KMTS` 소스 (2026-08-05)
+
+`K.IC` 이미지의 `PAP7KS.{BAS,CCD}` 를 읽었다. **공용 소스는 ICS 이미지의 것과 바이트 단위로 같으므로** 5.5 의 오염 분석이 IC 에도 그대로 적용된다. 전문 인용은 `ics_legacy_report.md` 4.6절에 두고, 여기서는 **시뮬레이터 값과의 대조**만 적는다.
+
+| 항목 | 소스가 말하는 것 | 실측 | `ics_sim.ini` | 판정 |
+|---|---|---|---|---|
+| `Acquisition Complete.` 마침표 | **의도된 비대칭** — OBS 에는 마침표 있는 문자열, ICS 에는 없는 문자열을 **각각 따로** 보낸다(`PAP7KS.CCD:172-176`) | 동일 | `emitter.ic_acq_complete_obs/_ics` 로 분리 | **맞음** |
+| `PCTREAD` 발신자 | master 만 (`I_Am_Driving > 0`) | `K.IC` 만 | `[node] master` | **맞음** |
+| `PCTREAD` 간격 | 5% 누적 임계 **AND** ≥2초. 검사는 **256라인 DMA 블록마다** | +11 / 3.37초 | `pctread_step=11`, `pctread_tick=3.37` | **실측 유지** (아래 주) |
+| 셔터 카운트다운(IC) | `TimesUp(LastUpdate, 4.9)` | 5.217초 | `countdown_tick_shop=5.217` | **맞음** |
+| 카운트다운(DARK, ICS) | `TimesUp(LastIntegrationUpdate, 5)` | 5.00초 | `countdown_tick_dark=5.00` | **맞음** |
+| `USESTATUS` | 셔터 닫힘 알림 타입을 `DONE:`→`STATUS:` 로 바꾸는 스위치 | — | 항상 붙여 보냄 | **맞음** |
+
+> **`PCTREAD` 간격에 대한 정직한 기록**: 과학 CCD 는 `DetY=9232`, 블록은 256라인이므로 **블록당 2.773%**, 실측 +11% 는 **정확히 4블록**이다. 계단이 블록 양자화라는 것까지는 확정됐다. 그런데 **왜 3블록(2.53초, 이미 2초 하한을 넘김)이 아니라 4블록인지는 이 코드만으로 설명되지 않는다.** `YLinesIn` 갱신 지점과 preheat 라인(`NUMPHLINES=32`) 처리를 더 봐야 한다. 억지로 이야기를 맞추지 않고, **시뮬레이터는 실측값을 쓴다** — OBSAgent 가 실제로 본 것이 그 값이기 때문이다.
+
+**디스크 전송 핸드셰이크**도 확정됐다(`PAP7KS.CCD:1290-1292`, `PAP7.CMD:2252-2270`). IC → CB `TRANSFER <디스크> <장수> <완료보고 대상>`, CB → IC `REQ SWAP` → IC 는 남은 이미지가 있으면 `TRANSFER` 를 한 번 더, 없으면 `ACK SWAP`. 세 번째 인자가 `ConfirmHost`(관측자 UI)에서 `AcquisitionInitiator`(GO 발신자)로 **의도적으로 바뀐 흔적**이 주석에 남아 있고, 6.3 의 `C1` 같은 sourceID 변주가 그것으로 설명된다. **신규 설계에서는 CB 계층이 내부화되므로 이 핸드셰이크 자체가 사라진다**(6.2와 같은 이유).
+
+### 6.11 ICG 는 ICS 와 같은 바이너리다 (2026-08-05)
+
+`ICGui` 이미지의 `0ICCFG\IC.INI` 가 `INSTRUMENT=ICG / ICHOST=ICG` 이고 **`CD \KMTX`** 로 들어간다 — ICS 와 **같은 `PAP7KX.EXE`** 다. 분기는 런타임 `ICHost` 값으로 다섯 군데뿐이고, 그중 하나가 계통의 성격을 가른다:
+
+```basic
+IF ICHOST = "ICS" THEN
+   IF AcquisitionCompleteCounter > 3 THEN      ' CCD 4개
+ELSEIF ICHOST = "ICG" AND AcquisitionCompleteCounter > 0 THEN   ' CCD 1개
+```
+
+**3장의 "4회 누적" 규약이 과학 계통에만 있는 구조적 이유가 이것이다.** 상세는 `icg_legacy_report.md` 8.1절.
+
+→ **13장 백로그의 "ICG 오염 여부 확인" 항목이 이것으로 해소된다.** ICG 는 같은 바이너리이므로 5.5 의 오염이 **그대로 있다.** 다만 OBSAgent 가 가이드 발신을 무시하므로 관측에는 영향이 없고, 신규 `icg` 는 하위호환 부담 없이 5.4 규칙만 지키면 된다.
+
 ---
 
 ## 7. 설정파일 레퍼런스 (`ics_sim.ini`)
@@ -1324,9 +1367,29 @@ def cmd_abort(self, msg, target) -> Reply:
     return self._unimplemented(msg, target)
 ```
 
-**대상은 `BIN` · `STOP` · `ABORT` 세 개다** (2026-08-04 정정, 6.8절). 전에는 `ROI`/`DISPL`/`MOVIE` 도 같은 묶음이었는데, 소스를 보니 이 셋은 **ICS 명령 테이블에 아예 없어서** 레거시가 `ERROR: … Didn't understand … ?` 로 거부한다. 그래서 **핸들러를 삭제했다** — 없는 편이 레거시와 같다. 참고용 `IC_ONLY` 상수에 목록만 남겼다.
+**남은 스텁은 `BIN` 하나다** (2026-08-05 기준). 경과는 이렇다:
 
-`strict_legacy=true` 면 세 스텁은 **무응답**이다. 레거시가 이들을 어떤 형식으로 응답하는지 48GB 로그에 한 건도 없어 재현할 근거가 없기 때문이지, "레거시가 미구현이라서"가 아니다. `false` 면 `ERROR:` 를 돌려주는 현대화 모드가 되고, 실제 구현을 넣을 때는 스텁 본문만 채우면 된다 — 레거시 분기와 거부 문자열이 docstring 에 이미 적혀 있다.
+- 2026-08-04 — `ROI`/`DISPL`/`MOVIE` 는 **ICS 명령 테이블에 아예 없어서** 레거시가 `ERROR: … Didn't understand … ?` 로 거부한다는 것이 확인돼(6.8) **핸들러를 삭제했다.** 없는 편이 레거시와 같다. 참고용 `IC_ONLY` 상수에 목록만 남겼다.
+- 2026-08-05 — **`STOP`/`ABORT` 를 실제로 구현했다** (9.2.1).
+
+`strict_legacy=true` 면 `BIN` 스텁은 **무응답**이다. 레거시가 이를 어떤 형식으로 응답하는지 48GB 로그에 한 건도 없어 재현할 근거가 없기 때문이지, "레거시가 미구현이라서"가 아니다.
+
+### 9.2.1 `STOP` / `ABORT` 구현 (2026-08-05)
+
+레거시(`KMTX\PAP7KX.CMD:279-302`)의 두 분기를 그대로 옮겼다:
+
+| | 레거시 조건 | 우리 조건 | 수락 시 | 거부 문자열(레거시 그대로) |
+|---|---|---|---|---|
+| `STOP` | `ExpLoopFlag = 1` | `seq.integrating` | 적분만 끊고 readout·저장은 정상 | `No integration in progress. Nothing to stop.` |
+| `ABORT` | `GoFlag = 1` | `seq.busy` | 전부 중지, readout·저장 안 함 | `No acquisition in progress. Nothing to abort.` |
+
+**STOP 은 "중단"이 아니라 "조기 종료"다.** 레거시도 `SoftStop = 1` 만 세우고 사이클은 그대로 흘려보낸다. 구현도 같게 했다 — `_countdown` 이 `asyncio.Event` 를 보고 남은 시간을 건너뛸 뿐, 셔터 닫힘 알림부터 `Wrote` 까지 **전부 정상 경로**를 탄다. 바깥에서 보면 그냥 짧은 노출이다. 테스트가 이걸 확인한다(`Acquisition Complete.` 4회, `Wrote` 4회가 그대로 나오는지).
+
+**ABORT 에는 레거시에 없던 일이 하나 더 있다.** 레거시는 CB 가 별도 프로세스라 저장을 따로 신경 쓸 필요가 없었지만, 통합 구조에서는 **이미 떠 있는 저장 태스크를 직접 취소**해야 한다(12.10 과 같은 부류의 차이).
+
+그리고 **중지 후 반드시 `DONE: EXPSTATUS=IDLE` 을 보낸다.** 안 보내면 OBSAgent 의 `CamStatus` 가 `READ_*` 에 갇혀 `force_idle` 타임아웃을 타고 **`opause` 로 스크립트 관측이 멈춘다**(3.3). 레거시가 이 경로를 어떻게 처리했는지는 로그에 한 건도 없어 알 수 없으므로, **3장 규약에서 역산해 정했다.**
+
+> **응답 형식은 근거가 없다.** 두 명령 모두 48GB 전량에서 송수신 0건이라 `DONE:` 본문을 실측할 수 없었다. `Integration stopped by <요청자>` / `Acquisition aborted by <요청자>` 는 **우리가 정한 것**이다(레거시의 `AbortHost` 기록에 대응). 거부 문자열만 레거시 그대로다. 실물 연동에서 관측자 UI 가 이 본문을 파싱한다면 조정이 필요할 수 있다.
 
 ### 9.3 FITS 경로
 
@@ -1555,9 +1618,10 @@ PING이 로그에 없는 진짜 이유는 `handShake()` 가 `write()`/`sendto()`
 | 주기적 재등록 | preset 목록에 등록되면 필수는 아니나 안전망으로 유효 | 중간 |
 | Caliban(`*.CB`) 소스 검토 | `__dts_legacy/.../Agents_V1/Caliban/src/` 에 CB 노드 소스가 있다(`TransferDisk.c` 등). 신규는 CB 계층을 내부화하므로 우선순위는 낮지만, 디스크 핸드셰이크·파일명 fail-safe 의 실제 구현이다 | 낮음 |
 | ~~**`IC2.img` 에서 `\KMTX` 추출**~~ | **완료 (2026-08-04).** 예상과 달리 바이너리가 아니라 **FreeBASIC 소스**가 통째로 들어 있어 역어셈블이 불필요했다. 결과: 5.5(오염 원인 코드) · 6.8(명령 테이블) · 6.9(SSO `Wrote` 단절) | 완료 |
-| **`\KMTS`·`\KMTG` 소스 정독** | 위 작업의 후속. ICS(`\KMTX`)만 읽었고 과학/가이드 IC 는 미검토다. **IC 쪽 고유 동작**(`SHOPEN` 카운트다운 주기, `DATASOURCE` 처리, `TRANSFER`/`REQ SWAP` 핸드셰이크)을 확정하려면 필요. SAAO 이미지와의 빌드 차이 비교도 함께 | 중간 |
+| ~~**`\KMTS`·`\KMTG` 소스 정독**~~ | **완료 (2026-08-05).** `K.IC`·`G.IC`·`ICGui` 이미지를 추가로 확보해 읽었다. 결과: 6.10(IC 동작 전부) · 6.11(ICG = ICS 같은 바이너리) · `ics_legacy_report.md` 4.6 | 완료 |
+| **`PCTREAD` 4블록 간격의 이유** | 6.10 주석 — 블록 양자화까지는 확정했으나 왜 3블록이 아니라 4블록인지 미해결. `YLinesIn` 갱신 지점과 `NUMPHLINES=32` preheat 처리를 봐야 한다. 시뮬은 실측값을 쓰므로 **동작에는 영향 없음** | 낮음 |
 | **실물 XIS 연동 시험** | `transport.feed()` 로는 검증할 수 없는 라우팅 경로 전체를 처음으로 실증하는 일 | **최우선** |
-| **`STOP`/`ABORT` 실제 구현** | ~~레거시 미구현.~~ **레거시에 구현되어 있다**(6.8). 즉 "새 기능 추가"가 아니라 **"있는 기능을 아직 안 옮긴 것"** 이다. 분기 로직과 거부 문자열이 `commands.py` docstring 에 그대로 적혀 있어 옮기기만 하면 된다 | **높음** |
+| ~~**`STOP`/`ABORT` 실제 구현**~~ | **완료 (2026-08-05).** 레거시 분기(`PAP7KX.CMD:279-302`)를 그대로 옮겼다(9.2.1). 테스트 12개 추가. 단 **`DONE:` 본문 형식은 실측 근거가 없어 우리가 정한 것**이므로 실물 연동에서 재확인 필요 | 완료 |
 | **SSO `Wrote` 결함 운영측 보고** | 6.9 — SSO Caliban 의 `GetFITS.c:532` 가 `STATUS:` 로 고쳐져 있어 ICS 중계가 끊겼고, 그 결과 **매 노출 `FitsSaved` 가 25초 타임아웃으로만 서고 있다.** 레거시를 계속 쓰는 동안은 한 단어(`STATUS:`→`DONE:`) 수정으로 고쳐진다. 신규 `ics` 에는 해당 없음 | 중간 |
 | **`EXPNUM` 자릿수 통일** | 레거시는 ICS 6자리 / IC 4자리라 `INITIALIZE` 로 우회했다. 신규는 이미 6자리로 통일했으니, 외부 문서도 갱신 필요 | 완료(신규) |
 | **구조화 로깅(JSON) 병행** | 이번 48GB 스캔 같은 사후 분석 비용을 크게 낮춘다. 사람이 읽는 로그와 병행 출력 | 높음 |
@@ -1567,7 +1631,7 @@ PING이 로그에 없는 진짜 이유는 `handShake()` 가 `write()`/`sendto()`
 | **파일명 fail-safe 유지** | 1999년 Prospero 시절부터 검증된 데이터 유실 방지 장치. 그대로 가져간다 | 완료 |
 | **`force_ready=270`(12.2초) 대기** | 신규 시스템에서 병목이면 OBSAgent 개정이 필요하다. **현재는 개정하지 않기로 확정**된 상태이므로 기록만 | 보류 |
 | **`CHA` 노드 성격 확인** | 운영자에게 물어보면 바로 풀릴 사안(6.3) | 낮음 |
-| **ICG 오염 여부 확인** | 5장의 버그가 `ICG`/`G.IC`/`G.CB` 발신에도 있는지. OBSAgent 가 가이드를 무시하므로 영향은 없지만 `icg` 구현 시 참고 | 낮음 |
+| ~~**ICG 오염 여부 확인**~~ | **해결됨 (2026-08-05).** ICG 는 ICS 와 **같은 바이너리**라 5.5 의 오염이 그대로 있다(6.11). OBSAgent 가 가이드를 무시하므로 관측 영향은 없다 | 완료 |
 
 ---
 

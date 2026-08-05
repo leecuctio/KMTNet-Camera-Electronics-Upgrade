@@ -66,13 +66,13 @@ class Reply:
 #: (ics_legacy_report 3.4.1, DevNote 6.8).  두 가지가 뒤섞여 있었다:
 #:
 #:   * BIN/STOP/ABORT -- KMTX\PAP7KX.CMD 에 CASE 가 있고 실제로 동작한다.
-#:     STOP 은 ExpLoopFlag=1 이면 SoftStop=1, ABORT 는 GoFlag=0 으로 만든다.
 #:     로그 0건은 "미구현"이 아니라 "아무도 안 썼다"는 뜻이었다.
+#:     STOP/ABORT 는 2026-08-05 에 레거시 분기 그대로 구현했다.  BIN 만 남았다.
 #:   * ROI/DISPL/MOVIE -- 공용 SHARE\PAP7.CMD 에만 있다.  ICS 는 그 파일을
 #:     포함하지 않으므로(PAP7KX.BAS 주석: "the only IC that doesn't use the
 #:     shared command set code") 레거시 ICS 는 이들을 ERROR 로 거부한다.
 #:     따라서 핸들러를 두지 않고 아래 디스패처의 기본 경로로 흘려보낸다.
-NOT_YET_IMPLEMENTED = ('BIN', 'STOP', 'ABORT')
+NOT_YET_IMPLEMENTED = ('BIN',)
 
 #: ICS 범위 밖 -- 과학/가이드 IC 전용 명령.  레거시 ICS 와 동일하게 거부한다.
 #: 핸들러를 정의하지 않는 것 자체가 구현이므로, 참고용으로만 적어 둔다.
@@ -495,29 +495,41 @@ class Dispatcher:
         return self._unimplemented(msg, target)
 
     def cmd_stop(self, msg: Message, target: Target) -> Reply:
-        """STOP -- integration 중지 후 readout/저장은 수행.
+        """STOP -- 적분을 끊고 readout/저장은 정상 수행.
 
-        레거시 상태: **구현되어 있다** (PAP7KX.CMD:279-290).
+        레거시(PAP7KX.CMD:279-290)를 그대로 옮겼다:
+
             IF ExpLoopFlag = 1 THEN PauseFlag=0 : ExpLoopFlag=0 : SoftStop=1
                                     AbortHost = 발신자
             ELSE  ERROR: No integration in progress. Nothing to stop.
-        구현 시: 위 두 갈래를 그대로 따라가면 된다.  셔터를 닫고 카운트다운을
-                 끊은 뒤 정상 readout 경로로 합류한다(sequencer.stop_integration()).
-                 거부 문구는 레거시 문자열을 그대로 쓸 것.
+
+        `ExpLoopFlag = 1` 은 "적분 중"이므로 `sequencer.integrating` 으로 옮겼다.
+        거부 문자열은 레거시 그대로다.
         """
-        return self._unimplemented(msg, target)
+        if self.app.seq.stop_integration(msg.src):
+            return Reply.done('STOP', f'Integration stopped by {msg.src}')
+        return Reply.error('STOP', 'No integration in progress. '
+                                   'Nothing to stop.')
 
     def cmd_abort(self, msg: Message, target: Target) -> Reply:
-        """ABORT -- 전체 중지, readout/저장 안 함.
+        """ABORT -- 노출 전체 중지.  readout 도 저장도 하지 않는다.
 
-        레거시 상태: **구현되어 있다** (PAP7KX.CMD:291-302).
+        레거시(PAP7KX.CMD:291-302)를 그대로 옮겼다:
+
             IF GoFlag = 1 THEN PauseFlag=0 : ExpLoopFlag=0 : GoFlag=0
                                 AbortHost = 발신자
             ELSE  ERROR: No acquisition in progress. Nothing to abort.
-        구현 시: self.app.seq.cancel(save=False) 후 EXPSTATUS=IDLE 을 발신한다.
-                 진행 중이던 저장 태스크도 정리해야 한다.
+
+        `GoFlag = 1` 은 "획득 진행 중"이므로 `sequencer.busy` 로 옮겼다.
+        레거시와 달리 **진행 중이던 저장 태스크도 정리**해야 한다 -- CB 가
+        내부 객체가 되면서 생긴 차이다(DevNote 12.10 과 같은 부류).
+        중지 후 `DONE: EXPSTATUS=IDLE` 을 요청자에게 보내는 것은 시퀀서가
+        맡는다.  안 보내면 OBSAgent 가 READOUT 에 갇혀 opause 로 간다(3.3).
         """
-        return self._unimplemented(msg, target)
+        if self.app.seq.cancel(save=False, requester=msg.src):
+            return Reply.done('ABORT', f'Acquisition aborted by {msg.src}')
+        return Reply.error('ABORT', 'No acquisition in progress. '
+                                    'Nothing to abort.')
 
 
 #: 참고용 -- 이 디스패처가 아는 명령 전부.

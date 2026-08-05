@@ -72,6 +72,10 @@ class Sequencer:
         self._writers: list[asyncio.Task] = []
         #: 저장이 끝날 때까지 재사용을 막기 위한 CCD 별 락
         self._write_lock: dict[str, asyncio.Lock] = {}
+        #: STOP 신호.  세워지면 카운트다운이 즉시 끝나고 readout 으로 넘어간다.
+        self._stop_evt = asyncio.Event()
+        #: ABORT 로 취소됐는지.  _run 의 CancelledError 처리가 이것을 본다.
+        self._aborted_by: str | None = None
 
     # -- 외부 인터페이스 --------------------------------------------------
 
@@ -79,8 +83,18 @@ class Sequencer:
     def busy(self) -> bool:
         return self._task is not None and not self._task.done()
 
+    @property
+    def integrating(self) -> bool:
+        """적분 중인가 -- STOP 의 선행 조건.
+
+        레거시의 `ExpLoopFlag = 1` 에 해당한다 (PAP7KX.CMD:282).
+        """
+        return self.busy and self.state.expstatus == ExpStatus.INTEGRATING
+
     def start(self, count: int, source: str) -> None:
         """GO 접수.  실제 진행은 백그라운드 태스크."""
+        self._stop_evt.clear()
+        self._aborted_by = None
         self._task = asyncio.create_task(
             self._run(count, source), name='ics_sim.exposure')
 
@@ -95,10 +109,50 @@ class Sequencer:
             await asyncio.gather(*self._writers, return_exceptions=True)
             self._writers.clear()
 
-    def cancel(self, save: bool = False) -> None:
-        """STOP/ABORT 가 구현되면 쓸 자리 (현재 미구현 -- commands.py 참고)."""
-        if self._task is not None:
-            self._task.cancel()
+    def stop_integration(self, requester: str) -> bool:
+        """STOP -- 적분만 조기 종료한다.  readout 과 저장은 정상 진행.
+
+        레거시(PAP7KX.CMD:279-290)는 `SoftStop = 1` 을 세우고 `AbortHost` 에
+        요청자를 기록할 뿐, 노출 사이클 자체는 그대로 흘려보낸다.  여기서도
+        카운트다운만 끊는다 -- 셔터 닫힘 알림부터 `Wrote` 까지 전부 정상
+        경로를 탄다.  OBSAgent 입장에서는 그냥 짧은 노출로 보인다.
+
+        Returns:
+            받아들였으면 True.  적분 중이 아니면 False (호출측이 레거시와
+            같은 거부 문자열을 돌려준다).
+        """
+        if not self.integrating:
+            return False
+        log.info('STOP from %s -- ending integration early', requester)
+        self._stop_evt.set()
+        return True
+
+    def cancel(self, save: bool = False, requester: str = '') -> bool:
+        """ABORT -- 노출 전체를 중지한다.  readout 도 저장도 하지 않는다.
+
+        레거시(PAP7KX.CMD:291-302)는 `GoFlag = 0` 으로 되돌리고 `AbortHost` 를
+        기록한다.  통합 구조에서는 진행 중인 태스크를 취소해야 하고, **이미
+        떠 있는 저장 태스크도 함께 정리**해야 한다 -- 레거시는 CB 가 별도
+        프로세스라 이 문제가 없었다(12.10 과 같은 부류).
+
+        Args:
+            save: True 면 진행 중이던 저장은 끝까지 두고 노출만 중단한다.
+            requester: 레거시의 `AbortHost`.  종료 알림을 여기로 보낸다.
+
+        Returns:
+            받아들였으면 True.  노출 중이 아니면 False.
+        """
+        if not self.busy:
+            return False
+        log.warning('ABORT from %s -- cancelling exposure (save=%s)',
+                    requester, save)
+        self._aborted_by = requester or self.cfg.node.ics_id
+        if not save:
+            for w in self._writers:
+                w.cancel()
+            self._writers.clear()
+        self._task.cancel()
+        return True
 
     # -- 본체 -------------------------------------------------------------
 
@@ -113,7 +167,13 @@ class Sequencer:
             self.emit.error(source, '', str(exc), st.expstatus)
             st.expstatus = ExpStatus.IDLE
         except asyncio.CancelledError:
+            # ABORT 로 끊긴 경우에는 OBSAgent 가 IDLE 로 돌아올 수 있도록
+            # 종료를 알려야 한다.  알리지 않으면 CamStatus 가 READOUT 에
+            # 머문 채 force_idle 타임아웃을 타고 opause 로 간다(3.3).
             log.warning('exposure cancelled')
+            st.expstatus = ExpStatus.IDLE
+            if self._aborted_by is not None:
+                self.emit.idle_done(self._aborted_by)
             raise
         finally:
             st.exposing = False
@@ -272,11 +332,28 @@ class Sequencer:
                                     ExpStatus.INTEGRATING)
         self.emit.shutter_closed_ics(source, ExpStatus.INTEGRATING)
 
+    async def _nap(self, seconds: float) -> bool:
+        """seconds 만큼 재우되 STOP 이 오면 즉시 깬다.
+
+        Returns:
+            STOP 때문에 깼으면 True, 정상적으로 다 잤으면 False.
+        """
+        if seconds <= 0:
+            return self._stop_evt.is_set()
+        try:
+            await asyncio.wait_for(self._stop_evt.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            return False
+        return True
+
     async def _countdown(self, exptime: float, tick: float):
         """노출 시간을 tick 간격으로 세며 남은 초를 yield 한다.
 
         마지막 조각은 따로 재우고 yield 하지 않는다 -- 종료 알림
         (`Shutter=Closed .. Remaining=0 sec.`)이 그 역할을 하기 때문이다.
+
+        STOP 이 들어오면 남은 시간을 건너뛰고 조용히 끝난다.  호출측이 곧바로
+        셔터를 닫고 readout 으로 넘어가므로, 바깥에서 보면 짧은 노출과 같다.
         """
         scaled_tick = self.cfg.scaled(tick)
         elapsed = 0.0
@@ -284,12 +361,13 @@ class Sequencer:
             remaining = exptime - elapsed - tick
             if remaining < 1.0:
                 break
-            await asyncio.sleep(scaled_tick)
+            if await self._nap(scaled_tick):
+                return
             elapsed += tick
             yield int(exptime - elapsed)
         rest = max(exptime - elapsed, 0.0)
         if rest > 0:
-            await asyncio.sleep(self.cfg.scaled(rest))
+            await self._nap(self.cfg.scaled(rest))
 
     async def _readout(self, source: str, master: str) -> None:
         """master 의 진행률을 sourceID 에게만 보고한다.

@@ -95,6 +95,50 @@ def drive(script: list[str], cfg: config.SimConfig | None = None,
     return asyncio.run(_drive(cfg or make_config(), script, settle))
 
 
+async def _drive_at(cfg: config.SimConfig, script: list[str], marker: str,
+                    inject: str | list[str], settle: float,
+                    timeout: float) -> Run:
+    """script 를 먹이고, marker 가 발신되면 그 시점에 inject 를 밀어 넣는다.
+
+    STOP/ABORT 처럼 **노출 도중에만 의미가 있는** 명령을 시험하기 위한 것이다.
+    고정된 sleep 으로 타이밍을 맞추면 축척에 따라 깨지므로 실제 발신을 본다.
+    """
+    app = IcsSim(cfg)
+    await app.start()
+    for line in script:
+        app.transport.feed(line)
+        await asyncio.sleep(0.02)
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if any(marker in m for m in app.transport.sent_log):
+            break
+        await asyncio.sleep(0.005)
+    else:  # pragma: no cover -- 마커가 안 나오면 테스트가 의미를 잃는다
+        await app.stop()
+        raise AssertionError(f'marker never emitted: {marker!r}')
+
+    for line in ([inject] if isinstance(inject, str) else inject):
+        app.transport.feed(line)
+        await asyncio.sleep(0.05)
+    try:
+        await app.seq.wait()
+    except asyncio.CancelledError:
+        pass
+    await asyncio.sleep(settle)
+    await app.stop()
+    return Run(sent=list(app.transport.sent_log),
+               violations=list(app.emit.violations))
+
+
+def drive_at(script: list[str], marker: str, inject: str | list[str],
+             cfg: config.SimConfig | None = None,
+             settle: float = 0.6, timeout: float = 10.0) -> Run:
+    """marker 가 나온 시점에 inject 를 끼워 넣고 한 사이클을 돌린다."""
+    return asyncio.run(_drive_at(cfg or make_config(), script, marker,
+                                 inject, settle, timeout))
+
+
 DARK_SCRIPT = ['OBS>ICS projid obs', 'OBS>ICS dark begin',
                'OBS>ICS exp 30', 'OBS>ICS go']
 OBJECT_SCRIPT = ['OBS>ICS ProjID BLG', 'OBS>ICS OBJECT BLG11',

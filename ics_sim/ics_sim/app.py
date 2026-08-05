@@ -65,12 +65,12 @@ class IcsSim:
         보내면 K.IC 앞으로 오는 kstatus/dmawait/datasource 가 도달하지 않는다
         (DevNote 3.1.1).
 
-        **미해결 질문**: 여기서 9개 ID 가 전부 같은 (IP,port) 를 가리키게 된다.
-        레거시 배치에서는 노드마다 포트가 달랐으므로 이 구성은 실측 사례가 없고,
-        XIS 서버 소스가 없어 안전한지 확인할 수 없다.  XIS 가 클라이언트 테이블을
-        주소 기준으로도 관리한다면 뒤 등록이 앞 등록을 덮어쓸 수 있다.
-        그 경우 노드마다 소켓을 따로 여는 방식(2안)으로 전환한다 -- 자세한 배경과
-        판단 근거는 DevNote 3.1.1절.
+        **9개 ID 가 같은 (IP,port) 를 가리켜도 안전하다** -- 2026-08-04 에 XIS
+        서버 소스로 확인했다.  클라이언트 테이블은 노드 ID 로만 키잉되고
+        (`strcmp` 로 ID 만 비교, 주소는 갱신만 한다) 주소 충돌 검사 자체가 없다.
+        브로드캐스트 코드도 *"clients that share the same port as the sending
+        host"* 를 명시적으로 다룬다.  한때 검토하던 "노드마다 소켓을 따로
+        여는 방식(2안)"은 불필요하다 -- 논의 전 과정은 DevNote 3.1.1.
         """
         if not self.cfg.transport.register_all_nodes:
             self.emit.register_ping(self.cfg.node.ics_id)

@@ -157,6 +157,7 @@ python -m pytest tests -q
 | `test_obsagent_contract.py` | OBSAgent 호환 규약 전체 — 상태 전이, 개수 규약, 타임아웃 창, `ExpNum` 왕복, `GO n` |
 | `test_emitter_hygiene.py` | 메시지 오염 방지 (정방향 + 레거시 샘플 역방향 검증) |
 | `test_sequence_golden.py` | 레거시 실측 시퀀스와 대조 |
+| `test_stop_abort.py` | STOP/ABORT — 레거시 분기·거부 문자열, 중지 후 IDLE 복귀 |
 | `test_impv2.py` | 프로토콜 파싱 |
 
 ---
@@ -215,7 +216,16 @@ ics_sim/
 └── hardware/       base.py 계약 · sim.py (현재) / archon.py (다음 단계)
 ```
 
-**레거시와 의도적으로 다른 점** — `STOP`/`ABORT`/`BIN` 은 레거시 ICS 에 구현돼 있지만 여기서는 아직 스텁이다(`strict_legacy` 면 무응답). `ROI`/`DISPL`/`MOVIE` 는 레거시 ICS 명령 테이블에 **아예 없어서** 핸들러를 두지 않았다 — 레거시와 똑같이 `ERROR: … Didn't understand … ?` 로 거부된다. 근거는 [DevNote 6.8](DevNote.md).
+**레거시와의 차이** — `ROI`/`DISPL`/`MOVIE` 는 레거시 ICS 명령 테이블에 **아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `ERROR: … Didn't understand … ?` 로 거부된다. `BIN` 만 아직 스텁이다(`strict_legacy` 면 무응답). 근거는 [DevNote 6.8](DevNote.md).
+
+`STOP`/`ABORT` 는 레거시 분기를 그대로 옮겨 **구현되어 있다**:
+
+```
+OBS>ICS stop     적분만 끊고 readout·저장은 정상 진행
+OBS>ICS abort    전부 중지 (readout·저장 안 함), EXPSTATUS=IDLE 통보
+```
+
+노출 중이 아니면 레거시와 같은 문구로 거부한다 — `No integration in progress. Nothing to stop.` / `No acquisition in progress. Nothing to abort.` 단 **수락 시의 `DONE:` 본문은 실측 근거가 없어 우리가 정한 것**이다([DevNote 9.2.1](DevNote.md)).
 
 ---
 

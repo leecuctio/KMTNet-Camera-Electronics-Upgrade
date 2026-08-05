@@ -138,6 +138,23 @@ C:\0ICBOOT\IC.BAT            C:\0ICBOOT\IC.BAT          C:\0ICBOOT\IC.BAT
 > 즉 **ICS 는 자기가 어느 사이트에 있는지 모르고, `TELID` 를 비롯한 사이트 정보는 전부 TC 텔레메트리에서 런타임에 받는다**(5.3절). 같은 이미지를 어느 사이트에 올려도 그대로 돈다.
 >
 > → **이것이 5.3.2절의 pass-through 설계 판단을 뒷받침한다.** 사이트별 필드 테이블을 두지 않고 "받은 대로 넘기고 없는 필드는 sentinel" 로 가기로 한 것은 레거시의 실제 구조와 같은 방향이었다.
+>
+> **⑧ 네 프로그램의 정체 — 이미지 5개로 확정 (2026-08-05).** `G.IC`(`KG2016-06-02:1407`) · `K.IC`(`KS2016-01-13:1370`) · `ICGui`(`KX2016-03-23:1381`) 이미지가 추가로 확보되어, 계통 전체의 구성이 드러났다.
+>
+> **모든 이미지가 세 프로그램을 전부 담고 있고**(`\FREEBASI\{KMTX,KMTS,KMTG}` + `PAP7K{X,S,G}.EXE`), **역할은 부팅 설정 `0ICCFG\IC.INI` 한 파일이 정한다**:
+>
+> | 머신 | `INSTRUMENT` | `ICHOST` | `CBHOST` | `ISISHOST` | `FITSTEMPLATEFILE` | 실행 디렉토리 |
+> |---|---|---|---|---|---|---|
+> | ICS | `ICS` | `ICS` | — | `ICS.IS` | — | `\KMTX` |
+> | ICG | `ICG` | `ICG` | — | `ICG.IS` | — | `\KMTX` |
+> | K.IC | `KMTNk` | `K.IC` | `K.CB` | `K.IS` | `FITSCTIO.TPL` | `\KMTS` |
+> | G.IC | `KMTNg` | `G.IC` | `G.CB` | `G.IS` | `FITSCTIO.TPL` | `\KMTG` |
+>
+> 세 가지가 여기서 확정된다.
+>
+> 1. **`ICS` 와 `ICG` 는 같은 바이너리다** — 둘 다 `\KMTX` 의 `PAP7KX.EXE` 를 돌리고, `ICHost` 값만 다르다. 1.3.1②에서 "같은 소프트웨어로 보인다"고 한 추정이 부팅 설정으로 확정됐다. 분기점은 소스에 **다섯 군데**뿐이다(9.5절, `icg_legacy_report.md`).
+> 2. **사이트 식별은 통합기가 아니라 검출기에 있다.** ⑦에서 "ICS 이미지에 사이트 정체성이 없다"고 한 것은 맞지만, **IC 쪽에는 `FITSTEMPLATEFILE` 한 줄이 있다.** FITS 헤더를 만드는 쪽이 IC 이기 때문이며, 통합기는 여전히 사이트를 모른다. 신규 통합 설계는 두 역할을 합치므로 **템플릿 선택은 필요하고 사이트별 텔레메트리 테이블은 불필요**하다.
+> 3. **`ISISHOST` 는 무시된다.** ini 는 머신마다 `ICS.IS`/`K.IS`/`G.IS`/`ICG.IS` 를 지정하지만, `PAP7KX.BAS` 는 시작 직후와 메인 루프 진입 전에 `ISISHost = "XIS"` 를 **두 번 덮어쓴다**(주석: *"Overriding bad .ini file entry"*). 로그에 relay 이름이 아니라 `XIS` 만 보이는 이유다.
 
 > **`TRANSFER DISK<n>` 의 정체가 여기서 풀린다.** 4.2절의 `DISK0`~`DISK3`(6.2절에서 최대 4중으로 정정)은 물리 SCSI 디스크가 아니라 **VDOS 게스트에 붙인 가상 디스크**다. 1998년 SCSI 이중버퍼 패턴이 가상화 환경으로 그대로 이식돼 살아남은 것이다. 게스트가 가상 디스크에 쓰면 호스트의 Caliban(`*.CB`)이 그것을 읽어 `/mnt/ICSData` 로 옮긴다.
 
@@ -584,6 +601,80 @@ OBS>GMON DONE: CamStatus=READY FitsSaved=1 ExpSet=0 ExpRem=0 TelStatus=TRACKINGS
 ```
 
 `GMON`은 초당 `sysstatus`를 `OBS`에 폴링해 카메라·망원경 통합 상태를 하나의 요약 메시지로 받는다. 이 채널의 정체는 이후 OBSAgent 분석으로 확정됐다: `sysstatus`는 OBSAgent(OBS 노드)의 정식 명령이고, 응답 문자열(`CamStatus=... TelStatus=... ...`)은 OBSAgent 내부의 `GetSysStatus()`가 생성한다. 같은 정보가 `/data/Logs/ObsStatus.txt` 파일로도 5초마다 기록된다 — 상세 포맷과 상태값 정의는 [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 6~7절 참고.
+
+### 4.6 IC 쪽 동작 — 소스로 확정 (2026-08-05 신규)
+
+`K.IC` 이미지의 `\FREEBASI\KMTS\PAP7KS.{BAS,CCD}` 와 공용 `SHARE\PAP7.{INC,CMD}` 를 읽어, 4.2·4.3절의 로그 실측이 어디서 나오는지 확정했다. **`K.IC` 이미지의 공용 소스는 ICS 이미지의 것과 바이트 단위로 같다** — 즉 5.6.6절의 오염 버그 분석이 IC 에도 그대로 적용된다.
+
+#### (1) `Acquisition Complete` 의 마침표 비대칭은 의도된 것이다
+
+`PAP7KS.CCD:172-176`, readout 완료 직후:
+
+```basic
+PCTRead = 100
+OutBuffer(ConfirmPort) = "STATUS: PCTREAD=" + TRIM(STR(PCTRead)) + " Acquisition Complete. Disk Transfer Starting."
+CALL PRT(ConfirmPort, ICHost + ">" + ConfirmHost + " " + OutBuffer(ConfirmPort))
+OutBuffer(ConfirmPort) = "STATUS: Acquisition Complete"
+CALL PRT(ConfirmPort, ICHost + ">" + AcquisitionInitiator + " " + OutBuffer(ConfirmPort))
+```
+
+**두 메시지가 서로 다른 상대에게 서로 다른 문자열로 나간다** — `ConfirmHost`(=OBS)에는 **마침표가 있는** `Acquisition Complete.`, `AcquisitionInitiator`(=ICS)에는 **마침표가 없는** `Acquisition Complete`. 4.2절에서 로그로 관찰한 비대칭이 우연이 아니라 소스 그대로였다.
+
+**이것이 8.0.1절 (2)·(3)의 "마침표 포함 4회" 규약이 성립하는 이유다.** OBSAgent 는 `strstr(msg, "Acquisition Complete.")` 로 세므로 **OBS 로 간 4개만 세어지고 ICS 로 간 4개는 안 세어진다.** 마침표를 빠뜨리면 카운트가 서지 않아 `force_idle` 타임아웃 → `opause` 로 간다.
+
+#### (2) `PCTREAD` 는 256라인 DMA 블록 단위로 나간다
+
+`PAP7KS.CCD:425-434` (master 만, `I_Am_Driving > 0`):
+
+```basic
+'-- Send update every five percent of readout, but not more than 1/2 Hz
+PCTRead = (YLinesIn/DetY) * 100
+IF (PCTRead >= PctToUpdate) AND TimesUp(LastUpdate,2) > 0 THEN
+   OutBuffer(ConfirmPort) = "STATUS: PCTREAD=" + TRIM(STR(PCTRead))
+   CALL PRT(ConfirmPort, ICHost + ">" + ConfirmHost + " " + OutBuffer(ConfirmPort))
+   PctToUpdate = PctToUpdate + 5
+   LastUpdate = TIMER
+END IF
+```
+
+- **master 만 보낸다.** 로그에서 `K.IC` 만 `PCTREAD=` 를 내는 이유다.
+- 임계값은 **5%씩 누적**(5, 10, 15, …)하고, **최소 2초 간격**이 함께 걸린다.
+- 결정적인 것은 **이 검사가 라인마다가 아니라 256라인 DMA 블록마다 일어난다는 점**이다(`FOR DMALineCount = 1 TO 256` 바깥에 있다). 과학 CCD 는 `DetY = 9232`(`DetX = 9216`) 이므로 **블록 하나 = 2.773%**.
+- 실측(CTIO)은 `6, 17, 28, …, 94` 로 **정확히 +11 씩, 3.37초 간격**이다. **+11% = 4블록(11.09%)** 으로 정확히 떨어진다 — 즉 관측된 계단은 **블록 양자화의 결과**이고, 2초 하한은 CTIO 의 readout 속도에서는 구속 조건이 아니다.
+- 다만 **왜 3블록(2.53초, 이미 2초를 넘김)이 아니라 4블록마다인지는 이 코드만으로 설명되지 않는다.** `YLinesIn` 갱신 지점과 preheat 라인(`NUMPHLINES=32`) 처리를 더 봐야 한다. 시뮬레이터는 **실측값**(`pctread_step=11`, `pctread_tick=3.37`)을 쓴다 — OBSAgent 가 실제로 본 것이 그 값이기 때문이다.
+
+#### (3) 셔터 카운트다운 주기 — `4.9초` 하한
+
+`SHARE\PAP7.INC:128-131` 이 `TimesUp(LastUpdate, 4.9)` 로 걸러 `STATUS: Integration Remaining=<n> sec.` 를 `ShutterCloseHost` 에 보낸다. 실측 **5.217초**는 이 하한에 루프 한 바퀴가 더해진 값이다. DARK 쪽(ICS 가 직접 세는 `Remaining=N sec. of M sec.`)은 `PAP7KX.CCD:242` 의 `TimesUp(LastIntegrationUpdate, 5)` → 실측 **5.00초**. **두 경로의 주기가 다른 것이 우연이 아니라 상수가 다른 것이다.**
+
+#### (4) `USESTATUS` 의 정확한 의미
+
+`SHARE\PAP7.CMD` 의 `CASE "SHOPEN"` — `SHOPEN <초> <ConfirmHost> [USESTATUS]` 에서 `Words(4) = "USESTATUS"` 면 `UseStatusFlag = 1`. 그리고 `PAP7.INC:138-141`:
+
+```basic
+IF UseStatusFlag = 0 THEN
+   OutBuffer(ShutterCloseBuffer) = "DONE: Shutter=Closed Integration Remaining=0 sec."
+ELSEIF UseStatusFlag = 1 THEN
+   OutBuffer(ShutterCloseBuffer) = "STATUS: Shutter=Closed Integration Remaining=0 sec."
+END IF
+```
+
+**`USESTATUS` 는 셔터 닫힘 알림의 메시지 타입을 `DONE:` → `STATUS:` 로 바꾸는 스위치다.** ICS 가 항상 이 플래그를 붙여 보내는 이유가 소스 주석에 있다 — *"This will produce a 'DONE: SHOPEN' message to Skip's UI. Needs to be a STATUS: message"*(`PAP7KX.CCD:172`). 즉 **관측자 UI 가 `DONE:` 을 명령 완료로 오해하는 것을 피하려는 조치**였다.
+
+#### (5) 디스크 전송 핸드셰이크
+
+`PAP7KS.CCD:1290-1292` — IC 가 CB 에 전송을 지시한다:
+
+```basic
+'-- Caliban confirms transfer to ConfirmHost - causes trouble for Skip's UI
+'CALL PRT(1,ICHost+">"+CBHost+" TRANSFER "+Disks(WriteDiskNum).SynchName+" "+STR(...)+" "+ConfirmHost)
+'-- Caliban confirms transfer to whoever sent the "GO"
+CALL PRT(1,ICHost+">"+CBHost+" TRANSFER "+Disks(WriteDiskNum).SynchName+" "+STR(Disks(WriteDiskNum).ImageCount)+" "+AcquisitionInitiator)
+```
+
+세 번째 인자가 **완료 보고를 받을 상대**이고, 주석에서 보듯 `ConfirmHost`(관측자 UI)에서 `AcquisitionInitiator`(GO 를 보낸 쪽)로 **의도적으로 바꾼 것**이다. 6.3절에서 `TRANSFER DISK0 <n> C1` 처럼 제3의 sourceID 가 보이는 것은 그때 GO 를 보낸 주체가 그것이었다는 뜻이다.
+
+역방향은 `SHARE\PAP7.CMD:2252-2270` — CB 가 `REQ SWAP` 을 보내면 IC 는 **미전송 이미지가 남아 있으면 `TRANSFER …` 를 한 번 더**, 없으면 `ACK SWAP` 을 돌려준다. 4.2절의 `REQ SWAP`/`ACK SWAP` 왕복이 이것이다.
 
 ---
 
