@@ -74,9 +74,13 @@ ICS>AL PING    K.IC>AL PING   M.IC>AL PING   T.IC>AL PING   N.IC>AL PING
 
 `ICS` 하나만 등록하면 OBSAgent 의 `kstatus`/`dmawait`/`datasource` 가 도달하지 않는다 — 그 명령들은 개별 IC 주소로 오기 때문이다.
 
-> ⚠️ **미해결 항목**: 이러면 9개 ID 가 전부 같은 (IP,port) 를 가리키게 되는데, **레거시 배치에는 그런 사례가 없어 XIS 가 이를 받아주는지 확인되지 않았다.** 실물 XIS 에 붙였을 때 `kstatus` 가 도달하지 않으면 노드별 소켓 방식으로 바꿔야 한다. 배경·근거·전환 조건은 [DevNote 3.1.1](DevNote.md). `[transport] register_all_nodes = false` 로 끌 수는 있으나 그러면 개별 IC 명령을 받지 못한다.
+> **9개 ID 가 같은 (IP,port) 를 써도 된다** — XIS 서버 소스로 확인했다(2026-08-04). 클라이언트 테이블은 **노드 ID 만으로 키잉**되고 주소 충돌 검사가 없으며, `messages.c` 는 여러 클라이언트가 한 포트를 공유하는 경우를 명시적으로 다룬다. 소켓 하나로 9개 ID 를 등록하는 현재 방식이 안전하다. 근거와 논의 전 과정은 [DevNote 3.1.1](DevNote.md).
 >
-> `bind_host` 기본값이 `127.0.0.1` 이라 **로컬에서만 받는다.** 외부 장비와 붙이려면 `0.0.0.0` 으로 바꿀 것.
+> XIS 를 재시작하면 `XIS>AL PING` 이 오고, 시뮬은 여기에 **9개 ID 전부로 PONG** 을 돌려 자동 재등록된다. 다만 그 PING 을 받으려면 시뮬 주소가 XIS `isis.ini` 의 `UDPPort` 목록에 있어야 한다(운영 측 작업, 한 줄).
+>
+> `[transport] register_all_nodes = false` 로 끌 수는 있으나 그러면 개별 IC 명령을 받지 못한다.
+>
+> ⚠️ `bind_host` 기본값이 `127.0.0.1` 이라 **로컬에서만 받는다.** 외부 장비와 붙이려면 `ics_sim.ini` 에서 `0.0.0.0` 으로 바꿀 것 (CLI 인자는 없다).
 
 > 실제 배치에서 ICS↔XIS 링크만 시리얼(`/dev/ttyS0`)이지만, 시뮬은 UDP 만 쓴다. 이유는 [DevNote 15장](DevNote.md#15-범위-밖과-그-이유).
 
@@ -95,6 +99,8 @@ python -m ics_sim --bug-compat
 ```
 
 레거시의 커맨드워드 오염을 의도적으로 재현한다. 골든 대조용이며 **기본은 꺼짐**. 자세한 내용은 [DevNote 5장](DevNote.md#5-메시지-오염-버그--원인-분석과-신규-설계-대응).
+
+원인 코드까지 확정돼 있다 — 레거시 ICS 의 `SUB Prt` 가 첫 낱말이 콜론으로 끝나기만 하면 포트별 `CommandEcho` 를 무조건 끼워 넣고, 그 슬롯은 정상 운용 중 비워지지 않는다. 같은 함수가 노출 중 모든 콜론 메시지에 ` EXPSTATUS=` 접미사도 붙인다. `ics_sim` 은 커맨드워드를 매 메시지 인자로 받고 `emitter.validate()` 로 적층·재등장을 잡아 이 경로를 구조적으로 갖지 않는다.
 
 ### 결함 주입
 
@@ -128,11 +134,15 @@ CLI 인자가 같은 키를 덮어쓴다. 전 항목 설명은 [DevNote 7장](De
 
 | 인자 | 설명 |
 |---|---|
+| `-c` / `--config <파일>` | 설정파일 경로 (기본 `ics_sim.ini`) |
 | `--time-scale 0.1` | 10배 빠르게 (테스트용) |
 | `--node-mode merged` | 발신 이름을 전부 `ICS` 로 (통합 노드 형태) |
 | `--backend archon` | 실기 백엔드 (현재 스텁) |
 | `--no-console` | 키보드 인터페이스 없이 |
 | `--quiet-wire` | 메시지 출력 끄기 |
+| `--log-level debug` | 로그 상세도 |
+
+`--bind-port`·`--xis-host`·`--xis-port`·`--data-dir`·`--fits`/`--no-fits`·`--bug-compat`·`--inject` 도 같은 방식으로 ini 값을 덮어쓴다. 전체 목록은 `python -m ics_sim --help`.
 
 ---
 
@@ -165,9 +175,22 @@ python tools/scan_legacy_logs.py shapes <logdir> -o shapes.txt
 # OBSAgent CamStatus 재생 -- 상태 전이 실측
 python tools/scan_legacy_logs.py camstatus <logdir>
 
+# 오염 패턴만 추려 테스트 픽스처로
+python tools/scan_legacy_logs.py patterns <logdir> -o tests/fixtures/bug_patterns.txt
+
 # 골든 픽스처 생성
 python tools/extract_golden.py <logfile> --around 'Image 1 of 5 complete' -o out.txt
 ```
+
+### 레거시 ICS 소스 꺼내 보기
+
+레거시의 실제 동작을 확인해야 할 때는 VDOS 디스크 이미지를 열면 된다. **IC/ICS 는 FreeBASIC 으로 작성돼 있고 소스가 실행파일과 함께 들어 있다.** raw MBR + FAT32 라 마운트도 관리자 권한도 필요 없다:
+
+```bash
+7z x "<이미지>/IC2.img" -o<대상> -y -r 'FREEBASI\KMTX\*' 'FREEBASI\SHARE\*'
+```
+
+읽을 것은 `KMTX\PAP7KX.{BAS,CMD,CCD}`(ICS 본체)와 `SHARE\PAP7{.INC,COM.INC,.CMD}`(공용·통신). 이미지는 `__localonly_*` 라 비커밋이며, 절차와 근거는 [DevNote 2.2](DevNote.md).
 
 ---
 
@@ -175,18 +198,24 @@ python tools/extract_golden.py <logfile> --around 'Image 1 of 5 complete' -o out
 
 ```
 ics_sim/
+├── __main__.py     CLI 진입점
+├── app.py          기동·종료·노드 등록
 ├── config.py       설정 로드 + 자가검증
 ├── impv2.py        IMPv2.5 파싱/조립
 ├── transport.py    UDP (XIS 경유 / direct-reply)
 ├── nodes.py        9개 노드 수신 라우팅
 ├── state.py        노출 설정 + CCD별 상태
 ├── telemetry.py    TC 질의 · 역순 중계
-├── emitter.py      메시지 방출 + 오염 검증
+├── emitter.py      메시지 방출 + 오염 검증   ← 모든 발신 문자열이 여기 한 곳에
 ├── sequencer.py    노출 상태머신
 ├── commands.py     명령 디스패치
-├── obsagent_model.py   OBSAgent CamStatus 모델
-└── hardware/       sim.py (현재) / archon.py (다음 단계)
+├── fitsout.py      FITS 생성 (헤더는 실기와 같은 경로)
+├── console.py      로컬 키보드 인터페이스
+├── obsagent_model.py   OBSAgent CamStatus 모델 (테스트용 재구현)
+└── hardware/       base.py 계약 · sim.py (현재) / archon.py (다음 단계)
 ```
+
+**레거시와 의도적으로 다른 점** — `STOP`/`ABORT`/`BIN` 은 레거시 ICS 에 구현돼 있지만 여기서는 아직 스텁이다(`strict_legacy` 면 무응답). `ROI`/`DISPL`/`MOVIE` 는 레거시 ICS 명령 테이블에 **아예 없어서** 핸들러를 두지 않았다 — 레거시와 똑같이 `ERROR: … Didn't understand … ?` 로 거부된다. 근거는 [DevNote 6.8](DevNote.md).
 
 ---
 
