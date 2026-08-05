@@ -1,0 +1,6 @@
+# 이 폴더는 레거시 XIS(ISIS) 배포본의 원본 보관소다.
+# 저장소 루트 .gitignore 의 일반 규칙이 원본 파일명을 걸러내지 않도록 여기서 되살린다.
+#   *.log   → src/server/isis.log (XIS 서버 로그 형식 샘플, 원본 동봉물)
+#   test.*  → src/server/test.ini, branches/xisis-2.7.3/server/test.ini (개발용 설정)
+!*.log
+!test.*

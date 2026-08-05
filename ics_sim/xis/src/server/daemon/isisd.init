@@ -1,0 +1,82 @@
+#! /bin/sh
+#
+# ISIS server daemon init script
+#
+# Author: Richard Pogge, OSU Astronomy Dept
+#         pogge@astronomy.ohio-state.edu
+#
+# /etc/init.d/isisd
+# 
+### BEGIN INIT INFO
+# Provide:    		isis
+# Required-Start:	$network
+# Required-Stop:
+# Default-Start:	3 5
+# Default-Stop:		0 1 2 6
+# Short-Description: ISIS server daemon, providing message-passing
+#                    services for the OSU astronomical instrument
+#                    data-taking system.  Requires networking so we
+#                    operate in run levels 3 and 5
+#
+### END INIT INFO
+#
+# source the function library
+
+. /etc/rc.d/init.d/functions
+
+# get the network config - we require networking to operate
+
+. /etc/sysconf/network
+
+if [ "${NETWORKING}" = "no" ]
+    then
+    exit 0
+fi
+
+# Make sure the isisd binary is installed
+
+ISISD_BIN=/lhome/dts/bin/isisd
+
+test -x $ISISD_BIN || { echo "$ISISD_BIN not installed";
+    if [ "$1" = "stop" ]; then exit 0;
+    else exit 5; fi; }
+
+# Make sure the required isisd runtime config file exists
+
+ISISD_CFG=/lhome/dts/Config/isisd.ini
+
+test -r $ISISD_CFG || { echo "$ISISD_CFG config file not found";
+    if [ "$1" = "stop" ]; then exit 0;
+    else exit 5; fi; }
+
+# Do it...
+
+RETVAL=0
+prog=isisd
+
+case "$1" in
+    start)
+	echo -n $"Starting $prog: "
+	$ISISD_BIN
+	touch /var/lock/subsys/isisd
+	echo
+	exit 0
+	;;
+    stop)
+	echo -n $"Shutting down $prog: "
+	killproc $ISISD_BIN
+	rm -f /var/lock/subsys/isisd
+	echo
+	;;
+    restart)
+	$0 stop
+	$0 start
+	;;
+    status)
+	status $prog
+	;;
+    *)
+	echo $"Usage: $0 {start|stop|restart|status}"
+	RETVAL=1
+esac
+exit $RETVAL

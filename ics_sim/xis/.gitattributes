@@ -1,0 +1,14 @@
+# 이 폴더는 레거시 XIS(ISIS) 배포본의 원본 보관소다. 줄끝 정규화를 끈다.
+#
+# 켜 두면 git 이 checkout 하는 머신의 core.autocrlf 에 따라 내용을 바꿔 쓰고,
+# 그 결과 (1) 원본과 바이트가 달라져 SHA256SUMS.txt 검증이 깨지며
+#         (2) Linux 에서 실행할 셸 스크립트가 `#!/bin/csh^M` 이 되어 망가진다.
+# 원본이 CRLF 면 CRLF 그대로 보존하는 것이 보관본의 요건이다.
+* -text
+
+# 이번에 새로 쓴 문서만 저장소 공통 규칙(LF)을 따른다.
+xis.md         text eol=lf
+MANIFEST.md    text eol=lf
+SHA256SUMS.txt text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf

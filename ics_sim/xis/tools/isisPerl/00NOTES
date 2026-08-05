@@ -1,0 +1,117 @@
+modsPerl - MODS Command Scripting Engine
+Release Notes
+Updated: 2011 Oct 31 [rwp/osu]
+
+This file gives the release notes for the MODS runtime scripting engine,
+which is currently implemented in Perl.  See the 00README file for 
+a general description of modsPerl.
+
+See: www.astronomy.ohio-state.edu/MODS/ObsTools/modsTools/ for a 
+     description of the MODS observing scripting system.
+
+---------------------------------------------------------------------------
+
+Release Notes:
+
+2011 Oct: Version 1.1 - Minor changes after the Sept 2011 science runs,
+          added WFSWait command to execMODS for imaging scripts
+          changed print color to Cyan for visibility.
+
+          Added true SIGINT (Ctrl+C) handling to execMODS and acqMODS, 
+          including a more sophisticated post-abort cleanup routine, 
+          and a normal end-of-script cleanup capability.
+
+          Added the modsMask command to operate either the MODS1 or
+          MODS2 mask system for performing slit mask exchanges.
+
+          Minor change to ISIS.pm to say what command timed out.
+    
+    Version Summary:
+        acqMODS  0.7.1
+        execMODS 1.8.3
+        execISIS 0.1.0
+        modsCmd  0.5.8 
+        isisCmd  1.0.3 
+        modsMask 0.1.3  <-- new this release
+
+
+2011 May: Version 1.0 - first non-beta release
+   execMODS - added abort/retry/ignore on errors
+              added -u/--unattended to allow unattended operation and
+                suppress abort/retry/ignore (e.g., for morning unattended
+                calibrations).
+              added nimgs=1 implicit on obsmode/calmode/setupmode
+              Ready for non-beta release.
+   listMODS - added handling for implicit nimgs above
+   acqMODS  - extended abort/retry to include ignore like execMODS,
+               but no unattended mode (not indicated).
+               ready for non-beta release
+   modsCmd  - added Getopt::Long for command-line option handling, and
+               now use -t to allow timeouts. Has interesting consequences
+               if command arguments include negative numbers.  May regret...
+   execISIS - New tool.  Used to run "scripts" of ISIS commands.  Will keep
+               this away from observers, but useful for support scripts.
+               Will beta test during May run, but likely early release.
+
+
+2011 Apr: Version 0.7.0
+   execMODS - changed myID, numerous bug fixes as we used it heavily.
+              this should be the last beta version (hooray!)
+   acqMODS - Beta version, many changes.  Exercised extensively during this
+             run. Does implicit IMCS, resets nimgs, and numerous
+             bug fixes.  Added abort/retry prompt on errors.
+   ISIS.pm - DONE: et al. tests are now case insensitive!  Funny how
+             long that went unnoticed (all automatic systems use all upper
+             but sending done: by hand revealed the problem).
+
+
+2011 Mar: Version 0.6.0
+   execMODS - implicit IMCSLOCK following INSTCONFIG
+              implemented full block-level re-entrancy, including
+                run-from and run-only block options.
+              added color to error messages
+   acqMODS - added ACQROI to allow changing CCD ROI for acquisition
+             added color to error messages
+   listMODS - support for the IMCSLOCK implicit command in execMODS
+              so we don't screw up command numbers for reentrancy.
+              gratuitous color printout support
+
+
+2011 Feb: Version 0.5.0
+   acqMODS - Beta version tested, working out detailed procedures
+   execMODS - added PAUSE command.  Added Getopt::Long for smart 
+              command-line option handling.  Added and tested script 
+              re-entrancy and limited -e Exec: block re-entrancy.
+   listMOD - now prints block labels w/o numbers, better for execMOD
+             re-entrancy
+   modsCmd - replacment for doMODS (but keeping as an alias)
+
+
+2011 Jan: Version 0.4.0
+   Telescope disabled, so extensive testing and extension of execMODS and
+   listMODS. Minor work on ISIS.pm to make timeout handling more robust.  
+   Sketched out acqMODS, but until we get some time on-sky, it is mostly 
+    notional at this point.  
+   isisCmd written to provide a direct comm tool for low-level ISIS commands.
+
+
+2010 Dec: Version 0.3.0
+   Extensive development of execMODS during a run of extremely bad weather
+   (we never opened).  Added PRINT command, and added stripFirst routine
+   to take care of internal commands.  Extensive exercising.  First 
+   version of listMODS.
+
+
+2010 Nov: Version 0.2.0 
+   Developments for MODS1 at LBT as it nears the end of AGw commissioning.
+   Changes to doMODS, first version of execMODS from OSU on the mountain.
+   The latter is first true scripting engine in alpha release.
+
+
+2010 June: Version 0.1.0
+   Beta version at LBT: updates to the ISIS.pm module and field versions 
+   of various lab scripts from OSU.  First instance of the doMODS script
+   send single data-taking system commands to the MODS control panel backdoor.
+
+
+

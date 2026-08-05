@@ -1,0 +1,95 @@
+#!/bin/csh
+#
+# chkisis - checks the status of the ISIS system on this computer
+#
+# usage: chkisis
+#
+# R. Pogge, OSU Astronomy Dept
+# pogge@astronomy.ohio-state.edu
+# 2010 May 2
+#
+# Modification History
+#   2010 Sep 16 - added pctcs to processes reported
+#   2010 Dec 15 - new way of doing the CB agents [rwp/osu]
+#   2013 Jan 30 - added ie4x hooks [rwp/osu]
+#
+###########################################################################
+
+set numProc = 0
+set userID = $USER
+
+printf "Data Server:\n"
+printf "  Service\tState\t\tOwner\n"
+printf "  --------------------------------------\n"
+
+# Is the ISIS server running, in what version (interactive or daemon)?
+
+ps h -C isis >& /dev/null
+if ($status) then
+   set isisUp = 0
+   set isisUser = ${userID}
+else
+   set isisUp = 1
+   set isisUser = `ps eo user h -C isis`
+   @ numProc ++
+endif
+
+if (${isisUp}) then
+   printf "  isis\t\tRunning\t\t${isisUser}\n"
+else
+   ps h -C isisd >& /dev/null
+   if ($status) then
+      printf "  isis\t\tStopped\n"
+   else
+      set isisUp = 1
+      set isisUser = `ps eo user h -C isisd`
+      printf "  isisd\t\tRunning\t\t${isisUser}\n"
+   endif
+endif
+     
+# Is the caliban agent running?
+
+ps h -C caliban >& /dev/null
+if ($status) then
+   set cbUp = 0
+   set cbUser = ${userID}
+else
+   set cbUp = 1
+   set cbUser = `ps eo user h -C caliban`
+   @ numProc ++
+endif
+
+if (${cbUp}) then
+   printf "  caliban\tRunning\t\t${cbUser}\n"
+else
+   printf "  caliban\tStopped\n"
+endif
+
+# Is the tcsironmental monitor agent running?
+
+ps h -C pctcs >& /dev/null
+if ($status) then
+   set tcsUp = 0
+   set tcsUser = ${userID}
+else
+   set tcsUp = 1
+   set tcsUser = `ps eo user h -C pctcs`
+   @ numProc ++
+endif
+
+if (${tcsUp}) then
+   printf "  pctcs\t\tRunning\t\t${tcsUser}\n"
+else
+   printf "  pctcs\t\tStopped\n"
+endif
+
+printf "  --------------------------------------\n"
+
+# last check
+
+if ($numProc == 0) then
+   echo " ** No Data-Taking System services currently running "
+endif
+echo " "
+
+exit 0
