@@ -1,6 +1,6 @@
 # KMTNet-CEU Decision Log
 
-최종 갱신일: 2026-07-02
+최종 갱신일: 2026-08-07
 
 ## D-001: Primary raw archive product는 L0 64-amplifier MEF로 한다
 
@@ -198,3 +198,70 @@
 - 절대 astrometry 품질은 기준성표 품질에 종속된다 (부트스트랩 성표는 상대 정렬).
 - CR rejection은 전처리에 포함하지 않는다 (후단, 필요 시 옵션).
 
+
+## D-009: Archon raw pair 파일명은 ICD v4.0 형식을 유지한다
+
+날짜: 2026-08-07
+
+상태: Accepted
+
+결정:
+
+- Archon 컨트롤러 구성이 저장하는 science raw 파일명은
+  `KMTN.<YYYYMMDD>.<NNNNNN>.MK.fits` / `KMTN.<YYYYMMDD>.<NNNNNN>.NT.fits`이다.
+- `<NNNNNN>`은 6자리 고정폭이며 0으로 좌측 패딩한다.
+
+근거:
+
+- ICD v4.0에서 검증된 형식이고 converter의 `find_pair()`,
+  `default_output_name()`이 이미 이 형식을 인식한다.
+- 레거시 파일명의 CCD 문자 슬롯을 되살리는 대안은 OBSAgent `FitsNum` 파서를
+  만족시키려는 목적이었으나, D-010이 그 문제를 메시지 계층에서 해결하므로
+  파일명을 타협할 이유가 없어졌다.
+
+영향:
+
+- Converter 변경 없음.
+- 6자리 zero-padding은 필수 조건이다. 어기면 (1) `find_pair()`가 짝 파일을
+  찾지 못하고, (2) 출력 MEF 이름이 fallback 경로로 빠지며, (3) OBSAgent의
+  `FitsNum` 15자 슬라이스가 밀린다.
+- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md` 2.3절.
+
+## D-010: raw 저장 단위와 OBSAgent 통보 단위를 분리한다
+
+날짜: 2026-08-07
+
+상태: Accepted
+
+결정:
+
+- raw FITS는 **컨트롤러 단위**로 저장한다 (노출 1회당 2개: MK, NT).
+- ICS가 OBSAgent로 내보내는 저장 완료 통보는 **CCD 단위로 4회** 유지한다.
+  파일 1개를 다 쓴 시점에 그 파일이 담은 chip 2개분 메시지를 함께 낸다.
+- 메시지의 `LASTFILE`에는 레거시 형태의 논리 이름
+  `KMTN<chip 소문자>.<YYYYMMDD>.<NNNNNN>.fits`를 싣는다.
+
+```text
+KMTN.20260807.012345.MK.fits 저장 시
+  STATUS: Wrote LASTFILE=/data/KMTNm.20260807.012345.fits
+  STATUS: Wrote LASTFILE=/data/KMTNk.20260807.012345.fits
+```
+
+근거:
+
+- OBSAgent는 `Wrote` 4회로 `FitsSaved=1`을 세우고 `"KMTN"` 위치 +6부터 15자를
+  잘라 `FitsNum`으로 쓴다 (`commands.c` 776-784). 파일 2개를 그대로 통보하면
+  `Wrote`가 2회뿐이라 매 노출 25초 타임아웃 경로로 빠진다.
+- `ICS>OBS`의 메시지 타입은 원래 `STATUS: Wrote`이다 (DevNote 6.1 실측 로그).
+  SSO의 `STATUS:` 결함은 `CB>ICS` 구간이라 무관하다.
+- OBSAgent를 고치지 않고 ICS 발신 계층만으로 규약을 만족시킬 수 있다.
+
+영향:
+
+- OBSAgent 변경 없음. `count_wrote=4`, `FitsNum='20260807.012345'` 성립.
+- **`LASTFILE`이 실재하는 경로가 아니게 된다.** 논리 이름에 해당하는 파일은
+  디스크에 없다. 아카이브·DTS·QL 도구는 `LASTFILE` 대신 raw 헤더의
+  `FILENAME` / `EXPID` / `CTRLTAG`를 근거로 삼아야 한다.
+- `ics_sim`의 `sequencer.py` `_store()`와 `state.py`가 저장 경로와 논리 이름을
+  분리하도록 바뀌어야 한다 (규격 C-16).
+- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md` 2.5절.

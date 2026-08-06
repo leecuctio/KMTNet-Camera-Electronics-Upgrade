@@ -1,8 +1,9 @@
 # KMT-CEU Raw FITS Pair 규격
 
-버전: v1.0
+버전: v1.1
 작성일: 2026-08-06
-Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0`
+최종 갱신일: 2026-08-07
+Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1의 변경은 geometry가 아니므로 유지)
 연동 ICD: `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` (v4.0)
 연동 converter: `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.3)
 
@@ -61,11 +62,11 @@ Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0`
 | 1 파일당 chip 수 | 1 | 2 |
 | Amp 수 (전체) | 32 | 64 |
 
-**파일 수와 파일명이 둘 다 바뀌는 것은 OBSAgent 규약과 충돌한다. 9장 OI-1 / OI-2를 반드시 먼저 읽고 결정할 것.**
+파일 수와 파일명이 둘 다 바뀌지만 **OBSAgent 규약은 그대로 유지된다.** 파일은 컨트롤러 단위로 2개를 쓰고, 저장 완료 통보만 CCD 단위로 4번 내보내는 방식으로 분리했다 (2.5절, DECISION_LOG **D-009** / **D-010**).
 
 ### 2.3 파일명
 
-현행 converter가 인식하는 형식 (`find_pair()`, `default_output_name()`):
+**확정 (D-009, 2026-08-07).** Archon 컨트롤러 구성이 저장하는 파일명은 ICD v4.0 형식을 그대로 쓴다. converter의 `find_pair()` · `default_output_name()`이 이미 이 형식을 인식하므로 **converter 변경은 없다.**
 
 ```text
 KMTN.<YYYYMMDD>.<NNNNNN>.MK.fits
@@ -73,9 +74,11 @@ KMTN.<YYYYMMDD>.<NNNNNN>.NT.fits
 ```
 
 - `<YYYYMMDD>`: 8자리. 관측 야간 기준 날짜.
-- `<NNNNNN>`: 6자리 노출 일련번호. pair 양쪽이 **같은 값**이어야 한다.
+- `<NNNNNN>`: **6자리 고정폭, 0으로 좌측 패딩**한 노출 일련번호. pair 양쪽이 같은 값이어야 한다.
 - 접미 `.MK.fits` / `.NT.fits`는 **대소문자까지 정확히** 일치해야 한다. converter는 이 문자열로 짝을 찾는다.
-- 예: `KMTN.20260116.000001.MK.fits`, `KMTN.20260116.000001.NT.fits`
+- 예: `KMTN.20260807.012345.MK.fits`, `KMTN.20260807.012345.NT.fits`
+
+> **6자리 zero-padding은 선택이 아니다.** converter의 정규식은 `^KMTN\.(\d{8})\.(\d{6})\.MK\.fits$`이고, `find_pair()`는 MK 파일명에서 `.MK.fits`를 `.NT.fits`로 치환해 짝을 찾는다. 한쪽만 `12345`(5자리)로 쓰면 (1) 짝 파일을 못 찾아 `FileNotFoundError`, (2) 정규식 불일치로 출력 MEF 이름이 fallback 경로로 빠지고, (3) OBSAgent의 `FitsNum` 15자 슬라이스가 한 칸 밀린다.
 
 파일명은 **pair 식별의 유일한 근거가 되어서는 안 된다.** 5.2절의 `EXPID` / `CTRLTAG` / `PAIRFILE`로 헤더 안에서도 짝이 확인되어야 한다.
 
@@ -89,6 +92,35 @@ KMTN.<YYYYMMDD>.<NNNNNN>.NT.fits
 | 파생 L0 MEF | ≈ 676.2 MiB |
 
 L0 MEF의 amp 픽셀 총수(64 × 1200 × 4616 = 354,508,800)와 raw pair 픽셀 총수(360,960,000)의 차이는 정확히 **middle Y overscan 블록**(2 × 19200 × 168 = 6,451,200)이다. 이 등식이 깨지면 4장의 geometry 해석이 어긋난 것이다.
+
+### 2.5 저장 완료 통보 — ICS `Wrote` 규약
+
+**확정 (D-010, 2026-08-07).** 파일은 컨트롤러 단위 2개지만, ICS가 OBSAgent로 내보내는 저장 완료 통보는 **레거시와 똑같이 CCD 단위 4회**다. 저장 단위와 통보 단위를 분리해 OBSAgent를 건드리지 않는다.
+
+| raw 파일 | 발신 메시지 |
+| --- | --- |
+| `KMTN.20260807.012345.MK.fits` | `STATUS: Wrote LASTFILE=/data/KMTNm.20260807.012345.fits`<br>`STATUS: Wrote LASTFILE=/data/KMTNk.20260807.012345.fits` |
+| `KMTN.20260807.012345.NT.fits` | `STATUS: Wrote LASTFILE=/data/KMTNn.20260807.012345.fits`<br>`STATUS: Wrote LASTFILE=/data/KMTNt.20260807.012345.fits` |
+
+논리 이름은 `KMTN<chip 소문자>.<YYYYMMDD>.<NNNNNN>.fits`이며 chip 문자는 `CHIP1`/`CHIP2`에서 결정론적으로 나온다 (MK → `m`,`k` / NT → `n`,`t`). 파일 1개를 다 쓴 시점에 그 파일이 담은 두 chip의 메시지를 함께 낸다.
+
+이 규약이 OBSAgent에서 성립하는 근거:
+
+| 검사 | 결과 |
+| --- | --- |
+| 메시지 타입 | `ICS>OBS`는 원래 `STATUS: Wrote`다 (DevNote 6.1 실측 로그). `DONE:`은 `CB>ICS` 구간이고, SSO의 `STATUS:` 결함은 그 앞 hop이라 무관하다 |
+| `count_wrote` | 4회 → `FitsSaved=1` ✓ |
+| `FitsNum` 파싱 | `"KMTN"` 위치 +6부터 15자 → `'20260807.012345'` ✓ (`obsagent_model.py:112-114`) |
+| 4개 메시지 간 일관성 | 네 논리 이름의 날짜·번호가 같으므로 도착 순서와 무관하게 같은 `FitsNum` |
+| 타이밍 | 프레임 N의 `Wrote` 4개는 프레임 N+1의 `PCTREAD=`가 `count_wrote`를 리셋하기 전에 다 도착해야 한다 (DevNote 6.1). 파일 2개 × 2회를 저장 직후 함께 내므로 레거시(IC 4대 개별 발신)보다 여유가 있다 |
+
+**주의 — `LASTFILE`은 이제 실재하는 경로가 아니다.**
+
+`/data/KMTNm.20260807.012345.fits`라는 파일은 디스크에 없다. 실제 파일은 `/data/KMTN.20260807.012345.MK.fits` 하나이고, 논리 이름은 OBSAgent 규약을 만족시키기 위한 **CCD 단위 식별자**일 뿐이다. 따라서:
+
+- `LASTFILE` 값을 경로로 열려는 도구는 실패한다. 아카이브·DTS·QL 도구는 `LASTFILE`이 아니라 raw 헤더의 `FILENAME` / `EXPID` / `CTRLTAG`를 근거로 삼아야 한다 (5.2절).
+- 논리 이름 ↔ 실제 파일 대응은 `CHIP1`/`CHIP2`로 역추적 가능하므로 raw 헤더에 별도 keyword를 두지 않는다.
+- `RATE=` 필드를 붙이는 경우, 한 파일에서 나온 두 메시지는 **그 파일의 측정 전송률을 동일하게** 싣는다 (CCD별로 나누지 않는다).
 
 ## 3. 파일 구조 요구사항
 
@@ -650,13 +682,14 @@ RA DEC EQUINOX RADECSYS CCDTEMP CHIPLIST MOCKDATA
 | C-4 | 〃 | **pair 일관성 검사 추가**: `EXPID`·`DATE-OBS`·`EXPTIME`·`RAWVER`가 다르면 변환 중단 |
 | C-5 | 〃 | 5.3절 geometry keyword를 자기 상수와 대조. 불일치 시 중단 |
 | C-6 | 〃 | `DATE-OBS` 누락 시 "현재 시각"으로 조용히 대체하지 말고 **실패**시킨다 (6.2절) |
-| C-7 | 〃 | `default_output_name()`의 파일명 정규식 — 9장 OI-1 결정 후 반영 |
+| ~~C-7~~ | 〃 | ~~파일명 정규식 수정~~ → **불필요 (D-009).** ICD v4.0 형식을 그대로 쓰기로 확정되어 현행 `find_pair()`·`default_output_name()`이 그대로 동작한다. 대신 6자리 zero-padding을 어긴 입력에 대해 명확한 오류를 내도록 하는 것이 바람직하다 |
 | **C-11** | 〃 | `MODULE` / `CHANNEL`을 raw의 `AMOD<nn>` / `ACHN<nn>`에서 채운다. 현재 amp 번호로 추정하는 placeholder 식(`v2_1.py:520-521`)을 대체하고, `XTALKGROUP`도 그 값으로 파생 (5.5.1절) |
 | **C-12** | 〃 | amp `READDIR`를 raw의 `RDDIRT` / `RDDIRB`에서 채운다. 현재 `amp<=8`이면 `-Y`로 하드코딩 |
 | **C-13** | 〃 | `DETSIZE` / `COLGAP` / `ROWGAP` / `AMPPCD`를 raw 선언값과 대조. 하드코딩 상수와 다르면 중단 (C-5의 확장) |
 | **C-14** | 〃 | `XTALKVER` / `REFVER` / `CATVER`를 raw가 아니라 calibration DB에서 주입 (5.12절) |
 | **C-15** | 〃 | `TELEMETRY` 확장 헤더의 `TELSTAT`을 양쪽 `CTRLSTAT`에서 파생 |
-| C-8 | `ics_sim/ics_sim/hardware/archon.py` | `write_fits()`가 이 규격대로 저장하도록 구현 (현재 스텁) |
+| C-8 | `ics_sim/ics_sim/hardware/archon.py` | `write_fits()`가 이 규격대로 저장하도록 구현 (현재 스텁). 저장 단위가 **CCD 1개가 아니라 컨트롤러 1개(chip 2개)**로 바뀌는 점에 유의 |
+| **C-16** | `ics_sim/ics_sim/sequencer.py` `_store()` · `ics_sim/ics_sim/state.py` | **2.5절 `Wrote` 규약 구현.** 현재는 CCD 1개당 파일 1개를 쓰고 `Wrote` 1회를 낸다. 신규는 컨트롤러 1개당 파일 1개를 쓰고 **그 파일이 담은 chip 2개분 `Wrote`를 논리 이름으로** 낸다. `ChannelState.filename()`의 `KMTN<ccd>.<suffix>.fits`는 **논리 이름 생성기로 남기고**, 실제 저장 경로는 `KMTN.<suffix>.<CTRLTAG>.fits`로 분리한다 |
 | C-9 | `ics_sim/ics_sim/telemetry.py` | `_SENTINEL_NUM`이 값 없음을 `'0'`으로 채운다. 5.0절 sentinel 규약과 충돌 (9장 OI-6) |
 | C-10 | `cam_char/archon/archon_kmtnet_labtest_v2.py` | 실험실 raw도 5.3절 geometry 선언과 5.5절 controller telemetry를 싣도록 카드 추가 |
 
@@ -684,6 +717,7 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 
 **Pair 식별**
 
+- [ ] 파일명이 `KMTN.<8자리>.<6자리 zero-pad>.<MK|NT>.fits` 형식 (2.3절)
 - [ ] `CTRLTAG`가 `MK` / `NT`로 서로 다르다
 - [ ] `PAIRFILE`이 상대 파일을 정확히 가리킨다
 - [ ] `EXPID`가 양쪽 동일
@@ -753,8 +787,8 @@ print('raw pair OK:', a['EXPID'])
 
 | ID | 항목 | 내용 | 조치 |
 | --- | --- | --- | --- |
-| **OI-1** | **파일명 규약 vs OBSAgent** | OBSAgent는 `Wrote` 메시지에서 `"KMTN"` 위치 **+6부터 15자**를 잘라 `FitsNum`으로 쓴다 (`ics_sim/ics_sim/obsagent_model.py:112`, DevNote 3.2). 레거시 `KMTNk.20250902.057288.fits`는 `"20250902.057288"`이 정확히 잘린다. 그러나 신규 `KMTN.20260116.000001.MK.fits`는 4번째 자리의 CCD 문자가 없어 `"0260116.000001."`이 잘린다 — **`FitsNum`이 깨진다.** `ics_sim/ics_sim/state.py:8-13`은 "파일명 형식은 바꿀 수 없다"고 명시한다 | **결정 필요.** 대안 (a) `KMTN<x>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`로 1자 슬롯 복원 — 두 규약을 모두 만족하며 converter 정규식 1줄 수정으로 끝난다 (**권고**), (b) OBSAgent 패치, (c) 레거시 형태 `KMTN<c>` 4파일로 회귀 (ICD geometry와 충돌). DECISION_LOG 항목으로 남길 것 |
-| **OI-2** | **`Wrote` 4회 규약 vs 파일 2개** | OBSAgent는 `Wrote` **4회**를 받아야 `FitsSaved=1`을 세운다. raw가 2파일이면 2회뿐이라 매 노출 25초 타임아웃 경로로 빠진다 (현재 SSO가 겪는 것과 같은 증상, DevNote 6.9) | **결정 필요.** ICS가 CCD 단위로 `Wrote` 4회를 내되 파일은 2개인 구조를 허용할지, 아니면 raw를 CCD 단위 4파일로 쓸지. 후자는 `RAWNAX1`이 9600이 되어 ICD v4.0 재개정 사안 |
+| ~~OI-1~~ | **파일명 규약** | **해결 (2026-08-07, D-009).** Archon 구성이 ICD v4.0 형식 `KMTN.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`를 그대로 저장한다. 파일명 자체는 OBSAgent의 `FitsNum` 슬라이스와 맞지 않지만, OI-2 해결책이 `Wrote` 메시지에 레거시 형태의 논리 이름을 싣는 방식이라 문제가 성립하지 않는다 | 규격 2.3절 반영 완료. **converter 변경 없음** — `find_pair()`·`default_output_name()`이 이미 이 형식을 인식한다. `<NNNNNN>` 6자리 zero-padding이 필수 조건으로 추가됨 |
+| ~~OI-2~~ | **`Wrote` 4회 규약** | **해결 (2026-08-07, D-010).** 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회)를 분리한다. ICS는 파일 1개를 쓸 때마다 그 파일이 담은 chip 2개분 `STATUS: Wrote`를 논리 이름으로 낸다. `count_wrote=4` · `FitsNum='20260807.012345'` 모두 성립 | 규격 2.5절 반영 완료. OBSAgent·`RAWNAX1` 변경 없음. `LASTFILE`이 실재 경로가 아니게 되는 부작용을 2.5절에 명시 |
 | **OI-3** | `ROWORDR` / `RDDIRT` / `RDDIRB` 확정 | TOP half가 CCD 좌표 순서로 기록되는지 독출 순서인지 실기 확인 필요. MEF amp header `READDIR`의 placeholder(TOP=`-Y`, BOT=`+Y`)를 확정하는 사안이며, 규격은 값을 raw가 **선언**하도록 자리를 만들어 뒀다 | flat/star sequence test. 확정 시 `RAWVER`와 `GEOMVER` 동시 갱신 |
 | **OI-9** | amp ↔ 배선 맵 실측 | `AMOD<nn>` / `ACHN<nn>`의 실제 값은 컨트롤러 결선 후에야 확정된다. 확정 전에는 `AMPMAP='DEFAULT'`로 두고 converter의 추정식을 쓰되, **`XTALKCAL=True`로 올리기 전에 반드시 `EXPLICIT`으로 교체**해야 한다 (5.5.1절) | 통합 시 배선표 작성 + Archon 채널 응답과 대조. `CALIBRATION_TRACKER.md`에 항목 추가 |
 | **OI-4** | `MIDOSCB` / `MIDOSCT` 분배 | 중앙 168행의 half별 분배가 84/84인지 미확인. 현행 converter는 이 블록을 전부 버린다 | timing script 확인 + bias frame 통계. 확정되면 Y overscan으로 활용할지 별도 검토 |
@@ -783,3 +817,4 @@ print('raw pair OK:', a['EXPID'])
 | --- | --- | --- |
 | v1.0 | 2026-08-06 | Archon raw FITS pair(MK/NT) 규격 초판. 파일 구조·픽셀 배치·헤더 keyword 정의, converter 영향 분석, OBSAgent 파일명/`Wrote` 규약 충돌 제기 |
 | v1.0 | 2026-08-06 | MEF keyword 정의서 v1.0 및 L1 `CARRY_KEYS` 전량 대조(6.5·6.6절) 후 누락 보강: `AMPPCD`, `DETSIZE`/`CCDCOLS`/`CCDROWS`/`COLGAP`/`ROWGAP`, `MODULE`/`CHANNEL` 배선 맵(5.5.1), `READDIR`(`RDDIRT`/`RDDIRB`), `CCDTEMP` 필수 격상. raw 제외 keyword 경계 명시(5.12) |
+| v1.1 | 2026-08-07 | **OI-1 · OI-2 해결.** 파일명은 ICD v4.0 형식 유지 + `<NNNNNN>` 6자리 zero-padding 필수화(2.3절, D-009). 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회 `Wrote`)를 분리하는 ICS 규약 추가(2.5절, D-010). `LASTFILE`이 실재 경로가 아니게 되는 부작용 명시. C-7 불필요 처리, C-16 추가 |

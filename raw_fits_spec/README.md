@@ -1,6 +1,6 @@
 # KMTNet-CEU Raw FITS Specification
 
-최종 갱신일: 2026-08-06
+최종 갱신일: 2026-08-07
 
 ## 목적
 
@@ -20,7 +20,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 | 구분 | 문서 | 버전 | 상태 |
 | --- | --- | --- | --- |
-| Raw pair 규격 | [`KMT_CEU_Raw_FITS_Pair_Spec_v1.0.md`](KMT_CEU_Raw_FITS_Pair_Spec_v1.0.md) | v1.0 | Current |
+| Raw pair 규격 | [`KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md`](KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md) | v1.1 | Current |
 
 연동 기준:
 
@@ -37,7 +37,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 | 경로 | 내용 |
 | --- | --- |
-| `KMT_CEU_Raw_FITS_Pair_Spec_v1.0.md` | 현행 raw pair 규격 (md가 diff 가능한 기준본) |
+| `KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md` | 현행 raw pair 규격 (md가 diff 가능한 기준본) |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
@@ -72,16 +72,18 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | 실험실 취득 | [`../cam_char/archon/archon_kmtnet_labtest_v2.py`](../cam_char/archon/archon_kmtnet_labtest_v2.py)의 `write_fits()` | 동작 중 — geometry/telemetry 카드 보강 필요 |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) | 동작 중 — MK 헤더만 읽음, NT 헤더 반영 필요 |
 
-## 열려 있는 결정
+## 결정된 사항 · 남은 open item
 
-규격 v1.0은 아래 두 건을 **결정 필요 사항으로 제기만 하고 확정하지 않았다.** 신규 ICS의 파일 저장 경로를 구현하기 전에 결정해야 한다.
+v1.0에서 제기한 OBSAgent 규약 충돌 2건은 **v1.1에서 해결되었다** (DECISION_LOG D-009 / D-010).
 
-| ID | 요지 |
+| ID | 결정 |
 | --- | --- |
-| **OI-1** | 신규 raw 파일명 `KMTN.<날짜>.<번호>.MK.fits`가 OBSAgent의 `FitsNum` 파서(`"KMTN"`+6부터 15자)를 깨뜨린다 |
-| **OI-2** | OBSAgent는 `Wrote` 4회로 `FitsSaved`를 세우는데 신규 raw는 파일이 2개다 |
+| ~~OI-1~~ | 파일명은 ICD v4.0 형식 `KMTN.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits` 유지. `<NNNNNN>`는 **6자리 zero-padding 필수**. converter 변경 없음 |
+| ~~OI-2~~ | **저장 단위와 통보 단위를 분리.** 파일은 컨트롤러당 1개(2개), `STATUS: Wrote`는 CCD당 1회(4회)를 레거시 형태 논리 이름으로 발신. OBSAgent 변경 없음 |
 
-나머지 open item(`ROWORDR` 확정, 중앙 overscan 분배, binning, sentinel 규약, checksum)은 규격 문서 9장에 있다.
+부작용 하나가 따라온다 — **`LASTFILE`이 더 이상 실재하는 경로가 아니다.** 아카이브·DTS 도구는 `LASTFILE` 대신 raw 헤더의 `FILENAME`/`EXPID`/`CTRLTAG`를 근거로 삼아야 한다 (규격 2.5절).
+
+남은 open item은 규격 문서 9장에 있다 — `ROWORDR`/`READDIR` 확정, 중앙 overscan 분배 실측, amp↔배선 맵 실측(OI-9, `XTALKCAL=True` 전제조건), binning, sentinel 규약, checksum, NT 헤더 완전성.
 
 ## 버전 / 관리 정책
 
