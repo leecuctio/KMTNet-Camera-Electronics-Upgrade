@@ -43,13 +43,14 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - 송신 전 `validate()` 가 6가지 오염 패턴을 검사한다.
 - `--bug-compat` 로 레거시 오염을 재현할 수 있다(골든 대조용, 기본 꺼짐).
 
-## 상태 (2026-08-05)
+## 상태 (2026-08-08)
 
-- **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2)
-- **테스트 141개 전부 통과**
+- **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2), **자기 발신 에코 필터·브로드캐스트 중복 억제·노드 ID 검증**(3.1.2 — 실물 XIS 연동의 전제)
+- **테스트 156개 전부 통과**
 - **아직 안 만든 것**: `BIN` 하나. `strict_legacy` 면 무응답이고, 구현 지침은 `commands.py` docstring 에 있다.
 - **일부러 안 만든 것**: `ROI`/`DISPL`/`MOVIE` — **레거시 ICS 명령 테이블에 아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `Didn't understand` 로 거부된다(DevNote 6.8).
-- **다음 단계**: `hardware/archon.py` (DevNote 9장에 계약과 참고 자산 정리)
+- **2026-08-08 전 문서 정합성 일제 점검 완료** — 레거시 보고서 3부작·Agent 보고서 2종·raw_fits_spec·xis 문서의 낡은 서술/모순 30여 건 정정. 내역은 DevNote 14장 말미.
+- **다음 단계**: ① 실물 XIS·OBSAgent 연동 시험(원격 리눅스에서 XIS 재빌드, DevNote 11.11) ② `ics_archon` — Archon 2기 제어 + raw pair 저장. **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** (파일은 컨트롤러당 1개×2, `Wrote` 통보는 CCD당 4회 논리 이름 — D-009/D-010, DevNote 9.1 상기 블록)
 
 ## 조사 자료
 
@@ -80,23 +81,20 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 
 **진단 수단**: 등록 안 된 노드로 보내면 XIS가 발신자에게 `ERROR: No Route to Destination Host K.IC - host is unknown/unlisted` 를 돌려준다. 실물 시험의 판정 기준이다.
 
-**근거 — XIS 서버 소스.** `ics_legacy/__dts_legacy/`(ICS 컴퓨터 `dts` 폴더 백업, 3개 사이트)의 `EXEC_ISIS/server/` 에 XIS 서버 소스 전체가 있다. 확인 결과:
+**근거 — XIS 서버 소스** (운영본 `ISIS/server/`, stock ISIS v2.9.1 — 트리 판정은 [xis/xis.md 3절](xis/xis.md)):
 
-- **클라이언트 테이블은 노드 ID로만 키잉된다** — `strcmp(testStr, clientTab[i].ID)==0`, 주소는 비교에 안 쓰이고 갱신만 된다. 주소 충돌 검사 로직 자체가 없다.
-- 브로드캐스트 코드가 *"clients that share the same port as the sending host"* 를 명시적으로 다룬다 — **한 포트를 여러 클라이언트가 쓰는 건 설계상 예상된 상황**이다.
-- **→ 1안(단일 소켓 + 9개 ID PING) 안전. 2안 불필요.**
-- `MAXCLIENTS 64`, 현재 운용 13개 안팎이라 여유 충분.
-- XIS 재시작 시 `handShake()` 가 **`XIS>AL PING` 을 시리얼 포트 + `isis.ini` 의 preset UDP 목록에 개별 전송**한다. IP 브로드캐스트가 아니다.
+- **클라이언트 테이블은 노드 ID로만 키잉된다** — `strcmp(testStr, clientTab[i].ID)==0`, 주소는 비교에 안 쓰이고 **확인 없이 갱신**된다. 주소 충돌 검사 로직 자체가 없다. **→ 1안(단일 소켓 + 9개 ID PING) 안전. 2안 불필요.**
+- `MAXCLIENTS 64`(운용 13개 안팎) · `MAXPRESET 32`(사용 13~14) — **`isis.ini` 한 줄 추가에 제약 없다.** → [xis/xis.md 6.2](xis/xis.md)
+- XIS 재시작 시 `handShake()` 가 **`XIS>AL PING` 을 시리얼 포트 + preset UDP 목록에 개별 전송**한다. IP 브로드캐스트가 아니다.
+- 브로드캐스트 relay 는 송신 슬롯 하나만 제외한다 — 9개 ID 로 등록한 우리에겐 같은 데이터그램이 **최대 9부 중복 배달**되고, 우리가 자기 노드 앞으로 보낸 유니캐스트도 **그대로 되돌아온다**. (한때 인용했던 *"clients that share the same port …"* 주석은 코드와 다른 문구였다 — [xis/xis.md 6.3](xis/xis.md))
 
-**구현 완료**: 기동 시 9개 ID 로 PING, **`XIS>AL PING` 브로드캐스트에도 9개 전부 PONG**(XIS 재시작 후 재등록의 유일한 경로).
+**구현 완료**: 기동 시 9개 ID 로 PING, `XIS>AL PING` 브로드캐스트에 9개 전부 PONG(XIS 재시작 후 재등록의 유일한 경로), 그리고 **자기 발신 에코 필터 + 브로드캐스트 중복 억제 + 노드 ID 검증**(DevNote 3.1.2, `test_xis_echo.py` 15개). 에코를 안 거르면 XIS 경유 모드에서 ERASE/SHOPEN 이 이중 실행된다 — 점검(2026-08-08)에서 잡은 실물 연동의 마지막 전제 조건이었다.
 
-**남은 것 — 운영 측 작업**: 신규 `ics` 의 주소를 XIS `isis.ini` 의 `UDPPort` 목록에 한 줄 추가해야 XIS 재시작 시 PING 을 받는다. 단 `MAXPRESET` 여유를 먼저 확인할 것 — 백업 헤더는 `8` 인데 CTIO 설정엔 13줄이라 배포 바이너리가 다를 수 있다. **XIS 콘솔에서 `info` 를 치면 `NumPreset/MaxPreset` 이 나온다.**
+**남은 것 — 운영 측 작업**: 신규 `ics` 의 주소를 XIS `isis.ini` 의 `UDPPort` 목록에 한 줄 추가해야 XIS 재시작 시 PING 을 받는다. 넣기 전에 XIS 콘솔 `UDPPING <ip> <port>` 로 선시험 가능.
 
-자세한 내용은 [DevNote 3.1.1](DevNote.md), 논의 전 과정은 [xis/xis.md 부록 A](xis/xis.md).
+> ⚠️ **운영 허브에 그냥 붙이지 말 것** — XIS 는 같은 ID 의 주소를 무조건 덮어쓰므로, 레거시 ICS/IC 가 살아 있는 허브에 시뮬을 등록하면 그 라우팅을 즉시 가로챈다. **레거시 계통을 정지하거나 시험용 XIS 인스턴스를 쓴다** ([xis/xis.md 7절](xis/xis.md) 경고 블록).
 
-> **정정 (2026-08-05)** — 위 근거는 `EXEC_ISIS/server/`(XISIS v2.7.3)를 운영 소스로 보고 세운 것인데, **실제 운영본은 `ISIS/server/`(stock ISIS v2.9.1)** 다. 판정 근거 6가지는 [xis/xis.md 3절](xis/xis.md). 등록 관련 결론(ID 키잉·주소 충돌 없음·`MAXCLIENTS 64`·브로드캐스트 9회 수신)은 두 분기가 헤더 이름만 빼고 바이트 동일해서 **그대로 유효**하다.
->
-> **그리고 위의 `MAXPRESET` 걱정은 해소됐다** — v2.9.1 은 `MAXPRESET 32` 다(v2.7.3 이 8이었다). 사용 중은 CTIO 13 · SAAO 14 · SSO 13 이라 **한 줄 추가에 아무 제약이 없다.** → [xis/xis.md 6.2](xis/xis.md)
+자세한 내용은 [DevNote 3.1.1·3.1.2](DevNote.md), 논의 전 과정은 [xis/xis.md 부록 A](xis/xis.md).
 
 ## XIS 원본 보관 — `xis/` (2026-08-05 신설)
 
@@ -148,8 +146,8 @@ VM 이미지가 **5개**로 늘었다(`ICSci` CTIO/SAAO · `ICGui` · `K.IC` · 
 
 ## 다음에 이어서 할 만한 일
 
-1. **실제 OBSAgent·XIS 연동 시험** — XIS 허브를 띄우고 `--xis-host` 로 붙여 `kstatus` 를 쳐 본다. **소스 정독으로 세운 규약 전체가 실물에서 처음 검증되는 자리**이고, `transport.feed()` 로는 확인할 수 없는 라우팅 경로도 여기서만 실증된다. 선행 조건은 XIS `isis.ini` 에 시뮬 주소 한 줄 추가(위 "남은 것" 참조). 이어서 `.osc` 스크립트를 돌리면 규약 검증이 완결된다.
-2. **`hardware/archon.py` 구현** — DevNote 9장. `cam_char/archon/` 의 기존 스크립트를 옮겨오면 된다.
-3. ~~`STOP`/`ABORT` 구현~~ · ~~`\KMTS`·`\KMTG` 소스 정독~~ — **둘 다 2026-08-05 완료.** 아래 "IC·ICG 계통 확정" 참조.
+1. **실제 OBSAgent·XIS 연동 시험** — 원격 리눅스 머신에서 XIS 재빌드·기동(빌드 환경 결정은 DevNote 11.11), `--xis-host` 로 붙여 `kstatus` 를 쳐 본다. **소스 정독으로 세운 규약 전체가 실물에서 처음 검증되는 자리**이고, `transport.feed()` 로는 확인할 수 없는 라우팅 경로도 여기서만 실증된다. 절차와 판정 기준은 [xis/xis.md 7절](xis/xis.md) — **경고 블록(레거시 정지) 먼저 읽을 것.** 선행 조건은 XIS `isis.ini` 에 시뮬 주소 한 줄 추가(위 "남은 것" 참조). 이어서 `.osc` 스크립트를 돌리면 규약 검증이 완결된다.
+2. **`ics_archon` 구현** — Archon 컨트롤러 2기 제어 + raw FITS pair 저장. 제어 시퀀스는 `cam_char/archon/` 이식(DevNote 9장), **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** — 저장/통보 단위가 갈라지는 지점(D-009/D-010)은 DevNote 9.1 의 상기 블록에 정리돼 있다.
+3. ~~`STOP`/`ABORT` 구현~~ · ~~`\KMTS`·`\KMTG` 소스 정독~~ — **둘 다 2026-08-05 완료.** 아래 "IC·ICG 계통 확정" 참조. ~~자기 발신 에코 처리~~ — **2026-08-08 완료**(위 "XIS 노드 등록" 참조).
 4. **`icg` 착수** — 가이드 계통. OBSAgent 가 가이드 발신을 무시하므로 하위호환 부담이 없어 자유롭다. 공통 로직(IMPv2 노드, 텔레메트리 중계, 파일명 fail-safe)은 이 폴더에서 뽑아 쓸 수 있다.
 5. **DevNote 13장 백로그** — 구조화 로깅, 상태 조회 API 등.

@@ -10,6 +10,12 @@
 15자를 잘라 FitsNum 으로 쓰기 때문이다 (commands.c 776-784, DevNote 3.2).
     KMTN<ccd 한 글자>.<yyyymmdd 8자>.<nnnnnn 6자>.fits
              ^KMTN+6 부터 15자 = "20250902.057288"
+
+단, 고정인 것은 **Wrote 메시지에 싣는 논리 이름**이다 (D-009/D-010).  실기
+(ics_archon)의 디스크 실물은 컨트롤러당 1개 KMTN.<날짜>.<번호>.<MK|NT>.fits
+2개로 저장하고, 이 논리 이름은 통보 전용이 된다 -- filename() 은 그때 논리
+이름 생성기와 물리 경로로 분리된다 (raw_fits_spec 2.5절, DevNote 9.1/13장 C-16).
+시뮬은 레거시 재현이 목적이라 논리 이름 그대로 저장까지 한다.
 """
 
 from __future__ import annotations

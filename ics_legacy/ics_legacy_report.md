@@ -21,7 +21,7 @@
 
 **ICIMACS**(Instrument Control and IMage ACquisition System)는 OSU(Ohio State University)가 개발한 천문 관측기기 제어용 프로그램군의 총칭이다. 이 프로그램군은 텍스트 기반 메시징 프로토콜(IMP, 아래 2절)로 서로 통신한다.
 
-이 폴더의 로그 샘플은 **KMTNet**(Korea Microlensing Telescope Network) 배포본으로 확인된다 — 로그에 기록된 관측 데이터 파일명이 `KMTNx.yyyymmdd.nnnnnn.fits` 형태이고(1.2절 참고), 로그 내 상태 메시지에 `TELID=KMTC`(CTIO), `TELID=KMTS`(SSO) 값이 실제로 나타난다. 3개 사이트 각각에 동일한 구조의 시스템이 배포되어 있다:
+이 폴더의 로그 샘플은 **KMTNet**(Korea Microlensing Telescope Network) 배포본으로 확인된다 — 로그에 기록된 관측 데이터 파일명이 `KMTNx.yyyymmdd.nnnnnn.fits` 형태이고(1.2절 참고), 로그 내 상태 메시지에 `TELID=KMTC`(CTIO), `TELID=KMTS`(~~SSO~~ **SAAO — 2026-08-08 정정**. 매핑은 KMTC=CTIO·KMTS=SAAO·KMTA=SSO, 운영 `isis.ini` 의 `Instrument` 값과 일치 — [../ics_sim/xis/xis.md](../ics_sim/xis/xis.md) 5절) 값이 실제로 나타난다. 3개 사이트 각각에 동일한 구조의 시스템이 배포되어 있다:
 
 | 사이트 코드 | 관측소 |
 |---|---|
@@ -152,11 +152,11 @@ C:\0ICBOOT\IC.BAT            C:\0ICBOOT\IC.BAT          C:\0ICBOOT\IC.BAT
 >
 > 세 가지가 여기서 확정된다.
 >
-> 1. **`ICS` 와 `ICG` 는 같은 바이너리다** — 둘 다 `\KMTX` 의 `PAP7KX.EXE` 를 돌리고, `ICHost` 값만 다르다. 1.3.1②에서 "같은 소프트웨어로 보인다"고 한 추정이 부팅 설정으로 확정됐다. 분기점은 소스에 **다섯 군데**뿐이다(9.5절, `icg_legacy_report.md`).
+> 1. **`ICS` 와 `ICG` 는 같은 바이너리다** — 둘 다 `\KMTX` 의 `PAP7KX.EXE` 를 돌리고, `ICHost` 값만 다르다. 1.3.1②에서 "같은 소프트웨어로 보인다"고 한 추정이 부팅 설정으로 확정됐다. 분기점은 소스에 **다섯 군데**뿐이다(8.1절, `icg_legacy_report.md`).
 > 2. **사이트 식별은 통합기가 아니라 검출기에 있다.** ⑦에서 "ICS 이미지에 사이트 정체성이 없다"고 한 것은 맞지만, **IC 쪽에는 `FITSTEMPLATEFILE` 한 줄이 있다.** FITS 헤더를 만드는 쪽이 IC 이기 때문이며, 통합기는 여전히 사이트를 모른다. 신규 통합 설계는 두 역할을 합치므로 **템플릿 선택은 필요하고 사이트별 텔레메트리 테이블은 불필요**하다.
 > 3. **`ISISHOST` 는 무시된다.** ini 는 머신마다 `ICS.IS`/`K.IS`/`G.IS`/`ICG.IS` 를 지정하지만, `PAP7KX.BAS` 는 시작 직후와 메인 루프 진입 전에 `ISISHost = "XIS"` 를 **두 번 덮어쓴다**(주석: *"Overriding bad .ini file entry"*). 로그에 relay 이름이 아니라 `XIS` 만 보이는 이유다.
 
-> **`TRANSFER DISK<n>` 의 정체가 여기서 풀린다.** 4.2절의 `DISK0`~`DISK3`(6.2절에서 최대 4중으로 정정)은 물리 SCSI 디스크가 아니라 **VDOS 게스트에 붙인 가상 디스크**다. 1998년 SCSI 이중버퍼 패턴이 가상화 환경으로 그대로 이식돼 살아남은 것이다. 게스트가 가상 디스크에 쓰면 호스트의 Caliban(`*.CB`)이 그것을 읽어 `/mnt/ICSData` 로 옮긴다.
+> **`TRANSFER DISK<n>` 의 정체가 여기서 풀린다.** 4.2절의 `DISK0`~`DISK3`(1.4절에서 최대 4중으로 정정)은 물리 SCSI 디스크가 아니라 **VDOS 게스트에 붙인 가상 디스크**다. 1998년 SCSI 이중버퍼 패턴이 가상화 환경으로 그대로 이식돼 살아남은 것이다. 게스트가 가상 디스크에 쓰면 호스트의 Caliban(`*.CB`)이 그것을 읽어 `/mnt/ICSData` 로 옮긴다.
 
 **④ 리눅스 `isisrelay` 가 UDP↔시리얼을 중계한다.** `Config/isisrelay.ini`:
 
@@ -484,7 +484,7 @@ XIS runtime log (re)started at UTC 2024-01-01T23:12:49.915355
 ...
 ```
 
-`TC`가 `AL`(브로드캐스트)로 `ping`을 보내면, 각 노드가 순서대로 `PONG`으로 응답하며 자연스럽게 XIS에 등록된다 (2.2절 "노드 등록 방식" 참고). 소문자 `ping`도 대문자 `PING`과 동일하게 처리됨 — 실제 구현은 명령어 대소문자를 구분하지 않는다(스펙상 key=value의 T/F만 명시적으로 대소문자 무관이라 되어 있으나, 실측 로그상 커맨드 워드 자체도 case-insensitive로 동작).
+`TC`가 `AL`(브로드캐스트)로 `ping`을 보내면, 각 노드가 순서대로 `PONG`으로 응답하며 자연스럽게 XIS에 등록된다 (1.2절 "노드 등록 방식" 참고). 소문자 `ping`도 대문자 `PING`과 동일하게 처리됨 — 실제 구현은 명령어 대소문자를 구분하지 않는다(스펙상 key=value의 T/F만 명시적으로 대소문자 무관이라 되어 있으나, 실측 로그상 커맨드 워드 자체도 case-insensitive로 동작).
 
 ### 4.2 DARK 노출 전체 트랜잭션 (K, 문서 부록에서)
 
@@ -517,7 +517,7 @@ OBS>ICS go
 - `OBS`는 오직 `ICS`(시리얼)/`TC`에만 명령하고, 개별 CCD(`K.IC` 등)과는 직접 통신하지 않는다 — ICS가 4개 과학 CCD에 명령을 "부채꼴로" 전파하는 중계자 역할.
 - `GO`는 `M.IC`/`N.IC`/`T.IC`에 먼저 내려간 뒤 마지막에 K(master)에 내려간다. K가 readout 진행률(`PCTREAD=`)을 요청자(sourceID, 여기선 `OBS`)에게만 보고한다.
 - 노출 상태 머신은 `AUXSTATUS`/`TCSSTATUS`의 `EXPSTATUS` 필드로 추적 가능: `ERASE → INTEGRATING → READOUT → WRITING/IDLE`.
-- 파일 쓰기 완료는 `K.IC`가 아니라 `K.CB`(카메라 바디 컨트롤러)가 `DONE: Wrote LASTFILE=...`로 보고한다. 디스크는 `DISK0`/`DISK1` 이중화되어 있고, 쓰기 후 `REQ SWAP`/`ACK SWAP`으로 다음 노출을 위해 디스크를 교대한다.
+- 파일 쓰기 완료는 `K.IC`가 아니라 `K.CB`(카메라 바디 컨트롤러)가 `DONE: Wrote LASTFILE=...`로 보고한다. 디스크는 ~~`DISK0`/`DISK1` 이중화~~ **최대 4중(`DISK0`~`DISK3`, 1.4절의 2026-08-03 정정)** 이며 이 예시는 그중 `DISK1` 을 쓴 사례다. 쓰기 후 `REQ SWAP`/`ACK SWAP`으로 다음 노출을 위해 디스크를 교대한다.
 - `K.IC>XIS PING`/`PONG` 왕복은 실제 파일 전송(disk write) 완료를 알리는 타이밍 신호로 재사용되고 있다 (`STATUS: GO Disk Write Complete    (( after PONG response from XIS ))`) — 프로토콜 스펙에는 없는, 이 배포본만의 관례적 사용법.
   > **주의**: 이 `Disk Write Complete` 메시지는 레거시에 실재하지만, **OBSAgent는 이 문자열을 파싱하지 않는다**(소스에 핸들러 없음 — [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) 6절 정정 참고). OBSAgent가 파일 저장 완료를 판단하는 근거는 `K.CB`의 `Wrote` 메시지 **4회 누적**이고, `READY` 전이는 타이머다. 신규 `ics`가 이 메시지를 계속 보낼지는 자유(보내도 무해하나 OBSAgent 동작에는 영향 없음).
 
@@ -588,7 +588,7 @@ abc>icg go
 
 가이드 계통은 과학 CCD(K/M/T/N)와 분리된 병렬 구조다: `ICG`가 `ICS`의 역할을, `ABC`가 `OBS`의 역할을 하며, `G.IC` 하나가 가이드 CCD 4개를 전부 통합 제어한다(1.1절). 파일명 형식도 다르다(`KMTNgs.<timestamp>.<seq>.fits`, ISO 타임스탬프 기반 suffix).
 
-> **→ ICG 노드 전용 심화 분석은 [icg_legacy_report.md](icg_legacy_report.md)** 참고. 위에서 "로그로 확인하지 못했다"고 남겨둔 `ICG`의 `TC` 질의 타이밍은 그 보고서에서 확정됐다(**GO 접수 직후·노출 시작 전**에 `AUXSTATUS`+`TCSSTATUS`를 페어로 질의 — 과학 계통이 셔터 OPEN 시 질의하는 것과 다름). 그 밖에 ICG의 전체 명령어 목록, 기동 시퀀스, `G.CB` 디스크 계층, ICS와의 상세 비교도 그쪽에 정리돼 있다.
+> **→ ICG 노드 전용 심화 분석은 [icg_legacy_report.md](icg_legacy_report.md)** 참고. 위에서 "로그로 확인하지 못했다"고 남겨둔 `ICG`의 `TC` 질의 타이밍은 그 보고서에서 확정됐다(**GO 접수 직후·노출 시작 전**에 `AUXSTATUS`+`TCSSTATUS`를 페어로 질의해 즉시 중계 — ~~과학 계통이 셔터 OPEN 시 질의하는 것과 다름~~ **2026-08-08 정정**: 과학 계통(ICS)도 질의 자체는 노출 개시 국면(`ERASE` 전후)에 페어로 하며, 셔터 개방 후에 이루어지는 것은 TCSSTATUS의 '전달(중계)'뿐이다 — 5.3절. 두 계통의 차이는 질의 시점이 아니라 **TCSSTATUS 중계를 `DATE-OBS` 확정 시점까지 미루는지 여부**다). 그 밖에 ICG의 전체 명령어 목록, 기동 시퀀스, `G.CB` 디스크 계층, ICS와의 상세 비교도 그쪽에 정리돼 있다.
 >
 > 또한 두 계통이 "완전 분리"라는 서술에는 **예외가 하나 있다**: `ICG`는 자기 설정 스냅샷(`STATUS: SYNCHRONIZE`)을 `G.IC`뿐 아니라 **과학 IC 4개에도** 브로드캐스트한다(icg 보고서 5.1절). 계통 간 유일한 결합 지점이다.
 
@@ -1108,7 +1108,8 @@ CALL PRT(Buffer, OutBuffer(Buffer))
 
 | 경로 | 내용 |
 |---|---|
-| `EXEC_ISIS/server/` | **XIS 서버 소스 전체** — `clients.c`(클라이언트 테이블) · `messages.c`(라우팅·브로드캐스트) · `interfaces.c`(`handShake()`) · `main.c`(기동 순서) · `loadconfig.c` · `xisisserver.h`. 8.0.1절 (13)의 근거 |
+| `ISIS/server/` | **운영본 XIS 서버 소스 (stock ISIS v2.9.1)** — `clients.c`(클라이언트 테이블) · `messages.c`(라우팅·브로드캐스트) · `interfaces.c`(`handShake()`) · `main.c`(기동 순서) · `loadconfig.c` · `isisserver.h`(`:237 MAXPRESET 32`). **8.0.1절 (13)의 근거.** 운영본 판정 근거 6가지는 [../ics_sim/xis/xis.md](../ics_sim/xis/xis.md) 3절 |
+| `EXEC_ISIS/server/` | ~~XIS 서버 소스 전체 — 8.0.1절 (13)의 근거~~ **은퇴 분기(XISIS v2.7.3) — 2026-08-05 소스 확인으로 정정.** 2014-10-13 기동 스크립트 전환으로 운영에서 빠진 KMTN 전용 분기다. 핵심 소스는 운영본과 사실상 동일([../ics_sim/xis/xis.md](../ics_sim/xis/xis.md) 6.1절)하나 `xisisserver.h` 는 `MAXPRESET 8` 등 상수가 다르다 |
 | `ISIS_V1/server/` | 구버전 ISIS 서버 소스 (비교용) |
 | `EXEC_ISIS/client/`, `ISIS_V1/client/` | ISIS 클라이언트 라이브러리. `../TCSAgent/__reference/ISISclient` 와 `../OBSAgent/OBSAgent.latest/ISISclient` 에도 같은 것이 있다 |
 | `Config/isis.ini` | **운영 중인 XIS 설정** — `ServerID XIS` / `ServerPort 6660` / `TTYPort /dev/ttyS0 115200` / `UDPPort` preset 13줄 |
@@ -1322,7 +1323,7 @@ ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
 
 **(13) XIS 노드 등록 — 서버 소스로 확정 (2026-08-04)**
 
-`__dts_legacy/.../EXEC_ISIS/server/` 의 XIS 서버 소스로 신규 통합 `ics` 의 등록 방식이 확정됐다.
+~~`__dts_legacy/.../EXEC_ISIS/server/`~~ **`__dts_legacy/.../ISIS/server/`** 의 XIS 서버 소스로 신규 통합 `ics` 의 등록 방식이 확정됐다. (**2026-08-05 소스 확인으로 정정**: 실제 운영본은 `EXEC_ISIS/`(XISIS v2.7.3, 은퇴 분기)가 아니라 **stock ISIS v2.9.1 의 `ISIS/server/`** 다 — 트리 판정 근거 6가지는 [../ics_sim/xis/xis.md](../ics_sim/xis/xis.md) 3절. 아래 결론들은 두 분기의 해당 소스가 사실상 동일해 그대로 유효하다 — 같은 문서 6.1절.)
 
 - **클라이언트 테이블은 노드 ID 로만 키잉된다.** `clients.c` `updateHosts()` 가 `strcmp(testStr, clientTab[i].ID)==0` 로만 비교하고(ID는 대문자 정규화), 주소는 저장·갱신만 될 뿐 비교에 쓰이지 않는다. **주소 충돌 검사 로직 자체가 없다.**
   → **통합 `ics` 가 소켓 하나에서 9개 노드 ID 를 전부 등록해도 안전하다.** 노드마다 포트를 따로 열 필요가 없다.
@@ -1333,9 +1334,19 @@ ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
   → **신규 `ics` 의 주소를 XIS `isis.ini` 의 `UDPPort` 목록에 추가**해야 재시작 시 PING 을 받는다. 지금 `.109`(OBS)가 목록에 없어 재시작 직후 `No Route to Destination Host OBS` 가 나는 것과 같은 문제가 생긴다.
 - **테이블 크기는 `MAXCLIENTS 64`** — 현재 13개 안팎이므로 여유는 충분하다.
 - **`AL` 브로드캐스트는 슬롯 전수 순회**라, 9개 ID 가 같은 주소면 같은 데이터그램을 9번 받는다. 기능상 문제는 없으나 수신 트래픽이 9배가 된다.
-- **미해결**: `xisisserver.h` 는 `MAXPRESET 8` 인데 CTIO `isis.ini` 에는 `UDPPort` 가 13줄이고 `loadconfig.c` 는 초과분을 버린다. 그런데 재시작 로그에는 9번째 이후 노드도 PONG 을 보낸다 → **배포 바이너리가 다른 값으로 빌드됐을 가능성**(ini 주석은 "max 32"). 실물에서 XIS 콘솔 `info` 로 `NumPreset/MaxPreset` 을 확인할 것.
+- ~~**미해결**: `xisisserver.h` 는 `MAXPRESET 8` 인데 CTIO `isis.ini` 에는 `UDPPort` 가 13줄이고 `loadconfig.c` 는 초과분을 버린다. 그런데 재시작 로그에는 9번째 이후 노드도 PONG 을 보낸다 → **배포 바이너리가 다른 값으로 빌드됐을 가능성**(ini 주석은 "max 32"). 실물에서 XIS 콘솔 `info` 로 `NumPreset/MaxPreset` 을 확인할 것.~~ → **해결됐다 (2026-08-05 소스 확인으로 정정)**. `MAXPRESET 8` 은 은퇴 분기(XISIS v2.7.3)의 헤더 값이었고, 운영본 `ISIS/server/isisserver.h:237` 은 `#define MAXPRESET 32` 다. 사용 중 preset 은 **CTIO 13 · SAAO 14 · SSO 13 줄 → 여유 19 · 18 · 19** — 신규 `ics` 를 preset 목록에 추가하는 데 제약이 없다([../ics_sim/xis/xis.md](../ics_sim/xis/xis.md) 6.2절). 실물 재확인이 필요하면 XIS 콘솔 `VERSION`·`INFO` 로 1분이면 된다 — 절차는 [같은 문서 7절](../ics_sim/xis/xis.md).
 
 > 상세한 조사 과정과 코드 인용은 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.1.1절.
+
+**(14) 스크립트 관측(`.osc`)의 명령별 응답 체크 (2026-08-08 추가)**
+
+`.osc` 스크립트 실행 중 OBSAgent 는 **명령을 한 줄 보낼 때마다 응답을 판정**한다(`osc.flag_responsecheck`). DevNote 3.5 에는 있었으나 이 보고서에는 빠져 있던 규약이다. 판정 규칙이 명령에 따라 다르다:
+
+- **`GO`**: 응답 본문이 아니라 **`CamStatus` 가 `PREP_I`~`INT_3` 범위에 들어와야** 통과다(`commands.c` 885행). → 신규 `ics` 는 `GO` 접수 즉시 지체 없이 `EXPSTATUS=INITIALIZING` 을 발신해야 한다((2)항 표의 1번이 이 판정의 트리거이기도 하다).
+- **그 외 명령**: `DONE:` 본문에 **해당 명령어 문자열이 그대로 포함**돼야 통과다(`strstr` 매칭) — `PROJID`/`OBJECT`/`DARK`/`BIAS`/`EXP`/`OBSERVER`/`LEDFLASH`/`DATASOURCE`/`DMAWAIT`/`FILENAME`/`ACQSTATUS` 등. 단 `STATUS` 는 **앞 공백을 포함한 `" STATUS"`** 로 매칭한다(`commands.c` 987행). 레거시 응답이 `DONE: <커맨드워드> <본문>` 형식이라 자연히 만족하지만, **커맨드워드를 생략하면 깨진다.**
+- **미준수 시**: 응답 확인 창(`OSC_CHKCNT_RESPCHK`=4, ≈3초)이 지나면 같은 명령을 재발행하고, 재시도 한도(`OSC_CHKCNT_CMDRETRY`=3)를 넘기면 **`opause` 로 스크립트 관측이 정지**한다.
+
+근거: `OBSAgent.latest/KMTObs/commands.c` 885~1015행(판정)·5164~5210행(재시도→`opause`), [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.5절. 검증: `test_obsagent_contract.py::test_script_response_check_strings`.
 
 **공통 로직은 공유 라이브러리로**: IMPv2 노드(UDP·파서·등록), `TC` 질의와 FITS 헤더 중계, `SYNCHRONIZE`, 디스크 이중버퍼, 파일명 fail-safe는 `ics`/`icg`가 사실상 동일하다. 레거시도 동일 코드베이스(`KX` 빌드)로 추정되므로 이 공유는 원 구조에도 부합한다. 구현 순서는 **단순한 `icg`를 먼저** 만들어 골격을 검증한 뒤 `ics`로 확장하는 편이 안전하다([icg_legacy_report.md](icg_legacy_report.md) 7.3절).
 
@@ -1346,12 +1357,12 @@ ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
 - 노드 등록에 별도 API가 없으므로, 신규 구현도 "자기 포트에 UDP 소켓 열고 PING 한 번 보내기"만으로 XIS(ISIS)에 등록되는 기존 관례를 그대로 따라야 상호운용 가능.
 - 메시지 타입/커맨드 워드 매칭은 **대소문자 무관**으로 구현해야 legacy 노드들과 호환된다 (7.2절). `REQ:`는 관례상 절대 리터럴로 보내지 않는다.
 - `Command_Word`와 나머지 `Message_Body`를 분리하는 파싱은 라이브러리가 아니라 애플리케이션 책임이라는 점(7.2절)을 신규 구현 설계에 반영할 것 — 공통 파서 계층에서 이 분리까지 끝내주는 편이 legacy보다 개선된 지점이 될 수 있음.
-- 문서상 "미구현"으로 명시된 명령(`BIN`,`ROI`,`DISPL`,`STOP`,`ABORT`,`MOVIE`)은 legacy에서도 동작하지 않았던 것이므로, 신규 구현 시 이를 실제로 구현할지 legacy와 동일하게 스텁으로 둘지 결정 필요.
+- ~~문서상 "미구현"으로 명시된 명령(`BIN`,`ROI`,`DISPL`,`STOP`,`ABORT`,`MOVIE`)은 legacy에서도 동작하지 않았던 것이므로, 신규 구현 시 이를 실제로 구현할지 legacy와 동일하게 스텁으로 둘지 결정 필요.~~ — **2026-08-04 소스 확인으로 정정(3.4.1절)**: `STOP`/`ABORT`/`BIN` 은 레거시 ICS 에 실제로 구현되어 있으므로 신규도 **구현 대상**이다 — `STOP`/`ABORT` 는 `ics_sim` 에 이미 구현됐고 `BIN` 만 스텁으로 남아 있다. `ROI`/`DISPL`/`MOVIE` 는 ICS 명령 테이블에 아예 없어 `ERROR: … Didn't understand …` 거부가 곧 레거시 동작이다.
 - `EXPNUM`(4자리, CCD) vs `EXPNUM`(6자리, ICS) 자릿수 불일치는 `INITIALIZE`로 우회하는 것이 legacy의 실제 운영 방식 — 신규 구현에서는 애초에 자릿수를 통일하는 것을 검토할 만함.
 - `K.IC>XIS PING/PONG` 을 디스크 쓰기 완료 타이밍 신호로 쓰는 관례(4.2절)는 프로토콜 스펙에 없는 legacy 특유의 관행이므로, 신규 구현에서 그대로 가져갈지 명시적 완료 신호로 대체할지 검토 필요.
 - 비호환 레거시 장비(예: 시리얼로 독자 포맷을 쏟아내는 컨트롤러)를 새 시스템에 물려야 한다면, `pctcs` 같은 "filter/agent" 패턴(7.4절)을 그대로 채택할 만하다 — 굳이 메인 ICS에 특수 파싱 로직을 넣기보다, 별도의 작은 번역 프로세스로 분리하는 것이 legacy에서도 검증된 접근.
 - `SYNCHRONIZE` 동기화는 legacy에서 요청-응답이 아니라 "`DONE: SYNCHRONIZE ...` 형태의 메시지가 오면 보낸 주체와 무관하게 그냥 반영"하는 수동 리스너 방식으로 동작한다(3.2절). 신규 구현에서 상태 동기화를 설계할 때 이 "누가 보냈든 상관없이 상태를 흡수하는" 느슨한 모델을 그대로 둘지, 발신자를 검증하는 명시적 요청-응답 모델로 바꿀지 결정이 필요하다.
 - **발신 메시지 큐/속도 제한**: `dispatcher.cpp/h`(7.5절)처럼, 여러 수신 노드에 순차적으로 명령을 뿌릴 때 UDP 유실이나 수신측 처리 지연을 막기 위한 rate-limited 발신 큐를 두는 게 legacy에서도 쓰인 패턴이다. Python에서는 `asyncio.Queue` + 주기적 dequeue 태스크로 재현 가능하고, 신규 구현에서도 채택을 검토할 만함.
 - **다중 단어 인자 파싱 개선**: legacy 공용 유틸리티(`GetArg`, 7.2절)는 따옴표/괄호로 묶인 다중 단어 값(`Observer=(Pogge, DePoy, and Mason)` 같은 형태)을 실제로는 처리하지 못하고, 각 애플리케이션이 알아서 해야 했다. 신규 구현에서는 공통 파서 계층에 이 처리를 제대로 넣는 것이 legacy 대비 개선 포인트가 될 수 있음.
-- **디스크 이중화(`DISK0`/`DISK1`, 1.4/4.2절)는 1998년 SCSI 하드웨어 제약에서 비롯된 성능 최적화**였다는 점을 감안할 것 — 지금처럼 네트워크 스토리지(`/mnt/ICSData`)를 쓰는 환경에서 이 패턴을 그대로 유지할 이유가 있는지(예: 쓰기 도중 파일 접근 충돌 방지 등 다른 이유로 여전히 유효한지), 아니면 단순화할 수 있는지 신규 설계에서 검토할 만함.
+- ~~**디스크 이중화(`DISK0`/`DISK1`, 1.4/4.2절)는 1998년 SCSI 하드웨어 제약에서 비롯된 성능 최적화**였다는 점을 감안할 것 — 지금처럼 네트워크 스토리지(`/mnt/ICSData`)를 쓰는 환경에서 이 패턴을 그대로 유지할 이유가 있는지(예: 쓰기 도중 파일 접근 충돌 방지 등 다른 이유로 여전히 유효한지), 아니면 단순화할 수 있는지 신규 설계에서 검토할 만함.~~ → **폐지 확정 (2026-08-03)**. 디스크는 이중이 아니라 **최대 4중(`DISK0`~`DISK3`)** 이었고, 다중화의 두 근거(SCSI 시절 성능 최적화, NFS 전송 시간 확보)가 신규 통합 구조에서는 모두 사라지므로 신규는 설정파일에 저장 경로 하나만 둔다 — 근거 1.4절, [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.1절.
 - **파일명 fail-safe 관례는 계속 가져갈 가치가 있음**: "계산된 파일명이 이미 존재하면 조용히 덮어쓰지 않고 대체 이름으로 저장 + WARNING"(5.5절)은 1999년 Prospero 시절부터 이어진 데이터 유실 방지 안전장치(1.4절)로, legacy에서 여러 세대에 걸쳐 검증된 설계다. 신규 구현에서 굳이 없앨 이유가 없어 보임.

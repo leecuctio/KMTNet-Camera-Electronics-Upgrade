@@ -174,12 +174,14 @@ OBSAgent는 ICS가 보내는 원시 메시지(`EXPSTATUS=...`, `Shutter=Open`, `
 **상태 전이의 정확한 규약** (`commands.c` 748~865행 실측 — 신규 카메라 SW가 반드시 지켜야 할 사항):
 
 1. **발신 노드 필터** (757~759행): `CamStatus`에 영향을 주는 `STATUS:` 메시지는 발신자가 **`ICS` / `K.IC`·`M.IC`·`T.IC`·`N.IC` / `K.CB`·`M.CB`·`T.CB`·`N.CB`** 중 하나일 때만 처리된다(대소문자 무관). v0.3.2에서 **`ICG`/`G.IC`/`G.CB`를 무시하기 위해** 도입된 필터다 — 가이드 계통이 같은 문자열(`EXPSTATUS=...`, `Acquisition Complete.`)을 뿌려도 과학 상태머신이 오염되지 않는 이유.
-2. **본문 부분문자열 매칭**(`strstr`, if/else-if 체인이라 **순서가 의미를 갖는다**): `EXPSTATUS=IDLE` → `Wrote` → `Acquisition Complete.`(마침표 포함) → `PCTREAD=` → `EXPSTATUS=READOUT` → `Shutter=Closed` → `Remaining=` → `Shutter=Open` → `EXPSTATUS=INTEGRATING` → `EXPSTATUS=ERASE` → `EXPSTATUS=INITIALIZING`.
+2. **본문 부분문자열 매칭**(`strstr`) — **정정 (2026-08-08)**: 종전에는 전체를 하나의 if/else-if 체인으로 적었으나, 실제(764~864행)는 `EXPSTATUS=IDLE` 이 **독립 if**이고 **`Wrote` 부터가 별도의 else-if 체인의 시작**이다. 즉 한 메시지가 `EXPSTATUS=IDLE` 매칭과 체인 매칭을 **동시에** 발화시킬 수 있다. 체인 순서(체인 안에서는 순서가 곧 우선순위): `Wrote` → `Acquisition Complete.`(마침표 포함) → `PCTREAD=` → `EXPSTATUS=READOUT` → `Shutter=Closed` → `Remaining=` → `Shutter=Open` → `EXPSTATUS=INTEGRATING` → `EXPSTATUS=ERASE` → `EXPSTATUS=INITIALIZING`. `Wrote` 를 체인 머리로 올린 것은 v0.2.7의 의도적 수정이다(865~869행 주석 — ` EXPSTATUS=..` 꼬리가 붙은 메시지 때문에 `Wrote` 카운트가 깨지던 버그의 교정). **함의**: 신규 ICS가 `Wrote` 메시지에 ` EXPSTATUS=` 꼬리를 붙여도 `Wrote` 카운트는 유지되지만, 꼬리가 `EXPSTATUS=IDLE` 이면 독립 if가 함께 발화해 `IDLE_3` **조기 전이**를 유발할 수 있다.
 3. **개수를 센다 — 여기에 "IC가 4개"라는 전제가 박혀 있다**:
    - `Acquisition Complete.` 누적 **4회 이상** → `IDLE_2` (그 전까지는 `IDLE_1`)
+     - **마침표 비대칭 (2026-08-08 보강)**: IC는 이 문자열을 **OBS에는 마침표 있는 `Acquisition Complete.`, ICS에는 마침표 없는 `Acquisition Complete` 로 각각 따로** 보낸다 — 소스로 확정된 의도적 비대칭이다(`PAP7KS.CCD:172-176`, [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.6절 (1)·[DevNote](../ics_sim/DevNote.md) 6.10). OBSAgent는 `strstr(buf,"Acquisition Complete.")` 이므로 **마침표 있는 쪽만 센다**. 신규 ICS가 마침표를 빠뜨리면 카운트가 서지 않아 `force_idle` 타임아웃 → `opause` 로 간다.
    - `Wrote` 누적 **4회 이상** → `FitsSaved=1` (파일 저장 완료 플래그)
    - `PCTREAD=` 수신 시 두 카운터 모두 0으로 리셋 (다음 노출 준비)
-4. **타이머 강제 전이**(`main.c`, 1카운트≈0.045초): `IDLE_1`/`IDLE_2`에서 `force_idle=40`(≈1.8초) 경과 → `IDLE_3`, `IDLE_3`에서 `force_ready=270`(≈12.2초) 경과 → `READY`.
+   - **(2026-08-08 보강)** `EXPSTATUS=READOUT` 수신 시에도 `count_wrote`·`FitsSaved` 가 리셋된다(**`count_acqcomp` 는 유지**, 812~817행). 레거시 사이클에서 READOUT은 첫 `PCTREAD=` 보다 **약 2.7초 먼저** 도착하므로(DevNote 4.1 실측: t+38.69 vs t+41.4), §6.1(d)의 파이프라인 마감시한은 이쪽이 기준이다.
+4. **타이머 강제 전이**(`main.c`, 1카운트≈0.045초) — **정정 (2026-08-08)**: 종전에는 `IDLE_1`/`IDLE_2` 를 묶어 1.8초로 적었으나 두 경우가 다르다. `IDLE_1`에서는 `force_idle=40`(1번째 `Acquisition Complete.` 로부터 **≈1.8초**) 경과 → `IDLE_3`. `IDLE_2` 진입 시에는 카운터가 `force_idle/2=20`으로 선점되어(commands.c 791·794행) 4번째 `Acquisition Complete.` 로부터 **≈0.9초** 경과 → `IDLE_3`. `IDLE_3`에서 `force_ready=270`(≈12.2초) 경과 → `READY`. 초과 시의 경고·`opause` 동작까지 포함한 표는 §6.1(b) 참고.
 5. **`FitsNum` 파싱이 파일명 형식에 의존**: `Wrote` 메시지 본문에서 `"KMTN"`을 찾아 **그 지점+6에서 15자**를 잘라 `FitsNum`으로 쓴다. 즉 `KMTN<CCD 1글자>.<8자리 날짜>.<6자리 일련번호>` 형식이 깨지면 표시가 망가진다.
 
 > **중요 제약**: `EXP`/`OBJECT`/`DARK`/`BIAS`/`FLAT`/`PROJID`/`OBSERVER` 명령은 `CamStatus`가 `READY`일 때만 유효하고, **`GO` 명령은 `IDLE_3` 또는 `READY`일 때만** 실행 가능하다 — 즉 이전 노출의 파일 저장까지 다 끝나야 다음 설정 변경/노출 시작이 허용된다. 이는 [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.3절에서 확인한 "readout 도중 다음 필드 명령이 이미 들어옴" 파이프라이닝과는 다른 층위의 이야기다 — ICS 자체는 readout 중에도 명령을 받아주지만, **OBSAgent는 안전을 위해 `READY` 상태 전까지 다음 스크립트 라인 실행을 미룬다**(단 "다음 노출 준비"용 망원경 이동/필터 변경은 `oprepare` 옵션에 따라 readout 중에 미리 실행될 수 있다, §7 참고).
@@ -264,7 +266,15 @@ ICS>OBS STATUS: Image 1 of 5 complete. EXPSTATUS=IDLE
 
 로 끝나고 **마지막 프레임만** `ICS>OBS DONE: EXPSTATUS=IDLE` 이다. CTIO에서 `Image 1~4 of 5` 가 각 1,244~1,254회 관측되고 `5 of 5` 는 **0건**인 것이 근거다. 자세한 전개는 [`../ics_legacy/ics_legacy_report.md`](../ics_legacy/ics_legacy_report.md) 3.5절.
 
-주의할 점은 **프레임 N의 `Wrote` 4개가 프레임 N+1의 준비 중에 도착한다**는 것이다(파이프라인). 프레임 N+1의 `PCTREAD=` 가 `count_wrote` 를 0으로 리셋하기 전에 다 들어와야 `FitsSaved` 가 선다.
+주의할 점은 **프레임 N의 `Wrote` 4개가 프레임 N+1의 준비 중에 도착한다**는 것이다(파이프라인). **정정 (2026-08-08)** — 실질 마감시한은 종전 서술(첫 `PCTREAD=` 리셋)보다 이르다: **프레임 N+1의 `EXPSTATUS=READOUT`** 이 이미 `count_wrote`·`FitsSaved` 를 리셋하며(§6 항목3), 이는 첫 `PCTREAD=` 보다 **약 2.7초 앞선다**(DevNote 4.1 실측: t+38.69 vs t+41.4). 경고 하나: READOUT~첫 `PCTREAD=` 사이에 낀 `Wrote` 는 READOUT 리셋 뒤에 세어졌다가 첫 `PCTREAD=` 리셋에 다시 지워지므로, 이 창은 `Wrote` 가 몇 개 들어오든 `FitsSaved` 가 영영 서지 못하는 **함정 창**이다.
+
+#### (e) 스크립트 응답 체크 — `.osc` 모드에서는 명령마다 응답 판정이 있다 (2026-08-08 보강)
+
+[DevNote](../ics_sim/DevNote.md) 3.5의 규약이 §5/§6 어디에도 빠져 있어 여기 보탠다. `.osc` 스크립트 모드에서 OBSAgent는 보낸 명령마다 응답을 판정한 뒤에야 다음으로 넘어간다(`commands.c` 885~1015행):
+
+- **`GO` 만 특별하다**: 응답 본문이 아니라 **`CamStatus` 가 `PREP_I`~`INT_3` 범위에 들어와야** OK다(885~888행). 따라서 신규 ICS는 **`GO` 접수 즉시 `EXPSTATUS=INITIALIZING` 을 발신**해야 스크립트가 진행된다.
+- **그 외 명령**: `DONE:` 본문에 **명령어 문자열이 에코**돼야 한다 — `PROJID`/`OBJECT`/`DARK`/`BIAS`/`EXP`/`OBSERVER`/`LEDFLASH`/`DATASOURCE`/`DMAWAIT`/`FILENAME`/`ACQSTATUS` 등. 단 `STATUS` 는 **앞 공백을 포함한 `" STATUS"`** 로 찾는다(987행). 레거시의 `DONE: <커맨드워드> <본문>` 형식이면 자연히 만족하지만, 커맨드워드를 생략하면 깨진다.
+- **판정 실패 시**: 재시도 후에도 응답이 없으면 OBSAgent가 스스로 `opause` 를 발행해 **관측이 실제로 멈춘다**(5185~5210행).
 
 **`ExpStatus`** (`CamStatus`를 스크립트 관측 관점으로 재분류한 것, `expinfo` 명령으로 조회):
 `CHECK`/`STANDBY`(스크립트 미실행 중 대기)/`CMDED`(GO 명령 직후)/`WAITING`(스크립트 실행 중 망원경 준비 대기)/`FLUSH`/`EXPOSURE`/`READOUT`/`FINISH`/`ERROR`(FITS 쓰기 미완료 등)
@@ -276,7 +286,7 @@ DONE:/EXP.INFO: ExpStatus=EXPOSURE ExpNum=20240628.012345  ExpStart=2024-07-01T1
 
 ## 7. 시스템 상태 파일 — `sysstat` / `/data/Logs/ObsStatus.txt`
 
-OBSAgent는 백그라운드에서 5초 간격으로 카메라·망원경·돔 상태를 하나의 텍스트 파일 `/data/Logs/ObsStatus.txt`(약 2.2KB)로 계속 덮어써서 저장한다(`WriteObsStatus()`, v1.0.4부터). [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.6절의 **`GMON`(모니터링 클라이언트)과의 관계를 정확히 하면**: GMON은 이 파일을 읽는 것이 아니라 **UDP/IMPv2로 OBS 노드에 `sysstatus` 명령을 1초 간격으로 질의**하고, OBSAgent가 내부 함수 `GetSysStatus()`로 만든 상태 문자열(`SYS.STATUS:`)을 응답으로 돌려준다. `ObsStatus.txt`는 같은 상태 정보를 파일로도 내보내는 별도 채널일 뿐이다(다른 프로그램이 UDP 없이 상태를 읽을 수 있게).
+OBSAgent는 백그라운드에서 5초 간격으로 카메라·망원경·돔 상태를 하나의 텍스트 파일 `/data/Logs/ObsStatus.txt`(약 2.2KB)로 계속 덮어써서 저장한다(`WriteObsStatus()`, v1.0.4부터). [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.5절의 **`GMON`(모니터링 클라이언트)과의 관계를 정확히 하면**: GMON은 이 파일을 읽는 것이 아니라 **UDP/IMPv2로 OBS 노드에 `sysstatus` 명령을 1초 간격으로 질의**하고, OBSAgent가 내부 함수 `GetSysStatus()`로 만든 상태 문자열(`SYS.STATUS:`)을 응답으로 돌려준다. `ObsStatus.txt`는 같은 상태 정보를 파일로도 내보내는 별도 채널일 뿐이다(다른 프로그램이 UDP 없이 상태를 읽을 수 있게).
 
 같은 상태 문자열들은 Debug log에도 1초 간격으로 기록된다: `DOME.STATUS:` / `SYS.STATUS:` / `EXP.INFO:`, 스크립트 관측 중에는 `OSC.STATUS:`까지 4종이 동시 갱신·기록된다(v1.0.2). 스크립트 관측 결과는 별도의 `/data/Logs/OBS/obs.scrobs.<일시>.log`에 한 노출당 한 줄(시각, LINE#/EXP#, ProjID, 대상, 좌표, 노출 시작 시점의 SecZ/Alt/Az/HA, ExpNum, 안정화 여부)로 남는다(v1.1.0).
 

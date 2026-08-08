@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Awaitable
 
 from .auxcontrol import AuxControlClient
@@ -48,12 +49,24 @@ class IcsSim:
         self.dispatch = Dispatcher(self)
 
         self._tasks: set[asyncio.Task] = set()
+        #: 마지막 브로드캐스트 (원문, 수신 시각) -- XIS 가 등록 슬롯마다 한 부씩
+        #: 복사해 보내는 중복 사본을 걸러낸다 (DevNote 3.1.2)
+        self._last_broadcast: tuple[str, float] = ('', 0.0)
 
     # -- 생명주기 ---------------------------------------------------------
 
     async def start(self) -> None:
         for note in self.cfg.validate():
             log.warning('config: %s', note)
+        if self.cfg.transport.xis_addr is not None:
+            # XIS 는 같은 노드 ID 로 메시지가 오면 (IP,port) 를 확인 없이
+            # 덮어쓴다.  운영 허브에 레거시 ICS/IC 가 살아 있는 채로 붙으면
+            # 등록하는 순간 그쪽 라우팅을 가로챈다 (xis/xis.md 7절).
+            log.warning(
+                'XIS 허브 %s:%d 에 연결합니다 -- 운영 허브라면 레거시 ICS/IC '
+                '계통(및 isisrelay)을 먼저 정지하세요.  같은 노드 ID 등록이 '
+                '레거시의 라우팅을 즉시 가로챕니다 (xis/xis.md 7절)',
+                *self.cfg.transport.xis_addr)
         await self.transport.start()
         await self.aux.start()
         self.register()
@@ -107,6 +120,27 @@ class IcsSim:
         self.emit.emit_req(dest, cmdword)
 
     def _on_message(self, msg: Message, addr) -> None:  # noqa: ANN001
+        # 자기 발신 에코부터 버린다.  XIS 경유 모드에서는 시퀀서가 K.IC 등
+        # 자기 노드 앞으로 보낸 INITIALIZE/ERASE/SHOPEN/GO 가 허브를 돌아
+        # 그대로 되돌아온다 -- 클라이언트 테이블의 K.IC 주소가 우리 자신이기
+        # 때문이다.  걸러내지 않으면 명령이 이중 실행된다 (DevNote 3.1.2).
+        # 내부 실행은 발신 전에 이미 끝났으므로 에코는 버리는 것이 맞다.
+        if self.router.owns(msg.src):
+            log.debug('self-echo dropped: %s', msg.raw)
+            return
+
+        # AL 브로드캐스트는 XIS 가 등록 슬롯마다 한 부씩 복사한다 -- 9개 ID 로
+        # 등록한 우리에게는 같은 데이터그램이 최대 9부 도착한다 (v2.9.1 은
+        # 송신 슬롯 하나만 제외한다, xis/xis.md 6.3).  첫 부만 처리한다.
+        if msg.is_broadcast:
+            now = time.monotonic()
+            last_raw, last_seen = self._last_broadcast
+            if (msg.raw == last_raw and
+                    now - last_seen <= self.cfg.transport.broadcast_dedup_sec):
+                log.debug('duplicate broadcast dropped: %s', msg.raw)
+                return
+            self._last_broadcast = (msg.raw, now)
+
         # TC 응답부터 걸러낸다 -- 우리가 먼저 질의한 것에 대한 답이다.
         if msg.mtype == 'DONE' and msg.src.upper() == 'TC':
             if self.telem.on_tc_reply(msg):

@@ -14,9 +14,12 @@
   * `cam_char/archon/archon_simulator.py`
         하드웨어 없이 위 스크립트를 시험하는 프로토콜 시뮬레이터.
         이 백엔드를 개발할 때 상대역으로 쓸 수 있다.
+  * `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md`
+        **write_fits() 가 맞춰야 할 1차 산출 규격** -- Archon raw FITS pair.
+        2.3 파일명, 2.5 저장/통보 분리, 5장 헤더 키워드, 변경점 C-8.
   * `mef_converter/` 와 `mef_fits_spec/`
-        Archon raw -> L0 64-amp MEF 규격.  write_fits() 가 최종적으로 맞춰야 할
-        산출물 형식이다.
+        raw pair -> L0 64-amp MEF 변환기와 그 출력물 규격.  write_fits() 의
+        산출물이 아니라 다음 단계의 입력<->출력 관계다.
 
 구현 시 유의할 점:
   * readout() 은 **진행률을 yield** 해야 한다.  Archon 은 FRAME 의 픽셀/라인
@@ -25,7 +28,12 @@
     (PCTREAD= 는 2회 이상이면 READ_3 에 도달한다 -- DevNote 3.2).
   * 4개 CCD 를 병렬로 읽되, **4개의 획득 완료가 1.8초 안에** 모여야 한다.
     넘으면 OBSAgent 가 스크립트 관측을 멈춘다 (DevNote 3.3).
-  * write_fits() 는 4개 파일을 25초 안에 다 써야 한다 (같은 절).
+  * **저장 단위와 통보 단위가 갈라진다 (D-009/D-010).**  파일은 컨트롤러당
+    1개(노출당 MK/NT 2개)를 쓰고, Wrote 통보만 CCD 단위 4회를 레거시 형식의
+    논리 이름으로 낸다.  현재의 write_fits(ccd, ...) 시그니처는 CCD 단위라
+    이 구조를 표현할 수 없다 -- ics_archon 착수 시 개정한다 (DevNote 9.1).
+  * Wrote 4회의 마감은 다음 프레임의 EXPSTATUS=READOUT 발신 전이다
+    (~25초 창, raw_fits_spec 2.5 / DevNote 6.1).
 """
 
 from __future__ import annotations
@@ -83,7 +91,10 @@ class ArchonBackend:
         raise BackendError(_NOT_YET, ccd=ccd)
 
     async def write_fits(self, ccd: str, path: str, header: dict) -> int:
-        # TODO: mef_fits_spec 규격에 맞춰 저장하고 실제 전송률(KB/sec) 반환.
+        # TODO: raw_fits_spec 규격(2.3 파일명, 5장 헤더)에 맞춰 raw pair 를
+        #       저장하고 실제 전송률(KB/sec) 반환.  저장은 컨트롤러 단위
+        #       2파일, 통보는 CCD 단위 4회 -- 시그니처 개정 필요 (모듈
+        #       docstring 과 DevNote 9.1 의 상기 블록 참고).
         raise BackendError(_NOT_YET, ccd=ccd)
 
     def status(self, ccd: str) -> dict:

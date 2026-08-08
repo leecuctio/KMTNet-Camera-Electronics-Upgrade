@@ -22,7 +22,7 @@ KMTNet 배포본에서는 이 허브가 `ServerID XIS` 로 기동된다. **`XIS`
 xis/
 ├── xis.md              ← 이 문서 (+ 부록 A: XIS 노드 등록 논의 전 과정)
 ├── MANIFEST.md         ← 파일 목록 · 출처 · 사이트 간 동일성
-├── SHA256SUMS.txt      ← 163개 파일 전체 체크섬
+├── SHA256SUMS.txt      ← 보관 원본 162개 파일 전체 체크섬
 ├── src/                ★ 운영 중인 허브 소스 (ISIS v2.9.1, 3사이트 동일)
 │   ├── server/           허브 서버 — main/interfaces/messages/clients/commands/…
 │   ├── client/           libisis 클라이언트 라이브러리
@@ -154,6 +154,14 @@ XIS 콘솔(기동된 xterm)에서 아래 셋이면 3절 판정과 6.2절 여유�
 
 이어서 신규 `ics` 연동:
 
+> ### ⚠️ 경고 — 레거시 ICS/IC 가 살아 있는 운영 XIS 에 `ics_sim` 을 등록하지 말 것
+>
+> XIS 의 `updateHosts()`(`src/server/clients.c:83`)는 이미 아는 노드 ID 로 메시지가 오면 **그 데이터그램의 (IP,port) 로 테이블을 무조건 덮어쓴다** — 107행에서 ID 만 `strcmp` 로 비교하고, 108~112행에서 `addr`·`port` 를 검사 없이 갱신한다. **주소 충돌 검사는 없다**(3절 · 6.1절 ②③에서 확정한 사실).
+>
+> 따라서 레거시 `ICS`·`K.IC` 등이 등록된 상태에서 `ics_sim` 이 9개 ID 로 PING 하면 **그 순간 9개 ID 의 라우팅을 전부 가로챈다.** 이어서 레거시 쪽이 아무 메시지나 보내면 라우팅은 도로 빼앗기고, 양쪽이 트래픽을 내는 동안 **각 ID 의 라우팅이 두 주소 사이를 오가는 플래핑**이 된다 — 관측 명령이 어느 쪽에 도착할지 메시지 단위로 갈린다.
+>
+> **아래 절차는 반드시 레거시 ICS/IC(및 relay)를 정지한 뒤에, 또는 운영과 분리된 시험용 XIS 인스턴스에서 수행할 것.**
+
 1. `ics_sim` 을 `bind_host = 0.0.0.0` 으로 띄우고 `--xis-host` 로 XIS 를 가리킨다.
 2. XIS 콘솔에서 `UDPPING <sim_ip> <sim_port>` → 시뮬이 9개 ID 로 PONG 하는지 본다. 이어 `HOSTS` 로 9개가 전부 테이블에 올랐는지 확인.
 3. `tools/isisPerl/<site>/isisCmd` 로 `OBS>K.IC STATUS` 류를 주입해 라우팅을 확인한다. 실패하면 `ERROR: No Route to Destination Host K.IC - host is unknown/unlisted` 가 돌아온다 — 이게 판정 기준이다.
@@ -162,8 +170,8 @@ XIS 콘솔(기동된 xterm)에서 아래 셋이면 3절 판정과 6.2절 여유�
 ## 8. 계획 / 남은 일
 
 - [ ] **7절 실물 확인** — `VERSION`·`INFO`·`HOSTS`. 3절 판정과 6.2절 여유를 확정한다. **선행 조건 없음, 가장 먼저 할 것.**
-- [ ] **DevNote 3.1.1 (12) 갱신** — 근거 트리를 `EXEC_ISIS/server/` → `ISIS/server/` 로 바로잡고, ⑧ 을 해결 처리한다. 7절 결과가 나온 뒤에 한 번에 반영하는 편이 낫다.
-- [ ] **`ics_sim` 자기 브로드캐스트 에코 처리** — 6.3절. 9개 ID 등록 상태에서 `AL` 발신 시 되돌아오는 8부를 무시하는지 확인/보강.
+- [x] **DevNote 3.1.1 갱신** — **완료 (2026-08-06 개편 때).** DevNote 3.1.1 은 근거 트리를 `ISIS/server/`(v2.9.1) 로 정정한 결론·규약본으로 재작성됐고, ⑧(`MAXPRESET`) 해결도 반영됐다. 당시 갱신 대상이던 '(12)' 는 이 문서 부록 A 로 이관돼 이미 정정 주석을 달고 있다.
+- [x] **`ics_sim` 자기 발신 에코 처리** — **구현 완료 (2026-08-08, DevNote 3.1.2).** 점검에서 브로드캐스트 에코보다 심각한 **유니캐스트 루프백**(시퀀서가 자기 노드 앞으로 쏜 ERASE/SHOPEN 이 되돌아와 재실행)이 드러나, `cmd_ping()` 수준이 아니라 **수신 초입의 자기 발신 필터**로 구현했다. 브로드캐스트 중복 억제(`broadcast_dedup_sec`) 포함, `test_xis_echo.py` 15개가 검증.
 - [ ] **재빌드 검증** — `src/server/build` 로 현대 툴체인에서 `isis` 가 빌드되는지 한 번 돌려 본다. 운영 바이너리가 백업에 없으므로, 재빌드 가능성 자체가 이 보관본의 가치다.
 - [ ] (선택) 운영 머신에서 `isis` 실행 바이너리를 회수해 `install/bin/` 에 추가.
 
@@ -183,8 +191,9 @@ XIS 콘솔(기동된 xterm)에서 아래 셋이면 3절 판정과 6.2절 여유�
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-08-08 | **정정 일괄 반영.** 7절에 운영 XIS 동시 등록 금지 경고 추가(`updateHosts` 의 무조건 덮어쓰기 → 라우팅 가로채기·플래핑), 8절 ② DevNote 3.1.1 갱신 완료 처리, 보관 파일 수 162 로 통일(2절·이력의 163 은 오기), 부록 A 교차참조 정정((10)의 5.6.3절 → `ics_legacy_report.md` 명시, ⑥의 '3.1.1 (1)' → 부록 (1)), (10)→(12) 지점에 (11) 위치 안내 추가. MANIFEST 신규 파일 목록에 `.gitattributes` 보충 |
 | 2026-08-06 | **DevNote 3.1.1(449줄)을 부록 A 로 이관.** DevNote 는 결론·규약만 남겨 1,889→1,482줄. XIS 허브 논의가 "OBSAgent 인터페이스 규약" 장 안에 있던 자리 문제도 함께 해소 |
-| 2026-08-05 | 폴더 신설. `__dts_legacy` 3사이트 백업에서 XIS 관련 자산 163 파일 수집·정리. **운영본이 XISIS v2.7.3 이 아니라 stock ISIS v2.9.1 임을 확인**(3절), 그 결과 DevNote ⑧ `MAXPRESET` 미해결 항목 해결(6.2절) |
+| 2026-08-05 | 폴더 신설. `__dts_legacy` 3사이트 백업에서 XIS 관련 자산 162 파일 수집·정리. **운영본이 XISIS v2.7.3 이 아니라 stock ISIS v2.9.1 임을 확인**(3절), 그 결과 DevNote ⑧ `MAXPRESET` 미해결 항목 해결(6.2절) |
 
 ---
 
@@ -402,7 +411,9 @@ XIS>ICG  ERROR: No Route to Destination Host G.IC - host is unknown/unlisted
 
 > **"unknown/`unlisted`" 라는 단어에 주의.** "unlisted"는 XIS가 **호스트 목록을 갖고 있다**는 뉘앙스다. 순수 동적 등록이 아니라 **설정 파일에 노드 목록이 있을 가능성**이 있고, 그렇다면 시뮬을 그 목록에 **등록해 주어야** 하며 PING만으로는 부족할 수 있다. **1안/2안보다 더 근본적인 문제**이므로 소스 확인 시 최우선으로 볼 것.
 
-> 부수 관찰: 목적지가 깨진 사례도 있다 — `No Route to Destination Host 0<0xef><0xbf><0xbd>ICG`, `Host <0xef><0xbf><0xbd>ZY´ZY<0xef><0xbf><0xbd>`. 5.6.3절의 전송 손상이 라우팅 실패로 드러난 것이다.
+> 부수 관찰: 목적지가 깨진 사례도 있다 — `No Route to Destination Host 0<0xef><0xbf><0xbd>ICG`, `Host <0xef><0xbf><0xbd>ZY´ZY<0xef><0xbf><0xbd>`. [`../../ics_legacy/ics_legacy_report.md`](../../ics_legacy/ics_legacy_report.md) 5.6.3절(현상 C — 버퍼 겹침·전송 절단)의 전송 손상이 라우팅 실패로 드러난 것이다.
+
+> **절 순서 안내**: (11)(함께 확인된 포트 설정)은 유실된 것이 아니라 **이 문서 맨 끝, (14) 뒤에 있다.** 여기서는 (12)로 바로 이어진다.
 
 ### (12) **XIS 서버 소스 확인 — 결론** (2026-08-04)
 
@@ -510,7 +521,7 @@ for (i=0; i<MAXCLIENTS; i++) {
 >
 > 무한 증폭은 아니다 — PONG 은 `dest=msg.src` 로 **지목 발신**이라 브로드캐스트 분기를 다시 타지 않고, 기동 시 1회의 유한한 버스트로 끝난다. direct-reply 모드(허브 없음)에서는 아예 발생하지 않는다. **그래도 불필요한 버스트이므로 `msg.src` 가 `router.registered_ids` 에 있으면 무시하도록 막는 것이 맞다.** → DevNote 13장 백로그.
 >
-> ⚠️ **이 경로는 `transport.feed()` 테스트로는 드러나지 않는다.** 에코를 만드는 주체가 XIS 이기 때문이다 — 3.1.1 (1)에서 등록 결함이 XIS 경유 모드에서만 드러났던 것과 같은 종류다.
+> ⚠️ **이 경로는 `transport.feed()` 테스트로는 드러나지 않는다.** 에코를 만드는 주체가 XIS 이기 때문이다 — 이 부록 (1)에서 등록 결함이 XIS 경유 모드에서만 드러났던 것과 같은 종류다.
 
 #### ⑦ 함께 확정된 운영 설정 (CTIO `Config/isis.ini`)
 
@@ -580,7 +591,7 @@ if (isis.numPreset == MAXPRESET) {
 | **`XIS>AL PING` 에 9개 PONG** | 브로드캐스트 PING 에 9개 노드 ID 전부로 PONG 응답 | **구현 완료 (2026-08-04)** |
 | **XIS `isis.ini` 에 시뮬 등록** | `UDPPort <sim_ip> <sim_port>` 한 줄 추가. **1안이라 한 줄이면 된다**(2안이면 9줄 필요) | 운영 측 작업. **⑧ 해결로 선행 조건 없어짐 (2026-08-05)** |
 | 주기적 재등록 | preset에 등록되면 필수는 아니나 안전망으로 유효 | 선택 |
-| **자기 발신 브로드캐스트 에코 무시** | `cmd_ping()` 이 `msg.src ∈ registered_ids` 면 응답하지 않도록. ⑥ 보강 참조 | **미착수 (2026-08-05 추가)** |
+| **자기 발신 에코 무시** | ~~`cmd_ping()` 이 `msg.src ∈ registered_ids` 면 응답하지 않도록~~ → **수신 초입 필터로 확대 구현 (2026-08-08).** 유니캐스트 루프백까지 막아야 해서다 — DevNote 3.1.2/12.13 | **완료** |
 
 구현: `commands.py` `cmd_ping()` 이 `msg.is_broadcast` 면 `router.registered_ids` 전부로 PONG 을 보낸다. 지목된 PING(`OBS>K.IC PING`)에는 그 노드로만 답한다.
 검증: `test_broadcast_ping_answered_by_all_nine_nodes` · `test_directed_ping_answered_by_that_node_only`.

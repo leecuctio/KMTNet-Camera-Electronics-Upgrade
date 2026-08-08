@@ -171,7 +171,7 @@ ISIS 클라이언트 표준 설정 포맷(`Keyword Value`, `#` 주석, 대소문
 
 | 명령 | 기능 (소스코드 `commands.c` 확인) |
 |---|---|
-| `catalog` (`cat`) | RA/Dec 객체 카탈로그 파일(기본 `/home/dts/Config/pctcs.cat`)을 메모리에 로드. 인자 없이 실행하면 로드된 카탈로그 데이터 목록 출력 |
+| `catalog` (`cat`) | RA/Dec 객체 카탈로그 파일(기본 `/home/dts/catalog/pctcs.cat` — v1.7.2 소스 `pctcs.h:112`의 `DEFAULT_CATFILE`, 5절의 `CATFILE` 서술·전체 ini와 일치. 종전 표기 `/home/dts/Config/pctcs.cat`은 v1.5.2 당시 UpdateNotes의 값이라 v1.7.2와 다르다 — 정정 2026-08-08)을 메모리에 로드. 인자 없이 실행하면 로드된 카탈로그 데이터 목록 출력 |
 | `tmradec` (`tmr`) | `<RA> <DEC> (<copt>)` — 좌표로 이동하되, 보정 옵션(`copt`)에 따라 좌표를 실시간으로 보정한 뒤 이동. 아래 9.1절 참고 |
 | `tmobject` (`tmobj`/`tmo`) | `<객체명> (<copt>)` — `catalog`로 로드해둔 카탈로그에서 객체명으로 좌표를 찾아 `tmradec`와 동일하게 이동 |
 | `tmelaz` (`tme`) | 고도/방위각(El/Az)으로 직접 이동 |
@@ -198,7 +198,7 @@ BLG01  17:54:52.760  -31:10:58.70  1
 BLG02  17:54:52.760  -29:01:25.10  1
 ...
 ```
-필드명(`BLG01`, `BLG02`...)이 [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.3절 실측 로그에서 본 `OBJECT BLG11` 등과 동일한 명명 체계임을 확인했다 — 즉 카메라(ICS)가 FITS 헤더/파일명에 쓰는 필드 이름과 TCS Agent가 실제 지향에 쓰는 카탈로그가 같은 필드 코드를 공유한다(단, 실제로 어느 소프트웨어가 두 시스템에 필드명을 배포하는지는 OBSAgent 쪽 분석에서 확인 필요).
+필드명(`BLG01`, `BLG02`...)이 [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 4.3절 실측 로그에서 본 `OBJECT BLG11` 등과 동일한 명명 체계임을 확인했다 — 즉 카메라(ICS)가 FITS 헤더/파일명에 쓰는 필드 이름과 TCS Agent가 실제 지향에 쓰는 카탈로그가 같은 필드 코드를 공유한다. **배포 주체는 OBSAgent로 확인됐다 (2026-08-08)**: `.osc` 노출 라인 한 줄이 `RA`/`DEC`/`COPT`와 `OBJECT`(필드명)를 함께 담고([obsagent_report.md](../OBSAgent/obsagent_report.md) 5절), 스크립트 관측 시 OBSAgent가 좌표는 `tmr <RA> <DEC> <copt>` 로 TC에(OBSAgent `KMTObs/commands.c` 5765~5768행), 대상 이름은 `<imgtyp> <object>`(예: `object BLG01`)로 ICS에(5960~5961행) 각각 보낸다. 즉 스크립트 관측은 `tmradec` 경로라 TCS 쪽 카탈로그(`pctcs.cat`)를 거치지 않으며, `pctcs.cat`은 수동/`tmobject`용으로 같은 필드명 체계를 **병행 유지**하는 별도 테이블이다(이중 관리 문제와 단일 소스 통합 권고는 11절 참고).
 
 ## 9.2 저수준 프로토콜 요약 — `tcmd`/`treq`/`acmd`가 실어나르는 것
 

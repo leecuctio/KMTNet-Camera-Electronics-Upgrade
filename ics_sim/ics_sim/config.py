@@ -15,9 +15,17 @@ from __future__ import annotations
 
 import configparser
 import os
+import re
 from dataclasses import dataclass, field
 
 DEFAULT_INI = 'ics_sim.ini'
+
+#: IMPv2 노드 이름 규칙 (프로토콜 스펙 2.3절): 2~8자, A-Z 0-9 . _
+_NODE_ID_RE = re.compile(r'^[A-Z0-9._]{2,8}$')
+#: 노드 ID 로 쓰면 안 되는 이름.  AL/ALL 은 브로드캐스트 예약어, XIS 는 허브의
+#: ServerID -- v2.9.1 허브에는 srcID==ServerID 방어가 없어서(xis/xis.md 6.3)
+#: 거르는 책임이 전적으로 클라이언트 쪽에 있다.
+_RESERVED_IDS = frozenset({'AL', 'ALL', 'XIS'})
 
 
 class ConfigError(Exception):
@@ -69,6 +77,9 @@ class TransportCfg:
     #: XIS 가 같은 (IP,port) 의 다중 등록을 거부하는 것으로 밝혀지면 이 값을
     #: 끄는 대신 노드별 소켓(2안)으로 전환해야 한다.
     register_all_nodes: bool = True
+    #: 같은 AL 브로드캐스트 원문이 이 시간(초) 안에 다시 오면 XIS 의 슬롯별
+    #: 복사본으로 보고 버린다 (DevNote 3.1.2).  0 이하면 중복 억제를 끈다.
+    broadcast_dedup_sec: float = 2.0
 
     @property
     def xis_addr(self) -> tuple[str, int] | None:
@@ -289,6 +300,28 @@ class SimConfig:
             raise ConfigError('ic_ids 와 cb_ids 개수가 다릅니다')
         if self.node.master not in self.node.ccds:
             raise ConfigError(f'master={self.node.master} 가 ic_ids 에 없습니다')
+
+        # 노드 ID 검증.  v2.9.1 허브는 이름을 전혀 검사하지 않으므로(주소
+        # 충돌 검사도, ServerID 사칭 방어도 없음 -- xis/xis.md 6.3) 잘못된
+        # 이름이 그대로 클라이언트 테이블에 올라가 라우팅을 오염시킨다.
+        ids = [i.upper() for i in self.node.all_node_ids]
+        for nid in ids:
+            if not _NODE_ID_RE.match(nid):
+                raise ConfigError(
+                    f'노드 ID {nid!r} 가 IMPv2 이름 규칙(2~8자, A-Z 0-9 . _)에 '
+                    '어긋납니다')
+        if len(set(ids)) != len(ids):
+            dup = sorted({i for i in ids if ids.count(i) > 1})
+            raise ConfigError(f'노드 ID 가 중복됩니다: {", ".join(dup)}')
+        bad = _RESERVED_IDS.intersection(ids)
+        if bad:
+            raise ConfigError(
+                f'노드 ID 로 예약어를 쓸 수 없습니다: {", ".join(sorted(bad))} '
+                '(AL/ALL 은 브로드캐스트, XIS 는 허브 ServerID)')
+        if self.node.guide_ic_id and self.node.guide_ic_id.upper() in ids:
+            raise ConfigError(
+                f'guide_ic_id={self.node.guide_ic_id} 가 수신 노드 ID 와 '
+                '겹칩니다')
         if self.node.emit_node_mode not in ('legacy', 'merged'):
             raise ConfigError('emit_node_mode 는 legacy 또는 merged')
         if t.tc_timeout_mode not in ('passthrough', 'canned'):
@@ -426,6 +459,8 @@ def load(path: str | None = None) -> SimConfig:
         t.peer_ttl_sec = float(s.get('peer_ttl_sec', str(t.peer_ttl_sec)))
         t.register_all_nodes = _bool(s, 'register_all_nodes',
                                      t.register_all_nodes)
+        t.broadcast_dedup_sec = float(s.get('broadcast_dedup_sec',
+                                            str(t.broadcast_dedup_sec)))
 
     if cp.has_section('paths'):
         s = cp['paths']

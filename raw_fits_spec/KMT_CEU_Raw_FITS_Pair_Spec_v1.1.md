@@ -2,7 +2,7 @@
 
 버전: v1.1
 작성일: 2026-08-06
-최종 갱신일: 2026-08-07
+최종 갱신일: 2026-08-08
 Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1의 변경은 geometry가 아니므로 유지)
 연동 ICD: `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` (v4.0)
 연동 converter: `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.3)
@@ -78,7 +78,7 @@ KMTN.<YYYYMMDD>.<NNNNNN>.NT.fits
 - 접미 `.MK.fits` / `.NT.fits`는 **대소문자까지 정확히** 일치해야 한다. converter는 이 문자열로 짝을 찾는다.
 - 예: `KMTN.20260807.012345.MK.fits`, `KMTN.20260807.012345.NT.fits`
 
-> **6자리 zero-padding은 선택이 아니다.** converter의 정규식은 `^KMTN\.(\d{8})\.(\d{6})\.MK\.fits$`이고, `find_pair()`는 MK 파일명에서 `.MK.fits`를 `.NT.fits`로 치환해 짝을 찾는다. 한쪽만 `12345`(5자리)로 쓰면 (1) 짝 파일을 못 찾아 `FileNotFoundError`, (2) 정규식 불일치로 출력 MEF 이름이 fallback 경로로 빠지고, (3) OBSAgent의 `FitsNum` 15자 슬라이스가 한 칸 밀린다.
+> **6자리 zero-padding은 선택이 아니다.** converter의 정규식은 `^KMTN\.(\d{8})\.(\d{6})\.MK\.fits$`이고, `find_pair()`는 MK 파일명에서 `.MK.fits`를 `.NT.fits`로 치환해 짝을 찾는다. 한쪽만 `12345`(5자리)로 쓰면 (1) 짝 파일을 못 찾아 `FileNotFoundError`, (2) 정규식 불일치로 출력 MEF 이름이 fallback 경로로 빠진다. (3) raw 파일명 자체는 OBSAgent에 가지 않지만(D-010), 같은 일련번호에서 만들어지는 `Wrote` 논리 이름의 `<NNNNNN>`이 함께 자릿수를 어기면 OBSAgent의 `FitsNum` 15자 슬라이스가 한 칸 밀린다.
 
 파일명은 **pair 식별의 유일한 근거가 되어서는 안 된다.** 5.2절의 `EXPID` / `CTRLTAG` / `PAIRFILE`로 헤더 안에서도 짝이 확인되어야 한다.
 
@@ -112,7 +112,11 @@ L0 MEF의 amp 픽셀 총수(64 × 1200 × 4616 = 354,508,800)와 raw pair 픽셀
 | `count_wrote` | 4회 → `FitsSaved=1` ✓ |
 | `FitsNum` 파싱 | `"KMTN"` 위치 +6부터 15자 → `'20260807.012345'` ✓ (`obsagent_model.py:112-114`) |
 | 4개 메시지 간 일관성 | 네 논리 이름의 날짜·번호가 같으므로 도착 순서와 무관하게 같은 `FitsNum` |
-| 타이밍 | 프레임 N의 `Wrote` 4개는 프레임 N+1의 `PCTREAD=`가 `count_wrote`를 리셋하기 전에 다 도착해야 한다 (DevNote 6.1). 파일 2개 × 2회를 저장 직후 함께 내므로 레거시(IC 4대 개별 발신)보다 여유가 있다 |
+| 타이밍 | 프레임 N의 `Wrote` 4개는 프레임 N+1의 `EXPSTATUS=READOUT`(및 그 뒤 `PCTREAD=`)가 `count_wrote`를 리셋하기 전에 다 도착해야 한다 (DevNote 6.1, OBSAgent `commands.c` 797~816행). 파일 2개 × 2회를 저장 직후 함께 내므로 레거시(IC 4대 개별 발신)보다 여유가 있다 |
+
+**발신 순서 규칙 — 프레임 N의 `Wrote` 4회는 프레임 N+1의 `EXPSTATUS=READOUT` 발신 이전에 반드시 내보낸다.**
+
+OBSAgent는 `PCTREAD=` 수신 시뿐 아니라 **`EXPSTATUS=READOUT` 수신 시에도** `count_wrote`와 `FitsSaved`를 리셋하며(`commands.c` 812~816행), READOUT은 첫 `PCTREAD=`보다 약 2.7초 먼저 온다 (DevNote 4.1 실측: t+38.69 `EXPSTATUS=READOUT` vs t+41.4 첫 `PCTREAD=`). 이 READOUT ~ 첫 PCTREAD 사이 약 2.7초는 **함정 창**이다 — 여기에 낀 `Wrote`는 READOUT 리셋 뒤에 세어졌다가 첫 `PCTREAD=` 리셋(`count_wrote=0`, `FitsSaved=0`)에 지워지므로, 그 프레임의 `FitsSaved`는 영영 서지 않고 매 프레임 `force_fitssaved` 25초 타임아웃 + `ExpStatus=ERROR` 경로로 빠진다.
 
 **주의 — `LASTFILE`은 이제 실재하는 경로가 아니다.**
 
@@ -368,7 +372,7 @@ chip의 mosaic 원점은 `M`,`K`가 위쪽 행, `N`,`T`가 아래쪽 행이고 `
 | `ELECSYS` | 권장 | `'KMT-CEU'` | SITE | PRIMARY `ELECSYS` |
 | `SIGELEC` | 권장 | `'STA_DIFF_VIDEO'` | SITE | PRIMARY `SIGELEC` |
 
-`CTRLNAME` / `CTRLSN` / `CTRLFW`는 `../project_management/science/CALIBRATION_TRACKER.md`가 추적하는 "카메라 완성 후 확정" 항목이다. **raw가 이 값을 실어 주지 않으면 MEF는 영원히 `UNKNOWN`이다.**
+`CTRLNAME` / `CTRLSN` / `CTRLFW`는 카메라 완성 후에야 확정되는 값이다. 현행 `../project_management/science/CALIBRATION_TRACKER.md`에는 아직 이 항목이 없으므로 추적 항목으로 추가할 예정이다 (OI-9의 tracker 항목 추가와 함께 처리). **raw가 이 값을 실어 주지 않으면 MEF는 영원히 `UNKNOWN`이다.**
 
 #### 5.5.1 amp ↔ 전자계통 매핑 → MEF `MODULE` / `CHANNEL` / `XTALKGROUP`
 
@@ -818,3 +822,4 @@ print('raw pair OK:', a['EXPID'])
 | v1.0 | 2026-08-06 | Archon raw FITS pair(MK/NT) 규격 초판. 파일 구조·픽셀 배치·헤더 keyword 정의, converter 영향 분석, OBSAgent 파일명/`Wrote` 규약 충돌 제기 |
 | v1.0 | 2026-08-06 | MEF keyword 정의서 v1.0 및 L1 `CARRY_KEYS` 전량 대조(6.5·6.6절) 후 누락 보강: `AMPPCD`, `DETSIZE`/`CCDCOLS`/`CCDROWS`/`COLGAP`/`ROWGAP`, `MODULE`/`CHANNEL` 배선 맵(5.5.1), `READDIR`(`RDDIRT`/`RDDIRB`), `CCDTEMP` 필수 격상. raw 제외 keyword 경계 명시(5.12) |
 | v1.1 | 2026-08-07 | **OI-1 · OI-2 해결.** 파일명은 ICD v4.0 형식 유지 + `<NNNNNN>` 6자리 zero-padding 필수화(2.3절, D-009). 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회 `Wrote`)를 분리하는 ICS 규약 추가(2.5절, D-010). `LASTFILE`이 실재 경로가 아니게 되는 부작용 명시. C-7 불필요 처리, C-16 추가 |
+| v1.1 | 2026-08-08 | 정정(geometry 아님, `RAWVER` 유지): 2.5절 타이밍 조건을 `EXPSTATUS=READOUT`(및 그 뒤 `PCTREAD=`) 리셋 기준으로 수정하고(`commands.c` 812~816행 근거) `Wrote` 발신 순서 규칙 + READOUT~첫 PCTREAD 함정 창(~2.7초) 경고 추가. 2.3절 zero-padding 위반 결과 (3)을 `Wrote` 논리 이름 기준으로 정정. 5.5절 `CTRLNAME`/`CTRLSN`/`CTRLFW`의 CALIBRATION_TRACKER 추적 서술을 현재형에서 추가 예정으로 완화 |

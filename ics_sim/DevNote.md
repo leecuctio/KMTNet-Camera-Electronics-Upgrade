@@ -195,7 +195,7 @@ OBSAgent 는 명령마다 수신 노드를 달리 지정한다:
 | preset 목록 크기 | **`MAXPRESET 32`** (사용: CTIO 13 · SAAO 14 · SSO 13) | 〃 |
 | 재시작 시 재등록 | `XIS>AL PING` 을 **시리얼 + preset UDP 에 개별 `sendto`**. IP 브로드캐스트가 아니다 | `interfaces.c` `handShake()` |
 | 브로드캐스트 relay | 송신 **슬롯 하나만** 제외 → 우리 `AL` 발신이 **8부 에코**된다 | `messages.c` |
-| 라우팅 실패 통보 | `XIS>OBS ERROR: No Route to Destination Host K.IC - host is unknown/unlisted` — **실물 시험의 판정 기준** | 〃 |
+| 라우팅 실패 통보 | `XIS>OBS ERROR: No Route to Destination Host K.IC - host is unknown/unlisted` — **실물 시험의 판정 기준** | `interfaces.c` |
 
 > ⚠️ 위 근거는 `ISIS/server/`(**stock ISIS v2.9.1, 운영본**)의 코드다. 백업에는 이름이 비슷한 은퇴 분기 `EXEC_ISIS/`(XISIS v2.7.3)가 함께 있고, **처음에는 그쪽을 읽었다**(정정 경위 12.12). 인용한 파일들이 두 분기에서 `#include` 한 줄 빼고 바이트 동일이라 결론은 그대로다. 트리 판정 근거와 신규 설계 함의 전체는 [`xis/xis.md` 3·6절](xis/xis.md).
 
@@ -211,10 +211,26 @@ OBSAgent 는 명령마다 수신 노드를 달리 지정한다:
 | 남은 일 | 내용 |
 |---|---|
 | **운영 측** | XIS `isis.ini` 에 `UDPPort <sim_ip> <sim_port>` **한 줄** 추가. `MAXPRESET 32` 라 여유는 충분하다. 넣기 전에 XIS 콘솔 `UDPPING <ip> <port>` 로 선시험할 수 있다 |
-| **우리 쪽** | 자기 발신 브로드캐스트 에코 무시 — `cmd_ping()` 이 `msg.src ∈ registered_ids` 면 응답하지 않도록. **미착수**(13장) |
+| ~~**우리 쪽**~~ | ~~자기 발신 브로드캐스트 에코 무시~~ — **구현 완료 (2026-08-08, 3.1.2).** 점검에서 브로드캐스트보다 심각한 **유니캐스트 루프백**이 드러나 수신 초입 필터로 확대했다 |
 | 설정 | `bind_host` 기본값이 `127.0.0.1` 이라 로컬 전용이다. 외부 XIS·OBSAgent 와 붙이려면 `0.0.0.0` 으로 |
 
-> **이 결함은 `transport.feed()` 테스트로 드러나지 않는다.** 테스트는 XIS 라우팅 단계를 통째로 건너뛰고, direct-reply 모드(기본)에서도 상대가 우리 주소로 직접 쏜다. **XIS 경유 모드로 바꾸는 순간에만 드러나는 종류**다 — 에코 문제(위)도 같은 이유로 안 잡힌다.
+> **이 결함은 `transport.feed()` 테스트로 드러나지 않는다.** 테스트는 XIS 라우팅 단계를 통째로 건너뛰고, direct-reply 모드(기본)에서도 상대가 우리 주소로 직접 쏜다. **XIS 경유 모드로 바꾸는 순간에만 드러나는 종류**다 — 에코 문제(3.1.2)도 같은 이유로 숨어 있었고, 지금은 `test_xis_echo.py` 가 XIS 의 에코 동작 자체를 feed 로 흉내 내 검증한다.
+
+### 3.1.2 자기 발신 에코와 브로드캐스트 중복 (2026-08-08)
+
+XIS 경유 모드에서만 나타나는 두 가지 되돌림을 수신 초입에서 거른다. 실물 연동 시험(11.11) 전 점검에서 확정했다.
+
+**① 유니캐스트 루프백 — 자기 발신은 버린다.** 시퀀서는 레거시 통신규약대로 `K.IC` 등 자기 노드 앞으로 `INITIALIZE`/`ERASE`/`SHOPEN`/`GO` 를 와이어에 내보내는데, 실행은 발신 전에 내부에서 이미 끝난다. XIS 는 클라이언트 테이블대로 `K.IC` 의 등록 주소(=우리 자신)로 그 메시지를 배달하므로, 걸러내지 않으면 **에코가 새 명령으로 재실행된다** — `ERASE` 이중 실행, `SHOPEN` 재구동 + `Shutter=Open` 중복 발신(CamStatus 역행), `GO` busy ERROR 잉여 발신. 원래 백로그에는 "cmd_ping 에서 브로드캐스트 에코만 거르기"로 적혀 있었으나 그 범위로는 이 경로가 안 막힌다(정정 12.13).
+
+**② 브로드캐스트 슬롯별 복사 — 첫 부만 처리한다.** v2.9.1 의 `AL` relay 는 송신 슬롯 하나만 제외하므로(`messages.c`), 9개 ID 로 등록한 우리에게 같은 데이터그램이 최대 9부 도착한다. 억제하지 않으면 외부 브로드캐스트 PING 1건에 PONG 81발(9부 × 9 ID)이 나가고, 브로드캐스트 명령은 9회 중복 실행된다.
+
+**구현** (`app.py _on_message` 초입):
+1. `router.owns(msg.src)` 면 버린다. 정당한 외부 발신자(`OBS`/`TC`/`XIS`/`CHA`/`C1`/`ICG`…)는 우리 9개 ID 와 겹치지 않으므로 안전하다. `G.IC` 는 owns 가 아니라서(범위 밖 무응답 규칙, 1.3) 필터와 무관하게 기존 동작 유지.
+2. `AL` 브로드캐스트는 같은 원문이 `[transport] broadcast_dedup_sec`(기본 2.0초) 안에 다시 오면 슬롯별 복사본으로 보고 버린다. 0 이하로 두면 끈다(진단용).
+
+덧붙여 `config.validate()` 가 노드 ID 를 검증한다 — IMPv2 이름 규칙(2~8자, `A-Z 0-9 . _`), 예약어(`AL`/`ALL`/브로드캐스트, `XIS`/허브 ServerID), 중복, guide 충돌. **v2.9.1 허브에는 ServerID 사칭 방어도 주소 충돌 검사도 없으므로**(xis/xis.md 6.3) 거르는 책임이 전적으로 우리에게 있다.
+
+검증: [`tests/test_xis_echo.py`](tests/test_xis_echo.py) 15개 — 에코 재실행 차단(대조군 포함), 전체 사이클 발신 전량 되먹임에도 신규 발신 0건, 브로드캐스트 3부 → PONG 9발 한 세트, dedup off 시 구동작 재현, 노드 ID 검증 6종.
 
 ### 3.2 CamStatus 상태머신 (commands.c 757~864)
 
@@ -246,6 +262,8 @@ LASTFILE=/mnt/ICSData/KMTNk.20250902.057288.fits
                       ^KMTN     └──── 15자 ────┘
 ```
 → 파일명 `KMTN<ccd 1글자>.<8자리 날짜>.<6자리 번호>.fits` 형식이 **고정**이다. `"KMTN"` 이 없으면 `FitsNum=00000000.000000`, `FitsOsc=CHECK`.
+
+> **논리 이름 vs 물리 파일 (D-009/D-010, 2026-08-07 확정)** — 위 형식이 고정인 것은 **`Wrote` 메시지에 싣는 논리 이름**이다. 실기(ics_archon)의 디스크 실물은 **컨트롤러당 1개, 노출당 2개** `KMTN.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits` 로 저장하고, 통보만 CCD 단위 4회를 논리 이름으로 낸다 ([`../raw_fits_spec/`](../raw_fits_spec/README.md) 2.5절). 시뮬은 레거시 재현이 목적이라 CCD당 1파일을 그대로 쓴다 — 전환 계약은 9.3.
 
 구현: [`ics_sim/obsagent_model.py`](ics_sim/obsagent_model.py) 가 이 체인을 그대로 재현한다. 시뮬 검증과 로그 재생에 **같은 코드**를 쓴다.
 
@@ -853,6 +871,7 @@ ELSEIF ICHOST = "ICG" AND AcquisitionCompleteCounter > 0 THEN   ' CCD 1개
 | `send_gap_ms` | `2` | rate-limited 발신 큐 간격. 레거시 `dispatcher.cpp` 패턴 |
 | `peer_ttl_sec` | `3600` | 학습한 피어 주소 유효시간 |
 | `register_all_nodes` | `true` | 기동 시 **9개 노드 ID 전부로 PING** 을 보내 XIS에 등록(3.1.1). `false` 면 `ICS` 만 등록되고 `kstatus`/`dmawait`/`datasource` 가 도달하지 않는다 |
+| `broadcast_dedup_sec` | `2.0` | 같은 `AL` 브로드캐스트 원문이 이 시간 안에 다시 오면 XIS 슬롯별 복사본으로 보고 버린다(3.1.2). 0 이하면 끔 |
 
 > `bind_host` 기본값이 `127.0.0.1` 이라 **로컬에서만 받는다.** 외부 XIS·OBSAgent와 붙이려면 `0.0.0.0` 으로 바꿀 것. `bind_port=6600` 은 레거시 IC 계열 관례 포트라 **같은 호스트에 실제 `K.IC` 가 있으면 충돌**한다([`xis/xis.md` 부록 A](xis/xis.md) (11)).
 
@@ -910,7 +929,7 @@ ELSEIF ICHOST = "ICG" AND AcquisitionCompleteCounter > 0 THEN   ' CCD 1개
 
 | 키 | 기본값 | 설명 |
 |---|---|---|
-| `strict_legacy` | `true` | 미구현 명령을 레거시처럼 무응답 처리 |
+| `strict_legacy` | `true` | 남은 스텁(`BIN` 하나, 9.2)을 무응답 처리. 응답 형식의 실측 근거가 없어서다 — `ROI`/`DISPL`/`MOVIE` 는 이 스위치와 무관하게 항상 `Didn't understand` 거부(6.8) |
 | `bug_compat` | `false` | 레거시 커맨드워드 오염 재현 (5.4-6) |
 | `send_guide_init` | `true` | `ICS>G.IC INITIALIZE` 발신 여부 |
 | `console` | `true` | stdin 키보드 인터페이스 |
@@ -1031,13 +1050,20 @@ class DetectorBackend(Protocol):
 |---|---|
 | `cam_char/archon/archon_kmtnet_labtest_v2.py` | Archon 텍스트/바이너리 프로토콜로 노출·FETCH 까지 하는 실동작 스크립트. 명령 시퀀스(POWERON, LOADPARAM, FASTPREPPARAM/RELEASETIMING, STATUS/FRAME 폴링, 1 KiB 블록 FETCH)를 그대로 옮기면 된다 |
 | `cam_char/archon/archon_simulator.py` | 하드웨어 없이 위 스크립트를 시험하는 프로토콜 시뮬레이터. 이 백엔드 개발 시 상대역 |
-| `mef_converter/` · `mef_fits_spec/` | Archon raw → L0 64-amp MEF 규격. `write_fits()` 가 최종적으로 맞출 산출물 형식 |
+| [`raw_fits_spec/`](../raw_fits_spec/README.md) | **`write_fits()` 가 맞출 1차 산출 규격** — Archon raw FITS pair (컨트롤러당 1개, `MK`/`NT`). 2.3 파일명 · 2.5 저장/통보 분리 · 5장 헤더 · 변경점 C-8 이 구현 지시다 |
+| `mef_converter/` · `mef_fits_spec/` | raw pair → L0 64-amp MEF **변환기와 그 출력물** 규격. `write_fits()` 의 산출물이 아니라 **다음 단계의 입력↔출력 관계**다 |
 
 **구현 시 유의할 점** (전부 3.3 의 시간 창에서 나온다):
 - 4개 CCD 를 병렬로 읽되 **4개의 획득 완료가 1.8초 안에** 모여야 한다. 넘으면 OBSAgent 가 스크립트 관측을 멈춘다.
 - 4번째 획득 완료 후 **0.9초 안에** `EXPSTATUS=IDLE` 을 내야 한다.
-- `write_fits()` 는 4개 파일을 **25초 안에** 다 써야 한다.
+- `write_fits()` 는 raw pair 저장을 **25초 안에**(정확한 마감은 다음 프레임의 `EXPSTATUS=READOUT` 발신 전, 6.1) 끝내고 `Wrote` 4회를 내보내야 한다.
 - `config.validate()` 가 기동 시 이 창을 검사하므로, 실측 타이밍을 `[timing]` 에 넣으면 자동으로 경고가 뜬다.
+
+> **⚠️ ics_archon 착수 시 상기 — 저장 단위와 통보 단위가 갈라진다 (D-009/D-010, 2026-08-07 확정).**
+> 시뮬은 레거시 재현이라 "CCD당 파일 1개 = 노출당 4개 + `Wrote` 4회"지만, 실기는 **파일은 컨트롤러당 1개(노출당 `MK`/`NT` 2개), `Wrote` 통보만 CCD 단위 4회를 레거시 형식의 논리 이름으로** 낸다 ([`raw_fits_spec/`](../raw_fits_spec/README.md) 2.5절, 변경점 C-8·C-16). 이때 바뀌는 곳:
+> - `hardware/base.py` — `write_fits(ccd, …)` Protocol 이 CCD 단위라 **컨트롤러 단위 저장을 표현할 수 없다.** 시그니처 개정 필요 (2단계 "무개정 전환" 약속은 시퀀서·명령부·메시지 규약에 대한 것이고, 하드웨어 계약 자체는 이 확장의 대상이다).
+> - `sequencer._store()` / `state.filename()` — 저장 경로와 `Wrote` 논리 이름의 분리 (C-16). `LASTFILE` 은 실재 경로가 아니게 된다.
+> - `telemetry.py` 의 결측 `'0'` 채움 — raw_fits_spec 5.0절 sentinel 규약(`0` 금지)과 정렬 필요 (OI-6/C-9, 11.2 참조).
 
 ### 9.2 명령 처리부는 전부 "구현 자리"를 갖는다
 
@@ -1151,7 +1177,7 @@ shclose_cmd = FILTERS SET_SH CLOSE
 
 `fitsout.py` 는 지금은 더미 배열을 쓰지만, **헤더 생성(AUX/TCS 텔레메트리 → FITS 키워드)은 처음부터 실제와 같은 경로**로 만들었다. 다음 단계에서 `fetch_image()` 가 실제 픽셀을 돌려주면 그대로 저장된다.
 
-`mef_fits_spec/` 의 KMT-CEU 키워드 규격과의 정합은 실기 단계에서 붙인다. 지금은 레거시 헤더 재현까지가 목표다.
+실기 단계의 헤더·파일 규격은 [`raw_fits_spec/`](../raw_fits_spec/README.md) 다 (5장 헤더 키워드, 2.3 파일명, 2.5 저장/통보 분리 — 위 9.1 의 상기 블록). `mef_fits_spec/` 정합은 raw pair 를 받는 converter 쪽 일이다. 지금은 레거시 헤더 재현까지가 목표다.
 
 ---
 
@@ -1162,7 +1188,7 @@ cd ics_sim
 python -m pytest tests -q
 ```
 
-현재 **113개 전부 통과**.
+현재 **156개 전부 통과** (2026-08-08).
 
 | 파일 | 지키는 것 |
 |---|---|
@@ -1170,6 +1196,9 @@ python -m pytest tests -q
 | `test_emitter_hygiene.py` | 5장 오염 방지 — 정방향(시뮬 출력이 깨끗한가) + **역방향**(레거시 샘플을 잡아내는가) |
 | `test_sequence_golden.py` | 4·6장 — 레거시 실측 시퀀스와 메시지 종류·순서·개수 일치 |
 | `test_impv2.py` | 프로토콜 파싱 — malformed 무응답, 대소문자 무관, 다중 단어 값, 깨진 명령 거부 |
+| `test_stop_abort.py` | 9.2.1 — STOP/ABORT 의 레거시 분기 재현과 중지 후 IDLE 복귀 |
+| `test_auxcontrol.py` | 9.2.2 — AUX control 연동, 응답별 처리, 무응답에도 노출 완주 |
+| `test_xis_echo.py` | 3.1.2 — 자기 발신 에코·브로드캐스트 중복·노드 ID 검증 |
 
 **음성 테스트**(일부러 깨뜨려 검출을 확인하는 것)를 여러 곳에 뒀다. 없으면 검증기가 껍데기여도 통과하기 때문이다:
 
@@ -1200,6 +1229,7 @@ python -m pytest tests -q
 - **대안**: (a) 사이트별 테이블 유지 (b) 받은 대로 넘기기.
 - **선택**: (b). 없는 필드는 sentinel(`0`/`NC`).
 - **이유**: 테이블을 유지하면 사이트가 늘거나 AUX 펌웨어가 바뀔 때마다 코드를 고쳐야 한다. ICS 가 알아야 할 것은 "어디까지가 TC 필드인가"뿐이고, 그건 자기가 붙이는 꼬리를 아는 것으로 충분하다.
+- **주의 (2026-08-08)**: 결측 수치를 `'0'` 으로 채우는 이 sentinel 은 **레거시 메시지 계층**의 관례다. `raw_fits_spec/` 5.0절은 FITS 헤더에서 `0` 을 값-없음으로 쓰는 것을 금지한다(`-999.0`/`-1`/`'NC'`) — **ics_archon 의 헤더 생성 경로는 규격 쪽을 따라야 한다** (OI-6/C-9, 9.1 상기 블록·13장).
 
 ### 11.3 DARK/BIAS 의 `Shutter=Closed` 관례 유지
 
@@ -1254,6 +1284,16 @@ python -m pytest tests -q
 - **확정 (2026-08-04)**: XIS 서버 소스로 **1안 안전 확정, 2안 불필요**(3.1.1). "잠정"은 해제됐다. `register_all_nodes` 스위치는 남긴다.
 - **근거 트리 정정 (2026-08-05)**: 위 확정의 근거가 은퇴 분기(`EXEC_ISIS/`)였고 **운영본은 `ISIS/` v2.9.1** 이다(3.1.1, 12.12). 인용한 코드가 두 분기에서 바이트 동일하므로 **결정 자체는 바뀌지 않는다.** 1안의 이점도 그대로다 — preset 한 줄, `MAXPRESET 32` 중 19줄 여유.
 - **전환 조건과 확인 항목**: [`xis/xis.md` 부록 A](xis/xis.md) (8).
+
+### 11.11 실물 연동 시험의 XIS 빌드·기동 환경 — 원격 리눅스 채택 (2026-08-07)
+
+- **배경**: 실물 연동 시험([`xis/xis.md` 7~8절](xis/xis.md))은 XIS(ISIS v2.9.1)를 소스에서 재빌드해 띄우는 것이 선행 조건인데, 운영 바이너리가 백업에 없고 소스는 리눅스용(g++ · readline · ncurses)이다. 개발 PC(Windows 11)에는 WSL · Docker · gcc 가 전부 없다.
+- **대안**:
+  - (a) **WSL2 + Ubuntu 설치** — 실제 운영 환경(리눅스)과 가장 가깝고 이후 OBSAgent(obstool) 빌드에도 재사용 가능. 단 관리자 권한과 재부팅이 필요할 수 있다.
+  - (b) **원격 리눅스 머신** — 이미 있는 리눅스 서버(KASI 내부 서버, KMTNet TestBed 등)에 SSH 로 접속해 빌드·기동. 운영과 같은 실제 리눅스라 판정 신뢰도가 가장 높다. 접속 정보·네트워크 경로(시뮬 ↔ XIS 간 UDP 왕복)가 전제.
+  - (c) **MSYS2** — POSIX 호환 레이어로 Windows 에서 빌드. 관리자 권한이 필요 없지만 소켓/시리얼 동작이 실제 리눅스와 다를 수 있어 판정 신뢰도가 떨어진다.
+- **선택**: (b) 원격 리눅스 머신. (2026-08-07, 사용자 결정)
+- **이유**: 추가 설치 없이 실제 리눅스에서 판정할 수 있어 신뢰도와 착수 비용이 모두 낫다. ics_sim 은 Python 이라 원격 머신에서 함께 돌리거나, UDP 가 통하면 이 PC 에서 `--xis-host` 로 원격 XIS 를 가리켜도 된다. (a)/(c) 는 원격 머신이 여의치 않을 때의 대비책으로 남긴다.
 
 ---
 
@@ -1389,6 +1429,16 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 
 > **파급 점검 (12.11 의 교훈 적용).** 이 정정이 닿는 절을 전부 열어 확인했다 — 3.1.1 · 11.10 · 12.9 · 13장 백로그 · 2.1 자료표 · `README.md` · `SMC_CLAUDE.md`. **깨진 결론은 없고, `MAXPRESET` 하나가 해결되고 브로드캐스트 에코 항목이 하나 늘었다.**
 
+### 12.13 "에코 문제는 브로드캐스트 PING 뿐" → **유니캐스트 루프백이 본체였다** (2026-08-08)
+
+실물 연동 시험 전 전 문서·코드 일제 점검에서 나왔다. 백로그와 xis.md 는 에코 대응을 *"`cmd_ping()` 이 `msg.src ∈ registered_ids` 면 무응답"* 으로만 적어 두었는데, **그 범위로 고쳤다면 진짜 문제가 그대로 살아남았다.**
+
+**무엇을 놓쳤나.** 시퀀서가 레거시 규약대로 `K.IC` 앞으로 내보내는 `INITIALIZE`/`ERASE`/`SHOPEN`/`GO` 는 **유니캐스트**다. XIS 경유 모드에서 이 메시지들은 클라이언트 테이블의 `K.IC` 주소(=우리 자신)로 배달되고, `_on_message` 에 src 검사가 없어 **새 명령으로 재실행된다** — `ERASE` 이중 실행, `SHOPEN` 셔터 재구동 + `Shutter=Open` 중복 발신(CamStatus 역행), `GO` busy ERROR. PONG 버스트는 이 옆의 소음일 뿐이었다.
+
+**왜 놓쳤나.** 에코를 처음 인지한 맥락이 "XIS 재시작 브로드캐스트에 9개 PONG" 이라서, 대응도 그 사례 안에서만 설계했다. **"XIS 는 우리가 보낸 모든 것을 자기 테이블대로 되돌려줄 수 있다"** 로 일반화하지 않았다. 12.11 의 교훈("새 발견이 기존 결론과 만나는 지점에서 기존 문서를 되짚어라")의 변형이다 — 이번엔 새 발견이 아니라 **알고 있던 결함의 적용 범위**를 되짚지 않았다.
+
+수정: 수신 초입 자기 발신 필터 + 브로드캐스트 중복 억제 (3.1.2). `nodes.py` 의 `owns()` 가 정의만 되고 호출처가 없던 것이 이 구멍의 흔적이다.
+
 ---
 
 ## 13. 개선 제안 · 백로그
@@ -1400,7 +1450,11 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 | **XIS `isis.ini` 에 시뮬 등록** | `UDPPort <sim_ip> <sim_port>` 한 줄 추가(운영 측 작업). ~~`MAXPRESET` 여유 확인 필요~~ → **선행 조건 해소 (2026-08-05).** 운영본이 v2.9.1 이라 상한 32, 사용 13~14 (3.1.1) | **최우선** |
 | ~~**XIS 콘솔 `info` 로 `MaxPreset` 실측**~~ | **선행 조건에서 확인 절차로 격하 (2026-08-05).** 소스로 32 확정. 실물에서는 `VERSION`(2.9.1 인지) · `INFO`(`… of 32 max`) 로 판정만 재확인한다 | 중간 |
 | **`UDPPING` 으로 등록 선시험** | XIS 콘솔에 `UDPPING <ip> <port>` 가 있다(3.1.1). **운영 `isis.ini` 를 건드리기 전에** 시뮬 등록·9개 PONG 을 시험할 수 있다. 실물 연동의 첫 단계로 이것부터 | **최우선** |
-| **자기 발신 브로드캐스트 에코 무시** | 운영본은 브로드캐스트를 송신 슬롯 하나만 빼고 relay 하므로 우리 `AL` 발신이 **8부 에코**된다. `cmd_ping()` 이 발신자를 안 보고 9개 PONG 을 돌려 기동 시 불필요한 버스트가 난다(3.1.1). `msg.src ∈ registered_ids` 면 무시 | 높음 |
+| ~~**자기 발신 에코 무시**~~ | **구현 완료 (2026-08-08, 3.1.2).** 점검에서 브로드캐스트 에코보다 심각한 **유니캐스트 루프백**(ERASE/SHOPEN 이중 실행)이 드러나(12.13) `_on_message` 초입 필터로 확대. 브로드캐스트 중복 억제·노드 ID 검증 포함, 테스트 15개 | 완료 |
+| **`write_fits()` raw pair 구현 (C-8)** | ics_archon 에서 `raw_fits_spec/` 2.3·2.5·5장대로 **컨트롤러당 1파일**(`MK`/`NT`) 저장. `hardware/base.py` 의 CCD 단위 Protocol 시그니처 개정 포함 (9.1 상기 블록) | ics_archon |
+| **저장/통보 단위 분리 (C-16)** | `sequencer._store()`·`state.filename()` 을 물리 저장 경로와 `Wrote` 논리 이름으로 분리 (D-010). `LASTFILE` 은 실재 경로가 아니게 된다 | ics_archon |
+| **sentinel 정렬 (C-9)** | ics_archon 헤더 생성 경로의 결측값을 raw_fits_spec 5.0절 규약(`-999.0`/`-1`/`'NC'`, `0` 금지)으로 — 메시지 계층의 `'0'` 채움(11.2)과 구분 | ics_archon |
+| **발신 길이 검사** | 2048자 제한이 수신에서만 강제된다(`impv2.py`). 텔레메트리 pass-through 가 TC 응답에 꼬리를 붙이는 구조라 발신 초과를 스스로 진단할 수단이 필요 | 낮음 |
 | **XIS 재빌드 검증** | 운영 바이너리(`isis` v2.9.1)가 백업에 없다. 소스·빌드 스크립트는 온전하니 현대 툴체인에서 `xis/src/server/build` 가 도는지 한 번 확인해 둔다 — **재빌드 가능성 자체가 보관본의 가치**(`xis/xis.md` 4절) | 중간 |
 | 주기적 재등록 | preset 목록에 등록되면 필수는 아니나 안전망으로 유효 | 중간 |
 | Caliban(`*.CB`) 소스 검토 | `__dts_legacy/.../Agents_V1/Caliban/src/` 에 CB 노드 소스가 있다(`TransferDisk.c` 등). 신규는 CB 계층을 내부화하므로 우선순위는 낮지만, 디스크 핸드셰이크·파일명 fail-safe 의 실제 구현이다 | 낮음 |
@@ -1458,7 +1512,19 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 - `ics_legacy/SMC_CLAUDE.md` "다음에 이어서 할 만한 일" 갱신
 - `ics_legacy/__sample_isislog/samples_for_bug.txt` git 추가(8.1)
 
-> **미반영 (2026-08-05)**: `ics_legacy/ics_legacy_report.md` 도 `EXEC_ISIS/server/` 를 "XIS 서버 소스 전체"로 적고(자료 색인) **8.0.1 (13) 에 같은 `MAXPRESET` 미해결 항목**을 두고 있다. 12.12 의 정정이 그대로 적용되는 자리다 — 아직 손대지 않았다.
+> ~~**미반영 (2026-08-05)**: `ics_legacy/ics_legacy_report.md` 도 `EXEC_ISIS/server/` 를 "XIS 서버 소스 전체"로 적고(자료 색인) **8.0.1 (13) 에 같은 `MAXPRESET` 미해결 항목**을 두고 있다.~~ → **반영 완료 (2026-08-08).** 아래 일제 점검에서 처리.
+
+### 전 문서 정합성 일제 점검 (2026-08-08)
+
+실물 연동 시험 전에 작업 산출물 전체(레거시 보고서 3부작 · TCSAgent/OBSAgent 보고서 · ics_sim · xis · raw_fits_spec)를 교차 점검했다. 지적 47건 중 확정 15건 + 추가 검증 통과분을 반영:
+
+- `ics_legacy/ics_legacy_report.md` — §8.0.1(13) 근거 트리 `ISIS/server/` 정정 + `MAXPRESET` 해결 처리, **§8.0.1(14) 신설**(스크립트 응답 체크, 3.5 의 역이식), §8.1 STOP/ABORT 모순 제거, §1.1 `TELID=KMTS`→SAAO 오기, §4.2/§8.1 디스크 서술, 내부 절 참조 3건
+- `ics_legacy/icg_legacy_report.md` — "ICS 는 셔터 OPEN 시 질의" 4곳 정정(실제는 ERASE 전후 질의, 셔터 후는 TCSSTATUS 중계만), 서두의 "소스 없음" 낡은 서술, 디스크 3개→최대 4중, 죽은 4.7절 참조
+- `OBSAgent/obsagent_report.md` — **`EXPSTATUS=READOUT` 도 `count_wrote`/`FitsSaved` 리셋** 반영(마감시한이 문서보다 ~2.7초 빠름), §6.1(e) 응답 체크 신설, if/else-if 체인 구조, `force_idle/2` 수치, 마침표 비대칭, GMON 절 번호
+- `TCSAgent/tcsagent_report.md` — catalog 경로 모순(`pctcs.h:112` 로 확정), §9.1 필드명 배포 주체 매듭
+- `raw_fits_spec/` — 2.5절 `Wrote` 마감시한을 READOUT 기준으로 정정 + ics_archon 발신 순서 규칙 명시, 5.5절 트래커 서술 완화 / `DECISION_LOG.md` D-009 영향절 조건부화
+- `ics_sim/xis/xis.md` — **7절에 운영 허브 라우팅 가로채기 경고**(레거시 정지 후 시험), 체크리스트 정리, 파일 수 162 통일, 부록 A 참조 3건 / `MANIFEST.md` `.gitattributes` 등재
+- 이 문서 — 3.1.2 신설(에코 필터), 12.13, 9.1/9.3 raw_fits_spec 연결, 3.2 논리/물리 파일명 구분, 7장/10장/13장 갱신
 
 ---
 

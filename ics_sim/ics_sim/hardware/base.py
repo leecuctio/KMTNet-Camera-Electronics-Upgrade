@@ -56,7 +56,12 @@ class DetectorBackend(Protocol):
         """읽어낸 픽셀 배열.  FITS 를 쓰지 않을 때는 None 을 돌려도 된다."""
 
     async def write_fits(self, ccd: str, path: str, header: dict) -> int:
-        """FITS 로 저장하고 전송률(KB/sec)을 돌려준다."""
+        """FITS 로 저장하고 전송률(KB/sec)을 돌려준다.
+
+        주의: 이 CCD 단위 시그니처는 시뮬(레거시 재현) 기준이다.  실기의
+        저장 단위는 컨트롤러(chip 2개, 노출당 MK/NT 2파일)라 ics_archon
+        착수 시 이 계약을 개정한다 -- raw_fits_spec 2.5절, DevNote 9.1.
+        """
 
     def status(self, ccd: str) -> dict:
         """STATUS 명령 응답에 쓸 값들 (Driving, fibers, build 등)."""

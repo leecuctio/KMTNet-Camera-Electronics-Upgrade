@@ -1,6 +1,6 @@
 # KMTNet-CEU Decision Log
 
-최종 갱신일: 2026-08-07
+최종 갱신일: 2026-08-08
 
 ## D-001: Primary raw archive product는 L0 64-amplifier MEF로 한다
 
@@ -222,8 +222,15 @@
 영향:
 
 - Converter 변경 없음.
-- 6자리 zero-padding은 필수 조건이다. 어기면 (1) `find_pair()`가 짝 파일을
-  찾지 못하고, (2) 출력 MEF 이름이 fallback 경로로 빠지며, (3) OBSAgent의
+- 6자리 zero-padding은 필수 조건이다. 어기면:
+  (1) pair 양쪽 파일명이 어긋난 경우(예: 한쪽만 5자리) `find_pair()`의
+  문자열 치환(`.MK.fits` ↔ `.NT.fits`)이 존재하지 않는 짝 이름을 만들어
+  `FileNotFoundError`가 난다 — 양쪽이 똑같이 자릿수를 어기면 짝 자체는
+  찾아진다;
+  (2) `default_output_name()`의 정규식 `^KMTN\.(\d{8})\.(\d{6})\.MK\.fits$`
+  불일치로 출력 MEF 이름이 fallback 경로로 빠진다 (양쪽이 같이 어겨도 발생);
+  (3) raw 파일명 자체는 OBSAgent에 가지 않지만(D-010), 같은 일련번호에서
+  만들어지는 `Wrote` 논리 이름의 `<NNNNNN>`이 함께 자릿수를 어기면 OBSAgent의
   `FitsNum` 15자 슬라이스가 밀린다.
 - 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md` 2.3절.
 
