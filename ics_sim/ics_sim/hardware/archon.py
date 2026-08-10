@@ -14,9 +14,10 @@
   * `cam_char/archon/archon_simulator.py`
         하드웨어 없이 위 스크립트를 시험하는 프로토콜 시뮬레이터.
         이 백엔드를 개발할 때 상대역으로 쓸 수 있다.
-  * `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md`
+  * `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`
         **write_fits() 가 맞춰야 할 1차 산출 규격** -- Archon raw FITS pair.
-        2.3 파일명, 2.5 저장/통보 분리, 5장 헤더 키워드, 변경점 C-8.
+        2.3 파일명(<SITE> 사이트 코드 prefix, D-011), 2.5 저장/통보 분리,
+        5장 헤더 키워드, 변경점 C-8.
   * `mef_converter/` 와 `mef_fits_spec/`
         raw pair -> L0 64-amp MEF 변환기와 그 출력물 규격.  write_fits() 의
         산출물이 아니라 다음 단계의 입력<->출력 관계다.

@@ -139,7 +139,7 @@ $PP run         object*.fits -d mef_pipeline_out -f                      # L0 ->
 $PP gaia-ingest cones/*.fits --store mef_pipeline_out/caldb/gaia_local -d mef_pipeline_out  # 로컬 스토어 구축
 $PP run         object*.fits -d mef_pipeline_out -f \
                 --gaia-local mef_pipeline_out/caldb/gaia_local           # 오프라인 astrometry(권장)
-$PP fetch-gaia  --like KMTN...MK.fits -d mef_pipeline_out                # Gaia DR3 개별 콘(네트워크)
+$PP fetch-gaia  --like KMTA...MK.fits -d mef_pipeline_out                # Gaia DR3 개별 콘(네트워크)
 $PP make-refcat mef_pipeline_out/*.ceu.l1ccd.mef.fits -d mef_pipeline_out          # 오프라인 부트스트랩(대안)
 $PP run         object*.fits -d mef_pipeline_out -f \
                 --refcat mef_pipeline_out/caldb/refcat.fits              # astrometry 포함 처리

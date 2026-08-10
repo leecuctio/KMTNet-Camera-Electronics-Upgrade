@@ -74,6 +74,11 @@ v1.0 분석에서 확인된 문제를 수정했다.
 `<PREFIX>.<YYYYMMDD>.<FILENUM>.fits`는 **v1.0과 동일**하게 유지했다
 (테스트가 xTalk 21 / Dark 63 / iFlat 116 / GxT 15 프레임을 고정 검증).
 
+> **경계**: 이 캠페인 파일명 체계는 실험실 특성 측정 데이터 전용이며, 사이트
+> 운영 raw pair 파일명 규격(`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits`,
+> `raw_fits_spec/` 2.3절, D-011)과는 **별개 도메인**이다. 이 스크립트 산출물을
+> converter에 넣을 때의 정합은 규격 C-10 항목에서 다룬다.
+
 ## 4. 사용법
 
 ```bash

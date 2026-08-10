@@ -1,11 +1,11 @@
 # KMT-CEU Raw FITS Pair 규격
 
-버전: v1.1
+버전: v1.2
 작성일: 2026-08-06
-최종 갱신일: 2026-08-08
-Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1의 변경은 geometry가 아니므로 유지)
-연동 ICD: `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` (v4.0)
-연동 converter: `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.3)
+최종 갱신일: 2026-08-10
+Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1/v1.2의 변경은 geometry가 아니므로 유지)
+연동 ICD: `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1, docx 동본)
+연동 converter: `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0)
 
 ## 1. 문서 목적과 범위
 
@@ -51,34 +51,47 @@ Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1의 변경은 geometry�
 
 공식 chip order는 `M,K,N,T`이고 raw grouping convention은 `MKNT`이다 (DECISION_LOG **D-002**).
 
-> **v1.0에서 상향된 요구**: ICD v4.0은 검증 시점의 실측을 근거로 "NT 헤더는 최소한만 있을 수 있다"고 기술한다. 이 규격은 그것을 **허용하지 않는다.** NT 파일도 5장의 필수 keyword를 모두 채워야 한다. 근거는 (1) NT 파일 단독으로도 해석 가능해야 archive 자산으로서 온전하고, (2) controller 2의 identity/telemetry는 NT에만 있으며, (3) pair 일관성 검사를 하려면 양쪽에 같은 키가 있어야 하기 때문이다.
+> **v1.0에서 상향된 요구**: ICD v4.0은 검증 시점의 실측을 근거로 "NT 헤더는 최소한만 있을 수 있다"고 기술했다. 이 규격은 그것을 **허용하지 않는다.** NT 파일도 5장의 필수 keyword를 모두 채워야 한다. 근거는 (1) NT 파일 단독으로도 해석 가능해야 archive 자산으로서 온전하고, (2) controller 2의 identity/telemetry는 NT에만 있으며, (3) pair 일관성 검사를 하려면 양쪽에 같은 키가 있어야 하기 때문이다. **ICD v4.1(2026-08-10)에 반영 완료** (OI-8 해결).
 
 ### 2.2 레거시 대비
 
 | 항목 | 레거시 OSU 카메라 | KMT-CEU |
 | --- | --- | --- |
 | 노출당 raw 파일 수 | 4 (CCD당 1개, IC 4대) | 2 (controller당 1개) |
-| 파일명 | `KMTN<c>.<YYYYMMDD>.<NNNNNN>.fits` | `KMTN.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits` |
+| 파일명 | `KMTN<c>.<YYYYMMDD>.<NNNNNN>.fits` | `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits` |
 | 1 파일당 chip 수 | 1 | 2 |
 | Amp 수 (전체) | 32 | 64 |
 
-파일 수와 파일명이 둘 다 바뀌지만 **OBSAgent 규약은 그대로 유지된다.** 파일은 컨트롤러 단위로 2개를 쓰고, 저장 완료 통보만 CCD 단위로 4번 내보내는 방식으로 분리했다 (2.5절, DECISION_LOG **D-009** / **D-010**).
+파일 수와 파일명이 둘 다 바뀌지만 **OBSAgent 규약은 그대로 유지된다.** 파일은 컨트롤러 단위로 2개를 쓰고, 저장 완료 통보만 CCD 단위로 4번 내보내는 방식으로 분리했다 (2.5절, DECISION_LOG **D-011** / **D-010**).
 
 ### 2.3 파일명
 
-**확정 (D-009, 2026-08-07).** Archon 컨트롤러 구성이 저장하는 파일명은 ICD v4.0 형식을 그대로 쓴다. converter의 `find_pair()` · `default_output_name()`이 이미 이 형식을 인식하므로 **converter 변경은 없다.**
+**확정 (D-011, 2026-08-10 — D-009를 대체).** Archon 컨트롤러 구성이 저장하는 파일명은 ICD v4.0 형식의 필드 구조를 유지하되, prefix를 고정 문자열 `KMTN`에서 **4자 대문자 사이트 코드**로 바꾼다 (ICD v4.1에 반영).
 
 ```text
-KMTN.<YYYYMMDD>.<NNNNNN>.MK.fits
-KMTN.<YYYYMMDD>.<NNNNNN>.NT.fits
+<SITE>.<YYYYMMDD>.<NNNNNN>.MK.fits
+<SITE>.<YYYYMMDD>.<NNNNNN>.NT.fits
 ```
+
+- `<SITE>`: 4자 대문자 사이트 코드. **TC 텔레메트리 `TELID` 규약과 동일**하며, 새 식별자가 아니라 기존 식별자의 파일명 확장이다.
+
+  | `<SITE>` | 사이트 | `OBSERVAT` 헤더 | L0 MEF prefix |
+  | --- | --- | --- | --- |
+  | `KMTC` | CTIO | `CTIO` | `kmtc` |
+  | `KMTS` | SAAO | `SAAO` | `kmts` |
+  | `KMTA` | SSO | `SSO` | `kmta` |
+  | `KMTT` | 테스트베드 (실험실·데모·Full Rehearsal) | `TESTBED` | `kmtt` |
 
 - `<YYYYMMDD>`: 8자리. 관측 야간 기준 날짜.
 - `<NNNNNN>`: **6자리 고정폭, 0으로 좌측 패딩**한 노출 일련번호. pair 양쪽이 같은 값이어야 한다.
 - 접미 `.MK.fits` / `.NT.fits`는 **대소문자까지 정확히** 일치해야 한다. converter는 이 문자열로 짝을 찾는다.
-- 예: `KMTN.20260807.012345.MK.fits`, `KMTN.20260807.012345.NT.fits`
+- 예: `KMTC.20260807.012345.MK.fits`, `KMTC.20260807.012345.NT.fits`
 
-> **6자리 zero-padding은 선택이 아니다.** converter의 정규식은 `^KMTN\.(\d{8})\.(\d{6})\.MK\.fits$`이고, `find_pair()`는 MK 파일명에서 `.MK.fits`를 `.NT.fits`로 치환해 짝을 찾는다. 한쪽만 `12345`(5자리)로 쓰면 (1) 짝 파일을 못 찾아 `FileNotFoundError`, (2) 정규식 불일치로 출력 MEF 이름이 fallback 경로로 빠진다. (3) raw 파일명 자체는 OBSAgent에 가지 않지만(D-010), 같은 일련번호에서 만들어지는 `Wrote` 논리 이름의 `<NNNNNN>`이 함께 자릿수를 어기면 OBSAgent의 `FitsNum` 15자 슬라이스가 한 칸 밀린다.
+사이트 코드를 넣는 이유 (D-011 근거 요약): 3사이트 데이터를 한 분석 풀에 모을 때의 동명 충돌 제거. ICS는 `<SITE>`를 설정(`[node] site`/`telid`)에서 얻으며, 설정 오배포 방어로 TC 텔레메트리 `TELID`와의 교차 검증을 둔다. `KMTC`/`KMTS`/`KMTA`/`KMTT`는 `KMTN` 부분 문자열을 포함하지 않으므로 물리 경로가 메시지에 섞여도 OBSAgent `FitsNum` 파서가 오반응하지 않는다.
+
+> **6자리 zero-padding은 선택이 아니다.** converter(v2.2.0)의 정규식은 `^(KMTC|KMTS|KMTA|KMTT)\.(\d{8})\.(\d{6})\.MK\.fits$`이고, `find_pair()`는 MK 파일명에서 `.MK.fits`를 `.NT.fits`로 치환해 짝을 찾는다. 한쪽만 `12345`(5자리)로 쓰면 (1) 짝 파일을 못 찾아 `FileNotFoundError`, (2) 정규식 불일치로 출력 MEF 이름이 fallback 경로로 빠진다. (3) raw 파일명 자체는 OBSAgent에 가지 않지만(D-010), 같은 일련번호에서 만들어지는 `Wrote` 논리 이름의 `<NNNNNN>`이 함께 자릿수를 어기면 OBSAgent의 `FitsNum` 15자 슬라이스가 한 칸 밀린다.
+
+> **파일명 `<SITE>`와 헤더 `OBSERVAT`는 일치해야 한다.** converter(v2.2.0)는 출력 MEF prefix를 파일명 `<SITE>`에서 유도하고 `OBSERVAT`와 교차 검증한다 — 불일치는 오류다 (6.1절). 파일명이 헤더와 다르게 유통되는 사고(설정 오배포, 수동 개명)를 조기에 잡기 위한 안전장치다.
 
 파일명은 **pair 식별의 유일한 근거가 되어서는 안 된다.** 5.2절의 `EXPID` / `CTRLTAG` / `PAIRFILE`로 헤더 안에서도 짝이 확인되어야 한다.
 
@@ -99,10 +112,10 @@ L0 MEF의 amp 픽셀 총수(64 × 1200 × 4616 = 354,508,800)와 raw pair 픽셀
 
 | raw 파일 | 발신 메시지 |
 | --- | --- |
-| `KMTN.20260807.012345.MK.fits` | `STATUS: Wrote LASTFILE=/data/KMTNm.20260807.012345.fits`<br>`STATUS: Wrote LASTFILE=/data/KMTNk.20260807.012345.fits` |
-| `KMTN.20260807.012345.NT.fits` | `STATUS: Wrote LASTFILE=/data/KMTNn.20260807.012345.fits`<br>`STATUS: Wrote LASTFILE=/data/KMTNt.20260807.012345.fits` |
+| `KMTC.20260807.012345.MK.fits` | `STATUS: Wrote LASTFILE=/data/KMTNm.20260807.012345.fits`<br>`STATUS: Wrote LASTFILE=/data/KMTNk.20260807.012345.fits` |
+| `KMTC.20260807.012345.NT.fits` | `STATUS: Wrote LASTFILE=/data/KMTNn.20260807.012345.fits`<br>`STATUS: Wrote LASTFILE=/data/KMTNt.20260807.012345.fits` |
 
-논리 이름은 `KMTN<chip 소문자>.<YYYYMMDD>.<NNNNNN>.fits`이며 chip 문자는 `CHIP1`/`CHIP2`에서 결정론적으로 나온다 (MK → `m`,`k` / NT → `n`,`t`). 파일 1개를 다 쓴 시점에 그 파일이 담은 두 chip의 메시지를 함께 낸다.
+논리 이름은 `KMTN<chip 소문자>.<YYYYMMDD>.<NNNNNN>.fits`이며 chip 문자는 `CHIP1`/`CHIP2`에서 결정론적으로 나온다 (MK → `m`,`k` / NT → `n`,`t`). 파일 1개를 다 쓴 시점에 그 파일이 담은 두 chip의 메시지를 함께 낸다. **논리 이름의 `KMTN` prefix는 물리 파일명의 사이트 코드(D-011)와 무관하게 불변이다** — OBSAgent 파서가 `"KMTN"` 문자열 위치를 기준으로 자르기 때문이다.
 
 이 규약이 OBSAgent에서 성립하는 근거:
 
@@ -120,7 +133,7 @@ OBSAgent는 `PCTREAD=` 수신 시뿐 아니라 **`EXPSTATUS=READOUT` 수신 시�
 
 **주의 — `LASTFILE`은 이제 실재하는 경로가 아니다.**
 
-`/data/KMTNm.20260807.012345.fits`라는 파일은 디스크에 없다. 실제 파일은 `/data/KMTN.20260807.012345.MK.fits` 하나이고, 논리 이름은 OBSAgent 규약을 만족시키기 위한 **CCD 단위 식별자**일 뿐이다. 따라서:
+`/data/KMTNm.20260807.012345.fits`라는 파일은 디스크에 없다. 실제 파일은 `/data/KMTC.20260807.012345.MK.fits` 하나이고, 논리 이름은 OBSAgent 규약을 만족시키기 위한 **CCD 단위 식별자**일 뿐이다. 따라서:
 
 - `LASTFILE` 값을 경로로 열려는 도구는 실패한다. 아카이브·DTS·QL 도구는 `LASTFILE`이 아니라 raw 헤더의 `FILENAME` / `EXPID` / `CTRLTAG`를 근거로 삼아야 한다 (5.2절).
 - 논리 이름 ↔ 실제 파일 대응은 `CHIP1`/`CHIP2`로 역추적 가능하므로 raw 헤더에 별도 keyword를 두지 않는다.
@@ -239,7 +252,7 @@ amp 번호 → strip 번호는 `strip = ((amp-1) mod 8) + 1`이다.
 | `ORIGIN` | 필수 | `'KASI'` | SITE | file originator |
 | `DATE` | 필수 | UTC ISO | ACQ | 파일 생성 시각 |
 | `CREATOR` | 필수 | `'ics_archon_v1.0'` | ACQ | 취득 소프트웨어와 버전 |
-| `FILENAME` | 필수 | `'KMTN.20260116.000001.MK.fits'` | ACQ | 자기 파일명 |
+| `FILENAME` | 필수 | `'KMTC.20260116.000001.MK.fits'` | ACQ | 자기 파일명 (`<SITE>` prefix, 2.3절) |
 | `CHECKSUM` | 권장 | FITS 표준 checksum | ACQ | 9장 OI-7 |
 | `DATASUM` | 권장 | FITS 표준 datasum | ACQ | |
 
@@ -482,7 +495,7 @@ BIAS, DARK, OBJECT, FLAT, DOMEFLAT, SKY, STANDARD
 
 | Keyword | 상태 | 설명 |
 | --- | --- | --- |
-| `OBSERVAT` | 필수 | 관측소. **`CTIO` / `SAAO` / `SSO` 중 하나.** converter가 이 값으로 MEF 파일명 prefix(`kmtc`/`kmts`/`kmta`)를 정한다 |
+| `OBSERVAT` | 필수 | 관측소. **`CTIO` / `SAAO` / `SSO` / `TESTBED` 중 하나.** converter(v2.2.0)는 MEF 파일명 prefix를 파일명 `<SITE>`에서 유도하고 이 값과 교차 검증한다 — 불일치는 오류 (2.3절, D-011) |
 | `SITEID` | 필수 | site identifier (`OBSERVAT`와 동일값 허용) |
 | `TELESCOP` | 필수 | `'KMTNet 1.6m'` |
 | `TELID` | 권장 | ICS relay의 telescope ID |
@@ -574,7 +587,7 @@ MEF keyword 정의서(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.
 
 ## 6. Converter가 실제로 읽는 값과 누락 시 영향
 
-현행 `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.3) 기준이다. **converter는 MK 헤더만 읽는다** — NT 헤더는 `BITPIX`/`NAXIS`만 확인하고 메타데이터는 쓰지 않는다 (`convert()`가 두 chip 모두에 `mk_hdr`를 넘긴다).
+현행 `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) 기준이다. **converter는 MK 헤더만 읽는다** — NT 헤더는 `BITPIX`/`NAXIS`만 확인하고 메타데이터는 쓰지 않는다 (`convert()`가 두 chip 모두에 `mk_hdr`를 넘긴다).
 
 ### 6.1 없으면 변환이 실패하는 값
 
@@ -583,6 +596,7 @@ MEF keyword 정의서(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.
 | `BITPIX` | `!= 16` | `ValueError: Only BITPIX=16 is supported` |
 | `NAXIS1` × `NAXIS2` | `!= 19200 × 9400` | `ValueError: MK/NT has unexpected shape` |
 | END 카드 | 없음 | `ValueError: No END card in FITS header` |
+| 파일명 `<SITE>` ↔ `OBSERVAT` | 불일치 | `ValueError: Filename site code ... conflicts with OBSERVAT=...` (2.3절, D-011) |
 
 ### 6.2 없으면 **조용히 틀린 값**이 들어가는 것 — 가장 위험
 
@@ -590,7 +604,7 @@ MEF keyword 정의서(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.
 | --- | --- | --- |
 | `DATE-OBS` | **변환을 실행한 시각(now)** | MEF의 `DATE-OBS` / `MJD-OBS` / `JD`가 전부 관측과 무관한 값이 된다. 오류 없이 통과한다 |
 | `BZERO` | `32768` 가정 | raw가 signed(`BZERO=0`)면 전 픽셀이 32768만큼 어긋난다 |
-| `OBSERVAT` | prefix `kmt` | 출력 MEF 파일명이 사이트 규약(`kmtc`/`kmts`/`kmta`)을 벗어난다 |
+| `OBSERVAT` | 파일명 `<SITE>`에서 prefix 유도 (규격 파일명이면 정확), 파일명도 비규격이면 prefix `kmt` | 교차 검증이 불가능해져 설정 오배포를 잡지 못한다. 파일명까지 비규격이면 출력 MEF 이름이 사이트 규약(`kmtc`/`kmts`/`kmta`/`kmtt`)을 벗어난다 |
 | `EXPTIME`, `DARKTIME` | `0.0` | BIAS와 구분되지 않는다 |
 | `TSHOPEN` | `''` | MEF `UT`가 `DATE-OBS`로 대체된다 |
 | `EQUINOX` | `2000.0` | |
@@ -686,14 +700,14 @@ RA DEC EQUINOX RADECSYS CCDTEMP CHIPLIST MOCKDATA
 | C-4 | 〃 | **pair 일관성 검사 추가**: `EXPID`·`DATE-OBS`·`EXPTIME`·`RAWVER`가 다르면 변환 중단 |
 | C-5 | 〃 | 5.3절 geometry keyword를 자기 상수와 대조. 불일치 시 중단 |
 | C-6 | 〃 | `DATE-OBS` 누락 시 "현재 시각"으로 조용히 대체하지 말고 **실패**시킨다 (6.2절) |
-| ~~C-7~~ | 〃 | ~~파일명 정규식 수정~~ → **불필요 (D-009).** ICD v4.0 형식을 그대로 쓰기로 확정되어 현행 `find_pair()`·`default_output_name()`이 그대로 동작한다. 대신 6자리 zero-padding을 어긴 입력에 대해 명확한 오류를 내도록 하는 것이 바람직하다 |
+| ~~C-7~~ | 〃 | ~~파일명 정규식 수정~~ → **완료 (D-011, converter v2.2.0).** `default_output_name()` 정규식을 사이트 코드 형식 `^(KMTC\|KMTS\|KMTA\|KMTT)\.(\d{8})\.(\d{6})\.MK\.fits$`로 개정하고, 출력 prefix를 파일명 `<SITE>`에서 유도 + `OBSERVAT` 교차 검증(불일치=오류)을 추가했다. `find_pair()`는 prefix 무관이라 변경 없음 |
 | **C-11** | 〃 | `MODULE` / `CHANNEL`을 raw의 `AMOD<nn>` / `ACHN<nn>`에서 채운다. 현재 amp 번호로 추정하는 placeholder 식(`v2_1.py:520-521`)을 대체하고, `XTALKGROUP`도 그 값으로 파생 (5.5.1절) |
 | **C-12** | 〃 | amp `READDIR`를 raw의 `RDDIRT` / `RDDIRB`에서 채운다. 현재 `amp<=8`이면 `-Y`로 하드코딩 |
 | **C-13** | 〃 | `DETSIZE` / `COLGAP` / `ROWGAP` / `AMPPCD`를 raw 선언값과 대조. 하드코딩 상수와 다르면 중단 (C-5의 확장) |
 | **C-14** | 〃 | `XTALKVER` / `REFVER` / `CATVER`를 raw가 아니라 calibration DB에서 주입 (5.12절) |
 | **C-15** | 〃 | `TELEMETRY` 확장 헤더의 `TELSTAT`을 양쪽 `CTRLSTAT`에서 파생 |
 | C-8 | `ics_sim/ics_sim/hardware/archon.py` | `write_fits()`가 이 규격대로 저장하도록 구현 (현재 스텁). 저장 단위가 **CCD 1개가 아니라 컨트롤러 1개(chip 2개)**로 바뀌는 점에 유의 |
-| **C-16** | `ics_sim/ics_sim/sequencer.py` `_store()` · `ics_sim/ics_sim/state.py` | **2.5절 `Wrote` 규약 구현.** 현재는 CCD 1개당 파일 1개를 쓰고 `Wrote` 1회를 낸다. 신규는 컨트롤러 1개당 파일 1개를 쓰고 **그 파일이 담은 chip 2개분 `Wrote`를 논리 이름으로** 낸다. `ChannelState.filename()`의 `KMTN<ccd>.<suffix>.fits`는 **논리 이름 생성기로 남기고**, 실제 저장 경로는 `KMTN.<suffix>.<CTRLTAG>.fits`로 분리한다 |
+| **C-16** | `ics_sim/ics_sim/sequencer.py` `_store()` · `ics_sim/ics_sim/state.py` | **2.5절 `Wrote` 규약 구현.** 현재는 CCD 1개당 파일 1개를 쓰고 `Wrote` 1회를 낸다. 신규는 컨트롤러 1개당 파일 1개를 쓰고 **그 파일이 담은 chip 2개분 `Wrote`를 논리 이름으로** 낸다. `ChannelState.filename()`의 `KMTN<ccd>.<suffix>.fits`는 **논리 이름 생성기로 남기고**, 실제 저장 경로는 `<SITE>.<suffix>.<CTRLTAG>.fits`로 분리한다 (`<SITE>`는 설정 `[node] site`에서 유도, D-011) |
 | C-9 | `ics_sim/ics_sim/telemetry.py` | `_SENTINEL_NUM`이 값 없음을 `'0'`으로 채운다. 5.0절 sentinel 규약과 충돌 (9장 OI-6) |
 | C-10 | `cam_char/archon/archon_kmtnet_labtest_v2.py` | 실험실 raw도 5.3절 geometry 선언과 5.5절 controller telemetry를 싣도록 카드 추가 |
 
@@ -721,7 +735,8 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 
 **Pair 식별**
 
-- [ ] 파일명이 `KMTN.<8자리>.<6자리 zero-pad>.<MK|NT>.fits` 형식 (2.3절)
+- [ ] 파일명이 `<SITE>.<8자리>.<6자리 zero-pad>.<MK|NT>.fits` 형식, `<SITE>` ∈ {`KMTC`, `KMTS`, `KMTA`, `KMTT`} (2.3절, D-011)
+- [ ] 파일명 `<SITE>`가 헤더 `OBSERVAT`와 일치 (2.3절)
 - [ ] `CTRLTAG`가 `MK` / `NT`로 서로 다르다
 - [ ] `PAIRFILE`이 상대 파일을 정확히 가리킨다
 - [ ] `EXPID`가 양쪽 동일
@@ -735,7 +750,7 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 - [ ] `DATE-OBS`가 실제 셔터 열림 시각 (변환/저장 시각이 아님)
 - [ ] `EXPTIME` / `DARKTIME`이 sentinel이 아님
 - [ ] `IMAGETYP`이 통제 어휘에 속하고 대문자
-- [ ] `OBSERVAT` ∈ {`CTIO`, `SAAO`, `SSO`}
+- [ ] `OBSERVAT` ∈ {`CTIO`, `SAAO`, `SSO`, `TESTBED`}
 - [ ] `CTRLNAME` / `CTRLSN` / `CTRLFW`가 `UNKNOWN`이 아님
 - [ ] `VOLTN ≥ 9`이고 필수 9종이 모두 포함
 - [ ] `BCKTEMP` / `READTIME`이 sentinel이 아님
@@ -754,8 +769,8 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 ```bash
 python3 -c "
 from astropy.io import fits
-mk = fits.open('KMTN.20260116.000001.MK.fits'); mk.verify('exception')
-nt = fits.open('KMTN.20260116.000001.NT.fits'); nt.verify('exception')
+mk = fits.open('KMTC.20260116.000001.MK.fits'); mk.verify('exception')
+nt = fits.open('KMTC.20260116.000001.NT.fits'); nt.verify('exception')
 a, b = mk[0].header, nt[0].header
 assert len(mk) == 1 and len(nt) == 1
 assert (a['NAXIS1'], a['NAXIS2']) == (19200, 9400)
@@ -791,7 +806,7 @@ print('raw pair OK:', a['EXPID'])
 
 | ID | 항목 | 내용 | 조치 |
 | --- | --- | --- | --- |
-| ~~OI-1~~ | **파일명 규약** | **해결 (2026-08-07, D-009).** Archon 구성이 ICD v4.0 형식 `KMTN.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`를 그대로 저장한다. 파일명 자체는 OBSAgent의 `FitsNum` 슬라이스와 맞지 않지만, OI-2 해결책이 `Wrote` 메시지에 레거시 형태의 논리 이름을 싣는 방식이라 문제가 성립하지 않는다 | 규격 2.3절 반영 완료. **converter 변경 없음** — `find_pair()`·`default_output_name()`이 이미 이 형식을 인식한다. `<NNNNNN>` 6자리 zero-padding이 필수 조건으로 추가됨 |
+| ~~OI-1~~ | **파일명 규약** | **해결 (2026-08-07, D-009) → 재개정 (2026-08-10, D-011).** D-009는 ICD v4.0 형식 `KMTN.…`을 유지했으나, D-011이 prefix를 사이트 코드 `<SITE>` ∈ {`KMTC`,`KMTS`,`KMTA`,`KMTT`}로 개정했다 (3사이트 데이터 통합 시 동명 충돌 제거). 파일명 자체는 OBSAgent의 `FitsNum` 슬라이스와 맞지 않지만, OI-2 해결책이 `Wrote` 메시지에 레거시 형태의 논리 이름을 싣는 방식이라 문제가 성립하지 않는다 | 규격 2.3절 반영 완료. converter v2.2.0에서 정규식 개정 + `OBSERVAT` 교차 검증 추가. `<NNNNNN>` 6자리 zero-padding 필수 유지 |
 | ~~OI-2~~ | **`Wrote` 4회 규약** | **해결 (2026-08-07, D-010).** 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회)를 분리한다. ICS는 파일 1개를 쓸 때마다 그 파일이 담은 chip 2개분 `STATUS: Wrote`를 논리 이름으로 낸다. `count_wrote=4` · `FitsNum='20260807.012345'` 모두 성립 | 규격 2.5절 반영 완료. OBSAgent·`RAWNAX1` 변경 없음. `LASTFILE`이 실재 경로가 아니게 되는 부작용을 2.5절에 명시 |
 | **OI-3** | `ROWORDR` / `RDDIRT` / `RDDIRB` 확정 | TOP half가 CCD 좌표 순서로 기록되는지 독출 순서인지 실기 확인 필요. MEF amp header `READDIR`의 placeholder(TOP=`-Y`, BOT=`+Y`)를 확정하는 사안이며, 규격은 값을 raw가 **선언**하도록 자리를 만들어 뒀다 | flat/star sequence test. 확정 시 `RAWVER`와 `GEOMVER` 동시 갱신 |
 | **OI-9** | amp ↔ 배선 맵 실측 | `AMOD<nn>` / `ACHN<nn>`의 실제 값은 컨트롤러 결선 후에야 확정된다. 확정 전에는 `AMPMAP='DEFAULT'`로 두고 converter의 추정식을 쓰되, **`XTALKCAL=True`로 올리기 전에 반드시 `EXPLICIT`으로 교체**해야 한다 (5.5.1절) | 통합 시 배선표 작성 + Archon 채널 응답과 대조. `CALIBRATION_TRACKER.md`에 항목 추가 |
@@ -799,13 +814,13 @@ print('raw pair OK:', a['EXPID'])
 | **OI-5** | Binning 지원 | v1.0은 1×1 전용. binning 시 `NAXIS`가 바뀌어 converter가 즉시 실패한다 | binned 관측 계획이 서면 geometry 규격 확장 |
 | **OI-6** | Sentinel 규약 통일 | `ics_sim/ics_sim/telemetry.py`의 `_SENTINEL_NUM`은 값 없음을 `'0'`으로 채운다. `SECZ=0` / `ALT=0` 같은 값이 헤더에 유효값처럼 남는다 | 5.0절 규약(`-999.0` / `-1` / `'NC'`)으로 정렬. 레거시 로그 호환이 필요한 중계 본문과 FITS 헤더 값을 분리할 것 |
 | **OI-7** | `CHECKSUM` / `DATASUM` | 현재 무결성은 MEF 산출물의 SHA256 사이드카로만 관리된다. raw 단계 무결성 검증 수단이 없다 | FITS 표준 checksum 도입 여부 결정 |
-| **OI-8** | NT 헤더 완전성 | ICD v4.0은 "NT 메타데이터는 최소한일 수 있다"고 기술. 이 규격은 완전성을 요구 (2.1절) | ICD v4.1에 반영 |
+| ~~OI-8~~ | NT 헤더 완전성 | **해결 (2026-08-10, ICD v4.1).** ICD v4.0의 "NT 메타데이터는 최소한일 수 있다" 기술이 v4.1에서 이 규격과 같은 완전성 요구로 개정됐다 (2.1절) | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` §4 |
 
 ## 10. 관련 문서
 
 | 문서 | 위치 |
 | --- | --- |
-| L0 MEF ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` |
+| L0 MEF ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (docx 동본) |
 | L0 MEF keyword 정의 | `../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` |
 | Converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` |
 | Converter 작업 정리 | `../mef_converter/KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` |
@@ -823,3 +838,4 @@ print('raw pair OK:', a['EXPID'])
 | v1.0 | 2026-08-06 | MEF keyword 정의서 v1.0 및 L1 `CARRY_KEYS` 전량 대조(6.5·6.6절) 후 누락 보강: `AMPPCD`, `DETSIZE`/`CCDCOLS`/`CCDROWS`/`COLGAP`/`ROWGAP`, `MODULE`/`CHANNEL` 배선 맵(5.5.1), `READDIR`(`RDDIRT`/`RDDIRB`), `CCDTEMP` 필수 격상. raw 제외 keyword 경계 명시(5.12) |
 | v1.1 | 2026-08-07 | **OI-1 · OI-2 해결.** 파일명은 ICD v4.0 형식 유지 + `<NNNNNN>` 6자리 zero-padding 필수화(2.3절, D-009). 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회 `Wrote`)를 분리하는 ICS 규약 추가(2.5절, D-010). `LASTFILE`이 실재 경로가 아니게 되는 부작용 명시. C-7 불필요 처리, C-16 추가 |
 | v1.1 | 2026-08-08 | 정정(geometry 아님, `RAWVER` 유지): 2.5절 타이밍 조건을 `EXPSTATUS=READOUT`(및 그 뒤 `PCTREAD=`) 리셋 기준으로 수정하고(`commands.c` 812~816행 근거) `Wrote` 발신 순서 규칙 + READOUT~첫 PCTREAD 함정 창(~2.7초) 경고 추가. 2.3절 zero-padding 위반 결과 (3)을 `Wrote` 논리 이름 기준으로 정정. 5.5절 `CTRLNAME`/`CTRLSN`/`CTRLFW`의 CALIBRATION_TRACKER 추적 서술을 현재형에서 추가 예정으로 완화 |
+| v1.2 | 2026-08-10 | **파일명 prefix를 사이트 코드로 개정 (D-011, D-009 대체).** `<SITE>` ∈ {`KMTC`=CTIO, `KMTS`=SAAO, `KMTA`=SSO, `KMTT`=테스트베드} — TC 텔레메트리 `TELID` 규약과 동일. `RAWVER`는 `CEU-RAW-v1.0` 유지(픽셀 배치 불변). converter v2.2.0: 정규식 개정 + 출력 prefix를 파일명에서 유도 + `OBSERVAT` 교차 검증(불일치=오류, 6.1절). `Wrote` 논리 이름(D-010)은 불변. C-7 완료 처리, OI-1 재개정, OI-8 해결(ICD v4.1). 연동 ICD를 v4.1(md+docx)로 갱신 |

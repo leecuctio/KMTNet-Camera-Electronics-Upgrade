@@ -46,10 +46,10 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 | 항목 | 값 |
 | --- | --- |
 | Primary 제품 | KMT-CEU L0 64-amplifier raw MEF |
-| Converter | `mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.3, PIXSCALE 0.395) |
+| Converter | `mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0, 사이트 코드 파일명 D-011, PIXSCALE 0.395) |
 | L1 전처리 파이프라인 | `mef_pipeline/kmt_ceu_preproc` (v1.7: electrons 단일 MEF, amp 경계 조화, fringe/illumination/CR/sky, Gaia TAN–SIP astrometry + 로컬 Gaia 스토어, GSPC 기반 photometric ZP, VAR/MASK 옵션) |
 | Geometry version | `CEU-L0AMP-v2.1` |
-| 기준 ICD | `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` (v4.0) |
+| 기준 ICD | `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1, docx 동본) |
 | Plate scale | 0.395 arcsec/px (Gaia DR3 실측 0.3952±0.00001; CR-002) |
 | 카메라 구성 | science CCD 4개 (M, K, N, T), amplifier 64개, STA Archon controller 2대 |
 

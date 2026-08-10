@@ -3,8 +3,9 @@
 KMT-CEU Archon MK/NT raw FITS to L0 64-amplifier MEF converter.
 
 Input raw files:
-  KMTN.YYYYMMDD.NNNNNN.MK.fits  -> M, K chips
-  KMTN.YYYYMMDD.NNNNNN.NT.fits  -> N, T chips
+  <SITE>.YYYYMMDD.NNNNNN.MK.fits  -> M, K chips
+  <SITE>.YYYYMMDD.NNNNNN.NT.fits  -> N, T chips
+  <SITE> in {KMTC=CTIO, KMTS=SAAO, KMTA=SSO, KMTT=testbed} (DECISION_LOG D-011)
 
 Output L0 Raw MEF layout:
   PRIMARY
@@ -36,6 +37,13 @@ v2.1.3 changes:
   - PIX_SCALE 0.400 -> 0.395 arcsec/px: plate scale measured against Gaia DR3
     (16 chip solutions on 2026-06-30 frames: 0.3952 +/- 0.00001 arcsec/px);
     affects the PIXSCALE card and the placeholder CD matrix
+
+v2.2.0 changes (D-011):
+  - raw filename prefix is now a site code (KMTC/KMTS/KMTA/KMTT) instead of
+    the fixed literal KMTN; default_output_name() derives the output MEF
+    prefix from the filename site code and cross-checks it against the
+    OBSERVAT header (mismatch is an error); find_pair() is prefix-agnostic
+    and unchanged
 """
 from __future__ import annotations
 
@@ -52,9 +60,15 @@ from pathlib import Path
 import numpy as np
 
 BLOCK = 2880
-SOFTWARE_VERSION = "v2.1.3"
-PRODUCT_VERSION = "v2.1.1"  # L0 MEF format unchanged by v2.1.2 float-precision fix
+SOFTWARE_VERSION = "v2.2.0"
+PRODUCT_VERSION = "v2.1.1"  # L0 MEF format unchanged by v2.1.2+ fixes (D-011 renames input only)
 GEOMETRY_VERSION = "CEU-L0AMP-v2.1"
+
+# D-011 (2026-08-10): raw filename site code <-> L0 MEF filename prefix.
+# The site code equals the TC telemetry TELID convention.
+SITE_PREFIX = {"KMTC": "kmtc", "KMTS": "kmts", "KMTA": "kmta", "KMTT": "kmtt"}
+# OBSERVAT header value -> L0 MEF filename prefix (used for cross-check/fallback).
+OBS_PREFIX = {"CTIO": "kmtc", "SAAO": "kmts", "SSO": "kmta", "TESTBED": "kmtt"}
 
 CCD_COLS = 9216
 CCD_ROWS = 9232
@@ -218,10 +232,21 @@ def find_pair(input_path: Path):
 
 
 def default_output_name(mk_path: Path, outdir: Path, mk_hdr: dict):
-    m = re.match(r"^KMTN\.(\d{8})\.(\d{6})\.MK\.fits$", mk_path.name)
-    root = f"{m.group(1)}.{m.group(2)}" if m else mk_path.stem.replace(".MK", "")
+    m = re.match(r"^(KMTC|KMTS|KMTA|KMTT)\.(\d{8})\.(\d{6})\.MK\.fits$", mk_path.name)
     obs = str(hval(mk_hdr, "OBSERVAT", "KMT")).upper()
-    prefix = {"CTIO": "kmtc", "SAAO": "kmts", "SSO": "kmta"}.get(obs, "kmt")
+    obs_prefix = OBS_PREFIX.get(obs)
+    if m:
+        # D-011: the filename site code drives the output prefix; OBSERVAT
+        # must agree so a misdeployed config or renamed file fails loudly.
+        prefix = SITE_PREFIX[m.group(1)]
+        if obs_prefix is not None and obs_prefix != prefix:
+            raise ValueError(
+                "Filename site code %s conflicts with OBSERVAT=%s (D-011)"
+                % (m.group(1), obs))
+        root = f"{m.group(2)}.{m.group(3)}"
+    else:
+        prefix = obs_prefix or "kmt"
+        root = mk_path.stem.replace(".MK", "")
     return outdir / f"{prefix}.{root}.ceu.l0amp.mef.fits"
 
 

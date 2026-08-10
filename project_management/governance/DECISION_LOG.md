@@ -1,6 +1,6 @@
 # KMTNet-CEU Decision Log
 
-최종 갱신일: 2026-08-08
+최종 갱신일: 2026-08-10
 
 ## D-001: Primary raw archive product는 L0 64-amplifier MEF로 한다
 
@@ -203,7 +203,8 @@
 
 날짜: 2026-08-07
 
-상태: Accepted
+상태: **Superseded by D-011 (2026-08-10)** — prefix가 사이트 코드로 개정되었다.
+필드 폭·6자리 zero-padding 규칙은 D-011에 그대로 승계된다.
 
 결정:
 
@@ -232,7 +233,7 @@
   (3) raw 파일명 자체는 OBSAgent에 가지 않지만(D-010), 같은 일련번호에서
   만들어지는 `Wrote` 논리 이름의 `<NNNNNN>`이 함께 자릿수를 어기면 OBSAgent의
   `FitsNum` 15자 슬라이스가 밀린다.
-- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md` 2.3절.
+- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.3절.
 
 ## D-010: raw 저장 단위와 OBSAgent 통보 단위를 분리한다
 
@@ -249,7 +250,7 @@
   `KMTN<chip 소문자>.<YYYYMMDD>.<NNNNNN>.fits`를 싣는다.
 
 ```text
-KMTN.20260807.012345.MK.fits 저장 시
+KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반영)
   STATUS: Wrote LASTFILE=/data/KMTNm.20260807.012345.fits
   STATUS: Wrote LASTFILE=/data/KMTNk.20260807.012345.fits
 ```
@@ -271,4 +272,61 @@ KMTN.20260807.012345.MK.fits 저장 시
   `FILENAME` / `EXPID` / `CTRLTAG`를 근거로 삼아야 한다.
 - `ics_sim`의 `sequencer.py` `_store()`와 `state.py`가 저장 경로와 논리 이름을
   분리하도록 바뀌어야 한다 (규격 C-16).
-- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.1.md` 2.5절.
+- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.5절.
+
+## D-011: raw pair 파일명 prefix를 사이트 코드로 한다 (D-009 개정)
+
+날짜: 2026-08-10
+
+상태: Accepted (D-009를 대체한다)
+
+결정:
+
+- Archon 컨트롤러 구성이 저장하는 science raw 파일명은
+  `<SITE>.<YYYYMMDD>.<NNNNNN>.MK.fits` / `<SITE>.<YYYYMMDD>.<NNNNNN>.NT.fits`이다.
+- `<SITE>`는 4자 대문자 사이트 코드이며 TC 텔레메트리 `TELID` 규약과 동일하다:
+
+  | 코드 | 사이트 |
+  | --- | --- |
+  | `KMTC` | CTIO |
+  | `KMTS` | SAAO |
+  | `KMTA` | SSO |
+  | `KMTT` | 테스트베드 — 실험실·데모·Full Rehearsal 데이터 |
+
+- 필드 폭·구분자·`<NNNNNN>` 6자리 zero-padding 규칙은 D-009와 동일하게
+  유지한다 (자릿수 위반의 결과도 D-009 영향 절과 동일).
+- `Wrote` 논리 이름(D-010)은 변경하지 않는다 — 계속 `KMTN<chip 소문자>.…`.
+
+근거:
+
+- raw 파일명에 사이트 정보가 없으면 3사이트 데이터를 한 저장소·분석 풀에
+  모을 때 동명 충돌이 난다 — cam_char LEGACY 캠페인(3사이트 데이터 통합
+  분석)에서 이미 실제 워크플로로 확인된 시나리오다.
+- 사이트 코드는 기존 `TELID` 값(KMTC/KMTS/KMTA)과 L0 MEF 소문자
+  prefix(kmtc/kmts/kmta) 규약을 그대로 따른다 — 새 규약이 아니라 기존
+  식별자를 파일명으로 확장하는 것이다.
+- D-010이 물리 파일명과 OBSAgent 메시지 계층을 분리해 두어, 물리 파일명의
+  소비자는 converter·실험실 스크립트·아카이브 도구뿐이다. 또한 `KMTC` 등은
+  `KMTN` 부분 문자열을 포함하지 않으므로, 물리 경로가 메시지에 섞여도
+  OBSAgent `FitsNum` 파서가 오반응할 수 없다.
+- 실기 raw가 아직 생산되지 않았고 `ics_archon`의 `write_fits()`가 스텁인
+  지금이 변경 비용이 최소인 유일한 시점이다. SSO 설치(2026-10) 이후에는
+  아카이브 이력이 쌓여 사실상 변경 불가가 된다.
+
+영향:
+
+- Converter (`kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`, v2.2.0):
+  `default_output_name()` 정규식을 사이트 코드 형식으로 개정하고, 출력 MEF
+  prefix를 파일명 사이트 코드에서 유도하되 `OBSERVAT` 헤더와 교차 검증한다
+  (불일치 = 오류). `find_pair()`는 prefix 무관(`.MK.fits`↔`.NT.fits` 치환)이라
+  변경 없음.
+- ICS: 사이트 코드는 설정(`[node] site`/`telid`)에서 얻는다. 설정 오배포
+  방어로 ① config 로드 시 `site`↔`telid` 정합 검증, ② 운영 시 실측 TC
+  텔레메트리의 `TELID`와 불일치하면 경고를 둔다. 물리 파일명 생성기는
+  ics_archon 단계 C-16 구현에 반영한다.
+- ICD v4.0 → v4.1 개정 (NT 헤더 완전성 OI-8과 함께 반영).
+- OBSAgent, `Wrote` 논리 이름, 레거시 아카이브 문서, 과거 검증 기록
+  (CR-001, Work Summary v1.0 등)은 변경하지 않는다.
+- 실험실 특성 측정 스크립트(`cam_char/archon/`)의 캠페인 파일명 체계는
+  별개 도메인으로 유지하되, 사이트 raw 규격과의 경계를 문서에 명시한다.
+- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.3절.
