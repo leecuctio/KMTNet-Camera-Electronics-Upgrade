@@ -263,7 +263,7 @@ LASTFILE=/mnt/ICSData/KMTNk.20250902.057288.fits
 ```
 → 파일명 `KMTN<ccd 1글자>.<8자리 날짜>.<6자리 번호>.fits` 형식이 **고정**이다. `"KMTN"` 이 없으면 `FitsNum=00000000.000000`, `FitsOsc=CHECK`.
 
-> **논리 이름 vs 물리 파일 (D-009/D-010, 2026-08-07 확정)** — 위 형식이 고정인 것은 **`Wrote` 메시지에 싣는 논리 이름**이다. 실기(ics_archon)의 디스크 실물은 **컨트롤러당 1개, 노출당 2개** `KMTN.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits` 로 저장하고, 통보만 CCD 단위 4회를 논리 이름으로 낸다 ([`../raw_fits_spec/`](../raw_fits_spec/README.md) 2.5절). 시뮬은 레거시 재현이 목적이라 CCD당 1파일을 그대로 쓴다 — 전환 계약은 9.3.
+> **논리 이름 vs 물리 파일 (D-011/D-010; D-009는 2026-08-10 D-011로 대체)** — 위 형식이 고정인 것은 **`Wrote` 메시지에 싣는 논리 이름**이다. 실기(ics_archon)의 디스크 실물은 **컨트롤러당 1개, 노출당 2개** `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits` 로 저장하고 (`<SITE>` 는 `[node] site`/`telid` 에서 유도한 `KMTC`/`KMTS`/`KMTA`/`KMTT` — config.validate() 가 site↔telid 정합을 검사한다), 통보만 CCD 단위 4회를 논리 이름으로 낸다 ([`../raw_fits_spec/`](../raw_fits_spec/README.md) 2.3/2.5절). 시뮬은 레거시 재현이 목적이라 CCD당 1파일을 그대로 쓴다 — 전환 계약은 9.3.
 
 구현: [`ics_sim/obsagent_model.py`](ics_sim/obsagent_model.py) 가 이 체인을 그대로 재현한다. 시뮬 검증과 로그 재생에 **같은 코드**를 쓴다.
 
@@ -1452,7 +1452,7 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 | **`UDPPING` 으로 등록 선시험** | XIS 콘솔에 `UDPPING <ip> <port>` 가 있다(3.1.1). **운영 `isis.ini` 를 건드리기 전에** 시뮬 등록·9개 PONG 을 시험할 수 있다. 실물 연동의 첫 단계로 이것부터 | **최우선** |
 | ~~**자기 발신 에코 무시**~~ | **구현 완료 (2026-08-08, 3.1.2).** 점검에서 브로드캐스트 에코보다 심각한 **유니캐스트 루프백**(ERASE/SHOPEN 이중 실행)이 드러나(12.13) `_on_message` 초입 필터로 확대. 브로드캐스트 중복 억제·노드 ID 검증 포함, 테스트 15개 | 완료 |
 | **`write_fits()` raw pair 구현 (C-8)** | ics_archon 에서 `raw_fits_spec/` 2.3·2.5·5장대로 **컨트롤러당 1파일**(`MK`/`NT`) 저장. `hardware/base.py` 의 CCD 단위 Protocol 시그니처 개정 포함 (9.1 상기 블록) | ics_archon |
-| **저장/통보 단위 분리 (C-16)** | `sequencer._store()`·`state.filename()` 을 물리 저장 경로와 `Wrote` 논리 이름으로 분리 (D-010). `LASTFILE` 은 실재 경로가 아니게 된다 | ics_archon |
+| **저장/통보 단위 분리 (C-16)** | `sequencer._store()`·`state.filename()` 을 물리 저장 경로와 `Wrote` 논리 이름으로 분리 (D-010). 물리 경로 prefix 는 `[node]` 의 사이트 코드 (D-011). `LASTFILE` 은 실재 경로가 아니게 된다 | ics_archon |
 | **sentinel 정렬 (C-9)** | ics_archon 헤더 생성 경로의 결측값을 raw_fits_spec 5.0절 규약(`-999.0`/`-1`/`'NC'`, `0` 금지)으로 — 메시지 계층의 `'0'` 채움(11.2)과 구분 | ics_archon |
 | **발신 길이 검사** | 2048자 제한이 수신에서만 강제된다(`impv2.py`). 텔레메트리 pass-through 가 TC 응답에 꼬리를 붙이는 구조라 발신 초과를 스스로 진단할 수단이 필요 | 낮음 |
 | **XIS 재빌드 검증** | 운영 바이너리(`isis` v2.9.1)가 백업에 없다. 소스·빌드 스크립트는 온전하니 현대 툴체인에서 `xis/src/server/build` 가 도는지 한 번 확인해 둔다 — **재빌드 가능성 자체가 보관본의 가치**(`xis/xis.md` 4절) | 중간 |

@@ -26,6 +26,9 @@ _NODE_ID_RE = re.compile(r'^[A-Z0-9._]{2,8}$')
 #: ServerID -- v2.9.1 허브에는 srcID==ServerID 방어가 없어서(xis/xis.md 6.3)
 #: 거르는 책임이 전적으로 클라이언트 쪽에 있다.
 _RESERVED_IDS = frozenset({'AL', 'ALL', 'XIS'})
+#: site <-> TELID 정합 (D-011).  TELID 는 TC 텔레메트리 규약과 같고, 실기의
+#: raw pair 물리 파일명 <SITE> prefix 로도 쓰인다 (raw_fits_spec 2.3절).
+_SITE_TELID = {'ctio': 'KMTC', 'saao': 'KMTS', 'sso': 'KMTA', 'testbed': 'KMTT'}
 
 
 class ConfigError(Exception):
@@ -300,6 +303,20 @@ class SimConfig:
             raise ConfigError('ic_ids 와 cb_ids 개수가 다릅니다')
         if self.node.master not in self.node.ccds:
             raise ConfigError(f'master={self.node.master} 가 ic_ids 에 없습니다')
+
+        # site <-> telid 정합 (D-011).  telid 는 AUXSTATUS 응답값이자 실기
+        # (ics_archon) raw pair 물리 파일명의 <SITE> prefix 가 되므로, 설정
+        # 오배포(예: CTIO ini 를 SAAO 에 배포)가 여기서 잡히지 않으면 잘못된
+        # 사이트 코드가 아카이브 파일명에 영구히 박힌다 (raw_fits_spec 2.3절).
+        expected_telid = _SITE_TELID.get(self.node.site.lower())
+        if expected_telid is None:
+            raise ConfigError(
+                f'site={self.node.site!r} 는 ctio/saao/sso/testbed 중 하나여야 '
+                '합니다')
+        if self.node.telid.upper() != expected_telid:
+            raise ConfigError(
+                f'site={self.node.site} 와 telid={self.node.telid} 가 어긋납니다 '
+                f'(기대값 {expected_telid}, D-011)')
 
         # 노드 ID 검증.  v2.9.1 허브는 이름을 전혀 검사하지 않으므로(주소
         # 충돌 검사도, ServerID 사칭 방어도 없음 -- xis/xis.md 6.3) 잘못된

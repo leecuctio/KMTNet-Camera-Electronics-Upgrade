@@ -17,9 +17,11 @@
 
 ```bash
 python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
-  KMTN.20260116.000001.MK.fits \
+  KMTA.20260116.000001.MK.fits \
   -o kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits \
   -f --gzip
+# D-011(2026-08-10) 이전에 만든 샘플 raw(KMTN.*)를 쓸 때는 pair 양쪽을
+# 사이트 코드 이름(KMTA.* — 샘플의 OBSERVAT=SSO 기준)으로 개명해서 쓴다.
 ```
 
 확인 항목:

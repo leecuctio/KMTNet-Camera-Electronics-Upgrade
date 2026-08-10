@@ -1,6 +1,6 @@
 # KMTNet-CEU MEF FITS Specification
 
-최종 갱신일: 2026-06-22
+최종 갱신일: 2026-08-10
 
 ## 목적
 
@@ -17,7 +17,8 @@
 | --- | --- | --- | --- |
 | Keyword 정의 | [`KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) | v1.0 | Current |
 | Keyword 정의 (배포본) | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.docx` | v1.0 | Current |
-| ICD | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` | v4.0 | Current |
+| ICD | [`KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) | v4.1 | Current |
+| ICD (배포본) | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.docx` | v4.1 | Current |
 
 연동 기준:
 
@@ -25,7 +26,8 @@
 | --- | --- |
 | Product | KMT-CEU L0 64-amplifier raw MEF |
 | Geometry version (`GEOMVER`) | `CEU-L0AMP-v2.1` |
-| 기준 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.1.1) |
+| Raw 입력 파일명 | `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {KMTC, KMTS, KMTA, KMTT} (ICD v4.1 §2.1, D-011) |
+| 기준 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) |
 | HDU count | 69 = PRIMARY + 64 amp IMAGE + 4 BINTABLE |
 | Binary tables | `AMPINFO`, `XTALKINFO`, `VOLTINFO`, `TELEMETRY` |
 
@@ -34,7 +36,7 @@
 | 경로 | 내용 |
 | --- | --- |
 | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` / `.docx` | 현행 keyword 정의서 (md가 diff 가능한 기준본) |
-| `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` | 현행 ICD |
+| `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` / `.docx` | 현행 ICD (md가 diff 가능한 기준본, v4.1부터 md 병행) |
 | `archive/` | superseded된 구버전 ICD. 이력 보존용이며 운영 기준이 아님 |
 
 ## ICD Revision History
@@ -44,9 +46,10 @@
 | v1.1 | `KMT_CEU_Science_MEF_ICD_Final_v1.1.docx` | `archive/` | 초기 science MEF ICD 초안 |
 | v2.0 | `KMT_CEU_Science_MEF_ICD_ArchonRawVerified_v2.0.docx` | `archive/` | 검증된 Archon MK/NT raw geometry 반영 |
 | v3.0 | `KMT_CEU_Science_MEF_ICD_ArchonRawVerified_v3.0.docx` | `archive/` | Archon raw 구조 정밀화 |
-| **v4.0** | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` | (현행) | **Primary raw product를 CCD-level image가 아니라 L0 64-amplifier MEF로 재정의** |
+| v4.0 | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` | `archive/` | Primary raw product를 CCD-level image가 아니라 L0 64-amplifier MEF로 재정의 |
+| **v4.1** | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` / `.docx` | (현행) | **Raw 파일명 prefix를 사이트 코드(KMTC/KMTS/KMTA/KMTT)로 개정(D-011) + NT 헤더 완전성 요구(raw_fits_spec OI-8). md 기준본 도입** |
 
-v3.0 → v4.0의 product 재정의 근거는 `../project_management/governance/DECISION_LOG.md`의 **D-001**에 기록되어 있다.
+v3.0 → v4.0의 product 재정의 근거는 `../project_management/governance/DECISION_LOG.md`의 **D-001**에, v4.0 → v4.1의 파일명/NT 헤더 개정 근거는 **D-011**과 `../raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`(2.1절·2.3절)에 기록되어 있다.
 
 ## 버전 / 관리 정책
 

@@ -2,8 +2,8 @@
 
 버전: v1.0  
 작성일: 2026-06-22  
-기준 converter: `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` v2.1.1  
-기준 ICD: `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx`
+기준 converter: `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` v2.2.0  
+기준 ICD: `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (docx 동본)
 
 ## 1. 문서 목적
 
@@ -96,8 +96,8 @@ Keyword 상태는 아래와 같이 구분한다.
 | --- | --- | --- | --- |
 | `RAWGROUP` | Required | `MKNT` | raw file grouping convention |
 | `CHIPLIST` | Required | `M,K,N,T` | 공식 science chip order |
-| `MKFILE` | Generated | `KMTN.20260116.000001.MK.fits` | source MK raw FITS |
-| `NTFILE` | Generated | `KMTN.20260116.000001.NT.fits` | source NT raw FITS |
+| `MKFILE` | Generated | `KMTC.20260116.000001.MK.fits` | source MK raw FITS (`<SITE>` prefix — ICD v4.1, D-011) |
+| `NTFILE` | Generated | `KMTC.20260116.000001.NT.fits` | source NT raw FITS (`<SITE>` prefix — ICD v4.1, D-011) |
 | `NUMFILES` | Required | `2` | MEF 생성에 사용한 raw file 수 |
 | `RAWNAX1` | Required | `19200` | Archon raw image width |
 | `RAWNAX2` | Required | `9400` | Archon raw image height |
