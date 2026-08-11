@@ -372,3 +372,55 @@ OBSAgent.latest/
 - **Redis 도입(2023년 이후, newTCS)**은 AUX/PC-TCS 폴링을 보완/대체하는 방향으로 가고 있다는 신호다 — 신규 Python ICS/TCS 설계 시 애초에 상태 버스로 Redis(또는 유사 pub/sub)를 채택하는 것을 적극 검토할 만하다. 지금 OBSAgent가 Redis·웹릴레이·AUX 세 곳에서 돔 상태를 따로 모아 판정하는 로직(§4.5, `UpdateDomeStatus()`)은 과도기적 임시 구조로 보인다.
 - 비항성추적(NST, §4.2), 시각지정 관측(UTOBS/UTTOL, §5), 포인팅 보정(`copt`/BLG offset, [tcsagent_report.md](../TCSAgent/tcsagent_report.md) 9.1절)은 전부 **공식 매뉴얼에 없거나 초안 수준으로만 언급된 핵심 운영 기능**이다. 신규 구현 전 이 세 기능은 반드시 소스코드 수준에서 재확인하고 정식 스펙으로 문서화해야 한다.
 - `dtchk`, `getjd`/`getlst`/`getalt`(USNO NOVAS) 같은 유틸리티는 관측 운영에 실질적으로 필요했던 기능들이므로, 신규 시스템에서도 동등한 기능(파일 이관 점검, 천문 계산)을 어떤 형태로든 제공해야 한다.
+
+---
+
+## 12. 재빌드와 설치 (2026-08-11 실측)
+
+신규 `ics` 실물 연동 시험에서 **Ubuntu 24.04 / g++ 13.3.0 에 v1.2.0 을 빌드해 `ics_sim` 을 실제 XIS 허브 너머로 몰았다.** OBSAgent 는 개정하지 않기로 확정돼 있으므로 신규 `ics` 전환 뒤에도 이 프로그램은 계속 빌드돼야 한다.
+
+> 걸림돌은 TCSAgent 와 대부분 공유한다 — 코드베이스를 복사해 출발했으니(§1) **결함도 같은 줄에 그대로 있다.** **원인과 근거는 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.7.1**, 운용 요약은 [`../TCSAgent/tcsagent_report.md`](../TCSAgent/tcsagent_report.md) 12절. 아래는 OBSAgent 결과와 고유 사항만 다룬다.
+
+### 12.1 빌드
+
+```bash
+./build-local.sh --site kmtna      # 의존성 점검 → libisis.a → hiredis(정적) → obstool → ini
+```
+
+스크립트가 필요한 교정을 전부 적용하고, 마지막에 `ldd` 로 **hiredis 가 정적으로 링크됐는지 검사**한다. 의존 패키지는 `build-essential` · `libreadline-dev` · `libncurses-dev` · **`libcurl4-openssl-dev`**(v1.0.0 부터 `-lcurl`, TCSAgent 에는 없다).
+
+**OBSAgent 고유 세 가지**
+
+1. **hiredis 를 직접, 그것도 정적으로 링크해야 한다.** vendored hiredis(v0.11.0)의 `all:` 타겟이 공유 라이브러리만 만드는데 `-lhiredis` 는 그쪽을 우선 잡아 **빌드는 되고 실행이 안 되는 바이너리**가 나온다(`error while loading shared libraries: libhiredis.so.0.11`). 빌드 산출물은 hiredis 자체 `.gitignore` 로 제외돼 있어 **clone 한 머신에서는 반드시 직접 빌드해야 한다.**
+2. **`libcurl` 이 추가로 필요하다.**
+3. **하드코딩 경로가 다섯 곳**(`obstool.h:158-162`) — `DEFAULT_LOGFILE` + 임시 로그 셋(로그 계통이 `DOLOG`/`DBGLOG`/`OBSLOG` 셋이라서) + `DEFAULT_OBSSTAT`. ini 로는 고칠 수 없다.
+
+> **`DEFAULT_OBSSTAT` 은 특히 챙길 값이다.** §7 의 `ObsStatus.txt` — `CamStatus`/`FitsSaved`/`ExpStatus`/`ExpNum` 을 5초마다 갱신하는 그 파일이라, 연동 시험 중 **상태 머신을 실시간으로 들여다보는 창**이 된다: `watch -n 1 cat ~/AICS/Logs/ObsStatus.txt`
+
+### 12.2 설정 — 사이트 ini 에서 바꾸는 두 줄
+
+| 키 | 벤치 값 |
+|---|---|
+| `ISISHost` | `127.0.0.1` |
+| `LOGFILE` | `~/AICS/Logs/OBS/obs` |
+
+TCSAgent 와 달리 **격리해야 할 하드웨어 주소가 ini 에 없다** — 돔 릴레이(HTTP)와 Redis 는 코드 기본값을 쓰고, 접속에 3회 연속 실패하면 해당 모니터링을 스스로 끈다(§8.1). 그대로 두면 된다.
+
+**시험할 때 밟기 쉬운 둘**
+
+- ⚠️ **포트 6650 충돌** — 연동 시험용 프로브(`ics_sim/tools/xis_probe.py`)가 같은 포트를 쓴다. `obstool` 기동 전에 종료할 것.
+- ⚠️ **ICS 를 재시작하면 OBSAgent 도 재시작한다**(§3 의 운영 규칙). 시험 중에는 `ics_sim` 을 자주 껐다 켜므로 특히 걸린다.
+
+### 12.3 기동 결과
+
+`OBS%` 프롬프트에서:
+
+```
+status     → ICS>OBS  DONE: STATUS Inst=ICS ExpTime=0 ... Mode=Idle
+kstatus    → K.IC>OBS DONE: STATUS Inst=KMTNk DetectorID=K ...
+ss         → CamStatus=READY  FitsSaved=1 ...
+```
+
+`kstatus` 가 도달한다는 것이 곧 신규 `ics` 의 **9개 노드 ID 등록**이 실전에서 작동한다는 뜻이다 — `ICS` 하나만 등록돼 있으면 `XIS>OBS ERROR: No Route to Destination Host K.IC` 로 죽는다([`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.1).
+
+**DARK 노출 사이클 전 구간이 경고 없이 통과했다** — §6 의 `CamStatus` 전이, §6.1(b) 의 타임아웃 3종 모두 큰 여유. 그 과정에서 신규 `ics` 의 `ExpNum` 응답 값 결함 하나를 잡았다(§6.1(a) 가 다루는 그 왕복이다 — 규약과 경위는 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.4·12.14, 시험 전체는 3.7).

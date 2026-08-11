@@ -43,14 +43,27 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - 송신 전 `validate()` 가 6가지 오염 패턴을 검사한다.
 - `--bug-compat` 로 레거시 오염을 재현할 수 있다(골든 대조용, 기본 꺼짐).
 
-## 상태 (2026-08-08)
+## 상태 (2026-08-11)
 
 - **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2), **자기 발신 에코 필터·브로드캐스트 중복 억제·노드 ID 검증**(3.1.2 — 실물 XIS 연동의 전제)
-- **테스트 156개 전부 통과**
+- **테스트 165개 전부 통과**
+- **실물 연동 시험 완료 (2026-08-11)** — 재빌드한 XIS(v2.9.1) 허브에 **실물 TCSAgent·OBSAgent 와 함께** 물려 돌렸다. 9개 노드 ID 등록·에코 필터·재등록·개별 IC 라우팅·노출 사이클 전 구간 통과, 타임아웃 창 3종 모두 큰 여유. **`ExpNum` 응답 값이 한 칸 밀리는 결함 하나를 잡아 고쳤다**(DevNote 3.4·12.14). 전체 결과는 DevNote **3.7**
 - **아직 안 만든 것**: `BIN` 하나. `strict_legacy` 면 무응답이고, 구현 지침은 `commands.py` docstring 에 있다.
 - **일부러 안 만든 것**: `ROI`/`DISPL`/`MOVIE` — **레거시 ICS 명령 테이블에 아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `Didn't understand` 로 거부된다(DevNote 6.8).
 - **2026-08-08 전 문서 정합성 일제 점검 완료** — 레거시 보고서 3부작·Agent 보고서 2종·raw_fits_spec·xis 문서의 낡은 서술/모순 30여 건 정정. 내역은 DevNote 14장 말미.
-- **다음 단계**: ① 실물 XIS·OBSAgent 연동 시험(원격 리눅스에서 XIS 재빌드, DevNote 11.11) ② `ics_archon` — Archon 2기 제어 + raw pair 저장. **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** (파일은 컨트롤러당 1개×2, `Wrote` 통보는 CCD당 4회 논리 이름 — D-009/D-010, DevNote 9.1 상기 블록)
+- **다음 단계**: ① 연동 시험 계속(아래 "이어서 시작하는 자리") ② `ics_archon` — Archon 2기 제어 + raw pair 저장. **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** (파일은 컨트롤러당 1개×2, `Wrote` 통보는 CCD당 4회 논리 이름 — D-009/D-010, DevNote 9.1 상기 블록)
+
+## ▶ 이어서 시작하는 자리 (2026-08-11 기준)
+
+**벤치가 SSO AIC 리눅스(`kmtnet-sso`)에 그대로 살아 있다.** 창 네 개 — 0=XIS · 1=`ics_sim` · 2=`obstool` · 3=`pctcs`. 기동 명령은 [README](README.md) "실물 연동 시험", 설치·빌드는 [`../TCSAgent/tcsagent_report.md`](../TCSAgent/tcsagent_report.md) · [`../OBSAgent/obsagent_report.md`](../OBSAgent/obsagent_report.md) 각 12절(`build-local.sh` 한 줄이면 재현된다).
+
+| 순서 | 할 일 |
+|---|---|
+| **1** | **`ExpNum` 교정의 실물 재확인** — 노출 2회 돌려 두 번째가 진행 중일 때 `ee` 로 `ExpNum` 이 그 노출의 파일 번호와 같은지, 끝난 뒤 `ExpNum`==`FitsNum` 인지. 지난번 어긋난 자리다(DevNote 12.14). **5분이면 되니 먼저 한다** |
+| **2** | **Telcom/AUX 시뮬레이터 설치** — `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
+| **3** | **세부 연동 시험** — `STOP`/`ABORT`(9.2.1 의 `DONE:` 본문은 실측 근거 없이 정한 것) · `GO n`(6.1) · `.osc` 스크립트 관측(3.5) · 결함 주입 6종(**실물 OBSAgent 의 경보·`opause` 경로를 확인하는 유일한 수단**) |
+
+판정 기준과 지난 결과는 [DevNote 3.7](DevNote.md). 시험 도구는 `tools/xis_probe.py`(노드 하나를 흉내 내는 프로브 — 포트 6650 이라 `obstool` 과 겹친다).
 
 ## 조사 자료
 
@@ -108,7 +121,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - **`ICS` 는 IC 와 같은 소프트웨어**(`INSTRUMENT=ICS`, 디렉토리만 `\KMTX`). → 메시지 오염 버그가 ICS·IC 양쪽에 똑같이 나타나는 이유.
 - BUILD 접두어 = 프로그램 디렉토리: `KX`=\KMTX, `KS`=\KMTS, `KG`=\KMTG.
 - `SP` 노드(`KMTNsp`) = 과학 계열 예비 IC, XIS preset 의 `.107` 자리로 보인다.
-- **IC(VDOS) 본체 소스를 `IC2.img` 에서 확보했다 (2026-08-04).** `__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` (각 8 GB, 비커밋). **C 가 아니라 FreeBASIC** 이고 실행파일과 소스가 함께 들어 있어 역어셈블이 필요 없었다. 꺼내는 절차는 [DevNote 2.2](DevNote.md) — 7-Zip 으로 0.3초면 된다.
+- **IC(VDOS) 본체 소스를 `IC2.img` 에서 확보했다 (2026-08-04).** `__localonly_osu_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` (각 8 GB, 비커밋). **C 가 아니라 FreeBASIC** 이고 실행파일과 소스가 함께 들어 있어 역어셈블이 필요 없었다. 꺼내는 절차는 [DevNote 2.2](DevNote.md) — 7-Zip 으로 0.3초면 된다.
 
 논의 전 과정(문제 발견 → 내 근거 없는 단언 → 사용자 지적 → 로그 실측 → 결정)은 [xis/xis.md 부록 A](xis/xis.md) 와 DevNote 12.7 에 남겨 뒀다.
 
@@ -146,7 +159,7 @@ VM 이미지가 **5개**로 늘었다(`ICSci` CTIO/SAAO · `ICGui` · `K.IC` · 
 
 ## 다음에 이어서 할 만한 일
 
-1. **실제 OBSAgent·XIS 연동 시험** — 원격 리눅스 머신에서 XIS 재빌드·기동(빌드 환경 결정은 DevNote 11.11), `--xis-host` 로 붙여 `kstatus` 를 쳐 본다. **소스 정독으로 세운 규약 전체가 실물에서 처음 검증되는 자리**이고, `transport.feed()` 로는 확인할 수 없는 라우팅 경로도 여기서만 실증된다. 절차와 판정 기준은 [xis/xis.md 7절](xis/xis.md) — **경고 블록(레거시 정지) 먼저 읽을 것.** 선행 조건은 XIS `isis.ini` 에 시뮬 주소 한 줄 추가(위 "남은 것" 참조). 이어서 `.osc` 스크립트를 돌리면 규약 검증이 완결된다.
+1. ~~**실제 OBSAgent·XIS 연동 시험**~~ — **1차 완료 (2026-08-11).** 9노드 등록·라우팅·노출 사이클 전 구간 통과, `ExpNum` 결함 하나 수정. **남은 항목은 위 "이어서 시작하는 자리"** 로 옮겼다. 결과는 DevNote 3.7.
 2. **`ics_archon` 구현** — Archon 컨트롤러 2기 제어 + raw FITS pair 저장. 제어 시퀀스는 `cam_char/archon/` 이식(DevNote 9장), **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** — 저장/통보 단위가 갈라지는 지점(D-009/D-010)은 DevNote 9.1 의 상기 블록에 정리돼 있다.
 3. ~~`STOP`/`ABORT` 구현~~ · ~~`\KMTS`·`\KMTG` 소스 정독~~ — **둘 다 2026-08-05 완료.** 아래 "IC·ICG 계통 확정" 참조. ~~자기 발신 에코 처리~~ — **2026-08-08 완료**(위 "XIS 노드 등록" 참조).
 4. **`icg` 착수** — 가이드 계통. OBSAgent 가 가이드 발신을 무시하므로 하위호환 부담이 없어 자유롭다. 공통 로직(IMPv2 노드, 텔레메트리 중계, 파일명 fail-safe)은 이 폴더에서 뽑아 쓸 수 있다.

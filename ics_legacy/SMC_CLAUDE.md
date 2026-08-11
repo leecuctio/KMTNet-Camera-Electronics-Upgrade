@@ -82,9 +82,21 @@ KMTNet 레거시 관측 소프트웨어를 세 폴더로 나눠 각각 분석해
 
 스캔 도구는 [`../ics_sim/tools/scan_legacy_logs.py`](../ics_sim/tools/scan_legacy_logs.py) 에 남아 있어 로그가 있는 컴퓨터에서 재검증할 수 있다.
 
+## 로그 아카이브가 판정 도구로 쓰였다 (2026-08-11)
+
+실물 연동 시험에서 신규 `ics` 의 `ExpNum` 응답 값이 한 칸 밀리는 것이 드러났는데, **우리 버그인지 OBSAgent 의 오래된 표시 버그인지** 가릴 수단이 없었다. 48GB 아카이브가 갈랐다 — CTIO `isis.20250401.log` 에서 `DONE: EXPNUM` 응답과 **같은 노출의 `Wrote` 파일명**을 대조하니 연속 3 사이클 모두 응답이 한 칸 앞섰다(레거시는 N+1). 우리 쪽 결함으로 확정.
+
+> **이 폴더 자료의 쓰임새가 하나 늘었다.** 지금까지 아카이브는 *"레거시가 무엇을 했는가"* 를 알아내는 데 썼는데, 이번엔 **신규 구현과 레거시 중 어느 쪽이 틀렸는지 판정**하는 데 썼다. 규약을 로그에서 뽑을 때 **메시지의 존재만 보고 값의 의미를 안 보면** 같은 함정이 반복된다 — 경위는 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 12.14.
+
+대조 방법(다른 항목에도 그대로 쓸 수 있다):
+
+```bash
+grep -aE "DONE: EXPNUM|Wrote LASTFILE" isis.2025MMDD.log | head -20
+```
+
 ## 다음에 이어서 할 만한 일
 
-- **실제 OBSAgent 연동 시험** — XIS 허브를 띄우고 `ics_sim` 을 `--xis-host` 로 붙여 `.osc` 스크립트를 돌려 본다. 8.0.1절 규약 검증이 실물로 완결된다.
+- ~~**실제 OBSAgent 연동 시험**~~ — **1차 완료 (2026-08-11).** XIS 허브에 `ics_sim`·실물 TCSAgent·실물 OBSAgent 를 함께 물려 노출 사이클 전 구간을 통과시켰다. **8.0.1절 규약이 실물에서 처음 검증됐고**, 빠져 있던 항목 하나(`ExpNum` 값)를 그 자리에서 찾았다. `.osc` 스크립트 관측은 아직 — 결과는 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.7.
 - **`ics_sim/hardware/archon.py` 구현** — 실제 CCD 구동. 계약과 참고 자산은 [DevNote 9장](../ics_sim/DevNote.md).
 - **신규 `icg` 착수** — 명세는 [icg_legacy_report.md](icg_legacy_report.md) 9절(+2026-08-03에 추가된 9.5절). `ics_sim` 의 공통 로직(IMPv2 노드, 텔레메트리 중계, 메시지 위생 규칙, 설정 체계)을 그대로 가져다 쓸 수 있다.
 - 선행 결정 필요: SYNCHRONIZE 존치 여부, 가이드 파일명 규칙, ABC 존치 여부. (**디스크 이중화는 폐지로 확정**됐다 — 1.4절)

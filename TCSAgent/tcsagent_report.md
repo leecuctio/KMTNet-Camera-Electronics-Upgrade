@@ -251,3 +251,58 @@ BLG02  17:54:52.760  -29:01:25.10  1
 - `copt` 기반 좌표 보정(9.1절)은 **공식 문서화가 안 된 채로 운영에 쓰이고 있는 로직**이다. 신규 구현 시 이 보정 테이블(`cortable/offset_*.table`)과 알고리즘을 그대로 이식할지, 정식으로 스펙을 정리해 재구현할지 결정하고 문서화해야 한다 — 현재는 소스코드가 유일한 정본(source of truth)이다.
 - 카탈로그(`pctcs.cat`)의 필드 코드가 OBSAgent 쪽(관측 스크립트)의 필드 코드와 겹치는 것으로 보이므로, 신규 구현에서는 "필드 이름 → 좌표" 테이블을 TCS 쪽과 카메라 쪽이 이중 관리하지 않도록 단일 소스로 통합하는 것을 고려할 만하다.
 - 버전 이력(8절)에서 보듯 이 프로그램은 10년 넘게 실운영 중 발견된 자잘한 버그(반올림 오차, 부호 오류, 자정 처리 등)를 계속 고쳐온 결과물이다. 신규 구현 시 이런 엣지케이스들을 자체적으로 다시 겪지 않도록, 버전별 변경 이력을 회귀 테스트 체크리스트로 활용할 만하다.
+
+---
+
+## 12. 재빌드와 설치 (2026-08-11 실측)
+
+`ics_sim` 실물 연동 시험을 위해 **Ubuntu 24.04 / g++ 13.3.0 에서 v1.7.2 를 빌드해 기동했다.** OBSAgent 가 개정하지 않기로 확정돼 있고 TCS Agent 도 당분간 그대로 쓰므로, 신규 `ics` 전환 뒤에도 **두 에이전트는 계속 빌드돼야 한다.**
+
+> 원 배포본(2014~2018, CentOS 계열)과 12년치 툴체인 차이로 그냥은 넘어가지 않는 것이 일곱 가지 있고, 그중 둘은 **빌드는 되는데 실행이 안 되는** 부류다. 실행 중에 레거시 결함 둘도 드러났다. **원인과 근거는 [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 3.7.1 에 정리했다** — 아래는 결과와 절차만 다룬다.
+
+### 12.1 빌드
+
+```bash
+./build-local.sh --site kmtna      # 의존성 점검 → libisis.a 재빌드 → pctcs 빌드 → ini 생성
+```
+
+스크립트가 필요한 교정을 전부 적용하고 저장소는 건드리지 않는다(작업 사본에서 빌드). 의존 패키지는 `build-essential` · `libreadline-dev` · `libncurses-dev`.
+
+산출물과 배치 — XIS 와 같은 뿌리에 모아 두면 판정 근거를 한자리에서 회수할 수 있다:
+
+```
+~/AICS/bin/isis                     XIS v2.9.1
+~/AICS/Config/{isis,ics_sim,pctcs,obstool}.ini
+~/AICS/Logs/{TC,OBS}/               에이전트 로그
+~/AICS/build/ISISclient/            재빌드된 libisis.a (OBSAgent 와 공용)
+~/AICS/build/TCSAgent/pctcs         v1.7.2
+```
+
+### 12.2 설정 — 사이트 ini 에서 바꾸는 네 줄
+
+| 키 | 벤치 값 | 이유 |
+|---|---|---|
+| `ISISHost` | `127.0.0.1` | XIS 가 같은 머신 |
+| **`TCS_Host`** | **`127.0.0.1`** | ⚠️ 아래 |
+| **`AUX_Host`** | **`127.0.0.1`** | ⚠️ 아래 |
+| `LOGFILE` | `~/AICS/Logs/TC/tc` | `/data` 는 권한 없음. 디렉토리는 미리 만들어야 한다 |
+| `CATFILE` | 작업 사본의 `catalog/pctcs.cat` | 없어도 기동은 되고 `tmobject` 만 못 쓴다 |
+
+> ⚠️ **`TCS_Host`/`AUX_Host` 를 운영 값으로 두고 시험하지 말 것.** 사이트 기본값 `192.168.15.60`(SSO)은 실제 필터·셔터·포커서·돔셔터를 제어하는 **AUX 컴퓨터와 Telcom** 이고(§2), TCS Agent 는 기동 즉시 접속해 폴링을 시작한다. `127.0.0.1` 이면 즉시 연결 거부 → 링크 `DOWN` 으로 깔끔히 떨어진다(도달 불가 주소는 오히려 connect 가 타임아웃까지 매달린다).
+
+### 12.3 기동 결과
+
+```
+> Event Logging started successfully
+> 40 of 54 data imported from catfile ...
+- Started TCS Agent as ISIS client node TC on kmtnet-sso port 6606
+- PCTCS Telcom tcp link init failed !       ← 하드웨어 없음, 정상
+- AUX ctrl link init failed !               ← 〃
+TC%
+```
+
+- XIS 콘솔 `HOSTS` 에 `TC` 가 `127.0.0.1:6606` 으로 등록
+- `OBS>TC TSTAT`/`ASTAT` 가 허브를 거쳐 왕복 (`TC>OBS DONE: DOWN 1 <UTC>` · `… KMTA`)
+- `ics_sim` 이 노출 중 보내는 `AUXSTATUS`/`TCSSTATUS` 질의가 실물 응답을 받는다 — 종전에는 `tc_timeout_mode=passthrough` 로 빈 필드를 채우던 경로다
+
+**다음 단계** — Telcom/AUX 시뮬레이터를 같은 머신에 설치하면 `127.0.0.1` 설정이 그대로 유효해지고 두 링크가 `DOWN` → `UP` 이 된다. 그때 `tstat`/`astat` 의 실제 텔레메트리와 `ics_sim` 의 FITS 헤더(AUX/TCS 키워드)가 처음으로 실값을 받는다.

@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 
 from conftest import (DARK_SCRIPT, GON5_SCRIPT, OBJECT_SCRIPT, drive,
-                      make_config)
+                      drive_at, make_config)
 from ics_sim.obsagent_model import CamStatusReplay
 
 
@@ -172,6 +172,70 @@ def test_expnum_query_answered():
     assert m and len(m.group(1)) == 15, \
         f'Filename= 값이 15자가 아니다: {m.group(1) if m else None!r}'
     assert re.fullmatch(r'\d{8}\.\d{6}', m.group(1))
+
+
+def test_expnum_answers_next_frame_number():
+    """readout 중 EXPNUM 질의에는 **다음** 노출 번호를 답해야 한다.
+
+    OBSAgent 는 그 값을 `strNextNum` 에 담았다가 **다음 노출이 시작될 때**
+    `strCurNum` 으로 승격해 관측자 화면의 `ExpNum` 으로 쓴다(DevNote 3.4).
+    노출 N 의 readout 중에 N 을 답하면 화면이 노출마다 한 칸씩 밀린다.
+
+    **실물 연동에서 드러난 결함이다 (2026-08-11).**  실제 OBSAgent 를 붙이자
+    노출 2 가 도는 내내 `ExpNum=...000001` 이 표시됐고 그 노출이 저장한 파일은
+    `...000002` 였다.  레거시 실측(CTIO isis.20250401.log)은 readout 중 응답이
+    `Filename=...010459` / 그 노출의 Wrote 가 `...010458` 로 **N+1** 이다.
+    질의에 답하기만 하면 되는 줄 알았던 3.4 규약에 값의 규약이 빠져 있었다.
+
+    `test_expnum_query_answered` 는 형식(15자)만, 아래
+    `test_expnum_advances_between_exposures` 는 파일명 연속성만 보므로
+    둘 다 이 결함을 놓쳤다.
+    """
+    import re
+    run = drive_at(DARK_SCRIPT, marker='PCTREAD=6', inject='OBS>ICS ExpNum')
+
+    replies = run.find('DONE: EXPNUM')
+    assert replies, 'readout 중 ExpNum 질의에 응답하지 않았다'
+    answered = re.search(r'Filename=(\d{8})\.(\d{6})', replies[-1])
+    assert answered, f'Filename= 형식이 아니다: {replies[-1]!r}'
+
+    wrote = [m for m in (re.search(r'KMTN\w\.(\d{8})\.(\d{6})\.fits', line)
+                         for line in run.find('Wrote LASTFILE=')) if m]
+    assert wrote, '이 노출의 Wrote 를 찾지 못했다'
+
+    this_frame = int(wrote[0].group(2))
+    assert all(int(m.group(2)) == this_frame for m in wrote), \
+        '한 노출의 Wrote 4개가 같은 번호가 아니다'
+    assert int(answered.group(2)) == this_frame + 1, (
+        f'EXPNUM 응답이 {answered.group(2)} 인데 이 노출의 파일은 '
+        f'{this_frame:06d} 다 -- 다음 번호({this_frame + 1:06d})를 답해야 한다')
+
+
+def test_expnum_outside_exposure_does_not_skip():
+    """노출 중이 아닐 때는 카운터를 그대로 답한다 -- 두 칸 밀면 안 된다.
+
+    `advance()` 가 이미 돌아 `expnum` 이 다음 노출 번호를 가리키는 상태이므로,
+    거기에 또 더하면 관측자가 보는 번호가 실제보다 하나 앞선다.
+    """
+    import re
+    # 노출 전에 한 번, 노출이 끝난 뒤(EXPSTATUS=IDLE)에 한 번 묻는다.
+    # drive() 로는 스크립트가 20ms 간격으로 한꺼번에 들어가 뒤쪽 질의가 노출
+    # **도중**에 도착해 버린다 -- 끝난 뒤를 보려면 발신을 마커로 삼아야 한다.
+    run = drive_at(['OBS>ICS ExpNum'] + DARK_SCRIPT,
+                   marker='DONE: EXPSTATUS=IDLE', inject='OBS>ICS ExpNum')
+    replies = run.find('DONE: EXPNUM')
+    assert len(replies) >= 2, f'EXPNUM 응답이 2개 미만이다: {replies}'
+
+    before = int(re.search(r'Filename=\d{8}\.(\d{6})', replies[0]).group(1))
+    after = int(re.search(r'Filename=\d{8}\.(\d{6})', replies[-1]).group(1))
+    wrote = re.search(r'KMTN\w\.\d{8}\.(\d{6})\.fits',
+                      run.find('Wrote LASTFILE=')[0])
+    frame = int(wrote.group(1))
+
+    assert before == frame, \
+        f'노출 전 응답 {before:06d} 가 그 노출이 쓴 번호 {frame:06d} 와 다르다'
+    assert after == frame + 1, \
+        f'노출 후 응답이 {after:06d} 다 -- 다음 번호 {frame + 1:06d} 여야 한다'
 
 
 def test_expnum_advances_between_exposures(gon5_run):

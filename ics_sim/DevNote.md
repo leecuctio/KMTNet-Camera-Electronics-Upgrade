@@ -69,7 +69,7 @@
 | `__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **48GB, 1,113일분** | `__localonly_*` 비커밋 | 전량 스캔 — 샘플에 없던 시퀀스 발굴 |
 | `ics_legacy/__dts_legacy/dts.icsci.*/` | 2,800 파일 / 24.7 MB | **커밋됨** | icsci 서버 `dts` 백업에서 소스·설정만 선별. **XIS 허브 소스**가 12.9 의 등록 방식 확정 근거. 단 **운영본은 `ISIS/server/`(v2.9.1)이지 `EXEC_ISIS/server/`(v2.7.3)가 아니다** — 12.12 |
 | `ics_sim/xis/` | 162 파일 / 1.5 MB | **커밋됨** | 위 백업에서 **XIS 관련 자산만 뽑아 정리한 보관본**. 소스·사이트별 운영 설정·기동 스크립트·은퇴 분기 실행파일. 체크섬 포함. 시작 문서 [`xis/xis.md`](xis/xis.md) |
-| `__localonly_osc_legacy/` | 원본 백업 + **VM 이미지 5개** | `__localonly_*` 비커밋 | `IC2.img` × 5, 각 8 GB. **IC/ICS 의 FreeBASIC 소스 전량**이 실행파일과 함께 들어 있다 — 5장·6.8·6.10 의 근거 |
+| `__localonly_osu_legacy/` | 원본 백업 + **VM 이미지 5개** | `__localonly_*` 비커밋 | `IC2.img` × 5, 각 8 GB. **IC/ICS 의 FreeBASIC 소스 전량**이 실행파일과 함께 들어 있다 — 5장·6.8·6.10 의 근거 |
 
 확보된 VM 이미지 5개 (전부 CTIO, SAAO 는 ICSci 하나):
 
@@ -121,7 +121,7 @@ python tools/extract_golden.py <logfile> \
 
 ```bash
 # 안에 뭐가 있는지 (22,000행 남짓)
-7z l "__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_CTIO/IC2.img"
+7z l "__localonly_osu_legacy/IC2_KX20160323.1381_ICSci_CTIO/IC2.img"
 
 # 소스 트리만 꺼낸다 -- 8GB 이미지지만 0.3초, 31MB
 7z x "…/IC2.img" -o<대상> -y -r \
@@ -179,6 +179,8 @@ OBSAgent 는 명령마다 수신 노드를 달리 지정한다:
 
 > **해결됨.** 1안(**단일 소켓 + 9개 ID PING**) 확정, 2안 불필요. 근거는 XIS 서버 소스다.
 >
+> **그리고 2026-08-11 에 실물로 확인됐다.** SSO AIC 리눅스에서 재빌드한 XIS(v2.9.1)에 시뮬을 붙이자 `HOSTS` 가 **`NumClients=9`** 를 찍었고, 9개 ID 가 `Host0`~`Host8` 로 **각자 슬롯을 하나씩** 차지한 채 전부 `127.0.0.1:6600` 을 가리켰다. 덮어쓰기는 없었다. 소스로만 판정하고 48GB 로그 어디에도 사례가 없던 **마지막 미실증 항목이 닫혔다.** 절차와 전체 결과는 [`xis/xis.md` 8절](xis/xis.md).
+>
 > **논의 전 과정 449줄은 [`xis/xis.md` 부록 A](xis/xis.md) 로 옮겼다 (2026-08-06).** 근거 없는 단언 → 사용자 지적 → 로그 실측 → 소스 확인으로 이어진 기록이라 지우지 않았다. 되짚을 일이 있으면 거기를 본다. **이 절은 결론과 지켜야 할 것만 남긴다.**
 
 **문제**: IMPv2 에는 등록 API 가 없다. 노드가 **자기 이름으로** 아무 메시지나 보내면 XIS 가 "노드ID → 그 데이터그램의 (IP,port)" 를 기억하는 것이 전부다. 그래서 `ICS` 이름으로만 보내면 XIS 는 `ICS` 하나만 알고, `OBS>K.IC STATUS`(kstatus) · `DMAWAIT` · `DATASOURCE` 가 **라우팅 단계에서 사라진다**(3.1).
@@ -231,6 +233,8 @@ XIS 경유 모드에서만 나타나는 두 가지 되돌림을 수신 초입에
 덧붙여 `config.validate()` 가 노드 ID 를 검증한다 — IMPv2 이름 규칙(2~8자, `A-Z 0-9 . _`), 예약어(`AL`/`ALL`/브로드캐스트, `XIS`/허브 ServerID), 중복, guide 충돌. **v2.9.1 허브에는 ServerID 사칭 방어도 주소 충돌 검사도 없으므로**(xis/xis.md 6.3) 거르는 책임이 전적으로 우리에게 있다.
 
 검증: [`tests/test_xis_echo.py`](tests/test_xis_echo.py) 15개 — 에코 재실행 차단(대조군 포함), 전체 사이클 발신 전량 되먹임에도 신규 발신 0건, 브로드캐스트 3부 → PONG 9발 한 세트, dedup off 시 구동작 재현, 노드 ID 검증 6종.
+
+**실물 확인 (2026-08-11)** — 자기 발신 에코가 **정확히 36개**(`0+1+…+8`, 등록이 진행될수록 슬롯이 늘어 삼각수) 돌아왔고 시뮬의 **발신은 0건**이었다. 필터가 없었으면 324발이 나갔을 자리다. 이 개수가 운영본 트리 판정(v2.9.1 은 송신 슬롯 하나만 제외 — 은퇴 분기였다면 0개)까지 동작으로 뒷받침한다 → 3.7 · [`xis/xis.md` 10절](xis/xis.md).
 
 ### 3.2 CamStatus 상태머신 (commands.c 757~864)
 
@@ -331,7 +335,7 @@ LASTFILE=/mnt/ICSData/KMTNk.20250902.057288.fits
 
 검증: `test_obsagent_contract.py::test_timeout_windows_not_violated`, `::test_config_self_check_flags_bad_timing`.
 
-### 3.4 `ExpNum` 자동 질의 — 반드시 응답해야 하는 항목
+### 3.4 `ExpNum` 자동 질의 — 응답해야 하고, **값도 규약이다**
 
 `commands.c` 797~803행: 첫 `PCTREAD=` 를 받아 `READ_1` 일 때 OBSAgent 가 **스스로** `OBS>ICS ExpNum` 을 보낸다.
 
@@ -339,6 +343,19 @@ LASTFILE=/mnt/ICSData/KMTNk.20250902.057288.fits
 OBS>ICS ExpNum
 ICS>OBS DONE: EXPNUM  Filename=20250902.057288 EXPSTATUS=READOUT
 ```
+
+> #### ⚠️ 답할 값 — 노출 N 의 readout 중에는 **N+1** 이다
+>
+> OBSAgent 는 받은 값을 `strNextNum` 에 담아 두었다가 **다음 노출이 시작될 때** `strCurNum` 으로 승격해 화면의 `ExpNum` 으로 쓴다(아래 항목). 따라서 readout 중 답할 값은 **다음 노출이 쓸 번호**다.
+>
+> 레거시 실측 (CTIO `isis.20250401.log`, 연속 3 사이클 — 응답이 한 칸 앞선다):
+>
+> | readout 중 응답 | 그 노출이 저장한 파일 |
+> |---|---|
+> | `Filename=20250401.010459` | `KMTNt.20250401.010458.fits` |
+> | `Filename=20250401.010460` | `KMTNk.20250401.010459.fits` |
+>
+> 구현은 `state.peek_suffix()`. **이 값 규약이 오래 빠져 있었고 실물 연동에서야 드러났다 → 12.14.**
 
 **목적과 내력** (소스 서두 개정이력 주석 218~229행):
 
@@ -354,7 +371,9 @@ CTIO 아카이브에서 **125,451회** 확인. **2024-03 로그에는 없고 202
 
 `DONE:` 파싱 순서(947~960행, else-if): `ExpTime=` → `atof(+8)` · `EXP=` → `atof(+4)` · `Filename=` → 15자 복사.
 
-검증: `test_obsagent_contract.py::test_expnum_query_answered`, `::test_expnum_advances_between_exposures`.
+검증: `test_obsagent_contract.py::test_expnum_query_answered`(형식 15자) · `::test_expnum_answers_next_frame_number`(**값이 N+1**) · `::test_expnum_outside_exposure_does_not_skip`(노출 밖에서는 두 칸 밀지 않기) · `::test_expnum_advances_between_exposures`(프레임 간 연속).
+
+> 앞의 두 기존 테스트가 이 결함을 못 잡은 이유가 분명하다 — 하나는 **형식**(15자)만, 하나는 **파일명 연속성**만 봤다. **질의에 답한다는 사실과 옳은 값을 답한다는 사실이 별개**라는 것을 규약이 구분하지 않았던 탓이다.
 
 ### 3.5 스크립트 관측 응답 체크 (885~1015행)
 
@@ -405,6 +424,80 @@ K.IC>ICS SYNCHRONIZE
 ICS>K.IC STATUS: SYNCHRONIZE   IMGTYPE=OBJECT OBJNAME=BLG33 EXP=60 OBSERVER=smc PROJID=BLG
 ICS>N.IC DONE:   SYNCHRONIZE   IMGTYPE=… (동일 본문)
 ```
+
+### 3.7 실물 연동 시험 (2026-08-11) — 이 장 전체의 첫 실행 검증
+
+이 장의 규약은 **OBSAgent 소스를 정독해 세운 것**이고, 지금까지의 검증은 `transport.feed()` 로 메시지를 주입하고 `obsagent_model.py` 재현본으로 상태를 재생하는 방식이었다. 둘 다 **XIS 라우팅 단계를 건너뛰고, 받은 값이 관측자 화면에서 어떻게 쓰이는지를 다루지 않는다.** SSO AIC 리눅스에서 실물 넷을 한 허브에 물려 그 공백을 메웠다.
+
+**구성** — XIS(v2.9.1 재빌드) · `ics_sim` · **실물 TCSAgent**(`pctcs` v1.7.2) · **실물 OBSAgent**(`obstool` v1.2.0). 프로그램 넷이 각자 노드로 등록돼 서로 라우팅된 것은 처음이다. 벤치 기동 명령은 [`xis/xis.md` 8절](xis/xis.md), 두 에이전트의 재빌드는 [`../TCSAgent/tcsagent_report.md`](../TCSAgent/tcsagent_report.md) 12절 · [`../OBSAgent/obsagent_report.md`](../OBSAgent/obsagent_report.md) 12절.
+
+| 판정 | 결과 | 근거 절 |
+|---|---|---|
+| 9개 노드 ID 등록 | `NumClients=9`, `Host0`~`Host8` 각자 슬롯, 전부 `127.0.0.1:6600` | 3.1.1 |
+| 자기 발신 에코 필터 | 에코 **36개**(`0+1+…+8`) 수신, 발신 **0건** | 3.1.2 |
+| `XIS>AL PING` 재등록 | `UDPPING` 한 방에 9개 ID 전부 PONG | 3.1.1 |
+| 개별 IC 라우팅 | `kstatus`·`dmawait`·`datasource` 전부 도달, 해당 노드 이름으로 응답. 허브 왕복 **2~4 ms** | 3.1 |
+| 브로드캐스트 dedup | `OBS>AL PING` → PONG **9발 한 세트**(81발 아님) | 3.1.2 |
+| CamStatus 전 구간 | DARK 사이클에서 경고·에러 **0건**, `READY` 복귀, `FitsSaved=1` | 3.2 |
+| `FitsNum` 파싱 | `Wrote` 의 `KMTN`+6 부터 15자가 그대로 `20260811.000001` | 3.2 |
+| `ExpNum` 왕복 | 첫 `PCTREAD=6` **3 ms 뒤** OBSAgent 가 스스로 질의 | 3.4 |
+
+**타임아웃 창 실측** (DARK 5초, 시간축척 1.0). 3.3 의 네 상수가 실물에서 처음 측정됐다:
+
+| 창 | 실측 | 한계 | 여유 |
+|---|---|---|---|
+| `Acquisition Complete.` 1번째 → 4번째 | **8 ms** | 1.8 초 (`force_idle=40`) | 225× |
+| 4번째 → `EXPSTATUS=IDLE` | **0.394 초** | 0.9 초 (`force_idle/2`) | 2.3× |
+| `IDLE` 진입 → 4번째 `Wrote` | **4.63 초** | 25 초 (`force_fitssaved=560`) | 5.4× |
+
+가장 빠듯한 것이 두 번째 창(2.3배)인데, `[timing] acq_to_idle = 0.40` 을 그대로 반영한 값이라 예상 범위다. 레거시 실측은 0.38초였다(3.3).
+
+**잡은 결함 하나** — `ExpNum` 응답 값이 한 칸 밀려 있었다. 규약은 3.4, 경위와 교훈은 12.14. **이 장의 규약 중 유일하게 "값"을 명시하지 않았던 항목에서 나왔다.**
+
+**부수로 드러난 XIS 동작 두 가지**
+
+- **빈 노드 ID 도 등록된다.** 발신 ID 가 빈 메시지(`>` 로 시작하는 줄)를 보냈더니 `Host12: ID= …:6650` 이 테이블에 올랐고, 그 슬롯은 **XIS 재시작 전까지 회수되지 않는다.** `updateHosts()` 에 ID 검증이 없다는 3.1.1 표의 실물 확인이고, 우리가 `config.validate()` 로 노드 ID 를 스스로 거르는 이유이기도 하다(3.1.2 말미).
+- **한 주소에 세 ID.** `127.0.0.1:6650` 을 `OBS`·`CHA`·(빈 ID) 가 동시에 점유했다 — 9개 ID 실험과 별개 경로에서 같은 성질이 재현됐다.
+
+**다음 시험 초반에 먼저 할 것** — **`ExpNum` 교정의 실물 재확인.** 12.14 의 수정은 시뮬 단위 테스트까지만 검증됐고 실물 OBSAgent 화면으로는 다시 보지 않았다. 노출을 두 번 돌린 뒤 두 번째가 진행 중일 때 `ee` 를 쳐서 **`ExpNum` 이 그 노출이 저장할 파일 번호와 같은지**, 끝난 뒤 `ExpNum` 과 `FitsNum` 이 일치하는지 본다. 지난번에 `ExpNum=000001` / 파일 `000002` 로 어긋났던 자리다.
+
+**그 밖에 아직 안 해 본 것**: `STOP`/`ABORT`(9.2.1 의 `DONE:` 본문은 실측 근거 없이 정한 것이라 실물 확인이 필요하다) · `GO n` 다중 노출(6.1) · `.osc` 스크립트 관측(3.5 의 명령별 응답 판정) · 결함 주입 6종(7장). 벤치가 그대로 남아 있어 이어서 하면 된다.
+
+#### 3.7.1 레거시 에이전트 재빌드 — 현대 툴체인 이식 목록
+
+시험의 전제가 **TCSAgent·OBSAgent 를 실제로 빌드하는 것**이었다. 원 배포본은 2014~2018년 CentOS 계열에서 g++ 로 빌드된 것이라 12년치 차이가 그대로 드러났다. **OBSAgent 는 개정하지 않기로 확정돼 있으므로 신규 `ics` 전환 뒤에도 두 에이전트는 어딘가에서 계속 빌드돼야 한다** — 그때 필요한 체크리스트다.
+
+절차는 [`../TCSAgent/build-local.sh`](../TCSAgent/build-local.sh) · [`../OBSAgent/build-local.sh`](../OBSAgent/build-local.sh) 가 정본이고, 운용 관점 요약은 두 보고서 12절. 여기에는 **근거**를 남긴다.
+
+| # | 문제 | 위치 | 계기 | 증상 |
+|---|---|---|---|---|
+| 1 | `.c.o:` 서픽스 규칙에 전제조건 | 세 Makefile 전부 | GNU make | `ignoring prerequisites on suffix rule definition`. 여기서는 `CC`/`CFLAGS` 가 Makefile 에 있어 빌드는 진행된다(XIS 는 `VFLAGS` 가 날아가 `VERSION 0.0` 이 됐다 — `xis/xis.md` 4.2 ③) |
+| 2 | **포인터를 정수 0 과 순서비교** | TCS `commands.c:1105` · OBS `commands.c:1477` · **ISISclient `isismessage.c:134`** | C++ Core Issue 1512 | `ordered comparison of pointer with integer zero`. `-w` 로도 `-std=gnu++98` 로도 안 넘어간다 → `!= NULL` |
+| 3 | **`pow10()`** | TCS `commands.c:4924` · OBS `calculation.c:243` | glibc 2.27(2018) 삭제 | BSD 확장이었다 → `pow(10.0,(double)n)` |
+| 4 | 커밋된 `libisis.a` 가 non-PIC | `ISISclient/libisis.a`(2014 빌드) | PIE 기본화 | `relocation R_X86_64_32 … PIE object` → 소스에서 재빌드(그러면 2번이 나온다) |
+| 5 | **`rl_refresh_line()` 을 readline 초기화 전 호출** | TCS·OBS 의 `_msgout()`, TCS `testcode()` | readline 8.x | **빌드는 되고 실행이 즉사한다** — 아래 |
+| 6 | 리터럴 → `char*` | 곳곳 | C++11 | `-std=gnu++98` |
+| 7 | **vendored hiredis 의 `all:` 이 `.so` 만 만든다** | OBS 전용 | — | `-lhiredis` 가 `.so` 를 우선 잡아 **실행이 안 되는 바이너리**가 나온다 → `make static` + `.a` 경로 직접 링크 |
+
+**2·3 은 두 에이전트에 같은 줄로 존재한다** — OBSAgent 가 TCSAgent 코드베이스를 복사해 출발했다는 계보가 결함까지 물려받은 형태로 남아 있다.
+
+**5 가 가장 고약하다.** 정적 분석으로는 안 나오고 실행해야 드러난다:
+
+```
+#0 __strrchr_evex()  #1 rl_redraw_prompt_last_line() [libreadline.so.8]
+#2 _rl_refresh_line()  #3 rl_refresh_line()  #4 testcode()  #5 main()
+```
+
+`rl_callback_handler_install()` 은 이벤트 루프 직전에야 도는데 **배너·설정 로딩 메시지가 전부 그 전에 `_msgout()` 을 타고**, 그 안에 `if(!KeyCmdFlag) rl_refresh_line(0,0);` 이 있다. readline 8.x 의 `rl_redraw_prompt_last_line()` 이 NULL 인 `rl_prompt` 에 `strrchr` 을 건다. **구버전(5/6번대)에는 이 경로가 없어 운영 머신에서는 지금도 멀쩡히 돈다.** 교정은 호출 제거가 아니라 `if(rl_prompt)` 가드다 — readline 이 뜬 뒤에는 원래 동작(비동기 출력 후 프롬프트 재그리기)이 필요하다.
+
+**로그 경로는 ini 로 못 고친다.** 설정을 읽기 **전에** 하드코딩 경로(`/data/Logs/…`)로 임시 로그를 열고, 설정을 읽은 뒤 `mv` 로 옮겨 이어 쓰는 구조라서다. 배너처럼 설정 이전에 나오는 메시지를 놓치지 않으려는 설계이고, 그래서 그 첫 경로만은 설정 항목이 없다. 실패하면 **이벤트 로그가 통째로 안 남는다.**
+
+**실행으로 드러난 레거시 결함 둘**
+
+- **`ISISclient/isisutils.c:428` `ISODate()`** — `static char str[11]` 에 `CCYY-MM-DDThh:mm:ss` 19자+NUL. **최소 출력이 이미 버퍼를 넘는다.** 같은 파일의 다른 날짜 함수는 전부 정확하고 이것만 어긋난다 — 2004년에 `UTCDate()`(날짜 전용이라 11 로 정확)를 복사해 시각을 덧붙이며 버퍼를 안 키운 것이다. `static`(.bss) · 기동 시 1회 호출 · 최적화 없는 빌드가 겹쳐 20년 넘게 조용했다.
+- **TCSAgent `main.c` 의 `sprintf` 6곳** — 1024바이트 버퍼에 최대 2059바이트(IMPv2 최대 2048자). 전부 `_vmsgout` 경로라 **`VERBOSE on` 일 때만** 발현한다. 운영 ini 는 `off` 이므로, **디버깅하려고 켜는 순간이 가장 위험하다.** 미교정.
+
+> **이 목록의 성격.** 앞의 여섯 중 넷(2·3·4·6)은 **빌드가 안 되는 것**이고, 5·7 은 **빌드는 되는데 실행이 안 되는 것**이다. 후자는 실제로 띄워 봐야만 나오므로, 이식 작업에서 "컴파일 통과 = 끝" 으로 보면 안 된다. XIS 재빌드에서 걸림돌 넷 중 하나가 실제 컴파일에서만 드러났던 것(`xis/xis.md` 4.2 ④)의 확대판이다.
 
 ---
 
@@ -699,7 +792,9 @@ ICS>OBS DONE: EXPSTATUS=IDLE                              ← 마지막 프레�
 
 ### 6.3 새로 확인된 노드와 sourceID
 
-- **`CHA` 노드** — `ICS>CHA DONE: EXPNUM  Filename=20240628.021488`, `M.IC>CHA DONE: EXPNUM  Filename=KMTNm.20240628.5956`, `M.IC>CHA DONE: INITIALIZE  Initialization Complete.` (SSO, 2024-06-28 전후, 2,441회). ICS 와 개별 IC 양쪽에 `EXPNUM`·`INITIALIZE` 를 보내는 **엔지니어링/운영자 콘솔 클라이언트**로 보인다. 성격 미확정.
+- **`CHA` 노드** — `ICS>CHA DONE: EXPNUM  Filename=20240628.021488`, `M.IC>CHA DONE: EXPNUM  Filename=KMTNm.20240628.5956`, `M.IC>CHA DONE: INITIALIZE  Initialization Complete.` (SSO, 2024-06-28 전후, 2,441회). **정체 확정 (2026-08-11, 운영자 확인): 시험할 때 쓰는 임시 노드 ID.** 추정했던 "엔지니어링/운영자 콘솔 클라이언트" 가 맞았고, 2024-06-28 전후의 2,441 건은 운영 트래픽이 아니라 **그날의 시험 세션**이다. `EXPNUM`·`INITIALIZE` 를 ICS 와 개별 IC 양쪽에 찔러보는 패턴도 시험 그대로다.
+  - **이 확정이 아래 결론을 사후에 뒷받침한다.** 미상 발신자의 정체가 곧 **운영자의 시험 콘솔**이라면, 발신 노드 화이트리스트를 뒀을 때 제일 먼저 막히는 것이 운영자 자신이다. "레거시가 그러니까" 가 아니라 **그래야 하는 이유**가 생겼다.
+  - 실물 연동 시험(2026-08-11)에서 우리가 붙인 프로브도 XIS 테이블에 같은 자리를 차지했다 — 같은 `127.0.0.1:6650` 에 `OBS`·`CHA`·(빈 ID) 셋이 공존했다.
 - **`C1` sourceID** — `T.IC>T.CB TRANSFER DISK0 <n> C1` (CTIO 3~6회). `ICS`/`OBS`/`ABC` 외의 전송 요청 주체.
 - **`0`** — `K.IC>0 STATUS: …` (1회). 5.3 의 노드명 파괴 사례이지 실재 노드가 아니다.
 
@@ -994,7 +1089,8 @@ ics_sim/
 │       └── archon.py      **실기 구동 코드가 들어갈 자리** (스텁)
 ├── tools/
 │   ├── scan_legacy_logs.py    5·6장 스캐너 (재검증용)
-│   └── extract_golden.py      골든 픽스처 생성
+│   ├── extract_golden.py      골든 픽스처 생성
+│   └── xis_probe.py           **실물 연동 시험용 IMPv2 프로브** (3.7)
 └── tests/
     ├── conftest.py            헤드리스 실행 헬퍼
     ├── fixtures/golden_*.txt  레거시 시퀀스 발췌 (커밋)
@@ -1188,7 +1284,9 @@ cd ics_sim
 python -m pytest tests -q
 ```
 
-현재 **156개 전부 통과** (2026-08-08).
+현재 **165개 전부 통과** (2026-08-11).
+
+> **테스트가 잡지 못한 것도 기록해 둔다.** `ExpNum` 값 결함(12.14)은 `transport.feed()` 테스트 156개를 전부 통과한 채로 살아남았다 — 형식(15자)과 파일명 연속성은 검사했지만 **값의 의미**를 검사하지 않았기 때문이다. 이 계층의 테스트가 다루지 못하는 것이 무엇인지는 3.7 참고.
 
 | 파일 | 지키는 것 |
 |---|---|
@@ -1440,6 +1538,22 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 
 수정: 수신 초입 자기 발신 필터 + 브로드캐스트 중복 억제 (3.1.2). `nodes.py` 의 `owns()` 가 정의만 되고 호출처가 없던 것이 이 구멍의 흔적이다.
 
+### 12.14 "`ExpNum` 은 응답하기만 하면 된다" → **값도 규약이었다** (2026-08-11)
+
+3.4 는 `ExpNum` 자동 질의를 발견하고 *"응답하지 않으면 표시가 갱신되지 않는다"* 까지 적었다. **무슨 값을 답해야 하는지는 적지 않았다.** 그래서 구현은 현재 카운터를 그대로 답했고, 테스트 둘(`test_expnum_query_answered` = 15자 형식 / `test_expnum_advances_between_exposures` = 파일명 연속성)은 **둘 다 통과했다.**
+
+실물 OBSAgent 를 붙이자마자 드러났다 — 노출 2 가 도는 내내 관측자 화면이 `ExpNum=...000001` 이었고, 그 노출이 저장한 파일은 `...000002` 였다. 종료 후에도 `ExpNum`/`FitsNum` 이 한 칸 어긋난 채 남았다.
+
+**어느 쪽 잘못인지는 아카이브가 갈랐다.** 두 가능성이 있었다 — (a) 우리가 틀렸다 (b) 레거시도 N 을 답했고 OBSAgent 의 오래된 표시 버그다. CTIO `isis.20250401.log` 에서 `EXPNUM` 응답과 같은 노출의 `Wrote` 파일명을 대조하니 세 사이클 연속으로 응답이 한 칸 앞섰다(3.4 표). **(a) 였다.**
+
+**왜 놓쳤나.** 이 규약을 로그에서 발견할 때 본 것이 *"질의가 있고 응답이 있다"* 는 왕복 자체였다. 응답의 **값**이 무엇인지는 그때 물어보지 않았고, 물어봤더라도 같은 로그로 답할 수 있었다 — 필요한 것은 이번에 한 대조 한 번뿐이었다. 3.2 의 `Wrote`·`Acquisition Complete.` 는 개수와 문자열이 곧 규약이라 자연히 값까지 봤는데, `ExpNum` 은 "응답하면 되는 것"으로 분류해 버린 것이 갈림길이었다.
+
+**교훈.** 상대가 보낸 값을 **어디에 쓰는지**까지 따라가야 규약이 완성된다. `strNextNum` → `strCurNum` 승격이라는 이름이 소스에 이미 있었고, 그 이름만 제대로 읽었어도 "다음 노출 번호"가 나왔다. 12.6 에서 `ExpNum` 의 **목적**을 밝혀낸 것으로 만족하고 **값**까지 가지 않은 것이 이 결함의 자리다.
+
+수정: `state.peek_suffix()` 가 프레임이 번호를 점유 중일 때(`exposing and suffix_taken`) 하나 더한다. `suffix_taken` 은 `next_suffix()` 가 세우고 `advance()` 가 내리며, ABORT 로 `advance()` 를 건너뛰어도 `exposing` 이 `_run()` 의 finally 에서 내려가 자가 복구된다.
+
+> **이것이 실물 연동 시험의 값을 가장 잘 보여주는 사례다.** `transport.feed()` 테스트도, `obsagent_model.py` 재현본도 이 결함을 잡을 수 없었다 — 재현본은 CamStatus 체인만 흉내 내고 `strNextNum` 승격은 다루지 않기 때문이다. **받은 값이 관측자 화면에서 어떻게 쓰이는지는 실물 OBSAgent 만 보여줄 수 있었다.**
+
 ---
 
 ## 13. 개선 제안 · 백로그
@@ -1448,9 +1562,9 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 |---|---|---|
 | ~~XIS 등록 방식 확정 (1안 vs 2안)~~ | **해결됨 (2026-08-04).** XIS 서버 소스로 테이블이 노드ID로만 키잉되고 주소 충돌 검사가 없음을 확인 → **1안 확정, 2안 불필요**(3.1.1) | 완료 |
 | ~~`XIS>AL PING` 에 9개 PONG 응답~~ | **구현 완료 (2026-08-04)** — `cmd_ping()` 이 브로드캐스트면 9개 ID 전부로 PONG(3.1.1) | 완료 |
-| **XIS `isis.ini` 에 시뮬 등록** | `UDPPort <sim_ip> <sim_port>` 한 줄 추가(운영 측 작업). ~~`MAXPRESET` 여유 확인 필요~~ → **선행 조건 해소 (2026-08-05).** 운영본이 v2.9.1 이라 상한 32, 사용 13~14 (3.1.1) | **최우선** |
+| **XIS `isis.ini` 에 시뮬 등록** | `UDPPort <sim_ip> <sim_port>` 한 줄 추가. ~~`MAXPRESET` 여유 확인 필요~~ → **선행 조건 해소 (2026-08-05).** 시험 벤치에서는 `127.0.0.1 6600` 한 줄로 **적용·검증 완료 (2026-08-11)**. **운영 허브 반영은 남아 있다** — 다만 xis.md 7절 경고대로 레거시 정지 또는 분리 인스턴스가 전제다 | 운영 측 |
 | ~~**XIS 콘솔 `info` 로 `MaxPreset` 실측**~~ | **선행 조건에서 확인 절차로 격하 (2026-08-05).** 소스로 32 확정. 실물에서는 `VERSION`(2.9.1 인지) · `INFO`(`… of 32 max`) 로 판정만 재확인한다 | 중간 |
-| **`UDPPING` 으로 등록 선시험** | XIS 콘솔에 `UDPPING <ip> <port>` 가 있다(3.1.1). **운영 `isis.ini` 를 건드리기 전에** 시뮬 등록·9개 PONG 을 시험할 수 있다. 실물 연동의 첫 단계로 이것부터 | **최우선** |
+| ~~**`UDPPING` 으로 등록 선시험**~~ | **완료 (2026-08-11).** XIS 콘솔 `UDPPING 127.0.0.1 6600` 한 방에 9개 ID 전부가 PONG 했다 — XIS 재시작 후 재등록의 유일한 경로가 실물에서 확인됐다 | 완료 |
 | ~~**자기 발신 에코 무시**~~ | **구현 완료 (2026-08-08, 3.1.2).** 점검에서 브로드캐스트 에코보다 심각한 **유니캐스트 루프백**(ERASE/SHOPEN 이중 실행)이 드러나(12.13) `_on_message` 초입 필터로 확대. 브로드캐스트 중복 억제·노드 ID 검증 포함, 테스트 15개 | 완료 |
 | **`write_fits()` raw pair 구현 (C-8)** | ics_archon 에서 `raw_fits_spec/` 2.3·2.5·5장대로 **컨트롤러당 1파일**(`MK`/`NT`) 저장. `hardware/base.py` 의 CCD 단위 Protocol 시그니처 개정 포함 (9.1 상기 블록) | ics_archon |
 | **저장/통보 단위 분리 (C-16)** | `sequencer._store()`·`state.filename()` 을 물리 저장 경로와 `Wrote` 논리 이름으로 분리 (D-010). 물리 경로 prefix 는 `[node]` 의 사이트 코드 (D-011). `LASTFILE` 은 실재 경로가 아니게 된다 | ics_archon |
@@ -1462,7 +1576,9 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 | ~~**`IC2.img` 에서 `\KMTX` 추출**~~ | **완료 (2026-08-04).** 예상과 달리 바이너리가 아니라 **FreeBASIC 소스**가 통째로 들어 있어 역어셈블이 불필요했다. 결과: 5.5(오염 원인 코드) · 6.8(명령 테이블) · 6.9(SSO `Wrote` 단절) | 완료 |
 | ~~**`\KMTS`·`\KMTG` 소스 정독**~~ | **완료 (2026-08-05).** `K.IC`·`G.IC`·`ICGui` 이미지를 추가로 확보해 읽었다. 결과: 6.10(IC 동작 전부) · 6.11(ICG = ICS 같은 바이너리) · `ics_legacy_report.md` 4.6 | 완료 |
 | **`PCTREAD` 4블록 간격의 이유** | 6.10 주석 — 블록 양자화까지는 확정했으나 왜 3블록이 아니라 4블록인지 미해결. `YLinesIn` 갱신 지점과 `NUMPHLINES=32` preheat 처리를 봐야 한다. 시뮬은 실측값을 쓰므로 **동작에는 영향 없음** | 낮음 |
-| **실물 XIS 연동 시험** | `transport.feed()` 로는 검증할 수 없는 라우팅 경로 전체를 처음으로 실증하는 일 | **최우선** |
+| ~~**실물 XIS 연동 시험**~~ | **완료 (2026-08-11).** 9개 ID 등록 · 에코 필터 · 브로드캐스트 재등록 · 개별 IC 라우팅 · 실물 TCSAgent/OBSAgent 연동 · 노출 사이클 전 구간. **`ExpNum` 값 결함 하나를 잡았다**(12.14). 결과는 [`xis/xis.md` 8절](xis/xis.md) | 완료 |
+| **`STOP`/`ABORT` 실물 재확인** | 9.2.1 의 `DONE:` 본문은 실측 근거 없이 우리가 정한 것이라 실물 OBSAgent 로 확인하려 했으나 **이번 시험에서 다루지 못했다.** 벤치가 그대로 있으므로 `go` 중 `stop`/`abort` 를 쳐 보면 된다 | 중간 |
+| **`GO n` · `.osc` 스크립트 관측 실물 확인** | `Image k of n complete. EXPSTATUS=IDLE` 경로(6.1)와 명령별 응답 판정(3.5)은 실물에서 미확인. `.osc` 자산이 `OBSAgent.latest/KMTObs/osc/` 에 있어 회귀 시험으로 쓸 수 있다 | 중간 |
 | ~~**`STOP`/`ABORT` 실제 구현**~~ | **완료 (2026-08-05).** 레거시 분기(`PAP7KX.CMD:279-302`)를 그대로 옮겼다(9.2.1). 테스트 12개 추가. 단 **`DONE:` 본문 형식은 실측 근거가 없어 우리가 정한 것**이므로 실물 연동에서 재확인 필요 | 완료 |
 | **SSO `Wrote` 결함 운영측 보고** | 6.9 — SSO Caliban 의 `GetFITS.c:532` 가 `STATUS:` 로 고쳐져 있어 ICS 중계가 끊겼고, 그 결과 **매 노출 `FitsSaved` 가 25초 타임아웃으로만 서고 있다.** 레거시를 계속 쓰는 동안은 한 단어(`STATUS:`→`DONE:`) 수정으로 고쳐진다. 신규 `ics` 에는 해당 없음 | 중간 |
 | **`EXPNUM` 자릿수 통일** | 레거시는 ICS 6자리 / IC 4자리라 `INITIALIZE` 로 우회했다. 신규는 이미 6자리로 통일했으니, 외부 문서도 갱신 필요 | 완료(신규) |
@@ -1472,7 +1588,7 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 | **`SYNCHRONIZE` 모델 결정** | 레거시는 "누가 보냈든 반영"하는 수동 리스너였다. 발신자 검증형으로 바꿀지 결정 필요 | 중간 |
 | **파일명 fail-safe 유지** | 1999년 Prospero 시절부터 검증된 데이터 유실 방지 장치. 그대로 가져간다 | 완료 |
 | **`force_ready=270`(12.2초) 대기** | 신규 시스템에서 병목이면 OBSAgent 개정이 필요하다. **현재는 개정하지 않기로 확정**된 상태이므로 기록만 | 보류 |
-| **`CHA` 노드 성격 확인** | 운영자에게 물어보면 바로 풀릴 사안(6.3) | 낮음 |
+| ~~**`CHA` 노드 성격 확인**~~ | **해결됨 (2026-08-11).** 운영자 확인 — **시험용 임시 노드 ID** 다. 6.3 갱신 | 완료 |
 | ~~**ICG 오염 여부 확인**~~ | **해결됨 (2026-08-05).** ICG 는 ICS 와 **같은 바이너리**라 5.5 의 오염이 그대로 있다(6.11). OBSAgent 가 가이드를 무시하므로 관측 영향은 없다 | 완료 |
 
 ---
@@ -1526,6 +1642,13 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 - `raw_fits_spec/` — 2.5절 `Wrote` 마감시한을 READOUT 기준으로 정정 + ics_archon 발신 순서 규칙 명시, 5.5절 트래커 서술 완화 / `DECISION_LOG.md` D-009 영향절 조건부화
 - `ics_sim/xis/xis.md` — **7절에 운영 허브 라우팅 가로채기 경고**(레거시 정지 후 시험), 체크리스트 정리, 파일 수 162 통일, 부록 A 참조 3건 / `MANIFEST.md` `.gitattributes` 등재
 - 이 문서 — 3.1.2 신설(에코 필터), 12.13, 9.1/9.3 raw_fits_spec 연결, 3.2 논리/물리 파일명 구분, 7장/10장/13장 갱신
+
+### 실물 연동 시험 반영 (2026-08-11)
+
+- **이 문서** — 3.7 신설(시험 결과) · 12.14 신설(`ExpNum` 결함) · 3.4 에 값 규약 · 3.1.1/3.1.2 실물 검증 · 6.3 `CHA` 확정 · 10·13장
+- **코드** — `state.py` 의 `suffix_taken`, 테스트 2개 추가(165개 통과)
+- **`TCSAgent`·`OBSAgent` 보고서 12절 신설** — 현대 툴체인 재빌드(걸림돌 6종 + 실행으로 드러난 레거시 결함 2종)와 `~/AICS` 벤치 배치. **`build-local.sh` 두 개로 자동화**했다
+- 두 `SMC_CLAUDE.md` — "아직 git 에 커밋되지 않았다"(2026-07-29) 낡은 서술 정정
 
 ---
 

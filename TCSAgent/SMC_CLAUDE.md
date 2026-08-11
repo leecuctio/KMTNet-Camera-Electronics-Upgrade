@@ -49,13 +49,40 @@
 | `__reference/ISISclient/`, `__reference/hiredis/` | 빌드 의존 라이브러리 사본 (ISISclient는 OBSAgent 쪽과 **동일 파일** 확인) | ISISclient는 [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 7절에서 이미 분석 완료 |
 | `TCSAgent.v1.7.2.zip` | 배포 압축본 (`.gitignore`의 `*.zip`로 git 미추적) | 미압축, `.latest`와 동일 추정 |
 
-**git 상태 주의**: 이 폴더는 **아직 git에 커밋되지 않았다**(전체 untracked). 다른 컴퓨터에서 clone하면 이 폴더 자체가 없다. 커밋하더라도 `*.zip`, `test.*`, `.o`/`.a` 빌드산출물은 `.gitignore`로 제외된다.
+**git 상태**: 커밋되어 있다 — **136 파일 추적 중**(2026-08-11 확인). *"아직 커밋되지 않았다"* 던 2026-07-29 자 서술은 낡은 것이라 정정했다. `*.zip`(배포본)은 `.gitignore` 로 제외된다. `__reference/ISISclient/libisis.a` 는 커밋돼 있지만 **2014년 non-PIC 빌드라 요즘 리눅스에서는 링크되지 않는다** — 소스에서 재빌드해야 한다([tcsagent_report.md](tcsagent_report.md) 12.1 ④).
+
+## 재빌드와 실행 (2026-08-11 실측)
+
+**[`build-local.sh`](build-local.sh)** 한 줄이면 된다. 저장소를 건드리지 않고 `~/AICS` 아래 작업 사본에서 빌드하고 설정까지 만든다.
+
+```bash
+./build-local.sh --site kmtna        # kmtna=SSO kmtnc=CTIO kmtns=SAAO kmtnt=TestBed
+~/AICS/build/TCSAgent/pctcs ~/AICS/Config/pctcs.ini
+```
+
+Ubuntu 24.04 / g++ 13.3.0 에서 실제로 빌드해 `ics_sim`·XIS 와 연동까지 확인했다. **원 배포본(2014~2018, CentOS 계열)과 12년치 툴체인 차이로 그냥은 안 넘어가는 것이 여섯 가지 있고**, 그중 하나(`rl_refresh_line()` 을 readline 초기화 전에 호출)는 **빌드는 되고 실행이 즉사하는** 부류다. 전부 [tcsagent_report.md](tcsagent_report.md) **12절**에 정리했고 스크립트가 처리한다.
+
+실행으로 드러난 레거시 결함 둘도 같은 절에 있다 — `ISISclient/isisutils.c` 의 `ISODate()` 버퍼 초과(호출마다 9바이트, 20년 묵음)와 `main.c` 의 `sprintf` 오버플로 6곳(verbose 모드에서만 발현).
+
+> ⚠️ **`TCS_Host`/`AUX_Host` 를 사이트 기본값으로 두고 시험하지 말 것.** `192.168.15.60`(SSO) 은 실제 필터·셔터·포커서·돔셔터를 제어하는 AUX 컴퓨터와 Telcom 이다. 벤치에서는 `127.0.0.1` — 스크립트가 그렇게 생성한다.
 
 ## 관련 문서 (같은 시스템의 다른 조각)
 
 세 보고서가 KMTNet ICIMACS 시스템의 서로 다른 면을 다룬다 — 상호 참조하며 읽을 것:
 - [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) — **ICS**(카메라 통합제어) + IMPv2.5 프로토콜 + ISIS/XIS 허브. 이 폴더의 `TC` 노드가 그 문서의 노드 디렉토리에 있는 `TC`다.
 - [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) — **OBS Agent**(관측자용 CLI/스크립트 관측). TCSAgent 코드베이스를 포크해 만들어졌고, TCS Agent의 명령어를 거의 그대로 감싸서 제공한다.
+
+## ▶ 다음 세션에서 바로 할 일 — Telcom/AUX 시뮬레이터 연동
+
+`pctcs` 가 **SSO AIC 리눅스(`kmtnet-sso`)에 빌드돼 떠 있고** XIS 허브에 `TC` 로 등록된 상태다. Telcom/AUX 실물이 없어 두 링크는 `DOWN` 이다. KASI 가 만들어 둔 **시뮬레이터를 같은 머신에 설치하면 `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다.**
+
+판정 세 가지:
+
+1. 두 링크가 `DOWN` → **`UP`**  (`info` · `tstat` · `astat`)
+2. `tstat`/`astat` 이 **실제 텔레메트리 값**을 돌려준다 (지금은 `DOWN 1 <UTC>` 뿐)
+3. **`ics_sim` 의 텔레메트리 중계가 실값을 받는다** — 신규 ICS 는 노출마다 `AUXSTATUS`/`TCSSTATUS` 를 `TC` 에 질의해 각 IC 로 중계하는데, 지금은 무응답이라 `tc_timeout_mode=passthrough` 로 빈 필드를 채우고 있다. **FITS 헤더의 AUX/TCS 키워드가 처음으로 실값을 받는 자리다**
+
+벤치 구성과 지난 결과는 [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) "이어서 시작하는 자리", 빌드는 [`build-local.sh`](build-local.sh).
 
 ## 다음에 이어서 할 만한 일
 

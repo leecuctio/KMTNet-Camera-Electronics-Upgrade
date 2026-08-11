@@ -99,7 +99,7 @@ C:\0ICBOOT\IC.BAT            C:\0ICBOOT\IC.BAT          C:\0ICBOOT\IC.BAT
 
 **③ VDOS IC 는 별도 하드웨어가 아니라 리눅스 호스트 위의 KVM 게스트다.**
 
-`__localonly_osc_legacy/memo.txt` 에 IC 이미지의 위치가 적혀 있다:
+`__localonly_osu_legacy/memo.txt` 에 IC 이미지의 위치가 적혀 있다:
 
 ```
 # IC2 path on Sci/Gui/Spa      cd /var/libvirt/images
@@ -110,7 +110,7 @@ C:\0ICBOOT\IC.BAT            C:\0ICBOOT\IC.BAT          C:\0ICBOOT\IC.BAT
 
 이미지 파일명이 빌드를 담고 있다 — `IC2.KX20160323.1381_icsci_ctio` 는 **CTIO icsci 의 ICS 게스트**(빌드 `KX2016-03-23:1381`, ②의 `ICSBUILD` 와 일치)를 뜻한다.
 
-> **⑤ 이미지 실물을 확보했고, 안에 소스가 들어 있었다 (2026-08-04).** `__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img`, 각 8.00 GB. raw MBR + FAT32 단일 파티션이라 마운트 없이 7-Zip 으로 바로 열린다.
+> **⑤ 이미지 실물을 확보했고, 안에 소스가 들어 있었다 (2026-08-04).** `__localonly_osu_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img`, 각 8.00 GB. raw MBR + FAT32 단일 파티션이라 마운트 없이 7-Zip 으로 바로 열린다.
 >
 > 게스트는 **DOS 7**(`IO.SYS` 1999-04-23, `COMMAND.COM`) 이고, IC/ICS 프로그램은 **C 가 아니라 FreeBASIC** 으로 작성돼 있다. `\FREEBASI\` 아래에 컴파일러(`FBC.EXE`)와 **소스 전량**이 함께 있다 — `KMTX\PAP7KX.BAS`(ICS) · `KMTS\PAP7KS.BAS`(과학 IC) · `KMTG\PAP7KG.BAS`(가이드 IC) · `SHARE\PAP7*.{INC,CMD,DEC,DIM}`(공용). `PAP3`~`PAP7` 세대별 소스가 모두 남아 있어 개정 이력도 추적 가능하다.
 >
@@ -978,7 +978,7 @@ K.IC>0 STATUS: EXP  Integration Remaining=145 sec.             ← 수신 노드
 
 ### 5.6.6 원인 코드 확정 (2026-08-04)
 
-`__localonly_osc_legacy/IC2_KX20160323.1381_ICSci_CTIO/IC2.img` 를 열어 ICS 본체 소스를 확보했다. IC/ICS 는 **C 가 아니라 FreeBASIC** 으로 작성돼 있고, 디스크 이미지에 **실행파일과 소스가 함께** 들어 있다. 배포 빌드 `KX2016-03-23:1381` 은 `PAP7` 세트이며 `PAP7KX.EXE` 의 타임스탬프(2016-03-23 18:59)가 이미지 이름과 정확히 일치한다 — **로그에 찍힌 그 바이너리의 소스가 맞다.**
+`__localonly_osu_legacy/IC2_KX20160323.1381_ICSci_CTIO/IC2.img` 를 열어 ICS 본체 소스를 확보했다. IC/ICS 는 **C 가 아니라 FreeBASIC** 으로 작성돼 있고, 디스크 이미지에 **실행파일과 소스가 함께** 들어 있다. 배포 빌드 `KX2016-03-23:1381` 은 `PAP7` 세트이며 `PAP7KX.EXE` 의 타임스탬프(2016-03-23 18:59)가 이미지 이름과 정확히 일치한다 — **로그에 찍힌 그 바이너리의 소스가 맞다.**
 
 | 파일 (`\FREEBASI\` 기준) | 역할 |
 |---|---|
@@ -1102,7 +1102,7 @@ CALL PRT(Buffer, OutBuffer(Buffer))
 | `__sample_isislog/samples_for_bug_pctread.txt` | **검토 완료** — readout 진행률 발췌 2,940행(노출 294회분). `6·17·28·39·50·61·72·83·94·100` 이 **각각 정확히 294회**로 편차 0 — 레거시 IC 가 진행률을 실제 픽셀 카운트가 아니라 **고정 스텝**으로 보고했음을 보여준다(5.2절). **커밋 대상** |
 | `../../__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **전량 검토 완료 (2026-08-03)** — CTIO 634일(28GB, 2024-01-01~2025-09-30) + SAAO 273일(11GB, 2025) + SSO 206일(8.6GB, 2024-01-01~2024-07-25) = **48GB, 1,113일분**. 3.5·5.2·5.3·5.4·5.6·6절 신규 항목의 근거. `__localonly_*` 규약에 따라 **비커밋** |
 | **`__dts_legacy/dts.icsci.*.{ctio,saao,sso}/`** | **2026-08-04 신규** — ICS 컴퓨터(icsci 서버)의 `dts` 폴더를 사이트별로 백업한 것 중 **소스·설정만 선별**해 커밋(2,830 파일 / 24.7 MB). **ISIS/XIS 서버 소스 전체**를 포함한다. 1.3.1·5.6.5·8.0.1절의 근거 |
-| `../../__localonly_osc_legacy/` | 위 백업의 **원본 전량과 부속 자료**(10,291 파일 / 16.6 GB). `__localonly_*` 규약에 따라 **비커밋**:<br>· `dts.icsci.20190326.{ctio,saao,sso}/` — 압축 푼 원본 442 MB. 커밋본에서 뺀 `Tools/`(서드파티 109 MB/사이트) · `catalog/` · `osc/` · 빌드산출물(`.o` `.a` `.tar`) · 홈 디렉토리 dotfile(**`.ssh`/`.gnupg` 포함 — 자격증명 우려로 제외**)이 들어 있다<br>· `dts.icsci.20190326.*.zip` — 원본 압축본<br>· `memo.txt` — IC2 이미지 경로 (1.3.1③의 근거)<br>· `IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` — **ICS VM 디스크 이미지 실물, 각 8.00 GB. 검토 완료 (2026-08-04)**. raw MBR + FAT32 이라 7-Zip 으로 마운트 없이 열린다. 안에 **IC/ICS 의 FreeBASIC 소스 전량**이 실행파일과 함께 들어 있었다(`\FREEBASI\{KMTX,KMTS,KMTG,SHARE}\`, `PAP3`~`PAP7` 세대). **1.3.1⑤ · 3.4.1 · 5.2.1 · 5.6.6절의 근거** |
+| `../../__localonly_osu_legacy/` | 위 백업의 **원본 전량과 부속 자료**(10,291 파일 / 16.6 GB). `__localonly_*` 규약에 따라 **비커밋**:<br>· `dts.icsci.20190326.{ctio,saao,sso}/` — 압축 푼 원본 442 MB. 커밋본에서 뺀 `Tools/`(서드파티 109 MB/사이트) · `catalog/` · `osc/` · 빌드산출물(`.o` `.a` `.tar`) · 홈 디렉토리 dotfile(**`.ssh`/`.gnupg` 포함 — 자격증명 우려로 제외**)이 들어 있다<br>· `dts.icsci.20190326.*.zip` — 원본 압축본<br>· `memo.txt` — IC2 이미지 경로 (1.3.1③의 근거)<br>· `IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` — **ICS VM 디스크 이미지 실물, 각 8.00 GB. 검토 완료 (2026-08-04)**. raw MBR + FAT32 이라 7-Zip 으로 마운트 없이 열린다. 안에 **IC/ICS 의 FreeBASIC 소스 전량**이 실행파일과 함께 들어 있었다(`\FREEBASI\{KMTX,KMTS,KMTG,SHARE}\`, `PAP3`~`PAP7` 세대). **1.3.1⑤ · 3.4.1 · 5.2.1 · 5.6.6절의 근거** |
 
 **`__dts_legacy/` 안에서 특히 중요한 것**
 

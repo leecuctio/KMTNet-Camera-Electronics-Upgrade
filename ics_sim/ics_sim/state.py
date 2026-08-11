@@ -140,6 +140,11 @@ class IcsState:
     #: 노출 진행 중 여부.  GO 중복 거부(DevNote 6.4)에 쓴다.
     exposing: bool = False
 
+    #: 이번 프레임이 `expnum` 을 점유했고 아직 advance() 하지 않은 상태.
+    #: next_suffix() 가 세우고 advance() 가 내린다.  EXPNUM 질의가 현재 번호를
+    #: 답할지 다음 번호를 답할지 가르는 유일한 근거다 (peek_suffix 참고).
+    suffix_taken: bool = False
+
     # -- 채널 -------------------------------------------------------------
 
     def init_channels(self, ccds: tuple[str, ...]) -> None:
@@ -157,14 +162,29 @@ class IcsState:
         그대로 잘라 쓰고(DevNote 3.4), Wrote 의 KMTN+6 부터 15자도 이 값이다.
         """
         self.date_part = stamp_compact(when)
+        self.suffix_taken = True
         return f'{self.date_part}.{self.expnum:06d}'
 
     def peek_suffix(self, when: datetime | None = None) -> str:
-        """다음 노출의 suffix 를 만들되 상태는 바꾸지 않는다.
+        """**다음** 노출이 쓸 suffix 를 만들되 상태는 바꾸지 않는다.
 
-        OBSAgent 가 readout 중에 보내는 ExpNum 질의에 답할 때 쓴다.
+        OBSAgent 가 readout 중에 보내는 ExpNum 질의에 답하는 값이다.  받은 값은
+        expinfo.strNextNum 에 담겼다가 **다음 노출이 시작될 때** strCurNum 으로
+        승격돼 관측자 화면의 ExpNum 이 된다(DevNote 3.4).  그래서 노출 N 의
+        readout 중에는 N+1 을 답해야 화면이 맞는다.
+
+        레거시 실측(CTIO isis.20250401.log)이 그대로 그렇다 -- readout 중 응답이
+        `Filename=20250401.010459` 이고 그 노출이 저장한 파일은
+        `KMTNt.20250401.010458.fits` 로, 답이 한 칸 앞선다.
+
+        `advance()` 는 `EXPSTATUS=IDLE` 직후에 돌므로(12.10 의 경합 수정) 노출
+        중에는 `expnum` 이 아직 현재 프레임 번호다.  그래서 프레임이 번호를
+        점유 중일 때만 하나 더한다.  `exposing` 을 함께 보는 것은 ABORT 로
+        advance() 를 건너뛴 경우에 대비한 것이다 -- 그 플래그는 `_run()` 의
+        finally 에서 반드시 내려간다.
         """
-        return f'{stamp_compact(when)}.{self.expnum:06d}'
+        nxt = self.expnum + 1 if (self.exposing and self.suffix_taken) else self.expnum
+        return f'{stamp_compact(when)}.{nxt:06d}'
 
     def ics_filename(self, when: datetime | None = None) -> str:
         """FILENAME 명령의 ICS 레벨 응답 -- 'ICS.<iso>.<nnnnnn>'."""
@@ -172,6 +192,7 @@ class IcsState:
 
     def advance(self) -> None:
         self.expnum += 1
+        self.suffix_taken = False
 
     # -- 설정 요약 --------------------------------------------------------
 

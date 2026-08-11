@@ -184,14 +184,55 @@ CLI 인자가 같은 키를 덮어쓴다. 전 항목 설명은 [DevNote 7장](De
 python -m pytest tests -q
 ```
 
+**165개 전부 통과** (2026-08-11).
+
 | 파일 | 지키는 것 |
 |---|---|
-| `test_obsagent_contract.py` | OBSAgent 호환 규약 전체 — 상태 전이, 개수 규약, 타임아웃 창, `ExpNum` 왕복, `GO n` |
+| `test_obsagent_contract.py` | OBSAgent 호환 규약 전체 — 상태 전이, 개수 규약, 타임아웃 창, **`ExpNum` 왕복과 값**, `GO n` |
 | `test_emitter_hygiene.py` | 메시지 오염 방지 (정방향 + 레거시 샘플 역방향 검증) |
 | `test_sequence_golden.py` | 레거시 실측 시퀀스와 대조 |
 | `test_stop_abort.py` | STOP/ABORT — 레거시 분기·거부 문자열, 중지 후 IDLE 복귀 |
+| `test_xis_echo.py` | XIS 경유 시의 자기 발신 에코·브로드캐스트 중복·노드 ID 검증 |
 | `test_auxcontrol.py` | AUX 연동 — 가짜 AUX 서버로 실제 TCP 왕복, 어떤 응답에도 노출 완주 |
+| `test_config_site.py` | 사이트 코드와 `telid` 정합 |
 | `test_impv2.py` | 프로토콜 파싱 |
+
+> **이 계층이 못 잡는 것이 있다.** 테스트는 `transport.feed()` 로 메시지를 직접 주입하므로 **XIS 라우팅 단계를 건너뛰고**, 받은 값이 관측자 화면에서 어떻게 쓰이는지도 다루지 않는다. `ExpNum` 값이 한 칸 밀리는 결함이 156개를 전부 통과한 채 살아남은 것이 그 예다 — 실물 OBSAgent 를 붙여서야 드러났다([DevNote 12.14](DevNote.md)). 규약을 바꿀 때는 위의 "실물 연동 시험" 벤치에서 한 번 돌려 보는 편이 안전하다.
+
+---
+
+## 실물 연동 시험
+
+**2026-08-11 에 실제로 돌렸다** — 재빌드한 XIS(v2.9.1) 허브에 이 시뮬과 **실물 TCSAgent·OBSAgent** 를 함께 물려 노출 사이클 전 구간을 통과시켰고, 그 과정에서 `ExpNum` 응답 값 결함 하나를 잡았다. 결과 전체는 [DevNote 3.7](DevNote.md), 두 에이전트 재빌드는 [`../TCSAgent/build-local.sh`](../TCSAgent/build-local.sh) · [`../OBSAgent/build-local.sh`](../OBSAgent/build-local.sh).
+
+```
+창 0  XIS          ~/AICS/bin/isis -f$HOME/AICS/Config/isis.ini
+창 1  ics_sim      python3 -m ics_sim -c ~/AICS/Config/ics_sim.ini --xis-host 127.0.0.1 --xis-port 6660
+창 2  OBSAgent     ~/AICS/build/OBSAgent/KMTObs/obstool ~/AICS/Config/obstool.ini
+창 3  TCSAgent     ~/AICS/build/TCSAgent/pctcs ~/AICS/Config/pctcs.ini
+```
+
+### `tools/xis_probe.py` — 노드 하나를 흉내 내는 프로브
+
+OBSAgent 를 아직 안 띄웠거나, 특정 노드 앞으로 오는 메시지만 따로 보고 싶을 때 쓴다. 표준 라이브러리만 쓰고, **밀리초 타임스탬프가 찍혀 규약의 시간 창(1.8초 / 0.9초 / 25초)을 그대로 잴 수 있다.**
+
+```bash
+python3 tools/xis_probe.py                          # OBS 를 자칭, 포트 6650, XIS 127.0.0.1:6660
+python3 tools/xis_probe.py --my-id KCMD --my-port 6655 --xis-host 192.168.15.109
+```
+
+기동하면 `<ID>>XIS PING` 으로 등록하고, 이후 받은 것을 전부 찍고 stdin 한 줄을 그대로 와이어에 싣는다:
+
+```
+> OBS>K.IC STATUS
+09:20:52.425 >>> OBS>K.IC STATUS
+09:20:52.428 <<< [127.0.0.1:6660] K.IC>OBS DONE: STATUS Inst=KMTNk DetectorID=K ...
+```
+
+- 실패 신호는 `XIS>OBS ERROR: No Route to Destination Host K.IC - host is unknown/unlisted`
+- 보관된 `xis/tools/isisPerl/*/isisCmd` 대신 쓴다 — 그쪽은 서버 IP 와 `ISIS.pm` 경로가 하드코딩이라 손봐야 한다
+- ⚠️ 기본 포트 **6650 은 실제 OBSAgent 의 포트**다. `obstool` 을 띄우기 전에 반드시 종료할 것
+- ⚠️ `>` 로 시작하는 줄을 치면 발신 ID 가 빈 메시지가 나가고, **XIS 는 그것도 클라이언트로 등록해 버린다**(슬롯은 재시작 전까지 회수 안 됨). 시뮬 콘솔의 `>K.IC status` 축약형과 헷갈리지 말 것
 
 ---
 

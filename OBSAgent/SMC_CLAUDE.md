@@ -40,7 +40,28 @@
 | `OBSAgent_release_note_v1.1.3_R240718.pdf` | v1.1.3 공식 릴리스 노트(한국어) | **검토 완료(2026-07-29)** — 보고서 8.1절에 요약. UpdateNotes와 중복이 아니라 **운영 배경 정보의 보고**(서버 배치, MPNARFcp 좌표보정 차이, Redis SHUTTER 정의, 돔 모니터링 복구 절차, dtchk 상세). `.docx`는 동일 내용이라 미검토 |
 | `CCD status (20220826.emaitoSET).pdf` | CCD 상태 문서 | **`ics_legacy/`에서 이 폴더로 이동해온 파일**(2026-07-28). 미검토, OBSAgent 분석과 직접 관련은 낮음 |
 
-**git 상태 주의**: 이 폴더는 **아직 git에 커밋되지 않았다**(전체 untracked). 다른 컴퓨터에서 clone하면 이 폴더 자체가 없다. 커밋하더라도 `*.zip`(배포본), `test.*`(테스트 ini/osc), `.o`/`.a`(hiredis 빌드산출물)는 `.gitignore`로 제외된다 — 특히 `osc/` 안의 `test.*.osc` 몇 개가 제외 대상이니 주의.
+**git 상태**: 커밋되어 있다 — **169 파일 추적 중**(2026-08-11 확인). *"아직 커밋되지 않았다"* 던 2026-07-29 자 서술은 낡은 것이라 정정했다. `*.zip`(배포본), `test.*`(테스트 ini/osc — 특히 `osc/` 안의 `test.*.osc` 몇 개), `hiredis` 의 `.o`/`.a`/`.so`(자체 `.gitignore`)는 제외된다. **hiredis 는 소스만 있으므로 clone 한 머신에서 직접 빌드해야 한다.**
+
+## 재빌드와 실행 (2026-08-11 실측)
+
+**[`build-local.sh`](build-local.sh)** 한 줄이면 된다. 저장소를 건드리지 않고 `~/AICS` 아래 작업 사본에서 빌드하고 설정까지 만든다.
+
+```bash
+./build-local.sh --site kmtna
+~/AICS/build/OBSAgent/KMTObs/obstool ~/AICS/Config/obstool.ini
+```
+
+Ubuntu 24.04 / g++ 13.3.0 에서 빌드해 **신규 `ics`(ics_sim)를 실제 XIS 허브 너머로 몰았다** — `status`/`kstatus` 왕복, DARK 노출 사이클 전 구간이 경고 없이 통과했다. 상세는 [obsagent_report.md](obsagent_report.md) **12절**.
+
+걸림돌은 TCSAgent 와 대부분 공유한다(코드베이스를 복사해 출발했으니 **결함도 같은 줄에 그대로 있다**). OBSAgent 고유는 셋:
+
+1. **hiredis 를 직접, 그것도 정적으로** — `all:` 타겟이 `.so` 만 만드는데 `-lhiredis` 는 그걸 우선 잡아서 **빌드는 되고 실행이 안 되는 바이너리**가 나온다. `make static` + `.a` 경로 직접 링크.
+2. **`libcurl4-openssl-dev` 추가 필요** (v1.0.0 부터 `-lcurl`). TCSAgent 에는 없다.
+3. **하드코딩 경로 다섯 곳** (`obstool.h:158-162`) — 로그 넷과 `ObsStatus.txt`. ini 로는 못 고친다.
+
+> `DEFAULT_OBSSTAT`(`ObsStatus.txt`)을 쓰기 가능한 경로로 옮겨 두면 **`CamStatus`/`ExpStatus`/`FitsSaved` 를 5초마다 실시간으로 볼 수 있어** 연동 시험에서 아주 유용하다 — `watch -n 1 cat ~/AICS/Logs/ObsStatus.txt`.
+>
+> ⚠️ 포트 **6650** 은 `ics_sim/tools/xis_probe.py` 도 쓴다. `obstool` 기동 전에 프로브를 끌 것.
 
 ## 신규 Python 시스템에서 OBSAgent의 위치 (2026-07-29 확정)
 
@@ -54,6 +75,21 @@
 
 - [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) — **ICS**(카메라 통합제어) + IMPv2.5 프로토콜 + ISIS/XIS 허브. 이 프로그램이 `OBS>ICS ...`로 보내는 명령의 수신측.
 - [../TCSAgent/tcsagent_report.md](../TCSAgent/tcsagent_report.md) — **TCS Agent**(망원경). 이 프로그램의 코드 조상이자, `OBS>TC ...` 명령의 수신측.
+
+## ▶ 다음 세션에서 바로 할 일 — 신규 ICS 연동 시험 계속
+
+`obstool` 이 **SSO AIC 리눅스(`kmtnet-sso`)에 빌드돼 떠 있고**, 실제 XIS 허브 너머로 신규 `ics`(ics_sim)를 몰아 DARK 사이클을 통과시킨 상태다. 여기서 이어간다:
+
+| 순서 | 할 일 | 판정 |
+|---|---|---|
+| **1** | **`ExpNum` 교정 재확인** — 노출 2회 돌려 두 번째 진행 중 `ee` | `ExpNum` 이 그 노출의 파일 번호와 같은가, 끝난 뒤 `ExpNum`==`FitsNum` 인가. 지난번 `000001` vs `000002` 로 어긋났던 자리 |
+| **2** | **`GO n` 다중 노출** | `Image k of n complete. EXPSTATUS=IDLE` 경로(§6.1 d)와 프레임 겹침에서 `Wrote` 카운트가 유지되는가 |
+| **3** | **`.osc` 스크립트 관측** | 명령마다 응답을 판정하는 경로(§6.1 e). `osc/` 의 실사용 스크립트를 회귀 자산으로 쓸 수 있다 |
+| **4** | **결함 주입 6종** (`ics_sim --inject`) | **이 프로그램의 경보·`opause` 경로를 확인하는 유일한 수단.** 정상 경로만 통과시킨 지금은 `acq_short`(획득완료 3회 → `opause`) · `wrote_drop`(`FitsSaved` 안 섬) 같은 분기가 실제로 도는지 모른다 |
+
+**상태를 실시간으로 보려면** `watch -n 1 cat ~/AICS/Logs/ObsStatus.txt` (§7 의 그 파일, 5초 주기 갱신).
+
+벤치 구성은 [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) "이어서 시작하는 자리", 빌드는 [`build-local.sh`](build-local.sh).
 
 ## 다음에 이어서 할 만한 일
 
