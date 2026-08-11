@@ -96,6 +96,13 @@ class PathsCfg:
     data_dir: str = './icsdata'
     write_fits: bool = False
     fits_shape: tuple[int, int] = (256, 256)
+    #: 마지막으로 쓴 EXPNUM 을 적어 두는 파일.  비워 두면 **설정파일 옆**에
+    #: 같은 이름 `.expnum` 으로 자동 결정된다(resolve_expnum_file) -- 벤치에서
+    #: `-c ~/AICS/Config/ics_sim.ini` 로 띄우면 `~/AICS/Config/ics_sim.expnum`.
+    #:
+    #: `data_dir` 와 분리해 둔 것이 요구사항이다: 저장 파일을 지우거나 옮겨도
+    #: 번호는 되돌아가지 않아야 한다(운영자 확정 2026-08-11, DevNote 11.12).
+    expnum_file: str = ''
 
 
 @dataclass
@@ -484,6 +491,7 @@ def load(path: str | None = None) -> SimConfig:
         p = cfg.paths
         p.data_dir = s.get('data_dir', p.data_dir).strip()
         p.write_fits = _bool(s, 'write_fits', p.write_fits)
+        p.expnum_file = s.get('expnum_file', p.expnum_file).strip()
         shape = _ints(s, 'fits_shape', p.fits_shape)
         if len(shape) == 2:
             p.fits_shape = (shape[0], shape[1])
@@ -569,4 +577,27 @@ def load(path: str | None = None) -> SimConfig:
         lg.wire = _bool(s, 'wire', lg.wire)
         lg.file = s.get('file', lg.file).strip()
 
+    resolve_expnum_file(cfg)
     return cfg
+
+
+def resolve_expnum_file(cfg: SimConfig) -> str:
+    """`[paths] expnum_file` 이 비어 있으면 **설정파일 옆**으로 정한다.
+
+    벤치 배치(`~/AICS/{bin,Config,Logs,data}`)에서 지속 카운터를 둘 자리는
+    `Config/` 다 -- `Logs/` 는 비워지고 `data/` 는 요구사항상 배제된다(저장
+    파일과 무관해야 한다).  설정파일 이름을 따르므로 `-c` 로 여러 구성을
+    나란히 돌려도 카운터가 섞이지 않는다:
+
+        ~/AICS/Config/ics_sim.ini  ->  ~/AICS/Config/ics_sim.expnum
+
+    `source_path` 가 비어 있으면(ini 없이 SimConfig() 를 직접 만든 경우 --
+    단위 테스트가 그렇다) 빈 값으로 남겨 **지속시키지 않는다.**  테스트가
+    실행 순서에 따라 서로의 카운터를 물려받지 않게 하려는 것이다.
+    """
+    p = cfg.paths
+    if p.expnum_file:
+        p.expnum_file = os.path.expanduser(p.expnum_file)
+    elif cfg.source_path:
+        p.expnum_file = os.path.splitext(cfg.source_path)[0] + '.expnum'
+    return p.expnum_file

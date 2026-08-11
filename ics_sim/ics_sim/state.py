@@ -21,9 +21,12 @@ D-011), 이 논리 이름은 통보 전용이 된다 -- filename() 은 그때 �
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
+log = logging.getLogger('ics_sim.state')
 
 
 class ExpStatus:
@@ -122,7 +125,18 @@ class IcsState:
     projid: str = 'ENG'
     #: 6자리 파일 일련번호.  레거시 IC 는 4자리였고 그 불일치를 INITIALIZE 로
     #: 우회했다(ics_legacy_report 3.4절).  신규는 애초에 6자리로 통일한다.
+    #:
+    #: **재실행에도 되돌아가지 않는다** -- 마지막으로 쓴 번호를 `expnum_file` 에
+    #: 적어 두고 기동 시 그 다음 번호부터 시작한다(load_expnum, DevNote 7 `[paths]`).
     expnum: int = 1
+
+    #: 마지막으로 쓴 `expnum` 을 적어 두는 파일 경로.  빈 값이면 지속시키지 않고
+    #: 매 실행 1 부터 시작한다(단위 테스트의 기본 동작).
+    #:
+    #: **`data_dir` 와 무관해야 한다.** 저장 파일을 지우거나 옮겨도 번호는
+    #: 되돌아가지 않는 것이 요구사항이다(운영자 확정 2026-08-11) -- 그래서 이
+    #: 카운터는 디스크의 파일 목록을 근거로 삼지 않는다.
+    expnum_file: str = ''
     ledflash_ms: int = 0
     expstatus: str = ExpStatus.IDLE
     ics_build: str = 'KX2016-03-23:1381'
@@ -163,6 +177,10 @@ class IcsState:
         """
         self.date_part = stamp_compact(when)
         self.suffix_taken = True
+        # 번호를 **쓰는 시점에** 기록한다.  advance() 까지 미루면 노출 중
+        # 죽었을 때 그 번호가 기록되지 않아 재실행이 같은 번호를 다시 쓴다
+        # -- 방금 저장한 파일과 충돌해 파일명 fail-safe 를 부르는 경로다.
+        self._record_expnum()
         return f'{self.date_part}.{self.expnum:06d}'
 
     def peek_suffix(self, when: datetime | None = None) -> str:
@@ -193,6 +211,66 @@ class IcsState:
     def advance(self) -> None:
         self.expnum += 1
         self.suffix_taken = False
+
+    # -- expnum 지속 (2026-08-11 운영자 확정) -----------------------------
+    #
+    # 요구사항: **ics 를 재실행해도, data_dir 안의 파일 유무와 무관하게,
+    # EXPNUM 은 무조건 1 씩 증가한다.**  그래서 마지막으로 쓴 번호를 파일에
+    # 적어 두고 기동 시 그 다음 번호부터 시작한다.
+    #
+    # `data_dir` 를 훑어 최대값+1 을 쓰는 방식은 **채택하지 않았다** -- 저장
+    # 파일을 지우거나 다른 곳으로 옮기면 번호가 되돌아가 요구사항을 깬다.
+    # 기록 위치는 설정파일 옆(`config.resolve_expnum_file`)이다.
+
+    def load_expnum(self) -> None:
+        """기록된 '마지막으로 쓴 번호' 를 읽어 **그 다음 번호**부터 시작한다.
+
+        기록이 없거나 읽을 수 없으면 현재 값(기본 1)을 그대로 쓴다.  기동을
+        막지는 않는다 -- 번호가 겹치면 파일명 fail-safe 가 받아 주고, 그 경고가
+        곧 "카운터가 안 읽혔다" 는 신호가 된다(DevNote 6.4).
+        """
+        path = self.expnum_file
+        if not path:
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as fh:
+                last = int(fh.read().split()[0])
+        except FileNotFoundError:
+            log.info('expnum 기록이 없다 -- %06d 부터 시작한다 (%s)',
+                     self.expnum, path)
+            return
+        except (OSError, ValueError, IndexError) as exc:
+            log.warning('expnum 기록을 읽을 수 없다 (%s: %s) -- %06d 부터 시작한다',
+                        path, exc, self.expnum)
+            return
+        if last < 0:
+            log.warning('expnum 기록이 음수다 (%s: %d) -- %06d 부터 시작한다',
+                        path, last, self.expnum)
+            return
+        self.expnum = last + 1
+        log.info('expnum 기록을 이어받는다 -- 마지막 %06d, 이번 %06d (%s)',
+                 last, self.expnum, path)
+
+    def _record_expnum(self) -> None:
+        """방금 쓴 번호를 기록한다.  **실패해도 노출은 진행한다.**
+
+        같은 디렉토리에 임시 파일을 쓰고 `os.replace` 로 바꿔 넣는다 -- 기록
+        도중에 죽어도 파일이 반쯤 쓰인 상태로 남지 않게 하려는 것이다.
+        """
+        path = self.expnum_file
+        if not path:
+            return
+        tmp = f'{path}.tmp'
+        try:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(tmp, 'w', encoding='utf-8') as fh:
+                fh.write(f'{self.expnum}\n')
+            os.replace(tmp, path)
+        except OSError as exc:
+            log.warning('expnum %06d 을 기록할 수 없다 (%s: %s) '
+                        '-- 재실행하면 번호가 되돌아간다', self.expnum, path, exc)
 
     # -- 설정 요약 --------------------------------------------------------
 

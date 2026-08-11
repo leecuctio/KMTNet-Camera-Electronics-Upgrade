@@ -46,12 +46,13 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 ## 상태 (2026-08-11)
 
 - **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2), **자기 발신 에코 필터·브로드캐스트 중복 억제·노드 ID 검증**(3.1.2 — 실물 XIS 연동의 전제)
-- **테스트 165개 전부 통과**
+- **테스트 177개 전부 통과**
 - **실물 연동 시험 완료 (2026-08-11)** — 재빌드한 XIS(v2.9.1) 허브에 **실물 TCSAgent·OBSAgent 와 함께** 물려 돌렸다. 9개 노드 ID 등록·에코 필터·재등록·개별 IC 라우팅·노출 사이클 전 구간 통과, 타임아웃 창 3종 모두 큰 여유. **`ExpNum` 응답 값이 한 칸 밀리는 결함 하나를 잡아 고쳤다**(DevNote 3.4·12.14). 전체 결과는 DevNote **3.7**
 - **아직 안 만든 것**: `BIN` 하나. `strict_legacy` 면 무응답이고, 구현 지침은 `commands.py` docstring 에 있다.
 - **일부러 안 만든 것**: `ROI`/`DISPL`/`MOVIE` — **레거시 ICS 명령 테이블에 아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `Didn't understand` 로 거부된다(DevNote 6.8).
 - **2026-08-08 전 문서 정합성 일제 점검 완료** — 레거시 보고서 3부작·Agent 보고서 2종·raw_fits_spec·xis 문서의 낡은 서술/모순 30여 건 정정. 내역은 DevNote 14장 말미.
-- **다음 단계**: ① 연동 시험 계속(아래 "이어서 시작하는 자리") ② `ics_archon` — Archon 2기 제어 + raw pair 저장. **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** (파일은 컨트롤러당 1개×2, `Wrote` 통보는 CCD당 4회 논리 이름 — D-009/D-010, DevNote 9.1 상기 블록)
+- **EXPNUM 지속 (2026-08-11)** — 벤치 2차 시험에서 `FitsNum=00000000.000000` 이 나왔다. 번호가 매 실행 1 로 되돌아가 기존 파일과 겹치고, 파일명 fail-safe 가 `KMTN` 없는 이름을 쓰자 OBSAgent 파싱이 실패한 것이었다. **마지막으로 쓴 번호를 `[paths] expnum_file`(기본: 설정파일 옆 = `~/AICS/Config/ics_sim.expnum`)에 기록하고 기동 시 +1 부터 쓴다.** `data_dir` 를 비워도 되돌아가지 않는다 — 근거와 버린 대안은 DevNote **11.12**
+- **다음 단계**: ① 연동 시험 계속(아래 "이어서 시작하는 자리") ② `ics_archon` — **Archon 3 unit**(과학 2 + **가이드 1**, DevNote 9.1) 제어 + raw pair 저장. **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** (파일은 컨트롤러당 1개×2, `Wrote` 통보는 CCD당 4회 논리 이름 — D-009/D-010, DevNote 9.1 상기 블록)
 
 ## ▶ 이어서 시작하는 자리 (2026-08-11 기준)
 
@@ -59,11 +60,38 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 
 | 순서 | 할 일 |
 |---|---|
-| **1** | **`ExpNum` 교정의 실물 재확인** — 노출 2회 돌려 두 번째가 진행 중일 때 `ee` 로 `ExpNum` 이 그 노출의 파일 번호와 같은지, 끝난 뒤 `ExpNum`==`FitsNum` 인지. 지난번 어긋난 자리다(DevNote 12.14). **5분이면 되니 먼저 한다** |
-| **2** | **Telcom/AUX 시뮬레이터 설치** — `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
+| **1** | **`ExpNum` 교정의 실물 재확인** — **노출을 반드시 2회** 돌려 두 번째가 진행 중일 때 `ee` 로 `ExpNum` 이 그 노출의 파일 번호와 같은지, 끝난 뒤 `ExpNum`==`FitsNum` 인지. **1회만 돌리면 판정이 안 된다** — OBSAgent 가 받은 값을 `strNextNum` 에 담아 두고 **다음 노출 시작 시** `strCurNum` 으로 승격해 표시하므로(`commands.c:835,848`), 1회 세션에서는 `ExpNum` 이 `00000000.000000` 인 것이 정상이다. 지난번 어긋난 자리다(DevNote 12.14). **5분이면 되니 먼저 한다** |
+| **2** | **Telcom/AUX 시뮬레이터 설치** — KASI 제작본이 `../../__localonly_tcs_simulator/TCS_simulation.zip` 에 있다. **빌드가 없다**(stdlib 전용, Python 3.12+ 필요 — Ubuntu 24.04 기본이 3.12 라 그대로 된다). `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 절차와 함정은 아래 블록. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
 | **3** | **세부 연동 시험** — `STOP`/`ABORT`(9.2.1 의 `DONE:` 본문은 실측 근거 없이 정한 것) · `GO n`(6.1) · `.osc` 스크립트 관측(3.5) · 결함 주입 6종(**실물 OBSAgent 의 경보·`opause` 경로를 확인하는 유일한 수단**) |
 
 판정 기준과 지난 결과는 [DevNote 3.7](DevNote.md). 시험 도구는 `tools/xis_probe.py`(노드 하나를 흉내 내는 프로브 — 포트 6650 이라 `obstool` 과 겹친다).
+
+### TCS 시뮬레이터 — 설치 절차와 함정 (2026-08-11 사전 점검)
+
+자료는 `../../__localonly_tcs_simulator/` 에 있다 — `TCS_simulation.zip`(시뮬 본체) + 계통도 PDF 2종(레거시 R2 · 신규 CEU R2.0). **빌드가 없다.** 옮기고 `python3 -m sim.monitor` 로 끝이다.
+
+```bash
+export LANG=C.UTF-8                       # 아래 함정 ⑤
+mkdir -p ~/tcs-sim && tar -xzf tcs-sim.tgz -C ~/tcs-sim --strip-components=1
+cd ~/tcs-sim && python3 -V                # 3.12 이상 (display 계열이 PEP 701 f-string 사용)
+python3 -m sim.selfcheck && python3 -m sim.aux_selfcheck \
+  && python3 -m sim.display_selfcheck && python3 -m sim.fieldlog_probe   # 넷 다 RESULT: ALL PASS
+python3 -m sim.monitor                    # 벤치 창 4 — 5750(Telcom) + 5752(AUX) + 상태 패널
+python3 -m sim.live_probe                 # 창 5 — 실소켓 33항목. 반드시 '갓 기동' 상태에서
+```
+
+**개발 PC(Windows, Python 3.12)에서 위 다섯 줄을 미리 돌려 전부 통과시켰다.** 포트도 안 겹친다 — 5750/5752(시뮬) · 6600(`ics_sim`) · 6606(`TC`) · 6650(`OBS`) · 6660(XIS).
+
+| # | 함정 | 대처 |
+|---|---|---|
+| **①** | **`.osc` 스크립트가 첫 노출 라인에서 멈춘다.** TCSAgent `tmradec` 는 `NEXTRA`+`NEXTDEC`+`MOVNEXT` 만 보내고 `TRACK ON` 을 보내지 않는데(`commands.c:2194,2216`), 시뮬은 추적 OFF 의 `MOVNEXT` 를 `BAD` 로 거부한다(`sim/simulator.py:272-295` — 레거시는 `OK` 를 주고 조용히 무동작하는 쪽이라, 시뮬이 일부러 엄하게 만든 것). 응답 판정 실패 → 재시도 → **`opause`** | 시뮬 기동 후 `tcmd TRACK ON` 을 **1회** 치거나, 시험용 `.osc` 머리에 `+tcmd TRACK ON` 을 넣는다. `osc/` 실사용 자산에는 이 줄이 하나도 없다(실운영에서는 관측자가 초저녁에 손으로 켜므로) |
+| **②** | **`osc/` 원본 스크립트는 대부분 라인 skip 된다.** 실제 날짜·좌표라서 시험 시각에는 고도 30° 아래다 | 좌표를 **LST 기준으로 찍는다.** `sim/obsagent_probe.py:113-120` 이 이미 그렇게 한다 — 첫 `tcsstatus` 에서 `ST=` 를 뽑아 `HA=-1h` 목표를 만든다. 그 로직을 그대로 쓰면 된다 |
+| **③** | **프로브가 AUX 상태를 실제로 움직인다** (필터·셔터·포커서). `ics_sim` 노출과 동시에 돌리면 카메라 셔터를 서로 뺏는다 | 직렬화한다. `live_probe` 는 초기상태 단언이 많아 **갓 기동 직후**가 아니면 오탐 |
+| **④** | **`[auxcontrol] enabled = true` 인 시험은 `time_scale = 1.0` 이어야 한다.** 셔터 사이클이 와이어 기준 14초인데 시뮬 시간은 우리 축척을 따라오지 않는다 | `exp >= 5` · 노출 간격 >= 15초. 근거와 실측표는 [DevNote 9.2.3](DevNote.md) |
+| **⑤** | `display_selfcheck`·`fieldlog_probe` 가 파일을 **기본 로케일 인코딩**으로 읽는다 (Windows cp949 에서 둘 다 죽었다) | 리눅스 UTF-8 이면 그냥 된다. `export LANG=C.UTF-8` 로 확실히 |
+| **⑥** | `acmd simul cshut/staterr/clearerr` 가 **시뮬에 없다** (AUX 43 verb 중 31개 구현, `SIMUL` 은 규격 밖이라 미포함) | AUX 서브시스템 에러 주입은 불가. 대신 `ALL DISCONNECT` → 6상태어 `NC` 경로로 `AUXLINK` 유지·복구를 본다. `ics_sim --inject` 6종은 ICS 자체 결함이라 무관 |
+
+**pctcs 기반 프로브 4종**(`shut_probe`·`limit_probe`·`nc_probe`·`obsagent_probe`)은 `$PCTCS_DIR/ini/pctcs.localhost.sta.ini` 를 상대경로로 요구한다(이름이 하네스에 하드코딩). `build-local.sh` 가 만드는 것은 `~/AICS/Config/pctcs.ini`(ISISclient 모드, `TC`/6606) 하나뿐이지만, 빌드 시 `cp -R` 로 `ini/` 가 통째로 복사되므로 `~/AICS/build/TCSAgent/ini/pctcs.kmtna.sta.ini` 는 **이미 거기 있다.** 호스트 두 줄과 `LOGFILE`(`tc.sta` 로 갈라야 6606 벤치와 안 겹친다)·`CATFILE` 만 sed 로 고쳐 이름을 맞추면 된다. **STA 모드는 `TC.STA`/5755 라 본 벤치를 내리지 않고 돌릴 수 있다.** 우리에게 쓸모 있는 것은 `shut_probe`(`SET_SH` → `SHUTOP` 6전이가 실 pctcs 에서 어떻게 읽히는지)와 `nc_probe`(⑥의 대체 수단) 둘이다 — 선택 항목이므로 손으로 한 번 돌려 보고 쓸만하면 그때 스크립트에 굳힌다.
 
 ## 조사 자료
 

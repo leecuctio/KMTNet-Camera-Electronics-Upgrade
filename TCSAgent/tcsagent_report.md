@@ -140,6 +140,19 @@ ISIS 클라이언트 표준 설정 포맷(`Keyword Value`, `#` 주석, 대소문
 - **TCS**: `DATE-OBS/TIME-OBS`(조회 시각) `DATE-UP/TIME-UP`(수신 시각) `RA/DEC/EQUINOX/HA/ST/SECZ/ALT/AZ`(좌표) `TCSLINK`(Up/Idle/Down) `TELMOVE`(이동축) `TCSLIMIT`(리밋 상태) `TCSDRIVE`(구동 활성화 여부) `EXECODE`(명령 실행결과 코드)
 - **AUX**: 하위시스템별로 접두어가 붙는다 — `FS:`(Filter/Shutter), `FA:`(Focus Actuator, 남/동/서 3개 액추에이터의 절대위치·리밋), `DS:`(Dome Shutter), `MC:`(Mirror Cover), `CH:`(거울냉각 Chiller), `EN:`(환경센서 7개 + 팬)
 
+> **`FA:` 의 "남/동/서" 는 단순화된 명명이다 (2026-08-11 확인).** 실제 배치는 3점 지지 120° 삼각형이고 세 점은 방위 180°(S) · 60° · 300° 에 있다 — 뒤의 둘은 물리적으로 **NE / NW** 이며, TCSAgent 가 이를 `EAST` / `WEST` 로 줄여 부른다. `S` 만 이름이 그대로다. 이 명명 차이는 `KMTNet Architecture R2.pdf`(레거시 계통도)의 액추에이터 라벨과 대조할 때 걸리므로 아래를 기준으로 삼는다:
+>
+> | | 기하 | 번호↔방위 대응 |
+> |---|---|---|
+> | 어디에 있나 | **소스 하드코딩** (`commands.c:3442-3447`, `pctcs.h` 의 `RAC 1008.8`·`SQRT3`·`MAX_DELTATILT 5000.0`) | **ini 설정** (`AUX_FA_ActNum_{South,East,West}`, `loadconfig.c:688-724`) |
+> | 바꿀 수 있나 | 아니다. 코드 수정 사안 | 그렇다. 사이트별로 다를 수 있게 만들어져 있다 |
+>
+> **현재 값은 4개 사이트가 전부 같다** — `South=2 · East=1 · West=3` (`pctcs.kmtn{a,c,s,t}.ini` 전수 확인, `pctcs.h:181-183` 의 기본값과도 동일). `loadconfig.c:772` 가 셋이 서로 다른지 검사한다.
+>
+> **이 ini 값이 최종 확인된 설치 위치다** (운영자 확인, 2026-08-11). `dtilt <dtns> <dtew>` 의 부호 규약(*"positive when N/E goes up and S/W goes down"*)이 이 대응에 그대로 걸려 있으므로, 액추에이터 번호의 정본은 항상 **운영 ini** 다.
+>
+> ⚠️ **계통도 PDF 의 액추에이터 위치 라벨(`#1 NW`/`#3 NE`)은 ini 와 좌우가 반대로 읽히지만, 이는 미해결 항목이 아니다** — 그 부분은 아주 오래전에 작성된 것이고 이후 실측으로 확정된 것이 ini 쪽이다(운영자 확인). **PDF 의 FA 위치 불일치는 무시한다.** 두 자료를 대조하다 이 차이를 발견해 ini 를 "고치려" 드는 일이 없도록 여기 남긴다.
+
 ## 7. 소프트웨어 테스트/시뮬레이션
 
 망원경/부속장치 없이도 소프트웨어만 테스트할 수 있도록 지원한다:
@@ -222,7 +235,7 @@ BLG02  17:54:52.760  -29:01:25.10  1
 ```
 <TELID> AUX <PID> <SUBSYSTEM> <COMMAND> [인자...]   (LF 종단 — Telcom의 CR와 다름!)
 ```
-- 서브시스템 6종: `FOCUSER`(3-액추에이터 초점/tip-tilt, ±10mm, `GOTO_A1~3`/`GOTO_ALL`/`OFFSET`/`HOME`), `SHUTTER`(돔셔터, `BOTH/UPPER/LOWER OPEN|CLOSE`, `GOTO <고도>`, **Auto-sync 모드**=`SET_ASYNC ON` 시 망원경 고도를 자동 추종), `FILTERS`(필터 슬라이드 4개 `SET_F1~4 IN|OUT` + 카메라 셔터 리밋 감시), `M1COVER`(주경 커버 0~100%), `CHILLER`(냉각수 온도/전원), `ENVIRON`(온습도 센서 7개 + 거울셀 팬).
+- 서브시스템 6종: `FOCUSER`(3-액추에이터 초점/tip-tilt, ±10mm, `GOTO_A1~3`/`GOTO_ALL`/`OFFSET`/`HOME` — 배치와 번호 대응은 6.4절 블록), `SHUTTER`(돔셔터, `BOTH/UPPER/LOWER OPEN|CLOSE`, `GOTO <고도>`, **Auto-sync 모드**=`SET_ASYNC ON` 시 망원경 고도를 자동 추종), `FILTERS`(필터 슬라이드 4개 `SET_F1~4 IN|OUT` + 카메라 셔터 리밋 감시), `M1COVER`(주경 커버 0~100%), `CHILLER`(냉각수 온도/전원), `ENVIRON`(온습도 센서 7개 + 거울셀 팬).
 - 공통 응답: `OK`(ACK) / `BAD`(NACK) / `WAIT`(이전 동작 미완) / `ERROR`, `STATUS` 조회 응답: `NC`/`STANDBY`/`RUNNING`/`ERROR`. TELID/System이 틀리면 **무응답**.
 - **카메라 셔터의 정체가 이 문서에 상세히 나온다**: Full(하단)/Half(상단) 2중 블레이드 구조로, ICS→HE box의 TTL 신호(HIGH=열기 시작, LOW=닫기 시작)로만 구동된다(6.3절 주의사항의 근거). 개방/폐쇄 각 5초, 닫힘 후 재장전(reloading) 시퀀스 존재 — [ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) 로그의 `SHUTTER_OPSTAT`(STANDBY/OPENING/OPENED/CLOSING/RELOADING) 상태 명칭이 이 문서의 OpStatus 정의와 정확히 일치한다. 노출시간이 5초보다 짧으면 Full 블레이드가 다 열리기 전에 Half 블레이드가 닫히기 시작하는 "이동 슬릿" 동작이 된다.
 

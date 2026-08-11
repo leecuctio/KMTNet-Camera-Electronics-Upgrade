@@ -34,6 +34,12 @@ __pycache__/
 # Local data directories (inputs/samples and pipeline products; managed outside Git)
 raw/
 mef_pipeline_out/
+icsdata/
+
+# ics_sim runtime state: the persisted EXPNUM counter ([paths] expnum_file,
+# DevNote 11.12). On the bench it lives next to ~/AICS/Config/ics_sim.ini, but
+# running without -c puts it beside the repo ini -- that copy is local state.
+*.expnum
 
 # Temporary outputs
 *.tmp

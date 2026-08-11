@@ -35,7 +35,10 @@ class IcsSim:
     def __init__(self, cfg: SimConfig) -> None:
         self.cfg = cfg
         self.router = NodeRouter(cfg.node)
-        self.state = IcsState()
+        self.state = IcsState(expnum_file=cfg.paths.expnum_file)
+        # 마지막으로 쓴 EXPNUM 을 이어받는다 -- 재실행에도 번호가 되돌아가지
+        # 않는 것이 요구사항이다 (state.load_expnum, DevNote 11.12)
+        self.state.load_expnum()
         self.state.init_channels(cfg.node.ccds)
         self.state.guide_build = ''
 

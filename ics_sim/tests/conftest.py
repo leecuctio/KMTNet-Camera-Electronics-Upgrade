@@ -54,6 +54,11 @@ def make_config(**over) -> config.SimConfig:
     cfg.logging.wire = False
     cfg.paths.write_fits = False
     cfg.paths.data_dir = '/mnt/ICSData'
+    # EXPNUM 지속을 끈다.  저장소 ini 를 읽으므로 그대로 두면 기록 파일이
+    # <repo>/ics_sim.expnum 으로 생기고, 실행마다 번호가 올라가 프레임 번호를
+    # 기대값으로 박아 둔 테스트(test_expnum_* 등)가 실행 순서에 좌우된다.
+    # 지속 자체는 test_expnum_persist.py 가 tmp_path 로 따로 검증한다.
+    cfg.paths.expnum_file = ''
     for key, value in over.items():
         section, _, name = key.partition('__')
         setattr(getattr(cfg, section), name, value)
