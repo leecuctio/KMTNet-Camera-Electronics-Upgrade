@@ -23,6 +23,7 @@ xis/
 ├── xis.md              ← 이 문서 (+ 부록 A: XIS 노드 등록 논의 전 과정)
 ├── MANIFEST.md         ← 파일 목록 · 출처 · 사이트 간 동일성
 ├── SHA256SUMS.txt      ← 보관 원본 162개 파일 전체 체크섬
+├── build-local.sh      ← 작업 사본을 만들어 빌드·설치 (4.1절)
 ├── src/                ★ 운영 중인 허브 소스 (ISIS v2.9.1, 3사이트 동일)
 │   ├── server/           허브 서버 — main/interfaces/messages/clients/commands/…
 │   ├── client/           libisis 클라이언트 라이브러리
@@ -70,16 +71,59 @@ xis/
 | 운영본 **실행 바이너리** (`isis` v2.9.1) | ❌ **백업에 없다** — 원본 백업이 소스·설정 위주로 선별돼 있다 |
 | 은퇴 분기 실행 바이너리 (`xisis` v2.7.3) | ✅ `branches/xisis-2.7.3/server/{xisis.last, old.xisis}` |
 
-**운영 바이너리가 없어도 실질적 문제는 없다.** 소스와 빌드 스크립트가 온전하므로 재빌드가 가능하다. 필요한 것은 `g++` · `readline` · `history` · `ncurses` 뿐이다.
+**운영 바이너리가 없어도 실질적 문제는 없다.** 소스와 빌드 정의가 온전하므로 재빌드가 가능하다. 외부 의존성은 `readline`/`history` 헤더 하나뿐이고(나머지는 전부 libc), 링크에 `ncurses` 가 붙는다.
+
+### 4.1 빌드는 `build-local.sh` 로 — 이 폴더 안에서 하지 말 것
 
 ```bash
-cd src/server
-# build 스크립트가 설정/로그 경로를 -D 매크로로 박아 넣는다. 배치에 맞게 수정할 것.
-./build          # → isis, isisd
+./build-local.sh --sim 192.168.14.50:6600
 ```
 
-> `Makefile.build` 의 `ROOTDIR=/lhome/dts`, `INCDIR=$(ROOTDIR)/include` 는 OSU 배치 기준이다. 서버는 자체 헤더로 완결돼 있어 `INCDIR` 이 비어 있어도 빌드된다.
-> 원 배포본은 GCC 4.4.7 (RHEL/CentOS 6, x86-64) 로 빌드됐다. 최신 g++ 에서는 문자열 리터럴 → `char*` 변환 경고가 다수 나올 수 있다(`Makefile.build` 가 `-w` 로 억제한다).
+기본값은 `~/xis-build` 에서 빌드해 `~/xis` 에 설치한다. `--build-dir` · `--prefix` · `--sim` 으로 바꾸고, `--help` 로 요약을 본다.
+
+> ⚠️ **`cd src/server && ./build` 를 직접 하면 안 된다.** `*.o` · `isis.a` · 바이너리가 보관본 안에 생겨 [SHA256SUMS.txt](SHA256SUMS.txt) 검증이 깨지고, `make clean` 이 원본 옆에서 돈다. 스크립트는 필요한 파일만 밖으로 복사해 거기서 빌드한다.
+
+### 4.2 현대 툴체인에서 걸리는 것 네 가지
+
+원 배포본은 GCC 4.4.7 (RHEL/CentOS 6, x86-64) 로 빌드됐다. 그 사이에 바뀐 것들이라 **그냥은 넘어가지 않는다.** `build-local.sh` 가 넷 다 처리한다.
+
+> **2026-08-11 실측 완료 — Ubuntu 24.04 LTS / g++ 13.3.0 (SSO AIC 리눅스).** 실제로 빌드해 `isis`·`isisd` 가 나왔고 `./isis -v` 가 `isis version 2.9.1 (2026-Aug-11 …)` 을 찍었다.
+>
+> ①②③ 은 정적 분석으로 미리 잡았고, **④ 는 실제 컴파일에서만 드러났다.** 라이브러리 오브젝트 컴파일 줄에 `-DISIS_VERSION='"2.9.1"'` 이 붙은 것과 `-v` 가 `0.0` 이 아닌 것으로 ③ 의 교정이 먹었다는 것도 실측 확인됐다.
+>
+> 원 배포본은 GCC 4.4.7 (2012, RHEL/CentOS 6) 이었으므로 **툴체인 12년치를 건너뛴 것**이다. 걸림돌 넷이 나온 이유가 여기 있다 — 그중 둘(②④)은 그 사이에 **경고가 에러로 승격**된 항목이다.
+
+| # | 문제 | 증상 | 스크립트의 처리 |
+|---|---|---|---|
+| 1 | **원본이 CRLF** (보관 167 파일 중 144개) | `Makefile.build` 의 `VFLAGS` 줄이음 `\` 뒤에 `\r` 이 붙어 **`-D` 매크로가 통째로 날아간다.** `isis.ini` 는 `loadconfig.c` 의 `sscanf("%s %[^\n]")` 가 `\r` 을 값에 넣어 **`ServerID` 가 `"XIS\r"`** 이 된다. `build`·`startisis` 는 `#!/bin/csh^M` | 작업 사본에서만 LF 로 되돌린다 |
+| 2 | **`logMessage("문자열")` 5곳** (`commands.c:136` · `interfaces.c:355` · `utils.c:103,157,190`) + **`register` 2곳** (`interfaces.c:929-930`) | 원형이 `int logMessage(char *)` 라 리터럴 전달이 **C++11 부터 에러**. GCC 11+ 기본이 `gnu++17` | `CC="g++ -std=gnu++98"` |
+| 3 | **`.c.o:` 서픽스 규칙에 전제조건이 붙어 있다** (`.c.o: isisserver.h`) | GNU make 는 전제조건이 있는 서픽스 규칙을 서픽스 규칙으로 보지 않는다 → 라이브러리 오브젝트가 내장 규칙으로 컴파일되며 **`$(VFLAGS)` 가 빠진다.** `isis -v` 는 멀쩡한데 콘솔 `VERSION` 만 `0.0`/`0000-00-00` 으로 뜨는 헷갈리는 증상 | 전제조건을 떼어 정상 서픽스 규칙으로 만들고, 빌드 후 바이너리에 `0000-00-00` 이 남았는지로 **실제로 먹었는지 검증**한다 |
+| 4 | **포인터를 정수 0 과 순서비교** — `if (strstr(argStr,">") > 0)` 2곳 (`interfaces.c:518,748`) | `strstr` 이 돌려주는 `char*` 를 `>` 로 `0` 과 비교한다. C++ Core Issue 1512 이후 ill-formed 라 **에러**다 — 경고가 아니라서 `-w` 로도 `-std=gnu++98` 로도 안 넘어간다. **정적 분석으로는 예측 못 하고 실제 컴파일에서 드러났다** | 의미가 같은 `!= NULL` 로 바꾼다(`strstr` 은 못 찾으면 NULL, 찾으면 유효 포인터라 참/거짓 동일) |
+
+> `main.c` 와 `isisd.c` 는 이미 `(char *)"PING"` 식으로 캐스팅돼 있다 — 과거에 g++ 로 옮기며 **일부만** 고쳐 둔 상태고, 라이브러리 쪽 5곳이 남았다.
+> `Makefile.build` 의 `LIBS` 에 있는 `-I$(INCDIR)`(`/lhome/dts/include`)는 OSU 배치 경로라 존재하지 않는다. 스크립트가 `LIBS` 를 덮어써 뺀다.
+
+### 4.3 `serverlog.c` 의 런타임 결함 두 개 — 빌드 사본에서 교정
+
+4.2 는 **컴파일이 안 되는 것**이었다. 이 둘은 성격이 다르다 — 컴파일도 되고 평소엔 돌지만 **동작이 틀렸다.** 첫 실물 기동(2026-08-11)에서 로그 파일 권한이 `-rw-rw-rw-` 로 나온 것을 계기로 찾았고, 사용자 결정으로 빌드 사본에서 교정한다. 원본은 보관본에 그대로 남는다.
+
+```c
+// serverlog.c:46 -- O_CREAT 를 주면서 mode 인자를 생략했다
+isis.logFD = open(isis.logFile,(O_WRONLY|O_CREAT|O_APPEND));
+
+// serverlog.c:51 -- '=' 가 아니라 '=='. 대입이 아니라 결과를 버리는 비교다
+isis.doLogging == isis_FALSE;
+```
+
+**① mode 없는 `open()`** — 새 로그 파일의 권한이 가변인자 쓰레기로 정해진다. SSO AIC 실측에서는 `0666`(누구나 쓰기 가능)이 나왔지만 **빌드·머신마다 달라지고, 0 이 나오면 파일을 못 연다.**
+
+**② 실패해도 로깅이 안 꺼진다** — `==` 라서 `doLogging` 은 그대로다. 이후 `write(-1, …)` 이 계속 실패하는데 반환값을 확인하지 않아 **조용히** 아무것도 안 남는다. `-w` 가 `-Wunused-value` 경고까지 막아서 이 오타가 살아남았다.
+
+**둘이 겹치는 지점이 문제다.** `logMessage()` 는 호출될 때마다 날짜를 비교해 바뀌었으면 `close()` 후 `initLog()` 로 **재오픈**한다(`serverlog.c:106`). 즉 ①은 **관측야가 바뀔 때마다 되풀이**되고, 거기서 권한이 나쁘게 잡히면 ②가 겹쳐 **그날 밤 로그가 통째로 사라진다.** 레거시가 오래 무사했던 것은 운이다.
+
+> 교정은 `open(..., 0644)` 과 `==` → `=` 두 줄뿐이고 둘 다 명백한 오타 수정이다. 신규 `ics` 는 이 코드를 쓰지 않으므로 영향 범위는 **우리가 시험용으로 띄우는 XIS 뿐**이다.
+>
+> **48GB 로그 아카이브에 빈 날·누락된 날이 있는지 확인해 볼 만하다** — 있다면 이 결함의 실제 발현 기록일 수 있다. (`ics_sim/tools/scan_legacy_logs.py` 가 있는 머신에서)
 
 ## 5. 운영 설정 — 3개 사이트
 
@@ -98,6 +142,47 @@ cd src/server
 - 시리얼 속도가 두 개다. **ICS↔XIS 는 115200**(`isis.ini`), **relay↔VDOS 는 9600**(`isisrelay.ini`).
 - 데몬 모드(`isisd`)는 **미사용**이다. 운영 `Config/` 에 `isisd.ini` 가 없고, 기동 스크립트가 `xterm` 안에서 대화형으로 띄운다.
 - `startisis`·`stopisis`·`chkisis` 는 MODS 시절 범용 래퍼라 `/home/dts/ISIS/bin/isis` 를 본다. **KMTNet 실제 기동 경로는 `KMTN_Startup_ICS`** 이고 `…/ISIS/server/isis` 를 직접 띄운다. 둘이 어긋나 있다.
+
+### 5.1 `isis.ini` 를 쓸 때 조심할 것 (2026-08-11 실물 기동에서 확인)
+
+**① 한 줄이 80 바이트를 넘으면 안 된다.** `loadconfig.c:24` 의 `CFG_BUFSIZE` 가 `80` 이고 `fgets(inStr, CFG_BUFSIZE, iniFP)` 로 읽는다. 넘으면 줄이 잘리고 **잘린 뒷도막이 다음 줄로 다시 읽혀 설정 항목으로 파싱된다.**
+
+```
+Ignoring unrecognized config file entry - 이 필요하다
+```
+
+첫 기동 때 실제로 이게 떴다 — 우리가 생성한 ini 의 한글 주석(글자당 3바이트)이 80을 넘겼기 때문이다.
+
+**그리고 위험한 쪽을 실측으로 확인했다 (2026-08-11).** 80바이트 지점 뒤가 `UDPPort 192.0.2.1 9999` 가 되도록 주석 한 줄을 심고 띄워 봤더니:
+
+```
+Ignoring unrecognized config file entry - 이 필요하다     ← 한글 꼬리: 경고
+...
+  Preset UDP Ports: 2 configured of 32 max:
+    udp0: 127.0.0.1:6600
+    udp1: 192.0.2.1:9999                                  ← 심은 꼬리: 조용히 등록
+```
+
+**같은 메커니즘인데 꼬리가 파싱 불가면 경고가 뜨고, 우연히 파싱되면 아무 말 없이 적용된다.** 운영 설정에 긴 주석 한 줄이 잘못 들어가면 아무도 모르게 엉뚱한 주소로 PING 을 뿌리게 된다는 뜻이다. `build-local.sh` 는 주석을 ASCII 로 쓰고, 생성 후 80 바이트 이상인 줄이 있으면 경고한다(긴 `--prefix` 도 여기 걸린다).
+
+**② `Instrument` 는 파싱 버그로 값이 뒤바뀐다 — 레거시 소스의 실제 결함.** `loadconfig.c:228` 이 인자 원본으로 `valStr` 이 아니라 `argStr` 을 넘긴다:
+
+```c
+getArg(argStr, 1, argStr);     // INSTRUMENT -- 원본과 대상이 같다
+getArg(valStr, 1, argStr);     // 다른 모든 항목은 이렇게 (SERVERLOG 등)
+```
+
+`argStr` 에는 **직전에 파싱된 항목의 값**이 남아 있으므로, `instID` 에 그게 그대로 복사된다. 실측에서 `Instrument KMTTEST` 를 줬는데 콘솔 `INFO` 가 이렇게 나왔다:
+
+```
+Instrument Config: /home/rtkmtnet/AICS/Logs/isis      ← ServerLog 값이다
+```
+
+**두 번째 실측에서 메커니즘이 더 분명해졌다** — preset 을 하나 넣고 다시 띄우니 이번엔 `Instrument Config: 6600` 이 나왔다. 직전 `UDPPort 127.0.0.1 6600` 이 `argStr` 에 남긴 포트 번호다. 서로 다른 값으로 두 번 재현된 셈이다.
+
+운영 CTIO `isis.ini` 주석이 `Instrument` 를 *"optional and unused for anything in detail"* 이라 적어 둔 덕에 **아무도 눈치채지 못한 채 살아남은 버그**다. 실제로 읽는 곳이 없어 영향은 없다.
+
+**③ 로그 파일 날짜는 UTC 가 아니라 관측야(observing night) 다 — 정상 동작.** `LogDate` 기본값이 `OBSDAY`(정오~정오 현지시각)라, `2026-08-11 01:58 UTC` 에 띄웠는데 로그는 `isis.20260810.log` 로 열렸다. SSO 현지로 8/11 오전 11:58 = 현지 정오 전이므로 **8/10 밤에 속한다.** 하룻밤이 한 파일에 담기는 관측 관례이고, 레거시 로그 이름(`ISIS.ICSci.SSO.20240725`)도 같은 규칙이다. 달력 날짜를 원하면 `LogDate UTC`.
 
 ## 6. 신규 `ics` 설계에 걸리는 것 — DevNote 정정과 확정
 
@@ -169,10 +254,24 @@ XIS 콘솔(기동된 xterm)에서 아래 셋이면 3절 판정과 6.2절 여유�
 
 ## 8. 계획 / 남은 일
 
-- [ ] **7절 실물 확인** — `VERSION`·`INFO`·`HOSTS`. 3절 판정과 6.2절 여유를 확정한다. **선행 조건 없음, 가장 먼저 할 것.**
+- [x] **7절 실물 확인** — **완료 (2026-08-11).** `VERSION` = `2.9.1`(3절 트리 판정과 일치), `INFO` = `Preset UDP Ports: n configured of 32 max`(6.2절 상한 확정). 부수로 5.1절의 세 가지가 실측으로 드러났다.
+- [ ] **▶ 다음에 여기서 시작 — `ics_sim` 연동 (9개 ID 등록 실증)**
+
+  준비는 끝나 있다. SSO AIC 실험실 머신에 XIS 가 빌드·설치돼 있고 설정도 깨끗하다(`~/AICS/bin/isis` · `~/AICS/Config/isis.ini`, preset `127.0.0.1:6600` 하나). 레거시 ICS/CB 는 이 머신에 없어 7절 경고에 걸리지 않는다.
+
+  ```bash
+  ~/AICS/bin/isis -f$HOME/AICS/Config/isis.ini              # 창 1
+  cd ~/CEU/.../ics_sim && python3 -m ics_sim --xis-host 127.0.0.1 --xis-port 6660   # 창 2
+  ```
+
+  XIS 콘솔에서 `HOSTS` — **`ICS` + `{K,M,T,N}.IC` + `{K,M,T,N}.CB` 9개가 다 올라오면 성공.** 안 되면 `UDPPING 127.0.0.1 6600` 으로 찔러 본다. 실패 신호는 `ERROR: No Route to Destination Host K.IC - host is unknown/unlisted`(부록 A (10)).
+
+  **이것이 남은 마지막 미실증 항목이다** — 소스로는 안전하다고 판정했지만(`clients.c` 가 ID 로만 키잉하고 주소 충돌 검사가 없음, 6.1절 ②③) 48GB 로그 전체에 같은 (IP,port) 에 여러 ID 를 올린 사례가 한 건도 없어 실물 확인이 남아 있었다. `transport.feed()` 테스트로는 라우팅 단계를 건너뛰어 절대 드러나지 않는 경로다.
+
+  이어서 `tools/isisPerl/sso/isisCmd` 로 `OBS>K.IC STATUS` 류를 주입하면 라우팅까지 확인된다.
 - [x] **DevNote 3.1.1 갱신** — **완료 (2026-08-06 개편 때).** DevNote 3.1.1 은 근거 트리를 `ISIS/server/`(v2.9.1) 로 정정한 결론·규약본으로 재작성됐고, ⑧(`MAXPRESET`) 해결도 반영됐다. 당시 갱신 대상이던 '(12)' 는 이 문서 부록 A 로 이관돼 이미 정정 주석을 달고 있다.
 - [x] **`ics_sim` 자기 발신 에코 처리** — **구현 완료 (2026-08-08, DevNote 3.1.2).** 점검에서 브로드캐스트 에코보다 심각한 **유니캐스트 루프백**(시퀀서가 자기 노드 앞으로 쏜 ERASE/SHOPEN 이 되돌아와 재실행)이 드러나, `cmd_ping()` 수준이 아니라 **수신 초입의 자기 발신 필터**로 구현했다. 브로드캐스트 중복 억제(`broadcast_dedup_sec`) 포함, `test_xis_echo.py` 15개가 검증.
-- [ ] **재빌드 검증** — `src/server/build` 로 현대 툴체인에서 `isis` 가 빌드되는지 한 번 돌려 본다. 운영 바이너리가 백업에 없으므로, 재빌드 가능성 자체가 이 보관본의 가치다.
+- [x] **재빌드 검증** — **완료 (2026-08-11).** SSO AIC 리눅스 머신에서 `build-local.sh` 로 `isis`·`isisd` 빌드 성공. 걸림돌은 넷이었고(4.2절) 그중 ④ 는 실제 컴파일에서만 드러나 스크립트에 반영했다. 남은 것은 경고 하나뿐 — `isisd.c:308` 의 `sprintf` 가 256바이트 버퍼에 최대 286바이트를 쓸 수 있다는 `-Wformat-overflow`. **KMTNet 은 `isisd`(데몬판)를 쓰지 않으므로**(운영 `Config/` 에 `isisd.ini` 가 없고 xterm 대화형으로 띄운다) 실무 영향은 없다.
 - [ ] (선택) 운영 머신에서 `isis` 실행 바이너리를 회수해 `install/bin/` 에 추가.
 
 ## 9. 참고
@@ -191,6 +290,9 @@ XIS 콘솔(기동된 xterm)에서 아래 셋이면 3절 판정과 6.2절 여유�
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-08-11 | **`build-local.sh` 추가.** 보관본을 건드리지 않고 작업 사본에서 빌드·설치하는 스크립트. 정적 분석으로 현대 툴체인 걸림돌 3가지(CRLF · `logMessage` 리터럴/`register` · `.c.o` 서픽스 규칙)를 찾아 처리했고 4.2절에 정리. 4절이 안내하던 "보관본 안에서 `./build`" 는 체크섬을 깨뜨리므로 폐기 |
+| 2026-08-11 | **첫 실물 빌드·기동 성공** (SSO AIC 리눅스, Ubuntu 24.04 / g++ 13.3.0). `MAXPRESET 32` 실물 확정, 설정 파일 함정 3종 발견(5.1절), `serverlog.c` 런타임 결함 2종 교정(4.3절). 다음은 `ics_sim` 연동 |
+| 2026-08-11 | **첫 실물 빌드 성공** (SSO AIC 리눅스). `build-local.sh` 추가 + 실측으로 걸림돌 ④(포인터/정수0 순서비교) 발견·반영. 4절을 재작성하고, 보관본 안에서 `./build` 하라던 이전 안내는 폐기(체크섬 파괴) |
 | 2026-08-08 | **정정 일괄 반영.** 7절에 운영 XIS 동시 등록 금지 경고 추가(`updateHosts` 의 무조건 덮어쓰기 → 라우팅 가로채기·플래핑), 8절 ② DevNote 3.1.1 갱신 완료 처리, 보관 파일 수 162 로 통일(2절·이력의 163 은 오기), 부록 A 교차참조 정정((10)의 5.6.3절 → `ics_legacy_report.md` 명시, ⑥의 '3.1.1 (1)' → 부록 (1)), (10)→(12) 지점에 (11) 위치 안내 추가. MANIFEST 신규 파일 목록에 `.gitattributes` 보충 |
 | 2026-08-06 | **DevNote 3.1.1(449줄)을 부록 A 로 이관.** DevNote 는 결론·규약만 남겨 1,889→1,482줄. XIS 허브 논의가 "OBSAgent 인터페이스 규약" 장 안에 있던 자리 문제도 함께 해소 |
 | 2026-08-05 | 폴더 신설. `__dts_legacy` 3사이트 백업에서 XIS 관련 자산 162 파일 수집·정리. **운영본이 XISIS v2.7.3 이 아니라 stock ISIS v2.9.1 임을 확인**(3절), 그 결과 DevNote ⑧ `MAXPRESET` 미해결 항목 해결(6.2절) |
@@ -579,6 +681,8 @@ if (isis.numPreset == MAXPRESET) {
 | 사용 중 `UDPPort` | 13 | 14 | 13 |
 | 상한 | 32 | 32 | 32 |
 | **여유** | **19** | **18** | **19** |
+
+> **2026-08-11 실물 확인.** SSO AIC 에서 빌드한 XIS 콘솔의 `INFO` 가 `Preset UDP Ports: 2 configured of 32 max` 를 찍었다. 소스 판정에 이어 **상한 32 가 실행 바이너리로 확정**됐다.
 
 → **신규 `ics` 를 preset 목록에 넣는 데 아무 제약이 없다.** 1안이라 한 줄이면 되고, 설령 2안(9줄)이었어도 여유 안이다. **`info` 실측은 선행 조건이 아니라 확인 절차로 격하된다.**
 

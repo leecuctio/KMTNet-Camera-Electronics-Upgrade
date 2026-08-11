@@ -6,7 +6,11 @@
 # 원본이 CRLF 면 CRLF 그대로 보존하는 것이 보관본의 요건이다.
 * -text
 
-# 이번에 새로 쓴 문서만 저장소 공통 규칙(LF)을 따른다.
+# 이번에 새로 쓴 파일만 저장소 공통 규칙(LF)을 따른다.
+# build-local.sh 는 특히 중요하다 — 리눅스에서 실행되는 스크립트라
+# CRLF 로 커밋되면 `#!/usr/bin/env bash^M` 이 되어 죽는다. 위 `* -text` 가
+# 그대로 걸리면 윈도우에서 한 번만 편집해도 그렇게 되므로 명시적으로 못박는다.
+build-local.sh text eol=lf
 xis.md         text eol=lf
 MANIFEST.md    text eol=lf
 SHA256SUMS.txt text eol=lf

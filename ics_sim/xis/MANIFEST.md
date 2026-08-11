@@ -5,7 +5,7 @@
 **원본 위치**: `ics_legacy/__dts_legacy/dts.icsci.20190326.{ctio,saao,sso}/dts.icsci/`
 — ICS 컴퓨터(`icsci` 서버)의 `/home/dts` 폴더를 사이트별로 백업한 것. 2019-03-26 시점.
 
-**무결성**: [SHA256SUMS.txt](SHA256SUMS.txt) 에 보관 원본 **162개 파일 전체**의 SHA256 이 있다(이번에 새로 만든 파일 5개는 제외).
+**무결성**: [SHA256SUMS.txt](SHA256SUMS.txt) 에 보관 원본 **162개 파일 전체**의 SHA256 이 있다(이번에 새로 만든 파일 6개는 제외).
 
 ```bash
 cd ics_sim/xis && sha256sum -c SHA256SUMS.txt
@@ -26,7 +26,7 @@ cd ics_sim/xis && sha256sum -c SHA256SUMS.txt
 | `branches/xisis-2.7.3/` | `ctio/…/EXEC_ISIS/` | 45 | **은퇴한 XISIS 분기.** doxygen 생성 HTML 제외 |
 | `branches/xisis-2.7.3/site-deltas/` | `saao`·`sso/…/EXEC_ISIS/server/` | 4 | 위 분기에서 사이트별로 갈리는 소스만 |
 
-`SHA256SUMS.txt` · `.gitignore` · `.gitattributes` · `xis.md` · `MANIFEST.md` 는 이번에 새로 만든 파일이다. `.gitattributes` 는 git 의 줄끝 정규화를 꺼서(`* -text`) 보관 원본의 바이트와 SHA256 검증을 보전한다.
+`SHA256SUMS.txt` · `.gitignore` · `.gitattributes` · `xis.md` · `MANIFEST.md` · `build-local.sh` 는 이번에 새로 만든 파일이다. `build-local.sh` 는 보관본을 건드리지 않고 작업 사본에서 빌드·설치한다([xis.md 4.1](xis.md)). `.gitattributes` 는 git 의 줄끝 정규화를 꺼서(`* -text`) 보관 원본의 바이트와 SHA256 검증을 보전한다.
 
 ## `src/` 안쪽
 
