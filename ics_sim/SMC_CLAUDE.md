@@ -51,7 +51,8 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - **아직 안 만든 것**: `BIN` 하나. `strict_legacy` 면 무응답이고, 구현 지침은 `commands.py` docstring 에 있다.
 - **일부러 안 만든 것**: `ROI`/`DISPL`/`MOVIE` — **레거시 ICS 명령 테이블에 아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `Didn't understand` 로 거부된다(DevNote 6.8).
 - **2026-08-08 전 문서 정합성 일제 점검 완료** — 레거시 보고서 3부작·Agent 보고서 2종·raw_fits_spec·xis 문서의 낡은 서술/모순 30여 건 정정. 내역은 DevNote 14장 말미.
-- **EXPNUM 지속 (2026-08-11)** — 벤치 2차 시험에서 `FitsNum=00000000.000000` 이 나왔다. 번호가 매 실행 1 로 되돌아가 기존 파일과 겹치고, 파일명 fail-safe 가 `KMTN` 없는 이름을 쓰자 OBSAgent 파싱이 실패한 것이었다. **마지막으로 쓴 번호를 `[paths] expnum_file`(기본: 설정파일 옆 = `~/AICS/Config/ics_sim.expnum`)에 기록하고 기동 시 +1 부터 쓴다.** `data_dir` 를 비워도 되돌아가지 않는다 — 근거와 버린 대안은 DevNote **11.12**
+- **2차 연동 시험 완료 (2026-08-11)** — **`ExpNum` 값 규약이 실물에서 확정됐다**(DevNote 3.7.2). 노출 2회로 readout 중 `ExpNum`==파일 번호 · 종료 후 `ExpNum`==`FitsNum` · `EXPNUM` 응답 N+1 을 모두 확인. 12.14 의 교정이 시뮬 테스트를 넘어 관측자 화면에서 검증된 것은 이번이 처음이다. **로그는 터미널 스크롤백 대신 `[logging] file` 로 받을 것** — 스크롤백은 페인 폭 경계에서 한 글자씩 먹혀 5.3 의 와이어 손상과 구분이 안 된다(3.7.2 말미)
+- **EXPNUM 지속 (2026-08-11)** — 위 시험의 전제였다. 첫 시도에서 `FitsNum=00000000.000000` 이 나왔다. 번호가 매 실행 1 로 되돌아가 기존 파일과 겹치고, 파일명 fail-safe 가 `KMTN` 없는 이름을 쓰자 OBSAgent 파싱이 실패한 것이었다. **마지막으로 쓴 번호를 `[paths] expnum_file`(기본: 설정파일 옆 = `~/AICS/Config/ics_sim.expnum`)에 기록하고 기동 시 +1 부터 쓴다.** `data_dir` 를 비워도 되돌아가지 않는다 — 근거와 버린 대안은 DevNote **11.12**
 - **다음 단계**: ① 연동 시험 계속(아래 "이어서 시작하는 자리") ② `ics_archon` — **Archon 3 unit**(과학 2 + **가이드 1**, DevNote 9.1) 제어 + raw pair 저장. **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** (파일은 컨트롤러당 1개×2, `Wrote` 통보는 CCD당 4회 논리 이름 — D-009/D-010, DevNote 9.1 상기 블록)
 
 ## ▶ 이어서 시작하는 자리 (2026-08-11 기준)
@@ -60,7 +61,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 
 | 순서 | 할 일 |
 |---|---|
-| **1** | **`ExpNum` 교정의 실물 재확인** — **노출을 반드시 2회** 돌려 두 번째가 진행 중일 때 `ee` 로 `ExpNum` 이 그 노출의 파일 번호와 같은지, 끝난 뒤 `ExpNum`==`FitsNum` 인지. **1회만 돌리면 판정이 안 된다** — OBSAgent 가 받은 값을 `strNextNum` 에 담아 두고 **다음 노출 시작 시** `strCurNum` 으로 승격해 표시하므로(`commands.c:835,848`), 1회 세션에서는 `ExpNum` 이 `00000000.000000` 인 것이 정상이다. 지난번 어긋난 자리다(DevNote 12.14). **5분이면 되니 먼저 한다** |
+| ~~**1**~~ | ~~**`ExpNum` 교정의 실물 재확인**~~ — **완료 (2026-08-11 2차, DevNote 3.7.2).** 노출 2회로 판정: readout 중 `ExpNum` == 그 프레임의 파일 번호, 종료 후 `ExpNum`==`FitsNum`, `EXPNUM` 응답 N+1, `FitsOsc` `CHECK`→`NO`. 타임아웃 창 3종도 두 프레임에서 밀리초까지 동일. **전제였던 EXPNUM 카운터 결함을 먼저 고쳐야 했다**(11.12) — fail-safe 가 침묵해야 이 판정이 성립한다<br>※ **1회만 돌리면 판정이 안 된다.** OBSAgent 가 받은 값을 `strNextNum` 에 담아 두고 **다음 노출 시작 시** `strCurNum` 으로 승격해 표시하므로(`commands.c:835,848`), 1회 세션에서는 `ExpNum=00000000.000000` 이 정상이다 |
 | **2** | **Telcom/AUX 시뮬레이터 설치** — KASI 제작본이 `../../__localonly_tcs_simulator/TCS_simulation.zip` 에 있다. **빌드가 없다**(stdlib 전용, Python 3.12+ 필요 — Ubuntu 24.04 기본이 3.12 라 그대로 된다). `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 절차와 함정은 아래 블록. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
 | **3** | **세부 연동 시험** — `STOP`/`ABORT`(9.2.1 의 `DONE:` 본문은 실측 근거 없이 정한 것) · `GO n`(6.1) · `.osc` 스크립트 관측(3.5) · 결함 주입 6종(**실물 OBSAgent 의 경보·`opause` 경로를 확인하는 유일한 수단**) |
 
