@@ -1,0 +1,69 @@
+XTENSION= 'IMAGE   '           / Image extension                                
+BITPIX  =                   16 / array data type                                
+NAXIS   =                    2 / number of array dimensions                     
+NAXIS1  =                 1211                                                  
+NAXIS2  =                 9232                                                  
+PCOUNT  =                    0 / number of parameters                           
+GCOUNT  =                    1 / number of groups                               
+REALDATA=                    T / Actual T02 stripe data                         
+EXTNAME = 'T02     '                                                            
+CCDNAME = 'KMTNet CCD T'                                                        
+AMPNAME = 'T02     '                                                            
+AMPNAME2= 'im26    '                                                            
+CCDSUM  = '1 1     '           / On-Chip Binning Factors                        
+CCDSEC  = '[1153:2304,1:9232]' / CCD Data Section                               
+AMPSEC  = '[1153:2304,1:9232]' / Amplifier Section                              
+DATASEC = '[28:1179,1:9232]'   / Data Section                                   
+DETSEC  = '[10829:11980,1:9232]' / Stripe Coords on Detector                    
+PRESEC  = '[1:27,1:9232]'      / Prescan Section                                
+BIASSEC = '[1180:1211,1:9232]' / Bias Overscan Section                          
+TRIMSEC = '[28:1179,1:9232]'   / Trimmed Data Section                           
+IMFLIP  = 'None    '           / Raw Stripe Flip Applied                        
+FILTER  = 'I       '           / Filter Name in the beam                        
+PROJID  = 'ENG     '                                                            
+IMAGETYP= 'OBJECT  '           / Type of observation                            
+OBJECT  = 'f=0.00  '           / Name of object                                 
+OBSTYPE = 'OBJECT  '           / Type of observation                            
+RA      = '11:49:59.88'        / Telescope RA                                   
+DEC     = '-32:59:59.6'        / Telescope DEC                                  
+HA      = '+00:00:02'          / Hour Angle at start of obs                     
+ST      = '11:50:42'           / Local Sidereal Time at start of obs            
+SECZ    = '1.00    '           / Secant of ZD (Airmass) at start of obs         
+ALT     = '0.000000'           / Telesope Altitude (elevation) in degrees       
+AZ      = '-0.3    '           / Telescope Azimuth in degrees                   
+UT      = '2017-02-09T16:34:45.72' / Master IC reports shutter open time        
+CTYPE1  = 'RA---TAN'           / Coordinate Type                                
+CTYPE2  = 'DEC--TAN'           / Coordinate Type                                
+CRVAL1  =             177.4995 / Coordinate Reference Value                     
+CRVAL2  =   -32.99988888888889 / Coordinate Reference Values                    
+CRPIX1  =                -1383 / Coordinate Reference Pixel                     
+CRPIX2  =                 9698 / Coordinate Reference Pixel                     
+CD1_1   = -0.00011122222222222 / Coordinate Transformation Matrix               
+CD1_2   =                  0.0 / Coordinate Transformation Matrix               
+CD2_1   =                  0.0 / Coordinate Transformation Matrix               
+CD2_2   = 0.000111222222222222 / Coordinate Transformation Matrix               
+ATV1    =                 1152 / CCD to Amplifier Transform                     
+ATV2    =                    0 / CCD to Amplifier Transform                     
+ATM1_1  =                    1 / CCD to Amplifier Transform                     
+ATM1_2  =                    0 / CCD to Amplifier Transform                     
+ATM2_1  =                    0 / CCD to Amplifier Transform                     
+ATM2_2  =                    1 / CCD to Amplifier Transform                     
+LTV1    =                   27 / CCD to Image Transform                         
+LTV2    =                    0 / CCD to Image Transform                         
+LTM1_1  =                    1 / CCD to Image Transform                         
+LTM1_2  =                    0 / CCD to Image Transform                         
+LTM2_1  =                    0 / CCD to Image Transform                         
+LTM2_2  =                    1 / CCD to Image Transform                         
+DTV1    =                10828 / CCD to Detector Mosaic Transform               
+DTV2    =                    1 / CCD to Detector Mosaic Transform               
+DTM1_1  =                    1 / CCD to Detector Mosaic Transform               
+DTM1_2  =                    0 / CCD to Detector Mosaic Transform               
+DTM2_1  =                    0 / CCD to Detector Mosaic Transform               
+DTM2_2  =                    1 / CCD to Detector Mosaic Transform               
+WCSDIM  =                    2 / Coordinate System Dimensionality               
+WAT0_001= 'system=image'       / Coordinate System                              
+WAT1_001= 'wtype=tan axtype=ra' / Coordinate Type                               
+WAT2_001= 'wtype=tan axtype=dec' / Coordinate Type                              
+BZERO   =                32768                                                  
+END                                                                             
+

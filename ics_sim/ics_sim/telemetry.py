@@ -45,12 +45,25 @@ log = logging.getLogger('ics_sim.telemetry')
 AUX_TAIL = ('KBUILD', 'MBUILD', 'TBUILD', 'NBUILD', 'GBUILD', 'ICSBUILD')
 
 #: 없을 때 sentinel 을 넣어줄 필드 (FITS 헤더가 기대하는 것들).
-_SENTINEL_NUM = frozenset({
+#:
+#: **수치 sentinel 은 계층에 따라 값이 다르다** (C-9 / raw_fits_spec OI-6):
+#:   - 레거시 **메시지 계층**(`ICS>*.IC STATUS: AUXSTATUS …`)은 `'0'` -- 레거시
+#:     관례를 그대로 재현한다 (DevNote 4.3, 11.2).
+#:   - **FITS 헤더**는 규격 5.0절대로 정수 `-1` / 실수 `-999.0` 를 쓴다.
+#:     `0` 을 값-없음으로 쓰면 `SECZ=0`(물리적으로 불가능) · `ALT=0` 같은 값이
+#:     유효값처럼 남아 조용한 오염이 된다.
+#: 그래서 정수형과 실수형을 따로 둔다 -- 합집합이 메시지 계층용이다.
+_SENTINEL_INT = frozenset({
+    'FALIMS', 'FALIME', 'FALIMW',   # 액추에이터 리밋 코드
+    'MCPOS',                        # 주경 커버 개방률 %
+})
+_SENTINEL_FLOAT = frozenset({
     'ENS1', 'ENS2', 'ENS3', 'ENS4', 'ENS5', 'ENS6', 'ENS7',
     'FAPOSS', 'FAPOSE', 'FAPOSW', 'FAFOCUS', 'FATILTNS', 'FATILTEW',
-    'FALIMS', 'FALIME', 'FALIMW', 'MCPOS', 'CHSET', 'CHPROC',
+    'CHSET', 'CHPROC',
     'AZ', 'ALT', 'SECZ', 'EQUINOX',
 })
+_SENTINEL_NUM = _SENTINEL_INT | _SENTINEL_FLOAT
 _SENTINEL_STR = frozenset({
     'ENFAN', 'ENSTAT', 'CHOP', 'CHSTAT', 'MCSTAT', 'DSSTAT', 'FASTAT',
     'SHUTTER', 'SHUTOP', 'FILTER', 'FILNUM', 'FILTOP', 'FSSTAT',
@@ -223,7 +236,12 @@ class TelemetryRelay:
     # -- FITS 헤더 --------------------------------------------------------
 
     def header_dict(self, date_obs: str = '') -> dict[str, str]:
-        """FITS 헤더용 딕셔너리.  없는 필드는 sentinel 로 채운다."""
+        """**메시지 계층** 값 딕셔너리.  없는 필드는 레거시 관례대로 `'0'`/`'NC'`.
+
+        ⚠️ **FITS 헤더에는 이걸 쓰지 않는다** -- `fits_header_dict()` 를 쓴다.
+        수치 sentinel 이 `'0'` 이라 `SECZ=0`/`ALT=0` 이 유효값처럼 남는다
+        (C-9 / raw_fits_spec OI-6).  레거시 재현이 필요한 중계 본문 전용이다.
+        """
         out: dict[str, str] = {}
         for k, v in self.aux_fields:
             out[k] = v
@@ -236,4 +254,43 @@ class TelemetryRelay:
         out.setdefault('TELID', self.cfg.node.telid)
         if date_obs:
             out['DATE-OBS'] = date_obs
+        return out
+
+    def fits_header_dict(self, date_obs: str) -> dict[str, object]:
+        """**FITS 헤더용** 딕셔너리.  규격 5.0절 sentinel 규약을 따른다.
+
+        해결: raw_fits_spec **OI-6 / 변경점 C-9**.  `header_dict()` 와 달리
+        결측 수치를 `0` 으로 채우지 않는다 -- 정수는 `-1`, 실수는 `-999.0`,
+        문자열은 `'NC'` 다.  실제로 받은 값은 그대로 두고 **결측만** 바꾼다.
+
+        **`date_obs` 는 기본값이 없는 필수 인자다.** 규격 5.7절이 `DATE-OBS` 를
+        필수로, 출처를 `ICS` 로 정한다 -- 외부에서 받아오는 값이 아니라 **ICS 가
+        셔터를 여는 그 시점의 OS 시각(UTC)을 스스로 찍는 값**이다(DARK/BIAS 는
+        ERASE 완료 시각).  시퀀서의 `state.exp_start` 가 그것이고 `_store()` 가
+        불리는 시점에는 반드시 세워져 있다.  기본값을 없앤 이유는 호출측이
+        빠뜨릴 수 없게 하는 것이다.
+
+        빈 값이 들어오면 **우리 결함**이므로 에러를 남기고 카드를 비운다.
+        `'NC'` 나 "현재 시각" 으로 채우면 시각이 있는 것처럼 보이고, converter 의
+        실패 경로(규격 6.1절 변경점 C-6)가 발동하지 않아 조용히 틀린 값이 된다.
+        """
+        out: dict[str, object] = {}
+        for k, v in self.aux_fields:
+            out[k] = v
+        for k, v in self.tcs_fields:
+            out[k] = v
+        for k in _SENTINEL_INT:
+            out.setdefault(k, -1)
+        for k in _SENTINEL_FLOAT:
+            out.setdefault(k, -999.0)
+        for k in _SENTINEL_STR:
+            out.setdefault(k, 'NC')
+        out.setdefault('TELID', self.cfg.node.telid)
+        out['TIMESYS'] = 'UTC'          # 규격 5.0: 시각은 모두 UTC, 명시한다
+        if date_obs:
+            out['DATE-OBS'] = date_obs
+        else:
+            log.error('DATE-OBS 가 비어 있다 -- ICS 가 셔터 개방 시각을 찍지 '
+                      '못했다는 뜻이고 우리 결함이다 (규격 5.7절). 카드를 '
+                      '비워 두어 converter 가 이 노출을 거부하게 한다')
         return out

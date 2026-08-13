@@ -1,0 +1,131 @@
+SIMPLE  =                    T /                                               
+BITPIX  =                   16 /                                               
+NAXIS   =                    2 /                                               
+NAXIS1  =                 1616 /                                               
+NAXIS2  =                 1616 /                                               
+BSCALE  =                    1 / PHYSICAL=INTEGER*BSCALE+BZERO                 
+BZERO   =                32768 /                                               
+BUNIT   = 'ADU     '               / units of physical values (LBT)            
+COMMENT  Detector Information                                                  
+DETID   = 'C       '           /                                               
+DETECTOR= 'e2v CCD290-99'         / Detector name                              
+NAMPS   =                    8 / Number of amplifiers in the detector          
+GAINDL                         / Pixel integration time, in sequencer clocks   
+PIXITIME                       / Pixel integration time, in seconds            
+CCDXBIN =                    1 / CCD X-axis Binning Factor                     
+CCDYBIN =                    1 / CCD Y-axis Binning Factor                     
+OVERSCNX=                   32 / Horizontal overscan pixels per amplifier      
+OVERSCNY=                    0 / Vertical overscan pixels                      
+PRESCANX=                   27 / Horizontal prepixels per amplifier            
+READOUT = 'ARLBRL  '           / Amplifiers used in readout                    
+PIXSCALE=                0.400 / Unbinned pixel scale [arcsec per pixel]       
+PIXSIZE =                 10.0 / Unbinned pixel size [microns]                 
+COMMENT  Observatory Information                                               
+ORIGIN  = 'CTIO    '              / Location where the data was generated      
+OBSERVAT= 'CTIO    '              / Observatory Site                           
+TELESCOP= 'KMTNet 1.6m #1'        / Telescope Name                             
+LATITUDE= '-30:10:01.84'          / Site Latitude [deg N]                      
+LONGITUD= '+70:48:14.39'          / Site Longitude [deg W]                     
+ELEVATIO=                 2140 / Site Elevation [meters]                       
+OBSERVER= 'kwon_min_kyung'     / Observer(s)                                   
+COMMENT  Exposure Information                                                  
+IMAGETYP= 'OBJECT  '           / Type of observation                           
+OBJECT  = 'BLG03   '           / Name of object                                
+OBSTYPE = 'OBJECT  '           / Type of observation                           
+EXPTIME =                   60 / Exposure time [seconds]                       
+DARKTIME=                    0 / Cumulative Dark Time [seconds]                
+TSHOPEN = '05:27:32.23'        / Master IC reports shutter open time           
+TSHSHUT                        / Master IC reportsshutter close time           
+DMAWAIT =                  500 / Master IC waits for slaves to set DMA         
+NPHLINES=                   32 / Preheat lines prepare ADC electronics         
+ICROLE  = 'MASTER  '           / ICs come in Masters and Slaves                
+DATASRC = 'CT_CORRECTION'      / CBBs do ADC, CTC, or SIM data sources         
+CTCSOURC= 'FIRMWARE'           / CTC coefficients can come from FW or RAM      
+CTCFILE = 'CTCDATA2.DAT'       / Source of CTC Coefficients                    
+HEMODE  = 'SCIENCE '           / CBBs have Science and Guide chip modes        
+LEDFLASH=                    0 / Time to flash lab LEDs [seconds]              
+FILENAME= 'KMTNc.20210503.030331' / Filename assigned by the data-taking system
+UNIQNAME= '210503.000'         / Unique filename; if filename is invalid       
+PROJID  = 'BLG     '           /                                               
+KBUILD  = 'KS2016-01-13:1370'  / K.IC software build                           
+MBUILD  = 'KS2016-01-13:1370'  / M.IC software build                           
+TBUILD  = 'KS2016-01-13:1370'  / T.IC software build                           
+NBUILD  = 'KS2016-01-13:1370'  / N.IC software build                           
+GBUILD  = '        '           / G.IC software build                           
+ICSBUILD= 'KX2016-03-23:1381'  / ICS software build                            
+COMMENT  Instrument Configuration                                              
+INSTRUME= 'KMTS    '              / Instrument Name                            
+COMMENT  PC-TCS Link Status                                                    
+TCSLINK = 'Up      '           / TCS Communications Link Status                
+TCSARC  = 'Enabled '           / TCS Link Auto Recovery Mode Status            
+TCSQDATE= '2021-05-03T05:27:24.845' / UTC Date and Time of last TCS query      
+TCSUDATE= '2021-05-03T05:27:23.966' / UTC Date and Time of last TCS update     
+COMMENT  PC-TCS Pointing Information                                           
+TIMESYS = 'UTC     '           / Time System                                   
+DATE-OBS= '2021-05-03T05:27:32' / UTC Date and Time at start of obs            
+RADECSYS= 'ICRS    '              / Telescope Coordinate System                
+RA      = '18:01:59.27'        / Telescope RA                                  
+DEC     = '-27:56:55.9'        / Telescope DEC                                 
+EQUINOX = '2000.000'           / Coordinate System Equinox                     
+HA      = '-02:33:39'          / Hour Angle at start of obs                    
+ST      = '15:29:31'           / Local Sidereal Time at start of obs           
+SECZ    = '1.20    '           / Secant of ZD (Airmass) at start of obs        
+ALT     = '56.5    '           / Telesope Altitude (elevation) in degrees      
+AZ      = '83.7    '           / Telescope Azimuth in degrees                  
+TCSDRIVE= 'Enabled '           / Telescope Drive Status                        
+TELMOVE = 'Idle    '           / Telescope Motion Status                       
+COMMENT  AUX Control System Information                                        
+AUXLINK = 'Up      '           / AUX Control System Comm Link Status           
+AUXARC  = 'Enabled '           / AUX Link Auto Recovery Mode Status            
+AUXQDATE= '2021-05-03T05:27:22.052' / UTC Date and Time of last AUX query      
+AUXUDATE= '2021-05-03T05:27:21.934' / UTC Date and Time of last AUX update     
+FSSTAT  = 'STANDBY '           / Filter-Shutter Subsystem Status               
+FILTOP  = 'STANDBY '           / Filter Operational Status                     
+FILNUM  = '1       '           / Filter selector position number               
+FILTER  = 'I       '           / Filter Name in the beam                       
+SHUTOP  = 'STANDBY '           / Shutter Operational Status                    
+SHUTTER = 'CLOSED  '           / Shutter Position                              
+FASTAT  = 'STANDBY '           / Focus Acutator Subsystem Status               
+FAFOCUS = '-0.409  '           / Focus Position Offset in millimeters          
+FATILTNS= '-116.8  '           / Focus Tilt NS Offset Angle in arcsec          
+FATILTEW= '+84.3   '           / Focus Tilt EW Offset Angle in arcsec          
+FAPOSS  = '+0.162  '           / South Focus Actuator Position in millimeters  
+FALIMS  = '0       '           / South Focus Actuator Limit Status             
+FAPOSE  = '-0.338  '           / East Focus Actuator Position in millimeters   
+FALIME  = '0       '           / East Focus Actuator Limit Status              
+FAPOSW  = '-1.052  '           / West Focus Actuator Position in millimeters   
+FALIMW  = '0       '           / West Focus Actuator Limit Status              
+DSSTAT  = 'STANDBY '           / Dome Shutter Status                           
+DSUP    = 'MID     '           / Upper Dome Shutter Position                   
+DSLW    = 'OPEN    '           / Lower Dome Shutter Position                   
+DSSAF   = 'INACTIVE'           / Dome Shutter Safety Status                    
+DSAUTO  = 'ENABLED '           / Dome Shutter Autosync Status                  
+DSALT   = '56.2    '           / Dome Shutter Altitude in degrees              
+DSTEL   = '56.5    '           / Dome Shutter Telescope Altitude in degrees    
+MCSTAT  = 'STANDBY '           / Mirror Cover Status                           
+MCPOS   = '100     '           / Mirror Cover Position in percent              
+CHSTAT  = 'ERROR   '           / Chiller Status                                
+CHOP    = 'OFF     '           / Chiller Cooling On or Off                     
+CHSET   = '10.0    '           / Chiller Set Point Temperature in degrees C    
+CHPROC  = '0.0     '           / Chiller Protection Temperature in degrees C   
+ENSTAT  = 'STANDBY '           / Environmental Control System Status           
+ENFAN   = 'OFF     '           / Env System Fan On or Off                      
+ENS1    = '8.4     '           / Env Sensor 1 deg C or percent RH              
+ENS2    = '9.3     '           / Env Sensor 2 deg C or percent RH              
+ENS3    = '10.5    '           / Env Sensor 3 deg C or percent RH              
+ENS4    = '42.7    '           / Env Sensor 4 deg C or percent RH              
+ENS5    = '11.7    '           / Env Sensor 5 deg C or percent RH              
+ENS6    = '11.7    '           / Env Sensor 6 deg C or percent RH              
+ENS7    = '0.0     '           / Env Sensor 7 deg C or percent RH              
+DEWPRES = 'N/A     '           / Dewar pressure                                
+CCDTEMP = '-109.17 '           / CCD Temperature                               
+PT30N1  = '-155.44 '           /                                               
+PT30N2  = '-157.33 '           /                                               
+CHARCOAL= '-181.28 '           /                                               
+AIR_IN  = '+21.14  '           /                                               
+AIR_OUT = '+16.92  '           /                                               
+GLYC_IN = '+13.92  '           /                                               
+GLYC_OUT= '+15.02  '           /                                               
+RTD12                                                                          
+COMMENT                                                                        
+END                                                                            

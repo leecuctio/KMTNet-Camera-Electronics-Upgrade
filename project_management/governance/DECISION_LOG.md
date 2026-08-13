@@ -330,3 +330,52 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 - 실험실 특성 측정 스크립트(`cam_char/archon/`)의 캠페인 파일명 체계는
   별개 도메인으로 유지하되, 사이트 raw 규격과의 경계를 문서에 명시한다.
 - 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.3절.
+
+---
+
+## D-012: 하드웨어 백엔드 계약을 컨트롤러 단위로 개정한다
+
+날짜: 2026-08-11
+관련: D-010 (통보 분리) · D-011 (사이트 코드) · `raw_fits_spec` 변경점 C-8/C-16
+상태: **Accepted** — `ics_sim`에 구현 완료, 실기(`archon.py`)는 이 계약으로 채운다.
+
+결정:
+
+- `ics_sim/ics_sim/hardware/base.py`의 저장 메서드를 CCD 단위
+  `write_fits(ccd, path, header)`에서 **컨트롤러 단위**
+  `write_frame(controller, chips, path, header)`로 개정한다.
+- 저장 단위(컨트롤러 1파일)와 통보 단위(CCD 4회 `Wrote`)의 분리는 **시퀀서가**
+  담당하고 백엔드는 관여하지 않는다. 파일명 fail-safe도 시퀀서가 처리해
+  백엔드에는 이미 확정된 경로가 내려온다.
+- 물리/논리 파일명 생성과 규격 5.1·5.2절 정체성 카드는 신설
+  `ics_sim/ics_sim/rawpair.py`로 모은다.
+- **시뮬 백엔드도 같은 계약을 구현한다.** 픽셀은 더미이고 크기도 실물
+  (19200×9400)이 아니지만 파일 구성·이름·헤더는 규격 그대로다.
+
+근거:
+
+- 종전 시그니처로는 실기의 저장 단위를 **표현할 수 없었다.** 노출 1회가 만드는
+  물리 파일은 컨트롤러당 1개(MK/NT 2개)이고 각각 chip 2개분 픽셀을 담는다
+  (`raw_fits_spec` 2.1·2.3절, ICD v4.1 2.1·3절). DevNote 9.1이 이 개정 필요성을
+  이미 적어 두었으나 결정 기록이 없었다.
+- **시뮬에 먼저 구현하면 하드웨어 없이 D-010/D-011을 검증할 수 있다.** 실물
+  OBSAgent로 `Wrote` 4회·논리 이름·`FitsNum` 파싱을 확인하는 것이 가능해지므로,
+  규약 리스크를 Archon 도착 전에 소진한다. `ExpNum` 값 결함이 실물 연동에서야
+  드러난 경위(DevNote 12.14)가 이 순서를 택한 직접적인 이유다.
+- 가이드 계통도 Archon이다 — 신규 계통도(`KMTNet Cam Architecture R2.0`)에서
+  Unit 3이 가이드 CCD 4대를 읽는다. 계약을 컨트롤러 단위로 잡아 두면 `icg`가
+  같은 계약을 재사용한다. CCD 단위로 좁게 두면 두 번 만들어야 했다.
+
+영향:
+
+- `hardware/base.py` · `sim.py` · `archon.py`(스텁) · `sequencer._store()` ·
+  신설 `rawpair.py` · `telemetry.py`(sentinel 분리, C-9). 테스트 16개 추가.
+- **OBSAgent는 변경 없다.** 통보가 논리 이름 그대로이므로 `count_wrote`·
+  `FitsNum`·타임아웃 창이 모두 종전과 같다 (기존 규약 테스트 177개 전부 통과).
+- `LASTFILE`이 실재 경로가 아니게 되는 D-010의 부작용이 시뮬에서도 실제로
+  발생한다 — 아카이브·DTS 도구는 raw 헤더의 `FILENAME`/`EXPID`/`CTRLTAG`를
+  근거로 삼아야 한다.
+- 실기 전환 시 `archon.py`의 `write_frame()`만 채우면 되고, 시퀀서·명령
+  처리부·메시지 규약은 무개정이다 (DevNote 1.2의 2단계 약속 유지).
+- 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.3·2.5절,
+  구현 경위는 `ics_sim/DevNote.md` 11.13.

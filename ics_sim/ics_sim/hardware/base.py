@@ -55,12 +55,24 @@ class DetectorBackend(Protocol):
     async def fetch_image(self, ccd: str):
         """읽어낸 픽셀 배열.  FITS 를 쓰지 않을 때는 None 을 돌려도 된다."""
 
-    async def write_fits(self, ccd: str, path: str, header: dict) -> int:
-        """FITS 로 저장하고 전송률(KB/sec)을 돌려준다.
+    async def write_frame(self, controller: str, chips: tuple[str, ...],
+                          path: str, header: dict) -> int:
+        """컨트롤러 1대분 프레임을 FITS 파일 **하나**로 저장, 전송률(KB/sec) 반환.
 
-        주의: 이 CCD 단위 시그니처는 시뮬(레거시 재현) 기준이다.  실기의
-        저장 단위는 컨트롤러(chip 2개, 노출당 MK/NT 2파일)라 ics_archon
-        착수 시 이 계약을 개정한다 -- raw_fits_spec 2.5절, DevNote 9.1.
+        **개정됨 (D-012, 2026-08-11).** 종전 시그니처는 `write_fits(ccd, …)` 로
+        CCD 단위였다 -- 그 형태로는 실기의 저장 단위를 표현할 수 없다.  노출
+        1회가 만드는 물리 파일은 **컨트롤러당 1개, 즉 MK/NT 2개**이고 각 파일이
+        chip 2개분 픽셀을 담는다 (raw_fits_spec 2.3·2.5절, ICD v4.1 2.1·3절).
+
+        통보(`Wrote`)는 여전히 **CCD 단위 4회**다 -- 그 분리는 시퀀서가 하고
+        백엔드는 관여하지 않는다 (D-010).
+
+        Args:
+            controller: `MK` 또는 `NT` (규격 5.2 `CTRLTAG`).
+            chips: 이 파일이 담는 chip, **X 낮은 쪽부터** (`CHIP1`, `CHIP2`).
+            path: 실제로 쓸 경로.  파일명 fail-safe 가 이미 적용된 값이므로
+                백엔드는 다시 바꾸지 않는다.
+            header: 규격 5장 헤더.  `FILENAME` 은 `path` 의 basename 과 같다.
         """
 
     def status(self, ccd: str) -> dict:

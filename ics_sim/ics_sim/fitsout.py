@@ -26,6 +26,22 @@ log = logging.getLogger('ics_sim.fits')
 _MAX_KEY = 8
 
 
+class FitsStr(str):
+    """**문자열로 강제**할 헤더값.  숫자처럼 보여도 숫자로 바꾸지 않는다.
+
+    `_apply_header` 는 텔레메트리를 와이어에서 받은 `key=value` 문자열로 다루기
+    때문에 숫자로 보이는 값을 숫자로 바꾼다 -- `EQUINOX='2000.000'` 이 실수로
+    들어가야 하므로 그 동작이 맞다.  그런데 **식별자에는 그게 재앙이다**:
+    `EXPID='20260811.000001'` 은 규격 5.2절이 문자열로 정의한 값인데 그대로
+    두면 float 카드가 되어 자릿수·형이 다 무너진다 (실제로 그렇게 저장됐다).
+
+    그래서 정체성 카드는 이 타입으로 싣는다 -- 호출측 시그니처를 늘리지 않고
+    값 자체가 "나는 문자열이다" 를 들고 다니게 하는 방식이다.
+    """
+
+    __slots__ = ()
+
+
 def write_dummy_fits(path: str, data, header: dict) -> int:
     """FITS 파일 하나를 쓰고 전송률(KB/sec)을 돌려준다.
 
@@ -60,7 +76,9 @@ def _apply_header(hdr, values: dict) -> None:  # noqa: ANN001
     """
     for key, raw in values.items():
         val: object = raw
-        if isinstance(raw, str):
+        if isinstance(raw, FitsStr):
+            val = str(raw)          # 문자열 강제 -- 숫자 변환을 건너뛴다
+        elif isinstance(raw, str):
             token = raw.strip()
             try:
                 val = int(token)

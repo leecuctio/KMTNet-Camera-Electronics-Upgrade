@@ -46,11 +46,12 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from . import rawpair
 from .config import SimConfig
 from .emitter import Emitter
 from .hardware import BackendError
 from .nodes import NodeRouter, Role
-from .state import (ExpStatus, IcsState, stamp_guide, stamp_iso, unique_path,
+from .state import (ExpStatus, IcsState, stamp_guide, stamp_iso,
                     utcnow)
 from .telemetry import TelemetryRelay
 
@@ -282,12 +283,28 @@ class Sequencer:
         # ChannelState.suffix 를 읽으면 그때는 이미 다음 프레임이 덮어쓴 뒤라
         # 프레임 1 의 영상이 프레임 2 의 번호로 저장된다 (실제로 그 버그를
         # 겪었다 -- GO 5 에서 일련번호가 4개만 나왔다).
-        header = self.telem.header_dict(stamp_iso(st.exp_start))
-        for ccd in ccds:
-            path = st.channel(ccd).filename(cfg.paths.data_dir)
+        # 저장은 **컨트롤러 단위**, 통보는 **CCD 단위** 다 (D-010/D-011, C-16).
+        # 헤더의 텔레메트리 부분은 노출 하나에 대해 한 번만 만들고, 파일마다
+        # 다른 정체성 카드(CTRLTAG/CHIPS/PAIRFILE/FILENAME…)를 rawpair 가 얹는다.
+        # DATE-OBS 는 셔터 개방 시점에 우리가 찍은 OS 시각이다 (규격 5.7절).
+        # `stamp_iso(None)` 은 **조용히 현재 시각**을 돌려주므로 그대로 넘기면
+        # exp_start 가 비었을 때 저장 시각이 DATE-OBS 로 들어간다 -- 규격 6.1절
+        # 변경점 C-6 이 금지한 "누락을 현재 시각으로 조용히 대체" 그 자체다.
+        # 그래서 None 을 빈 문자열로 바꿔 헤더 카드를 비우고, 그 노출이
+        # converter 에서 거부되게 한다.
+        if st.exp_start is None:
+            log.error('exp_start 가 없다 -- DATE-OBS 를 채울 근거가 없으므로 '
+                      '카드를 비운다 (규격 5.7절, C-6)')
+        date_obs = stamp_iso(st.exp_start) if st.exp_start is not None else ''
+        telem = self.telem.fits_header_dict(date_obs)
+        suffix = st.channel(ccds[0]).suffix if ccds else ''
+        for ctrltag, chips in rawpair.CONTROLLERS:
+            mine = tuple(c for c in chips if c in ccds)
+            if not mine:
+                continue
             self._writers.append(asyncio.create_task(
-                self._store(ccd, source, dict(header), path),
-                name=f'ics_sim.store.{ccd}'))
+                self._store(ctrltag, chips, mine, source, dict(telem), suffix),
+                name=f'ics_sim.store.{ctrltag}'))
         self._writers = [t for t in self._writers if not t.done()]
 
         await asyncio.sleep(cfg.scaled(cfg.timing.acq_to_idle))
@@ -304,13 +321,23 @@ class Sequencer:
                                  exptime: float) -> None:
         """셔터를 여는 경로 (OBJECT/FLAT/SKY/DOMEFLAT/STANDARD)."""
         cfg, st = self.cfg, self.state
+        # **DATE-OBS 는 SHOPEN 을 내는 이 시점의 OS 시각이다** (운영자 확정
+        # 2026-08-12, raw_fits_spec 5.7절).  개방 지시 **직전**에 찍는다.
+        #
+        # 종전에는 `open_shutter()` 가 돌아온 뒤에 찍어 "셔터가 실제로 열린
+        # 시각" 을 모사했는데, **실기에서는 알 수 없는 값이다** -- 셔터는 HE
+        # 박스 TTL 이 구동하고 개방 완료를 알려 주는 경로가 없다(AUX 는 블레이드
+        # 리밋을 읽기만 한다, DevNote 9.2.2).  ICS 가 아는 것은 자기가 지시를
+        # 낸 순간뿐이므로, 그 값을 정의로 삼는다.
+        #
+        # 레거시와의 차이: 레거시는 `Shutter=Open` 응답을 받은 뒤(+0.15초)
+        # 확정했다.  실기의 블레이드 주행은 ~5초라 이 차이가 60초 노출에서 8%가
+        # 되므로, "알 수 없는 값을 모사" 하는 쪽을 버렸다.
+        st.exp_start = utcnow()
         self.emit.emit_req(cfg.node.ic_of(master), 'SHOPEN',
                            f'{exptime:g} {source} USESTATUS')
         await self.backend.open_shutter(exptime)
 
-        # 셔터가 실제로 열린 시각으로 노출 개시를 갱신하고, 그 값을 DATE-OBS 로
-        # 확정한 뒤에야 TCSSTATUS 를 중계한다 (ics_legacy_report 5.3절).
-        st.exp_start = utcnow()
         self.emit.ic_shutter_open(source, master)
         await self._aux_event('open')
         await self._relay_tcs(stamp_iso(st.exp_start), ExpStatus.INTEGRATING)
@@ -438,48 +465,85 @@ class Sequencer:
 
     # -- 저장 -------------------------------------------------------------
 
-    async def _store(self, ccd: str, source: str, header: dict,
-                     wanted: str) -> None:
-        """CCD 하나의 FITS 저장 + Wrote 발신.
+    async def _store(self, ctrltag: str, chips: tuple[str, str],
+                     reporting: tuple[str, ...], source: str,
+                     telem: dict, suffix: str) -> None:
+        """컨트롤러 하나의 FITS 저장(**파일 1개**) + CCD 단위 `Wrote` 발신.
+
+        **저장 단위와 통보 단위가 갈라진다** (D-010/D-011, raw_fits_spec 2.5절,
+        변경점 C-16).  파일은 `<SITE>.<날짜>.<번호>.<MK|NT>.fits` 하나이고,
+        `Wrote` 는 그 파일이 담은 chip 마다 하나씩 **레거시 형식의 논리 이름**
+        (`KMTN<c>.…`)으로 낸다.  OBSAgent 는 논리 이름만 보므로 무개정이다.
 
         레거시는 IC -> CB TRANSFER DISK<n> / REQ SWAP / ACK SWAP 핸드셰이크로
         디스크 링을 돌렸지만, 신규는 단일 저장 경로다(DevNote 6.2) -- 취합
         서버와 기기제어를 한 PC 에 통합해 NFS 전송시간을 감당할 필요가 없어졌기
-        때문이다.  바깥으로 나가는 Wrote 규약만 유지한다.
+        때문이다.  바깥으로 나가는 `Wrote` 규약만 유지한다.
 
         Args:
-            wanted: 프레임 시작 시점에 확정된 경로.  여기서 다시 계산하면
-                파이프라인된 다음 프레임의 번호를 집어 온다.
+            ctrltag: `MK` 또는 `NT`.
+            chips: 이 파일이 담는 chip, X 낮은 쪽부터 (`CHIP1`, `CHIP2`).
+            reporting: 그중 실제로 통보할 chip (설정에서 빠진 CCD 제외).
+            telem: 노출 하나분 텔레메트리 카드.  정체성 카드는 여기서 얹는다.
+            suffix: 프레임 시작 시점에 확정된 `<YYYYMMDD>.<NNNNNN>`.
+                **여기서 다시 계산하면** 파이프라인된 다음 프레임의 번호를
+                집어 온다 (12.10 에서 실제로 겪은 경합).
         """
         cfg, st = self.cfg, self.state
-        lock = self._write_lock.setdefault(ccd, asyncio.Lock())
+        lock = self._write_lock.setdefault(ctrltag, asyncio.Lock())
         async with lock:
-            skew = cfg.timing.skew_of(ccd)
+            # 파일 시차는 그 파일이 담은 chip 중 가장 늦은 쪽을 따른다 --
+            # 레거시의 CCD별 저장 시차(N->T->M->K)를 컨트롤러 단위로 접은 것.
+            skew = max(cfg.timing.skew_of(c) for c in chips)
             await asyncio.sleep(cfg.scaled(cfg.timing.write_delay + skew))
 
-            if cfg.behavior.injecting('wrote_drop') and ccd == cfg.node.master:
-                log.warning('inject: %s.CB Wrote 를 일부러 누락시킵니다', ccd)
-                return
+            site = cfg.node.telid
+            # 이름이 겹치면 **개명하지 않고 `clash/` 로 격리**하고 시각 접미를
+            # 붙인다 (raw_fits_spec 2.3.1절).  세 겹이 각각 다른 질문에 답한다 --
+            # 어디에(디렉토리) · 어느 것인지(접미) · 일어났는지(NAMECLSH 카드).
+            path, stem, clashed = rawpair.resolve_write_path(
+                cfg.paths.data_dir, site, suffix, ctrltag,
+                check=cfg.paths.write_fits)
+            nominal = rawpair.physical_path(cfg.paths.data_dir, site, suffix,
+                                            ctrltag)
 
-            ch = st.channel(ccd)
-            path, clashed = (unique_path(wanted) if cfg.paths.write_fits
-                             else (wanted, False))
+            # `UNIQNAME` 은 정본(항상 정규 형태), `FILENAME` 은 실제로 쓴 이름.
+            # 겹쳐도 `UNIQNAME` 이 안 바뀌므로 식별이 사라지지 않는다.
+            header = dict(telem)
+            header.update(rawpair.identity_header(
+                site_code=site, suffix=suffix, ctrltag=ctrltag,
+                filename=stem, created=stamp_iso(), clashed=clashed))
+
             try:
-                rate = await self.backend.write_fits(ccd, path, header)
+                rate = await self.backend.write_frame(ctrltag, chips, path,
+                                                      header)
             except BackendError as exc:
                 self.emit.error(source, '', str(exc), st.expstatus)
                 return
-            ch.last_file = path
 
             if clashed:
-                # fail-safe 경고는 ICS 와 OBS 양쪽으로 나간다 (DevNote 6.4).
-                self.emit.cb_name_clash(cfg.node.ics_id, ccd, wanted, path)
-                self.emit.cb_name_clash(source, ccd, wanted, path)
+                # fail-safe 경고는 **파일당 1회, ICS 이름으로 노출 개시자에게만**
+                # 보낸다 (2026-08-12 확정).  레거시는 `*.CB>{ICS, OBS}` 로 양쪽에
+                # 보냈지만 그건 CB 가 별도 프로세스여서였고, 통합 구조에서는 ICS
+                # 가 파일을 쓴 당사자라 자기 앞 발신이 낭비다.  발신자를 CCD 단위
+                # `*.CB` 로 하지 않는 이유와 OBSAgent 쪽 안전성 근거는
+                # `emitter.name_clash()` docstring 에 있다.
+                self.emit.name_clash(source, nominal, path)
 
-            # 레거시는 XIS PING/PONG 왕복을 저장 완료 타이밍 신호로 재활용했다.
-            # 신규는 내부 콜백이므로 그 편법이 필요 없지만, IC 계층이 내던
-            # 'Disk Write Complete' 는 형태를 유지한다 (OBSAgent 는 무시한다).
-            self.emit.ic_disk_write_complete(cfg.node.ics_id, ccd)
-            self.emit.cb_wrote(cfg.node.ics_id, ccd, path, rate)
-            # OBSAgent 가 실제로 세는 것은 이 중계다.
-            self.emit.wrote_relay(source, path, rate, st.expstatus)
+            for ccd in reporting:
+                if (cfg.behavior.injecting('wrote_drop')
+                        and ccd == cfg.node.master):
+                    log.warning('inject: %s 의 Wrote 를 일부러 누락시킵니다', ccd)
+                    continue
+                logical = rawpair.logical_path(cfg.paths.data_dir, ccd, suffix)
+                st.channel(ccd).last_file = logical
+                # 레거시는 XIS PING/PONG 왕복을 저장 완료 타이밍 신호로
+                # 재활용했다.  신규는 내부 콜백이라 그 편법이 필요 없지만,
+                # IC 계층이 내던 'Disk Write Complete' 는 형태를 유지한다
+                # (OBSAgent 는 무시한다).
+                self.emit.ic_disk_write_complete(cfg.node.ics_id, ccd)
+                # RATE 는 그 파일의 측정값을 두 통보에 **동일하게** 싣는다 --
+                # CCD 별로 나누지 않는다 (raw_fits_spec 2.5절 말미).
+                self.emit.cb_wrote(cfg.node.ics_id, ccd, logical, rate)
+                # OBSAgent 가 실제로 세는 것은 이 중계다.
+                self.emit.wrote_relay(source, logical, rate, st.expstatus)

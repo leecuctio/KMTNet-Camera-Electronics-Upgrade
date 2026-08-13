@@ -419,12 +419,28 @@ class Emitter:
                          f'Wrote LASTFILE={path} RATE={rate} KB/sec',
                          Role.CB, ccd)
 
-    def cb_name_clash(self, dest: str, ccd: str, wanted: str,
-                      actual: str) -> str:
-        """파일명 충돌 fail-safe 경고.  ICS 와 OBS 양쪽으로 나간다."""
+    def name_clash(self, dest: str, wanted: str, actual: str) -> str:
+        """파일명 충돌 fail-safe 경고.  **ICS 이름으로, 파일당 1회.**
+
+        레거시는 `*.CB>{ICS, OBS}` 로 양쪽에 보냈다 -- CB 가 별도 프로세스라
+        ICS 도 알아야 했기 때문이다.  통합 구조에서는 **ICS 가 파일을 쓰는
+        당사자**이므로 자기 앞 발신은 낭비이고(XIS 경유 모드에서는 에코로
+        되돌아와 필터가 버린다), 관측자에게 한 통만 보내면 된다.
+
+        발신자를 CCD 단위 `*.CB` 로 하지 않는 이유: 물리 파일 1개에 chip 이
+        2개라 `M.CB`/`K.CB` 중 무엇으로 보낼지 정할 근거가 없고, 둘 다 보내면
+        파일 2개가 겹친 것처럼 보인다.  **파일 단위 사건은 파일을 쓴 주체가
+        보고하는 것이 맞다** (raw_fits_spec 2.5절).
+
+        OBSAgent 쪽 안전성은 소스로 확인했다 (`commands.c:1045-1048`):
+        `case WARNING:` 은 발신자를 보지 않고 본문을 청록색으로 출력만 하며,
+        `already exists`/`writing as` 를 파싱하는 코드가 없다.  발신 노드 필터
+        (`:757`)는 `case STATUS:` 안에만 있어 `WARNING` 에는 걸리지 않고, 본문에
+        `CamStatus` 체인 키워드도 들어 있지 않다.
+        """
         return self.emit(dest, 'WARNING', '',
                          f"FITS file '{wanted}' already exists, "
-                         f"writing as '{actual}' instead", Role.CB, ccd)
+                         f"writing as '{actual}' instead", Role.ICS)
 
     # -- out-of-band ------------------------------------------------------
 

@@ -89,22 +89,28 @@ class SimBackend:
         img = rng.normal(1000.0, 8.0, size=(rows, cols))
         return img.astype('float32')
 
-    async def write_fits(self, ccd: str, path: str, header: dict) -> int:
-        """FITS 저장.  전송률(KB/sec)을 돌려준다.
+    async def write_frame(self, controller: str, chips: tuple[str, ...],
+                          path: str, header: dict) -> int:
+        """컨트롤러 1대분을 파일 하나로 저장.  전송률(KB/sec)을 돌려준다.
 
-        write_fits=false 면 실제로 쓰지 않고 그럴듯한 전송률만 돌려준다 --
+        **chip 2개를 X 방향으로 이어 붙인다** -- 실기 raw 가 그렇다(MK 파일의
+        X 1–9600 이 M, 9601–19200 이 K).  시뮬은 `fits_shape` 크기의 더미를
+        chip 마다 만들어 가로로 붙이므로 폭이 2배가 된다.  실물 크기
+        (19200×9400, 파일당 344 MiB)는 쓰지 않는다 -- 구조만 맞춘다.
+
+        `write_fits=false` 면 실제로 쓰지 않고 그럴듯한 전송률만 돌려준다 --
         레거시 로그의 RATE= 값 범위(수십만~백만 KB/sec)에 맞춘다.
         """
         if self.cfg.paths.write_fits:
             from ..fitsout import write_dummy_fits
-            data = await self.fetch_image(ccd)
+            halves = [await self.fetch_image(c) for c in chips]
+            data = _join_x(halves)
             os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
             written = write_dummy_fits(path, data, header)
             if written:
                 return written
-        # 실측 RATE 범위에서 CCD 마다 조금씩 다른 값
-        base = 1_030_000 + (abs(hash(ccd)) % 60_000)
-        return base
+        # 실측 RATE 범위에서 컨트롤러마다 조금씩 다른 값
+        return 1_030_000 + (abs(hash(controller)) % 60_000)
 
     # -- 상태 -------------------------------------------------------------
 
@@ -117,3 +123,17 @@ class SimBackend:
             'shutter_open': self._shutter_open,
             'led_ms': self._led_ms,
         }
+
+
+def _join_x(halves: list) -> object | None:
+    """chip 절반들을 X 방향으로 이어 붙인다 (실기 raw 의 배치).
+
+    하나라도 None 이면(numpy 없음 · write_fits=false) None 을 돌려 호출측이
+    "쓰지 않음" 으로 처리하게 한다.
+    """
+    if not halves or any(h is None for h in halves):
+        return None
+    if len(halves) == 1:
+        return halves[0]
+    import numpy as np
+    return np.concatenate(halves, axis=1)

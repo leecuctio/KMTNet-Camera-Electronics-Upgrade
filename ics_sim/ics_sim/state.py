@@ -56,7 +56,18 @@ def utcnow() -> datetime:
 
 
 def stamp_compact(when: datetime | None = None) -> str:
-    """20240303.  파일명 날짜부."""
+    """20240303.  파일명 날짜부 -- **UTC 날짜**다.
+
+    ⚠️ **기준이 확정되지 않았다 (raw_fits_spec OI-10).** 규격 2.3절은 이 값을
+    "관측 야간 기준 날짜" 로 적어 두었었는데, 레거시도 이 구현도 **UTC 날짜**를
+    쓴다 (CTIO `isis.20240102.log` 안에 `KMTNm.20240103.…fits` 가 있다).
+    차이가 실재하는 곳은 **SAAO** 다 -- UTC+2 라 현지 야간(20:00~05:00)이 UTC
+    18:00~03:00 이 되어 **한 야간이 UTC 자정을 넘어 날짜가 둘로 갈린다.**
+    CTIO·SSO 는 야간 안에서 UTC 날짜가 상수라 문제가 드러나지 않는다.
+
+    규격 2.3절을 현행(UTC)으로 정정해 두었고, 야간 기준으로 갈지는 **이충욱과
+    협의해 확정한다.** 바꾸게 되면 이 함수와 규격 2.3·9장(OI-10)을 함께 고친다.
+    """
     return (when or utcnow()).strftime('%Y%m%d')
 
 
@@ -295,23 +306,3 @@ class IcsState:
         return 0.0 if self.imgtype.upper() == 'BIAS' else self.exptime
 
 
-def unique_path(path: str) -> tuple[str, bool]:
-    """파일명이 이미 있으면 대체 이름을 만든다.
-
-    레거시 fail-safe (ics_legacy_report 5.5절): 계산된 이름이 존재하면 조용히
-    덮어쓰지 않고 '<yymmdd>.<nnn>.fits' 로 저장한 뒤 WARNING 을 낸다.  1999년
-    Prospero 시절부터 여러 세대에 걸쳐 검증된 데이터 유실 방지 장치라 신규에서도
-    그대로 가져간다.
-
-    Returns:
-        (실제로 쓸 경로, 대체되었는지 여부)
-    """
-    if not os.path.exists(path):
-        return path, False
-    folder = os.path.dirname(path)
-    short = utcnow().strftime('%y%m%d')
-    for n in range(1000):
-        alt = os.path.join(folder, f'{short}.{n:03d}.fits')
-        if not os.path.exists(alt):
-            return alt, True
-    return path, False

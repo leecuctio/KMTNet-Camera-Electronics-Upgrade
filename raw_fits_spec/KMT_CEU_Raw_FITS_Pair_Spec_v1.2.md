@@ -82,7 +82,7 @@ Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1/v1.2의 변경은 geom
   | `KMTA` | SSO | `SSO` | `kmta` |
   | `KMTT` | 테스트베드 (실험실·데모·Full Rehearsal) | `TESTBED` | `kmtt` |
 
-- `<YYYYMMDD>`: 8자리. 관측 야간 기준 날짜.
+- `<YYYYMMDD>`: 8자리. **UTC 날짜** — 그 노출의 `DATE-OBS` 가 속한 UTC 일자다. **잠정 확정이며 재정의 대상이다 (OI-10)** — 종전 서술 "관측 야간 기준 날짜" 는 레거시 실측과 현행 구현 어느 쪽과도 맞지 않아 정정했다.
 - `<NNNNNN>`: **6자리 고정폭, 0으로 좌측 패딩**한 노출 일련번호. pair 양쪽이 같은 값이어야 한다.
 - 접미 `.MK.fits` / `.NT.fits`는 **대소문자까지 정확히** 일치해야 한다. converter는 이 문자열로 짝을 찾는다.
 - 예: `KMTC.20260807.012345.MK.fits`, `KMTC.20260807.012345.NT.fits`
@@ -93,7 +93,65 @@ Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1/v1.2의 변경은 geom
 
 > **파일명 `<SITE>`와 헤더 `OBSERVAT`는 일치해야 한다.** converter(v2.2.0)는 출력 MEF prefix를 파일명 `<SITE>`에서 유도하고 `OBSERVAT`와 교차 검증한다 — 불일치는 오류다 (6.1절). 파일명이 헤더와 다르게 유통되는 사고(설정 오배포, 수동 개명)를 조기에 잡기 위한 안전장치다.
 
-파일명은 **pair 식별의 유일한 근거가 되어서는 안 된다.** 5.2절의 `EXPID` / `CTRLTAG` / `PAIRFILE`로 헤더 안에서도 짝이 확인되어야 한다.
+파일명은 **pair 식별의 유일한 근거가 되어서는 안 된다.** 5.2절의 `UNIQNAME` / `CTRLTAG` / `PAIRFILE`로 헤더 안에서도 짝이 확인되어야 한다.
+
+#### 2.3.1 이름이 겹쳤을 때 — 격리 · 접미 · 카드 (2026-08-12 확정)
+
+ICS 계열은 1999년 Prospero 시절부터 **계산된 파일명이 이미 존재하면 조용히 덮어쓰지 않는** fail-safe를 갖고 있다 (`ics_legacy_report.md` 5.5절, DevNote 6.4). 레거시는 `<yymmdd>.<nnn>`으로 **개명**했고 그 후보 이름을 헤더 `UNIQNAME`에 실었다 — 실측 헤더가 `FILENAME = 'KMTNk.20170209.044131'` / `UNIQNAME = '170209.000'`이다 (`__reference/Legacy raw fits header samples/`).
+
+**신규는 개명 대신 격리를 먼저 쓴다.** 개명하는 목적은 "덮어쓰지 않기" 하나뿐인데, 디렉토리를 옮기면 그 목적이 달성되면서 이름을 훼손하지 않는다. 세 겹이 각각 다른 질문에 답한다:
+
+| 층 | 무엇을 말하나 | 값 |
+| --- | --- | --- |
+| **격리 디렉토리** | **어디에 있나** | `<data_dir>/clash/` |
+| **파일 이름 접미** | **어느 것인가** | `<정본이름>.clash<YYYYMMDD>T<hhmmss>Z` |
+| **헤더 카드** | **일어났는가** | `NAMECLSH = T` — **충돌했을 때만 넣는다** |
+
+`clash`라는 낱말을 쓰는 이유: 겹친 것은 **이름**이고 자료는 멀쩡한 새 프레임이다. `dup`(duplicate)은 자료가 중복이라는 오해를 부른다. 세 층이 같은 낱말을 쓰므로 하나만 봐도 나머지가 짚인다.
+
+접미를 번호가 아니라 **시각**으로 하는 이유: 소진될 일이 없고, 같은 프레임이 두 번 격리되어도 충돌하지 않으며, **언제 생긴 중복인지가 이름에 남는다.**
+
+##### 왜 `FILENAME` · `UNIQNAME` 인가 — 새 keyword 를 만들지 않은 이유
+
+**한때 `EXPID`(`'20260116.000001'`)와 `EXPNUM`(정수 연번)을 raw 헤더에 새로 넣는 것을 검토했다.** 파일명이 pair 식별의 유일한 근거가 되면 안 된다는 요구(2.3절 말미)를 헤더 안에서 충족시키려는 것이었고, 규격 v1.0~v1.2 는 그 형태로 기술돼 있었다.
+
+**그런데 레거시 raw 헤더를 확인한 결과 이미 그 역할을 하는 keyword 가 있었다** (`__reference/Legacy raw fits header samples/KMTNk.20170209.044131.Rawheader.txt`):
+
+```text
+FILENAME = 'KMTNk.20170209.044131'  / Filename assigned by the data-taking system
+UNIQNAME = '170209.000'             / Unique filename; if filename is invalid
+```
+
+- **`FILENAME` 이 날짜와 연번을 통째로 담고 있었다.** `EXPID` 는 그 부분집합이고, `EXPNUM` 은 그 안의 연번일 뿐이다.
+- **`UNIQNAME` 은 이름을 쓸 수 없을 때를 위한 두 번째 이름이었다.** 즉 이름 충돌 문제를 레거시가 이미 헤더로 다루고 있었다.
+
+그래서 **새 keyword 를 만들지 않고 이 둘을 이어받기로 했다** (2026-08-12 확정). 판단 근거 셋:
+
+| | |
+| --- | --- |
+| **중복 제거** | 같은 정보를 담은 카드가 넷(`FILENAME`·`UNIQNAME`·`EXPID`·`EXPNUM`)이면 **서로 어긋날 수 있다.** 어긋났을 때 무엇이 정본인지 규격이 답해야 하는데, 그 답을 만들 이유가 없다 |
+| **레거시 연속성** | 20년 가까이 쓰인 이름을 그대로 쓰면 기존 아카이브·도구·운영자의 지식이 이어진다. `EXPID` 는 이 저장소가 새로 만든 낱말이고 MEF 규격·converter·레거시 어디에도 없었다 |
+| **MEF 목적지가 이미 있다** | MEF keyword 정의서는 `UNIQNAME` 을 *"unique filename or exposure ID"* 로 받는다. `EXPID` 를 만들면 그 자리에 전달할 값이 둘이 된다 |
+
+**다만 `UNIQNAME` 은 보완해서 쓴다.** 레거시의 `<yymmdd>.<nnn>` 형식과 "대체 이름" 이라는 역할을 그대로 가져가지는 않는다 — 아래 역할 분담과 그 뒤 문단 참고.
+
+##### `UNIQNAME`과 `FILENAME`의 역할 분담
+
+| Keyword | 역할 |
+| --- | --- |
+| **`UNIQNAME`** | **정본 식별자.** 항상 정규 형태(`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>`)이고 **어떤 경우에도 바뀌지 않는다.** 파싱·짝 탐색·아카이브 색인은 이 값을 쓴다 |
+| **`FILENAME`** | **디스크에 실제로 쓴 이름.** 평소엔 `UNIQNAME`과 같고, 충돌 시에만 `.clash…` 접미가 붙는다 |
+| **`NAMECLSH`** | 충돌했을 때만 존재. `F`를 넣지 않는다 — 그러면 "충돌 안 함"과 "이 규격을 모르는 취득 SW"가 구분되지 않는다 |
+
+**이 분담이 식별 손실 문제를 없앤다.** `UNIQNAME`이 불변이므로 격리된 파일도 어느 노출의 어느 컨트롤러인지 헤더만으로 알 수 있다. 레거시가 `UNIQNAME`을 "대체 이름"으로 쓴 것과 방향이 반대인데, **정본을 불변으로 두는 쪽이 파싱 규칙을 하나로 만든다** — 레거시 방식에서는 상황에 따라 `FILENAME`이나 `UNIQNAME`을 골라 읽어야 했다.
+
+레거시의 `<yymmdd>.<nnn>` 형식은 채택하지 않는다: 하루 1000개 한계, **사이트 코드 소실**(3사이트 통합 시 동명 충돌이 되돌아온다 — D-011이 없애려던 문제), **컨트롤러 태그 소실**(짝을 못 찾는다).
+
+##### converter 쪽 동작
+
+converter(v2.2.0)의 정규식은 `clash/` 안의 이름을 받지 않고, 그 디렉토리를 훑지도 않는다. **즉 격리된 파일은 사람이 확인·개명해야 변환된다.** 이것이 의도한 동작이다 — 이름 충돌은 카운터 역행·시계 역행·파일 수동 복사 같은 **실제 이상**의 징후이므로(DevNote 11.12) 조용히 변환되어서는 안 된다.
+
+> **왜 이 절이 필요한가.** 지속 카운터를 쓰면(DevNote 11.12) 정상 운용에서 충돌은 발생하지 않는다. 그런데 벤치에서 실제로 발생했고, 그때 헤더에 검출기 식별이 **하나도** 없어(`DETECTOR`/`INSTRUME`/`FILENAME`/`CTRLTAG` 전무, 4개 CCD가 동일 헤더) 어느 파일이 어느 검출기인지 알 수 없었다. 구현은 DevNote 11.13.
 
 ### 2.4 크기
 
@@ -131,11 +189,13 @@ L0 MEF의 amp 픽셀 총수(64 × 1200 × 4616 = 354,508,800)와 raw pair 픽셀
 
 OBSAgent는 `PCTREAD=` 수신 시뿐 아니라 **`EXPSTATUS=READOUT` 수신 시에도** `count_wrote`와 `FitsSaved`를 리셋하며(`commands.c` 812~816행), READOUT은 첫 `PCTREAD=`보다 약 2.7초 먼저 온다 (DevNote 4.1 실측: t+38.69 `EXPSTATUS=READOUT` vs t+41.4 첫 `PCTREAD=`). 이 READOUT ~ 첫 PCTREAD 사이 약 2.7초는 **함정 창**이다 — 여기에 낀 `Wrote`는 READOUT 리셋 뒤에 세어졌다가 첫 `PCTREAD=` 리셋(`count_wrote=0`, `FitsSaved=0`)에 지워지므로, 그 프레임의 `FitsSaved`는 영영 서지 않고 매 프레임 `force_fitssaved` 25초 타임아웃 + `ExpStatus=ERROR` 경로로 빠진다.
 
+**이름이 겹친 경우의 통보** — 격리했을 때 나가는 `WARNING: FITS file '<정본경로>' already exists, writing as '<격리경로>' instead`는 **파일 단위 사건이므로 파일당 1회**이고, **발신자는 `ICS`**, 수신자는 노출 개시자 하나다. 레거시는 `*.CB>{ICS, OBS}`로 양쪽에 보냈지만 그건 CB가 별도 프로세스였기 때문이고, 통합 구조에서는 ICS가 파일을 쓴 당사자라 자기 앞 발신이 낭비다(XIS 경유 모드에서는 에코로 되돌아온다). 발신자를 CCD 단위 `*.CB`로 하지 않는 이유: 물리 파일 1개에 chip이 2개라 `M.CB`/`K.CB` 중 무엇으로 보낼지 정할 근거가 없고, 둘 다 보내면 파일 2개가 겹친 것처럼 보인다. OBSAgent 쪽 안전성은 소스로 확인했다 — `case WARNING:`(`commands.c:1045-1048`)은 발신자를 보지 않고 본문을 출력만 하며 `already exists`를 파싱하지 않고, 발신 노드 필터(`:757`)는 `case STATUS:` 안에만 있다. `Wrote` 통보 4회는 격리와 무관하게 그대로 나간다(논리 이름을 쓰므로).
+
 **주의 — `LASTFILE`은 이제 실재하는 경로가 아니다.**
 
 `/data/KMTNm.20260807.012345.fits`라는 파일은 디스크에 없다. 실제 파일은 `/data/KMTC.20260807.012345.MK.fits` 하나이고, 논리 이름은 OBSAgent 규약을 만족시키기 위한 **CCD 단위 식별자**일 뿐이다. 따라서:
 
-- `LASTFILE` 값을 경로로 열려는 도구는 실패한다. 아카이브·DTS·QL 도구는 `LASTFILE`이 아니라 raw 헤더의 `FILENAME` / `EXPID` / `CTRLTAG`를 근거로 삼아야 한다 (5.2절).
+- `LASTFILE` 값을 경로로 열려는 도구는 실패한다. 아카이브·DTS·QL 도구는 `LASTFILE`이 아니라 raw 헤더의 `UNIQNAME` / `FILENAME` / `CTRLTAG`를 근거로 삼아야 한다 (5.2절). **색인 키는 `UNIQNAME`** 이다 — 이름이 겹쳐 격리된 경우에도 그 값만 불변이다 (2.3.1절).
 - 논리 이름 ↔ 실제 파일 대응은 `CHIP1`/`CHIP2`로 역추적 가능하므로 raw 헤더에 별도 keyword를 두지 않는다.
 - `RATE=` 필드를 붙이는 경우, 한 파일에서 나온 두 메시지는 **그 파일의 측정 전송률을 동일하게** 싣는다 (CCD별로 나누지 않는다).
 
@@ -226,6 +286,26 @@ amp 번호 → strip 번호는 `strip = ((amp-1) mod 8) + 1`이다.
 - FITS 표준 keyword는 **8자 이내**. `HIERARCH`는 쓰지 않는다 (converter의 카드 파서가 `key[:8]`만 본다).
 - 시각은 모두 **UTC**. `TIMESYS='UTC'`를 명시한다.
 - 문자열 값에 홑따옴표가 들어가면 FITS 규칙대로 두 번 쓴다.
+- **식별자 keyword는 FITS 문자열 카드로 쓴다 — 숫자 카드로 쓰면 안 된다.**
+
+  대상: `UNIQNAME` · `FILENAME` · `PAIRFILE` · `CTRLTAG` · `CHIPS` · `CHIP1` · `CHIP2` · `CHIPLIST` · `RAWPROD` · `RAWVER` · `RAWGROUP` · `OBSERVAT` · `ORIGIN` · `CREATOR` · `DATE`. (개수인 `NUMFILES` · `VOLTN` 등은 정수 카드가 맞다.)
+
+  이유는 연번을 담은 이름 하나로 충분하다. `UNIQNAME`의 값이 `'KMTA.20260811.000010.MK'`처럼 문자를 포함하면 애초에 숫자로 해석되지 않지만, **연번만 담는 값을 새로 도입하면 곧바로 이 함정에 걸린다.** 예를 들어 `'20260811.000010'`을 실수 카드로 쓰면 **2.3절이 필수로 정한 6자리 zero-padding이 파괴된다**:
+
+  | 값 | 실수 카드로 쓰면 | 결과 |
+  | --- | --- | --- |
+  | `'20260811.000001'` | `20260811.000001` | 우연히 살아남는다 |
+  | `'20260811.000010'` | `20260811.00001` | **`000010` → `00001`** |
+  | `'20260811.000100'` | `20260811.0001` | **`000100` → `0001`** |
+  | `'20260811.010000'` | `20260811.01` | **`010000` → `01`** |
+
+연번은 파일명 `<NNNNNN>`과 같은 값이고 pair 일관성 검사(5.11절)와 `Wrote` 논리 이름(2.5절)의 근거이므로, 자릿수가 소실되면 파일명과 헤더가 어긋나 6.2절 "조용히 틀린 값" 부류가 된다. **끝자리가 0이 아닌 노출에서는 왕복이 우연히 성립하므로, 시험 데이터를 `000001`로만 잡으면 이 결함이 통과한다** — 검사는 값이 아니라 **카드의 형**을 봐야 한다 (8장 체크리스트).
+
+- **sentinel 금지 항목은 "없을 수 있는 값"이 아니다 — 취득 SW가 구조적으로 아는 값이다.**
+
+  `DATE-OBS` · `EXPTIME` · `DARKTIME` · geometry keyword는 전부 ICS 또는 ACQ가 자기 동작으로부터 아는 값이므로 **항상 존재해야 한다.** 특히 `DATE-OBS`는 **ICS가 셔터를 여는 그 시점의 OS 시각(UTC)을 그대로 물어 넣는다** — 외부에서 받아오는 값이 아니라 ICS가 스스로 찍는 값이다(5.7절: 셔터가 실제로 열린 시각, BIAS/DARK는 ERASE 완료 시각). 따라서 "값이 없어서 못 넣는" 상황은 정상 운용에 존재하지 않는다.
+
+  그럼에도 카드를 못 채우는 일이 생겼다면 그것은 취득 SW의 **결함**이다. 그 경우 `'NC'`나 `0`으로 채워 값이 있는 것처럼 만들지 않는다 — 카드를 비우고 그 노출을 결함으로 보고한다. 6.1절의 실패 경로(변경점 C-6: `DATE-OBS` 누락 시 변환 중단)가 그때 정상적으로 발동해야 하기 때문이다.
 - **값이 없을 때의 표기 (sentinel)**
 
   | 형 | Sentinel | 비고 |
@@ -252,7 +332,7 @@ amp 번호 → strip 번호는 `strip = ((amp-1) mod 8) + 1`이다.
 | `ORIGIN` | 필수 | `'KASI'` | SITE | file originator |
 | `DATE` | 필수 | UTC ISO | ACQ | 파일 생성 시각 |
 | `CREATOR` | 필수 | `'ics_archon_v1.0'` | ACQ | 취득 소프트웨어와 버전 |
-| `FILENAME` | 필수 | `'KMTC.20260116.000001.MK.fits'` | ACQ | 자기 파일명 (`<SITE>` prefix, 2.3절) |
+| `FILENAME` | 필수 | `'KMTC.20260116.000001.MK'` | ACQ | 자기 파일 이름 — **확장자를 뺀 형태** (`<SITE>` prefix, 2.3절). 레거시 실측 헤더가 `FILENAME = 'KMTNk.20170209.044131'` 로 `.fits` 없이 기록했다 (`__reference/Legacy raw fits header samples/`) |
 | `CHECKSUM` | 권장 | FITS 표준 checksum | ACQ | 9장 OI-7 |
 | `DATASUM` | 권장 | FITS 표준 datasum | ACQ | |
 
@@ -270,11 +350,12 @@ amp 번호 → strip 번호는 `strip = ((amp-1) mod 8) + 1`이다.
 | `CHIPS` | 필수 | `'M,K'` | `'N,T'` | ACQ | 이 파일에 담긴 chip (X 낮은 쪽부터) |
 | `CHIP1` | 필수 | `'M'` | `'N'` | ACQ | X 1–9600 절반의 chip |
 | `CHIP2` | 필수 | `'K'` | `'T'` | ACQ | X 9601–19200 절반의 chip |
-| `PAIRFILE` | 필수 | NT 파일명 | MK 파일명 | ACQ | 짝 파일명 |
+| `PAIRFILE` | 필수 | NT 파일 이름 | MK 파일 이름 | ACQ | 짝의 이름. **`FILENAME` 과 같은 형태(확장자 없음)** |
 | `NUMFILES` | 필수 | `2` | `2` | ACQ | 이 노출의 raw 파일 수 |
-| `EXPID` | 필수 | `'20260116.000001'` | 동일 | ACQ | **노출 고유 ID. pair 양쪽이 반드시 같아야 한다** |
-| `EXPNUM` | 필수 | `1` | 동일 | ACQ | 6자리 일련번호의 정수형 |
-| `UNIQNAME` | 권장 | 레거시 호환 고유 이름 | 동일 | ACQ | MEF `UNIQNAME`으로 전달 |
+| `UNIQNAME` | 필수 | `'KMTC.20260116.000001.MK'` | `'…NT'` | ACQ | **정본 식별자.** 항상 정규 형태이고 **어떤 경우에도 바뀌지 않는다** — 이름이 겹쳐 격리된 파일도 이 값은 그대로다 (2.3.1절). 파싱·짝 탐색·아카이브 색인의 기준이고 MEF `UNIQNAME`으로 전달된다 |
+| `NAMECLSH` | 조건부 | (없음) | (없음) | ACQ | 이름이 겹쳐 `clash/`로 격리된 경우에**만** `T`. 카드의 존재가 곧 신호이므로 `F`를 넣지 않는다 (2.3.1절) |
+
+> **`EXPID`·`EXPNUM` 은 이 규격에 없다.** 규격 v1.0~v1.2 초기 기술에는 있었으나, 레거시 실측 헤더가 `FILENAME` 하나로 날짜+연번을 이미 담고 있음을 확인하고 **그 keyword 를 이어받는 쪽으로 정리했다**(2026-08-12 확정). 노출 식별은 `UNIQNAME`(정본)·`FILENAME`(실제 이름)·`CTRLTAG`(짝의 어느 쪽) 셋으로 완결된다. 판단 근거는 2.3.1절 「왜 `FILENAME`·`UNIQNAME` 인가」 참고.
 
 ### 5.3 Raw Geometry 선언
 
@@ -455,7 +536,7 @@ VSTA1   = 'OK      '
 | Keyword | 상태 | 예시 | 출처 | 설명 |
 | --- | --- | --- | --- | --- |
 | `TIMESYS` | 필수 | `'UTC'` | ICS | time system |
-| `DATE-OBS` | 필수 | `'2026-01-16T14:23:25.467'` | ICS | **셔터가 실제로 열린 UTC 시각.** BIAS/DARK는 ERASE 완료 시각. 최소 초 단위, **밀리초 권장** |
+| `DATE-OBS` | 필수 | `'2026-01-16T14:23:25.467'` | ICS | **ICS가 `SHOPEN`(셔터 개방)을 지시한 UTC 시각.** BIAS/DARK는 ERASE 완료 시각. 최소 초 단위, **밀리초 권장**. 정의 근거는 아래 |
 | `MJD-OBS` | 권장 | `61056.599...` | ACQ | `DATE-OBS`와 같은 순간. 배정밀도로 기록 |
 | `UT` | 권장 | `'2026-01-16T14:23:25'` | ICS | UTC timestamp |
 | `TSHOPEN` | 필수 | `'14:23:25.467'` | ICS | 셔터 열림 시각 |
@@ -467,6 +548,14 @@ VSTA1   = 'OK      '
 | `SHUTOP` | 권장 | `'STANDBY'` | ICS | 셔터 운용 상태 |
 
 `DATE-OBS`는 **pair 양쪽이 같아야 한다.** 셔터는 하나이고 노출도 하나다. 값이 다르면 두 컨트롤러의 트리거 동기가 깨진 것이므로 그 노출은 의심 대상이다.
+
+> **`DATE-OBS`를 "셔터 개방 지시 시각"으로 정의하는 이유 (2026-08-12 확정).**
+>
+> **실기에서 "셔터가 실제로 열린 시각"은 알 수 없는 값이다.** 카메라 셔터는 HE 박스에서 나오는 TTL 신호가 구동하고, AUX 제어 SW는 블레이드 리밋 스위치를 **읽기만** 한다 (`TCSAgent/__reference/KMTNet AUX control remote commands` 4-2절, DevNote 9.2.2). 개방 완료를 ICS에게 알려 주는 경로가 없다. 그러므로 ICS가 헤더에 넣을 수 있는 시각은 **자기가 개방을 지시한 순간의 OS 시각**뿐이다.
+>
+> 레거시는 `K.IC>OBS STATUS: SHOPEN Shutter=Open` 응답을 받은 뒤(개방 지시 +0.15초)의 시각을 썼다. 그러나 그 값도 "블레이드가 열렸다"가 아니라 "IC가 지시를 접수했다"였고, **실기의 블레이드 주행은 약 5초**다 — 60초 노출에서 8%에 해당하므로 알 수 없는 값을 모사하는 것보다 **정의를 지시 시점으로 옮기는 편**이 정확하다.
+>
+> 셔터 개폐 지연에 의한 실효 노출시간 보정은 헤더의 `DATE-OBS`/`EXPTIME`이 아니라 **shutter correction(별도 calibration)의 몫**이다. `EXPMEAS`(컨트롤러 트리거 타임스탬프 실측)가 있으면 그것과 대조할 수 있다.
 
 ### 5.8 관측 식별
 
@@ -550,9 +639,9 @@ BIAS, DARK, OBJECT, FLAT, DOMEFLAT, SKY, STANDARD
 
 | 구분 | Keywords |
 | --- | --- |
-| **반드시 동일** | `EXPID`, `EXPNUM`, `DATE-OBS`, `MJD-OBS`, `EXPTIME`, `DARKTIME`, `TSHOPEN`, `TSHSHUT`, `IMAGETYP`, `OBSTYPE`, `OBJECT`, `FIELDID`, `PROJID`, `FILTER`, `OBSERVAT`, `SITEID`, `TELESCOP`, `RA`, `DEC`, `EQUINOX`, `HA`, `ST`, `SECZ`, `ALT`, `AZ`, 모든 TCS/AUX relay 필드, 5.3절 geometry 전체, `RAWVER`, `RAWGROUP`, `CHIPLIST`, `NUMFILES` |
-| **반드시 상이** | `FILENAME`, `PAIRFILE`, `CTRLTAG`, `CHIPS`, `CHIP1`, `CHIP2`, `CTRLID`, `CTRLNAME`, `CTRLSN`, `CTRLFW` |
-| **다를 수 있음** | `DATE`, `CTRLSTAT`, `CTRLERR`, `BCKTEMP`, `READTIME`, `FRAMENO`, `BUFNO`, `VOLT*`/`VSET*`/`VMEA*`, `CCDTMP1`, `CCDTMP2`, `CHECKSUM`, `DATASUM` |
+| **반드시 동일** | `DATE-OBS`, `MJD-OBS`, `EXPTIME`, `DARKTIME`, `TSHOPEN`, `TSHSHUT`, `IMAGETYP`, `OBSTYPE`, `OBJECT`, `FIELDID`, `PROJID`, `FILTER`, `OBSERVAT`, `SITEID`, `TELESCOP`, `RA`, `DEC`, `EQUINOX`, `HA`, `ST`, `SECZ`, `ALT`, `AZ`, 모든 TCS/AUX relay 필드, 5.3절 geometry 전체, `RAWVER`, `RAWGROUP`, `CHIPLIST`, `NUMFILES` |
+| **반드시 상이** | `UNIQNAME`, `FILENAME`, `PAIRFILE`, `CTRLTAG`, `CHIPS`, `CHIP1`, `CHIP2`, `CTRLID`, `CTRLNAME`, `CTRLSN`, `CTRLFW` |
+| **다를 수 있음** | `NAMECLSH`(한쪽만 겹칠 수 있다), `DATE`, `CTRLSTAT`, `CTRLERR`, `BCKTEMP`, `READTIME`, `FRAMENO`, `BUFNO`, `VOLT*`/`VSET*`/`VMEA*`, `CCDTMP1`, `CCDTMP2`, `CHECKSUM`, `DATASUM` |
 
 ### 5.12 raw에 넣지 **않는** keyword
 
@@ -697,7 +786,7 @@ RA DEC EQUINOX RADECSYS CCDTEMP CHIPLIST MOCKDATA
 | C-1 | `mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` | **NT 헤더도 읽어야 한다.** 현재 `convert()`는 `mk_hdr` 하나만 쓴다. `CTRL2*`와 `TELEMETRY` 2행을 채우려면 `nt_hdr`가 필요하다 |
 | C-2 | 〃 | `TELEMETRY` 2행을 각 파일의 `CTRLID`/`CTRLFW`/`BCKTEMP`/`READTIME`/`CTRLSTAT`/`CTRLERR`로 채운다 |
 | C-3 | 〃 | `VOLTINFO`를 `VOLTN` + `VOLT<n>`/`VSET<n>`/`VMEA<n>`/`VUNI<n>`/`VSTA<n>`에서 채운다. 행 수는 `VOLTN` |
-| C-4 | 〃 | **pair 일관성 검사 추가**: `EXPID`·`DATE-OBS`·`EXPTIME`·`RAWVER`가 다르면 변환 중단 |
+| C-4 | 〃 | **pair 일관성 검사 추가**: `DATE-OBS`·`EXPTIME`·`RAWVER`가 다르면, 그리고 두 `UNIQNAME`의 `<YYYYMMDD>`·`<NNNNNN>` 필드가 다르면 변환 중단. (`UNIQNAME` 자체는 컨트롤러 태그가 달라 **같지 않은 것이 정상**이다 — 5.11절) |
 | C-5 | 〃 | 5.3절 geometry keyword를 자기 상수와 대조. 불일치 시 중단 |
 | C-6 | 〃 | `DATE-OBS` 누락 시 "현재 시각"으로 조용히 대체하지 말고 **실패**시킨다 (6.2절) |
 | ~~C-7~~ | 〃 | ~~파일명 정규식 수정~~ → **완료 (D-011, converter v2.2.0).** `default_output_name()` 정규식을 사이트 코드 형식 `^(KMTC\|KMTS\|KMTA\|KMTT)\.(\d{8})\.(\d{6})\.MK\.fits$`로 개정하고, 출력 prefix를 파일명 `<SITE>`에서 유도 + `OBSERVAT` 교차 검증(불일치=오류)을 추가했다. `find_pair()`는 prefix 무관이라 변경 없음 |
@@ -706,9 +795,9 @@ RA DEC EQUINOX RADECSYS CCDTEMP CHIPLIST MOCKDATA
 | **C-13** | 〃 | `DETSIZE` / `COLGAP` / `ROWGAP` / `AMPPCD`를 raw 선언값과 대조. 하드코딩 상수와 다르면 중단 (C-5의 확장) |
 | **C-14** | 〃 | `XTALKVER` / `REFVER` / `CATVER`를 raw가 아니라 calibration DB에서 주입 (5.12절) |
 | **C-15** | 〃 | `TELEMETRY` 확장 헤더의 `TELSTAT`을 양쪽 `CTRLSTAT`에서 파생 |
-| C-8 | `ics_sim/ics_sim/hardware/archon.py` | `write_fits()`가 이 규격대로 저장하도록 구현 (현재 스텁). 저장 단위가 **CCD 1개가 아니라 컨트롤러 1개(chip 2개)**로 바뀌는 점에 유의 |
-| **C-16** | `ics_sim/ics_sim/sequencer.py` `_store()` · `ics_sim/ics_sim/state.py` | **2.5절 `Wrote` 규약 구현.** 현재는 CCD 1개당 파일 1개를 쓰고 `Wrote` 1회를 낸다. 신규는 컨트롤러 1개당 파일 1개를 쓰고 **그 파일이 담은 chip 2개분 `Wrote`를 논리 이름으로** 낸다. `ChannelState.filename()`의 `KMTN<ccd>.<suffix>.fits`는 **논리 이름 생성기로 남기고**, 실제 저장 경로는 `<SITE>.<suffix>.<CTRLTAG>.fits`로 분리한다 (`<SITE>`는 설정 `[node] site`에서 유도, D-011) |
-| C-9 | `ics_sim/ics_sim/telemetry.py` | `_SENTINEL_NUM`이 값 없음을 `'0'`으로 채운다. 5.0절 sentinel 규약과 충돌 (9장 OI-6) |
+| **C-8** | `ics_sim/ics_sim/hardware/archon.py` | 이 규격대로 저장하도록 구현 (현재 스텁). **계약은 이미 개정됐다 (D-012)** — `write_frame(controller, chips, path, header)` 를 채우면 되고, 저장 단위가 컨트롤러 1개(chip 2개)인 것이 시그니처에 드러나 있다. 시뮬 백엔드가 같은 계약으로 돌고 있어 참고 구현이 된다 (`hardware/sim.py`) |
+| ~~**C-16**~~ | `ics_sim/ics_sim/sequencer.py` `_store()` · `ics_sim/ics_sim/rawpair.py` | **해결 (2026-08-11, D-012).** 2.5절 `Wrote` 규약 구현 완료 — 저장은 컨트롤러 단위 1파일, 통보는 그 파일이 담은 chip 2개분 논리 이름. 물리/논리 이름 생성은 신설 `rawpair.py` 로 모았고 `state.ChannelState.filename()` 은 논리 이름 생성기로 남았다. 검증은 `tests/test_raw_pair.py`(16개). 종전 서술: **2.5절 `Wrote` 규약 구현.** 현재는 CCD 1개당 파일 1개를 쓰고 `Wrote` 1회를 낸다. 신규는 컨트롤러 1개당 파일 1개를 쓰고 **그 파일이 담은 chip 2개분 `Wrote`를 논리 이름으로** 낸다. `ChannelState.filename()`의 `KMTN<ccd>.<suffix>.fits`는 **논리 이름 생성기로 남기고**, 실제 저장 경로는 `<SITE>.<suffix>.<CTRLTAG>.fits`로 분리한다 (`<SITE>`는 설정 `[node] site`에서 유도, D-011) |
+| ~~C-9~~ | `ics_sim/ics_sim/telemetry.py` | **해결 (2026-08-11).** FITS 헤더용 `fits_header_dict()` 를 분리해 5.0절 규약(정수 `-1` / 실수 `-999.0` / 문자열 `'NC'`)을 따르게 했다. 레거시 메시지 계층의 `'0'` 채움은 `header_dict()` 에 그대로 남긴다 — 중계 본문은 레거시 재현이 필요하기 때문이다 (DevNote 11.2) |
 | C-10 | `cam_char/archon/archon_kmtnet_labtest_v2.py` | 실험실 raw도 5.3절 geometry 선언과 5.5절 controller telemetry를 싣도록 카드 추가 |
 
 ## 8. 검증 체크리스트
@@ -739,7 +828,11 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 - [ ] 파일명 `<SITE>`가 헤더 `OBSERVAT`와 일치 (2.3절)
 - [ ] `CTRLTAG`가 `MK` / `NT`로 서로 다르다
 - [ ] `PAIRFILE`이 상대 파일을 정확히 가리킨다
-- [ ] `EXPID`가 양쪽 동일
+- [ ] 두 `UNIQNAME`의 날짜·연번 필드가 동일 (태그는 달라야 한다 — 5.11절)
+- [ ] **`UNIQNAME`이 FITS *문자열* 카드이고 연번이 6자리 zero-padding을 유지한다** (5.0절)
+- [ ] **`UNIQNAME`이 정규 형태다** — `<SITE>.<8자리>.<6자리>.<MK|NT>`, 접미 없음
+- [ ] **`FILENAME`이 그 파일의 실제 이름과 같다** (확장자 없음. 격리된 경우 `.clash…` 접미 포함 — 2.3.1절)
+- [ ] `clash/` 디렉토리가 비어 있다. 비어 있지 않으면 그 파일들은 `NAMECLSH=T`를 갖고 있고, **변환 전에 사람이 확인해야 한다**
 - [ ] `CHIPS`가 `M,K` / `N,T`
 - [ ] `CHIP1`+`CHIP2` 4개가 `CHIPLIST`를 빠짐없이 덮는다
 
@@ -756,6 +849,8 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 - [ ] `BCKTEMP` / `READTIME`이 sentinel이 아님
 - [ ] `CCDTEMP` · `CCDTMP1` · `CCDTMP2`가 모두 있고 sentinel이 아님 (L1 `CARRY_KEYS`)
 - [ ] 6.6절 L1 `CARRY_KEYS` 23개가 raw에 전부 존재
+
+> **이 체크리스트 중 일부는 이미 자동 검증된다.** `ics_sim`이 규격대로 저장하게 되면서(2026-08-11, D-012) 파일 구성·이름·pair 식별·sentinel 항목은 `ics_sim/tests/test_raw_pair.py`(16개)가 매 실행 확인한다. 실기(`ics_archon`)에서 추가로 확인해야 하는 것은 **구조**(`BITPIX`/`NAXIS`/파일 크기) · **geometry 선언** · **메타데이터**(controller telemetry·전압·온도) 쪽이다 — 시뮬은 픽셀이 더미이고 실물 크기가 아니므로 그 항목들을 검증하지 못한다.
 
 **변환 왕복**
 
@@ -791,14 +886,15 @@ for h in (a, b):                                   # amp -> 전자계통 배선 
     if h['AMPMAP'] == 'EXPLICIT':
         wiring = [(h['AMOD%02d' % n], h['ACHN%02d' % n]) for n in range(1, 33)]
         assert len(set(wiring)) == 32, 'duplicate (MODULE, CHANNEL)'
-for k in ('EXPID','DATE-OBS','EXPTIME','RAWVER','OBSERVAT','FILTER'):
+for k in ('DATE-OBS','EXPTIME','RAWVER','OBSERVAT','FILTER'):
     assert a[k] == b[k], (k, a[k], b[k])
 carry = ('ORIGIN OBSERVAT SITEID TELESCOP INSTRUME CAMNAME OBJECT FIELDID '
          'PROJID IMAGETYP OBSTYPE EXPTIME DARKTIME FILTER DATE-OBS MJD-OBS '
          'TIMESYS RA DEC EQUINOX RADECSYS CCDTEMP CHIPLIST').split()
 missing = [k for k in carry if k not in a]         # L1 CARRY_KEYS (6.6절)
 assert not missing, 'L1 carry keys missing: %s' % missing
-print('raw pair OK:', a['EXPID'])
+assert a['UNIQNAME'].split('.')[1:3] == b['UNIQNAME'].split('.')[1:3]
+print('raw pair OK:', a['UNIQNAME'])
 "
 ```
 
@@ -810,9 +906,10 @@ print('raw pair OK:', a['EXPID'])
 | ~~OI-2~~ | **`Wrote` 4회 규약** | **해결 (2026-08-07, D-010).** 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회)를 분리한다. ICS는 파일 1개를 쓸 때마다 그 파일이 담은 chip 2개분 `STATUS: Wrote`를 논리 이름으로 낸다. `count_wrote=4` · `FitsNum='20260807.012345'` 모두 성립 | 규격 2.5절 반영 완료. OBSAgent·`RAWNAX1` 변경 없음. `LASTFILE`이 실재 경로가 아니게 되는 부작용을 2.5절에 명시 |
 | **OI-3** | `ROWORDR` / `RDDIRT` / `RDDIRB` 확정 | TOP half가 CCD 좌표 순서로 기록되는지 독출 순서인지 실기 확인 필요. MEF amp header `READDIR`의 placeholder(TOP=`-Y`, BOT=`+Y`)를 확정하는 사안이며, 규격은 값을 raw가 **선언**하도록 자리를 만들어 뒀다 | flat/star sequence test. 확정 시 `RAWVER`와 `GEOMVER` 동시 갱신 |
 | **OI-9** | amp ↔ 배선 맵 실측 | `AMOD<nn>` / `ACHN<nn>`의 실제 값은 컨트롤러 결선 후에야 확정된다. 확정 전에는 `AMPMAP='DEFAULT'`로 두고 converter의 추정식을 쓰되, **`XTALKCAL=True`로 올리기 전에 반드시 `EXPLICIT`으로 교체**해야 한다 (5.5.1절) | 통합 시 배선표 작성 + Archon 채널 응답과 대조. `CALIBRATION_TRACKER.md`에 항목 추가 |
+| **OI-10** | `<YYYYMMDD>` 의 기준 확정 | **잠정: UTC 날짜.** 규격 v1.0~v1.2 는 "관측 야간 기준 날짜" 로 적었으나 **레거시도 구현도 UTC 날짜를 쓴다** — CTIO `isis.20240102.log`(UTC−4) 안에 `KMTNm.20240103.023885.fits` 가 있고, `ics_sim` 은 `utcnow().strftime('%Y%m%d')` 다. **차이가 실재하는 곳은 SAAO** (UTC+2): 현지 20:00~05:00 이 UTC 18:00~03:00 이라 **한 야간이 UTC 자정을 넘어 날짜가 둘로 갈린다**. CTIO·SSO 는 야간 안에서 UTC 날짜가 상수라 문제가 드러나지 않는다. 야간 기준으로 가면 야간 경계(정오 UTC 등)를 정의해야 하고 사이트별로 달라진다 | **이충욱(LEECU)과 협의해 확정.** 결정 시 (1) 이 절과 2.3절, (2) `ics_sim` 의 `state.stamp_compact()`, (3) 야간 기준으로 갈 경우 야간 경계 정의와 사이트별 적용을 함께 갱신한다. 그때까지는 UTC 기준이 정본이다 |
 | **OI-4** | `MIDOSCB` / `MIDOSCT` 분배 | 중앙 168행의 half별 분배가 84/84인지 미확인. 현행 converter는 이 블록을 전부 버린다 | timing script 확인 + bias frame 통계. 확정되면 Y overscan으로 활용할지 별도 검토 |
 | **OI-5** | Binning 지원 | v1.0은 1×1 전용. binning 시 `NAXIS`가 바뀌어 converter가 즉시 실패한다 | binned 관측 계획이 서면 geometry 규격 확장 |
-| **OI-6** | Sentinel 규약 통일 | `ics_sim/ics_sim/telemetry.py`의 `_SENTINEL_NUM`은 값 없음을 `'0'`으로 채운다. `SECZ=0` / `ALT=0` 같은 값이 헤더에 유효값처럼 남는다 | 5.0절 규약(`-999.0` / `-1` / `'NC'`)으로 정렬. 레거시 로그 호환이 필요한 중계 본문과 FITS 헤더 값을 분리할 것 |
+| ~~OI-6~~ | Sentinel 규약 통일 | **해결 (2026-08-11, 변경점 C-9).** 중계 본문과 FITS 헤더 값을 분리했다 — `header_dict()`(메시지 계층, `'0'` 유지) / `fits_header_dict()`(FITS, 정수 `-1` · 실수 `-999.0` · 문자열 `'NC'`). `DATE-OBS`는 값이 없으면 키를 넣지 않아 불완전한 노출이 드러난다 | 완료. 검증 `tests/test_raw_pair.py::test_fits_sentinels_follow_the_spec_not_the_message_layer` |
 | **OI-7** | `CHECKSUM` / `DATASUM` | 현재 무결성은 MEF 산출물의 SHA256 사이드카로만 관리된다. raw 단계 무결성 검증 수단이 없다 | FITS 표준 checksum 도입 여부 결정 |
 | ~~OI-8~~ | NT 헤더 완전성 | **해결 (2026-08-10, ICD v4.1).** ICD v4.0의 "NT 메타데이터는 최소한일 수 있다" 기술이 v4.1에서 이 규격과 같은 완전성 요구로 개정됐다 (2.1절) | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` §4 |
 
@@ -839,3 +936,6 @@ print('raw pair OK:', a['EXPID'])
 | v1.1 | 2026-08-07 | **OI-1 · OI-2 해결.** 파일명은 ICD v4.0 형식 유지 + `<NNNNNN>` 6자리 zero-padding 필수화(2.3절, D-009). 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회 `Wrote`)를 분리하는 ICS 규약 추가(2.5절, D-010). `LASTFILE`이 실재 경로가 아니게 되는 부작용 명시. C-7 불필요 처리, C-16 추가 |
 | v1.1 | 2026-08-08 | 정정(geometry 아님, `RAWVER` 유지): 2.5절 타이밍 조건을 `EXPSTATUS=READOUT`(및 그 뒤 `PCTREAD=`) 리셋 기준으로 수정하고(`commands.c` 812~816행 근거) `Wrote` 발신 순서 규칙 + READOUT~첫 PCTREAD 함정 창(~2.7초) 경고 추가. 2.3절 zero-padding 위반 결과 (3)을 `Wrote` 논리 이름 기준으로 정정. 5.5절 `CTRLNAME`/`CTRLSN`/`CTRLFW`의 CALIBRATION_TRACKER 추적 서술을 현재형에서 추가 예정으로 완화 |
 | v1.2 | 2026-08-10 | **파일명 prefix를 사이트 코드로 개정 (D-011, D-009 대체).** `<SITE>` ∈ {`KMTC`=CTIO, `KMTS`=SAAO, `KMTA`=SSO, `KMTT`=테스트베드} — TC 텔레메트리 `TELID` 규약과 동일. `RAWVER`는 `CEU-RAW-v1.0` 유지(픽셀 배치 불변). converter v2.2.0: 정규식 개정 + 출력 prefix를 파일명에서 유도 + `OBSERVAT` 교차 검증(불일치=오류, 6.1절). `Wrote` 논리 이름(D-010)은 불변. C-7 완료 처리, OI-1 재개정, OI-8 해결(ICD v4.1). 연동 ICD를 v4.1(md+docx)로 갱신 |
+| v1.2 | 2026-08-11 | 제자리 개정(요구사항 변경 아님, `RAWVER`·문서 버전 유지): **5.0절에 식별자 keyword 의 카드 형 규칙 추가** — `EXPID` 등을 실수 카드로 쓰면 2.3절이 필수로 정한 6자리 zero-padding 이 파괴된다(`000010`→`00001`). 구현에서 실제로 발생했고 시험값이 `000001` 이라 우연히 통과했다. 같은 절에 **결측 시 카드 자체를 넣지 않는다**(C-6 실패 경로와 연결)를 명시. **2.5절에 fail-safe 발동 시의 `WARNING` 발신 규약**(파일당 1회, 발신자는 `CHIP1` 의 `*.CB` — 레거시 대응 사례 없어 정한 것). **8장 체크리스트에 `EXPID` 카드 형·`FILENAME` 일치 항목 추가**와 자동 검증 범위 안내. **2.3.1절 신설** — 파일명 fail-safe 가 발동했을 때 `FILENAME`은 실제 파일명을 따라가고 `EXPID`/`CTRLTAG`/`CHIP1`/`CHIP2`가 개명 후 유일한 식별 근거이며 `PAIRFILE`은 명목 이름으로 열화될 수 있다는 것을 명시(5.1·5.2절 필수 항목의 함의). **OI-6·C-9·C-16 해결 처리**, C-8은 계약 개정(D-012) 반영. 구현은 `ics_sim` — DevNote 11.13 |
+| v1.2 | 2026-08-12 | 제자리 개정: **5.7절 `DATE-OBS` 정의를 "셔터가 실제로 열린 시각"에서 "ICS가 `SHOPEN`을 지시한 UTC 시각"으로 변경** — 실기에는 셔터 개방 완료를 알려 주는 경로가 없어 전자는 알 수 없는 값이다(운영자 확정). 근거 블록을 같은 절에 추가. **2.5절 fail-safe `WARNING` 발신자를 `CHIP1`의 `*.CB`에서 `ICS`로 변경** — 파일을 쓴 당사자가 보고하는 것이 맞고, OBSAgent `case WARNING:`이 발신자를 보지 않음을 소스로 확인했다(`commands.c:1045`). **2.3절 `<YYYYMMDD>`를 UTC 날짜로 정정하고 OI-10으로 등재** — 종전 "관측 야간 기준 날짜"는 레거시·구현 어느 쪽과도 맞지 않았다. 야간 기준 여부는 이충욱과 협의해 확정한다 |
+| v1.2 | 2026-08-12 | **레거시 raw 헤더 실측본을 근거로 식별 keyword 재정의** (`__reference/Legacy raw fits header samples/` 신설 — 2017·2021 raw 2건, MEF 35건. raw 헤더는 4년간 사실상 불변이었다). **`EXPID`·`EXPNUM` 삭제** — 레거시가 `FILENAME` 하나로 날짜+연번을 담고 있었고 `UNIQNAME`을 그 옆에 두었다. 둘을 함께 두면 서로 어긋날 수 있는 중복이다(운영자 확정). **`UNIQNAME`을 정본 식별자로 승격**(필수, 불변, `<SITE>.<8자리>.<6자리>.<MK\|NT>`)하고 `FILENAME`은 **실제로 쓴 이름**으로 정의. 둘 다 **확장자를 빼고** 기록한다(레거시 관례). **`NAMECLSH` 신설**(조건부). **2.3.1절에 「왜 `FILENAME`·`UNIQNAME` 인가」 신설** — `EXPID`·`EXPNUM` 을 검토했다가 레거시 keyword 를 이어받기로 한 경위와 근거 셋(중복 제거·레거시 연속성·MEF 목적지)을 실측 인용과 함께 남겼다. 5.2절에도 두 keyword 가 없는 이유를 안내한다. **2.3.1절 전면 재작성** — 이름이 겹치면 개명 대신 `clash/` 격리 + 시각 접미 + 카드의 세 겹. 레거시의 `<yymmdd>.<nnn>` 형식은 사이트 코드·컨트롤러 태그를 잃어 채택하지 않았다. 5.0·5.2·5.11·C-4·8장 정합 갱신. 구현은 `ics_sim` — DevNote 11.13 |

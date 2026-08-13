@@ -1,6 +1,6 @@
 # KMTNet-CEU Raw FITS Specification
 
-최종 갱신일: 2026-08-10
+최종 갱신일: 2026-08-12
 
 ## 목적
 
@@ -45,12 +45,27 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 | 파일 | 원본 위치 | 비고 |
 | --- | --- | --- |
-| `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx` | `../mef_fits_spec/archive/` | L0 MEF ICD v4.0 (규격 작성 시점 사본; 현행은 v4.1) |
-| `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4_0_KO.docx` | — | v4.0 ICD의 국문본. **이 디렉토리가 유일본** (v4.1 국문본은 미작성) |
-| `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.docx` | `../mef_fits_spec/` | 규격 6.5절 대조표의 원본 |
-| `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.docx` | `../mef_converter/` | Archon raw 검증 결과 |
+| `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` | `../mef_fits_spec/` | L0 MEF ICD **현행 v4.1**. 바이트 동일 사본 |
+| `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1_KO.md` | — | v4.1 ICD의 **국문본. 이 디렉토리가 유일본** |
+| `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` | `../mef_fits_spec/` | 규격 6.5절 대조표의 원본. 바이트 동일 사본 |
+| `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` | `../mef_converter/` | Archon raw 검증 결과. 바이트 동일 사본 |
+| `Legacy raw fits header samples/` | — | **레거시 시스템의 FITS 헤더 실측본** (2026-08-12 추가). `KMTNk.20170209.044131.Rawheader.txt` 가 이 규격에 대응하는 **레거시 raw 헤더**이고, `xkmta.20170209.044131.MEF.*.txt` 는 레거시가 MEF 로 변환한 산출물의 헤더다(primary 1 + 확장 35). raw 헤더는 2017→2021 사실상 불변이어서 정착된 설계로 읽을 수 있다 — 규격 5장 식별 keyword 재정의의 근거 |
+
+> ⚠️ `KMTNc.20210503.030331.header.txt` 는 **raw pair 가 아니다.** `DETID='C'` · 1616×1616 인데, raw 영상의 ROI 조각들을 모자이크로 재구성한 **combination 산출물**이다(운영자 확인 2026-08-12). 검출기 이름이 아니므로 이 규격 범위 밖이고, `M,K,N,T` 4개 전제에 영향을 주지 않는다.
 
 **국문 ICD를 뺀 나머지는 사본이며 기준본은 원본 위치의 것이다.** 원본이 개정되면 이 사본도 함께 갱신하거나 삭제한다.
+
+**전량 md 로 이관했다 (2026-08-11).** 이전에는 docx 4개였고, 그중 셋은 원본 위치에 이미 md 기준본이 있어 사본만 형식을 맞췄다. 국문 ICD 는 유일본이면서 v4.0 에 머물러 있었으므로 **md 변환과 함께 v4.1 로 갱신**했다 (파일명 사이트 코드 D-011 · NT 헤더 완전성 OI-8 · converter v2.2.0). 원 docx 4개는 git 이력에 남아 있다.
+
+> **사본 3개는 바이트 동일하므로 동기 확인이 한 줄이다.** 출력이 없으면 원본과 같은 것이다.
+>
+> ```bash
+> diff -q __reference/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md    ../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md
+> diff -q __reference/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md ../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md
+> diff -q __reference/KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md        ../mef_converter/KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md
+> ```
+>
+> 국문본은 대응 원본이 없으므로 이 검사 대상이 아니다 — 영문 v4.1 이 개정되면 **사람이 대조해 옮겨야 한다.** 절 구조가 1:1(15절, 표·목록 개수 동일)로 유지되고 있으니 절 단위로 비교하면 된다.
 
 ## 규격이 다루는 것 / 다루지 않는 것
 
@@ -69,7 +84,8 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 | 주체 | 파일 | 상태 |
 | --- | --- | --- |
-| 신규 ICS | [`../ics_sim/ics_sim/hardware/archon.py`](../ics_sim/ics_sim/hardware/archon.py)의 `write_fits()` | 스텁 — 실기 단계에서 구현 |
+| **신규 ICS (시뮬)** | [`../ics_sim/ics_sim/rawpair.py`](../ics_sim/ics_sim/rawpair.py) + `sequencer._store()` + `hardware/sim.py`의 `write_frame()` | **동작 중 (2026-08-11)** — 2.3 파일명 · 2.5 저장/통보 분리 · 5.0 sentinel · 5.1/5.2 정체성 카드를 구현했다. 픽셀은 더미이고 크기도 실물(19200×9400)이 아니지만 **구조와 규약은 규격 그대로**라, 하드웨어 없이 실물 OBSAgent 로 D-010/D-011을 검증할 수 있다 |
+| 신규 ICS (실기) | [`../ics_sim/ics_sim/hardware/archon.py`](../ics_sim/ics_sim/hardware/archon.py)의 `write_frame()` | 스텁 — 실기 단계에서 구현. **계약은 개정 완료 (D-012)**, 시뮬 백엔드가 참고 구현 |
 | 실험실 취득 | [`../cam_char/archon/archon_kmtnet_labtest_v2.py`](../cam_char/archon/archon_kmtnet_labtest_v2.py)의 `write_fits()` | 동작 중 — geometry/telemetry 카드 보강 필요 |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) | 동작 중 — MK 헤더만 읽음, NT 헤더 반영 필요 |
 
@@ -83,9 +99,9 @@ v1.0에서 제기한 OBSAgent 규약 충돌 2건은 **v1.1에서 해결되었고
 | ~~OI-2~~ | **저장 단위와 통보 단위를 분리.** 파일은 컨트롤러당 1개(2개), `STATUS: Wrote`는 CCD당 1회(4회)를 레거시 형태 논리 이름(`KMTN<c>.…`, 불변)으로 발신. OBSAgent 변경 없음 |
 | ~~OI-8~~ | NT 헤더 완전성 요구가 **ICD v4.1에 반영되었다** (2026-08-10) |
 
-부작용 하나가 따라온다 — **`LASTFILE`이 더 이상 실재하는 경로가 아니다.** 아카이브·DTS 도구는 `LASTFILE` 대신 raw 헤더의 `FILENAME`/`EXPID`/`CTRLTAG`를 근거로 삼아야 한다 (규격 2.5절).
+부작용 하나가 따라온다 — **`LASTFILE`이 더 이상 실재하는 경로가 아니다.** 아카이브·DTS 도구는 `LASTFILE` 대신 raw 헤더의 `UNIQNAME`/`FILENAME`/`CTRLTAG`를 근거로 삼아야 한다 (규격 2.5절). **색인 키는 `UNIQNAME`** 이다 — 이름이 겹쳐 격리된 경우에도 그 값만 불변이다 (2.3.1절).
 
-남은 open item은 규격 문서 9장에 있다 — `ROWORDR`/`READDIR` 확정, 중앙 overscan 분배 실측, amp↔배선 맵 실측(OI-9, `XTALKCAL=True` 전제조건), binning, sentinel 규약, checksum.
+남은 open item은 규격 문서 9장에 있다 — `ROWORDR`/`READDIR` 확정, 중앙 overscan 분배 실측, amp↔배선 맵 실측(OI-9, `XTALKCAL=True` 전제조건), binning, checksum, **파일명 날짜 기준(OI-10 — 잠정 UTC, 이충욱과 협의 예정)**. **전부 실기 실측이나 협의·정책 결정이 있어야 닫힌다** — 문서만으로 닫을 수 있었던 sentinel 규약(OI-6)은 2026-08-11에 해결됐다.
 
 ## 버전 / 관리 정책
 
