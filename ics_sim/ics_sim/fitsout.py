@@ -57,16 +57,40 @@ def write_dummy_fits(path: str, data, header: dict) -> int:
         log.warning('astropy 없음 -- FITS 저장을 건너뜁니다 (%s)', path)
         return 0
 
-    hdu = fits.PrimaryHDU(data=data)
+    hdu = fits.PrimaryHDU(data=_as_unsigned16(data))
     _apply_header(hdu.header, header)
 
     os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
     started = time.monotonic()
-    hdu.writeto(path, overwrite=True)
+    # `CHECKSUM`/`DATASUM` (규격 5.1절 권장, 9장 OI-7).  astropy 가 계산해
+    # 넣어 주므로 우리가 만들 이유가 없다.
+    hdu.writeto(path, overwrite=True, checksum=True)
     elapsed = max(time.monotonic() - started, 1e-6)
 
     size_kb = os.path.getsize(path) / 1024.0
     return int(size_kb / elapsed)
+
+
+def _as_unsigned16(data):  # noqa: ANN001, ANN201
+    """더미 픽셀을 규격 3장의 저장형(`BITPIX=16` + `BZERO=32768`)으로.
+
+    **왜 형까지 맞추나.** converter 는 `BITPIX != 16` 이면 그 자리에서
+    `ValueError: Only BITPIX=16 is supported` 로 멈춘다(규격 6.1절). 시뮬이
+    float32 로 쓰면 산출물이 **converter 에 한 번도 들어가 볼 수 없어서**,
+    크기 말고는 아무것도 시험할 수 없다.  픽셀값이 더미라도 저장형을 맞춰
+    두면 변환 경로를 끝까지 돌려 볼 수 있다.
+
+    astropy 는 `uint16` 배열에 `BZERO=32768` · `BSCALE=1` 을 자동으로 붙인다 --
+    우리가 카드를 만들지 않아도 규격 5.1절 필수 항목이 채워진다.
+
+    ⚠️ 크기는 아직 실물(19200×9400)이 아니다 -- `fits_shape` 설정값이다.
+    """
+    try:
+        import numpy as np
+    except ImportError:                      # pragma: no cover
+        return data
+    # bias level 1000 근처의 더미이므로 클리핑으로 잃는 값이 없다.
+    return np.clip(data, 0, 65535).astype(np.uint16)
 
 
 def _apply_header(hdr, values: dict) -> None:  # noqa: ANN001

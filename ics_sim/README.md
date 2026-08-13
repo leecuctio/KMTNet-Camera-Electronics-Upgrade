@@ -60,7 +60,7 @@ go
 ### XIS 허브에 붙이기
 
 ```bash
-python -m ics_sim --xis-host 192.168.14.101 --xis-port 6660
+python -m ics_sim --xis-host 192.168.14.109 --xis-port 6660
 ```
 
 모든 발신이 허브를 거친다. 실제 배치 형태이고, 이 상태로 OBSAgent 를 물리면 규약 검증이 실물로 된다.

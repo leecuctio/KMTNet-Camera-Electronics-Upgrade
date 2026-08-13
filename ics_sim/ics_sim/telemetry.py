@@ -64,12 +64,30 @@ _SENTINEL_FLOAT = frozenset({
     'AZ', 'ALT', 'SECZ', 'EQUINOX',
 })
 _SENTINEL_NUM = _SENTINEL_INT | _SENTINEL_FLOAT
+#: AUX 실선의 이름 -> FITS 헤더 이름.  **converter 가 fallback 없이 읽는
+#: 이름으로 옮겨 실어야 한다** (규격 5.13절, D-013).
+#:
+#: `DSTEL` 이 그 사례다.  AUX 가 보내는 이름은 `DSTEL`(`pctcs/commands.c:2023`)
+#: 인데, Archon converter 는 `v("DSTELALT","")` 로 **`DSTELALT` 만** 읽는다
+#: (`v2_1.py:485`).  레거시32 converter 에는 `sv(ph,"DSTELALT", sv(ph,"DSTEL"))`
+#: 로 fallback 이 있지만 Archon 쪽에는 없다 -- 그래서 옮겨 싣지 않으면 MEF 의
+#: 돔-망원경 고도가 **오류 없이** 빈 값이 된다.
+#:
+#: 원래 이름도 함께 남긴다 -- 레거시 도구와의 연속성이고, 옮겨 실은 것이
+#: 대조 가능해야 한다.
+_FITS_RENAME = {'DSTEL': 'DSTELALT'}
+
 _SENTINEL_STR = frozenset({
     'ENFAN', 'ENSTAT', 'CHOP', 'CHSTAT', 'MCSTAT', 'DSSTAT', 'FASTAT',
     'SHUTTER', 'SHUTOP', 'FILTER', 'FILNUM', 'FILTOP', 'FSSTAT',
     'AUXARC', 'AUXLINK', 'TELID', 'TIMESYS',
     'TCSDRIVE', 'TCSLIMIT', 'TELMOVE', 'TCSARC', 'TCSLINK', 'EXECODE',
     'RA', 'DEC', 'HA', 'ST',
+    # 질의/갱신 시각.  **TC 가 답하지 않아도 카드를 남긴다** -- 규격 5.9절이
+    # 필수로 정했고, 그 절 말미가 "질의 실패 시 sentinel 로 '값이 없었다'는
+    # 사실이 헤더에 남아야 한다" 고 규정한다.  카드가 아예 없으면 이 규격을
+    # 모르는 취득 SW 가 쓴 파일과 구분되지 않는다.
+    'AUXQDATE', 'AUXUDATE', 'TCSQDATE', 'TCSUDATE',
 })
 
 #: TC 가 응답하지 않을 때 쓸 내장 텔레메트리 (tc_timeout_mode=canned).
@@ -129,6 +147,19 @@ class TelemetryRelay:
         self._waiters: dict[str, asyncio.Future] = {}
         self.last_aux_ok = False
         self.last_tcs_ok = False
+        #: 실효 사이트 코드.  TC 가 보낸 `TELID` 와 대조하는 기준이다.
+        #: `app` 이 사이트를 판정한 뒤 넣어 준다 (D-015).  비어 있으면 대조를
+        #: 건너뛴다 -- 단위 시험이 relay 를 홀로 만들 때가 그렇다.
+        self.site_code = ''
+        #: 이미 경고한 `TELID` 값.  **서로 다른 값마다 한 번씩** 경고한다 --
+        #: "바뀔 때마다" 가 아니다.  값이 `KMTS` -> `KMTC`(일치) -> `KMTS` 로
+        #: 오가도 두 번째 `KMTS` 는 조용하다.  이미 말한 사실을 다시 말할 이유가
+        #: 없고, TC 를 재기동하는 동안 값이 오가는 것은 흔하다.
+        #:
+        #: AUXSTATUS 는 노출마다 오므로 매번 경고하면 하룻밤에 1000줄이 되고,
+        #: 그러면 사람이 경고를 무시하는 것을 학습한다.  그건 검사가 없는 것보다
+        #: 나쁘다.
+        self._telid_warned: set[str] = set()
 
     # -- TC 질의 ----------------------------------------------------------
 
@@ -193,6 +224,44 @@ class TelemetryRelay:
             self.tcs_fields = []
             self.last_tcs_ok = False
 
+    def check_telid(self, fields: list[tuple[str, str]]) -> None:
+        """TC 가 보낸 `TELID` 를 실효 사이트와 대조한다 (D-015).
+
+        **경고만 한다.**  `TELID` 는 `pctcs.ini` 의 `FITS_TELID` 설정이고
+        (`commands.c:1999` -> `aux.FitsTelID`, `loadconfig.c:512-514`) 기본값이
+        사이트가 아닌 `KMTN` 이다(`pctcs.h:115`).  즉 정본이 못 되지만, 우리
+        설정과 **독립된 두 번째 설정**이라 어긋남이 실제 정보를 준다.
+
+        **없는 것은 불일치가 아니다.**  TC 가 안 뜨거나 `TELID` 를 안 보내면
+        조용히 넘어간다 -- 정보가 없는 것과 틀린 것은 다르다.
+
+        pctcs 기본값 `KMTN` 은 "설정이 안 됐다" 는 뜻이라 문구를 따로 준다.
+        그걸 사이트 불일치로 말하면 엉뚱한 곳을 보게 된다.
+        """
+        if not self.site_code:
+            return
+        raw = next((v for k, v in fields if k.upper() == 'TELID'), '')
+        telid = raw.strip().upper()
+        if not telid or telid in self._telid_warned:
+            return
+        if telid == self.site_code:
+            return
+        self._telid_warned.add(telid)
+        if telid == 'KMTN':
+            log.warning(
+                'TC 가 TELID=KMTN 을 보냈다 -- pctcs 의 FITS_TELID 가 설정되지 '
+                '않은 기본값이다(pctcs.h:115). 우리 판정은 %s 이고 파일명은 '
+                '%s.… 로 나간다. pctcs.ini 의 FITS_TELID 를 채울 것 (D-015)',
+                self.site_code, self.site_code)
+            return
+        log.warning(
+            'TC 의 TELID 가 우리 사이트 판정과 다르다.\n'
+            '  TC (pctcs.ini FITS_TELID) : %s\n'
+            '  우리 판정 (호스트 IP)      : %s\n'
+            '파일명은 %s.… 로 저장된다. 둘 중 하나가 잘못 배포된 것이니 자료를 '
+            '찍기 전에 확인할 것 (D-015)',
+            telid, self.site_code, self.site_code)
+
     def on_tc_reply(self, msg: Message) -> bool:
         """TC>ICS DONE: AUXSTATUS ... 수신 처리.  우리가 기다리던 것이면 True."""
         key = msg.cmdword.upper()
@@ -202,6 +271,8 @@ class TelemetryRelay:
         if key == 'AUXSTATUS':
             self.aux_fields = fields
             self.last_aux_ok = bool(fields)
+            # 사이트 정체 대조 (D-015).  서로 다른 값마다 한 번씩 경고한다.
+            self.check_telid(fields)
         else:
             self.tcs_fields = fields
             self.last_tcs_ok = bool(fields)
@@ -285,6 +356,10 @@ class TelemetryRelay:
             out.setdefault(k, -999.0)
         for k in _SENTINEL_STR:
             out.setdefault(k, 'NC')
+        # 실선 이름 -> converter 가 읽는 이름.  **원래 이름을 지우지 않는다.**
+        for wire, fits in _FITS_RENAME.items():
+            if wire in out:
+                out.setdefault(fits, out[wire])
         out.setdefault('TELID', self.cfg.node.telid)
         out['TIMESYS'] = 'UTC'          # 규격 5.0: 시각은 모두 UTC, 명시한다
         if date_obs:

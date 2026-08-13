@@ -46,12 +46,12 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from . import rawpair
+from . import rawhdr, rawpair
 from .config import SimConfig
 from .emitter import Emitter
 from .hardware import BackendError
 from .nodes import NodeRouter, Role
-from .state import (ExpStatus, IcsState, stamp_guide, stamp_iso,
+from .state import (ExpStatus, IcsState, stamp_guide, stamp_iso, stamp_iso_ms,
                     utcnow)
 from .telemetry import TelemetryRelay
 
@@ -230,6 +230,21 @@ class Sequencer:
         await tcs_query
 
         # --- 3) INTEGRATING ----------------------------------------------
+        # 헤더의 AUX 스냅샷을 **노출과 같은 시각**으로 맞춘다 (운영자 확정
+        # 2026-08-13).  프레임 개시의 AUXSTATUS 는 여기보다 8초 이상 앞서
+        # 질의됐으므로(`initialize_ack` + `erase_sec`) 셔터 상태가 노출과
+        # 무관하다 -- 레거시 실측이 `IMAGETYP='OBJECT'`·`EXPTIME=30` 프레임에
+        # `SHUTTER='CLOSED'` 를 남긴 것이 그 증거다.
+        #
+        # **셔터를 여는 노출과 그렇지 않은 노출의 시점이 다르다:**
+        #   * DARK/BIAS -- 여기서 **즉시**.  셔터를 열지 않으니 기다릴 것이 없고
+        #     `SHUTTER='CLOSED'` 가 곧 정답이다.
+        #   * 셔터 노출 -- `SHOPEN` 후 `aux_requery_after_shopen` 만큼 뒤에
+        #     (`_integrate_shutter`).  블레이드가 움직일 시간을 준다.
+        if not (st.opens_shutter and st.effective_exptime > 0):
+            await self.telem.query('AUXSTATUS')
+            await self._relay_aux(ExpStatus.INTEGRATING)
+
         # 노출 개시 시각을 여기서 확정한다.  TCSSTATUS 의 DATE-OBS 가 이 값이다.
         st.exp_start = utcnow()
         st.expstatus = ExpStatus.INTEGRATING
@@ -239,7 +254,7 @@ class Sequencer:
         if st.opens_shutter and exptime > 0:
             await self._integrate_shutter(source, master, exptime)
         else:
-            await self._relay_tcs(stamp_iso(st.exp_start), ExpStatus.INTEGRATING)
+            await self._relay_tcs(stamp_iso_ms(st.exp_start), ExpStatus.INTEGRATING)
             await self._integrate_dark(source, exptime)
 
         # --- 4) READOUT --------------------------------------------------
@@ -295,8 +310,18 @@ class Sequencer:
         if st.exp_start is None:
             log.error('exp_start 가 없다 -- DATE-OBS 를 채울 근거가 없으므로 '
                       '카드를 비운다 (규격 5.7절, C-6)')
-        date_obs = stamp_iso(st.exp_start) if st.exp_start is not None else ''
+        # **밀리초까지 넣는다** (운영자 확정 2026-08-13, 규격 5.7절).  종전 `UT`
+        # 카드를 없애는 대신 `DATE-OBS` 하나가 날짜·시각을 다 담는다.
+        date_obs = stamp_iso_ms(st.exp_start) if st.exp_start is not None else ''
+        # 노출 중 AUXSTATUS 재질의가 아직 돌고 있으면 기다린다 -- 스냅샷을
+        # 먼저 뜨면 갱신이 헤더에 반영되지 않는다.  readout 뒤이므로 실제로는
+        # 이미 끝나 있고, 이 await 는 결정성을 위한 것이다.
+        requery = getattr(self, '_aux_requery', None)
+        if requery is not None:
+            await asyncio.gather(requery, return_exceptions=True)
+            self._aux_requery = None
         telem = self.telem.fits_header_dict(date_obs)
+        self._check_shutter_agrees_with_imagetyp(telem)
         suffix = st.channel(ccds[0]).suffix if ccds else ''
         for ctrltag, chips in rawpair.CONTROLLERS:
             mine = tuple(c for c in chips if c in ccds)
@@ -340,15 +365,103 @@ class Sequencer:
 
         self.emit.ic_shutter_open(source, master)
         await self._aux_event('open')
-        await self._relay_tcs(stamp_iso(st.exp_start), ExpStatus.INTEGRATING)
+        await self._relay_tcs(stamp_iso_ms(st.exp_start), ExpStatus.INTEGRATING)
+
+        # 헤더의 셔터 상태를 **노출 중 값**으로 갱신한다 (운영자 확정 2026-08-13).
+        # 프레임 개시의 AUXSTATUS 는 여기보다 8초 이상 앞서 질의되므로
+        # (`initialize_ack` + `erase_sec`) 그 값은 노출과 무관하다 -- 레거시
+        # 실측이 `IMAGETYP='OBJECT'`·`EXPTIME=30` 프레임에 `SHUTTER='CLOSED'` 를
+        # 남긴 것이 그 증거다.
+        self._aux_requery = self._spawn_aux_requery(exptime)
 
         tick = cfg.timing.countdown_tick_shop
         async for remaining in self._countdown(exptime, tick):
             self.emit.ic_countdown(source, master, remaining)
 
         await self.backend.close_shutter()
+        # `TSHSHUT` 근거 (규격 5.7절).  `exp_start` 와 대칭으로 **지시
+        # 시점**을 찍는다 -- 블레이드가 닫힌 시각은 여기서도 알 수 없다.
+        st.exp_end = utcnow()
         self.emit.ic_shutter_closed(source, master)
         await self._aux_event('close')
+
+    def _spawn_aux_requery(self, exptime: float):  # noqa: ANN201
+        """`SHOPEN` 후 설정 시간에 `AUXSTATUS` 를 다시 질의하는 태스크.
+
+        **백그라운드로 돌린다.**  적분 중에 기다리면 그만큼 노출이 길어진다 --
+        TC 질의는 최대 `tc_query_timeout`(0.5초)까지 걸릴 수 있다.  헤더를
+        만드는 `_store()` 는 readout(~30초) 뒤이므로 그때까지는 넉넉히 끝난다.
+
+        **노출이 갱신 시점보다 짧으면 띄우지 않는다** -- 셔터가 이미 닫힌 뒤의
+        값을 노출 중 값이라고 싣게 되기 때문이다.  그 경우 개시 값이 그대로
+        남고, 그것도 사실이다(짧은 노출은 블레이드가 다 열리지도 않는다 --
+        "이동 슬릿", `TCSAgent/tcsagent_report.md:240`).
+
+        DARK/BIAS 는 이 경로를 지나지 않는다 -- `EXPSTATUS=INTEGRATING` 직전에
+        **즉시** 갱신한다(`_run_frame`).  셔터를 열지 않으니 기다릴 것이 없다.
+        """
+        delay = self.cfg.timing.aux_requery_after_shopen
+        if delay <= 0 or exptime <= delay:
+            return None
+
+        async def _run() -> None:
+            await asyncio.sleep(self.cfg.scaled(delay))
+            await self.telem.query('AUXSTATUS')
+            await self._relay_aux(ExpStatus.INTEGRATING)
+
+        # `Sequencer` 는 app 을 참조하지 않으므로 태스크를 직접 만든다.
+        # 참조를 남기지 않으면 GC 가 가져갈 수 있다 -- 호출측이 보관한다.
+        return asyncio.create_task(_run(), name='ics_sim.aux_requery')
+
+    def _check_shutter_agrees_with_imagetyp(self, telem: dict) -> None:
+        """AUX 가 보고한 셔터 상태가 노출 종류와 어긋나는지 (**양방향**).
+
+        **양방향이 안전한 근거**: `SHUTTER` 는 리밋 스위치를 직접 읽은 값이 아니고
+        `SHUTOP` 의 순수 함수다 (`TCSAgent/.../commands.c:4470-4620` 의 대입 쌍
+        전량):
+
+            OPENING · OPENED · CLOSING  ->  OPEN
+            RELOADING · STANDBY         ->  CLOSED
+            ERROR                       ->  UNKNOWN
+            NC (초기값)                 ->  UNKNOWN   (comsoft.c:907-908)
+
+        그래서 갱신 시점(`SHOPEN`+3초)이 블레이드 주행(5초) 중간이어도
+        `SHUTOP='OPENING'` -> `SHUTTER='OPEN'` 이 된다.  한때 "주행 중이라 `CLOSED`
+        가 나올 수 있으니 이 방향은 검사하면 오탐" 이라고 판단했는데 **틀렸다**
+        (운영자 지적, 2026-08-13).  파생표를 확인하고 양방향으로 되돌렸다.
+
+        ⚠️ **`OPEN` 은 "완전 개방" 이 아니라 "열림 국면"** 이다 -- 개방중·개방·
+        폐쇄중이 모두 `OPEN` 이다.  노출 중 어느 시점에 질의해도 셔터가 제 일을
+        하고 있으면 `OPEN` 이 나온다는 뜻이고, 그래서 이 검사가 성립한다.
+
+        `UNKNOWN` 은 AUX 가 판단 실패한 것이다 -- `OPENING`/`CLOSING`/`RELOADING`
+        이 `FS_ShutOpTime + SOP_TIMEOUT` 을 넘기면 `ERROR`->`UNKNOWN` 이 되므로
+        (`commands.c:4574,4590,4606`) **셔터가 걸린 신호**이고 경고 대상이다.
+        `NC` 는 FS 서브시스템이 연결되지 않은 것이라 정보 없음 -- 조용히 넘긴다.
+        """
+        st = self.state
+        got = str(telem.get('SHUTTER', '')).strip().upper()
+        if not got or got == 'NC':
+            return                              # 정보 없음 != 불일치
+        if got == 'UNKNOWN':
+            log.warning(
+                'AUX 가 SHUTTER=UNKNOWN 을 보고했다 -- 셔터 동작이 '
+                'FS_ShutOpTime+SOP_TIMEOUT 을 넘겨 ERROR 로 떨어졌다는 뜻이다'
+                '(commands.c:4574). 이 프레임의 노출이 온전한지 확인할 것')
+            return
+        want = 'OPEN' if st.opens_shutter else 'CLOSED'
+        if got == want:
+            return
+        if st.opens_shutter:
+            log.warning(
+                'IMAGETYP=%s 는 셔터를 여는 노출인데 AUX 가 SHUTTER=%s 를 '
+                '보고했다 -- 셔터가 열리지 않았을 수 있다. 이 프레임에 빛이 '
+                '들어왔는지 확인할 것 (규격 5.10절)', st.imgtype, got)
+        else:
+            log.warning(
+                'IMAGETYP=%s 는 셔터를 열지 않는데 AUX 가 SHUTTER=%s 를 '
+                '보고했다 -- 광 누출이거나 셔터 고장이다. 이 프레임의 '
+                'dark/bias 값은 믿을 수 없다 (규격 5.10절)', st.imgtype, got)
 
     async def _aux_event(self, which: str) -> None:
         """셔터 개폐를 AUX control 서버에 알린다.
@@ -465,6 +578,46 @@ class Sequencer:
 
     # -- 저장 -------------------------------------------------------------
 
+    def _darktime(self) -> float:
+        """FITS `DARKTIME` [s] -- 전하가 쌓인 총 시간 (규격 5.7절).
+
+        셔터 프레임은 개방 지시~닫힘 지시 실측을 쓰고, 셔터를 열지 않는
+        DARK/BIAS 는 요청 노출시간을 쓴다.
+
+        ⚠️ **엄밀한 정의는 ERASE 완료부터 readout 끝까지**이고 그러려면 ERASE
+        완료 시각이 필요하다.  지금은 노출 구간만 재므로 readout 중에 쌓인
+        전하가 빠진다 -- `EXPTIME` 과 같아지는 경우가 생긴다.  레거시는 이 칸을
+        아예 채우지 않았고(실측본이 `EXPTIME=30` 인데 `DARKTIME=0`), converter
+        는 없으면 `0.0` 으로 떨어뜨려 **BIAS 와 구분되지 않게** 만든다(규격 6.2절).
+        그래서 근사값이라도 싣는 편이 낫다고 판단했다.  정밀화는 ERASE 시각을
+        상태에 남긴 뒤에 한다 (DevNote 13 backlog).
+        """
+        st = self.state
+        if st.exp_start is not None and st.exp_end is not None:
+            return round((st.exp_end - st.exp_start).total_seconds(), 3)
+        return float(st.effective_exptime)
+
+    def _backend_fact(self, method: str, *args, default):
+        """백엔드에서 헤더용 사실을 받아 온다.  **없거나 실패하면 기본값.**
+
+        헤더 생성은 저장 경로이지 노출 경로가 아니다.  센서 한 채널을 못 읽은
+        것 때문에 프레임을 버리면 손해가 훨씬 크므로, 실패는 sentinel 로 남기고
+        (규격 5.0절) 저장은 계속한다 -- "값이 없었다" 는 사실이 헤더에 남으므로
+        조용한 오염이 되지 않는다.
+
+        메서드가 아예 없는 백엔드도 허용한다 -- 시험용 더미 백엔드가 규격 5장
+        전체를 구현할 이유는 없다.
+        """
+        fn = getattr(self.backend, method, None)
+        if fn is None:
+            return default
+        try:
+            return fn(*args)
+        except Exception:                       # noqa: BLE001
+            log.exception('백엔드 %s() 실패 -- 헤더는 sentinel 로 채우고 저장은 '
+                          '계속한다 (규격 5.0절)', method)
+            return default
+
     async def _store(self, ctrltag: str, chips: tuple[str, str],
                      reporting: tuple[str, ...], source: str,
                      telem: dict, suffix: str) -> None:
@@ -507,9 +660,50 @@ class Sequencer:
             nominal = rawpair.physical_path(cfg.paths.data_dir, site, suffix,
                                             ctrltag)
 
+            # 헤더는 **출처가 다른 세 덩어리**를 겹쳐 만든다 (규격 5장의
+            # `출처` 칸).  겹치는 순서가 곧 우선순위다.
+            #
+            #   1. telem      -- `ICS`.  TC 가 중계한 AUX/TCS 값 + DATE-OBS
+            #   2. rawhdr     -- `SITE`/`ARCHON`/`ACQ`.  geometry · detector ·
+            #                    컨트롤러 · 전압 · 노출 · 측지값 · 온도
+            #   3. identity   -- `ACQ`.  파일 정체성과 pair provenance
+            #
+            # **겹침을 주석으로 주장하지 않고 실제로 검사한다.**  한때 여기에
+            # "두 쪽이 겹치지 않는다" 고 적어 뒀는데 `SHUTTER` 가 겹치고 있었고,
+            # 그 주석 때문에 아무도 확인하지 않았다 (2026-08-13 정정).
+            #
+            # 정적 시험으로는 부족하다 -- `telem` 의 key 는 **와이어에서 온다.**
+            # TC 가 우리 카드와 같은 이름을 보내기 시작하면 그 순간 조용히
+            # 덮이므로, 런타임에 봐야 한다.
+            header = dict(telem)
+            header.update(rawhdr.spec_header(
+                ctrltag=ctrltag, site_code=site,
+                backend_name=getattr(self.backend, 'name', ''),
+                ics_build=st.ics_build,
+                ctrl_info=self._backend_fact('controller_info', ctrltag,
+                                             default={'units': ()}),
+                sensors=self._backend_fact('sensors', ctrltag, chips,
+                                           default={}),
+                volts=self._backend_fact('voltages', ctrltag, default=None),
+                ampmap=self._backend_fact('amp_map', ctrltag, default=None),
+                cfg_site=cfg.site_for(site),
+                date_obs=str(telem.get('DATE-OBS', '')),
+                exp_start=st.exp_start, exp_end=st.exp_end,
+                exptime=st.effective_exptime,
+                darktime=self._darktime(),
+                ledflash_ms=st.ledflash_ms, exp_measured=None,
+                imgtype=st.imgtype, objname=st.objname,
+                projid=st.projid, observer=st.observer))
+
+            clobbered = sorted(set(telem) & set(header) - {'DATE-OBS'}
+                               & {k for k in header if k not in telem})
+            if clobbered:                       # pragma: no cover -- 회귀 감지용
+                log.error('rawhdr 가 TC 중계 카드를 덮었다: %s -- 규격 5장 표의 '
+                          '`출처` 칸이 갈라진 것이니 그쪽을 먼저 고칠 것',
+                          ', '.join(clobbered))
+
             # `UNIQNAME` 은 정본(항상 정규 형태), `FILENAME` 은 실제로 쓴 이름.
             # 겹쳐도 `UNIQNAME` 이 안 바뀌므로 식별이 사라지지 않는다.
-            header = dict(telem)
             header.update(rawpair.identity_header(
                 site_code=site, suffix=suffix, ctrltag=ctrltag,
                 filename=stem, created=stamp_iso(), clashed=clashed))

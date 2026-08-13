@@ -26,6 +26,8 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from . import build_id
+
 log = logging.getLogger('ics_sim.state')
 
 
@@ -56,17 +58,15 @@ def utcnow() -> datetime:
 
 
 def stamp_compact(when: datetime | None = None) -> str:
-    """20240303.  파일명 날짜부 -- **UTC 날짜**다.
+    """20240303 -- **순수 UT 날짜**.
 
-    ⚠️ **기준이 확정되지 않았다 (raw_fits_spec OI-10).** 규격 2.3절은 이 값을
-    "관측 야간 기준 날짜" 로 적어 두었었는데, 레거시도 이 구현도 **UTC 날짜**를
-    쓴다 (CTIO `isis.20240102.log` 안에 `KMTNm.20240103.…fits` 가 있다).
-    차이가 실재하는 곳은 **SAAO** 다 -- UTC+2 라 현지 야간(20:00~05:00)이 UTC
-    18:00~03:00 이 되어 **한 야간이 UTC 자정을 넘어 날짜가 둘로 갈린다.**
-    CTIO·SSO 는 야간 안에서 UTC 날짜가 상수라 문제가 드러나지 않는다.
+    ⚠️ **파일명 `<YYYYMMDD>` 에는 이걸 쓰지 않는다.** 파일명은 사이트별
+    **관측일**이고 그건 `rawpair.observing_date()` / `IcsState.obs_date()` 다
+    (운영자 확정 2026-08-13, LEECU 협의 후).
 
-    규격 2.3절을 현행(UTC)으로 정정해 두었고, 야간 기준으로 갈지는 **이충욱과
-    협의해 확정한다.** 바꾸게 되면 이 함수와 규격 2.3·9장(OI-10)을 함께 고친다.
+    남겨 둔 이유는 UT 날짜 자체가 필요한 자리가 따로 있기 때문이다 -- 로그
+    파일명, 진단 출력 같은 것.  파일명 날짜부로 쓰면 CTIO·SAAO 에서 야간 도중에
+    날짜가 갈린다.
     """
     return (when or utcnow()).strftime('%Y%m%d')
 
@@ -150,7 +150,25 @@ class IcsState:
     expnum_file: str = ''
     ledflash_ms: int = 0
     expstatus: str = ExpStatus.IDLE
-    ics_build: str = 'KX2016-03-23:1381'
+    #: 사이트 코드 (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  파일명 `<YYYYMMDD>` 가
+    #: **사이트별 관측일** 이므로 날짜를 만들 때마다 필요하다
+    #: (`rawpair.observing_date`, 운영자 확정 2026-08-13).
+    #:
+    #: 상태에 둔 이유: `next_suffix()` 와 `peek_suffix()` 가 **같은 규칙**을
+    #: 써야 하는데 호출측이 매번 넘기게 하면 한쪽을 빠뜨린다 -- 그러면 EXPNUM
+    #: 응답과 실제 파일명의 날짜가 갈리고, 그건 야간 경계에서만 드러난다.
+    site_code: str = 'KMTT'
+    #: FITS `ICSBUILD` -- **이 프로그램의** 빌드 식별자 (규격 5.1절).
+    #:
+    #: 한때 기본값이 레거시 ICS 의 `'KX2016-03-23:1381'` 이었다.  없는 것이
+    #: 아니라 **적극적으로 거짓**이었고, `ICSBUILD` 를 둔 목적(헤더 이상을 소스
+    #: 상태로 되짚기)을 정면으로 무력화했다 -- 8장 체크리스트가 "비어 있지
+    #: 않음" 만 보므로 통과하기까지 했다 (2026-08-13 정정).
+    #:
+    #: `AUXSTATUS` 중계 꼬리의 `ICSBUILD=` 도 같은 값이다 -- 레거시 ICS 가 거기에
+    #: **자기** 빌드를 실었으므로, 다른 프로그램인 우리가 레거시 문자열을 흉내낼
+    #: 이유가 없다.  형태만 유지한다.
+    ics_build: str = field(default_factory=build_id)
     guide_build: str = ''
 
     #: 현재 노출의 날짜부.  자정을 넘겨도 한 노출 안에서는 고정된다.
@@ -159,6 +177,12 @@ class IcsState:
     guide_suffix: str = ''
     #: 셔터 개방(또는 논리적 노출 개시) 시각.  TCSSTATUS 의 DATE-OBS 가 된다.
     exp_start: datetime | None = None
+
+    #: 셔터 닫힘 **지시** 시각.  FITS `TSHSHUT` 이 된다 (규격 5.7절).
+    #: `exp_start` 와 대칭으로 지시 시점을 찍는다 -- 블레이드가 실제로 닫힌
+    #: 시각은 알 수 없다(AUX 는 리밋을 읽기만 한다, DevNote 9.2.2).
+    #: DARK/BIAS 는 셔터 경로를 지나지 않으므로 `None` 으로 남는다.
+    exp_end: datetime | None = None
 
     channels: dict[str, ChannelState] = field(default_factory=dict)
 
@@ -180,13 +204,28 @@ class IcsState:
 
     # -- 파일명 -----------------------------------------------------------
 
+    def obs_date(self, when: datetime | None = None) -> str:
+        """파일명 `<YYYYMMDD>` -- 이 사이트의 **관측일**.
+
+        운영자 확정 (2026-08-13, LEECU 협의 후).  종전에는 UT 날짜를 그대로
+        썼는데, 그 경계(UT 자정)가 CTIO(현지 20시)·SAAO(현지 22시)에서는 **관측
+        시간대 안**이라 프레임이 경계를 걸치면 파일명과 `DATE-OBS` 의 날짜가
+        갈렸다.  관측일 기준의 경계는 현지 12:30 이라 관측 중에는 지나가지 않는다.
+
+        규칙 자체는 `rawpair.observing_date()` 에 있다 -- 사이트 규약이라 이름
+        모듈이 갖는 것이 맞고, 여기서는 상태의 `site_code` 를 얹어 준다.
+        """
+        from . import rawpair
+        return rawpair.observing_date(when or utcnow(), self.site_code)
+
+
     def next_suffix(self, when: datetime | None = None) -> str:
         """이번 노출의 과학 채널 suffix -- '<yyyymmdd>.<nnnnnn>'.
 
         정확히 15자여야 한다.  OBSAgent 가 EXPNUM 응답의 Filename= 뒤 15자를
         그대로 잘라 쓰고(DevNote 3.4), Wrote 의 KMTN+6 부터 15자도 이 값이다.
         """
-        self.date_part = stamp_compact(when)
+        self.date_part = self.obs_date(when)
         self.suffix_taken = True
         # 번호를 **쓰는 시점에** 기록한다.  advance() 까지 미루면 노출 중
         # 죽었을 때 그 번호가 기록되지 않아 재실행이 같은 번호를 다시 쓴다
@@ -213,7 +252,7 @@ class IcsState:
         finally 에서 반드시 내려간다.
         """
         nxt = self.expnum + 1 if (self.exposing and self.suffix_taken) else self.expnum
-        return f'{stamp_compact(when)}.{nxt:06d}'
+        return f'{self.obs_date(when)}.{nxt:06d}'
 
     def ics_filename(self, when: datetime | None = None) -> str:
         """FILENAME 명령의 ICS 레벨 응답 -- 'ICS.<iso>.<nnnnnn>'."""

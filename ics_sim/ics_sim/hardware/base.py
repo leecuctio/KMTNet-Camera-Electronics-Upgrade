@@ -78,6 +78,54 @@ class DetectorBackend(Protocol):
     def status(self, ccd: str) -> dict:
         """STATUS 명령 응답에 쓸 값들 (Driving, fibers, build 등)."""
 
+    # -- FITS 헤더용 컨트롤러 사실 (규격 5.5·5.6·5.10절) ------------------
+    #
+    # **왜 텔레메트리 중계가 아니라 백엔드인가.**  레거시 raw 헤더에서 듀어
+    # 온도(`CCDTEMP` `PT30N1` `CHARCOAL` `GLYC_IN` …)는 `ENS7` **뒤에** 있고
+    # AUX 텔레메트리 필드 집합에는 없다 -- 각 IC 가 자기 듀어 RTD 를 직접
+    # 읽었다는 뜻이다.  신규는 Archon 이 그 센서를 읽으므로 값의 출처가
+    # TC 중계(`telemetry.py`)가 아니라 이쪽이다 (D-013).
+
+    def controller_info(self, controller: str) -> dict:
+        """컨트롤러 정체 + 런타임 상태 (규격 5.5·5.5.0절).
+
+        Returns:
+            `units`: 색인 순서(`1`=MK, `2`=NT)의 `{'id','sn','fw'}` 목록.
+                **양쪽 파일에 같은 값이 실린다** -- converter 가 MK 헤더만
+                읽으면서 두 대분 정체를 요구하기 때문이다(`v2_1.py:411-416`).
+            나머지 키(`status` `errorflag` `boardtemp` `readtime` `acffile`
+                `nphlines` `frameno` `bufno`): **이 컨트롤러의** 런타임 상태.
+                노출마다 두 대가 실제로 다르므로 색인형으로 복제하지 않는다.
+        """
+
+    def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
+        """chip 온도 + 듀어 센서 (규격 5.10절).
+
+        키는 소문자: `ccdtemp1` `ccdtemp2` `dewpres` `pt30n1` `pt30n2`
+        `charcoal` `air_in` `air_out` `glyc_in` `glyc_out`.
+        읽지 못한 항목은 **넣지 않는다** -- 호출측이 sentinel 로 채운다.
+
+        **`ccdtemp` 는 주지 않는다.**  FITS `CCDTEMP` 는 두 chip 온도의
+        **평균으로 파생**한다(운영자 확정 2026-08-13) -- 백엔드가 따로 주면
+        파생값과 어긋날 수 있는 두 번째 사실이 생긴다.  듀어의 다른 센서는
+        `pt30n1` 등 자기 이름으로 준다.
+        """
+
+    def voltages(self, controller: str) -> list[dict]:
+        """bias/clock 전압 telemetry (규격 5.6절).
+
+        각 항목은 `{'name','setpoint','measured','unit','status'}`.
+        `measured` 를 넣지 않으면 `VMEA<n>=-999.0` · `VOLTSTAT=PARTIAL` 이 된다.
+        """
+
+    def amp_map(self, controller: str) -> dict | None:
+        """raw-local amp 번호 -> `(module, channel)` 실제 배선 (규격 5.5.1절).
+
+        `None` 이면 `AMPMAP='DEFAULT'` 로 **converter 의 추정식을 쓰겠다고
+        선언한다.**  배선이 추정과 다르면 crosstalk 보정이 엉뚱한 amp 묶음에
+        적용되므로, 아는 순간 실제 값을 돌려줘야 한다.
+        """
+
 
 class BackendError(Exception):
     """하드웨어 계층에서 올라오는 오류.

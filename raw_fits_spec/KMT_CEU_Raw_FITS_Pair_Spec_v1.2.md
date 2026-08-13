@@ -82,7 +82,24 @@ Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1/v1.2의 변경은 geom
   | `KMTA` | SSO | `SSO` | `kmta` |
   | `KMTT` | 테스트베드 (실험실·데모·Full Rehearsal) | `TESTBED` | `kmtt` |
 
-- `<YYYYMMDD>`: 8자리. **UTC 날짜** — 그 노출의 `DATE-OBS` 가 속한 UTC 일자다. **잠정 확정이며 재정의 대상이다 (OI-10)** — 종전 서술 "관측 야간 기준 날짜" 는 레거시 실측과 현행 구현 어느 쪽과도 맞지 않아 정정했다.
+- `<YYYYMMDD>`: 8자리. **그 사이트의 관측일** — UT 시각에 사이트별 보정을 더한 뒤 날짜만 취한다. **확정 (2026-08-13, 이충욱 협의, OI-10 종결)**.
+
+| 사이트 | 규칙 | 경계 UT | 보정 |
+| --- | --- | ---: | ---: |
+| CTIO (`KMTC`) | UT 00:00~16:30 → 그날 UT 날짜 / 16:30~24:00 → **다음날** | 16:30 | `+7:30` |
+| SAAO (`KMTS`) | UT 00:00~10:30 → **전날** UT 날짜 / 10:30~24:00 → 그날 | 10:30 | `−10:30` |
+| SSO (`KMTA`) | UT 00:00~01:30 → **전날** UT 날짜 / 01:30~24:00 → 그날 | 01:30 | `−1:30` |
+| TESTBED (`KMTT`) | UT 날짜 그대로 (관측 야간 개념이 없다) | — | `0` |
+
+  근거는 **각 사이트 동지 때 관측 종료와 관측 시작 사이의 중간 시각**이다. 검산용 불변식: **세 경계가 모두 현지 12:30** 이다 — CTIO(UT−4) 16:30−4, SAAO(UT+2) 10:30+2, SSO(UT+11) 01:30+11. 숫자를 고칠 일이 생기면 이 불변식으로 확인할 것.
+
+  **구현은 보정을 더한 뒤 날짜만 취하는 한 줄이어야 한다** (`ics_sim` 의 `rawpair.observing_date()`). 경계 시각을 `if` 로 나열하면 `<`/`<=` 를 잘못 잡는 off-by-one 이 생기고, 그건 **1년에 몇 번만 드러나는** 부류다. 보정 방식은 경계에서 정확히 `00:00` 이 되므로 그 실수가 성립하지 않는다.
+
+  > **이 규약이 UT 날짜 기준의 결함을 구조적으로 없앤다.** UT 날짜를 쓰면 날짜 경계가 UT 자정이고, 그게 CTIO(현지 20시)·SAAO(현지 22시)에서는 **관측 시간대 안**이다. 프레임 하나가 경계를 걸치면 파일명과 `DATE-OBS` 의 날짜가 갈리는데 **오류는 나지 않는다**. 관측일 기준의 경계는 현지 12:30 이라 관측 중에는 지나가지 않는다. 남는 위험은 **현지 12:30 무렵의 주간 교정 프레임**뿐이다(bias/dome flat) — 프레임 개시와 셔터 개방 사이 약 7.6초가 경계를 걸칠 수 있고, 드물며 교정 프레임에 한정된다.
+  >
+  > **따라서 `<YYYYMMDD>` 는 `DATE-OBS` 의 날짜와 일반적으로 다르다.** 그것이 의도다 — 한 관측 야간이 하나의 날짜로 묶이는 것이 목적이고, `DATE-OBS` 는 그와 무관하게 그 노출의 실제 UT 순간을 담는다. 둘을 같다고 가정하는 도구를 만들면 안 된다.
+
+- `<SITE>`: `KMTC`/`KMTS`/`KMTA`/`KMTT` 넷 중 하나다. **그 밖의 값은 모두 `KMTT`(테스트베드)로 떨어뜨린다** (2026-08-13 확정) — converter 정규식이 이 넷만 받으므로 낯선 코드는 변환을 fallback 경로로 빠뜨린다. 다만 **떨어뜨리는 것이 곧 안전은 아니다**: 실제 관측 자료가 `KMTT` 이름으로 저장되면 사이트 정체를 잃으므로, 취득 SW 는 정규화가 실제로 일어났을 때 경고를 남겨야 한다.
 - `<NNNNNN>`: **6자리 고정폭, 0으로 좌측 패딩**한 노출 일련번호. pair 양쪽이 같은 값이어야 한다.
 - 접미 `.MK.fits` / `.NT.fits`는 **대소문자까지 정확히** 일치해야 한다. converter는 이 문자열로 짝을 찾는다.
 - 예: `KMTC.20260807.012345.MK.fits`, `KMTC.20260807.012345.NT.fits`
@@ -332,6 +349,7 @@ amp 번호 → strip 번호는 `strip = ((amp-1) mod 8) + 1`이다.
 | `ORIGIN` | 필수 | `'KASI'` | SITE | file originator |
 | `DATE` | 필수 | UTC ISO | ACQ | 파일 생성 시각 |
 | `CREATOR` | 필수 | `'ics_archon_v1.0'` | ACQ | 취득 소프트웨어와 버전 |
+| `ICSBUILD` | 필수 | `'ics_sim-v0.1.0:2026-08-13T07:00Z'` | ACQ | **취득 프로그램의 빌드 식별자** — 레거시 계승(5.13절). 형식은 `<프로그램>-v<버전>:<빌드일시(UTC)>` 이고 프로그램은 `ics_sim` 또는 `ics_archon` 이다. 헤더 이상을 소스 상태로 되짚는 유일한 근거이므로 **레거시 문자열이나 옛 일시를 실으면 카드의 목적이 사라진다** — 값이 있는데 거짓인 것이 없는 것보다 나쁘다.<br>파이썬 스크립트라 컴파일 시각이 없어 **빌드 일시를 코드에 손으로 적는다**(`ics_sim/__init__.py` 의 `__build_date__`). 파일 mtime 은 쓰지 않는다 — checkout·복사·배포가 바꿔 버려 "언제 만든 코드인가" 와 무관해진다.<br>⚠️ **빌드일시 끝의 `Z`(UTC 표시자)는 의도적이다** — 다른 시각 카드는 `Z` 없이 `TIMESYS`로 선언하지만, 이 값은 **시각 카드가 아니라 문맥 밖에서 읽히는 식별자**라 자체적으로 시간대를 지녀야 한다(2026-08-13 확정). 일관성만 보고 지우지 말 것 |
 | `FILENAME` | 필수 | `'KMTC.20260116.000001.MK'` | ACQ | 자기 파일 이름 — **확장자를 뺀 형태** (`<SITE>` prefix, 2.3절). 레거시 실측 헤더가 `FILENAME = 'KMTNk.20170209.044131'` 로 `.fits` 없이 기록했다 (`__reference/Legacy raw fits header samples/`) |
 | `CHECKSUM` | 권장 | FITS 표준 checksum | ACQ | 9장 OI-7 |
 | `DATASUM` | 권장 | FITS 표준 datasum | ACQ | |
@@ -361,6 +379,10 @@ amp 번호 → strip 번호는 `strip = ((amp-1) mod 8) + 1`이다.
 
 4장의 배치를 **하드코딩 없이 읽을 수 있도록** 헤더가 스스로 기술한다. converter는 이 값과 자기 상수를 대조해 불일치를 잡아야 한다.
 
+> ⚠️ **아직 대조하지 않는다.** converter는 `NAXIS1×NAXIS2`만 검사하고(6.1절) `OSCNPATT`·`STRIPDIR`·tile 상수는 **읽지 않은 채 자기 함수에 하드코딩된 규칙**을 쓴다(`is_bias_right()`·`strip_id()`·`raw_x_sections()`). 변경점 **C-5·C-13**이 그 구멍이고, 그때까지 **선언과 하드코딩이 갈라져도 아무것도 잡지 못한다** — amp 절반의 `DATASEC`에 overscan이, `BIASSEC`에 하늘이 들어가면서 **오류는 나지 않는다**.
+>
+> 취득 SW 쪽 방어는 `ics_sim/tests/test_geometry_vs_converter.py`가 converter를 import해 선언과 맞대는 것이다. 어느 쪽이 바뀌어도 그 시험이 걸린다.
+
 | Keyword | 상태 | 값 | 설명 |
 | --- | --- | ---: | --- |
 | `RAWNAX1` | 필수 | `19200` | raw 폭. `NAXIS1`과 같아야 한다 |
@@ -371,11 +393,11 @@ amp 번호 → strip 번호는 `strip = ((amp-1) mod 8) + 1`이다.
 | `AMPDATA` | 필수 | `1152` | tile당 active column |
 | `OVERSCNX` | 필수 | `48` | tile당 local X overscan column |
 | `PRESCANX` | 필수 | `0` | X prescan column |
-| `OSCNPATT` | 필수 | `'RRRRLLLL'` | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽) |
+| `OSCNPATT` | 필수 | `'RRRRLLLL'` | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽). **근거는 converter의 `is_bias_right()`** — `strip_id(amp)=((amp-1)%8)+1`, `is_bias_right(amp)= 1≤amp≤4 or 9≤amp≤12`, amp 1–8=TOP·9–16=BOT (`v2_1.py:253-266`) → strip 1–4=R, 5–8=L, 두 단 동일. **레거시 실측에는 대응물이 없다** — 레거시는 CCD당 amp 8개(strip당 1개, TOP/BOT 분할 없음)다 |
 | `NSTRIP` | 필수 | `8` | chip당 strip 수 |
 | `NEND` | 필수 | `2` | strip당 독출단 수 (TOP/BOT) |
 | `AMPPCD` | 필수 | `16` | **chip당 amplifier 수** (`NSTRIP × NEND`) |
-| `STRIPDIR` | 필수 | `'+X'` | strip 번호 증가 방향 |
+| `STRIPDIR` | 필수 | `'+X'` | strip 번호 증가 방향. **raw 좌표계 기준이고 네 chip 모두 같다** — converter가 `tile0 = base + (strip_id−1)×RAW_XTILE`로 놓는다(`base`만 다르다: M/N=0, K/T=9600).<br>⚠️ 레거시 amp 헤더의 `CCDSEC`는 M·T와 K·N이 반대인데 그건 **CCD 기준**이고 **K·N이 180° 회전 장착**이라서다(운영자 확인 2026-08-13). 두 좌표계를 섞어 읽으면 "한 값으로 네 chip을 기술할 수 없다"는 잘못된 결론이 나온다 |
 | `TOPROWS` | 필수 | `4616` | TOP half active row |
 | `BOTROWS` | 필수 | `4616` | BOT half active row |
 | `MIDOVSCY` | 필수 | `168` | 중앙 Y overscan row 총수 |
@@ -411,6 +433,7 @@ NAMPS = NCCD * AMPPCD                             64 = 4 * 16
 | `CAMNAME` | 필수 | `'KMT-CEU'` | SITE | 카메라 시스템 |
 | `CAMVER` | 필수 | `'CEU-v2.1'` | SITE | 카메라/전자부 버전 |
 | `DETTYPE` | 필수 | `'SCIENCE'` | SITE | |
+| `HEMODE` | 필수 | `'SCIENCE'` | ACQ | **`SCIENCE` \| `GUIDE`** — 레거시 계승(5.13절). Archon 3대 중 1대가 guide 전용이므로 이 구분이 살아 있다. 이 규격은 `SCIENCE`만 다루지만, 카드가 있어야 guide raw 가 섞여 들어왔을 때 한 장만 보고 걸러낼 수 있다 |
 | `INSTRUME` | 필수 | `'KMTS'` | SITE | instrument name |
 | `NCCD` | 필수 | `4` | SITE | 카메라 전체 science CCD 수 |
 | `NAMPS` | 필수 | `64` | SITE | 카메라 전체 amplifier 수 |
@@ -446,10 +469,7 @@ chip의 mosaic 원점은 `M`,`K`가 위쪽 행, `N`,`T`가 아래쪽 행이고 `
 | --- | --- | --- | --- | --- |
 | `CONTROLL` | 필수 | `'STA ARCHON'` | SITE | PRIMARY `CONTROLL` |
 | `NCTRL` | 필수 | `2` | SITE | PRIMARY `NCTRL`, `TELEMETRY` 헤더 |
-| `CTRLID` | 필수 | `1` (MK) / `2` (NT) | ACQ | `TELEMETRY.CTRLID`, amp `CTRLID` |
-| `CTRLNAME` | 필수 | `'ARCHON-SSO-1'` | SITE | PRIMARY `CTRL1ID` / `CTRL2ID` |
-| `CTRLSN` | 필수 | 컨트롤러 시리얼 | ARCHON | PRIMARY `CTRL1SN` / `CTRL2SN` |
-| `CTRLFW` | 필수 | firmware 버전 | ARCHON | PRIMARY `CTRL1FW` / `CTRL2FW`, `TELEMETRY.FWVERSION` |
+| `CTRLID` | 필수 | `1` (MK) / `2` (NT) | ACQ | `TELEMETRY.CTRLID`, amp `CTRLID`. **이 파일의 컨트롤러 색인**이고 문자열 식별자가 아니다 — 아래 경고 참고 |
 | `CTRLVER` | 필수 | `'ARCHON-v1.0'` | SITE | PRIMARY `CTRLVER` |
 | `CTRLSTAT` | 필수 | `'OK'` / `'WARN'` / `'ERROR'` | ARCHON | `TELEMETRY.STATUS` |
 | `CTRLERR` | 필수 | `0` (정상) | ARCHON | `TELEMETRY.ERRORFLAG` |
@@ -465,8 +485,31 @@ chip의 mosaic 원점은 `M`,`K`가 위쪽 행, `N`,`T`가 아래쪽 행이고 `
 | `WBTYPE` | 권장 | `'STA Differential Board'` | SITE | PRIMARY `WBTYPE` |
 | `ELECSYS` | 권장 | `'KMT-CEU'` | SITE | PRIMARY `ELECSYS` |
 | `SIGELEC` | 권장 | `'STA_DIFF_VIDEO'` | SITE | PRIMARY `SIGELEC` |
+| `DATASRC` | 필수 | `'ARCHON'` | ACQ | **`ARCHON` \| `SIM`** — 레거시 계승(5.13절). 픽셀이 실제 컨트롤러에서 왔는지 시뮬레이터가 만든 것인지. **시뮬 프레임이 실측으로 오인되는 것을 막는 유일한 카드다** |
+| `NPHLINES` | 권장 | `32` | ACQ | preheat line 수 — 레거시 계승(5.13절). ADC/비디오단을 안정시키려 독출 전에 버리는 dummy line. 값의 정본은 `ACFFILE`이 가리키는 timing script 다 |
 
-`CTRLNAME` / `CTRLSN` / `CTRLFW`는 카메라 완성 후에야 확정되는 값이다. 현행 `../project_management/science/CALIBRATION_TRACKER.md`에는 아직 이 항목이 없으므로 추적 항목으로 추가할 예정이다 (OI-9의 tracker 항목 추가와 함께 처리). **raw가 이 값을 실어 주지 않으면 MEF는 영원히 `UNKNOWN`이다.**
+#### 5.5.0 컨트롤러 정체성은 **파일마다 두 대분을 다 싣는다** (필수)
+
+**converter는 MK 헤더만 읽는다** (`convert()`가 두 chip 모두에 `mk_hdr`를 넘긴다). 그런데 MEF PRIMARY는 컨트롤러 **두 대**의 정체를 요구한다. 그래서 raw 파일 하나가 짝의 것까지 실어야 한다.
+
+| Keyword | 상태 | 예시 | 출처 | MEF 목적지 |
+| --- | --- | --- | --- | --- |
+| `CTRL1ID` | 필수 | `'ARCHON-SSO-1'` | SITE | PRIMARY `CTRL1ID` |
+| `CTRL1SN` | 필수 | controller 1 시리얼 | ARCHON | PRIMARY `CTRL1SN` |
+| `CTRL1FW` | 필수 | controller 1 firmware | ARCHON | PRIMARY `CTRL1FW` |
+| `CTRL2ID` | 필수 | `'ARCHON-SSO-2'` | SITE | PRIMARY `CTRL2ID` |
+| `CTRL2SN` | 필수 | controller 2 시리얼 | ARCHON | PRIMARY `CTRL2SN` |
+| `CTRL2FW` | 필수 | controller 2 firmware | ARCHON | PRIMARY `CTRL2FW` |
+
+**색인은 `RAWGROUP`의 순서다 — `1`=`MK`, `2`=`NT`.** 이 여섯은 **MK·NT 파일에서 값이 같다** (5.11절 "반드시 동일"). 노출 1회 안에서 컨트롤러의 정체가 달라질 수 없으므로 양쪽에 실어도 어긋날 수 없고, 그래서 5.12절의 "중복은 불일치의 원천" 원칙에 걸리지 않는다.
+
+> ⚠️ **`CTRLID`와 `CTRL1ID`는 다른 것이다.** `CTRLID`는 이 파일이 몇 번 컨트롤러인지(`1`/`2`)를 나타내는 **색인 정수**이고, `CTRL1ID`/`CTRL2ID`는 컨트롤러의 **식별자 문자열**이다. 이름이 비슷하지만 MEF가 그렇게 쓴다 — amp extension의 `CTRLID`는 색인이고 PRIMARY의 `CTRL<n>ID`는 이름이다. 헷갈리면 `CTRLID`를 보고 "내 것은 `CTRL<그 번호>*`" 로 짚으면 된다.
+
+**폐지: `CTRLNAME` / `CTRLSN` / `CTRLFW`** (단수형). 종전 규격은 이 셋을 파일별로 두고 converter가 색인 형태로 옮긴다고 적었으나, **converter는 그런 변환을 하지 않는다** — `v("CTRL1ID", "UNKNOWN")`으로 raw에서 색인 이름을 그대로 읽는다(`v2_1.py:411-416`). 단수형을 남겨 두면 같은 사실이 두 집에 살게 되므로 색인형만 남긴다. 이 구조는 레거시 설계를 따르는 것이기도 하다 — 레거시 raw는 `KBUILD`/`MBUILD`/`TBUILD`/`NBUILD`/`GBUILD`를 **모든 파일에** 실어서, 한 장만 열어도 카메라 전체의 전자부 상태를 알 수 있게 했다(5.13절).
+
+> **파일별 런타임 상태는 색인형으로 만들지 않는다.** `CTRLSTAT`·`CTRLERR`·`BCKTEMP`·`READTIME`·`FRAMENO`·`BUFNO`는 노출마다 두 컨트롤러가 실제로 다를 수 있는 값이다. 이걸 MK 헤더에 두 대분 실으면 NT 자신의 헤더와 어긋날 수 있는 값이 생긴다. 그래서 단수형으로 두고, MEF `TELEMETRY` 표의 2개 row 를 채우려면 **converter가 NT 헤더도 읽어야 한다** (변경점 C-17).
+
+`CTRL1ID` / `CTRL1SN` / `CTRL1FW` / `CTRL2*`는 카메라 완성 후에야 확정되는 값이다. 현행 `../project_management/science/CALIBRATION_TRACKER.md`에는 아직 이 항목이 없으므로 추적 항목으로 추가할 예정이다 (OI-9의 tracker 항목 추가와 함께 처리). **raw가 이 값을 실어 주지 않으면 MEF는 영원히 `UNKNOWN`이다.**
 
 #### 5.5.1 amp ↔ 전자계통 매핑 → MEF `MODULE` / `CHANNEL` / `XTALKGROUP`
 
@@ -536,16 +579,16 @@ VSTA1   = 'OK      '
 | Keyword | 상태 | 예시 | 출처 | 설명 |
 | --- | --- | --- | --- | --- |
 | `TIMESYS` | 필수 | `'UTC'` | ICS | time system |
-| `DATE-OBS` | 필수 | `'2026-01-16T14:23:25.467'` | ICS | **ICS가 `SHOPEN`(셔터 개방)을 지시한 UTC 시각.** BIAS/DARK는 ERASE 완료 시각. 최소 초 단위, **밀리초 권장**. 정의 근거는 아래 |
+| `DATE-OBS` | 필수 | `'2026-01-16T14:23:25.467'` | ICS | **ICS가 `SHOPEN`(셔터 개방)을 지시한 UTC 시각 — 날짜와 시각 모두.** BIAS/DARK는 ERASE 완료 시각. **초는 소수점 셋째자리(밀리초)까지 필수다** (2026-08-13 확정) — 종전 `UT` 카드를 없애는 대신 이 카드 하나가 날짜·시각을 다 담는다. 정의 근거는 아래 |
 | `MJD-OBS` | 권장 | `61056.599...` | ACQ | `DATE-OBS`와 같은 순간. 배정밀도로 기록 |
-| `UT` | 권장 | `'2026-01-16T14:23:25'` | ICS | UTC timestamp |
+| ~~`UT`~~ | **폐지** | — | — | **`DATE-OBS`와 완전한 중복이라 없앴다** (2026-08-13 확정, 5.13절). 레거시가 둘 다 실은 것은 `UT`에 `TSHOPEN`(백분초)을 붙여 정밀도를 보태려던 것이고, `DATE-OBS`가 밀리초를 갖는 지금은 이유가 없다. **converter는 영향받지 않는다** — MEF `UT`는 raw `UT`가 아니라 `DATE-OBS`의 날짜부 + raw `TSHOPEN`으로 조립된다(`v2_1.py:440,583`) |
 | `TSHOPEN` | 필수 | `'14:23:25.467'` | ICS | 셔터 열림 시각 |
 | `TSHSHUT` | 필수 | `'14:24:25.470'` | ICS | 셔터 닫힘 시각 |
 | `EXPTIME` | 필수 | `60.0` | ACQ | 요청 노출 시간 [s]. **sentinel 금지** |
 | `EXPMEAS` | 권장 | `60.003` | ARCHON | 컨트롤러 트리거 타임스탬프로 측정한 실제 노출 [s] |
+| `LEDFLASH` | 필수 | `0.0` | ACQ | 점검용 LED 프로젝터 점등 시간 [초]. `0`이면 점등 안 함. **레거시 계승(5.13절)** — 램프로 만든 실험실 flat 을 하늘 자료로 오인하지 않게 하는 카드다. 단위는 레거시와 같은 **초**를 유지한다(ICS 내부는 ms 이므로 나눠서 싣는다) |
 | `DARKTIME` | 필수 | `74.2` | ACQ | 누적 dark time [s] |
-| `SHUTTER` | 필수 | `'OPEN'` / `'CLOSED'` | ICS | 노출 중 셔터 사용 여부 |
-| `SHUTOP` | 권장 | `'STANDBY'` | ICS | 셔터 운용 상태 |
+| ~~`SHUTTER`~~ · ~~`SHUTOP`~~ | — | — | — | **이 절에서 뺐다 (2026-08-13 확정).** 두 이름은 **AUX 가 보고하는 값**이고 5.10절 소관이다. 한때 이 절이 `SHUTTER` 를 "노출 중 셔터 사용 여부"로 정의했는데, (1) 같은 이름에 다른 뜻이라 `OVERSCNY` 폐지 근거와 같은 부류이고, (2) 취득 SW 가 나중에 얹으면 **AUX 값을 조용히 덮으며**, (3) 셔터를 쓰는 노출인지는 `IMAGETYP`(`BIAS`/`DARK` 는 열지 않는다)에서 파생되므로 애초에 중복이었다 |
 
 `DATE-OBS`는 **pair 양쪽이 같아야 한다.** 셔터는 하나이고 노출도 하나다. 값이 다르면 두 컨트롤러의 트리거 동기가 깨진 것이므로 그 노출은 의심 대상이다.
 
@@ -627,21 +670,60 @@ BIAS, DARK, OBJECT, FLAT, DOMEFLAT, SKY, STANDARD
 | 영상 점검 | `CHKIMG`, `CHKIMG_C` |
 | 환경 센서(추가) | `ENS1`..`ENS7`, `CHOP`, `CHSET`, `CHPROC` |
 
+#### 셔터 관련 두 카드의 통제 어휘
+
+AUX 제어 SW 의 어휘를 그대로 쓴다 (`pctcs/KMTNet/commands.c:2099-2100`):
+
+| Keyword | 값 | 뜻 |
+| --- | --- | --- |
+| `SHUTTER` | `OPEN` · `CLOSED` · `UNKNOWN` | 셔터가 **열림 국면인가** — 아래 파생표 |
+| `SHUTOP` | `NC` · `STANDBY` · `OPENING` · `OPENED` · `CLOSING` · `RELOADING` · `ERROR` | 셔터 **운용 상태.** 리밋 스위치 두 개(Full/Half)에서 상태기계로 정한다 |
+
+**`SHUTTER` 는 독립적인 측정값이 아니라 `SHUTOP` 의 순수 함수다.** TCS Agent 소스의 대입 쌍 전량(`TCSAgent/TCSAgent.latest/KMTNet/commands.c:4470-4620`)을 뽑으면 다음과 같다:
+
+| `SHUTOP` | → `SHUTTER` |
+| --- | --- |
+| `OPENING` · `OPENED` · `CLOSING` | **`OPEN`** |
+| `RELOADING` · `STANDBY` | `CLOSED` |
+| `ERROR` | `UNKNOWN` |
+| `NC` (초기값, `comsoft.c:907-908`) | `UNKNOWN` |
+
+> ⚠️ **`OPEN` 은 "완전 개방" 이 아니라 "열림 국면" 이다.** 개방중·개방·폐쇄중이 모두 `OPEN` 이다. 그래서 노출 중 **어느 시점에 질의해도** 셔터가 제 일을 하고 있으면 `OPEN` 이 나온다 — 블레이드 주행(5초) 중간에 질의해도 `SHUTOP='OPENING'` → `SHUTTER='OPEN'` 이다. 이 성질이 2.3절의 AUX 재질의 시점(`SHOPEN`+3초)을 성립시킨다.
+>
+> 뒤집어 말하면 **`SHUTTER` 로는 "완전히 열렸다" 를 알 수 없다.** 그것이 필요하면 `SHUTOP='OPENED'` 를 봐야 한다.
+
+> **`UNKNOWN` 은 셔터가 걸린 신호다.** `OPENING`/`CLOSING`/`RELOADING` 이 `FS_ShutOpTime + SOP_TIMEOUT`(≈6.2초)을 넘기면 `ERROR` → `UNKNOWN` 이 된다(`commands.c:4574,4590,4606`). 값이 없는 `NC` 와 구별해야 한다 — 앞은 셔터 고장, 뒤는 통신·구성 문제다.
+
+> **"모른다" 가 두 가지다 — 구별해야 한다.**
+> `SHUTTER='UNKNOWN'` 은 **AUX 가 판단할 수 없다**는 뜻이고(리밋 스위치가 애매한 상태),
+> `SHUTTER='NC'` 는 **AUX 가 그 값을 보내지 않았다**는 뜻이다 — FS 서브시스템이 `NC` 면
+> pctcs 가 `FILTOP`/`FILNUM`/`FILTER`/`SHUTOP`/`SHUTTER` 블록을 **아예 내보내지 않고**
+> (`commands.c:2004-2006` 의 `if(aux.Statuses[AUX_IDX_FS]!=AUX_STATUS_NC)` 가드),
+> 그 자리를 5.0절 sentinel 이 채운다.
+> 전자는 셔터 상태의 문제이고 후자는 통신·구성의 문제라, 섞으면 엉뚱한 곳을 보게 된다.
+
+> **`SHUTTER` 는 노출의 성질이 아니다.** 값은 AUX 를 **질의한 시각**의 블레이드
+> 위치이고, 그 시각은 노출 개시와 다르다 — 레거시 실측이 `IMAGETYP='OBJECT'` ·
+> `EXPTIME=30` 프레임에 `SHUTTER='CLOSED'` 를 남긴 것이 그 증거다.
+> 이 노출이 셔터를 쓰는 종류인지는 `IMAGETYP` 에서 읽는다 (5.8절).
+
 **칩별 온도** — 레거시는 파일 1개가 CCD 1개였으므로 `CCDTEMP` 하나로 충분했다. 신규 raw는 파일 1개에 chip이 2개이므로 다음을 **추가로** 요구한다.
 
 | Keyword | 상태 | 설명 |
 | --- | --- | --- |
-| `CCDTMP1` | 필수 | `CHIP1` 온도 [degC] |
-| `CCDTMP2` | 필수 | `CHIP2` 온도 [degC] |
-| `CCDTEMP` | **필수** | 대표값 (두 칩 평균 또는 듀어 대표 센서). **L1 파이프라인이 `CCDTEMP`를 이름으로 지정해 L1 primary로 전달하므로**(`mef_pipeline/kmt_ceu_preproc/io_l1.py`의 `CARRY_KEYS`) 반드시 있어야 한다 |
+| `CCDTEMP1` | 필수 | `CHIP1` 온도 [degC] |
+| `CCDTEMP2` | 필수 | `CHIP2` 온도 [degC] |
+| `CCDTEMP` | **필수** | **`CCDTEMP1`과 `CCDTEMP2`의 평균** (2026-08-13 확정). 파생값으로 못박아 두면 세 카드가 서로 어긋날 수 없다 — 취득 SW는 백엔드가 별도 대표값을 주더라도 쓰지 않는다. 듀어의 다른 센서를 싣고 싶으면 `PT30N1` 등 자기 이름으로 간다.<br>**L1 파이프라인이 `CCDTEMP`를 이름으로 지정해 L1 primary로 전달하므로**(`mef_pipeline/kmt_ceu_preproc/io_l1.py`의 `CARRY_KEYS`) 반드시 있어야 한다 — 그래서 한쪽 센서만 읽혔을 때 sentinel로 떨어뜨리지 않고 **읽힌 값을 쓰고 경고를 남긴다**. 평균이 아니게 된 사실은 로그에 남고 L1은 굶지 않는다 |
+
+> **이름을 `CCDTMP<n>`에서 `CCDTEMP<n>`으로 바꿨다** (2026-08-13 확정). `CCDTEMP`와 한 묶음임이 이름에서 보이게 하려는 것이다. `CCDTEMP1`/`CCDTEMP2`는 8자 정확히로 FITS 한도 안이다.
 
 ### 5.11 Pair 일관성 규칙
 
 | 구분 | Keywords |
 | --- | --- |
-| **반드시 동일** | `DATE-OBS`, `MJD-OBS`, `EXPTIME`, `DARKTIME`, `TSHOPEN`, `TSHSHUT`, `IMAGETYP`, `OBSTYPE`, `OBJECT`, `FIELDID`, `PROJID`, `FILTER`, `OBSERVAT`, `SITEID`, `TELESCOP`, `RA`, `DEC`, `EQUINOX`, `HA`, `ST`, `SECZ`, `ALT`, `AZ`, 모든 TCS/AUX relay 필드, 5.3절 geometry 전체, `RAWVER`, `RAWGROUP`, `CHIPLIST`, `NUMFILES` |
-| **반드시 상이** | `UNIQNAME`, `FILENAME`, `PAIRFILE`, `CTRLTAG`, `CHIPS`, `CHIP1`, `CHIP2`, `CTRLID`, `CTRLNAME`, `CTRLSN`, `CTRLFW` |
-| **다를 수 있음** | `NAMECLSH`(한쪽만 겹칠 수 있다), `DATE`, `CTRLSTAT`, `CTRLERR`, `BCKTEMP`, `READTIME`, `FRAMENO`, `BUFNO`, `VOLT*`/`VSET*`/`VMEA*`, `CCDTMP1`, `CCDTMP2`, `CHECKSUM`, `DATASUM` |
+| **반드시 동일** | `DATE-OBS`, `MJD-OBS`, `EXPTIME`, `DARKTIME`, `TSHOPEN`, `TSHSHUT`, `IMAGETYP`, `OBSTYPE`, `OBJECT`, `FIELDID`, `PROJID`, `FILTER`, `OBSERVAT`, `SITEID`, `TELESCOP`, `RA`, `DEC`, `EQUINOX`, `HA`, `ST`, `SECZ`, `ALT`, `AZ`, 모든 TCS/AUX relay 필드, 5.3절 geometry 전체, `RAWVER`, `RAWGROUP`, `CHIPLIST`, `NUMFILES`, `CTRL1ID`, `CTRL1SN`, `CTRL1FW`, `CTRL2ID`, `CTRL2SN`, `CTRL2FW`, `CONTROLL`, `NCTRL`, `DATASRC`, `HEMODE`, `LEDFLASH`, `ICSBUILD` |
+| **반드시 상이** | `UNIQNAME`, `FILENAME`, `PAIRFILE`, `CTRLTAG`, `CHIPS`, `CHIP1`, `CHIP2`, `CTRLID` |
+| **다를 수 있음** | `NAMECLSH`(한쪽만 겹칠 수 있다), `DATE`, `CTRLSTAT`, `CTRLERR`, `BCKTEMP`, `READTIME`, `FRAMENO`, `BUFNO`, `VOLT*`/`VSET*`/`VMEA*`, `CCDTEMP1`, `CCDTEMP2`, `CHECKSUM`, `DATASUM` |
 
 ### 5.12 raw에 넣지 **않는** keyword
 
@@ -673,6 +755,57 @@ MEF keyword 정의서(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.
 1. `MODULE` / `CHANNEL` — 실제 배선 (5.5.1절)
 2. `READDIR` — 물리적 독출 방향 (`RDDIRT`/`RDDIRB`, 5.3절)
 3. `DETSIZE` / `COLGAP` / `ROWGAP` / `AMPPCD` — mosaic 배치 상수 (5.3·5.4절)
+
+### 5.13 레거시 raw keyword 판정 — 계승 · 개칭 · 폐지
+
+레거시 raw 헤더 실측본(`__reference/Legacy raw fits header samples/KMTNk.20170209.044131.Rawheader.txt`, 123개 카드)을 이 규격과 **하나씩 맞대어** 판정했다(2026-08-13). 101개는 이 규격에 이미 대응물이 있고, **22개는 대응물이 없어 판정 대상**이었다.
+
+이 절을 남기는 이유는 하나다 — **"레거시에 있던 이 카드가 왜 없지?" 를 다음 사람이 되짚을 수 있게 하는 것.** 판정을 안 남기면 20년치 아카이브와 비교하다가 누락으로 오해하고 되살리게 된다.
+
+#### 계승 5개 + 개칭 1개
+
+| 레거시 | 신규 | 왜 남기나 |
+| --- | --- | --- |
+| `DATASRC` | `DATASRC` (값 재정의, 5.5절) | **픽셀이 실물인지 시뮬인지 알려주는 유일한 카드.** 값을 `ADC`/`CT_CORRECTION`/`SIM` → **`ARCHON`/`SIM`** 으로 바꾼다. 레거시도 `SIM`을 유효값으로 뒀다(`*.IC>OBS ERROR: Invalid selection for DataSource. ADC, CTC, and SIM are valid.`) |
+| `HEMODE` | `HEMODE` (5.4절) | Archon **3대 중 1대가 guide 전용**이라 science/guide 구분이 살아 있다. `'SCIENCE'`/`'GUIDE'` |
+| `LEDFLASH` | `LEDFLASH` (5.7절) | 램프로 만든 실험실 flat 을 하늘 자료로 오인하지 않게 한다. 단위(초)를 유지한다 |
+| `ICSBUILD` | `ICSBUILD` (5.1절) | 신규 ICS 도 우리가 만드는 프로그램이다. `CREATOR`가 제품명+버전이면 이쪽은 그 버전을 만든 빌드 |
+| `NPHLINES` | `NPHLINES` (5.5절) | preheat line 은 Archon timing script 에도 있는 개념이다. 값의 출처만 IC → ACF 로 바뀐다 |
+| `DSTEL` | **`DSTELALT`** (5.10절) | ⚠️ **개칭이 강제된다.** Archon converter 는 `DSTELALT` 만 읽고 **`DSTEL` fallback 이 없다**(`v2_1.py:485`, `v("DSTELALT","")`). 레거시32 converter 에는 fallback 이 있다(`sv(ph,"DSTELALT", sv(ph,"DSTEL"))`). AUX 실선이 보내는 이름은 `DSTEL`(`pctcs/commands.c:2023`)이므로 **ICS가 옮겨 실어야 한다** |
+
+#### 폐지 16개
+
+| 레거시 | 폐지 근거 | 대신 보는 것 |
+| --- | --- | --- |
+| `DETID` | 파일 1개 = CCD 1개 전제의 카드. 신규는 파일 1개에 chip 2개다 | `CTRLTAG` · `CHIPS` · `CHIP1` · `CHIP2` (더 정확하다) |
+| `OVERSCNY` | ⚠️ **이름을 물려주면 자료가 깎인다.** 레거시는 Y overscan 이 `0`(없음)이었고 있었다면 **가장자리**를 뜻했다. 신규는 Y overscan 이 **영상 중앙**에 있다(4.2절). `OVERSCNY=168`을 본 도구가 "위쪽 168행 자르기"를 하면 active 픽셀을 지운다 | `MIDOVSCY` · `MIDOSCB` · `MIDOSCT` (위치가 이름에 들어 있다) |
+| `READOUT` (`'ARLBRL'`) | 8-amp CCD 의 amp 조합 부호. 64-amp 구조를 표현할 수 없다 | `READMODE`(`'64AMP'`) · `READARCH`(`'8STRIPx2END'`) · `OSCNPATT` |
+| `GAINDL` | **레거시 4년치에서 값이 비어 있던 카드다**(`GAINDL / comment` 형태). 계승할 관례가 없다 | `ACFFILE` · `TIMCONF` · `TIMVER` 가 timing script 를 가리킨다 |
+| `PIXITIME` | 〃 (같은 이유, 같은 자리) | 〃 |
+| `DMAWAIT` | master IC 가 slave 의 DMA 설정을 기다리는 시간. Archon 에는 master/slave DMA 가 없다 | `READTIME` · `BUFNO` |
+| `ICROLE` | `'MASTER'`/`'SLAVE'`. Archon 과학 컨트롤러 2대는 대등하고, 셔터는 ICS 가 AUX 로 직접 구동한다 | `CTRLID` · `CTRL<n>ID` |
+| `CTCSOURC` | CTC(전하전송 보정) 계수의 출처. Archon 은 컨트롤러에서 CTC 를 하지 않는다 | (해당 없음) |
+| `CTCFILE` | 〃 | `ACFFILE` 이 그 자리다 |
+| `KBUILD` | CCD 별 IC 의 소프트웨어 빌드. CCD 별 IC 가 없어졌다. **다만 "모든 파일이 전체 전자부 상태를 안다"는 취지는 계승했다** — 5.5.0절 `CTRL<n>*` | `CTRL1FW` · `CTRL2FW` |
+| `MBUILD` | 〃 | 〃 |
+| `TBUILD` | 〃 | 〃 |
+| `NBUILD` | 〃 | 〃 |
+| `GBUILD` | 〃. guide 는 이 규격 범위 밖이고 `HEMODE` 로 구분한다 | 〃 |
+| `RTD12` | **값도 주석도 없는 빈 카드**가 4년치 아카이브에 남아 있었다. RTD 채널 12 자리로 보이나 채워진 적이 없다 | (없음). 5.0절 "결측이면 카드를 넣지 않는다"가 이 사례를 막는다 |
+| `INPUTFMT` | *"Format of file from which image was read"*. 프레임이 컨트롤러에서 TCP 로 직접 오므로 "읽어 들인 파일" 이 없다 | (해당 없음) |
+
+#### 함께 폐지한 규격 카드 1개 — `UT`
+
+**위 22개와는 성격이 다르므로 따로 적는다.** `UT` 는 레거시에만 있던 카드가 아니라 **이 규격이 5.7절에 이미 두고 있던 카드**다. 위 판정과 같은 날 함께 없앴을 뿐이고, 22개 셈에는 들어가지 않는다.
+
+| 카드 | 폐지 근거 | 대신 보는 것 |
+| --- | --- | --- |
+| `UT` | **`DATE-OBS` 와 완전한 중복.** 레거시가 둘 다 실은 것은 `UT` 에 `TSHOPEN`(백분초)을 붙여 정밀도를 보태려던 것인데, `DATE-OBS` 를 밀리초까지 쓰기로 하면서 이유가 없어졌다 (2026-08-13 확정) | `DATE-OBS` (밀리초 포함). MEF `UT` 는 converter 가 `DATE-OBS` 날짜부 + `TSHOPEN` 으로 조립하므로 영향 없다 |
+
+#### 이 판정에서 나온 부수 소득 둘
+
+1. **`OVERSCNY` 는 이름 계승이 위험할 수 있음을 보여주는 사례다.** 계승은 기본값이 아니라, 뜻이 같을 때만 하는 선택이다. 뜻이 바뀌었는데 이름이 같으면 **아무 오류도 없이** 도구가 자료를 훼손한다.
+2. **`RTD12` 는 빈 카드가 얼마나 오래 남는지 보여주는 사례다.** 4년(그리고 실제로는 그 이상)치 아카이브에 값 없는 카드가 실려 다녔다. 5.0절이 결측 시 카드를 **넣지 않기로** 정한 근거가 여기 있다.
 
 ## 6. Converter가 실제로 읽는 값과 누락 시 영향
 
@@ -714,7 +847,7 @@ MEF keyword 정의서(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.
 
 `ORIGIN`, `BUNIT`, `DETECTOR`, `CCDXBIN`, `CCDYBIN`, `TELESCOP`, `LATITUDE`, `LONGITUD`, `ELEVATIO`, `OBSERVER`, `OBJECT`, `FIELDID`, `PROJID`, `IMAGETYP`, `OBSTYPE`, `TSHSHUT`, `UNIQNAME`, `INSTRUME`, `XTALKVER`, `REFVER`, `CATVER`, `TIMESYS`, `RADECSYS`, `HA`, `ST`, `SECZ`, `ALT`, `AZ`, `TCSLINK`, `TCSARC`, `TCSQDATE`, `TCSUDATE`, `TCSDRIVE`, `TELMOVE`, 5.10절 AUX/초점/돔/열 keyword 전체.
 
-이 중 `FILTER` · `PROJID` · `IMAGETYP` · `OBJECT` · `OBSTYPE` · `RA` · `DEC` · `HA` · `ST` · `SECZ` · `ALT` · `AZ` · `UT`는 **64개 amp extension header에도 반복 기록**된다.
+이 중 `FILTER` · `PROJID` · `IMAGETYP` · `OBJECT` · `OBSTYPE` · `RA` · `DEC` · `HA` · `ST` · `SECZ` · `ALT` · `AZ`는 **64개 amp extension header에도 반복 기록**된다. MEF `UT` 도 함께 반복되지만 **복사가 아니다** — converter 가 `DATE-OBS` 날짜부에 raw `TSHOPEN` 을 붙여 조립한다(`v2_1.py:440`·`:583`). raw 의 `UT` 카드를 폐지해도 영향이 없는 이유가 이것이다 (5.13절).
 
 ### 6.5 MEF keyword 전량 대조표
 
@@ -738,7 +871,8 @@ MEF keyword 정의서(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.
 | 4.5 Electronics | `INSTRUME` | raw | 5.4 |
 | | `CONTROLL` `NCTRL` `CTRL1ID` `CTRL1SN` `CTRL1FW` `CTRL2ID` `CTRL2SN` `CTRL2FW` `WBTYPE` `ELECSYS` `SIGELEC` `TIMCONF` `CTRLVER` `TIMVER` `BIASVER` `CLKVER` | raw | 5.5 |
 | | `XTALKVER` `XTALKCAL` `REFVER` `CATVER` | caldb (현행은 raw 조회) | 5.12 |
-| 4.6 Time/TCS | `TIMESYS` `DATE-OBS` `UT` | raw | 5.7 |
+| 4.6 Time/TCS | `TIMESYS` `DATE-OBS` | raw | 5.7 |
+| | `UT` | converter (`DATE-OBS` 날짜부 + raw `TSHOPEN`) | — (raw `UT` 는 5.13절에서 폐지) |
 | | `MJD-OBS` | raw (권장) / converter | 5.7 |
 | | `JD` | converter | 5.12 |
 | | `RADECSYS` `RA` `DEC` `EQUINOX` `HA` `ST` `SECZ` `ALT` `AZ` `TCSLINK` `TCSARC` `TCSQDATE` `TCSUDATE` `TCSDRIV` `TELMOVE` | raw | 5.9 |
@@ -752,7 +886,8 @@ MEF keyword 정의서(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.
 | | **`READDIR`** | raw (`RDDIRT`/`RDDIRB`) | **5.3** |
 | | `CCDSEC` `AMPSEC` `DETSEC` `RAWDATA` `RAWBIAS` `DATASEC` `PRESEC` `BIASSEC` `TRIMSEC` | converter (파생) | 5.12 |
 | 5.4 Amp calibration | `GAIN` `RDNOISE` `SATURAT` `LINMAX` | caldb | 5.12 |
-| 5.5 Amp obs/WCS | `FILTER` `PROJID` `IMAGETYP` `OBJECT` `OBSTYPE` `RA` `DEC` `HA` `ST` `SECZ` `ALT` `AZ` `UT` | raw (PRIMARY와 동일값 복제) | 5.7–5.9 |
+| 5.5 Amp obs/WCS | `FILTER` `PROJID` `IMAGETYP` `OBJECT` `OBSTYPE` `RA` `DEC` `HA` `ST` `SECZ` `ALT` `AZ` | raw (PRIMARY와 동일값 복제) | 5.7–5.9 |
+| | `UT` | converter (PRIMARY와 같은 방식으로 조립) | — |
 | | `CTYPE*` `CRVAL*` `CRPIX*` `CD*` `WCSDIM` | converter (placeholder) | 5.12 |
 | 6 `AMPINFO` | `NAMP` `GEOMVER` | converter | 5.12 |
 | | `RAWGROUP` | raw | 5.2 |
@@ -795,6 +930,8 @@ RA DEC EQUINOX RADECSYS CCDTEMP CHIPLIST MOCKDATA
 | **C-13** | 〃 | `DETSIZE` / `COLGAP` / `ROWGAP` / `AMPPCD`를 raw 선언값과 대조. 하드코딩 상수와 다르면 중단 (C-5의 확장) |
 | **C-14** | 〃 | `XTALKVER` / `REFVER` / `CATVER`를 raw가 아니라 calibration DB에서 주입 (5.12절) |
 | **C-15** | 〃 | `TELEMETRY` 확장 헤더의 `TELSTAT`을 양쪽 `CTRLSTAT`에서 파생 |
+| **C-17** | 〃 | **`convert()`가 NT 헤더의 메타데이터도 읽어야 한다.** 지금은 `mk_hdr` 하나만 넘기므로(`v2_1.py:758,763`) `TELEMETRY` 표의 2번 row 를 채울 근거가 없다. 컨트롤러 **정체**는 raw 양쪽이 색인형으로 싣게 했지만(5.5.0절), **런타임 상태**(`CTRLSTAT`·`CTRLERR`·`BCKTEMP`·`READTIME`)는 파일마다 실제로 다른 값이라 색인형으로 복제할 수 없다 |
+| **C-18** | 〃 | **`telemetry_rows()`·`volt_rows()`가 헤더 인자를 받지 않는다**(`v2_1.py:723-732`). 지금은 raw 가 `BCKTEMP`·`READTIME`·`CTRLSTAT`·`CTRLERR`·`VSET<nn>`·`VMEA<nn>`를 아무리 정확히 실어도 MEF `TELEMETRY`/`VOLTINFO`에 도달하지 않고 `UNKNOWN`·`-999.0`·`0.0`이 남는다. **raw 쪽 결함이 아니므로 5.5·5.6절은 그대로 두되**, 이 구멍을 모르고 "이미 연결됐다"고 오해하지 않도록 적어 둔다 |
 | **C-8** | `ics_sim/ics_sim/hardware/archon.py` | 이 규격대로 저장하도록 구현 (현재 스텁). **계약은 이미 개정됐다 (D-012)** — `write_frame(controller, chips, path, header)` 를 채우면 되고, 저장 단위가 컨트롤러 1개(chip 2개)인 것이 시그니처에 드러나 있다. 시뮬 백엔드가 같은 계약으로 돌고 있어 참고 구현이 된다 (`hardware/sim.py`) |
 | ~~**C-16**~~ | `ics_sim/ics_sim/sequencer.py` `_store()` · `ics_sim/ics_sim/rawpair.py` | **해결 (2026-08-11, D-012).** 2.5절 `Wrote` 규약 구현 완료 — 저장은 컨트롤러 단위 1파일, 통보는 그 파일이 담은 chip 2개분 논리 이름. 물리/논리 이름 생성은 신설 `rawpair.py` 로 모았고 `state.ChannelState.filename()` 은 논리 이름 생성기로 남았다. 검증은 `tests/test_raw_pair.py`(16개). 종전 서술: **2.5절 `Wrote` 규약 구현.** 현재는 CCD 1개당 파일 1개를 쓰고 `Wrote` 1회를 낸다. 신규는 컨트롤러 1개당 파일 1개를 쓰고 **그 파일이 담은 chip 2개분 `Wrote`를 논리 이름으로** 낸다. `ChannelState.filename()`의 `KMTN<ccd>.<suffix>.fits`는 **논리 이름 생성기로 남기고**, 실제 저장 경로는 `<SITE>.<suffix>.<CTRLTAG>.fits`로 분리한다 (`<SITE>`는 설정 `[node] site`에서 유도, D-011) |
 | ~~C-9~~ | `ics_sim/ics_sim/telemetry.py` | **해결 (2026-08-11).** FITS 헤더용 `fits_header_dict()` 를 분리해 5.0절 규약(정수 `-1` / 실수 `-999.0` / 문자열 `'NC'`)을 따르게 했다. 레거시 메시지 계층의 `'0'` 채움은 `header_dict()` 에 그대로 남긴다 — 중계 본문은 레거시 재현이 필요하기 때문이다 (DevNote 11.2) |
@@ -811,6 +948,7 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 - [ ] `BITPIX=16`, `BZERO=32768`, `BSCALE=1`
 - [ ] `NAXIS1=19200`, `NAXIS2=9400`
 - [ ] 파일 크기가 헤더 블록 + 360,960,000 B
+- [ ] `CHECKSUM` / `DATASUM` 이 있고 검증을 통과
 
 **Geometry 선언**
 
@@ -844,10 +982,24 @@ Raw pair 1쌍을 archive에 넣거나 converter에 넘기기 전에 확인한다
 - [ ] `EXPTIME` / `DARKTIME`이 sentinel이 아님
 - [ ] `IMAGETYP`이 통제 어휘에 속하고 대문자
 - [ ] `OBSERVAT` ∈ {`CTIO`, `SAAO`, `SSO`, `TESTBED`}
-- [ ] `CTRLNAME` / `CTRLSN` / `CTRLFW`가 `UNKNOWN`이 아님
+- [ ] `CTRL1ID`/`CTRL1SN`/`CTRL1FW`/`CTRL2ID`/`CTRL2SN`/`CTRL2FW` 가 있고 `UNKNOWN` 이 아님
+- [ ] 그 여섯이 **MK·NT 양쪽에서 같은 값** (5.5.0절). converter 는 MK 만 읽는다
+- [ ] `CTRLID` 가 `1`(MK)/`2`(NT) 이고 **정수**임 — `CTRL1ID`(문자열)와 혼동하지 않았는지
+- [ ] 단수형 `CTRLNAME`/`CTRLSN`/`CTRLFW` 가 **없음** (5.5.0절에서 폐지)
+- [ ] `DATASRC` 가 `ARCHON` — 시뮬 산출물이 아카이브로 들어가지 않았는지 (5.5·5.13절)
+- [ ] `HEMODE` 가 `SCIENCE` — guide raw 가 섞이지 않았는지
+- [ ] `ICSBUILD` 가 `<프로그램>-v<버전>:<빌드일시>` 형식이고 **프로그램이 `ics_sim`/`ics_archon` 중 하나** — 레거시 문자열(`KX2016-…`)이 남아 있지 않은지. "비어 있지 않음" 만 보면 거짓 값이 통과한다
+- [ ] `ICSBUILD` 의 빌드 일시가 실제로 배포한 소스의 것인지 — 자동으로 잡히지 않는 값이다
+- [ ] 폐지 카드가 되살아나지 않았음: `DETID` `OVERSCNY` `READOUT` `GAINDL` `PIXITIME` `DMAWAIT` `ICROLE` `CTCSOURC` `CTCFILE` `KBUILD` `MBUILD` `TBUILD` `NBUILD` `GBUILD` `RTD12` `INPUTFMT` (5.13절). 특히 **`OVERSCNY` 는 되살리면 자료가 깎인다**
+- [ ] `DSTELALT` 가 있음 — AUX 실선은 `DSTEL` 을 보내고 converter 는 `DSTELALT` 만 읽는다 (5.13절)
+- [ ] `DATE-OBS` 의 초가 **소수점 셋째자리까지** 있음 (5.7절)
+- [ ] `UT` 카드가 **없음** (5.7·5.13절에서 폐지)
+- [ ] 파일명 `<YYYYMMDD>` 가 그 사이트의 **관측일** 규칙과 맞음 (2.3절 표). `DATE-OBS` 날짜와 **다른 것이 정상**이므로 같은지 검사하지 말 것
+- [ ] 파일명 `<SITE>` 가 `KMTC`/`KMTS`/`KMTA` 중 하나 — 실제 관측 자료가 `KMTT` 로 저장되지 않았는지 (2.3절)
 - [ ] `VOLTN ≥ 9`이고 필수 9종이 모두 포함
 - [ ] `BCKTEMP` / `READTIME`이 sentinel이 아님
-- [ ] `CCDTEMP` · `CCDTMP1` · `CCDTMP2`가 모두 있고 sentinel이 아님 (L1 `CARRY_KEYS`)
+- [ ] `CCDTEMP` · `CCDTEMP1` · `CCDTEMP2`가 모두 있고 sentinel이 아님 (L1 `CARRY_KEYS`)
+- [ ] `CCDTEMP`가 `CCDTEMP1`·`CCDTEMP2`의 **평균과 일치**하는지 — 어긋나면 파생이 깨진 것이다
 - [ ] 6.6절 L1 `CARRY_KEYS` 23개가 raw에 전부 존재
 
 > **이 체크리스트 중 일부는 이미 자동 검증된다.** `ics_sim`이 규격대로 저장하게 되면서(2026-08-11, D-012) 파일 구성·이름·pair 식별·sentinel 항목은 `ics_sim/tests/test_raw_pair.py`(16개)가 매 실행 확인한다. 실기(`ics_archon`)에서 추가로 확인해야 하는 것은 **구조**(`BITPIX`/`NAXIS`/파일 크기) · **geometry 선언** · **메타데이터**(controller telemetry·전압·온도) 쪽이다 — 시뮬은 픽셀이 더미이고 실물 크기가 아니므로 그 항목들을 검증하지 못한다.
@@ -906,7 +1058,10 @@ print('raw pair OK:', a['UNIQNAME'])
 | ~~OI-2~~ | **`Wrote` 4회 규약** | **해결 (2026-08-07, D-010).** 저장 단위(컨트롤러 2파일)와 통보 단위(CCD 4회)를 분리한다. ICS는 파일 1개를 쓸 때마다 그 파일이 담은 chip 2개분 `STATUS: Wrote`를 논리 이름으로 낸다. `count_wrote=4` · `FitsNum='20260807.012345'` 모두 성립 | 규격 2.5절 반영 완료. OBSAgent·`RAWNAX1` 변경 없음. `LASTFILE`이 실재 경로가 아니게 되는 부작용을 2.5절에 명시 |
 | **OI-3** | `ROWORDR` / `RDDIRT` / `RDDIRB` 확정 | TOP half가 CCD 좌표 순서로 기록되는지 독출 순서인지 실기 확인 필요. MEF amp header `READDIR`의 placeholder(TOP=`-Y`, BOT=`+Y`)를 확정하는 사안이며, 규격은 값을 raw가 **선언**하도록 자리를 만들어 뒀다 | flat/star sequence test. 확정 시 `RAWVER`와 `GEOMVER` 동시 갱신 |
 | **OI-9** | amp ↔ 배선 맵 실측 | `AMOD<nn>` / `ACHN<nn>`의 실제 값은 컨트롤러 결선 후에야 확정된다. 확정 전에는 `AMPMAP='DEFAULT'`로 두고 converter의 추정식을 쓰되, **`XTALKCAL=True`로 올리기 전에 반드시 `EXPLICIT`으로 교체**해야 한다 (5.5.1절) | 통합 시 배선표 작성 + Archon 채널 응답과 대조. `CALIBRATION_TRACKER.md`에 항목 추가 |
-| **OI-10** | `<YYYYMMDD>` 의 기준 확정 | **잠정: UTC 날짜.** 규격 v1.0~v1.2 는 "관측 야간 기준 날짜" 로 적었으나 **레거시도 구현도 UTC 날짜를 쓴다** — CTIO `isis.20240102.log`(UTC−4) 안에 `KMTNm.20240103.023885.fits` 가 있고, `ics_sim` 은 `utcnow().strftime('%Y%m%d')` 다. **차이가 실재하는 곳은 SAAO** (UTC+2): 현지 20:00~05:00 이 UTC 18:00~03:00 이라 **한 야간이 UTC 자정을 넘어 날짜가 둘로 갈린다**. CTIO·SSO 는 야간 안에서 UTC 날짜가 상수라 문제가 드러나지 않는다. 야간 기준으로 가면 야간 경계(정오 UTC 등)를 정의해야 하고 사이트별로 달라진다 | **이충욱(LEECU)과 협의해 확정.** 결정 시 (1) 이 절과 2.3절, (2) `ics_sim` 의 `state.stamp_compact()`, (3) 야간 기준으로 갈 경우 야간 경계 정의와 사이트별 적용을 함께 갱신한다. 그때까지는 UTC 기준이 정본이다 |
+| ~~**OI-10**~~ | ~~`<YYYYMMDD>` 의 기준 확정~~ | **해결 (2026-08-13, 이충욱 협의 후 운영자 확정).** **사이트별 관측일**로 정했다 — 규칙과 근거는 2.3절 표. 경계는 CTIO UT 16:30 · SAAO UT 10:30 · SSO UT 01:30 이고 **셋 다 현지 12:30** 이다(동지 때 관측 종료와 시작의 중간 시각). 종전 잠정안(UT 날짜)은 경계가 UT 자정이라 CTIO·SAAO 에서 **관측 시간대 안**에 있었고, 그래서 파일명과 `DATE-OBS` 의 날짜가 갈릴 수 있었다(종전 OI-12) — 관측일 기준은 그 결함을 구조적으로 없앤다. `<YYYYMMDD>` 가 `DATE-OBS` 날짜와 **일반적으로 다른 것이 의도**다 | 구현 완료: `rawpair.observing_date()` · `IcsState.obs_date()`. 시험 19개가 14개 경계 케이스와 "세 경계 = 현지 12:30" 불변식을 지킨다(`test_raw_header.py`) |
+| ~~**OI-12**~~ | ~~파일명 날짜부가 `DATE-OBS` 날짜와 어긋날 수 있다~~ | **해소 (2026-08-13) — 고친 것이 아니라 요구사항이 바뀌어 성립하지 않게 됐다.** 이 항목은 "`<YYYYMMDD>` = `DATE-OBS` 의 날짜" 를 전제로 제기됐는데, OI-10 이 관측일 기준으로 확정되면서 **둘이 다른 것이 정상**이 됐다. 그리고 관측일 경계가 현지 12:30 이라 **관측 중에는 지나가지 않으므로**, 원래 걱정했던 UT 자정 걸침(CTIO 현지 20시·SAAO 현지 22시, 매 야간 한 번) 자체가 사라졌다.<br>**남는 잔여 위험**: 현지 12:30 무렵의 주간 교정 프레임. 프레임 개시(`next_suffix()`)와 셔터 개방(`DATE-OBS`) 사이 약 7.6초(`initialize_ack` 0.40 + `erase_sec` 7.24)가 경계를 걸치면 그 프레임의 날짜부가 직관과 다를 수 있다. **교정 프레임에 한정되고 오류는 나지 않는다** — 필요해지면 그때 다룬다 | 잔여 위험은 `ics_sim/DevNote.md` 11.15 에 기록 |
+| **OI-13** | AUX 셔터 상태가 `SHOPEN` 후 3초 안에 반영되는가 | 헤더의 `SHUTTER`/`SHUTOP` 를 노출 중 값으로 만들려고 **`SHOPEN`+3초에 `AUXSTATUS` 를 다시 질의**한다(`ics_sim` `[timing] aux_requery_after_shopen`, 운영자 확정 2026-08-13). 그 시점이 유효한 근거는 확인됐다 — `SHUTTER` 는 `SHUTOP` 의 순수 함수이고 `OPENING`→`OPEN` 이므로(5.10절 파생표) 블레이드 주행(5초) 중간이어도 `OPEN` 이 나온다. **남은 미확인은 AUX 쪽 갱신 지연이다**: AUX 가 리밋 스위치를 폴링하는 주기를 모르므로, TTL 이 뜬 뒤 3초 안에 상태기계가 `STANDBY`→`OPENING` 으로 넘어가 있는지는 실측해야 안다. 늦으면 `SHUTOP='STANDBY'`→`SHUTTER='CLOSED'` 가 실려 **셔터 노출인데 `CLOSED`** 라는 오탐 경고가 매 프레임 뜬다 | **벤치에서 측정.** `ics_sim` 이 이미 `SHOPEN` 직후 `FILTERS SET_SH OPEN` 을 보내고 AUX 시뮬이 5초를 쓰므로, `aux_requery_after_shopen` 을 바꿔 가며 `SHUTOP` 값을 보면 된다. 결과를 이 항목과 `ics_sim/DevNote.md` 9.2.3 에 적는다 |
+| ~~**OI-11**~~ | ~~CTIO · SAAO 사이트 측지값 확정~~ | **해결 (2026-08-13).** 운영자가 세 사이트 실측값을 확인해 줬다.<br>`KMTC` `KMTNet 1.6m #1` / `-30:10:01.84` / `+70:48:14.39` / `2140`<br>`KMTS` `KMTNet 1.6m #2` / `-32:22:42` / `339:11:22` / `1800`<br>`KMTA` `KMTNet 1.6m #3` / `-31:16:24` / `210:56:08` / `1150`<br>**`LONGITUD` 는 서경(`[deg W]`) 양수이고, 세 값으로 규약이 확인된다** — CTIO 70.804 W(동경 −70.804), SAAO 339.189 W(동경 +20.810), SSO 210.936 W(동경 +149.064). CTIO 만 90 미만이라 `+` 부호가 붙고 나머지는 0~360 이라 형태가 달라 보이지만 **규약은 같다**. 하나만 보고 동경으로 고치면 부호가 뒤집힌 좌표가 아카이브에 영구히 박힌다 — 겉보기엔 유효한 좌표라 아무도 의심하지 않는다. **값 문자열을 그대로 싣는다**(초의 소수점 자리·`+` 부호 포함) — 정규화하면 레거시 아카이브와의 문자열 비교가 깨진다. `KMTT`(테스트베드)는 실재 좌표가 없어 **일부러 비워 둔다** — 아무 좌표나 넣으면 시험 산출물이 실제 관측처럼 보인다 | 구현 완료: `ics_sim.ini` 의 `[site.<코드>]` 4개(`[node] site` 로 선택, `[site]` 로 덮어쓰기) + `rawhdr.VERIFIED_SITES` 기본값. 시험 9개(`test_raw_header.py`)가 서경 규약을 세 사이트에서 함께 확인한다 |
 | **OI-4** | `MIDOSCB` / `MIDOSCT` 분배 | 중앙 168행의 half별 분배가 84/84인지 미확인. 현행 converter는 이 블록을 전부 버린다 | timing script 확인 + bias frame 통계. 확정되면 Y overscan으로 활용할지 별도 검토 |
 | **OI-5** | Binning 지원 | v1.0은 1×1 전용. binning 시 `NAXIS`가 바뀌어 converter가 즉시 실패한다 | binned 관측 계획이 서면 geometry 규격 확장 |
 | ~~OI-6~~ | Sentinel 규약 통일 | **해결 (2026-08-11, 변경점 C-9).** 중계 본문과 FITS 헤더 값을 분리했다 — `header_dict()`(메시지 계층, `'0'` 유지) / `fits_header_dict()`(FITS, 정수 `-1` · 실수 `-999.0` · 문자열 `'NC'`). `DATE-OBS`는 값이 없으면 키를 넣지 않아 불완전한 노출이 드러난다 | 완료. 검증 `tests/test_raw_pair.py::test_fits_sentinels_follow_the_spec_not_the_message_layer` |
@@ -938,4 +1093,6 @@ print('raw pair OK:', a['UNIQNAME'])
 | v1.2 | 2026-08-10 | **파일명 prefix를 사이트 코드로 개정 (D-011, D-009 대체).** `<SITE>` ∈ {`KMTC`=CTIO, `KMTS`=SAAO, `KMTA`=SSO, `KMTT`=테스트베드} — TC 텔레메트리 `TELID` 규약과 동일. `RAWVER`는 `CEU-RAW-v1.0` 유지(픽셀 배치 불변). converter v2.2.0: 정규식 개정 + 출력 prefix를 파일명에서 유도 + `OBSERVAT` 교차 검증(불일치=오류, 6.1절). `Wrote` 논리 이름(D-010)은 불변. C-7 완료 처리, OI-1 재개정, OI-8 해결(ICD v4.1). 연동 ICD를 v4.1(md+docx)로 갱신 |
 | v1.2 | 2026-08-11 | 제자리 개정(요구사항 변경 아님, `RAWVER`·문서 버전 유지): **5.0절에 식별자 keyword 의 카드 형 규칙 추가** — `EXPID` 등을 실수 카드로 쓰면 2.3절이 필수로 정한 6자리 zero-padding 이 파괴된다(`000010`→`00001`). 구현에서 실제로 발생했고 시험값이 `000001` 이라 우연히 통과했다. 같은 절에 **결측 시 카드 자체를 넣지 않는다**(C-6 실패 경로와 연결)를 명시. **2.5절에 fail-safe 발동 시의 `WARNING` 발신 규약**(파일당 1회, 발신자는 `CHIP1` 의 `*.CB` — 레거시 대응 사례 없어 정한 것). **8장 체크리스트에 `EXPID` 카드 형·`FILENAME` 일치 항목 추가**와 자동 검증 범위 안내. **2.3.1절 신설** — 파일명 fail-safe 가 발동했을 때 `FILENAME`은 실제 파일명을 따라가고 `EXPID`/`CTRLTAG`/`CHIP1`/`CHIP2`가 개명 후 유일한 식별 근거이며 `PAIRFILE`은 명목 이름으로 열화될 수 있다는 것을 명시(5.1·5.2절 필수 항목의 함의). **OI-6·C-9·C-16 해결 처리**, C-8은 계약 개정(D-012) 반영. 구현은 `ics_sim` — DevNote 11.13 |
 | v1.2 | 2026-08-12 | 제자리 개정: **5.7절 `DATE-OBS` 정의를 "셔터가 실제로 열린 시각"에서 "ICS가 `SHOPEN`을 지시한 UTC 시각"으로 변경** — 실기에는 셔터 개방 완료를 알려 주는 경로가 없어 전자는 알 수 없는 값이다(운영자 확정). 근거 블록을 같은 절에 추가. **2.5절 fail-safe `WARNING` 발신자를 `CHIP1`의 `*.CB`에서 `ICS`로 변경** — 파일을 쓴 당사자가 보고하는 것이 맞고, OBSAgent `case WARNING:`이 발신자를 보지 않음을 소스로 확인했다(`commands.c:1045`). **2.3절 `<YYYYMMDD>`를 UTC 날짜로 정정하고 OI-10으로 등재** — 종전 "관측 야간 기준 날짜"는 레거시·구현 어느 쪽과도 맞지 않았다. 야간 기준 여부는 이충욱과 협의해 확정한다 |
-| v1.2 | 2026-08-12 | **레거시 raw 헤더 실측본을 근거로 식별 keyword 재정의** (`__reference/Legacy raw fits header samples/` 신설 — 2017·2021 raw 2건, MEF 35건. raw 헤더는 4년간 사실상 불변이었다). **`EXPID`·`EXPNUM` 삭제** — 레거시가 `FILENAME` 하나로 날짜+연번을 담고 있었고 `UNIQNAME`을 그 옆에 두었다. 둘을 함께 두면 서로 어긋날 수 있는 중복이다(운영자 확정). **`UNIQNAME`을 정본 식별자로 승격**(필수, 불변, `<SITE>.<8자리>.<6자리>.<MK\|NT>`)하고 `FILENAME`은 **실제로 쓴 이름**으로 정의. 둘 다 **확장자를 빼고** 기록한다(레거시 관례). **`NAMECLSH` 신설**(조건부). **2.3.1절에 「왜 `FILENAME`·`UNIQNAME` 인가」 신설** — `EXPID`·`EXPNUM` 을 검토했다가 레거시 keyword 를 이어받기로 한 경위와 근거 셋(중복 제거·레거시 연속성·MEF 목적지)을 실측 인용과 함께 남겼다. 5.2절에도 두 keyword 가 없는 이유를 안내한다. **2.3.1절 전면 재작성** — 이름이 겹치면 개명 대신 `clash/` 격리 + 시각 접미 + 카드의 세 겹. 레거시의 `<yymmdd>.<nnn>` 형식은 사이트 코드·컨트롤러 태그를 잃어 채택하지 않았다. 5.0·5.2·5.11·C-4·8장 정합 갱신. 구현은 `ics_sim` — DevNote 11.13 |
+| v1.2 | 2026-08-12 | **레거시 raw 헤더 실측본을 근거로 식별 keyword 재정의** (`__reference/Legacy raw fits header samples/` 신설 — **raw 실측 1건**(`KMTNk.20170209`, SSO)과 같은 노출의 MEF 33건, 그리고 raw 가 아닌 조합 산출물 1건. 종전에 이 칸을 "raw 2건, 4년간 불변" 으로 적었으나 `KMTNc.20210503` 은 raw 가 아니어서 정정했다 — 자세한 것은 그 폴더의 `README.md`). **`EXPID`·`EXPNUM` 삭제** — 레거시가 `FILENAME` 하나로 날짜+연번을 담고 있었고 `UNIQNAME`을 그 옆에 두었다. 둘을 함께 두면 서로 어긋날 수 있는 중복이다(운영자 확정). **`UNIQNAME`을 정본 식별자로 승격**(필수, 불변, `<SITE>.<8자리>.<6자리>.<MK\|NT>`)하고 `FILENAME`은 **실제로 쓴 이름**으로 정의. 둘 다 **확장자를 빼고** 기록한다(레거시 관례). **`NAMECLSH` 신설**(조건부). **2.3.1절에 「왜 `FILENAME`·`UNIQNAME` 인가」 신설** — `EXPID`·`EXPNUM` 을 검토했다가 레거시 keyword 를 이어받기로 한 경위와 근거 셋(중복 제거·레거시 연속성·MEF 목적지)을 실측 인용과 함께 남겼다. 5.2절에도 두 keyword 가 없는 이유를 안내한다. **2.3.1절 전면 재작성** — 이름이 겹치면 개명 대신 `clash/` 격리 + 시각 접미 + 카드의 세 겹. 레거시의 `<yymmdd>.<nnn>` 형식은 사이트 코드·컨트롤러 태그를 잃어 채택하지 않았다. 5.0·5.2·5.11·C-4·8장 정합 갱신. 구현은 `ics_sim` — DevNote 11.13 |
+| v1.2 | 2026-08-13 | **레거시 raw 헤더 123개 카드를 하나씩 맞대어 전면 재검토** (D-013). 대응물이 없던 **22개를 계승 5 · 개칭 1 · 폐지 16** 으로 판정하고 근거와 함께 **5.13절**에 표로 남겼다 — 계승 `DATASRC`(값을 `ARCHON`/`SIM` 으로 재정의) · `HEMODE` · `LEDFLASH` · `ICSBUILD` · `NPHLINES`, 개칭 `DSTEL`→`DSTELALT`(Archon converter 에 fallback 이 없다), 폐지 16개. **`OVERSCNY` 폐지가 특히 중요하다** — 신규는 Y overscan 이 영상 중앙에 있어 이름을 물려주면 가장자리 자르기 도구가 오류 없이 active 픽셀을 지운다. **5.5.0절 신설** — 컨트롤러 정체를 `CTRL1ID`/`CTRL1SN`/`CTRL1FW`/`CTRL2*` 색인형 필수로 하고 단수형 `CTRLNAME`/`CTRLSN`/`CTRLFW` 를 폐지. 종전 5.5절은 converter 가 단수형을 색인형으로 옮긴다고 적었으나 **converter 는 그 변환을 하지 않고**(`v2_1.py:411-416,758`) 그대로 두면 MEF 의 컨트롤러 정체가 전부 `UNKNOWN` 이 된다. **변경점 C-17·C-18 추가** (converter 가 NT 헤더를 안 읽는 것, `telemetry_rows()`/`volt_rows()` 가 헤더 인자를 안 받는 것). **OI-11 추가**(CTIO·SAAO 측지값 미확인). 5.1·5.4·5.7·5.11 카드 추가, 8장 체크리스트 보강. 근거 자료 설명은 `__reference/Legacy raw fits header samples/README.md` 신설. 구현은 `ics_sim` (`rawhdr.py` 신설, 시험 59개 추가 → 258개) — DevNote 11.14 |
+| v1.2 | 2026-08-13 | **파일명 `<YYYYMMDD>` 를 사이트별 관측일로 확정** (이충욱 협의 후 운영자 확정, **OI-10 종결**, D-014). 경계는 CTIO UT 16:30 · SAAO UT 10:30 · SSO UT 01:30 이고 **셋 다 현지 12:30**(동지 때 관측 종료와 시작의 중간 시각) — 2.3절에 표와 검산 불변식, 구현 지침(보정 후 날짜만 취할 것)까지 넣었다. **종전 잠정안(UT 날짜)은 경계가 UT 자정이라 CTIO(현지 20시)·SAAO(현지 22시)에서 관측 시간대 안에 있었고**, 그래서 프레임이 경계를 걸치면 파일명과 `DATE-OBS` 날짜가 오류 없이 갈렸다 — 관측일 기준이 이를 구조적으로 없애서 **OI-12 도 해소**됐다. `<YYYYMMDD>` 가 `DATE-OBS` 날짜와 다른 것이 이제 정상이다. **`<SITE>` 정규화 규칙 추가** — `KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTT`. **5.7절 `DATE-OBS` 를 밀리초 필수로** 올리고 **`UT` 카드 폐지**(5.13절 표에 등재) — 완전한 중복이고 MEF `UT` 는 converter 가 `DATE-OBS`+`TSHOPEN` 으로 조립하므로 영향 없다. 8장 체크리스트에 4항목. 구현은 `ics_sim` (`rawpair.observing_date`·`normalize_site`, 시험 282개) — DevNote 11.15 |

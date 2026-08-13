@@ -365,7 +365,10 @@ def test_date_obs_is_always_written(tmp_path):
     _run(tmp_path)
     for name, h in _headers(tmp_path).items():
         assert h['DATE-OBS'], name
-        assert re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d', h['DATE-OBS'])
+        # **초는 소수점 셋째자리까지** (운영자 확정 2026-08-13, 규격 5.7절).
+        # 종전 `UT` 카드를 없애는 대신 이 카드 하나가 날짜·시각을 다 담는다.
+        assert re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}',
+                            h['DATE-OBS']), h['DATE-OBS']
         assert h['TIMESYS'] == 'UTC'
     # pair 양쪽이 같아야 한다 (규격 5.7절 말미: 셔터는 하나, 노출도 하나)
     vals = {h['DATE-OBS'] for h in _headers(tmp_path).values()}

@@ -1,6 +1,6 @@
 # KMTNet-CEU Raw FITS Specification
 
-최종 갱신일: 2026-08-12
+최종 갱신일: 2026-08-13
 
 ## 목적
 
@@ -39,6 +39,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | 경로 | 내용 |
 | --- | --- |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | 현행 raw pair 규격 (md가 diff 가능한 기준본) |
+| `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.5_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ MEF 키워드 전수 대응표 289행. MEF 쪽은 문서가 아니라 **converter 코드에서 기계 추출**했고, 문서와 코드가 어긋나는 지점은 2장에 모았다. 결정이 필요한 10항목은 5장 (ACT-011) |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
@@ -84,7 +85,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 | 주체 | 파일 | 상태 |
 | --- | --- | --- |
-| **신규 ICS (시뮬)** | [`../ics_sim/ics_sim/rawpair.py`](../ics_sim/ics_sim/rawpair.py) + `sequencer._store()` + `hardware/sim.py`의 `write_frame()` | **동작 중 (2026-08-11)** — 2.3 파일명 · 2.5 저장/통보 분리 · 5.0 sentinel · 5.1/5.2 정체성 카드를 구현했다. 픽셀은 더미이고 크기도 실물(19200×9400)이 아니지만 **구조와 규약은 규격 그대로**라, 하드웨어 없이 실물 OBSAgent 로 D-010/D-011을 검증할 수 있다 |
+| **신규 ICS (시뮬)** | [`../ics_sim/ics_sim/rawpair.py`](../ics_sim/ics_sim/rawpair.py)(이름) + [`rawhdr.py`](../ics_sim/ics_sim/rawhdr.py)(카드) + [`siteid.py`](../ics_sim/ics_sim/siteid.py)(사이트) + `sequencer._store()` + `hardware/sim.py`의 `write_frame()` | **동작 중 (2026-08-13)** — 2.3 파일명(사이트별 관측일, D-014) · 2.5 저장/통보 분리 · 5.0 sentinel · **5.1~5.10 헤더 카드 전체**를 구현했다. 픽셀은 더미이고 크기도 실물(19200×9400)이 아니지만 **구조와 규약은 규격 그대로**라, 하드웨어 없이 실물 OBSAgent 로 D-010/D-011을 검증할 수 있다 |
 | 신규 ICS (실기) | [`../ics_sim/ics_sim/hardware/archon.py`](../ics_sim/ics_sim/hardware/archon.py)의 `write_frame()` | 스텁 — 실기 단계에서 구현. **계약은 개정 완료 (D-012)**, 시뮬 백엔드가 참고 구현 |
 | 실험실 취득 | [`../cam_char/archon/archon_kmtnet_labtest_v2.py`](../cam_char/archon/archon_kmtnet_labtest_v2.py)의 `write_fits()` | 동작 중 — geometry/telemetry 카드 보강 필요 |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) | 동작 중 — MK 헤더만 읽음, NT 헤더 반영 필요 |
@@ -98,10 +99,13 @@ v1.0에서 제기한 OBSAgent 규약 충돌 2건은 **v1.1에서 해결되었고
 | ~~OI-1~~ | 파일명은 `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {`KMTC`, `KMTS`, `KMTA`, `KMTT`} (D-011, 2026-08-10). `<NNNNNN>`는 **6자리 zero-padding 필수**. converter v2.2.0에서 정규식 개정 + `OBSERVAT` 교차 검증 |
 | ~~OI-2~~ | **저장 단위와 통보 단위를 분리.** 파일은 컨트롤러당 1개(2개), `STATUS: Wrote`는 CCD당 1회(4회)를 레거시 형태 논리 이름(`KMTN<c>.…`, 불변)으로 발신. OBSAgent 변경 없음 |
 | ~~OI-8~~ | NT 헤더 완전성 요구가 **ICD v4.1에 반영되었다** (2026-08-10) |
+| ~~OI-10~~ | 파일명 `<YYYYMMDD>`는 **그 사이트의 관측일**이다 — UT 에 사이트별 보정을 더한 뒤 날짜만 취한다. 경계는 세 사이트 모두 현지 12:30 (D-014, 2026-08-13). 종전 잠정안(UT 날짜)은 한 밤의 자료를 두 디렉토리로 갈랐다 |
+| ~~OI-11~~ | CTIO · SAAO · SSO 측지값을 운영자가 확정해 `ics_sim.ini` 의 사이트별 절에 넣었다 (2026-08-13) |
+| ~~OI-12~~ | 파일명 날짜부가 `DATE-OBS` 날짜와 **어긋나는 것이 정상**이다 — OI-10 이 관측일 기준으로 확정되면서 해소됐다 (2026-08-13) |
 
 부작용 하나가 따라온다 — **`LASTFILE`이 더 이상 실재하는 경로가 아니다.** 아카이브·DTS 도구는 `LASTFILE` 대신 raw 헤더의 `UNIQNAME`/`FILENAME`/`CTRLTAG`를 근거로 삼아야 한다 (규격 2.5절). **색인 키는 `UNIQNAME`** 이다 — 이름이 겹쳐 격리된 경우에도 그 값만 불변이다 (2.3.1절).
 
-남은 open item은 규격 문서 9장에 있다 — `ROWORDR`/`READDIR` 확정, 중앙 overscan 분배 실측, amp↔배선 맵 실측(OI-9, `XTALKCAL=True` 전제조건), binning, checksum, **파일명 날짜 기준(OI-10 — 잠정 UTC, 이충욱과 협의 예정)**. **전부 실기 실측이나 협의·정책 결정이 있어야 닫힌다** — 문서만으로 닫을 수 있었던 sentinel 규약(OI-6)은 2026-08-11에 해결됐다.
+남은 open item은 규격 문서 9장에 있다 — `ROWORDR`/`RDDIRT`/`RDDIRB` 확정(OI-3), 중앙 overscan 분배 실측(OI-4), binning(OI-5), raw 단계 checksum(OI-7), amp↔배선 맵 실측(OI-9, `XTALKCAL=True` 전제조건), **AUX 셔터 상태가 `SHOPEN`+3초에 반영되는가(OI-13)**. **전부 실기 실측이나 협의·정책 결정이 있어야 닫힌다** — 문서만으로 닫을 수 있었던 sentinel 규약(OI-6)은 2026-08-11에, 협의로 닫힌 **파일명 날짜 기준(OI-10)·사이트 측지값(OI-11)·날짜부와 `DATE-OBS` 의 어긋남(OI-12)** 은 2026-08-13에 해결됐다.
 
 ## 버전 / 관리 정책
 

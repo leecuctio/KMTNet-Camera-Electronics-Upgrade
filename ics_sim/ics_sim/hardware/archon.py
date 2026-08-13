@@ -108,6 +108,54 @@ class ArchonBackend:
         #       참고 구현은 sim.py 의 같은 메서드, 계약은 base.py (D-012).
         raise BackendError(_NOT_YET, ccd=chips[0] if chips else '')
 
+    # -- FITS 헤더용 컨트롤러 사실 (규격 5.5·5.6·5.10절, D-013) -----------
+    #
+    # **이 넷이 MEF 의 placeholder 를 없애는 자리다.**  지금 MEF 는 컨트롤러
+    # 정체를 `UNKNOWN`, 보드 온도를 `-999.0`, 전압을 `0.0` 으로 채우고 있고
+    # (규격 6.3절), 그 원인은 raw 에 그 정보가 없기 때문이다.
+    #
+    # ⚠️ 스텁이 예외를 던지지 않고 **빈 값을 돌려준다.**  헤더 생성은 노출
+    # 경로가 아니라 저장 경로이므로, 여기서 던지면 다른 이유로 실기를 돌려
+    # 보는 사람이 저장 단계에서 막힌다.  호출측이 sentinel 로 채우고 그 사실이
+    # 헤더에 남는다 (규격 5.0절).
+
+    def controller_info(self, controller: str) -> dict:
+        # TODO: STATUS/SYSTEM 응답에서 채운다.
+        #       - units: 두 과학 컨트롤러의 ID/시리얼/firmware.  **양쪽 raw
+        #         파일에 같은 값을 실어야 한다** -- converter 가 MK 헤더만
+        #         읽으면서 CTRL1*/CTRL2* 를 요구한다 (규격 5.5.0절).
+        #         시리얼은 SYSTEM 의 BACKPLANE_ID, firmware 는 BACKPLANE_VERSION.
+        #       - boardtemp: STATUS 의 BACKPLANE_TEMP.
+        #       - readtime: readout 시작~완료 실측 [s].
+        #       - acffile: LOADPARAM 에 쓴 설정 파일 이름.
+        #       - nphlines: timing script 의 preheat line 수 (레거시 계승).
+        #       - frameno/bufno: FRAME 응답의 BUFnFRAME / 사용 버퍼 번호.
+        log.warning('controller_info: %s', _NOT_YET)
+        return {'units': ()}
+
+    def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
+        # TODO: Archon HEATER/RTD 모듈에서 읽는다.  chips[0] -> ccdtemp1,
+        #       chips[1] -> ccdtemp2.  **ccdtemp 는 주지 않는다** -- FITS
+        #       CCDTEMP 는 호출측이 두 값의 평균으로 파생한다.  듀어 센서
+        #       이름은 레거시를 계승한다 --
+        #       DEWPRES/PT30N1/PT30N2/CHARCOAL/AIR_*/GLYC_*.
+        log.warning('sensors: %s', _NOT_YET)
+        return {}
+
+    def voltages(self, controller: str) -> list[dict]:
+        # TODO: STATUS 의 bias/clock 채널을 규격 5.6절 9종에 대응시킨다.
+        #       측정값을 못 읽은 항목은 `measured` 를 넣지 않는다 -- 그러면
+        #       VOLTSTAT 이 PARTIAL 이 되어 사실이 헤더에 남는다.
+        log.warning('voltages: %s', _NOT_YET)
+        return []
+
+    def amp_map(self, controller: str) -> dict | None:
+        # TODO: 설치 시 실제 배선표를 돌려준다 (규격 5.5.1절, 변경점 C-11).
+        #       **추정식으로 채우지 말 것** -- 배선이 다르면 crosstalk 보정이
+        #       엉뚱한 amp 묶음에 적용되고, 계수 측정 자체가 무의미해진다.
+        #       모르는 동안은 None 이 정직한 답이다 (AMPMAP='DEFAULT').
+        return None
+
     def status(self, ccd: str) -> dict:
         return {'driving': 0, 'fibers': False, 'synched': False,
                 'datasource': 'ADC', 'shutter_open': False, 'led_ms': 0}

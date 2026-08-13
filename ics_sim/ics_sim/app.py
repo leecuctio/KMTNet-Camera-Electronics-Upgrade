@@ -14,6 +14,7 @@ import logging
 import time
 from typing import Awaitable
 
+from . import rawhdr, rawpair, siteid
 from .auxcontrol import AuxControlClient
 from .commands import Dispatcher
 from .config import SimConfig
@@ -29,13 +30,29 @@ from .transport import UdpEndpoint
 log = logging.getLogger('ics_sim.app')
 
 
+def _disp_width(text: str) -> int:
+    """터미널에서 차지하는 칸 수.  **한글·한자는 두 칸이다.**
+
+    `f'{label:<14}'` 는 문자 수로 세므로 한글 라벨이 든 표가 어긋난다.
+    stdlib 만으로 맞추려면 East Asian Width 를 보면 된다.
+    """
+    import unicodedata
+    return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1
+               for c in text)
+
+
 class IcsSim:
     """시뮬레이터 본체."""
 
     def __init__(self, cfg: SimConfig) -> None:
         self.cfg = cfg
         self.router = NodeRouter(cfg.node)
-        self.state = IcsState(expnum_file=cfg.paths.expnum_file)
+        # `site_code` 는 파일명 `<YYYYMMDD>`(사이트별 관측일)와 헤더 정체성에
+        # 함께 쓰인다.  `normalize_site()` 를 지나므로 `KMTC`/`KMTS`/`KMTA` 밖은
+        # 모두 `KMTT` 로 떨어진다 (운영자 확정 2026-08-13).
+        site, self.site_why = self._resolve_site()
+        self.state = IcsState(expnum_file=cfg.paths.expnum_file,
+                              site_code=site)
         # 마지막으로 쓴 EXPNUM 을 이어받는다 -- 재실행에도 번호가 되돌아가지
         # 않는 것이 요구사항이다 (state.load_expnum, DevNote 11.12)
         self.state.load_expnum()
@@ -45,6 +62,8 @@ class IcsSim:
         self.transport = UdpEndpoint(cfg, self._on_message)
         self.emit = Emitter(cfg, self.router, self.transport.send)
         self.telem = TelemetryRelay(cfg, self._send_query)
+        # TC 의 TELID 를 실효 사이트와 대조하게 한다 (D-015).
+        self.telem.site_code = site
         self.backend = make_backend(cfg)
         self.aux = AuxControlClient(cfg.auxcontrol)
         self.seq = Sequencer(cfg, self.state, self.emit, self.router,
@@ -55,6 +74,38 @@ class IcsSim:
         #: 마지막 브로드캐스트 (원문, 수신 시각) -- XIS 가 등록 슬롯마다 한 부씩
         #: 복사해 보내는 중복 사본을 걸러낸다 (DevNote 3.1.2)
         self._last_broadcast: tuple[str, float] = ('', 0.0)
+
+    def _resolve_site(self) -> tuple[str, str]:
+        """실효 사이트 코드와 그 근거.  **IP 판정이 ini 를 이긴다** (D-015).
+
+        벤치에서 `[node] site` 를 `sso` 로 두더라도 파일명은 `KMTT.…` 여야
+        한다는 것이 요구사항이므로(운영자 확정 2026-08-13), **설정 밖에서 오는
+        신호가 이겨야** 한다.  ini 값은 버리지 않고 대조해 경고를 남긴다 -- 실제
+        사이트 머신이 벤치로 판정되는 상황(NIC 다운, 모르는 세그먼트)이 그
+        경고로 드러난다.
+
+        `site_from_ip=false` 면 ini 를 그대로 쓴다.  시험이 이 경로를 쓴다.
+        """
+        cfg = self.cfg
+        declared = rawpair.normalize_site(cfg.node.telid)
+        if declared != cfg.node.telid.strip().upper():
+            log.warning('[node] telid=%r 는 실재 사이트 코드가 아니라서 %s 로 '
+                        '읽었다 -- KMTC/KMTS/KMTA/KMTT 중 하나로 둘 것',
+                        cfg.node.telid, declared)
+        if not cfg.node.site_from_ip:
+            return declared, f'[node] telid={declared} (IP 판정 꺼짐)'
+
+        detected, why = siteid.detect()
+        if detected != declared:
+            log.warning(
+                '사이트 판정이 설정과 다르다 -- **판정을 따른다**.\n'
+                '  호스트 IP 판정 : %s   (%s)\n'
+                '  ini 선언       : %s   ([node] site=%s telid=%s)\n'
+                '파일명은 %s.… 로 저장된다.  현장 장비라면 ini 가 잘못 배포된 '
+                '것이거나 기기망 NIC 가 내려간 것이다 -- 자료를 찍기 전에 '
+                '확인할 것 (D-015)',
+                detected, why, declared, cfg.node.site, cfg.node.telid, detected)
+        return detected, why
 
     # -- 생명주기 ---------------------------------------------------------
 
@@ -73,8 +124,106 @@ class IcsSim:
         await self.transport.start()
         await self.aux.start()
         self.register()
+        self._warn_if_real_frames_would_be_labelled_bench()
+        self.log_identity_banner()
         log.info('ICS simulator ready -- nodes: %s, backend=%s',
                  ', '.join(self.router.registered_ids), self.backend.name)
+
+    def _warn_if_real_frames_would_be_labelled_bench(self) -> None:
+        """실물 컨트롤러인데 사이트가 벤치로 판정된 경우 (D-015).
+
+        **이 조합만 조용히 넘어갈 수 있어서 따로 잡는다.**  판정이 `KMTT` 면
+        보통은 정말 벤치이고 시뮬 프레임이라 문제가 없다.  그런데 백엔드가
+        `archon` 이면 **실화소가 `KMTT.…` 이름으로 아카이브에 들어간다** --
+        사이트 정체를 영구히 잃는 경로다.
+
+        `config.validate()` 는 `testbed`+`KMTT` 를 정합으로 보고 통과시키고
+        (내부적으로 일관되므로 맞다), `_resolve_site()` 의 경고는 판정과 ini 가
+        **다를 때만** 뜬다.  둘이 같으면서 둘 다 벤치인 경우가 남으므로 여기서
+        본다.
+
+        시뮬 백엔드에서는 아무 말도 하지 않는다 -- 벤치가 조용해야 사람이
+        경고를 무시하는 것을 학습하지 않는다.
+        """
+        if self.state.site_code != rawpair.TESTBED_SITE:
+            return
+        if rawhdr.datasrc_of(self.backend.name) != rawhdr.DATASRC_REAL:
+            return
+        log.warning(
+            '사이트가 %s(벤치)로 판정됐는데 백엔드가 실물 %r 이다 -- '
+            '**실화소가 %s.… 이름으로 저장된다.**  호스트가 사이트 대역'
+            '(192.168.13/14/15.x)에 없다는 뜻이니, 기기망 NIC 이 내려갔거나 '
+            '망 구성이 바뀐 것이다.  자료를 찍기 전에 확인할 것 (D-015)',
+            rawpair.TESTBED_SITE, self.backend.name, rawpair.TESTBED_SITE)
+
+    def log_identity_banner(self) -> None:
+        """기동 시 **사이트 정체를 한 덩어리로** 남긴다.
+
+        **오배포를 자료 한 장 찍기 전에 사람 눈에 띄게 하는 것이 목적이다.**
+        `[node] site` 한 줄이 사이트 코드 -> 좌표 -> 관측일 경계 -> 파일명까지
+        전부 끌고 가므로(D-011·D-014), 그 한 줄이 틀리면 **아무 오류 없이** 전부
+        틀린다.  헤더에 `OBSERVAT`/`SITEID`/좌표가 남으니 사후 탐지는 가능하지만,
+        그때는 이미 아카이브에 들어가 있다 -- 그래서 **t=0 에 보여주는 쪽**이
+        런타임 검사보다 값싸고 확실하다.
+
+        파일명 예시를 함께 찍는 이유: 운영자가 실제로 확인해야 하는 것이
+        "이 이름으로 아카이브에 들어가도 되나" 이기 때문이다.  설정값 나열보다
+        완성된 이름 한 줄이 오배포를 더 빨리 드러낸다.
+
+        `DATASRC` 를 넣은 이유: 시뮬 산출물이 실제 아카이브로 흘러드는 것을
+        막는 유일한 카드이므로(규격 5.5절), 기동 때 그 값을 보고 넘어가게 한다.
+        """
+        cfg, st = self.cfg, self.state
+        site = st.site_code
+        geo = rawhdr.site_header(site, cfg.site_for(site))
+        suffix = f'{st.obs_date()}.{st.expnum:06d}'
+        example = rawpair.physical_name(site, suffix, rawpair.CONTROLLERS[0][0])
+
+        def known(card: str) -> bool:
+            """sentinel 이 아닌 실제 값인가 (규격 5.0절: 문자열 `NC`, 정수 `-1`)."""
+            v = geo[card]
+            return str(v) != 'NC' and v != -1
+
+        if known('LATITUDE'):
+            where = (f'lat {geo["LATITUDE"]}   lon {geo["LONGITUD"]} (서경)'
+                     f'   elev {geo["ELEVATIO"]} m')
+        else:
+            # 값이 없을 때 `elev -1 m` 처럼 sentinel 을 단위와 함께 보여주면
+            # 실제 측정값처럼 읽힌다.  없다고 말하는 편이 낫다.
+            where = '(설정 없음 -- 헤더에 sentinel 이 실린다)'
+
+        boundary = rawpair.boundary_ut(site)
+        obsday = (f'UT {boundary}   -- 파일명 <YYYYMMDD> 가 이 경계로 갈린다'
+                  if boundary != '(없음)' else
+                  'UT 날짜 그대로 (테스트베드는 관측 야간 개념이 없다)')
+
+        declared = rawpair.normalize_site(cfg.node.telid)
+        mark = '' if declared == site else f'   ⚠️ ini 는 {declared} 라고 적혀 있다'
+        rows = [
+            ('사이트', f'{site}   (OBSERVAT='
+                       f'{rawpair.OBSERVAT.get(site, "?")}){mark}'),
+            ('판정 근거', getattr(self, 'site_why', '(없음)')),
+            ('TELESCOP', str(geo['TELESCOP'])),
+            ('위치', where),
+            ('관측일 경계', obsday),
+            ('파일명 예시', example),
+            ('data_dir', cfg.paths.data_dir),
+            ('EXPNUM', f'다음 {st.expnum:06d}'
+                       f'   (기록 {st.expnum_file or "지속 없음"})'),
+            ('backend', f'{self.backend.name}'
+                        f'   ->  DATASRC={rawhdr.datasrc_of(self.backend.name)}'),
+        ]
+
+        width = 74
+        lines = ['=' * width,
+                 ' 사이트 정체 -- 배포가 맞는지 여기서 확인하세요',
+                 '-' * width]
+        lines += [f' {label}{" " * max(1, 15 - _disp_width(label))}{value}'
+                  for label, value in rows]
+        lines.append('=' * width)
+        # 여러 줄을 **한 번의 로그 호출**로 낸다 -- 줄마다 부르면 다른 태스크의
+        # 로그가 사이에 끼어 덩어리가 깨진다.
+        log.info('\n%s', '\n'.join(lines))
 
     def register(self) -> None:
         """XIS 에 노드를 등록한다 -- 수신하려는 **9개 ID 전부**로 PING 을 보낸다.

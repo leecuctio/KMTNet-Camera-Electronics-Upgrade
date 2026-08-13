@@ -14,6 +14,7 @@ comment_prefixes/inline_comment_prefixes 로 그렇게 설정한다.
 from __future__ import annotations
 
 import configparser
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -28,6 +29,8 @@ _NODE_ID_RE = re.compile(r'^[A-Z0-9._]{2,8}$')
 _RESERVED_IDS = frozenset({'AL', 'ALL', 'XIS'})
 #: site <-> TELID 정합 (D-011).  TELID 는 TC 텔레메트리 규약과 같고, 실기의
 #: raw pair 물리 파일명 <SITE> prefix 로도 쓰인다 (raw_fits_spec 2.3절).
+log = logging.getLogger('ics_sim.config')
+
 _SITE_TELID = {'ctio': 'KMTC', 'saao': 'KMTS', 'sso': 'KMTA', 'testbed': 'KMTT'}
 
 
@@ -37,8 +40,19 @@ class ConfigError(Exception):
 
 @dataclass
 class NodeCfg:
+    #: ini 에 **선언된** 사이트.  `site_from_ip` 가 켜져 있으면 실효 사이트는
+    #: 호스트 IP 로 정해지고 이 값은 **대조용**으로만 남는다 (D-015).
     site: str = 'ctio'
     telid: str = 'KMTC'
+    #: 호스트 IP 로 사이트를 판정할지 (기본 켬).
+    #:
+    #: **판정이 ini 를 이긴다.**  벤치에서 `site` 를 `sso` 로 두더라도 파일명은
+    #: `KMTT.…` 여야 한다는 것이 요구사항이고(운영자 확정 2026-08-13), 그러려면
+    #: 설정 밖에서 오는 신호가 이겨야 한다.  어긋나면 경고를 남긴다.
+    #:
+    #: **시험은 이걸 끈다** (`tests/conftest.py`) -- 켜 두면 판정이 시험을 돌리는
+    #: 머신의 IP 에 좌우돼 기대 파일명이 흔들린다.
+    site_from_ip: bool = True
     ics_id: str = 'ICS'
     ic_ids: tuple[str, ...] = ('K.IC', 'M.IC', 'T.IC', 'N.IC')
     cb_ids: tuple[str, ...] = ('K.CB', 'M.CB', 'T.CB', 'N.CB')
@@ -92,6 +106,41 @@ class TransportCfg:
 
 
 @dataclass
+class SiteCfg:
+    """사이트 측지값 -- FITS `LATITUDE`/`LONGITUD`/`ELEVATIO`/`TELESCOP`.
+
+    **좌표를 코드에 박지 않는 이유**: 레거시 실측본으로 확인된 것은 SSO 뿐이고
+    (`LATITUDE='-31:16:24'` `LONGITUD='210:56:08'` `ELEVATIO=1150`), CTIO/SAAO
+    값은 이 저장소 어디에도 없다.  추측한 좌표는 규격 6.2절이 경계하는 "조용히
+    틀린 값" 그 자체가 된다 -- **겉보기엔 유효한 좌표라 아무도 의심하지 않는다.**
+    설정으로 받고, 없으면 sentinel 을 싣는다 (규격 5.9절, OI-11).
+
+    `LONGITUD` 는 레거시 관례대로 **서경**(`[deg W]`)이다 -- SSO 의
+    `210:56:08` 이 동경 `149:03:52` 의 보수다.  동경으로 적으면 부호가 뒤집힌
+    좌표가 아카이브에 박힌다.
+    """
+
+    latitude: str = ''
+    longitud: str = ''
+    elevatio: int = -1
+    telescop: str = ''
+
+    def as_dict(self) -> dict:
+        """`rawhdr.site_header()` 에 넘길 형태.  **빈 값은 빼고 넘긴다** --
+        실측 표(`rawhdr.VERIFIED_SITES`)를 지우지 않게 하기 위해서다."""
+        out = {}
+        if self.latitude:
+            out['latitude'] = self.latitude
+        if self.longitud:
+            out['longitud'] = self.longitud
+        if self.elevatio >= 0:
+            out['elevatio'] = self.elevatio
+        if self.telescop:
+            out['telescop'] = self.telescop
+        return out
+
+
+@dataclass
 class PathsCfg:
     data_dir: str = './icsdata'
     write_fits: bool = False
@@ -114,6 +163,20 @@ class TimingCfg:
     aux_relay_gap: float = 0.058
     tcs_relay_gap: float = 0.029
     shutter_open_delay: float = 0.15
+    #: `SHOPEN` 지시 후 이 시간이 지나면 `AUXSTATUS` 를 **다시 질의**해 헤더의
+    #: 셔터 상태를 갱신한다 (운영자 확정 2026-08-13).  `0` 이하면 갱신하지 않는다.
+    #:
+    #: **왜 필요한가**: 프레임 개시의 AUXSTATUS 는 `SHOPEN` 보다 8초 이상 앞서
+    #: 질의되므로(`initialize_ack` + `erase_sec`) 헤더의 `SHUTTER` 가 노출과
+    #: 무관한 값이 된다 -- 레거시 실측이 `IMAGETYP='OBJECT'`·`EXPTIME=30` 프레임에
+    #: `SHUTTER='CLOSED'` 를 남긴 것이 그 증거다.
+    #:
+    #: ⚠️ **기본값 3초는 블레이드 주행(5초) 중간이다.**  그 시점에는
+    #: `SHUTOP='OPENING'` 이고 `SHUTTER` 는 리밋 스위치가 아직 안 트립했을 수
+    #: 있다(`CLOSED`/`UNKNOWN`).  운영자는 `SHUTOP='OPENING'` 으로 충분하다고
+    #: 확정했다.  Full/Half 2중 블레이드 중 Full 리밋이 더 일찍 트립하는지는
+    #: 모르므로 **벤치 실측으로 조정할 수 있게 설정값으로 뺐다** (규격 OI-14).
+    aux_requery_after_shopen: float = 3.0
     countdown_tick_dark: float = 5.00
     countdown_tick_shop: float = 5.217
     shutter_to_readout: float = 6.00
@@ -277,6 +340,12 @@ class SimConfig:
     node: NodeCfg = field(default_factory=NodeCfg)
     transport: TransportCfg = field(default_factory=TransportCfg)
     paths: PathsCfg = field(default_factory=PathsCfg)
+    #: `[site.<이름>]` 섹션들을 **사이트 코드로 키잉**해 담는다.  실효 사이트가
+    #: 기동 시점에 정해지므로(IP 판정) 설정 읽기 단계에서 하나를 고를 수 없다 --
+    #: 전부 읽어 두고 `site_for()` 로 꺼낸다.
+    site_table: dict[str, SiteCfg] = field(default_factory=dict)
+    #: `[site]` 섹션.  선택된 사이트 값을 **덮어쓴다** -- 현장이 정본이다.
+    site_override: SiteCfg = field(default_factory=SiteCfg)
     timing: TimingCfg = field(default_factory=TimingCfg)
     readout: ReadoutCfg = field(default_factory=ReadoutCfg)
     obsagent: ObsAgentCfg = field(default_factory=ObsAgentCfg)
@@ -286,6 +355,16 @@ class SimConfig:
     logging: LoggingCfg = field(default_factory=LoggingCfg)
 
     source_path: str = ''
+
+    def site_for(self, site_code: str) -> dict:
+        """그 사이트의 측지값 (`rawhdr.site_header()` 에 넘길 형태).
+
+        `[site.<이름>]` 을 읽고 `[site]` 로 덮는다.  빈 값은 넘기지 않으므로
+        `rawhdr.VERIFIED_SITES` 의 기본값이 살아남는다.
+        """
+        out = dict(self.site_table.get(site_code.upper(), SiteCfg()).as_dict())
+        out.update(self.site_override.as_dict())
+        return out
 
     # -- 시간 축척 --------------------------------------------------------
 
@@ -423,6 +502,49 @@ def _head(sec: configparser.SectionProxy, key: str, default: str) -> str:
     return raw.split()[0]
 
 
+def _text_or(sec: configparser.SectionProxy, key: str, default: str) -> str:
+    """비어 있으면 기본값.  **내부 공백은 보존한다.**
+
+    `sec.get(key, default).strip()` 을 그대로 쓰면 **키가 있고 값이 빈 경우**
+    (`telescop =`) 기본값이 아니라 빈 문자열로 덮인다.  `[site.<코드>]` 를
+    `[site]` 로 덮는 구조에서 이게 실제로 문제였다 -- 비워 둔 덮어쓰기 섹션이
+    사이트 값을 지웠다.
+
+    `_head()` 와 달리 첫 토큰만 취하지 않는다 -- `TELESCOP = 'KMTNet 1.6m #1'`
+    처럼 공백이 값의 일부인 항목에 쓴다.
+    """
+    raw = sec.get(key, '').strip()
+    # **값에 '#' 가 들어가면 ini 에 `\#` 로 적어야 한다.**  이 파서는 앞에 공백이
+    # 있는 '#' 를 인라인 주석으로 보므로(`_make_parser`)
+    # `telescop = KMTNet 1.6m #1` 이 `KMTNet 1.6m` 으로 잘린다 -- 실제로 그렇게
+    # 잘렸다.  따옴표로 감싸도 소용없다(파서가 주석을 먼저 떼서
+    # `"KMTNet 1.6m` 이 남는다).  '#' 앞이 공백이 아니면 주석으로 보지 않으므로
+    # `\#` 가 통과하고, 여기서 백슬래시를 벗긴다.
+    raw = raw.replace('\\#', '#')
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ('"', "'"):
+        raw = raw[1:-1].strip()
+    return raw if raw else default
+
+
+def _int_or(sec: configparser.SectionProxy, key: str, default: int) -> int:
+    """비어 있거나 숫자가 아니면 기본값.
+
+    `sec.getint(key, default)` 는 **값이 빈 문자열이면 그냥 터진다** --
+    `ValueError: invalid literal for int() with base 10: ''`.  주석만 남기고
+    비워 둔 설정 항목이 흔하므로(예: `[site] elevatio =`) 그걸로 기동이
+    막히면 안 된다.  "값이 없음" 은 오류가 아니라 sentinel 로 가는 경로다.
+    """
+    raw = sec.get(key, '').strip()
+    if not raw:
+        return default
+    try:
+        return int(raw.split()[0])
+    except ValueError:
+        log.warning('[%s] %s=%r 를 정수로 읽을 수 없다 -- 기본값 %r 을 쓴다',
+                    sec.name, key, raw, default)
+        return default
+
+
 def _floats(sec: configparser.SectionProxy, key: str,
             default: tuple[float, ...]) -> tuple[float, ...]:
     raw = sec.get(key, '').strip()
@@ -465,6 +587,7 @@ def load(path: str | None = None) -> SimConfig:
         n = cfg.node
         n.site = s.get('site', n.site).strip()
         n.telid = s.get('telid', n.telid).strip()
+        n.site_from_ip = _bool(s, 'site_from_ip', n.site_from_ip)
         n.ics_id = s.get('ics_id', n.ics_id).strip()
         n.ic_ids = _words(s, 'ic_ids', n.ic_ids)
         n.cb_ids = _words(s, 'cb_ids', n.cb_ids)
@@ -496,12 +619,42 @@ def load(path: str | None = None) -> SimConfig:
         if len(shape) == 2:
             p.fits_shape = (shape[0], shape[1])
 
+    # 사이트 측지값.  **`[site.<이름>]` 전부를 표로 읽고 `[site]` 는 따로 둔다.**
+    #
+    # 하나를 골라 담지 않는 이유: 실효 사이트가 **기동 시점에 호스트 IP 로**
+    # 정해지므로(D-015) 설정 읽기 단계에는 아직 모른다.  전부 읽어 두면
+    # `site_for()` 가 나중에 꺼낼 수 있고, `[node] site` 한 줄을 고쳐 다른
+    # 사이트에 배포해도 좌표가 따라온다.
+    def _read_site(sec: configparser.SectionProxy) -> SiteCfg:
+        t = SiteCfg()
+        # 위도/경도는 공백이 없는 형식(`-30:10:01.84`)이라 첫 토큰만 취해도 안전.
+        t.latitude = _head(sec, 'latitude', t.latitude)
+        t.longitud = _head(sec, 'longitud', t.longitud)
+        t.elevatio = _int_or(sec, 'elevatio', t.elevatio)
+        # `telescop` 은 **공백이 값의 일부**다 (`KMTNet 1.6m #1`).
+        t.telescop = _text_or(sec, 'telescop', t.telescop)
+        return t
+
+    for section in cp.sections():
+        if not section.lower().startswith('site.'):
+            continue
+        name = section.split('.', 1)[1].strip().lower()
+        code = _SITE_TELID.get(name)
+        if code is None:
+            log.warning('[%s] 는 알 수 없는 사이트 이름이라 무시한다 -- '
+                        'ctio/saao/sso/testbed 중 하나여야 한다', section)
+            continue
+        cfg.site_table[code] = _read_site(cp[section])
+    if cp.has_section('site'):
+        cfg.site_override = _read_site(cp['site'])
+
     if cp.has_section('timing'):
         s = cp['timing']
         t = cfg.timing
         for name in ('time_scale', 'go_to_initializing', 'initialize_ack',
                      'erase_sec', 'aux_relay_gap', 'tcs_relay_gap',
-                     'shutter_open_delay', 'countdown_tick_dark',
+                     'shutter_open_delay', 'aux_requery_after_shopen',
+                     'countdown_tick_dark',
                      'countdown_tick_shop', 'shutter_to_readout',
                      'acq_to_idle', 'write_delay', 'tc_query_timeout'):
             setattr(t, name, float(s.get(name, str(getattr(t, name)))))

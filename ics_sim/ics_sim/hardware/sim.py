@@ -112,6 +112,62 @@ class SimBackend:
         # 실측 RATE 범위에서 컨트롤러마다 조금씩 다른 값
         return 1_030_000 + (abs(hash(controller)) % 60_000)
 
+    # -- FITS 헤더용 컨트롤러 사실 (규격 5.5·5.6·5.10절) ------------------
+    #
+    # **시뮬 값임이 헤더에 남는다.**  `DATASRC='SIM'` 이 그 표시이고
+    # (`rawhdr.datasrc_of`), 여기서 돌려주는 값들은 그 카드가 있는 한 실측으로
+    # 오인될 수 없다.  값은 레거시 실측 헤더의 범위에서 가져와 형식만 맞춘다.
+
+    def controller_info(self, controller: str) -> dict:
+        tag = controller.upper()
+        idx = 1 if tag == 'MK' else 2
+        return {
+            # 색인형 -- 양쪽 파일에서 같은 값이어야 한다 (규격 5.11절).
+            # 그래서 `controller` 에 의존하지 않고 고정 목록을 돌려준다.
+            'units': (
+                {'id': 'ARCHON-SIM-1', 'sn': 'SIM0001', 'fw': 'SIM-fw-0.0'},
+                {'id': 'ARCHON-SIM-2', 'sn': 'SIM0002', 'fw': 'SIM-fw-0.0'},
+            ),
+            'status': 'OK',
+            'errorflag': 0,
+            'boardtemp': 28.0 + idx * 0.4,
+            'readtime': round(self.cfg.readout.pctread_tick
+                              * len(tuple(self.cfg.readout.steps())), 2),
+            'acffile': 'kmtnet_ceu_sim.acf',
+            'nphlines': 32,          # 레거시 실측값과 같다
+            'frameno': 0,
+            'bufno': idx,
+        }
+
+    def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
+        # 레거시 실측 헤더(SSO 2017)의 값 범위를 쓴다.  chip 마다 조금 다르게
+        # 만들어 CCDTEMP1 != CCDTEMP2 인 경우를 시험할 수 있게 한다.
+        base = -103.16
+        return {
+            'ccdtemp1': round(base - 0.05, 2),
+            'ccdtemp2': round(base + 0.05, 2),
+            'pt30n1': -151.68, 'pt30n2': -147.39, 'charcoal': -197.79,
+            'air_in': 34.98, 'air_out': 31.26,
+            'glyc_in': 27.97, 'glyc_out': 29.01,
+            # `dewpres` 는 넣지 않는다 -- 레거시도 `'N/A'` 였다.  호출측이
+            # sentinel 을 채우는 경로를 실제로 밟게 하려는 것이다.
+        }
+
+    def voltages(self, controller: str) -> list[dict]:
+        from ..rawhdr import VOLT_NAMES
+        setpoints = {'VOD': 26.0, 'VRD': 13.0, 'VOG': -4.0, 'VSS': 0.0,
+                     'VDD': 5.0, 'PCLKH': 3.0, 'PCLKL': -8.0,
+                     'SCLKH': 5.0, 'SCLKL': -5.0}
+        return [{'name': n, 'setpoint': setpoints[n],
+                 'measured': round(setpoints[n] + 0.02, 2),
+                 'unit': 'V', 'status': 'OK'} for n in VOLT_NAMES]
+
+    def amp_map(self, controller: str) -> dict | None:
+        # **배선을 모른다고 말하는 것이 맞다.**  시뮬이 그럴듯한 매핑을
+        # 만들어 `AMPMAP='EXPLICIT'` 로 싣으면, 실기에서 실제 배선을 넣는 일이
+        # 이미 끝난 것처럼 보인다 (규격 5.5.1절, 변경점 C-11).
+        return None
+
     # -- 상태 -------------------------------------------------------------
 
     def status(self, ccd: str) -> dict:

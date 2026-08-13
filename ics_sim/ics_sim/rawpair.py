@@ -26,7 +26,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from . import __version__
 from .fitsout import FitsStr
@@ -46,6 +46,100 @@ CHIPLIST = 'M,K,N,T'
 #: 사이트 코드 → `OBSERVAT` 헤더값.  규격 2.3절 표.  파일명 `<SITE>` 와
 #: `OBSERVAT` 가 어긋나면 converter v2.2.0 이 오류로 잡는다.
 OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'TESTBED'}
+
+#: 실재하는 과학 사이트 코드.  이 셋 밖은 모두 테스트베드로 떨어진다.
+REAL_SITES = ('KMTC', 'KMTS', 'KMTA')
+TESTBED_SITE = 'KMTT'
+
+
+def normalize_site(code: str) -> str:
+    """사이트 코드를 정규화한다.  **`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTT`.**
+
+    운영자 확정 (2026-08-13).  실재하는 관측소는 셋뿐이므로, 모르는 값을 그대로
+    싣기보다 테스트베드로 떨어뜨리는 것이 안전하다 -- 파일명 `<SITE>` 는
+    converter 정규식(`^(KMTC|KMTS|KMTA|KMTT)[.]…`)이 받는 넷 중 하나여야 하고,
+    낯선 코드는 정규식에 걸려 변환 자체가 fallback 경로로 빠진다.
+
+    TC 가 보내는 `TELID` 에 사이트가 아닌 `KMTN`(pctcs 기본값, `pctcs.h:115`)이
+    올 수 있어서 이 함수가 특히 필요하다.
+
+    ⚠️ **떨어뜨리는 것이 곧 안전은 아니다.** 실제 관측 자료가 `KMTT` 이름으로
+    저장되면 사이트 정체를 잃는다 -- 그래서 호출측은 정규화가 실제로 일어났을 때
+    경고를 남겨야 한다 (`sequencer` 참고).
+    """
+    up = (code or '').strip().upper()
+    return up if up in REAL_SITES else TESTBED_SITE
+
+
+# ---------------------------------------------------------------------------
+# 관측일 (파일명 `<YYYYMMDD>`)
+# ---------------------------------------------------------------------------
+#
+# **운영자 확정 (2026-08-13, LEECU 협의 후).**  종전에는 UT 날짜를 그대로 썼으나
+# (규격 OI-10 잠정), 이제 **사이트별 관측일**이 기준이다.  규칙은 UT 시각으로
+# 주어졌다:
+#
+#     CTIO   UT 00:00~16:30 -> 그날 UT 날짜   /  16:30~24:00 -> 다음날
+#     SSO    UT 00:00~01:30 -> 전날 UT 날짜   /  01:30~24:00 -> 그날
+#     SAAO   UT 00:00~10:30 -> 전날 UT 날짜   /  10:30~24:00 -> 그날
+#
+# 근거는 "각 사이트 동지 때 관측 종료와 관측 시작 사이의 중간 시각".
+#
+# **세 경계가 모두 현지 12:30 이다** -- CTIO(UT−4) 16:30−4=12:30,
+# SAAO(UT+2) 10:30+2=12:30, SSO(UT+11) 01:30+11=12:30.  숫자가 맞는지 검산할 때
+# 이 불변식을 쓰면 된다.  (SSO 는 일광절약 +11 기준이다.)
+#
+# **이 규약이 종전 OI-12 를 구조적으로 없앤다.**  UT 날짜 기준에서는 날짜 경계가
+# UT 자정이고 그게 CTIO(현지 20시)·SAAO(현지 22시)에서 **관측 시간대 안**이라,
+# 프레임 하나가 경계를 걸치면 파일명과 `DATE-OBS` 의 날짜가 갈렸다.  관측일 기준의
+# 경계는 현지 12:30 이라 **관측 중에는 지나가지 않는다.**
+#
+# 남는 위험: 현지 12:30 무렵의 주간 교정 프레임(bias/dome flat).  프레임 개시와
+# 셔터 개방 사이 ~7.6초가 경계를 걸칠 수 있다.  드물고 교정 프레임에 한정된다.
+
+#: 사이트 코드 -> UT 에 더할 보정.  더한 뒤 **날짜만** 취하면 관측일이 된다.
+#: 부호에 주의 -- CTIO 만 양수다(경계가 UT 오후라 다음날로 넘겨야 하기 때문).
+OBSDATE_SHIFT_MIN = {
+    'KMTC': +7 * 60 + 30,     # 경계 UT 16:30  (현지 12:30, UT-4)
+    'KMTS': -(10 * 60 + 30),  # 경계 UT 10:30  (현지 12:30, UT+2)
+    'KMTA': -(1 * 60 + 30),   # 경계 UT 01:30  (현지 12:30, UT+11)
+    'KMTT': 0,                # 테스트베드는 관측 야간이 없다 -- UT 날짜 그대로
+}
+
+
+def boundary_ut(site_code: str) -> str:
+    """이 사이트의 관측일 경계 UT 시각, `'HH:MM'`.  기동 배너 표시용.
+
+    보정이 `00:00` 으로 만드는 UT 시각이 곧 경계다 -- 그래서 보정 하나에서
+    파생시킬 수 있고, 경계를 따로 적어 두지 않는다.  따로 적으면 보정과
+    어긋날 수 있는 두 번째 사실이 생긴다.
+    """
+    site = normalize_site(site_code)
+    shift = OBSDATE_SHIFT_MIN[site]
+    if shift == 0:
+        return '(없음)'
+    m = (-shift) % (24 * 60)
+    return f'{m // 60:02d}:{m % 60:02d}'
+
+
+def observing_date(when: datetime, site_code: str) -> str:
+    """`<YYYYMMDD>` -- 그 사이트의 **관측일** (운영자 확정 2026-08-13).
+
+    보정을 더한 뒤 날짜만 취하는 한 줄로 세 사이트를 다 표현한다.  경계 시각을
+    if 문으로 나열하지 않는 이유는, 그렇게 쓰면 경계에서 `<`/`<=` 를 잘못 잡는
+    off-by-one 이 생기고 그게 **1년에 몇 번만 드러나는** 부류이기 때문이다.
+    보정 방식은 경계에서 정확히 00:00 이 되므로 그 실수가 성립하지 않는다.
+
+    Args:
+        when: UT 시각 (timezone-aware).
+        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTT`.  그 밖은 `KMTT` 로 정규화된다.
+    """
+    site = normalize_site(site_code)
+    shift = OBSDATE_SHIFT_MIN[site]
+    ut = when.astimezone(timezone.utc) if when.tzinfo else when.replace(
+        tzinfo=timezone.utc)
+    return (ut + timedelta(minutes=shift)).strftime('%Y%m%d')
+
 
 RAWPROD = 'L0_RAW_ARCHON'
 RAWVER = 'CEU-RAW-v1.0'
