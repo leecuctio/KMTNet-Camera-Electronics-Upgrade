@@ -1,6 +1,6 @@
 # KMTNet-CEU Site Upgrade Milestones
 
-최종 갱신일: 2026-06-30
+최종 갱신일: 2026-08-13
 
 기준 문서: `documents/source_documents/KMTNet_CEU_PMP_Final_v1.0.pdf`, `KMTNet_CEU_PMP_Final_v1.0.docx`
 
@@ -75,6 +75,7 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 | Recovery Plan | rollback 및 spare 교체 절차 준비 |
 | Science Verification | 김재우 사전 검토 완료 |
 | Site Preparation | 화물 도착, 통관, 작업공간, 클린부스, 네트워크, 전원 확인 |
+| 전문가 방문용역 | Tom O'Brien 계약 확정 (진행 중 — 일정 10-18~11-01 제안 발송, 회신 대기; ACT-007) |
 
 ### 현장 작업 마일스톤
 

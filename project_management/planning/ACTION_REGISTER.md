@@ -1,6 +1,6 @@
 # KMTNet-CEU Action Register
 
-최종 갱신일: 2026-07-22
+최종 갱신일: 2026-08-13
 
 상태 값: `Open`, `In Progress`, `Blocked`, `Done`, `Dropped`
 
@@ -12,6 +12,7 @@
 | ACT-004 | 2026-06-22 | Configuration | CEU repository baseline과 freeze 절차 확정 | 김동진 | 2026-09-15 | Open | Configuration review |
 | ACT-005 | 2026-06-22 | Science | Bias/Dark/Gain/Read Noise/Crosstalk 검증 데이터와 pass/fail 기준 확정 | 김재우 | 2026-09 | Open | Science review |
 | ACT-006 | 2026-06-22 | Site | SSO pre-site checklist와 Day 0 readiness 기준 확정 | 이용석, 김동진, 이상민 | 2026-10 | Open | Go/No-Go Review |
+| ACT-007 | 2026-08-13 | Site | SSO Wallboard 교체 전문가 Tom O'Brien 방문용역 협의·계약 | 이충욱 | 2026-09 | In Progress | 일정(10-18~11-01)·지원조건(항공/일비/자문료) 제안 발송, Tom 검토·회신 대기 중 |
 
 ## 사용 규칙
 

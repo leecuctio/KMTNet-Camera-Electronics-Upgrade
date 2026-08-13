@@ -1,6 +1,6 @@
 # KMTNet-CEU SSO 적용 전 진행상태 점검 펀치리스트 (Punch List)
 
-최종 갱신일: 2026-06-25
+최종 갱신일: 2026-08-13
 
 연계 문서: `schedule/SITE_UPGRADE_MILESTONES.md`, `planning/ACTION_REGISTER.md`, `planning/BACKLOG.md`, `governance/GATE_REVIEW_PLAN.md`, `governance/RISK_REGISTER.md`, `logistics/EQUIPMENT_TRACKER.md`, `operations/COMMUNICATION_PLAN.md`
 
@@ -79,6 +79,7 @@ SSO(호주) 현장 적용일(2026-10-19) 전까지 **2주 단위**로 프로젝�
 
 ### 4.6 Site Readiness (SSO)
 - □ SSO pre-site checklist / Day 0 readiness 확정 (ACT-006)
+- ◑ 전문가 방문용역(Tom O'Brien) 계약 — 일정(10-18~11-01)·지원조건 제안 발송, 회신 대기 중 (ACT-007, 2026-08-13)
 - □ 클린부스·네트워크·전원·작업공간 준비 확인
 - □ Recovery/Rollback 및 spare 교체 절차 준비 (`operations/RECOVERY_ROLLBACK_PLAN.md`)
 - □ 선발대 구성 및 현장 안전/취급 기준 확인 (`operations/SAFETY_HANDLING_PLAN.md`)
