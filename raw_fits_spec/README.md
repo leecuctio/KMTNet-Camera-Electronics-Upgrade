@@ -18,9 +18,15 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 ## 현재 기준선
 
+> ⛔ **현행 raw pair 규격이 없다 (2026-08-18).** `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 는 파일로는 남아 있지만 **((재작성중)) 표시가 붙었고 근거가 아니다.** 전면 재검토 중이며, 어느 절이 살아남을지 정해지지 않았다.
+>
+> **재작성판이 나올 때까지 이 규격을 인용하거나 근거로 구현하지 않는다.** 절 번호(5.x · 7장 · 9장)도 바뀔 수 있다.
+>
+> 다른 문서·코드에 남은 참조는 **경로로는 유효하지만 근거로는 무효**다. 특히 ICD v4.1 §12 와 `ics_sim` 의 `rawhdr.py` · `rawpair.py` · `hardware/archon.py` 가 5장에 의존하므로 재작성 시 함께 정리한다.
+
 | 구분 | 문서 | 버전 | 상태 |
 | --- | --- | --- | --- |
-| Raw pair 규격 | [`KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`](KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md) | v1.2 | Current |
+| Raw pair 규격 | [`KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`](KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md) | v1.2 | ⛔ **((재작성중)) — 현행 아님** |
 
 연동 기준:
 
@@ -38,8 +44,8 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 | 경로 | 내용 |
 | --- | --- |
-| `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | 현행 raw pair 규격 (md가 diff 가능한 기준본) |
-| `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.5_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ MEF 키워드 전수 대응표 289행. MEF 쪽은 문서가 아니라 **converter 코드에서 기계 추출**했고, 문서와 코드가 어긋나는 지점은 2장에 모았다. 결정이 필요한 10항목은 5장 (ACT-011) |
+| `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ **((재작성중)).** 옛 raw pair 규격이며 **현행이 아니다.** 재검토 결과로 다시 쓴다 |
+| `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ L0 MEF 키워드 전수 대응표 289행. 0장이 **준수 우선순위**(1 ICD v4.1 → 2 converter 코드 → 3 keyword 정의서, 레거시 MEF 는 배경지식)를, 1.2절이 **raw 쪽 기준선**(레거시 raw 실측 헤더 123개 — `ics_sim` 출력이 아니다)을 세우고, 2장이 준거 대비 현재 상태를, 5장이 결정이 필요한 10항목을 담는다 (ACT-011) |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
@@ -50,11 +56,12 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1_KO.md` | — | v4.1 ICD의 **국문본. 이 디렉토리가 유일본** |
 | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` | `../mef_fits_spec/` | 규격 6.5절 대조표의 원본. 바이트 동일 사본 |
 | `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` | `../mef_converter/` | Archon raw 검증 결과. 바이트 동일 사본 |
+| `KMT_CEU_Converter_Raw_Reads_v1.0.md` | — | **사본이 아니라 생성물이다** (2026-08-18 추가). converter 소스에서 기계 추출한 **raw 헤더 읽기 목록 104개** — 각 keyword 의 MEF 목적지 · 없을 때 채워지는 기본값 · 레거시 raw 유무. converter 가 개정되면 다시 생성한다 |
 | `Legacy raw fits header samples/` | — | **레거시 시스템의 FITS 헤더 실측본** (2026-08-12 추가). `KMTNk.20170209.044131.Rawheader.txt` 가 이 규격에 대응하는 **레거시 raw 헤더**이고, `xkmta.20170209.044131.MEF.*.txt` 는 레거시가 MEF 로 변환한 산출물의 헤더다(primary 1 + 확장 35). raw 헤더는 2017→2021 사실상 불변이어서 정착된 설계로 읽을 수 있다 — 규격 5장 식별 keyword 재정의의 근거 |
 
 > ⚠️ `KMTNc.20210503.030331.header.txt` 는 **raw pair 가 아니다.** `DETID='C'` · 1616×1616 인데, raw 영상의 ROI 조각들을 모자이크로 재구성한 **combination 산출물**이다(운영자 확인 2026-08-12). 검출기 이름이 아니므로 이 규격 범위 밖이고, `M,K,N,T` 4개 전제에 영향을 주지 않는다.
 
-**국문 ICD를 뺀 나머지는 사본이며 기준본은 원본 위치의 것이다.** 원본이 개정되면 이 사본도 함께 갱신하거나 삭제한다.
+**국문 ICD와 `KMT_CEU_Converter_Raw_Reads_v1.0.md` 를 뺀 나머지는 사본이며 기준본은 원본 위치의 것이다.** 원본이 개정되면 이 사본도 함께 갱신하거나 삭제한다. 국문 ICD 는 유일본이고, `KMT_CEU_Converter_Raw_Reads_v1.0.md` 는 converter 소스에서 뽑은 **생성물**이라 둘 다 대조 원본이 없다.
 
 **전량 md 로 이관했다 (2026-08-11).** 이전에는 docx 4개였고, 그중 셋은 원본 위치에 이미 md 기준본이 있어 사본만 형식을 맞췄다. 국문 ICD 는 유일본이면서 v4.0 에 머물러 있었으므로 **md 변환과 함께 v4.1 로 갱신**했다 (파일명 사이트 코드 D-011 · NT 헤더 완전성 OI-8 · converter v2.2.0). 원 docx 4개는 git 이력에 남아 있다.
 

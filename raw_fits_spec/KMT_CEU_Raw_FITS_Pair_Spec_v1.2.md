@@ -1,8 +1,22 @@
-# KMT-CEU Raw FITS Pair 규격
+# KMT-CEU Raw FITS Pair 규격 ((재작성중))
 
-버전: v1.2
+> # ⛔ ((재작성중)) — 이 문서를 근거로 삼지 않는다
+>
+> **2026-08-18 부로 이 규격은 전면 재검토에 들어갔다.** 아래 내용은 **재작성 전의 옛 판**이며, 어느 절이 살아남을지 아직 정해지지 않았다.
+>
+> | 하지 말 것 | 대신 |
+> | --- | --- |
+> | 이 문서를 인용해 구현하기 | 재작성판이 나올 때까지 **기다린다** |
+> | 절 번호(5.x · 7장 · 9장)를 근거로 들기 | 절 구성이 바뀔 수 있다 |
+> | "현행 규격" 이라고 부르기 | **현행 규격은 없다** (`README.md` 현재 기준선) |
+>
+> 재검토의 근거가 되는 검토 문서는 [`KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md`](KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md) 다 (ACT-011).
+>
+> 다른 문서·코드에 남은 이 파일 참조는 **아직 유효한 경로이지만 유효한 근거가 아니다.** 특히 ICD v4.1 §12 와 `ics_sim` 의 `rawhdr.py` · `rawpair.py` · `hardware/archon.py` 가 이 문서의 5장에 의존하므로, 재작성 시 함께 정리한다.
+
+버전: v1.2 ((재작성중 — 현행 아님))
 작성일: 2026-08-06
-최종 갱신일: 2026-08-10
+최종 갱신일: 2026-08-10 · **재작성 표시 2026-08-18**
 Raw 규격 버전 (`RAWVER`): `CEU-RAW-v1.0` (문서 v1.1/v1.2의 변경은 geometry가 아니므로 유지)
 연동 ICD: `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1, docx 동본)
 연동 converter: `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0)
