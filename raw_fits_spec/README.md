@@ -46,7 +46,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | --- | --- |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ **((재작성중)).** 옛 raw pair 규격이며 **현행이 아니다.** 재검토 결과로 다시 쓴다 |
 | `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ L0 MEF 키워드 전수 대응표 289행. 0장이 **준수 우선순위**(1 ICD v4.1 → 2 converter 코드 → 3 keyword 정의서, 레거시 MEF 는 배경지식)를, 1.2절이 **raw 쪽 기준선**(레거시 raw 실측 헤더 123개 — `ics_sim` 출력이 아니다)을 세우고, 2장이 준거 대비 현재 상태를, 5장이 결정이 필요한 10항목을 담는다 (ACT-011) |
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.3.md` | **주로 생성물이다** (v1.3). **raw 카드 기준은 레거시 raw 실측 헤더**이고, 네 원천에서 기계 추출해 **레거시 123개를 전량 귀속**시킨다 — converter 가 **읽는 104개**, 레거시에 있으나 **읽지 않는 24장**, **도입 후보 37장**, **폐지 17장**. 10장은 **부분 독출(subframe·ROI·window)** 이 규격에도 미결 목록에도 없다는 제기다. **`Raw Archon` 열은 운영자가 채우는 계획 열**이라 생성기 안에 표로 들고 있다 |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.6.md` | **주로 생성물이다** (v1.6). **raw 카드 기준은 레거시 raw 실측 헤더**이고, 네 원천에서 기계 추출해 **레거시 123개를 전량 귀속**시킨다 — converter 가 **읽는 104개**, 레거시에 있으나 **읽지 않는 24장**, **도입 후보 37장**, **폐지 17장**. 8.1절은 이 검토가 새로 내린 판정이다 — `NAMPS`·`AMPPCD` 를 폐지하고 **`NAMPDET`/`NAMPRAW`** 로 통일했다. 10장은 **부분 독출(subframe·ROI·window)** 이 규격에도 미결 목록에도 없다는 제기이고, **11장은 converter 가 raw 를 읽지 않고 자기 상수로 만드는 카드**, **12장은 raw FITS 를 converter 없이 직접 쓰는 사람을 위한 안내**다. **`Raw Archon` 열은 운영자가 채우는 계획 열**이라 생성기 안에 표로 들고 있다 |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:

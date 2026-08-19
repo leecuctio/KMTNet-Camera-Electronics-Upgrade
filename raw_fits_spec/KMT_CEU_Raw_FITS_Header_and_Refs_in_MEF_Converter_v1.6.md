@@ -1,6 +1,16 @@
 # raw FITS 헤더 카드 — converter 가 읽는 것 · 읽지 않는 것 · 도입 후보 · 폐지된 것
 
-**v1.3** · 생성 2026-08-18 · **원천에서 기계 추출했다** — 다만 `Raw Archon` 열과 일부 손질은 사람이 채운다(아래).
+**v1.6** · 생성 2026-08-19 · **원천에서 기계 추출했다** — 다만 `Raw Archon` 열과 일부 손질은 사람이 채운다(아래).
+
+> **v1.6 에서 바뀐 것 — `OVERSCNX` 를 폐지하고, 7장에 `도입 여부` 열을 넣었다.** `OVERSCNX` 는 `NAMPS` 와 같은 부류다 — 레거시 `32` 와 converter 상수 `48` 이 **같은 이름으로 다른 값**을 말하고, `X` 만 있어 **중앙 Y overscan 을 담을 자리가 없다.** 후속 이름은 **`OVSCN`** 계열로 정했고, X/Y 를 한 장으로 둘지 두 장으로 가를지는 아직 미정이다(8.1절).
+>
+> `도입 여부` 열은 7장 후보 37장을 하나씩 **도입/보류**로 판정하는 자리다. 지금은 `NAMPRAW` 하나가 `O` 다.
+
+> **v1.5 에서 바뀐 것 — 11장(converter 가 만들어 쓰는 카드)과 12장(raw 를 직접 쓰는 사람을 위한 안내)을 나눠 넣었다.** 지금까지 이 문서는 *converter 가 raw 에서 무엇을 읽나* 만 다뤘다. 그런데 **converter 가 raw 를 읽지 않고 자기 상수로 만들어 내보내는 카드가 그보다 많고**, raw FITS 를 converter 없이 직접 쓰는 사람에게는 **그 카드들이 아예 없다.** 두 사정을 장으로 갈랐다 — 11장은 MEF 쪽 사실, 12장은 raw 쪽 사용자를 위한 것이다.
+
+> **v1.4 에서 바뀐 것 — amplifier 수 카드를 `NAMPDET`/`NAMPRAW` 로 통일하고 `NAMPS`·`AMPPCD` 를 폐지했다.** 세 카드가 서로 다른 범위를 세면서 이름이 그것을 드러내지 않았다 — `NAMPS` 는 레거시 `8`(CCD 하나)에서 신규 `64`(카메라 전체)로 **범위가 바뀌었는데 이름이 그대로**였고, `AMPPCD` 는 값 `16` 이 `NAMPDET` 과 같은 것을 세면서 이름만 달랐다. 8.1절이 판정과 근거다.
+>
+> **ICD v4.1 에 `NAMPS` · `AMPPCD` 가 하나도 없다** — 0.3절이 말한 **침묵 구간**이라 우리가 정할 수 있고, converter 는 raw 를 읽지 않고 자기 상수를 쓰므로 **raw 에서 빼도 MEF 출력은 바뀌지 않는다.**
 
 > **v1.3 에서 바뀐 것 — `Raw Archon` 열이 생겼고, subframe 절(10장)이 붙었다.** 지금까지 표는 *레거시가 그 카드를 실었나* 만 말했다. 신규 Archon raw 가 **그 카드를 실을 계획인가** 는 별개 사실인데 적을 자리가 없었다. `Raw Archon` 열이 그 자리다 — **기계 추출이 아니라 운영자가 채우는 계획 열**이고, 재생성해도 유지되도록 생성기 안에 표로 들고 있다.
 >
@@ -33,8 +43,8 @@
 | --- | ---: | --- |
 | converter 가 읽는다 | **78** | 3장 · 4장 |
 | 구조 카드 — `hval()` 로 읽는다 | **5** | 5장 |
-| **converter 가 읽지 않는다** | **24** | **6장** |
-| 폐지됐다 | **16** | 8장 |
+| **converter 가 읽지 않는다** | **22** | **6장** |
+| 폐지됐다 | **18** | 8장 — D-013 이 17, 8.1절이 `NAMPS` |
 | **합계** | **123** | |
 
 여기에 **레거시에 없던 카드**가 두 갈래로 붙는다:
@@ -260,7 +270,7 @@ FSA 4개는 **레거시 raw 어디에도 없다.** 그래서 sentinel 로 채우
 | `NAXIS1` · `NAXIS2` | raw 영상 크기 확인 (`19200 x 9400`) |
 | `OBSERVAT` | 파일명 사이트 코드와 **교차 검증** — 불일치는 오류 (v2.2.0, D-011) |
 
-## 6. 레거시에 있으나 converter 가 읽지 않는 카드 (24장)
+## 6. 레거시에 있으나 converter 가 읽지 않는 카드 (22장)
 
 **레거시 raw 가 싣던 카드인데 converter 가 값을 꺼내지 않는다.** 폐지된 것도 아니다(그건 8장). 이유는 대체로 셋이다 — **converter 가 자기 상수를 쓰거나**, **신규 규격이 더 정확한 다른 이름으로 나눴거나**, **raw 쪽 기록으로만 남기기로 한 것**이다.
 
@@ -268,8 +278,6 @@ FSA 4개는 **레거시 raw 어디에도 없다.** 그래서 sentinel 로 채우
 | --- | :---: | :---: | --- | --- |
 | `SIMPLE` | O | O | FITS 표준 필수 카드 | converter 가 **자기가 새로 만든다** (`card("SIMPLE", True)`). raw 값을 볼 이유가 없다 |
 | `NAXIS` | O | O | 축 수 | 〃. MEF PRIMARY 는 영상이 없어 `0`, amp extension 은 `2` 다 |
-| `NAMPS` | O | O | 검출기의 amplifier 수 — 레거시 실측 `8` / **Archon 32 (FITS 당)** | converter 가 **`64` 를 상수로 박는다**(`:373`). 레거시는 CCD 1개당 8, 신규는 MEF 전체 64 라 **같은 이름이 다른 것을 센다** |
-| `OVERSCNX` | O |  | amp 당 수평 overscan 열 수 — 레거시 실측 `32` | converter 가 자기 상수 **`48`** 을 쓴다(`OVERSCAN_X`). raw 선언과 대조하지 않는다 (C-5) |
 | `PRESCANX` | O |  | amp 당 수평 prescan 열 수 — 레거시 실측 `27` | converter 가 자기 상수 **`0`** 을 쓴다(`PRESCAN_X`). 신규 구조에는 prescan 이 없다 |
 | `PIXSCALE` | O |  | 픽셀 스케일 [arcsec/px] — 레거시 실측 `0.400` | converter 가 자기 상수 **`0.395`** 를 쓴다 — 소스 주석이 *"measured vs Gaia DR3 (was 0.400 nominal)"* 라고 밝힌 **실측 갱신값**이다 |
 | `PIXSIZE` | O |  | 픽셀 크기 [micron] — 레거시 실측 `10.0` | converter 가 자기 상수 `10.0` 을 쓴다. 값은 같다 |
@@ -299,48 +307,51 @@ FSA 4개는 **레거시 raw 어디에도 없다.** 그래서 sentinel 로 채우
 
 **레거시 raw 에는 없고 규격 v1.2 · `ics_sim` 이 새로 들인 카드다.** converter 는 이 카드들을 읽지 않으므로 **MEF 로 가지 않는다.** 용도는 (1) converter 교차검증 선언, (2) pair 식별, (3) 아카이브 기록 세 가지다.
 
+> **`도입 여부` 열은 운영자가 채운다** — `O` = 도입 확정 · `X` = 도입 안 함 · 빈칸 = **아직 안 정함**. `Raw Archon` 열(2장)과 같은 성격이라 생성기 안에 표로 들고 있다.
+
 > **"후보" 라고 부르는 이유**: 레거시 카드는 2017→2021 실측으로 정착된 설계지만 이 37장은 **아직 확정되지 않은 제안**이다. 이름·구성이 검토 대상이고(ACT-011), 규격 문서 자체가 ((재작성중)) 이다.
 
-| 도입 후보 카드 | 용도 / 설명 | 유의사항 |
-| --- | --- | --- |
-| `ACFFILE` · `CTR_CFG` | 적용된 Archon 설정 파일 | 적용된 Archon 설정 파일.<br>**설정 provenance 의 유일한 포인터**인데<br>MEF 목적지가 없다(ACT-011) |
-| `READMODE` |  |  |
-| `AMPMAP` | `EXPLICIT`이면 아래 표가 유효. `DEFAULT`면 converter의<br>추정식을 쓴다는 선언 | `EXPLICIT` / `DEFAULT` 선언. `DEFAULT` 는<br>converter 의 추정식을 쓰겠다는 **명시적 선언**이다 |
-| `BCKTEMP` | `TELEMETRY.BOARDTEMP` [degC] |  |
-| `BUFNO` | 사용한 Archon frame buffer | 사용한 Archon frame buffer. 〃 |
-| `CCDCOLS` | chip 1개의 active column (`NSTRIP × AMPDATA`) |  |
-| `CCDROWS` | chip 1개의 active row (`TOPROWS + BOTROWS`) |  |
-| `CCDTEMP1` | `CHIP1` 온도 [degC] | CHIP1 온도. `CCDTEMP` 는 이 둘의 **평균으로 파생**한다 |
-| `CCDTEMP2` | `CHIP2` 온도 [degC] | CHIP2 온도. 〃 |
-| `CHECKSUM` | FITS 표준 checksum |  |
-| `CHIP1` | X 1–9600 절반의 chip | **`DETID` 로 변경** |
-| `CHIP2` | X 9601–19200 절반의 chip | **`DETID` 로 변경** |
-| `CHIPS` | 이 파일에 담긴 chip (X 낮은 쪽부터) | **`DETID` 로 변경** |
-| `CTRLERR` | `TELEMETRY.ERRORFLAG` |  |
-| `CTRLSTAT` | `TELEMETRY.STATUS` |  |
-| `CTRLTAG` | **이 파일이 pair의 어느 쪽인가** | 이 파일이 pair 의 어느 쪽인가. 〃 |
-| `DATASUM` | FITS 표준 datasum |  |
-| `EXECODE` | ICS relay 필드 |  |
-| `FRAMENO` | controller frame counter | 컨트롤러 frame counter. 진단용, MEF 목적지 없음 |
-| `MIDOSCB` | 그중 BOT half에서 나온 row 수 (**실측 확인 필요**) |  |
-| `MIDOSCT` | 그중 TOP half에서 나온 row 수 (**실측 확인 필요**) |  |
-| `NAMPRAW` | **이 파일에 담긴 amplifier 수** (chip 2 × amp 16) |  |
-| `NXTILE` | X 방향 amp tile 수 (chip 2 × strip 8) |  |
-| `OSCNPATT` | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽).<br>**근거는 converter의** **`is_bias_right()`** —<br>`strip_id(amp)=((amp-1)%8)+1`,<br>`is_bias_right(amp)= 1≤amp≤4 or 9≤amp≤12`, amp<br>1–8=TOP·9–16=BO | **근거는 converter 의 `is_bias_right()`**(`:253-266`)<br>— strip 1~4=R, 5~8=L. converter 가 이 카드를 읽지<br>않아 **선언과 하드코딩이 갈라져도 변환 쪽에서 못**<br>**잡는다**(C-5/C-13). 취득 SW 쪽 방어는<br>`test_geometry_vs_converter.py` |
-| `PAIRFILE` | 짝의 이름. **`FILENAME` 과 같은 형태(확장자**<br>**없음)** | 짝의 이름. converter 는 CLI 로 두 경로를 받으므로 읽지<br>않는다 — **아카이브 도구용이고 그 도구가 아직 없다** |
-| `RAWPROD` | 이 파일이 CEU Archon science raw임을 선언 | raw 산출물 선언. MEF 는 `DATAPROD` 를 따로 만든다 |
-| `RAWVER` | **raw 규격/geometry 버전.** 4장이 바뀌면 올린다 | raw 규격/geometry 버전. 4장이 바뀌면 올린다 |
-| `RDDIRB` | **BOT amp의 물리적 독출 진행 방향** | 〃 |
-| `RDDIRT` | **TOP amp의 물리적 독출 진행 방향.** MEF amp header<br>`READDIR`로 전달 | MEF amp `READDIR` 로 가야 하는데 converter<br>가 하드코딩(C-12). 실기 확인 필요(OI-3) |
-| `ROWORDR` | **4.2절 행 순서 규약. 잘못 쓰면 TOP** **half가**<br>**Y 반전된다** | TOP half 의 행 순서 규약.<br>**잘못 쓰면 TOP half 가 Y**<br>**반전된다.** 실기 확인 필요(OI-3) |
-| `TCSLIMIT` &nbsp;&nbsp; | — |  |
-| `TELID` | ICS relay의 telescope ID |  |
-| `VMEA<n>` | `MEASURED` |  |
-| `VOLT<n>` | `VOLTNAME` |  |
-| `VOLTN` | — |  |
-| `VSET<n>` | `SETPOINT` |  |
-| `VSTA<n>` | — |  |
-| `VUNI<n>` | — |  |
+| 도입 후보 카드 | 도입 여부 | 용도 / 설명 | 유의사항 |
+| --- | :---: | --- | --- |
+| `ACFFILE` · `CTR_CFG` |  | 적용된 Archon 설정 파일 | 적용된 Archon 설정 파일.<br>**설정 provenance 의 유일한 포인터**인데<br>MEF 목적지가 없다(ACT-011) |
+| `READMODE` |  |  |  |
+| `NAMPDET` |  | **chip(검출기) 하나당 amplifier 수** = `16`.<br>`AMPPCD` 를 대신한다 | comment 는 레거시 `NAMPS` 문구를 잇는다 —<br>*Number of amplifiers in the detector* |
+| `AMPMAP` |  | `EXPLICIT`이면 아래 표가 유효. `DEFAULT`면 converter의<br>추정식을 쓴다는 선언 | `EXPLICIT` / `DEFAULT` 선언. `DEFAULT` 는<br>converter 의 추정식을 쓰겠다는 **명시적 선언**이다 |
+| `BCKTEMP` |  | `TELEMETRY.BOARDTEMP` [degC] |  |
+| `BUFNO` |  | 사용한 Archon frame buffer | 사용한 Archon frame buffer. 〃 |
+| `CCDCOLS` |  | chip 1개의 active column (`NSTRIP × AMPDATA`) |  |
+| `CCDROWS` |  | chip 1개의 active row (`TOPROWS + BOTROWS`) |  |
+| `CCDTEMP1` |  | `CHIP1` 온도 [degC] | CHIP1 온도. `CCDTEMP` 는 이 둘의 **평균으로 파생**한다 |
+| `CCDTEMP2` |  | `CHIP2` 온도 [degC] | CHIP2 온도. 〃 |
+| `CHECKSUM` |  | FITS 표준 checksum |  |
+| `CHIP1` |  | X 1–9600 절반의 chip | **`DETID` 로 변경** |
+| `CHIP2` |  | X 9601–19200 절반의 chip | **`DETID` 로 변경** |
+| `CHIPS` |  | 이 파일에 담긴 chip (X 낮은 쪽부터) | **`DETID` 로 변경** |
+| `CTRLERR` |  | `TELEMETRY.ERRORFLAG` |  |
+| `CTRLSTAT` |  | `TELEMETRY.STATUS` |  |
+| `CTRLTAG` |  | **이 파일이 pair의 어느 쪽인가** | 이 파일이 pair 의 어느 쪽인가. 〃 |
+| `DATASUM` |  | FITS 표준 datasum |  |
+| `EXECODE` |  | ICS relay 필드 |  |
+| `FRAMENO` |  | controller frame counter | 컨트롤러 frame counter. 진단용, MEF 목적지 없음 |
+| `MIDOSCB` |  | 그중 BOT half에서 나온 row 수 (**실측 확인 필요**) |  |
+| `MIDOSCT` |  | 그중 TOP half에서 나온 row 수 (**실측 확인 필요**) |  |
+| `NAMPRAW` | O | **이 파일에 담긴 amplifier 수** (chip 2 × amp 16) |  |
+| `NXTILE` |  | X 방향 amp tile 수 (chip 2 × strip 8) |  |
+| `OSCNPATT` |  | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽).<br>**근거는 converter의** **`is_bias_right()`** —<br>`strip_id(amp)=((amp-1)%8)+1`,<br>`is_bias_right(amp)= 1≤amp≤4 or 9≤amp≤12`, amp<br>1–8=TOP·9–16=BO | **근거는 converter 의 `is_bias_right()`**(`:253-266`)<br>— strip 1~4=R, 5~8=L. converter 가 이 카드를 읽지<br>않아 **선언과 하드코딩이 갈라져도 변환 쪽에서 못**<br>**잡는다**(C-5/C-13). 취득 SW 쪽 방어는<br>`test_geometry_vs_converter.py` |
+| `PAIRFILE` |  | 짝의 이름. **`FILENAME` 과 같은 형태(확장자**<br>**없음)** | 짝의 이름. converter 는 CLI 로 두 경로를 받으므로 읽지<br>않는다 — **아카이브 도구용이고 그 도구가 아직 없다** |
+| `RAWPROD` |  | 이 파일이 CEU Archon science raw임을 선언 | raw 산출물 선언. MEF 는 `DATAPROD` 를 따로 만든다 |
+| `RAWVER` |  | **raw 규격/geometry 버전.** 4장이 바뀌면 올린다 | raw 규격/geometry 버전. 4장이 바뀌면 올린다 |
+| `RDDIRB` |  | **BOT amp의 물리적 독출 진행 방향** | 〃 |
+| `RDDIRT` |  | **TOP amp의 물리적 독출 진행 방향.** MEF amp header<br>`READDIR`로 전달 | MEF amp `READDIR` 로 가야 하는데 converter<br>가 하드코딩(C-12). 실기 확인 필요(OI-3) |
+| `ROWORDR` |  | **4.2절 행 순서 규약. 잘못 쓰면 TOP** **half가**<br>**Y 반전된다** | TOP half 의 행 순서 규약.<br>**잘못 쓰면 TOP half 가 Y**<br>**반전된다.** 실기 확인 필요(OI-3) |
+| `TCSLIMIT` &nbsp;&nbsp; |  | — |  |
+| `TELID` |  | ICS relay의 telescope ID |  |
+| `VMEA<n>` |  | `MEASURED` |  |
+| `VOLT<n>` |  | `VOLTNAME` |  |
+| `VOLTN` |  | — |  |
+| `VSET<n>` |  | `SETPOINT` |  |
+| `VSTA<n>` |  | — |  |
+| `VUNI<n>` |  | — |  |
 
 > 이 37장은 **converter 가 읽지 않으므로 이름을 틀려도 변환이 조용히 지나간다.** 3장 카드와 달리 MEF 에 `UNKNOWN` 조차 남지 않는다 — 어긋남이 드러나는 곳이 없다는 뜻이다. `OSCNPATT` · `ROWORDR` · `RDDIRT` · `RDDIRB` 처럼 **converter 하드코딩과 대조하라고 만든 선언**이 특히 그렇다 (변경점 C-5 · C-13).
 
@@ -376,6 +387,32 @@ FSA 4개는 **레거시 raw 어디에도 없다.** 그래서 sentinel 로 채우
 
 계승 5 · 개칭 1 은 폐지되지 않았으므로 6장에 있다 — `DATASRC` `HEMODE` `LEDFLASH` `ICSBUILD` `NPHLINES` 와 `DSTEL`(→ **`DSTELALT`**).
 
+### 8.1 이 검토에서 새로 폐지한 카드 (3장)
+
+위 표는 **D-013 이 내린 판정**이고, 아래는 **이 검토에서 새로 내린 것**이다. 둘 다 근거가 같다 — *이름이 범위를 드러내지 않으면 조용히 틀린다.*
+
+| 폐지 카드 | 폐지 근거 | 대신 보는 것 |
+| --- | --- | --- |
+| `NAMPS` | 레거시는 `8`(그 CCD 하나), 신규는 `64`(카메라 전체) — **이름은 같은데 세는 범위가 달라졌다.** 레거시를 아는 도구가 amp 수로 쓰면 조용히 8배 틀린다. `OVERSCNY` 를 폐지한 것과 같은 부류다 | **`NAMPDET`** (`16`, chip 당). 카메라 전체는 `NAMPDET × NCCD` 로 파생되므로 카드가 필요 없다 |
+| `OVERSCNX` | 레거시 실측 `32`, converter 상수 `48` — **이름은 같은데 값이 다르다.** 게다가 `X` 만 있고 중앙 Y overscan 을 담을 자리가 없어, 양방향 overscan 을 한 이름으로 표현하지 못한다(11.3 · 12.3) | **`OVSCN`** 계열. ⚠️ **X/Y 를 어떻게 가를지는 미정** — `OVSCN` 한 장인지 `OVSCNX`/`OVSCNY` 두 장인지 정해야 한다 |
+| `AMPPCD` | *amplifiers per CCD* 의 축약인데 `AMPCCD` 오타로 읽힌다. 값 `16` 은 `NAMPDET` 과 **같은 것을 센다** | **`NAMPDET`** — `NAMPRAW` 와 이름 형태가 같아(`N`+`AMP`+범위) 한 계열로 읽힌다 |
+
+**남는 것은 두 카드다.**
+
+```text
+NAMPDET =                   16 / Number of amplifiers in the detector
+NAMPRAW =                   32 / Number of amplifiers in the raw FITS file
+```
+
+- **범위가 전치사구로 갈린다** — `in the detector` · `in the raw FITS file`. 레거시 `NAMPS` 의 comment 가 *Number of amplifiers in the detector* 였으므로 `NAMPDET` 은 **뜻을 그대로 잇고 이름만 바꾼 것**이다. 값이 `8`→`16` 인 것은 검출기가 바뀐 결과이지 뜻이 바뀐 것이 아니다.
+- **이름 형태가 같아** (`N` + `AMP` + 범위) 헤더를 훑을 때 한 계열로 읽힌다. `AMPPCD` 는 이 규칙 밖이었다.
+- `NAMPRAW = NAMPDET × 2` (파일당 chip 2개) — 규격의 불변식 `NAMPRAW = NXTILE × NEND` 와 같은 값을 다른 길로 확인한다.
+- **카메라 전체(`64`)는 카드로 싣지 않는다** — `NAMPDET × NCCD` 로 파생되고, converter 는 이미 자기 상수 `64` 를 쓴다.
+
+> ⚠️ **comment 를 넣으려면 취득 SW 를 먼저 고쳐야 한다.** `ics_sim` 은 헤더를 `dict` 로 넘기고 `fitsout._apply_header()` 가 `hdr[key] = val` 만 하므로 **지금은 모든 raw 카드의 comment 칸이 비어 있다.** 위 두 줄은 목표 형태이지 현재 출력이 아니다.
+
+> **딸려오는 변경**: 규격 5.4(카드 정의) · 5.13(폐지 목록) · 불변식(`NAMPS = NCCD × AMPPCD` → `NAMPRAW = NAMPDET × 2`) · `ics_sim/ics_sim/rawhdr.py` 의 상수와 `tests/test_raw_header.py` 의 단언 두 줄. **converter 와 MEF 는 손대지 않는다** — raw 를 읽지 않기 때문이다.
+
 ## 9. 레거시 123개 전량 귀속
 
 레거시 raw 실측본의 keyword 가 **하나도 빠짐없이** 어딘가에 귀속되는지 확인한 표다. 이 문서를 읽다가 *"이 카드는 어디 갔지"* 가 나오면 여기서 찾는다.
@@ -384,8 +421,8 @@ FSA 4개는 **레거시 raw 어디에도 없다.** 그래서 sentinel 로 채우
 | --- | ---: | --- |
 | converter 가 읽는다 | **78** | 3장 · 4장 |
 | 구조 카드 — `hval()` 로 읽는다 | **5** | 5장 |
-| converter 가 읽지 않는다 | **24** | 6장 |
-| 폐지됐다 | **16** | 8장 |
+| converter 가 읽지 않는다 | **22** | 6장 |
+| 폐지됐다 | **18** | 8장 — D-013 이 17, 8.1절이 `NAMPS` |
 | **합계** | **123** | |
 
 레거시에 없던 카드는 이 표 밖이다 — converter 가 읽는 26개는 3장에 `X` 로, 도입 후보 37장은 7장에 있다.
@@ -437,13 +474,143 @@ FSA 4개는 **레거시 raw 어디에도 없다.** 그래서 sentinel 로 채우
 
 > **이 절은 규격이 아니라 제기다.** 부분 독출을 쓸 계획이 있는지부터 정해야 하고, 쓴다면 **미결 항목(OI-*)으로 세워** binning(OI-5) 과 함께 다루는 것이 맞다. 지금은 규격에도 미결 목록에도 자리가 없어서, **아무도 결정하지 않은 채로 남아 있다.**
 
-## 11. 종합
+## 11. converter 가 만들어 쓰는 카드
+
+**converter 는 raw 의 geometry 선언을 하나도 읽지 않는다**(3~5장에 raw 읽기 목록이 있고 geometry 는 거기에 없다). 대신 **소스 상수와 amp 번호에서 계산해** L0 MEF 에 내보낸다. 이 장은 그 값들이다 — raw 가 다른 값을 실어도 converter 는 아래를 쓴다.
+
+### 11.1 전역 상수에서 만드는 카드 (PRIMARY)
+
+| 카드 | 값 | 뜻 |
+| --- | --- | --- |
+| `RAWXTILE` | `1200` | amp tile 폭 (X) |
+| `AMPDATA` | `1152` | 그중 active 열 |
+| `OVERSCNX` | `48` | amp 당 X overscan |
+| `PRESCANX` | `0` | X prescan (없음) |
+| `MIDOVSCY` | `168` | **중앙** Y overscan 행 수 |
+| `NSTRIP` · `NEND` | `8` · `2` | chip 당 strip · strip 당 독출단 |
+| `CHIPLIST` | `M,K,N,T` | 공식 chip 순서 |
+| `RAWGROUP` | `MKNT` | pair 묶음 규약 |
+| `DETSIZE` | `[1:18892,1:19397]` | 모자이크 전체 크기 |
+| `COLGAP` · `ROWGAP` | `460` · `933` | chip 간 간격 |
+| `CHIPFLP` | `None` | OSU 식 chip 반전 **안 씀** (D-003) |
+| `STRIPDIR` | `+X` | strip 번호 증가 방향 |
+
+카드로 나가지 않는 내부 상수: `CCD_COLS=9216` · `CCD_ROWS=9232` · `ACTIVE_HALF_ROWS=4616` · `PIX_SIZE=10.0` · `PIX_SCALE=0.395`
+
+### 11.2 amp 번호에서 계산하는 카드
+
+`amp` 는 **chip 안 1~16**, `chip` ∈ `M` `K` `N` `T` 다.
+
+| 카드 | 계산식 | M chip amp 1 / amp 13 |
+| --- | --- | --- |
+| `STRIPID` | `((amp-1) % 8) + 1` | `1` / `5` |
+| `ENDID` | `amp<=8` 이면 `TOP`, 아니면 `BOT` | `TOP` / `BOT` |
+| `EXTNAME` · `AMPNAME` | `{chip}{strip:02d}{T|B}` | `M01T` / `M05B` |
+| `AMPID` | `AMP_BASE[chip] + amp` (M0 K16 N32 T48) | `1` / `13` |
+| `AMPSEQ` | `amp` (chip 안 번호) | `1` / `13` |
+| `CHIPID` | `chip` | `M` / `M` |
+| `CTRLID` | `M,K → 1` · `N,T → 2` | `1` / `1` |
+| **`READDIR`** | `amp<=8` 이면 `-Y`, 아니면 `+Y` | `-Y` / `+Y` ⚠️ |
+| `MODULE` | `1 + (amp-1)//8` | `1` / `2` ⚠️ |
+| `CHANNEL` | `1 + (amp-1)%8` | `1` / `5` ⚠️ |
+| `XTALKGROUP` | `C{1 if chip in MK else 2}M{1+(amp-1)//8}` | `C1M1` / `C1M2` |
+
+> ⚠️ 표시 셋은 **소스가 스스로 잠정이라 밝힌 값**이다. `READDIR` 은 comment 가 `placeholder` 이고(OI-3), `MODULE`·`CHANNEL` 은 주석이 `placeholder` 라 적혀 있다 — 실제 배선과 다르면 `XTALKGROUP` 이 틀려 **crosstalk 계수 측정이 무의미해진다**(C-11, OI-9).
+
+### 11.3 구간 카드 — 좌우 overscan 이 갈린다
+
+converter 는 `is_bias_right(amp) = (1<=amp<=4) or (9<=amp<=12)` 로 좌우를 가른다. **raw 의 `OSCNPATT` 를 코드로 재현한 것이고 raw 를 읽지는 않는다.**
+
+| | overscan 오른쪽 (strip 1–4) | overscan 왼쪽 (strip 5–8) |
+| --- | --- | --- |
+| `DATASEC` | `[1:1152,1:4616]` | `[49:1200,1:4616]` |
+| `BIASSEC` | `[1153:1200,1:4616]` | `[1:48,1:4616]` |
+| `PRESEC` | `[1:0,1:4616]` (없음) | 〃 |
+| `TRIMSEC` | `DATASEC` 과 같다 | 〃 |
+
+raw 파일 안 위치(`RAWDATA`/`RAWBIAS`) — `tile0 = chipbase + (strip-1)×1200`, chipbase 는 `M`·`N`=0, `K`·`T`=9600:
+
+| | 값 |
+| --- | --- |
+| X (overscan 오른쪽) | data `tile0+1 : tile0+1152` · bias `tile0+1153 : tile0+1200` |
+| X (overscan 왼쪽) | bias `tile0+1 : tile0+48` · data `tile0+49 : tile0+1200` |
+| **Y** | TOP(amp 1–8) `4785:9400` · BOT(amp 9–16) `1:4616` |
+
+`CCDSEC` = X `(strip-1)×1152+1 : strip×1152`, Y 는 TOP `4617:9232` · BOT `1:4616`. `DETSEC` 은 여기에 chip 원점을 더한다 — `M (1, 10166)` · `K (9677, 10166)` · `N (1, 1)` · `T (9677, 1)`.
+
+> **Y 사이 `4617:4784` 168행이 중앙 overscan 이고 어느 amp 구간에도 들어가지 않는다** — L0 MEF 에서 버려진다. amp extension 의 `MIDOVSCY` comment 가 *middle Y overscan rows ignored* 라고 밝힌다.
+
+### 11.4 raw 와 이름이 겹치는 11개
+
+아래는 **raw 도 싣고 converter 도 만드는** 카드다. 같은 값이어야 하지만 **아무도 대조하지 않는다** — converter 가 raw 를 읽지 않기 때문이다. 변경점 **C-5 · C-13** 이 이 대조를 붙이는 일이다.
+
+`RAWXTILE` · `AMPDATA` · `PRESCANX` · `MIDOVSCY` · `NSTRIP` · `NEND` · `DETSIZE` · `COLGAP` · `ROWGAP` · `CHIPFLP` · `STRIPDIR` · `CTRLID`
+
+> **`OVERSCNX` 는 이 목록에서 빠졌다** — 8.1 절이 raw 쪽 이름을 `OVSCN` 계열로 바꾸기로 했기 때문이다. converter 는 여전히 MEF 에 `OVERSCNX` 를 내보내므로 **raw 와 MEF 의 이름이 갈린다.** converter 가 raw 를 읽지 않으니 당장 깨지는 것은 없으나, C-5 의 대조를 붙일 때 **이름 대응을 명시해야 한다.**
+
+## 12. raw FITS 를 직접 쓰는 사람에게
+
+converter 를 거치지 않고 **raw pair 를 그대로 다루는 경우**를 위한 장이다. 11장이 *MEF 에 무엇이 들어가나* 라면, 여기는 *raw 만 가진 사람이 무엇을 알 수 있고 무엇을 직접 해야 하나* 다.
+
+### 12.1 raw 헤더가 주는 것
+
+geometry 를 재구성할 재료는 **raw 헤더 안에 다 있다** — 11.1 의 값들이 raw 에도 실린다(11.4). 여기에 raw 에만 있는 배치 선언이 더해진다:
+
+| 카드 | 무엇 |
+| --- | --- |
+| `NXTILE` | X 방향 amp tile 수 (chip 2 × strip 8 = 16) |
+| `OSCNPATT` | strip 별 overscan 좌우 (`RRRRLLLL`) |
+| `NAMPRAW` | 이 파일의 amp 수 (32) |
+| `CHIPS` · `CHIP1` · `CHIP2` | 이 파일에 담긴 chip 과 X 절반별 배정 |
+| `MIDOSCB` · `MIDOSCT` | 중앙 overscan 의 BOT/TOP 몫 (**미측정**, OI-4) |
+| `ROWORDR` · `RDDIRT` · `RDDIRB` | 행 순서와 독출 방향 (**미확정**, OI-3) |
+| `CTRLTAG` · `PAIRFILE` · `UNIQNAME` | 이 파일이 pair 의 어느 쪽인가 · 짝의 이름 · 정본 식별자 |
+
+### 12.2 raw 헤더에 **없는** 것 — 직접 계산해야 한다
+
+11장의 카드 중 **23개는 MEF 전용**이라 raw 에 없다:
+
+`STRIPID` `ENDID` `EXTNAME` `AMPNAME` `AMPID` `AMPSEQ` `CHIPID` `READDIR` `MODULE` `CHANNEL` `XTALKGROUP` `CHIPLIST` `RAWGROUP` `DATASEC` `BIASSEC` `PRESEC` `TRIMSEC` `CCDSEC` `DETSEC` `AMPSEC` `RAWFILE` `RAWDATA` `RAWBIAS`
+
+**amp 하나를 raw 에서 꺼내는 절차**는 이렇다 (chip 안 amp 번호 `a` = 1~16):
+
+```text
+strip  = ((a-1) % 8) + 1
+end    = TOP if a <= 8 else BOT
+chipbase = 0 (X 낮은 쪽 chip) 또는 9600 (높은 쪽)      <- CHIP1 / CHIP2 카드
+tile0  = chipbase + (strip-1) * RAWXTILE
+
+overscan 이 오른쪽인가?  OSCNPATT[strip-1] == 'R'
+  오른쪽:  data = tile0+1 .. tile0+AMPDATA
+           bias = tile0+AMPDATA+1 .. tile0+RAWXTILE
+  왼쪽:    bias = tile0+1 .. tile0+OVERSCNX
+           data = tile0+OVERSCNX+1 .. tile0+RAWXTILE
+
+Y:  TOP -> NAXIS2-4616+1 .. NAXIS2      (예: 4785:9400)
+    BOT -> 1 .. 4616
+```
+
+**중앙 `MIDOVSCY` 행은 이 두 구간 사이에 있고 어느 amp 것도 아니다.**
+
+### 12.3 조심할 것
+
+| | |
+| --- | --- |
+| **독출 방향을 믿지 말 것** | `RDDIRT`/`RDDIRB` 는 **미확정**(OI-3)이고 MEF `READDIR` 도 `placeholder` 다. 방향이 필요하면 flat/star 로 직접 확인해야 한다 |
+| **배선을 믿지 말 것** | `MODULE`/`CHANNEL` 은 converter 의 추정식이다. raw 의 `AMOD`/`ACHN` 이 실제 배선을 실을 수 있으나 **converter 는 읽지 않는다**(C-11, OI-9) |
+| **중앙 overscan** | raw 에는 있고 **L0 MEF 에는 없다.** bias jump·전하 잔류 진단에 쓰려면 **raw 를 보관해야 한다** |
+| **`OSCNPATT` 를 바꾸면 MEF 가 틀린다** | converter 가 이 카드를 읽지 않고 `is_bias_right()` 하드코딩을 쓰므로, raw 선언만 바꾸면 **오류 없이 어긋난다** |
+| **부분 독출** | 10장 참조. 규격에 자리가 없다 |
+
+## 13. 종합
 
 - **기본값이 거의 전부 `""` 나 `"UNKNOWN"` 이다.** 카드가 없어도 변환은 성공하고, **L0 MEF 에 빈 문자열이 조용히 들어간다.**
 - **오류로 걸리는 것은 `OBSERVAT` 하나**(파일명 교차 검증)다. 나머지는 전부 조용히 지나간다.
 - 조용히 **틀린 값**이 들어가는 쪽이 더 위험하다 — `DATE-OBS`(변환 시각) · `RA`/`DEC`(그럴듯한 좌표) · `EXPTIME`/`DARKTIME`(0초) · 버전 문자열(그럴듯한 provenance).
-- **이름은 같은데 뜻이 달라진 카드가 넷이다** — `NAMPS` `OVERSCNX` `PRESCANX`(6장) · `OVERSCNY`(8장, 폐지). 이름을 물려주면 조용히 틀린다.
+- **이름은 같은데 뜻이 달라진 카드가 셋 남았다** — `OVERSCNX` `PRESCANX`(6장) · `OVERSCNY`(8장, 폐지). `NAMPS` 는 v1.4 에서 **폐지로 닫혔다**(8.1절). 이름을 물려주면 조용히 틀린다.
 - `X` 중 **`XTALKVER` · `REFVER` · `CATVER` 셋은 결함이 아니다** — 규격 5.12 가 calibration DB 소관으로 정리했고 변경점 C-14 가 caldb 주입으로 바꾼다.
 - **7장 37장은 어긋나도 드러나지 않는다** — converter 가 읽지 않으므로 MEF 에 흔적이 남지 않는다. 게다가 **아직 확정된 카드가 아니다.**
 - **부분 독출(subframe · ROI · window)은 규격에도 미결 목록에도 없다** — 10장. 지원한다면 `DETSEC` · `DATASEC` · `CCDSUM` 이 최소이고, converter 가 geometry 를 상수로 갖고 있어 **틀려도 드러나지 않는다.**
+- **converter 는 raw 의 geometry 를 하나도 읽지 않는다**(11장). 겹치는 11개는 같은 값이어야 하지만 **대조하는 코드가 없다**(C-5·C-13).
+- **raw 만 쓰는 사람에게는 amp 이름·번호·구간 23개가 없다** — 12.2 의 절차로 직접 계산해야 한다.
 - 그룹별 주의사항은 **각 표 아래**에 붙였다.
