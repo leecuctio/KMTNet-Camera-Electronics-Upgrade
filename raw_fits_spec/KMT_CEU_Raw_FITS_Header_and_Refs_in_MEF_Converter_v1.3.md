@@ -12,18 +12,18 @@
 
 | 항목 | 값 |
 | --- | --- |
-| **raw 카드 기준** | `Legacy raw fits header samples/KMTNk.20170209.044131.Rawheader.txt` — **레거시 raw 실측 헤더 123개** |
-| 대상 converter | `../../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) |
+| **raw 카드 기준** | `__reference/Legacy raw fits header samples/KMTNk.20170209.044131.Rawheader.txt` — **레거시 raw 실측 헤더 123개** |
+| 대상 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) |
 | 3~5장 추출 | `card("<MEF>", v("<raw>", <기본값>), …)` 호출을 정규식으로 파싱 |
 | 6장 | 레거시 123개에서 3~5장·8장을 뺀 나머지. 설명은 v0.7 4.H 와 converter 소스 대조 |
-| 7장 출처 | `../KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` 4.H 절 중 **레거시에 없는 것** |
+| 7장 출처 | `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` 4.H 절 중 **레거시에 없는 것** |
 | 8장 출처 | DECISION_LOG **D-013** (Accepted) — 표 본문은 raw pair 규격 5.13절 |
 
 > **raw 카드의 기준은 레거시 raw 실측 헤더다.** 규격 v1.2 나 `ics_sim` 이 새로 들인 카드는 **아직 확정된 raw 가 아니라 제안**이므로 7장에 따로 모았다 — 레거시가 정착된 설계인 것과 지위가 다르다.
 
-> **이 문서에서 "규격" 은 `../KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`(raw pair 규격) 를 가리킨다.**
+> **이 문서에서 "규격" 은 `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`(raw pair 규격) 를 가리킨다.**
 >
-> ⚠️ 그 문서는 **((재작성중))** 이라 절 번호가 바뀔 수 있다. 아래에서 `규격 5.12` 처럼 절을 적은 곳은 **지금 그 내용이 어디 있는지 알려주는 포인터일 뿐 근거가 아니다.** 확정된 근거는 `../../project_management/governance/DECISION_LOG.md` 의 **D-번호**다 — 이 문서가 기대는 것은 D-011(사이트 코드 파일명) · **D-013**(레거시 keyword 판정) 이고 둘 다 Accepted 다.
+> ⚠️ 그 문서는 **((재작성중))** 이라 절 번호가 바뀔 수 있다. 아래에서 `규격 5.12` 처럼 절을 적은 곳은 **지금 그 내용이 어디 있는지 알려주는 포인터일 뿐 근거가 아니다.** 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 **D-번호**다 — 이 문서가 기대는 것은 D-011(사이트 코드 파일명) · **D-013**(레거시 keyword 판정) 이고 둘 다 Accepted 다.
 
 ## 1. 요약
 

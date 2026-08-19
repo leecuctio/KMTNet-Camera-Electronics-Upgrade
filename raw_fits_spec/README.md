@@ -46,6 +46,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | --- | --- |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ **((재작성중)).** 옛 raw pair 규격이며 **현행이 아니다.** 재검토 결과로 다시 쓴다 |
 | `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ L0 MEF 키워드 전수 대응표 289행. 0장이 **준수 우선순위**(1 ICD v4.1 → 2 converter 코드 → 3 keyword 정의서, 레거시 MEF 는 배경지식)를, 1.2절이 **raw 쪽 기준선**(레거시 raw 실측 헤더 123개 — `ics_sim` 출력이 아니다)을 세우고, 2장이 준거 대비 현재 상태를, 5장이 결정이 필요한 10항목을 담는다 (ACT-011) |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.3.md` | **주로 생성물이다** (v1.3). **raw 카드 기준은 레거시 raw 실측 헤더**이고, 네 원천에서 기계 추출해 **레거시 123개를 전량 귀속**시킨다 — converter 가 **읽는 104개**, 레거시에 있으나 **읽지 않는 24장**, **도입 후보 37장**, **폐지 17장**. 10장은 **부분 독출(subframe·ROI·window)** 이 규격에도 미결 목록에도 없다는 제기다. **`Raw Archon` 열은 운영자가 채우는 계획 열**이라 생성기 안에 표로 들고 있다 |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
@@ -56,12 +57,11 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1_KO.md` | — | v4.1 ICD의 **국문본. 이 디렉토리가 유일본** |
 | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` | `../mef_fits_spec/` | 규격 6.5절 대조표의 원본. 바이트 동일 사본 |
 | `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` | `../mef_converter/` | Archon raw 검증 결과. 바이트 동일 사본 |
-| `KMT_CEU_Converter_Raw_Reads_v1.3.md` | — | **주로 생성물이다** (2026-08-18, v1.3). **raw 카드 기준은 레거시 raw 실측 헤더**이고, 네 원천에서 기계 추출해 **레거시 123개를 전량 귀속**시킨다 — converter 가 **읽는 104개**, 레거시에 있으나 **읽지 않는 24장**, **도입 후보 37장**, **폐지 17장**. 10장은 **부분 독출(subframe·ROI·window)** 이 규격에도 미결 목록에도 없다는 제기다. **`Raw Archon` 열은 기계 추출이 아니라 운영자가 채우는 계획 열**이라 생성기 안에 표로 들고 있다 |
 | `Legacy raw fits header samples/` | — | **레거시 시스템의 FITS 헤더 실측본** (2026-08-12 추가). `KMTNk.20170209.044131.Rawheader.txt` 가 이 규격에 대응하는 **레거시 raw 헤더**이고, `xkmta.20170209.044131.MEF.*.txt` 는 레거시가 MEF 로 변환한 산출물의 헤더다(primary 1 + 확장 35). raw 헤더는 2017→2021 사실상 불변이어서 정착된 설계로 읽을 수 있다 — 규격 5장 식별 keyword 재정의의 근거 |
 
 > ⚠️ `KMTNc.20210503.030331.header.txt` 는 **raw pair 가 아니다.** `DETID='C'` · 1616×1616 인데, raw 영상의 ROI 조각들을 모자이크로 재구성한 **combination 산출물**이다(운영자 확인 2026-08-12). 검출기 이름이 아니므로 이 규격 범위 밖이고, `M,K,N,T` 4개 전제에 영향을 주지 않는다.
 
-**국문 ICD와 `KMT_CEU_Converter_Raw_Reads_v1.3.md` 를 뺀 나머지는 사본이며 기준본은 원본 위치의 것이다.** 원본이 개정되면 이 사본도 함께 갱신하거나 삭제한다. 국문 ICD 는 유일본이고, `KMT_CEU_Converter_Raw_Reads_v1.3.md` 는 converter 소스·레거시 실측 헤더·검토 문서·D-013 에서 뽑은 뒤 **`Raw Archon` 열을 사람이 채운 것**이라 둘 다 대조 원본이 없다.
+**국문 ICD를 뺀 나머지는 사본이며 기준본은 원본 위치의 것이다.** 원본이 개정되면 이 사본도 함께 갱신하거나 삭제한다.
 
 **전량 md 로 이관했다 (2026-08-11).** 이전에는 docx 4개였고, 그중 셋은 원본 위치에 이미 md 기준본이 있어 사본만 형식을 맞췄다. 국문 ICD 는 유일본이면서 v4.0 에 머물러 있었으므로 **md 변환과 함께 v4.1 로 갱신**했다 (파일명 사이트 코드 D-011 · NT 헤더 완전성 OI-8 · converter v2.2.0). 원 docx 4개는 git 이력에 남아 있다.
 
