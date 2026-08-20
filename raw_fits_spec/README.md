@@ -1,6 +1,6 @@
 # KMTNet-CEU Raw FITS Specification
 
-최종 갱신일: 2026-08-13
+최종 갱신일: 2026-08-20
 
 ## 목적
 
@@ -125,6 +125,7 @@ v1.0에서 제기한 OBSAgent 규약 충돌 2건은 **v1.1에서 해결되었고
 
 | 문서 | 위치 |
 | --- | --- |
+| **작업 이어갈 때의 컨텍스트** | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) — 진행 상태 · 검토 중인 카드 · 남은 판단 |
 | L0 MEF 규격 (keyword/ICD) | [`../mef_fits_spec/README.md`](../mef_fits_spec/README.md) |
 | Converter | [`../mef_converter/README.md`](../mef_converter/README.md) |
 | L0→L1 전처리 파이프라인 | [`../mef_pipeline/README.md`](../mef_pipeline/README.md) |
