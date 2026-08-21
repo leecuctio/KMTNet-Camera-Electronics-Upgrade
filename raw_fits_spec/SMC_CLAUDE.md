@@ -18,8 +18,9 @@
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.10.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.9 는 운영자 3차 개정 반영 — **7장 도입 여부 판정 완결**(미정은 `CHKIMG` 2장뿐) · `RDMODE`/`Cn_*`/`CAMVER` 신설 · **확인 요망 11건** — 구판은 `archive/` |
-| `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | 검토용. 팀 검토 대기 중인 **5장 10항목**이 여기 있다 (ACT-011) |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 에서 **도입/계획 판정 완결(미정 0)**, v1.11 에서 돔 Source → TCS relay or REDIS + **확인 요망 1~5 종결(잔여 6건)** — 구판은 `archive/` |
+| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` | **통합 문서 (2026-08-22)** — Part 1: LEECU 전달용 MEF ICD·정의서·converter 개정 요청(C-항목 · 이름 대응 · 키워드맵 이관 미결 4건) / Part 2: 번호·정체성·충돌 처리(D-016 결정문 초안 §8). 전신 MEF_Impacts v0.4 · Numbering v0.2 는 `archive/` |
+| `archive/KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | 검토용 — **흡수 완료 후 archive 이동(운영자 재가 2026-08-22)**: 판정은 Header_and_Refs, 미결 4건은 통합 문서 Part 1 §6. 배경 자료(전수 대응표·인벤토리)로만 유효 (ACT-011) |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ ((재작성중)). 참고만 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
@@ -28,7 +29,7 @@
 `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter` 를 개정하면 **전달용 docx 를 무조건 만들어 `__review/` 에 같은 이름으로 둔다.** 운영자 검토가 docx 왕복으로 돌기 때문이다 — 전달본을 주면 `*_revision.docx` 로 마크업이 돌아오고, 그걸 다음 판에 반영하고 구판 md 는 `archive/` 로 보낸다.
 
 ```bash
-python tools/md_to_docx.py KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.10.md "__review/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.10.docx"
+python tools/md_to_docx.py KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md "__review/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.docx"
 ```
 
 생성 후 제목·표 수가 md 와 같은지 확인한다(판마다 md 에서 다시 센다 — v1.8 기준 제목 32 · 표 28). 변환기는 pandoc 없는 환경 전제로 python-docx 만 쓴다 — 다루는 문법 범위는 스크립트 머리말에 있다.
@@ -47,6 +48,13 @@ python tools/md_to_docx.py KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.
 - 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 **D-번호**다. 이 폴더가 기대는 것은 **D-011**(사이트 코드 파일명) · **D-013**(레거시 keyword 판정).
 
 ## ▶ 이어서 시작하는 자리 (2026-08-22 기준)
+
+### 2026-08-22 확정분 · 최신 (운영자 5차 개정 + 확인 요망 4·5 확정 = v1.11 로 닫힘)
+
+- **돔 Source 전면 변경** — 계승 6장 + `DSAZ`/`DSTELALT`/`DSTELAZ` 가 `AUX relay` → **`TCS relay or REDIS*`**, `DALTERR`/`DAZERR` 는 **`ICS calculation`**. newTCS 전환으로 dome shutter control 이 TCS 에 편입 — 초안 DS 블록도 TCS 절로 이동(3.6절, 절명에서 "AUX" 제거).
+- **확인 요망 1~5 종결** — ① chiller 재삭제 ② `FSATEMP`/`FSAHUM` 반영 ③ 돔 4장 반영(모두 초안 v0.3.7 전수 대사 검증) ④ **`EXPTIME`/`LEDFLASH` 정수형** — `EXPTIME` 은 소수점 있으면 실수형, **`LEDFLASH` 는 [ms] 로 단위 변경**(D-013 "초 유지" 번복 — comment 에 단위 명시, `ics_sim` ms÷1000 제거) ⑤ **`ICSBUILD` = `v<버전>:<빌드일시>Z`**(프로그램명 제거 — 식별은 `DATASRC`, `ics_sim` `build_id()` 개정 + `PROGRAM` 상수 삭제 + 테스트 교체, 전체 325 통과). **ics_sim 변경분은 v1.11 문서 배치와 함께 커밋(운영자 지시)**.
+- **문서 통합 (운영자 지시)** — MEF_Impacts v0.4 + Numbering v0.2 → **`KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md`** (Part 1 = MEF 개정 요청 / Part 2 = 번호·정체성). 키워드맵 v0.7 잔여 미결 4건(`NCTRL`·`CTRLID` 개칭·`SATURAT`/`SATLEVEL`·`DATASRC`/`CTRLnCFG` MEF 목적지)을 Part 1 §6 으로 이관 — **키워드맵은 archive 로 이동 완료(운영자 재가 2026-08-22)**.
+- 남은 것: **확인 요망 6건**(결정 9 HK 온도 형 · 10 PRESCN 삼자 모순 · 11 규격 버전 선언 / 재가 6 CTRL1ID 값 · 7 "– 철회" 라벨 · 8 XTALKVER 귀속 표기) **+ D-등재(D-016, 통합 문서 Part 2 §8 초안)** → 닫히면 V1 재작성 착수.
 
 ### 2026-08-22 확정분 · 추가 (운영자 4차 개정 = v1.10 으로 닫힘)
 
@@ -76,8 +84,8 @@ python tools/md_to_docx.py KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.
 ### 2026-08-21 확정분 (직전 세션과 목의 검토로 닫힘)
 
 - **Detector/Amplifier 블록 확정** — `DETID`(레거시 계승, 값 'MK'/'NT' 재정의, comment "Detector pair in this raw FITS file") · `DETECTOR` · `PIXSIZE`/`PIXSCALE`(0.395, 근거 표기 없이) · `CCDXBIN`/`CCDYBIN`(이름 유지) · `NAMPDET`/`NAMPRAW` · **타일 해부 대칭형** `AMPNAX1`=1200/`AMPNAX2`=4700 + `IMAGEX`=1152/`IMAGEY`=4616 + `PRESCNX`/`PRESCNY`=0 + `OVRSCNX`=48/`OVRSCNY`=84(개명으로 레거시 동명 충돌 전부 해소) · **`CHMAP_LT/LB/RT/RB` 4장**(값=CCD 출력 채널, raw X 오름차순; AMPCHA/AMPCHB 안 대체). 값은 채널맵 원자료와 전수 대조 완료 — 검토 종료 후 `__reference/Detector_Ch_to_AmpID_Map_v1.0.txt`(구 AMPID.txt) · `__reference/Detector_and_Amp_Info_cards_v1.0.txt`(구 AMPCARD.txt)로 v1.0 승격(2026-08-21). 파생 카드(`AMPDATA`·`NXTILE`·`RAWXTILE` 등)는 싣지 않는다. `__reference/Archon_Unit_Info.txt`가 CTRL1/2 ID·SN 실값의 원자료다.
-- **충돌 처리 · 정체성 재설계 확정** — 번호 공간 000000–099999, 충돌 시 pair 선검사 + 번호 증가(상한 100000회 초과 시 ERROR·저장 안 함), 카운터 동기화. `UNIQNAME`·`NAMECLSH`·`clash/` 폐지, `FILENAME`(유일 키)+`ORIGNAME`(항상 기록, 불일치=충돌 신호). 정리본: [`KMT_CEU_Raw_Numbering_and_Identity_v0.2.md`](KMT_CEU_Raw_Numbering_and_Identity_v0.2.md) (현재 v0.2 — D-등재 대기, 결정문 초안 8장).
-- **MEF 쪽 개정 요청 목록**: [`KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md`](KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md) (현재 v0.4, LEECU 전달용 — MEF `UNIQNAME` 공급원, C-11 CHMAP 개정 등).
+- **충돌 처리 · 정체성 재설계 확정** — 번호 공간 000000–099999, 충돌 시 pair 선검사 + 번호 증가(상한 100000회 초과 시 ERROR·저장 안 함), 카운터 동기화. `UNIQNAME`·`NAMECLSH`·`clash/` 폐지, `FILENAME`(유일 키)+`ORIGNAME`(항상 기록, 불일치=충돌 신호). 정리본: [`KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md`](KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md) **Part 2** (D-등재 대기, 결정문 초안 §8 — 구 Numbering v0.2 는 `archive/`).
+- **MEF 쪽 개정 요청 목록**: 같은 문서 **Part 1** (LEECU 전달용 — MEF `UNIQNAME` 공급원, C-11 CHMAP 개정, 키워드맵 이관 미결 4건 등 — 구 MEF_Impacts v0.4 는 `archive/`).
 - 미세 미결: `ORIGNAME` 이름 최종 확정(ORIGNAME 유지 권고, 차선 INITNAME), `READMODE` 값 충돌(FAST vs 64AMP — → v1.9 `RDMODE` 개명으로 종결), Instrument 절(FPAID 카드안 · INSTRUME 어휘) 미착수.
 
 ### 2026-08-20 세션 기록 (아래는 그 시점 기준)

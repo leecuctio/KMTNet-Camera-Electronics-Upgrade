@@ -379,9 +379,14 @@ def exposure_header(*, date_obs: str, exp_start: datetime | None,
     같은 순간의 `MJD-OBS`/`UT` 를 파생시키고 셔터 시각을 붙인다.  파생을 한
     자리에 모아 둔 이유는 세 값이 어긋나지 않게 하는 것이다.
 
-    `LEDFLASH` 는 **초** 단위다 (규격 5.7·5.13절).  ICS 내부는 ms 이므로
-    나눠서 싣는다 -- 레거시와 같은 이름에 다른 단위를 넣으면 기존 도구가
-    조용히 1000배 틀린 값을 읽는다.
+    `LEDFLASH` 는 **ms** 단위 정수다 (운영자 확정 2026-08-22).  처음에는
+    레거시(초)를 따라 나눠 실었으나, 정수형을 유지하면서 sub-second 값
+    (250 ms 등)의 잘림을 막으려면 ms 그대로가 맞다.  레거시와 같은 이름에
+    다른 단위(1000배)가 되므로 카드 comment 가 `[milliseconds]` 를 명시한다
+    -- 이 카드는 실험실 flat 식별용이라 값을 계산에 쓰는 소비자는 없다.
+
+    `EXPTIME` 은 **정수형이 기본, 소수점 아래 값이 있을 때만 실수형**이다
+    (운영자 확정 2026-08-22).
 
     **`SHUTTER` 는 여기서 만들지 않는다** (2026-08-13 확정).  그 이름은 AUX 가
     보고한 **블레이드 위치**이고 `telemetry.py` 몫이다(규격 5.10절).  한때 이
@@ -396,9 +401,10 @@ def exposure_header(*, date_obs: str, exp_start: datetime | None,
     셔터를 쓰는 노출인지는 `IMAGETYP`(`BIAS`/`DARK` 는 열지 않는다)에서 읽는다.
     """
     out: dict[str, object] = {
-        'EXPTIME': float(exptime),
+        'EXPTIME': (int(exptime) if float(exptime).is_integer()
+                    else float(exptime)),
         'DARKTIME': float(darktime),
-        'LEDFLASH': round(ledflash_ms / 1000.0, 3),
+        'LEDFLASH': int(ledflash_ms),
         'TSHOPEN': S(_hms(exp_start)),
         'TSHSHUT': S(_hms(exp_end)),
     }

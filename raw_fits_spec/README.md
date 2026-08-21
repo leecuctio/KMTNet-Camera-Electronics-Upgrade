@@ -45,11 +45,10 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | 경로 | 내용 |
 | --- | --- |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ **((재작성중)).** 옛 raw pair 규격이며 **현행이 아니다.** 재검토 결과로 다시 쓴다 |
-| `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ L0 MEF 키워드 전수 대응표 289행. 0장이 **준수 우선순위**(1 ICD v4.1 → 2 converter 코드 → 3 keyword 정의서, 레거시 MEF 는 배경지식)를, 1.2절이 **raw 쪽 기준선**(레거시 raw 실측 헤더 123개 — `ics_sim` 출력이 아니다)을 세우고, 2장이 준거 대비 현재 상태를, 5장이 결정이 필요한 10항목을 담는다 (ACT-011) |
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.10.md` | **v1.10 (2026-08-22) — 운영자 3·4차 개정(v1.8/v1.9_revision)과 확정 초안 v0.3.6 을 반영한 수기 개정판** (v1.6 까지는 기계 추출 생성물, 구판은 `archive/`). **raw 카드 기준은 레거시 raw 실측 헤더**이고 **레거시 123개를 전량 귀속**시킨다 — converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정(7장) · 폐지(8장·8.1·8.2). v1.10: **도입/계획 판정 완결 — 미정 0**(`CHKIMG` 2장은 pipeline 판별 대상으로 `X`) · `RDMODE` 개명 도입(구 `READMODE` 충돌 해소) · `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` 확장 · `CAMVER` 신설 · **확인 요망 11건**. 10~12장은 subframe 제기 · converter 자기 상수 카드 · raw 직접 사용자 안내 |
-| `KMT_CEU_Raw_Numbering_and_Identity_v0.2.md` | **Draft v0.2 (2026-08-22).** 파일 번호 공간(000000–099999) · 충돌 시 번호 증가 · `FILENAME`/`ORIGNAME` 정체성 카드 — v0.2: `CTRLTAG`·`PAIRFILE` 미도입 확정(v1.9) 반영, pair 식별은 `FILENAME` 꼬리(`.MK`/`.NT`). 구 규격 **2.3.1절과 5.2절 일부(`UNIQNAME` · `NAMECLSH`)를 대체**할 조각 — 재작성판에 흡수 예정, D-등재 전 |
-| `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md` | **Draft v0.4 (2026-08-22).** raw 헤더 개정이 MEF ICD · keyword 정의서 · converter 에 요구하는 개정 사항 목록 (LEECU 전달용) — C-항목 신설·개정(MEF `UT` 조립 원천 · `DARKTIME` 공급원 · HK 재구성 · `VOLTINFO`/`TELEMETRY` 공급원), raw↔MEF 이름 대응, ICD 개정 후보(`READMODE` 충돌은 `RDMODE` 개명으로 해소) |
-| `__review/` | 운영자 검토 왕복함 — 전달본 docx(현행 `…_v1.10.docx`, `tools/md_to_docx.py` 로 생성) · 운영자 개정판(`…_vX.Y_revision.docx`) · **확정 초안** `KMTA.20260818.012345.MK.fits.header.txt`(현재 v0.3.6, 이전판들은 git 이력과 운영자 외부 백업에) |
+| `archive/` | 구판 이력 보존 — Header_and_Refs v1.0~v1.10 · 통합 문서의 전신 2건(MEF_Impacts v0.4 · Numbering_and_Identity v0.2) · **키워드맵 `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md`**(2026-08-22 이동 — 살아있는 내용은 전부 흡수 완료: 카드 판정은 Header_and_Refs v1.7~v1.11, 미결 4건은 통합 문서 v0.5 Part 1 §6. 전수 대응표 289행·준수 우선순위·MEF 인벤토리 분석은 배경 자료로 유효, ACT-011) |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md` | **v1.11 (2026-08-22) — 운영자 3~5차 개정(v1.8/v1.9/v1.10_revision)과 확정 초안 v0.3.7 을 반영한 수기 개정판** (v1.6 까지는 기계 추출 생성물, 구판은 `archive/`). **raw 카드 기준은 레거시 raw 실측 헤더**이고 **레거시 123개를 전량 귀속**시킨다 — converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정(7장) · 폐지(8장·8.1·8.2). v1.10 에서 **도입/계획 판정 완결 — 미정 0**, v1.11 에서 **돔 Source 를 TCS relay or REDIS 로 변경**(newTCS 편입 · `DALTERR`/`DAZERR` 는 ICS calculation)하고 **확인 요망 1~5 종결**(`EXPTIME`/`LEDFLASH` 정수형 — `LEDFLASH` 는 [ms] 단위 변경 · `ICSBUILD` 프로그램명 제거) — **잔여 6건: 결정 9·10·11, 재가 6·7·8**. 10~12장은 subframe 제기 · converter 자기 상수 카드 · raw 직접 사용자 안내 |
+| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` | **Draft v0.5 (2026-08-22) — 통합 문서: "Raw FITS 헤더 개정에 따른 MEF ICD · MEF Converter 개정 및 검토 사항".** **Part 1**(구 MEF_Impacts v0.4) = LEECU 전달용 개정 요청 목록 — C-항목 신설·개정, raw↔MEF 이름 대응, ICD·정의서 개정 후보, 키워드맵 이관 미결 4건(§6). **Part 2**(구 Numbering_and_Identity v0.2) = 파일 번호 공간(000000–099999) · 충돌 시 번호 증가 · `FILENAME`/`ORIGNAME` 정체성 — 구 규격 2.3.1절·5.2절 일부를 대체할 조각, 재작성판 흡수 예정, D-등재 전(§8 결정문 초안). 전신 2건은 `archive/` |
+| `__review/` | 운영자 검토 왕복함 — 전달본 docx(현행 `…_v1.11.docx`, `tools/md_to_docx.py` 로 생성) · 운영자 개정판(`…_vX.Y_revision.docx`) · **확정 초안** `KMTA.20260818.012345.MK.fits.header.txt`(현재 v0.3.7, 이전판들은 git 이력과 운영자 외부 백업에) |
 | `tools/` | `md_to_docx.py` — 개정판 md 를 검토 전달용 docx 로 변환(개정마다 필수, `SMC_CLAUDE.md` 개정 워크플로) |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
@@ -120,7 +119,7 @@ v1.0에서 제기한 OBSAgent 규약 충돌 2건은 **v1.1에서 해결되었고
 
 부작용 하나가 따라온다 — **`LASTFILE`이 더 이상 실재하는 경로가 아니다.** 아카이브·DTS 도구는 `LASTFILE` 대신 raw 헤더의 `UNIQNAME`/`FILENAME`/`CTRLTAG`를 근거로 삼아야 한다 (규격 2.5절). **색인 키는 `UNIQNAME`** 이다 — 이름이 겹쳐 격리된 경우에도 그 값만 불변이다 (2.3.1절).
 
-> ⚠️ **위 문단은 개정 Draft 로 대체 예정이다 (2026-08-21).** 충돌 처리가 격리에서 **번호 증가**로 바뀌면서 `UNIQNAME` 은 폐지되고 **색인 키는 `FILENAME`** 이 된다 — [`KMT_CEU_Raw_Numbering_and_Identity_v0.2.md`](KMT_CEU_Raw_Numbering_and_Identity_v0.2.md). D-등재 전까지는 구 문구를 남겨 둔다.
+> ⚠️ **위 문단은 개정 Draft 로 대체 예정이다 (2026-08-21).** 충돌 처리가 격리에서 **번호 증가**로 바뀌면서 `UNIQNAME` 은 폐지되고 **색인 키는 `FILENAME`** 이 된다 — [`KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md`](KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md) Part 2. D-등재 전까지는 구 문구를 남겨 둔다.
 
 남은 open item은 규격 문서 9장에 있다 — `ROWORDR`/`RDDIRT`/`RDDIRB` 확정(OI-3), 중앙 overscan 분배 실측(OI-4), binning(OI-5), raw 단계 checksum(OI-7), amp↔배선 맵 실측(OI-9, `XTALKCAL=True` 전제조건), **AUX 셔터 상태가 `SHOPEN`+3초에 반영되는가(OI-13)**. **전부 실기 실측이나 협의·정책 결정이 있어야 닫힌다** — 문서만으로 닫을 수 있었던 sentinel 규약(OI-6)은 2026-08-11에, 협의로 닫힌 **파일명 날짜 기준(OI-10)·사이트 측지값(OI-11)·날짜부와 `DATE-OBS` 의 어긋남(OI-12)** 은 2026-08-13에 해결됐다.
 

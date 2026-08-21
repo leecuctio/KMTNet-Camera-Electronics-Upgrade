@@ -189,17 +189,27 @@ def test_inherited_legacy_cards_are_present(tmp_path):
         assert 'LEDFLASH' in h, tag
 
 
-def test_ledflash_is_seconds_not_milliseconds(tmp_path):
-    """`LEDFLASH` 는 레거시와 같은 **초** 단위다 (규격 5.7·5.13절).
+def test_ledflash_is_integer_milliseconds(tmp_path):
+    """`LEDFLASH` 는 **정수형 ms** 다 (운영자 확정 2026-08-22).
 
-    같은 이름에 다른 단위를 넣으면 기존 도구가 조용히 1000배 틀린 값을 읽는다.
+    처음에는 레거시(초)를 따라 나눠 실었으나, 정수형을 유지하면서 250 ms
+    같은 sub-second 값의 잘림을 막으려면 ms 그대로가 맞다.  레거시와 같은
+    이름에 1000배 다른 단위가 되므로 카드 comment 가 `[milliseconds]` 를
+    명시한다 -- 이 카드는 실험실 flat 식별용이라 계산 소비자는 없다.
+
+    `EXPTIME` 은 정수형이 기본이고 소수점 아래 값이 있을 때만 실수형이다.
     """
     h = _headers(tmp_path)['MK']
-    assert h['LEDFLASH'] == 0.0            # 점등 안 한 노출
+    assert h['LEDFLASH'] == 0              # 점등 안 한 노출
     got = rawhdr.exposure_header(
         date_obs='2026-08-13T00:00:00', exp_start=None, exp_end=None,
         exptime=1.0, darktime=1.0, ledflash_ms=250)
-    assert got['LEDFLASH'] == 0.25         # 250 ms == 0.25 s
+    assert got['LEDFLASH'] == 250 and isinstance(got['LEDFLASH'], int)
+    assert got['EXPTIME'] == 1 and isinstance(got['EXPTIME'], int)
+    frac = rawhdr.exposure_header(
+        date_obs='2026-08-13T00:00:00', exp_start=None, exp_end=None,
+        exptime=0.5, darktime=0.5, ledflash_ms=0)
+    assert frac['EXPTIME'] == 0.5          # 소수점이 있으면 실수형 그대로
 
 
 # -- DSTEL -> DSTELALT: converter 에 fallback 이 없다 -----------------------
@@ -616,12 +626,15 @@ def test_rawhdr_and_telemetry_do_not_produce_the_same_card():
 
 # -- ICSBUILD 는 실제 빌드여야 한다 ---------------------------------------
 
-def test_icsbuild_carries_program_version_and_build_time(tmp_path):
-    """`<프로그램>-v<버전>:<빌드일시>` 형식이어야 한다 (규격 5.1절).
+def test_icsbuild_carries_version_and_build_time(tmp_path):
+    """`v<버전>:<빌드일시>` 형식이어야 한다.
 
     **"비어 있지 않음" 만 보면 거짓 값이 통과한다** -- 실제로 레거시 문자열
     `'KX2016-03-23:1381'` 이 기본값으로 실려 있었고, 그 카드를 둔 목적(헤더
     이상을 소스 상태로 되짚기)을 정면으로 무력화했다.
+
+    처음에는 `<프로그램>-v…` 로 이름을 앞세웠으나, 어느 프로그램이 쓴
+    파일인지는 `DATASRC` 가 이미 답하므로 이름을 뺐다 (운영자 확정 2026-08-22).
 
     끝의 `Z` 도 함께 지킨다.  **다른 시각 카드와 일부러 다르다** -- 그쪽은 `Z` 를
     붙이지 않고 `TIMESYS='UTC'` 로 선언하지만, 이 값은 시각 카드가 아니라 버그
@@ -631,7 +644,7 @@ def test_icsbuild_carries_program_version_and_build_time(tmp_path):
     import re
     for tag, h in _headers(tmp_path).items():
         got = str(h['ICSBUILD']).strip()
-        assert re.fullmatch(r'(ics_sim|ics_archon)-v\d+\.\d+\.\d+'
+        assert re.fullmatch(r'v\d+\.\d+\.\d+'
                             r':\d{4}-\d\d-\d\dT\d\d:\d\dZ', got), (tag, got)
         assert 'KX2016' not in got, '레거시 빌드 문자열이 남아 있다'
         # 비대칭이 의도임을 한 자리에서 함께 못박는다
@@ -640,19 +653,18 @@ def test_icsbuild_carries_program_version_and_build_time(tmp_path):
             'FITS 시각 카드는 TIMESYS 로 선언하므로 Z 를 붙이지 않는다')
 
 
-def test_build_id_refuses_to_lend_its_version_to_another_program():
-    """이름만 바꿔 부르면 **거짓 provenance** 가 된다 -- 그 사실을 못박는다.
+def test_build_id_composes_version_and_build_date():
+    """`v<버전>:<빌드일시>` -- 프로그램 이름은 넣지 않는다 (운영자 확정 2026-08-22).
 
-    `ics_archon` 은 자기 패키지에 세 상수를 두고 같은 형태를 만들어야 한다.
-    이 시험은 세 값을 함께 넘기는 사용법을 보여 준다.
+    어느 프로그램이 쓴 파일인지는 `DATASRC` 가 이미 답하므로 이름을 뺐다.
+    `ics_archon` 은 자기 패키지에 `__version__`·`__build_date__` 두 상수를 두고
+    같은 형태를 만든다 -- 이 함수를 재사용할 거면 두 값을 다 넘긴다.
+    안 넘기면 `ics_sim` 의 버전·일시가 실려 거짓 provenance 가 된다.
     """
-    from ics_sim import PROGRAM, __build_date__, __version__, build_id
-    assert build_id() == f'{PROGRAM}-v{__version__}:{__build_date__}'
-    # 이름만 바꾼 호출은 ics_sim 의 버전을 물고 온다 -- 그래서 쓰면 안 된다
-    assert build_id('ics_archon').endswith(__build_date__)
-    # 올바른 사용법: 세 값을 다 넘긴다
-    assert build_id('ics_archon', '2.0.0', '2027-01-01T00:00Z') == (
-        'ics_archon-v2.0.0:2027-01-01T00:00Z')
+    from ics_sim import __build_date__, __version__, build_id
+    assert build_id() == f'v{__version__}:{__build_date__}'
+    # 올바른 재사용법: 자기 패키지의 두 값을 다 넘긴다
+    assert build_id('2.0.0', '2027-01-01T00:00Z') == 'v2.0.0:2027-01-01T00:00Z'
 
 
 def test_ccdtemp_uses_the_representative_sensor_only():
