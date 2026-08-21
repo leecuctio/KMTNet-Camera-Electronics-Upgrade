@@ -47,3 +47,4 @@ icsdata/
 *.log
 test.*
 
+~$*.docx
