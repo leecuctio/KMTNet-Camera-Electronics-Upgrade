@@ -12,7 +12,7 @@
 
 > ⚠️ **v1.8 확인 요망 (운영자)** — 개정본·초안·참고자료가 서로 어긋나는 아홉 곳을 덮지 않고 남긴다:
 >
-> 1. `CHSTAT` 는 개정본이 `X` 인데 **초안 v0.3.5 에 카드가 남아 있다.**
+> 1. ~~`CHSTAT` 는 개정본이 `X` 인데 초안 v0.3.5 에 카드가 남아 있다~~ → **해소 (2026-08-21)**: 운영자가 초안에서 chiller 카드 4장(`CHSTAT` `CHOP` `CHSET` `CHPROC`)을 전부 삭제 — **chiller 블록 전체 미도입 확정**(6장 `X`).
 > 2. FSA 4장(`FSATEMP` `FSAHUM` `FSADEW` `FSAALRM`)은 `O` 판정인데 **초안에 카드가 없다.**
 > 3. 돔 신설 4장(`DSAZ` `DSTELAZ` `DALTERR` `DAZERR`)도 `O` 인데 **초안에 없다** (`DSTELAZ` 는 개정본 스스로 "중복 확인 후 재검토"라 적었다).
 > 4. `EXPTIME` 값이 개정본은 `Integer`, 초안은 `0.0`(실수 표기)다 — `LEDFLASH` 도 같다.
@@ -285,7 +285,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 
 | Raw Keywords | Raw Legacy | Raw Archon | Use in MEF | Value (`*` default) | Source (`*` default) |
 | --- | :---: | :---: | --- | --- | --- |
-| `CHSTAT` | O | **X** | `CHSTAT` | v1.8 판정: 싣지 않음 — ⚠️ 초안에는 잔존(확인 요망 1) | AUX relay |
+| `CHSTAT` | O | **X** | `CHSTAT` | v1.8 판정: 싣지 않음 — 초안에서도 삭제 확인(확인 요망 1 해소) | AUX relay |
 | `ENSTAT` | O | O | `ENSTAT` |  | AUX relay |
 | `ENFAN` | O | O | `ENFAN` |  | AUX relay |
 | `CCDTEMP` | O | O | `CCDTEMP` | [degC] — **실측 대표 센서** ("CCD temperature M") | ICG RTD measurement |
@@ -345,9 +345,9 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `FILENAME` | O | O | 자료 취득 시스템이 붙인 파일명 | converter 가 **MEF 출력 파일명으로 새로 만든다**(`out_path.name`). raw 의 `FILENAME` 은 raw 쪽 식별자로 남는다 |
 | `ICSBUILD` | O | O | **취득 프로그램의 빌드 식별자** — 레거시 계승(5.13절).<br>형식은 `<프로그램>-v<버전>:<빌드일시(UTC)>`,<br>예 `ics_archon-v1.0.0:2026-08-21T18:09Z` (초안 예시는<br>프로그램명이 없다 — 확인 요망 5) | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
 | `DSTEL` | O |  | 돔이 쓰는 망원경 고도 [deg] | **`DSTELALT` 로 개칭됐다** (D-013). converter 는 `DSTELALT` 만 읽고 fallback 이 없어 **AUX 가 보내는 `DSTEL` 을 ICS 가 옮겨 실어야 한다** |
-| `CHOP` | O |  | — | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
-| `CHSET` | O |  | — | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
-| `CHPROC` | O |  | — | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
+| `CHOP` | O | **X** | chiller 블록 미도입 — 초안에서 삭제 (2026-08-21) | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
+| `CHSET` | O | **X** | chiller 블록 미도입 — 초안에서 삭제 (2026-08-21) | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
+| `CHPROC` | O | **X** | chiller 블록 미도입 — 초안에서 삭제 (2026-08-21) | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
 | `ENS1` | O | O | AUX 중계값을 그대로 싣는다 | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
 | `ENS2` | O | O | AUX 중계값을 그대로 싣는다 | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
 | `ENS3` | O | O | AUX 중계값을 그대로 싣는다 | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |

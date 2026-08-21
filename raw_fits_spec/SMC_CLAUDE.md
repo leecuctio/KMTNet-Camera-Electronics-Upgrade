@@ -23,6 +23,16 @@
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ ((재작성중)). 참고만 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
+## 개정 워크플로 — docx 왕복 (운영자 지시 2026-08-21)
+
+`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter` 를 개정하면 **전달용 docx 를 무조건 만들어 `__review/` 에 같은 이름으로 둔다.** 운영자 검토가 docx 왕복으로 돌기 때문이다 — 전달본을 주면 `*_revision.docx` 로 마크업이 돌아오고, 그걸 다음 판에 반영하고 구판 md 는 `archive/` 로 보낸다.
+
+```bash
+python tools/md_to_docx.py KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md "__review/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.docx"
+```
+
+생성 후 제목·표 수가 md 와 같은지 확인한다(v1.8 기준 제목 32 · 표 28). 변환기는 pandoc 없는 환경 전제로 python-docx 만 쓴다 — 다루는 문법 범위는 스크립트 머리말에 있다.
+
 ## 준수 우선순위 (v0.7 검토 문서 0장에서 확립)
 
 ```
@@ -43,7 +53,7 @@
 - **3장 `Raw Archon` 열 전면 판정** — 3.2~3.7 전 행 O/X. `X`: `DARKTIME`(=`EXPTIME` 파생) · `TSHOPEN` · `TSHSHUT` · `CHSTAT` · `HEMODE` · `NPHLINES`. ⚠️ `TSHOPEN` 폐지 → **MEF `UT` 조립 원천 교체** C-항목, `DARKTIME` → `EXPTIME` 파생 C-항목 (MEF Impacts v0.3).
 - **컨트롤러 블록 재편** — `CTRL1CFG`/`CTRL2CFG` 신설(ICS INI, 예 `KMTA_SCI_101_R2609.1.acf`), `CTRLxID`/`CTRLxSN` 도입 확정 + 실값(`KMTA-SCI-101/-102` · `STA-0288/-0289`, `__reference/Archon_Unit_Info.txt`), 펌웨어·버전 문자열 6장은 `CTRLxCFG` 귀속 `X`. 양쪽 raw 에 2대분, guide 는 `CTRL1xx` 한 벌, `CTRLnxx` 확장 규약.
 - **HK 재구성** — `CCDTEMP` 실측 대표 전환("CCD temperature M", ICG RTD) · `CCDTEMP1/2` 후보 제외 · `DEWPRES` 문자열 `x.xxe-x` + sentinel `9.99e-9` · 신설 `DMPTEMP`/`WALLBRD`/`HEBOX` · `AIR_*`/`GLYC_*` = standalone RTD readout unit · `TCSTIME` 신설(시각계 분리). **`ics_sim` `rawhdr.py` 의 HK 부분은 동기화 완료** — 노출·컨트롤러 블록 재편은 백로그(`../ics_sim/SMC_CLAUDE.md`).
-- **⚠️ 확인 요망 9건이 v1.8 머리말에 있다** — CHSTAT(X vs 초안 잔존) · FSA 4장/돔 4장(O vs 초안 부재) · EXPTIME 형(Integer vs `0.0`) · ICSBUILD 형식(프로그램명 유무) · CTRLxID 값(`-01` vs `-101`, 후자 채택) · `– 철회` 라벨 해석 · XTALKVER 3장 귀속 표기(caldb 유지) · HK 온도 형(문자열 vs 실수).
+- **⚠️ 확인 요망 9건 중 1번(CHSTAT)은 해소** — 운영자가 초안에서 chiller 4장(`CHSTAT` `CHOP` `CHSET` `CHPROC`) 삭제(2026-08-21), 블록 전체 미도입 확정. **남은 8건**(v1.8 머리말) — FSA 4장/돔 4장(O vs 초안 부재) · EXPTIME 형(Integer vs `0.0`) · ICSBUILD 형식(프로그램명 유무) · CTRLxID 값(`-01` vs `-101`, 후자 채택) · `– 철회` 라벨 해석 · XTALKVER 3장 귀속 표기(caldb 유지) · HK 온도 형(문자열 vs 실수).
 - 미세 미결 갱신: `READMODE` 는 초안이 카드를 뺐다(도입 안 함으로 기우는 중, 판정 대기) · `ORIGNAME` 은 v1.7_revision 에서 이의 없음 — 확정 수순(D-등재 대기).
 
 ### 2026-08-21 확정분 (직전 세션과 목의 검토로 닫힘)

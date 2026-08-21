@@ -50,6 +50,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | `KMT_CEU_Raw_Numbering_and_Identity_v0.1.md` | **Draft (2026-08-21).** 파일 번호 공간(000000–099999) · 충돌 시 번호 증가 · `FILENAME`/`ORIGNAME` 정체성 카드. 구 규격 **2.3.1절과 5.2절 일부(`UNIQNAME` · `NAMECLSH`)를 대체**할 조각 — 재작성판에 흡수 예정, D-등재 전 |
 | `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md` | **Draft v0.3 (2026-08-21).** raw 헤더 개정이 MEF ICD · keyword 정의서 · converter 에 요구하는 개정 사항 목록 (LEECU 전달용) — C-항목 신설·개정(MEF `UT` 조립 원천 · `DARKTIME` 공급원 · HK 재구성), raw↔MEF 이름 대응, ICD 개정 후보 |
 | `__review/` | 운영자 검토 왕복함 — 전달본 docx(`…_v1.7.docx`) · 운영자 개정판(`…_v1.7_revision.docx`) · **확정 초안** `KMTA.20260818.012345.MK.fits.header.txt`(현재 v0.3.5, 직전판은 `archive/…header_v0.3.4.txt`) |
+| `tools/` | `md_to_docx.py` — 개정판 md 를 검토 전달용 docx 로 변환(개정마다 필수, `SMC_CLAUDE.md` 개정 워크플로) |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
