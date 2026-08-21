@@ -1,6 +1,6 @@
 # KMTNet-CEU Raw FITS Specification
 
-최종 갱신일: 2026-08-20
+최종 갱신일: 2026-08-21
 
 ## 목적
 
@@ -47,6 +47,8 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ **((재작성중)).** 옛 raw pair 규격이며 **현행이 아니다.** 재검토 결과로 다시 쓴다 |
 | `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ L0 MEF 키워드 전수 대응표 289행. 0장이 **준수 우선순위**(1 ICD v4.1 → 2 converter 코드 → 3 keyword 정의서, 레거시 MEF 는 배경지식)를, 1.2절이 **raw 쪽 기준선**(레거시 raw 실측 헤더 123개 — `ics_sim` 출력이 아니다)을 세우고, 2장이 준거 대비 현재 상태를, 5장이 결정이 필요한 10항목을 담는다 (ACT-011) |
 | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.6.md` | **주로 생성물이다** (v1.6). **raw 카드 기준은 레거시 raw 실측 헤더**이고, 네 원천에서 기계 추출해 **레거시 123개를 전량 귀속**시킨다 — converter 가 **읽는 104개**, 레거시에 있으나 **읽지 않는 24장**, **도입 후보 37장**, **폐지 17장**. 8.1절은 이 검토가 새로 내린 판정이다 — `NAMPS`·`AMPPCD` 를 폐지하고 **`NAMPDET`/`NAMPRAW`** 로 통일했다. 10장은 **부분 독출(subframe·ROI·window)** 이 규격에도 미결 목록에도 없다는 제기이고, **11장은 converter 가 raw 를 읽지 않고 자기 상수로 만드는 카드**, **12장은 raw FITS 를 converter 없이 직접 쓰는 사람을 위한 안내**다. **`Raw Archon` 열은 운영자가 채우는 계획 열**이라 생성기 안에 표로 들고 있다 |
+| `KMT_CEU_Raw_Numbering_and_Identity_v0.1.md` | **Draft (2026-08-21).** 파일 번호 공간(000000–099999) · 충돌 시 번호 증가 · `FILENAME`/`ORIGNAME` 정체성 카드. 구 규격 **2.3.1절과 5.2절 일부(`UNIQNAME` · `NAMECLSH`)를 대체**할 조각 — 재작성판에 흡수 예정, D-등재 전 |
+| `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.1.md` | **Draft (2026-08-21).** raw 헤더 개정이 MEF ICD · keyword 정의서 · converter 에 요구하는 개정 사항 목록 (LEECU 전달용) — C-항목 신설·개정, raw↔MEF 이름 대응, ICD 개정 후보 |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
@@ -111,6 +113,8 @@ v1.0에서 제기한 OBSAgent 규약 충돌 2건은 **v1.1에서 해결되었고
 | ~~OI-12~~ | 파일명 날짜부가 `DATE-OBS` 날짜와 **어긋나는 것이 정상**이다 — OI-10 이 관측일 기준으로 확정되면서 해소됐다 (2026-08-13) |
 
 부작용 하나가 따라온다 — **`LASTFILE`이 더 이상 실재하는 경로가 아니다.** 아카이브·DTS 도구는 `LASTFILE` 대신 raw 헤더의 `UNIQNAME`/`FILENAME`/`CTRLTAG`를 근거로 삼아야 한다 (규격 2.5절). **색인 키는 `UNIQNAME`** 이다 — 이름이 겹쳐 격리된 경우에도 그 값만 불변이다 (2.3.1절).
+
+> ⚠️ **위 문단은 개정 Draft 로 대체 예정이다 (2026-08-21).** 충돌 처리가 격리에서 **번호 증가**로 바뀌면서 `UNIQNAME` 은 폐지되고 **색인 키는 `FILENAME`** 이 된다 — [`KMT_CEU_Raw_Numbering_and_Identity_v0.1.md`](KMT_CEU_Raw_Numbering_and_Identity_v0.1.md). D-등재 전까지는 구 문구를 남겨 둔다.
 
 남은 open item은 규격 문서 9장에 있다 — `ROWORDR`/`RDDIRT`/`RDDIRB` 확정(OI-3), 중앙 overscan 분배 실측(OI-4), binning(OI-5), raw 단계 checksum(OI-7), amp↔배선 맵 실측(OI-9, `XTALKCAL=True` 전제조건), **AUX 셔터 상태가 `SHOPEN`+3초에 반영되는가(OI-13)**. **전부 실기 실측이나 협의·정책 결정이 있어야 닫힌다** — 문서만으로 닫을 수 있었던 sentinel 규약(OI-6)은 2026-08-11에, 협의로 닫힌 **파일명 날짜 기준(OI-10)·사이트 측지값(OI-11)·날짜부와 `DATE-OBS` 의 어긋남(OI-12)** 은 2026-08-13에 해결됐다.
 

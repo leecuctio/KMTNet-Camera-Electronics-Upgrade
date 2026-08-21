@@ -36,7 +36,16 @@
 - **ICD 는 PRIMARY keyword 를 열거하지 않는다.** converter 가 만드는 카드 이름 210개 중 ICD 에 나오는 것은 36개뿐이고 174개(83%)가 없다. 그 침묵 구간이 곧 이 검토가 결정할 몫이다.
 - 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 **D-번호**다. 이 폴더가 기대는 것은 **D-011**(사이트 코드 파일명) · **D-013**(레거시 keyword 판정).
 
-## ▶ 이어서 시작하는 자리 (2026-08-20 기준)
+## ▶ 이어서 시작하는 자리 (2026-08-21 기준)
+
+### 2026-08-21 확정분 (직전 세션과 목의 검토로 닫힘)
+
+- **Detector/Amplifier 블록 확정** — `DETID`(레거시 계승, 값 'MK'/'NT' 재정의, comment "Detector pair in this raw FITS file") · `DETECTOR` · `PIXSIZE`/`PIXSCALE`(0.395, 근거 표기 없이) · `CCDXBIN`/`CCDYBIN`(이름 유지) · `NAMPDET`/`NAMPRAW` · **타일 해부 대칭형** `AMPNAX1`=1200/`AMPNAX2`=4700 + `IMAGEX`=1152/`IMAGEY`=4616 + `PRESCNX`/`PRESCNY`=0 + `OVRSCNX`=48/`OVRSCNY`=84(개명으로 레거시 동명 충돌 전부 해소) · **`CHMAP_LT/LB/RT/RB` 4장**(값=CCD 출력 채널, raw X 오름차순; AMPCHA/AMPCHB 안 대체). 값은 REVIEW/AMPID.txt 와 전수 대조 완료. 파생 카드(`AMPDATA`·`NXTILE`·`RAWXTILE` 등)는 싣지 않는다.
+- **충돌 처리 · 정체성 재설계 확정** — 번호 공간 000000–099999, 충돌 시 pair 선검사 + 번호 증가(상한 100000회 초과 시 ERROR·저장 안 함), 카운터 동기화. `UNIQNAME`·`NAMECLSH`·`clash/` 폐지, `FILENAME`(유일 키)+`ORIGNAME`(항상 기록, 불일치=충돌 신호). 정리본: [`KMT_CEU_Raw_Numbering_and_Identity_v0.1.md`](KMT_CEU_Raw_Numbering_and_Identity_v0.1.md) (D-등재 대기, 결정문 초안 8장).
+- **MEF 쪽 개정 요청 목록**: [`KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.1.md`](KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.1.md) (LEECU 전달용 — MEF `UNIQNAME` 공급원, C-11 CHMAP 개정 등).
+- 미세 미결: `ORIGNAME` 이름 최종 확정(ORIGNAME 유지 권고, 차선 INITNAME), `READMODE` 값 충돌(FAST vs 64AMP — 이름 분리 필요), Instrument 절(FPAID 카드안 · INSTRUME 어휘) 미착수.
+
+### 2026-08-20 세션 기록 (아래는 그 시점 기준)
 
 **2026-08-20 세션은 키워드 설계를 검토만 했고 아무것도 확정하지 않았다.** 그래서 v1.6 · v0.7 · 규격 v1.2 는 손대지 않았다. 아래는 그 논의에서 **모양이 잡힌 것**과 **아직 못 정한 것**이다. 다시 처음부터 헤매지 않도록 근거까지 적어 둔다.
 
