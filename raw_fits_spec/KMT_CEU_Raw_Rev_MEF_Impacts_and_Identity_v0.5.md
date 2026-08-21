@@ -12,7 +12,7 @@
 >
 > **v0.3**: HK 재구성 확정(`WALLBOAR`→`WALLBRD`, 출처 3계통) · C-신설 2건(MEF `UT` 조립 원천 · `DARKTIME` 공급원). **v0.2**: `OBSERVAT` 값 재정의 C-항목(이후 철회로 종결). **Part 2 의 전신 이력** — v0.2: `CTRLTAG`·`PAIRFILE` 미도입 확정 반영(삼총사 문구에서 `CTRLTAG` 제거) · v0.1: 충돌 번호 증가 설계 최초 기록.
 
-> `mef_converter/` 는 읽기 전용(LEECU 소관)이므로 Part 1 은 **변경 요청 목록**이지 변경 자체가 아니다. raw 쪽 근거는 `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.12.md`(확인 요망 11건 전량 종결)와 Part 2(**D-016 등재 완료**), 검토 세션 기록([`SMC_CLAUDE.md`](SMC_CLAUDE.md))이다. 규격 재작성판(V1) 발행 시 이 문서도 판을 올린다.
+> `mef_converter/` 는 읽기 전용(LEECU 소관)이므로 Part 1 은 **변경 요청 목록**이지 변경 자체가 아니다. raw 쪽 근거는 `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md`(확인 요망 11건 전량 종결)와 Part 2(**D-016 등재 완료**), 검토 세션 기록([`SMC_CLAUDE.md`](SMC_CLAUDE.md))이다. 규격 재작성판(V1) 발행 시 이 문서도 판을 올린다.
 
 ---
 
@@ -73,7 +73,7 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 - **§12 (open items)**: raw 텔레메트리 집합의 위임 대상이 구 규격 5장 → 재작성판으로 바뀐다. 참조 갱신.
 - ~~**`READMODE` 값 충돌**: ICD/정의서는 `READMODE='64AMP'`(구조 선언), raw 초안은 `'FAST'`(독출 속도 모드)로 쓰려 했다 — 같은 이름, 다른 뜻. 이름 분리 필요~~ → **해소(v1.9)**: raw 쪽이 **`RDMODE`** 로 개명 도입되어 이름이 갈라졌다 — MEF `READMODE='64AMP'` 는 그대로, **ICD 개정 항목 없음**.
 - **AMPINFO의 상류 공급원 명시**: "authoritative 64-row map"의 배선 열(MODULE/CHANNEL)이 converter 추정식이 아니라 **raw `CHMAP_*` + 재작성판의 amp 전수 표**에서 온다는 것을 명시.
-- **overscan 좌우 패턴 검증**: 레거시 MEF `AMPSEC` 실측이 M/T=5:3, K/N=3:5 방향 패턴을 보였는데 신규는 4:4(`RRRRLLLL`)를 전제한다 — 같은 e2v CCD290-99이므로 한쪽이 틀렸다. 검증 표본(`KMTN.20260116.000001`) overscan 열 통계로 확정하고, geometry 가 바뀌면 **raw 쪽은 `CAMVER`(HW)/`CTRLxCFG`(설정) 범프 · MEF 쪽은 `GEOMVER` 동반 범프** — `RAWVER` 는 미도입 확정이다(Header_and_Refs v1.12 확인 요망 11: 규격/구성 버전은 `CAMVER`·`CTRLxCFG`·`DETID`·`CHMAP_*` 조합으로 파악).
+- **overscan 좌우 패턴 검증**: 레거시 MEF `AMPSEC` 실측이 M/T=5:3, K/N=3:5 방향 패턴을 보였는데 신규는 4:4(`RRRRLLLL`)를 전제한다 — 같은 e2v CCD290-99이므로 한쪽이 틀렸다. 검증 표본(`KMTN.20260116.000001`) overscan 열 통계로 확정하고, geometry 가 바뀌면 **raw 쪽은 `CAMVER`(HW)/`CTRLxCFG`(설정) 범프 · MEF 쪽은 `GEOMVER` 동반 범프** — `RAWVER` 는 미도입 확정이다(Header_and_Refs v1.13 확인 요망 11: 규격/구성 버전은 `CAMVER`·`CTRLxCFG`·`DETID`·`CHMAP_*` 조합으로 파악).
 - 파일명 체계(D-011)는 **불변** — 충돌 번호 증가 시에도 형식은 같고 번호만 다르다. `find_pair()` · 정규식 영향 없음.
 
 ## 4. MEF Keywords 정의서 v1.0 개정 후보
@@ -190,7 +190,7 @@ converter(v2.2.0)는 raw `UNIQNAME`을 읽어 MEF `UNIQNAME`으로 옮긴다(`v2
 
 | 문서 | 위치 |
 | --- | --- |
-| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.12.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.12.md) |
+| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md) |
 | 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |
