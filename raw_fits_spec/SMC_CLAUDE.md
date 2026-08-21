@@ -18,21 +18,15 @@
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 에서 **도입/계획 판정 완결(미정 0)**, v1.11 에서 돔 Source → TCS relay or REDIS + **확인 요망 1~5 종결(잔여 6건)** — 구판은 `archive/` |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.12.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → **v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) — 잔여 5건(결정 10·11 / 재가 6·7·8)** — 최근 구판은 `archive/` |
 | `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` | **통합 문서 (2026-08-22)** — Part 1: LEECU 전달용 MEF ICD·정의서·converter 개정 요청(C-항목 · 이름 대응 · 키워드맵 이관 미결 4건) / Part 2: 번호·정체성·충돌 처리(D-016 결정문 초안 §8). 전신 MEF_Impacts v0.4 · Numbering v0.2 는 `archive/` |
 | `archive/KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | 검토용 — **흡수 완료 후 archive 이동(운영자 재가 2026-08-22)**: 판정은 Header_and_Refs, 미결 4건은 통합 문서 Part 1 §6. 배경 자료(전수 대응표·인벤토리)로만 유효 (ACT-011) |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ ((재작성중)). 참고만 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
-## 개정 워크플로 — docx 왕복 (운영자 지시 2026-08-21)
+## 개정 워크플로 — `__review/` 는 임시 왕복함 (운영자 확정 2026-08-22)
 
-`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter` 를 개정하면 **전달용 docx 를 무조건 만들어 `__review/` 에 같은 이름으로 둔다.** 운영자 검토가 docx 왕복으로 돌기 때문이다 — 전달본을 주면 `*_revision.docx` 로 마크업이 돌아오고, 그걸 다음 판에 반영하고 구판 md 는 `archive/` 로 보낸다.
-
-```bash
-python tools/md_to_docx.py KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md "__review/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.docx"
-```
-
-생성 후 제목·표 수가 md 와 같은지 확인한다(판마다 md 에서 다시 센다 — v1.8 기준 제목 32 · 표 28). 변환기는 pandoc 없는 환경 전제로 python-docx 만 쓴다 — 다루는 문법 범위는 스크립트 머리말에 있다.
+**검토 사이클이 열릴 때만 `__review/` 를 만들어 쓰고, 끝나면 결과물을 이 폴더 루트에 저장한 뒤 `__review/` 는 지운다.** 상시 폴더가 아니다 — 2026-08-22 에 첫 적용: 초안 헤더가 **`KMTA.20260818.012345.MK.fits.header.v1.0.txt`** 로 승격되어 루트로 왔고, docx 왕복본·초안 이력(v0.0~v0.4.4)은 운영자 외부 백업(`__backup_raw_fits_spec_oldver`)으로 나갔다. 전달용 docx 는 검토 사이클이 있을 때만 `tools/md_to_docx.py` 로 만들어 `__review/` 에 둔다(변환기는 저장소 유지 — pandoc 없는 환경 전제, python-docx 만 사용). `__` 접두 폴더 읽기 전용 규칙은 그대로다 — 안의 파일은 읽기만 하고 **편집하지 않는다. 편집이 필요하면 그 파일을 sub레포 루트로 옮겨서(사본) 작업한다**(운영자 확정 규칙 2026-08-22). 클루디 산출물(docx) 신규 생성은 허용. 왕복 중 결정의 근거는 항상 md 판 changelog 에 반영하므로 docx 중간산물이 이력에서 빠져도 근거는 남는다.
 
 ## 준수 우선순위 (v0.7 검토 문서 0장에서 확립)
 
@@ -49,7 +43,12 @@ python tools/md_to_docx.py KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.
 
 ## ▶ 이어서 시작하는 자리 (2026-08-22 기준)
 
-### 2026-08-22 확정분 · 최신 (운영자 5차 개정 + 확인 요망 4·5 확정 = v1.11 로 닫힘)
+### 2026-08-22 확정분 · 최신 2 (확인 요망 9 확정 = v1.12 · 초안 v1.0 승격)
+
+- **확인 요망 9 종결 — HK 온도·습도 카드는 문자열 계승** (레거시도 문자열 `'-103.16'` · converter pass-through — 아카이브 형 통일). 표기: HK ±소수 2자리(`'+16.78'`), FSA 2장은 ENS식 잠정(소수 1자리, Tapaculo 원값 포맷 확인 후 최종 — 실기 확인 항목). **측정불가 sentinel = 온도·습도 전 카드 `'-999.99'` 단일값** (기각: `-99.99` 는 CCDTEMP 냉각 램프 통과값, 습도 `0.00` 은 유효 측정값). ics_sim 반영: `format_temp()` 신설 + thermal_header 문자열 전환 + 테스트 교체.
+- **초안 헤더 v1.0 승격** (운영자) — `KMTA.20260818.012345.MK.fits.header.v1.0.txt` 를 폴더 루트로, 내용은 마지막 커밋본과 동일(143카드, diff 0). `__review/` 폐지, archive 는 v1.8~v1.11 만 유지(그 이전 판·docx·초안 이력은 외부 백업).
+
+### 2026-08-22 확정분 (운영자 5차 개정 + 확인 요망 4·5 확정 = v1.11 로 닫힘)
 
 - **돔 Source 전면 변경** — 계승 6장 + `DSAZ`/`DSTELALT`/`DSTELAZ` 가 `AUX relay` → **`TCS relay or REDIS*`**, `DALTERR`/`DAZERR` 는 **`ICS calculation`**. newTCS 전환으로 dome shutter control 이 TCS 에 편입 — 초안 DS 블록도 TCS 절로 이동(3.6절, 절명에서 "AUX" 제거).
 - **확인 요망 1~5 종결** — ① chiller 재삭제 ② `FSATEMP`/`FSAHUM` 반영 ③ 돔 4장 반영(모두 초안 v0.3.7 전수 대사 검증) ④ **`EXPTIME`/`LEDFLASH` 정수형** — `EXPTIME` 은 소수점 있으면 실수형, **`LEDFLASH` 는 [ms] 로 단위 변경**(D-013 "초 유지" 번복 — comment 에 단위 명시, `ics_sim` ms÷1000 제거) ⑤ **`ICSBUILD` = `v<버전>:<빌드일시>Z`**(프로그램명 제거 — 식별은 `DATASRC`, `ics_sim` `build_id()` 개정 + `PROGRAM` 상수 삭제 + 테스트 교체, 전체 325 통과). **ics_sim 변경분은 v1.11 문서 배치와 함께 커밋(운영자 지시)**.

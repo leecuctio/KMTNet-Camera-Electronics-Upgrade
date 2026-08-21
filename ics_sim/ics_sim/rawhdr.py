@@ -542,6 +542,14 @@ DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX',
 #: 측정 불가를 뜻하는 `DEWPRES` 값 (운영자 확정 2026-08-21).
 DEWPRES_NC = '9.99e-9'
 
+#: 측정 불가를 뜻하는 HK 온도·습도 카드 값 (운영자 확정 2026-08-22, 단일값).
+#:
+#: 온도로는 어떤 냉각 램프도 닿지 않는 값이고 습도로는 음수라 물리적으로
+#: 불가능하다.  `-99.99` 안은 기각됐다 -- **CCDTEMP 냉각/워밍업 램프가 실제로
+#: 지나가는 값**(정상 운영값 -101~-103 바로 위)이라 실측과 구별되지 않는다.
+#: 습도 `0.00` 안도 기각 -- 0% RH 는 유효 측정값이다.
+TEMP_NC = '-999.99'
+
 #: 측정으로 인정하는 압력 범위 [torr].
 #:
 #: **하한은 게이지 실측 하한으로 확인해야 한다.**  이 하한이 sentinel 보다
@@ -594,6 +602,32 @@ def format_dewpres(value: object) -> str:
     return f'{mantissa}e{exponent[0]}{exponent[1:].lstrip("0") or "0"}'
 
 
+def format_temp(value: object) -> str:
+    """HK 온도 카드를 `'-101.23'`/`'+16.78'` 꼴 문자열로 만든다 [deg C].
+
+    **왜 문자열인가** (운영자 확정 2026-08-22, 확인 요망 9 종결) -- 레거시가
+    온도를 부호 포함 문자열로 실었고(`CCDTEMP = '-103.16'`), converter 는
+    pass-through 라 문자열 계승이 **아카이브 전체의 형을 통일**한다 -- 신규만
+    실수형이면 같은 이름에 두 형이 섞인다.  표기를 우리가 못 정하는 astropy
+    실수 카드 문제는 `format_dewpres` 와 같다.
+
+    측정 불가는 전부 `TEMP_NC`(`'-999.99'`) 하나로 모은다.
+    """
+    if value is None:
+        return TEMP_NC
+    try:
+        t = float(value)
+    except (TypeError, ValueError):
+        log.warning('온도 센서 값이 수치가 아니다(%r) -- %s 로 싣는다',
+                    value, TEMP_NC)
+        return TEMP_NC
+    if t != t or t in (float('inf'), float('-inf')):
+        log.warning('온도 센서 값이 유한하지 않다(%r) -- %s 로 싣는다',
+                    t, TEMP_NC)
+        return TEMP_NC
+    return f'{t:+.2f}'
+
+
 def thermal_header(sensors: dict | None) -> dict[str, object]:
     """5.10절 HK -- 대표 chip 온도 + 듀어·환경 센서.
 
@@ -608,7 +642,10 @@ def thermal_header(sensors: dict | None) -> dict[str, object]:
     `CCDTEMP` 는 **반드시 있어야 한다** -- L1 파이프라인이 이 이름을 지정해
     L1 primary 로 전달한다 (`mef_pipeline/kmt_ceu_preproc/io_l1.py` 의
     `CARRY_KEYS`).  그래서 대표 센서를 못 읽었을 때도 카드를 비우지 않고
-    sentinel `-999.0` 으로 싣고 경고를 남긴다.
+    sentinel `TEMP_NC`(`'-999.99'`) 로 싣고 경고를 남긴다.
+
+    **온도·습도 카드는 전부 문자열이다** (운영자 확정 2026-08-22, 확인 요망 9
+    종결 -- `format_temp` 의 docstring).
 
     MEF/L1 쪽 정의 문구("평균 파생")의 갱신은 LEECU 몫의 C-항목이다
     (`raw_fits_spec/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md` ②).
@@ -617,18 +654,15 @@ def thermal_header(sensors: dict | None) -> dict[str, object]:
     t1 = s.get('ccdtemp1', s.get('ccdtmp1'))
     if t1 is None:
         log.warning('대표 chip 온도(ccdtemp1)를 못 읽었다 -- CCDTEMP 를 '
-                    'sentinel(-999.0)로 싣는다. 이웃 센서로 대체하지 않는다 '
-                    '(대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다)')
+                    'sentinel(%s)로 싣는다. 이웃 센서로 대체하지 않는다 '
+                    '(대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다)',
+                    TEMP_NC)
     out: dict[str, object] = {
-        # 압력만 문자열이다 -- 지수 표기를 규격으로 고정하려면 그래야 한다
-        # (`format_dewpres` 의 docstring).  온도의 형(초안=문자열, 여기=실수)은
-        # 미확정이다 -- v1.8 확인 요망 9.
         'DEWPRES': S(format_dewpres(s.get('dewpres'))),
-        'CCDTEMP': float(t1) if t1 is not None else -999.0,
+        'CCDTEMP': S(format_temp(t1)),
     }
     for card in DEWAR_CARDS:
-        v = s.get(card.lower())
-        out[card] = float(v) if v is not None else -999.0
+        out[card] = S(format_temp(s.get(card.lower())))
     return out
 
 

@@ -434,10 +434,13 @@ def test_ccdtemp_is_the_measured_representative_sensor(tmp_path):
     """
     h = _headers(tmp_path)['MK']
     assert 'CCDTEMP1' not in h and 'CCDTEMP2' not in h
-    assert h['CCDTEMP'] < -50          # 대표 센서 실측값 (sim: ccdtemp1)
-    assert h['DMPTEMP'] < -50          # HK 재구성 신설 3장이 실려 있다
-    assert h['WALLBRD'] > 0
-    assert h['HEBOX'] > 0
+    assert float(h['CCDTEMP']) < -50   # 대표 센서 실측값 (sim: ccdtemp1)
+    assert float(h['DMPTEMP']) < -50   # HK 재구성 신설 3장이 실려 있다
+    assert float(h['WALLBRD']) > 0
+    assert float(h['HEBOX']) > 0
+    # 온도 카드는 부호 포함 소수 2자리 **문자열**이다 (운영자 확정 2026-08-22)
+    assert str(h['WALLBRD']).startswith('+')
+    assert str(h['CCDTEMP']).startswith('-')
 
 
 def test_unread_dewpres_is_the_string_sentinel():
@@ -460,11 +463,27 @@ def test_dewpres_formatting_and_rejection_rules():
 
 
 def test_thermal_cards_survive_a_backend_that_reads_nothing():
-    """센서를 하나도 못 읽어도 카드는 남는다 (규격 5.0절)."""
+    """센서를 하나도 못 읽어도 카드는 남는다 (규격 5.0절).
+
+    측정 불가 sentinel 은 온도·습도 전 카드 `'-999.99'` 단일값이다
+    (운영자 확정 2026-08-22).  `-99.99` 안은 CCDTEMP 냉각 램프가 실제로
+    지나가는 값이라, 습도 `0.00` 안은 0% RH 가 유효 측정값이라 기각됐다.
+    """
     h = rawhdr.thermal_header(None)
-    assert h['CCDTEMP'] == -999.0
+    assert str(h['CCDTEMP']) == rawhdr.TEMP_NC == '-999.99'
     assert str(h['DEWPRES']) == '9.99e-9'
-    assert h['DMPTEMP'] == h['WALLBRD'] == h['HEBOX'] == -999.0
+    assert (str(h['DMPTEMP']) == str(h['WALLBRD']) == str(h['HEBOX'])
+            == '-999.99')
+
+
+def test_temp_cards_are_signed_two_decimal_strings():
+    """온도 문자열 표기: `'+16.78'` / `'-101.23'` -- 비수치는 sentinel 로."""
+    f = rawhdr.format_temp
+    assert f(16.78) == '+16.78'
+    assert f(-101.234) == '-101.23'
+    assert f('-103.16') == '-103.16'
+    for bad in (None, 'ERR', float('nan'), float('inf')):
+        assert f(bad) == rawhdr.TEMP_NC, bad
 
 
 # -- 백엔드가 실패해도 프레임을 버리지 않는다 --------------------------------
@@ -492,7 +511,7 @@ def test_a_backend_that_raises_does_not_lose_the_frame(tmp_path):
     written = [p for p in os.listdir(tmp_path) if p.endswith('.fits')]
     assert len(written) == 2, '헤더 값 하나 때문에 저장이 멈췄다'
     h = fits.getheader(os.path.join(tmp_path, sorted(written)[0]))
-    assert h['CCDTEMP'] == -999.0
+    assert str(h['CCDTEMP']).strip() == '-999.99'
     assert h['CTRL1ID']            # 다른 덩어리는 멀쩡하다
 
 
@@ -674,7 +693,7 @@ def test_ccdtemp_uses_the_representative_sensor_only():
     """
     h = rawhdr.thermal_header({'ccdtemp1': -100.0, 'ccdtemp2': -102.0,
                                'ccdtemp': 0.0})   # 백엔드가 엉뚱한 값을 줘도
-    assert h['CCDTEMP'] == -100.0, '대표 센서(ccdtemp1)가 아닌 값을 썼다'
+    assert str(h['CCDTEMP']) == '-100.00', '대표 센서(ccdtemp1)가 아닌 값을 썼다'
 
 
 def test_missing_representative_sensor_is_sentinel_with_a_warning(caplog):
@@ -686,6 +705,6 @@ def test_missing_representative_sensor_is_sentinel_with_a_warning(caplog):
     import logging
     with caplog.at_level(logging.WARNING):
         h = rawhdr.thermal_header({'ccdtemp2': -103.0})
-    assert h['CCDTEMP'] == -999.0
+    assert str(h['CCDTEMP']) == '-999.99'
     assert 'CCDTEMP2' not in h
     assert any('ccdtemp1' in r.message for r in caplog.records)
