@@ -1,0 +1,132 @@
+Telescope position & limit (20230519 summary)
+
+______________________________________
+# 실제 관측가능 고도 (2016-2017 7년통계 참고)
+CTIO Alt 31deg
+SAAO Alt 33deg
+SSO  Alt 32deg
+
+______________________________________
+#PC-TCS Limit setting
+
+KMTNet-CTIO (2017.12)
+HA      ±4.65  (04:39:00)
+DEC_N  +23.00  (Alt 36.8 on Merdian)
+DEC_S  -79.00  (Alt 41.2 on Merdian)
+SECZ     2.37  (Alt=25)
+ALT     25.00  
+
+KMTNet-SAAO (2018.01)
+HA      ±4.60  (04:36:00)
+DEC_N  +21.00  (Alt 36.8 deg on Merdian)
+DEC_S  -85.50  (Alt 36.8 deg on Merdian)
+SECZ     2.37  (Alt=25)
+Alt     30.00
+
+KMTNet-SSO (2018.01)
+HA      ±4.60  (04:36:00)
+DEC_N  +22.00  (Alt 36.7 deg on Merdian)
+DEC_S  -84.00  (Alt 37.4 deg on Merdian)
+SECZ     2.37  (Alt=25)
+Alt     30.00
+
+______________________________________
+#TCC limit (LOW MIRROR LIMIT)
+
+CTIO 
+DEC +24:07:59.7 = +24.13 (Alt 35.7 on Merdian)
+DEC -80?
+
+SAAO 
+DEC +21:59:10 = +21.986 (Alt 35.8 on Merdian)
+DEC -86:27:17 = -86.454 (Alt 35.8 on Merdian)
+
+SSO
+DEC +22:56:31.9 = +22.942 (Alt 35.8 on Merdian)
+DEC -85:33:31.0 = -85.559 (Alt 35.8 on Merdian)
+
+______________________________________
+#HW limit 
+
+CTIO
+HA-(E) -04:45:00 (HA - limit switch)
+HA+(W) +04:49:00 (HA + limit switch)
+>> +04:49:00 - 9 min = 04:40:00 = 4.666
+Alt +23 ~ 25? (starting obscuration by windscreen)
+DEC-(S) -95?
+DEC+(N) +40?
+
+SAAO
+HA -04:53:37.9 (HA - limit switch)
+HA +04:52:30.0 (HA + limit switch)
+>> 04:52:00 - 6 min = 04:46:00 = 4.733
+Alt +23 (starting obscuration by windscreen)
+DEC-(S) -102.12  (Alt=20.0 on Merdian)
+DEC+(N)  +37.18  (Alt=20.7 on Merdian)
+
+SSO
+HA-(E) -04:45:00 (HA - limit switch)  *예상치.20150910 - 동쪽은 서보(TCC) 멈춤현상으로 인해 측정 어려움.
+HA+(W) +04:45:00 (HA + limit switch)  *측정치.20150605
+>> +04:45:00 - 6 min = 04:39:00 = 4.65
+Alt +15? (starting obscuration by windscreen) 
+  *예상치.20150910 - lower obscuration은 정확히 측정된 적이 없음.
+  15로 되어있었는데, 15로 하였을 때 망원경-셔터 위치가 잘 맞는 듯 하여 그대로 둠.
+DEC-(S) ~100 *예상치.20150910 - 다른사이트 참고
+DEC+(N)  ~40 *예상치.20150910 - 다른사이트 참고
+
+
+______________________________________________________________________
+<FITS Header 기록값>
+(YS/CU 측정, OSU에 전달)
+
+COMMENT	   Observatory Information                                                
+ORIGIN  	= 'CTIO    '              / Location where the data was generated       
+OBSERVAT	= 'CTIO    '              / Observatory Site                            
+TELESCOP	= 'KMTNet 1.6m #1'        / Telescope Name                              
+LATITUDE	= '-30:10:01.84'          / Site Latitude [deg N]                       
+LONGITUD	= '+70:48:14.39'          / Site Longitude [deg W]                      
+ELEVATIO	= 2140 / Site Elevation [meters]                        
+
+COMMENT	   Observatory Information                                                
+ORIGIN  	= 'SAAO    '              / Location where the data was generated       
+OBSERVAT	= 'SAAO    '              / Observatory Site                            
+TELESCOP	= 'KMTNet 1.6m #2'        / Telescope Name                              
+LATITUDE	= '-32:22:42'             / Site Latitude [deg N]                       
+LONGITUD	= '339:11:22'             / Site Longitude [deg W]                      
+ELEVATIO	= 1800 / Site Elevation [meters]                        
+
+COMMENT	   Observatory Information                                                
+ORIGIN  	= 'SSO     '              / Location where the data was generated       
+OBSERVAT	= 'SSO     '              / Observatory Site                            
+TELESCOP	= 'KMTNet 1.6m #3'        / Telescope Name                              
+LATITUDE	= '-31:16:24'             / Site Latitude [deg N]                       
+LONGITUD	= '210:56:08'             / Site Longitude [deg W]                      
+ELEVATIO	= 1150 / Site Elevation [meters]                        
+
+
+<참고>
+1초 오차에 30.87미터 차이
+Re ~ 6370km
+
+
+<PC-TCS 설정>
+(YS 측정, 20150918 문의)
+
+CTIO
+위도: 남위 30도 10분 02.0초
+경도: 서경 70도 48분 14.4초
+고도: 2167 m
+
+SAAO
+위도: 남위 32도 22분 43.9초
+경도: 동경 20도 48분 37.6초 (서경 339° 11′ 22.4″)
+고도: 1748 m
+
+SSO
+위도: 남위 31도 16분 16.3초
+경도: 동경 149도 3분 45.2초 (서경 210° 56′ 14.8″)
+고도: 1143 m
+
+
+
+

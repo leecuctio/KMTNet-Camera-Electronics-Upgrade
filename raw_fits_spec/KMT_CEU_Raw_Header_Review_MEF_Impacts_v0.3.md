@@ -1,6 +1,8 @@
 # Raw 헤더 개정에 따른 MEF ICD · 정의서 · Converter 개정 사항
 
-**v0.2 (Draft)** · 2026-08-21 · raw 헤더 검토(ACT-011)가 MEF 쪽 3자 — ICD v4.1(1위 준거) · MEF keyword 정의서 v1.0 · converter v2.2.0 — 에 미치는 개정 필요 사항의 전달 목록
+**v0.3 (Draft)** · 2026-08-21 · raw 헤더 검토(ACT-011)가 MEF 쪽 3자 — ICD v4.1(1위 준거) · MEF keyword 정의서 v1.0 · converter v2.2.0 — 에 미치는 개정 필요 사항의 전달 목록
+
+> **v0.3 에서 바뀐 것**: HK 재구성 확정 반영 — **`WALLBOAR` → `WALLBRD` 개명**(운영자 확정) · 출처 3계통(`ICG RTD measurement` / `standalone RTD readout unit` / `Tapaculo sensor`) 명시. **C-신설 2건** — MEF `UT` 조립 원천(raw `TSHOPEN`/`TSHSHUT` 폐지 대응) · MEF `DARKTIME` 공급원(raw 폐지, `EXPTIME` 파생). `DATASRC` 값 체계 확장·`CHSTAT` 미기재 판정은 기록만. raw 쪽 근거는 Header_and_Refs **v1.8**.
 
 > **v0.2 에서 바뀐 것**: **`OBSERVAT` 값 재정의 C-항목 추가**(1장) — 확정 초안이 `OBSERVAT` 값을 사이트 코드(`KMTT/KMTC/KMTA/KMTS`)로 바꿨는데, 이는 converter 의 유일한 하드-실패 검사와 상충한다. Header_and_Refs 문서의 v1.7 개정(3장 신형식 표 · 7장 판정 · 8.2 폐지)과 동기.
 
@@ -17,6 +19,10 @@
 | **C-11 개정** | amp `MODULE`/`CHANNEL` 공급원: 구 규격의 `AMOD<nn>`/`ACHN<nn>` 색인형 65장 → **`CHMAP_LT`/`CHMAP_LB`/`CHMAP_RT`/`CHMAP_RB` 4장**으로 재설계됐다. 현행 추정식(`MODULE=1+((amp-1)//8)`, `CHANNEL=1+((amp-1)%8)`, 'placeholder' 주석)은 실배선(CCD 출력 채널이 chip당 1–16, TOP/BOT 대역이 chip마다 반대)과 다르다 | `XTALKGROUP` 파생도 이 값 기준으로 재정의. `AMPMAP` 선언 카드는 폐지 방향 |
 | C-5 · C-13 개정 | "raw geometry 선언 카드 대조" → **포장 규범 조항 + 표본 검증** 체계로 재조정 예정(`OSCNPATT` · `ROWORDR`는 규격 조항으로 이관 방향). 대조표에 2장의 이름 대응을 명시 | |
 | C-12 | amp `READDIR` 공급원(`RDDIRT`/`RDDIRB`) 문구를 규격 이관에 맞춰 갱신. OI-3(실기 확인) 유지 | |
+| **C-신설: HK 온도 카드 재구성** (2026-08-21) | 온도센서 구성 변경으로 raw 의 Camera System House Keeping 블록이 재편됐다 — **신설 `DMPTEMP`(DMP 온도) · `WALLBRD`(wallboard 온도 — v0.2 의 `WALLBOAR` 에서 개명) · `HEBOX`(HE box 내부 온도)**, `AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` comment 정의 확정(AIR는 열교환기 기준 — IN이 따뜻한 쪽, 레거시 의미 유지), `DEWPRES` 단위 [torr] · 포맷 `x.xxe-x` · **측정불가 sentinel `9.99e-9`**(값 0/이상값/게이지 비숫자 — 규격 5.0 sentinel 표에 DEWPRES 전용 예외로 등재 필요), **`CCDTEMP` 의미 변경**: 구 설계(`CCDTEMP1`·`CCDTEMP2` 평균 파생, D-013)에서 **실측 센서 1개 값**("CCD temperature M")으로. `RTD12` 폐지는 확정대로(D-013). **출처 확정(v0.3)** — `CCDTEMP`·`DEWPRES`·`PT30N*`·`CHARCOAL`·`DMPTEMP`·`WALLBRD` = ICG RTD measurement / `AIR_*`·`GLYC_*` = standalone RTD readout unit / `HEBOX` = Tapaculo sensor | ① converter 가 `DMPTEMP`/`WALLBRD`/`HEBOX` 를 읽지 않음 — MEF 로 보내려면 읽기 추가 ② MEF/L1 의 `CCDTEMP` 정의를 "평균 파생"에서 "대표 센서 실측"으로 갱신 (L1 `CARRY_KEYS` 가 `CCDTEMP` 이름을 요구하므로 이름은 불변) ③ `CCDTEMP1`/`CCDTEMP2` 후보는 **제외 확정**(운영자, 2026-08-21) — 평균 파생 설계 폐기에 따름 |
+| **C-신설: MEF `UT` 조립 원천** (2026-08-21) | raw 가 `TSHOPEN`/`TSHSHUT` 를 싣지 않는 것으로 판정됐다(Header_and_Refs v1.8 3.2절). converter 는 `DATE-OBS` 날짜부 + raw `TSHOPEN` 으로 MEF `UT` 를 조립하므로(`v2_1.py:440` · `:583`) **MEF `UT` 시각부가 빈다** — 오류 없음 | `UT` 조립 원천을 `DATE-OBS` 의 시각부로 교체 (`DATE-OBS` 는 밀리초까지 담는다, D-014) |
+| C-신설(경미): MEF `DARKTIME` 공급원 | raw `DARKTIME` 미기재 판정 — 값이 `EXPTIME` 과 동일해 파생으로 충분(v1.8 3.2절). 현행 converter 기본값 `0.0` 이 MEF 에 박힌다 | `EXPTIME` 값으로 파생 기록, 또는 MEF `DARKTIME` 폐지 판단 |
+| (기록) `DATASRC` 값 체계 확장 · `CHSTAT` 미기재 | `ARCHON`/`SIM` → **`ARCHON_SCIENCE`/`ARCHON_GUIDE`/`SIM`**(`HEMODE` 흡수) · `CHSTAT` 는 raw 미기재 판정(초안 잔존 — 확인 중) | converter 는 `DATASRC` 를 읽지 않고 `CHSTAT` 는 기본값 `""` 경로 — 영향 없음/경미, 기록만 |
 
 ## 2. raw ↔ MEF 키워드 이름 대응 (raw 개명 · 신설분)
 
@@ -39,6 +45,12 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 | `FILENAME` | MEF `FILENAME`(자체 생성) · AMPINFO `RAWFILE` | converter는 raw `FILENAME` **카드**를 읽지 않음(디스크명만 사용) |
 | `ORIGNAME` | (없음 — 선택 pass-through, 1장) | |
 | `UNIQNAME` (폐지) | MEF `UNIQNAME` | 1장 C-신설 참조 |
+| `DMPTEMP` (신설) | (없음 — 도입 시 pass-through 추가) | HK 재구성, 1장 참조 |
+| `WALLBRD` (신설) | (없음 — 도입 시 pass-through 추가) | 〃 |
+| `HEBOX` (신설) | (없음 — 도입 시 pass-through 추가) | 〃 |
+| `CCDTEMP` (의미 변경) | MEF `CCDTEMP` (L1 `CARRY_KEYS`) | 평균 파생 → 대표 센서 실측, 1장 참조 |
+| `TCSTIME` (신설) | (없음) | TCS 시각계 선언 — `TIMESYS`(ICS)와 분리 |
+| `CTRL1CFG` / `CTRL2CFG` (신설) | (없음 — raw 전용 설정 포인터) | 버전 문자열 6장을 귀속 (v1.8 3.3절) |
 
 ## 3. ICD v4.1 개정 후보
 
@@ -71,4 +83,4 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 | 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |
-| converter가 읽는 것 · 읽지 않는 것 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.6.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.6.md) |
+| converter가 읽는 것 · 읽지 않는 것 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md) |

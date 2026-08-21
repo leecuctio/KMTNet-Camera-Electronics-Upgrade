@@ -46,9 +46,10 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | --- | --- |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ **((재작성중)).** 옛 raw pair 규격이며 **현행이 아니다.** 재검토 결과로 다시 쓴다 |
 | `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ L0 MEF 키워드 전수 대응표 289행. 0장이 **준수 우선순위**(1 ICD v4.1 → 2 converter 코드 → 3 keyword 정의서, 레거시 MEF 는 배경지식)를, 1.2절이 **raw 쪽 기준선**(레거시 raw 실측 헤더 123개 — `ics_sim` 출력이 아니다)을 세우고, 2장이 준거 대비 현재 상태를, 5장이 결정이 필요한 10항목을 담는다 (ACT-011) |
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.7.md` | **v1.7 (2026-08-21) — 검토 확정분을 손으로 반영한 개정판** (v1.6 까지는 기계 추출 생성물, 구판은 `archive/`). **raw 카드 기준은 레거시 raw 실측 헤더**이고 **레거시 123개를 전량 귀속**시킨다 — converter 가 읽는 104개, 읽지 않는 24장, **도입 후보·확정 51장(7장)**, 폐지 17+3+2장(8장·8.1·8.2). v1.7: 3장 표를 6열 신형식(`Use in MEF` · `Value`/`Source`)으로, 확정 초안 반영(`AMPNAX`/`IMAGEX`/`PRESCNX`/`OVRSCNX` 계열 · `CHMAP_*` · `FILENAME`/`ORIGNAME` · `UNIQNAME` 폐지), ⚠️ `OBSERVAT` 값 재정의와 converter 상충 등재. 10~12장은 subframe 제기 · converter 자기 상수 카드 · raw 직접 사용자 안내 |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md` | **v1.8 (2026-08-21) — 운영자 2차 개정(v1.7_revision)과 확정 초안 v0.3.5 를 반영한 수기 개정판** (v1.6 까지는 기계 추출 생성물, 구판은 `archive/`). **raw 카드 기준은 레거시 raw 실측 헤더**이고 **레거시 123개를 전량 귀속**시킨다 — converter 가 읽는 78+26장, 읽지 않는 22장, **도입 후보·확정 55장(7장)**, 폐지 17+3+2장(8장·8.1·8.2). v1.8: 3장 `Raw Archon` 열 전면 판정 · 컨트롤러 블록 재편(`CTRLxCFG` 신설, 버전 문자열 귀속) · HK 재구성(`CCDTEMP` 실측 전환 · `DEWPRES` sentinel `9.99e-9` · 신설 `DMPTEMP`/`WALLBRD`/`HEBOX`) · **확인 요망 9건 등재**. 10~12장은 subframe 제기 · converter 자기 상수 카드 · raw 직접 사용자 안내 |
 | `KMT_CEU_Raw_Numbering_and_Identity_v0.1.md` | **Draft (2026-08-21).** 파일 번호 공간(000000–099999) · 충돌 시 번호 증가 · `FILENAME`/`ORIGNAME` 정체성 카드. 구 규격 **2.3.1절과 5.2절 일부(`UNIQNAME` · `NAMECLSH`)를 대체**할 조각 — 재작성판에 흡수 예정, D-등재 전 |
-| `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md` | **Draft v0.2 (2026-08-21).** raw 헤더 개정이 MEF ICD · keyword 정의서 · converter 에 요구하는 개정 사항 목록 (LEECU 전달용) — C-항목 신설·개정, raw↔MEF 이름 대응, ICD 개정 후보 |
+| `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md` | **Draft v0.3 (2026-08-21).** raw 헤더 개정이 MEF ICD · keyword 정의서 · converter 에 요구하는 개정 사항 목록 (LEECU 전달용) — C-항목 신설·개정(MEF `UT` 조립 원천 · `DARKTIME` 공급원 · HK 재구성), raw↔MEF 이름 대응, ICD 개정 후보 |
+| `__review/` | 운영자 검토 왕복함 — 전달본 docx(`…_v1.7.docx`) · 운영자 개정판(`…_v1.7_revision.docx`) · **확정 초안** `KMTA.20260818.012345.MK.fits.header.txt`(현재 v0.3.5, 직전판은 `archive/…header_v0.3.4.txt`) |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
@@ -59,6 +60,10 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1_KO.md` | — | v4.1 ICD의 **국문본. 이 디렉토리가 유일본** |
 | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` | `../mef_fits_spec/` | 규격 6.5절 대조표의 원본. 바이트 동일 사본 |
 | `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` | `../mef_converter/` | Archon raw 검증 결과. 바이트 동일 사본 |
+| `Detector_Ch_to_AmpID_Map_v1.0.txt` | — | **검출기 출력 채널 ↔ MEF AmpID 64행 맵** (구 AMPID.txt, 검토 완료 후 v1.0 승격 2026-08-21). CtrUnit–Port–CCD/CH–IMGSEC–MEF_AmpID — `CHMAP_*` 카드와 재작성판 amp 전수 표의 원자료 |
+| `Detector_and_Amp_Info_cards_v1.0.txt` | — | **확정 Detector/Amplifier 카드 블록** MK·NT 정본 (구 AMPCARD.txt, v1.0 승격 2026-08-21) |
+| `Archon_Unit_Info.txt` | — | **사이트별 Archon 유닛 정체** — SCI×2 + GUI×1 의 유닛 ID(`<SITE>-SCI-101` 등, ID 숫자 = IP)와 STA 시리얼. `CTRL1ID`/`CTRL1SN`/`CTRL2ID`/`CTRL2SN` 실값의 원자료 |
+| `Tel pos & limit (20230519).txt` | — | 망원경 지향·리밋 기록 (2023-05-19) — TCS 절 검토용 |
 | `Legacy raw fits header samples/` | — | **레거시 시스템의 FITS 헤더 실측본** (2026-08-12 추가). `KMTNk.20170209.044131.Rawheader.txt` 가 이 규격에 대응하는 **레거시 raw 헤더**이고, `xkmta.20170209.044131.MEF.*.txt` 는 레거시가 MEF 로 변환한 산출물의 헤더다(primary 1 + 확장 35). raw 헤더는 2017→2021 사실상 불변이어서 정착된 설계로 읽을 수 있다 — 규격 5장 식별 keyword 재정의의 근거 |
 
 > ⚠️ `KMTNc.20210503.030331.header.txt` 는 **raw pair 가 아니다.** `DETID='C'` · 1616×1616 인데, raw 영상의 ROI 조각들을 모자이크로 재구성한 **combination 산출물**이다(운영자 확인 2026-08-12). 검출기 이름이 아니므로 이 규격 범위 밖이고, `M,K,N,T` 4개 전제에 영향을 주지 않는다.

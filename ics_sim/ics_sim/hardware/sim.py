@@ -140,13 +140,16 @@ class SimBackend:
         }
 
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        # 레거시 실측 헤더(SSO 2017)의 값 범위를 쓴다.  chip 마다 조금 다르게
-        # 만들어 CCDTEMP1 != CCDTEMP2 인 경우를 시험할 수 있게 한다.
+        # 레거시 실측 헤더(SSO 2017)와 확정 초안 v0.3.5 의 값 범위를 쓴다.
+        # chip 마다 조금 다르게 만들어 대표 센서(ccdtemp1 -> CCDTEMP)와 이웃
+        # 센서(ccdtemp2, 진단용)가 구분되는지 시험할 수 있게 한다.
         base = -103.16
         return {
             'ccdtemp1': round(base - 0.05, 2),
             'ccdtemp2': round(base + 0.05, 2),
+            'dmptemp': -122.34,
             'pt30n1': -151.68, 'pt30n2': -147.39, 'charcoal': -197.79,
+            'wallbrd': 16.78, 'hebox': 33.21,
             'air_in': 34.98, 'air_out': 31.26,
             'glyc_in': 27.97, 'glyc_out': 29.01,
             # `dewpres` 는 넣지 않는다 -- 레거시도 `'N/A'` 였다.  호출측이

@@ -1874,6 +1874,17 @@ converter 가 raw 에서 읽으려 하는데 `ics_sim` 이 그 카드를 만들�
 
 ---
 
+### 11.18 HK 블록 재구성 -- CCDTEMP 실측 전환 · DEWPRES 문자열 sentinel (2026-08-21)
+
+**무엇을.** 운영자 v1.7_revision.docx 와 확정 초안 v0.3.5(`raw_fits_spec/__review/KMTA.20260818.012345.MK.fits.header.txt`)가 HK(열·듀어) 블록을 재구성했다. `rawhdr.thermal_header()` 를 그에 맞췄다.
+
+- **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** -- 종전 "두 chip 온도의 평균"(11.14, 2026-08-13)을 폐기했다. 온도센서 구성이 바뀐 결과다. 대표는 백엔드 `ccdtemp1`(초안 comment "CCD temperature M")이고, 대표가 죽으면 이웃 값으로 **대체하지 않고** sentinel `-999.0` + 경고다 -- 대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다. `CCDTEMP1`/`CCDTEMP2` 카드는 도입 후보에서 제외 확정.
+- **`DEWPRES` 는 문자열 카드** `x.xxe-x` [torr], 측정불가는 전부 `'9.99e-9'` -- 값 없음 · 0(게이지의 `0.00e-0` 포함) · 음수 · 비수치 · 유한하지 않음 · 인정 범위 [1e-8, 1e+3] 밖. 문자열인 이유: astropy 가 실수 카드의 표기를 크기 보고 정하므로 지수 표기를 규격으로 고정하려면 문자열이어야 한다. ⚠️ sentinel 이 정상값과 안 겹치는 성질은 **인정 하한(1e-8) > sentinel(9.99e-9)** 에 걸려 있다 -- 게이지 실측 하한이 이보다 낮으면 sentinel 을 바꿔야 한다(`DEWPRES_MIN` docstring).
+- **신설 3장** `DMPTEMP` / `WALLBRD` / `HEBOX` -- `DEWAR_CARDS` 와 sim 백엔드에 추가. `WALLBRD` 는 wallboard 의 모음 탈락 축약(8자 절단형 `WALLBOAR` 를 대체 -- 절단형은 "wall boar" 로 읽히고 확장 여유가 없다).
+- 공급 계통이 셋으로 갈렸다 -- ICG RTD(Archon 쪽) / standalone RTD readout unit(AIR·GLYC) / Tapaculo sensor(HEBOX). 시뮬에서는 전부 `sensors()` 한 창구로 온다.
+
+**남은 일 (13장 백로그).** 초안 v0.3.5 의 노출·컨트롤러 블록 재편은 아직 코드에 안 갔다 -- `DARKTIME`/`TSHOPEN`/`TSHSHUT`/`NPHLINES`/`HEMODE`/`READMODE`/`CTR_CFG` 제거, `CTRL1CFG`/`CTRL2CFG`/`TCSTIME` 신설, `DATASRC` 값 체계(`ARCHON_SCIENCE`/`ARCHON_GUIDE`/`SIM`). 카드 comment 지원(`fitsout._apply_header()`)이 선행돼야 초안의 comment 까지 재현된다. 근거 문서: `raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md` (확인 요망 9건 포함).
+
 ## 12. 정정 이력
 
 조사 중 **틀렸다가 바로잡은 것**을 남긴다. 재조사 비용을 줄이고, 같은 함정을 다시 밟지 않기 위해서다.
@@ -2044,6 +2055,7 @@ XIS 자산을 [`xis/`](xis/) 로 따로 정리하는 작업에서 나왔다. **1
 
 | 항목 | 내용 | 우선도 |
 |---|---|---|
+| **raw 헤더를 확정 초안 v0.3.5 에 동기화** | HK 블록은 완료(11.18). 남은 것: 노출·컨트롤러 블록 재편(`DARKTIME`/`TSHOPEN`/`TSHSHUT`/`NPHLINES`/`HEMODE`/`READMODE`/`CTR_CFG` 제거 · `CTRL1CFG`/`CTRL2CFG`/`TCSTIME` 신설 · `DATASRC` 값 체계) + **카드 comment 지원**(`fitsout._apply_header()`) | 높음 |
 | ~~XIS 등록 방식 확정 (1안 vs 2안)~~ | **해결됨 (2026-08-04).** XIS 서버 소스로 테이블이 노드ID로만 키잉되고 주소 충돌 검사가 없음을 확인 → **1안 확정, 2안 불필요**(3.1.1) | 완료 |
 | ~~`XIS>AL PING` 에 9개 PONG 응답~~ | **구현 완료 (2026-08-04)** — `cmd_ping()` 이 브로드캐스트면 9개 ID 전부로 PONG(3.1.1) | 완료 |
 | **XIS `isis.ini` 에 시뮬 등록** | `UDPPort <sim_ip> <sim_port>` 한 줄 추가. ~~`MAXPRESET` 여유 확인 필요~~ → **선행 조건 해소 (2026-08-05).** 시험 벤치에서는 `127.0.0.1 6600` 한 줄로 **적용·검증 완료 (2026-08-11)**. **운영 허브 반영은 남아 있다** — 다만 xis.md 7절 경고대로 레거시 정지 또는 분리 인스턴스가 전제다 | 운영 측 |

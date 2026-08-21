@@ -525,53 +525,103 @@ def site_header(site_code: str, cfg_site: dict | None = None) -> dict[str, objec
 # 집합에는 없다 -- 즉 각 IC 가 자기 듀어 RTD 를 직접 읽었다.  신규는 Archon 이
 # 읽으므로 **백엔드에서 온다** (`sensors()`).  TC 중계가 아니다.
 
-#: 듀어 센서 카드.  레거시 이름을 그대로 계승한다 -- 뜻이 같기 때문이다
-#: (규격 5.13절의 계승 기준).
-DEWAR_CARDS = ('DEWPRES', 'PT30N1', 'PT30N2', 'CHARCOAL',
+#: 듀어·HK 센서 카드 -- 확정 초안 v0.3.5 의 수록 순서.  일곱은 레거시 이름
+#: 계승이고(규격 5.13절), `DMPTEMP`/`WALLBRD`/`HEBOX` 는 HK 재구성 신설이다
+#: (운영자 확정 2026-08-21, Header_and_Refs v1.8 3.7절·7장).  `WALLBRD` 는
+#: wallboard 의 모음 탈락 축약 -- 8자 절단형 `WALLBOAR`(초안 v0.3.4)를 대체했다.
+#: `DEWPRES` 는 형과 표기가 달라 따로 다룬다.
+DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX',
                'AIR_IN', 'AIR_OUT', 'GLYC_IN', 'GLYC_OUT')
+
+#: 측정 불가를 뜻하는 `DEWPRES` 값 (운영자 확정 2026-08-21).
+DEWPRES_NC = '9.99e-9'
+
+#: 측정으로 인정하는 압력 범위 [torr].
+#:
+#: **하한은 게이지 실측 하한으로 확인해야 한다.**  이 하한이 sentinel 보다
+#: 커야 `9.99e-9` 가 정상값과 겹치지 않는다 -- 지금은 그 성질이 이 두 상수에
+#: 걸려 있다.  게이지가 `9.99e-9` 아래를 실제로 읽어낸다면 sentinel 을 바꿔야
+#: 한다.
+DEWPRES_MIN = 1.0e-8
+DEWPRES_MAX = 1.0e+3
+
+
+def format_dewpres(value: object) -> str:
+    """`DEWPRES` 를 `1.23e-4` 꼴 문자열로 만든다 (단위 [torr]).
+
+    **왜 문자열인가.**  FITS 실수 카드의 표기는 우리가 고를 수 없다 -- astropy
+    가 크기를 보고 정하므로 `1.23e-4` 를 넣어도 `0.000123` 으로 적힌다.  지수
+    표기를 규격으로 못박으려면 문자열 카드여야 한다.  레거시도 듀어·온도 카드를
+    전부 문자열로 실었으므로(`DEWPRES = 'N/A'`, `CCDTEMP = '-103.16'`) 형까지
+    계승이다.
+
+    **측정 불가는 하나로 모은다** (`9.99e-9`) -- 값이 없거나, `0` 이거나 음수,
+    유한하지 않거나, 게이지가 숫자가 아닌 것을 돌려주거나, 인정 범위를 벗어난
+    경우다.  범위 밖을 sentinel 로 떨어뜨리는 것은 **게이지 이상값이 정상 측정
+    으로 읽히는 것을 막으려는 것**이다.
+    """
+    if value is None:
+        # 게이지를 못 읽은 것은 시뮬에서 정상 경로다 -- 노출마다 경고하지 않는다.
+        log.debug('DEWPRES 를 못 읽었다 -- %s 로 싣는다', DEWPRES_NC)
+        return DEWPRES_NC
+    try:
+        p = float(value)
+    except (TypeError, ValueError):
+        log.warning('DEWPRES 게이지 값이 수치가 아니다(%r) -- %s 로 싣는다',
+                    value, DEWPRES_NC)
+        return DEWPRES_NC
+    if p != p or p in (float('inf'), float('-inf')):
+        log.warning('DEWPRES 가 유한하지 않다(%r) -- %s 로 싣는다',
+                    p, DEWPRES_NC)
+        return DEWPRES_NC
+    if p <= 0.0:
+        log.warning('DEWPRES 가 %r 이다 -- 게이지 미연결/미독출로 보고 %s 로 '
+                    '싣는다', p, DEWPRES_NC)
+        return DEWPRES_NC
+    if not DEWPRES_MIN <= p <= DEWPRES_MAX:
+        log.warning('DEWPRES %r torr 가 인정 범위 [%g, %g] 밖이다 -- 게이지 '
+                    '이상으로 보고 %s 로 싣는다',
+                    p, DEWPRES_MIN, DEWPRES_MAX, DEWPRES_NC)
+        return DEWPRES_NC
+    mantissa, _, exponent = f'{p:.2e}'.partition('e')
+    # `1.23e-04` 의 지수 앞 0 을 떼어 `1.23e-4` 로 만든다
+    return f'{mantissa}e{exponent[0]}{exponent[1:].lstrip("0") or "0"}'
 
 
 def thermal_header(sensors: dict | None) -> dict[str, object]:
-    """5.10절 chip 온도 + 듀어 센서.
+    """5.10절 HK -- 대표 chip 온도 + 듀어·환경 센서.
 
-    **`CCDTEMP1`/`CCDTEMP2` 는 신규 추가다** -- 레거시는 파일 1개가 CCD 1개라
-    `CCDTEMP` 하나로 충분했지만 신규는 파일 1개에 chip 이 2개다.  이름을
-    `CCDTEMP<n>` 으로 맞춘 것은 `CCDTEMP` 와 한 묶음임이 보이게 하려는 것이다
-    (운영자 확정 2026-08-13).  8자 정확히 -- FITS 한도 안이다.
-
-    **`CCDTEMP` 는 두 chip 온도의 평균이다** (운영자 확정).  백엔드가 별도
-    대표값을 주더라도 쓰지 않는다 -- 파생값으로 못박아 두면 `CCDTEMP` 와
-    `CCDTEMP1`/`CCDTEMP2` 가 서로 어긋날 수 없다.  듀어의 다른 센서를 싣고
-    싶으면 그건 `CCDTEMP` 가 아니라 `PT30N1` 등 자기 이름으로 간다.
+    **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** (운영자 확정 2026-08-21,
+    v1.7_revision -- Header_and_Refs v1.8 3.7절).  종전의 "두 chip 온도의
+    평균"(2026-08-13, D-013)은 온도센서 구성이 바뀌면서 폐기됐고
+    `CCDTEMP1`/`CCDTEMP2` 카드도 후보에서 제외됐다.  대표 센서는 백엔드
+    `ccdtemp1`(파일 첫 chip 쪽 -- 초안 comment "CCD temperature M")이고,
+    **죽었을 때 이웃 센서(`ccdtemp2`)로 대체하지 않는다** -- 대표가 아닌 값을
+    대표라고 적으면 조용히 틀린 값이 된다.
 
     `CCDTEMP` 는 **반드시 있어야 한다** -- L1 파이프라인이 이 이름을 지정해
     L1 primary 로 전달한다 (`mef_pipeline/kmt_ceu_preproc/io_l1.py` 의
-    `CARRY_KEYS`).  그래서 한쪽 센서만 읽혔을 때 sentinel 로 떨어뜨리지 않고
-    **읽힌 값을 쓰고 경고를 남긴다** -- 평균이 아니게 되는 것을 조용히 넘기지
-    않으면서 L1 을 굶기지도 않는다.
+    `CARRY_KEYS`).  그래서 대표 센서를 못 읽었을 때도 카드를 비우지 않고
+    sentinel `-999.0` 으로 싣고 경고를 남긴다.
+
+    MEF/L1 쪽 정의 문구("평균 파생")의 갱신은 LEECU 몫의 C-항목이다
+    (`raw_fits_spec/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md` ②).
     """
     s = sensors or {}
     t1 = s.get('ccdtemp1', s.get('ccdtmp1'))
-    t2 = s.get('ccdtemp2', s.get('ccdtmp2'))
-    known = [float(t) for t in (t1, t2) if t is not None]
-    if len(known) == 2:
-        rep = sum(known) / 2.0
-    elif len(known) == 1:
-        rep = known[0]
-        log.warning('chip 온도 한쪽만 읽혔다 -- CCDTEMP 를 평균이 아니라 읽힌 '
-                    '값(%.2f)으로 싣는다. L1 이 이 카드를 요구하므로 비우지 '
-                    '않지만, 평균이 아니라는 사실을 여기 남긴다', rep)
-    else:
-        rep = None
+    if t1 is None:
+        log.warning('대표 chip 온도(ccdtemp1)를 못 읽었다 -- CCDTEMP 를 '
+                    'sentinel(-999.0)로 싣는다. 이웃 센서로 대체하지 않는다 '
+                    '(대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다)')
     out: dict[str, object] = {
-        'CCDTEMP1': float(t1) if t1 is not None else -999.0,
-        'CCDTEMP2': float(t2) if t2 is not None else -999.0,
-        'CCDTEMP': float(rep) if rep is not None else -999.0,
+        # 압력만 문자열이다 -- 지수 표기를 규격으로 고정하려면 그래야 한다
+        # (`format_dewpres` 의 docstring).  온도의 형(초안=문자열, 여기=실수)은
+        # 미확정이다 -- v1.8 확인 요망 9.
+        'DEWPRES': S(format_dewpres(s.get('dewpres'))),
+        'CCDTEMP': float(t1) if t1 is not None else -999.0,
     }
     for card in DEWAR_CARDS:
         v = s.get(card.lower())
-        # 듀어 압력은 레거시가 `'N/A'` 문자열을 넣었다.  수치 sentinel 로
-        # 통일한다 -- 문자열과 실수가 섞이면 읽는 쪽이 형을 분기해야 한다.
         out[card] = float(v) if v is not None else -999.0
     return out
 

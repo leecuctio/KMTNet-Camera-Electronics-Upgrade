@@ -52,12 +52,12 @@ ORIGNAME= 'KMTA.20260821.012340.MK' / Original filename assigned by ICS counter
 
 - 충돌 필터는 **raw 헤더 층**(아카이브 색인 · DTS · QL)에서 `FILENAME ≠ ORIGNAME`으로 돈다.
 - 같은 노출의 재저장(유령 중복)은 fail-open이다 — 위 필터가 걸러낸다는 전제를 **요구사항**으로 둔다.
-- MEF 층 필터가 필요해지면 converter 변경점에 `ORIGNAME` pass-through를 추가한다(→ `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md`).
+- MEF 층 필터가 필요해지면 converter 변경점에 `ORIGNAME` pass-through를 추가한다(→ `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md`).
 - OBSAgent `Wrote` 논리 이름의 번호는 **실제 저장 번호**를 쓴다(D-010 형식 불변).
 
 ## 6. MEF / converter 연동
 
-converter(v2.2.0)는 raw `UNIQNAME`을 읽어 MEF `UNIQNAME`으로 옮긴다(`v2_1.py:405`). `UNIQNAME` 폐지 후 이 값은 **오류 없이 빈 문자열**이 된다 — 대응은 C-항목으로 LEECU에 이관한다. 상세: `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md` 1장.
+converter(v2.2.0)는 raw `UNIQNAME`을 읽어 MEF `UNIQNAME`으로 옮긴다(`v2_1.py:405`). `UNIQNAME` 폐지 후 이 값은 **오류 없이 빈 문자열**이 된다 — 대응은 C-항목으로 LEECU에 이관한다. 상세: `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md` 1장.
 
 ## 7. ics_sim 구현 영향
 
@@ -82,7 +82,7 @@ converter(v2.2.0)는 raw `UNIQNAME`을 읽어 MEF `UNIQNAME`으로 옮긴다(`v2
 
 | 문서 | 위치 |
 | --- | --- |
-| MEF 쪽 개정 사항 | [`KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md`](KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md) |
+| MEF 쪽 개정 사항 | [`KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md`](KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md) |
 | 구 규격 (대체 대상) | [`KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`](KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md) ⛔ ((재작성중)) |
 | 검토 진행 상태 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |

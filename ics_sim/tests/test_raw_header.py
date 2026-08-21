@@ -69,7 +69,8 @@ MANDATORY = {
     '5.9 관측소': ('OBSERVAT SITEID TELESCOP LATITUDE LONGITUD ELEVATIO '
                    'RADECSYS RA DEC EQUINOX HA ST SECZ ALT AZ TCSLINK '
                    'TCSQDATE TCSUDATE TCSDRIVE TELMOVE'),
-    '5.10 열/AUX': ('CCDTEMP1 CCDTEMP2 CCDTEMP AUXLINK AUXQDATE AUXUDATE FSSTAT '
+    '5.10 열/AUX': ('CCDTEMP DEWPRES DMPTEMP WALLBRD HEBOX '
+                    'AUXLINK AUXQDATE AUXUDATE FSSTAT '
                     'FILTOP FILNUM SHUTTER SHUTOP FASTAT FAFOCUS DSSTAT MCSTAT '
                     'CHSTAT ENSTAT ENFAN'),
 }
@@ -415,33 +416,45 @@ def test_configured_site_values_win_over_the_table():
 
 # -- 5.10 온도: 파일 1개에 chip 2개 -----------------------------------------
 
-def test_two_chip_temperatures_plus_a_representative_one(tmp_path):
-    """`CCDTEMP1`/`CCDTEMP2` 는 신규 추가다 -- 파일 1개에 chip 이 2개다.
+def test_ccdtemp_is_the_measured_representative_sensor(tmp_path):
+    """`CCDTEMP` 는 실측 대표 센서 1개의 값이다 (운영자 확정 2026-08-21).
 
-    `CCDTEMP`(대표값)는 L1 파이프라인이 이름으로 지정해 전달하므로 반드시 있다
-    (`mef_pipeline/kmt_ceu_preproc/io_l1.py` 의 `CARRY_KEYS`).
+    종전 평균 파생(2026-08-13)은 HK 재구성으로 폐기됐고 `CCDTEMP1`/`CCDTEMP2`
+    카드도 후보에서 빠졌다.  `CCDTEMP` 는 L1 `CARRY_KEYS` 가 이름으로 요구한다.
     """
     h = _headers(tmp_path)['MK']
-    assert h['CCDTEMP1'] != h['CCDTEMP2']
-    assert h['CCDTEMP1'] < -50 and h['CCDTEMP2'] < -50
-    # **CCDTEMP 는 파생값이다** -- 둘의 평균이어야 한다 (운영자 확정 2026-08-13)
-    assert abs(h['CCDTEMP'] - (h['CCDTEMP1'] + h['CCDTEMP2']) / 2) < 1e-6
+    assert 'CCDTEMP1' not in h and 'CCDTEMP2' not in h
+    assert h['CCDTEMP'] < -50          # 대표 센서 실측값 (sim: ccdtemp1)
+    assert h['DMPTEMP'] < -50          # HK 재구성 신설 3장이 실려 있다
+    assert h['WALLBRD'] > 0
+    assert h['HEBOX'] > 0
 
 
-def test_unread_dewar_sensor_is_sentinel_not_a_string():
-    """레거시는 `DEWPRES='N/A'` 문자열을 넣었다.  수치 sentinel 로 통일한다.
-
-    문자열과 실수가 섞이면 읽는 쪽이 형을 분기해야 한다.
+def test_unread_dewpres_is_the_string_sentinel():
+    """`DEWPRES` 는 문자열 카드다 -- 지수 표기(`x.xxe-x`)를 고정하려면 실수
+    카드로는 안 된다(astropy 가 표기를 정한다).  측정 불가는 `'9.99e-9'` 다.
     """
-    h = rawhdr.thermal_header({'ccdtemp1': -103.0, 'ccdtemp2': -103.1})
-    assert h['DEWPRES'] == -999.0
-    assert isinstance(h['DEWPRES'], float)
+    h = rawhdr.thermal_header({'ccdtemp1': -103.0})
+    assert str(h['DEWPRES']) == '9.99e-9'
+
+
+def test_dewpres_formatting_and_rejection_rules():
+    """측정값은 `x.xxe-x` 로, 0·음수·비수치·범위 밖은 전부 `9.99e-9` 로 접는다."""
+    f = rawhdr.format_dewpres
+    assert f(1.234e-4) == '1.23e-4'
+    assert f('2.0e-6') == '2.00e-6'
+    for bad in (0.0, -1.0, '0.00e-0', 'ERR', float('nan'), float('inf'),
+                5.0e-9,      # 인정 하한(1e-8) 아래 -- sentinel 충돌 방어
+                2.0e+3):     # 인정 상한 위
+        assert f(bad) == rawhdr.DEWPRES_NC, bad
 
 
 def test_thermal_cards_survive_a_backend_that_reads_nothing():
     """센서를 하나도 못 읽어도 카드는 남는다 (규격 5.0절)."""
     h = rawhdr.thermal_header(None)
-    assert h['CCDTEMP1'] == h['CCDTEMP2'] == h['CCDTEMP'] == -999.0
+    assert h['CCDTEMP'] == -999.0
+    assert str(h['DEWPRES']) == '9.99e-9'
+    assert h['DMPTEMP'] == h['WALLBRD'] == h['HEBOX'] == -999.0
 
 
 # -- 백엔드가 실패해도 프레임을 버리지 않는다 --------------------------------
@@ -642,25 +655,25 @@ def test_build_id_refuses_to_lend_its_version_to_another_program():
         'ics_archon-v2.0.0:2027-01-01T00:00Z')
 
 
-def test_ccdtemp_is_always_derived_from_the_two_chips():
-    """`CCDTEMP` 는 **파생값**이다 -- 백엔드가 따로 줘도 쓰지 않는다.
+def test_ccdtemp_uses_the_representative_sensor_only():
+    """대표 센서는 `ccdtemp1` 이다 -- 백엔드가 `ccdtemp` 를 따로 줘도 무시한다.
 
-    파생으로 못박아 두면 세 카드가 서로 어긋날 수 없다 (운영자 확정 2026-08-13).
+    (운영자 확정 2026-08-21 -- 평균 파생 폐기, 실측 대표 전환)
     """
     h = rawhdr.thermal_header({'ccdtemp1': -100.0, 'ccdtemp2': -102.0,
                                'ccdtemp': 0.0})   # 백엔드가 엉뚱한 값을 줘도
-    assert h['CCDTEMP'] == -101.0, '평균이 아니라 백엔드 값을 썼다'
+    assert h['CCDTEMP'] == -100.0, '대표 센서(ccdtemp1)가 아닌 값을 썼다'
 
 
-def test_one_chip_temperature_still_feeds_ccdtemp_with_a_warning(caplog):
-    """한쪽만 읽혔으면 **비우지 않고 경고한다.**
+def test_missing_representative_sensor_is_sentinel_with_a_warning(caplog):
+    """대표 센서(ccdtemp1)가 죽었을 때 이웃 값(ccdtemp2)으로 대체하지 않는다.
 
-    L1 이 `CCDTEMP` 를 이름으로 지정해 가져가므로(`CARRY_KEYS`) sentinel 로
-    떨어뜨리면 L1 이 굶는다.  대신 평균이 아니라는 사실을 로그에 남긴다.
+    대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다 -- sentinel 과
+    경고가 정직하다.  L1 이 카드를 요구하므로 비우지는 않는다.
     """
     import logging
     with caplog.at_level(logging.WARNING):
-        h = rawhdr.thermal_header({'ccdtemp1': -103.0})
-    assert h['CCDTEMP'] == -103.0
-    assert h['CCDTEMP2'] == -999.0
-    assert any('평균이 아니' in r.message for r in caplog.records)
+        h = rawhdr.thermal_header({'ccdtemp2': -103.0})
+    assert h['CCDTEMP'] == -999.0
+    assert 'CCDTEMP2' not in h
+    assert any('ccdtemp1' in r.message for r in caplog.records)
