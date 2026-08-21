@@ -1,13 +1,17 @@
 # raw FITS 헤더 카드 — converter 가 읽는 것 · 읽지 않는 것 · 도입 후보 · 폐지된 것
 
-**v1.12** · 개정 2026-08-22 · 확인 요망 9 종결(HK 온도 문자열 계승) — 잔여 5건
+**v1.12** · 개정 2026-08-22 · **확인 요망 11건 전량 종결 · D-016 등재 완료** — V1 재작성 착수 조건 완성
 
-> **v1.12 에서 바뀐 것 — HK 온도 카드의 형이 문자열로 확정됐다 (확인 요망 9 종결, 운영자 확정 2026-08-22).**
+> **v1.12 에서 바뀐 것 — 확인 요망이 전량 종결됐고 충돌·정체성 결정이 D-016 으로 등재됐다** (운영자 확정 2026-08-22): HK 온도 문자열(9) · 재가 3건(6 · 7 · 8) · PRESCN 키워드 변경 계승(10) · 규격 버전 카드 미도입(11).
 >
 > 1. **온도·습도 카드는 레거시처럼 문자열 계승** — 레거시 실측이 이미 부호 포함 고정 포맷 문자열이었고(`CCDTEMP = '-103.16 '` · `AIR_IN = '+34.98  '`), converter 는 pass-through(`v("CCDTEMP","")`)라 raw 가 문자열이면 MEF 도 레거시 MEF 와 동일 형이다. 신규만 실수형이면 **아카이브에 같은 이름·다른 형이 섞여** 하류 파서가 두 갈래가 된다 — 초안 쪽이 맞았고, 고칠 대상은 `ics_sim`(실수형 → 문자열)이다.
 > 2. **측정불가 sentinel — 온도·습도 전 카드 `'-999.99'` 단일값 통일 (운영자 확정 2026-08-22)**. 온도로는 어떤 냉각 램프도 닿지 않는 값이고 습도로는 음수라 물리 불가 — `'N/A'` 같은 글자 대신 수 모양의 불가능값을 쓰는 것은 `DEWPRES` `9.99e-9` 와 같은 설계 논리다(파싱 경로 단일화, 비교 대상이 정확히 한 문자열). 검토 중 기각된 안 둘의 사유를 남긴다 — `-99.99` 는 **CCDTEMP 냉각/워밍업 램프가 실제로 지나가는 값**(정상 운영값 -101~-103 바로 위)이라 실측과 구별 불가, 습도 `0.00` 은 **0% RH 가 유효 측정값**이라 "측정불가"와 "정말 건조함"이 섞인다. `DEWPRES` 는 기존 확정(`9.99e-9`) 그대로다. 규격 5.0 sentinel 표에 등재할 것.
 > 3. **FSA 2장 포맷 = ENS식 잠정 채택** — 부호 생략(음수면 자연히 `-`)·소수 1자리, 레거시 `ENS1 = '23.0'` 선례와 일치. 단 **Tapaculo 원값 포맷이 워크스페이스에 근거가 없어** 실기/장치 문서 확인 항목으로 남긴다 — 확인되면 "원값 그대로 싣기"로 최종 확정(게이지 원문을 존중한 `DEWPRES` 와 같은 정신).
-> 4. **초안 헤더 v1.0 승격 · `__review/` 폐지 (운영자, 2026-08-22)** — 검토 왕복이 사실상 끝나, 확정 초안이 **`KMTA.20260818.012345.MK.fits.header.v1.0.txt`** 로 이 폴더 루트에 승격됐다(내용은 v0.3.7 커밋본과 동일 — 143카드 diff 0). docx 왕복본과 초안 이력(v0.0~v0.4.4)은 운영자 외부 백업에 있다. 이 문서의 과거 changelog 가 가리키는 `__review/` 경로들은 **이력 기록**이다.
+> 4. **재가 3건 종결(확인 요망 6 · 7 · 8)** — ⑥ `CTRL1ID` = `'KMTA-SCI-101'` 포맷 확정 + **Source 가 `ICS INI` 인 카드 전부를 ini 에서 수정 가능하게(운영자 지시, `ics_sim` 구현 반영)** · ⑦ `OVERSCNX`/`OVERSCNY` 의 "– 철회" = **구 이름 계승의 철회(폐지 확정 재확인)** — 8장·8.1 라벨을 대상이 드러나는 문구로 교체 · ⑧ `TIMVER`/`BIASVER`/`CLKVER` 는 `CTRLxCFG` 귀속(+ **`CAMVER` = HW·성능 세대 참조점** 명시), `XTALKVER`/`REFVER`/`CATVER` 는 caldb 소관 유지 — **pipeline setup 에서 HW 변화 없이 바뀔 수 있는 값이라 raw 미기재가 맞다**(운영자).
+> 5. **확인 요망 11 종결 — 규격 버전 카드는 미도입 (운영자 확정 2026-08-22)** — `RAWVER`/`RAWPROD` 부활 없이, 규격/구성 버전은 **`CAMVER`(HW) · `CTRLxCFG`(FW/설정) · `DETID` · `CHMAP_*`** 조합으로 전부 파악된다. 포장 규범 조항(V1)의 고정 대상도 `RAWVER` → **`CAMVER` + `CTRLxCFG`** 로 교체(7장 `ROWORDR` 행) — MEF 쪽 `GEOMVER` 동반 범프 문구도 같은 기준으로 갱신(통합 문서 §3).
+> 6. **확인 요망 10 종결 — PRESCN 은 키워드 변경 계승 (운영자 확정 2026-08-22)** — 레거시 `PRESCANX` 를 **`PRESCNX`/`PRESCNY` 로 개칭해 계승**한다(값 `0` — 신규 구조에 prescan 없음). `OVRSCNX`/`OVRSCNY` 를 정하고 나서 **자리수를 맞춰** 바꾼 것 — "그대로 계승"이 아니다. 6장 표기를 개칭 계승(DSTEL→DSTELALT 선례)으로, 7장 `PRESCNX` 를 `X`→`O` 로 정정 — 초안 v1.0·Detector 블록 정본과 3자 정합 회복.
+> 6. **D-016 등재 (운영자 승인 2026-08-22)** — 충돌 처리(번호 증가·선검사·상한 100000회)와 정체성(`FILENAME` 유일 키 + `ORIGNAME` 충돌 신호, `UNIQNAME`·`NAMECLSH`·`clash/` 폐지)이 `DECISION_LOG.md` 에 **D-016 (Accepted)** 으로 등재됐다. D-010·D-012 의 "아카이브 근거 삼총사" 문구에 개정 표시, README 의 "색인 키는 UNIQNAME" 구 문단 교체. **이로써 V1 재작성 착수 조건(확인 요망 전량 + D-등재)이 완성됐다.**
+> 7. **초안 헤더 v1.0 승격 · `__review/` 폐지 (운영자, 2026-08-22)** — 검토 왕복이 사실상 끝나, 확정 초안이 **`KMTA.20260818.012345.MK.fits.header.v1.0.txt`** 로 이 폴더 루트에 승격됐다(내용은 v0.3.7 커밋본과 동일 — 143카드 diff 0). **NT 판 `…NT.fits.header.v1.0.txt` 를 파생 생성** — pair 상이 7장(`DETID` · `CHMAP_*` 4장 · `FILENAME`/`ORIGNAME`)만 다르고 나머지 136카드는 MK 동일. docx 왕복본과 초안 이력(v0.0~v0.4.4)은 운영자 외부 백업에 있다. 이 문서의 과거 changelog 가 가리키는 `__review/` 경로들은 **이력 기록**이다.
 
 > **v1.11 에서 바뀐 것 — 돔 출처가 TCS 로 넘어갔고, 확인 요망 다섯이 닫혔다.**
 >
@@ -42,19 +46,19 @@
 > 4. **6장 판정** — `NPHLINES` · `HEMODE` `X`(`HEMODE` 는 `DATASRC`·`CTRLxID` 와 중복이라 삭제), `DATASRC` `O` + 값 체계 확장(`ARCHON_SCIENCE` / `ARCHON_GUIDE` / `SIM`), `LEDFLASH` · `FILENAME` · `ICSBUILD` `O`, `ENS1`~`ENS7` `O`(AUX 중계값 그대로 수록).
 > 5. **`TCSTIME` 신설**(7장 `O`) — 시각계 선언을 `TIMESYS`(ICS)와 `TCSTIME`(TCS)으로 분리(초안 v0.3.5). `TCSLINK` 값 어휘 `Up`/`Idle`/`Down` · `AUXLINK` `Up`/`Down` 명시.
 
-> ⚠️ **확인 요망 (운영자, v1.12 갱신)** — 개정본·초안·참고자료가 서로 어긋나는 열한 곳 중 **1~5 · 9 는 종결**됐다. 남은 다섯: 결정 대기 10 · 11, 재가 대기 6 · 7 · 8.
+> ✅ **확인 요망 (운영자, v1.12 갱신) — 열한 곳 전량 종결.** 아래 목록은 각 항목의 결정과 근거의 기록이다.
 >
 > 1. ~~`CHSTAT` 는 개정본이 `X` 인데 초안에 카드가 남아 있다~~ → 해소 (2026-08-21) → 재개 (v1.9): 초안 v0.3.6 재잔존 → **종결 (v1.11)**: 운영자가 초안에서 chiller 4장(`CHSTAT` `CHOP` `CHSET` `CHPROC`)을 재삭제, 검증 완료.
 > 2. ~~`FSATEMP` · `FSAHUM` 2장이 `O` 인데 초안에 카드가 없다~~ → **종결 (v1.11)**: 운영자가 초안에 2장 반영, 검증 완료. (`FSADEW` · `FSAALRM` 은 v1.9 에서 `X` 확정 — 3.5절.)
 > 3. ~~돔 신설 4장(`DSAZ` `DSTELAZ` `DALTERR` `DAZERR`)이 `O` 인데 초안에 없다~~ → **종결 (v1.11)**: 운영자가 초안 TCS 절에 4장 반영(오류 카드명 `DSALTERR`/`DSAZERR` 는 converter 독취명 `DALTERR`/`DAZERR` 로 교정), 검증 완료. `DSTELAZ` 의 "TCS `AZ` 와 중복 재검토" 단서는 유지(3.6절).
 > 4. ~~`EXPTIME` 값이 개정본은 `Integer`, 초안은 `0.0` 이다 — `LEDFLASH` 도 같다~~ → **종결 (v1.11, 운영자 확정)**: 둘 다 **정수형**. `EXPTIME` 은 소수점 아래 값이 있을 때만 실수형으로 기록. `LEDFLASH` 는 단위를 **[milliseconds]** 로 변경해 정수형 유지 (6장 — D-013 계승 조건 번복 기록).
 > 5. ~~`ICSBUILD` 형식 — 개정본은 `<프로그램>-v<버전>:<빌드일시>`, 초안은 프로그램명이 없다~~ → **종결 (v1.11, 운영자 확정)**: 초안 쪽 채택 — **`v<버전>:<빌드일시(UTC)Z>`**. 작성 프로그램 식별은 `DATASRC` 담당. `ics_sim` 코드·테스트 반영 완료.
-> 6. `CTRL1ID` 값 — 개정본 `'KMTA-SCI-01'` vs 초안·`__reference/Archon_Unit_Info.txt` `'KMTA-SCI-101'`(ID 숫자 = IP). **후자를 채택했다.**
-> 7. 8장·8.1절의 `OVERSCNY`/`OVERSCNX` 에 개정본이 붙인 `– 철회` 는 **"구 이름의 철회(폐지 확정) 재확인"** 으로 읽었다 — `DETID` 의 "철회"(폐지 철회 = 부활)와 낱말이 같고 방향이 반대라 확인이 필요하다.
-> 8. `XTALKVER` · `REFVER` · `CATVER` 의 값 칸에 개정본이 `CTRLxCFG 로 귀속됨` 을 적었는데, 이 셋은 **calibration DB 소관**(C-14)이지 Archon 설정 파일 소관이 아니다 — caldb 정리를 유지하고 귀속 표기는 `TIMVER`/`BIASVER`/`CLKVER` 에만 남겼다.
+> 6. ~~`CTRL1ID` 값 — 개정본 `'KMTA-SCI-01'` vs 초안·`__reference/Archon_Unit_Info.txt` `'KMTA-SCI-101'`~~ → **종결 (v1.12, 운영자 재가)**: `'KMTA-SCI-101'` 포맷 확정(ID 숫자 = IP). 함께 지시: **Source 가 `ICS INI` 인 카드는 전부 `ics_sim`/`ics_archon` 의 ini 파일에서 수정 가능해야 한다** — 구현 반영.
+> 7. ~~8장·8.1절의 `OVERSCNY`/`OVERSCNX` 에 붙은 `– 철회` 낱말의 방향~~ → **종결 (v1.12, 운영자 재가)**: "구 이름 계승을 철회(폐지 확정 재확인)"가 맞다 — 라벨을 대상이 드러나는 문구로 교체했다. `DETID` 쪽 "철회"는 반대 방향(폐지의 철회 = 부활)이므로 표기를 "철회, 3.1 로 계승"으로 유지.
+> 8. ~~`XTALKVER` · `REFVER` · `CATVER` 의 값 칸에 개정본이 `CTRLxCFG 로 귀속됨` 을 적었다~~ → **종결 (v1.12, 운영자 재가)**: 귀속 표기는 `TIMVER`/`BIASVER`/`CLKVER` 에만(세 값의 정본 = ACF 설정 파일 = `CTRLxCFG`), 이 셋은 **calibration DB 소관 유지**(C-14 — 정본이 ACF 가 아니다). 함께 명시: **`CAMVER` 는 HW·성능상 변경 시에만 올리는 전자부 세대 참조점**이다(3.3 주석·7장).
 > 9. ~~HK 온도 카드의 형 — 초안은 문자열(`'-101.23'`, 부호 포함)인데 `ics_sim` 은 실수형으로 싣는 중이다~~ → **종결 (v1.12, 운영자 확정)**: **문자열 계승** — 레거시 실측도 부호 포함 문자열(`'-103.16 '`)이었고 converter 는 pass-through 라 아카이브 전체의 형이 통일된다. 측정불가 sentinel 은 온도·습도 전 카드 **`'-999.99'`** 단일값. 고칠 대상은 `ics_sim`(실수형 → 문자열).
-> 10. **PRESCN 삼자 모순 (v1.9 신규)** — 6장 `PRESCANX`(레거시명)는 `Raw Archon` `O` 인데, 7장 `PRESCNX` 는 `X` 이고, 초안 v0.3.6 은 `PRESCNX` 카드를 싣는다. **이름**(레거시 `PRESCANX` 부활 vs 개명 `PRESCNX`)과 **값**(레거시 `27` vs 신규 `0`)의 재확정이 필요하다.
-> 11. **규격 버전 자기 선언 공백 (v1.9 신규)** — `RAWVER` · `RAWPROD` 가 `X` 로 확정되면서 raw 가 **자기 규격 버전을 선언할 카드가 없어졌다.** V1 규격 준수를 판별할 수단(카드 부활 vs `CAMVER`/파일명으로 갈음)의 결정이 필요하다.
+> 10. ~~**PRESCN 삼자 모순 (v1.9 신규)** — 6장 `PRESCANX` `O` vs 7장 `PRESCNX` `X` vs 초안은 `PRESCNX` 를 실음~~ → **종결 (v1.12, 운영자 확정)**: **`PRESCNX`/`PRESCNY` 로 키워드 변경하여 계승, 값 `0`** — `OVRSCNX`/`OVRSCNY` 를 정하고 나서 자리수를 맞춰 개칭한 것이다. 6장은 "그대로 계승(O)"이 아니라 **개칭 계승** 표기로(DSTEL→DSTELALT 선례), 7장 `PRESCNX` 는 `X`→`O` 정정. 초안 v1.0·Detector 블록 정본과 정합.
+> 11. ~~**규격 버전 자기 선언 공백 (v1.9 신규)** — `RAWVER` · `RAWPROD` 가 `X` 로 확정되면서 raw 가 자기 규격 버전을 선언할 카드가 없어졌다~~ → **종결 (v1.12, 운영자 확정): 미도입 유지.** 규격/구성 버전은 별도 카드 없이 **`CAMVER`(HW 부분) · `CTRLxCFG`(FW/설정 부분) · `DETID` · `CHMAP_*`** 조합으로 전부 파악된다. 귀결: 포장 규범 조항(V1)의 고정 대상은 `RAWVER` 대신 **`CAMVER` + `CTRLxCFG`** — geometry/포장 변경은 HW·설정 변경에서만 오므로 그 둘의 범프가 곧 판별 신호다.
 
 > **v1.7 에서 바뀐 것 — 3장 표를 6열 신형식으로 바꾸고, 검토 확정분을 반영했다.** 근거는 `__review/…_v1.6_revision.docx`(운영자 개정, 3.1 표가 신형식의 견본)와 `__review/KMTA.20260818.012345.MK.fits.header.txt`(확정 초안), 2026-08-20~21 검토 세션이다.
 >
@@ -100,7 +104,7 @@
 
 > **이 문서에서 "규격" 은 `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`(raw pair 규격) 를 가리킨다.**
 >
-> ⚠️ 그 문서는 **((재작성중))** 이라 절 번호가 바뀔 수 있다. 아래에서 `규격 5.12` 처럼 절을 적은 곳은 **지금 그 내용이 어디 있는지 알려주는 포인터일 뿐 근거가 아니다.** 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 **D-번호**다 — 이 문서가 기대는 것은 D-011(사이트 코드 파일명) · **D-013**(레거시 keyword 판정) 이고 둘 다 Accepted 다.
+> ⚠️ 그 문서는 **((재작성중))** 이라 절 번호가 바뀔 수 있다. 아래에서 `규격 5.12` 처럼 절을 적은 곳은 **지금 그 내용이 어디 있는지 알려주는 포인터일 뿐 근거가 아니다.** 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 **D-번호**다 — 이 문서가 기대는 것은 D-011(사이트 코드 파일명) · **D-013**(레거시 keyword 판정) · **D-016**(충돌 번호 증가 · `FILENAME`/`ORIGNAME` 정체성, 2026-08-22 등재) 이고 전부 Accepted 다.
 
 ## 1. 요약
 
@@ -197,7 +201,7 @@
 
 | Raw Keywords | Raw Legacy | Raw Archon | Use in MEF | Value (`*` default) | Source (`*` default) |
 | --- | :---: | :---: | --- | --- | --- |
-| `CTRL1ID` | **X** | O | `CTRL1ID` | `'KMTA-SCI-101'` — ID 숫자 = IP (`__reference/Archon_Unit_Info.txt`, 확인 요망 6) | ICS INI |
+| `CTRL1ID` | **X** | O | `CTRL1ID` | `'KMTA-SCI-101'` — ID 숫자 = IP (`__reference/Archon_Unit_Info.txt`, 확인 요망 6 종결 — 운영자 재가 2026-08-22) | ICS INI |
 | `CTRL1SN` | **X** | O | `CTRL1SN` | `'STA-0288'` | ICS INI |
 | `CTRL1FW` | **X** | **X** | `CTRL1FW` | `CTRLxCFG` 로 귀속 (v1.8) | Archon telemetry |
 | `CTRL1CFG` | **X** | O | — (converter 미독) | `'KMTA_SCI_101_R2609.1.acf'` | ICS INI |
@@ -209,15 +213,15 @@
 | `TIMVER` | **X** | **X** | `TIMVER` | `CTRLxCFG` 로 귀속 (v1.8) |  |
 | `BIASVER` | **X** | **X** | `BIASVER` | `CTRLxCFG` 로 귀속 (v1.8) |  |
 | `CLKVER` | **X** | **X** | `CLKVER` | `CTRLxCFG` 로 귀속 (v1.8) |  |
-| `XTALKVER` | **X** | **X** | `XTALKVER` | (caldb 소관 유지 — 확인 요망 8) | caldb (C-14, raw 미기재) |
-| `REFVER` | **X** | **X** | `REFVER` | (caldb 소관 유지) | caldb (C-14, raw 미기재) |
-| `CATVER` | **X** | **X** | `CATVER` | (caldb 소관 유지) | caldb (C-14, raw 미기재) |
+| `XTALKVER` | **X** | **X** | `XTALKVER` | **Pipeline calibration DB 소관** — raw 미기재 (확인 요망 8 종결, 운영자 재가 2026-08-22) | Pipeline caldb (C-14) |
+| `REFVER` | **X** | **X** | `REFVER` | **Pipeline calibration DB 소관** — raw 미기재 | Pipeline caldb (C-14) |
+| `CATVER` | **X** | **X** | `CATVER` | **Pipeline calibration DB 소관** — raw 미기재 | Pipeline caldb (C-14) |
 
-> 구 `없을 때`(converter 기본값): `CTRL1*`·`CTRL2*` `"UNKNOWN"` · `CTRLVER "ARCHON-v1.0"` · `TIMVER "TIM-v1.0"` · `BIASVER "BIAS-v1.0"` · `CLKVER "CLK-v1.0"` · `XTALKVER "UNMEASURED"` · `REFVER`/`CATVER` `"N/A"`. 버전 문자열의 근거 순환(키워드맵 검토 항목 4)은 **v1.8 에서 `CTRLxCFG` 귀속으로 정리됐다** — 추적 대상이 적용 설정 파일 하나로 모이고, raw 는 그 파일명(`CTRL1CFG`/`CTRL2CFG`)만 실으면 된다.
+> 구 `없을 때`(converter 기본값): `CTRL1*`·`CTRL2*` `"UNKNOWN"` · `CTRLVER "ARCHON-v1.0"` · `TIMVER "TIM-v1.0"` · `BIASVER "BIAS-v1.0"` · `CLKVER "CLK-v1.0"` · `XTALKVER "UNMEASURED"` · `REFVER`/`CATVER` `"N/A"`. 버전 문자열의 근거 순환(키워드맵 검토 항목 4)은 **v1.8 에서 `CTRLxCFG` 귀속으로 정리됐고 v1.12 에서 재가로 확정됐다(확인 요망 6·8 종결)** — 추적 대상이 적용 설정 파일 하나로 모이고, raw 는 그 파일명(`CTRL1CFG`/`CTRL2CFG`)만 실으면 된다. **`CAMVER` 도 판단 참조점이다 (운영자, 2026-08-22)**: HW·성능상 변경사항이 있을 때만 올리는 카드라, 설정 상세는 `CTRLxCFG` 로 · **전자부 HW/성능 세대는 `CAMVER` 로** 판단할 수 있다. 반면 `XTALKVER` · `REFVER` · `CATVER` 의 정본은 ACF 파일이 아니라 **calibration DB** 다(C-14) — 귀속 표기를 셋에 붙이면 없는 곳을 가리키는 포인터가 된다.
 
 **표의 15장 전부 레거시 raw 에 없다** — 7장의 도입 후보와 같은 부류다(`CTRL1CFG`/`CTRL2CFG` 는 converter 미독 신설이라 1장 집계 어디에도 안 들고, 가족 묶음으로 이 표에 둔다). 성격이 둘로 갈린다.
 
-**`XTALKVER` · `REFVER` · `CATVER` 셋은 raw 가 실을 필요가 없다.** converter 가 읽기는 하지만 raw 에 그 카드가 없으므로 **기본값(`"UNMEASURED"` · `"N/A"`)으로 채워지고, 지금은 그것이 맞는 상태다.** 규격 5.12 절이 *"현행 converter 는 이 값들을 MK 헤더에서 읽고 있지만 실제로는 calibration DB 소관"* 이라고 정리했고, caldb 주입으로 바꾸는 것이 **변경점 C-14** 다. 즉 이 셋의 `X` 는 결함이 아니라 **의도된 상태**다.
+**`XTALKVER` · `REFVER` · `CATVER` 셋은 raw 가 실을 필요가 없다.** converter 가 읽기는 하지만 raw 에 그 카드가 없으므로 **기본값(`"UNMEASURED"` · `"N/A"`)으로 채워지고, 지금은 그것이 맞는 상태다.** 규격 5.12 절이 *"현행 converter 는 이 값들을 MK 헤더에서 읽고 있지만 실제로는 calibration DB 소관"* 이라고 정리했고, caldb 주입으로 바꾸는 것이 **변경점 C-14** 다. 즉 이 셋의 `X` 는 결함이 아니라 **의도된 상태**다. **미기재 근거 확정(운영자, 2026-08-22, 확인 요망 8 종결)**: 이 값들은 **HW·성능 변화 없이도 pipeline setup 에서 바뀔 수 있어** 취득 시점의 raw 에 실으면 곧 낡은 값이 된다 — raw 는 취득 시점에 고정되는 사실만 싣는다. **계층 규칙(운영자, 2026-08-22)**: raw = 미기재 · **전처리 전 MEF(L0) = 수록 여부는 pipeline 팀 판단** · **전처리 후 MEF(L1) = 필수 수록**(보정에 실제 적용한 버전이므로). 이 규칙은 통합 문서(LEECU 전달용)에도 등재했다.
 
 나머지는 신규 전자부에 필연적으로 따라오는 것들이다. v1.8 판정으로 **정체 4장(`CTRLxID`/`CTRLxSN`)과 설정 포인터 2장(`CTRLxCFG`)이 도입 `O`**, 펌웨어·버전 문자열(`CTRLxFW` `TIMVER` `BIASVER` `CLKVER`)은 **`CTRLxCFG` 로 귀속돼 `X`** 다.
 
@@ -378,7 +382,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | --- | :---: | :---: | --- | --- |
 | `SIMPLE` | O | O | FITS 표준 필수 카드 | converter 가 **자기가 새로 만든다** (`card("SIMPLE", True)`). raw 값을 볼 이유가 없다 |
 | `NAXIS` | O | O | 축 수 | 〃. MEF PRIMARY 는 영상이 없어 `0`, amp extension 은 `2` 다 |
-| `PRESCANX` | O | O | amp 당 수평 prescan 열 수 — 레거시 실측 `27` | converter 가 자기 상수 **`0`** 을 쓴다(`PRESCAN_X`). 신규 구조에는 prescan 이 없다. ⚠️ v1.9: 7장 `PRESCNX` 는 `X` — 이름·값 재확정 필요(확인 요망 10) |
+| `PRESCANX` → **`PRESCNX` 로 변경** | O | O (`PRESCNX`/`PRESCNY` 로 변경하여 계승 — v1.12, 확인 요망 10 종결) | amp 당 수평 prescan 열 수 — 레거시 실측 `27`, 신규 `0`(prescan 없음). **`OVRSCNX`/`OVRSCNY` 를 정하고 나서 자리수를 맞춰 개칭했다**(운영자, 2026-08-22) — 그대로 계승이 아니라 **키워드 변경 계승**이다: 레거시 27 과 신규 0 의 동명이값도 이름 분리로 해소된다 | converter 가 자기 상수 **`0`** 을 쓴다(`PRESCAN_X`). 신규 구조에는 prescan 이 없다 |
 | `PIXSCALE` | O | O | 픽셀 스케일 [arcsec/px] — 레거시 실측 `0.400` | converter 가 자기 상수 **`0.395`** 를 쓴다 — 소스 주석이 *"measured vs Gaia DR3 (was 0.400 nominal)"* 라고 밝힌 **실측 갱신값**이다 |
 | `PIXSIZE` | O | O | 픽셀 크기 [micron] — 레거시 실측 `10.0` | converter 가 자기 상수 `10.0` 을 쓴다. 값은 같다 |
 | `NPHLINES` | O | **X** | preheat line 수 — 레거시 계승(5.13절). ADC/비디오단을<br>안정시키려 독출 전에 버리는 dummy line. 값의 정본은<br>`ACFFILE`이 가리키는 timing script 다 | 읽지 않는다. **MEF 목적지가 없고 raw 아카이브 기록으로만 남는다** |
@@ -429,7 +433,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `AMPNAX2` | **O** | **amp 타일의 Y 크기** = `4700` = `NAXIS2/NEND` (타일 규약) | `AMPNAX2−IMAGEY = 84` 가 중앙 overscan 의 amp 몫 — **물리 분배는 OI-4** |
 | ~~`BCKTEMP`~~ → **`Cn_TEMP` `Cn_VOLT` `Cn_CURR`**<br>로 변경·확장 | **O** (변경·확장) | Archon unit monitoring (Archon telemetry). Sci: n=1,2 · Gui: n=1.<br>Temp 는 Backplane 이후 Slot 순서, Volt/Curr 는<br>P2V5·P5V·P6V·N6V·P17V·N17V·P35V 순서 —<br>**공백 구분 나열**(자리=항목) | Sci module 순서: Backplane, Slot1 LVDS, Slot2 Driver, Slot3 Driver,<br>Slot4 LVX Bias, Slot5 ADM, Slot8 ADM, Slot9 HVY Bias, Slot10 Driver,<br>Slot11 Driver / Gui: Backplane, Slot3 Driver, Slot4 Driver, Slot5 AD,<br>Slot6 AD, Slot7 HeaterX, Slot9 HVY Bias, Slot10 HeaterX —<br>**이 순서를 raw FITS spec 에 명세로 수록** |
 | `BUFNO` | **X** | 사용한 Archon frame buffer | 모니터링 불필요(버퍼를 번갈아 사용) |
-| `CAMVER` | **O** | Camera electronics version — INI 설정, 값 `CEU-v2.1` | v1.9 신설 (초안 v0.3.6) |
+| `CAMVER` | **O** | Camera electronics version — INI 설정, 값 `CEU-v2.1`. **HW·성능상 변경사항이 있을 때만 올린다** — 전자부 세대 판단의 참조점(운영자, 2026-08-22). 설정 상세 추적은 `CTRLxCFG` 몫 | v1.9 신설 (초안 v0.3.6) |
 | `CCDCOLS` | **X** | chip 1개의 active column | **`IMAGEX × 8` 로 파생 — 카드 불요** (v1.7) |
 | `CCDROWS` | **X** | chip 1개의 active row | **`IMAGEY × 2` 로 파생 — 카드 불요** (v1.7) |
 | `CCDTEMP1` | **X** | `CHIP1` 온도 [degC] | **v1.8 제외 확정** — HK 재구성으로 평균 파생 폐기(3.7절) |
@@ -454,18 +458,18 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `MIDOSCT` | **X** | 중앙 overscan 중 TOP half에서 나온 row 수 | 〃 |
 | `NAMPRAW` | O | **이 파일에 담긴 amplifier 수** (chip 2 × amp 16) |  |
 | `NXTILE` | **X** | X 방향 amp tile 수 (chip 2 × strip 8) | **`NAXIS1 / AMPNAX1` 로 파생 — 카드 불요** (v1.7) |
-| `ORIGNAME` | **O** | **카운터가 이 노출에 처음 배정한 이름** — 모든 파일에 항상 기록,<br>`FILENAME ≠ ORIGNAME` 이 충돌 신호 | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절).<br>상세: `KMT_CEU_Raw_Numbering_and_Identity_v0.1.md` |
+| `ORIGNAME` | **O** | **카운터가 이 노출에 처음 배정한 이름** — 모든 파일에 항상 기록,<br>`FILENAME ≠ ORIGNAME` 이 충돌 신호 | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절, **D-016 등재**).<br>상세: 통합 문서 v0.5 Part 2 |
 | `OSCNPATT` | **X** | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽).<br>**근거는 converter의 `is_bias_right()`** —<br>`strip_id(amp)=((amp-1)%8)+1`,<br>`is_bias_right(amp)= 1≤amp≤4 or 9≤amp≤12` | converter 가 이 카드를 읽지 않아 **선언과 하드코딩이<br>갈라져도 변환 쪽에서 못 잡는다**(C-5/C-13). 취득 SW 쪽 방어는<br>`test_geometry_vs_converter.py`. **v1.9 미도입 — 헤더가<br>복잡해지므로 세부내용은 raw FITS spec 에 수록**(포장 규범 조항 이관 전제) |
 | `OVRSCNX` | **O** | amp 당 X overscan 열 수 = `48` (side varies) | 폐지된 `OVERSCNX`(레거시 32)와 **이름 분리** — 8.1절의 미정 해소 |
 | `OVRSCNY` | **O** | amp 당 Y overscan 행 수 = `84` (frame-center side) | 폐지된 `OVERSCNY` 와 **이름 분리**. 84/84 분배는 OI-4 |
 | `PAIRFILE` | **X** | 짝의 이름. **`FILENAME` 과 같은 형태(확장자 없음)** | converter 는 CLI 로 두 경로를 받으므로 읽지 않는다 —<br>**아카이브 도구용**. pair 가 충돌 시 함께 증가하므로 **항상 실명**이다.<br>**v1.9 미도입 — 규약으로 예측 가능하므로 생략(운영자)** |
-| `PRESCNX` | **X** | amp 당 X prescan 열 수 = `0` (side varies) | `PRESCANX`(레거시 27 · converter 0)와 **이름 분리** — 동명이값 해소.<br>⚠️ v1.9 `X` 인데 **6장 `PRESCANX` 는 `O`, 초안은 `PRESCNX` 를 실음** — 삼자 모순, 이름·값 재확정 필요(확인 요망 10) |
+| `PRESCNX` | **O** | amp 당 X prescan 열 수 = `0` (side varies) | 레거시 `PRESCANX` 의 **키워드 변경 계승**(운영자 확정 2026-08-22, 확인 요망 10 종결) —<br>`OVRSCNX`/`OVRSCNY` 확정 후 자리수를 맞춰 개칭. 동명이값(레거시 27 · 신규 0) 해소 겸.<br>합 불변식의 항: `AMPNAX1 = PRESCNX + IMAGEX + OVRSCNX`. 초안 v1.0 과 정합 |
 | `PRESCNY` | **O** | amp 당 Y prescan 행 수 = `0` (frame-edge side) |  |
 | `RAWPROD` | **X** | 이 파일이 CEU Archon science raw임을 선언 | MEF 는 `DATAPROD` 를 따로 만든다. `CAMVER` 등 instrument<br>카드가 정보 제공 — 중복 배제 (v1.9) |
-| `RAWVER` | **X** | **raw 규격/geometry 버전.** 4장이 바뀌면 올린다 | 중복·불필요 (v1.9). ⚠️ raw 가 규격 버전을 자기 선언할 수단이<br>없어진다 — 확인 요망 11 |
+| `RAWVER` | **X** | **raw 규격/geometry 버전.** 4장이 바뀌면 올린다 | **미도입 확정 (v1.12, 확인 요망 11 종결)** — 규격/구성 버전은<br>**`CAMVER`(HW) · `CTRLxCFG`(FW/설정) · `DETID` · `CHMAP_*`** 조합으로<br>전부 파악되므로 별도 카드가 중복이다(운영자, 2026-08-22) |
 | `RDDIRB` | **X** | **BOT amp의 물리적 독출 진행 방향** | **v1.9: 헤더 생략 — 세부는 raw FITS spec 에 수록** (구 OI-3 보류) |
 | `RDDIRT` | **X** | **TOP amp의 물리적 독출 진행 방향.** MEF amp header<br>`READDIR`로 전달 | MEF amp `READDIR` 로 가야 하는데 converter<br>가 하드코딩(C-12). **v1.9: 헤더 생략 — 세부는 raw FITS spec 에<br>수록** (구 OI-3 보류) |
-| `ROWORDR` | **X** | **4.2절 행 순서 규약. 잘못 쓰면 TOP half가 Y 반전된다** | **v1.7: 카드 대신 규격의 포장 규범 조항으로 이관** — "raw 는<br>검출기 공간 순서로 완전 정렬 저장"을 요구사항으로 선언하고 RAWVER 에<br>고정. flat/star 시험(OI-3)은 준수 검증이 된다.<br>⚠️ `RAWVER` 가 v1.9 `X` 라 고정할 자리가 없다(확인 요망 11) |
+| `ROWORDR` | **X** | **4.2절 행 순서 규약. 잘못 쓰면 TOP half가 Y 반전된다** | **v1.7: 카드 대신 규격의 포장 규범 조항으로 이관** — "raw 는<br>검출기 공간 순서로 완전 정렬 저장"을 요구사항으로 선언한다.<br>flat/star 시험(OI-3)은 준수 검증이 된다. 고정 대상은 `RAWVER` 미도입<br>확정(확인 요망 11)에 따라 **`CAMVER` + `CTRLxCFG`** — 포장 변경은<br>HW·설정 변경에서만 오므로 그 둘의 범프가 판별 신호다 (v1.12) |
 | `TCSLIMIT` &nbsp;&nbsp; | **X** | — | TCS 설정값 — raw 헤더 삽입 대상 아님 |
 | `TCSTIME` | **O** | TCS 시각계 선언 (`'UTC'`) — `TIMESYS`(ICS)와 분리, 초안 v0.3.5 | 직전 초안(v0.3.4)의 `TCSTSYS` 에서 개명 |
 | `TELID` | **X** | ICS relay의 telescope ID | 전 시스템 고정값 — TCS/AUX relay 통신 규격에서만 필요 |
@@ -488,7 +492,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | 폐지 카드 | 폐지 근거 | 대신 보는 것 |
 | --- | --- | --- |
 | `DETID` — **철회, 3.1 로 계승** | 파일 1개 = CCD 1개 전제의 카드. 신규는 파일 1개에 chip 2개다 | `CTRLTAG` · `CHIPS` · `CHIP1` · `CHIP2` (더 정확하다) |
-| `OVERSCNY` – 철회 (운영자 표기 — 확인 요망 7) | ⚠️ **이름을 물려주면 자료가 깎인다.** 레거시는 Y overscan 이 `0`(없음)이었고 있었다면 **가장자리**를 뜻했다. 신규는 Y overscan 이 **영상 중앙**에 있다(4.2절). `OVERSCNY=168`을 본 도구가 "위쪽 168행 자르기"를 하면 active 픽셀을 지운다 | `MIDOVSCY` · `MIDOSCB` · `MIDOSCT` (위치가 이름에 들어 있다) |
+| `OVERSCNY` — **구 이름 계승을 철회 (폐지 확정 재확인, 확인 요망 7 종결)** | ⚠️ **이름을 물려주면 자료가 깎인다.** 레거시는 Y overscan 이 `0`(없음)이었고 있었다면 **가장자리**를 뜻했다. 신규는 Y overscan 이 **영상 중앙**에 있다(4.2절). `OVERSCNY=168`을 본 도구가 "위쪽 168행 자르기"를 하면 active 픽셀을 지운다 | `MIDOVSCY` · `MIDOSCB` · `MIDOSCT` (위치가 이름에 들어 있다) |
 | `READOUT` (`'ARLBRL'`) | 8-amp CCD 의 amp 조합 부호. 64-amp 구조를 표현할 수 없다 | `READMODE`(`'64AMP'`) · `READARCH`(`'8STRIPx2END'`) · `OSCNPATT` |
 | `GAINDL` | **레거시 4년치에서 값이 비어 있던 카드다**(`GAINDL / comment` 형태). 계승할 관례가 없다 | `ACFFILE` · `TIMCONF` · `TIMVER` 가 timing script 를 가리킨다 |
 | `PIXITIME` | 〃 (같은 이유, 같은 자리) | 〃 |
@@ -518,7 +522,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | 폐지 카드 | 폐지 근거 | 대신 보는 것 |
 | --- | --- | --- |
 | `NAMPS` | 레거시는 `8`(그 CCD 하나), 신규는 `64`(카메라 전체) — **이름은 같은데 세는 범위가 달라졌다.** 레거시를 아는 도구가 amp 수로 쓰면 조용히 8배 틀린다. `OVERSCNY` 를 폐지한 것과 같은 부류다 | **`NAMPDET`** (`16`, chip 당). 카메라 전체는 `NAMPDET × NCCD` 로 파생되므로 카드가 필요 없다 |
-| `OVERSCNX` – 철회 (운영자 표기 — 확인 요망 7) | 레거시 실측 `32`, converter 상수 `48` — **이름은 같은데 값이 다르다.** 게다가 `X` 만 있고 중앙 Y overscan 을 담을 자리가 없어, 양방향 overscan 을 한 이름으로 표현하지 못한다(11.3 · 12.3) | **`OVRSCNX`/`OVRSCNY` 두 장 — v1.7 에서 확정** (X = amp 당 48 · Y = amp 당 84, frame-center side). 같은 이유로 `PRESCANX`(레거시 27 ↔ 신규 0)도 **`PRESCNX`** 로 개칭하고 `PRESCNY` 를 짝으로 신설했다(7장) |
+| `OVERSCNX` — **구 이름 계승을 철회 (폐지 확정 재확인, 확인 요망 7 종결)** | 레거시 실측 `32`, converter 상수 `48` — **이름은 같은데 값이 다르다.** 게다가 `X` 만 있고 중앙 Y overscan 을 담을 자리가 없어, 양방향 overscan 을 한 이름으로 표현하지 못한다(11.3 · 12.3) | **`OVRSCNX`/`OVRSCNY` 두 장 — v1.7 에서 확정** (X = amp 당 48 · Y = amp 당 84, frame-center side). 같은 이유로 `PRESCANX`(레거시 27 ↔ 신규 0)도 **`PRESCNX`** 로 개칭하고 `PRESCNY` 를 짝으로 신설했다(7장) |
 | `AMPPCD` | *amplifiers per CCD* 의 축약인데 `AMPCCD` 오타로 읽힌다. 값 `16` 은 `NAMPDET` 과 **같은 것을 센다** | **`NAMPDET`** — `NAMPRAW` 와 이름 형태가 같아(`N`+`AMP`+범위) 한 계열로 읽힌다 |
 
 **남는 것은 두 카드다.**
@@ -539,7 +543,7 @@ NAMPRAW =                   32 / Number of amplifiers in the raw FITS file
 
 ### 8.2 v1.7 에서 새로 폐지한 카드 (2장)
 
-파일명 충돌 처리를 `clash/` 격리에서 **번호 증가**로 바꾸면서(D-등재 대기, `KMT_CEU_Raw_Numbering_and_Identity_v0.1.md`) 정체성 카드가 재편됐다.
+파일명 충돌 처리를 `clash/` 격리에서 **번호 증가**로 바꾸면서 정체성 카드가 재편됐다 — **D-016 으로 등재 완료(2026-08-22)**, 상세는 통합 문서 `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` Part 2.
 
 | 폐지 카드 | 폐지 근거 | 대신 보는 것 |
 | --- | --- | --- |
@@ -748,7 +752,7 @@ Y:  TOP -> NAXIS2-IMAGEY+1 .. NAXIS2      (예: 4785:9400)
 - **오류로 걸리는 것은 `OBSERVAT` 하나**(파일명 교차 검증)다. 나머지는 전부 조용히 지나간다.
 - 조용히 **틀린 값**이 들어가는 쪽이 더 위험하다 — `DATE-OBS`(변환 시각) · `RA`/`DEC`(그럴듯한 좌표) · `EXPTIME`/`DARKTIME`(0초) · 버전 문자열(그럴듯한 provenance).
 - **HK 블록은 v1.8 에서 재구성됐다** — `CCDTEMP` 실측 대표 전환 · `DEWPRES` 문자열 `x.xxe-x` + sentinel `9.99e-9` · 신설 `DMPTEMP`/`WALLBRD`/`HEBOX` · 출처 3계통(3.7절). `DARKTIME` · `TSHOPEN` · `TSHSHUT` · `HEMODE` · `NPHLINES` · `CHSTAT` 는 신규 raw 가 싣지 않는다 — `TSHOPEN` 폐지의 MEF `UT` 파급은 C-항목이다(3.2절).
-- **v1.10 으로 도입 판정이 완결됐다** — 3장·6장 계획 열과 7장 도입 여부에 **빈칸이 없다**. 확인 요망은 **v1.11~v1.12 에서 1~5 · 9 가 종결**돼 다섯이 남았다 — 결정 대기 10(PRESCN 삼자 모순) · 11(규격 버전 선언 공백), 재가 대기 6 · 7 · 8. 그리고 **D-등재**(D-016)가 남는다.
+- **v1.10 으로 도입 판정이 완결됐고, v1.11~v1.12 로 확인 요망 11건이 전량 종결됐으며, 충돌·정체성 결정이 D-016 으로 등재됐다** — 3장·6장 계획 열과 7장 도입 여부에 빈칸이 없고, 어긋남 목록도 비었다. **V1 재작성 착수 조건이 완성됐다.**
 - **HK 블록의 형 논쟁은 v1.12 로 닫혔다** — 온도·습도 전 카드 문자열(레거시 계승), sentinel `'-999.99'` 단일값, `DEWPRES` 만 `9.99e-9`. 남은 것은 `ics_sim` 의 실수형→문자열 전환(구현 일감)과 Tapaculo 원값 포맷 확인이다.
 - **이름은 같은데 뜻이 달라진 카드 문제는 v1.7 개칭으로 닫혔다** — `OVERSCNX`→`OVRSCNX` · `PRESCANX`→`PRESCNX` · `OVERSCNY`→`OVRSCNY`(뜻 재정의 겸 개명) · `NAMPS` 폐지(8.1절). **`READMODE`** 의 값 충돌(`FAST` vs `64AMP`)은 v1.9 에서 raw `RDMODE` / MEF `READMODE` 로 **이름을 분리해 종결**했다(7장) — 남은 동명이의는 **`DETID`** 하나다(뜻 재정의 유지 — 3.1 comment 가 새 뜻을 명시).
 - **`UNIQNAME` 은 폐지됐다**(8.2절) — 정체성은 `FILENAME`(유일 키) + `ORIGNAME`(항상 기록, 불일치 = 충돌 신호)이 담당한다. ⚠️ converter 가 `UNIQNAME` 을 읽어 MEF 로 옮기므로 C-항목 처리 전까지 MEF `UNIQNAME` 이 빈 문자열이 된다.

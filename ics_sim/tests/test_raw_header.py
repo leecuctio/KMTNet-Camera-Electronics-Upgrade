@@ -401,19 +401,27 @@ def test_testbed_has_no_coordinates_on_purpose():
     assert h['ELEVATIO'] == -1
 
 
-def test_origin_is_the_institution_not_the_site():
-    """`ORIGIN='KASI'` -- 레거시는 사이트 코드를 넣었지만 그건 느슨했다.
+def test_origin_is_where_the_file_was_generated():
+    """`ORIGIN` = **"이 파일이 생성된 곳"** (운영자 확정 2026-08-21, v1.7).
 
-    MEF keyword 정의서가 `ORIGIN | From raw | KASI | file originator` 로 정하고
-    (`mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md:85`), FITS 표준도
-    파일을 만든 **기관**을 뜻한다.  레거시의 `ORIGIN='CTIO'` 는 `OBSERVAT` 와
-    같은 값이라 중복이었다 -- 계승 기준("뜻이 같을 때만")에 맞지 않는다.
+    관측소 raw 는 관측소 이름(`OBSERVAT` 와 중복 감수 -- 레거시 계승),
+    테스트베드 raw 는 `KASI`.  KASI 파이프라인 산출물(MEF·L1)이
+    `ORIGIN='KASI'` 를 갖는다 -- MEF 쪽은 상수화가 C-항목이다.
+    종전의 "raw 도 기관명 `KASI` 고정" 구현은 이 확정으로 대체됐다.
+    `[site]` ini 의 `origin` 키가 유도값을 이긴다 (ICS INI 카드).
     """
     from ics_sim import rawpair
     h = rawpair.identity_header(site_code='KMTC', suffix='20260813.000001',
                                 ctrltag='MK', filename='x', created='y')
-    assert str(h['ORIGIN']) == 'KASI'
-    assert str(h['OBSERVAT']) == 'CTIO'      # 사이트는 이쪽이 담는다
+    assert str(h['ORIGIN']) == 'CTIO'        # 관측소 raw = 관측소 이름
+    assert str(h['OBSERVAT']) == 'CTIO'
+    h = rawpair.identity_header(site_code='KMTT', suffix='20260813.000001',
+                                ctrltag='MK', filename='x', created='y')
+    assert str(h['ORIGIN']) == 'KASI'        # 테스트베드 raw = KASI
+    h = rawpair.identity_header(site_code='KMTA', suffix='20260813.000001',
+                                ctrltag='MK', filename='x', created='y',
+                                origin='KASI')
+    assert str(h['ORIGIN']) == 'KASI'        # ini 오버라이드가 이긴다
 
 
 def test_configured_site_values_win_over_the_table():
@@ -422,6 +430,54 @@ def test_configured_site_values_win_over_the_table():
     assert str(h['LATITUDE']) == '-31:16:25'
     assert h['ELEVATIO'] == 1151
     assert str(h['TELESCOP']) == 'KMTNet 1.6m #3'   # 설정에 없는 항목은 유지
+
+
+def test_ics_ini_cards_are_editable_from_the_ini(tmp_path):
+    """Source 가 `ICS INI` 인 카드는 전부 ini 에서 수정할 수 있다.
+
+    (운영자 지시 2026-08-22, Header_and_Refs v1.12 확인 요망 6.)  사이트
+    측지값(`[site.*]`)은 이미 그랬고, 이 시험은 나머지를 못박는다 --
+    `[camera]` 의 `DETECTOR`/`CAMVER`/`INSTRUME`, `[controllers]` 의
+    `CTRL1*`/`CTRL2*`(+`CTRL<n>CFG` 신설 카드), `[site]` 의 `ORIGIN`.
+    채워진 INI 값은 백엔드 보고값을 이긴다 -- 현장이 정본이다.
+    """
+    ini = tmp_path / 'x.ini'
+    ini.write_text(
+        '[camera]\n'
+        'detector = e2v CCD290-99B\n'
+        'camver = CEU-v2.2\n'
+        'instrume = KMTA 18k CCD\n'
+        '[controllers]\n'
+        'ctrl1_id = KMTA-SCI-101\n'
+        'ctrl1_sn = STA-0288\n'
+        'ctrl1_cfg = KMTA_SCI_101_R2609.1.acf\n'
+        'ctrl2_id = KMTA-SCI-102\n'
+        'ctrl2_sn = STA-0289\n'
+        'ctrl2_cfg = KMTA_SCI_102_R2609.1.acf\n'
+        '[site]\n'
+        'origin = KASI\n', encoding='utf-8')
+    from ics_sim import config as cfgmod
+    cfg = cfgmod.load(str(ini))
+
+    h = rawhdr.detector_header('KMTA', cfg.camera.as_dict())
+    assert str(h['DETECTOR']) == 'e2v CCD290-99B'
+    assert str(h['CAMVER']) == 'CEU-v2.2'
+    assert str(h['INSTRUME']) == 'KMTA 18k CCD'
+    # 오버라이드가 없으면 확정 형식으로 유도된다 (v1.7 확정: '<SITE> 18k CCD')
+    assert str(rawhdr.detector_header('KMTC')['INSTRUME']) == 'KMTC 18k CCD'
+
+    info = {'units': (
+        {'id': 'ARCHON-SIM-1', 'sn': 'SIM0001', 'fw': 'SIM-fw-0.0'},
+        {'id': 'ARCHON-SIM-2', 'sn': 'SIM0002', 'fw': 'SIM-fw-0.0'})}
+    ch = rawhdr.controller_header('MK', info, backend_name='sim',
+                                  ics_build='x',
+                                  cfg_ctrl=cfg.controllers.overrides())
+    assert str(ch['CTRL1ID']) == 'KMTA-SCI-101'      # INI 가 SIM 더미를 이긴다
+    assert str(ch['CTRL2SN']) == 'STA-0289'
+    assert str(ch['CTRL1CFG']) == 'KMTA_SCI_101_R2609.1.acf'
+    assert str(ch['CTRL1FW']) == 'SIM-fw-0.0'        # INI 에 없는 키는 백엔드 값
+
+    assert cfg.site_for('KMTA').get('origin') == 'KASI'
 
 
 # -- 5.10 온도: 파일 1개에 chip 2개 -----------------------------------------

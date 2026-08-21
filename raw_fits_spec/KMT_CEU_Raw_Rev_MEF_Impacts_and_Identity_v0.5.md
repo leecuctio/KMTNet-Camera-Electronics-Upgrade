@@ -12,7 +12,7 @@
 >
 > **v0.3**: HK 재구성 확정(`WALLBOAR`→`WALLBRD`, 출처 3계통) · C-신설 2건(MEF `UT` 조립 원천 · `DARKTIME` 공급원). **v0.2**: `OBSERVAT` 값 재정의 C-항목(이후 철회로 종결). **Part 2 의 전신 이력** — v0.2: `CTRLTAG`·`PAIRFILE` 미도입 확정 반영(삼총사 문구에서 `CTRLTAG` 제거) · v0.1: 충돌 번호 증가 설계 최초 기록.
 
-> `mef_converter/` 는 읽기 전용(LEECU 소관)이므로 Part 1 은 **변경 요청 목록**이지 변경 자체가 아니다. raw 쪽 근거는 `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md` 와 Part 2, 검토 세션 기록([`SMC_CLAUDE.md`](SMC_CLAUDE.md))이다. raw 쪽 카드 이름 · 값은 아직 Draft 이며, 확정 시점(D-등재 · 규격 재작성판)에 이 문서도 판을 올린다.
+> `mef_converter/` 는 읽기 전용(LEECU 소관)이므로 Part 1 은 **변경 요청 목록**이지 변경 자체가 아니다. raw 쪽 근거는 `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.12.md`(확인 요망 11건 전량 종결)와 Part 2(**D-016 등재 완료**), 검토 세션 기록([`SMC_CLAUDE.md`](SMC_CLAUDE.md))이다. 규격 재작성판(V1) 발행 시 이 문서도 판을 올린다.
 
 ---
 
@@ -73,11 +73,12 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 - **§12 (open items)**: raw 텔레메트리 집합의 위임 대상이 구 규격 5장 → 재작성판으로 바뀐다. 참조 갱신.
 - ~~**`READMODE` 값 충돌**: ICD/정의서는 `READMODE='64AMP'`(구조 선언), raw 초안은 `'FAST'`(독출 속도 모드)로 쓰려 했다 — 같은 이름, 다른 뜻. 이름 분리 필요~~ → **해소(v1.9)**: raw 쪽이 **`RDMODE`** 로 개명 도입되어 이름이 갈라졌다 — MEF `READMODE='64AMP'` 는 그대로, **ICD 개정 항목 없음**.
 - **AMPINFO의 상류 공급원 명시**: "authoritative 64-row map"의 배선 열(MODULE/CHANNEL)이 converter 추정식이 아니라 **raw `CHMAP_*` + 재작성판의 amp 전수 표**에서 온다는 것을 명시.
-- **overscan 좌우 패턴 검증**: 레거시 MEF `AMPSEC` 실측이 M/T=5:3, K/N=3:5 방향 패턴을 보였는데 신규는 4:4(`RRRRLLLL`)를 전제한다 — 같은 e2v CCD290-99이므로 한쪽이 틀렸다. 검증 표본(`KMTN.20260116.000001`) overscan 열 통계로 확정하고, geometry가 바뀌면 `RAWVER` · `GEOMVER` 동반 범프.
+- **overscan 좌우 패턴 검증**: 레거시 MEF `AMPSEC` 실측이 M/T=5:3, K/N=3:5 방향 패턴을 보였는데 신규는 4:4(`RRRRLLLL`)를 전제한다 — 같은 e2v CCD290-99이므로 한쪽이 틀렸다. 검증 표본(`KMTN.20260116.000001`) overscan 열 통계로 확정하고, geometry 가 바뀌면 **raw 쪽은 `CAMVER`(HW)/`CTRLxCFG`(설정) 범프 · MEF 쪽은 `GEOMVER` 동반 범프** — `RAWVER` 는 미도입 확정이다(Header_and_Refs v1.12 확인 요망 11: 규격/구성 버전은 `CAMVER`·`CTRLxCFG`·`DETID`·`CHMAP_*` 조합으로 파악).
 - 파일명 체계(D-011)는 **불변** — 충돌 번호 증가 시에도 형식은 같고 번호만 다르다. `find_pair()` · 정규식 영향 없음.
 
 ## 4. MEF Keywords 정의서 v1.0 개정 후보
 
+- **`XTALKVER` · `REFVER` · `CATVER` 의 계층 규칙 (운영자 확정 2026-08-22)**: 이 셋의 정본은 **pipeline calibration DB** 다(C-14) — HW·성능 변화 없이도 pipeline setup 에서 바뀔 수 있는 값이라 raw 는 싣지 않는다. **전처리 전 MEF(L0)에 넣을지는 pipeline 팀 판단**이고, **전처리 후 산출물(L1)에는 필수**다 — 보정에 실제 적용한 버전이므로. 정의서/ICD 에 이 계층을 명시할 것.
 - `UNIQNAME` 항목: 공급원 변경 또는 폐지(§1 C-신설과 연동).
 - `NAMPS`=64 · `AMPPCD`=16: raw 쪽 폐지(v1.6 8.1)와의 관계 명시 — MEF 유지 여부는 LEECU 판단(MEF는 카메라 전체 관점이라 유지가 자연스러울 수 있음).
 - (기록) 레거시 MEF의 `AMPNAME2`('im16')가 배선 identity를 헤더에 실은 선례 — `CHMAP_*` 채택의 계보.
@@ -106,7 +107,7 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 
 # Part 2 — raw 파일 번호 · 정체성 · 충돌 처리 (재작성판 Pair Spec 흡수 예정분)
 
-> **지위**: 2026-08-20~21 raw 헤더 검토(ACT-011)에서 확정한 설계의 기록이다. 구 규격 `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`(⛔ 재작성중)의 **2.3.1절(이름 충돌 격리)과 5.2절 일부(`UNIQNAME` · `NAMECLSH`)를 대체**한다. DECISION_LOG 등재 전이므로 근거는 §8 의 결정문 초안이다 — 등재 시 D-번호를 부여하고 이 문서의 상태를 올린다. **재작성판 V1 이 이 내용을 2.3/5.2절로 흡수하면 Part 2 는 파급 요약과 포인터로 줄인다.**
+> **지위**: 2026-08-20~21 raw 헤더 검토(ACT-011)에서 확정한 설계의 기록이다. 구 규격 `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`(⛔ 재작성중)의 **2.3.1절(이름 충돌 격리)과 5.2절 일부(`UNIQNAME` · `NAMECLSH`)를 대체**한다. **✅ DECISION_LOG 에 `D-016` 으로 등재 완료(운영자 승인, 2026-08-22)** — 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 D-016 이고, §8 은 그 등재 원문이다. **재작성판 V1 이 이 내용을 2.3/5.2절로 흡수하면 Part 2 는 파급 요약과 포인터로 줄인다.**
 
 ## 1. 파일 번호 공간과 카운터
 
@@ -173,9 +174,9 @@ converter(v2.2.0)는 raw `UNIQNAME`을 읽어 MEF `UNIQNAME`으로 옮긴다(`v2
 | `sequencer._store()` | 확정된 이름만 수령(이름 결정은 rawpair 몫) |
 | `tests/test_raw_header.py` | `UNIQNAME` 필수 목록에서 제거하고 RETIRED에 추가, `NAMECLSH` 시험 교체, 평시 `FILENAME`==`ORIGNAME` 불변식, 충돌 시나리오 · 되감음 · 상한 시험 신설 |
 
-## 8. 결정문 초안 (DECISION_LOG 등재용)
+## 8. 결정문 (DECISION_LOG **D-016 등재 완료**, 2026-08-22)
 
-> **D-0XX: raw 파일명 충돌 시 노출 번호를 증가시켜 저장한다** / 날짜: 2026-08-21 / 관련: D-010 · D-011 · D-012(일부 대체) · D-013 · D-014 / 상태: **Draft**
+> **D-016: raw 파일명 충돌 시 노출 번호를 증가시켜 저장한다 (`UNIQNAME` 폐지)** / 날짜: 2026-08-21 (운영자 등재 승인 2026-08-22) / 관련: D-010 · D-011 · D-012(일부 대체) · D-013 · D-014 / 상태: **Accepted** — 정본은 `../project_management/governance/DECISION_LOG.md`
 >
 > **결정**: (1) 파일 번호 공간은 000000–099999이며 카운터는 100000 도달 시 000000으로 초기화한다(레거시 관례). (2) 쓰기 전 후보 N의 MK · NT 두 경로를 선검사하고, 점유 시 N+1(099999 넘으면 000000)로 재검사한다. +1이 100000회를 초과하면 멈추고 ERROR를 출력하며 저장하지 않는다. (3) 확정 N으로 카운터를 동기화한다. (4) `UNIQNAME`을 폐지한다. `FILENAME` = 실제 저장명이자 아카이브 유일 키, `ORIGNAME` = 카운터가 처음 배정한 이름이며 두 카드를 모든 파일에 항상 기록한다 — `FILENAME ≠ ORIGNAME`이 충돌 신호다. 아카이브 근거는 **`FILENAME`(+`ORIGNAME`)** 이고 pair 쪽 식별은 `FILENAME` 꼬리(`.MK`/`.NT`) 치환으로 유도한다 — `CTRLTAG` · `PAIRFILE` 카드는 싣지 않는다(v1.9 미도입 확정). `NAMECLSH` · `clash/` 격리를 폐지한다. (5) 재저장 유령 중복은 fail-open이며 raw 헤더 층 필터가 거른다. (6) OBSAgent Wrote 논리 이름은 실제 번호를 쓴다 — raw 카드 `CTRLTAG` 미도입은 D-010 의 OBSAgent 논리 이름 규약과 무관하다(규약 불변). (7) 단일 쓰기 주체(ICS) 전제.
 >
@@ -189,7 +190,7 @@ converter(v2.2.0)는 raw `UNIQNAME`을 읽어 MEF `UNIQNAME`으로 옮긴다(`v2
 
 | 문서 | 위치 |
 | --- | --- |
-| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.11.md) |
+| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.12.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.12.md) |
 | 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |

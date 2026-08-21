@@ -170,16 +170,28 @@ HEMODE_SCIENCE = 'SCIENCE'
 HEMODE_GUIDE = 'GUIDE'
 
 
-def detector_header(instrume: str) -> dict[str, object]:
+def detector_header(instrume: str,
+                    cfg_camera: dict | None = None) -> dict[str, object]:
     """5.4절 detector · camera · mosaic 배치 (16장).
 
     Args:
-        instrume: `[node] telid` (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  레거시 실측
-            헤더가 `INSTRUME='KMTS'` 로 사이트 코드를 넣었다.
+        instrume: `[node] telid` (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  기본 형식은
+            **`'<SITE> 18k CCD'`** (운영자 확정 2026-08-21, Header_and_Refs
+            v1.7 3.1절 · 확정 초안 v1.0) -- 레거시는 사이트 코드만 넣었다
+            (`INSTRUME='KMTS'`).
+        cfg_camera: `[camera]` 설정 (`detector`/`camver`/`instrume`).
+            주어지면 기본값보다 **우선한다** -- Source 가 `ICS INI` 인 카드는
+            ini 에서 수정할 수 있어야 한다 (운영자 지시 2026-08-22, v1.12
+            확인 요망 6).
     """
+    c = cfg_camera or {}
     return {
-        'DETECTOR': S(DETECTOR), 'CAMNAME': S(CAMNAME), 'CAMVER': S(CAMVER),
-        'DETTYPE': S(DETTYPE), 'INSTRUME': S(instrume.upper()),
+        'DETECTOR': S(str(c.get('detector', DETECTOR))),
+        'CAMNAME': S(CAMNAME),
+        'CAMVER': S(str(c.get('camver', CAMVER))),
+        'DETTYPE': S(DETTYPE),
+        'INSTRUME': S(str(c.get('instrume',
+                                f'{instrume.upper()} 18k CCD'))),
         'HEMODE': S(HEMODE_SCIENCE),
         'NCCD': NCCD, 'NAMPS': NAMPS,
         'PIXSIZE': PIXSIZE, 'PIXSCALE': PIXSCALE,
@@ -226,7 +238,9 @@ def datasrc_of(backend_name: str) -> str:
 
 
 def controller_header(ctrltag: str, info: dict, *, backend_name: str,
-                      ics_build: str) -> dict[str, object]:
+                      ics_build: str,
+                      cfg_ctrl: dict[int, dict] | None = None
+                      ) -> dict[str, object]:
     """5.5·5.5.0절 컨트롤러 정체성 + 런타임 상태.
 
     **정체는 두 대분을 색인형으로, 런타임 상태는 자기 것만 단수형으로 싣는다**
@@ -244,6 +258,13 @@ def controller_header(ctrltag: str, info: dict, *, backend_name: str,
             컨트롤러의 런타임 상태다.
         backend_name: `DATASRC` 판정용.
         ics_build: `ICSBUILD` -- 레거시 계승 (규격 5.1·5.13절).
+        cfg_ctrl: `[controllers]` 설정 -- 색인(1=MK, 2=NT)별
+            `{'id','sn','cfg'}` 오버라이드 (`ControllersCfg.overrides()`).
+            **채워진 키는 백엔드 보고값을 이긴다** -- Source 가 `ICS INI` 인
+            카드는 ini 에서 수정할 수 있어야 한다(운영자 지시 2026-08-22).
+            백엔드가 유닛을 못 주는 단계(archon TODO)에도 INI 만으로 정체가
+            실린다.  `cfg` 키가 있으면 `CTRL<n>CFG`(적용 설정 파일명, v1.12
+            3.3절) 카드를 낸다.
     """
     tag = ctrltag.upper()
     idx = 1 if tag == 'MK' else 2
@@ -269,10 +290,19 @@ def controller_header(ctrltag: str, info: dict, *, backend_name: str,
         out['BUFNO'] = int(info['bufno'])
 
     # 5.5.0 -- 색인형은 **양쪽 파일에서 값이 같다** (규격 5.11절 "반드시 동일").
-    for n, unit in enumerate(info.get('units', ()), start=1):
+    # INI 오버라이드가 백엔드 보고값을 덮는다 -- 현장이 정본이라는 [site] 와
+    # 같은 원칙이고, 백엔드가 유닛을 못 주면 INI 만으로도 유닛이 생긴다.
+    units = [dict(u) for u in info.get('units', ())]
+    for n, ov in sorted((cfg_ctrl or {}).items()):
+        while len(units) < n:
+            units.append({})
+        units[n - 1].update({k: v for k, v in ov.items() if v})
+    for n, unit in enumerate(units, start=1):
         out[f'CTRL{n}ID'] = S(str(unit.get('id', 'NC')))
         out[f'CTRL{n}SN'] = S(str(unit.get('sn', 'NC')))
         out[f'CTRL{n}FW'] = S(str(unit.get('fw', 'NC')))
+        if unit.get('cfg'):
+            out[f'CTRL{n}CFG'] = S(str(unit['cfg']))
     return out
 
 
@@ -679,18 +709,23 @@ def spec_header(*, ctrltag: str, site_code: str, backend_name: str,
                 ledflash_ms: int,
                 exp_measured: float | None,
                 imgtype: str, objname: str, projid: str, observer: str,
-                fieldid: str = '') -> dict[str, object]:
+                fieldid: str = '',
+                cfg_camera: dict | None = None,
+                cfg_ctrl: dict[int, dict] | None = None) -> dict[str, object]:
     """규격 5.3~5.10절 카드를 한 번에.
 
     `rawpair.identity_header()`(5.1·5.2)와 `telemetry.fits_header_dict()`
     (5.9 pointing · 5.10 AUX 중계)는 별도로 얹는다 -- 출처가 달라서다.
+    `cfg_camera`/`cfg_ctrl` 는 `ICS INI` 출처 카드의 ini 오버라이드다
+    (운영자 지시 2026-08-22 -- `detector_header`/`controller_header` 참고).
     """
     out: dict[str, object] = {}
     out.update(geometry_header())
-    out.update(detector_header(site_code))
+    out.update(detector_header(site_code, cfg_camera))
     out.update(controller_header(ctrltag, ctrl_info,
                                  backend_name=backend_name,
-                                 ics_build=ics_build))
+                                 ics_build=ics_build,
+                                 cfg_ctrl=cfg_ctrl))
     out.update(ampmap_header(ampmap))
     out.update(voltage_header(volts))
     out.update(exposure_header(date_obs=date_obs, exp_start=exp_start,
