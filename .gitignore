@@ -48,3 +48,5 @@ icsdata/
 test.*
 
 ~$*.docx
+*.lnk
+*.bak

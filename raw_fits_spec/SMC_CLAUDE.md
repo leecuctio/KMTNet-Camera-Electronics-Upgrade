@@ -18,7 +18,7 @@
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.6.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보 · 폐지된 것을 13장으로 정리했다 |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.7.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.7 은 수기 개정(3장 6열 신형식 · 확정 초안 반영 · 8.2 신설) — 구판은 `archive/` |
 | `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | 검토용. 팀 검토 대기 중인 **5장 10항목**이 여기 있다 (ACT-011) |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ ((재작성중)). 참고만 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
@@ -42,7 +42,7 @@
 
 - **Detector/Amplifier 블록 확정** — `DETID`(레거시 계승, 값 'MK'/'NT' 재정의, comment "Detector pair in this raw FITS file") · `DETECTOR` · `PIXSIZE`/`PIXSCALE`(0.395, 근거 표기 없이) · `CCDXBIN`/`CCDYBIN`(이름 유지) · `NAMPDET`/`NAMPRAW` · **타일 해부 대칭형** `AMPNAX1`=1200/`AMPNAX2`=4700 + `IMAGEX`=1152/`IMAGEY`=4616 + `PRESCNX`/`PRESCNY`=0 + `OVRSCNX`=48/`OVRSCNY`=84(개명으로 레거시 동명 충돌 전부 해소) · **`CHMAP_LT/LB/RT/RB` 4장**(값=CCD 출력 채널, raw X 오름차순; AMPCHA/AMPCHB 안 대체). 값은 REVIEW/AMPID.txt 와 전수 대조 완료. 파생 카드(`AMPDATA`·`NXTILE`·`RAWXTILE` 등)는 싣지 않는다.
 - **충돌 처리 · 정체성 재설계 확정** — 번호 공간 000000–099999, 충돌 시 pair 선검사 + 번호 증가(상한 100000회 초과 시 ERROR·저장 안 함), 카운터 동기화. `UNIQNAME`·`NAMECLSH`·`clash/` 폐지, `FILENAME`(유일 키)+`ORIGNAME`(항상 기록, 불일치=충돌 신호). 정리본: [`KMT_CEU_Raw_Numbering_and_Identity_v0.1.md`](KMT_CEU_Raw_Numbering_and_Identity_v0.1.md) (D-등재 대기, 결정문 초안 8장).
-- **MEF 쪽 개정 요청 목록**: [`KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.1.md`](KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.1.md) (LEECU 전달용 — MEF `UNIQNAME` 공급원, C-11 CHMAP 개정 등).
+- **MEF 쪽 개정 요청 목록**: [`KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md`](KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md) (LEECU 전달용 — MEF `UNIQNAME` 공급원, C-11 CHMAP 개정 등).
 - 미세 미결: `ORIGNAME` 이름 최종 확정(ORIGNAME 유지 권고, 차선 INITNAME), `READMODE` 값 충돌(FAST vs 64AMP — 이름 분리 필요), Instrument 절(FPAID 카드안 · INSTRUME 어휘) 미착수.
 
 ### 2026-08-20 세션 기록 (아래는 그 시점 기준)

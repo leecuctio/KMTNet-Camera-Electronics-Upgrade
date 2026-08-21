@@ -1,6 +1,8 @@
 # Raw 헤더 개정에 따른 MEF ICD · 정의서 · Converter 개정 사항
 
-**v0.1 (Draft)** · 2026-08-21 · raw 헤더 검토(ACT-011)가 MEF 쪽 3자 — ICD v4.1(1위 준거) · MEF keyword 정의서 v1.0 · converter v2.2.0 — 에 미치는 개정 필요 사항의 전달 목록
+**v0.2 (Draft)** · 2026-08-21 · raw 헤더 검토(ACT-011)가 MEF 쪽 3자 — ICD v4.1(1위 준거) · MEF keyword 정의서 v1.0 · converter v2.2.0 — 에 미치는 개정 필요 사항의 전달 목록
+
+> **v0.2 에서 바뀐 것**: **`OBSERVAT` 값 재정의 C-항목 추가**(1장) — 확정 초안이 `OBSERVAT` 값을 사이트 코드(`KMTT/KMTC/KMTA/KMTS`)로 바꿨는데, 이는 converter 의 유일한 하드-실패 검사와 상충한다. Header_and_Refs 문서의 v1.7 개정(3장 신형식 표 · 7장 판정 · 8.2 폐지)과 동기.
 
 > `mef_converter/`는 읽기 전용(LEECU 소관)이므로 이 문서는 **변경 요청 목록**이지 변경 자체가 아니다. raw 쪽 근거는 `KMT_CEU_Raw_Numbering_and_Identity_v0.1.md`(번호 · 정체성 · 충돌)와 검토 세션 기록([`SMC_CLAUDE.md`](SMC_CLAUDE.md) ▶절)이다. raw 쪽 카드 이름 · 값은 아직 Draft이며, 확정 시점(D-등재 · 규격 재작성판)에 이 문서도 판을 올린다.
 
@@ -9,6 +11,8 @@
 | 항목 | 내용 | 판단 요청 |
 | --- | --- | --- |
 | **C-신설: MEF `UNIQNAME` 공급원** | raw `UNIQNAME` 폐지 후 `v2_1.py:405`의 `v("UNIQNAME","")`가 **항상 빈 문자열**을 반환한다(오류 없음) | 대안 (a) raw `FILENAME` 카드에서 채움 (b) 디스크 파일명(`mk_path`)에서 파생 — 이미 AMPINFO `RAWFILE`이 같은 원천을 씀 (c) MEF `UNIQNAME` 자체를 폐지 — MEF `FILENAME` · `RAWFILE`로 충분. **raw 쪽 권고: (c) 검토, 최소 (b)** |
+| ~~`OBSERVAT` 관련~~ (v0.2 등재 → **종결**) | 사이트 코드 재정의안이 **철회**되고 `OBSERVAT` 는 현행 체계 그대로 `TESTBED`/`CTIO`/`SAAO`/`SSO` 로 확정됐다(운영자, 2026-08-21) | **개정 항목 없음** — converter 교차검증·ICD 2.1·`rawpair.py` 와 완전 정합 |
+| **C-신설(경미): MEF `ORIGIN` 을 상수로** | `ORIGIN` 개념이 **"이 파일이 생성된 곳"** 으로 확정됐다: 관측소 raw = 관측소 이름 · 테스트베드 raw = `KASI` · **KASI 파이프라인 산출물 = `KASI`**. 현행 converter 는 raw `ORIGIN` 을 MEF 로 복사한다(`v2_1.py:341`, `v("ORIGIN","KASI")`) — MEF 는 파이프라인 산출물이므로 개념과 어긋난다 | MEF PRIMARY 의 `ORIGIN` 을 복사 대신 **상수 `'KASI'`** 로 기록. 한 줄 수정, 긴급도 낮음(관측소 raw 를 KASI 서버에서 변환하는 현행 흐름에서만 차이 발생) |
 | C-신설(선택): `ORIGNAME` pass-through | 충돌 신호(`FILENAME ≠ ORIGNAME`)는 raw에만 있다. MEF 층 충돌 필터가 필요할 때만 추가 | raw 헤더 층 필터가 기본이므로 필수 아님 |
 | **C-11 개정** | amp `MODULE`/`CHANNEL` 공급원: 구 규격의 `AMOD<nn>`/`ACHN<nn>` 색인형 65장 → **`CHMAP_LT`/`CHMAP_LB`/`CHMAP_RT`/`CHMAP_RB` 4장**으로 재설계됐다. 현행 추정식(`MODULE=1+((amp-1)//8)`, `CHANNEL=1+((amp-1)%8)`, 'placeholder' 주석)은 실배선(CCD 출력 채널이 chip당 1–16, TOP/BOT 대역이 chip마다 반대)과 다르다 | `XTALKGROUP` 파생도 이 값 기준으로 재정의. `AMPMAP` 선언 카드는 폐지 방향 |
 | C-5 · C-13 개정 | "raw geometry 선언 카드 대조" → **포장 규범 조항 + 표본 검증** 체계로 재조정 예정(`OSCNPATT` · `ROWORDR`는 규격 조항으로 이관 방향). 대조표에 2장의 이름 대응을 명시 | |

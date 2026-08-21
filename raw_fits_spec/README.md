@@ -46,9 +46,9 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | --- | --- |
 | `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ **((재작성중)).** 옛 raw pair 규격이며 **현행이 아니다.** 재검토 결과로 다시 쓴다 |
 | `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | **검토용 — 규격이 아니다.** raw ↔ L0 MEF 키워드 전수 대응표 289행. 0장이 **준수 우선순위**(1 ICD v4.1 → 2 converter 코드 → 3 keyword 정의서, 레거시 MEF 는 배경지식)를, 1.2절이 **raw 쪽 기준선**(레거시 raw 실측 헤더 123개 — `ics_sim` 출력이 아니다)을 세우고, 2장이 준거 대비 현재 상태를, 5장이 결정이 필요한 10항목을 담는다 (ACT-011) |
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.6.md` | **주로 생성물이다** (v1.6). **raw 카드 기준은 레거시 raw 실측 헤더**이고, 네 원천에서 기계 추출해 **레거시 123개를 전량 귀속**시킨다 — converter 가 **읽는 104개**, 레거시에 있으나 **읽지 않는 24장**, **도입 후보 37장**, **폐지 17장**. 8.1절은 이 검토가 새로 내린 판정이다 — `NAMPS`·`AMPPCD` 를 폐지하고 **`NAMPDET`/`NAMPRAW`** 로 통일했다. 10장은 **부분 독출(subframe·ROI·window)** 이 규격에도 미결 목록에도 없다는 제기이고, **11장은 converter 가 raw 를 읽지 않고 자기 상수로 만드는 카드**, **12장은 raw FITS 를 converter 없이 직접 쓰는 사람을 위한 안내**다. **`Raw Archon` 열은 운영자가 채우는 계획 열**이라 생성기 안에 표로 들고 있다 |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.7.md` | **v1.7 (2026-08-21) — 검토 확정분을 손으로 반영한 개정판** (v1.6 까지는 기계 추출 생성물, 구판은 `archive/`). **raw 카드 기준은 레거시 raw 실측 헤더**이고 **레거시 123개를 전량 귀속**시킨다 — converter 가 읽는 104개, 읽지 않는 24장, **도입 후보·확정 51장(7장)**, 폐지 17+3+2장(8장·8.1·8.2). v1.7: 3장 표를 6열 신형식(`Use in MEF` · `Value`/`Source`)으로, 확정 초안 반영(`AMPNAX`/`IMAGEX`/`PRESCNX`/`OVRSCNX` 계열 · `CHMAP_*` · `FILENAME`/`ORIGNAME` · `UNIQNAME` 폐지), ⚠️ `OBSERVAT` 값 재정의와 converter 상충 등재. 10~12장은 subframe 제기 · converter 자기 상수 카드 · raw 직접 사용자 안내 |
 | `KMT_CEU_Raw_Numbering_and_Identity_v0.1.md` | **Draft (2026-08-21).** 파일 번호 공간(000000–099999) · 충돌 시 번호 증가 · `FILENAME`/`ORIGNAME` 정체성 카드. 구 규격 **2.3.1절과 5.2절 일부(`UNIQNAME` · `NAMECLSH`)를 대체**할 조각 — 재작성판에 흡수 예정, D-등재 전 |
-| `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.1.md` | **Draft (2026-08-21).** raw 헤더 개정이 MEF ICD · keyword 정의서 · converter 에 요구하는 개정 사항 목록 (LEECU 전달용) — C-항목 신설·개정, raw↔MEF 이름 대응, ICD 개정 후보 |
+| `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.2.md` | **Draft v0.2 (2026-08-21).** raw 헤더 개정이 MEF ICD · keyword 정의서 · converter 에 요구하는 개정 사항 목록 (LEECU 전달용) — C-항목 신설·개정, raw↔MEF 이름 대응, ICD 개정 후보 |
 | `__reference/` | 규격 작성 시 대조한 참고 문서 사본 (아래) |
 
 `__reference/` 내용:
