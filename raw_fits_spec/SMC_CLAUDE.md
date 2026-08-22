@@ -6,22 +6,21 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ⚠️ 지금은 현행 규격이 없다 (2026-08-18 부터)
+## ✅ 현행 규격 — raw spec v1.3 (2026-08-22 발행)
 
-`KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 는 파일로는 남아 있지만 **⛔ ((재작성중)) 표시가 붙었고 근거가 아니다.** 제목 · 첫 화면 · 버전 줄 세 곳에 표시가 있다.
+**[`KMT_CEU_Raw_FITS_Specification_v1.3.md`](KMT_CEU_Raw_FITS_Specification_v1.3.md)** ("raw spec" / "로우 스펙") 이 현행이다 — 2026-08-18~22 전면 재검토의 재작성판으로, 구 "Raw FITS Pair 규격" v1.2 를 개명·대체했다(구판은 `archive/KMT_CEU_Raw_FITS_Specification_v1.2.md`, 구명 Pair_Spec).
 
-- **재작성판이 나올 때까지 이 규격을 인용하거나 근거로 구현하지 않는다.** 절 번호(5.x · 7장 · 9장)도 바뀔 수 있다.
-- 다른 문서·코드에 남은 참조 16곳은 **경로로는 유효하지만 근거로는 무효**다.
-- 특히 **ICD v4.1 §12 가 이 문서의 5장에 필요한 raw 텔레메트리 집합을 위임**하고 있고, `ics_sim` 의 `rawhdr.py` · `rawpair.py` · `hardware/archon.py` 가 5장을 구현한다. 재작성 시 이 의존을 함께 정리해야 한다.
+- **절 구성이 구판과 다르다** — 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 v1.3 기준으로 재확인. ICD v4.1 §12 의 위임 대상과 `ics_sim` 주석의 참조 정리는 **구현 일감**이다.
+- 헤더 5장의 바이트 단위 정본은 **초안 헤더 v1.0 pair**(`KMTA...MK/NT.fits.header.v1.0.txt`)다.
 
 ## 먼저 읽을 것
 
 | 문서 | 지위 |
 |---|---|
+| `KMT_CEU_Raw_FITS_Specification_v1.3.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
 | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
-| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` | **통합 문서 (2026-08-22)** — Part 1: LEECU 전달용 MEF ICD·정의서·converter 개정 요청(C-항목 · 이름 대응 · 키워드맵 이관 미결 4건) / Part 2: 번호·정체성·충돌 처리(D-016 결정문 초안 §8). 전신 MEF_Impacts v0.4 · Numbering v0.2 는 `archive/` |
+| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` | **통합 문서** — Part 1: LEECU 전달용 C-항목·이름 대응·키워드맵 이관 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.4/v0.2/v0.5 는 `archive/` |
 | `archive/KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | 검토용 — **흡수 완료 후 archive 이동(운영자 재가 2026-08-22)**: 판정은 Header_and_Refs, 미결 4건은 통합 문서 Part 1 §6. 배경 자료(전수 대응표·인벤토리)로만 유효 (ACT-011) |
-| `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` | ⛔ ((재작성중)). 참고만 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
 ## 개정 워크플로 — `__review/` 는 임시 왕복함 (운영자 확정 2026-08-22)
@@ -42,6 +41,16 @@
 - 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 **D-번호**다. 이 폴더가 기대는 것은 **D-011**(사이트 코드 파일명) · **D-013**(레거시 keyword 판정) · **D-016**(충돌 번호 증가 · `FILENAME`/`ORIGNAME` 정체성, 2026-08-22 등재).
 
 ## ▶ 이어서 시작하는 자리 (2026-08-22 기준)
+
+### 🏁 최종 (raw spec v1.3 발행 — 이 검토 사이클의 종점)
+
+- **raw spec v1.3 발행 (2026-08-22)** — 구 Pair_Spec v1.2 를 `KMT_CEU_Raw_FITS_Specification` 으로 개명하고 전면 재작성(운영자 지시). 구성: 1 목적 · 2 pair(파일명 D-011/D-014 · **충돌·정체성 D-016** · Wrote D-010) · 3 파일 구조 · 4 geometry(**4.3 포장 규범 조항** — 고정 `CAMVER`+`CTRLxCFG` · **4.5 amp 전수 표 64행** — 기계 사본 = `__reference/Detector_Ch_to_AmpID_Map_v1.0.txt`) · 5 헤더 keyword(초안 v1.0 pair 의 값 카드 135장 전량, 블록별 표 + 5.0 정책/sentinel/문자열 형/ICS INI 규칙 + 5.9 pair 규칙 + 5.10 미기재 경계) · 6 MEF·파이프라인 연동 요점 · 7 검증 체크리스트 · 8 OI(신설 15~18 포함) · 10 이력. 배경·경위는 전부 원장 v1.13·통합 문서 링크로 처리(간결 원칙 — 운영자 지시).
+- **통합 문서 v0.6** — raw spec 발행 정합: Part 2 를 파급 요약으로 축약(정본 이동 완료), 구 규격 참조 전부 현행판으로 교체. v0.5 는 `archive/`.
+- **다음 사람이 할 일 (우선순위 순)**:
+  1. **목 검토**: raw spec v1.3 전문 — 특히 4.5 amp 표(IMGSEC A/B/D 열), 5장 카드 표의 값·출처, 8장 OI 번호 부여(15~18 신설).
+  2. **LEECU 전달**: 통합 문서 v0.6 Part 1 (C-항목·키워드맵 이관 4건) + raw spec 6장.
+  3. **ics_sim 구현 일감** — v1.3 정렬: ① D-016 충돌 처리(`rawpair.py` 선검사·되감음·상한, `UNIQNAME`/`NAMECLSH`/`clash` 제거, `ORIGNAME` 상시 기록 — Part 2 §3 표) ② 정체성·컨트롤러 블록 재편(`PAIRFILE`/`CHIP*`/`RAWPROD`/`RAWVER`/`NUMFILES`/`HEMODE`/`NPHLINES` 제거, `BCKTEMP`→`Cn_*`, `CTRLVER`/`TIMVER` 등 버전 카드 제거, `ACFFILE`→`CTRLnCFG`) ③ 신설 카드(`FPAID` `TCSTIME` `TCSARC` 돔 신설 4장 `DMPTEMP` 재편 HK · `FSATEMP`/`FSAHUM` · `RDMODE` `CAMVER`) ④ `MJD-OBS`/`UT`/`TSHOPEN` 등 미기재 카드 정리 ⑤ 코드 주석의 구판 절 번호 참조 정리. 초안 v1.0 pair 와의 카드 전량 대사 테스트를 만들면 잔여가 자동으로 드러난다.
+  4. **실측·확인 항목**: OI-15(4:4 vs 5:3 — 검증 표본으로 즉시 가능) · OI-16(Tapaculo 포맷) · OI-17(e2v 데이터시트) · OI-18(NT CCDTEMP).
 
 ### 2026-08-22 확정분 · 최신 (확인 요망 6~11 전량 종결 + D-016 등재 = v1.13)
 
