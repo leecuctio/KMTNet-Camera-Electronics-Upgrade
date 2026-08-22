@@ -10,6 +10,8 @@
 |---|---|
 | [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** — v1.0.bigbuf 에 raw spec 을 적용한 판. **science 유닛용** (BIGBUF=1, 768MB 버퍼 2개 구성) |
 | [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** (512MB 버퍼 3개 구성) — 원본 그대로, 미개정. guide raw 규격이 아직 없어 spec 적용 대상이 아니다 |
+| [`README_labtest_v1.1.bigbuf.md`](README_labtest_v1.1.bigbuf.md) | **실행 안내** — 손볼 자리(행 번호) · 첫 실행 점검 · 이상할 때 원인 가르는 순서 |
+| [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
 
 > **용량 메모** (2026-08-22 실측): `__ref_archon_control/` 의 PDF 2부(4.1 MB)는
