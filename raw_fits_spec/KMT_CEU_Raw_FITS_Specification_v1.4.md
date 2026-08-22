@@ -4,7 +4,7 @@
 
 | 연동 | 값 |
 | --- | --- |
-| 정본 헤더 견본 | [`KMTA.20260818.012345.MK.fits.header.v1.0.txt`](KMTA.20260818.012345.MK.fits.header.v1.0.txt) · [`…NT.fits.header.v1.0.txt`](KMTA.20260818.012345.NT.fits.header.v1.0.txt) — 5장 카드 전량의 **바이트 단위 견본**(각 143카드 = 값 135 + COMMENT 7 + END) |
+| 정본 헤더 견본 | [`KMTA.20260821.012345.MK.fits.header.v1.0.txt`](KMTA.20260821.012345.MK.fits.header.v1.0.txt) · [`…NT.fits.header.v1.0.txt`](KMTA.20260821.012345.NT.fits.header.v1.0.txt) — 5장 카드 전량의 **바이트 단위 견본**(각 143카드 = 값 135 + COMMENT 7 + END) |
 | 카드 판정 원장 (배경·경위) | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md) — 이하 **원장**. 카드별 계승/개칭/폐지 근거, converter 대조, 레거시 123개 전량 귀속 |
 | MEF·파이프라인 파급 | [`KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md`](KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md) — 이하 **통합 문서**. LEECU 전달용 C-항목·이름 대응 |
 | 결정 기록 | `../project_management/governance/DECISION_LOG.md` — D-002(chip order) · D-010(Wrote 분리) · D-011(파일명) · D-012(백엔드 계약) · D-013(레거시 판정) · D-014(관측일) · D-015(사이트 판정) · **D-016(충돌·정체성)** |
@@ -79,8 +79,8 @@ STA Archon science controller 2대가 노출 1회당 만드는 **raw FITS pair(M
 4. **정체성 카드 둘을 모든 파일에 항상 기록한다:**
 
    ```text
-   FILENAME= 'KMTA.20260818.012345.MK' / Filename assigned by ICS
-   ORIGNAME= 'KMTA.20260818.012340.MK' / Original filename assigned by ICS counter
+   FILENAME= 'KMTA.20260821.012345.MK' / Filename assigned by ICS
+   ORIGNAME= 'KMTA.20260821.012340.MK' / Original filename assigned by ICS counter
    ```
 
    `FILENAME` = 실제 저장명(확장자 없음) — **아카이브·DTS·색인의 유일 키**. `ORIGNAME` = 카운터가 처음 배정한 이름. **충돌 신호 = `FILENAME ≠ ORIGNAME`** (값 비교 — 카드 존재가 아니다). `ORIGNAME` 결측은 충돌이 아니라 헤더 결함으로 분류한다. 둘 다 **FITS 문자열 카드 필수** — 숫자 카드는 zero-padding 을 파괴한다 (5.0절).
@@ -423,7 +423,7 @@ raw 사용자를 위한 요점 — 상세와 LEECU 실행 목록은 **통합 문
 | --- | --- | --- |
 | v1.0~v1.2 | 2026-08-06 ~ 08-13 | 구판 "Raw FITS Pair 규격" — 이력은 archive 판 11장 |
 | — | 2026-08-18 | 전면 재검토 개시 (⛔ 재작성중) — 검토는 키워드맵 v0.7 → 원장 v1.7~v1.13 사이클로 진행 |
-| **v1.4** | **2026-08-22** | **운영자 1~4장 검토 반영.** ① **2.5절(ICS `Wrote` 통보 규약) 삭제** — 취득 SW 소관이라 raw 규격의 몫이 아니다(정본은 `ics_sim/DevNote.md` 3.2). raw 사용자가 알아야 할 "`LASTFILE` 은 실재 경로가 아니다"만 2.3절 5항으로 흡수. ② **4.1 X overscan `RRRRLLLL` 확정** — 실제 획득 자료 육안 확인(운영자), "검증 표본 대조 남음" 경고 삭제 · **OI-15 종결**. ③ **4.2 다이어그램에 BOT/TOP Y overscan 84/84 분리 표시**(타일 규약 층 — 물리 clocking 분배는 OI-4 유지). ④ 4.4 열 제목 `Amp 범위` → **`AmpID 범위`**, 값도 **MEF AmpID(01–64) 기준으로 정합**(구 표의 `1–8`/`9–16` 은 chip 로컬 번호라 MEF AmpID 로 읽으면 절반만 맞았다 — 우반 chip 의 `17–24` 도 TOP) + half 판정식 명시. ※ 5장 이후는 팀 협의 후 별도 판에서 다룬다 |
+| **v1.4** | **2026-08-22** | **운영자 1~4장 검토 반영.** ① **2.5절(ICS `Wrote` 통보 규약) 삭제** — 취득 SW 소관이라 raw 규격의 몫이 아니다(정본은 `ics_sim/DevNote.md` 3.2). raw 사용자가 알아야 할 "`LASTFILE` 은 실재 경로가 아니다"만 2.3절 5항으로 흡수. ② **4.1 X overscan `RRRRLLLL` 확정** — 실제 획득 자료 육안 확인(운영자), "검증 표본 대조 남음" 경고 삭제 · **OI-15 종결**. ③ **4.2 다이어그램에 BOT/TOP Y overscan 84/84 분리 표시**(타일 규약 층 — 물리 clocking 분배는 OI-4 유지). ④ **견본 헤더 파일명을 규격에 정합** — `KMTA.20260818.…` → **`KMTA.20260821.…`** (MK·NT): 견본의 `DATE-OBS` 2026-08-21T12:34:56.789 에 SSO 관측일 보정(2.2절)을 적용하면 관측일이 `20260821` 이라 **파일명 쪽이 틀렸다**. 2.3절 예시 블록도 견본 값과 일치시켰다 — "`FILENAME` = 실제 저장명"이라는 규칙의 유일한 바이트 기준물이 스스로 그 규칙을 지키게 됐다. ⑤ 4.4 열 제목 `Amp 범위` → **`AmpID 범위`**, 값도 **MEF AmpID(01–64) 기준으로 정합**(구 표의 `1–8`/`9–16` 은 chip 로컬 번호라 MEF AmpID 로 읽으면 절반만 맞았다 — 우반 chip 의 `17–24` 도 TOP) + half 판정식 명시. ※ 5장 이후는 팀 협의 후 별도 판에서 다룬다 |
 | v1.3 | 2026-08-22 | **재작성판 발행 + 문서명 변경**(Pair_Spec → Specification). 확인 요망 11건 전량 종결분 반영: 헤더 5장을 **초안 v1.0 pair(135 값 카드) 기준으로 전면 교체** — Detector 블록 타일 해부(`PRESCNX/Y`·`OVRSCNX/Y`·`CHMAP_*`) · `FILENAME`/`ORIGNAME` 정체성(D-016, `UNIQNAME`·`NAMECLSH`·`clash/`·`PAIRFILE`·`CTRLTAG` 폐지) · 컨트롤러 블록(`CTRLxID/SN/CFG` · `ICSBUILD` 신형식 · `RDMODE`) · HK 재구성(문자열 형 · sentinel `'-999.99'`/`'9.99e-9'` · `Cn_*`) · 돔 출처 TCS 편입 · `EXPTIME` 조건부 형 · `LEDFLASH` [ms]. **4.3 포장 규범 조항 신설**(`ROWORDR`/`OSCNPATT` 카드 대체, 고정 = `CAMVER`+`CTRLxCFG`) · **4.5 amp 전수 표 신설**(기계 사본 = 채널맵 v1.0). 규격 버전 카드 미도입 확정. XTALKVER 계층 규칙(raw/L0/L1) 명시. OI 재편(15~18 신설) |
 | v1.3 | 2026-08-22 | 제자리 개정(발행 당일 보강): **부록 A 신설 — e2v CCD290-99 데이터시트(V2 2016-08, `__reference` 확보) 대응.** 4.5절 `IMGSEC` 의 `A`/`D` = image section 명칭 확인(`B` 는 원전에 없음 — 해명 잔여), 레지스터 1152 active + prescan 27 = 레거시 `PRESCANX=27` 의 원전 확인, 독출 방향 = 클럭 결선(ACF) 소관 확인. OI-17 부분 종결, K·N 회전 장착 추정을 OI-15 와 연동 |
 
