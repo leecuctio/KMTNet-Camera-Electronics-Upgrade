@@ -57,6 +57,15 @@ UNIT_CTRL_ID = 'KMTT-SCI-101'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-10
 UNIT_CTRL_SN = 'STA-0287'       #  <---- Set this: FITS CTRL1SN (백플레인 시리얼)
 OBSERVER_NAME = 'HELab'         # FITS OBSERVER
 
+## Archon STATUS 텔레메트리(Cn_TEMP/VOLT/CURR)를 헤더에 실을지.
+##
+## **False 로 두면 컨트롤러와의 왕복이 v1.0 과 완전히 같아진다** -- v1.1 이
+## 추가한 프로토콜 명령은 STATUS 하나뿐이라, 그것을 끄면 검증된 v1.0 과
+## 동일한 명령 열이 된다(헤더·파일명 변경은 호스트 쪽 일이라 무관).  실기에서
+## 조금이라도 이상하면 여기부터 끄고 취득을 지킨다 -- Cn_* 는 'NC' 로 실린다.
+TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
+TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
+
 SCRIPT_VERSION = '1.1.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
 SCRIPT_BUILD = '2026-08-22T09:00Z'  # 소스를 고치면 같이 올린다
 
@@ -239,6 +248,7 @@ TestRunNum = 0
 TestRunDone = 0
 DatasetIdLast = 0
 CURRENT_ACF = ''    # 마지막으로 적용한 ACF 경로 -- FITS CTRL1CFG/RDMODE 의 근거
+STATUS_SNAPSHOT = {}  # 노출 개시 전에 뜬 Archon STATUS -- Cn_* 카드의 원천
 
 
 #-------------------------------------------------------------------------------
@@ -290,13 +300,20 @@ def archonbinrecv():
     return reply[4:]
 
 ## Send a textual command and receive a textual response from Archon
-def archoncmd(cmd):
+def archoncmd(cmd, timeout=None):
+    ## timeout=None 이면 v1.0 과 동일하게 응답이 올 때까지 기다린다 --
+    ## APPLYALL 처럼 오래 걸리는 명령이 있어 기본 동작을 바꾸지 않는다.
+    ## 값을 주면 그만큼만 기다리고 TimeoutError 를 낸다 -- v1.1 이 새로
+    ## 넣은 STATUS 전용이고, 무한 회전으로 취득이 멈추는 것을 막는다.
     global msgref
     archon.sendall(str.encode('>%02X%s\n' % (msgref, cmd)))
     reply = b'';
+    deadline = None if timeout is None else time.time() + timeout
     while not (b'\n' in reply):
         if select.select([archon], [], [], 0.01)[0]:
             reply = reply + archon.recv(1)
+        elif deadline is not None and time.time() > deadline:
+            raise TimeoutError('no reply to %s in %.1fs' % (cmd, timeout))
     reply = reply.splitlines()[0]
     if reply[0:3].decode() != '<%02X' % msgref:
         raise Exception('Invalid command packet header')
@@ -623,16 +640,26 @@ def build_header(values):
 
 
 def archon_status():
-    """Archon STATUS 를 딕셔너리로 (매뉴얼 p.47-49).  실패하면 {}."""
+    """Archon STATUS 를 딕셔너리로 (매뉴얼 p.47-49).  실패하면 {}.
+
+    **한 번 실패하면 이후 질의를 아예 끊는다.**  상한을 넘긴 뒤 늦게 도착한
+    응답은 다음 archoncmd 가 자기 것으로 읽어 'Invalid command packet header'
+    를 내고, 그러면 취득 자체가 죽는다 -- 어긋난 뒤에도 노출마다 계속 물어보는
+    것은 그 위험을 되풀이하는 일이다.  카드 몇 장보다 취득이 우선이다.
+    """
+    global TELEMETRY_ENABLE
+    if not TELEMETRY_ENABLE:
+        return {}
     try:
         status = {}
-        for pair in archoncmd('STATUS').split():
+        for pair in archoncmd('STATUS', timeout=TELEMETRY_TIMEOUT).split():
             d = pair.decode().split('=')
             status[d[0]] = d[1]
         return status
     except Exception as e:
-        print('> WARNING: STATUS query failed (%s) -- telemetry cards go NC'
-              % e)
+        TELEMETRY_ENABLE = False
+        print('> WARNING: STATUS query failed (%s)' % e)
+        print('>          -- telemetry cards go NC for the rest of this run')
         return {}
 
 
@@ -791,7 +818,10 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         'FSATEMP': TEMP_NC, 'FSAHUM': TEMP_NC,
     }
     values.update(CHMAP[UNIT_CTRLTAG])
-    values.update(ctrl_telemetry_cards(archon_status(), ctrl_index))
+    ## 텔레메트리는 **노출 개시 전에** 떠 둔 스냅샷을 쓴다 (Exposure 참고).
+    ## 여기서 질의하면 이미 fetch 한 프레임을 손에 들고 왕복하는 셈이라,
+    ## 컨트롤러가 답하지 않으면 다 읽어낸 그 노출을 잃는다.
+    values.update(ctrl_telemetry_cards(STATUS_SNAPSHOT, ctrl_index))
     return build_header(values)
 
 
@@ -801,8 +831,14 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
 
     global config, configline
     global msgref
+    global STATUS_SNAPSHOT
 
     print('> Start for Exposure #%06d / %dms ' % (filenum, exptime))
+
+    ## FITS Cn_* 텔레메트리를 **노출 개시 전에** 떠 둔다.  v1.1 이 추가한
+    ## 프로토콜 명령은 이 STATUS 하나뿐이고, 실패해도 이 시점에는 잃을
+    ## 프레임이 없다 -- fetch 뒤에 두면 다 읽어낸 노출을 버리게 된다.
+    STATUS_SNAPSHOT = archon_status()
 
     # Set shutter trigger output control mode
     if shopen: 
