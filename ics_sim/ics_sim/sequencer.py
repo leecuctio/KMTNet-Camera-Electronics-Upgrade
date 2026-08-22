@@ -51,8 +51,7 @@ from .config import SimConfig
 from .emitter import Emitter
 from .hardware import BackendError
 from .nodes import NodeRouter, Role
-from .state import (ExpStatus, IcsState, stamp_guide, stamp_iso, stamp_iso_ms,
-                    utcnow)
+from .state import ExpStatus, IcsState, stamp_guide, stamp_iso_ms, utcnow
 from .telemetry import TelemetryRelay
 
 log = logging.getLogger('ics_sim.seq')
@@ -76,6 +75,10 @@ class Sequencer:
         self._writers: list[asyncio.Task] = []
         #: 저장이 끝날 때까지 재사용을 막기 위한 CCD 별 락
         self._write_lock: dict[str, asyncio.Lock] = {}
+        #: **진행 중 프레임이 띄운** 저장 태스크.  ABORT 의 취소 대상을
+        #: 이것으로 좁힌다 -- `_writers` 전체를 취소하면 이미 완결된 앞
+        #: 프레임의 파일까지 사라진다 (`cancel()` 참고).
+        self._frame_writers: list[asyncio.Task] = []
         #: STOP 신호.  세워지면 카운트다운이 즉시 끝나고 readout 으로 넘어간다.
         self._stop_evt = asyncio.Event()
         #: ABORT 로 취소됐는지.  _run 의 CancelledError 처리가 이것을 본다.
@@ -152,9 +155,19 @@ class Sequencer:
                     requester, save)
         self._aborted_by = requester or self.cfg.node.ics_id
         if not save:
-            for w in self._writers:
+            # **진행 중 프레임이 띄운 저장만 취소한다.**  구판은 `_writers`
+            # 전체를 취소해서, `GO n` 파이프라인에서 프레임 k 초반에 ABORT 가
+            # 오면 이미 `Acquisition Complete.` 까지 발신한 **프레임 k-1 의
+            # 파일이 기록 전에 사라졌다** (저장 태스크는 `write_delay+skew`
+            # 동안 잠들어 있다).  GO 종료 직후 새 GO 를 ABORT 하는 경우에는
+            # 직전 GO 의 완결 노출이 지워졌다 -- 그 프레임의 `Wrote` 는 영영
+            # 안 나가고(OBSAgent 25초 창) 번호는 이미 소비돼 디스크에 구멍만
+            # 남았다.  레거시는 CB 가 별도 프로세스라 앞 프레임을 끝까지 썼다.
+            for w in self._frame_writers:
                 w.cancel()
-            self._writers.clear()
+            self._writers = [t for t in self._writers
+                             if t not in self._frame_writers]
+            self._frame_writers = []
         self._task.cancel()
         return True
 
@@ -187,6 +200,17 @@ class Sequencer:
         ccds = cfg.node.ccds
         master = cfg.node.master
         ics = cfg.node.ics_id
+
+        # **STOP 은 그 프레임의 적분에만 적용된다** (`stop_integration()` 의
+        # 계약: "적분만 조기 종료").  구판은 `start()` 에서만 이벤트를 지워서
+        # `GO n` 도중 STOP 이 오면 이벤트가 세워진 채 다음 프레임으로 넘어갔고,
+        # 각 프레임의 첫 `_nap()` 이 즉시 깨어나 **남은 프레임 전부가 ~0초
+        # 노출**이 됐다 -- 그런데 헤더 `EXPTIME` 은 요청값을 그대로 실으므로
+        # (raw spec 5.4절) 정상 노출로 보이는 오염 프레임이 생산됐다.
+        self._stop_evt.clear()
+        # 이 프레임이 띄운 저장 태스크만 담는다 -- ABORT 가 이전 프레임의
+        # 저장을 취소하지 않게 하는 근거다 (`cancel()` 참고).
+        self._frame_writers = []
 
         await asyncio.sleep(cfg.scaled(cfg.timing.go_to_initializing))
 
@@ -298,20 +322,16 @@ class Sequencer:
         # ChannelState.suffix 를 읽으면 그때는 이미 다음 프레임이 덮어쓴 뒤라
         # 프레임 1 의 영상이 프레임 2 의 번호로 저장된다 (실제로 그 버그를
         # 겪었다 -- GO 5 에서 일련번호가 4개만 나왔다).
-        # 저장은 **컨트롤러 단위**, 통보는 **CCD 단위** 다 (D-010/D-011, C-16).
-        # 헤더의 텔레메트리 부분은 노출 하나에 대해 한 번만 만들고, 파일마다
-        # 다른 정체성 카드(CTRLTAG/CHIPS/PAIRFILE/FILENAME…)를 rawpair 가 얹는다.
-        # DATE-OBS 는 셔터 개방 시점에 우리가 찍은 OS 시각이다 (규격 5.7절).
+        # 저장은 **컨트롤러 단위**, 통보는 **CCD 단위** 다 (D-010/D-011).
+        # DATE-OBS 는 노출 개시 시점에 우리가 찍은 OS 시각이다 (raw spec 5.4절).
         # `stamp_iso(None)` 은 **조용히 현재 시각**을 돌려주므로 그대로 넘기면
-        # exp_start 가 비었을 때 저장 시각이 DATE-OBS 로 들어간다 -- 규격 6.1절
-        # 변경점 C-6 이 금지한 "누락을 현재 시각으로 조용히 대체" 그 자체다.
-        # 그래서 None 을 빈 문자열로 바꿔 헤더 카드를 비우고, 그 노출이
-        # converter 에서 거부되게 한다.
+        # exp_start 가 비었을 때 저장 시각이 DATE-OBS 로 들어간다 -- C-6 이
+        # 금지한 "누락을 현재 시각으로 조용히 대체" 그 자체다.  그래서 None 을
+        # 빈 문자열로 바꿔 헤더 카드를 비우고, converter 가 거부하게 한다.
         if st.exp_start is None:
             log.error('exp_start 가 없다 -- DATE-OBS 를 채울 근거가 없으므로 '
-                      '카드를 비운다 (규격 5.7절, C-6)')
-        # **밀리초까지 넣는다** (운영자 확정 2026-08-13, 규격 5.7절).  종전 `UT`
-        # 카드를 없애는 대신 `DATE-OBS` 하나가 날짜·시각을 다 담는다.
+                      '카드를 비운다 (raw spec 5.0절, C-6)')
+        # **밀리초까지 넣는다** (raw spec 5.4절).
         date_obs = stamp_iso_ms(st.exp_start) if st.exp_start is not None else ''
         # 노출 중 AUXSTATUS 재질의가 아직 돌고 있으면 기다린다 -- 스냅샷을
         # 먼저 뜨면 갱신이 헤더에 반영되지 않는다.  readout 뒤이므로 실제로는
@@ -322,14 +342,99 @@ class Sequencer:
             self._aux_requery = None
         telem = self.telem.fits_header_dict(date_obs)
         self._check_shutter_agrees_with_imagetyp(telem)
-        suffix = st.channel(ccds[0]).suffix if ccds else ''
+        # **`suffix` 는 이 프레임 개시 때 확정한 지역 변수를 그대로 쓴다**
+        # (`next_suffix()`, INITIALIZING 국면).  구판은 여기서
+        # `st.channel(ccds[0]).suffix` 를 다시 읽었는데, 그 필드는 **외부 노드가
+        # 임의 문자열을 넣을 수 있는 자리**다 -- `INITIALIZE <suffix>` 는 레거시
+        # 관례상 형식 검증이 없고(`cmd_initialize`, 실측상 CHA 노드가 쓴다),
+        # 레거시 IC 는 점 없는 4자리를 실었다.  그 값이 프레임 중간에 들어오면
+        # 파일명·번호가 그쪽으로 갈렸고, D-016 선검사의 번호 파싱까지 그 값을
+        # 받게 되어 **노출 태스크가 죽는다** -- EXPSTATUS=IDLE 도 `Wrote` 도
+        # 나가지 않아 OBSAgent 가 창 초과로 `opause` 에 빠진다 (규약 3장).
+        # 프레임의 이름은 프레임이 정한다.
+
+        # 이름 충돌 처리 (D-016, raw spec 2.3절) -- 쓰기 전에 후보 번호의
+        # MK·NT 두 경로를 **pair 동시**로 선검사한다.  번호가 오르면 카운터를
+        # 확정 번호로 동기화하고 WARNING 로그를 남긴다 (격리·개명 통보는
+        # 폐지 -- 구판 `clash/`·`NAMECLSH`·fail-safe 메시지가 이 자리에 있었다).
+        # 카운터가 처음 배정한 이름은 `ORIGNAME` 으로 모든 파일에 남는다.
+        orig_suffix = suffix
+        date_part, _, num_str = suffix.partition('.')
+        # `isdigit()` 로 먼저 걸러 **선검사가 프레임을 죽이지 못하게** 한다.
+        # `next_suffix()` 가 늘 `<8자리>.<6자리>` 를 주므로 평시에는 항상
+        # 참이고, 어긋나면 선검사만 건너뛰고 프레임은 정상 종료 경로를 탄다
+        # -- 이름이 이상한 것과 노출 통보가 사라지는 것은 피해가 다른 급이다.
+        if num_str.isdigit():
+            try:
+                final = rawpair.resolve_pair_number(
+                    cfg.paths.data_dir, st.site_code, date_part,
+                    int(num_str), check=cfg.paths.write_fits)
+            except rawpair.NumberSpaceExhausted as exc:
+                # 이 규격의 **유일한 저장 실패 조건** (D-016 2항).
+                log.error('%s', exc)
+                self.emit.error(source, '', str(exc), st.expstatus)
+                await asyncio.sleep(cfg.scaled(cfg.timing.acq_to_idle))
+                st.expstatus = ExpStatus.IDLE
+                if index < count:
+                    self.emit.image_complete(source, index, count)
+                else:
+                    self.emit.idle_done(source)
+                st.advance()
+                return
+            if final != int(num_str):
+                suffix = f'{date_part}.{final:06d}'
+                log.warning(
+                    '파일명 충돌 -- 노출 번호를 %s -> %06d 로 올려 저장한다 '
+                    '(D-016). 카운터를 확정 번호로 동기화한다', num_str, final)
+                st.sync_expnum(final)
+                # 채널 suffix 도 확정 번호로 맞춘다 -- 안 맞추면 `FILENAME`
+                # 질의(`cmd_filename` 이 `ch.suffix` 를 읽는다)가 **충돌
+                # 상대(옛 파일)의 이름**을 답한다.  `Wrote` 논리 이름은
+                # 확정 suffix 를 인자로 받으므로 이미 맞다 -- 둘이 갈리면
+                # 관측자 화면과 디스크가 어긋난다.
+                for ccd in ccds:
+                    st.channel(ccd).suffix = suffix
+
+        # **pair 양쪽에 같은 값이 실려야 하는 것은 노출당 한 번만 뜬다**
+        # (raw spec 5.9절 "반드시 동일").  컨트롤러별 저장 태스크가 각자
+        # 질의하면 두 파일의 스냅샷 시각이 `write_delay + skew` 만큼 벌어져
+        # 실기 백엔드에서 값이 갈린다 -- 시뮬은 고정값을 돌려주므로 **시험이
+        # 통과하는 채로 실기에서만 깨지는** 부류다.  노출 메타데이터도 같은
+        # 이유로 여기서 굳힌다: `_store` 는 `write_delay` 뒤에 도는데 그 사이
+        # 다음 관측의 `object`/`exp` 명령이 들어오면 프레임 N 의 헤더에 프레임
+        # N+1 의 값이 실린다 (`suffix` 를 넘겨 주는 것과 같은 이유, 12.10).
+        snap = {
+            'ctrl_info': self._backend_fact(
+                'controller_info', rawpair.CONTROLLERS[0][0],
+                default={'units': ()}),
+            'ctrl_telem': self._backend_fact('controller_telemetry',
+                                             default=None),
+            # HK 는 카메라 계통 단위이고 `CCDTEMP` 도 pair 양쪽이 같은 대표
+            # 센서다(견본 v1.0 에서 상이 7장에 없다) -- 그래서 대표 pair 의
+            # chip 으로 한 번 읽어 양쪽에 싣는다.  대표 센서의 귀속 자체는
+            # 실기 확인 항목이다 (OI-18) -- 그때 바뀌는 것은 "어느 센서인가"
+            # 이고 "양쪽이 같다" 는 5.9절 규칙은 그대로다.
+            'sensors': self._backend_fact(
+                'sensors', rawpair.CONTROLLERS[0][0],
+                rawpair.CONTROLLERS[0][1], default={}),
+            'imgtype': st.imgtype,
+            'objname': st.objname,
+            'projid': st.projid,
+            'observer': st.observer,
+            'exptime': st.effective_exptime,
+            'ledflash_ms': st.ledflash_ms,
+        }
+
         for ctrltag, chips in rawpair.CONTROLLERS:
             mine = tuple(c for c in chips if c in ccds)
             if not mine:
                 continue
-            self._writers.append(asyncio.create_task(
-                self._store(ctrltag, chips, mine, source, dict(telem), suffix),
-                name=f'ics_sim.store.{ctrltag}'))
+            task = asyncio.create_task(
+                self._store(ctrltag, chips, mine, source, dict(telem),
+                            suffix, orig_suffix, snap),
+                name=f'ics_sim.store.{ctrltag}')
+            self._writers.append(task)
+            self._frame_writers.append(task)
         self._writers = [t for t in self._writers if not t.done()]
 
         await asyncio.sleep(cfg.scaled(cfg.timing.acq_to_idle))
@@ -344,10 +449,10 @@ class Sequencer:
 
     async def _integrate_shutter(self, source: str, master: str,
                                  exptime: float) -> None:
-        """셔터를 여는 경로 (OBJECT/FLAT/SKY/DOMEFLAT/STANDARD)."""
+        """셔터를 여는 경로 (OBJECT/FLAT/SKY/DOMEFLAT)."""
         cfg, st = self.cfg, self.state
         # **DATE-OBS 는 SHOPEN 을 내는 이 시점의 OS 시각이다** (운영자 확정
-        # 2026-08-12, raw_fits_spec 5.7절).  개방 지시 **직전**에 찍는다.
+        # 2026-08-12, raw spec 5.4절).  개방 지시 **직전**에 찍는다.
         #
         # 종전에는 `open_shutter()` 가 돌아온 뒤에 찍어 "셔터가 실제로 열린
         # 시각" 을 모사했는데, **실기에서는 알 수 없는 값이다** -- 셔터는 HE
@@ -379,8 +484,9 @@ class Sequencer:
             self.emit.ic_countdown(source, master, remaining)
 
         await self.backend.close_shutter()
-        # `TSHSHUT` 근거 (규격 5.7절).  `exp_start` 와 대칭으로 **지시
-        # 시점**을 찍는다 -- 블레이드가 닫힌 시각은 여기서도 알 수 없다.
+        # 셔터 닫힘 **지시** 시각 -- 로그·진단용.  `exp_start` 와 대칭으로 지시
+        # 시점을 찍는다 (블레이드가 닫힌 시각은 여기서도 알 수 없다).  구판의
+        # `TSHSHUT` 카드는 v1.3 미기재라 헤더에는 안 실린다 (raw spec 5.10절).
         st.exp_end = utcnow()
         self.emit.ic_shutter_closed(source, master)
         await self._aux_event('close')
@@ -456,12 +562,12 @@ class Sequencer:
             log.warning(
                 'IMAGETYP=%s 는 셔터를 여는 노출인데 AUX 가 SHUTTER=%s 를 '
                 '보고했다 -- 셔터가 열리지 않았을 수 있다. 이 프레임에 빛이 '
-                '들어왔는지 확인할 것 (규격 5.10절)', st.imgtype, got)
+                '들어왔는지 확인할 것 (raw spec 5.8절)', st.imgtype, got)
         else:
             log.warning(
                 'IMAGETYP=%s 는 셔터를 열지 않는데 AUX 가 SHUTTER=%s 를 '
                 '보고했다 -- 광 누출이거나 셔터 고장이다. 이 프레임의 '
-                'dark/bias 값은 믿을 수 없다 (규격 5.10절)', st.imgtype, got)
+                'dark/bias 값은 믿을 수 없다 (raw spec 5.8절)', st.imgtype, got)
 
     async def _aux_event(self, which: str) -> None:
         """셔터 개폐를 AUX control 서버에 알린다.
@@ -577,25 +683,10 @@ class Sequencer:
         return tuple(known + rest)
 
     # -- 저장 -------------------------------------------------------------
-
-    def _darktime(self) -> float:
-        """FITS `DARKTIME` [s] -- 전하가 쌓인 총 시간 (규격 5.7절).
-
-        셔터 프레임은 개방 지시~닫힘 지시 실측을 쓰고, 셔터를 열지 않는
-        DARK/BIAS 는 요청 노출시간을 쓴다.
-
-        ⚠️ **엄밀한 정의는 ERASE 완료부터 readout 끝까지**이고 그러려면 ERASE
-        완료 시각이 필요하다.  지금은 노출 구간만 재므로 readout 중에 쌓인
-        전하가 빠진다 -- `EXPTIME` 과 같아지는 경우가 생긴다.  레거시는 이 칸을
-        아예 채우지 않았고(실측본이 `EXPTIME=30` 인데 `DARKTIME=0`), converter
-        는 없으면 `0.0` 으로 떨어뜨려 **BIAS 와 구분되지 않게** 만든다(규격 6.2절).
-        그래서 근사값이라도 싣는 편이 낫다고 판단했다.  정밀화는 ERASE 시각을
-        상태에 남긴 뒤에 한다 (DevNote 13 backlog).
-        """
-        st = self.state
-        if st.exp_start is not None and st.exp_end is not None:
-            return round((st.exp_end - st.exp_start).total_seconds(), 3)
-        return float(st.effective_exptime)
+    #
+    # 구판의 `_darktime()` 은 없앴다 -- `DARKTIME` 은 v1.3 미기재 카드다
+    # (raw spec 5.10절, `EXPTIME` 파생은 하류 몫).  `st.exp_end`(셔터 닫힘
+    # 지시 시각)는 로그·진단용으로 계속 찍는다.
 
     def _backend_fact(self, method: str, *args, default):
         """백엔드에서 헤더용 사실을 받아 온다.  **없거나 실패하면 기본값.**
@@ -620,13 +711,14 @@ class Sequencer:
 
     async def _store(self, ctrltag: str, chips: tuple[str, str],
                      reporting: tuple[str, ...], source: str,
-                     telem: dict, suffix: str) -> None:
+                     telem: dict, suffix: str, orig_suffix: str,
+                     snap: dict) -> None:
         """컨트롤러 하나의 FITS 저장(**파일 1개**) + CCD 단위 `Wrote` 발신.
 
-        **저장 단위와 통보 단위가 갈라진다** (D-010/D-011, raw_fits_spec 2.5절,
-        변경점 C-16).  파일은 `<SITE>.<날짜>.<번호>.<MK|NT>.fits` 하나이고,
-        `Wrote` 는 그 파일이 담은 chip 마다 하나씩 **레거시 형식의 논리 이름**
-        (`KMTN<c>.…`)으로 낸다.  OBSAgent 는 논리 이름만 보므로 무개정이다.
+        **저장 단위와 통보 단위가 갈라진다** (D-010/D-011, DevNote 3.2).
+        파일은 `<SITE>.<날짜>.<번호>.<MK|NT>.fits` 하나이고, `Wrote` 는 그
+        파일이 담은 chip 마다 하나씩 **레거시 형식의 논리 이름**(`KMTN<c>.…`)
+        으로 낸다.  OBSAgent 는 논리 이름만 보므로 무개정이다.
 
         레거시는 IC -> CB TRANSFER DISK<n> / REQ SWAP / ACK SWAP 핸드셰이크로
         디스크 링을 돌렸지만, 신규는 단일 저장 경로다(DevNote 6.2) -- 취합
@@ -635,12 +727,18 @@ class Sequencer:
 
         Args:
             ctrltag: `MK` 또는 `NT`.
-            chips: 이 파일이 담는 chip, X 낮은 쪽부터 (`CHIP1`, `CHIP2`).
+            chips: 이 파일이 담는 chip, X 낮은 쪽부터.
             reporting: 그중 실제로 통보할 chip (설정에서 빠진 CCD 제외).
-            telem: 노출 하나분 텔레메트리 카드.  정체성 카드는 여기서 얹는다.
-            suffix: 프레임 시작 시점에 확정된 `<YYYYMMDD>.<NNNNNN>`.
-                **여기서 다시 계산하면** 파이프라인된 다음 프레임의 번호를
-                집어 온다 (12.10 에서 실제로 겪은 경합).
+            telem: 노출 하나분 TC 중계 카드 (`telemetry.fits_header_dict()`).
+            suffix: **확정된** `<YYYYMMDD>.<NNNNNN>` -- D-016 선검사를 거친
+                값이다.  이름 결정은 `_frame` 몫이고 여기서는 수령만 한다
+                (통합 문서 Part 2 §3).  다시 계산하면 파이프라인된 다음
+                프레임의 번호를 집어 온다 (12.10 에서 실제로 겪은 경합).
+            orig_suffix: 카운터가 처음 배정한 suffix -- `ORIGNAME` 의 근거.
+                충돌이 없었으면 `suffix` 와 같다.
+            snap: **노출당 한 번 굳힌** pair 공통 사실 -- 백엔드 3계약 결과와
+                노출 메타데이터.  여기서 다시 질의·조회하지 않는 것이 5.9절
+                "반드시 동일" 의 구조적 보장이다 (`_frame` 의 주석 참고).
         """
         cfg, st = self.cfg, self.state
         lock = self._write_lock.setdefault(ctrltag, asyncio.Lock())
@@ -650,83 +748,53 @@ class Sequencer:
             skew = max(cfg.timing.skew_of(c) for c in chips)
             await asyncio.sleep(cfg.scaled(cfg.timing.write_delay + skew))
 
-            site = cfg.node.telid
-            # 이름이 겹치면 **개명하지 않고 `clash/` 로 격리**하고 시각 접미를
-            # 붙인다 (raw_fits_spec 2.3.1절).  세 겹이 각각 다른 질문에 답한다 --
-            # 어디에(디렉토리) · 어느 것인지(접미) · 일어났는지(NAMECLSH 카드).
-            path, stem, clashed = rawpair.resolve_write_path(
-                cfg.paths.data_dir, site, suffix, ctrltag,
-                check=cfg.paths.write_fits)
-            nominal = rawpair.physical_path(cfg.paths.data_dir, site, suffix,
-                                            ctrltag)
+            # **실효 사이트는 `state.site_code` 다** -- IP 판정이 ini 를 이긴다
+            # (D-015, raw spec 2.2절).  구판은 여기서 `cfg.node.telid`(ini
+            # 원값)를 읽었는데, 그러면 판정이 ini 와 다를 때 관측일 경계는
+            # 판정값(`st.obs_date()`)을 쓰면서 파일명 `<SITE>` 와 `OBSERVAT` 는
+            # ini 값이 되어 **한 파일 안에서 사이트가 갈렸다** -- 기동 배너가
+            # 찍는 파일명 예시(`st.site_code` 기준)와도 어긋났다.
+            site = st.site_code
+            path = rawpair.physical_path(cfg.paths.data_dir, site, suffix,
+                                         ctrltag)
 
-            # 헤더는 **출처가 다른 세 덩어리**를 겹쳐 만든다 (규격 5장의
-            # `출처` 칸).  겹치는 순서가 곧 우선순위다.
-            #
-            #   1. telem      -- `ICS`.  TC 가 중계한 AUX/TCS 값 + DATE-OBS
-            #   2. rawhdr     -- `SITE`/`ARCHON`/`ACQ`.  geometry · detector ·
-            #                    컨트롤러 · 전압 · 노출 · 측지값 · 온도
-            #   3. identity   -- `ACQ`.  파일 정체성과 pair provenance
-            #
-            # **겹침을 주석으로 주장하지 않고 실제로 검사한다.**  한때 여기에
-            # "두 쪽이 겹치지 않는다" 고 적어 뒀는데 `SHUTTER` 가 겹치고 있었고,
-            # 그 주석 때문에 아무도 확인하지 않았다 (2026-08-13 정정).
-            #
-            # 정적 시험으로는 부족하다 -- `telem` 의 key 는 **와이어에서 온다.**
-            # TC 가 우리 카드와 같은 이름을 보내기 시작하면 그 순간 조용히
-            # 덮이므로, 런타임에 봐야 한다.
-            header = dict(telem)
-            header.update(rawhdr.spec_header(
+            # 헤더 = TC 중계 카드(telem)를 바닥에 깔고 rawhdr 블록을 얹은
+            # 값 풀 -> `rawcards.render()` 템플릿 조립.  구판의 "겹침 런타임
+            # 검사"는 템플릿이 대체한다 -- 템플릿에 없는 와이어 키는 카드로
+            # 새지 못하고, 카드 순서·comment 는 견본 v1.0 과 바이트 단위로
+            # 같다 (raw spec 5장 머리말).
+            cards = rawhdr.spec_cards(
                 ctrltag=ctrltag, site_code=site,
                 backend_name=getattr(self.backend, 'name', ''),
                 ics_build=st.ics_build,
-                ctrl_info=self._backend_fact('controller_info', ctrltag,
-                                             default={'units': ()}),
-                sensors=self._backend_fact('sensors', ctrltag, chips,
-                                           default={}),
-                volts=self._backend_fact('voltages', ctrltag, default=None),
-                ampmap=self._backend_fact('amp_map', ctrltag, default=None),
+                # pair 공통 사실은 `_frame` 이 굳힌 스냅샷에서 온다 (5.9절)
+                ctrl_info=snap['ctrl_info'],
+                ctrl_telem=snap['ctrl_telem'],
+                sensors=snap['sensors'],
                 cfg_site=cfg.site_for(site),
-                date_obs=str(telem.get('DATE-OBS', '')),
-                exp_start=st.exp_start, exp_end=st.exp_end,
-                exptime=st.effective_exptime,
-                darktime=self._darktime(),
-                ledflash_ms=st.ledflash_ms, exp_measured=None,
-                imgtype=st.imgtype, objname=st.objname,
-                projid=st.projid, observer=st.observer,
                 # ICS INI 출처 카드의 ini 오버라이드 (운영자 지시 2026-08-22)
                 cfg_camera=cfg.camera.as_dict(),
-                cfg_ctrl=cfg.controllers.overrides()))
-
-            clobbered = sorted(set(telem) & set(header) - {'DATE-OBS'}
-                               & {k for k in header if k not in telem})
-            if clobbered:                       # pragma: no cover -- 회귀 감지용
-                log.error('rawhdr 가 TC 중계 카드를 덮었다: %s -- 규격 5장 표의 '
-                          '`출처` 칸이 갈라진 것이니 그쪽을 먼저 고칠 것',
-                          ', '.join(clobbered))
-
-            # `UNIQNAME` 은 정본(항상 정규 형태), `FILENAME` 은 실제로 쓴 이름.
-            # 겹쳐도 `UNIQNAME` 이 안 바뀌므로 식별이 사라지지 않는다.
-            header.update(rawpair.identity_header(
-                site_code=site, suffix=suffix, ctrltag=ctrltag,
-                filename=stem, created=stamp_iso(), clashed=clashed,
-                origin=cfg.site_for(site).get('origin', '')))
+                cfg_ctrl=cfg.controllers.overrides(),
+                rdmode=cfg.controllers.rdmode,
+                telem_cards=telem,
+                date_obs=str(telem.get('DATE-OBS', '')),
+                # 노출 메타데이터도 스냅샷에서 -- live state 를 읽으면 다음
+                # 관측의 object/exp 명령이 이 프레임 헤더에 실린다
+                exptime=snap['exptime'],
+                ledflash_ms=snap['ledflash_ms'],
+                imgtype=snap['imgtype'], objname=snap['objname'],
+                projid=snap['projid'], observer=snap['observer'],
+                # FILENAME = 실제 저장명 · ORIGNAME = 카운터 최초 배정명.
+                # 충돌 신호 = 두 값의 불일치 (D-016).
+                filename=rawpair.name_stem(site, suffix, ctrltag),
+                origname=rawpair.name_stem(site, orig_suffix, ctrltag))
 
             try:
                 rate = await self.backend.write_frame(ctrltag, chips, path,
-                                                      header)
+                                                      cards)
             except BackendError as exc:
                 self.emit.error(source, '', str(exc), st.expstatus)
                 return
-
-            if clashed:
-                # fail-safe 경고는 **파일당 1회, ICS 이름으로 노출 개시자에게만**
-                # 보낸다 (2026-08-12 확정).  레거시는 `*.CB>{ICS, OBS}` 로 양쪽에
-                # 보냈지만 그건 CB 가 별도 프로세스여서였고, 통합 구조에서는 ICS
-                # 가 파일을 쓴 당사자라 자기 앞 발신이 낭비다.  발신자를 CCD 단위
-                # `*.CB` 로 하지 않는 이유와 OBSAgent 쪽 안전성 근거는
-                # `emitter.name_clash()` docstring 에 있다.
-                self.emit.name_clash(source, nominal, path)
 
             for ccd in reporting:
                 if (cfg.behavior.injecting('wrote_drop')
@@ -741,7 +809,7 @@ class Sequencer:
                 # (OBSAgent 는 무시한다).
                 self.emit.ic_disk_write_complete(cfg.node.ics_id, ccd)
                 # RATE 는 그 파일의 측정값을 두 통보에 **동일하게** 싣는다 --
-                # CCD 별로 나누지 않는다 (raw_fits_spec 2.5절 말미).
+                # CCD 별로 나누지 않는다 (DevNote 3.2).
                 self.emit.cb_wrote(cfg.node.ics_id, ccd, logical, rate)
                 # OBSAgent 가 실제로 세는 것은 이 중계다.
                 self.emit.wrote_relay(source, logical, rate, st.expstatus)

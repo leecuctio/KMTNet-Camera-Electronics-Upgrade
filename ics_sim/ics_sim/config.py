@@ -28,7 +28,7 @@ _NODE_ID_RE = re.compile(r'^[A-Z0-9._]{2,8}$')
 #: 거르는 책임이 전적으로 클라이언트 쪽에 있다.
 _RESERVED_IDS = frozenset({'AL', 'ALL', 'XIS'})
 #: site <-> TELID 정합 (D-011).  TELID 는 TC 텔레메트리 규약과 같고, 실기의
-#: raw pair 물리 파일명 <SITE> prefix 로도 쓰인다 (raw_fits_spec 2.3절).
+#: raw pair 물리 파일명 <SITE> prefix 로도 쓰인다 (raw spec 2.2절).
 log = logging.getLogger('ics_sim.config')
 
 _SITE_TELID = {'ctio': 'KMTC', 'saao': 'KMTS', 'sso': 'KMTA', 'testbed': 'KMTT'}
@@ -111,9 +111,9 @@ class SiteCfg:
 
     **좌표를 코드에 박지 않는 이유**: 레거시 실측본으로 확인된 것은 SSO 뿐이고
     (`LATITUDE='-31:16:24'` `LONGITUD='210:56:08'` `ELEVATIO=1150`), CTIO/SAAO
-    값은 이 저장소 어디에도 없다.  추측한 좌표는 규격 6.2절이 경계하는 "조용히
+    값은 이 저장소 어디에도 없다.  추측한 좌표는 raw spec 6장이 경계하는 "조용히
     틀린 값" 그 자체가 된다 -- **겉보기엔 유효한 좌표라 아무도 의심하지 않는다.**
-    설정으로 받고, 없으면 sentinel 을 싣는다 (규격 5.9절, OI-11).
+    설정으로 받고, 없으면 sentinel 을 싣는다 (raw spec 5.3절).
 
     `LONGITUD` 는 레거시 관례대로 **서경**(`[deg W]`)이다 -- SSO 의
     `210:56:08` 이 동경 `149:03:52` 의 보수다.  동경으로 적으면 부호가 뒤집힌
@@ -147,23 +147,25 @@ class SiteCfg:
 
 @dataclass
 class CameraCfg:
-    """FITS `DETECTOR` · `CAMVER` · `INSTRUME` -- Source 가 `ICS INI` 인 카드.
+    """FITS `DETECTOR`·`CAMVER`·`INSTRUME`·`FPAID` -- `ICS INI` 출처 카드.
 
     **`ICS INI` 출처 카드는 전부 ini 에서 수정할 수 있어야 한다** (운영자 지시
-    2026-08-22, Header_and_Refs v1.12 확인 요망 6).  빈 값이면 `rawhdr` 의
-    기본(상수 또는 사이트 유도값)을 쓴다.  `CAMVER` 는 **HW·성능상 변경이
-    있을 때만 올리는** 전자부 세대 참조점이다 (운영자, 2026-08-22).
+    2026-08-22).  빈 값이면 `rawhdr` 의 기본(상수 또는 사이트 유도값)을 쓴다.
+    `CAMVER` 는 **HW·성능상 변경이 있을 때만 올리는** 전자부 세대 참조점이고
+    4.3절 포장 규범 조항의 고정 대상(`CAMVER`+`CTRLxCFG`)이다.
     """
 
     detector: str = ''
     camver: str = ''
     instrume: str = ''
+    fpaid: str = ''
 
     def as_dict(self) -> dict:
-        """`rawhdr.detector_header()` 오버라이드.  빈 값은 빼고 넘긴다."""
+        """`rawhdr.instrument_header()` 오버라이드.  빈 값은 빼고 넘긴다."""
         return {k: v for k, v in (('detector', self.detector),
                                   ('camver', self.camver),
-                                  ('instrume', self.instrume)) if v}
+                                  ('instrume', self.instrume),
+                                  ('fpaid', self.fpaid)) if v}
 
 
 @dataclass
@@ -185,6 +187,9 @@ class ControllersCfg:
     ctrl2_id: str = ''
     ctrl2_sn: str = ''
     ctrl2_cfg: str = ''
+    #: FITS `RDMODE`(독출 모드 선언, raw spec 5.5절).  비면 코드 기본
+    #: `NORMAL`.  MEF `READMODE`(`'64AMP'`, 구조 선언)와 **별개**다.
+    rdmode: str = ''
 
     def overrides(self) -> dict[int, dict]:
         """`rawhdr.controller_header()` 오버라이드 -- 색인(1=MK, 2=NT)별
@@ -235,7 +240,7 @@ class TimingCfg:
     #: `SHUTOP='OPENING'` 이고 `SHUTTER` 는 리밋 스위치가 아직 안 트립했을 수
     #: 있다(`CLOSED`/`UNKNOWN`).  운영자는 `SHUTOP='OPENING'` 으로 충분하다고
     #: 확정했다.  Full/Half 2중 블레이드 중 Full 리밋이 더 일찍 트립하는지는
-    #: 모르므로 **벤치 실측으로 조정할 수 있게 설정값으로 뺐다** (규격 OI-14).
+    #: 모르므로 **벤치 실측으로 조정할 수 있게 설정값으로 뺐다** (raw spec OI-13).
     aux_requery_after_shopen: float = 3.0
     countdown_tick_dark: float = 5.00
     countdown_tick_shop: float = 5.217
@@ -457,7 +462,7 @@ class SimConfig:
         # site <-> telid 정합 (D-011).  telid 는 AUXSTATUS 응답값이자 실기
         # (ics_archon) raw pair 물리 파일명의 <SITE> prefix 가 되므로, 설정
         # 오배포(예: CTIO ini 를 SAAO 에 배포)가 여기서 잡히지 않으면 잘못된
-        # 사이트 코드가 아카이브 파일명에 영구히 박힌다 (raw_fits_spec 2.3절).
+        # 사이트 코드가 아카이브 파일명에 영구히 박힌다 (raw spec 2.2절).
         expected_telid = _SITE_TELID.get(self.node.site.lower())
         if expected_telid is None:
             raise ConfigError(
@@ -679,9 +684,15 @@ def load(path: str | None = None) -> SimConfig:
         p.data_dir = s.get('data_dir', p.data_dir).strip()
         p.write_fits = _bool(s, 'write_fits', p.write_fits)
         p.expnum_file = s.get('expnum_file', p.expnum_file).strip()
-        shape = _ints(s, 'fits_shape', p.fits_shape)
-        if len(shape) == 2:
-            p.fits_shape = (shape[0], shape[1])
+        raw_shape = s.get('fits_shape', '').strip().lower()
+        if raw_shape in ('spec', 'full'):
+            # raw spec 3장의 실물 chip 크기 (rows, cols) -- 파일은 chip 2개를
+            # X 로 이어 붙여 19200x9400 이 된다 (hardware/sim.py).
+            p.fits_shape = (9400, 9600)
+        else:
+            shape = _ints(s, 'fits_shape', p.fits_shape)
+            if len(shape) == 2:
+                p.fits_shape = (shape[0], shape[1])
 
     # 사이트 측지값.  **`[site.<이름>]` 전부를 표로 읽고 `[site]` 는 따로 둔다.**
     #
@@ -720,12 +731,13 @@ def load(path: str | None = None) -> SimConfig:
         c.camver = _head(s, 'camver', c.camver)
         # `instrume` 은 공백이 값의 일부다 (`KMTA 18k CCD`).
         c.instrume = _text_or(s, 'instrume', c.instrume)
+        c.fpaid = _head(s, 'fpaid', c.fpaid)
 
     if cp.has_section('controllers'):
         s = cp['controllers']
         c = cfg.controllers
         for key in ('ctrl1_id', 'ctrl1_sn', 'ctrl1_cfg',
-                    'ctrl2_id', 'ctrl2_sn', 'ctrl2_cfg'):
+                    'ctrl2_id', 'ctrl2_sn', 'ctrl2_cfg', 'rdmode'):
             setattr(c, key, _head(s, key, getattr(c, key)))
 
     if cp.has_section('timing'):

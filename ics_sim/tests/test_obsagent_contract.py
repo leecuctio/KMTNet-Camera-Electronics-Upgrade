@@ -275,7 +275,6 @@ def test_go_reaches_prep_state_promptly(dark_run):
     ('OBS>ICS flat flat', 'FLAT'),
     ('OBS>ICS sky sky', 'SKY'),
     ('OBS>ICS domeflat df', 'DOMEFLAT'),
-    ('OBS>ICS standard std', 'STANDARD'),
     ('OBS>ICS exp 30', 'EXP'),
     ('OBS>ICS observer smc', 'OBSERVER'),
     ('OBS>ICS ledflash 1', 'LEDFLASH'),

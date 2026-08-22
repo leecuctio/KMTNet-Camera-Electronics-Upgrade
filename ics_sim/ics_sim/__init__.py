@@ -9,7 +9,7 @@ K/M/T/N.CB = 9노드)를 따른다.  설계 근거와 실측 자료는 DevNote.m
 
 from __future__ import annotations
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 
 #: **마지막 갱신 일시 (UTC).  손으로 적는다.**
 #:
@@ -30,7 +30,7 @@ __version__ = '0.1.0'
 #: 다른 것처럼 보이는데, `ICSBUILD` 는 **시각 카드가 아니라 사람이 떼어 읽는
 #: 식별자**다 -- 버그 리포트·로그에 붙여넣으면 `TIMESYS` 가 옆에 없으므로 `Z` 가
 #: 값을 한다.  일관성만 보고 지우면 시간대 없는 문자열이 남는다.
-__build_date__ = '2026-08-13T07:00Z'
+__build_date__ = '2026-08-22T09:00Z'
 
 
 def build_id(version: str = __version__,

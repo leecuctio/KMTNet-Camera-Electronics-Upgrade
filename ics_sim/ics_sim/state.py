@@ -11,12 +11,11 @@
     KMTN<ccd 한 글자>.<yyyymmdd 8자>.<nnnnnn 6자>.fits
              ^KMTN+6 부터 15자 = "20250902.057288"
 
-단, 고정인 것은 **Wrote 메시지에 싣는 논리 이름**이다 (D-011/D-010).  실기
-(ics_archon)의 디스크 실물은 컨트롤러당 1개 <SITE>.<날짜>.<번호>.<MK|NT>.fits
-2개로 저장하고 (<SITE> 는 [node] site 에서 유도한 KMTC/KMTS/KMTA/KMTT,
-D-011), 이 논리 이름은 통보 전용이 된다 -- filename() 은 그때 논리 이름
-생성기와 물리 경로로 분리된다 (raw_fits_spec 2.3/2.5절, DevNote 9.1/13장 C-16).
-시뮬은 레거시 재현이 목적이라 논리 이름 그대로 저장까지 한다.
+단, 고정인 것은 **Wrote 메시지에 싣는 논리 이름**이다 (D-011/D-010).  디스크
+실물은 컨트롤러당 1개 <SITE>.<날짜>.<번호>.<MK|NT>.fits 2개이고, 그 `<SITE>`
+는 **호스트 IP 로 판정한 실효 사이트**(아래 `site_code`)다 -- 판정이 ini 를
+이긴다 (D-015, raw spec 2.2절).  논리 이름은 통보 전용이다 (DevNote 3.2
+-- v1.4 에서 규격 2.5절이 삭제되고 정본이 그쪽으로 옮겨졌다).
 """
 
 from __future__ import annotations
@@ -27,6 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from . import build_id
+from .rawpair import NUM_SPACE
 
 log = logging.getLogger('ics_sim.state')
 
@@ -49,8 +49,18 @@ class ExpStatus:
 #: 셔터를 열지 않는 이미지 타입.
 NO_SHUTTER = frozenset({'BIAS', 'DARK'})
 
-#: ICS 가 받아들이는 이미지 타입 명령.
-IMAGE_TYPES = ('BIAS', 'DARK', 'OBJECT', 'FLAT', 'SKY', 'DOMEFLAT', 'STANDARD')
+#: ICS 가 받아들이는 이미지 타입 명령 = **raw spec 5.4절 `IMAGETYP` 통제
+#: 어휘와 정확히 같다.**  헤더가 실을 수 없는 값을 명령으로 받으면 규격 밖
+#: 값이 아카이브에 박히므로, 두 목록이 갈리면 안 된다
+#: (`tests/test_raw_header.py` 가 대조한다).
+#:
+#: `STANDARD` 는 **폐지했다** (운영자 확정 2026-08-22 -- "이제 안 쓴다").
+#: 레거시 명령 테이블에는 있었고 핸들러도 있었지만 규격 5.4절 어휘에 없어,
+#: 그대로 두면 `IMAGETYP='STANDARD'` 가 규격 밖 값으로 실렸다.  실사용
+#: `.osc` 관측 스크립트 22개와 레거시 로그 샘플에 용례가 0건이라 걷어내도
+#: 실운용에 닿지 않는다.  **값을 다시 늘릴 일이 생기면 raw spec 5.4절과 이
+#: 목록을 함께 고친다** (운영자 지시 -- 한쪽만 고치면 조용히 어긋난다).
+IMAGE_TYPES = ('BIAS', 'DARK', 'OBJECT', 'FLAT', 'SKY', 'DOMEFLAT')
 
 
 def utcnow() -> datetime:
@@ -137,6 +147,9 @@ class IcsState:
     #: 6자리 파일 일련번호.  레거시 IC 는 4자리였고 그 불일치를 INITIALIZE 로
     #: 우회했다(ics_legacy_report 3.4절).  신규는 애초에 6자리로 통일한다.
     #:
+    #: **번호 공간은 `000000`–`099999`** 이고 100000 에서 되감는다
+    #: (`rawpair.NUM_SPACE`, D-016 1항 -- 레거시 관례).
+    #:
     #: **재실행에도 되돌아가지 않는다** -- 마지막으로 쓴 번호를 `expnum_file` 에
     #: 적어 두고 기동 시 그 다음 번호부터 시작한다(load_expnum, DevNote 7 `[paths]`).
     expnum: int = 1
@@ -158,7 +171,7 @@ class IcsState:
     #: 써야 하는데 호출측이 매번 넘기게 하면 한쪽을 빠뜨린다 -- 그러면 EXPNUM
     #: 응답과 실제 파일명의 날짜가 갈리고, 그건 야간 경계에서만 드러난다.
     site_code: str = 'KMTT'
-    #: FITS `ICSBUILD` -- **이 프로그램의** 빌드 식별자 (규격 5.1절).
+    #: FITS `ICSBUILD` -- **이 프로그램의** 빌드 식별자 (raw spec 5.5절).
     #:
     #: 한때 기본값이 레거시 ICS 의 `'KX2016-03-23:1381'` 이었다.  없는 것이
     #: 아니라 **적극적으로 거짓**이었고, `ICSBUILD` 를 둔 목적(헤더 이상을 소스
@@ -178,10 +191,10 @@ class IcsState:
     #: 셔터 개방(또는 논리적 노출 개시) 시각.  TCSSTATUS 의 DATE-OBS 가 된다.
     exp_start: datetime | None = None
 
-    #: 셔터 닫힘 **지시** 시각.  FITS `TSHSHUT` 이 된다 (규격 5.7절).
-    #: `exp_start` 와 대칭으로 지시 시점을 찍는다 -- 블레이드가 실제로 닫힌
-    #: 시각은 알 수 없다(AUX 는 리밋을 읽기만 한다, DevNote 9.2.2).
-    #: DARK/BIAS 는 셔터 경로를 지나지 않으므로 `None` 으로 남는다.
+    #: 셔터 닫힘 **지시** 시각 -- 로그·진단용.  `exp_start` 와 대칭으로 지시
+    #: 시점을 찍는다 (블레이드가 실제로 닫힌 시각은 알 수 없다 -- AUX 는
+    #: 리밋을 읽기만 한다, DevNote 9.2.2).  구판의 `TSHSHUT` 카드는 v1.3
+    #: 미기재다 (raw spec 5.10절).  DARK/BIAS 는 `None` 으로 남는다.
     exp_end: datetime | None = None
 
     channels: dict[str, ChannelState] = field(default_factory=dict)
@@ -231,7 +244,7 @@ class IcsState:
         # 죽었을 때 그 번호가 기록되지 않아 재실행이 같은 번호를 다시 쓴다
         # -- 방금 저장한 파일과 충돌해 파일명 fail-safe 를 부르는 경로다.
         self._record_expnum()
-        return f'{self.date_part}.{self.expnum:06d}'
+        return f'{self.date_part}.{self.expnum % NUM_SPACE:06d}'
 
     def peek_suffix(self, when: datetime | None = None) -> str:
         """**다음** 노출이 쓸 suffix 를 만들되 상태는 바꾸지 않는다.
@@ -252,15 +265,26 @@ class IcsState:
         finally 에서 반드시 내려간다.
         """
         nxt = self.expnum + 1 if (self.exposing and self.suffix_taken) else self.expnum
-        return f'{self.obs_date(when)}.{nxt:06d}'
+        return f'{self.obs_date(when)}.{nxt % NUM_SPACE:06d}'
 
     def ics_filename(self, when: datetime | None = None) -> str:
         """FILENAME 명령의 ICS 레벨 응답 -- 'ICS.<iso>.<nnnnnn>'."""
         return f'ICS.{stamp_guide(when)}.{self.expnum:06d}'
 
     def advance(self) -> None:
-        self.expnum += 1
+        # 번호 공간 000000–099999 순환 (rawpair.NUM_SPACE, D-016 1항).
+        self.expnum = (self.expnum + 1) % NUM_SPACE
         self.suffix_taken = False
+
+    def sync_expnum(self, number: int) -> None:
+        """확정 번호로 카운터를 동기화한다 (D-016 3항).
+
+        이름 충돌로 `rawpair.resolve_pair_number()` 가 번호를 올렸을 때
+        불린다 -- 평소 영속화 경로(`_record_expnum`) 그대로 기록하고, 점프는
+        호출측(`sequencer`)이 WARNING 로그를 남긴다.
+        """
+        self.expnum = number % NUM_SPACE
+        self._record_expnum()
 
     # -- expnum 지속 (2026-08-11 운영자 확정) -----------------------------
     #
@@ -297,7 +321,8 @@ class IcsState:
             log.warning('expnum 기록이 음수다 (%s: %d) -- %06d 부터 시작한다',
                         path, last, self.expnum)
             return
-        self.expnum = last + 1
+        # 마지막이 099999 였으면 000000 으로 되감는다 (D-016 1항).
+        self.expnum = (last + 1) % NUM_SPACE
         log.info('expnum 기록을 이어받는다 -- 마지막 %06d, 이번 %06d (%s)',
                  last, self.expnum, path)
 

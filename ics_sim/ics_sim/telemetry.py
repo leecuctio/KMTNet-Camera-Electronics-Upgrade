@@ -35,7 +35,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from . import impv2
+from . import impv2, rawcards
 from .config import SimConfig
 from .impv2 import Message
 
@@ -46,13 +46,14 @@ AUX_TAIL = ('KBUILD', 'MBUILD', 'TBUILD', 'NBUILD', 'GBUILD', 'ICSBUILD')
 
 #: 없을 때 sentinel 을 넣어줄 필드 (FITS 헤더가 기대하는 것들).
 #:
-#: **수치 sentinel 은 계층에 따라 값이 다르다** (C-9 / raw_fits_spec OI-6):
+#: **sentinel 은 계층에 따라 다르다** (C-9):
 #:   - 레거시 **메시지 계층**(`ICS>*.IC STATUS: AUXSTATUS …`)은 `'0'` -- 레거시
-#:     관례를 그대로 재현한다 (DevNote 4.3, 11.2).
-#:   - **FITS 헤더**는 규격 5.0절대로 정수 `-1` / 실수 `-999.0` 를 쓴다.
-#:     `0` 을 값-없음으로 쓰면 `SECZ=0`(물리적으로 불가능) · `ALT=0` 같은 값이
+#:     관례를 그대로 재현한다 (DevNote 4.3, 11.2).  아래 두 집합은 그쪽
+#:     (`header_dict()`) 전용이다.
+#:   - **FITS 카드**는 raw spec 5.7절이 전부 문자열 형으로 정했으므로 문자열
+#:     공통 `'NC'` 하나다 (`fits_header_dict()` -- 카드 목록은
+#:     `rawcards.RELAY_CARDS`).  `0` 을 값-없음으로 쓰면 `SECZ=0` 같은 값이
 #:     유효값처럼 남아 조용한 오염이 된다.
-#: 그래서 정수형과 실수형을 따로 둔다 -- 합집합이 메시지 계층용이다.
 _SENTINEL_INT = frozenset({
     'FALIMS', 'FALIME', 'FALIMW',   # 액추에이터 리밋 코드
     'MCPOS',                        # 주경 커버 개방률 %
@@ -65,7 +66,8 @@ _SENTINEL_FLOAT = frozenset({
 })
 _SENTINEL_NUM = _SENTINEL_INT | _SENTINEL_FLOAT
 #: AUX 실선의 이름 -> FITS 헤더 이름.  **converter 가 fallback 없이 읽는
-#: 이름으로 옮겨 실어야 한다** (규격 5.13절, D-013).
+#: 이름으로 옮겨 실어야 한다** (raw spec 5.7절 -- `DSTELALT` 는 레거시
+#: `DSTEL` 의 개칭, D-013).
 #:
 #: `DSTEL` 이 그 사례다.  AUX 가 보내는 이름은 `DSTEL`(`pctcs/commands.c:2023`)
 #: 인데, Archon converter 는 `v("DSTELALT","")` 로 **`DSTELALT` 만** 읽는다
@@ -83,9 +85,8 @@ _SENTINEL_STR = frozenset({
     'AUXARC', 'AUXLINK', 'TELID', 'TIMESYS',
     'TCSDRIVE', 'TCSLIMIT', 'TELMOVE', 'TCSARC', 'TCSLINK', 'EXECODE',
     'RA', 'DEC', 'HA', 'ST',
-    # 질의/갱신 시각.  **TC 가 답하지 않아도 카드를 남긴다** -- 규격 5.9절이
-    # 필수로 정했고, 그 절 말미가 "질의 실패 시 sentinel 로 '값이 없었다'는
-    # 사실이 헤더에 남아야 한다" 고 규정한다.  카드가 아예 없으면 이 규격을
+    # 질의/갱신 시각.  **TC 가 답하지 않아도 카드를 남긴다** -- raw spec
+    # 5장 전 카드가 원칙적으로 필수다.  카드가 아예 없으면 이 규격을
     # 모르는 취득 SW 가 쓴 파일과 구분되지 않는다.
     'AUXQDATE', 'AUXUDATE', 'TCSQDATE', 'TCSUDATE',
 })
@@ -118,6 +119,10 @@ CANNED_TCS = (
     'TCSQDATE', 'TIMESYS', 'TCSLINK', 'TCSARC', 'TCSUDATE',
     'RA', 'DEC', 'EQUINOX', 'HA', 'ST', 'SECZ', 'ALT', 'AZ',
     'TELMOVE', 'TCSLIMIT', 'TCSDRIVE', 'EXECODE',
+    # 돔 셔터·지향 -- newTCS 편입으로 출처가 TCS 계통이다 (raw spec 5.7절).
+    # 실기 중계 필드명은 미확정이라 카드명과 같게 두었다 (canned 전용).
+    'DSSTAT', 'DSUP', 'DSLW', 'DSSAF', 'DSAUTO', 'DSALT', 'DSAZ',
+    'DSTELALT', 'DSTELAZ',
 )
 CANNED_TCS_VALUES = {
     'TIMESYS': 'UTC', 'TCSLINK': 'Up', 'TCSARC': 'Enabled',
@@ -126,7 +131,23 @@ CANNED_TCS_VALUES = {
     'ALT': '90.0', 'AZ': '0.0',
     'TELMOVE': 'Idle', 'TCSLIMIT': 'No', 'TCSDRIVE': 'Disabled',
     'EXECODE': 'E',
+    'DSSTAT': 'STANDBY', 'DSUP': 'MID', 'DSLW': 'OPEN', 'DSSAF': 'INACTIVE',
+    'DSAUTO': 'ENABLED', 'DSALT': '87.7', 'DSAZ': '12.3',
+    'DSTELALT': '88.1', 'DSTELAZ': '12.1',
 }
+
+
+def _sync_error(dome: object, tel: object) -> str:
+    """`DALTERR`/`DAZERR` -- 돔·망원경 지향차, 부호 포함 소수 1자리 문자열.
+
+    견본 v1.0: `DSALT='87.7'` − `DSTELALT='88.1'` -> `DALTERR='-0.4'`.
+    피연산 값이 없거나 수치가 아니면 `'NC'` -- 계산값을 지어내지 않는다.
+    """
+    try:
+        diff = float(str(dome)) - float(str(tel))
+    except (TypeError, ValueError):
+        return 'NC'
+    return f'{diff:+.1f}'
 
 
 class TelemetryRelay:
@@ -328,44 +349,63 @@ class TelemetryRelay:
         return out
 
     def fits_header_dict(self, date_obs: str) -> dict[str, object]:
-        """**FITS 헤더용** 딕셔너리.  규격 5.0절 sentinel 규약을 따른다.
+        """**FITS 헤더용** 값 딕셔너리 -- raw spec 5.7·5.8절 몫.
 
-        해결: raw_fits_spec **OI-6 / 변경점 C-9**.  `header_dict()` 와 달리
-        결측 수치를 `0` 으로 채우지 않는다 -- 정수는 `-1`, 실수는 `-999.0`,
-        문자열은 `'NC'` 다.  실제로 받은 값은 그대로 두고 **결측만** 바꾼다.
+        카드 목록의 정본은 `rawcards.RELAY_CARDS`(TCS 27 + AUX 33 에서
+        Tapaculo 2장 제외)다.  와이어에서 받은 값은 그대로 두고, 없는 카드만
+        sentinel `'NC'` 로 채운다 -- **TC 중계 카드는 전부 문자열**이다
+        (raw spec 5.7절 "TCS 중계값은 문자열로 싣는다", 레거시 계승).  구판의
+        수치 sentinel(`-1`/`-999.0`)은 카드가 문자열 형으로 통일되면서 문자열
+        공통 sentinel 로 접혔다.  메시지 계층(`header_dict()`, sentinel `'0'`)
+        과는 계속 분리다 (C-9).
 
-        **`date_obs` 는 기본값이 없는 필수 인자다.** 규격 5.7절이 `DATE-OBS` 를
-        필수로, 출처를 `ICS` 로 정한다 -- 외부에서 받아오는 값이 아니라 **ICS 가
-        셔터를 여는 그 시점의 OS 시각(UTC)을 스스로 찍는 값**이다(DARK/BIAS 는
-        ERASE 완료 시각).  시퀀서의 `state.exp_start` 가 그것이고 `_store()` 가
-        불리는 시점에는 반드시 세워져 있다.  기본값을 없앤 이유는 호출측이
-        빠뜨릴 수 없게 하는 것이다.
+        와이어에 없는 파생·이관 카드는 여기서 만든다:
 
-        빈 값이 들어오면 **우리 결함**이므로 에러를 남기고 카드를 비운다.
-        `'NC'` 나 "현재 시각" 으로 채우면 시각이 있는 것처럼 보이고, converter 의
-        실패 경로(규격 6.1절 변경점 C-6)가 발동하지 않아 조용히 틀린 값이 된다.
+        * `TCSTIME` -- TCS 응답의 `TIMESYS` 를 **이관**한다.  ICS 자신의
+          `TIMESYS` 카드(5.4절, `rawhdr`)와 시각계를 분리하는 신설 카드다.
+        * `DSTELALT` -- 실선 `DSTEL` 의 개칭 (converter 가 fallback 없이 이
+          이름만 읽는다, `_FITS_RENAME`).
+        * `DALTERR`/`DAZERR` -- **ICS calculation** (raw spec 5.7절): 돔과
+          망원경의 지향차.  피연산 카드가 없으면 `'NC'`.
+        * `RADECSYS` -- TC 가 안 보내면 좌표계 기본 `'ICRS'`.
+        * `TCSLINK`/`AUXLINK` -- 와이어 값이 없으면 마지막 질의 성패로.
+
+        **`date_obs` 는 기본값이 없는 필수 인자다.** raw spec 5.4절이
+        `DATE-OBS` 를 필수로, 출처를 ICS 로 정한다 -- ICS 가 노출을 개시하는
+        그 시점의 OS 시각(UTC)을 스스로 찍는 값이다.  빈 값이 들어오면 **우리
+        결함**이므로 에러를 남기고 카드를 비운다 -- `'NC'` 나 "현재 시각"으로
+        채우면 converter 의 실패 경로(C-6)가 발동하지 않아 조용히 틀린 값이
+        된다.
         """
         out: dict[str, object] = {}
         for k, v in self.aux_fields:
             out[k] = v
         for k, v in self.tcs_fields:
             out[k] = v
-        for k in _SENTINEL_INT:
-            out.setdefault(k, -1)
-        for k in _SENTINEL_FLOAT:
-            out.setdefault(k, -999.0)
-        for k in _SENTINEL_STR:
-            out.setdefault(k, 'NC')
-        # 실선 이름 -> converter 가 읽는 이름.  **원래 이름을 지우지 않는다.**
+        # TCS 시각계 이관: 와이어 `TIMESYS`(TCS 응답) -> `TCSTIME` 카드.
+        # ICS 의 `TIMESYS` 카드는 rawhdr(5.4절)가 'UTC' 로 싣는다.
+        tcs_timesys = next(
+            (v for k, v in self.tcs_fields if k.upper() == 'TIMESYS'), '')
+        out.setdefault('TCSTIME', tcs_timesys or 'NC')
+        # 실선 이름 -> converter 가 읽는 이름.  **원래 이름을 지우지 않는다**
+        # (템플릿이 걸러 주므로 카드로 새지는 않는다 -- 대조용으로만 남는다).
         for wire, fits in _FITS_RENAME.items():
             if wire in out:
                 out.setdefault(fits, out[wire])
-        out.setdefault('TELID', self.cfg.node.telid)
-        out['TIMESYS'] = 'UTC'          # 규격 5.0: 시각은 모두 UTC, 명시한다
+        out.setdefault('RADECSYS', 'ICRS')
+        out.setdefault('TCSLINK', 'Up' if self.last_tcs_ok else 'Down')
+        out.setdefault('AUXLINK', 'Up' if self.last_aux_ok else 'Down')
+        # 돔-망원경 지향차 (ICS calculation).  와이어가 직접 주면 그 값을 쓴다.
+        out.setdefault('DALTERR',
+                       _sync_error(out.get('DSALT'), out.get('DSTELALT')))
+        out.setdefault('DAZERR',
+                       _sync_error(out.get('DSAZ'), out.get('DSTELAZ')))
+        for k in rawcards.RELAY_CARDS:
+            out.setdefault(k, 'NC')
         if date_obs:
             out['DATE-OBS'] = date_obs
         else:
-            log.error('DATE-OBS 가 비어 있다 -- ICS 가 셔터 개방 시각을 찍지 '
-                      '못했다는 뜻이고 우리 결함이다 (규격 5.7절). 카드를 '
+            log.error('DATE-OBS 가 비어 있다 -- ICS 가 노출 개시 시각을 찍지 '
+                      '못했다는 뜻이고 우리 결함이다 (raw spec 5.4절). 카드를 '
                       '비워 두어 converter 가 이 노출을 거부하게 한다')
         return out

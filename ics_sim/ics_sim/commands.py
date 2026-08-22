@@ -22,6 +22,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
+from . import rawpair
 from .impv2 import Message, paren, quote_always
 from .nodes import Role, Target
 from .state import IMAGE_TYPES, ExpStatus, stamp_iso_ms, utcnow
@@ -224,14 +225,26 @@ class Dispatcher:
 
         레거시는 ICS 6자리 / IC 4자리로 자릿수가 달라 INITIALIZE 로 우회했지만,
         신규는 6자리로 통일했다 (ics_legacy_report 3.4절).
+
+        **번호 공간을 여기서 강제한다** (`000000`–`099999`, D-016 1항).  이
+        명령이 카운터로 들어오는 유일한 외부 경로이고, 나머지 경로
+        (`advance`/`load_expnum`/`sync_expnum`)는 모두 순환을 지킨다.  범위를
+        안 막으면 `expnum 1000000` 이 7자리 suffix 를 만들어 **`Filename=` 뒤
+        15자를 그대로 잘라 쓰는 OBSAgent 파서**(DevNote 3.4)와 converter
+        정규식(`\\d{6}`)을 동시에 깬다 -- 음수는 `-00005` 처럼 부호가 자리를
+        먹는다.  거부 문자열은 형식 오류와 같은 것을 쓴다(레거시에 범위 거부
+        선례가 없어 새 문구를 지어내지 않는다).
         """
         st = self.state
         arg = msg.body.strip()
         if arg:
             try:
-                st.expnum = int(arg)
+                want = int(arg)
             except ValueError:
                 return Reply.error('EXPNUM', f'Invalid exposure number: {arg}')
+            if not 0 <= want < rawpair.NUM_SPACE:
+                return Reply.error('EXPNUM', f'Invalid exposure number: {arg}')
+            st.expnum = want
         return Reply.done('EXPNUM', f'Filename={st.peek_suffix()}')
 
     # -- 설정 -------------------------------------------------------------
@@ -277,7 +290,7 @@ class Dispatcher:
                           f'LEDFlashTime={self.state.ledflash_ms}')
 
     def _image_type(self, msg: Message, imgtype: str) -> Reply:
-        """BIAS/DARK/OBJECT/FLAT/SKY/DOMEFLAT/STANDARD 공통.
+        """BIAS/DARK/OBJECT/FLAT/SKY/DOMEFLAT 공통 (raw spec 5.4절 어휘).
 
         응답의 EXP= 는 **변경 전 현재 노출시간**이다 (실측).  BIAS 는 정의상
         0초로 보고한다.
@@ -312,8 +325,11 @@ class Dispatcher:
     def cmd_domeflat(self, msg, target):  # noqa: ANN001, ANN201, D102
         return self._image_type(msg, 'DOMEFLAT')
 
-    def cmd_standard(self, msg, target):  # noqa: ANN001, ANN201, D102
-        return self._image_type(msg, 'STANDARD')
+    # `cmd_standard` 는 폐지했다 (운영자 확정 2026-08-22).  raw spec 5.4절
+    # `IMAGETYP` 어휘에 `STANDARD` 가 없어, 받아 주면 규격 밖 값이 헤더에
+    # 실린다.  이제 `ROI`/`DISPL`/`MOVIE` 와 같이 `Didn't understand` 로
+    # 거부된다 -- 그 셋과 달리 레거시에는 있던 명령이므로, 값을 되살리려면
+    # raw spec 5.4절 어휘부터 늘려야 한다 (`state.IMAGE_TYPES` 주석).
 
     def _propagate(self, msg: Message) -> None:
         """설정 변경을 각 IC 로 전파한다.
