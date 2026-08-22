@@ -75,7 +75,17 @@ class SimBackend:
         yield r.pctread_final
 
     async def fetch_image(self, ccd: str):  # noqa: ANN201
-        """더미 이미지.  numpy 가 없으면 None (메시지만 내는 모드)."""
+        """chip 1개분 더미 이미지.  numpy 가 없으면 None (메시지만 내는 모드).
+
+        `fits_shape` 가 **spec 기하**(chip 당 9400×9600, `fits_shape = spec`)면
+        raw spec 4장의 배치를 실제로 담은 프레임을 만든다 -- amp tile 별 bias
+        offset, X overscan(strip 1–4 오른쪽 · 5–8 왼쪽, `XOSC_PATTERN`), 중앙
+        Y overscan 168행.  converter 의 `DATASEC`/`BIASSEC` 절단과 overscan
+        통계가 **값으로** 검증 가능해진다.  그 밖의 크기는 구조 없는 노이즈다.
+        """
+        return self._chip_image(ccd, signal=150.0)
+
+    def _chip_image(self, ccd: str, signal: float):  # noqa: ANN202
         if not self.cfg.paths.write_fits:
             return None
         try:
@@ -83,64 +93,120 @@ class SimBackend:
         except ImportError:
             log.warning('numpy 없음 -- FITS 생성을 건너뜁니다')
             return None
+        from .. import rawhdr
         rows, cols = self.cfg.paths.fits_shape
         rng = np.random.default_rng(abs(hash(ccd)) % (2 ** 32))
-        # bias level + read noise + 약한 배경
-        img = rng.normal(1000.0, 8.0, size=(rows, cols))
-        return img.astype('float32')
+        spec_chip = (rows, cols) == (rawhdr.RAW_NAXIS2,
+                                     rawhdr.RAW_NAXIS1 // 2)
+        if not spec_chip:
+            # bias level + read noise (+ 약한 신호) -- 구조 없는 더미
+            img = rng.normal(1000.0 + signal, 8.0, size=(rows, cols))
+            return img.astype('float32')
+
+        # raw spec 기하 -- strip 8개 × (TOP/BOT) amp 16개의 타일 구조.
+        # active 영역에만 `signal` 을 얹어 overscan 과 통계로 갈라지게 한다.
+        # 중앙 168행은 BOT/TOP 몫 84/84 로 나눈다 (OI-4 의 균등 가정 그대로).
+        img = np.empty((rows, cols), dtype=np.uint16)
+        bot_rows = rawhdr.IMAGEY                       # 1..4616
+        top_rows = rows - rawhdr.IMAGEY                # 4785..9400 의 시작
+        mid_split = bot_rows + rawhdr.OVRSCNY          # BOT 몫 중앙 84행 끝
+        chip_base = 1000.0 + (abs(hash(ccd)) % 8) * 4.0
+        for s in range(8):                             # strip 1..8
+            x0 = s * rawhdr.AMPNAX1
+            tile = rng.normal(0.0, 8.0,
+                              size=(rows, rawhdr.AMPNAX1)).astype('float32')
+            # amp 별 bias offset -- TOP 과 BOT 이 다르게 (경계 진단용)
+            tile[:mid_split] += chip_base + s * 2.0            # BOT amp 몫
+            tile[mid_split:] += chip_base + s * 2.0 + 1.0      # TOP amp 몫
+            # active 픽셀에만 신호 -- X overscan 열과 중앙 Y overscan 행 제외.
+            # XOSC_PATTERN 'RRRRLLLL': strip 1–4 오른쪽 48열, 5–8 왼쪽 48열.
+            if rawhdr.XOSC_PATTERN[s] == 'R':
+                ax0, ax1 = 0, rawhdr.IMAGEX
+            else:
+                ax0, ax1 = rawhdr.OVRSCNX, rawhdr.AMPNAX1
+            tile[:bot_rows, ax0:ax1] += signal
+            tile[top_rows:, ax0:ax1] += signal
+            img[:, x0:x0 + rawhdr.AMPNAX1] = np.clip(
+                tile, 0, 65535).astype(np.uint16)
+        return img
 
     async def write_frame(self, controller: str, chips: tuple[str, ...],
-                          path: str, header: dict) -> int:
+                          path: str, header) -> int:  # noqa: ANN001
         """컨트롤러 1대분을 파일 하나로 저장.  전송률(KB/sec)을 돌려준다.
 
         **chip 2개를 X 방향으로 이어 붙인다** -- 실기 raw 가 그렇다(MK 파일의
-        X 1–9600 이 M, 9601–19200 이 K).  시뮬은 `fits_shape` 크기의 더미를
-        chip 마다 만들어 가로로 붙이므로 폭이 2배가 된다.  실물 크기
-        (19200×9400, 파일당 344 MiB)는 쓰지 않는다 -- 구조만 맞춘다.
+        X 1–9600 이 M, 9601–19200 이 K).  `fits_shape = spec` 이면 실물 크기
+        (19200×9400, 파일당 344 MiB)의 기하 구조 프레임이 되고, 그 밖에는
+        `fits_shape` 크기의 더미를 chip 마다 만들어 붙인다 (폭 2배).
+
+        active 신호 크기는 `IMAGETYP` 을 따른다 -- BIAS 는 0 (bias 프레임의
+        overscan/active 가 통계적으로 같아야 하므로), 나머지는 고정 신호.
 
         `write_fits=false` 면 실제로 쓰지 않고 그럴듯한 전송률만 돌려준다 --
         레거시 로그의 RATE= 값 범위(수십만~백만 KB/sec)에 맞춘다.
         """
         if self.cfg.paths.write_fits:
             from ..fitsout import write_dummy_fits
-            halves = [await self.fetch_image(c) for c in chips]
-            data = _join_x(halves)
+            from ..rawcards import value_of
+            imgtype = ''
+            if isinstance(header, dict):
+                imgtype = str(header.get('IMAGETYP', ''))
+            else:
+                imgtype = str(value_of(header, 'IMAGETYP') or '')
+            signal = 0.0 if imgtype.strip().upper() == 'BIAS' else 150.0
             os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
-            written = write_dummy_fits(path, data, header)
+
+            # **스레드로 내보낸다.**  `fits_shape = spec` 이면 프레임 하나가
+            # 19200x9400(344 MiB)이고, 그 생성(numpy)과 쓰기(astropy)는 둘 다
+            # 블로킹이다 -- 이벤트 루프 안에서 돌리면 그 몇 초 동안 UDP 수신과
+            # 다른 CCD 의 발신이 전부 멈춘다.  DevNote 3.3 의 시간 창(획득
+            # 1.8초 · IDLE 0.9초 · Wrote 25초)은 그런 정지를 허용하지 않고,
+            # 실기 백엔드의 FETCH 도 같은 성질이라 이 구조가 그쪽 선례가 된다.
+            def _make_and_write():
+                halves = [self._chip_image(c, signal) for c in chips]
+                return write_dummy_fits(path, _join_x(halves), header)
+
+            written = await asyncio.to_thread(_make_and_write)
             if written:
                 return written
         # 실측 RATE 범위에서 컨트롤러마다 조금씩 다른 값
         return 1_030_000 + (abs(hash(controller)) % 60_000)
 
-    # -- FITS 헤더용 컨트롤러 사실 (규격 5.5·5.6·5.10절) ------------------
+    # -- FITS 헤더용 컨트롤러 사실 (raw spec 5.5·5.6절) --------------------
     #
     # **시뮬 값임이 헤더에 남는다.**  `DATASRC='SIM'` 이 그 표시이고
     # (`rawhdr.datasrc_of`), 여기서 돌려주는 값들은 그 카드가 있는 한 실측으로
-    # 오인될 수 없다.  값은 레거시 실측 헤더의 범위에서 가져와 형식만 맞춘다.
+    # 오인될 수 없다.  값은 견본 헤더 v1.0 의 범위에서 가져와 형식만 맞춘다.
 
     def controller_info(self, controller: str) -> dict:
-        tag = controller.upper()
-        idx = 1 if tag == 'MK' else 2
         return {
-            # 색인형 -- 양쪽 파일에서 같은 값이어야 한다 (규격 5.11절).
+            # 색인형 -- 양쪽 파일에서 같은 값이어야 한다 (raw spec 5.9절).
             # 그래서 `controller` 에 의존하지 않고 고정 목록을 돌려준다.
+            # 실기 값은 `[controllers]` ini 가 이 목록을 덮는다 (ICS INI 카드).
             'units': (
-                {'id': 'ARCHON-SIM-1', 'sn': 'SIM0001', 'fw': 'SIM-fw-0.0'},
-                {'id': 'ARCHON-SIM-2', 'sn': 'SIM0002', 'fw': 'SIM-fw-0.0'},
+                {'id': 'ARCHON-SIM-1', 'sn': 'SIM0001',
+                 'cfg': 'KMT_SIM_101_R0000.0'},
+                {'id': 'ARCHON-SIM-2', 'sn': 'SIM0002',
+                 'cfg': 'KMT_SIM_102_R0000.0'},
             ),
-            'status': 'OK',
-            'errorflag': 0,
-            'boardtemp': 28.0 + idx * 0.4,
-            'readtime': round(self.cfg.readout.pctread_tick
-                              * len(tuple(self.cfg.readout.steps())), 2),
-            'acffile': 'kmtnet_ceu_sim.acf',
-            'nphlines': 32,          # 레거시 실측값과 같다
-            'frameno': 0,
-            'bufno': idx,
         }
 
+    def controller_telemetry(self) -> list[dict]:
+        # 견본 헤더 v1.0 의 표본값 그대로 -- 전압/전류 자리는
+        # `rawhdr.VOLT_RAILS`(P2V5 P5V P6V N6V P17V N17V P35V) 순서다.
+        return [
+            {'temp': [40.1, 41.2, 42.3, 43.4, 44.5, 45.6, 46.7, 47.8,
+                      48.9, 49.0],
+             'volt': [2.512, 5.023, 5.834, -5.945, 16.956, -17.067, 35.089],
+             'curr': [4.698, 4.487, 2.176, 0.465, 0.454, 0.443, 0.032]},
+            {'temp': [40.9, 49.8, 48.7, 47.6, 46.5, 45.4, 44.3, 43.2,
+                      42.1, 41.0],
+             'volt': [2.498, 5.087, 5.876, -5.965, 16.954, -17.043, 35.032],
+             'curr': [4.712, 4.423, 2.134, 0.445, 0.456, 0.467, 0.078]},
+        ]
+
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        # 레거시 실측 헤더(SSO 2017)와 확정 초안 v0.3.5 의 값 범위를 쓴다.
+        # 레거시 실측 헤더(SSO 2017)와 견본 v1.0 의 값 범위를 쓴다.
         # chip 마다 조금 다르게 만들어 대표 센서(ccdtemp1 -> CCDTEMP)와 이웃
         # 센서(ccdtemp2, 진단용)가 구분되는지 시험할 수 있게 한다.
         base = -103.16
@@ -152,24 +218,10 @@ class SimBackend:
             'wallbrd': 16.78, 'hebox': 33.21,
             'air_in': 34.98, 'air_out': 31.26,
             'glyc_in': 27.97, 'glyc_out': 29.01,
+            'fsatemp': 23.4, 'fsahum': 12.3,       # Tapaculo (raw spec 5.8절)
             # `dewpres` 는 넣지 않는다 -- 레거시도 `'N/A'` 였다.  호출측이
             # sentinel 을 채우는 경로를 실제로 밟게 하려는 것이다.
         }
-
-    def voltages(self, controller: str) -> list[dict]:
-        from ..rawhdr import VOLT_NAMES
-        setpoints = {'VOD': 26.0, 'VRD': 13.0, 'VOG': -4.0, 'VSS': 0.0,
-                     'VDD': 5.0, 'PCLKH': 3.0, 'PCLKL': -8.0,
-                     'SCLKH': 5.0, 'SCLKL': -5.0}
-        return [{'name': n, 'setpoint': setpoints[n],
-                 'measured': round(setpoints[n] + 0.02, 2),
-                 'unit': 'V', 'status': 'OK'} for n in VOLT_NAMES]
-
-    def amp_map(self, controller: str) -> dict | None:
-        # **배선을 모른다고 말하는 것이 맞다.**  시뮬이 그럴듯한 매핑을
-        # 만들어 `AMPMAP='EXPLICIT'` 로 싣으면, 실기에서 실제 배선을 넣는 일이
-        # 이미 끝난 것처럼 보인다 (규격 5.5.1절, 변경점 C-11).
-        return None
 
     # -- 상태 -------------------------------------------------------------
 

@@ -7,19 +7,24 @@
 `[hardware] backend = archon` 으로 전환한다.
 
 이미 저장소에 있는 자산:
-  * `cam_char/archon/archon_kmtnet_labtest_v2.py`
-        Archon 텍스트/바이너리 프로토콜로 노출·FETCH 까지 하는 실동작 스크립트.
-        여기 있는 명령 시퀀스(POWERON, LOADPARAM, FASTPREPPARAM/RELEASETIMING,
-        STATUS/FRAME 폴링, 1 KiB 블록 FETCH)를 그대로 옮겨오면 된다.
-  * `cam_char/archon/archon_simulator.py`
-        하드웨어 없이 위 스크립트를 시험하는 프로토콜 시뮬레이터.
-        이 백엔드를 개발할 때 상대역으로 쓸 수 있다.
-  * `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`
-        **write_fits() 가 맞춰야 할 1차 산출 규격** -- Archon raw FITS pair.
-        2.3 파일명(<SITE> 사이트 코드 prefix, D-011), 2.5 저장/통보 분리,
-        5장 헤더 키워드, 변경점 C-8.
+  * `ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py` (현행, v1.1.1)
+        Archon 텍스트/바이너리 프로토콜로 노출·FETCH·raw spec 헤더까지 하는
+        실동작 스크립트 (science = bigbuf 구성.  guide 는
+        `archon_kmtnet_labtest_v1.0.smallbuf.py` 참조 -- 미개정).  명령
+        시퀀스(POWERON, WCONFIG/APPLYALL, LOADPARAMS, STATUS/FRAME 폴링,
+        1 KiB 블록 FETCH)를 그대로 옮겨오면 된다.
+        ⚠️ **헤더·텔레메트리는 실기 미검증이다** -- STATUS 필드 이름 · 독출
+        시간 · 산출물 실물 3자리가 그렇다.  옮길 때 잠정 표시를 남긴다
+        (`ics_archon/SMC_CLAUDE.md` "ics_archon v0.0").  손볼 자리·경고의
+        뜻은 `ics_archon/README_labtest.md`.
+        v1.0 원본과 Archon 매뉴얼 2부는
+        `ics_archon/__ref_archon_control/`(읽기 전용) 에 있다.
+  * `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md`
+        **write_frame() 이 맞춰야 할 1차 산출 규격** -- Archon raw FITS pair.
+        2장 파일명(D-011)·충돌 처리(D-016), 4장 geometry, 5장 헤더 keyword
+        (견본 = 초안 헤더 v1.0 pair, 틀은 `ics_sim/rawcards.py`).
   * `mef_converter/` 와 `mef_fits_spec/`
-        raw pair -> L0 64-amp MEF 변환기와 그 출력물 규격.  write_fits() 의
+        raw pair -> L0 64-amp MEF 변환기와 그 출력물 규격.  write_frame() 의
         산출물이 아니라 다음 단계의 입력<->출력 관계다.
 
 구현 시 유의할 점:
@@ -36,7 +41,8 @@
     파일명 fail-safe 는 시퀀서가 처리하므로 백엔드는 관여하지 않는다.
     시뮬 백엔드가 같은 계약으로 이미 돌고 있어 참고 구현이 된다 (sim.py).
   * Wrote 4회의 마감은 다음 프레임의 EXPSTATUS=READOUT 발신 전이다
-    (~25초 창, raw_fits_spec 2.5 / DevNote 6.1).
+    (~25초 창, DevNote 3.2·6.1 -- v1.4 에서 규격 2.5절이 삭제되고 `Wrote`
+    통보 규약의 정본이 DevNote 로 옮겨졌다: 취득 SW 소관이라서다).
 """
 
 from __future__ import annotations
@@ -49,7 +55,7 @@ from .base import BackendError
 log = logging.getLogger('ics_sim.hw.archon')
 
 _NOT_YET = ('archon 백엔드는 아직 구현 전입니다. '
-            'ics_sim/DevNote.md 9장과 cam_char/archon/ 참고.')
+            'ics_sim/DevNote.md 9장과 ics_archon/ 참고.')
 
 
 class ArchonBackend:
@@ -98,8 +104,8 @@ class ArchonBackend:
         # TODO: 이 컨트롤러가 읽은 chip 2개분 픽셀을 `path` 에 FITS 파일
         #       **하나**로 저장하고 실제 전송률(KB/sec) 을 돌려준다.
         #       - 픽셀 배치: chips[0] 이 X 낮은 쪽, chips[1] 이 높은 쪽
-        #         (raw_fits_spec 4.1절, 5.2 CHIP1/CHIP2).  19200x9400,
-        #         BITPIX=16 + BZERO=32768 (규격 3장).
+        #         (raw spec 4.1절).  19200x9400, BITPIX=16 + BZERO=32768
+        #         (raw spec 3장).
         #       - `header` 에는 규격 5장 카드가 이미 채워져 온다.  여기서
         #         Archon 이 아는 값(CTRLID/CTRLFW/BCKTEMP/READTIME/전압
         #         텔레메트리 5.5·5.6절)을 덧붙인다.
@@ -108,54 +114,46 @@ class ArchonBackend:
         #       참고 구현은 sim.py 의 같은 메서드, 계약은 base.py (D-012).
         raise BackendError(_NOT_YET, ccd=chips[0] if chips else '')
 
-    # -- FITS 헤더용 컨트롤러 사실 (규격 5.5·5.6·5.10절, D-013) -----------
+    # -- FITS 헤더용 컨트롤러 사실 (raw spec 5.5·5.6절, D-013) ------------
     #
-    # **이 넷이 MEF 의 placeholder 를 없애는 자리다.**  지금 MEF 는 컨트롤러
-    # 정체를 `UNKNOWN`, 보드 온도를 `-999.0`, 전압을 `0.0` 으로 채우고 있고
-    # (규격 6.3절), 그 원인은 raw 에 그 정보가 없기 때문이다.
+    # **이 셋이 MEF 의 placeholder 를 없애는 자리다.**  지금 MEF 는 컨트롤러
+    # 정체를 `UNKNOWN`, 텔레메트리를 placeholder 로 채우고 있고, 그 원인은
+    # raw 에 그 정보가 없기 때문이다 (MEF `VOLTINFO`/`TELEMETRY` C-후보).
     #
     # ⚠️ 스텁이 예외를 던지지 않고 **빈 값을 돌려준다.**  헤더 생성은 노출
     # 경로가 아니라 저장 경로이므로, 여기서 던지면 다른 이유로 실기를 돌려
     # 보는 사람이 저장 단계에서 막힌다.  호출측이 sentinel 로 채우고 그 사실이
-    # 헤더에 남는다 (규격 5.0절).
+    # 헤더에 남는다 (raw spec 5.0절).
 
     def controller_info(self, controller: str) -> dict:
-        # TODO: STATUS/SYSTEM 응답에서 채운다.
-        #       - units: 두 과학 컨트롤러의 ID/시리얼/firmware.  **양쪽 raw
-        #         파일에 같은 값을 실어야 한다** -- converter 가 MK 헤더만
-        #         읽으면서 CTRL1*/CTRL2* 를 요구한다 (규격 5.5.0절).
-        #         시리얼은 SYSTEM 의 BACKPLANE_ID, firmware 는 BACKPLANE_VERSION.
-        #       - boardtemp: STATUS 의 BACKPLANE_TEMP.
-        #       - readtime: readout 시작~완료 실측 [s].
-        #       - acffile: LOADPARAM 에 쓴 설정 파일 이름.
-        #       - nphlines: timing script 의 preheat line 수 (레거시 계승).
-        #       - frameno/bufno: FRAME 응답의 BUFnFRAME / 사용 버퍼 번호.
+        # TODO: SYSTEM 응답 + 호스트 설정에서 채운다 (Archon 매뉴얼 p.46).
+        #       - units: 두 과학 컨트롤러의 {'id','sn','cfg'}.  **양쪽 raw
+        #         파일에 같은 값을 실어야 한다** (raw spec 5.9절).
+        #         시리얼은 SYSTEM 의 BACKPLANE_ID.  cfg(적용 ACF 이름)는
+        #         컨트롤러가 보고하지 않으므로 호스트가 관리한다 -- 실운용은
+        #         `[controllers]` ini 가 이 값을 덮는다 (ICS INI 카드).
         log.warning('controller_info: %s', _NOT_YET)
         return {'units': ()}
 
-    def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        # TODO: Archon HEATER/RTD(ICG) 모듈에서 읽는다.  chips[0] -> ccdtemp1
-        #       (= FITS CCDTEMP 의 실측 대표, 운영자 확정 2026-08-21),
-        #       chips[1] -> ccdtemp2 (진단·로그용 -- raw 카드가 아니다).
-        #       공급 계통이 셋이다 (Header_and_Refs v1.8 3.7절) --
-        #       ICG RTD: dewpres/dmptemp/pt30n1/pt30n2/charcoal/wallbrd,
-        #       Tapaculo: hebox, standalone RTD readout unit: air_*/glyc_*.
-        log.warning('sensors: %s', _NOT_YET)
-        return {}
-
-    def voltages(self, controller: str) -> list[dict]:
-        # TODO: STATUS 의 bias/clock 채널을 규격 5.6절 9종에 대응시킨다.
-        #       측정값을 못 읽은 항목은 `measured` 를 넣지 않는다 -- 그러면
-        #       VOLTSTAT 이 PARTIAL 이 되어 사실이 헤더에 남는다.
-        log.warning('voltages: %s', _NOT_YET)
+    def controller_telemetry(self) -> list[dict]:
+        # TODO: 두 컨트롤러의 STATUS 에서 채운다 (Archon 매뉴얼 p.47-49).
+        #       - temp: BACKPLANE_TEMP + MODm/TEMP (모듈 순서 명세는 규격
+        #         수록 예정 -- 통합 문서 §1)
+        #       - volt/curr: 전원 레일 P2V5/P5V/P6V/N6V/P17V/N17V/P35V 의
+        #         `_V`/`_I` 쌍, 자리 순서는 rawhdr.VOLT_RAILS.
+        #       **양쪽 파일에 두 대분을 같은 값으로** (raw spec 5.9절).
+        log.warning('controller_telemetry: %s', _NOT_YET)
         return []
 
-    def amp_map(self, controller: str) -> dict | None:
-        # TODO: 설치 시 실제 배선표를 돌려준다 (규격 5.5.1절, 변경점 C-11).
-        #       **추정식으로 채우지 말 것** -- 배선이 다르면 crosstalk 보정이
-        #       엉뚱한 amp 묶음에 적용되고, 계수 측정 자체가 무의미해진다.
-        #       모르는 동안은 None 이 정직한 답이다 (AMPMAP='DEFAULT').
-        return None
+    def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
+        # TODO: 공급 3계통에서 읽는다 (raw spec 5.6절) --
+        #       ICG RTD: ccdtemp1(= FITS CCDTEMP 실측 대표, chips[0] 쪽)/
+        #         dewpres/dmptemp/pt30n1/pt30n2/charcoal/wallbrd,
+        #       Tapaculo: hebox/fsatemp/fsahum,
+        #       standalone RTD readout unit: air_*/glyc_*.
+        #       ccdtemp2 는 진단·로그용 -- raw 카드가 아니다.
+        log.warning('sensors: %s', _NOT_YET)
+        return {}
 
     def status(self, ccd: str) -> dict:
         return {'driving': 0, 'fibers': False, 'synched': False,

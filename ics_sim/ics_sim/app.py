@@ -147,7 +147,7 @@ class IcsSim:
         """
         if self.state.site_code != rawpair.TESTBED_SITE:
             return
-        if rawhdr.datasrc_of(self.backend.name) != rawhdr.DATASRC_REAL:
+        if rawhdr.datasrc_of(self.backend.name) == rawhdr.DATASRC_SIM:
             return
         log.warning(
             '사이트가 %s(벤치)로 판정됐는데 백엔드가 실물 %r 이다 -- '
@@ -162,7 +162,7 @@ class IcsSim:
         **오배포를 자료 한 장 찍기 전에 사람 눈에 띄게 하는 것이 목적이다.**
         `[node] site` 한 줄이 사이트 코드 -> 좌표 -> 관측일 경계 -> 파일명까지
         전부 끌고 가므로(D-011·D-014), 그 한 줄이 틀리면 **아무 오류 없이** 전부
-        틀린다.  헤더에 `OBSERVAT`/`SITEID`/좌표가 남으니 사후 탐지는 가능하지만,
+        틀린다.  헤더에 `OBSERVAT`/좌표가 남으니 사후 탐지는 가능하지만,
         그때는 이미 아카이브에 들어가 있다 -- 그래서 **t=0 에 보여주는 쪽**이
         런타임 검사보다 값싸고 확실하다.
 
@@ -175,7 +175,7 @@ class IcsSim:
         """
         cfg, st = self.cfg, self.state
         site = st.site_code
-        geo = rawhdr.site_header(site, cfg.site_for(site))
+        geo = rawhdr.observatory_header(site, cfg.site_for(site))
         suffix = f'{st.obs_date()}.{st.expnum:06d}'
         example = rawpair.physical_name(site, suffix, rawpair.CONTROLLERS[0][0])
 

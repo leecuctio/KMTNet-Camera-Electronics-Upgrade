@@ -25,7 +25,7 @@ _HELP = """\
 
   projid <id>            프로젝트 ID
   observer <name>        관측자 (띄어쓰기 허용)
-  object|dark|bias|flat|sky|domeflat|standard <objname>
+  object|dark|bias|flat|sky|domeflat <objname>
   exp <sec>              노출시간
   expnum [<n>]           파일 일련번호 조회/설정
   go [n]                 노출 n 장 (기본 1)

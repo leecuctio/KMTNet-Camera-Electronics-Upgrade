@@ -1883,7 +1883,86 @@ converter 가 raw 에서 읽으려 하는데 `ics_sim` 이 그 카드를 만들�
 - **신설 3장** `DMPTEMP` / `WALLBRD` / `HEBOX` -- `DEWAR_CARDS` 와 sim 백엔드에 추가. `WALLBRD` 는 wallboard 의 모음 탈락 축약(8자 절단형 `WALLBOAR` 를 대체 -- 절단형은 "wall boar" 로 읽히고 확장 여유가 없다).
 - 공급 계통이 셋으로 갈렸다 -- ICG RTD(Archon 쪽) / standalone RTD readout unit(AIR·GLYC) / Tapaculo sensor(HEBOX). 시뮬에서는 전부 `sensors()` 한 창구로 온다.
 
-**남은 일 (13장 백로그).** 초안 v0.3.5 의 노출·컨트롤러 블록 재편은 아직 코드에 안 갔다 -- `DARKTIME`/`TSHOPEN`/`TSHSHUT`/`NPHLINES`/`HEMODE`/`READMODE`/`CTR_CFG` 제거, `CTRL1CFG`/`CTRL2CFG`/`TCSTIME` 신설, `DATASRC` 값 체계(`ARCHON_SCIENCE`/`ARCHON_GUIDE`/`SIM`). 카드 comment 지원(`fitsout._apply_header()`)이 선행돼야 초안의 comment 까지 재현된다. 근거 문서: `raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md` (확인 요망 9건 포함).
+**남은 일 (13장 백로그).** 초안 v0.3.5 의 노출·컨트롤러 블록 재편은 아직 코드에 안 갔다 -- `DARKTIME`/`TSHOPEN`/`TSHSHUT`/`NPHLINES`/`HEMODE`/`READMODE`/`CTR_CFG` 제거, `CTRL1CFG`/`CTRL2CFG`/`TCSTIME` 신설, `DATASRC` 값 체계(`ARCHON_SCIENCE`/`ARCHON_GUIDE`/`SIM`). 카드 comment 지원(`fitsout._apply_header()`)이 선행돼야 초안의 comment 까지 재현된다. 근거 문서: `raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md` (확인 요망 9건 포함). **→ 11.19 에서 전량 완료 (2026-08-22).**
+
+### 11.19 raw spec v1.3 전면 정렬 -- 템플릿 주도 헤더 · D-016 충돌 처리 (2026-08-22)
+
+**무엇을.** raw spec v1.3 발행(2026-08-22)에 맞춰 헤더 층을 전면 재편했다. 인수인계 목록(`raw_fits_spec/SMC_CLAUDE.md` "ics_sim 구현 일감" ①~⑤)의 전량이고, 11.18 의 "남은 일"도 여기서 닫혔다. 버전 v0.1.0 → **v0.2.0**.
+
+**핵심 판단 -- 헤더는 템플릿이 조립한다 (신설 `rawcards.py`).** 견본 초안 v1.0 pair 가 "카드 순서·comment·패딩까지 바이트 단위 기준"이 됐으므로(5장 머리말), 카드 집합을 코드 여기저기서 dict 로 겹치는 구판 방식을 버리고 **견본의 기계 사본(템플릿)이 값 풀에서 카드를 꺼내 조립**하게 했다. 세 가지가 한꺼번에 풀린다 -- ① 카드 순서·comment·문자열 패딩이 견본과 **바이트 단위로 같다**(`tests/test_raw_draft.py` 가 견본 값을 역산해 넣으면 견본 136카드가 그대로 재현됨을 대사한다 -- 불일치 0) ② 템플릿에 없는 와이어 키는 카드로 **샐 수 없다**(구판 `SHUTTER` 겹침 사고 부류의 구조적 차단 -- `_store()` 의 런타임 겹침 검사도 함께 은퇴) ③ 견본이 개정되면 템플릿 대사 시험이 어긋난 자리를 가리킨다.
+
+- **카드 수 221 → 값 135 + COMMENT 8.** 폐지: geometry 선언 27장(`RAWNAX*`/`OSCNPATT`/`ROWORDR`/`RDDIRT/B`…), detector 잉여(`DETSIZE`/`NCCD`/`NAMPS`/`HEMODE`…), 컨트롤러 런타임·버전(`CTRLVER`/`TIMVER`/`BIASVER`/`CLKVER`/`BCKTEMP`/`ACFFILE`/`NPHLINES`/`CTRLnFW`…), 전압 색인 계열, `AMPMAP`/`AMOD*`/`ACHN*`, 파생 시각(`MJD-OBS`/`UT`/`TSHOPEN`/`TSHSHUT`/`DARKTIME`), 정체성 잉여(`UNIQNAME`/`NAMECLSH`/`PAIRFILE`/`CTRLTAG`/`CHIP*`/`RAWVER`/`RAWPROD`/`NUMFILES`/`DATE`/`CREATOR`). 신설: `FPAID`/`DETID`(pair 재정의)/`CHMAP_*` 4장/`ORIGNAME`/`CTRLnCFG` 상시/`RDMODE`/`Cn_TEMP·VOLT·CURR` 6장/`TCSTIME`/돔 신설 5장(`DSUP`~`DSTELAZ`)/`DALTERR`·`DAZERR`(ICS 계산)/`FSATEMP`·`FSAHUM`. **geometry 배치의 정본은 카드가 아니라 4.3 포장 규범 조항**이 됐다 -- 선언-하드코딩 갈림의 방어는 `test_geometry_vs_converter.py`(코드-대-코드)가 그대로 맡고, `XOSC_PATTERN='RRRRLLLL'` 은 카드 아닌 내부 상수로 남겼다(OI-15 상충 증거 주의도 함께).
+- **D-016 충돌 처리.** `clash/` 격리 + `NAMECLSH` + WARNING 메시지 세 겹을 **선검사 + 번호 증가** 하나로 교체했다 -- `rawpair.resolve_pair_number()`(MK·NT 두 경로 pair 동시 선검사, 099999→000000 되감음, 한 바퀴 초과 시 `NumberSpaceExhausted` = 유일한 저장 실패), `state.sync_expnum()`(확정 번호 동기화 + 평소 영속화 경로), `advance()`/`load_expnum()` 의 번호 공간 순환. 이름 결정은 `_frame` 이 하고 `_store` 는 수령만 한다(통합 문서 Part 2 §3). `emitter.name_clash()` 폐지 -- 통보 대신 WARNING 로그다(2.5절). ⚠️ **알려진 잔여**: 번호가 점프한 프레임의 readout 중 `ExpNum` 응답은 점프 전 값이라 관측자 화면이 한 프레임 동안 낡을 수 있다 -- 충돌 자체가 비정상 상황(재저장·수동 개입)에서만 나므로 감수했고, 다음 프레임에서 자가 교정된다.
+- **백엔드 계약 개정 (D-012 후속).** `voltages()`/`amp_map()` 폐지(대응 카드 소멸), **`controller_telemetry()` 신설** -- 두 컨트롤러의 `{'temp','volt','curr'}` 목록(5.9절 "반드시 동일"이라 컨트롤러 인자가 없다). 실기 원천은 Archon STATUS(`BACKPLANE_TEMP`+`MODm/TEMP`, 전원 레일 `_V`/`_I` -- 매뉴얼 p.47-49), 자리 순서는 `VOLT_RAILS`. `controller_info()` 는 `units` 의 `fw` 를 `cfg` 로 바꿨다(버전 문자열의 `CTRLnCFG` 귀속). `sensors()` 에 Tapaculo 2장(`fsatemp`/`fsahum`) 추가.
+- **TC 중계 카드 전부 문자열.** 5.7절 "TCS 중계값은 문자열로 싣는다"에 따라 FITS 쪽 수치 sentinel(`-1`/`-999.0`)을 문자열 공통 `'NC'` 로 접었다(메시지 계층 `'0'` 과의 분리는 유지, C-9). `TCSTIME` 은 TCS 응답의 `TIMESYS` 를 **이관**해 만들고 ICS 자신의 `TIMESYS` 카드와 분리했다. `DALTERR`/`DAZERR` 는 돔-망원경 지향차의 ICS 계산(`±.1f` 문자열, 피연산 결측이면 `'NC'`). **판단 2건 (목 확인 대상)**: ① `RADECSYS` 는 TC 가 안 보내면 기본 `'ICRS'` 로 채웠다 -- 규격 값 칸이 `'ICRS'` 고정이고 좌표계 선언은 RA/DEC 가 sentinel 일 때 무해해서다 ② ENS1~7 결측 sentinel 은 `'NC'` 로 뒀다 -- 5.0절의 `'-999.99'` 는 "HK 온도·습도 카드"(5.6절 + FSA 2장) 규약으로 읽었고, ENS 는 AUX 중계 pass-through(5.8절 "중계 그대로")라서다. FSA 2장은 `'-999.99'` + ENS식 소수 1자리(`format_ens`, OI-16 잠정).
+- **`fitsout`**: 순서 있는 카드 목록 + COMMENT 구분 카드 + comment 기록(`apply_cards`), `EXTEND` 제거(견본에 없음), **`CHECKSUM`/`DATASUM` 중단**(OI-7 미도입 -- 구판이 astropy 로 넣고 있었다). BZERO/BSCALE comment 는 카드를 미리 만들어 보존.
+- **시뮬 이미지의 spec 기하** -- `fits_shape = spec`(ini) 이면 chip 당 9400×9600, 파일 19200×9400(344.3 MiB)을 **4장 배치 그대로** 만든다: strip 8개×TOP/BOT amp 별 bias offset, X overscan 좌우(`RRRRLLLL`), 중앙 Y overscan 168행(84/84, OI-4 가정), active 에만 신호(+150, BIAS 는 0). **converter end-to-end 실검증**: 이 pair 를 `kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` 에 넣어 69-HDU L0 MEF 생성 확인 -- `DATE-OBS`/`CTRL1ID`/`CCDTEMP` 실값 pass-through, amp `DATASEC` 평균(신호) vs `BIASSEC` 평균(바이어스)이 값으로 갈라진다. MEF `UNIQNAME` 만 빈 문자열 -- 알려진 C-항목(LEECU 몫, 통합 문서 Part 1 §1)이라 우리 쪽 결함이 아니다.
+- **자잘한 정렬**: KMTT 의 `TELESCOP='Sim'`(5.3절 -- 종전 `'NC'`), `INSTRUME` 유도 `'<SITE> 18k CCD'`, `[camera] fpaid`·`[controllers] rdmode` ini 키 신설(ICS INI 카드 전량 ini 편집 가능 -- 운영자 지시), `DATASRC` 값 체계 3분(`datasrc_of`: archon→`ARCHON_SCIENCE`, 미상→`SIM`).
+- **테스트 재편 -- 305개 전부 통과.** 신설 `test_raw_draft.py`(견본 대사 3겹: 템플릿 구조 / 바이트 재현 MK·NT / pair 상이 7장), `test_raw_header.py`·`test_raw_pair.py` 전면 개정(필수 목록을 손 목록 대신 템플릿에서 유도, 폐지 카드 부활 감시 RETIRED ~100장, D-016 충돌·되감음·상한·카운터 동기화), `test_geometry_vs_converter.py` 상수 개명 대응. OBSAgent 규약 시험(177개 부류)은 **한 줄도 안 고치고 통과** -- 메시지 계층은 이번 개정의 범위 밖이라는 확인이다.
+
+**시사점.** ① 바이트 정본이 생기면 "규격 문서 → 코드" 번역을 사람이 반복할 이유가 없다 -- 기계 사본(템플릿) 하나를 두고 양쪽(ics_sim `rawcards.py` · ics_archon v1.1 스크립트 내장본)이 공유하는 구조가 markdown 표 대조보다 강하다. ② 견본 자체가 충돌 사례(`FILENAME≠ORIGNAME`)와 comment 오타("Telesope"·"Acutator")까지 담고 있다 -- 오타도 정본의 일부이므로 고치지 않고 재현했다(고치려면 견본 개정이 먼저다).
+
+### 11.20 v1.3 정렬분 적대적 검토 -- 확정 14건 중 12건 수정 (2026-08-22)
+
+**무엇을.** 11.19 를 끝낸 뒤 관점 4개(규격 준수 · 동시성/경계조건 · archon 스크립트 · OBSAgent 규약)로 코드를 다시 훑고, 나온 주장마다 **반박을 시도하는 검증**을 붙였다. 확정 14건 중 12건을 고쳤고(회귀 시험 동반), 2건은 아래 "남긴 것"이다. 시험 305 → **317개**.
+
+**오늘 들어온 결함 (내가 만든 것)**
+
+- ⚠️ **critical -- D-016 선검사가 노출 태스크를 죽였다.** `_frame` 이 저장 직전에 `st.channel(ccds[0]).suffix` 를 **다시 읽어** 번호를 파싱했는데, 그 필드는 `INITIALIZE <suffix>` 로 **외부 노드가 임의 문자열을 넣을 수 있는 자리**다(레거시 관례상 형식 검증이 없고, 레거시 IC 는 점 없는 4자리를 실었다). 그 값이 프레임 중간에 들어오면 `int(num_str)` 이 `ValueError` 를 내고, fire-and-forget 태스크라 아무도 회수하지 않아 **`EXPSTATUS=IDLE` 0회 · `Wrote` 0회 · `advance()` 미실행**이 된다 -- 규약 3장 6항 중 3개가 한 번에 깨지고 OBSAgent 는 창 초과로 `opause` 에 빠진다. 재현·측정으로 확인됐다. **고침**: 프레임 개시 때 확정한 **지역 변수**를 그대로 쓴다(재읽기 제거 -- 프레임의 이름은 프레임이 정한다) + 번호 파싱 앞에 `isdigit()` 가드. 시험 `test_external_initialize_cannot_break_the_frame`(3 케이스).
+- **pair 동일성이 구조적으로 보장되지 않았다** (5.9절). `_store` 가 `sensors`/`controller_telemetry`/`controller_info` 를 **컨트롤러별로 따로** 질의했고 두 호출은 `write_delay + skew` 만큼(기본 1.0초) 벌어진다 -- 시뮬은 고정값을 돌려주므로 **시험이 통과하는 채로 실기에서만 갈리는** 부류였다. 시간 가변 백엔드로 바꿔 보면 `CCDTEMP`·`Cn_VOLT`·`Cn_CURR` 가 실제로 갈렸다. **고침**: 노출당 한 번 `_frame` 이 스냅샷을 떠 두 `_store` 에 같은 값으로 넘긴다(이미 `telem` 이 쓰던 패턴 -- 백엔드 사실 3개만 그 스냅샷에서 빠져 있었다). 질의 **횟수**를 세는 시험으로 못박았다.
+- **노출 메타데이터도 같은 경합이었다.** `IMAGETYP`/`OBJECT`/`EXPTIME`/`PROJID`/`OBSERVER`/`LEDFLASH` 를 저장 시점 live state 에서 읽어, `IDLE` 이후 다음 관측의 `object`/`exp` 가 들어오면 **프레임 N 헤더에 프레임 N+1 의 값**이 실렸다(5.4절이 sentinel 조차 금지한 카드들의 조용한 오염). 두 writer 의 skew 차 때문에 MK·NT 가 서로 다른 `IMAGETYP` 를 갖는 것도 재현됐다. 같은 스냅샷으로 고쳤다.
+- **`fits_shape = spec` 이 이벤트 루프를 막았다.** 344 MiB 프레임의 생성(numpy)과 쓰기(astropy)가 둘 다 블로킹이라 그 몇 초 동안 UDP 수신·다른 CCD 발신이 멈춘다 -- 3장의 시간 창이 허용하지 않는다. `asyncio.to_thread` 로 내보냈다. 실기 백엔드의 FETCH 도 같은 성질이라 이 구조가 그쪽 선례가 된다.
+- **번호 점프 후 `ChannelState.suffix` 가 낡았다** -- `FILENAME` 질의가 충돌 상대(옛 파일)의 이름을 답했다. `Wrote` 논리 이름은 확정 suffix 를 인자로 받아 맞았으므로 **둘이 갈렸다**. 확정 번호로 채널 suffix 도 맞춘다.
+- **`EXPNUM <n>` 이 번호 공간을 강제하지 않았다** -- 카운터로 들어오는 유일한 외부 경로인데 범위 검사가 없어 7자리 suffix·부호 있는 이름이 와이어로 나갈 수 있었다. `0 <= n < NUM_SPACE` 거부. 세 곳에 흩어져 있던 `% 100000` 매직넘버도 `rawpair.NUM_SPACE` 하나로 묶고 `next_suffix()` 에도 같은 순환을 적용했다(`peek_suffix()` 와 갈라져 있었다).
+
+**구판부터 있던 결함 (오늘 함께 고침)**
+
+- **파일명·헤더의 사이트가 실효 판정이 아니라 ini 원값이었다** (D-015 · 2.2절 위반). `_resolve_site()` 는 IP 판정을 `state.site_code` 에만 넣고 `cfg.node.telid` 는 그대로 두는데, `_store` 는 `cfg.node.telid` 를 읽었다 -- 판정과 ini 가 다르면 **관측일 경계는 판정값, 파일명 `<SITE>`·`OBSERVAT` 는 ini 값**이 되어 한 파일 안에서 사이트가 갈렸고, 기동 배너가 찍는 파일명 예시와도 어긋났다(배너가 거짓말을 했다). `st.site_code` 로 통일.
+- **STOP 이 프레임 사이에서 안 지워졌다.** `GO n` 도중 STOP 이 오면 이벤트가 세워진 채 다음 프레임으로 넘어가 **남은 프레임 전부가 ~0초 노출**이 됐는데, 헤더 `EXPTIME` 은 요청값을 그대로 실으므로 정상으로 보이는 오염 프레임이 생산됐다. 프레임 개시 때 `clear()`.
+- **ABORT 가 이전 프레임의 미완료 저장을 파괴했다.** `_writers` 전체를 취소해서, 이미 `Acquisition Complete.` 까지 발신한 앞 프레임의 파일이 기록 전에 사라졌다(그 프레임의 `Wrote` 는 영영 안 나가고 번호는 이미 소비돼 디스크에 구멍만 남는다). `_frame_writers` 로 **진행 중 프레임이 띄운 것만** 취소한다. 레거시는 CB 가 별도 프로세스라 앞 프레임을 끝까지 썼다.
+
+**archon 스크립트 v1.1 (6건 전량 수정)**
+
+- `fits_card` 가 폭 초과 문자열을 클램프하지 않아 80바이트에서 통째로 절단됐다 -- **닫는 인용부호와 comment 가 사라져** astropy·converter 가 파싱조차 못 한다(온도 13슬롯이면 실제로 그렇게 된다). 잘라내고 경고하는 쪽으로. `build_header` 의 `% 2880 == 0` 단언은 이 결함을 **원리상 못 잡는다** -- 모든 카드가 이미 80자로 강제되므로 총길이는 항상 정렬돼 있다.
+- 텔레메트리 나열이 결측 항목을 **건너뛰어** "자리 = 항목"(5.6절)을 조용히 깼다 -- MOD3 결측이면 MOD4 값이 MOD3 자리에 앉고, volt/curr 의 항목 수가 서로 달라질 수 있었다. 자리마다 sentinel. 슬롯 목록을 `TEMP_SLOTS` 상수로 뽑았다(BACKPLANE + AD 모듈 4장 -- 매뉴얼 p.20 과 v1.0 의 `MOD5~8/PREAMPGAIN` 블록이 근거. **모듈 순서 정본은 규격 수록 예정**이라 그때 교체).
+- 프레임 fetch 후·쓰기 전 구간에 미처리 예외 2종 -- STATUS 의 비수치 토큰 하나(`float()` 이 try 밖)와 `UNIT_CTRLTAG` 오타(`CHMAP[...]` KeyError)로 **이미 읽어낸 노출이 통째로 버려졌다**. 전자는 sentinel + 경고로, 후자는 기동 시점 1회 검증(`_check_identity_setup`)으로.
+- `CTRL1*`/`C1_*` 에 자기 유닛 값을 넣어 5.9절을 위반했다 -- `C1_*` 는 "내 컨트롤러" 가 아니라 **컨트롤러 1 고정**이다. `UNIT_CTRLTAG` 로 색인 자리를 정한다(NT 유닛이면 `CTRL2*`/`C2_*`).
+- `SITE_CODE` 를 주석 지시대로 관측소 코드로 바꾸면 `OBSERVAT` 가 `TESTBED` 로 남아 **규격의 유일한 하드 실패**가 났다(리터럴 하드코딩). `SITE_INFO` 표에서 `OBSERVAT`/`ORIGIN`/`TELESCOP` 를 유도한다.
+- `OBJECT` 가 `filenum // 100` 역산을 써서 iFlat(116 프레임)의 `nframe >= 100` 구간에서 `DS<번호+1>` 이 됐다. 죽은 `prefix` 인자를 `datasetid` 로 교체해 호출측이 넘긴다.
+
+수정 후 견본 바이트 재현(144카드, 불일치 0)과 converter end-to-end(69-HDU L0 MEF)는 그대로다.
+
+**남긴 것 (목 판단 필요)**
+
+1. **`IMAGETYP='STANDARD'`** -- `state.IMAGE_TYPES` 에 있고 레거시 명령 테이블에서 온 값인데 raw spec 5.4절 어휘(`BIAS`/`DARK`/`OBJECT`/`FLAT`/`SKY`/`DOMEFLAT`)에는 없다. **규격의 목록이 불완전한 것인지, 레거시 어휘를 버리는 것인지**가 판단 사항이라 코드를 손대지 않았다 -- 관측자가 쓰는 명령을 조용히 거부하는 쪽이 더 위험하다.
+2. **견본 헤더의 `FILENAME`/`ORIGNAME` 날짜(`20260821`)가 견본 파일명·규격 2.3절 예시(`20260818`)와 어긋난다.** 규격으로 판정하면 **카드가 맞다** -- 견본 `DATE-OBS='2026-08-21T12:34:56.789'` 에 SSO 보정 −1:30 을 적용하면 관측일이 `20260821` 이다. 즉 견본 **파일 이름과 규격 2.3절 예시**가 틀렸다. 정본 견본이자 "아카이브 유일 키" 규칙의 유일한 바이트 기준물이 스스로 그 규칙을 깨고 있어 LEECU 가 오독할 여지가 있다. `test_raw_draft.py` 는 견본 값을 되먹여 대조하므로 **이 불일치를 구조적으로 못 잡는다**. 정본 문서 수정은 운영자 몫이라 손대지 않았다 (raw_fits_spec/SMC_CLAUDE.md 에 확인 항목으로 등재).
+
+**시사점.** ① "시뮬이 고정값을 돌려줘서 시험이 통과하는" 결함이 두 건 나왔다(pair 동일성·메타데이터 경합) -- 값이 아니라 **질의 횟수·바인딩 시점**을 시험해야 잡힌다. ② 오늘 넣은 critical 은 "새 파싱을 추가할 때 그 입력이 어디서 오는지" 를 안 따라간 것이다. `cmd_expnum` 에는 범위 검사를 새로 넣으면서 **같은 카운터로 들어오는 다른 외부 경로(`cmd_initialize`)는 그대로 둔 채** 그 값을 하드 파싱했다 -- 입력 경로를 전수로 세는 습관이 필요하다.
+
+### 11.21 `IMAGETYP` 어휘 정리 + raw spec v1.4 정합 (2026-08-22)
+
+**`STANDARD` 폐지 (운영자 확정 -- "이제 안 쓴다").** 11.20 에서 목 판단으로 남겨 둔 2건 중 하나가 닫혔다. 레거시 명령 테이블에는 있고 핸들러도 있었지만 raw spec 5.4절 `IMAGETYP` 어휘(`BIAS`/`DARK`/`OBJECT`/`FLAT`/`SKY`/`DOMEFLAT`)에 없어, 그대로 두면 규격 밖 값이 헤더에 실렸다.
+
+- 걷어낸 곳: `state.IMAGE_TYPES` · `commands.cmd_standard` · `emitter.KNOWN_COMMANDS` · `console` 도움말 · docstring 2곳. 이제 `standard` 는 `ROI`/`DISPL`/`MOVIE` 와 같이 `Didn't understand` 로 거부된다.
+- **레거시와 갈라지는 지점이다** -- 그 셋과 달리 `STANDARD` 는 레거시에 있던 명령이다. 그래서 실사용 영향을 먼저 확인했다: `.osc` 관측 스크립트 **22개 전량**과 레거시 ISIS 로그 샘플에 용례가 **0건**이다. (검색 중 한 번 오독했다 -- `find` 출력을 grep 결과로 읽어 "실사용에 있다"고 잘못 봤다가 다시 세었다.)
+- **어휘 일치를 시험으로 못박았다** (`test_command_vocabulary_equals_the_spec_vocabulary`): 명령 목록과 규격 5.4절 어휘의 **집합이 같은지** 본다. 한쪽만 늘어나면 걸린다 -- 운영자 지시가 "값 추가가 필요하면 그때 ics 코드와 raw spec 을 함께 고려한다" 였으므로, 그 "함께" 를 시험이 강제한다.
+
+**raw spec v1.4 정합 (다른 세션 발행분).** 같은 날 규격이 v1.4 로 올랐다 -- 1~4장 검토 반영이고 5장 이후는 검토 전이다. 구현 영향은 없었지만 참조가 낡았으므로 정리했다:
+
+- 규격 파일명 참조 6곳 `_v1.3.md` → `_v1.4.md`.
+- **2.5절이 삭제됐다** (`Wrote` 통보 규약이 취득 SW 소관이라 규격에서 빠지고 정본이 DevNote 3.2 로 왔다). 그 절을 인용한 주석 9곳을 DevNote 3.2 로 돌렸다. ⚠️ `impv2.py`/`transport.py`/`test_impv2.py` 의 "스펙 2.5절" 은 **IMPv2 프로토콜 스펙**이라 무관 -- 건드리지 않았다. 규격에 남은 한 줄("`LASTFILE` 은 실재 경로가 아니다")은 2.3절 5항으로 흡수돼 그쪽을 가리킨다.
+- **OI-15 종결** (4.1 `RRRRLLLL` 이 실제 획득 자료 육안 확인으로 확정). `XOSC_PATTERN` 과 `test_geometry_vs_converter.py` 의 "상충 증거 있음" 경고를 걷었다 -- 이제 그 시험은 *미확정 전제의 일관성*이 아니라 **확정된 규격과 converter 하드코딩의 일치**를 지킨다.
+- 견본이 `KMTA.20260818.…` → **`KMTA.20260821.…`** 로 개명됐다 (파일명 == `FILENAME` 카드로 맞추는 정본 수정 -- 11.20 에서 등재한 확인 항목이 그렇게 닫혔다).
+
+**⚠️ 그 개명이 바이트 대사 6개를 조용히 죽였다.** `test_raw_draft.py` 가 견본 경로를 **하드코딩**했고 없으면 `pytest.skip` 이었다 -- 개명 후 전체 스위트가 `312 passed, 6 skipped` 로 **초록**이었다. 견본과 구현이 갈라지는 것을 잡는 이 저장소의 유일한 수단이 꺼졌는데 시험 결과가 그걸 알려 주지 않았다. 고친 방식:
+
+- 이름 대신 **패턴**으로 찾는다 (`_find_draft`, `KMT?.*.{MK,NT}.fits.header.v1.0.txt`) -- 다음 개명에는 안 깨진다.
+- 못 찾으면 **skip 이 아니라 실패**다. 견본은 정본이므로 없는 것 자체가 결함이다.
+- 여럿 찾으면 실패 -- 어느 것이 정본인지 알 수 없는 상태를 통과시키지 않는다.
+
+같은 계열을 하나 더 정리했다 (2026-08-22, 확인 중 발견) -- `test_chmap_machine_copy_agrees_when_present` 도 기계 사본(채널맵 v1.0, raw spec 4.5절이 "기계 가독 정본"으로 규정)이 없으면 `skip` 이었다. 이름의 "있으면"(`when_present`) 이 그 헐거움을 드러내고 있었다. **정본이 사라져도 초록으로 지나가는 것은 같은 결함**이므로 실패로 바꾸고 이름도 `test_chmap_matches_the_machine_copy` 로 고쳤다. 이제 `test_raw_draft.py` 에 skip 경로가 **0개**다.
+
+**시사점 (11.20 의 것과 같은 계열).** 11.20 이 "시뮬 고정값 때문에 통과하는 시험" 을 지적했는데, 이번 것은 한 단계 더 나쁘다 -- **시험이 아예 실행되지 않는데 초록이었다.** `skip` 은 "확인했다" 가 아니라 "확인하지 않았다" 인데 결과 화면에서 둘이 구별되지 않는다. 외부 자원(정본 문서·견본)에 의존하는 시험은 **없으면 실패**로 두고, 경로는 패턴으로 잡는 편이 맞다.
 
 ## 12. 정정 이력
 

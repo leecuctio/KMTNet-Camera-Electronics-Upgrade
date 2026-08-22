@@ -62,71 +62,81 @@ class DetectorBackend(Protocol):
         **개정됨 (D-012, 2026-08-11).** 종전 시그니처는 `write_fits(ccd, …)` 로
         CCD 단위였다 -- 그 형태로는 실기의 저장 단위를 표현할 수 없다.  노출
         1회가 만드는 물리 파일은 **컨트롤러당 1개, 즉 MK/NT 2개**이고 각 파일이
-        chip 2개분 픽셀을 담는다 (raw_fits_spec 2.3·2.5절, ICD v4.1 2.1·3절).
+        chip 2개분 픽셀을 담는다 (raw spec 2.1절, D-010, ICD v4.1 2.1·3절).
 
         통보(`Wrote`)는 여전히 **CCD 단위 4회**다 -- 그 분리는 시퀀서가 하고
         백엔드는 관여하지 않는다 (D-010).
 
         Args:
-            controller: `MK` 또는 `NT` (규격 5.2 `CTRLTAG`).
-            chips: 이 파일이 담는 chip, **X 낮은 쪽부터** (`CHIP1`, `CHIP2`).
-            path: 실제로 쓸 경로.  파일명 fail-safe 가 이미 적용된 값이므로
-                백엔드는 다시 바꾸지 않는다.
-            header: 규격 5장 헤더.  `FILENAME` 은 `path` 의 basename 과 같다.
+            controller: `MK` 또는 `NT`.
+            chips: 이 파일이 담는 chip, **X 낮은 쪽부터** (raw spec 4.1절).
+            path: 실제로 쓸 경로.  충돌 번호 증가(D-016)가 이미 적용된
+                값이므로 백엔드는 다시 바꾸지 않는다.
+            header: raw spec 5장 헤더 -- `rawcards.render()` 의 순서 있는
+                카드 목록.  `FILENAME` 은 `path` 의 basename 과 같다.
         """
 
     def status(self, ccd: str) -> dict:
         """STATUS 명령 응답에 쓸 값들 (Driving, fibers, build 등)."""
 
-    # -- FITS 헤더용 컨트롤러 사실 (규격 5.5·5.6·5.10절) ------------------
+    # -- FITS 헤더용 컨트롤러 사실 (raw spec 5.5·5.6절) --------------------
     #
     # **왜 텔레메트리 중계가 아니라 백엔드인가.**  레거시 raw 헤더에서 듀어
     # 온도(`CCDTEMP` `PT30N1` `CHARCOAL` `GLYC_IN` …)는 `ENS7` **뒤에** 있고
     # AUX 텔레메트리 필드 집합에는 없다 -- 각 IC 가 자기 듀어 RTD 를 직접
-    # 읽었다는 뜻이다.  신규는 Archon 이 그 센서를 읽으므로 값의 출처가
+    # 읽었다는 뜻이다.  신규는 Archon 계통이 그 센서를 읽으므로 값의 출처가
     # TC 중계(`telemetry.py`)가 아니라 이쪽이다 (D-013).
+    #
+    # 구판 계약의 `voltages()`(전압 색인 카드) · `amp_map()`(`AMPMAP`/`AMOD*`)
+    # 은 **폐지됐다** -- 해당 카드가 v1.3 미기재다 (raw spec 5.10절).  전압·
+    # 전류·온도 텔레메트리는 `controller_telemetry()` 의 `Cn_*` 나열 카드로
+    # 재편됐고, 배선은 `CHMAP_*`(rawhdr 상수) + 4.5절 amp 전수 표가 담당한다.
 
     def controller_info(self, controller: str) -> dict:
-        """컨트롤러 정체 + 런타임 상태 (규격 5.5·5.5.0절).
+        """컨트롤러 정체 (raw spec 5.5절).
 
         Returns:
-            `units`: 색인 순서(`1`=MK, `2`=NT)의 `{'id','sn','fw'}` 목록.
+            `units`: 색인 순서(`1`=MK, `2`=NT)의 `{'id','sn','cfg'}` 목록.
+                `cfg` 는 적용된 Archon 설정 파일명(`CTRLnCFG`) -- 타이밍·
+                바이어스·클럭 버전 문자열은 전부 이 파일로 귀속된다.
                 **양쪽 파일에 같은 값이 실린다** -- converter 가 MK 헤더만
-                읽으면서 두 대분 정체를 요구하기 때문이다(`v2_1.py:411-416`).
-            나머지 키(`status` `errorflag` `boardtemp` `readtime` `acffile`
-                `nphlines` `frameno` `bufno`): **이 컨트롤러의** 런타임 상태.
-                노출마다 두 대가 실제로 다르므로 색인형으로 복제하지 않는다.
+                읽으면서 두 대분 정체를 요구하기 때문이다.  `[controllers]`
+                ini 가 채워져 있으면 이 값을 **덮는다** (ICS INI 카드).
+                실기 원천: 시리얼은 SYSTEM 의 `BACKPLANE_ID`, 설정 파일명은
+                호스트가 관리한다 (컨트롤러는 ACF 이름을 보고하지 않는다 --
+                Archon 매뉴얼 p.54).
+        """
+
+    def controller_telemetry(self) -> list[dict]:
+        """컨트롤러별 온도/전압/전류 나열 -- FITS `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR`
+        (raw spec 5.6절).
+
+        색인 순서(`1`=MK, `2`=NT)의 `{'temp': [...], 'volt': [...],
+        'curr': [...]}` 목록.  **양쪽 파일에 두 대분을 같은 값으로 싣는다**
+        (5.9절 "반드시 동일") -- 그래서 컨트롤러 인자가 없다.
+
+        실기 원천은 Archon STATUS 다 (매뉴얼 p.47-49): `temp` 는
+        `BACKPLANE_TEMP` + `MODm/TEMP`, `volt`/`curr` 는 전원 레일
+        `P2V5`/`P5V`/`P6V`/`N6V`/`P17V`/`N17V`/`P35V` 의 `_V`/`_I` 쌍 --
+        자리 순서는 `rawhdr.VOLT_RAILS`.  모듈 나열 순서 명세는 규격 수록
+        예정이다 (통합 문서 §1).
         """
 
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        """chip 온도 + 듀어 센서 (규격 5.10절).
+        """chip 온도 + 듀어·환경 센서 (raw spec 5.6절 + 5.8절 Tapaculo 2장).
 
         키는 소문자: `ccdtemp1` `ccdtemp2` `dewpres` `dmptemp` `pt30n1`
         `pt30n2` `charcoal` `wallbrd` `hebox` `air_in` `air_out` `glyc_in`
-        `glyc_out`.  읽지 못한 항목은 **넣지 않는다** -- 호출측이 sentinel 로
-        채운다.  `dewpres` 만 sentinel 이 다르다: 실수 `-999.0` 이 아니라
-        문자열 `'9.99e-9'` 이고, 읽혔더라도 `0`·음수·범위 밖이면 같은 값으로
-        떨어진다 (`rawhdr.format_dewpres`).  단위는 [torr].
+        `glyc_out` `fsatemp` `fsahum`.  공급 3계통(ICG RTD / standalone RTD /
+        Tapaculo)은 raw spec 5.6절 표 참조 -- `hebox`/`fsatemp`/`fsahum` 이
+        Tapaculo 다.  읽지 못한 항목은 **넣지 않는다** -- 호출측이 sentinel
+        (`'-999.99'`, `dewpres` 만 `'9.99e-9'`)로 채운다.
 
         **`ccdtemp1` 이 FITS `CCDTEMP` 의 실측 원천이다** (운영자 확정
         2026-08-21 -- 평균 파생 폐기).  `ccdtemp2` 는 진단·로그용으로만 남고
         raw 카드가 아니다.  백엔드가 `ccdtemp` 를 따로 줘도 호출측이 무시한다
         -- 대표 센서와 어긋날 수 있는 두 번째 사실을 만들지 않는다.
-        """
-
-    def voltages(self, controller: str) -> list[dict]:
-        """bias/clock 전압 telemetry (규격 5.6절).
-
-        각 항목은 `{'name','setpoint','measured','unit','status'}`.
-        `measured` 를 넣지 않으면 `VMEA<n>=-999.0` · `VOLTSTAT=PARTIAL` 이 된다.
-        """
-
-    def amp_map(self, controller: str) -> dict | None:
-        """raw-local amp 번호 -> `(module, channel)` 실제 배선 (규격 5.5.1절).
-
-        `None` 이면 `AMPMAP='DEFAULT'` 로 **converter 의 추정식을 쓰겠다고
-        선언한다.**  배선이 추정과 다르면 crosstalk 보정이 엉뚱한 amp 묶음에
-        적용되므로, 아는 순간 실제 값을 돌려줘야 한다.
+        NT 파일의 대표 센서 귀속은 확인 항목이다 (OI-18).
         """
 
 

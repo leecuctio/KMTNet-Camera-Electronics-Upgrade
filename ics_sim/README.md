@@ -92,7 +92,11 @@ ICS>AL PING    K.IC>AL PING   M.IC>AL PING   T.IC>AL PING   N.IC>AL PING
 python -m ics_sim --fits --data-dir ./icsdata
 ```
 
-`numpy`/`astropy` 가 있으면 AUX/TCS 텔레메트리를 헤더에 넣은 더미 FITS 4개를 노출마다 저장한다.
+`numpy`/`astropy` 가 있으면 노출마다 **raw pair 2개**(`<SITE>.<날짜>.<번호>.MK/NT.fits`)를
+저장한다 — 헤더는 raw spec 의 값 카드 135장 전량(견본 초안 v1.0 pair 와 바이트
+단위 동일, `ics_sim/rawcards.py`), 더미 픽셀. `ics_sim.ini` 에서 `fits_shape = spec`
+으로 두면 실물 크기(19200×9400, 파일당 344 MiB)를 4장 geometry 구조(amp tile·
+X/중앙 overscan) 그대로 만들어 **converter 에 바로 넣을 수 있다.**
 
 ### 레거시 오염 재현
 
@@ -184,7 +188,7 @@ CLI 인자가 같은 키를 덮어쓴다. 전 항목 설명은 [DevNote 7장](De
 python -m pytest tests -q
 ```
 
-**197개 전부 통과** (2026-08-11).
+**318개 전부 통과** (2026-08-22).
 
 | 파일 | 지키는 것 |
 |---|---|
@@ -194,6 +198,9 @@ python -m pytest tests -q
 | `test_stop_abort.py` | STOP/ABORT — 레거시 분기·거부 문자열, 중지 후 IDLE 복귀 |
 | `test_xis_echo.py` | XIS 경유 시의 자기 발신 에코·브로드캐스트 중복·노드 ID 검증 |
 | `test_auxcontrol.py` | AUX 연동 — 가짜 AUX 서버로 실제 TCP 왕복, 어떤 응답에도 노출 완주 |
+| `test_raw_draft.py` | **견본 초안 v1.0 pair 와의 카드 전량 대사** — 템플릿 구조·바이트 재현·pair 상이 7장 (raw spec 7장 체크리스트 #3·#5) |
+| `test_raw_header.py` / `test_raw_pair.py` | raw spec 헤더 내용 / 이름·번호·D-016 충돌 처리 |
+| `test_geometry_vs_converter.py` | geometry 상수 ↔ converter 하드코딩의 코드-대-코드 대조 (4.3절 포장 조항) |
 | `test_config_site.py` | 사이트 코드와 `telid` 정합 |
 | `test_impv2.py` | 프로토콜 파싱 |
 
@@ -284,6 +291,9 @@ ics_sim/
 ├── emitter.py      메시지 방출 + 오염 검증   ← 모든 발신 문자열이 여기 한 곳에
 ├── sequencer.py    노출 상태머신
 ├── commands.py     명령 디스패치
+├── rawcards.py     raw spec 5장 헤더 카드 템플릿 (견본 v1.0 pair 기계 사본)
+├── rawpair.py      파일명 · 노출 번호 · 충돌 처리 (D-011/D-016)
+├── rawhdr.py       규격 5장 헤더의 값 공급
 ├── fitsout.py      FITS 생성 (헤더는 실기와 같은 경로)
 ├── auxcontrol.py   AUX control 서버 TCP 연동 (셔터 개폐 통보)
 ├── console.py      로컬 키보드 인터페이스

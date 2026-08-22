@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Raw FITS pair — 저장 단위와 통보 단위의 분리 (D-010/D-011/D-012).
+"""Raw FITS pair — 이름·번호·충돌 처리 (D-010/D-011/D-012/**D-016**).
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.3·2.5·5.0·5.1·5.2절,
+규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md` 2장,
 `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` 2.1·3절.
-변경점 C-8 / C-9 / C-16.
 
 **한 노출이 만드는 것**
 
     물리 파일 2개   <SITE>.<날짜>.<번호>.MK.fits  /  .NT.fits
     Wrote 통보 4회  KMTN{m,k,n,t}.<날짜>.<번호>.fits   (논리 이름, KMTN 불변)
 
-`test_obsagent_contract.py` 가 통보 쪽(4회·FitsNum·타임아웃)을 지키고, 이
-파일은 **저장 쪽과 그 둘의 대응**을 지킨다.  둘을 나눠 둔 이유: 통보 규약이
-깨지면 관측이 멈추고, 저장 규약이 깨지면 converter 가 못 읽는다 -- 증상이
-전혀 다른 곳에서 나타나므로 실패한 테스트 이름이 원인을 가리켜야 한다.
+`test_obsagent_contract.py` 가 통보 쪽(4회·FitsNum·타임아웃)을 지키고,
+`test_raw_header.py` 가 헤더 내용을 지키고, 이 파일은 **저장 쪽과 그 둘의
+대응 + D-016 충돌 처리**를 지킨다.
 
 `write_fits=false` 인 기본 설정에서는 물리 파일을 만들지 않으므로, 여기서는
 `paths__write_fits=True` + `tmp_path` 로 실제로 쓰게 한다 (astropy 필요).
@@ -24,6 +22,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime, timezone
 
 import pytest
 
@@ -52,19 +51,19 @@ def _written(tmp_path) -> list[str]:
 # -- 저장 단위 -------------------------------------------------------------
 
 def test_one_exposure_writes_exactly_two_files(tmp_path):
-    """노출 1회 = 물리 파일 2개.  CCD당 1개(4개)가 아니다 (규격 2.1절)."""
+    """노출 1회 = 물리 파일 2개.  CCD당 1개(4개)가 아니다 (raw spec 2.1절)."""
     _run(tmp_path)
     assert len(_written(tmp_path)) == 2
 
 
 def test_physical_names_are_site_coded_pair(tmp_path):
-    """`<SITE>.<날짜>.<번호>.<MK|NT>.fits` (규격 2.3절, D-011)."""
+    """`<SITE>.<날짜>.<번호>.<MK|NT>.fits` (raw spec 2.2절, D-011)."""
     _, cfg = _run(tmp_path)
     names = _written(tmp_path)
     site = cfg.node.telid
     assert [n.split('.')[0] for n in names] == [site, site]
     assert sorted(n.split('.')[-2] for n in names) == ['MK', 'NT']
-    # 6자리 zero-padding 은 선택이 아니다 (규격 2.3절 경고 블록)
+    # 6자리 zero-padding 은 선택이 아니다 (converter 정규식이 걸려 있다)
     for n in names:
         num = n.split('.')[2]
         assert len(num) == 6 and num.isdigit(), n
@@ -73,7 +72,7 @@ def test_physical_names_are_site_coded_pair(tmp_path):
 
 
 def test_no_kmtn_file_on_disk(tmp_path):
-    """논리 이름은 디스크에 없다 -- `LASTFILE` 이 실재 경로가 아니다 (2.5절 말미)."""
+    """논리 이름은 디스크에 없다 -- `LASTFILE` 이 실재 경로가 아니다 (2.3절 5항)."""
     run, _ = _run(tmp_path)
     assert not [n for n in _written(tmp_path) if n.startswith('KMTN')]
     # 그런데 Wrote 는 그 이름을 싣는다
@@ -83,7 +82,7 @@ def test_no_kmtn_file_on_disk(tmp_path):
 # -- 통보 단위 -------------------------------------------------------------
 
 def test_four_wrote_with_legacy_logical_names(tmp_path):
-    """`Wrote` 4회, 논리 이름은 `KMTN<c>` 불변 (규격 2.5절)."""
+    """`Wrote` 4회, 논리 이름은 `KMTN<c>` 불변 (DevNote 3.2)."""
     run, cfg = _run(tmp_path)
     relays = [m for m in run.to('OBS') if 'Wrote LASTFILE=' in m]
     assert len(relays) == 4
@@ -107,7 +106,7 @@ def test_logical_name_keeps_kmtn_even_when_site_is_not_ctio(tmp_path):
 
 
 def test_two_messages_from_one_file_share_the_rate(tmp_path):
-    """한 파일에서 나온 두 통보는 같은 RATE 를 싣는다 (규격 2.5절 말미)."""
+    """한 파일에서 나온 두 통보는 같은 RATE 를 싣는다 (DevNote 3.2)."""
     run, _ = _run(tmp_path)
     rates: dict[str, str] = {}
     for m in run.to('OBS'):
@@ -120,7 +119,7 @@ def test_two_messages_from_one_file_share_the_rate(tmp_path):
     assert rates['n'] == rates['t'], rates       # NT 파일
 
 
-# -- 헤더 정체성 (5.1 / 5.2) ----------------------------------------------
+# -- 헤더 정체성 (D-016) -----------------------------------------------------
 
 def _headers(tmp_path) -> dict[str, object]:
     out = {}
@@ -131,54 +130,37 @@ def _headers(tmp_path) -> dict[str, object]:
 
 
 def test_identity_cards_present_and_consistent(tmp_path):
-    """규격 5.2절의 pair 식별 카드."""
+    """`FILENAME`(유일 키) + `ORIGNAME`(카운터 배정명) -- 모든 파일에 항상
+    (raw spec 2.3절 4항).  구판의 `UNIQNAME`/`CTRLTAG`/`CHIPS`/`PAIRFILE`
+    계열은 폐지됐다 -- pair 식별은 `FILENAME` 꼬리 `.MK`/`.NT` 로 충분하다."""
     _run(tmp_path)
     hdrs = _headers(tmp_path)
     assert len(hdrs) == 2
-    by_tag = {h['CTRLTAG']: h for h in hdrs.values()}
+    by_tag = {str(h['DETID']).strip(): h for h in hdrs.values()}
     assert set(by_tag) == {'MK', 'NT'}
-
-    for tag, want in (('MK', ('M', 'K')), ('NT', ('N', 'T'))):
-        h = by_tag[tag]
-        assert h['CHIP1'] == want[0]
-        assert h['CHIP2'] == want[1]
-        assert h['CHIPS'] == ','.join(want)
-        assert h['CHIPLIST'] == 'M,K,N,T'        # 공식 순서
-        assert h['RAWPROD'] == 'L0_RAW_ARCHON'
-        assert h['RAWVER'] == 'CEU-RAW-v1.0'
-        assert h['RAWGROUP'] == 'MKNT'
-        assert h['NUMFILES'] == 2
-
-    # UNIQNAME 은 pair 양쪽이 **달라야** 한다 (컨트롤러 태그가 들어가므로)
-    assert by_tag['MK']['UNIQNAME'] != by_tag['NT']['UNIQNAME']
-    # 그러나 날짜·연번은 같아야 한다 -- 같은 노출이니까
-    assert (by_tag['MK']['UNIQNAME'].split('.')[1:3]
-            == by_tag['NT']['UNIQNAME'].split('.')[1:3])
-    # EXPID/EXPNUM 은 두지 않는다 -- UNIQNAME 이 상위집합이다 (2026-08-12)
-    assert 'EXPID' not in by_tag['MK']
-    assert 'EXPNUM' not in by_tag['MK']
+    for tag, h in by_tag.items():
+        assert str(h['FILENAME']).endswith(f'.{tag}')
+        assert str(h['ORIGNAME']).endswith(f'.{tag}')
+        # 평시 불변식: 충돌이 없으면 두 값이 같다
+        assert h['FILENAME'] == h['ORIGNAME']
+    # 짝 이름은 꼬리 치환으로 유도된다 (PAIRFILE 카드는 없다)
+    mk_stem = str(by_tag['MK']['FILENAME'])
+    assert mk_stem[:-2] + 'NT' == str(by_tag['NT']['FILENAME'])
 
 
 def test_identifier_cards_stay_strings(tmp_path):
-    """식별자 카드가 **숫자 카드로 저장되면 안 된다.**
+    """식별자 카드가 **숫자 카드로 저장되면 안 된다** (raw spec 5.0절).
 
-    회귀 방지 — 처음 구현에서 `EXPID='20260811.000001'` 이 실수 카드가 됐다.
-    `_apply_header` 는 텔레메트리를 와이어 문자열로 받아 숫자로 바꾸는데
-    (`EQUINOX='2000.000'` 때문에 필요한 동작이다) 숫자로 보이는 식별자가 그
-    규칙에 걸린 것이다.  `EXPID` 는 이제 없지만 **같은 함정이 `UNIQNAME` 의
-    연번부에도 있으므로** 검사를 유지한다.
+    숫자 카드는 zero-padding 을 파괴한다 (`'…000010'` -> `…00001`).  검사는
+    값이 아니라 **카드의 형**을 본다.
     """
     _run(tmp_path)
     for h in _headers(tmp_path).values():
-        for key in ('UNIQNAME', 'FILENAME', 'PAIRFILE', 'CTRLTAG', 'CHIPS',
-                    'CHIP1', 'CHIP2', 'CHIPLIST', 'RAWPROD', 'RAWVER',
-                    'RAWGROUP', 'OBSERVAT', 'ORIGIN', 'BUNIT', 'CREATOR',
-                    'DATE'):
+        for key in ('FILENAME', 'ORIGNAME', 'DETID', 'OBSERVAT', 'ORIGIN',
+                    'BUNIT'):
             assert isinstance(h[key], str), f'{key}: {type(h[key])}'
         assert re.fullmatch(r'KMT[CSAT]\.\d{8}\.\d{6}\.(MK|NT)',
-                            h['UNIQNAME']), h['UNIQNAME']
-        # 반대로 개수 카드는 정수여야 한다
-        assert isinstance(h['NUMFILES'], int)
+                            str(h['FILENAME'])), h['FILENAME']
 
 
 @pytest.mark.parametrize('suffix', [
@@ -190,202 +172,178 @@ def test_identifier_cards_stay_strings(tmp_path):
 def test_serial_keeps_its_zero_padding(tmp_path, suffix):
     """식별자의 6자리 zero-padding 이 헤더를 왕복해도 살아남아야 한다.
 
-    실수 카드로 저장되면 **뒤쪽 0 이 날아간다** -- 규격 2.3절이 zero-padding 을
-    필수로 정한 이유가 헤더에서 그대로 재현되는 자리다 (5.0절 표).
-
-    위 `test_identifier_cards_stay_strings` 는 형만 보므로 값과 무관하게
-    잡지만, 이 테스트는 **결과**를 본다.  처음 구현에서 이 결함이 있었는데
-    시험 데이터가 `000001` 이라 왕복이 우연히 성립했다 -- `000010` 이었으면
-    그때 바로 드러났을 것이다.
+    템플릿이 `FILENAME`/`ORIGNAME` 을 문자열 형으로 못박으므로(rawcards)
+    실수 카드가 될 수 없다 -- 그 성질을 왕복으로 확인한다.
     """
-    from ics_sim.fitsout import _apply_header
-
+    from ics_sim import rawcards
+    from ics_sim.fitsout import apply_cards
+    stem = rawpair.name_stem('KMTA', suffix, 'MK')
+    cards = rawcards.render({'FILENAME': stem, 'ORIGNAME': stem})
     hdr = fits.Header()
-    _apply_header(hdr, rawpair.identity_header(
-        site_code='KMTA', suffix=suffix, ctrltag='MK',
-        filename=rawpair.name_stem('KMTA', suffix, 'MK'),
-        created='2026-08-11T12:00:00'))
-
-    # UNIQNAME · FILENAME · PAIRFILE 모두 자릿수를 유지해야 한다
-    for key in ('UNIQNAME', 'FILENAME', 'PAIRFILE'):
+    apply_cards(hdr, [c for c in cards
+                      if c[0] in ('FILENAME', 'ORIGNAME')])
+    for key in ('FILENAME', 'ORIGNAME'):
         assert isinstance(hdr[key], str), f'{key}: {type(hdr[key])}'
         assert f'.{suffix}.' in hdr[key], f'{key}={hdr[key]!r}'
 
 
 def test_filename_matches_the_actual_file(tmp_path):
-    """`FILENAME` 은 자기 파일 이름이며 **확장자를 뗀 형태**다 (규격 5.1절).
+    """`FILENAME` 은 자기 파일 이름이며 **확장자를 뗀 형태**다 (2.3절).
 
     레거시 실측 헤더가 `FILENAME = 'KMTNk.20170209.044131'` 로 `.fits` 없이
     기록했다 (`raw_fits_spec/__reference/Legacy raw fits header samples/`).
     """
     _run(tmp_path)
     for name, h in _headers(tmp_path).items():
-        assert h['FILENAME'] == os.path.splitext(name)[0]
-        assert not h['FILENAME'].endswith('.fits')
-
-
-def test_pairfile_points_at_the_other_member(tmp_path):
-    """`PAIRFILE` 이 짝을 가리킨다."""
-    _run(tmp_path)
-    hdrs = _headers(tmp_path)
-    stems = {os.path.splitext(n)[0] for n in hdrs}
-    for name, h in hdrs.items():
-        # PAIRFILE 도 FILENAME 과 같은 형태(확장자 없음)로 대칭을 맞춘다
-        assert h['PAIRFILE'] in stems - {os.path.splitext(name)[0]}
-        assert not h['PAIRFILE'].endswith('.fits')
+        assert str(h['FILENAME']).strip() == os.path.splitext(name)[0]
+        assert not str(h['FILENAME']).endswith('.fits')
 
 
 def test_observat_agrees_with_the_filename_site_code(tmp_path):
-    """파일명 `<SITE>` 와 `OBSERVAT` 는 일치해야 한다 (규격 2.3절).
+    """파일명 `<SITE>` 와 `OBSERVAT` 는 일치해야 한다 (raw spec 2.2절).
 
-    converter v2.2.0 이 이 둘을 교차 검증해 불일치를 오류로 처리한다.
+    converter v2.2.0 이 이 둘을 교차 검증한다 -- **유일한 변환 하드 실패**다.
     """
     _run(tmp_path, node__site='sso', node__telid='KMTA')
     for name, h in _headers(tmp_path).items():
-        assert h['OBSERVAT'] == rawpair.OBSERVAT[name.split('.')[0]] == 'SSO'
+        assert (str(h['OBSERVAT']).strip()
+                == rawpair.OBSERVAT[name.split('.')[0]] == 'SSO')
 
 
-# -- 파일명 fail-safe 와 정체성 -------------------------------------------
+# -- D-016 충돌 처리: 번호 증가 · 되감음 · 상한 ------------------------------
 
-def test_name_clash_quarantines_without_touching_the_identity(tmp_path):
-    """이름이 겹치면 **개명하지 않고 `clash/` 로 격리**한다 (규격 2.3.1절).
+def test_collision_bumps_the_number_and_keeps_both_files(tmp_path):
+    """이름이 겹치면 **번호를 올려 저장한다** -- 격리·개명이 아니다 (D-016).
 
-    세 겹이 각각 다른 질문에 답한다:
-      * **어디에**  — `clash/` 하위 디렉토리
-      * **어느 것인지** — 파일 이름에 `.clash<UTC>` 접미
-      * **일어났는지** — `NAMECLSH` 카드 (존재 자체가 신호)
-
-    그리고 `UNIQNAME` 은 **바뀌지 않는다.** 그래서 격리된 파일도 어느 노출의
-    어느 컨트롤러인지 헤더만으로 알 수 있다 -- 개명으로 식별을 잃던 문제가
-    아예 성립하지 않는다.
-    """
-    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
-    drive(SCRIPT, cfg)
-    first = _written(tmp_path)
-    assert len(first) == 2
-    canonical = {os.path.splitext(n)[0] for n in first}
-
-    # expnum 이 다시 1 이므로 같은 이름을 쓰려 한다 -> 충돌
-    run = drive(SCRIPT, make_config(paths__write_fits=True,
-                                    paths__data_dir=str(tmp_path)))
-    assert run.count('already exists') >= 1
-
-    # 정상 디렉토리는 그대로 2개 -- 덮어쓰지도, 늘어나지도 않았다
-    assert _written(tmp_path) == first
-
-    clash_dir = os.path.join(tmp_path, rawpair.CLASH_DIR)
-    assert os.path.isdir(clash_dir), '격리 디렉토리가 만들어지지 않았다'
-    quarantined = sorted(n for n in os.listdir(clash_dir)
-                         if n.endswith('.fits'))
-    assert len(quarantined) == 2, quarantined
-
-    for name in quarantined:
-        stem = os.path.splitext(name)[0]
-        assert re.fullmatch(r'KMT[CSAT]\.\d{8}\.\d{6}\.(MK|NT)'
-                            r'\.clash\d{8}T\d{6}Z', stem), stem
-        with fits.open(os.path.join(clash_dir, name)) as hdul:
-            h = hdul[0].header
-        assert h['FILENAME'] == stem                 # 실제로 쓴 이름
-        assert h['UNIQNAME'] in canonical            # 정본은 그대로
-        assert h['NAMECLSH'] is True                 # 충돌했다는 신호
-        assert h['CTRLTAG'] in ('MK', 'NT')          # 식별 유지
-        assert h['CHIP1'] and h['CHIP2']
-
-
-def test_no_clash_card_when_nothing_collided(tmp_path):
-    """`NAMECLSH` 는 **충돌했을 때만** 넣는다 -- 존재가 곧 신호다.
-
-    `False` 를 넣으면 "충돌 안 함" 과 "이 규격을 모르는 취득 SW" 가 구분되지
-    않는다.
+    충돌 사실은 `FILENAME ≠ ORIGNAME` 값 비교 하나로 남는다 (카드 존재가
+    아니다).  구판의 `clash/` 디렉토리·`NAMECLSH` 카드·WARNING 메시지는
+    전부 폐지됐다.
     """
     _run(tmp_path)
-    for name, h in _headers(tmp_path).items():
-        assert 'NAMECLSH' not in h, name
-        # 충돌이 없으면 정본과 실제 이름이 같다
-        assert h['FILENAME'] == h['UNIQNAME']
-    assert not os.path.isdir(os.path.join(tmp_path, rawpair.CLASH_DIR))
+    first = _written(tmp_path)
+    assert len(first) == 2
 
-
-def test_failsafe_warning_is_one_per_file_from_ics(tmp_path):
-    """fail-safe 경고는 **파일당 1회, `ICS` 이름으로 노출 개시자에게만**.
-
-    파일 단위 사건이므로 파일당 1회다.  발신자를 `*.CB` 로 하지 않는 이유:
-    물리 파일 1개에 chip 이 2개라 `M.CB`/`K.CB` 중 무엇으로 보낼지 정할 근거가
-    없고, 둘 다 보내면 파일 2개가 겹친 것처럼 보인다.  ICS 가 파일을 쓴
-    당사자이므로 ICS 가 보고한다 (2026-08-12 확정).
-
-    OBSAgent 안전성은 소스로 확인했다 — `case WARNING:`(`commands.c:1045`)은
-    발신자를 보지 않고 본문을 출력만 하며, 발신 노드 필터(`:757`)는
-    `case STATUS:` 안에만 있다.
-    """
-    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
-    drive(SCRIPT, cfg)
+    # expnum 이 다시 1 이므로 같은 이름을 쓰려 한다 -> 선검사가 번호를 올린다
     run = drive(SCRIPT, make_config(paths__write_fits=True,
                                     paths__data_dir=str(tmp_path)))
-    warns = [m for m in run.sent if 'already exists' in m]
-    assert len(warns) == 2, warns                    # 파일당 1회 = 2회
-    for m in warns:
-        assert m.startswith('ICS>'), m               # ICS 이름으로
-        assert m.split('>')[1].split()[0] == 'OBS'   # 개시자에게만
-    # 자기 앞으로는 보내지 않는다 (에코 낭비)
-    assert not [m for m in warns if m.split('>')[1].split()[0] == 'ICS']
+    names = _written(tmp_path)
+    assert len(names) == 4, '충돌 프레임도 정상 흐름에 남아야 한다'
+    assert first[0] in names and first[1] in names, '기존 파일을 덮어썼다'
+    assert not os.path.isdir(os.path.join(tmp_path, 'clash')), (
+        '격리 디렉토리는 폐지됐다 (D-016)')
+    # 개명 통보도 폐지 -- WARNING 로그만 남는다
+    assert not run.find('already exists')
+
+    new = [n for n in names if n not in first]
+    for n in new:
+        with fits.open(os.path.join(tmp_path, n)) as hdul:
+            h = hdul[0].header
+        stem = os.path.splitext(n)[0]
+        assert str(h['FILENAME']).strip() == stem       # 실제 저장명
+        assert str(h['ORIGNAME']).strip() != str(h['FILENAME']).strip(), (
+            '충돌 신호는 FILENAME ≠ ORIGNAME 이다')
+        # 번호만 다르고 형식은 같다 (D-011 불변 -- find_pair() 영향 없음)
+        assert re.fullmatch(r'KMT[CSAT]\.\d{8}\.\d{6}\.(MK|NT)', stem)
+    # pair 양쪽이 같은 번호로 함께 증가한다
+    assert len({tuple(n.split('.')[1:3]) for n in new}) == 1
 
 
-# -- sentinel (5.0절 / C-9 / OI-6) ----------------------------------------
+def test_counter_is_synchronized_to_the_final_number(tmp_path):
+    """확정 번호로 카운터를 동기화한다 (D-016 3항).
+
+    동기화가 없으면 다음 노출이 또 같은 자리에서 충돌해 **노출마다 선검사
+    루프를 다시 돈다** -- 번호 점프는 한 번이어야 한다.
+    """
+    _run(tmp_path)                    # 000001 점유
+    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
+    drive(['OBS>ICS DARK pair', 'OBS>ICS EXP 5', 'OBS>ICS GO 2'], cfg,
+          settle=1.0)
+    nums = sorted({n.split('.')[2] for n in _written(tmp_path)})
+    # 1회차 000001, 2회차 GO 2 -> 충돌로 000002 + 동기화된 000003
+    assert nums == ['000001', '000002', '000003'], nums
+
+
+def test_resolve_pair_number_wraps_and_caps(tmp_path, monkeypatch):
+    """되감음(099999 -> 000000)과 상한(공간 한 바퀴) -- D-016 1·2항."""
+    # 되감음: 99999 가 점유되어 있으면 000000 으로 넘어간다
+    taken = {os.path.normpath(p) for p in rawpair.pair_paths(
+        str(tmp_path), 'KMTA', '20260822', 99999)}
+    monkeypatch.setattr(os.path, 'exists',
+                        lambda p: os.path.normpath(p) in taken)
+    got = rawpair.resolve_pair_number(str(tmp_path), 'KMTA', '20260822',
+                                      99999)
+    assert got == 0
+
+    # 상한: 전부 점유면 NumberSpaceExhausted -- 유일한 저장 실패 조건
+    monkeypatch.setattr(os.path, 'exists', lambda p: True)
+    with pytest.raises(rawpair.NumberSpaceExhausted):
+        rawpair.resolve_pair_number(str(tmp_path), 'KMTA', '20260822', 0)
+
+
+def test_resolve_pair_number_checks_both_members(tmp_path):
+    """선검사는 **MK·NT 두 경로 모두**다 -- 한쪽만 있어도 그 번호는 점유다."""
+    date_part = '20260822'
+    mk, nt = rawpair.pair_paths(str(tmp_path), 'KMTA', date_part, 1)
+    os.makedirs(os.path.dirname(nt) or str(tmp_path), exist_ok=True)
+    open(nt, 'w').close()             # NT 만 존재
+    assert rawpair.resolve_pair_number(str(tmp_path), 'KMTA', date_part,
+                                       1) == 2
+    assert rawpair.resolve_pair_number(str(tmp_path), 'KMTA', date_part,
+                                       1, check=False) == 1
+
+
+def test_expnum_wraps_at_the_number_space():
+    """카운터 자체도 000000–099999 순환이다 (D-016 1항)."""
+    from ics_sim.state import IcsState
+    st = IcsState()
+    st.expnum = 99999
+    st.advance()
+    assert st.expnum == 0
+
+
+# -- sentinel (raw spec 5.0절) ----------------------------------------------
 
 def test_fits_sentinels_follow_the_spec_not_the_message_layer():
-    """FITS 헤더는 정수 `-1` / 실수 `-999.0` / 문자열 `'NC'`.
+    """FITS 쪽 TC 중계 카드는 전부 문자열이고 결측은 `'NC'` 다.
 
     메시지 계층은 `'0'` 을 그대로 쓴다 -- 레거시 재현이 필요한 쪽이라
-    분리해 두었다 (DevNote 11.2, 변경점 C-9).
+    분리해 두었다 (DevNote 11.2, C-9).
     """
     telem = TelemetryRelay(SimConfig(), None)
     msg = telem.header_dict()
-    hdr = telem.fits_header_dict('2026-08-11T12:00:00')
+    hdr = telem.fits_header_dict('2026-08-11T12:00:00.000')
 
     # 메시지 계층: 레거시 관례 그대로
     assert msg['SECZ'] == '0' and msg['ALT'] == '0'
-    # FITS 헤더: 0 은 값-없음으로 쓰지 않는다
-    assert hdr['SECZ'] == -999.0
-    assert hdr['ALT'] == -999.0
-    assert hdr['FALIMS'] == -1          # 정수형
-    assert hdr['MCPOS'] == -1
-    assert hdr['DSSTAT'] == 'NC'        # 문자열
-    assert hdr['TIMESYS'] == 'UTC'      # 규격 5.0: 명시한다
-    for key, val in hdr.items():
-        assert val != '0', f'{key} 가 아직 메시지 계층 sentinel 이다'
+    # FITS 카드: 문자열 sentinel 하나로 통일 (형이 문자열이므로)
+    assert hdr['SECZ'] == 'NC'
+    assert hdr['MCPOS'] == 'NC'
+    assert hdr['DSSTAT'] == 'NC'
+    assert hdr['TCSLINK'] == 'Down'       # 질의 성패에서 유도
+    from ics_sim.rawcards import RELAY_CARDS
+    for key in RELAY_CARDS:
+        assert key in hdr, f'{key} 카드 몫이 빠졌다'
 
 
 def test_date_obs_is_always_written(tmp_path):
-    """`DATE-OBS` 는 **무조건 들어간다** (규격 5.7절 필수, 출처 ICS).
-
-    외부에서 받아오는 값이 아니라 ICS 가 셔터를 여는 시점의 OS 시각을 스스로
-    찍는 값이므로, 정상 사이클에 "없어서 못 넣는" 상황은 존재하지 않는다.
-    """
+    """`DATE-OBS` 는 **무조건 들어간다** (raw spec 5.4절 필수, 출처 ICS)."""
     _run(tmp_path)
+    vals = set()
     for name, h in _headers(tmp_path).items():
         assert h['DATE-OBS'], name
-        # **초는 소수점 셋째자리까지** (운영자 확정 2026-08-13, 규격 5.7절).
-        # 종전 `UT` 카드를 없애는 대신 이 카드 하나가 날짜·시각을 다 담는다.
         assert re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}',
-                            h['DATE-OBS']), h['DATE-OBS']
-        assert h['TIMESYS'] == 'UTC'
-    # pair 양쪽이 같아야 한다 (규격 5.7절 말미: 셔터는 하나, 노출도 하나)
-    vals = {h['DATE-OBS'] for h in _headers(tmp_path).values()}
+                            str(h['DATE-OBS'])), h['DATE-OBS']
+        assert str(h['TIMESYS']).strip() == 'UTC'
+        vals.add(str(h['DATE-OBS']))
+    # pair 양쪽이 같아야 한다 (셔터는 하나, 노출도 하나)
     assert len(vals) == 1, vals
 
 
 def test_date_obs_is_never_silently_substituted():
-    """근거가 없으면 **현재 시각으로 채우지 않고** 카드를 비운다.
-
-    `stamp_iso(None)` 이 조용히 현재 시각을 돌려주므로, 그 값을 그대로 넘기면
-    저장 시각이 `DATE-OBS` 가 된다 — 규격 6.1절 변경점 C-6 이 금지한 바로 그
-    동작이다.  시퀀서가 `exp_start is None` 을 걸러 빈 문자열을 넘기고, 여기서
-    카드가 비는 것을 확인한다.  `date_obs` 에 기본값이 없는 것도 같은 이유다.
-    """
+    """근거가 없으면 **현재 시각으로 채우지 않고** 카드를 비운다 (C-6)."""
     telem = TelemetryRelay(SimConfig(), None)
     assert 'DATE-OBS' not in telem.fits_header_dict('')
-    assert telem.fits_header_dict('2026-08-11T12:00:00')['DATE-OBS']
+    assert telem.fits_header_dict('2026-08-11T12:00:00.000')['DATE-OBS']
     # 기본값이 없어야 호출측이 빠뜨릴 수 없다
     import inspect
     sig = inspect.signature(telem.fits_header_dict)
@@ -393,14 +351,154 @@ def test_date_obs_is_never_silently_substituted():
 
 
 def test_header_carries_detector_identity(tmp_path):
-    """헤더만으로 어느 검출기인지 알 수 있어야 한다.
-
-    개정 전에는 `header_dict()` 가 텔레메트리만 담아 4개 CCD 가 **똑같은
-    헤더**를 받았고, CCD 식별이 파일명에만 있었다.  그래서 fail-safe 가
-    이름을 바꾸면 그 파일이 어느 검출기인지 되찾을 방법이 없었다.
-    """
+    """헤더만으로 어느 검출기 pair 인지 알 수 있어야 한다 (`DETID`/`CHMAP_*`)."""
     _run(tmp_path)
     hdrs = list(_headers(tmp_path).values())
-    assert len({h['CTRLTAG'] for h in hdrs}) == 2   # 두 파일이 서로 다르다
+    assert len({str(h['DETID']) for h in hdrs}) == 2
     for h in hdrs:
-        assert h['CHIP1'] and h['CHIP2'] and h['CHIPS']
+        assert h['CHMAP_LT'] and h['CHMAP_RB']
+
+
+# -- D-015: 실효 사이트가 파일명·헤더까지 일관되게 흘러가나 --------------------
+
+def test_detected_site_wins_over_the_ini_all_the_way_to_the_header(tmp_path):
+    """**IP 판정이 ini 를 이긴다** (D-015, raw spec 2.2절) -- 파일명·`OBSERVAT`
+    ·관측일 경계가 **모두 같은 사이트**여야 한다.
+
+    구판은 관측일만 판정값(`state.site_code`)을 쓰고 파일명 `<SITE>` 와
+    `OBSERVAT` 는 ini 원값(`cfg.node.telid`)을 썼다 -- 판정과 ini 가 다르면
+    한 파일 안에서 사이트가 갈렸고, 기동 배너가 찍는 파일명 예시와도
+    어긋났다.  **경고만 나고 자료는 조용히 섞이는** 부류다.
+    """
+    # ini 는 SSO(KMTA) 라고 선언하지만 판정은 벤치(KMTT) -- 벤치의 실제 상황이다
+    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path),
+                      node__site='sso', node__telid='KMTA')
+    from ics_sim.app import IcsSim
+    original = IcsSim._resolve_site
+    IcsSim._resolve_site = lambda self: ('KMTT', '(시험 강제)')
+    try:
+        drive(SCRIPT, cfg)
+    finally:
+        IcsSim._resolve_site = original
+
+    names = _written(tmp_path)
+    assert names, '저장이 안 됐다'
+    assert [n.split('.')[0] for n in names] == ['KMTT', 'KMTT'], names
+    for name, h in _headers(tmp_path).items():
+        assert str(h['OBSERVAT']).strip() == 'TESTBED', name
+        # 관측일도 같은 사이트 규칙(KMTT = UT 날짜 그대로)이어야 한다
+        iso = str(h['DATE-OBS'])
+        when = datetime.strptime(iso, '%Y-%m-%dT%H:%M:%S.%f').replace(
+            tzinfo=timezone.utc)
+        assert name.split('.')[1] == rawpair.observing_date(when, 'KMTT')
+
+
+# -- D-016 1항: 번호 공간을 명령 입구에서 강제한다 ---------------------------
+
+@pytest.mark.parametrize('bad', ['100000', '1000000', '-5'])
+def test_expnum_command_rejects_values_outside_the_number_space(bad):
+    r"""`EXPNUM <n>` 은 카운터로 들어오는 유일한 외부 경로다 -- 범위를 안 막으면
+    7자리 suffix 나 부호가 자리를 먹는 이름이 와이어로 나간다 (DevNote 3.4 의
+    "Filename= 뒤 15자" 파서 · converter 정규식 `\d{6}`)."""
+    run = drive([f'OBS>ICS expnum {bad}'])
+    replies = run.find('EXPNUM')
+    assert any('Invalid exposure number' in m for m in replies), replies
+
+
+def test_expnum_command_accepts_the_edges_of_the_space():
+    for good in ('0', '99999'):
+        run = drive([f'OBS>ICS expnum {good}'])
+        replies = [m for m in run.find('EXPNUM') if 'Filename=' in m]
+        assert replies, good
+        assert not any('Invalid' in m for m in run.find('EXPNUM')), good
+
+
+# -- 5.9절 "반드시 동일" 의 구조적 보장 --------------------------------------
+
+def test_pair_common_facts_are_snapshotted_once_per_exposure(tmp_path):
+    """pair 양쪽에 같은 값이 실려야 하는 사실은 **노출당 한 번만** 질의한다
+    (raw spec 5.9절).
+
+    컨트롤러별 저장 태스크가 각자 질의하면 두 파일의 스냅샷 시각이
+    `write_delay + skew` 만큼 벌어진다 -- 시뮬 백엔드는 고정값을 돌려주므로
+    **시험은 통과하는 채로 실기에서만 값이 갈리는** 부류다.  그래서 값이 아니라
+    **질의 횟수**를 본다.
+    """
+    import ics_sim.hardware.sim as simmod
+    calls: dict[str, int] = {'sensors': 0, 'telem': 0, 'info': 0}
+    orig = (simmod.SimBackend.sensors, simmod.SimBackend.controller_telemetry,
+            simmod.SimBackend.controller_info)
+
+    def counted(key, fn):
+        def wrapper(self, *a, **kw):
+            calls[key] += 1
+            return fn(self, *a, **kw)
+        return wrapper
+
+    simmod.SimBackend.sensors = counted('sensors', orig[0])
+    simmod.SimBackend.controller_telemetry = counted('telem', orig[1])
+    simmod.SimBackend.controller_info = counted('info', orig[2])
+    try:
+        _run(tmp_path)
+    finally:
+        (simmod.SimBackend.sensors, simmod.SimBackend.controller_telemetry,
+         simmod.SimBackend.controller_info) = orig
+
+    assert len(_written(tmp_path)) == 2
+    for key, n in calls.items():
+        assert n == 1, f'{key} 를 노출 1회에 {n}번 질의했다 (pair 공통 사실은 1번)'
+
+
+def test_exposure_metadata_is_frozen_at_frame_time(tmp_path):
+    """노출 메타데이터는 프레임 시점에 굳는다 -- `_store` 는 `write_delay` 뒤에
+    도는데 그 사이 다음 관측의 `object`/`exp` 가 들어오면 프레임 N 의 헤더에
+    프레임 N+1 의 값이 실린다 (raw spec 5.4절, `suffix` 와 같은 이유 12.10).
+
+    노출이 끝난 직후(저장 태스크가 아직 자고 있을 때) 새 `object`/`exp` 를
+    밀어 넣고, 저장된 헤더가 **원래 값**을 유지하는지 본다.
+    """
+    from conftest import drive_at
+    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
+    # `Wrote` 직전(=IDLE 통보 시점)에 다음 관측 설정을 밀어 넣는다
+    drive_at(['OBS>ICS OBJECT firstfield', 'OBS>ICS EXP 5', 'OBS>ICS GO 1'],
+             marker='EXPSTATUS=IDLE',
+             inject=['OBS>ICS OBJECT nextfield', 'OBS>ICS EXP 60'],
+             cfg=cfg, settle=1.2)
+    hdrs = _headers(tmp_path)
+    assert len(hdrs) == 2, list(hdrs)
+    for name, h in hdrs.items():
+        assert str(h['OBJECT']).strip() == 'firstfield', (name, h['OBJECT'])
+        assert h['EXPTIME'] == 5, (name, h['EXPTIME'])
+
+
+# -- 외부 INITIALIZE 가 프레임 이름·통보를 훼손하지 못한다 -------------------
+
+@pytest.mark.parametrize('injected', [
+    'CHA>K.IC INITIALIZE 0394',          # 레거시 IC 관례: 점 없는 4자리
+    'CHA>K.IC INITIALIZE 20260818.abcdef',
+    'CHA>K.IC INITIALIZE ../../etc/passwd',
+])
+def test_external_initialize_cannot_break_the_frame(tmp_path, injected):
+    """`INITIALIZE <suffix>` 는 형식 검증이 없는 **외부 입력**이다 (레거시
+    관례 -- 실측상 CHA 노드가 쓴다, DevNote 6.3).  그 값이 프레임 중간에
+    들어와도 **노출 규약이 깨지면 안 된다** (DevNote 3장).
+
+    구판은 저장 직전에 `st.channel(ccds[0]).suffix` 를 **다시 읽어** 파일명을
+    정했고, D-016 선검사가 그 값을 번호로 파싱하면서 노출 태스크가 죽었다 --
+    `EXPSTATUS=IDLE` 도 `Wrote` 도 나가지 않아 OBSAgent 가 창 초과로
+    `opause` 에 빠지는 경로였다.  이름은 프레임이 정한다.
+    """
+    from conftest import drive_at
+    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
+    run = drive_at(['OBS>ICS DARK pair', 'OBS>ICS EXP 5', 'OBS>ICS GO 1'],
+                   marker='EXPSTATUS=READOUT', inject=injected, cfg=cfg,
+                   settle=1.2)
+    # 규약: IDLE 전이 1회 · Wrote 중계 4회
+    assert run.count('EXPSTATUS=IDLE') >= 1, '노출 태스크가 죽었다 (IDLE 유실)'
+    relays = [m for m in run.to('OBS') if 'Wrote LASTFILE=' in m]
+    assert len(relays) == 4, f'Wrote 4회가 아니다: {len(relays)}'
+    # 파일명은 프레임이 정한 규격 형식 그대로여야 한다 (외부 값이 안 섞인다)
+    names = _written(tmp_path)
+    assert len(names) == 2, names
+    for n in names:
+        assert re.fullmatch(r'KMT[CSAT]\.\d{8}\.\d{6}\.(MK|NT)\.fits', n), n
