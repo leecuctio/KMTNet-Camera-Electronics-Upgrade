@@ -6,18 +6,20 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec v1.3 (2026-08-22 발행)
+## ✅ 현행 규격 — raw spec v1.4 (2026-08-22)
 
-**[`KMT_CEU_Raw_FITS_Specification_v1.3.md`](KMT_CEU_Raw_FITS_Specification_v1.3.md)** ("raw spec" / "로우 스펙") 이 현행이다 — 2026-08-18~22 전면 재검토의 재작성판으로, 구 "Raw FITS Pair 규격" v1.2 를 개명·대체했다(구판은 `archive/KMT_CEU_Raw_FITS_Specification_v1.2.md`, 구명 Pair_Spec).
+**[`KMT_CEU_Raw_FITS_Specification_v1.4.md`](KMT_CEU_Raw_FITS_Specification_v1.4.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체)에 **운영자 1~4장 검토를 반영한 판**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3).
 
-- **절 구성이 구판과 다르다** — 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 v1.3 기준으로 재확인. ICD v4.1 §12 의 위임 대상과 `ics_sim` 주석의 참조 정리는 **구현 일감**이다.
+- **5장 이후는 아직 검토 전이다** — 팀 협의 후 다음 판에서 다룬다(운영자, 2026-08-22).
+
+- **절 구성이 구판과 다르다** — 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 현행 기준으로 재확인. ⚠️ **v1.4 에서 2.5절(Wrote 통보)이 삭제돼 절 번호가 또 바뀌었다**(2장은 2.1~2.4). `ics_sim` 쪽 참조 정리는 **완료**(2026-08-22, v1.3 정렬과 함께 — 아래 "다음 사람이 할 일" 3). ICD v4.1 §12 의 위임 대상 갱신은 LEECU 몫으로 남아 있다.
 - 헤더 5장의 바이트 단위 정본은 **초안 헤더 v1.0 pair**(`KMTA...MK/NT.fits.header.v1.0.txt`)다.
 
 ## 먼저 읽을 것
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Specification_v1.3.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
+| `KMT_CEU_Raw_FITS_Specification_v1.4.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
 | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
 | `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` | **통합 문서** — Part 1: LEECU 전달용 C-항목·이름 대응·키워드맵 이관 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.4/v0.2/v0.5 는 `archive/` |
 | `archive/KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` | 검토용 — **흡수 완료 후 archive 이동(운영자 재가 2026-08-22)**: 판정은 Header_and_Refs, 미결 4건은 통합 문서 Part 1 §6. 배경 자료(전수 대응표·인벤토리)로만 유효 (ACT-011) |
@@ -42,6 +44,12 @@
 
 ## ▶ 이어서 시작하는 자리 (2026-08-22 기준)
 
+### 🏁 최종 2 — raw spec **v1.4** (운영자 1~4장 검토 반영, 2026-08-22)
+
+- **반영 4건**: ① **2.5절 삭제**(ICS `Wrote` 통보 규약 — 취득 SW 소관, 정본은 `../ics_sim/DevNote.md` 3.2. raw 사용자용 "`LASTFILE` 은 실재 경로 아님"만 2.3절 5항으로 흡수) ② **4.1 X overscan `RRRRLLLL` 확정** — 실제 획득 자료 육안 확인(운영자), 경고 문구 삭제 → **OI-15 종결**(통합 문서 §3·§5 도 종결 표시) ③ **4.2 다이어그램에 BOT/TOP Y overscan 84/84 분리** (타일 규약 층 — 물리 clocking 분배는 OI-4 로 유지) ④ **4.4 `Amp 범위` → `AmpID 범위`** + 값을 MEF AmpID(01–64) 기준으로 정합(구 `1–8`/`9–16` 은 chip 로컬 번호였다) + half 판정식.
+- ⚠️ **5장 이후는 아직 검토 전** — 팀 협의 후 다음 판에서. 그때 함께 볼 것: 4.5 amp 표의 `IMGSEC` `B` 표기(OI-17 잔여) · 견본 헤더 날짜 불일치(아래 5번) · DevNote 11.19 의 목 확인 2건.
+- **남은 버전 참조 갱신 (다른 세션 소관)**: `ics_sim/{rawhdr,rawpair,hardware/archon}.py` · `ics_sim/tests/{test_raw_header,test_raw_pair}.py` · `ics_archon/{README.md,archon_kmtnet_labtest_v1.1.bigbuf.py}` 의 머리말이 아직 `…_v1.3.md` 를 가리킨다 — 그 세션이 편집 중인 파일이라 건드리지 않았다. **내용 변경은 없다**(1~4장 수정은 구현에 영향 없음: 2.5절은 애초에 DevNote 소관, 4.1/4.2/4.4 는 문서 표현). 커밋할 때 `v1.4` 로 바꿔 주면 된다.
+
 ### 🏁 최종 (raw spec v1.3 발행 — 이 검토 사이클의 종점)
 
 - **raw spec v1.3 발행 (2026-08-22)** — 구 Pair_Spec v1.2 를 `KMT_CEU_Raw_FITS_Specification` 으로 개명하고 전면 재작성(운영자 지시). 구성: 1 목적 · 2 pair(파일명 D-011/D-014 · **충돌·정체성 D-016** · Wrote D-010) · 3 파일 구조 · 4 geometry(**4.3 포장 규범 조항** — 고정 `CAMVER`+`CTRLxCFG` · **4.5 amp 전수 표 64행** — 기계 사본 = `__reference/Detector_Ch_to_AmpID_Map_v1.0.txt`) · 5 헤더 keyword(초안 v1.0 pair 의 값 카드 135장 전량, 블록별 표 + 5.0 정책/sentinel/문자열 형/ICS INI 규칙 + 5.9 pair 규칙 + 5.10 미기재 경계) · 6 MEF·파이프라인 연동 요점 · 7 검증 체크리스트 · 8 OI(신설 15~18 포함) · 10 이력. 배경·경위는 전부 원장 v1.13·통합 문서 링크로 처리(간결 원칙 — 운영자 지시).
@@ -49,8 +57,9 @@
 - **다음 사람이 할 일 (우선순위 순)**:
   1. **목 검토**: raw spec v1.3 전문 — 특히 4.5 amp 표(IMGSEC A/B/D 열), 5장 카드 표의 값·출처, 8장 OI 번호 부여(15~18 신설).
   2. **LEECU 전달**: 통합 문서 v0.6 Part 1 (C-항목·키워드맵 이관 4건) + raw spec 6장.
-  3. **ics_sim 구현 일감** — v1.3 정렬: ① D-016 충돌 처리(`rawpair.py` 선검사·되감음·상한, `UNIQNAME`/`NAMECLSH`/`clash` 제거, `ORIGNAME` 상시 기록 — Part 2 §3 표) ② 정체성·컨트롤러 블록 재편(`PAIRFILE`/`CHIP*`/`RAWPROD`/`RAWVER`/`NUMFILES`/`HEMODE`/`NPHLINES` 제거, `BCKTEMP`→`Cn_*`, `CTRLVER`/`TIMVER` 등 버전 카드 제거, `ACFFILE`→`CTRLnCFG`) ③ 신설 카드(`FPAID` `TCSTIME` `TCSARC` 돔 신설 4장 `DMPTEMP` 재편 HK · `FSATEMP`/`FSAHUM` · `RDMODE` `CAMVER`) ④ `MJD-OBS`/`UT`/`TSHOPEN` 등 미기재 카드 정리 ⑤ 코드 주석의 구판 절 번호 참조 정리. 초안 v1.0 pair 와의 카드 전량 대사 테스트를 만들면 잔여가 자동으로 드러난다.
+  3. ~~**ics_sim 구현 일감** — v1.3 정렬~~ — **✅ 완료 (2026-08-22, ①~⑤ 전량 + 대사 테스트).** 헤더 층이 **템플릿 주도**로 재편됐다: `ics_sim/ics_sim/rawcards.py` 가 초안 v1.0 pair 의 기계 사본이고, `tests/test_raw_draft.py` 가 견본 값 역산 → **바이트 단위 재현**(MK·NT 불일치 0)을 대사한다. D-016(선검사·되감음·상한·카운터 동기화), 신설·폐지 카드 전량, `fits_shape = spec` 실물 기하 이미지 생성 + **converter end-to-end L0 MEF 생성 검증**까지. 같은 날 `ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py` (실험실 취득 스크립트)에도 v1.3 을 적용했다(내장 템플릿 동일 원천). 경위·판단은 `../ics_sim/DevNote.md` **11.19** — **목 확인 대상 2건**(RADECSYS 결측 기본 `'ICRS'` · ENS1~7 결측 sentinel `'NC'`)이 거기 있다.
   4. **실측·확인 항목**: OI-15(4:4 vs 5:3 — 검증 표본으로 즉시 가능) · OI-16(Tapaculo 포맷) · OI-17(**부분 종결** — 데이터시트 확보·부록 A 신설, 잔여 = IMGSEC `B` 표기 해명·채널↔OS 대응·K/N 회전 장착 확인) · OI-18(NT CCDTEMP).
+  5. ⚠️ **견본 헤더의 날짜 불일치 (2026-08-22 발견, 목 판단 필요)** — 견본 두 장의 `FILENAME`/`ORIGNAME` 이 `KMTA.**20260821**.012345.{MK,NT}` 인데, **견본 파일 이름과 raw spec 2.3절 4항의 예시 블록은 `20260818`** 이다. 같은 값이 세 곳에서 두 날짜로 갈렸다. 규격으로 판정하면 **카드가 맞다** — 견본 `DATE-OBS='2026-08-21T12:34:56.789'` 에 SSO 보정 −1:30(2.2절)을 적용하면 관측일이 `20260821` 이므로, 틀린 것은 **견본 파일 이름과 2.3절 예시**다. 2.3절 4항이 `FILENAME` 을 "실제 저장명"이자 "아카이브·DTS·색인의 유일 키"로 규정한 만큼 그 규칙의 유일한 바이트 기준물이 스스로 규칙을 깨고 있는 셈이고, 받아 구현하는 쪽(LEECU)이 "파일명과 `FILENAME` 이 달라도 된다"로 읽거나 반대로 불일치를 충돌 신호로 오독할 여지가 있다(실제 충돌 신호는 `FILENAME ≠ ORIGNAME` 이고 `012345` vs `012340` 으로 정상 표현돼 있다). **어느 쪽으로 맞출지는 정본 소관이라 손대지 않았다** — 견본 파일명을 `20260821` 로 바꾸고 2.3절 예시를 맞추거나, 카드·`DATE-OBS` 를 `20260818` 기준으로 되돌리거나 **셋이 같아야 한다**. `ics_sim/tests/test_raw_draft.py` 는 견본 값을 되먹여 바이트 대조하므로 이 불일치를 구조적으로 못 잡는다.
 - **데이터시트 확보 (2026-08-22, 운영자)** — `__reference/CCD290-99 datasheet (V2 - Aug 2016).pdf`. raw spec **부록 A** 로 대응 정리: `IMGSEC` 의 `A`/`D` = e2v image section(아래/위 half) 확인, **레거시 `PRESCANX=27` 의 원전**(레지스터 1152 active + 27 prescan) 확인, 독출 방향은 ACF 소관(OI-3 유지). **시사점**: K·N 조의 `A-TOP` 은 die 180° 회전 장착을 시사 — 레거시 AMPSEC M/T vs K/N 패턴(OI-15)과 같은 짝, 실기에서 함께 확인할 것.
 
 ### 2026-08-22 확정분 · 최신 (확인 요망 6~11 전량 종결 + D-016 등재 = v1.13)
