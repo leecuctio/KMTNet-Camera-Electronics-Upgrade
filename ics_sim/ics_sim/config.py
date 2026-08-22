@@ -124,6 +124,9 @@ class SiteCfg:
     longitud: str = ''
     elevatio: int = -1
     telescop: str = ''
+    #: FITS `ORIGIN` 덮어쓰기.  비우면 사이트 유도값(`rawpair.ORIGIN_OF` --
+    #: 관측소 raw = 관측소명, 테스트베드 = `KASI`, 운영자 확정 2026-08-21).
+    origin: str = ''
 
     def as_dict(self) -> dict:
         """`rawhdr.site_header()` 에 넘길 형태.  **빈 값은 빼고 넘긴다** --
@@ -137,6 +140,63 @@ class SiteCfg:
             out['elevatio'] = self.elevatio
         if self.telescop:
             out['telescop'] = self.telescop
+        if self.origin:
+            out['origin'] = self.origin
+        return out
+
+
+@dataclass
+class CameraCfg:
+    """FITS `DETECTOR` · `CAMVER` · `INSTRUME` -- Source 가 `ICS INI` 인 카드.
+
+    **`ICS INI` 출처 카드는 전부 ini 에서 수정할 수 있어야 한다** (운영자 지시
+    2026-08-22, Header_and_Refs v1.12 확인 요망 6).  빈 값이면 `rawhdr` 의
+    기본(상수 또는 사이트 유도값)을 쓴다.  `CAMVER` 는 **HW·성능상 변경이
+    있을 때만 올리는** 전자부 세대 참조점이다 (운영자, 2026-08-22).
+    """
+
+    detector: str = ''
+    camver: str = ''
+    instrume: str = ''
+
+    def as_dict(self) -> dict:
+        """`rawhdr.detector_header()` 오버라이드.  빈 값은 빼고 넘긴다."""
+        return {k: v for k, v in (('detector', self.detector),
+                                  ('camver', self.camver),
+                                  ('instrume', self.instrume)) if v}
+
+
+@dataclass
+class ControllersCfg:
+    """FITS `CTRL1*`/`CTRL2*` -- 컨트롤러 정체 · 설정 포인터 (`ICS INI` 카드).
+
+    빈 값이면 백엔드 보고값(sim 의 고정 목록, 실기는 Archon SYSTEM 응답)을
+    쓰고, **채워져 있으면 INI 가 이긴다** -- 현장이 정본이라는 `[site]` 와
+    같은 원칙이다.  실값 원자료는 `raw_fits_spec/__reference/
+    Archon_Unit_Info.txt` (예: KMTA SCI-101=STA-0288 · SCI-102=STA-0289,
+    ID 숫자 = IP).  `ctrl<n>_cfg` 는 적용된 Archon 설정 파일명
+    (`CTRL<n>CFG` 카드) -- 타이밍·바이어스·클럭 버전은 이 파일로 귀속된다
+    (Header_and_Refs v1.12 3.3절).
+    """
+
+    ctrl1_id: str = ''
+    ctrl1_sn: str = ''
+    ctrl1_cfg: str = ''
+    ctrl2_id: str = ''
+    ctrl2_sn: str = ''
+    ctrl2_cfg: str = ''
+
+    def overrides(self) -> dict[int, dict]:
+        """`rawhdr.controller_header()` 오버라이드 -- 색인(1=MK, 2=NT)별
+        `{'id','sn','cfg'}`.  빈 값은 빼고 넘긴다."""
+        out: dict[int, dict] = {}
+        for n in (1, 2):
+            ov = {k: v for k, v in (
+                ('id', getattr(self, f'ctrl{n}_id')),
+                ('sn', getattr(self, f'ctrl{n}_sn')),
+                ('cfg', getattr(self, f'ctrl{n}_cfg'))) if v}
+            if ov:
+                out[n] = ov
         return out
 
 
@@ -346,6 +406,10 @@ class SimConfig:
     site_table: dict[str, SiteCfg] = field(default_factory=dict)
     #: `[site]` 섹션.  선택된 사이트 값을 **덮어쓴다** -- 현장이 정본이다.
     site_override: SiteCfg = field(default_factory=SiteCfg)
+    #: `[camera]` -- `DETECTOR`/`CAMVER`/`INSTRUME` (ICS INI 카드, v1.12).
+    camera: CameraCfg = field(default_factory=CameraCfg)
+    #: `[controllers]` -- `CTRL1*`/`CTRL2*` 정체 · 설정 포인터 (ICS INI 카드).
+    controllers: ControllersCfg = field(default_factory=ControllersCfg)
     timing: TimingCfg = field(default_factory=TimingCfg)
     readout: ReadoutCfg = field(default_factory=ReadoutCfg)
     obsagent: ObsAgentCfg = field(default_factory=ObsAgentCfg)
@@ -633,6 +697,7 @@ def load(path: str | None = None) -> SimConfig:
         t.elevatio = _int_or(sec, 'elevatio', t.elevatio)
         # `telescop` 은 **공백이 값의 일부**다 (`KMTNet 1.6m #1`).
         t.telescop = _text_or(sec, 'telescop', t.telescop)
+        t.origin = _head(sec, 'origin', t.origin)
         return t
 
     for section in cp.sections():
@@ -647,6 +712,21 @@ def load(path: str | None = None) -> SimConfig:
         cfg.site_table[code] = _read_site(cp[section])
     if cp.has_section('site'):
         cfg.site_override = _read_site(cp['site'])
+
+    if cp.has_section('camera'):
+        s = cp['camera']
+        c = cfg.camera
+        c.detector = _text_or(s, 'detector', c.detector)
+        c.camver = _head(s, 'camver', c.camver)
+        # `instrume` 은 공백이 값의 일부다 (`KMTA 18k CCD`).
+        c.instrume = _text_or(s, 'instrume', c.instrume)
+
+    if cp.has_section('controllers'):
+        s = cp['controllers']
+        c = cfg.controllers
+        for key in ('ctrl1_id', 'ctrl1_sn', 'ctrl1_cfg',
+                    'ctrl2_id', 'ctrl2_sn', 'ctrl2_cfg'):
+            setattr(c, key, _head(s, key, getattr(c, key)))
 
     if cp.has_section('timing'):
         s = cp['timing']

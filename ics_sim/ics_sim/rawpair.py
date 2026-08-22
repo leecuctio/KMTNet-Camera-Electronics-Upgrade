@@ -47,6 +47,13 @@ CHIPLIST = 'M,K,N,T'
 #: `OBSERVAT` 가 어긋나면 converter v2.2.0 이 오류로 잡는다.
 OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'TESTBED'}
 
+#: 사이트 코드 → `ORIGIN` 기본값.  **`ORIGIN` = "이 파일이 생성된 곳"** (운영자
+#: 확정 2026-08-21, Header_and_Refs v1.7): 관측소 raw 는 관측소 이름
+#: (`OBSERVAT` 와 중복 감수 -- 레거시 계승), 테스트베드 raw 는 `KASI`.
+#: KASI 서버 파이프라인 산출물(MEF·L1)이 `ORIGIN='KASI'` 를 갖는다.
+#: `[site]`/`[site.<이름>]` 의 `origin` 키로 덮어쓸 수 있다 (ICS INI 카드).
+ORIGIN_OF = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'KASI'}
+
 #: 실재하는 과학 사이트 코드.  이 셋 밖은 모두 테스트베드로 떨어진다.
 REAL_SITES = ('KMTC', 'KMTS', 'KMTA')
 TESTBED_SITE = 'KMTT'
@@ -250,7 +257,8 @@ def pair_tag(ctrltag: str) -> str:
 
 def identity_header(*, site_code: str, suffix: str, ctrltag: str,
                     filename: str, created: str,
-                    clashed: bool = False) -> dict[str, object]:
+                    clashed: bool = False,
+                    origin: str = '') -> dict[str, object]:
     """규격 5.1·5.2절의 파일 정체성 / pair provenance keyword.
 
     **텔레메트리와 분리해서 만든다.** 출처가 다르다 -- 이쪽은 규격 표의
@@ -295,7 +303,10 @@ def identity_header(*, site_code: str, suffix: str, ctrltag: str,
     out: dict[str, object] = {
         # 5.1 FITS 표준 · 파일 정체성
         'BUNIT': S('ADU'),
-        'ORIGIN': S('KASI'),
+        # ORIGIN = "이 파일이 생성된 곳" (운영자 확정 2026-08-21) -- 관측소
+        # raw 는 관측소 이름, 테스트베드는 KASI.  `origin` 인자([site] ini)가
+        # 유도값을 이긴다.  종전의 'KASI' 고정은 이 확정으로 대체됐다.
+        'ORIGIN': S(origin or ORIGIN_OF.get(site, 'KASI')),
         'DATE': S(created),
         'CREATOR': S(f'ics_sim_v{__version__}'),
         'FILENAME': S(filename),

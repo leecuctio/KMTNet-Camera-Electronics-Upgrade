@@ -47,3 +47,10 @@ icsdata/
 *.log
 test.*
 
+~$*.docx
+*.lnk
+*.bak
+
+# Temporary review round-trip folders: created per review cycle, deleted after.
+# Finished deliverables land in the sub-repo root; history stays out of Git.
+__review/

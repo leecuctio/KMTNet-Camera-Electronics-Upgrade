@@ -1,6 +1,6 @@
 # KMTNet-CEU Decision Log
 
-최종 갱신일: 2026-08-10
+최종 갱신일: 2026-08-22
 
 ## D-001: Primary raw archive product는 L0 64-amplifier MEF로 한다
 
@@ -270,6 +270,8 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 - **`LASTFILE`이 실재하는 경로가 아니게 된다.** 논리 이름에 해당하는 파일은
   디스크에 없다. 아카이브·DTS·QL 도구는 `LASTFILE` 대신 raw 헤더의
   `FILENAME` / `EXPID` / `CTRLTAG`를 근거로 삼아야 한다.
+  *(이 문구는 이후 두 번 개정됐다 — `EXPID`는 D-013에서 폐지, 최종 근거는
+  **`FILENAME`(+`ORIGNAME`)** 이고 `CTRLTAG`는 미도입: D-016.)*
 - `ics_sim`의 `sequencer.py` `_store()`와 `state.py`가 저장 경로와 논리 이름을
   분리하도록 바뀌어야 한다 (규격 C-16).
 - 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.5절.
@@ -375,6 +377,8 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 - `LASTFILE`이 실재 경로가 아니게 되는 D-010의 부작용이 시뮬에서도 실제로
   발생한다 — 아카이브·DTS 도구는 raw 헤더의 `UNIQNAME`/`FILENAME`/`CTRLTAG`를
   근거로 삼아야 한다 (`EXPID`는 D-013 에서 폐지했다).
+  *(D-016 개정: 근거 삼총사는 **`FILENAME`(+`ORIGNAME`)** 로 대체 —
+  `UNIQNAME` 폐지, `CTRLTAG` 미도입.)*
 - 실기 전환 시 `archon.py`의 `write_frame()`만 채우면 되고, 시퀀서·명령
   처리부·메시지 규약은 무개정이다 (DevNote 1.2의 2단계 약속 유지).
 - 상세 규격은 `raw_fits_spec/KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 2.3·2.5절,
@@ -579,3 +583,34 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 - **미확인**: 신규 CEU 망의 대역이 문서화되지 않았다(ACT-009). 코드 주석과
   체크리스트에 *inferred* 로 명시해 두었다.
 - 상세 경위는 `ics_sim/DevNote.md` 11.16.
+
+---
+
+## D-016: raw 파일명 충돌 시 노출 번호를 증가시켜 저장한다 (`UNIQNAME` 폐지)
+
+날짜: 2026-08-21 (운영자 등재 승인 2026-08-22)
+관련: D-010 · D-011 · D-012(일부 대체) · D-013 · D-014 · `raw_fits_spec` 확인 요망 종결분(Header_and_Refs v1.12)
+상태: **Accepted** — 규격 문서 반영 완료(`raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` Part 2), `ics_sim` 구현 예정.
+
+결정:
+
+1. **파일 번호 공간은 `000000`–`099999`** 이며 카운터는 100000 도달 시 `000000` 으로 초기화한다 (레거시 관례 계승).
+2. **쓰기 전에 후보 번호 N 의 MK · NT 두 경로를 모두 선검사**하고, 점유 시 N+1(099999 를 넘으면 000000 으로 되감음)로 재검사한다. **+1 증가가 100000회를 초과하면 멈추고 ERROR 를 출력하며 저장하지 않는다** — 상한 100000회 = 번호 공간 정확히 한 바퀴. 실패 조건은 이것 하나뿐이다.
+3. 둘 다 빈 N 을 확정하고 **카운터를 N 으로 동기화**한다 (평소 노출 번호 영속화 경로 그대로, 옛값→새값 점프는 경고 로그).
+4. **`UNIQNAME` 을 폐지한다.** `FILENAME` = 실제 저장명이자 **아카이브 유일 키**, `ORIGNAME` = 카운터가 처음 배정한 이름 — 두 카드를 모든 파일에 **항상** 기록한다. **충돌 신호 = `FILENAME ≠ ORIGNAME`** (값 비교 — 카드 존재가 아니다). `ORIGNAME` 결측은 충돌이 아니라 헤더 결함으로 분류한다. 아카이브 근거는 **`FILENAME`(+`ORIGNAME`)** 이고 pair 쪽 식별은 `FILENAME` 꼬리(`.MK`/`.NT`) 치환으로 유도한다 — `CTRLTAG` · `PAIRFILE` 카드는 싣지 않는다(v1.9 미도입 확정). `NAMECLSH` 카드와 `clash/` 격리(구 규격 2.3.1)를 폐지한다.
+5. 같은 노출의 재저장(유령 중복)은 **fail-open** 이며, raw 헤더 층(아카이브 색인·DTS·QL)의 `FILENAME ≠ ORIGNAME` 필터가 거른다는 전제를 요구사항으로 둔다.
+6. OBSAgent `Wrote` 논리 이름의 번호는 **실제 저장 번호**를 쓴다 — raw 카드 `CTRLTAG` 미도입은 D-010 의 OBSAgent 논리 이름 규약과 무관하다(규약 불변).
+7. **단일 쓰기 주체(ICS 하나) 전제** — 선검사와 쓰기 사이의 경쟁은 없다. 이 전제를 규격에 명시한다.
+
+근거:
+
+- **무인 운영에서 방금 취득한 데이터가 격리되지 않고 밤이 계속된다.** 카운터 되감김(재시작 등)이 원인이면 충돌 1회로 원인 전체가 자가 치유된다 — 선검사 루프가 점유 구간을 지나 빈 번호에 착지하고 카운터가 따라간다.
+- **신호를 카드 존재에서 값 비교로 옮기면 카드 구성이 모든 파일에서 균일**해져 쓰기 분기가 없다. 상한 100000회 = 번호 공간 한 바퀴로 종료가 보장된다.
+- **`UNIQNAME` 폐지**: "불변 정본 키"라는 뜻이 이탈했고(충돌 시 실명과 갈라진다), 유일성은 번호 증가 방식이 `FILENAME` 에 구조로 보장한다 — 뜻이 바뀐 이름은 계승하지 않는다(D-013 원칙).
+
+영향:
+
+- 구 규격 v1.2 의 2.3.1절 전면 대체 · 5.2절(`UNIQNAME`·`NAMECLSH` 폐지, `ORIGNAME` 신설) · 5.11절(pair 규칙) — 재작성판(V1)이 흡수한다. 상세: `raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` **Part 2**.
+- **D-010 · D-012 의 "아카이브 근거 삼총사 `UNIQNAME`/`FILENAME`/`CTRLTAG`" 문구를 `FILENAME`(+`ORIGNAME`) 로 개정한다** — `CTRLTAG` 는 v1.9 미도입 확정, pair 식별은 `FILENAME` 꼬리가 담당.
+- `ics_sim` — `rawpair.py`(선검사 루프·되감음·상한, clash 격리 제거, `UNIQNAME` 제거, `ORIGNAME` 항상 기록) · `state.py`(카운터 동기화·순환) · `sequencer._store()`(확정 이름만 수령) · `tests/test_raw_header.py`(RETIRED 에 `UNIQNAME`·`NAMECLSH` 추가, 충돌·되감음·상한 시험 신설).
+- converter — C-항목 신설: MEF `UNIQNAME` 공급원 변경 또는 동반 폐지 (LEECU 판단, 통합 문서 Part 1 §1).

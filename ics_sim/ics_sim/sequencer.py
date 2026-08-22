@@ -693,7 +693,10 @@ class Sequencer:
                 darktime=self._darktime(),
                 ledflash_ms=st.ledflash_ms, exp_measured=None,
                 imgtype=st.imgtype, objname=st.objname,
-                projid=st.projid, observer=st.observer))
+                projid=st.projid, observer=st.observer,
+                # ICS INI 출처 카드의 ini 오버라이드 (운영자 지시 2026-08-22)
+                cfg_camera=cfg.camera.as_dict(),
+                cfg_ctrl=cfg.controllers.overrides()))
 
             clobbered = sorted(set(telem) & set(header) - {'DATE-OBS'}
                                & {k for k in header if k not in telem})
@@ -706,7 +709,8 @@ class Sequencer:
             # 겹쳐도 `UNIQNAME` 이 안 바뀌므로 식별이 사라지지 않는다.
             header.update(rawpair.identity_header(
                 site_code=site, suffix=suffix, ctrltag=ctrltag,
-                filename=stem, created=stamp_iso(), clashed=clashed))
+                filename=stem, created=stamp_iso(), clashed=clashed,
+                origin=cfg.site_for(site).get('origin', '')))
 
             try:
                 rate = await self.backend.write_frame(ctrltag, chips, path,

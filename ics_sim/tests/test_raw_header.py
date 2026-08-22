@@ -69,7 +69,8 @@ MANDATORY = {
     '5.9 관측소': ('OBSERVAT SITEID TELESCOP LATITUDE LONGITUD ELEVATIO '
                    'RADECSYS RA DEC EQUINOX HA ST SECZ ALT AZ TCSLINK '
                    'TCSQDATE TCSUDATE TCSDRIVE TELMOVE'),
-    '5.10 열/AUX': ('CCDTEMP1 CCDTEMP2 CCDTEMP AUXLINK AUXQDATE AUXUDATE FSSTAT '
+    '5.10 열/AUX': ('CCDTEMP DEWPRES DMPTEMP WALLBRD HEBOX '
+                    'AUXLINK AUXQDATE AUXUDATE FSSTAT '
                     'FILTOP FILNUM SHUTTER SHUTOP FASTAT FAFOCUS DSSTAT MCSTAT '
                     'CHSTAT ENSTAT ENFAN'),
 }
@@ -188,17 +189,27 @@ def test_inherited_legacy_cards_are_present(tmp_path):
         assert 'LEDFLASH' in h, tag
 
 
-def test_ledflash_is_seconds_not_milliseconds(tmp_path):
-    """`LEDFLASH` 는 레거시와 같은 **초** 단위다 (규격 5.7·5.13절).
+def test_ledflash_is_integer_milliseconds(tmp_path):
+    """`LEDFLASH` 는 **정수형 ms** 다 (운영자 확정 2026-08-22).
 
-    같은 이름에 다른 단위를 넣으면 기존 도구가 조용히 1000배 틀린 값을 읽는다.
+    처음에는 레거시(초)를 따라 나눠 실었으나, 정수형을 유지하면서 250 ms
+    같은 sub-second 값의 잘림을 막으려면 ms 그대로가 맞다.  레거시와 같은
+    이름에 1000배 다른 단위가 되므로 카드 comment 가 `[milliseconds]` 를
+    명시한다 -- 이 카드는 실험실 flat 식별용이라 계산 소비자는 없다.
+
+    `EXPTIME` 은 정수형이 기본이고 소수점 아래 값이 있을 때만 실수형이다.
     """
     h = _headers(tmp_path)['MK']
-    assert h['LEDFLASH'] == 0.0            # 점등 안 한 노출
+    assert h['LEDFLASH'] == 0              # 점등 안 한 노출
     got = rawhdr.exposure_header(
         date_obs='2026-08-13T00:00:00', exp_start=None, exp_end=None,
         exptime=1.0, darktime=1.0, ledflash_ms=250)
-    assert got['LEDFLASH'] == 0.25         # 250 ms == 0.25 s
+    assert got['LEDFLASH'] == 250 and isinstance(got['LEDFLASH'], int)
+    assert got['EXPTIME'] == 1 and isinstance(got['EXPTIME'], int)
+    frac = rawhdr.exposure_header(
+        date_obs='2026-08-13T00:00:00', exp_start=None, exp_end=None,
+        exptime=0.5, darktime=0.5, ledflash_ms=0)
+    assert frac['EXPTIME'] == 0.5          # 소수점이 있으면 실수형 그대로
 
 
 # -- DSTEL -> DSTELALT: converter 에 fallback 이 없다 -----------------------
@@ -390,19 +401,27 @@ def test_testbed_has_no_coordinates_on_purpose():
     assert h['ELEVATIO'] == -1
 
 
-def test_origin_is_the_institution_not_the_site():
-    """`ORIGIN='KASI'` -- 레거시는 사이트 코드를 넣었지만 그건 느슨했다.
+def test_origin_is_where_the_file_was_generated():
+    """`ORIGIN` = **"이 파일이 생성된 곳"** (운영자 확정 2026-08-21, v1.7).
 
-    MEF keyword 정의서가 `ORIGIN | From raw | KASI | file originator` 로 정하고
-    (`mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md:85`), FITS 표준도
-    파일을 만든 **기관**을 뜻한다.  레거시의 `ORIGIN='CTIO'` 는 `OBSERVAT` 와
-    같은 값이라 중복이었다 -- 계승 기준("뜻이 같을 때만")에 맞지 않는다.
+    관측소 raw 는 관측소 이름(`OBSERVAT` 와 중복 감수 -- 레거시 계승),
+    테스트베드 raw 는 `KASI`.  KASI 파이프라인 산출물(MEF·L1)이
+    `ORIGIN='KASI'` 를 갖는다 -- MEF 쪽은 상수화가 C-항목이다.
+    종전의 "raw 도 기관명 `KASI` 고정" 구현은 이 확정으로 대체됐다.
+    `[site]` ini 의 `origin` 키가 유도값을 이긴다 (ICS INI 카드).
     """
     from ics_sim import rawpair
     h = rawpair.identity_header(site_code='KMTC', suffix='20260813.000001',
                                 ctrltag='MK', filename='x', created='y')
-    assert str(h['ORIGIN']) == 'KASI'
-    assert str(h['OBSERVAT']) == 'CTIO'      # 사이트는 이쪽이 담는다
+    assert str(h['ORIGIN']) == 'CTIO'        # 관측소 raw = 관측소 이름
+    assert str(h['OBSERVAT']) == 'CTIO'
+    h = rawpair.identity_header(site_code='KMTT', suffix='20260813.000001',
+                                ctrltag='MK', filename='x', created='y')
+    assert str(h['ORIGIN']) == 'KASI'        # 테스트베드 raw = KASI
+    h = rawpair.identity_header(site_code='KMTA', suffix='20260813.000001',
+                                ctrltag='MK', filename='x', created='y',
+                                origin='KASI')
+    assert str(h['ORIGIN']) == 'KASI'        # ini 오버라이드가 이긴다
 
 
 def test_configured_site_values_win_over_the_table():
@@ -413,35 +432,114 @@ def test_configured_site_values_win_over_the_table():
     assert str(h['TELESCOP']) == 'KMTNet 1.6m #3'   # 설정에 없는 항목은 유지
 
 
+def test_ics_ini_cards_are_editable_from_the_ini(tmp_path):
+    """Source 가 `ICS INI` 인 카드는 전부 ini 에서 수정할 수 있다.
+
+    (운영자 지시 2026-08-22, Header_and_Refs v1.12 확인 요망 6.)  사이트
+    측지값(`[site.*]`)은 이미 그랬고, 이 시험은 나머지를 못박는다 --
+    `[camera]` 의 `DETECTOR`/`CAMVER`/`INSTRUME`, `[controllers]` 의
+    `CTRL1*`/`CTRL2*`(+`CTRL<n>CFG` 신설 카드), `[site]` 의 `ORIGIN`.
+    채워진 INI 값은 백엔드 보고값을 이긴다 -- 현장이 정본이다.
+    """
+    ini = tmp_path / 'x.ini'
+    ini.write_text(
+        '[camera]\n'
+        'detector = e2v CCD290-99B\n'
+        'camver = CEU-v2.2\n'
+        'instrume = KMTA 18k CCD\n'
+        '[controllers]\n'
+        'ctrl1_id = KMTA-SCI-101\n'
+        'ctrl1_sn = STA-0288\n'
+        'ctrl1_cfg = KMTA_SCI_101_R2609.1.acf\n'
+        'ctrl2_id = KMTA-SCI-102\n'
+        'ctrl2_sn = STA-0289\n'
+        'ctrl2_cfg = KMTA_SCI_102_R2609.1.acf\n'
+        '[site]\n'
+        'origin = KASI\n', encoding='utf-8')
+    from ics_sim import config as cfgmod
+    cfg = cfgmod.load(str(ini))
+
+    h = rawhdr.detector_header('KMTA', cfg.camera.as_dict())
+    assert str(h['DETECTOR']) == 'e2v CCD290-99B'
+    assert str(h['CAMVER']) == 'CEU-v2.2'
+    assert str(h['INSTRUME']) == 'KMTA 18k CCD'
+    # 오버라이드가 없으면 확정 형식으로 유도된다 (v1.7 확정: '<SITE> 18k CCD')
+    assert str(rawhdr.detector_header('KMTC')['INSTRUME']) == 'KMTC 18k CCD'
+
+    info = {'units': (
+        {'id': 'ARCHON-SIM-1', 'sn': 'SIM0001', 'fw': 'SIM-fw-0.0'},
+        {'id': 'ARCHON-SIM-2', 'sn': 'SIM0002', 'fw': 'SIM-fw-0.0'})}
+    ch = rawhdr.controller_header('MK', info, backend_name='sim',
+                                  ics_build='x',
+                                  cfg_ctrl=cfg.controllers.overrides())
+    assert str(ch['CTRL1ID']) == 'KMTA-SCI-101'      # INI 가 SIM 더미를 이긴다
+    assert str(ch['CTRL2SN']) == 'STA-0289'
+    assert str(ch['CTRL1CFG']) == 'KMTA_SCI_101_R2609.1.acf'
+    assert str(ch['CTRL1FW']) == 'SIM-fw-0.0'        # INI 에 없는 키는 백엔드 값
+
+    assert cfg.site_for('KMTA').get('origin') == 'KASI'
+
+
 # -- 5.10 온도: 파일 1개에 chip 2개 -----------------------------------------
 
-def test_two_chip_temperatures_plus_a_representative_one(tmp_path):
-    """`CCDTEMP1`/`CCDTEMP2` 는 신규 추가다 -- 파일 1개에 chip 이 2개다.
+def test_ccdtemp_is_the_measured_representative_sensor(tmp_path):
+    """`CCDTEMP` 는 실측 대표 센서 1개의 값이다 (운영자 확정 2026-08-21).
 
-    `CCDTEMP`(대표값)는 L1 파이프라인이 이름으로 지정해 전달하므로 반드시 있다
-    (`mef_pipeline/kmt_ceu_preproc/io_l1.py` 의 `CARRY_KEYS`).
+    종전 평균 파생(2026-08-13)은 HK 재구성으로 폐기됐고 `CCDTEMP1`/`CCDTEMP2`
+    카드도 후보에서 빠졌다.  `CCDTEMP` 는 L1 `CARRY_KEYS` 가 이름으로 요구한다.
     """
     h = _headers(tmp_path)['MK']
-    assert h['CCDTEMP1'] != h['CCDTEMP2']
-    assert h['CCDTEMP1'] < -50 and h['CCDTEMP2'] < -50
-    # **CCDTEMP 는 파생값이다** -- 둘의 평균이어야 한다 (운영자 확정 2026-08-13)
-    assert abs(h['CCDTEMP'] - (h['CCDTEMP1'] + h['CCDTEMP2']) / 2) < 1e-6
+    assert 'CCDTEMP1' not in h and 'CCDTEMP2' not in h
+    assert float(h['CCDTEMP']) < -50   # 대표 센서 실측값 (sim: ccdtemp1)
+    assert float(h['DMPTEMP']) < -50   # HK 재구성 신설 3장이 실려 있다
+    assert float(h['WALLBRD']) > 0
+    assert float(h['HEBOX']) > 0
+    # 온도 카드는 부호 포함 소수 2자리 **문자열**이다 (운영자 확정 2026-08-22)
+    assert str(h['WALLBRD']).startswith('+')
+    assert str(h['CCDTEMP']).startswith('-')
 
 
-def test_unread_dewar_sensor_is_sentinel_not_a_string():
-    """레거시는 `DEWPRES='N/A'` 문자열을 넣었다.  수치 sentinel 로 통일한다.
-
-    문자열과 실수가 섞이면 읽는 쪽이 형을 분기해야 한다.
+def test_unread_dewpres_is_the_string_sentinel():
+    """`DEWPRES` 는 문자열 카드다 -- 지수 표기(`x.xxe-x`)를 고정하려면 실수
+    카드로는 안 된다(astropy 가 표기를 정한다).  측정 불가는 `'9.99e-9'` 다.
     """
-    h = rawhdr.thermal_header({'ccdtemp1': -103.0, 'ccdtemp2': -103.1})
-    assert h['DEWPRES'] == -999.0
-    assert isinstance(h['DEWPRES'], float)
+    h = rawhdr.thermal_header({'ccdtemp1': -103.0})
+    assert str(h['DEWPRES']) == '9.99e-9'
+
+
+def test_dewpres_formatting_and_rejection_rules():
+    """측정값은 `x.xxe-x` 로, 0·음수·비수치·범위 밖은 전부 `9.99e-9` 로 접는다."""
+    f = rawhdr.format_dewpres
+    assert f(1.234e-4) == '1.23e-4'
+    assert f('2.0e-6') == '2.00e-6'
+    for bad in (0.0, -1.0, '0.00e-0', 'ERR', float('nan'), float('inf'),
+                5.0e-9,      # 인정 하한(1e-8) 아래 -- sentinel 충돌 방어
+                2.0e+3):     # 인정 상한 위
+        assert f(bad) == rawhdr.DEWPRES_NC, bad
 
 
 def test_thermal_cards_survive_a_backend_that_reads_nothing():
-    """센서를 하나도 못 읽어도 카드는 남는다 (규격 5.0절)."""
+    """센서를 하나도 못 읽어도 카드는 남는다 (규격 5.0절).
+
+    측정 불가 sentinel 은 온도·습도 전 카드 `'-999.99'` 단일값이다
+    (운영자 확정 2026-08-22).  `-99.99` 안은 CCDTEMP 냉각 램프가 실제로
+    지나가는 값이라, 습도 `0.00` 안은 0% RH 가 유효 측정값이라 기각됐다.
+    """
     h = rawhdr.thermal_header(None)
-    assert h['CCDTEMP1'] == h['CCDTEMP2'] == h['CCDTEMP'] == -999.0
+    assert str(h['CCDTEMP']) == rawhdr.TEMP_NC == '-999.99'
+    assert str(h['DEWPRES']) == '9.99e-9'
+    assert (str(h['DMPTEMP']) == str(h['WALLBRD']) == str(h['HEBOX'])
+            == '-999.99')
+
+
+def test_temp_cards_are_signed_two_decimal_strings():
+    """온도 문자열 표기: `'+16.78'` / `'-101.23'` -- 비수치는 sentinel 로."""
+    f = rawhdr.format_temp
+    assert f(16.78) == '+16.78'
+    assert f(-101.234) == '-101.23'
+    assert f('-103.16') == '-103.16'
+    for bad in (None, 'ERR', float('nan'), float('inf')):
+        assert f(bad) == rawhdr.TEMP_NC, bad
 
 
 # -- 백엔드가 실패해도 프레임을 버리지 않는다 --------------------------------
@@ -469,7 +567,7 @@ def test_a_backend_that_raises_does_not_lose_the_frame(tmp_path):
     written = [p for p in os.listdir(tmp_path) if p.endswith('.fits')]
     assert len(written) == 2, '헤더 값 하나 때문에 저장이 멈췄다'
     h = fits.getheader(os.path.join(tmp_path, sorted(written)[0]))
-    assert h['CCDTEMP'] == -999.0
+    assert str(h['CCDTEMP']).strip() == '-999.99'
     assert h['CTRL1ID']            # 다른 덩어리는 멀쩡하다
 
 
@@ -603,12 +701,15 @@ def test_rawhdr_and_telemetry_do_not_produce_the_same_card():
 
 # -- ICSBUILD 는 실제 빌드여야 한다 ---------------------------------------
 
-def test_icsbuild_carries_program_version_and_build_time(tmp_path):
-    """`<프로그램>-v<버전>:<빌드일시>` 형식이어야 한다 (규격 5.1절).
+def test_icsbuild_carries_version_and_build_time(tmp_path):
+    """`v<버전>:<빌드일시>` 형식이어야 한다.
 
     **"비어 있지 않음" 만 보면 거짓 값이 통과한다** -- 실제로 레거시 문자열
     `'KX2016-03-23:1381'` 이 기본값으로 실려 있었고, 그 카드를 둔 목적(헤더
     이상을 소스 상태로 되짚기)을 정면으로 무력화했다.
+
+    처음에는 `<프로그램>-v…` 로 이름을 앞세웠으나, 어느 프로그램이 쓴
+    파일인지는 `DATASRC` 가 이미 답하므로 이름을 뺐다 (운영자 확정 2026-08-22).
 
     끝의 `Z` 도 함께 지킨다.  **다른 시각 카드와 일부러 다르다** -- 그쪽은 `Z` 를
     붙이지 않고 `TIMESYS='UTC'` 로 선언하지만, 이 값은 시각 카드가 아니라 버그
@@ -618,7 +719,7 @@ def test_icsbuild_carries_program_version_and_build_time(tmp_path):
     import re
     for tag, h in _headers(tmp_path).items():
         got = str(h['ICSBUILD']).strip()
-        assert re.fullmatch(r'(ics_sim|ics_archon)-v\d+\.\d+\.\d+'
+        assert re.fullmatch(r'v\d+\.\d+\.\d+'
                             r':\d{4}-\d\d-\d\dT\d\d:\d\dZ', got), (tag, got)
         assert 'KX2016' not in got, '레거시 빌드 문자열이 남아 있다'
         # 비대칭이 의도임을 한 자리에서 함께 못박는다
@@ -627,40 +728,39 @@ def test_icsbuild_carries_program_version_and_build_time(tmp_path):
             'FITS 시각 카드는 TIMESYS 로 선언하므로 Z 를 붙이지 않는다')
 
 
-def test_build_id_refuses_to_lend_its_version_to_another_program():
-    """이름만 바꿔 부르면 **거짓 provenance** 가 된다 -- 그 사실을 못박는다.
+def test_build_id_composes_version_and_build_date():
+    """`v<버전>:<빌드일시>` -- 프로그램 이름은 넣지 않는다 (운영자 확정 2026-08-22).
 
-    `ics_archon` 은 자기 패키지에 세 상수를 두고 같은 형태를 만들어야 한다.
-    이 시험은 세 값을 함께 넘기는 사용법을 보여 준다.
+    어느 프로그램이 쓴 파일인지는 `DATASRC` 가 이미 답하므로 이름을 뺐다.
+    `ics_archon` 은 자기 패키지에 `__version__`·`__build_date__` 두 상수를 두고
+    같은 형태를 만든다 -- 이 함수를 재사용할 거면 두 값을 다 넘긴다.
+    안 넘기면 `ics_sim` 의 버전·일시가 실려 거짓 provenance 가 된다.
     """
-    from ics_sim import PROGRAM, __build_date__, __version__, build_id
-    assert build_id() == f'{PROGRAM}-v{__version__}:{__build_date__}'
-    # 이름만 바꾼 호출은 ics_sim 의 버전을 물고 온다 -- 그래서 쓰면 안 된다
-    assert build_id('ics_archon').endswith(__build_date__)
-    # 올바른 사용법: 세 값을 다 넘긴다
-    assert build_id('ics_archon', '2.0.0', '2027-01-01T00:00Z') == (
-        'ics_archon-v2.0.0:2027-01-01T00:00Z')
+    from ics_sim import __build_date__, __version__, build_id
+    assert build_id() == f'v{__version__}:{__build_date__}'
+    # 올바른 재사용법: 자기 패키지의 두 값을 다 넘긴다
+    assert build_id('2.0.0', '2027-01-01T00:00Z') == 'v2.0.0:2027-01-01T00:00Z'
 
 
-def test_ccdtemp_is_always_derived_from_the_two_chips():
-    """`CCDTEMP` 는 **파생값**이다 -- 백엔드가 따로 줘도 쓰지 않는다.
+def test_ccdtemp_uses_the_representative_sensor_only():
+    """대표 센서는 `ccdtemp1` 이다 -- 백엔드가 `ccdtemp` 를 따로 줘도 무시한다.
 
-    파생으로 못박아 두면 세 카드가 서로 어긋날 수 없다 (운영자 확정 2026-08-13).
+    (운영자 확정 2026-08-21 -- 평균 파생 폐기, 실측 대표 전환)
     """
     h = rawhdr.thermal_header({'ccdtemp1': -100.0, 'ccdtemp2': -102.0,
                                'ccdtemp': 0.0})   # 백엔드가 엉뚱한 값을 줘도
-    assert h['CCDTEMP'] == -101.0, '평균이 아니라 백엔드 값을 썼다'
+    assert str(h['CCDTEMP']) == '-100.00', '대표 센서(ccdtemp1)가 아닌 값을 썼다'
 
 
-def test_one_chip_temperature_still_feeds_ccdtemp_with_a_warning(caplog):
-    """한쪽만 읽혔으면 **비우지 않고 경고한다.**
+def test_missing_representative_sensor_is_sentinel_with_a_warning(caplog):
+    """대표 센서(ccdtemp1)가 죽었을 때 이웃 값(ccdtemp2)으로 대체하지 않는다.
 
-    L1 이 `CCDTEMP` 를 이름으로 지정해 가져가므로(`CARRY_KEYS`) sentinel 로
-    떨어뜨리면 L1 이 굶는다.  대신 평균이 아니라는 사실을 로그에 남긴다.
+    대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다 -- sentinel 과
+    경고가 정직하다.  L1 이 카드를 요구하므로 비우지는 않는다.
     """
     import logging
     with caplog.at_level(logging.WARNING):
-        h = rawhdr.thermal_header({'ccdtemp1': -103.0})
-    assert h['CCDTEMP'] == -103.0
-    assert h['CCDTEMP2'] == -999.0
-    assert any('평균이 아니' in r.message for r in caplog.records)
+        h = rawhdr.thermal_header({'ccdtemp2': -103.0})
+    assert str(h['CCDTEMP']) == '-999.99'
+    assert 'CCDTEMP2' not in h
+    assert any('ccdtemp1' in r.message for r in caplog.records)

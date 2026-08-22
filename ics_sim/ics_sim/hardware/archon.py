@@ -134,11 +134,12 @@ class ArchonBackend:
         return {'units': ()}
 
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        # TODO: Archon HEATER/RTD 모듈에서 읽는다.  chips[0] -> ccdtemp1,
-        #       chips[1] -> ccdtemp2.  **ccdtemp 는 주지 않는다** -- FITS
-        #       CCDTEMP 는 호출측이 두 값의 평균으로 파생한다.  듀어 센서
-        #       이름은 레거시를 계승한다 --
-        #       DEWPRES/PT30N1/PT30N2/CHARCOAL/AIR_*/GLYC_*.
+        # TODO: Archon HEATER/RTD(ICG) 모듈에서 읽는다.  chips[0] -> ccdtemp1
+        #       (= FITS CCDTEMP 의 실측 대표, 운영자 확정 2026-08-21),
+        #       chips[1] -> ccdtemp2 (진단·로그용 -- raw 카드가 아니다).
+        #       공급 계통이 셋이다 (Header_and_Refs v1.8 3.7절) --
+        #       ICG RTD: dewpres/dmptemp/pt30n1/pt30n2/charcoal/wallbrd,
+        #       Tapaculo: hebox, standalone RTD readout unit: air_*/glyc_*.
         log.warning('sensors: %s', _NOT_YET)
         return {}
 
