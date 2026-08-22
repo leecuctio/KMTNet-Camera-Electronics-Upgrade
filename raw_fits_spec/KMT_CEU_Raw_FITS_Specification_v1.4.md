@@ -133,7 +133,7 @@ X overscan 의 좌우는 strip 으로 정해진다 — **`RRRRLLLL`** (strip 1�
 Y:  1 ..... 4616 | 4617 .. 4700 | 4701 .. 4784 | 4785 ..... 9400
     BOT active     BOT Y ovrscn   TOP Y ovrscn   TOP active
     (4616 rows)    (84 rows)      (84 rows)      (4616 rows)
-                   |<--- middle Y overscan (168 rows) --->|
+                 | middle Y overscan (168 rows)|
 ```
 
 - CCD 1개(9232행)를 8개 strip 이 상·하 양 끝에서 동시에 읽는다 — X tile 1개 = amp 2개(TOP/BOT), 파일 1개 = chip 2 × amp 16 = **amp 32개**.
