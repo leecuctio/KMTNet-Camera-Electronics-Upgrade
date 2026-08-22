@@ -58,7 +58,8 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1_KO.md` | — | v4.1 ICD의 **국문본. 이 디렉토리가 유일본** |
 | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` | `../mef_fits_spec/` | 규격 6.5절 대조표의 원본. 바이트 동일 사본 |
 | `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` | `../mef_converter/` | Archon raw 검증 결과. 바이트 동일 사본 |
-| `Detector_Ch_to_AmpID_Map_v1.0.txt` | — | **검출기 출력 채널 ↔ MEF AmpID 64행 맵** (구 AMPID.txt, 검토 완료 후 v1.0 승격 2026-08-21). CtrUnit–Port–CCD/CH–IMGSEC–MEF_AmpID — `CHMAP_*` 카드와 재작성판 amp 전수 표의 원자료 |
+| `Detector_Ch_to_AmpID_Map_v1.0.txt` | — | **검출기 출력 채널 ↔ MEF AmpID 64행 맵** (구 AMPID.txt, 검토 완료 후 v1.0 승격 2026-08-21). CtrUnit–Port–CCD/CH–IMGSEC–MEF_AmpID — `CHMAP_*` 카드와 raw spec 4.5절 amp 전수 표의 **기계 가독 정본** |
+| `CCD290-99 datasheet (V2 - Aug 2016).pdf` | e2v A1A-778871 V2 | **검출기 데이터시트** (운영자 확보 2026-08-22) — raw spec **부록 A** 의 원전: image section A/D · 레지스터 1152+prescan 27(레거시 `PRESCANX=27` 출처) · OS1–16 · split-frame 독출 |
 | `Detector_and_Amp_Info_cards_v1.0.txt` | — | **확정 Detector/Amplifier 카드 블록** MK·NT 정본 (구 AMPCARD.txt, v1.0 승격 2026-08-21) |
 | `Archon_Unit_Info.txt` | — | **사이트별 Archon 유닛 정체** — SCI×2 + GUI×1 의 유닛 ID(`<SITE>-SCI-101` 등, ID 숫자 = IP)와 STA 시리얼. `CTRL1ID`/`CTRL1SN`/`CTRL2ID`/`CTRL2SN` 실값의 원자료 |
 | `Tel pos & limit (20230519).txt` | — | 망원경 지향·리밋 기록 (2023-05-19) — TCS 절 검토용 |

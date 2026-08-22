@@ -50,7 +50,8 @@
   1. **목 검토**: raw spec v1.3 전문 — 특히 4.5 amp 표(IMGSEC A/B/D 열), 5장 카드 표의 값·출처, 8장 OI 번호 부여(15~18 신설).
   2. **LEECU 전달**: 통합 문서 v0.6 Part 1 (C-항목·키워드맵 이관 4건) + raw spec 6장.
   3. **ics_sim 구현 일감** — v1.3 정렬: ① D-016 충돌 처리(`rawpair.py` 선검사·되감음·상한, `UNIQNAME`/`NAMECLSH`/`clash` 제거, `ORIGNAME` 상시 기록 — Part 2 §3 표) ② 정체성·컨트롤러 블록 재편(`PAIRFILE`/`CHIP*`/`RAWPROD`/`RAWVER`/`NUMFILES`/`HEMODE`/`NPHLINES` 제거, `BCKTEMP`→`Cn_*`, `CTRLVER`/`TIMVER` 등 버전 카드 제거, `ACFFILE`→`CTRLnCFG`) ③ 신설 카드(`FPAID` `TCSTIME` `TCSARC` 돔 신설 4장 `DMPTEMP` 재편 HK · `FSATEMP`/`FSAHUM` · `RDMODE` `CAMVER`) ④ `MJD-OBS`/`UT`/`TSHOPEN` 등 미기재 카드 정리 ⑤ 코드 주석의 구판 절 번호 참조 정리. 초안 v1.0 pair 와의 카드 전량 대사 테스트를 만들면 잔여가 자동으로 드러난다.
-  4. **실측·확인 항목**: OI-15(4:4 vs 5:3 — 검증 표본으로 즉시 가능) · OI-16(Tapaculo 포맷) · OI-17(e2v 데이터시트) · OI-18(NT CCDTEMP).
+  4. **실측·확인 항목**: OI-15(4:4 vs 5:3 — 검증 표본으로 즉시 가능) · OI-16(Tapaculo 포맷) · OI-17(**부분 종결** — 데이터시트 확보·부록 A 신설, 잔여 = IMGSEC `B` 표기 해명·채널↔OS 대응·K/N 회전 장착 확인) · OI-18(NT CCDTEMP).
+- **데이터시트 확보 (2026-08-22, 운영자)** — `__reference/CCD290-99 datasheet (V2 - Aug 2016).pdf`. raw spec **부록 A** 로 대응 정리: `IMGSEC` 의 `A`/`D` = e2v image section(아래/위 half) 확인, **레거시 `PRESCANX=27` 의 원전**(레지스터 1152 active + 27 prescan) 확인, 독출 방향은 ACF 소관(OI-3 유지). **시사점**: K·N 조의 `A-TOP` 은 die 180° 회전 장착을 시사 — 레거시 AMPSEC M/T vs K/N 패턴(OI-15)과 같은 짝, 실기에서 함께 확인할 것.
 
 ### 2026-08-22 확정분 · 최신 (확인 요망 6~11 전량 종결 + D-016 등재 = v1.13)
 

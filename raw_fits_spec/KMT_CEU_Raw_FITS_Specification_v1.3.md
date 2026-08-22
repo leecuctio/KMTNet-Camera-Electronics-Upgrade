@@ -11,6 +11,7 @@
 | 연동 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1) |
 | 연동 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) |
 | Amp 배선 맵 (기계 사본) | [`__reference/Detector_Ch_to_AmpID_Map_v1.0.txt`](__reference/Detector_Ch_to_AmpID_Map_v1.0.txt) — 4.5절 표의 기계 가독 정본 |
+| 검출기 데이터시트 | `__reference/CCD290-99 datasheet (V2 - Aug 2016).pdf` (e2v A1A-778871 V2) — 부록 A 의 원전 |
 
 > **절 구성이 구판(v1.2)과 다르다.** 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 이 판 기준으로 재확인할 것. 배경·경위 설명은 이 문서에 다시 적지 않는다 — **원장**과 **통합 문서**의 장·절을 가리킨다.
 
@@ -179,7 +180,7 @@ strip = ((amp−1) mod 8) + 1. tile X 구간은 `X0 + (s−1)·1200 + 1 … X0 +
 
 - 검증 불변식: 카드당 8토큰 · `CHMAP_L*` 접두 = `DETID[0]` · `CHMAP_R*` 접두 = `DETID[1]` · chip 당 채널 01–16 전량 · pair 합계 64.
 - **TOP/BOT 대역이 chip 마다 반대**다 (M: TOP=16–09 / K: TOP=08–01 등) — converter 현행 추정식(`MODULE`/`CHANNEL`)과 다르므로 MEF 쪽 재정의가 C-11 이다 (통합 문서 §1).
-- ⚠️ **미확정 열**: `IMGSEC` 의 `A`/`B`/`D` 문자의 원전(e2v CCD290-99 데이터시트의 출력단 명명)과 amp 별 물리 독출 방향은 **데이터시트·실기 확인 대기**다 (OI-3 · OI-9). 확보되면 이 표에 열을 추가하고 데이터시트 부록을 신설한다.
+- `IMGSEC` 의 `A`/`D` 는 **e2v 데이터시트의 image section 명칭으로 확인**됐다 — A = 아래 half(레지스터 E/F, OS1–8), D = 위 half(레지스터 G/H, OS9–16). 부록 A 참조. ⚠️ **`B` 표기는 데이터시트에 없다**(섹션은 A·D 뿐) — K·N 조의 `B-BOT` 이 무엇을 가리키는지 해명이 남았다 (OI-17 잔여). amp 별 물리 독출 방향은 클럭 결선(ACF) 소관이라 실기 확인 대상이다 (OI-3 · OI-9).
 
 ## 5. 헤더 Keyword 규격
 
@@ -403,7 +404,7 @@ raw 사용자를 위한 요점 — 상세와 LEECU 실행 목록은 **통합 문
 | OI-13 | 셔터 상태 반영 지연 | `SHOPEN`+3초 재질의 시점에 AUX 상태기계가 넘어가 있는지 벤치 실측 (`aux_requery_after_shopen`) |
 | OI-15 | **X overscan 패턴 4:4 vs 5:3** | 레거시 MEF `AMPSEC` 실측과 신규 전제의 상충 — 검증 표본(`KMTN.20260116.000001`) overscan 열 통계로 즉시 확인 가능 (4.1절) |
 | OI-16 | Tapaculo 원값 포맷 | `FSATEMP`/`FSAHUM`(+`HEBOX`) 원값 포맷 확인 후 "원값 그대로 싣기"로 최종 확정 (5.8절) |
-| OI-17 | e2v 데이터시트 대응 | `IMGSEC` A/B/D 문자 원전·출력단 die 위치·시프트 방향 — 데이터시트 확보 시 4.5절 확장 + 부록 신설 |
+| OI-17 | e2v 데이터시트 대응 (**부분 종결** — 원전 확보 2026-08-22, 부록 A 신설) | 확인된 것: `A`/`D` = image section 명칭, 레지스터 E/F·G/H, OS1–16, prescan 27(레거시 `PRESCANX=27` 의 원전). **잔여**: ① `IMGSEC` 의 `B` 표기 해명 ② CCD 출력 채널(`M01` 등) ↔ OS 번호 대응 확정 ③ K·N 조가 M·T 조와 IMGSEC 체계가 다른 이유(180° 회전 장착 추정 — OI-15 와 연동) |
 | OI-18 | NT 파일 `CCDTEMP` 귀속 | 대표 센서("M")가 NT 파일에서도 그대로인지 확인 (5.6절) |
 | — | subframe/ROI | **이 규격은 전면 독출 전용** — 부분 독출은 원점 카드가 없어 표현 불가. 필요 시 별도 확장 (원장 10장 제기) |
 
@@ -429,3 +430,19 @@ raw 사용자를 위한 요점 — 상세와 LEECU 실행 목록은 **통합 문
 | v1.0~v1.2 | 2026-08-06 ~ 08-13 | 구판 "Raw FITS Pair 규격" — 이력은 archive 판 11장 |
 | — | 2026-08-18 | 전면 재검토 개시 (⛔ 재작성중) — 검토는 키워드맵 v0.7 → 원장 v1.7~v1.13 사이클로 진행 |
 | **v1.3** | **2026-08-22** | **재작성판 발행 + 문서명 변경**(Pair_Spec → Specification). 확인 요망 11건 전량 종결분 반영: 헤더 5장을 **초안 v1.0 pair(135 값 카드) 기준으로 전면 교체** — Detector 블록 타일 해부(`PRESCNX/Y`·`OVRSCNX/Y`·`CHMAP_*`) · `FILENAME`/`ORIGNAME` 정체성(D-016, `UNIQNAME`·`NAMECLSH`·`clash/`·`PAIRFILE`·`CTRLTAG` 폐지) · 컨트롤러 블록(`CTRLxID/SN/CFG` · `ICSBUILD` 신형식 · `RDMODE`) · HK 재구성(문자열 형 · sentinel `'-999.99'`/`'9.99e-9'` · `Cn_*`) · 돔 출처 TCS 편입 · `EXPTIME` 조건부 형 · `LEDFLASH` [ms]. **4.3 포장 규범 조항 신설**(`ROWORDR`/`OSCNPATT` 카드 대체, 고정 = `CAMVER`+`CTRLxCFG`) · **4.5 amp 전수 표 신설**(기계 사본 = 채널맵 v1.0). 규격 버전 카드 미도입 확정. XTALKVER 계층 규칙(raw/L0/L1) 명시. OI 재편(15~18 신설) |
+| v1.3 | 2026-08-22 | 제자리 개정(발행 당일 보강): **부록 A 신설 — e2v CCD290-99 데이터시트(V2 2016-08, `__reference` 확보) 대응.** 4.5절 `IMGSEC` 의 `A`/`D` = image section 명칭 확인(`B` 는 원전에 없음 — 해명 잔여), 레지스터 1152 active + prescan 27 = 레거시 `PRESCANX=27` 의 원전 확인, 독출 방향 = 클럭 결선(ACF) 소관 확인. OI-17 부분 종결, K·N 회전 장착 추정을 OI-15 와 연동 |
+
+## 부록 A. e2v CCD290-99 데이터시트 대응
+
+원전: `__reference/CCD290-99 datasheet (V2 - Aug 2016).pdf` (e2v A1A-778871 Version 2). 이 규격의 값과 원전의 대응:
+
+| 항목 | 데이터시트 | 이 규격 | 정합 |
+| --- | --- | --- | --- |
+| 픽셀 | 10 μm square, image area 9216 × 9232 | `PIXSIZE=10.0` · `CCDCOLS=9216`(=8×`IMAGEX`) · `CCDROWS=9232`(=2×`IMAGEY`) | ✓ |
+| Image section | **A**(아래 half) · **D**(위 half), 각 9216 × 4616 | `IMAGEY=4616` · 4.2절 상·하 분할 · 4.5절 `IMGSEC` 의 `A`/`D` | ✓ |
+| Register section | 1179 elements = **1152 active + 27 pre-scan** (아래 E/F · 위 G/H, 각 3구획) | `IMAGEX=1152`. **레거시 `PRESCANX=27` 의 원전이 이 27 이다** — 신규는 prescan 을 기록하지 않으므로 `PRESCNX=0` (tile 1200 = 1152 + `OVRSCNX` 48) | ✓ |
+| 출력 | **OS1–OS8**(아래, Connector-1) · **OS9–OS16**(위, Connector-2), 각 출력에 dummy(DOS) 짝 — 차동 프리앰프용 | `NAMPDET=16`. `WBTYPE='STA Differential Board'`(MEF 쪽)가 dummy 출력 활용 구조 | ✓ |
+| 독출 모드 | full-frame / **split full-frame** — 전송 방향은 클럭 결선으로 선택 (A→E · D→G 가 분할 독출, 역방향 가능) | 4.2절 상·하 동시 독출. **amp 별 물리 독출 방향은 데이터시트가 고정하지 않는다** — ACF(=`CTRLxCFG`) 소관, 실기 확인 OI-3 | ✓ (방향은 OI-3) |
+| Dump drain | fixed-barrier dump drain (고속 폐기) | preheat/dump 운용은 timing script 소관 — raw 카드 없음 (`NPHLINES` 미도입, 원장 6장) | ✓ |
+
+**IMGSEC 문자에 대한 판정** — 채널맵의 `A`/`D` 는 위 image section 명칭과 일치한다: M·T chip 은 `A-BOT`(섹션 A 가 프레임 아래)·`D-TOP`, K·N chip 은 `A-TOP`(섹션 A 가 프레임 **위**)·`B-BOT`. 섹션 A 가 위로 가는 배치는 **die 의 180° 회전 장착**을 시사하며, M·T 조와 K·N 조가 갈리는 것은 레거시 MEF `AMPSEC` 의 M/T=5:3 vs K/N=3:5 패턴(OI-15)과 같은 짝이다 — 두 관찰이 같은 원인(장착 방향)일 가능성을 실기에서 함께 확인할 것. **`B` 표기는 데이터시트에 없다**(image section 은 A·D 뿐, 레지스터는 E/F/G/H) — 원전 해명이 OI-17 의 잔여다.
