@@ -101,14 +101,17 @@ class DetectorBackend(Protocol):
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
         """chip 온도 + 듀어 센서 (규격 5.10절).
 
-        키는 소문자: `ccdtemp1` `ccdtemp2` `dewpres` `pt30n1` `pt30n2`
-        `charcoal` `air_in` `air_out` `glyc_in` `glyc_out`.
-        읽지 못한 항목은 **넣지 않는다** -- 호출측이 sentinel 로 채운다.
+        키는 소문자: `ccdtemp1` `ccdtemp2` `dewpres` `dmptemp` `pt30n1`
+        `pt30n2` `charcoal` `wallbrd` `hebox` `air_in` `air_out` `glyc_in`
+        `glyc_out`.  읽지 못한 항목은 **넣지 않는다** -- 호출측이 sentinel 로
+        채운다.  `dewpres` 만 sentinel 이 다르다: 실수 `-999.0` 이 아니라
+        문자열 `'9.99e-9'` 이고, 읽혔더라도 `0`·음수·범위 밖이면 같은 값으로
+        떨어진다 (`rawhdr.format_dewpres`).  단위는 [torr].
 
-        **`ccdtemp` 는 주지 않는다.**  FITS `CCDTEMP` 는 두 chip 온도의
-        **평균으로 파생**한다(운영자 확정 2026-08-13) -- 백엔드가 따로 주면
-        파생값과 어긋날 수 있는 두 번째 사실이 생긴다.  듀어의 다른 센서는
-        `pt30n1` 등 자기 이름으로 준다.
+        **`ccdtemp1` 이 FITS `CCDTEMP` 의 실측 원천이다** (운영자 확정
+        2026-08-21 -- 평균 파생 폐기).  `ccdtemp2` 는 진단·로그용으로만 남고
+        raw 카드가 아니다.  백엔드가 `ccdtemp` 를 따로 줘도 호출측이 무시한다
+        -- 대표 센서와 어긋날 수 있는 두 번째 사실을 만들지 않는다.
         """
 
     def voltages(self, controller: str) -> list[dict]:

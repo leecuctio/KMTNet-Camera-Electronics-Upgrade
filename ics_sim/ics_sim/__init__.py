@@ -9,9 +9,6 @@ K/M/T/N.CB = 9노드)를 따른다.  설계 근거와 실측 자료는 DevNote.m
 
 from __future__ import annotations
 
-#: 취득 프로그램 이름.  실기 프로그램(`ics_archon`)은 자기 값을 갖는다.
-PROGRAM = 'ics_sim'
-
 __version__ = '0.1.0'
 
 #: **마지막 갱신 일시 (UTC).  손으로 적는다.**
@@ -36,21 +33,21 @@ __version__ = '0.1.0'
 __build_date__ = '2026-08-13T07:00Z'
 
 
-def build_id(program: str = PROGRAM, version: str = __version__,
+def build_id(version: str = __version__,
              build_date: str = __build_date__) -> str:
     """FITS `ICSBUILD` · `AUXSTATUS` 꼬리의 `ICSBUILD=` 에 싣는 값.
 
-    형태는 `<프로그램>-v<버전>:<빌드일시>` 다.  레거시 관례
-    (`'KX2016-03-23:1381'` = 접두 + 날짜 + `:` + 번호)를 느슨하게 잇되 **프로그램
-    이름을 앞에 둔다** -- 신규는 취득 프로그램이 둘(`ics_sim` · `ics_archon`)이라
-    어느 쪽이 쓴 파일인지가 값 안에 보여야 한다.
+    형태는 `v<버전>:<빌드일시>` 다.  레거시 관례
+    (`'KX2016-03-23:1381'` = 접두 + 날짜 + `:` + 번호)를 느슨하게 잇는다.
+    처음에는 프로그램 이름을 앞에 붙였으나(취득 프로그램이 `ics_sim` ·
+    `ics_archon` 둘), 어느 쪽이 쓴 파일인지는 `DATASRC` 가 이미 답하므로
+    이름을 뺐다 (운영자 확정 2026-08-22).
 
         >>> build_id()
-        'ics_sim-v0.1.0:2026-08-13T07:00Z'
+        'v0.1.0:2026-08-13T07:00Z'
 
-    ⚠️ **`build_id('ics_archon')` 처럼 이름만 바꿔 부르지 말 것.**  그러면 이름은
-    `ics_archon` 인데 버전·일시는 `ics_sim` 것이 실려 **거짓 provenance** 가 된다.
-    실기 프로그램은 자기 패키지에 `PROGRAM`·`__version__`·`__build_date__` 세
-    상수를 두고 같은 형태를 만든다 -- 이 함수를 재사용할 거면 세 값을 다 넘긴다.
+    실기 프로그램(`ics_archon`)은 자기 패키지에 `__version__` · `__build_date__`
+    두 상수를 두고 같은 형태를 만든다 -- 이 함수를 재사용할 거면 두 값을 다
+    넘긴다.  안 넘기면 `ics_sim` 의 버전·일시가 실려 거짓 provenance 가 된다.
     """
-    return f'{program}-v{version}:{build_date}'
+    return f'v{version}:{build_date}'

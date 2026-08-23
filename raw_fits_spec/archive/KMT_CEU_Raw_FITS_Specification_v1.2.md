@@ -1,4 +1,6 @@
-# KMT-CEU Raw FITS Pair 규격 ((재작성중))
+# KMT-CEU Raw FITS Specification ((구판 v1.2))
+
+> 문서명 변경(운영자 지시 2026-08-22): 구 "KMT-CEU Raw FITS Pair 규격"(파일명 `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md`). 내용은 개명 시점 그대로이며, **현행판은 `../KMT_CEU_Raw_FITS_Specification_v1.3.md`** 다.
 
 > # ⛔ ((재작성중)) — 이 문서를 근거로 삼지 않는다
 >

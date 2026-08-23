@@ -1,0 +1,53 @@
+
+COMMENT   Instrument and Detector Information                                   
+INSTRUME= 'KMTA 18k CCD      ' / Instrument Name                                
+DETECTOR= 'e2v CCD290-99     ' / Detector device model                          
+FPAID   = 'FPA#1             ' / FPA ID                                         
+DETID   = 'MK                ' / Detector pair in this raw FITS file            
+PIXSIZE =                 10.0 / Unbinned pixel size [microns]                  
+PIXSCALE=                0.395 / Unbinned pixel scale [arcsec per pixel]        
+CCDXBIN =                    1 / CCD X-axis Binning Factor                      
+CCDYBIN =                    1 / CCD Y-axis Binning Factor                      
+NAMPDET =                   16 / Number of amplifiers in the detector           
+NAMPRAW =                   32 / Number of amplifiers in the raw FITS file      
+AMPNAX1 =                 1200 / Columns per amplifier (prescan+image+overscan) 
+AMPNAX2 =                 4700 / Rows per amplifier (prescan+image+overscan)    
+IMAGEX  =                 1152 / Image columns per amplifier                    
+IMAGEY  =                 4616 / Image rows per amplifier                       
+PRESCNX =                    0 / Prescan columns per amplifier (side varies)    
+PRESCNY =                    0 / Prescan rows per amplifier (frame-edge side)   
+OVRSCNX =                   48 / Overscan columns per amplifier (side varies)   
+OVRSCNY =                   84 / Overscan rows per amplifier (frame-center side)
+
+COMMENT   Map of CCD output channels, raw X ascending within each card          
+CHMAP_LT= 'M16,M15,M14,M13,M12,M11,M10,M09' / CCD output ch, left-half TOP      
+CHMAP_LB= 'M01,M02,M03,M04,M05,M06,M07,M08' / CCD output ch, left-half BOT      
+CHMAP_RT= 'K08,K07,K06,K05,K04,K03,K02,K01' / CCD output ch, right-half TOP     
+CHMAP_RB= 'K09,K10,K11,K12,K13,K14,K15,K16' / CCD output ch, right-half BOT     
+
+
+COMMENT   Instrument and Detector Information                                   
+INSTRUME= 'KMTA 18k CCD      ' / Instrument Name                                
+FPAID   = 'FPA#1             ' / FPA ID                                         
+DETECTOR= 'e2v CCD290-99     ' / Detector device model                          
+DETID   = 'NT                ' / Detector pair in this raw FITS file              
+PIXSIZE =                 10.0 / Unbinned pixel size [microns]                  
+PIXSCALE=                0.395 / Unbinned pixel scale [arcsec per pixel]        
+CCDXBIN =                    1 / CCD X-axis Binning Factor                      
+CCDYBIN =                    1 / CCD Y-axis Binning Factor                      
+NAMPDET =                   16 / Number of amplifiers in the detector           
+NAMPRAW =                   32 / Number of amplifiers in the raw FITS file      
+AMPNAX1 =                 1200 / Columns per amplifier (prescan+image+overscan) 
+AMPNAX2 =                 4700 / Rows per amplifier (prescan+image+overscan)    
+IMAGEX  =                 1152 / Image columns per amplifier                    
+IMAGEY  =                 4616 / Image rows per amplifier                       
+PRESCNX =                    0 / Prescan columns per amplifier (side varies)    
+PRESCNY =                    0 / Prescan rows per amplifier (frame-edge side)   
+OVRSCNX =                   48 / Overscan columns per amplifier (side varies)   
+OVRSCNY =                   84 / Overscan rows per amplifier (frame-center side)
+
+COMMENT   Map of CCD output channels, raw X ascending within each card          
+CHMAP_LT= 'N08,N07,N06,N05,N04,N03,N02,N01' / CCD output ch, left-half TOP      
+CHMAP_LB= 'N09,N10,N11,N12,N13,N14,N15,N16' / CCD output ch, left-half BOT      
+CHMAP_RT= 'T16,T15,T14,T13,T12,T11,T10,T09' / CCD output ch, right-half TOP     
+CHMAP_RB= 'T01,T02,T03,T04,T05,T06,T07,T08' / CCD output ch, right-half BOT     

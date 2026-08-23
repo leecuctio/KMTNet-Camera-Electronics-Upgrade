@@ -170,16 +170,28 @@ HEMODE_SCIENCE = 'SCIENCE'
 HEMODE_GUIDE = 'GUIDE'
 
 
-def detector_header(instrume: str) -> dict[str, object]:
+def detector_header(instrume: str,
+                    cfg_camera: dict | None = None) -> dict[str, object]:
     """5.4절 detector · camera · mosaic 배치 (16장).
 
     Args:
-        instrume: `[node] telid` (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  레거시 실측
-            헤더가 `INSTRUME='KMTS'` 로 사이트 코드를 넣었다.
+        instrume: `[node] telid` (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  기본 형식은
+            **`'<SITE> 18k CCD'`** (운영자 확정 2026-08-21, Header_and_Refs
+            v1.7 3.1절 · 확정 초안 v1.0) -- 레거시는 사이트 코드만 넣었다
+            (`INSTRUME='KMTS'`).
+        cfg_camera: `[camera]` 설정 (`detector`/`camver`/`instrume`).
+            주어지면 기본값보다 **우선한다** -- Source 가 `ICS INI` 인 카드는
+            ini 에서 수정할 수 있어야 한다 (운영자 지시 2026-08-22, v1.12
+            확인 요망 6).
     """
+    c = cfg_camera or {}
     return {
-        'DETECTOR': S(DETECTOR), 'CAMNAME': S(CAMNAME), 'CAMVER': S(CAMVER),
-        'DETTYPE': S(DETTYPE), 'INSTRUME': S(instrume.upper()),
+        'DETECTOR': S(str(c.get('detector', DETECTOR))),
+        'CAMNAME': S(CAMNAME),
+        'CAMVER': S(str(c.get('camver', CAMVER))),
+        'DETTYPE': S(DETTYPE),
+        'INSTRUME': S(str(c.get('instrume',
+                                f'{instrume.upper()} 18k CCD'))),
         'HEMODE': S(HEMODE_SCIENCE),
         'NCCD': NCCD, 'NAMPS': NAMPS,
         'PIXSIZE': PIXSIZE, 'PIXSCALE': PIXSCALE,
@@ -226,7 +238,9 @@ def datasrc_of(backend_name: str) -> str:
 
 
 def controller_header(ctrltag: str, info: dict, *, backend_name: str,
-                      ics_build: str) -> dict[str, object]:
+                      ics_build: str,
+                      cfg_ctrl: dict[int, dict] | None = None
+                      ) -> dict[str, object]:
     """5.5·5.5.0절 컨트롤러 정체성 + 런타임 상태.
 
     **정체는 두 대분을 색인형으로, 런타임 상태는 자기 것만 단수형으로 싣는다**
@@ -244,6 +258,13 @@ def controller_header(ctrltag: str, info: dict, *, backend_name: str,
             컨트롤러의 런타임 상태다.
         backend_name: `DATASRC` 판정용.
         ics_build: `ICSBUILD` -- 레거시 계승 (규격 5.1·5.13절).
+        cfg_ctrl: `[controllers]` 설정 -- 색인(1=MK, 2=NT)별
+            `{'id','sn','cfg'}` 오버라이드 (`ControllersCfg.overrides()`).
+            **채워진 키는 백엔드 보고값을 이긴다** -- Source 가 `ICS INI` 인
+            카드는 ini 에서 수정할 수 있어야 한다(운영자 지시 2026-08-22).
+            백엔드가 유닛을 못 주는 단계(archon TODO)에도 INI 만으로 정체가
+            실린다.  `cfg` 키가 있으면 `CTRL<n>CFG`(적용 설정 파일명, v1.12
+            3.3절) 카드를 낸다.
     """
     tag = ctrltag.upper()
     idx = 1 if tag == 'MK' else 2
@@ -269,10 +290,19 @@ def controller_header(ctrltag: str, info: dict, *, backend_name: str,
         out['BUFNO'] = int(info['bufno'])
 
     # 5.5.0 -- 색인형은 **양쪽 파일에서 값이 같다** (규격 5.11절 "반드시 동일").
-    for n, unit in enumerate(info.get('units', ()), start=1):
+    # INI 오버라이드가 백엔드 보고값을 덮는다 -- 현장이 정본이라는 [site] 와
+    # 같은 원칙이고, 백엔드가 유닛을 못 주면 INI 만으로도 유닛이 생긴다.
+    units = [dict(u) for u in info.get('units', ())]
+    for n, ov in sorted((cfg_ctrl or {}).items()):
+        while len(units) < n:
+            units.append({})
+        units[n - 1].update({k: v for k, v in ov.items() if v})
+    for n, unit in enumerate(units, start=1):
         out[f'CTRL{n}ID'] = S(str(unit.get('id', 'NC')))
         out[f'CTRL{n}SN'] = S(str(unit.get('sn', 'NC')))
         out[f'CTRL{n}FW'] = S(str(unit.get('fw', 'NC')))
+        if unit.get('cfg'):
+            out[f'CTRL{n}CFG'] = S(str(unit['cfg']))
     return out
 
 
@@ -379,9 +409,14 @@ def exposure_header(*, date_obs: str, exp_start: datetime | None,
     같은 순간의 `MJD-OBS`/`UT` 를 파생시키고 셔터 시각을 붙인다.  파생을 한
     자리에 모아 둔 이유는 세 값이 어긋나지 않게 하는 것이다.
 
-    `LEDFLASH` 는 **초** 단위다 (규격 5.7·5.13절).  ICS 내부는 ms 이므로
-    나눠서 싣는다 -- 레거시와 같은 이름에 다른 단위를 넣으면 기존 도구가
-    조용히 1000배 틀린 값을 읽는다.
+    `LEDFLASH` 는 **ms** 단위 정수다 (운영자 확정 2026-08-22).  처음에는
+    레거시(초)를 따라 나눠 실었으나, 정수형을 유지하면서 sub-second 값
+    (250 ms 등)의 잘림을 막으려면 ms 그대로가 맞다.  레거시와 같은 이름에
+    다른 단위(1000배)가 되므로 카드 comment 가 `[milliseconds]` 를 명시한다
+    -- 이 카드는 실험실 flat 식별용이라 값을 계산에 쓰는 소비자는 없다.
+
+    `EXPTIME` 은 **정수형이 기본, 소수점 아래 값이 있을 때만 실수형**이다
+    (운영자 확정 2026-08-22).
 
     **`SHUTTER` 는 여기서 만들지 않는다** (2026-08-13 확정).  그 이름은 AUX 가
     보고한 **블레이드 위치**이고 `telemetry.py` 몫이다(규격 5.10절).  한때 이
@@ -396,9 +431,10 @@ def exposure_header(*, date_obs: str, exp_start: datetime | None,
     셔터를 쓰는 노출인지는 `IMAGETYP`(`BIAS`/`DARK` 는 열지 않는다)에서 읽는다.
     """
     out: dict[str, object] = {
-        'EXPTIME': float(exptime),
+        'EXPTIME': (int(exptime) if float(exptime).is_integer()
+                    else float(exptime)),
         'DARKTIME': float(darktime),
-        'LEDFLASH': round(ledflash_ms / 1000.0, 3),
+        'LEDFLASH': int(ledflash_ms),
         'TSHOPEN': S(_hms(exp_start)),
         'TSHSHUT': S(_hms(exp_end)),
     }
@@ -525,54 +561,138 @@ def site_header(site_code: str, cfg_site: dict | None = None) -> dict[str, objec
 # 집합에는 없다 -- 즉 각 IC 가 자기 듀어 RTD 를 직접 읽었다.  신규는 Archon 이
 # 읽으므로 **백엔드에서 온다** (`sensors()`).  TC 중계가 아니다.
 
-#: 듀어 센서 카드.  레거시 이름을 그대로 계승한다 -- 뜻이 같기 때문이다
-#: (규격 5.13절의 계승 기준).
-DEWAR_CARDS = ('DEWPRES', 'PT30N1', 'PT30N2', 'CHARCOAL',
+#: 듀어·HK 센서 카드 -- 확정 초안 v0.3.5 의 수록 순서.  일곱은 레거시 이름
+#: 계승이고(규격 5.13절), `DMPTEMP`/`WALLBRD`/`HEBOX` 는 HK 재구성 신설이다
+#: (운영자 확정 2026-08-21, Header_and_Refs v1.8 3.7절·7장).  `WALLBRD` 는
+#: wallboard 의 모음 탈락 축약 -- 8자 절단형 `WALLBOAR`(초안 v0.3.4)를 대체했다.
+#: `DEWPRES` 는 형과 표기가 달라 따로 다룬다.
+DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX',
                'AIR_IN', 'AIR_OUT', 'GLYC_IN', 'GLYC_OUT')
+
+#: 측정 불가를 뜻하는 `DEWPRES` 값 (운영자 확정 2026-08-21).
+DEWPRES_NC = '9.99e-9'
+
+#: 측정 불가를 뜻하는 HK 온도·습도 카드 값 (운영자 확정 2026-08-22, 단일값).
+#:
+#: 온도로는 어떤 냉각 램프도 닿지 않는 값이고 습도로는 음수라 물리적으로
+#: 불가능하다.  `-99.99` 안은 기각됐다 -- **CCDTEMP 냉각/워밍업 램프가 실제로
+#: 지나가는 값**(정상 운영값 -101~-103 바로 위)이라 실측과 구별되지 않는다.
+#: 습도 `0.00` 안도 기각 -- 0% RH 는 유효 측정값이다.
+TEMP_NC = '-999.99'
+
+#: 측정으로 인정하는 압력 범위 [torr].
+#:
+#: **하한은 게이지 실측 하한으로 확인해야 한다.**  이 하한이 sentinel 보다
+#: 커야 `9.99e-9` 가 정상값과 겹치지 않는다 -- 지금은 그 성질이 이 두 상수에
+#: 걸려 있다.  게이지가 `9.99e-9` 아래를 실제로 읽어낸다면 sentinel 을 바꿔야
+#: 한다.
+DEWPRES_MIN = 1.0e-8
+DEWPRES_MAX = 1.0e+3
+
+
+def format_dewpres(value: object) -> str:
+    """`DEWPRES` 를 `1.23e-4` 꼴 문자열로 만든다 (단위 [torr]).
+
+    **왜 문자열인가.**  FITS 실수 카드의 표기는 우리가 고를 수 없다 -- astropy
+    가 크기를 보고 정하므로 `1.23e-4` 를 넣어도 `0.000123` 으로 적힌다.  지수
+    표기를 규격으로 못박으려면 문자열 카드여야 한다.  레거시도 듀어·온도 카드를
+    전부 문자열로 실었으므로(`DEWPRES = 'N/A'`, `CCDTEMP = '-103.16'`) 형까지
+    계승이다.
+
+    **측정 불가는 하나로 모은다** (`9.99e-9`) -- 값이 없거나, `0` 이거나 음수,
+    유한하지 않거나, 게이지가 숫자가 아닌 것을 돌려주거나, 인정 범위를 벗어난
+    경우다.  범위 밖을 sentinel 로 떨어뜨리는 것은 **게이지 이상값이 정상 측정
+    으로 읽히는 것을 막으려는 것**이다.
+    """
+    if value is None:
+        # 게이지를 못 읽은 것은 시뮬에서 정상 경로다 -- 노출마다 경고하지 않는다.
+        log.debug('DEWPRES 를 못 읽었다 -- %s 로 싣는다', DEWPRES_NC)
+        return DEWPRES_NC
+    try:
+        p = float(value)
+    except (TypeError, ValueError):
+        log.warning('DEWPRES 게이지 값이 수치가 아니다(%r) -- %s 로 싣는다',
+                    value, DEWPRES_NC)
+        return DEWPRES_NC
+    if p != p or p in (float('inf'), float('-inf')):
+        log.warning('DEWPRES 가 유한하지 않다(%r) -- %s 로 싣는다',
+                    p, DEWPRES_NC)
+        return DEWPRES_NC
+    if p <= 0.0:
+        log.warning('DEWPRES 가 %r 이다 -- 게이지 미연결/미독출로 보고 %s 로 '
+                    '싣는다', p, DEWPRES_NC)
+        return DEWPRES_NC
+    if not DEWPRES_MIN <= p <= DEWPRES_MAX:
+        log.warning('DEWPRES %r torr 가 인정 범위 [%g, %g] 밖이다 -- 게이지 '
+                    '이상으로 보고 %s 로 싣는다',
+                    p, DEWPRES_MIN, DEWPRES_MAX, DEWPRES_NC)
+        return DEWPRES_NC
+    mantissa, _, exponent = f'{p:.2e}'.partition('e')
+    # `1.23e-04` 의 지수 앞 0 을 떼어 `1.23e-4` 로 만든다
+    return f'{mantissa}e{exponent[0]}{exponent[1:].lstrip("0") or "0"}'
+
+
+def format_temp(value: object) -> str:
+    """HK 온도 카드를 `'-101.23'`/`'+16.78'` 꼴 문자열로 만든다 [deg C].
+
+    **왜 문자열인가** (운영자 확정 2026-08-22, 확인 요망 9 종결) -- 레거시가
+    온도를 부호 포함 문자열로 실었고(`CCDTEMP = '-103.16'`), converter 는
+    pass-through 라 문자열 계승이 **아카이브 전체의 형을 통일**한다 -- 신규만
+    실수형이면 같은 이름에 두 형이 섞인다.  표기를 우리가 못 정하는 astropy
+    실수 카드 문제는 `format_dewpres` 와 같다.
+
+    측정 불가는 전부 `TEMP_NC`(`'-999.99'`) 하나로 모은다.
+    """
+    if value is None:
+        return TEMP_NC
+    try:
+        t = float(value)
+    except (TypeError, ValueError):
+        log.warning('온도 센서 값이 수치가 아니다(%r) -- %s 로 싣는다',
+                    value, TEMP_NC)
+        return TEMP_NC
+    if t != t or t in (float('inf'), float('-inf')):
+        log.warning('온도 센서 값이 유한하지 않다(%r) -- %s 로 싣는다',
+                    t, TEMP_NC)
+        return TEMP_NC
+    return f'{t:+.2f}'
 
 
 def thermal_header(sensors: dict | None) -> dict[str, object]:
-    """5.10절 chip 온도 + 듀어 센서.
+    """5.10절 HK -- 대표 chip 온도 + 듀어·환경 센서.
 
-    **`CCDTEMP1`/`CCDTEMP2` 는 신규 추가다** -- 레거시는 파일 1개가 CCD 1개라
-    `CCDTEMP` 하나로 충분했지만 신규는 파일 1개에 chip 이 2개다.  이름을
-    `CCDTEMP<n>` 으로 맞춘 것은 `CCDTEMP` 와 한 묶음임이 보이게 하려는 것이다
-    (운영자 확정 2026-08-13).  8자 정확히 -- FITS 한도 안이다.
-
-    **`CCDTEMP` 는 두 chip 온도의 평균이다** (운영자 확정).  백엔드가 별도
-    대표값을 주더라도 쓰지 않는다 -- 파생값으로 못박아 두면 `CCDTEMP` 와
-    `CCDTEMP1`/`CCDTEMP2` 가 서로 어긋날 수 없다.  듀어의 다른 센서를 싣고
-    싶으면 그건 `CCDTEMP` 가 아니라 `PT30N1` 등 자기 이름으로 간다.
+    **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** (운영자 확정 2026-08-21,
+    v1.7_revision -- Header_and_Refs v1.8 3.7절).  종전의 "두 chip 온도의
+    평균"(2026-08-13, D-013)은 온도센서 구성이 바뀌면서 폐기됐고
+    `CCDTEMP1`/`CCDTEMP2` 카드도 후보에서 제외됐다.  대표 센서는 백엔드
+    `ccdtemp1`(파일 첫 chip 쪽 -- 초안 comment "CCD temperature M")이고,
+    **죽었을 때 이웃 센서(`ccdtemp2`)로 대체하지 않는다** -- 대표가 아닌 값을
+    대표라고 적으면 조용히 틀린 값이 된다.
 
     `CCDTEMP` 는 **반드시 있어야 한다** -- L1 파이프라인이 이 이름을 지정해
     L1 primary 로 전달한다 (`mef_pipeline/kmt_ceu_preproc/io_l1.py` 의
-    `CARRY_KEYS`).  그래서 한쪽 센서만 읽혔을 때 sentinel 로 떨어뜨리지 않고
-    **읽힌 값을 쓰고 경고를 남긴다** -- 평균이 아니게 되는 것을 조용히 넘기지
-    않으면서 L1 을 굶기지도 않는다.
+    `CARRY_KEYS`).  그래서 대표 센서를 못 읽었을 때도 카드를 비우지 않고
+    sentinel `TEMP_NC`(`'-999.99'`) 로 싣고 경고를 남긴다.
+
+    **온도·습도 카드는 전부 문자열이다** (운영자 확정 2026-08-22, 확인 요망 9
+    종결 -- `format_temp` 의 docstring).
+
+    MEF/L1 쪽 정의 문구("평균 파생")의 갱신은 LEECU 몫의 C-항목이다
+    (`raw_fits_spec/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.3.md` ②).
     """
     s = sensors or {}
     t1 = s.get('ccdtemp1', s.get('ccdtmp1'))
-    t2 = s.get('ccdtemp2', s.get('ccdtmp2'))
-    known = [float(t) for t in (t1, t2) if t is not None]
-    if len(known) == 2:
-        rep = sum(known) / 2.0
-    elif len(known) == 1:
-        rep = known[0]
-        log.warning('chip 온도 한쪽만 읽혔다 -- CCDTEMP 를 평균이 아니라 읽힌 '
-                    '값(%.2f)으로 싣는다. L1 이 이 카드를 요구하므로 비우지 '
-                    '않지만, 평균이 아니라는 사실을 여기 남긴다', rep)
-    else:
-        rep = None
+    if t1 is None:
+        log.warning('대표 chip 온도(ccdtemp1)를 못 읽었다 -- CCDTEMP 를 '
+                    'sentinel(%s)로 싣는다. 이웃 센서로 대체하지 않는다 '
+                    '(대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다)',
+                    TEMP_NC)
     out: dict[str, object] = {
-        'CCDTEMP1': float(t1) if t1 is not None else -999.0,
-        'CCDTEMP2': float(t2) if t2 is not None else -999.0,
-        'CCDTEMP': float(rep) if rep is not None else -999.0,
+        'DEWPRES': S(format_dewpres(s.get('dewpres'))),
+        'CCDTEMP': S(format_temp(t1)),
     }
     for card in DEWAR_CARDS:
-        v = s.get(card.lower())
-        # 듀어 압력은 레거시가 `'N/A'` 문자열을 넣었다.  수치 sentinel 로
-        # 통일한다 -- 문자열과 실수가 섞이면 읽는 쪽이 형을 분기해야 한다.
-        out[card] = float(v) if v is not None else -999.0
+        out[card] = S(format_temp(s.get(card.lower())))
     return out
 
 
@@ -589,18 +709,23 @@ def spec_header(*, ctrltag: str, site_code: str, backend_name: str,
                 ledflash_ms: int,
                 exp_measured: float | None,
                 imgtype: str, objname: str, projid: str, observer: str,
-                fieldid: str = '') -> dict[str, object]:
+                fieldid: str = '',
+                cfg_camera: dict | None = None,
+                cfg_ctrl: dict[int, dict] | None = None) -> dict[str, object]:
     """규격 5.3~5.10절 카드를 한 번에.
 
     `rawpair.identity_header()`(5.1·5.2)와 `telemetry.fits_header_dict()`
     (5.9 pointing · 5.10 AUX 중계)는 별도로 얹는다 -- 출처가 달라서다.
+    `cfg_camera`/`cfg_ctrl` 는 `ICS INI` 출처 카드의 ini 오버라이드다
+    (운영자 지시 2026-08-22 -- `detector_header`/`controller_header` 참고).
     """
     out: dict[str, object] = {}
     out.update(geometry_header())
-    out.update(detector_header(site_code))
+    out.update(detector_header(site_code, cfg_camera))
     out.update(controller_header(ctrltag, ctrl_info,
                                  backend_name=backend_name,
-                                 ics_build=ics_build))
+                                 ics_build=ics_build,
+                                 cfg_ctrl=cfg_ctrl))
     out.update(ampmap_header(ampmap))
     out.update(voltage_header(volts))
     out.update(exposure_header(date_obs=date_obs, exp_start=exp_start,
