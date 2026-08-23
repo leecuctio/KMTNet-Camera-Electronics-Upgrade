@@ -16,8 +16,8 @@
 
 | 문서 | 언제 |
 |---|---|
-| [README.md](README.md) | 폴더 구성과 **v1.1 이 v1.0 에서 바꾼 것** |
-| [README_labtest_v1.1.bigbuf.md](README_labtest_v1.1.bigbuf.md) | **스크립트를 실제로 돌릴 때.** 손볼 자리(행 번호)·첫 실행 점검·이상할 때 원인 가르는 순서 |
+| [README.md](README.md) | 폴더 구성 · 본편 계획 · 실험실 스크립트 **핵심 참고사항** |
+| [README_labtest.md](README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것.** 손볼 자리(행 번호)·첫 실행 점검·경고의 뜻·변경 내역·판 이력 |
 | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.21 | 왜 그렇게 정했나(경위·판단). 9장은 하드웨어 확장점 |
 | [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) | 흡수할 상대의 상태·규약 |
 | [`../raw_fits_spec/`](../raw_fits_spec/README.md) | 산출 규격(raw FITS pair). 헤더 5장의 바이트 정본은 견본 pair |
@@ -39,13 +39,40 @@
 4. **헤더 틀은 `ics_sim/ics_sim/rawcards.py` 와 같은 원천**(견본 초안 v1.0
    pair)이다. 카드를 늘리거나 바꾸려면 **견본이 먼저 개정돼야 한다** —
    `ics_sim/tests/test_raw_draft.py` 가 바이트 대사로 어긋남을 잡는다.
+5. **헤더에 들어가는 값은 ASCII 전용이다.** 헤더는 문자 단위로 80자씩 조립하고
+   파일에는 utf-8 바이트로 쓰므로, 한글 한 자(3바이트)가 2880B 정렬을 깨고
+   **파일 전체를 못 읽게** 만든다 — 취득 중에는 경고가 한 줄도 안 뜬다.
+   `_check_identity_setup()` 이 기동에서 거부하고 `fits_card` 가 `?` 로
+   치환한다. 둘 다 없애지 말 것.
+6. **`archoncmd` 가 시한 초과로 빠져나가면 연결을 새로 열어야 한다.** 응답을
+   검증한 뒤에야 `msgref` 를 올리는 구조라, 시한 초과 시 명령은 나갔는데
+   `msgref` 는 그대로다 → 늦은 응답을 다음 명령이 먹고 그 다음이 죽는다.
+   `msgref` 만 올리는 것으로는 부족하다(부분 수신분이 소켓에 남는다).
+   `_resync_archon_link()` 가 그 일을 한다.
 
 ## 상태 (2026-08-22)
 
-- **현행 = `archon_kmtnet_labtest_v1.1.bigbuf.py`** (science 유닛, BIGBUF=1).
-  raw spec 적용 + 적대적 검토 6건 수정 + STATUS 회귀 1건 수정.
+- **현행 = `archon_kmtnet_labtest_v1.1.bigbuf.py`, `SCRIPT_VERSION='1.1.1'`**
+  (science 유닛, BIGBUF=1). raw spec 적용 + 적대적 검토 6건 + 투입 전 감사
+  회귀 4건 수정.
+- **투입 전 감사 (에이전트 21, blocker 0)** 에서 잡혀 v1.1.1 에서 고친 것 —
+  **네 건 모두 내가 v1.1 에서 넣은 자리이고, 넷 다 취득 중에 조용했다**:
+  1. STATUS 시한 초과가 `msgref`·수신 스트림을 어긋내 **두 명령 뒤에 취득이
+     죽었다** → 실패 시 연결 재수립(`_resync_archon_link`).
+  2. 손편집 문자열의 비ASCII 한 자가 **FITS 를 통째로 못 읽게** 만들었다
+     (`assert len(head) % 2880` 은 문자 수라 못 잡는다) → 기동 검사 + 바이트
+     단정 + `fits_card` 치환.
+  3. 데이터부 2880 패딩(v1.1 신설) + NAXIS 하드코딩이 겹쳐, 실제 프레임이
+     선언보다 길면 **v1.0 에서는 경고만 나고 읽혔던 파일이 아예 안 열렸다**
+     (samplemode = 정확히 2배) → fetch 전에 바이트 수 대조.
+  4. 예외가 나면 `POWEROFF` 를 건너뛴 채 끝났다 → 노출 루프 `try/finally`.
+  - 함께: 재실행이 멱등하지 않다는 점(D-016 이 번호를 밀어 올린다)을 데이터셋
+    시작에 경고로 알린다. **v1.0 은 덮어썼다** — 분석이 프레임 번호를 믿으면
+    어긋난다.
 - **검증된 것**: 헤더 144카드가 견본과 **바이트 단위 일치**(불일치 0) ·
-  2880B×4 정렬 · 컴파일 · STATUS 상한/자동 차단(가짜 컨트롤러 실측).
+  2880B×4 정렬 · 컴파일(`SyntaxWarning` 포함) · 위 1~3 을 가짜 컨트롤러·
+  astropy 로 실측. `python tests/verify_labtest_v11.py` (19항목, 실패 0) —
+  **스크립트를 손봤으면 돌리고 나가라.**
 - ❌ **미검증**: **실기 왕복**(POWERON → LOADPARAMS → FRAME 폴링 → FETCH)을
   한 번도 돌리지 않았다. 실제 픽셀이 담긴 FITS 의 converter 투입도 미검증.
 - **guide 유닛**은 `archon_kmtnet_labtest_v1.0.smallbuf.py`(원본 사본, 미개정).
@@ -68,7 +95,7 @@
 
 | 순서 | 할 일 |
 |---|---|
-| **1** | **실기로 v1.1 돌려 보기** — 사용자가 코드를 손봐서 직접 돌릴 예정(2026-08-22). 손볼 자리와 점검 항목은 [README_labtest_v1.1.bigbuf.md](README_labtest_v1.1.bigbuf.md). 결과를 그 문서 맨 아래 "첫 실행 결과" 에 채운다 |
+| **1** | **실기로 v1.1 돌려 보기** — 사용자가 코드를 손봐서 직접 돌릴 예정(2026-08-22). 손볼 자리와 점검 항목은 [README_labtest.md](README_labtest.md). 결과를 그 문서의 "첫 실행 결과" 에 채운다 |
 | **2** | **본편 착수** — `ics_sim/ics_sim/hardware/archon.py` 스텁에 제어 시퀀스(CLEARCONFIG→WCONFIG→APPLYALL, POWERON, LOADPARAMS, FRAME 폴링, FETCH)를 옮기고 **백엔드 3계약**을 채운다: `controller_info()`(SYSTEM) · `controller_telemetry()`(STATUS) · `sensors()`(HK 3계통). 원형은 이 폴더의 `archon_status()`/`ctrl_telemetry_cards()` |
 | **3** | **guide 계통** — guide raw 규격이 정해진 뒤 smallbuf 판에 적용 |
 

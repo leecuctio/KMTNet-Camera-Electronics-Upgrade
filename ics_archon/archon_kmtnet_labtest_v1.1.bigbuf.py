@@ -66,8 +66,8 @@ OBSERVER_NAME = 'HELab'         # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
-SCRIPT_VERSION = '1.1.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
-SCRIPT_BUILD = '2026-08-22T09:00Z'  # 소스를 고치면 같이 올린다
+SCRIPT_VERSION = '1.1.1'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
+SCRIPT_BUILD = '2026-08-23T01:10Z'  # 소스를 고치면 같이 올린다
 
 ## 위 손편집 항목(`<---- Set this`)을 **기동 시점에 한 번** 검증한다.
 ##
@@ -81,6 +81,26 @@ def _check_identity_setup():
     if SITE_CODE not in SITE_INFO:
         raise SystemExit('> ERROR: SITE_CODE must be one of %s (got %r)'
                          % ('/'.join(sorted(SITE_INFO)), SITE_CODE))
+    ## **비ASCII 한 자도 못 들어간다.**  헤더는 문자 단위로 80자씩 조립하지만
+    ## 파일에는 `bytes(head,'utf-8')` 로 쓴다 -- 한글 한 자가 3바이트라 그 카드
+    ## 하나가 82바이트가 되고 헤더 전체가 2880B 배수를 벗어난다.  그러면
+    ## astropy 는 END 카드를 못 찾고 **파일 전체**를 'Empty or corrupt FITS
+    ## file' 로 거부한다.  취득 중에는 경고가 한 줄도 안 뜨므로, 손편집 문자열은
+    ## 여기서 막는다 (FITS 헤더는 규격상 ASCII 전용이다).
+    for name, text in (('SITE_CODE', SITE_CODE),
+                       ('UNIT_CTRLTAG', UNIT_CTRLTAG),
+                       ('UNIT_CTRL_ID', UNIT_CTRL_ID),
+                       ('UNIT_CTRL_SN', UNIT_CTRL_SN),
+                       ('OBSERVER_NAME', OBSERVER_NAME),
+                       ('SCRIPT_VERSION', SCRIPT_VERSION),
+                       ('SCRIPT_BUILD', SCRIPT_BUILD),
+                       ('DATA_PREFIX', DATA_PREFIX)):
+        if not text.isascii():
+            raise SystemExit(
+                '> ERROR: %s = %r 에 비ASCII 문자가 있다 -- FITS 헤더는 ASCII '
+                '전용이다.\n'
+                '>        한글/기호가 한 자라도 들어가면 헤더가 2880B 정렬을 '
+                '벗어나 파일 전체를 못 읽는다.' % (name, text))
 
 #--------------------------------
 # ACF lists
@@ -523,6 +543,12 @@ RAWCARDS = (
     ('FSAHUM', 'S', 18, 'FSA internal humidity in percent RH'),
 )
 
+## 헤더가 **선언하는** 프레임 크기 (science 2-chip, raw spec 3장).
+## 리터럴로 흩어 두면 실제 fetch 기하와 대조할 수가 없다 -- 쓰기 직전 단정에서
+## 이 상수를 쓴다 (Exposure() 의 geometry check).
+HDR_NAXIS1 = 19200
+HDR_NAXIS2 = 9400
+
 ## CHMAP_* 4장 -- raw spec 4.5절 amp 전수 표의 투영 (pair 상이).
 ## 기계 가독 정본: raw_fits_spec/__reference/Detector_Ch_to_AmpID_Map_v1.0.txt
 CHMAP = {
@@ -594,6 +620,14 @@ def fits_card(key, kind, width, comment, value):
         return ('COMMENT ' + comment).ljust(80)[:80]
     if kind == 'S':
         text = str(value)
+        ## 폭 계산과 패딩이 전부 **문자 수** 기준이므로 비ASCII 가 남으면
+        ## 카드가 80바이트를 넘는다 -- 기동 검사(_check_identity_setup)가
+        ## 손편집 값을 막지만, 여기 오는 값에는 STATUS·ACF 이름처럼 바깥에서
+        ## 온 것도 있다.  마지막 방어선으로 '?' 로 바꾼다.
+        if not text.isascii():
+            print('> WARNING: FITS card %s value has non-ASCII characters '
+                  '(%r) -- replaced with ?' % (key.strip(), text))
+            text = text.encode('ascii', 'replace').decode('ascii')
         # 값이 들어갈 수 있는 최대 폭 = 80 - ("KEY     = '" + "'" + " / " + comment)
         room = 80 - (10 + 1 + 1 + (3 + len(comment) if comment else 2))
         room = max(room, width)      # 견본 폭은 항상 들어간다
@@ -635,7 +669,12 @@ def build_header(values):
         cards.append(fits_card(key, kind, width, comment, value))
     cards.append('END'.ljust(80))
     head = ''.join(cards)
-    assert len(head) % 2880 == 0, 'FITS 헤더가 2880B 정렬이 아니다'
+    ## **문자 수가 아니라 바이트 수**로 단정한다 -- 파일에 쓰는 것은
+    ## bytes(head,'utf-8') 이고, 비ASCII 가 섞이면 문자 수는 맞는데 바이트
+    ## 수가 어긋나 파일 전체가 안 읽힌다 (len(head) 로는 못 잡는다).
+    nbytes = len(head.encode('utf-8'))
+    assert nbytes % 2880 == 0, (
+        'FITS 헤더가 2880B 정렬이 아니다 (%dB) -- 비ASCII 문자?' % nbytes)
     return head
 
 
@@ -660,7 +699,51 @@ def archon_status():
         TELEMETRY_ENABLE = False
         print('> WARNING: STATUS query failed (%s)' % e)
         print('>          -- telemetry cards go NC for the rest of this run')
+        ## 끄는 것만으로는 **이미 어긋난 것**이 안 풀린다 -- 늦게 도착한 응답이
+        ## 소켓에 남아 다음 명령을 먹는다.  연결을 새로 열어 끊어낸다.
+        _resync_archon_link('STATUS reply abandoned')
         return {}
+
+
+def _resync_archon_link(why):
+    """어긋난 연결을 **새로 열어** 초기화한다 (STATUS 시한 초과 전용).
+
+    `archoncmd` 는 명령을 보낸 뒤 응답을 검증하고 나서야 `msgref` 를 올린다.
+    시한 초과로 빠져나가면 **명령은 이미 나갔는데 msgref 는 그대로**여서,
+    다음 명령이 같은 msgref 를 재사용한다 -- 늦게 도착한 STATUS 응답의 헤더
+    `<NN` 가 그 msgref 와 맞아떨어지므로 다음 명령이 남의 응답을 자기 것으로
+    먹고, 그 다음 명령이 'Invalid command packet header' 로 죽는다.  실측
+    확인: 시한 초과 직후 `WCONFIG` 가 STATUS 본문을 받고, 이어지는
+    `APPLYSYSTEM` 이 예외로 떨어졌다.
+
+    **msgref 만 올려서는 안 된다.**  응답이 부분만 도착해 있었으면 소켓에 꼬리
+    바이트가 남아 바로 다음 명령을 죽인다.  게다가 늦은 응답이 몇 분 뒤 다음
+    데이터셋에서 튀어나올 수도 있다.  그래서 소켓을 버리고 새로 연다 --
+    설정·전원은 컨트롤러가 들고 있으므로 재접속으로 잃는 상태는 없다.
+    """
+    global archon, msgbuf, msgref
+    print('> WARNING: resyncing the Archon link (%s)' % why)
+    try:
+        archon.close()
+    except Exception:
+        pass
+    msgbuf = b''
+    last = None
+    for attempt in range(3):
+        try:
+            archon = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            archon.settimeout(UNIT_TIMEOUT)
+            archon.connect((UNIT_IPADDR, 4242))
+            msgref = 0
+            print('>          reconnected to %s:4242 -- msgref reset to 00'
+                  % UNIT_IPADDR)
+            return
+        except Exception as e:
+            last = e
+            print('>          reconnect attempt %d failed (%s)' % (attempt + 1, e))
+            time.sleep(1.0)
+    raise RuntimeError('cannot reconnect to Archon at %s:4242 (%s)'
+                       % (UNIT_IPADDR, last))
 
 
 def status_number(status, key, fmt):
@@ -717,9 +800,13 @@ def ctrl_telemetry_cards(status, ctrl_index):
 
 
 def resolve_pair_number(datadir, date_part, number):
-    """이름 충돌 처리 (D-016, raw spec 2.3절) -- 쓰기 전에 후보 번호의
-    MK·NT 두 경로를 선검사하고, 점유 시 +1 재검사 (099999 넘으면 000000).
-    한 바퀴(100000회)를 초과하면 예외 -- 유일한 저장 실패 조건이다."""
+    r"""이름 충돌 처리 (D-016, raw spec 2.3절) -- 쓰기 전에 후보 번호의
+    MK·NT 두 경로를 선검사하고, 점유 시 +1 재검사 (999999 넘으면 000000).
+    한 바퀴(1000000회)를 초과하면 예외 -- 유일한 저장 실패 조건이다.
+
+    관측 운용의 번호 공간은 000000-099999 지만, 실험실 DS 번호 체계
+    ([Unit][Setup][Type][SN])는 6자리 전체를 쓰므로 되감음도 6자리로 돈다.
+    파일명 형식(\d{6})은 동일해 converter 정규식에 그대로 걸린다."""
     n = number % 1000000
     for _ in range(1000000):
         clash = False
@@ -733,9 +820,6 @@ def resolve_pair_number(datadir, date_part, number):
             return n
         n = (n + 1) % 1000000
     raise RuntimeError('number space exhausted -- not saving (D-016)')
-    # 주의: 관측 운용의 번호 공간은 000000-099999 지만, 실험실 DS 번호 체계
-    # ([Unit][Setup][Type][SN])는 6자리 전체를 쓰므로 되감음도 6자리로 돈다.
-    # 파일명 형식(\d{6})은 동일해 converter 정규식에 그대로 걸린다.
 
 
 def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
@@ -771,7 +855,7 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
             break
     values = {
         'SIMPLE': True, 'BITPIX': 16, 'NAXIS': 2,
-        'NAXIS1': 19200, 'NAXIS2': 9400,       # science 2-chip frame (3장)
+        'NAXIS1': HDR_NAXIS1, 'NAXIS2': HDR_NAXIS2,   # 2-chip frame (3장)
         'BSCALE': 1, 'BZERO': 32768, 'BUNIT': 'ADU',
         'INSTRUME': '%s 18k CCD' % SITE_CODE,
         'CAMVER': 'CEU-v2.1', 'FPAID': 'FPA#1',
@@ -910,6 +994,24 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
         framesize = 4 * framew * frameh
     else:
         framesize = 2 * framew * frameh
+    ## **선언 NAXIS 와 실제 fetch 기하가 다르면 아예 읽지 않는다.**
+    ## 데이터부를 2880B 로 패딩하기 때문에(v1.1 신설), 실제가 선언보다 길면
+    ## 남는 꼬리가 블록 경계에 딱 맞아 astropy 가 그 뒤를 '다음 HDU' 로 읽고
+    ## 'Header missing END card' 로 **파일 전체**를 거부한다 -- v1.0 은 꼬리가
+    ## 미정렬이라 경고만 내고 열렸으니, 패딩이 이 경우를 악화시킨 셈이다.
+    ## 걸리는 두 경로: samplemode(32bit 샘플 = 정확히 2배), ACF 기하 변경.
+    ## fetch(25초) 앞에 두어 첫 프레임에서 바로 드러나게 한다.
+    ## 대조는 **픽셀 수가 아니라 바이트 수**로 한다 -- samplemode 는 기하가
+    ## 선언과 같은데도 표본이 32bit 라 framesize 가 정확히 2배가 되고, 그건
+    ## 픽셀 수 비교로는 안 잡힌다 (pixnum = framesize/2 로 u2 재해석하므로
+    ## 데이터부가 선언의 2배로 나간다).
+    if framesize != HDR_NAXIS1 * HDR_NAXIS2 * 2:
+        raise RuntimeError(
+            'frame data %d B (%dx%d, %s) != header NAXIS %dx%d x2 = %d B '
+            '-- not saving.  ACF 기하와 samplemode 를 확인하라.'
+            % (framesize, framew, frameh,
+               'samplemode/32bit' if samplemode else '16bit',
+               HDR_NAXIS1, HDR_NAXIS2, HDR_NAXIS1 * HDR_NAXIS2 * 2))
     linesize = BURST_LEN
     lines = (framesize + linesize - 1) // linesize
     ref = msgref
@@ -1089,6 +1191,21 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
     global DatasetIdLast
     global CURRENT_ACF
 
+    ## ACF 가 없으면 **여기서 멈춘다.**  configparser 의 read() 는 없는 파일에
+    ## 조용히 성공하고 그 다음 items('CONFIG') 가 NoSectionError 로 터지므로,
+    ## "설정 파일이 없다" 라는 원인이 화면에 안 나온다.  경로가 상대경로
+    ## ('acf/...') 라 **작업 디렉터리가 다른 것**이 가장 흔한 원인이어서 풀어낸
+    ## 절대경로와 cwd 를 같이 찍는다.  POWERON 앞이라 여기서 멈추는 것은
+    ## 안전하다 -- 이 데이터셋은 아직 전원을 올리지 않았다.
+    if not os.path.isfile(AcfPath):
+        raise SystemExit(
+            "> ERROR: ACF not found -- '%s'\n"
+            ">        resolved to '%s'\n"
+            ">        cwd        '%s'\n"
+            '>        경로가 상대경로다 -- 스크립트를 그 상위 폴더에서 '
+            '실행했는지 확인하라.'
+            % (AcfPath, os.path.abspath(AcfPath), os.getcwd()))
+
     CURRENT_ACF = AcfPath    # FITS CTRL1CFG/RDMODE 의 근거 (raw spec 5.5절)
 
     print('DS%04d dataset acquisition start..\n' % DatasetId )
@@ -1242,30 +1359,62 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
     datadir = "%s/DS%04d" % (DataStorage, DatasetId)
     createFolder(datadir)
 
+    ## **같은 UT 날짜에** 파일이 남아 있는 DS 폴더를 StartNum=0 으로 다시
+    ## 돌리면 덮어쓰지 않는다.  v1.0 은 같은 이름을 'wb' 로 열어 덮어써서
+    ## 재실행이 멱등했지만, v1.1 은 D-016 선검사가 점유된 번호를 피해 올라간다.
+    ## 그래서 재실행분은 다음 DS 의 번호 영역으로 넘어가고, `filenum -
+    ## DatasetId*100 == nframe` 이라는 v1.0 의 불변식이 깨진다 -- '07번 프레임'
+    ## 식으로 번호를 믿는 분석이 어긋난다.  폴더를 비우거나 옮기거나,
+    ## StartNum 으로 이어받아라.
+    ##
+    ## **날짜까지 봐야 한다.**  선검사 경로에 날짜가 들어 있으므로(D-011)
+    ## 다음 날 같은 DS 를 다시 찍는 것은 충돌이 아니다 -- 그게 실험실의 평상
+    ## 재실행이고, 날짜를 안 보면 그때마다 헛경고가 뜬다.
+    today = time.strftime('%Y%m%d', time.gmtime())
+    stale_pfx = '%s.%s.' % (SITE_CODE, today)
+    stale = [name for name in os.listdir(datadir)
+             if name.startswith(stale_pfx) and name.endswith('.fits')]
+    if stale and StartNum == 0:
+        print('> WARNING: %s 에 오늘(UT %s) 자 파일이 이미 %d 개 있다 -- '
+              '덮어쓰지 않고 번호를 밀어 저장한다 (D-016)'
+              % (datadir, today, len(stale)))
+        print('>          폴더를 비우거나 옮기거나, StartNum 으로 이어받아라.')
+        print()
+
     # Multiple Exposure loop
     
     SetDatasetConfig(DatasetId%10)
     nframe = StartNum
-    if TEST_REF_ENABLE:
-        filenum = DatasetId*100 + nframe; nframe+=1;
-        Exposure(TEST_SHOPEN, TEST_REF_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
-    for exptime in TEST_EXPTIMES:
-        for i in range(0, TEST_FRAMENUM):
-            filenum = DatasetId*100 + nframe; nframe+=1;
-            Exposure(TEST_SHOPEN, exptime, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
-        if TEST_DARK_ENABLE and exptime==0:
-            filenum = DatasetId*100 + nframe; nframe+=1;
-            Exposure(False, TEST_DARK_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
+    ## 노출 루프를 try/finally 로 감싼다 -- **예외로 중간에 빠져나가도 CCD
+    ## 바이어스/클록은 끈다.**  v1.0 은 감싸지 않았고, Exposure()/GetDataset()
+    ## 호출부에도 try 가 없어서 예외 하나로 POWEROFF 를 건너뛴 채 traceback 으로
+    ## 끝났다.  v1.1 은 예외 원인을 새로 늘렸으니(기하 대조, 재접속 실패) 여기서
+    ## 막는다.  전원을 켠 채로 스크립트가 죽는 것은 검출기 쪽 위험이다.
+    try:
         if TEST_REF_ENABLE:
             filenum = DatasetId*100 + nframe; nframe+=1;
             Exposure(TEST_SHOPEN, TEST_REF_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
-
-    # CCD input bias/clock power OFF
-    
-    print("> CCD input bias/clock power OFF")
-    archoncmd('POWEROFF')
-    time.sleep(2.0)
-    print()
+        for exptime in TEST_EXPTIMES:
+            for i in range(0, TEST_FRAMENUM):
+                filenum = DatasetId*100 + nframe; nframe+=1;
+                Exposure(TEST_SHOPEN, exptime, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
+            if TEST_DARK_ENABLE and exptime==0:
+                filenum = DatasetId*100 + nframe; nframe+=1;
+                Exposure(False, TEST_DARK_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
+            if TEST_REF_ENABLE:
+                filenum = DatasetId*100 + nframe; nframe+=1;
+                Exposure(TEST_SHOPEN, TEST_REF_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
+    finally:
+        # CCD input bias/clock power OFF
+        print("> CCD input bias/clock power OFF")
+        try:
+            archoncmd('POWEROFF')
+            time.sleep(2.0)
+        except Exception as e:
+            ## 여기서 또 예외를 내면 원래 원인이 가려진다 -- 알리고 넘긴다.
+            print('> WARNING: POWEROFF 를 못 보냈다 (%s)' % e)
+            print('>          유닛 전원 상태를 직접 확인하라.')
+        print()
 
     # Finish
 
