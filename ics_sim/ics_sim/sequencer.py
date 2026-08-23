@@ -368,7 +368,7 @@ class Sequencer:
             try:
                 final = rawpair.resolve_pair_number(
                     cfg.paths.data_dir, st.site_code, date_part,
-                    int(num_str), check=cfg.paths.write_fits)
+                    int(num_str), check=self._backend_writes_files())
             except rawpair.NumberSpaceExhausted as exc:
                 # 이 규격의 **유일한 저장 실패 조건** (D-016 2항).
                 log.error('%s', exc)
@@ -463,6 +463,10 @@ class Sequencer:
         # 레거시와의 차이: 레거시는 `Shutter=Open` 응답을 받은 뒤(+0.15초)
         # 확정했다.  실기의 블레이드 주행은 ~5초라 이 차이가 60초 노출에서 8%가
         # 되므로, "알 수 없는 값을 모사" 하는 쪽을 버렸다.
+        begin = getattr(self.backend, 'begin_exposure', None)
+        if begin is not None:
+            await begin(exptime, True)
+
         st.exp_start = utcnow()
         self.emit.emit_req(cfg.node.ic_of(master), 'SHOPEN',
                            f'{exptime:g} {source} USESTATUS')
@@ -595,6 +599,15 @@ class Sequencer:
         없는데도 `Shutter=Closed` 로 보내는 것은 레거시 관례이며 그대로
         유지한다 -- OBSAgent 가 이걸로 CLOSING 을 밟기 때문이다(DevNote 3.2.1).
         """
+        # **노출 개시를 백엔드에 알린다** (선택 훅).  셔터 노출은
+        # `open_shutter(seconds)` 가 그 역할을 하지만 이 경로는 백엔드를 아예
+        # 부르지 않아서, 실기 백엔드가 **적분 시간을 알 방법이 없었다** --
+        # 컨트롤러가 적분을 재는 구조(labtest 가 검증한 방식)를 쓸 수 없었다.
+        # 속성이 없는 백엔드(시뮬)는 종전대로 돈다.
+        begin = getattr(self.backend, 'begin_exposure', None)
+        if begin is not None:
+            await begin(exptime, False)
+
         tick = self.cfg.timing.countdown_tick_dark
         total = int(round(exptime))
         async for remaining in self._countdown(exptime, tick):
@@ -687,6 +700,21 @@ class Sequencer:
     # 구판의 `_darktime()` 은 없앴다 -- `DARKTIME` 은 v1.3 미기재 카드다
     # (raw spec 5.10절, `EXPTIME` 파생은 하류 몫).  `st.exp_end`(셔터 닫힘
     # 지시 시각)는 로그·진단용으로 계속 찍는다.
+
+    def _backend_writes_files(self) -> bool:
+        """D-016 선검사를 할 것인가 -- **백엔드가 실제로 파일을 쓰나.**
+
+        종전에는 `[paths] write_fits` 를 그대로 게이트로 썼는데, 그 플래그의 뜻은
+        **"시뮬이 더미 FITS 를 만드는가"** 다.  실기 백엔드는 그 값과 무관하게
+        항상 실파일을 쓰므로, `write_fits=false` 로 실기를 돌리면 **선검사가 꺼진
+        채 실파일이 나가** 같은 이름을 조용히 덮어쓴다 -- D-016 이 막으려던 바로
+        그 일이다 (`ics_archon` v0.0 검토에서 실측, 2026-08-23).
+
+        그래서 백엔드에게 묻는다.  속성이 없는 백엔드(시험용 더미)는 종전대로
+        `write_fits` 를 따른다 -- 시뮬의 거동은 한 줄도 바뀌지 않는다.
+        """
+        return bool(getattr(self.backend, 'writes_files',
+                            self.cfg.paths.write_fits))
 
     def _backend_fact(self, method: str, *args, default):
         """백엔드에서 헤더용 사실을 받아 온다.  **없거나 실패하면 기본값.**

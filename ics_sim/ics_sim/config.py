@@ -568,7 +568,26 @@ def _head(sec: configparser.SectionProxy, key: str, default: str) -> str:
     raw = sec.get(key, '').strip()
     if not raw:
         return default
-    return raw.split()[0]
+    # **`\#` 탈출도 여기서 벗긴다.**  값에 '#' 가 들어가는 카드가 이 경로로
+    # 온다 -- `FPAID = FPA\#1` 이 대표다(기본값이 `'FPA#1'` 이라 운영자가 그
+    # 형태로 적는다).  `_text_or` 만 벗기고 있어서, `\#` 로 적으면 백슬래시가
+    # 그대로 헤더에 실렸다 (2026-08-23 검토).
+    return raw.split()[0].replace('\\#', '#')
+
+
+def _path_or(sec: configparser.SectionProxy, key: str, default: str) -> str:
+    """경로 설정 하나.  **`~` 와 `~user` 를 펼친다.**
+
+    펼치지 않으면 `~/AICS/data` 가 문자 그대로 쓰여 **작업 디렉터리 아래에 `~`
+    라는 이름의 폴더**가 만들어진다 -- `os.makedirs` 는 그것을 정상적인 상대
+    경로로 보고 아무 불평 없이 만든다.  오류가 없으므로 자료가 엉뚱한 곳에
+    쌓이고 있다는 사실이 드러나지 않는다 (2026-08-23 실측).
+
+    빈 값은 빈 값으로 남긴다 -- `expanduser('')` 는 `''` 이지만, "안 적었다" 와
+    "빈 경로" 를 같게 다루는 쪽이 호출측 분기(`if p.expnum_file:`)와 맞는다.
+    """
+    raw = sec.get(key, default).strip()
+    return os.path.expanduser(raw) if raw else raw
 
 
 def _text_or(sec: configparser.SectionProxy, key: str, default: str) -> str:
@@ -681,9 +700,13 @@ def load(path: str | None = None) -> SimConfig:
     if cp.has_section('paths'):
         s = cp['paths']
         p = cfg.paths
-        p.data_dir = s.get('data_dir', p.data_dir).strip()
+        # **`~` 를 펼친다.**  안 하면 `~/AICS/data` 가 문자 그대로 쓰여
+        # **작업 디렉터리 아래에 `~` 라는 이름의 폴더**가 만들어진다 --
+        # `os.makedirs` 가 아무 불평 없이 만들고, 자료는 거기 쌓인다
+        # (2026-08-23 실측).  `expnum_file` 은 이미 펼치고 있었다.
+        p.data_dir = _path_or(s, 'data_dir', p.data_dir)
         p.write_fits = _bool(s, 'write_fits', p.write_fits)
-        p.expnum_file = s.get('expnum_file', p.expnum_file).strip()
+        p.expnum_file = _path_or(s, 'expnum_file', p.expnum_file)
         raw_shape = s.get('fits_shape', '').strip().lower()
         if raw_shape in ('spec', 'full'):
             # raw spec 3장의 실물 chip 크기 (rows, cols) -- 파일은 chip 2개를
@@ -820,7 +843,7 @@ def load(path: str | None = None) -> SimConfig:
         lg = cfg.logging
         lg.level = s.get('level', lg.level).strip().lower()
         lg.wire = _bool(s, 'wire', lg.wire)
-        lg.file = s.get('file', lg.file).strip()
+        lg.file = _path_or(s, 'file', lg.file)
 
     resolve_expnum_file(cfg)
     return cfg

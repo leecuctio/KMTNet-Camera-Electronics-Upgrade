@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Awaitable
 
@@ -207,7 +208,13 @@ class IcsSim:
             ('위치', where),
             ('관측일 경계', obsday),
             ('파일명 예시', example),
-            ('data_dir', cfg.paths.data_dir),
+            # **풀어낸 절대경로를 보여준다.**  상대경로(`../data`)는 **실행한
+            # 디렉터리** 기준으로 풀리고 `~` 는 펼쳐지므로, 적어 둔 문자열만
+            # 보여 주면 자료가 실제로 어디에 쌓이는지 알 수 없다 -- 배너의
+            # 목적은 "자료 한 장 찍기 전에 사람 눈에 띄게" 다.
+            ('data_dir', os.path.abspath(cfg.paths.data_dir)
+                         + ('' if os.path.isabs(cfg.paths.data_dir)
+                            else f'   (설정 {cfg.paths.data_dir!r} · cwd 기준)')),
             ('EXPNUM', f'다음 {st.expnum:06d}'
                        f'   (기록 {st.expnum_file or "지속 없음"})'),
             ('backend', f'{self.backend.name}'

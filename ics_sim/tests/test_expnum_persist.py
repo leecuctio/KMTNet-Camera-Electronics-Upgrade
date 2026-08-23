@@ -161,3 +161,47 @@ def test_persistence_off_when_path_empty(tmp_path):
     st.next_suffix()
     assert st.expnum == 1
     assert not list(tmp_path.iterdir())
+
+
+def test_record_is_durable_not_just_buffered(tmp_path):
+    """**전원이 끊겨도 값이 남아야 한다** (운영자 요구 2026-08-23).
+
+    기록은 임시 파일 -> `os.replace` 인데, 그것만으로는 *원자적*이기만 하고
+    *영속*은 아니다 -- 전원 손실 때 내용 블록이 아직 디스크에 없으면 파일이
+    비고 번호가 1 로 되돌아간다.  그래서 내용 `fsync` -> `os.replace` ->
+    디렉터리 `fsync` 를 다 한다.
+
+    fsync 자체는 시험으로 관측할 수 없으므로, **관측 가능한 것**을 못박는다:
+    ① 번호를 집는 그 순간 파일에 값이 있다(종료 시 flush 에 의존하지 않는다)
+    ② 임시 파일이 남지 않는다
+    ③ 프로그램이 죽어도(= 여기서는 그냥 객체를 버려도) 값이 그대로다
+    """
+    path = str(tmp_path / 'ics.expnum')
+    st = IcsState(expnum_file=path)
+    st.load_expnum()
+    st.init_channels(('K',))
+    st.next_suffix()
+
+    # ① 그 순간 이미 디스크에 있다
+    assert open(path, encoding='utf-8').read().strip() == '1'
+    # ② 임시 파일을 남기지 않는다
+    assert sorted(os.listdir(tmp_path)) == ['ics.expnum']
+
+    # ③ 객체를 버려도(= 프로세스가 죽어도) 다음 기동이 이어받는다
+    del st
+    again = IcsState(expnum_file=path)
+    again.load_expnum()
+    assert again.expnum == 2
+
+
+def test_directory_fsync_helper_never_raises(tmp_path):
+    """디렉터리 `fsync` 는 **실패해도 조용히 넘어가야** 한다.
+
+    윈도우는 디렉터리 핸들에 `fsync` 를 못 하고(개발 기계), 일부 파일계통도
+    지원하지 않는다.  그 때문에 노출이 죽으면 안 된다 -- 번호 기록은
+    "실패해도 노출은 진행한다" 가 규칙이다.
+    """
+    from ics_sim import state as st_mod
+    st_mod._fsync_dir(str(tmp_path))                 # noqa: SLF001
+    st_mod._fsync_dir(str(tmp_path / 'nosuchdir'))   # noqa: SLF001
+    st_mod._fsync_dir('')                            # noqa: SLF001

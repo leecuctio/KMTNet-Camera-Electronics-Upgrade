@@ -31,6 +31,11 @@ class SimBackend:
         self._shutter_open = False
         self._led_ms = 0
 
+    @property
+    def writes_files(self) -> bool:
+        """시뮬은 `[paths] write_fits` 를 따른다 (종전과 같다)."""
+        return bool(self.cfg.paths.write_fits)
+
     # -- 준비 -------------------------------------------------------------
 
     async def initialize(self, ccd: str, suffix: str) -> None:

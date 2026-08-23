@@ -135,6 +135,28 @@ class ChannelState:
                (' +SYNCH' if self.synched else ' -SYNCH')
 
 
+def _fsync_dir(path: str) -> None:
+    """디렉터리 항목을 영속화한다 -- **이름 바꾸기 자체를 디스크에 박는다.**
+
+    `os.replace` 는 원자적이지만 그 사실이 곧 영속은 아니다.  전원이 끊기면
+    이름 바꾸기가 사라져 옛 파일(또는 없음)이 남을 수 있다.
+
+    POSIX 는 디렉터리를 `O_RDONLY` 로 열어 `fsync` 하면 된다.  윈도우는
+    디렉터리 핸들에 `fsync` 를 못 하므로(그리고 개발 기계일 뿐이므로) 조용히
+    넘어간다 -- 운영은 리눅스다.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return                        # 윈도우 등 -- 디렉터리를 못 연다
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass                          # 지원하지 않는 파일계통 -- 넘어간다
+    finally:
+        os.close(fd)
+
+
 @dataclass
 class IcsState:
     """ICS 레벨 설정 -- 4개 CCD 가 공유한다."""
@@ -331,6 +353,14 @@ class IcsState:
 
         같은 디렉토리에 임시 파일을 쓰고 `os.replace` 로 바꿔 넣는다 -- 기록
         도중에 죽어도 파일이 반쯤 쓰인 상태로 남지 않게 하려는 것이다.
+
+        **전원이 끊겨도 값이 남아야 한다** (운영자 요구 2026-08-23: 재부팅
+        상황에서도 기억해야 한다).  정상 종료·재부팅은 `os.replace` 만으로도
+        충분하지만 **전원 손실은 다르다** -- 이름 바꾸기는 반영됐는데 내용
+        블록은 아직 디스크에 없을 수 있고, 그러면 파일이 비거나 0 바이트로
+        남아 번호가 1 로 되돌아간다.  그래서 셋을 다 한다:
+        내용 `fsync` -> `os.replace` -> **디렉터리 `fsync`**(이름 바꾸기 자체를
+        영속화).  프레임당 한 번이고 몇 바이트라 비용이 없다.
         """
         path = self.expnum_file
         if not path:
@@ -342,7 +372,10 @@ class IcsState:
                 os.makedirs(parent, exist_ok=True)
             with open(tmp, 'w', encoding='utf-8') as fh:
                 fh.write(f'{self.expnum}\n')
+                fh.flush()
+                os.fsync(fh.fileno())
             os.replace(tmp, path)
+            _fsync_dir(parent or '.')
         except OSError as exc:
             log.warning('expnum %06d 을 기록할 수 없다 (%s: %s) '
                         '-- 재실행하면 번호가 되돌아간다', self.expnum, path, exc)

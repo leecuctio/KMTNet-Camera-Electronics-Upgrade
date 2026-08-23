@@ -29,11 +29,32 @@ class DetectorBackend(Protocol):
 
     name: str
 
+    #: **이 백엔드가 실제로 파일을 쓰는가.**  D-016 이름 충돌 선검사를 할지
+    #: 여기서 정한다 -- 종전에는 `[paths] write_fits` 를 게이트로 썼는데 그
+    #: 플래그의 뜻은 "시뮬이 더미 FITS 를 만드는가" 다.  실기 백엔드는 그 값과
+    #: 무관하게 항상 쓰므로, 게이트가 그쪽에 묶여 있으면 `write_fits=false` 로
+    #: 실기를 돌릴 때 **선검사가 꺼진 채 실파일이 나간다** (2026-08-23 실측).
+    #: 속성이 없으면 시퀀서가 종전대로 `write_fits` 를 본다.
+    writes_files: bool
+
     async def initialize(self, ccd: str, suffix: str) -> None:
         """다음 노출의 파일명 suffix 를 설정하고 컨트롤러를 준비한다."""
 
     async def erase(self, ccd: str) -> None:
         """CCD flushing.  레거시는 master(K)에서만 수행했다."""
+
+    async def begin_exposure(self, seconds: float,
+                             opens_shutter: bool) -> None:
+        """노출 개시 통보 (**선택** -- 없으면 시퀀서가 건너뛴다).
+
+        `open_shutter()` 는 셔터를 여는 노출에만 불린다.  DARK/BIAS 는 시퀀서가
+        직접 카운트다운하고 백엔드를 부르지 않으므로, **적분 시간을 백엔드에
+        알려 줄 자리가 없었다** -- 컨트롤러가 적분을 재는 하드웨어(Archon 의
+        `IntMS`)에서는 그것이 곧 "적분을 호스트가 잰다" 가 되고, 헤더
+        `EXPTIME` 은 요청값이라 실제와 조용히 어긋난다 (2026-08-24 확정).
+
+        시뮬은 이 메서드를 두지 않는다 -- 타이밍만 흉내내므로 알 필요가 없다.
+        """
 
     async def open_shutter(self, seconds: float) -> None:
         """셔터를 seconds 동안 연다.  반환은 즉시 -- 대기는 시퀀서가 한다."""
