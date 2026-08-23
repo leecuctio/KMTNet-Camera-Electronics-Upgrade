@@ -3,6 +3,10 @@
 *.py text eol=lf
 *.sh text eol=lf
 *.txt text eol=lf
+# 설정 파일도 LF -- 전 계통 리눅스 구동이고, CRLF 로 체크아웃되면 diff 가
+# 통째로 뜨고 값 뒤에 '\r' 이 붙는 파서를 만나면 조용히 틀린다.
+*.ini text eol=lf
+*.acf text eol=lf
 
 # iCal must use CRLF line endings (RFC 5545).
 *.ics text eol=crlf

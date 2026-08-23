@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""`ics_sim` 을 `ics_archon` 안으로 내장(vendor)한다 -- **독립 배포를 위해.**
+
+    python tools/sync_vendor.py            # 동기화 (필요한 것만 바꾼다)
+    python tools/sync_vendor.py --check    # 바꾸지 않고 어긋난 것만 알린다
+
+## 왜 사본을 두나 -- 그리고 왜 사본이어도 괜찮나
+
+`ics_archon` 은 `ics_sim` 의 시퀀서·명령 처리부·메시지 규약·헤더 층을 그대로
+쓴다.  종전에는 **형제 폴더를 `sys.path` 에 넣어** 썼다 -- 사본을 만들면
+`rawcards.py`(견본 pair 의 기계 사본)가 세 벌이 되고, raw spec 5장이 개정될 때
+어긋난 하나를 놓칠 수 있어서였다.
+
+**그 걱정의 실체는 "사본" 이 아니라 "몰래 갈라짐" 이다.**  갈라짐을 기계가
+잡아 주면 사본을 두어도 된다 -- 그래서 여기서 함께 만드는 것이 두 가지다:
+
+1. **`MANIFEST.sha256`** -- 내장한 파일마다 해시.  배포된 트리에서도 내장본이
+   손상·손편집되지 않았는지 혼자 확인할 수 있다 (원천이 없어도 된다).
+2. **`tests/test_vendor.py`** -- ① 내장본이 매니페스트와 맞나 ② **원천이 있으면
+   원천과도 맞나**(저장소에서는 항상 있다) ③ 내장본만으로 실제 노출이 도나.
+
+②가 개정 누락을 잡는다.  `ics_sim` 을 고치고 이 도구를 안 돌리면 저장소 시험이
+**실패**한다 -- 조용히 지나가지 않는다.
+
+## 무엇을 어디로
+
+    ics_sim/ics_sim/**.py   ->   ics_archon/ics_archon/_vendor/ics_sim/**.py
+
+`_vendor` 가 `sys.path` 에 들어가므로 내장본은 그냥 `import ics_sim` 으로 잡힌다
+(코드의 import 문을 고치지 않는다 -- 고치면 그 순간 사본이 아니게 된다).
+
+`__pycache__` 와 `.pytest_cache` 는 옮기지 않는다.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import shutil
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PKG = os.path.join(os.path.dirname(HERE), 'ics_archon')
+VENDOR = os.path.join(PKG, '_vendor')
+DEST = os.path.join(VENDOR, 'ics_sim')
+MANIFEST = os.path.join(VENDOR, 'MANIFEST.sha256')
+
+#: 원천.  `ICS_SIM_SRC` 로 덮을 수 있다.
+SRC = os.environ.get('ICS_SIM_SRC') or os.path.normpath(
+    os.path.join(os.path.dirname(HERE), os.pardir, 'ics_sim', 'ics_sim'))
+
+SKIP_DIRS = {'__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'}
+
+
+def sources(root: str) -> list[str]:
+    """옮길 파일의 상대경로 목록 (정렬).  `.py` 만 옮긴다."""
+    out = []
+    for base, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        for name in sorted(files):
+            if name.endswith('.py'):
+                out.append(os.path.relpath(os.path.join(base, name), root)
+                           .replace(os.sep, '/'))
+    return sorted(out)
+
+
+def digest(path: str) -> str:
+    """파일 해시.  **바이트 그대로** 읽는다 -- 줄끝까지 사본이어야 한다."""
+    h = hashlib.sha256()
+    with open(path, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(1 << 16), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def read_manifest() -> dict[str, str]:
+    if not os.path.isfile(MANIFEST):
+        return {}
+    out = {}
+    with open(MANIFEST, encoding='utf-8') as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            h, _, rel = line.partition('  ')
+            if h and rel:
+                out[rel] = h
+    return out
+
+
+def write_manifest(rows: dict[str, str]) -> None:
+    os.makedirs(VENDOR, exist_ok=True)
+    with open(MANIFEST, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write('# ics_sim 내장본의 파일별 sha256.\n'
+                 '# tools/sync_vendor.py 가 만든다 -- 손으로 고치지 말 것.\n'
+                 '# 확인:  python tools/sync_vendor.py --check\n')
+        for rel in sorted(rows):
+            fh.write('%s  %s\n' % (rows[rel], rel))
+
+
+def main(argv=None) -> int:  # noqa: ANN001
+    ap = argparse.ArgumentParser(
+        prog='sync_vendor',
+        description='ics_sim 을 ics_archon 안으로 내장한다 (독립 배포용)')
+    ap.add_argument('--check', action='store_true',
+                    help='바꾸지 않고 어긋난 것만 알린다 (CI·시험용)')
+    ap.add_argument('--src', default=SRC, help='원천 ics_sim 패키지 경로')
+    args = ap.parse_args(argv)
+
+    src = os.path.abspath(args.src)
+    if not os.path.isfile(os.path.join(src, '__init__.py')):
+        print("원천을 찾을 수 없다 -- '%s' 에 ics_sim 패키지가 없다.\n"
+              'ICS_SIM_SRC 로 지정하거나 --src 를 주라.' % src, file=sys.stderr)
+        return 2
+
+    rel_src = sources(src)
+    rel_dst = sources(DEST) if os.path.isdir(DEST) else []
+
+    added = [r for r in rel_src if r not in rel_dst]
+    removed = [r for r in rel_dst if r not in rel_src]
+    changed = [r for r in rel_src if r in rel_dst
+               and digest(os.path.join(src, r)) != digest(os.path.join(DEST, r))]
+
+    print('원천   %s  (%d 파일)' % (src, len(rel_src)))
+    print('내장본 %s  (%d 파일)' % (DEST, len(rel_dst)))
+    for label, items in (('신규', added), ('삭제', removed), ('변경', changed)):
+        if items:
+            print('  %s %d: %s' % (label, len(items), ', '.join(items[:6])
+                                   + (' …' if len(items) > 6 else '')))
+
+    drift = added or removed or changed
+    if args.check:
+        # 매니페스트 자체도 확인한다 -- 내장본이 원천과 같더라도 매니페스트가
+        # 낡아 있으면 배포된 트리에서 자가 확인이 안 된다.
+        want = read_manifest()
+        have = {r: digest(os.path.join(DEST, r)) for r in rel_dst}
+        if want != have:
+            print('  매니페스트가 내장본과 어긋난다 (%d vs %d 항목)'
+                  % (len(want), len(have)))
+            drift = True
+        print('\n%s' % ('어긋남 있음 -- 동기화가 필요하다 (--check 없이 다시 '
+                        '돌려라)' if drift else '동기 상태다'))
+        return 1 if drift else 0
+
+    if not drift and read_manifest():
+        print('\n이미 동기 상태다 -- 아무것도 바꾸지 않았다')
+        return 0
+
+    # **디렉터리를 통째로 다시 만든다.**  파일만 덮으면 원천에서 지운 모듈이
+    # 내장본에 남아, 있지도 않은 모듈을 import 하는 코드가 조용히 돈다.
+    if os.path.isdir(DEST):
+        shutil.rmtree(DEST)
+    rows = {}
+    for rel in rel_src:
+        s = os.path.join(src, rel)
+        d = os.path.join(DEST, rel.replace('/', os.sep))
+        os.makedirs(os.path.dirname(d), exist_ok=True)
+        shutil.copyfile(s, d)          # 바이트 그대로 (줄끝 포함)
+        rows[rel] = digest(d)
+    write_manifest(rows)
+    print('\n내장 완료 -- %d 파일, 매니페스트 갱신' % len(rows))
+    print('시험으로 확인:  python -m pytest tests/test_vendor.py -q')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

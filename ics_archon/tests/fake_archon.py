@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""가짜 Archon 컨트롤러 -- **실기 없이 전 경로를 돌리는 상대역.**
+
+프로토콜(매뉴얼 p.45)과 명령 응답(p.46-52)을 규격대로 흉내낸다.  실물이 없는
+동안 이것이 유일한 왕복 검증 수단이므로, 흉내내는 범위를 분명히 적어 둔다.
+
+**흉내내는 것**
+  * 프레이밍 -- `>xxCMD\\n` / `<xxRESPONSE\\n` / `<xx:`+1024B / `?xx\\n` /
+    **인식 못 한 명령은 무응답**
+  * `SYSTEM` · `STATUS` · `FRAME` 의 필드 이름과 형
+  * `WCONFIG`/`RCONFIG`/`CLEARCONFIG`/`APPLYALL`/`APPLYSYSTEM`
+  * `POWERON`/`POWEROFF`
+  * `LOADPARAMS` -> 적분(`IntMS`) -> 독출(라인 진행) -> 프레임 완료 -> `FETCH`
+  * 픽셀은 **결정적 패턴**(`y*width + x`)이라 배치·엔디언을 값으로 확인할 수 있다
+
+**흉내내지 않는 것 (그래서 실기에서만 드러나는 것)**
+  * 실제 독출 시간·진행률의 거동
+  * 모듈 슬롯 구성의 실제 값 (`STATUS` 필드는 기본값을 준다)
+  * ACF 문법 해석 -- 설정 줄을 문자열로만 보관한다
+"""
+
+from __future__ import annotations
+
+import socket
+import threading
+import time
+
+#: 기본 `STATUS` 응답 -- 실제 필드 이름 그대로 (매뉴얼 p.47-49).
+DEFAULT_STATUS = {
+    'POWERGOOD': '1',
+    'BACKPLANE_TEMP': '31.5',
+    'MOD5/TEMP': '32.0', 'MOD6/TEMP': '32.5',
+    'MOD7/TEMP': '33.0', 'MOD8/TEMP': '33.5',
+    'P2V5_V': '2.512', 'P2V5_I': '4.698',
+    'P5V_V': '5.023', 'P5V_I': '4.487',
+    'P6V_V': '5.834', 'P6V_I': '2.176',
+    'N6V_V': '-5.945', 'N6V_I': '0.465',
+    'P17V_V': '16.956', 'P17V_I': '0.454',
+    'N17V_V': '-17.067', 'N17V_I': '0.443',
+    'P35V_V': '35.089', 'P35V_I': '0.032',
+}
+
+#: 기본 `SYSTEM` 응답 -- AD 모듈이 슬롯 5~8 (매뉴얼 p.20 · p.46).
+DEFAULT_SYSTEM = {
+    'BACKPLANE_TYPE': '1', 'BACKPLANE_REV': '2',
+    'BACKPLANE_VERSION': '1.0.408',
+    'BACKPLANE_ID': '0024498A715E301C',
+    'MOD_PRESENT': '01F0',
+    'MOD1_TYPE': '1', 'MOD2_TYPE': '1', 'MOD3_TYPE': '3', 'MOD4_TYPE': '4',
+    'MOD5_TYPE': '2', 'MOD6_TYPE': '2', 'MOD7_TYPE': '2', 'MOD8_TYPE': '2',
+}
+
+BURST = 1024
+
+
+class FakeArchon(threading.Thread):
+    """가짜 컨트롤러 하나.  `port` 로 접속한다."""
+
+    daemon = True
+
+    def __init__(self, *, width: int = 8, height: int = 4,
+                 samplemode: int = 0, readout_ticks: int = 4,
+                 tick: float = 0.02, status: dict | None = None,
+                 system: dict | None = None,
+                 status_delay: float = 0.0, nbuf: int = 2,
+                 fresh: bool = False,
+                 unknown: tuple[str, ...] = (),
+                 reject: tuple[str, ...] = ()) -> None:
+        super().__init__()
+        self.width = width
+        self.height = height
+        self.samplemode = samplemode
+        self.readout_ticks = max(readout_ticks, 1)
+        self.tick = tick
+        self.status = dict(DEFAULT_STATUS if status is None else status)
+        self.system = dict(DEFAULT_SYSTEM if system is None else system)
+        #: `STATUS` 를 이만큼 늦게 답한다 -- 시한 초과 경로를 재현한다.
+        self.status_delay = status_delay
+        #: 이 접두로 시작하는 명령은 **무응답** (매뉴얼 p.45 의 "ignored").
+        self.unknown = tuple(unknown)
+        #: 이 접두로 시작하는 명령은 `?xx` 로 거부한다.
+        self.reject = tuple(reject)
+
+        self.srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.srv.bind(('127.0.0.1', 0))
+        self.srv.listen(8)
+        self.port = self.srv.getsockname()[1]
+
+        self.config: dict[int, str] = {}
+        self.powered = False
+        self.accepts = 0
+        #: 받은 명령 이름 순서 -- 시퀀스 검증용.
+        self.seen: list[str] = []
+        self._lock = threading.Lock()
+
+        # 프레임 버퍼 -- **여러 개다.**  BIGBUF=1 이면 2개, 기본은 3개
+        # (매뉴얼 p.49).  하나로 흉내내면 "앞 프레임의 자료가 아직 있나" 를
+        # 시험할 수 없고, 그건 raw 한 장이 남의 노출 픽셀을 담는 결함을
+        # 조용히 통과시킨다.
+        self.nbuf = max(min(int(nbuf), 3), 1)
+        self.bufs = [{'frame': 0, 'complete': 0, 'lines': 0,
+                      'base': 0xA0000000 + i * 0x10000000}
+                     for i in range(3)]
+        # `fresh=True` 는 **전원 투입 직후**다 -- 완료된 프레임이 하나도
+        # 없어서 `parse.newest()` 가 -1 을 준다.  실기 첫 실행의 상태이고,
+        # 그 경로를 흉내내지 않으면 첫 노출이 버려지는 결함을 못 잡는다.
+        if not fresh:
+            self.bufs[0]['complete'] = 1
+        self.frame_no = 0
+        self.wbuf = 0
+        # `RBUF=0` 은 "읽기용으로 잠긴 버퍼가 없다" 다 -- 전원 투입 직후의
+        # 상태이고, 그때 `parse.newest()` 가 -1 을 준다.
+        self.rbuf = 0 if fresh else 1
+        #: `LOCKn` 으로 읽기 고정된 버퍼 번호 (1-기준).  0 = 없음.
+        self.locked = 0
+        self._next = 0
+        self._stop = False
+
+    # -- 서버 -------------------------------------------------------------
+
+    def run(self) -> None:
+        while not self._stop:
+            try:
+                conn, _ = self.srv.accept()
+            except OSError:
+                return
+            self.accepts += 1
+            threading.Thread(target=self._serve, args=(conn,),
+                             daemon=True).start()
+
+    def shutdown(self) -> None:
+        self._stop = True
+        try:
+            self.srv.close()
+        except OSError:
+            pass
+
+    def _serve(self, conn: socket.socket) -> None:
+        conn.settimeout(30)
+        buf = b''
+        while not self._stop:
+            try:
+                chunk = conn.recv(65536)
+            except (OSError, socket.timeout):
+                return
+            if not chunk:
+                return
+            buf += chunk
+            while b'\n' in buf:
+                line, _, buf = buf.partition(b'\n')
+                if not line.startswith(b'>'):
+                    continue
+                ref, cmd = line[1:3], line[3:].decode('ascii', 'replace')
+                try:
+                    self._handle(conn, ref, cmd)
+                except OSError:
+                    return
+
+    # -- 명령 -------------------------------------------------------------
+
+    def _reply(self, conn, ref: bytes, body: str = '') -> None:  # noqa: ANN001
+        conn.sendall(b'<' + ref + body.encode('ascii') + b'\n')
+
+    def _handle(self, conn, ref: bytes, cmd: str) -> None:  # noqa: ANN001
+        name = cmd.split('=')[0][:12]
+        with self._lock:
+            self.seen.append(cmd.split('=')[0][:20])
+
+        if cmd.startswith(self.unknown) and self.unknown:
+            return                              # 무응답 (p.45)
+        if cmd.startswith(self.reject) and self.reject:
+            conn.sendall(b'?' + ref + b'\n')
+            return
+
+        if cmd == 'SYSTEM':
+            self._reply(conn, ref, self._kv(self.system))
+        elif cmd == 'STATUS':
+            if self.status_delay:
+                time.sleep(self.status_delay)
+            self._reply(conn, ref, self._kv(self.status))
+        elif cmd == 'FRAME':
+            self._reply(conn, ref, self._kv(self._frame_fields()))
+        elif cmd == 'CLEARCONFIG':
+            self.config.clear()
+            self._reply(conn, ref)
+        elif cmd.startswith('WCONFIG'):
+            line = int(cmd[7:11], 16)
+            self.config[line] = cmd[11:]
+            self._reply(conn, ref)
+        elif cmd.startswith('RCONFIG'):
+            line = int(cmd[7:11], 16)
+            self._reply(conn, ref, self.config.get(line, ''))
+        elif cmd.startswith('LOCK'):
+            try:
+                self.locked = int(cmd[4:])
+            except ValueError:
+                conn.sendall(b'?' + ref + b'\n')
+                return
+            self._reply(conn, ref)
+        elif cmd in ('APPLYALL', 'APPLYSYSTEM', 'APPLYCDS', 'LOADTIMING'):
+            self._reply(conn, ref)
+        elif cmd == 'POWERON':
+            self.powered = True
+            self._reply(conn, ref)
+        elif cmd == 'POWEROFF':
+            self.powered = False
+            self._reply(conn, ref)
+        elif cmd == 'LOADPARAMS':
+            self._reply(conn, ref)
+            threading.Thread(target=self._expose, daemon=True).start()
+        elif cmd.startswith('FETCH'):
+            self._fetch(conn, ref, cmd)
+        else:
+            # 모르는 명령이지만 시험이 막히지 않게 빈 성공을 준다.
+            # (**무응답을 보고 싶으면 `unknown=` 에 넣는다.**)
+            self._reply(conn, ref)
+        del name
+
+    @staticmethod
+    def _kv(fields: dict) -> str:
+        return ' '.join('%s=%s' % kv for kv in fields.items())
+
+    def _frame_fields(self) -> dict:
+        f = {'RBUF': str(self.rbuf), 'WBUF': str(self.wbuf)}
+        for n in (1, 2, 3):
+            b = self.bufs[n - 1]
+            live = n <= self.nbuf
+            f['BUF%dSAMPLE' % n] = str(self.samplemode if live else 0)
+            f['BUF%dCOMPLETE' % n] = str(b['complete'])
+            f['BUF%dMODE' % n] = '0'
+            f['BUF%dBASE' % n] = str(b['base'] if live else 0)
+            f['BUF%dFRAME' % n] = str(b['frame'])
+            f['BUF%dWIDTH' % n] = str(self.width if live else 0)
+            f['BUF%dHEIGHT' % n] = str(self.height if live else 0)
+            f['BUF%dLINES' % n] = str(b['lines'])
+            f['BUF%dPIXELS' % n] = str(b['lines'] * self.width)
+            f['BUF%dTIMESTAMP' % n] = '0000000000000000'
+        return f
+
+    # -- 노출 -------------------------------------------------------------
+
+    def _int_ms(self) -> int:
+        for text in self.config.values():
+            if 'IntMS=' in text:
+                try:
+                    return int(text.split('IntMS=')[1].split()[0])
+                except (IndexError, ValueError):
+                    return 0
+        return 0
+
+    def _expose(self) -> None:
+        """`LOADPARAMS` -> 적분 -> 독출(라인 진행) -> 프레임 완료.
+
+        **버퍼를 순환해 쓰고 `LOCKn` 은 건너뛴다.**  BIGBUF 는 버퍼가 둘뿐이라
+        두 프레임 뒤면 앞 프레임의 자료가 덮인다 -- 그것이 `LOCK` 이 있는
+        이유다 (매뉴얼 p.50).
+        """
+        time.sleep(min(self._int_ms() / 1000.0, 2.0))
+        # 잠긴 버퍼는 피한다.  전부 잠겼으면 풀릴 때까지 기다린다.
+        for _ in range(2000):
+            idx = self._next % self.nbuf
+            if idx + 1 != self.locked:
+                break
+            self._next += 1
+            if all((i + 1) == self.locked for i in range(self.nbuf)):
+                time.sleep(self.tick)
+        self._next += 1
+        b = self.bufs[idx]
+        b['complete'] = 0
+        b['lines'] = 0
+        self.wbuf = idx + 1
+        for i in range(1, self.readout_ticks + 1):
+            b['lines'] = int(self.height * i / self.readout_ticks)
+            time.sleep(self.tick)
+        self.wbuf = 0
+        self.frame_no += 1
+        b['frame'] = self.frame_no
+        b['complete'] = 1
+        self.rbuf = idx + 1
+
+    # -- FETCH ------------------------------------------------------------
+
+    def pixels(self, frame: int | None = None) -> bytes:
+        """결정적 픽셀 패턴 (리틀엔디언 `uint16`).
+
+        값 = `(프레임번호 * 1000 + y * width + x) % 65536`.
+
+        * 배치가 뒤집히면 **증분 패턴**이 뒤집혀 드러난다.
+        * **프레임 번호를 값에 섞는 것이 요점이다** -- 프레임마다 똑같은 픽셀을
+          주면 "앞 프레임의 저장이 뒤 프레임의 자료를 가져갔다" 를 어떤 시험도
+          구별할 수 없다 (파이프라인 겹침 결함이 조용히 통과한다).
+        * `samplemode=1` 이면 표본이 32bit 라 **정확히 2배** 크기가 된다.
+        """
+        import numpy as np
+        n = self.width * self.height
+        f = self.frame_no if frame is None else frame
+        arr = ((np.arange(n, dtype='<u4') + f * 1000) % 65536)
+        if self.samplemode:
+            return arr.astype('<u4').tobytes()
+        return arr.astype('<u2').tobytes()
+
+    def _fetch(self, conn, ref: bytes, cmd: str) -> None:  # noqa: ANN001
+        addr = int(cmd[5:13], 16)
+        blocks = int(cmd[13:21], 16)
+        # **주소로 버퍼를 고른다.**  그 버퍼가 지금 담고 있는 프레임의 픽셀을
+        # 준다 -- 덮였으면 덮인 것이 나온다(실기와 같다).
+        frame = next((b['frame'] for b in self.bufs if b['base'] == addr),
+                     self.frame_no)
+        data = self.pixels(frame)
+        for i in range(blocks):
+            chunk = data[i * BURST:(i + 1) * BURST]
+            chunk = chunk + b'\x00' * (BURST - len(chunk))
+            conn.sendall(b'<' + ref + b':' + chunk)

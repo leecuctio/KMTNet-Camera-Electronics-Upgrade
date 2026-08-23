@@ -1,17 +1,34 @@
-# ics_archon — Archon 컨트롤러 제어 (준비 단계)
+# ics_archon — 실기 ICS (STA Archon 제어)
 
-**최종 목표**: `ics_sim/`(시퀀서·메시지 규약·헤더 층)과 이 폴더의 Archon 제어
-코드를 합쳐 실기 ICS(`ics_archon`)를 만든다.  지금은 그 전 단계 — 실험실
-취득 스크립트에 **raw spec**(현행 v1.4) 을 먼저 적용해 두는 자리다.
+`ics_sim/`(시퀀서·명령 처리부·메시지 규약·헤더 층)과 이 폴더의 Archon 제어
+코드를 합친 **실기 취득 프로그램**이다.  최종적으로 `ics` 로 개명해 운영
+배포한다.
+
+```bash
+cd ics_archon
+python -m ics_archon                 # ics_archon.ini 를 읽는다
+python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시지 층만
+```
+
+> **현재 판 `v0.0.0` — 실기 왕복은 한 번도 돌리지 않았다.**  가짜 컨트롤러
+> (`tests/fake_archon.py`)로 전 경로가 돌고 견본 헤더와 바이트 단위로 일치하지만,
+> 실물 Archon 과의 왕복·독출 시간·픽셀 배치는 미검증이다.  잠정인 자리는
+> 코드에 `PROVISIONAL` 로 표시했고 목록은 [SMC_CLAUDE.md](SMC_CLAUDE.md) 에 있다.
 
 ## 파일 구성
 
 | 파일 | 정체 |
 |---|---|
+| [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
+| [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다 |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (95항목) |
+| [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
+| [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
+| `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
 | [`README_labtest.md`](README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
 | [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.1.1`, science 유닛) |
 | [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 원본 그대로, 미개정 |
-| [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **실기 없이 돌리는 검증** (19항목) — `python tests/verify_labtest_v11.py` |
+| [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **labtest 전용 검증** (19항목) — `python tests/verify_labtest_v11.py` |
 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
 
@@ -50,24 +67,333 @@
   통째로 깨지므로 기동에서 거부한다.
 - **guide 유닛은 미개정** — guide raw 규격이 아직 없어서다.
 
-## ics_archon 본편으로 갈 때
+## 본편 `ics_archon/` — 구성
 
-- 시퀀서·명령 처리·메시지 규약·헤더 값 층은 `ics_sim/` 이 이미 갖고 있다 —
-  `ics_sim/ics_sim/hardware/archon.py` 스텁에 이 스크립트의 제어 시퀀스
-  (CLEARCONFIG→WCONFIG→APPLYALL, POWERON, LOADPARAMS, FRAME 폴링, FETCH)를
-  옮기면 된다. 헤더 틀은 `ics_sim/ics_sim/rawcards.py`(기계 사본)를 그대로 쓴다.
-- 백엔드 계약(D-012): `controller_info()`/`controller_telemetry()`/`sensors()`
-  — 이 스크립트의 `archon_status()`/`ctrl_telemetry_cards()` 가 그 원형이다.
-- guide 유닛은 smallbuf 구성 + `DATASRC='ARCHON_GUIDE'`, `CTRL1xx` 한 벌 규약
-  (raw spec 5.5절) — guide raw 규격 확정 후 착수.
-- **두 대분 텔레메트리 합치기**가 본편 몫이다. 실험실은 한 대만 돌리므로
-  `Cn_*` 한 벌이 `'NC'` 로 남아 있다 (5.9절은 양쪽 파일에 같은 값을 요구한다).
+`ics_sim` 의 시퀀서·명령 처리부·메시지 규약·헤더 층을 그대로 쓴다.  **독립
+배포를 위해 내장본을 함께 들고 다니고**(`_vendor/ics_sim`), 저장소에서는 형제
+원천이 이긴다 — 탐색 순서와 갈라짐 방지는 위 "설치 · 배치" 참조.
+
+| 모듈 | 하는 일 |
+|---|---|
+| `archon/protocol.py` | 저수준 왕복 — 텍스트/이진 프레이밍, 참조번호, 시한 초과 후 재동기 |
+| `archon/parse.py` | `SYSTEM`/`STATUS`/`FRAME` 해석. **왕복이 없어** 실기 응답 한 줄로 재현할 수 있다 |
+| `archon/controller.py` | 컨트롤러 한 대의 제어 시퀀스 — ACF · 전원 · 노출 · 독출 · FETCH (asyncio) |
+| `archon/fitswrite.py` | raw pair 바이트 기록 — 견본 v1.0 이 정본, 데이터부 2880B 패딩 |
+| `archon/backend.py` | `ics_sim` `DetectorBackend` 구현 (D-012) |
+| `app.py` · `__main__.py` | `ics_sim.IcsSim` 에 백엔드를 끼우고 `ICSBUILD`/`RDMODE`/종료를 갈아낀다 |
+| `config.py` | `[archon]` 절 |
+
+### 계약과 실기의 어긋남 — 백엔드가 흡수하는 셋
+
+| 계약 | 실기 | 흡수 방식 |
+|---|---|---|
+| `initialize(ccd, …)` CCD 4회 | 컨트롤러 2대 | suffix 로 중복 제거 — `APPLYALL` 은 프레임마다 되풀이할 수 없다 |
+| `erase(ccd)` master 한 번 | 두 대 다 비워야 한다 | 살아 있는 컨트롤러 전부에 퍼뜨린다 |
+| 노출을 걸 자리가 없다 | `IntMS` + `LOADPARAMS` | 셔터 노출은 `open_shutter()`, DARK/BIAS 는 `readout()` 첫머리 |
+
+**적분은 컨트롤러가 잰다.**  시퀀서의 카운트다운은 관측자 알림이고 하드웨어를
+몰지 않는다.  그래서 `STOP` 은 적분을 자르지 못하고 셔터만 강제로 닫는다 —
+근거와 한계는 `archon/controller.py` 머리말에 있다.
+
+## 설치 · 배치 (리눅스)
+
+**`ics_archon/` 하나만 두면 돌아간다.** `ics_sim` 을 설치하지 않아도 된다 —
+그 층을 `ics_archon/ics_archon/_vendor/ics_sim/` 로 **내장해서 함께 들고 다닌다**
+(운영자 확정 2026-08-23). 파이썬이라 빌드·설치 단계도 없다.
+
+```
+/home/<사용자>/
+├── CEU/                          개발용 클론 — 여기서 고치고 커밋한다
+└── AICS/                         운영 자리 (레거시 dts 처럼 역할 기준)
+    ├── src/ics_archon/           ★ 배포본 — 이 폴더 하나면 된다
+    │   ├── ics_archon/           패키지 (_vendor/ics_sim 포함)
+    │   ├── tools/  tests/
+    │   └── ics_archon.ini        (참조용 원본. 실제 설정은 Config/ 로)
+    ├── bin/
+    │   ├── xis…                  컴파일 산출물 (관례상 여기)
+    │   └── ics_archon            얇은 실행 래퍼 (6절)
+    ├── Config/
+    │   ├── ics_archon.ini        ← 배포본 사본을 고쳐 쓴다
+    │   ├── ics_archon.expnum     ← 노출 번호 (ini 옆으로 자동 결정)
+    │   └── acf/                  ← Archon 설정 파일
+    ├── Logs/ics_archon.log
+    └── data/                     ← raw pair. 실제 디렉터리든 심볼릭 링크든 된다
+```
+
+### 왜 내장본인가 — 그리고 갈라지지 않는 근거
+
+`ics_archon` 은 `ics_sim` 의 시퀀서·명령 처리부·메시지 규약·헤더 층을 그대로
+쓴다. 종전에는 형제 폴더를 `sys.path` 에 넣었는데, 그러면 **두 폴더를 항상 함께
+옮겨야 했다.**
+
+사본을 두면 갈라진다 — 그것이 종전에 사본을 안 만든 이유였다. **그 걱정의 실체는
+"사본" 이 아니라 "몰래 갈라짐" 이다.** 갈라짐을 기계가 잡으면 사본을 두어도 된다:
+
+| 겹 | 무엇을 잡나 | 원천이 없어도 되나 |
+|---|---|---|
+| `_vendor/MANIFEST.sha256` | 내장본 손상·손편집 | ✅ 배포된 트리의 자가 진단 |
+| `tests/test_vendor.py` ② | **원천과 갈라짐** (개정 누락) | ❌ 저장소에서만 |
+| `tests/test_vendor.py` ③ | 배선이 틀려 독립 실행이 안 되는 것 | ✅ |
+
+③은 **`ics_archon/` 만 떼어 놓은 임시 트리에서 실제로 노출을 돌려** 확인한다.
+
+`ics_sim` 을 고쳤으면 동기화한다 — 안 하면 저장소 시험이 **실패**한다:
+
+```bash
+python3 tools/sync_vendor.py            # 동기화
+python3 tools/sync_vendor.py --check    # 확인만 (CI)
+```
+
+### 탐색 순서
+
+| 순서 | 어디 | 언제 |
+|---|---|---|
+| 1 | `ICS_SIM_PATH` 환경변수 | 명시적 지정 (탈출구) |
+| 2 | 형제 폴더 `../ics_sim` | **저장소에서 개발할 때** — 살아 있는 원천 |
+| 3 | 내장본 `_vendor/ics_sim` | **독립 배포** |
+
+기동 배너의 `ics_sim` 줄이 **어느 것을 골랐는지** 찍는다. 셋 다 없으면 찾아본
+경로를 다 찍고 멈춘다 — 조용히 실패하지 않는다.
+
+### 1. 준비
+
+| | |
+|---|---|
+| Python | **3.10 이상** |
+| 필수 | **`numpy`** — FITS 저장형 변환. 없으면 백엔드가 **기동에서 거부**한다 |
+| 선택 | `astropy` — `probe_archon` 되읽기 확인과 시험에만. **취득에는 필요 없다** |
+| 시험 | `pytest` |
+
+### 2. 자리 만들기
+
+```bash
+mkdir -p ~/AICS/{src,bin,Config/acf,Logs,data}
+```
+
+`~/AICS/data` 를 다른 디스크로 보내려면 실제 디렉터리 대신 링크를 둔다
+(대상이 **먼저** 있어야 한다 — 끊긴 링크면 거부된다):
+
+```bash
+mkdir -p /mnt/bigdisk/data && ln -s /mnt/bigdisk/data ~/AICS/data
+```
+
+### 3. 배포본 놓기
+
+**방법 A — 폴더만 복사** (가장 단순. `ics_sim` 이 필요 없다):
+
+```bash
+cd ~/CEU && git checkout ics_archon-v0.1.0
+python3 ics_archon/tools/sync_vendor.py --check     # 내장본이 최신인지
+rsync -a --delete --exclude='__pycache__' --exclude='__ref_archon_control' \
+      ics_archon/  ~/AICS/src/ics_archon/
+```
+
+**방법 B — 배포용 클론** (되짚기가 쉽다. `git describe` 로 "무엇이 돌고 있나"):
+
+```bash
+git clone <저장소> ~/AICS/src/CEU
+cd ~/AICS/src/CEU && git checkout ics_archon-v0.1.0
+git describe --tags
+```
+→ 이 경우 실행 경로는 `~/AICS/src/CEU/ics_archon` 이고, 형제 `ics_sim` 이 함께
+있으므로 **탐색 순서 2번**(원천)이 쓰인다.
+
+> **개발 클론(`~/CEU`)에서 직접 돌리지 않는다.** 야간에 `git pull` 이나 브랜치
+> 전환이 일어나면 돌고 있는 코드가 바뀐다.
+
+### 4. 설정
+
+```bash
+cp ~/AICS/src/ics_archon/ics_archon.ini ~/AICS/Config/ics_archon.ini
+cp <어딘가>/KMTNet_Sci_*.acf            ~/AICS/Config/acf/
+```
+
+고칠 것 — **`[archon]` 이 컨트롤러 배선이다**:
+
+```ini
+[node]
+site         = testbed              # 관측소 반입 시 ctio | saao | sso
+telid        = KMTT                 # 사이트 판정(IP)이 이 값을 이긴다 (D-015)
+ic_ids       = M.IC, K.IC           # 유닛 한 대만 돌릴 때 (2대면 4개)
+cb_ids       = M.CB, K.CB
+
+[paths]
+data_dir     = ~/AICS/data
+expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
+
+[archon]
+ctrl_mk_host = 10.0.0.13
+acf_mk       = ~/AICS/Config/acf/KMTNet_Sci_fast_med_U13.acf
+
+[controllers]
+ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
+ctrl1_sn     = STA-0288
+
+[logging]
+file         = ~/AICS/Logs/ics_archon.log
+```
+
+> **`~` 는 펼쳐진다** (`data_dir` · `expnum_file` · `logging file` · `acf_*`).
+> **상대경로는 권하지 않는다** — ini 위치가 아니라 **실행한 디렉터리** 기준으로
+> 풀려서, 띄우는 방법이 바뀌면 자료가 조용히 다른 곳에 쌓인다.
+>
+> **로그는 반드시 파일로 받는다.** 터미널 스크롤백은 페인 폭 경계에서 한 글자씩
+> 먹혀 와이어 손상과 구분이 안 된다 (DevNote 3.7.2 실측).
+
+### 5. 돌리기
+
+```bash
+cd ~/AICS/src/ics_archon
+python3 -m ics_archon -c ~/AICS/Config/ics_archon.ini
+```
+
+**첫 실행은 본편이 아니라 `probe_archon` 1단계부터** — 아래 "실기 첫 실행 절차".
+
+```bash
+python3 tools/probe_archon.py -c ~/AICS/Config/ics_archon.ini --host 10.0.0.13
+```
+
+### 6. 실행 래퍼 (`~/AICS/bin/ics_archon`)
+
+`cd` 를 사람이 기억하지 않게 한다. **작업 디렉터리를 못박는 것이 요점**이다 —
+상대경로 설정과 `_simpath` 탐색이 둘 다 여기에 걸린다.
+
+```sh
+#!/bin/sh
+# ~/AICS/bin/ics_archon -- 실기 ICS 실행 래퍼
+set -eu
+AICS="$HOME/AICS"
+cd "$AICS/src/ics_archon"
+exec python3 -m ics_archon -c "$AICS/Config/ics_archon.ini" "$@"
+```
+
+```bash
+chmod +x ~/AICS/bin/ics_archon
+~/AICS/bin/ics_archon --backend sim      # 컨트롤러를 안 만지고 메시지 층만
+```
+
+### 7. 서비스로 돌릴 때
+
+콘솔(stdin)을 쓰지 않으므로 `[behavior] console = false` 로 둔다.
+
+```ini
+[Service]
+WorkingDirectory=/home/<사용자>/AICS/src/ics_archon
+ExecStart=/home/<사용자>/AICS/bin/ics_archon
+Restart=on-failure
+```
+
+### 8. 여러 구성을 나란히
+
+**ini 를 나누면 노출 번호도 자동으로 나뉜다** (`expnum` 이 ini 이름을 따른다):
+
+```
+~/AICS/Config/ics_archon.ini      →  ics_archon.expnum
+~/AICS/Config/ics_archon_lab.ini  →  ics_archon_lab.expnum
+```
+
+### 갱신 · 되돌리기
+
+```bash
+cd ~/AICS/src/ics_archon
+python3 -m pytest tests -q        # 실패 0 이어야 한다
+```
+
+- **야간에는 갱신하지 않는다.** 돌고 있는 코드가 바뀐다.
+- `~/AICS/Config/` 의 ini 는 배포본 밖이라 **덮이지 않는다.** 새 키가 생겼는지는
+  `diff ~/AICS/Config/ics_archon.ini ~/AICS/src/ics_archon/ics_archon.ini`.
+- 되돌리기: 방법 A 는 이전 태그에서 다시 `rsync`, 방법 B 는 `git checkout <태그>`.
+- FITS `ICSBUILD` 가 `v<버전>:<빌드일시>` 를 싣는다. **손으로 적는 값**이므로
+  (`ics_archon/__init__.py`) 소스를 고쳤으면 같이 올려야 하고, 그래서 헤더에서
+  "이 자료를 만든 코드" 를 되짚을 수 있다.
+
+## 실기 첫 실행 절차
+
+**본편을 그냥 돌리지 말 것.** 미검증 3자리가 한꺼번에 걸리면 원인을 가릴 수
+없다. `tools/probe_archon.py` 가 위험이 낮은 것부터 하나씩 확인한다 — 본편과
+**같은 모듈**을 쓰므로 여기서 통과한 것은 본편에서도 통과한다.
+
+### 1단계 — 읽기 전용 (전원을 켜지 않는다)
+
+```bash
+python tools/probe_archon.py --host 10.0.0.13
+```
+
+`SYSTEM`·`STATUS`·`FRAME` 원문을 다 찍고, 가정을 대조한다 — AD 모듈 슬롯(5~8) ·
+온도 슬롯·전원 레일 결측 · 기하 vs 선언 · `BUFnLINES` 존재 · `Cn_*` 카드가
+견본 폭(51자)에 들어가는지. **여기서 `문제` 가 하나라도 나오면 그것부터 고친다.**
+
+### 2단계 — ACF 대조 (여전히 읽기 전용)
+
+```bash
+python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTNet_Sci_fast_med_U13.acf
+```
+
+`[archon] param_intms_slot`/`param_exposures_slot` 이 그 ACF 에 있는지, 컨트롤러
+메모리의 같은 줄 번호가 그 키인지 `RCONFIG` 로 확인만 한다. **어긋난 채로
+돌리면 노출 시간이 조용히 안 바뀐다.**
+
+### 3단계 — 프레임 1장 ⚠️ 전원 ON
+
+```bash
+python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
+```
+
+`--expose` 를 준 경우에만 돈다. 셔터는 열지 않는다(`TRIGOUTFORCE=1`). 끝나면
+무슨 일이 있어도 `POWEROFF`. **여기서 나오는 값이 3단계의 산출물이다** —
+독출 실측 시간 · 진행률 보고 횟수 · FETCH MiB/s · FITS 1장(`probe.*.fits`,
+관측 번호 공간을 건드리지 않는다).
+
+> 실측한 독출 시간을 `[timing]` 에 넣고, `write_delay + FETCH + 저장`이
+> **25초 창**(`[obsagent] force_fitssaved`)에 들어가는지 확인한다.
+
+### 4단계 — 본편, 실험실 1유닛
+
+실험실은 유닛이 한 대이므로 `MK` pair 만 돌린다. `ics_archon.ini` 세 곳:
+
+```ini
+[node]
+ic_ids = M.IC, K.IC        # NT 를 빼면 그 파일은 생기지 않는다
+cb_ids = M.CB, K.CB
+master = K
+
+[archon]
+ctrl_mk_host = 10.0.0.13
+acf_mk       = acf/KMTNet_Sci_fast_med_U13.acf
+```
+
+```bash
+python -m ics_archon
+```
+
+콘솔에서 `projid ENG` → `dark begin` → `exp 1` → `go`. OBSAgent 없이
+direct-reply 로 전 경로가 돈다.
+
+> ⚠️ **이 구성은 OBSAgent 규약을 만족하지 못한다** — `Acquisition Complete.` 와
+> `Wrote` 가 4회가 아니라 2회다(CCD 가 둘이니까). 관측 시퀀스 시험은 유닛 2대가
+> 붙은 뒤에 한다. 4단계의 목적은 **취득·저장 경로**를 실기로 확인하는 것이다.
+
+### 5단계 — 유닛 2대 + OBSAgent
+
+`ic_ids` 를 4개로 돌리고 `ctrl_nt_host`/`acf_nt` 를 채운다. 여기서 비로소
+`Acquisition Complete.` 4회 · `Wrote` 4회 · 시간 창 3종이 검증된다.
+
+## 아직 없는 것 (v0.0)
+
+- **듀어·환경 HK** (`sensors()`) — 공급 3계통(ICG RTD · standalone RTD ·
+  Tapaculo)을 읽는 경로가 없다.  labtest 도 안 읽으므로 **옮겨올 원형이 없다.**
+  `CCDTEMP` 를 비롯한 5.6절 카드가 sentinel 로 실린다.
+- **LED 프로젝터** (`flash_led`) — 실기 배선이 미확정이라 값만 기억하고
+  하드웨어를 만지지 않는다.
+- **guide 계통** — guide raw 규격이 아직 없다.  착수 시 smallbuf 구성 +
+  `DATASRC='ARCHON_GUIDE'` + `CTRL1xx` 한 벌 규약 (raw spec 5.5절).
+- **binning** (`BIN` 명령) — `ics_sim` 쪽도 스텁이다.
 
 ## 관련 문서
 
 | 문서 | 위치 |
 |---|---|
-| 경위·판단 (왜 그렇게 정했나) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.22 |
+| 경위·판단 (왜 그렇게 정했나) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.23 |
 | 산출 규격 (raw FITS pair) | [`../raw_fits_spec/`](../raw_fits_spec/README.md) |
 | 헤더 카드 템플릿 (공유 원천) | `../ics_sim/ics_sim/rawcards.py` |
 | 백엔드 계약 | `../ics_sim/ics_sim/hardware/base.py` (D-012) |

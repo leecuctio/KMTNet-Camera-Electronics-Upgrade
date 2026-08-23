@@ -15,7 +15,7 @@
 
 | 파일 | 정체 |
 |---|---|
-| [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.1.1'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
+| [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.1.2'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
 | [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 512 MB 버퍼 3개 구성. 원본 그대로, **미개정** (아래 "guide 유닛" 참조) |
 | [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **실기 없이 돌리는 검증** (15항목) — 가짜 Archon + astropy 실파일 |
 | `__ref_archon_control/archon_kmtnet_labtest_v1.0.{bigbuf,smallbuf}.py` | **v1.0 원본** (읽기 전용). 되돌려 비교할 때 쓴다 |
@@ -32,7 +32,7 @@
 그래서 **`TELEMETRY_ENABLE = False` 로 두면 왕복이 v1.0 과 완전히 같아진다** —
 문제가 보일 때 원인을 가르는 가장 빠른 수단이다.
 
-## 검증 상태 (v1.1.1, 2026-08-23)
+## 검증 상태 (v1.1.2, 2026-08-23)
 
 | 항목 | 상태 |
 |---|---|
@@ -58,7 +58,7 @@ python ics_archon/tests/verify_labtest_v11.py
 
 ## 돌리기 전에 손볼 자리
 
-행 번호는 `v1.1.1`(2026-08-23) 기준이다. 옮겨졌으면 이렇게 찾는다:
+행 번호는 `v1.1.2`(2026-08-23) 기준이다. **리눅스 포팅으로 앞부분이 12줄쯤 밀렸다** — 옮겨졌으면 이렇게 찾는다:
 
 ```bash
 grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmtnet_labtest_v1.1.bigbuf.py
@@ -69,16 +69,16 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
 | 34 | `DATA_PREFIX` | `'AC13A'` | 로그·SMS 표시용 라벨. **파일명에는 안 들어간다** |
 | 36 | `UNIT_ID` | `7` | |
 | 37 | `UNIT_IP` | `'13'` | 주소는 `10.0.0.<UNIT_IP>` |
-| **53** | `SITE_CODE` | `'KMTT'` | 테스트베드. 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP` 이 여기서 유도된다** |
-| **54** | `UNIT_CTRLTAG` | `'MK'` | **신설.** 이 유닛이 담당하는 detector pair. `MK`/`NT` 가 아니면 기동 시 거부 |
-| **56** | `UNIT_CTRL_ID` | `'KMTT-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
-| **57** | `UNIT_CTRL_SN` | `'STA-0287'` | **신설.** 백플레인 시리얼 |
-| 58 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
-| 66 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
-| 67 | `TELEMETRY_TIMEOUT` | `3.0` | STATUS 응답 대기 상한 [s] |
-| 69~70 | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.1.1'` / `'2026-08-23T01:10Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
-| 174~175 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
-| 1540~1559 | 실행부 3블록 | — | 앞 2블록은 `'''`(1541~1553)로 묶여 있고 **1555~1559 가 활성**(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
+| **59** | `SITE_CODE` | `'KMTT'` | 테스트베드. 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP` 이 여기서 유도된다** |
+| **60** | `UNIT_CTRLTAG` | `'MK'` | **신설.** 이 유닛이 담당하는 detector pair. `MK`/`NT` 가 아니면 기동 시 거부 |
+| **62** | `UNIT_CTRL_ID` | `'KMTT-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
+| **63** | `UNIT_CTRL_SN` | `'STA-0287'` | **신설.** 백플레인 시리얼 |
+| 64 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
+| 72 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
+| 73 | `TELEMETRY_TIMEOUT` | `3.0` | STATUS 응답 대기 상한 [s] |
+| 75~76 | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.1.2'` / `'2026-08-23T12:00Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
+| 180~181 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
+| 1554~1573 | 실행부 3블록 | — | 앞 2블록은 `'''`(1541~1553)로 묶여 있고 **1555~1559 가 활성**(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
 
 > 🔴 **활성 블록의 유닛 번호를 확인하라.** `DatasetId` 는
 > `[UnitID(1)][TestSetup(2)][DatasetType(1)]` 이고, 활성 블록의 `3211`/`3511`/
@@ -101,15 +101,16 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
 - `acf/KMTNet_Sci_{fast,comp,slow}_med_U<IP>.acf` (108~110행) — **v1.1.1 부터는
   스크립트가 데이터셋 시작에 직접 확인하고, 없으면 접속·전원 전에 멈춘다.**
   경로가 상대경로이므로 **작업 디렉터리**가 그 상위 폴더여야 한다
-- `DATA_STORAGE_A`/`_B`/`_C` 경로가 마운트돼 있는지 (42~44행) — 그리고 **여유
+- `DATA_STORAGE_A`/`_B`/`_C` 경로가 마운트돼 있는지 (48~50행, **v1.1.2 에서 리눅스 경로로 바꿨다** — `/data` · `/mnt/ssda/DATA` · `/mnt/ssdb/DATA`. USB SSD 마운트 지점은 기계마다 다르니 `lsblk -o NAME,LABEL,MOUNTPOINT` 로 확인할 것) — 그리고 **여유
   용량**(아래 "첫 실행은 작게" 의 표)
-- `TEMP_SLOTS` (588행) — 지금은 `BACKPLANE_TEMP` + AD 모듈 4장(MOD5~8).
+- `TEMP_SLOTS` (594행) — 지금은 `BACKPLANE_TEMP` + AD 모듈 4장(MOD5~8).
   카드 폭(51자)을 넘으면 잘리고 경고가 난다. **모듈 나열 순서의 정본 명세는
   규격 수록 예정**이라 확정되면 교체한다
-- **`twilio` 가 깔려 있는지.** SMS 함수 본문은 전부 `'''` 로 막혀 `return` 만
-  하는데, `from twilio.rest import Client` 는 모듈 최상단에서 **실제로 import
-  된다**. 없는 기계로 옮기면 아무것도 못 하고 `ModuleNotFoundError` 로 죽는다 —
-  그 줄을 주석 처리하면 된다 (v1.0 부터 그대로다)
+- ~~**`twilio` 가 깔려 있는지.**~~ **v1.1.2 에서 고쳤다.** SMS 함수 본문은 전부
+  `'''` 로 막혀 `return` 만 하는데 `from twilio.rest import Client` 는 모듈
+  최상단에서 **실제로 import 돼서**, 없는 기계로 옮기면 아무것도 못 하고
+  `ModuleNotFoundError` 로 죽었다 (v1.0 부터 그랬다). 이제 `try/except
+  ImportError` 로 감싸 없어도 넘어간다 — SMS 를 되살릴 때는 twilio 를 설치한다
 - **`DatasetId` 끝자리가 1/2/3/5 가 아니면 직전 데이터셋 설정을 그대로
   재사용한다.** `SetDatasetConfig` 의 `else` 분기가 `TEST_DATASET` 만 바꾸고
   `TEST_FRAMENUM`/`TEST_EXPTIMES` 는 건드리지 않는다 (0=Check, 1=xTalk, 2=Dark,
@@ -355,3 +356,4 @@ v1.1 을 만든 뒤 스크립트를 원본과 대조 검토해 **6건을 고쳤�
 | v1.0 | 실험실에서 실제로 돌려 쓰던 원본 (`__ref_archon_control/` 에 보존) |
 | v1.1.0 | raw spec v1.3 적용 (파일명·헤더 144카드·데이터부 패딩·STATUS 텔레메트리) + 적대적 검토 6건 수정 |
 | v1.1.1 | 감사에서 잡힌 회귀 4건 수정 — STATUS 시한 초과 후 연결 재수립 / 비ASCII 손편집 값 기동 거부 / 기하·표본 불일치 fetch 전 거부 / 예외에도 `POWEROFF` 보장. 함께: 재실행 시 번호 밀림 경고(같은 UT 날짜), ACF 선검사 |
+| v1.1.2 | **리눅스 포팅** (운영자 확정 2026-08-23: 전 계통 리눅스 구동) — 저장소 경로를 윈도우 드라이브 문자(`C:/DATA`·`H:/DATA`·`L:/DATA`)에서 POSIX 경로로, 그리고 **쓰지도 않는 `twilio` import** 를 `try/except` 로 감쌌다(그 패키지가 없는 기계에서 스크립트가 아예 시작하지 못했다). 컨트롤러와의 왕복은 한 줄도 바뀌지 않았다 |

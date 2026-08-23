@@ -7,7 +7,9 @@
 **신규 Python ICS 의 첫 실행 산출물.** 레거시 조사(3부작 보고서)가 끝난 뒤 실제로 만든 첫 코드다.
 
 - 지금은 **시뮬레이터** — 카메라 하드웨어 없이 레거시와 호환되는 메시지를 낸다.
-- 다음 단계는 **`ics_archon` v0.0 = 이 폴더 + labtest 코드의 합본** (목 확정 2026-08-23). `ics_sim/hardware/archon.py` 에 실제 CCD 제어 코드를 넣으면 시퀀서·명령 처리부·메시지 규약은 **무개정**으로 그대로 쓴다 — `[hardware] backend = archon` 한 줄로 전환. **규약을 건드려야 할 것 같으면 그것 자체가 재검토 신호다**(시험 318개가 묶어 두고 있다). 착수 요령·미검증 자리는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "ics_archon v0.0" 절.
+- **`ics_archon` v0.0 이 나왔다 (2026-08-23, DevNote 11.23).** 실기 프로그램은 [`../ics_archon/`](../ics_archon/README.md) 에 있고 **이 폴더를 사본 없이 그대로 가져다 쓴다** — 시퀀서·명령 처리부·메시지 규약은 **무개정**이다. 이 폴더에 늘어난 것은 `hardware/__init__.py` 의 `register_backend()` **6줄뿐**이고, 그것이 원래 확장점이다. 시험 318개는 한 줄도 안 고치고 통과한다.
+  - **그래서 이 폴더를 고칠 때 상대가 하나 늘었다.** 헤더 층(`rawcards`/`rawhdr`/`rawpair`)·백엔드 계약(`hardware/base.py`)·시퀀서의 백엔드 호출 자리를 바꾸면 `ics_archon` 이 곧바로 깨진다. 바꿀 일이 있으면 `ics_archon/tests` (46항목)도 함께 돌린다.
+  - **규약을 건드려야 할 것 같으면 그것 자체가 재검토 신호다.** 결정·검토사항 목록은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md).
 - 최종적으로 `ics` 로 개명해 운영 배포.
 
 ## 먼저 읽을 것
@@ -62,7 +64,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - **raw spec v1.3 전면 정렬 (2026-08-22)** — 헤더 층을 **템플릿 주도**로 재편했다: 신설 [`ics_sim/rawcards.py`](ics_sim/rawcards.py) 가 초안 헤더 v1.0 pair 의 **기계 사본**(값 135 + COMMENT 8, 카드 순서·comment·패딩)이고, `rawhdr` 는 값 풀만 공급한다. 견본 값을 넣으면 견본이 **바이트 단위로 재현**된다(`tests/test_raw_draft.py` 대사 — 불일치 0). D-016 충돌 처리(선검사·번호 증가·되감음·상한, `UNIQNAME`/`NAMECLSH`/`clash/` 폐지, `ORIGNAME` 상시), 백엔드 계약 개정(`voltages`/`amp_map` 폐지 → `controller_telemetry` 신설), TC 중계 카드 전부 문자열화(`TCSTIME` 이관 · `DALTERR`/`DAZERR` 계산), **`fits_shape = spec`** 이면 실물 19200×9400 을 4장 기하 구조(암프별 offset·X/중앙 overscan) 그대로 생성 — **converter end-to-end 로 69-HDU L0 MEF 생성 검증 완료**. 테스트 **317개** 전부 통과(OBSAgent 규약 시험은 무수정). v0.2.0. 경위·판단은 DevNote **11.19**
 - **적대적 검토 + 12건 수정 (2026-08-22)** — v1.3 정렬분을 관점 4개(규격 준수·동시성·archon 스크립트·OBSAgent 규약)로 재검토하고 반박 검증을 붙여 **확정 14건 중 12건**을 고쳤다. 큰 것: ⚠️ **critical** — D-016 선검사가 외부 `INITIALIZE` 로 오염된 채널 suffix 를 파싱해 **노출 태스크를 죽였다**(IDLE·Wrote·advance 전부 유실 → `opause`); **pair 동일성(5.9절)이 구조적으로 없었다**(백엔드 사실을 컨트롤러별로 따로 질의 — 시뮬 고정값 때문에 시험이 통과하던 부류); 노출 메타데이터 경합; 구판부터 있던 **사이트 갈림**(파일명·헤더가 IP 판정 대신 ini 원값, D-015 위반)·STOP 이벤트 잔류·ABORT 의 앞 프레임 저장 파괴. archon v1.1 도 6건 전량 수정(카드 폭 클램프·자리 sentinel·예외 방어·컨트롤러 색인·SITE 유도·OBJECT 역산). **남겼던 2건은 둘 다 닫혔다** — `IMAGETYP='STANDARD'` 폐지(운영자 확정) · 견본 헤더 날짜 불일치(정본 개명으로 해결). 전부 DevNote **11.20**
 - **`IMAGETYP` 어휘 정리 + raw spec v1.4 정합 (2026-08-22)** — `STANDARD` 폐지(운영자 확정 "이제 안 쓴다"): `state.IMAGE_TYPES`·`cmd_standard`·`emitter.KNOWN_COMMANDS`·콘솔 도움말에서 걷어내 **규격 5.4절 어휘와 집합이 같아졌고**, 그 일치를 시험이 지킨다(`test_command_vocabulary_equals_the_spec_vocabulary` — 한쪽만 늘면 걸린다. 값 추가는 규격과 코드를 **함께** 고치라는 운영자 지시의 강제 장치다). 레거시에 있던 명령이라 갈라지는 지점이지만 `.osc` 22개·레거시 로그에 용례 0건. 규격 v1.4 정합도 함께 — 파일명 참조 6곳, **삭제된 2.5절** 인용 9곳을 DevNote 3.2 로(IMPv2 스펙 2.5절은 무관하니 제외), **OI-15 종결**(4.1 `RRRRLLLL` 확정) 경고 제거. ⚠️ **견본 개명이 바이트 대사 6개를 조용히 skip 시켰던 것을 발견해 고쳤다** — 경로 하드코딩 → glob, 없으면 skip 이 아니라 **실패**. DevNote **11.21**
-- **다음 단계**: ① TCS 시뮬레이터 설치 + 연동 시험(아래 "이어서 시작하는 자리") ② `ics_archon` — **Archon 3 unit**(과학 2 + **가이드 1**, DevNote 9.1) 제어. **파일 구성·이름·헤더(v1.3)·저장형·실물 크기 구조는 시뮬이 전부 지키고 있으므로** 남은 것은 실제 픽셀 획득과 백엔드 3개(`controller_info`/`controller_telemetry`/`sensors`)를 채우는 일이다. 제어 시퀀스의 원형은 [`../ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py`](../ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py) (**v1.1.1**, 2026-08-23 — 세부는 [`../ics_archon/README_labtest.md`](../ics_archon/README_labtest.md)). ⚠️ 그중 STATUS 텔레메트리·독출 시간·산출물 실물 **3자리는 실기 미검증**이라 합본 시 잠정 표시해 둔다
+- **다음 단계**: ① TCS 시뮬레이터 설치 + 연동 시험(아래 "이어서 시작하는 자리") ② **`ics_archon` v0.0 이 나왔다 (2026-08-23, DevNote 11.23)** — 과학 2 unit 제어·raw pair 저장·헤더까지 가짜 컨트롤러로 전 경로가 돌고 견본과 바이트 단위로 일치한다. 남은 것은 **실기 왕복**(미검증)과 **듀어·환경 HK**(`sensors()` — 원형이 없다), 그리고 **가이드 unit**(guide raw 규격 미정)이다. 결정·검토사항 목록은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md)
 
 ## ▶ 이어서 시작하는 자리 (2026-08-13 기준)
 
@@ -199,7 +201,7 @@ VM 이미지가 **5개**로 늘었다(`ICSci` CTIO/SAAO · `ICGui` · `K.IC` · 
 ## 다음에 이어서 할 만한 일
 
 1. ~~**실제 OBSAgent·XIS 연동 시험**~~ — **1차 완료 (2026-08-11).** 9노드 등록·라우팅·노출 사이클 전 구간 통과, `ExpNum` 결함 하나 수정. **남은 항목은 위 "이어서 시작하는 자리"** 로 옮겼다. 결과는 DevNote 3.7.
-2. **`ics_archon` 구현** — Archon 컨트롤러 2기 제어 + raw FITS pair 저장. 제어 시퀀스의 원형은 [`../ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py`](../ics_archon/README_labtest.md) (**v1.1.1**, 2026-08-23), **저장 규격은 [`../raw_fits_spec/`](../raw_fits_spec/README.md)** — 저장/통보 단위가 갈라지는 지점(D-009/D-010)은 DevNote 9.1 의 상기 블록에 정리돼 있다.
+2. ~~**`ics_archon` 구현**~~ — **v0.0 완료 (2026-08-23, DevNote 11.23).** 실기 프로그램은 [`../ics_archon/`](../ics_archon/README.md) 에 있고 이 폴더를 사본 없이 가져다 쓴다. 남은 일(실기 왕복 검증 · HK 3계통 · 가이드 계통)은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) 의 검토사항 표.
 3. ~~`STOP`/`ABORT` 구현~~ · ~~`\KMTS`·`\KMTG` 소스 정독~~ — **둘 다 2026-08-05 완료.** 아래 "IC·ICG 계통 확정" 참조. ~~자기 발신 에코 처리~~ — **2026-08-08 완료**(위 "XIS 노드 등록" 참조).
 4. **`icg` 착수** — 가이드 계통. OBSAgent 가 가이드 발신을 무시하므로 하위호환 부담이 없어 자유롭다. 공통 로직(IMPv2 노드, 텔레메트리 중계, 파일명 fail-safe)은 이 폴더에서 뽑아 쓸 수 있다.
 5. **DevNote 13장 백로그** — 구조화 로깅, 상태 조회 API 등.

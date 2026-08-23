@@ -25,7 +25,8 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 | [`mef_fits_spec/`](mef_fits_spec/) | MEF FITS 데이터 산출물 규격 (keyword 정의 + ICD) | [README](mef_fits_spec/README.md) |
 | [`raw_fits_spec/`](raw_fits_spec/) | Archon raw FITS pair (MK/NT) 규격 — L0 MEF의 **입력** 데이터 정의 | [README](raw_fits_spec/README.md) |
 | [`cam_char/`](cam_char/) | 카메라 특성 측정 — 실험실 계획, 분석 코드, Archon 제어 스크립트, 산출물 스키마 | [README](cam_char/README.md) |
-| [`ics_sim/`](ics_sim/) | **신규 카메라 통합제어(ICS) 프로그램** — 레거시 호환 시뮬레이터. 다음 단계에서 하드웨어 계층을 붙여 실제 CCD 구동으로 전환 | [README](ics_sim/README.md) · [DevNote](ics_sim/DevNote.md) |
+| [`ics_sim/`](ics_sim/) | **신규 카메라 통합제어(ICS) 프로그램** — 레거시 호환 시뮬레이터. 시퀀서·명령 처리부·메시지 규약·헤더 층의 정본 | [README](ics_sim/README.md) · [DevNote](ics_sim/DevNote.md) |
+| [`ics_archon/`](ics_archon/) | **실기 ICS** — `ics_sim` + STA Archon 컨트롤러 제어 (`v0.0.0`, 실기 왕복 미검증). 실험실 취득 스크립트도 여기 있다 | [README](ics_archon/README.md) · [인수인계](ics_archon/SMC_CLAUDE.md) |
 | [`ics_legacy/`](ics_legacy/) · [`OBSAgent/`](OBSAgent/) · [`TCSAgent/`](TCSAgent/) | 레거시 관측 소프트웨어 분석 자료와 기술 보고서 (ICS·XIS / 관측자 콘솔 / 망원경 제어) | [ics_legacy](ics_legacy/SMC_CLAUDE.md) |
 | [`project_management/`](project_management/) | 일정·governance·사이트·물류·형상관리 등 프로젝트 관리 보드 | [README](project_management/README.md) |
 | `KMTNet_CEU_PMP_Final_v1.0.docx` | 프로젝트 관리 계획서(PMP) 원본 | — |

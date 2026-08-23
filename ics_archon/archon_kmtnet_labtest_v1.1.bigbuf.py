@@ -39,9 +39,15 @@ UNIT_IP = '13' # AC13   #  <---- Set this
 UNIT_IPADDR = '10.0.0.'+UNIT_IP
 UNIT_TIMEOUT = 1
 
-DATA_STORAGE_C = 'C:/DATA'  # C drive (OS)
-DATA_STORAGE_A = 'H:/DATA'  # SSDA (USB)
-DATA_STORAGE_B = 'L:/DATA'  # SSDB (USB)
+## 저장소 -- **리눅스 경로다** (운영자 확정 2026-08-23: 전 계통 리눅스 구동).
+## 구판은 윈도우 드라이브 문자였다 -- C:/DATA · H:/DATA(SSDA) · L:/DATA(SSDB).
+## 리눅스에서는 그 문자가 경로로 성립하지 않아 `createFolder` 가 cwd 아래
+## 'C:' 라는 이름의 디렉터리를 만들어 버린다 (오류도 안 난다).
+##   <---- Set this: 실제 마운트 지점으로.  USB SSD 는 보통 /media/<user>/<label>
+##   또는 /mnt/<label> 이고, `lsblk -o NAME,LABEL,MOUNTPOINT` 로 확인한다.
+DATA_STORAGE_C = '/data'            # 내장 (OS 디스크)
+DATA_STORAGE_A = '/mnt/ssda/DATA'   # SSDA (USB)
+DATA_STORAGE_B = '/mnt/ssdb/DATA'   # SSDB (USB)
 
 #--------------------------------
 # raw spec v1.3 identity setup  (v1.1 신설)
@@ -66,8 +72,8 @@ OBSERVER_NAME = 'HELab'         # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
-SCRIPT_VERSION = '1.1.1'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
-SCRIPT_BUILD = '2026-08-23T01:10Z'  # 소스를 고치면 같이 올린다
+SCRIPT_VERSION = '1.1.2'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
+SCRIPT_BUILD = '2026-08-23T12:00Z'  # 소스를 고치면 같이 올린다
 
 ## 위 손편집 항목(`<---- Set this`)을 **기동 시점에 한 번** 검증한다.
 ##
@@ -1448,7 +1454,15 @@ def createFolder(directory):
 ##   using a active phone number
 ##   since 'HELab Alerts' messaging service is not working
 
-from twilio.rest import Client 
+## ⚠️ **쓰지 않는 import 였고 리눅스에서 기동을 막았다** (2026-08-23).
+## 아래 함수 본문은 통째로 주석(docstring) 처리돼 있어 `Client` 를 쓰는 코드가
+## 없는데, import 는 실행되므로 twilio 가 없는 기계에서는 **스크립트가 아예
+## 시작하지 못했다**(`ModuleNotFoundError`).  SMS 를 되살릴 때 그대로 쓰도록
+## 형태는 남기고 없어도 넘어가게만 한다.
+try:
+    from twilio.rest import Client
+except ImportError:
+    Client = None       # SMS 를 되살릴 때 twilio 를 설치한다
 
 def SMS_TIO_HELabAlerts(msg):
     '''
