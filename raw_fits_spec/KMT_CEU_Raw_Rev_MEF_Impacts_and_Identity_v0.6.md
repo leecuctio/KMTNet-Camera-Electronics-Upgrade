@@ -7,14 +7,14 @@
 > **v0.5 에서 바뀐 것 — 두 문서를 하나로 합쳤다 (운영자 지시 2026-08-22).**
 >
 > 1. **통합**: `KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md`(→ Part 1)와 `KMT_CEU_Raw_Numbering_and_Identity_v0.2.md`(→ Part 2)를 이 문서로 합쳤다. 두 전신은 `archive/` 로 옮긴다. Part 를 가른 이유: **Part 1 은 LEECU 가 실행할 항목**이고 **Part 2 는 raw 쪽 규격 결정(+일부 MEF 파급)** 이라 주인이 다르다.
-> 2. **키워드맵 잔여 안건 이관**: `KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` 5장에만 남아 있던 미결 4건(`NCTRL` 정의 · `CTRLID` 개칭 · `SATURAT`/`SATLEVEL` 통일 · `DATASRC`/설정 포인터의 MEF 목적지)을 Part 1 §6 으로 옮겼다 — 이로써 키워드맵의 살아있는 내용은 전부 이 문서와 Header_and_Refs 로 흡수됐다.
+> 2. **구 검토 문서의 잔여 안건 이관**: 미결 4건(`NCTRL` 정의 · `CTRLID` 개칭 · `SATURAT`/`SATLEVEL` 통일 · `DATASRC`/설정 포인터의 MEF 목적지)을 Part 1 §6 으로 옮겼다 — 이로써 살아있는 내용은 전부 이 문서와 Header_and_Refs 로 흡수됐다.
 > 3. **Header_and_Refs v1.11 반영**: 돔 Source 변경(`AUX relay` → `TCS relay or REDIS`, `DALTERR`/`DAZERR` = `ICS calculation`) · `LEDFLASH` 단위 변경([seconds] → [milliseconds] 정수) · `ICSBUILD` 형식 변경(프로그램명 제거) — 셋 다 converter 동작에는 영향이 없어 **기록 행**으로 남겼다(§1 끝).
 
 > **v0.4 에서 바뀐 것 — 운영자 3차 개정(Header_and_Refs v1.9) 반영**: ① **`READMODE` 값 충돌 종결** — raw 쪽은 **`RDMODE` 로 개명 도입**(독출 속도 모드 선언), MEF `READMODE`(`'64AMP'`)는 그대로. ② **raw 신설 카드 `CAMVER` · `RDMODE` · `C1_`/`C2_` 계열** — converter 미독, 도입 시 pass-through 후보로 §2 대응표에 추가. ③ **C-후보 신설** — MEF `VOLTINFO`/`TELEMETRY` 를 raw `Cn_VOLT`·`Cn_CURR`·`Cn_TEMP` 에서 채우는 안. ④ **raw 미도입 확정 반영** — `CTRLTAG`·`PAIRFILE`·`OSCNPATT`·`RDDIRT`/`RDDIRB`·`MIDOSC*`·전압 색인 계열: C-5/C-12 문구를 "규격 조항 + 표본 검증" 기반으로 조정.
 >
 > **v0.3**: HK 재구성 확정(`WALLBOAR`→`WALLBRD`, 출처 3계통) · C-신설 2건(MEF `UT` 조립 원천 · `DARKTIME` 공급원). **v0.2**: `OBSERVAT` 값 재정의 C-항목(이후 철회로 종결). **Part 2 의 전신 이력** — v0.2: `CTRLTAG`·`PAIRFILE` 미도입 확정 반영(삼총사 문구에서 `CTRLTAG` 제거) · v0.1: 충돌 번호 증가 설계 최초 기록.
 
-> `mef_converter/` 는 읽기 전용(LEECU 소관)이므로 Part 1 은 **변경 요청 목록**이지 변경 자체가 아니다. raw 쪽 근거는 `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md`(확인 요망 11건 전량 종결)와 Part 2(**D-016 등재 완료**), 검토 세션 기록([`SMC_CLAUDE.md`](SMC_CLAUDE.md))이다. raw spec v1.3 발행에 따라 v0.6 으로 판을 올렸다.
+> `mef_converter/` 는 읽기 전용(LEECU 소관)이므로 Part 1 은 **변경 요청 목록**이지 변경 자체가 아니다. raw 쪽 근거는 `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md`(확인 요망 11건 전량 종결 + 판정 준거 0장)와 Part 2(**D-016 등재 완료**), 검토 세션 기록([`SMC_CLAUDE.md`](SMC_CLAUDE.md))이다. raw spec v1.3 발행에 따라 v0.6 으로 판을 올렸다.
 
 ---
 
@@ -94,16 +94,16 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 | OI-9 (배선 실측) | `CHMAP_*` 값의 실측 확정 + Archon module/channel 층(`XTALKCAL=True` 전제). CCD 출력 채널 라벨과 Archon tap의 대응은 STA 문서/Tom O'Brien 협의 |
 | ~~(신규 제안)~~ | ~~X overscan 패턴 4:4 vs 5:3 검증~~ — **종결(2026-08-22)**: 실제 획득 자료 육안 확인으로 `RRRRLLLL`(4:4) 확정 (raw spec 4.1절) |
 
-## 6. 키워드맵 v0.7 에서 이관한 미결 안건 (v0.5 신설)
+## 6. MEF/converter 쪽 미결 안건 (v0.5 신설 — 구 검토 문서에서 이관)
 
-`KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` 5장(팀원 간 검토 요청)의 항목 중 Header_and_Refs 사이클이 흡수하지 않은 **MEF/converter 쪽 안건 4건**이다. 이 이관으로 키워드맵의 살아있는 내용은 전부 흡수됐고, 키워드맵은 `archive/` 로 이동했다(운영자 재가 2026-08-22).
+구 검토 문서(raw ↔ MEF 키워드 대응표)의 팀원 검토 요청 항목 중 Header_and_Refs 사이클이 흡수하지 않은 **MEF/converter 쪽 안건 4건**이다. 이 이관으로 그 문서의 살아있는 내용은 전부 흡수됐고 문서 자체는 폐기됐다(운영자 재가 2026-08-22) — 판정 준거는 Header_and_Refs **0장**으로 편입됐다.
 
 1. **`NCTRL` 정의** — converter 가 `2` 를 하드코딩한다(`v2_1.py:410`). **과학 2대만 센 값**인데 Archon 은 3대(과학 2 + 가이드 1)다. `NCTRL` 이 "과학" 인지 "전체" 인지 ICD 침묵 구간이라 정의가 필요하다.
 2. **`CTRLID` 개칭 검토** — MEF amp `CTRLID`/`TELEMETRY.CTRLID` 는 색인 정수(`1`/`2`)인데 raw/MEF PRIMARY 의 `CTRL1ID`(식별자 **문자열** `'KMTA-SCI-101'`)와 이름이 너무 닮았다. `CTRLIDX` 등 개칭 검토.
 3. **`SATURAT` ↔ `SATLEVEL` 통일** — converter **내부에서** 이름이 갈린다: amp 헤더는 `SATURAT`, `AMPINFO` 컬럼은 `SATLEVEL`. 어느 쪽으로 통일할지.
 4. **`DATASRC` · 설정 포인터의 MEF 목적지** — ① `DATASRC` 는 **시뮬 프레임이 실측으로 오인되는 것을 막는 유일한 카드**인데 L0 MEF 에 자리가 없다 — pass-through 신설 여부. ② 설정 provenance 포인터는 구 `ACFFILE` 이 폐지되고 **`CTRL1CFG`/`CTRL2CFG`** 로 대체됐는데(v1.9) 역시 MEF 목적지가 없다 — MEF 에도 자리를 만들지.
 
-> 키워드맵의 나머지(카드 전수 대응표 · 준수 우선순위 · MEF 인벤토리 236장 분석)는 **배경 자료**로서 archive 의 v0.7 원본을 참조한다 — 재작성판 V1 의 amp 전수 표·기계 사본 작성 시 원자료가 된다.
+> 나머지도 흡수 완료다 — **판정 준거·구간 산정**은 Header_and_Refs **0장**, **카드 전수 대응표**는 같은 문서 각 장의 `Use in MEF` 열(구 `MEF 목적지`), **MEF 표 HDU 컬럼**은 원래부터 MEF 규격(ICD v4.1 §8 · Main_Keywords) 소관이다. 재작성판 V1 의 amp 전수 표·기계 사본은 `__reference/Detector_Ch_to_AmpID_Map` 계열이 원자료다.
 
 ---
 
@@ -136,12 +136,11 @@ converter(v2.2.0)는 raw `UNIQNAME` 을 읽어 MEF `UNIQNAME` 으로 옮긴다(`
 
 | 문서 | 위치 |
 | --- | --- |
-| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.13.md) |
+| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md) |
 | 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |
 | **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.4.md`](KMT_CEU_Raw_FITS_Specification_v1.4.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
-| 키워드맵 (배경 자료, 이관 완료) | `archive/KMT_CEU_Raw_to_MEF_Keyword_Map_v0.7_REVIEW.md` (2026-08-22 이동) |
 | 전신 문서 | `archive/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md` · `archive/KMT_CEU_Raw_Numbering_and_Identity_v0.2.md` |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |
 | 검토 진행 상태 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) |
