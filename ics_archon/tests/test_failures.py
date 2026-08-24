@@ -692,6 +692,6 @@ def test_relative_data_dir_is_flagged_for_archon(tmp_path):  # noqa: ANN001
     notes = acfg_mod.validate(acfg, tuple(cfg.node.ccds), cfg)
     assert any('data_dir' in n and '상대경로' in n for n in notes), notes
 
-    cfg.paths.data_dir = os.path.expanduser('~/AICS/data')
+    cfg.paths.data_dir = os.path.expanduser('~/AIC/data')
     assert not any('상대경로' in n
                    for n in acfg_mod.validate(acfg, tuple(cfg.node.ccds), cfg))

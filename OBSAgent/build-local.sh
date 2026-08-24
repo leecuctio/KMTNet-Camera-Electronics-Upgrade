@@ -11,14 +11,14 @@
 # 근거는 obsagent_report.md 12절.
 #
 # 사용법:
-#   ./build-local.sh                       # ~/AICS 아래에 빌드 + 설정 생성
+#   ./build-local.sh                       # ~/AIC 아래에 빌드 + 설정 생성
 #   ./build-local.sh --site kmtnc
-#   ./build-local.sh --root /opt/aics --no-config
+#   ./build-local.sh --root /opt/aic --no-config
 #
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$HOME/AICS"
+ROOT="$HOME/AIC"
 SITE="kmtna"          # kmtna=SSO  kmtnc=CTIO  kmtns=SAAO
 MAKE_CONFIG=1
 
@@ -128,6 +128,36 @@ sed -i 's|rl_refresh_line(0,0);|if(rl_prompt) rl_refresh_line(0,0);|g' main.c co
 #      원본 줄이 주석으로 남지 않는다)
 sed -i "s|^\( *\)#define \([A-Z_]*\)\( *\)\"/data/Logs/\([^\"]*\)\"\(.*\)$|//&\n\1#define \2\3\"$LOGS/\4\"|" obstool.h
 
+# (d-2) 위 치환은 /data/Logs/* 를 **전부** $LOGS 아래로 옮긴다.  그중 둘은
+#       성질이 달라 뒤에서 다시 손본다 (운영자 요청 2026-08-24).
+#
+#   TEMP_*LOGFILE 3종 -- main.c:190~192 가 LoadConfig(214)보다 **먼저** 연다.
+#     ini 로는 원리상 못 고치므로 설치 루트에 두면 루트를 옮길 때마다 재빌드가
+#     필요하다.  /tmp 로 고정하면 그 의존이 사라진다.  이 파일들은 수 초만
+#     살고 ini 의 LOGFILE 자리로 mv 되므로(main.c:252/285) **최종 로그 위치는
+#     여전히 ini 가 정한다.**
+sed -i "s|^\( *\)#define \(TEMP_[A-Z]*LOGFILE\)\( *\)\"[^\"]*/\([^/\"]*\)\"|\1#define \2\3\"/tmp/\4\"|" obstool.h
+grep -q '#define TEMP_EVENTLOGFILE  *"/tmp/' obstool.h \
+  || die "TEMP_*LOGFILE 을 /tmp 로 돌리는 패치가 먹지 않았다 (obstool.h 형식 변경?)"
+
+#   DEFAULT_OBSSTAT -- ObsStatus.txt 경로.  ini 키가 **아예 없어서** 컴파일
+#     상수로만 정해졌다.  ini 키 OBSSTATFILE 을 신설하고 기본값은 종전 상수로
+#     둔다 -- ini 에 키가 없으면 거동이 지금과 완전히 같다.
+sed -i 's|^extern char cmsg\[STRLEN_CMSG\];\(.*\)$|&\nextern char obsStatFile[256];  // ObsStatus.txt path (ini: OBSSTATFILE)|' obstool.h
+sed -i 's|^char cmsg\[STRLEN_CMSG\];\(.*\)$|char cmsg[STRLEN_CMSG];\1\nchar obsStatFile[256] = DEFAULT_OBSSTAT;  // overridden by ini OBSSTATFILE|' main.c
+sed -i 's|WriteObsStatus(DEFAULT_OBSSTAT)|WriteObsStatus(obsStatFile)|g' main.c
+sed -i '/else if(strcasecmp(keyword, "LOGFILE")==0)/i\
+      else if(strcasecmp(keyword, "OBSSTATFILE")==0) {\
+        GetArg(inbuf, 2, argbuf);\
+        strcpy(obsStatFile, argbuf);\
+      }\
+' loadconfig.c
+grep -q 'extern char obsStatFile' obstool.h \
+  && grep -q 'char obsStatFile\[256\] = DEFAULT_OBSSTAT' main.c \
+  && grep -q 'WriteObsStatus(obsStatFile)' main.c \
+  && grep -q '"OBSSTATFILE"' loadconfig.c \
+  || die "OBSSTATFILE ini 키 패치가 먹지 않았다 (소스 형식 변경?)"
+
 # (d) Makefile -- 컴파일러 표준, ISISLIB, 그리고 hiredis 를 .a 경로로 직접 링크
 sed -i -e 's|^ *CC *=.*| CC          = /usr/bin/g++ -std=gnu++98|' \
        -e "s|^ *ISISLIB *=.*| ISISLIB    = $ISISDIR|" \
@@ -154,6 +184,10 @@ if [ "$MAKE_CONFIG" = 1 ]; then
     sed -e 's|^ISISHost .*|ISISHost  127.0.0.1|' \
         -e "s|^LOGFILE .*|LOGFILE  $LOGS/OBS/obs|" \
         "$SRC/KMTObs/ini/obstool.$SITE.ini" > "$CONFIG/obstool.ini"
+    # ObsStatus.txt -- 종전에는 컴파일 상수뿐이었다 (위 d-2).  ini 로 적어 두면
+    # 설치 자리를 옮길 때 이 줄만 고치면 되고 재빌드가 필요 없다.
+    grep -qi '^OBSSTATFILE' "$CONFIG/obstool.ini" \
+      || printf 'OBSSTATFILE  %s\n' "$LOGS/ObsStatus.txt" >> "$CONFIG/obstool.ini"
     echo "   생성됨"
   fi
 fi

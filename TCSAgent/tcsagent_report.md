@@ -284,11 +284,11 @@ BLG02  17:54:52.760  -29:01:25.10  1
 산출물과 배치 — XIS 와 같은 뿌리에 모아 두면 판정 근거를 한자리에서 회수할 수 있다:
 
 ```
-~/AICS/bin/isis                     XIS v2.9.1
-~/AICS/Config/{isis,ics_sim,pctcs,obstool}.ini
-~/AICS/Logs/{TC,OBS}/               에이전트 로그
-~/AICS/build/ISISclient/            재빌드된 libisis.a (OBSAgent 와 공용)
-~/AICS/build/TCSAgent/pctcs         v1.7.2
+~/AIC/bin/isis                     XIS v2.9.1
+~/AIC/Config/{isis,ics_sim,pctcs,obstool}.ini
+~/AIC/Logs/{TC,OBS}/               에이전트 로그
+~/AIC/build/ISISclient/            재빌드된 libisis.a (OBSAgent 와 공용)
+~/AIC/build/TCSAgent/pctcs         v1.7.2
 ```
 
 ### 12.2 설정 — 사이트 ini 에서 바꾸는 네 줄
@@ -298,7 +298,7 @@ BLG02  17:54:52.760  -29:01:25.10  1
 | `ISISHost` | `127.0.0.1` | XIS 가 같은 머신 |
 | **`TCS_Host`** | **`127.0.0.1`** | ⚠️ 아래 |
 | **`AUX_Host`** | **`127.0.0.1`** | ⚠️ 아래 |
-| `LOGFILE` | `~/AICS/Logs/TC/tc` | `/data` 는 권한 없음. 디렉토리는 미리 만들어야 한다 |
+| `LOGFILE` | `~/AIC/Logs/TC/tc` | `/data` 는 권한 없음. 디렉토리는 미리 만들어야 한다 |
 | `CATFILE` | 작업 사본의 `catalog/pctcs.cat` | 없어도 기동은 되고 `tmobject` 만 못 쓴다 |
 
 > ⚠️ **`TCS_Host`/`AUX_Host` 를 운영 값으로 두고 시험하지 말 것.** 사이트 기본값 `192.168.15.60`(SSO)은 실제 필터·셔터·포커서·돔셔터를 제어하는 **AUX 컴퓨터와 Telcom** 이고(§2), TCS Agent 는 기동 즉시 접속해 폴링을 시작한다. `127.0.0.1` 이면 즉시 연결 거부 → 링크 `DOWN` 으로 깔끔히 떨어진다(도달 불가 주소는 오히려 connect 가 타임아웃까지 매달린다).

@@ -44,11 +44,11 @@
 
 ## 재빌드와 실행 (2026-08-11 실측)
 
-**[`build-local.sh`](build-local.sh)** 한 줄이면 된다. 저장소를 건드리지 않고 `~/AICS` 아래 작업 사본에서 빌드하고 설정까지 만든다.
+**[`build-local.sh`](build-local.sh)** 한 줄이면 된다. 저장소를 건드리지 않고 `~/AIC` 아래 작업 사본에서 빌드하고 설정까지 만든다.
 
 ```bash
 ./build-local.sh --site kmtna
-~/AICS/build/OBSAgent/KMTObs/obstool ~/AICS/Config/obstool.ini
+~/AIC/build/OBSAgent/KMTObs/obstool ~/AIC/Config/obstool.ini
 ```
 
 Ubuntu 24.04 / g++ 13.3.0 에서 빌드해 **신규 `ics`(ics_sim)를 실제 XIS 허브 너머로 몰았다** — `status`/`kstatus` 왕복, DARK 노출 사이클 전 구간이 경고 없이 통과했다. 상세는 [obsagent_report.md](obsagent_report.md) **12절**.
@@ -59,7 +59,32 @@ Ubuntu 24.04 / g++ 13.3.0 에서 빌드해 **신규 `ics`(ics_sim)를 실제 XIS
 2. **`libcurl4-openssl-dev` 추가 필요** (v1.0.0 부터 `-lcurl`). TCSAgent 에는 없다.
 3. **하드코딩 경로 다섯 곳** (`obstool.h:158-162`) — 로그 넷과 `ObsStatus.txt`. ini 로는 못 고친다.
 
-> `DEFAULT_OBSSTAT`(`ObsStatus.txt`)을 쓰기 가능한 경로로 옮겨 두면 **`CamStatus`/`ExpStatus`/`FitsSaved` 를 5초마다 실시간으로 볼 수 있어** 연동 시험에서 아주 유용하다 — `watch -n 1 cat ~/AICS/Logs/ObsStatus.txt`.
+### 설치 자리를 옮겨도 재빌드는 필요 없다 (2026-08-24)
+
+로그 경로가 `obstool.h` 에 `#define` 으로 박혀 있고, `build-local.sh` 가
+**일반 정규식 하나로 `/data/Logs/*` 를 전부** `$LOGS` 아래로 옮긴다(이름별
+sed 가 아니다 — `grep OBSSTAT build-local.sh` 로는 안 보이니 주의).  그중 셋은
+성질이 달라 2026-08-24 에 따로 손봤다.
+
+| 상수 | 언제 쓰이나 | 처방 |
+|---|---|---|
+| `DEFAULT_LOGFILE` | ini 의 `LOGFILE` 이 덮어쓰는 **기본값** | 그대로 (`$LOGS`) |
+| `TEMP_EVENTLOGFILE`·`TEMP_DEBUGLOGFILE`·`TEMP_SCROBSLOGFILE` | `main.c:190~192` 가 **`LoadConfig`(214)보다 먼저** 연다 | **`/tmp` 고정** |
+| `DEFAULT_OBSSTAT` | `WriteObsStatus()` 가 직접 쓴다.  **ini 키가 없었다** | **ini 키 `OBSSTATFILE` 신설** |
+
+- `TEMP_*` 는 수 초만 살고 ini 의 `LOGFILE` 자리로 `mv` 되므로(`main.c:252`·
+  `285`) **최종 로그 위치는 여전히 ini 가 정한다.**
+- `OBSSTATFILE` 은 **없으면 종전 컴파일 상수를 쓴다** — ini 에 키가 없는 기존
+  설치는 거동이 하나도 안 바뀐다.  새로 만드는 ini 에는 `build-local.sh` 가
+  `$LOGS/ObsStatus.txt` 로 적어 준다.
+- 패치가 안 먹으면 `build-local.sh` 가 `die` 로 멈춘다 — sed 는 안 맞아도
+  조용히 지나가므로 `grep -q` 검증을 붙였다.
+
+⚠️ **`ObsStatus.txt` 쓰기 실패는 조용하지 않다** — `main.c:790` 이 5초마다
+`Warning: Failed to write the observation status file` 을 청록색으로 찍는다.
+그 경고가 안 보인다면 쓰기는 되고 있는 것이다.
+
+> `DEFAULT_OBSSTAT`(`ObsStatus.txt`)을 쓰기 가능한 경로로 옮겨 두면 **`CamStatus`/`ExpStatus`/`FitsSaved` 를 5초마다 실시간으로 볼 수 있어** 연동 시험에서 아주 유용하다 — `watch -n 1 cat ~/AIC/Logs/ObsStatus.txt`.
 >
 > ⚠️ 포트 **6650** 은 `ics_sim/tools/xis_probe.py` 도 쓴다. `obstool` 기동 전에 프로브를 끌 것.
 
@@ -87,7 +112,7 @@ Ubuntu 24.04 / g++ 13.3.0 에서 빌드해 **신규 `ics`(ics_sim)를 실제 XIS
 | **3** | **`.osc` 스크립트 관측** | 명령마다 응답을 판정하는 경로(§6.1 e). `osc/` 의 실사용 스크립트를 회귀 자산으로 쓸 수 있다 |
 | **4** | **결함 주입 6종** (`ics_sim --inject`) | **이 프로그램의 경보·`opause` 경로를 확인하는 유일한 수단.** 정상 경로만 통과시킨 지금은 `acq_short`(획득완료 3회 → `opause`) · `wrote_drop`(`FitsSaved` 안 섬) 같은 분기가 실제로 도는지 모른다 |
 
-**상태를 실시간으로 보려면** `watch -n 1 cat ~/AICS/Logs/ObsStatus.txt` (§7 의 그 파일, 5초 주기 갱신).
+**상태를 실시간으로 보려면** `watch -n 1 cat ~/AIC/Logs/ObsStatus.txt` (§7 의 그 파일, 5초 주기 갱신).
 
 벤치 구성은 [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) "이어서 시작하는 자리", 빌드는 [`build-local.sh`](build-local.sh).
 

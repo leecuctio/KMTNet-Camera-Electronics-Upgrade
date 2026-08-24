@@ -395,14 +395,14 @@ OBSAgent.latest/
 2. **`libcurl` 이 추가로 필요하다.**
 3. **하드코딩 경로가 다섯 곳**(`obstool.h:158-162`) — `DEFAULT_LOGFILE` + 임시 로그 셋(로그 계통이 `DOLOG`/`DBGLOG`/`OBSLOG` 셋이라서) + `DEFAULT_OBSSTAT`. ini 로는 고칠 수 없다.
 
-> **`DEFAULT_OBSSTAT` 은 특히 챙길 값이다.** §7 의 `ObsStatus.txt` — `CamStatus`/`FitsSaved`/`ExpStatus`/`ExpNum` 을 5초마다 갱신하는 그 파일이라, 연동 시험 중 **상태 머신을 실시간으로 들여다보는 창**이 된다: `watch -n 1 cat ~/AICS/Logs/ObsStatus.txt`
+> **`DEFAULT_OBSSTAT` 은 특히 챙길 값이다.** §7 의 `ObsStatus.txt` — `CamStatus`/`FitsSaved`/`ExpStatus`/`ExpNum` 을 5초마다 갱신하는 그 파일이라, 연동 시험 중 **상태 머신을 실시간으로 들여다보는 창**이 된다: `watch -n 1 cat ~/AIC/Logs/ObsStatus.txt`
 
 ### 12.2 설정 — 사이트 ini 에서 바꾸는 두 줄
 
 | 키 | 벤치 값 |
 |---|---|
 | `ISISHost` | `127.0.0.1` |
-| `LOGFILE` | `~/AICS/Logs/OBS/obs` |
+| `LOGFILE` | `~/AIC/Logs/OBS/obs` |
 
 TCSAgent 와 달리 **격리해야 할 하드웨어 주소가 ini 에 없다** — 돔 릴레이(HTTP)와 Redis 는 코드 기본값을 쓰고, 접속에 3회 연속 실패하면 해당 모니터링을 스스로 끈다(§8.1). 그대로 두면 된다.
 

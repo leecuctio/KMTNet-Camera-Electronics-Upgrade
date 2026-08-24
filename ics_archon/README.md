@@ -104,7 +104,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 ```
 /home/<사용자>/
 ├── CEU/                          개발용 클론 — 여기서 고치고 커밋한다
-└── AICS/                         운영 자리 (레거시 dts 처럼 역할 기준)
+└── AIC/                         운영 자리 (레거시 dts 처럼 역할 기준)
     ├── src/ics_archon/           ★ 배포본 — 이 폴더 하나면 된다
     │   ├── ics_archon/           패키지 (_vendor/ics_sim 포함)
     │   ├── tools/  tests/
@@ -167,14 +167,14 @@ python3 tools/sync_vendor.py --check    # 확인만 (CI)
 ### 2. 자리 만들기
 
 ```bash
-mkdir -p ~/AICS/{src,bin,Config/acf,Logs,data}
+mkdir -p ~/AIC/{src,bin,Config/acf,Logs,data}
 ```
 
-`~/AICS/data` 를 다른 디스크로 보내려면 실제 디렉터리 대신 링크를 둔다
+`~/AIC/data` 를 다른 디스크로 보내려면 실제 디렉터리 대신 링크를 둔다
 (대상이 **먼저** 있어야 한다 — 끊긴 링크면 거부된다):
 
 ```bash
-mkdir -p /mnt/bigdisk/data && ln -s /mnt/bigdisk/data ~/AICS/data
+mkdir -p /mnt/bigdisk/data && ln -s /mnt/bigdisk/data ~/AIC/data
 ```
 
 ### 3. 배포본 놓기
@@ -185,17 +185,17 @@ mkdir -p /mnt/bigdisk/data && ln -s /mnt/bigdisk/data ~/AICS/data
 cd ~/CEU && git checkout ics_archon-v0.1.0
 python3 ics_archon/tools/sync_vendor.py --check     # 내장본이 최신인지
 rsync -a --delete --exclude='__pycache__' --exclude='__ref_archon_control' \
-      ics_archon/  ~/AICS/src/ics_archon/
+      ics_archon/  ~/AIC/src/ics_archon/
 ```
 
 **방법 B — 배포용 클론** (되짚기가 쉽다. `git describe` 로 "무엇이 돌고 있나"):
 
 ```bash
-git clone <저장소> ~/AICS/src/CEU
-cd ~/AICS/src/CEU && git checkout ics_archon-v0.1.0
+git clone <저장소> ~/AIC/src/CEU
+cd ~/AIC/src/CEU && git checkout ics_archon-v0.1.0
 git describe --tags
 ```
-→ 이 경우 실행 경로는 `~/AICS/src/CEU/ics_archon` 이고, 형제 `ics_sim` 이 함께
+→ 이 경우 실행 경로는 `~/AIC/src/CEU/ics_archon` 이고, 형제 `ics_sim` 이 함께
 있으므로 **탐색 순서 2번**(원천)이 쓰인다.
 
 > **개발 클론(`~/CEU`)에서 직접 돌리지 않는다.** 야간에 `git pull` 이나 브랜치
@@ -204,8 +204,8 @@ git describe --tags
 ### 4. 설정
 
 ```bash
-cp ~/AICS/src/ics_archon/ics_archon.ini ~/AICS/Config/ics_archon.ini
-cp <어딘가>/KMTNet_Sci_*.acf            ~/AICS/Config/acf/
+cp ~/AIC/src/ics_archon/ics_archon.ini ~/AIC/Config/ics_archon.ini
+cp <어딘가>/KMTNet_Sci_*.acf            ~/AIC/Config/acf/
 ```
 
 고칠 것 — **`[archon]` 이 컨트롤러 배선이다**:
@@ -218,19 +218,19 @@ ic_ids       = M.IC, K.IC           # 유닛 한 대만 돌릴 때 (2대면 4개
 cb_ids       = M.CB, K.CB
 
 [paths]
-data_dir     = ~/AICS/data
+data_dir     = ~/AIC/data
 expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 
 [archon]
 ctrl_mk_host = 10.0.0.13
-acf_mk       = ~/AICS/Config/acf/KMTNet_Sci_fast_med_U13.acf
+acf_mk       = ~/AIC/Config/acf/KMTNet_Sci_fast_med_U13.acf
 
 [controllers]
 ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
 ctrl1_sn     = STA-0288
 
 [logging]
-file         = ~/AICS/Logs/ics_archon.log
+file         = ~/AIC/Logs/ics_archon.log
 ```
 
 > **`~` 는 펼쳐진다** (`data_dir` · `expnum_file` · `logging file` · `acf_*`).
@@ -243,33 +243,33 @@ file         = ~/AICS/Logs/ics_archon.log
 ### 5. 돌리기
 
 ```bash
-cd ~/AICS/src/ics_archon
-python3 -m ics_archon -c ~/AICS/Config/ics_archon.ini
+cd ~/AIC/src/ics_archon
+python3 -m ics_archon -c ~/AIC/Config/ics_archon.ini
 ```
 
 **첫 실행은 본편이 아니라 `probe_archon` 1단계부터** — 아래 "실기 첫 실행 절차".
 
 ```bash
-python3 tools/probe_archon.py -c ~/AICS/Config/ics_archon.ini --host 10.0.0.13
+python3 tools/probe_archon.py -c ~/AIC/Config/ics_archon.ini --host 10.0.0.13
 ```
 
-### 6. 실행 래퍼 (`~/AICS/bin/ics_archon`)
+### 6. 실행 래퍼 (`~/AIC/bin/ics_archon`)
 
 `cd` 를 사람이 기억하지 않게 한다. **작업 디렉터리를 못박는 것이 요점**이다 —
 상대경로 설정과 `_simpath` 탐색이 둘 다 여기에 걸린다.
 
 ```sh
 #!/bin/sh
-# ~/AICS/bin/ics_archon -- 실기 ICS 실행 래퍼
+# ~/AIC/bin/ics_archon -- 실기 ICS 실행 래퍼
 set -eu
-AICS="$HOME/AICS"
-cd "$AICS/src/ics_archon"
-exec python3 -m ics_archon -c "$AICS/Config/ics_archon.ini" "$@"
+AIC="$HOME/AIC"
+cd "$AIC/src/ics_archon"
+exec python3 -m ics_archon -c "$AIC/Config/ics_archon.ini" "$@"
 ```
 
 ```bash
-chmod +x ~/AICS/bin/ics_archon
-~/AICS/bin/ics_archon --backend sim      # 컨트롤러를 안 만지고 메시지 층만
+chmod +x ~/AIC/bin/ics_archon
+~/AIC/bin/ics_archon --backend sim      # 컨트롤러를 안 만지고 메시지 층만
 ```
 
 ### 7. 서비스로 돌릴 때
@@ -278,8 +278,8 @@ chmod +x ~/AICS/bin/ics_archon
 
 ```ini
 [Service]
-WorkingDirectory=/home/<사용자>/AICS/src/ics_archon
-ExecStart=/home/<사용자>/AICS/bin/ics_archon
+WorkingDirectory=/home/<사용자>/AIC/src/ics_archon
+ExecStart=/home/<사용자>/AIC/bin/ics_archon
 Restart=on-failure
 ```
 
@@ -288,14 +288,14 @@ Restart=on-failure
 **ini 를 나누면 노출 번호도 자동으로 나뉜다** (`expnum` 이 ini 이름을 따른다):
 
 ```
-~/AICS/Config/ics_archon.ini      →  ics_archon.expnum
-~/AICS/Config/ics_archon_lab.ini  →  ics_archon_lab.expnum
+~/AIC/Config/ics_archon.ini      →  ics_archon.expnum
+~/AIC/Config/ics_archon_lab.ini  →  ics_archon_lab.expnum
 ```
 
 ### 갱신 · 되돌리기
 
 ```bash
-cd ~/AICS/src/ics_archon
+cd ~/AIC/src/ics_archon
 python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
 ```
 
@@ -316,8 +316,8 @@ python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
 울리는 알람이다.  저장소에서는 표식 없이 전부 돌린다 (110항목).
 
 - **야간에는 갱신하지 않는다.** 돌고 있는 코드가 바뀐다.
-- `~/AICS/Config/` 의 ini 는 배포본 밖이라 **덮이지 않는다.** 새 키가 생겼는지는
-  `diff ~/AICS/Config/ics_archon.ini ~/AICS/src/ics_archon/ics_archon.ini`.
+- `~/AIC/Config/` 의 ini 는 배포본 밖이라 **덮이지 않는다.** 새 키가 생겼는지는
+  `diff ~/AIC/Config/ics_archon.ini ~/AIC/src/ics_archon/ics_archon.ini`.
 - 되돌리기: 방법 A 는 이전 태그에서 다시 `rsync`, 방법 B 는 `git checkout <태그>`.
 - FITS `ICSBUILD` 가 `v<버전>:<빌드일시>` 를 싣는다. **손으로 적는 값**이므로
   (`ics_archon/__init__.py`) 소스를 고쳤으면 같이 올려야 하고, 그래서 헤더에서

@@ -30,7 +30,7 @@ ICS 를 띄우면 로그 맨 앞에 정체 블록이 한 번 찍힌다. **이걸
  관측일 경계    UT 16:30   -- 파일명 <YYYYMMDD> 가 이 경계로 갈린다
  파일명 예시    KMTC.20260813.001234.MK.fits
  data_dir       /home/.../icsdata
- EXPNUM         다음 001234   (기록 ~/AICS/Config/ics_sim.expnum)
+ EXPNUM         다음 001234   (기록 ~/AIC/Config/ics_sim.expnum)
  backend        archon   ->  DATASRC=ARCHON
 ==========================================================================
 ```

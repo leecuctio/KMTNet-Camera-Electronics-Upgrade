@@ -11,15 +11,15 @@
 # 근거는 tcsagent_report.md 12절.
 #
 # 사용법:
-#   ./build-local.sh                       # ~/AICS 아래에 빌드 + 설정 생성
+#   ./build-local.sh                       # ~/AIC 아래에 빌드 + 설정 생성
 #   ./build-local.sh --site kmtnc          # CTIO 설정으로
-#   ./build-local.sh --root /opt/aics
+#   ./build-local.sh --root /opt/aic
 #   ./build-local.sh --no-config           # ini 는 건드리지 않기
 #
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$HOME/AICS"
+ROOT="$HOME/AIC"
 SITE="kmtna"          # kmtna=SSO  kmtnc=CTIO  kmtns=SAAO  kmtnt=TestBed
 MAKE_CONFIG=1
 
@@ -124,14 +124,22 @@ sed -i -e 's|strstr(args,"-c")>0|strstr(args,"-c") != NULL|' \
 sed -i 's|rl_refresh_line(0,0);|if(rl_prompt) rl_refresh_line(0,0);|g' \
        main.c commands.c comsoft.c
 
-# (d) 로그 경로가 소스에 박혀 있다.  TEMP_LOGFILE 은 설정을 읽기 전에 열리므로
-#     ini 의 LOGFILE 로는 고칠 수 없다(tcsagent_report.md 12.3).  원본 줄은
-#     주석으로 남긴다.
+# (d) 로그 경로가 소스에 박혀 있다.  원본 줄은 주석으로 남긴다.
+#
+#     DEFAULT_LOGFILE 은 loadconfig.c 가 ini 의 LOGFILE 로 덮어쓰는 **기본값**
+#     이므로 설치 자리를 가리켜도 된다 -- ini 로 바꿀 수 있다.
+#
+#     TEMP_LOGFILE 은 다르다.  main.c:263 이 ini 를 **읽기 전에** 열어
+#     (기동 배너를 담는 자리다) ini 로는 원리상 못 고친다.  그래서
+#     설치 루트가 아니라 **/tmp 로 고정**한다 -- 설치 자리를 옮겨도
+#     재빌드가 필요 없다.  이 파일은 수 초만 살고 loadconfig 뒤에 ini 의
+#     LOGFILE 자리로 mv 되므로(main.c:321) **최종 로그 위치는 여전히 ini 가
+#     정한다.**  운영자 요청 2026-08-24.
 #     (sed 의 & 는 '매치 전체'다.  큰따옴표 안에서 \& 로 쓰면 리터럴 & 가 되어
 #      원본 줄이 주석으로 남지 않으니 그냥 & 로 둘 것)
 sed -i \
  -e "s|^#define DEFAULT_LOGFILE\( *\)\"/data/Logs/TC/tc\".*$|//&\n#define DEFAULT_LOGFILE\1\"$LOGS/tc\"|" \
- -e "s|^#define TEMP_LOGFILE\( *\)\"/data/Logs/TC/tc.temp.log\"$|//&\n#define TEMP_LOGFILE\1\"$LOGS/tc.temp.log\"|" \
+ -e "s|^#define TEMP_LOGFILE\( *\)\"/data/Logs/TC/tc.temp.log\"$|//&\n#define TEMP_LOGFILE\1\"/tmp/pctcs.temp.log\"|" \
  pctcs.h
 
 make clean >/dev/null

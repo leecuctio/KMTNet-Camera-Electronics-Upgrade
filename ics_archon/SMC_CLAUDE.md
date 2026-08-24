@@ -318,6 +318,15 @@ initialize one or more ICs` 로 나가는 것을 결함으로 적어 뒀는데, 
 
 ### 정책 미정 — **목 판단이 남아 있다**
 
+**P2 — STOP 을 걸었을 때의 `EXPTIME`. 실기 확인 뒤에 정한다 (목 2026-08-24).**
+적분은 컨트롤러가 재므로(결정사항 3) `STOP` 은 적분을 자르지 못하고 셔터만
+강제로 닫는다.  그런데 헤더는 `state.effective_exptime` = **요청값**을 싣는다
+(`BIAS` 만 0) — 즉 **실제 개방 시간은 그보다 짧은데 파일만 봐서는 알 수 없다.**
+셋 중 하나여야 한다: ① 그대로 둔다 ② 표시를 남긴다(헤더 카드 추가 = **raw spec
+개정 필요**) ③ `FASTLOADPARAM IntMS 0`(매뉴얼 p.52)이 즉시 반영되면 **진짜로
+자를 수 있어** 문제가 사라진다.  **③ 이 되는지가 먼저이므로 실기 확인 항목으로
+넘겼다** (`tools/probe_archon.py` 3단계 이후).
+
 **P1 — ABORT 와 노출 번호.** 실측된 비대칭: 같은 프로세스에서 ABORT 하면 번호를
 **재사용**하는데, 프로그램을 재시작하면 그 번호를 **건너뛴다**(영구 구멍). 중단
 국면에서 파일은 항상 0개였고, `GO n` 의 1번 프레임 파일은 남았다. **어느 쪽이
@@ -331,7 +340,8 @@ initialize one or more ICs` 로 나가는 것을 결함으로 적어 뒀는데, 
 
 | # | 정한 것 | 왜 | 되돌릴 때 |
 |---|---|---|---|
-| 1 | `ics_sim` 을 **가져다 쓴다** (사본 없음). `_simpath` + `register_backend` | 기계 사본이 이미 둘이라 세 번째를 만들면 raw spec 5장 개정 때 어긋난 하나를 놓친다 | 사본을 뜨면 `_simpath` 를 지우고 import 를 상대경로로 |
+| 1 | `ics_sim` 을 **가져다 쓴다** — **손으로 관리하는 사본은 없다.** `_simpath` + `register_backend` | 기계 사본이 이미 둘이라 세 번째를 만들면 raw spec 5장 개정 때 어긋난 하나를 놓친다 | 사본을 뜨면 `_simpath` 를 지우고 import 를 상대경로로 |
+| 1-1 | 배포용 **내장본 `_vendor/ics_sim/`** 은 둔다 — **`sync_vendor.py` 가 만드는 생성물** (목 지시 2026-08-23) | `ics_archon/` 하나만 두고 돌릴 수 있어야 한다.  손으로 안 고치므로 1번의 "사본을 만들지 않는다" 와 어긋나지 않는다 — 표류는 `test_vendor.py` 가 잡는다 | 위 규약 1번 참조 |
 | 2 | 저장을 **원시 바이트**로 쓴다 (astropy 아님) | ① 취득 경로에 astropy 의존을 넣지 않는다 ② 344 MiB 사본을 안 만든다(제자리 byteswap) ③ 데이터부 2880B 패딩을 명시 | `ics_sim.fitsout.write_dummy_fits` 로 갈면 된다 (계약은 같다) |
 | 3 | **적분은 컨트롤러가 잰다.** 시퀀서 카운트다운은 알림 | `IntMS`+`LOADPARAMS` 가 적분·셔터·독출을 다 몬다. 호스트가 재려면 트리거를 직접 흔들어야 하고 그건 검증된 경로가 아니다 | — (하드웨어 사실) |
 | 4 | DARK/BIAS 노출을 **`readout()` 첫머리**에서 건다 | 계약에 노출 개시 훅이 없다. 시퀀서가 `_integrate_dark` 에서 백엔드를 안 부른다 | `base.py` 에 `begin_exposure()` 를 넣으면 깔끔하다 (D-012 선례가 있다) |
@@ -401,6 +411,51 @@ initialize one or more ICs` 로 나가는 것을 결함으로 적어 뒀는데, 
 - **guide 계통** — guide raw 규격 미정.
 - **binning** (`BIN`) — `ics_sim` 쪽도 스텁이다.
 
+## 설치 루트 = `~/AIC` (운영자 확정 2026-08-24)
+
+벤치 기계 이름이 **AIC** 이므로 설치 루트를 거기 맞췄다 (`~/AICS` -> `~/AIC`).
+`ics_sim`·`ics_archon` 뿐 아니라 **XIS·OBSAgent·TCSAgent 가 같은 루트를 쓴다**
+— 저장소 전수 20파일 101곳을 함께 고쳤다.
+
+### 이미 `~/AICS` 로 돌고 있는 기계를 옮길 때 (1회)
+
+```bash
+pkill -f obstool; pkill -f pctcs; pkill -f ics_sim; pkill -f isis
+mv ~/AICS ~/AIC
+grep -rl 'AICS' ~/AIC/Config/ | xargs sed -i 's|AICS|AIC|g'
+grep -rn 'AICS' ~/AIC/Config/          # 비어야 정상
+```
+
+⚠️ **폴더 이름만 바꾸면 안 된다.**  `build-local.sh` 가 만든 ini 들이 로그·
+카탈로그 경로를 **절대경로로 펼쳐서** 써 놓으므로, 부모 폴더를 옮겨도 파일
+안의 문자열은 그대로 옛 루트를 가리킨다 (`isis.ini` `ServerLog` · `pctcs.ini`
+`LOGFILE`/`CATFILE` · `obstool.ini` `LOGFILE`).  위 `sed` 가 그 몫이다.
+
+⚠️ **`~/AIC/Config/*.expnum` 이 노출 번호 카운터다.**  `mv` 로 옮기면 따라오지만,
+`Config/` 를 지우고 새로 만들면 **번호가 1 로 되돌아간다** — 2026-08-11 에
+`FitsNum=00000000.000000` 로 실제로 겪었고 OBSAgent 파싱까지 깨졌다.  옮긴 뒤
+`cat ~/AIC/Config/ics_sim.expnum` 으로 확인할 것.
+
+**이 판을 처음 적용할 때만 `pctcs`·`obstool` 을 한 번 다시 빌드한다** (아래
+"재빌드가 필요 없어진 것" 이 그때 들어간다).  그 뒤로는 루트를 또 옮겨도
+재빌드가 필요 없다.
+
+### 재빌드가 필요 없어진 것 (2026-08-24)
+
+로그 경로 일부가 컴파일 상수라 루트를 바꿀 때마다 재빌드가 필요했다.  성질을
+갈라 풀었다 — 근거는 [`../OBSAgent/SMC_CLAUDE.md`](../OBSAgent/SMC_CLAUDE.md) ·
+[`../TCSAgent/SMC_CLAUDE.md`](../TCSAgent/SMC_CLAUDE.md) 의 같은 제목 절.
+
+| 상수 | 처방 |
+|---|---|
+| `pctcs` `TEMP_LOGFILE` · `obstool` `TEMP_{EVENT,DEBUG,SCROBS}LOGFILE` | **`/tmp` 고정** — ini 를 읽기 전에 열려 ini 로는 원리상 못 고친다.  수 초 뒤 ini 의 `LOGFILE` 자리로 `mv` 되므로 최종 위치는 여전히 ini 소관 |
+| `obstool` `DEFAULT_OBSSTAT` | **ini 키 `OBSSTATFILE` 신설** — 키가 없으면 종전 상수를 쓴다(기존 설치 무변경) |
+| 양쪽 `DEFAULT_LOGFILE` | 그대로 — ini 의 `LOGFILE` 이 덮어쓰는 기본값이다 |
+
+⚠️ 새 설치는 `--prefix`/`--root` 기본값이 이미 `~/AIC` 다.  **XIS 만 예외**로
+기본값이 `$HOME/xis` 이므로 `./ics_sim/xis/build-local.sh --prefix ~/AIC` 처럼
+명시해야 한다 (개명 전에도 그랬다).
+
 ## 리눅스 구동 (운영자 확정 2026-08-23)
 
 **`ics_sim` · `ics_archon` · labtest 전부 리눅스에서 돌린다.**  전수 감사 결과
@@ -420,20 +475,20 @@ initialize one or more ICs` 로 나가는 것을 결함으로 적어 뒀는데, 
 
 ### 경로 설정 — `~` 확장 (2026-08-23, 목 지시로 발견)
 
-**`[paths] data_dir` 이 `~` 를 펼치지 않았다.**  `os.makedirs('~/AICS/data')` 는
+**`[paths] data_dir` 이 `~` 를 펼치지 않았다.**  `os.makedirs('~/AIC/data')` 는
 오류를 내지 않는다 — `~` 를 정상적인 상대 경로 조각으로 보고 **작업 디렉터리
-아래에 `~` 라는 이름의 폴더**를 만든다.  즉 설정에 `~/AICS/data` 를 적어 놓고
-자료가 거기 있다고 믿는 동안 `<cwd>/~/AICS/data` 에 쌓인다.  `expnum_file` 만
+아래에 `~` 라는 이름의 폴더**를 만든다.  즉 설정에 `~/AIC/data` 를 적어 놓고
+자료가 거기 있다고 믿는 동안 `<cwd>/~/AIC/data` 에 쌓인다.  `expnum_file` 만
 펼치고 있었던 것이 오히려 함정이었다("경로 설정은 `~` 를 받는다" 고 믿게 한다).
 
 `data_dir` · `[logging] file` · `[archon] acf_*` 를 다 펼치게 고쳤다
 (`config._path_or`).  시험 `ics_sim/tests/test_path_settings.py` (5항목).
 
-**`[paths] data_dir = ~/AICS/data`** 로 확정했다 (목 2026-08-23).
+**`[paths] data_dir = ~/AIC/data`** 로 확정했다 (목 2026-08-23).
 
 - 그 자리는 **실제 디렉터리든 심볼릭 링크든 된다.**  프로그램이 매번 경로를
   다시 해석하고, 임시 파일(`.part`)과 최종 파일이 같은 디렉터리라 파일계통을
-  넘는 rename 이 없다.  `expnum_file` 은 `~/AICS/Config/` 에 따로 있어 저장
+  넘는 rename 이 없다.  `expnum_file` 은 `~/AIC/Config/` 에 따로 있어 저장
   경로를 옮기거나 비워도 번호가 되돌아가지 않는다(그 분리의 목적이다).
   ⚠️ 링크 **대상이 먼저 있어야** 한다 — 끊긴 링크면 `makedirs(exist_ok=True)`
   가 `FileExistsError` 로 거부한다(`exist_ok` 는 `isdir` 을 본다).
@@ -459,8 +514,8 @@ initialize one or more ICs` 로 나가는 것을 결함으로 적어 뒀는데, 
   이고 넘으면 되감는다. 6자리 형식은 유지된다(실험실 DS 체계가 6자리 전체를
   쓰기 때문 — raw spec 2.3절).
 - **저장 위치**: `[paths] expnum_file` (`~` 확장됨). 비우면 **설정 파일 옆**으로 자동 결정
-  (`config.resolve_expnum_file`) — `~/AICS/Config/ics_archon.ini` 면
-  `~/AICS/Config/ics_archon.expnum`. `data_dir` 와 **일부러 분리**했다: 저장
+  (`config.resolve_expnum_file`) — `~/AIC/Config/ics_archon.ini` 면
+  `~/AIC/Config/ics_archon.expnum`. `data_dir` 와 **일부러 분리**했다: 저장
   파일을 지우거나 옮겨도 번호가 되돌아가지 않아야 한다(운영자 확정
   2026-08-11, DevNote 11.12). `-c` 로 여러 구성을 나란히 돌려도 카운터가 섞이지
   않는다.

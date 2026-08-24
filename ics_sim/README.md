@@ -213,10 +213,10 @@ python -m pytest tests -q
 **2026-08-11 에 실제로 돌렸다** — 재빌드한 XIS(v2.9.1) 허브에 이 시뮬과 **실물 TCSAgent·OBSAgent** 를 함께 물려 노출 사이클 전 구간을 통과시켰고, 그 과정에서 `ExpNum` 응답 값 결함 하나를 잡았다. 결과 전체는 [DevNote 3.7](DevNote.md), 두 에이전트 재빌드는 [`../TCSAgent/build-local.sh`](../TCSAgent/build-local.sh) · [`../OBSAgent/build-local.sh`](../OBSAgent/build-local.sh).
 
 ```
-창 0  XIS          ~/AICS/bin/isis -f$HOME/AICS/Config/isis.ini
-창 1  ics_sim      python3 -m ics_sim -c ~/AICS/Config/ics_sim.ini --xis-host 127.0.0.1 --xis-port 6660
-창 2  OBSAgent     ~/AICS/build/OBSAgent/KMTObs/obstool ~/AICS/Config/obstool.ini
-창 3  TCSAgent     ~/AICS/build/TCSAgent/pctcs ~/AICS/Config/pctcs.ini
+창 0  XIS          ~/AIC/bin/isis -f$HOME/AIC/Config/isis.ini
+창 1  ics_sim      python3 -m ics_sim -c ~/AIC/Config/ics_sim.ini --xis-host 127.0.0.1 --xis-port 6660
+창 2  OBSAgent     ~/AIC/build/OBSAgent/KMTObs/obstool ~/AIC/Config/obstool.ini
+창 3  TCSAgent     ~/AIC/build/TCSAgent/pctcs ~/AIC/Config/pctcs.ini
 ```
 
 ### `tools/xis_probe.py` — 노드 하나를 흉내 내는 프로브

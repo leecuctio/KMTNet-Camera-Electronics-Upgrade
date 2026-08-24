@@ -178,6 +178,9 @@ getArg(valStr, 1, argStr);     // 다른 모든 항목은 이렇게 (SERVERLOG �
 Instrument Config: /home/rtkmtnet/AICS/Logs/isis      ← ServerLog 값이다
 ```
 
+> ⚠️ 위 경로의 `AICS` 는 **실측 당시 콘솔이 찍은 그대로**다.  설치 루트는 그 뒤
+> `~/AIC` 로 개명됐지만(2026-08-24), 전사는 기록이므로 고치지 않는다.
+
 **두 번째 실측에서 메커니즘이 더 분명해졌다** — preset 을 하나 넣고 다시 띄우니 이번엔 `Instrument Config: 6600` 이 나왔다. 직전 `UDPPort 127.0.0.1 6600` 이 `argStr` 에 남긴 포트 번호다. 서로 다른 값으로 두 번 재현된 셈이다.
 
 운영 CTIO `isis.ini` 주석이 `Instrument` 를 *"optional and unused for anything in detail"* 이라 적어 둔 덕에 **아무도 눈치채지 못한 채 살아남은 버그**다. 실제로 읽는 곳이 없어 영향은 없다.

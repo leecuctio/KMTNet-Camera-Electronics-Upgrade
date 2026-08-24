@@ -29,7 +29,7 @@
 | 노출 | 시작 자리 | 이유 |
 |---|---|---|
 | 셔터 노출 (OBJECT/FLAT/SKY/DOMEFLAT) | `open_shutter()` | 시퀀서가 여기서 셔터를 열라고 한다.  `IntMS` = 노출시간 |
-| DARK / BIAS | `readout()` | 시퀀서가 백엔드를 아예 부르지 않는다 -- 적분은 flush 이후의 축적이고, `IntMS=0` 으로 곧바로 읽어낸다 |
+| DARK / BIAS | `readout()` | 시퀀서가 `_integrate_dark` 에서 백엔드를 아예 부르지 않는다.  적분 시간은 `begin_exposure()` 훅으로 미리 받아 두고 여기서 `IntMS` 에 실어 건다 -- **컨트롤러가 잰다** (훅이 없으면 `IntMS=0` 으로 곧바로 읽어내고 경고를 남긴다) |
 
 ⚠️ **STOP(적분 조기 종료)은 컨트롤러의 적분을 자르지 못한다.**  타이밍
 스크립트가 이미 `IntMS` 만큼 세고 있으므로, 할 수 있는 것은 `TRIGOUTFORCE=1`

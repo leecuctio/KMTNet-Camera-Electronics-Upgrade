@@ -212,7 +212,7 @@ class PathsCfg:
     fits_shape: tuple[int, int] = (256, 256)
     #: 마지막으로 쓴 EXPNUM 을 적어 두는 파일.  비워 두면 **설정파일 옆**에
     #: 같은 이름 `.expnum` 으로 자동 결정된다(resolve_expnum_file) -- 벤치에서
-    #: `-c ~/AICS/Config/ics_sim.ini` 로 띄우면 `~/AICS/Config/ics_sim.expnum`.
+    #: `-c ~/AIC/Config/ics_sim.ini` 로 띄우면 `~/AIC/Config/ics_sim.expnum`.
     #:
     #: `data_dir` 와 분리해 둔 것이 요구사항이다: 저장 파일을 지우거나 옮겨도
     #: 번호는 되돌아가지 않아야 한다(운영자 확정 2026-08-11, DevNote 11.12).
@@ -592,7 +592,7 @@ def _head(sec: configparser.SectionProxy, key: str, default: str) -> str:
 def _path_or(sec: configparser.SectionProxy, key: str, default: str) -> str:
     """경로 설정 하나.  **`~` 와 `~user` 를 펼친다.**
 
-    펼치지 않으면 `~/AICS/data` 가 문자 그대로 쓰여 **작업 디렉터리 아래에 `~`
+    펼치지 않으면 `~/AIC/data` 가 문자 그대로 쓰여 **작업 디렉터리 아래에 `~`
     라는 이름의 폴더**가 만들어진다 -- `os.makedirs` 는 그것을 정상적인 상대
     경로로 보고 아무 불평 없이 만든다.  오류가 없으므로 자료가 엉뚱한 곳에
     쌓이고 있다는 사실이 드러나지 않는다 (2026-08-23 실측).
@@ -714,7 +714,7 @@ def load(path: str | None = None) -> SimConfig:
     if cp.has_section('paths'):
         s = cp['paths']
         p = cfg.paths
-        # **`~` 를 펼친다.**  안 하면 `~/AICS/data` 가 문자 그대로 쓰여
+        # **`~` 를 펼친다.**  안 하면 `~/AIC/data` 가 문자 그대로 쓰여
         # **작업 디렉터리 아래에 `~` 라는 이름의 폴더**가 만들어진다 --
         # `os.makedirs` 가 아무 불평 없이 만들고, 자료는 거기 쌓인다
         # (2026-08-23 실측).  `expnum_file` 은 이미 펼치고 있었다.
@@ -868,12 +868,12 @@ def load(path: str | None = None) -> SimConfig:
 def resolve_expnum_file(cfg: SimConfig) -> str:
     """`[paths] expnum_file` 이 비어 있으면 **설정파일 옆**으로 정한다.
 
-    벤치 배치(`~/AICS/{bin,Config,Logs,data}`)에서 지속 카운터를 둘 자리는
+    벤치 배치(`~/AIC/{bin,Config,Logs,data}`)에서 지속 카운터를 둘 자리는
     `Config/` 다 -- `Logs/` 는 비워지고 `data/` 는 요구사항상 배제된다(저장
     파일과 무관해야 한다).  설정파일 이름을 따르므로 `-c` 로 여러 구성을
     나란히 돌려도 카운터가 섞이지 않는다:
 
-        ~/AICS/Config/ics_sim.ini  ->  ~/AICS/Config/ics_sim.expnum
+        ~/AIC/Config/ics_sim.ini  ->  ~/AIC/Config/ics_sim.expnum
 
     `source_path` 가 비어 있으면(ini 없이 SimConfig() 를 직접 만든 경우 --
     단위 테스트가 그렇다) 빈 값으로 남겨 **지속시키지 않는다.**  테스트가

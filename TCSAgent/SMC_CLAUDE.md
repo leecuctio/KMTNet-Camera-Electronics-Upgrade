@@ -53,14 +53,29 @@
 
 ## 재빌드와 실행 (2026-08-11 실측)
 
-**[`build-local.sh`](build-local.sh)** 한 줄이면 된다. 저장소를 건드리지 않고 `~/AICS` 아래 작업 사본에서 빌드하고 설정까지 만든다.
+**[`build-local.sh`](build-local.sh)** 한 줄이면 된다. 저장소를 건드리지 않고 `~/AIC` 아래 작업 사본에서 빌드하고 설정까지 만든다.
 
 ```bash
 ./build-local.sh --site kmtna        # kmtna=SSO kmtnc=CTIO kmtns=SAAO kmtnt=TestBed
-~/AICS/build/TCSAgent/pctcs ~/AICS/Config/pctcs.ini
+~/AIC/build/TCSAgent/pctcs ~/AIC/Config/pctcs.ini
 ```
 
 Ubuntu 24.04 / g++ 13.3.0 에서 실제로 빌드해 `ics_sim`·XIS 와 연동까지 확인했다. **원 배포본(2014~2018, CentOS 계열)과 12년치 툴체인 차이로 그냥은 안 넘어가는 것이 여섯 가지 있고**, 그중 하나(`rl_refresh_line()` 을 readline 초기화 전에 호출)는 **빌드는 되고 실행이 즉사하는** 부류다. 전부 [tcsagent_report.md](tcsagent_report.md) **12절**에 정리했고 스크립트가 처리한다.
+
+### 설치 자리를 옮겨도 재빌드는 필요 없다 (2026-08-24)
+
+로그 경로 둘이 소스에 `#define` 으로 박혀 있는데, 성질이 다르다.
+
+| | 언제 쓰이나 | ini 로 바꿀 수 있나 |
+|---|---|---|
+| `DEFAULT_LOGFILE` | `loadconfig.c:155` 이 **기본값**으로 넣고 ini 의 `LOGFILE` 이 덮어쓴다 | ✅ 된다 |
+| `TEMP_LOGFILE` | `main.c:263` 이 **ini 를 읽기 전에** 연다 (기동 배너를 담는 자리) | ❌ 원리상 불가 |
+
+`TEMP_LOGFILE` 은 그래서 **`/tmp/pctcs.temp.log` 로 고정**했다 (운영자 요청
+2026-08-24). 설치 루트와 무관해졌으므로 **`~/AIC` 를 어디로 옮기든 `pctcs`
+재빌드가 필요 없다.** 그 파일은 수 초만 살고 `loadconfig` 뒤에 ini 의
+`LOGFILE` 자리로 `mv` 되므로(`main.c:321`) **최종 로그 위치는 여전히 ini 가
+정한다** — 운영상 보이는 것은 하나도 바뀌지 않는다.
 
 실행으로 드러난 레거시 결함 둘도 같은 절에 있다 — `ISISclient/isisutils.c` 의 `ISODate()` 버퍼 초과(호출마다 9바이트, 20년 묵음)와 `main.c` 의 `sprintf` 오버플로 6곳(verbose 모드에서만 발현).
 
