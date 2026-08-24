@@ -37,6 +37,16 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 
 전부 `tests/test_obsagent_contract.py` 가 검증한다. **테스트가 깨지면 그건 규약을 어긴 것이다.**
 
+⚠️ **2026-08-24 — 위 5번(1.8초 창)을 직접 건드리는 개정이 계획돼 있다.**
+프레임별 `Acquisition Complete.` 발신(컨트롤러 2대의 실제 완료 시각에 맞춤)은
+4개의 산포를 **0 에서 실제 시차로** 바꾼다. 지금은 같은 이벤트 루프 틱에서 내보내
+산포가 사실상 0 이므로 5번이 구조적으로 보장돼 있는데, 그 보장이 없어진다.
+`obsagent_model.check_windows` 가 `spread = acq[3] - acq[0]` 로 검사하므로 시뮬에서
+잡히기는 한다. **계획·비용·의견은
+[`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) 의 "다음 세션 작업
+지시" 작업 1 에 정리했고, 착수 전 목 승인이 필요하다.** 이 문서의 규약을 고치는
+첫 사례가 되므로, 커밋에 **어긴 것이 아니라 목 지시로 연 것임**을 명시한다.
+
 ## 메시지 오염 버그 (DevNote 5장)
 
 레거시 ICS 는 커맨드워드 슬롯을 비우지 않아 비동기 메시지가 엉뚱한 커맨드워드를 달고 나갔다(CTIO 634일에 173,635건 등). **이 프로그램은 그걸 고친 것이 존재 이유 중 하나다.**
@@ -48,7 +58,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 ## 상태 (2026-08-13)
 
 - **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2), **자기 발신 에코 필터·브로드캐스트 중복 억제·노드 ID 검증**(3.1.2 — 실물 XIS 연동의 전제)
-- **테스트 318개 전부 통과** (2026-08-22 v1.3 정렬로 헤더 시험 재편 + 적대적 검토 회귀 시험 추가 — 구 324개)
+- **테스트 325개 전부 통과** (2026-08-24 기준. 2026-08-22 v1.3 정렬로 헤더 시험 재편 + 적대적 검토 회귀 시험 추가 — 구 324개 → 318개, 그 뒤 `ics_archon` 확장점·경로 결함 회귀로 +7)
 - **실물 연동 시험 완료 (2026-08-11)** — 재빌드한 XIS(v2.9.1) 허브에 **실물 TCSAgent·OBSAgent 와 함께** 물려 돌렸다. 9개 노드 ID 등록·에코 필터·재등록·개별 IC 라우팅·노출 사이클 전 구간 통과, 타임아웃 창 3종 모두 큰 여유. **`ExpNum` 응답 값이 한 칸 밀리는 결함 하나를 잡아 고쳤다**(DevNote 3.4·12.14). 전체 결과는 DevNote **3.7**
 - **아직 안 만든 것**: `BIN` 하나. `strict_legacy` 면 무응답이고, 구현 지침은 `commands.py` docstring 에 있다.
 - **일부러 안 만든 것**: `ROI`/`DISPL`/`MOVIE` — **레거시 ICS 명령 테이블에 아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `Didn't understand` 로 거부된다(DevNote 6.8).
@@ -64,7 +74,8 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - **raw spec v1.3 전면 정렬 (2026-08-22)** — 헤더 층을 **템플릿 주도**로 재편했다: 신설 [`ics_sim/rawcards.py`](ics_sim/rawcards.py) 가 초안 헤더 v1.0 pair 의 **기계 사본**(값 135 + COMMENT 8, 카드 순서·comment·패딩)이고, `rawhdr` 는 값 풀만 공급한다. 견본 값을 넣으면 견본이 **바이트 단위로 재현**된다(`tests/test_raw_draft.py` 대사 — 불일치 0). D-016 충돌 처리(선검사·번호 증가·되감음·상한, `UNIQNAME`/`NAMECLSH`/`clash/` 폐지, `ORIGNAME` 상시), 백엔드 계약 개정(`voltages`/`amp_map` 폐지 → `controller_telemetry` 신설), TC 중계 카드 전부 문자열화(`TCSTIME` 이관 · `DALTERR`/`DAZERR` 계산), **`fits_shape = spec`** 이면 실물 19200×9400 을 4장 기하 구조(암프별 offset·X/중앙 overscan) 그대로 생성 — **converter end-to-end 로 69-HDU L0 MEF 생성 검증 완료**. 테스트 **317개** 전부 통과(OBSAgent 규약 시험은 무수정). v0.2.0. 경위·판단은 DevNote **11.19**
 - **적대적 검토 + 12건 수정 (2026-08-22)** — v1.3 정렬분을 관점 4개(규격 준수·동시성·archon 스크립트·OBSAgent 규약)로 재검토하고 반박 검증을 붙여 **확정 14건 중 12건**을 고쳤다. 큰 것: ⚠️ **critical** — D-016 선검사가 외부 `INITIALIZE` 로 오염된 채널 suffix 를 파싱해 **노출 태스크를 죽였다**(IDLE·Wrote·advance 전부 유실 → `opause`); **pair 동일성(5.9절)이 구조적으로 없었다**(백엔드 사실을 컨트롤러별로 따로 질의 — 시뮬 고정값 때문에 시험이 통과하던 부류); 노출 메타데이터 경합; 구판부터 있던 **사이트 갈림**(파일명·헤더가 IP 판정 대신 ini 원값, D-015 위반)·STOP 이벤트 잔류·ABORT 의 앞 프레임 저장 파괴. archon v1.1 도 6건 전량 수정(카드 폭 클램프·자리 sentinel·예외 방어·컨트롤러 색인·SITE 유도·OBJECT 역산). **남겼던 2건은 둘 다 닫혔다** — `IMAGETYP='STANDARD'` 폐지(운영자 확정) · 견본 헤더 날짜 불일치(정본 개명으로 해결). 전부 DevNote **11.20**
 - **`IMAGETYP` 어휘 정리 + raw spec v1.4 정합 (2026-08-22)** — `STANDARD` 폐지(운영자 확정 "이제 안 쓴다"): `state.IMAGE_TYPES`·`cmd_standard`·`emitter.KNOWN_COMMANDS`·콘솔 도움말에서 걷어내 **규격 5.4절 어휘와 집합이 같아졌고**, 그 일치를 시험이 지킨다(`test_command_vocabulary_equals_the_spec_vocabulary` — 한쪽만 늘면 걸린다. 값 추가는 규격과 코드를 **함께** 고치라는 운영자 지시의 강제 장치다). 레거시에 있던 명령이라 갈라지는 지점이지만 `.osc` 22개·레거시 로그에 용례 0건. 규격 v1.4 정합도 함께 — 파일명 참조 6곳, **삭제된 2.5절** 인용 9곳을 DevNote 3.2 로(IMPv2 스펙 2.5절은 무관하니 제외), **OI-15 종결**(4.1 `RRRRLLLL` 확정) 경고 제거. ⚠️ **견본 개명이 바이트 대사 6개를 조용히 skip 시켰던 것을 발견해 고쳤다** — 경로 하드코딩 → glob, 없으면 skip 이 아니라 **실패**. DevNote **11.21**
-- **다음 단계**: ① TCS 시뮬레이터 설치 + 연동 시험(아래 "이어서 시작하는 자리") ② **`ics_archon` v0.0 이 나왔다 (2026-08-23, DevNote 11.23)** — 과학 2 unit 제어·raw pair 저장·헤더까지 가짜 컨트롤러로 전 경로가 돌고 견본과 바이트 단위로 일치한다. 남은 것은 **실기 왕복**(미검증)과 **듀어·환경 HK**(`sensors()` — 원형이 없다), 그리고 **가이드 unit**(guide raw 규격 미정)이다. 결정·검토사항 목록은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md)
+- **바깥 백엔드용 확장점 + 결함 4건 (2026-08-24, 커밋 `ecf3487`)** — `ics_archon` 이 규약을 안 고치고 실기 백엔드를 끼울 수 있도록 **확장점 3개**를 열었다: `hardware.register_backend()` · `DetectorBackend.writes_files` · `DetectorBackend.begin_exposure(seconds, opens_shutter)`. 함께 고친 결함 4건 — ⓐ **D-016 충돌 선검사가 `[paths] write_fits` 에 묶여 있었다**(그 플래그는 시뮬 전용이라, 항상 파일을 쓰는 백엔드를 `write_fits=false` 로 돌리면 검사가 꺼진 채 **같은 이름을 조용히 덮어썼다**) ⓑ `data_dir`·`logging.file` 의 `~` 미확장(`os.makedirs` 가 `./~/AICS/data` 를 아무 불평 없이 만든다) ⓒ `_head()` 가 `\#` 를 안 벗겨 `FPAID='FPA\#1'` ⓓ **expnum 기록이 `os.replace` 뿐이어서 원자적이기만 하고 영속이 아니었다** — 전원 손실에 번호가 되돌아간다. 내용·디렉터리 둘 다 fsync. **시뮬 거동 무변경 · 규약 무변경.** 경위는 DevNote **11.24**
+- **다음 단계**: ⓪ ⭐ **두 컨트롤러 병렬 독출 개정 (목 2026-08-24 지시, 착수 전 승인 필요)** — FRAME 검사를 두 대 동시에 · fetch 병렬(이미 됨) · 프레임별 `Acquisition Complete.`. **이 폴더의 규약을 고치는 첫 건**이고 위 ⚠️ 경고와 같은 자리다. 계획·비용·의견은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "다음 세션 작업 지시" ① TCS 시뮬레이터 설치 + 연동 시험(아래 "이어서 시작하는 자리") ② **`ics_archon` v0.0 이 나왔다 (2026-08-23, DevNote 11.23)** — 과학 2 unit 제어·raw pair 저장·헤더까지 가짜 컨트롤러로 전 경로가 돌고 견본과 바이트 단위로 일치한다. 남은 것은 **실기 왕복**(미검증)과 **듀어·환경 HK**(`sensors()` — 원형이 없다), 그리고 **가이드 unit**(guide raw 규격 미정)이다. 결정·검토사항 목록은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md)
 
 ## ▶ 이어서 시작하는 자리 (2026-08-13 기준)
 
@@ -204,5 +215,12 @@ VM 이미지가 **5개**로 늘었다(`ICSci` CTIO/SAAO · `ICGui` · `K.IC` · 
 2. ~~**`ics_archon` 구현**~~ — **v0.0 완료 (2026-08-23, DevNote 11.23).** 실기 프로그램은 [`../ics_archon/`](../ics_archon/README.md) 에 있고 이 폴더를 사본 없이 가져다 쓴다. 남은 일(실기 왕복 검증 · HK 3계통 · 가이드 계통)은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) 의 검토사항 표.
 3. ~~`STOP`/`ABORT` 구현~~ · ~~`\KMTS`·`\KMTG` 소스 정독~~ — **둘 다 2026-08-05 완료.** 아래 "IC·ICG 계통 확정" 참조. ~~자기 발신 에코 처리~~ — **2026-08-08 완료**(위 "XIS 노드 등록" 참조).
 4. **`icg` 착수** — 가이드 계통. OBSAgent 가 가이드 발신을 무시하므로 하위호환 부담이 없어 자유롭다. 공통 로직(IMPv2 노드, 텔레메트리 중계, 파일명 fail-safe)은 이 폴더에서 뽑아 쓸 수 있다.
-5. **DevNote 13장 백로그** — 구조화 로깅, 상태 조회 API 등.
-6. ~~**raw 헤더를 확정 초안에 동기화**~~ — **완료 (2026-08-22, DevNote 11.19).** raw spec v1.3 발행분 전량: 템플릿 주도 조립(`rawcards.py`) + 견본 v1.0 pair 바이트 대사 + D-016 + 카드 comment 지원. 잔여는 목 확인 2건(RADECSYS 기본 `'ICRS'` · ENS sentinel `'NC'` — 11.19)과 규격 OI 실측분(OI-15~18)뿐이다.
+5. ⭐ **두 컨트롤러 병렬 독출 개정 (목 2026-08-24 지시)** — `readout()` 계약이
+   컨트롤러별 완료를 표현하지 못한다. 지금 `sim.readout(ccd)` 는 `[readout]`
+   설정대로 정수만 흘려보내므로 **독출 경로에 컨트롤러라는 개념이 아예 없다.**
+   "두 대를 모사" 하려면 계약을 열어야 하고 그건 시퀀서를 건드리는 일이다 —
+   **착수 전 목 승인.** 계획·비용·반대 논거는
+   [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "다음 세션 작업
+   지시" 작업 1.
+6. **DevNote 13장 백로그** — 구조화 로깅, 상태 조회 API 등.
+7. ~~**raw 헤더를 확정 초안에 동기화**~~ — **완료 (2026-08-22, DevNote 11.19).** raw spec v1.3 발행분 전량: 템플릿 주도 조립(`rawcards.py`) + 견본 v1.0 pair 바이트 대사 + D-016 + 카드 comment 지원. 잔여는 목 확인 2건(RADECSYS 기본 `'ICRS'` · ENS sentinel `'NC'` — 11.19)과 규격 OI 실측분(OI-15~18)뿐이다.

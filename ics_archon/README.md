@@ -21,7 +21,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 |---|---|
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
 | [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (95항목) |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (98항목) |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
@@ -296,8 +296,20 @@ Restart=on-failure
 
 ```bash
 cd ~/AICS/src/ics_archon
-python3 -m pytest tests -q        # 실패 0 이어야 한다
+python3 -m pytest tests -q        # 배치본은 7 실패가 정상 -- 아래 참조
 ```
+
+⚠️ **배치본에서는 7개가 실패한다 (91 통과).**  설치가 깨진 것이 아니다 —
+그 7개는 **저장소에만 있는 원천**을 대조하는 시험이다.
+
+| 실패 | 개수 | 왜 |
+|---|---|---|
+| `test_fitswrite.py` 견본 pair 바이트 재현 | 4 | 견본 pair 파일이 저장소 밖(`raw_fits_spec` 계통)에 있다 |
+| `test_vendor.py` 벤더 표류 대조 | 3 | 형제 `ics_sim/` 원천이 배치본에 없다 |
+
+**그 밖의 실패는 정상이 아니다.**  91 통과 · 위 7개만 실패가 배치본의 기대값이다
+(2026-08-24 실측).  이 구분을 표식으로 자동화하는 것은 미해결 항목 F11 이다
+(`SMC_CLAUDE.md`).
 
 - **야간에는 갱신하지 않는다.** 돌고 있는 코드가 바뀐다.
 - `~/AICS/Config/` 의 ini 는 배포본 밖이라 **덮이지 않는다.** 새 키가 생겼는지는
