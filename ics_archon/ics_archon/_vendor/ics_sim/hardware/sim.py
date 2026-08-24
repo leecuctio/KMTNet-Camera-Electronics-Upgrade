@@ -79,6 +79,41 @@ class SimBackend:
         await asyncio.sleep(tick / 2)
         yield r.pctread_final
 
+    def readout_events(self, ccd: str):  # noqa: ANN201
+        """독출을 사건으로 흘려보낸다 (`base.py` 의 선택 훅).
+
+        ⚠️ **간단한 모사다 -- 두 컨트롤러를 실제로 모사하지 않는다** (목 지시
+        2026-08-24).  시뮬은 CCD 4개가 다 소프트웨어라 독출 경로에 컨트롤러
+        라는 경계가 없고, 그것을 진짜로 만들려면 `[readout]` 모델 자체를
+        컨트롤러별로 나눠야 한다 -- 비용이 이득보다 크다는 판단이다.
+        **병렬 독출의 실구현은 `ics_archon` 에 있다.**
+
+        그래서 여기서는 진행률을 종전대로 흘려보낸 뒤 **완료 사건만**
+        컨트롤러 수만큼 낸다(시차 0).  그것으로 충분한 이유는 이 훅이 있는
+        경로를 `ics_sim` 시험도 밟게 하는 것이 목적이기 때문이다 -- 새 분기가
+        실기에서 처음 도는 상황을 만들지 않는다.
+        """
+        from .. import rawpair
+
+        r = self.cfg.readout
+        tick = self.cfg.scaled(r.pctread_tick)
+        ccds = tuple(self.cfg.node.ccds)
+
+        async def _events():  # noqa: ANN202
+            if (self.cfg.behavior.injecting('dma_timeout')
+                    and ccd == self.cfg.node.master):
+                raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.',
+                                   ccd=ccd)
+            for pct in r.steps():
+                await asyncio.sleep(tick)
+                yield 'progress', pct
+            await asyncio.sleep(tick / 2)
+            for tag, chips in rawpair.CONTROLLERS:
+                if any(c in ccds for c in chips):
+                    yield 'frame', tag
+
+        return _events()
+
     async def fetch_image(self, ccd: str):  # noqa: ANN201
         """chip 1개분 더미 이미지.  numpy 가 없으면 None (메시지만 내는 모드).
 

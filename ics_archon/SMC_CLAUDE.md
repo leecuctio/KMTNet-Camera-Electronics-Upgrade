@@ -45,9 +45,13 @@
    변경은 **확장점 3개**(`register_backend()` · `DetectorBackend.writes_files` ·
    `begin_exposure()`)와 **결함 4건**(D-016 게이트 · `~` 확장 · `\#` 탈출 ·
    expnum fsync)이고, **규약 자체는 한 줄도 안 고쳤다**(커밋 `ecf3487`).
-   ⚠️ 다음 세션의 **작업 1** 이 그 규약을 고치는 첫 건이 된다 — 목 지시로 여는
-   것이지만 아래 "다음 세션 작업 지시" 를 먼저 읽고, 커밋에 **어긴 것이 아니라
-   연 것임**을 명시한다.
+   ⚠️ **2026-08-24 에 처음으로 그 규약을 열었다** (목 지시, 작업 1) — 확장점
+   `readout_events()` 와 `[readout] acq_per_frame`/`acq_skew_warn`, 그리고
+   `Sequencer.drain_writers()`.  **기본값이 꺼짐이라 거동은 종전과 같다**:
+   `acq_per_frame=false` 면 `Acquisition Complete.` 4개가 여전히 같은 틱에
+   나간다.  **켜면 그 4개의 산포가 두 컨트롤러의 실제 시차가 되어 1.8초 창
+   (DevNote 3.3)의 구조적 보장이 없어진다** — 실기 시차 실측 전에는 켜지 말 것.
+   여는 것과 어기는 것은 다르다: 커밋에 **연 것임**을 명시한다.
 3. **`ArchonLink.command(cmd, timeout=None)` 의 기본값을 바꾸지 말 것.**
    `APPLYALL` 처럼 오래 걸리는 명령이 있어 무한 대기가 기본이어야 한다. 상한은
    부르는 쪽(`controller.py`)이 명령마다 준다 — 프로토콜은 **인식 못 한 명령에
@@ -91,20 +95,46 @@
     재므로 축척을 따라오지 않는다 — 카운트다운이 먼저 끝나면 셔터가 강제로
     닫혀 **노출이 잘린 채 `EXPTIME` 은 요청값으로** 실린다.
 11. **전원을 켠 채로 끝내지 않는다.** `IcsArchon.stop()` 이 `backend.shutdown()`
-    을 먼저 부른다 — 검출기 쪽 위험이다.
+    을 부른다 — 검출기 쪽 위험이다. 전원 차단 여부는 확인된 상태(`powered`)가
+    아니라 **`power_attempted`** 로 판단한다: `POWERON` 응답을 잃으면 컨트롤러는
+    켜졌는데 `powered` 는 `False` 로 남는다 (F4).
+11-2. **종료는 저장 중인 프레임을 먼저 기다린다** (`[archon] shutdown_drain`,
+    기본 30초). 전원 차단보다 **앞**이다 — 전원은 몇 초 더 켜져 있어도 되지만
+    독출을 마친 프레임은 다시 못 찍는다 (F3).
 
-## 상태 (2026-08-24 — 커밋 완료)
+## 상태 (2026-08-24 — 작업 1·2 반영, **커밋 전**)
 
-### 완료 — `ics_archon` v0.0.0
+### 완료 — `ics_archon` v0.0.0 + 작업 1·2
 
-**1단계(`ics_sim` + labtest 합본)가 끝났고 커밋 2건으로 올라갔다.**
-실기 왕복만 미검증이다.
+**1단계(`ics_sim` + labtest 합본)가 커밋 2건으로 올라갔고**, 그 위에 목이
+지시한 **작업 1(병렬 독출)·작업 2(F1~F12)** 를 반영했다.  실기 왕복만
+미검증이다.
 
     6a94e57  ics_archon v0.0 -- ics_sim + labtest 합본으로 실기 백엔드 신설
     ecf3487  ics_sim: 바깥 백엔드용 확장점 + 경로·영속성 결함 4건
+    (미커밋)  작업 1-A/1-C + 미해결 F1~F12  ← DevNote 11.26
 
 브랜치 `ics-archon-v1.0-build`, **`main` 미합류.**  검증 상태:
-`ics_sim` **325 통과** · `ics_archon` **98 통과** · 벤더 표류 **없음**.
+`ics_archon` **110 통과 / 실패 0** (98 -> 110) · 벤더 표류 **없음**.
+`ics_sim` **330 통과 / 실패 0** (325 -> 330, `tests/test_acq_per_frame.py` 5항목).
+
+**작업 1·2 에서 바뀐 자리** (경위는 DevNote 11.26)
+
+| 어디 | 무엇 |
+|---|---|
+| `ics_sim/hardware/base.py` | 선택 훅 `readout_events()` 계약 |
+| `ics_sim/config.py` | `[readout] acq_per_frame`(기본 false) · `acq_skew_warn`(1.0) |
+| `ics_sim/sequencer.py` | `_readout(..., on_frame)` · 획득 완료 발신 재구성 · `drain_writers()` |
+| `ics_sim/hardware/sim.py` | **얕은** `readout_events()` (시차 0 — 실구현은 archon) |
+| `archon/backend.py` | `_readout_stream()` 신설 (1-A 두 컨트롤러 동시 대기 · 1-C 컨트롤러별 완료 사건) · `shutdown()` F4 · `erase()` F6 근거 주석 |
+| `archon/controller.py` | F8 낡은 스냅샷 폐기 · F4 `power_attempted` · F2 `_check_health()` · F5 `fetch_timeout` |
+| `archon/parse.py` | F9 `MODULE_TYPES` 전량 + `AD_TYPES` · F2 `POWER_STATES`/`power_state`/`overheating`/`health_problems` |
+| `archon/fitswrite.py` | F7 홑따옴표 겹치기 + 절단 안전 |
+| `config.py` · `ics_archon.ini` | `shutdown_drain` · `fetch_timeout` + FETCH/frame 상한 교차검사 |
+| `app.py` | F3 종료 전 저장 대기 |
+| `tools/sync_vendor.py` | F12 파생물만 제외 |
+| `tools/probe_archon.py` | F2 `POWER`/`OVERHEAT` 확인 · F9 `AD_TYPES` |
+| `tests/` | `repo_only` 표식(F11) + 회귀 시험 12항목 |
 
 - 신설 `ics_archon/ics_archon/` — `_simpath` · `__init__`(버전·`build_id`) ·
   `config`(`[archon]`) · `app`(`IcsArchon(IcsSim)`) · `__main__` +
@@ -213,190 +243,87 @@
 | 순서 | 할 일 |
 |---|---|
 | **1** | ~~`ics_archon` v0.0 작성~~ **완료 (2026-08-23)**, ~~커밋~~ **완료 (2026-08-24, `ecf3487`+`6a94e57`)** |
-| **1.5** | ⭐ **아래 "다음 세션 작업 지시" 를 먼저 읽는다** — 작업 1(병렬 독출)은 **착수 전 목 승인**이 필요하고, 작업 2(v0 세부 검토)는 "미해결 목록" 이 일감이다 |
-| **2** | **다듬기** — 아래 "결정사항"을 목이 확인하고 "검토사항 A"(실기 없이 되는 것)를 처리한다 → `v0.1` |
+| **1.5** | ~~작업 1(병렬 독출) · 작업 2(F1~F12)~~ **완료 (2026-08-24)** — 아래 "작업 1·2" 절. ⚠️ **아직 커밋 안 했다** |
+| **2** | **다듬기** — 아래 "결정사항"을 목이 확인하고 "검토사항 A"(실기 없이 되는 것)를 처리한다 → `v0.1`. **P1(ABORT 와 노출 번호)도 목 판단 대기** |
 | **3** | **시험 결과 반영** — labtest 실기 구동 결과 + `ics_sim` 시험 결과로 디버깅·업데이트. "검토사항 B" 가 그 목록이다. **1·2 와 병행이며 이것을 기다리지 않는다** |
 | **4** | **main 합류** — **v0 완성 또는 v1 즈음, 진행하면서 판단**(목 2026-08-23). 미리 정해진 시점은 없다. 방식은 `--no-ff` 거품 머지 |
 | **5** | **guide 계통** — guide raw 규격이 정해진 뒤 smallbuf 판에 적용 |
 
-## ▶ 다음 세션 작업 지시 (목 2026-08-24, 커밋 뒤)
+## ▶ 작업 1·2 — **완료 (2026-08-24)**
 
-커밋 2건(`ecf3487` · `6a94e57`)이 올라간 뒤 목이 정한 일감은 **둘**이다.
+목이 11.25 의 계획을 보고 **범위를 좁혀 결정**했다.
 
-### 작업 1 — 두 컨트롤러 병렬 독출 + 프레임별 `Acquisition Complete.`
+> ics_sim에서는 병렬독출 구현하지 말고, 간단히 모사만 하고 ics_archon에서만
+> 구현하자. 작업1, 2, 둘다 진행해줘.
 
-**목 지시 원문**
+그래서 11.25 견적(~300줄)의 가장 큰 덩어리 -- `ics_sim/hardware/sim.py` 를 두
+컨트롤러로 모사하고 시차 주입까지 붙이는 것 -- 이 빠졌다.  **계약 훅 자체는
+줄이지 못했다**: `Acquisition Complete.` 를 내보내는 것은 시퀀서이므로 "어느
+컨트롤러가 끝났나" 가 계약을 건너야 한다.  경위는 DevNote **11.26**.
 
-> ics_archon과 ics_sim 둘 다 두 대의 컨트롤러를 모사하므로, FRAME 검사를 둘다
-> 동시에 진행하고, fetch(영상을 컴퓨터로 받음) 도 병렬로 진행하고 실제 polling
-> 여부에 따라 각 FRAME별 Acquisition Complete. 메시지를 내도록 수정.
-> ics_archon과 ics_sim 둘 다 고칠 계획임. **실행 전에 우선 계획 검토하고,
-> 소모비용 및 적용여부 검토와 의견 바람**
+### 작업 1 — 두 컨트롤러 병렬 독출
 
-⚠️ **착수 전에 목의 승인을 받는다.** 아래는 v0.0 세션이 미리 조사해 둔 근거와
-의견이고, 목이 아직 결정하지 않았다.
+| | 지시 | 결과 |
+|---|---|---|
+| **1-A** | FRAME 검사를 둘 다 동시에 | ✅ **고쳤다** (결함, F1).  두 프레임을 함께 기다리고 완료 통보는 **둘 다 끝난 뒤**.  `Acquisition Complete.` 4개는 여전히 같은 틱이라 1.8초 창 산포는 0 |
+| **1-B** | fetch 를 병렬로 | ✅ **이미 되어 있었다.**  이번에 시험으로 못박음(느린 NT 로 겹침 확인) |
+| **1-C** | 프레임별 `Acquisition Complete.` | ✅ **스위치 뒤에 넣었다** -- `[readout] acq_per_frame`(기본 `false` = 종전 거동) |
 
-#### 지시를 셋으로 갈라야 한다 — 성질이 다르다
+- 계약: `DetectorBackend.readout_events()` **선택 훅** (`('progress', pct)` ·
+  `('frame', ctrltag)`).  없으면 `readout()` 로 떨어진다 -- 구판 백엔드는
+  아무것도 안 바뀐다.
+- `[readout] acq_skew_warn`(기본 1.0초) -- **스위치와 무관하게 시차를 잰다.**
+  `acq_per_frame` 기본값을 정할 근거가 그 실측이기 때문이다.
+- `ics_sim` 쪽은 **얕은 모사**다 (시차 0).  목적은 그 분기를 `ics_sim` 시험도
+  밟게 하는 것 -- 시뮬이 훅을 안 내놓으면 **새 분기가 실기에서 처음 돈다.**
 
-| | 지시 | 현재 상태 | 성질 |
+⚠️ **이것이 `ics_sim` 규약(3.3)을 처음 연 건이다.**  목 지시로 연 것이므로
+위반이 아니고, 기본값이 꺼짐이라 **거동은 종전과 같다.**  커밋 메시지에 "어긴
+것이 아니라 연 것" 이라고 적을 것.
+
+### 작업 2 — v0 세부 검토·수정
+
+**F1~F12 를 코드로 다시 읽어 판정했다.**  11.25 의 경고("앞 세션 워크플로
+결과를 근거로 쓰지 말라")대로 항목마다 재확인했고, **F6 은 결함이 아니었다.**
+
+## 미해결 목록 — 처리 결과 (2026-08-24)
+
+| # | 판정 | 무엇을 했나 | 자리 |
 |---|---|---|---|
-| **1-A** | FRAME 검사를 둘 다 동시에 | ❌ **안 되어 있다** — `readout()` 이 master 티켓 하나만 폴링한다 | **결함 수정** (아래 F1) |
-| **1-B** | fetch 를 병렬로 | ✅ **이미 되어 있다** (근거 아래) | 시험으로 못박기만 |
-| **1-C** | 실제 polling 에 따라 프레임별 `Acquisition Complete.` | ❌ 지금은 4개를 같은 틱에 낸다 | **선택적 개선 + 새 위험** |
+| **F1** | 결함 | 작업 1-A | `backend._readout_stream()` |
+| **F2** | 결함 | 취득 경로가 전원·과열을 한 번도 안 봤다.  매뉴얼에서 **`POWER=n`(0~5)** 을 새로 찾았다 -- `POWERON` 이 성공해도 `POWER=3`(일부 모듈만 올라옴)일 수 있다 | `parse.health_problems()` · `controller._check_health()` |
+| **F3** | 결함 | 종료가 **저장 중인 프레임을 버렸다** | `Sequencer.drain_writers()` + `[archon] shutdown_drain` |
+| **F4** | 결함 | `POWERON` 응답을 잃으면 `POWEROFF` 를 건너뛰었다 (규약 11 위반) | `controller.power_attempted` |
+| **F5** | **미확정 — 실측 대기** | FETCH 상한을 `[archon] fetch_timeout` 으로 뺐고, `frame_timeout` 과 어긋나면 기동에서 알린다.  **값은 probe 3단계 실측 뒤에** | `config._cross_checks` |
+| **F6** | **결함 아님** | 아래 | -- |
+| **F7** | 결함 | 값 안의 `'` 를 안 겹쳤다 (FITS 표준 4.2.1).  절단이 겹친 따옴표를 반 자르는 것도 함께 막음 | `fitswrite.card_image` |
+| **F8** | 결함 | `STATUS` 실패 뒤 **낡은 스냅샷을 실측값처럼** 다시 실었다 | `controller.refresh_status` |
+| **F9** | 결함 | 13/14/15 결측 + **AD 판정이 `t == 2` 하나**였다 | `parse.MODULE_TYPES` · `parse.AD_TYPES` |
+| **F10** | 이미 닫힘 | -- | -- |
+| **F11** | 결함 | `repo_only` 표식으로 저장소/배치본을 가름 | `tests/conftest.py` · README |
+| **F12** | 결함 | `.py` 만 추적하던 것을 **파생물만 빼고 전부**로 | `tools/sync_vendor.py` |
 
-**1-B 가 이미 되어 있다는 근거** (2026-08-24 코드로 확인)
+**F6 은 국면 불일치가 아니라 어휘의 한계였다.**  ERASE 실패가 `Failed to
+initialize one or more ICs` 로 나가는 것을 결함으로 적어 뒀는데, **OBSAgent 가
+알아듣는 ICS 오류 문구는 둘뿐이다**(DevNote 3장).  그 둘 중에서는 ERASE 가
+취득 개시 *전*의 준비 국면이므로 이쪽이 맞고, 새 문구를 지어내면 OBSAgent 가
+못 알아듣는다 -- **고치면 규약을 깨는 자리**다.  코드는 그대로 두고 근거를
+주석으로 남겼다.
 
-- `_store` 는 컨트롤러마다 **별개 asyncio 태스크**다 — `ics_sim/sequencer.py`
-  의 `asyncio.create_task(..., name='ics_sim.store.<tag>')`.
-- 컨트롤러마다 **자기 `asyncio.Lock` 과 자기 소켓**이다 —
-  `archon/controller.py` `self._lock = asyncio.Lock()`.
-- FETCH 를 포함한 모든 왕복이 `asyncio.to_thread` 로 루프 밖에 있다.
+**F2 는 막지 않는다.**  전원·과열 이상을 발견해도 노출을 중단하지 않는다 --
+이 필드들은 실기 미검증(PROVISIONAL)이고, 오독 하나로 관측을 통째로 세우는
+쪽이 더 나쁘다.  **보고하지 않는 필드는 이상으로 세지 않는다**(없는 필드를
+이상으로 세면 첫 실행이 통째로 경보가 된다).  대신 크게 남기고
+`probe_archon` 1단계가 같은 값을 눈으로 확인한다.
 
-→ MK 의 FETCH 가 도는 동안 NT 의 FETCH 가 같이 돈다. **남은 일은 그것을 값이
-아니라 동시성으로 확인하는 시험 하나**다 — 지금 시험은 겹침의 *결과*(픽셀에 섞은
-프레임 번호)만 본다.
-
-#### 의견 — 1-A 와 1-C 를 분리해서 결정하라
-
-**1-A 는 해야 한다.** `readout()` 은 master 프레임만 기다리고 곧바로
-`yield final` 을 낸다. 즉 **NT 가 늦거나 죽어도 획득 완료가 먼저 나간다.**
-시뮬에서는 CCD 4개가 다 소프트웨어라 "master 가 끝났으면 나머지도 끝났다" 가
-참이었지만, 실기는 컨트롤러가 물리적으로 둘이라 그 전제가 깨진다. 티켓은 이미
-컨트롤러마다 있으므로 `asyncio.gather` 로 두 `wait_frame` 을 함께 기다리고
-진행률만 master 것을 흘려보내면 된다. 그러면 **`Acquisition Complete.` 는 여전히
-같은 틱에 4개**이므로 1.8초 창 산포는 0 으로 남고, NT 실패는 그 자리에서
-`DMA WAIT TIMEOUT` 으로 통보된다. **F1 은 1-A 만으로 해결된다.**
-
-**1-C 는 진단성 개선이고, 대가로 규약 위험을 새로 들여온다.**
-
-- 얻는 것: 관측자가 "MK 는 끝났고 NT 가 아직" 을 화면에서 본다.
-- 잃는 것: `Acquisition Complete.` 4개의 산포가 **두 컨트롤러의 실제 시차**가
-  된다. OBSAgent 는 4개가 **1.8초 안에** 모여야 하고(DevNote 3.3), 넘으면
-  `opause` + ERROR 다 — `ics_sim/obsagent_model.py` 의 `check_windows` 가
-  `spread = acq[3] - acq[0]` 로 그 검사를 이미 하고 있다.
-- **OBSAgent 는 4개가 언제 왔는지를 창 검사 외에는 쓰지 않는다.** 즉 1-C 의
-  실익은 사람 눈에만 있고, 기계 쪽에는 위험만 늘어난다.
-
-권고:
-
-1. **1-A 를 먼저, 단독으로** 넣는다 — 스위치 없이. 이건 결함 수정이다.
-2. **1-C 는 스위치 뒤에** 넣는다 — `[readout] acq_per_frame`(기본 `false`).
-   `false` 면 오늘 거동(같은 틱 4개), `true` 면 프레임별.
-3. 시차 감시를 함께 넣는다 — 첫 프레임 완료 뒤 둘째가 `acq_skew_warn`(기본
-   1.0초, 1.8초보다 안쪽) 안에 안 오면 경고를 남긴다. **실기 시차 실측이
-   `probe_archon` 3단계에서 나온 뒤에 기본값을 정한다.**
-4. `ics_sim` 에 시차 주입(`[behavior] inject = acq_skew`)을 넣어 **1.8초 위반을
-   시뮬에서 재현**할 수 있게 한다 — 그러면 이 변경의 위험을 실기 전에 본다.
-
-**반대 논거(기록용).** 1-C 를 아예 하지 않는 선택도 방어된다. 정상 상황의 두
-컨트롤러 시차는 수십 ms 로 보인다 — 같은 ACF · 같은 기하 · `gather` 로 동시
-트리거이므로. 그렇다면 프레임별 발신과 같은 틱 발신의 화면 차이가 사람에게
-보이지 않는다. 즉 **이득이 0 인데 창을 깨뜨릴 경로만 새로 생긴다.** 실측 전에는
-1-C 의 이득 크기를 알 수 없고, 그래서 기본값 `false` 를 권한다.
-
-#### ⚠️ `ics_sim` 쪽이 더 큰 일이다 — 계약을 건드린다
-
-**`ics_sim` 은 컨트롤러라는 개념이 독출 경로에 없다.** `sim.readout(ccd)` 는
-`[readout]` 설정대로 정수만 흘려보낸다(`hardware/sim.py`). "두 대를 모사" 하려면
-백엔드 계약 `DetectorBackend.readout()` 이 **컨트롤러별 완료를 표현**할 수 있어야
-하고, 그건 시퀀서를 건드리는 일이다 — **아래 규약 2번이 말하는 "재검토 신호"
-그 자체다.** 목 지시로 여는 것이니 규약 위반은 아니지만, **어긴 것이 아니라
-연 것임을 커밋 메시지에 명시**해야 한다.
-
-권하는 계약 모양 (되돌리기 쉬운 쪽 — 선택 훅):
-
-    # base.py
-    def readout_events(self, ccd) -> AsyncIterator[tuple[str, object]] | None:
-        """('progress', int) | ('frame', ctrltag).  없으면 오늘 거동."""
-
-시퀀서는 훅이 있으면 그것을 쓰고, 없으면 오늘의 `readout()` 로 떨어진다.
-**시뮬·실기·기존 시험 셋이 같은 자리에서 갈린다.**
-
-#### 소모 비용 — 견적
-
-| 자리 | 고칠 줄 | 새 시험 |
-|---|---|---|
-| `ics_archon/archon/backend.py` `readout()` | ~60 | 6~8 |
-| `ics_archon/tests/fake_archon.py` (컨트롤러별 독출 지연 손잡이) | ~15 | — |
-| `ics_sim/hardware/base.py` (계약 추가) | ~30 | 2 |
-| `ics_sim/hardware/sim.py` (두 대 모사 + 시차) | ~45 | 4 |
-| `ics_sim/sequencer.py` (`_readout` + 발신 재구성) | ~55 | 4~6 |
-| `ics_sim/config.py` (`acq_per_frame` · `acq_skew_warn` · inject) | ~20 | 2 |
-| `_vendor` 재동기 · 문서(DevNote · 이 문서 · README) | ~80 | — |
-| **합** | **~300줄** | **~20항목** |
-
-회귀 확인 1회에 **약 7분**이 든다(ics_sim 4분 + ics_archon 3분). 한 세션
-분량이고, 적대 검증을 붙이면 그 이상이다.
-
-**권고: 커밋을 둘로 나눈다** — ① 1-A(결함 수정, 위험 없음) ② 1-C + `ics_sim`
-계약(스위치 기본 꺼짐). **①만 넣고 멈출 수 있어야 한다.**
-
-### 작업 2 — `ics_archon` v0 세부 검토·수정
-
-목 지시: "ics_archon v0 세부 사항을 검토하고 수정/보완 할거야."
-아래 **미해결 목록**이 그 일감이다. F1 은 작업 1-A 와 같은 자리이므로 함께
-처리한다.
-
-## 미해결 목록 (커밋 `6a94e57` 기준)
-
-⚠️ **앞 세션의 심층검토 워크플로를 근거로 쓰지 말 것.** 검증 에이전트 136개를
-사용 한도로 잃었고, 집계 스크립트가 null 표를 "반박" 으로 세었다 — 그 워크플로가
-"반박 47건" 이라고 낸 것은 **검증된 적이 없다.** 아래는 그중 사람이 코드를 다시
-읽어 근거를 확인한 것만 남긴 것이고, **고치기 전에 각 항목을 재확인한다.**
-
-### 실기 운용에 걸릴 수 있는 것
-
-| # | 결함 | 자리 | 비고 |
-|---|---|---|---|
-| **F1** | `Acquisition Complete.` 가 master 프레임만 보고 나간다 | `backend.readout()` | **작업 1-A** |
-| **F2** | `POWERGOOD`·과열을 한 번도 확인하지 않는다 | `parse.power_good` 은 있는데 호출부가 `status()` 하나뿐 | 전원 이상이 "취득 실패" 로만 보인다 |
-| **F3** | `shutdown()` 이 저장 대기열을 기다리지 않는다 | `backend.shutdown()` | 정상 종료가 **독출 끝난 프레임을 버린다** |
-| **F4** | `POWERON` 응답을 잃으면 `powered=False` 로 남아 `POWEROFF` 를 건너뛴다 | `controller.power_on`/`power_off` | **규약 11 을 깬다** |
-| **F5** | FETCH 시한이 `frame_timeout`(300초)보다 길 수 있다 | 344 MiB ÷ 실측 속도 | 실측 전에는 확정 못 한다 |
-| **F6** | ERASE 실패가 `Failed to initialize one or more ICs` 로 통보된다 | `backend.erase()` | 국면 불일치 — `base.py` 에 erase 전용 문구가 없다 |
-
-### 자료 정합성
-
-| # | 결함 | 자리 |
-|---|---|---|
-| **F7** | FITS 문자열 카드가 값 안의 `'` 를 겹치지 않는다 (FITS 규격 위반) | `fitswrite.card_image` |
-| **F8** | `STATUS` 실패 뒤 낡은 telemetry 를 실측값처럼 다시 쓴다 | `controller.refresh_status` → `controller_telemetry()` |
-| **F9** | `MODULE_TYPES` 에 13/14/15(ADF/ADX/ADLN)가 없다 | `parse.MODULE_TYPES` |
-
-### 배포·문서
-
-| # | 결함 | 자리 |
-|---|---|---|
-| **F10** | ~~문서가 "`ics_sim` 을 사본으로 뜨지 않는다" 고 말한다~~ | **2026-08-24 고침** — 규약 1번을 `_vendor` 에 맞게 다시 썼다 |
-| **F11** | README 가 배치 트리에서 "실패 0" 을 약속하는데 **실측 7 실패 / 91 통과** 다 | `README.md` 갱신 절 |
-| **F12** | `sync_vendor` 가 `.py` 만 추적한다 — 자료 파일이 생기면 조용히 빠진다 | `tools/sync_vendor.py` |
-
-**F11 실측 (2026-08-24).** 형제 `ics_sim` 없이 `ics_archon/` 만 둔 트리를 만들어
-`pytest tests -q` 를 돌렸다 — **7 실패 / 91 통과.** 원인이 둘로 갈린다.
-
-| 실패 | 개수 | 원천 |
-|---|---|---|
-| `test_fitswrite.py` 견본 pair 바이트 재현 (`[MK]`·`[NT]` × 2) | 4 | **견본 pair 파일**이 저장소 밖(`raw_fits_spec` 계통)에 있다 |
-| `test_vendor.py` (`vendor_matches_the_source` · `sync_check_agrees` · `simpath_prefers_the_sibling`) | 3 | **형제 `ics_sim/` 원천**이 배치본에 없다 |
-
-둘 다 **배치본에서는 정상**인 실패다 — 원천이 없는 것이 맞다. 그런데
-`test_vendor.py` 는 머리말에 *"원천이 없으면 `skip` 이 아니라 **실패**다 —
-저장소에서 그런 상태는 결함이고, skip 은 '확인했다' 가 아니라 '확인하지 않았다'
-인데 결과 화면에서 둘이 같아 보인다"* 고 적어 두었다. 그 판단은 **저장소 기준으로
-옳다.** 그래서 고칠 곳은 시험이 아니라 **구분**이다:
-
-- 저장소 전용 시험에 표식을 붙이고(`@pytest.mark.repo_only` 따위),
-  README 의 배치 트리 명령을 `pytest tests -q -m "not repo_only"` 로 바꾼다.
-- 저장소에서는 표식 없이 전부 돌린다 — 지금의 98항목 그대로.
-- ⚠️ **`-m "not repo_only"` 를 저장소에서 쓰지 않도록** README 에 그 이유를 남긴다
-  (표식이 "이 시험은 안 해도 된다" 로 읽히면 벤더 표류를 놓친다).
-
-### 정책 미정
+### 정책 미정 — **목 판단이 남아 있다**
 
 **P1 — ABORT 와 노출 번호.** 실측된 비대칭: 같은 프로세스에서 ABORT 하면 번호를
 **재사용**하는데, 프로그램을 재시작하면 그 번호를 **건너뛴다**(영구 구멍). 중단
 국면에서 파일은 항상 0개였고, `GO n` 의 1번 프레임 파일은 남았다. **어느 쪽이
-규범인지 정해진 바 없다** — 정하고 나서 시험으로 못박아야 한다.
+규범인지 정해진 바 없다** — 정하고 나서 시험으로 못박아야 한다.  이번 작업에서는
+**건드리지 않았다** (정책이 정해지기 전에 코드를 바꾸면 그 자체가 결정이 된다).
+
 
 ## 결정사항 — v0.0 에서 내가 정한 것 (목 확인 요망)
 

@@ -100,7 +100,7 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     mods = parse.module_types(system)
     shown = ', '.join('%d:%s' % (s, parse.MODULE_TYPES.get(t, '?%d' % t))
                       for s, t in sorted(mods.items()) if t)
-    ad = sorted(s for s, t in mods.items() if t == 2)
+    ad = sorted(s for s, t in mods.items() if t in parse.AD_TYPES)
     print('\n   모듈: %s' % (shown or '(보고 없음)'))
     if ad == [5, 6, 7, 8]:
         say(OK, 'AD(비디오) 모듈이 슬롯 5~8 -- TEMP_SLOTS 가정이 맞다')
@@ -108,7 +108,8 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
         say(BAD, 'AD 모듈이 슬롯 %s 다 -- parse.TEMP_SLOTS 를 고쳐야 한다' % ad,
             '지금 목록: %s' % ' '.join(parse.TEMP_SLOTS))
     else:
-        say(WARN, 'AD 모듈을 못 찾았다 (MODn_TYPE=2) -- 슬롯 가정을 확인할 것')
+        say(WARN, 'AD 모듈을 못 찾았다 (MODn_TYPE 2/13/14/15) -- 슬롯 '
+            '가정을 확인할 것')
 
     # -- STATUS ------------------------------------------------------------
     await ctrl.refresh_status()
@@ -134,6 +135,19 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
 
     say(OK if parse.power_good(status) else BAD,
         'POWERGOOD = %s' % status.get('POWERGOOD', '(없음)'))
+    # `POWERON` 이 성공 응답을 준 것과 전원이 실제로 올라온 것은 다르다 --
+    # `POWER=3`(일부 모듈만 올라옴)이 그 사이의 상태다 (매뉴얼 p.47).
+    pstate = parse.power_state(status)
+    if pstate is None:
+        say(WARN, 'POWER 를 보고하지 않는다 -- 전원 상태를 못 가른다')
+    else:
+        say(OK if pstate == parse.POWER_ON else BAD,
+            'POWER = %d %s' % (pstate, parse.POWER_STATES.get(pstate, '?')))
+    if 'OVERHEAT' not in status:
+        say(WARN, 'OVERHEAT 를 보고하지 않는다')
+    else:
+        say(BAD if parse.overheating(status) else OK,
+            'OVERHEAT = %s' % status['OVERHEAT'])
 
     # 이 컨트롤러가 색인 1(MK) 자리라고 보고 카드를 만들어 본다.
     cards = rawhdr.ctrl_telemetry_header([parse.telemetry_of(status), {}])

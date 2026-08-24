@@ -101,6 +101,12 @@ def card_image(key: str, value: object, comment: str) -> str:
                         '? 로 바꾼다.  헤더는 ASCII 전용이다 (raw spec 5.0절)',
                         key.strip(), text)
             text = text.encode('ascii', 'replace').decode('ascii')
+        # **값 안의 홑따옴표는 겹쳐 쓴다** (FITS 표준 4.2.1).  안 겹치면 그
+        # 자리가 값의 끝으로 읽혀 카드가 통째로 깨진다 -- `object O'Brien` 한
+        # 번이면 `OBJECT = 'O'Brien   '` 이 되고, 값은 `O` 로 잘리고 나머지가
+        # comment 로 새며 **경고가 한 줄도 안 뜬다.**  값의 출처가 관측자 입력
+        # (`OBJECT`/`OBSERVER`/`PROJID`)과 ACF 파일명이라 실제로 들어올 수 있다.
+        text = text.replace("'", "''")
         width = _WIDTH.get(key, 0)
         # 값이 들어갈 최대 폭 = 80 - ("KEY     = '" + "'" + " / " + comment)
         room = 80 - (10 + 1 + 1 + (3 + len(comment) if comment else 2))
@@ -109,6 +115,12 @@ def card_image(key: str, value: object, comment: str) -> str:
             log.warning('FITS 카드 %s 의 값이 너무 길다 (%d > %d) -- 잘라낸다',
                         key.strip(), len(text), room)
             text = text[:room]
+            # **겹친 따옴표 한가운데서 자르면 안 된다.**  홀수 개가 남으면
+            # 그것이 값의 끝으로 읽혀 카드가 깨진다 -- 길이를 맞추려다 위에서
+            # 막은 결함을 그대로 만드는 셈이다.
+            trail = len(text) - len(text.rstrip("'"))
+            if trail % 2:
+                text = text[:-1]
         if len(text) < width:
             text = text.ljust(width)
         base = "%-8s= '%s'" % (key, text)

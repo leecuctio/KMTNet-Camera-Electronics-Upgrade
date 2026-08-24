@@ -25,7 +25,7 @@
 
 ## 무엇을 어디로
 
-    ics_sim/ics_sim/**.py   ->   ics_archon/ics_archon/_vendor/ics_sim/**.py
+    ics_sim/ics_sim/**   ->   ics_archon/ics_archon/_vendor/ics_sim/**
 
 `_vendor` 가 `sys.path` 에 들어가므로 내장본은 그냥 `import ics_sim` 으로 잡힌다
 (코드의 import 문을 고치지 않는다 -- 고치면 그 순간 사본이 아니게 된다).
@@ -52,17 +52,28 @@ SRC = os.environ.get('ICS_SIM_SRC') or os.path.normpath(
     os.path.join(os.path.dirname(HERE), os.pardir, 'ics_sim', 'ics_sim'))
 
 SKIP_DIRS = {'__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'}
+#: 옮기지 **않는** 것.  파생물과 편집기 찌꺼기뿐이다.
+SKIP_SUFFIX = ('.pyc', '.pyo', '.pyd', '.so', '.orig', '.rej', '.bak', '~')
+SKIP_NAMES = {'.DS_Store', 'Thumbs.db'}
 
 
 def sources(root: str) -> list[str]:
-    """옮길 파일의 상대경로 목록 (정렬).  `.py` 만 옮긴다."""
+    """옮길 파일의 상대경로 목록 (정렬).
+
+    **`.py` 만 고르지 않는다.**  확장자로 고르면 원천에 자료 파일(템플릿·표·
+    스키마)이 새로 생겼을 때 **조용히 빠진다** -- 매니페스트도 같은 목록으로
+    만들어지므로 `test_vendor.py` 까지 초록으로 통과하고, 배치본에서 그 파일을
+    처음 읽는 순간에야 드러난다.  그래서 방향을 뒤집었다: **파생물만 빼고 전부
+    옮긴다.**  과하게 담기는 것은 매니페스트에 보이지만, 빠지는 것은 안 보인다.
+    """
     out = []
     for base, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
         for name in sorted(files):
-            if name.endswith('.py'):
-                out.append(os.path.relpath(os.path.join(base, name), root)
-                           .replace(os.sep, '/'))
+            if name in SKIP_NAMES or name.endswith(SKIP_SUFFIX):
+                continue
+            out.append(os.path.relpath(os.path.join(base, name), root)
+                       .replace(os.sep, '/'))
     return sorted(out)
 
 

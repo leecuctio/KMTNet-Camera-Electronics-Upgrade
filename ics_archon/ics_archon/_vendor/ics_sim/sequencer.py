@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from . import rawhdr, rawpair
 from .config import SimConfig
@@ -115,6 +116,33 @@ class Sequencer:
         if self._writers:
             await asyncio.gather(*self._writers, return_exceptions=True)
             self._writers.clear()
+
+    async def drain_writers(self, timeout: float) -> int:
+        """**저장 태스크만** 끝날 때까지 기다린다 (종료 경로용).
+
+        `wait()` 는 노출 사이클(`_task`)까지 기다리므로 `GO 100` 중이면 끝나지
+        않는다.  종료에서 필요한 것은 그것이 아니라 **이미 독출을 마친
+        프레임을 잃지 않는 것**이다 -- 저장은 `write_delay` 뒤에 백그라운드로
+        도는데, 그 사이 종료가 태스크를 취소하면 컨트롤러에서 다 읽어낸
+        프레임이 파일 없이 사라진다.
+
+        Args:
+            timeout: 상한 [s].  0 이하면 기다리지 않는다.
+
+        Returns:
+            상한 안에 못 끝낸 태스크 수 (0 이면 전부 저장됐다).
+        """
+        pending = [t for t in self._writers if not t.done()]
+        if not pending or timeout <= 0:
+            return len(pending)
+        log.info('종료 대기 -- 저장 중인 프레임 %d개 (상한 %.0f초)',
+                 len(pending), timeout)
+        done, late = await asyncio.wait(pending, timeout=timeout)
+        del done
+        if late:
+            log.error('저장이 %.0f초 안에 안 끝났다 -- 프레임 %d개를 잃는다. '
+                      '독출은 끝났는데 파일이 없는 상태다', timeout, len(late))
+        return len(late)
 
     def stop_integration(self, requester: str) -> bool:
         """STOP -- 적분만 조기 종료한다.  readout 과 저장은 정상 진행.
@@ -298,11 +326,9 @@ class Sequencer:
         self.emit.emit_req(cfg.node.ic_of(master), 'GO', source)
         self.emit.ic_go_ack(ics, master)
 
-        await self._readout(source, master)
-
         # --- 5) 획득 완료 -------------------------------------------------
-        # 4개가 1.8초 안에 모여야 한다.  같은 이벤트 루프 틱에서 내보내므로
-        # 산포는 사실상 0 이다.
+        # 4개가 1.8초 안에 모여야 한다.  **기본은 같은 이벤트 루프 틱**에서
+        # 내보내므로 산포가 사실상 0 이고, 그 창이 구조적으로 보장된다.
         final = cfg.readout.pctread_final
         reporting = ccds
         if cfg.behavior.injecting('acq_short'):
@@ -310,9 +336,48 @@ class Sequencer:
             reporting = ccds[:-1]
             log.warning('inject: Acquisition Complete. 를 %d회만 보냅니다',
                         len(reporting))
-        for ccd in reporting:
+
+        chips_of = dict(rawpair.CONTROLLERS)
+        sent: list[str] = []
+        first_at: list[float] = []
+        per_frame = cfg.readout.acq_per_frame
+
+        async def _frame_done(ctrltag: str) -> None:
+            """컨트롤러 하나의 프레임이 완료됐다.
+
+            **발신 여부와 무관하게 시차부터 잰다** -- 실기의 두 컨트롤러 시차는
+            아직 실측이 없고(`acq_per_frame` 기본값을 정할 근거가 그것이다),
+            창을 깨기 전에 알아야 한다.
+            """
+            now = time.monotonic()
+            if not first_at:
+                first_at.append(now)
+            else:
+                skew = now - first_at[0]
+                if skew > cfg.readout.acq_skew_warn:
+                    log.warning('컨트롤러 완료 시차가 %.2f초다 (%s) -- '
+                                '[readout] acq_skew_warn=%.1f 초과.  4개가 '
+                                '1.8초 안에 모여야 OBSAgent 가 opause 로 '
+                                '가지 않는다', skew, ctrltag,
+                                cfg.readout.acq_skew_warn)
+            if not per_frame:
+                return
+            group = [c for c in reporting
+                     if c in chips_of.get(ctrltag, ()) and c not in sent]
+            for ccd in group:
+                self.emit.ic_acq_complete_obs(source, ccd, final)
+            for ccd in group:
+                self.emit.ic_acq_complete_ics(ics, ccd)
+            sent.extend(group)
+
+        await self._readout(source, master, _frame_done)
+
+        # 프레임별로 이미 나간 것을 빼고 나머지를 낸다.  `acq_per_frame` 이
+        # 꺼져 있으면 여기서 4개가 한꺼번에 나가고, 그것이 종전 거동이다.
+        rest = [c for c in reporting if c not in sent]
+        for ccd in rest:
             self.emit.ic_acq_complete_obs(source, ccd, final)
-        for ccd in reporting:
+        for ccd in rest:
             self.emit.ic_acq_complete_ics(ics, ccd)
 
         # 저장은 백그라운드로 넘긴다.  GO n 에서 프레임 N 의 Wrote 가 프레임
@@ -652,18 +717,42 @@ class Sequencer:
         if rest > 0:
             await self._nap(self.cfg.scaled(rest))
 
-    async def _readout(self, source: str, master: str) -> None:
+    async def _readout(self, source: str, master: str,
+                       on_frame=None) -> None:  # noqa: ANN001
         """master 의 진행률을 sourceID 에게만 보고한다.
 
         진행률은 백엔드가 yield 한다.  시뮬은 [readout] 설정대로, 실기는
         컨트롤러가 보고하는 값을 그대로 흘려보낸다 -- 이 코드는 안 바뀐다.
+
+        Args:
+            on_frame: 컨트롤러 하나의 프레임이 완료될 때 부를 코루틴
+                (`await on_frame(ctrltag)`).  주면 백엔드의 선택 훅
+                `readout_events()` 를 쓰고, 훅이 없는 백엔드에서는 종전
+                경로로 떨어진다 (`readout()`).
         """
         final = self.cfg.readout.pctread_final
-        async for pct in self.backend.readout(master):
-            if pct >= final:
-                break
+
+        def report(pct: int) -> None:
             self.state.channel(master).pctread = pct
             self.emit.ic_pctread(source, master, pct)
+
+        events = None
+        if on_frame is not None:
+            hook = getattr(self.backend, 'readout_events', None)
+            if hook is not None:
+                events = hook(master)
+        if events is None:
+            async for pct in self.backend.readout(master):
+                if pct >= final:
+                    break
+                report(pct)
+            return
+        async for kind, value in events:
+            if kind == 'progress':
+                if int(value) < final:
+                    report(int(value))
+            elif kind == 'frame':
+                await on_frame(str(value))
 
     # -- 텔레메트리 중계 --------------------------------------------------
 

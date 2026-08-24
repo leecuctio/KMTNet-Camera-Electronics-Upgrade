@@ -103,6 +103,16 @@ class IcsArchon(IcsSim):
         (labtest 가 노출 루프를 `try/finally` 로 감싼 것과 같은 이유 --
         DevNote 11.22 (4)).
         """
+        # **저장 중인 프레임을 먼저 지킨다.**  `super().stop()` 이 태스크를
+        # 취소하고 `backend.shutdown()` 이 링크를 닫으므로, 그 전에 기다리지
+        # 않으면 독출을 마친 프레임이 파일 없이 사라진다 -- 전원을 끄는 것보다
+        # 앞이다 (전원은 몇 초 더 켜져 있어도 되지만 프레임은 다시 못 찍는다).
+        drain = getattr(self.seq, 'drain_writers', None)
+        if drain is not None:
+            try:
+                await drain(self.acfg.shutdown_drain)
+            except Exception:                       # noqa: BLE001
+                log.exception('저장 대기 중 예외 -- 프레임을 잃었을 수 있다')
         shutdown = getattr(self.backend, 'shutdown', None)
         if shutdown is not None:
             try:

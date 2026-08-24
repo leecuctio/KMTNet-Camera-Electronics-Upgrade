@@ -80,6 +80,7 @@ def _parse_card(card: str):  # noqa: ANN202
     return key, int(token), comment
 
 
+@pytest.mark.repo_only
 @pytest.mark.parametrize('tag', ['MK', 'NT'])
 def test_card_images_reproduce_the_draft_byte_for_byte(tag):  # noqa: ANN001
     """견본 144카드를 되먹이면 같은 바이트가 나와야 한다."""
@@ -100,6 +101,7 @@ def test_card_images_reproduce_the_draft_byte_for_byte(tag):  # noqa: ANN001
                   % (i, k, a, b) for i, k, a, b in mismatch[:5]))
 
 
+@pytest.mark.repo_only
 @pytest.mark.parametrize('tag', ['MK', 'NT'])
 def test_header_bytes_of_the_draft_is_exactly_the_draft(tag):  # noqa: ANN001
     """카드를 조립한 결과가 견본 스트림과 같은지 -- 구조 카드 자리 포함.
@@ -145,6 +147,38 @@ def test_over_long_string_is_clamped_so_the_card_stays_parsable():
     assert card.count("'") == 2                   # 인용부호가 살아 있다
     assert card.endswith('Ctr-1 T[C]')            # comment 도 살아 있다
     assert card[11:11 + 51].strip().count('-999.99') == 6   # 51자로 잘렸다
+
+
+def test_a_quote_inside_a_string_value_is_doubled_not_left_to_break_the_card():
+    """FITS 표준 4.2.1 -- 값 안의 `'` 는 겹쳐 써야 한다 (F7).
+
+    안 겹치면 그 자리가 값의 끝으로 읽혀 **카드가 통째로 깨진다.**  값의
+    출처가 관측자 입력(`OBJECT`/`OBSERVER`/`PROJID`)이라 `object O'Brien`
+    한 번이면 실제로 들어온다 -- 그리고 경고가 한 줄도 안 뜬다.
+    """
+    from astropy.io import fits
+
+    img = fitswrite.card_image('OBJECT', "O'Brien", 'Object name')
+    assert len(img) == 80
+    assert "O''Brien" in img, img
+    # 정본 판정은 astropy 다 -- 되읽어서 원래 값이 나와야 한다.
+    assert fits.Card.fromstring(img).value.strip() == "O'Brien"
+
+
+def test_truncation_never_leaves_a_dangling_half_of_a_doubled_quote():
+    """겹친 따옴표 한가운데서 자르면 홀수 개가 남아 카드가 깨진다.
+
+    길이를 맞추려다 위에서 막은 결함을 그대로 만드는 셈이라 따로 막는다.
+    """
+    from astropy.io import fits
+
+    value = "A" + "'" * 60
+    img = fitswrite.card_image('OBJECT', value, 'Object name')
+    assert len(img) == 80
+    body = img.split('=', 1)[1]
+    quoted = body[body.index("'") + 1:body.rindex("'")]
+    assert quoted.count("'") % 2 == 0, img
+    assert fits.Card.fromstring(img).value is not None
 
 
 def test_header_bytes_rejects_a_misaligned_result():

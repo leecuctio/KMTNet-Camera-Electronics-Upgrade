@@ -256,6 +256,63 @@ def power_good(status: dict[str, str] | None) -> bool:
     return bool(status) and status.get('POWERGOOD', '0').strip() == '1'
 
 
+#: `POWER=n` -- **CCD 전원의 실제 상태** (매뉴얼 p.47).  `POWERON` 이 성공
+#: 응답을 줬다는 것과 전원이 실제로 올라왔다는 것은 다르다.
+POWER_STATES = {
+    0: 'Unknown (내부 오류)',
+    1: 'Not Configured (설정 미적용)',
+    2: 'Off',
+    3: 'Intermediate (일부 모듈만 전원이 올라왔다)',
+    4: 'On',
+    5: 'Standby',
+}
+#: 취득이 성립하는 유일한 상태.
+POWER_ON = 4
+
+
+def power_state(status: dict[str, str] | None) -> int | None:
+    """`POWER` (매뉴얼 p.47).  보고가 없으면 `None`."""
+    if not status:
+        return None
+    try:
+        return int(str(status.get('POWER', '')).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def overheating(status: dict[str, str] | None) -> bool:
+    """`OVERHEAT` (매뉴얼 p.47) -- `1` 이면 과열이다.
+
+    모듈은 과열을 알리면 **스스로 전원을 내린다** (p.20) -- 그 뒤의 프레임은
+    자료가 아니라 잔해다.
+    """
+    return bool(status) and str(status.get('OVERHEAT', '0')).strip() == '1'
+
+
+def health_problems(status: dict[str, str] | None) -> list[str]:
+    """전원·과열 이상을 사람이 읽을 문장으로 (없으면 빈 목록).
+
+    **취득 경로가 이것을 한 번도 안 봤다** (2026-08-24 검토, F2).  전원 레일이
+    죽거나 모듈이 과열해도 밖에서는 "취득 실패" 로만 보였고, 원인을 가르려면
+    사람이 따로 `STATUS` 를 떠야 했다.  `STATUS` 는 어차피 노출마다 뜨므로
+    같은 응답에서 읽어 낸다 -- 왕복이 늘지 않는다.
+
+    ⚠️ **보고가 없는 필드는 이상으로 세지 않는다.**  실기 응답을 아직 못 봤고
+    (PROVISIONAL), 없는 필드를 이상으로 세면 첫 실행이 통째로 경보가 된다.
+    """
+    if not status:
+        return []
+    bad: list[str] = []
+    if 'POWERGOOD' in status and not power_good(status):
+        bad.append('POWERGOOD=0 (시스템 전원 공급 이상)')
+    if overheating(status):
+        bad.append('OVERHEAT=1 (과열 -- 모듈이 스스로 전원을 내린다)')
+    state = power_state(status)
+    if state is not None and state != POWER_ON:
+        bad.append('POWER=%d %s' % (state, POWER_STATES.get(state, '?')))
+    return bad
+
+
 # ---------------------------------------------------------------------------
 # SYSTEM
 # ---------------------------------------------------------------------------
@@ -310,7 +367,14 @@ def module_types(system: dict[str, str] | None) -> dict[int, int]:
     return out
 
 
-#: `MODn_TYPE` 값 -> 이름 (매뉴얼 p.46).  AD = 비디오 모듈.
+#: `MODn_TYPE` 값 -> 이름 (매뉴얼 p.46 전량).  AD = 비디오 모듈.
 MODULE_TYPES = {0: 'None', 1: 'Driver', 2: 'AD', 3: 'LVBias', 4: 'HVBias',
                 5: 'Heater', 7: 'HS', 8: 'HVXBias', 9: 'LVXBias',
-                10: 'LVDS', 11: 'HeaterX', 12: 'XVBias'}
+                10: 'LVDS', 11: 'HeaterX', 12: 'XVBias',
+                13: 'ADF', 14: 'ADX', 15: 'ADLN'}
+
+#: **비디오(AD) 계열 전부.**  `2` 하나만 보면 ADF/ADX/ADLN 이 꽂힌 백플레인에서
+#: "AD 모듈을 못 찾았다" 가 되어, 슬롯 가정(`TEMP_SLOTS`)을 확인하라고 만든
+#: 1단계 탐침이 **모듈이 제자리에 있는데도 경고**를 낸다.  실기 첫 실행에서
+#: 가장 먼저 보는 화면이라 그 오경보 하나가 진짜 문제를 덮는다.
+AD_TYPES = frozenset({2, 13, 14, 15})

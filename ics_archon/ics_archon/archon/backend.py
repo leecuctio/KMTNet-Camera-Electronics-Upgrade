@@ -51,6 +51,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 
 from .. import _simpath
 
@@ -215,6 +216,13 @@ class ArchonBackend:
         try:
             await self._all(lambda c: c.flush(), 'flush')
         except (ArchonError, TimeoutError, OSError) as exc:
+            # **국면은 ERASE 인데 문구는 "initialize" 다 -- 일부러 그렇다.**
+            # OBSAgent 가 알아듣는 ICS 오류 문구는 둘뿐이고(`Failed to
+            # initialize one or more ICs` · `Failed to Start acquisition on
+            # one or more ICs`, DevNote 3장) 둘 다 `flag_icscheck` 를 세운다.
+            # ERASE 는 취득 개시 **전**의 준비 국면이므로 둘 중에서는 이쪽이
+            # 맞고, 새 문구를 지어내면 OBSAgent 가 못 알아듣는다(규약).
+            # 국면은 위 `_all()` 이 컨트롤러별로 로그에 남긴다.
             raise BackendError('Failed to initialize one or more ICs',
                                ccd=ccd) from exc
 
@@ -312,6 +320,29 @@ class ArchonBackend:
     async def readout(self, ccd: str):  # noqa: ANN201
         """독출 진행률을 yield 한다.  마지막에 `pctread_final`.
 
+        **계약의 기본 경로다.**  `readout_events()` 를 쓰지 않는 시퀀서(구판)
+        에서도 그대로 돌아야 하므로, 사건 흐름에서 진행률만 걸러 낸다.
+        """
+        final = self.cfg.readout.pctread_final
+        async for kind, value in self._readout_stream(ccd):
+            if kind == 'progress' and int(value) < final:
+                yield int(value)
+        yield final
+
+    def readout_events(self, ccd: str):  # noqa: ANN201
+        """독출을 사건으로 흘려보낸다 (`base.py` 의 선택 훅).
+
+        `('progress', pct)` 는 master 의 진행률이고, `('frame', ctrltag)` 는
+        **그 컨트롤러의 프레임이 완료됐다**는 뜻이다 -- 완료 순서 그대로
+        나온다.  시퀀서가 `[readout] acq_per_frame` 을 보고 프레임별로
+        `Acquisition Complete.` 를 낼지 정한다 (기본은 꺼짐 = 종전대로 4개를
+        같은 틱에).
+        """
+        return self._readout_stream(ccd)
+
+    async def _readout_stream(self, ccd: str):  # noqa: ANN201
+        """독출 한 번 -- 노출 지시 · 진행률 · 컨트롤러별 완료.
+
         DARK/BIAS 는 시퀀서가 노출을 걸어 달라고 하지 않으므로(위 3번) 여기서
         건다 -- 적분은 `erase` 이후의 축적이고, `IntMS=0` 으로 곧바로 읽어낸다.
 
@@ -347,21 +378,58 @@ class ArchonBackend:
             raise BackendError('No exposure was triggered on %s' % master.tag,
                                ccd=ccd)
         final = self.cfg.readout.pctread_final
+        # **두 컨트롤러의 프레임을 함께 기다린다** (목 지시 2026-08-24).
+        #
+        # 종전에는 master 티켓만 폴링하고 곧바로 `final` 을 냈다.  그러면
+        # 시퀀서가 `Acquisition Complete.` 를 내보낸 **뒤에야** 나머지 대의
+        # 프레임이 확인되므로 -- NT 가 늦거나 죽어도 획득 완료가 먼저 나간다.
+        # 시뮬에서는 CCD 4개가 다 소프트웨어라 "master 가 끝났으면 나머지도
+        # 끝났다" 가 참이었지만, 실기는 컨트롤러가 **물리적으로 둘**이라 그
+        # 전제가 깨진다 (DevNote 11.25).
+        others = [c for c in self._active()
+                  if c is not master and c.current_ticket is not None]
+        waits = {asyncio.ensure_future(c.await_frame(c.current_ticket)): c.tag
+                 for c in others}
         try:
+            t0 = time.monotonic()
             async for pct in master.wait_frame(ticket):
                 if pct < final:
-                    yield pct
+                    yield 'progress', pct
+            t_master = time.monotonic()
+            yield 'frame', master.tag
+            # **완료 순서 그대로 낸다.**  누가 먼저 끝나는지가 곧 시차이고,
+            # 그 값이 `acq_per_frame` 기본값을 정할 근거다.
+            while waits:
+                done, _ = await asyncio.wait(
+                    waits, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    tag = waits.pop(task)
+                    exc = task.exception()
+                    if exc is not None:
+                        log.error('%s: 프레임을 확인하지 못했다 -- %s', tag, exc)
+                        raise exc
+                    log.info('%s: 프레임 완료 (master %s 뒤 %.2f초)',
+                             tag, master.tag, time.monotonic() - t_master)
+                    yield 'frame', tag
+            log.info('독출 완료 -- master %s %.1f초', master.tag,
+                     t_master - t0)
         except (ArchonError, TimeoutError, OSError) as exc:
             # 레거시가 이 상황에 낸 문구를 그대로 쓴다 (base.py docstring):
             #   G.IC>ABC ERROR: GO  DMA WAIT TIMEOUT. EXPOSURES ABORTED.
             raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.',
                                ccd=ccd) from exc
-        # **여기서 "진행 중" 표시를 내린다.**  안 내리면 다음 프레임의
-        # `readout()` 이 "이미 걸렸다" 고 보고 노출을 안 건다.  저장 대기열은
-        # 그대로 남아 각 컨트롤러의 `write_frame()` 이 FIFO 로 가져간다.
-        for c in self._active():
-            c.release_current()
-        yield final
+        finally:
+            # master 가 실패하면 나머지 대의 폴링이 영원히 남는다 -- 다음
+            # 노출의 `readout()` 이 같은 티켓을 다시 기다리면 두 태스크가 같은
+            # 소켓을 두고 겹친다.
+            for task in waits:
+                if not task.done():
+                    task.cancel()
+            # **여기서 "진행 중" 표시를 내린다.**  안 내리면 다음 프레임의
+            # `readout()` 이 "이미 걸렸다" 고 보고 노출을 안 건다.  저장
+            # 대기열은 그대로 남아 각 컨트롤러의 `write_frame()` 이 가져간다.
+            for c in self._active():
+                c.release_current()
 
     async def fetch_image(self, ccd: str):  # noqa: ANN201
         """chip 하나분 픽셀 (진단·도구용).  시퀀서는 부르지 않는다.
@@ -553,6 +621,9 @@ class ArchonBackend:
         `try/finally` 로 감싼 것과 같은 이유 -- DevNote 11.22 (4)).
         """
         for ctrl in self._active():
-            if ctrl.powered:
+            # **확인된 상태가 아니라 "시도한 적이 있나" 로 판단한다.**
+            # `POWERON` 응답을 잃으면 컨트롤러는 켜졌는데 `powered` 는 False 로
+            # 남는다 -- 그 조합에서 POWEROFF 를 건너뛰면 전원을 켠 채로 끝난다.
+            if ctrl.powered or ctrl.power_attempted:
                 await ctrl.power_off()
             await ctrl.close()

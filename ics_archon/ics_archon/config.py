@@ -114,6 +114,21 @@ class ArchonCfg:
     #: 기본 300초는 실측(독출 ~40초 예상) 대비 넉넉하게 잡은 값이고, 실측이
     #: 나오면 조여야 한다.
     frame_timeout: float = 300.0
+    #: `FETCH` 한 프레임의 상한 [s].  **0 이면 크기에서 유도한다** (1 MiB/s
+    #: 가정 · 최소 60초) -- 344 MiB 면 344초다.
+    #:
+    #: ⚠️ `frame_timeout` 과 **별개의 상한**이다.  독출(트리거→프레임 완료)을
+    #: 조여 놔도 전송은 이 값이 따로 잡으므로, 링크가 느려졌을 때 아무도
+    #: 알려주지 않는다.  실측(`tools/probe_archon.py` 3단계의 MiB/s)이 나오면
+    #: 여기에 실측 기반 값을 적는다 -- 그게 미해결 F5 가 기다리는 것이다.
+    fetch_timeout: float = 0.0
+    #: 종료할 때 **저장 중인 프레임**을 기다리는 상한 [s].  0 이면 안 기다린다.
+    #:
+    #: 저장은 `write_delay` 뒤에 백그라운드로 도는 일이라, 그 사이에 종료가
+    #: 들어오면 **컨트롤러에서 다 읽어낸 프레임이 파일 없이 사라진다** --
+    #: 취득 한 장은 다시 못 찍는다.  전원 차단(`POWEROFF`)보다 먼저 이것을
+    #: 기다린다.
+    shutdown_drain: float = 30.0
     #: 진행률을 몇 % 이상 올랐을 때 보고할지.  0 이면 폴링마다 보고한다.
     #: 레거시는 6/17/28/... 로 듬성듬성 보냈고 촘촘해도 OBSAgent 는 문제없다
     #: (DevNote 3.2) -- 다만 와이어 소음을 줄이려고 문턱을 둔다.
@@ -274,6 +289,9 @@ def load(path: str) -> ArchonCfg:
     cfg.lock_buffer = _bool(s, 'lock_buffer', cfg.lock_buffer)
     cfg.frame_poll = _num(s, 'frame_poll', cfg.frame_poll, float)
     cfg.frame_timeout = _num(s, 'frame_timeout', cfg.frame_timeout, float)
+    cfg.shutdown_drain = _num(s, 'shutdown_drain', cfg.shutdown_drain,
+                              float)
+    cfg.fetch_timeout = _num(s, 'fetch_timeout', cfg.fetch_timeout, float)
     cfg.progress_step = _num(s, 'progress_step', cfg.progress_step, int)
 
     cfg.naxis1 = _num(s, 'naxis1', cfg.naxis1, int)
@@ -322,6 +340,16 @@ def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
     if not cfg.telemetry:
         notes.append('[archon] telemetry=false -- Cn_TEMP/VOLT/CURR 가 NC 로 '
                      '실린다 (왕복은 labtest v1.0 계보와 같아진다)')
+    # **두 상한이 서로 다른 것을 잰다는 사실을 t=0 에 보여 준다.**  독출을
+    # 조여 놓고 전송이 그보다 오래 걸리는 조합은 한쪽만 보면 정상이다 (F5).
+    fetch_cap = cfg.fetch_timeout or max(
+        60.0, cfg.frame_bytes / (1 << 20) * 1.0)
+    if cfg.frame_timeout > 0 and fetch_cap > cfg.frame_timeout:
+        notes.append(
+            '[archon] FETCH 상한(%.0f초)이 frame_timeout(%.0f초)보다 길다 -- '
+            '둘은 다른 국면을 재므로 잘못은 아니지만, 링크가 느려지면 독출 '
+            '상한을 조여 놔도 전송에서 그만큼 매달린다.  실측 MiB/s 가 나오면 '
+            'fetch_timeout 에 적을 것 (F5)' % (fetch_cap, cfg.frame_timeout))
     notes += _cross_checks(cfg, sim_cfg)
     return notes
 

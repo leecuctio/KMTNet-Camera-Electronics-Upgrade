@@ -7,6 +7,9 @@
 # 통째로 뜨고 값 뒤에 '\r' 이 붙는 파서를 만나면 조용히 틀린다.
 *.ini text eol=lf
 *.acf text eol=lf
+# 벤더 매니페스트도 LF -- 이것만 속성이 없어 CRLF 로 체크아웃되고,
+# sync_vendor.py 가 LF 로 다시 써서 작업 트리가 매번 흔들린다.
+*.sha256 text eol=lf
 
 # iCal must use CRLF line endings (RFC 5545).
 *.ics text eol=crlf

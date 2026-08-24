@@ -136,6 +136,12 @@ class ArchonController:
         self.telemetry_enabled = bool(cfg.telemetry)
 
         self.powered = False
+        #: `POWERON` 을 **보낸 적이 있나.**  응답을 잃은 경우까지 포함한다 --
+        #: 종료 때 `POWEROFF` 를 낼지는 이 값으로 정한다 (`powered` 는 응답으로
+        #: 확인된 상태라 "켜졌는데 모르는" 경우를 놓친다).
+        self.power_attempted = False
+        #: 이상을 이미 알렸나 -- 프레임마다 같은 줄을 되풀이하지 않는다.
+        self._health_bad = False
         #: **진행 중** 프레임의 표 (노출·독출이 끝나면 `release_current()`).
         #: `triggered`/`integrating` 이 이것을 본다.
         self._current: FrameTicket | None = None
@@ -330,7 +336,16 @@ class ArchonController:
     # -- 전원 -------------------------------------------------------------
 
     async def power_on(self, wait: float | None = None) -> None:
-        """CCD 입력 클록·바이어스 전원 ON + flush 대기."""
+        """CCD 입력 클록·바이어스 전원 ON + flush 대기.
+
+        **"보냈다" 를 보내기 전에 기록한다.**  응답을 잃어도(시한 초과·망 끊김)
+        컨트롤러는 이미 전원을 올렸을 수 있다 -- 그때 `powered=False` 로 남으면
+        `shutdown()` 이 `POWEROFF` 를 건너뛰고 **바이어스가 걸린 채로 프로그램이
+        끝난다**(검출기 쪽 위험, 규약 11).  확인된 상태(`powered`)와 시도한
+        사실(`power_attempted`)을 갈라 두면 종료는 안전한 쪽으로, 재준비는
+        확인된 쪽으로 판단할 수 있다.
+        """
+        self.power_attempted = True
         await self.cmd('POWERON', timeout=T_POWER)
         self.powered = True
         delay = self.cfg.poweron_wait if wait is None else wait
@@ -352,6 +367,7 @@ class ArchonController:
                       '직접 확인하라', self.tag, exc)
             return
         self.powered = False
+        self.power_attempted = False
 
     # -- 스냅샷 -----------------------------------------------------------
 
@@ -374,10 +390,37 @@ class ArchonController:
         try:
             self.status = await self.query('STATUS',
                                           timeout=self.cfg.status_timeout)
+            self._check_health()
         except (ArchonError, TimeoutError, OSError) as exc:
             self.telemetry_enabled = False
+            # **낡은 스냅샷을 반드시 버린다.**  안 버리면 `controller_telemetry()`
+            # 가 앞 프레임의 값을 읽어 **지금 잰 값처럼** 헤더에 싣는다 --
+            # 텔레메트리는 이 실행 동안 다시 갱신되지 않으므로 그 뒤의 모든
+            # 프레임이 같은 온도·전압을 달고 나가고, 파일만 봐서는 언제 잰
+            # 값인지 알 길이 없다.  "물어봤는데 실패" 는 `NC` 여야 한다
+            # (`parse.telemetry_of` 가 빈 dict 를 그렇게 만든다).
+            self.status = {}
             log.warning('%s: STATUS 질의 실패 (%s) -- 이 실행 동안 텔레메트리를 '
                         '끈다.  Cn_* 는 NC 로 실린다', self.tag, exc)
+
+    def _check_health(self) -> None:
+        """`STATUS` 응답에서 전원·과열 이상을 읽어 알린다 (F2).
+
+        **막지는 않는다.**  이 필드들은 아직 실기 미검증(PROVISIONAL)이라,
+        오독 하나로 관측을 통째로 세우는 쪽이 더 나쁘다 -- 첫 실행에서
+        `tools/probe_archon.py` 1단계가 같은 값을 눈으로 확인한다.  대신 원인이
+        보이도록 크게 남긴다: 종전에는 전원 이상이 밖에서 "취득 실패" 로만
+        보였다.
+        """
+        bad = parse.health_problems(self.status)
+        if not bad:
+            self._health_bad = False
+            return
+        if not self._health_bad:
+            self._health_bad = True
+            log.error('%s: 컨트롤러 상태 이상 -- %s.  이 상태의 프레임은 '
+                      '자료가 아니라 잔해일 수 있다 (매뉴얼 p.47)',
+                      self.tag, ' / '.join(bad))
 
     async def frame(self) -> parse.FrameStatus:
         return parse.newest(await self.query('FRAME', timeout=T_FAST))
@@ -654,8 +697,13 @@ class ArchonController:
                     % (self.tag, buf_n, live, fs.frame, lock), cmd='FETCH')
 
             # 상한은 크기에서 뽑는다 -- 1 GB/s 를 밑도는 어떤 링크라도 넉넉하고,
-            # 그러면서 "영구히 멈춤" 은 막는다.
-            timeout = max(60.0, expect_bytes / (1 << 20) * 1.0)
+            # 그러면서 "영구히 멈춤" 은 막는다.  실측 MiB/s 가 나오면
+            # `[archon] fetch_timeout` 으로 조인다 (F5) -- 이 유도값은
+            # `frame_timeout` 과 **별개의 상한**이라 한쪽만 조여도 다른 쪽은
+            # 그대로다.
+            timeout = float(getattr(self.cfg, 'fetch_timeout', 0.0) or 0.0)
+            if timeout <= 0:
+                timeout = max(60.0, expect_bytes / (1 << 20) * 1.0)
             started = time.monotonic()
             async with self._lock:
                 data = await asyncio.to_thread(
@@ -715,7 +763,7 @@ class ArchonController:
         shown = ', '.join(
             '%d:%s' % (s, parse.MODULE_TYPES.get(t, '?%d' % t))
             for s, t in sorted(mods.items()) if t)
-        ad = [s for s, t in mods.items() if t == 2]
+        ad = [s for s, t in mods.items() if t in parse.AD_TYPES]
         log.info('%s: 모듈 %s', self.tag, shown)
         if sorted(ad) != [5, 6, 7, 8]:
             log.warning('%s: AD(비디오) 모듈이 슬롯 %s 에 있다 -- parse.'

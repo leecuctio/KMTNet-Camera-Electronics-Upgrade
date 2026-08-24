@@ -165,6 +165,73 @@ def test_progress_comes_from_the_controller_not_the_ini(tmp_path, fakes):  # noq
 
 
 # ---------------------------------------------------------------------------
+# 두 컨트롤러 병렬 독출 (목 지시 2026-08-24)
+# ---------------------------------------------------------------------------
+
+def test_frame_events_name_each_controller_in_completion_order(tmp_path):  # noqa: ANN001
+    """`readout_events()` 가 컨트롤러별 완료를 **끝난 순서대로** 낸다 (1-C).
+
+    `readout()` 은 진행률 정수만 흘려보내므로 "어느 컨트롤러가 끝났나" 를
+    표현할 자리가 없었다.  NT 를 느리게 만들면 MK 가 먼저 나와야 한다 --
+    그 순서가 곧 실기의 시차이고, `acq_per_frame` 기본값을 정할 근거다.
+    """
+    mk = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.02)
+    nt = FakeArchon(width=NX, height=NY, readout_ticks=8, tick=0.05)
+    mk.start(); nt.start()
+    try:
+        cfg, acfg, nt_port = make_cfgs(tmp_path, mk, nt)
+        acfg.full_flush_on_erase = False
+
+        async def run():  # noqa: ANN202
+            app = IcsArchon(cfg, acfg)
+            app.backend.ctrls['NT'].link.port = nt_port
+            await app.start()
+            try:
+                for tag in ('MK', 'NT'):
+                    await app.backend.initialize(
+                        'K' if tag == 'MK' else 'N', '20260824.000001')
+                got = []
+                async for kind, value in app.backend.readout_events('K'):
+                    got.append((kind, value))
+                return got
+            finally:
+                await app.stop()
+
+        events = asyncio.run(run())
+    finally:
+        mk.shutdown(); nt.shutdown()
+    frames = [v for k, v in events if k == 'frame']
+    assert frames == ['MK', 'NT'], (
+        '완료 순서가 아니다 (NT 를 4배 느리게 뒀다): %r' % frames)
+    assert any(k == 'progress' for k, _v in events), '진행률이 하나도 안 나왔다'
+    # 진행률은 master 것만 -- 100 은 시퀀서 몫이라 여기서 내지 않는다.
+    assert all(v < 100 for k, v in events if k == 'progress'), events
+
+
+@pytest.mark.parametrize('per_frame', [False, True])
+def test_acq_per_frame_switch_keeps_the_four_messages(tmp_path, fakes, per_frame):  # noqa: ANN001
+    """스위치를 켜든 끄든 **`Acquisition Complete.` 는 4회**다.
+
+    바뀌는 것은 개수가 아니라 **언제 나가나** 뿐이다 -- 개수가 곧 규약이다
+    (DevNote 3장 2항).  꺼짐이 기본이고 그때가 종전 거동(같은 틱 4개)이다.
+    """
+    cfg, acfg, nt_port = make_cfgs(tmp_path, fakes.mk, fakes.nt)
+    cfg.readout.acq_per_frame = per_frame
+    sent, _ = asyncio.run(_drive(cfg, acfg, nt_port,
+                                 ['OBS>ICS dark begin', 'OBS>ICS exp 0',
+                                  'OBS>ICS go']))
+    acq = [m for m in sent if 'Acquisition Complete.' in m]
+    assert len(acq) == 4, acq
+    assert sum('Wrote' in m for m in sent) == 8
+    assert sum('EXPSTATUS=IDLE' in m for m in sent) == 1
+    if per_frame:
+        # 컨트롤러 묶음으로 나간다 -- MK(M/K) 가 먼저, 그 다음 NT(N/T).
+        who = [m.split('.IC>')[0] for m in acq]
+        assert set(who[:2]) == {'M', 'K'}, who
+        assert set(who[2:]) == {'N', 'T'}, who
+
+
+# ---------------------------------------------------------------------------
 # 산출물
 # ---------------------------------------------------------------------------
 

@@ -95,6 +95,7 @@ def test_vendor_matches_its_own_manifest():
         % (missing, extra, changed))
 
 
+@pytest.mark.repo_only
 def test_vendor_matches_the_source():
     """**원천과 어긋나면 실패.**  개정 누락을 잡는 자리다.
 
@@ -117,6 +118,7 @@ def test_vendor_matches_the_source():
         % (only_src, only_dst, diff))
 
 
+@pytest.mark.repo_only
 def test_sync_check_agrees():
     """도구의 `--check` 도 같은 판정을 내려야 한다 (CI 가 이것을 쓴다)."""
     r = subprocess.run([sys.executable, os.path.join(ROOT, 'tools',
@@ -128,6 +130,7 @@ def test_sync_check_agrees():
 
 # ---------------------------------------------------------------------------
 
+@pytest.mark.repo_only
 def test_simpath_prefers_the_sibling_in_the_repo():
     """저장소에서는 **형제 원천이 이긴다** -- 고친 것이 곧바로 반영돼야 한다.
 

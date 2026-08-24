@@ -263,6 +263,156 @@ def test_a_frame_that_never_completes_times_out_instead_of_hanging(tmp_path):  #
     assert not glob.glob(str(tmp_path / 'rawdata' / '*.fits'))
 
 
+def test_acquisition_does_not_go_out_before_the_other_controller_finishes(tmp_path):  # noqa: ANN001
+    """**NT 만 죽는다 -- 획득 완료가 먼저 나가면 안 된다** (F1, 목 지시 1-A).
+
+    종전에는 `readout()` 이 master(MK) 티켓만 폴링하고 곧바로 `pctread_final`
+    을 냈다.  그러면 시퀀서가 `Acquisition Complete.` 4개를 내보낸 **뒤에야**
+    NT 의 프레임을 확인하므로, NT 가 죽어도 관측자와 OBSAgent 는 "다 잘
+    끝났다" 를 먼저 본다 -- 그 다음에 파일이 2개만 나온다.
+
+    시뮬에서는 CCD 4개가 다 소프트웨어라 "master 가 끝났으면 나머지도 끝났다"
+    가 참이었고, 그래서 시험 325개가 전부 초록이었다 (DevNote 11.25).  실기는
+    컨트롤러가 물리적으로 둘이라 그 전제가 깨진다.
+    """
+    # ⚠️ **적분 시간을 0 으로 둔다.**  `exp 1` 이면 IntMS=1000 이라 프레임이
+    # 1초 뒤에나 나오고, 그러면 `frame_timeout` 이 MK 에서 먼저 터져 **둘 다
+    # 죽은 채로 시험이 통과한다** -- 이 시험이 무엇을 잡는지 모르게 된다.
+    cfg, acfg = cfgs(tmp_path, frame_timeout=0.5, full_flush_on_erase=False)
+    mk = FakeArchon(width=NX, height=NY)
+    nt = FakeArchon(width=NX, height=NY)
+    nt._expose = lambda: None             # noqa: SLF001 -- NT 만 프레임이 없다
+    mk.start(); nt.start()
+    try:
+        sent, alive = asyncio.run(_drive(cfg, acfg,
+                                         {'MK': mk.port, 'NT': nt.port},
+                                         script=['OBS>ICS dark begin',
+                                                 'OBS>ICS exp 0',
+                                                 'OBS>ICS go'],
+                                         settle=1.5))
+    finally:
+        mk.shutdown(); nt.shutdown()
+    acq = [m for m in sent if 'Acquisition Complete.' in m]
+    assert not acq, ('NT 가 프레임을 못 냈는데 획득 완료가 나갔다 -- '
+                     'master 만 기다린 것이다: %r' % acq)
+    errs = errors(sent)
+    assert any('DMA WAIT TIMEOUT' in m for m in errs), errs
+    assert alive
+
+
+def test_a_failed_status_drops_the_stale_snapshot_instead_of_reusing_it(tmp_path):  # noqa: ANN001
+    """**STATUS 가 실패하면 낡은 값을 버린다** (F8).
+
+    종전에는 `telemetry_enabled` 만 내리고 `self.status` 를 그대로 뒀다.  그
+    뒤의 모든 프레임이 **앞 프레임의 온도·전압**을 `Cn_TEMP/VOLT/CURR` 에
+    싣고, 텔레메트리는 이 실행 동안 다시 갱신되지 않으므로 파일만 봐서는
+    언제 잰 값인지 알 길이 없다.  "물어봤는데 실패" 는 `NC` 여야 한다.
+    """
+    from ics_archon.archon import parse
+    from ics_archon.archon.controller import ArchonController
+
+    cfg, acfg = cfgs(tmp_path, status_timeout=0.2)
+    del cfg
+    srv = FakeArchon(width=NX, height=NY)
+    srv.start()
+    try:
+        async def run():  # noqa: ANN202
+            ctrl = ArchonController('MK', acfg)
+            ctrl.link.port = srv.port
+            await ctrl.connect()
+            try:
+                await ctrl.refresh_status()
+                first = dict(ctrl.status)
+                assert first, '첫 STATUS 가 비었다 -- 시험이 헛돈다'
+                assert parse.telemetry_of(first)['temp']
+                # 다음 질의부터 답이 늦는다 -- 시한 초과 경로.
+                srv.status_delay = 2.0
+                ctrl.telemetry_enabled = True
+                await ctrl.refresh_status()
+                return dict(ctrl.status)
+            finally:
+                await ctrl.close()
+
+        after = asyncio.run(run())
+    finally:
+        srv.shutdown()
+    assert after == {}, ('STATUS 실패 뒤에도 낡은 스냅샷이 남았다 -- 그 값이 '
+                        '실측값처럼 헤더에 실린다: %r' % after)
+    # 빈 스냅샷은 `NC` 가 된다 (자리마다 sentinel 을 채우지 않는다).
+    assert parse.telemetry_of(after) == {}
+
+
+def test_shutdown_waits_for_frames_that_are_still_being_saved(tmp_path):  # noqa: ANN001
+    """**종료가 독출을 마친 프레임을 버리면 안 된다** (F3).
+
+    저장은 `write_delay` 뒤에 백그라운드로 도는 일이라, 그 창에 종료가 들어오면
+    `super().stop()` 이 저장 태스크를 취소하고 `backend.shutdown()` 이 링크를
+    닫는다 -- **컨트롤러에서 다 읽어낸 프레임이 파일 없이 사라진다.**  취득
+    한 장은 다시 못 찍으므로 전원 차단보다 이쪽이 먼저다.
+    """
+    cfg, acfg = cfgs(tmp_path, full_flush_on_erase=False)
+    # 저장을 늦춰 "독출은 끝났는데 파일은 아직" 창을 넓힌다.
+    cfg.timing.write_delay = 10.0            # scaled(0.02) = 0.2초
+    mk = FakeArchon(width=NX, height=NY)
+    nt = FakeArchon(width=NX, height=NY)
+    mk.start(); nt.start()
+
+    async def run():  # noqa: ANN202
+        app = IcsArchon(cfg, acfg)
+        app.backend.ctrls['MK'].link.port = mk.port
+        app.backend.ctrls['NT'].link.port = nt.port
+        await app.start()
+        try:
+            for line in ['OBS>ICS dark begin', 'OBS>ICS exp 0', 'OBS>ICS go']:
+                app.transport.feed(line)
+                await asyncio.sleep(0.02)
+            # 획득 완료가 나오는 즉시 종료한다 -- 저장이 아직 안 끝난 자리다.
+            for _ in range(400):
+                if any('Acquisition Complete.' in m
+                       for m in app.transport.sent_log):
+                    break
+                await asyncio.sleep(0.01)
+            else:                                    # pragma: no cover
+                raise AssertionError('획득 완료가 안 나왔다')
+            assert not glob.glob(str(tmp_path / 'rawdata' / '*.fits')),                 '저장이 벌써 끝났다 -- 이 시험이 창을 못 잡았다'
+        finally:
+            await app.stop()
+
+    try:
+        asyncio.run(run())
+    finally:
+        mk.shutdown(); nt.shutdown()
+    got = glob.glob(str(tmp_path / 'rawdata' / '*.fits'))
+    assert len(got) == 2, ('종료가 저장 중인 프레임을 버렸다 -- 독출은 끝났는데 '
+                           '파일이 없다: %r' % got)
+
+
+def test_a_slower_controller_delays_completion_but_keeps_the_four_in_one_tick(tmp_path):  # noqa: ANN001
+    """**NT 가 느려도 4개는 같은 틱에 나간다** (1-A 는 창을 안 건드린다).
+
+    두 프레임을 함께 기다리게 만든 뒤에도 `Acquisition Complete.` 는 **둘 다
+    끝난 뒤 한꺼번에** 나가야 한다.  프레임별로 흩어 보내는 것은 별개 판단
+    (1-C)이고, 그것을 켜면 4개의 산포가 두 컨트롤러의 실제 시차가 되어 1.8초
+    창(DevNote 3.3)이 구조적 보장을 잃는다.
+    """
+    cfg, acfg = cfgs(tmp_path, full_flush_on_erase=False)
+    mk = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.02)
+    # NT 를 6배 느리게 -- 실기의 컨트롤러 시차를 흉내낸다.
+    nt = FakeArchon(width=NX, height=NY, readout_ticks=6, tick=0.04)
+    mk.start(); nt.start()
+    try:
+        sent, alive = asyncio.run(_drive(cfg, acfg,
+                                         {'MK': mk.port, 'NT': nt.port},
+                                         settle=1.5))
+    finally:
+        mk.shutdown(); nt.shutdown()
+    assert sum('Acquisition Complete.' in m for m in sent) == 4
+    assert sum('Wrote' in m for m in sent) == 8       # CB 4 + ICS 중계 4
+    assert sum('EXPSTATUS=IDLE' in m for m in sent) == 1
+    assert len(glob.glob(str(tmp_path / 'rawdata' / '*.fits'))) == 2
+    assert alive
+
+
 def test_undeclared_geometry_leaves_no_partial_file(tmp_path):  # noqa: ANN001
     """저장을 거부할 때 **`.part` 임시 파일도 남기지 않는다.**
 

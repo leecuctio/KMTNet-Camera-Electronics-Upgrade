@@ -141,6 +141,60 @@ def test_module_map_confirms_the_ad_slot_assumption():
     assert all('MOD%d/TEMP' % s in parse.TEMP_SLOTS for s in (5, 6, 7, 8))
 
 
+def test_module_types_cover_the_whole_manual_list_including_the_ad_family():
+    """`MODn_TYPE` 표는 매뉴얼 p.46 전량이어야 한다 (F9).
+
+    13/14/15(ADF/ADX/ADLN)가 빠져 있었다.  이름표가 빠지는 것보다 나쁜 것은
+    **AD 판정이 `t == 2` 하나였다는 것**이다 -- 그 셋 중 하나가 꽂힌 백플레인
+    에서는 `tools/probe_archon.py` 1단계가 "AD 모듈을 못 찾았다" 를 내고, 그
+    화면이 실기 첫 실행에서 가장 먼저 보는 것이다.
+    """
+    for code, name in ((13, 'ADF'), (14, 'ADX'), (15, 'ADLN')):
+        assert parse.MODULE_TYPES[code] == name
+        assert code in parse.AD_TYPES
+    assert 2 in parse.AD_TYPES
+    # ADX 가 꽂힌 백플레인도 슬롯 5~8 을 AD 로 읽어야 한다.
+    system = dict(DEFAULT_SYSTEM)
+    system.update({'MOD5_TYPE': '14', 'MOD6_TYPE': '14',
+                   'MOD7_TYPE': '14', 'MOD8_TYPE': '14'})
+    mods = parse.module_types(system)
+    assert sorted(s for s, t in mods.items() if t in parse.AD_TYPES) == [5, 6, 7, 8]
+
+
+def test_health_problems_names_power_and_overheat_faults():
+    """전원·과열을 취득 경로가 **한 번도 안 봤다** (F2).
+
+    `POWERGOOD`/`OVERHEAT`/`POWER` 는 노출마다 뜨는 `STATUS` 안에 이미 있다
+    (매뉴얼 p.47) -- 왕복을 늘리지 않고 원인을 가를 수 있는 자리였다.
+    """
+    assert parse.health_problems(DEFAULT_STATUS) == []
+
+    bad = dict(DEFAULT_STATUS, POWERGOOD='0')
+    assert any('POWERGOOD' in m for m in parse.health_problems(bad))
+
+    hot = dict(DEFAULT_STATUS, OVERHEAT='1')
+    assert any('OVERHEAT' in m for m in parse.health_problems(hot))
+    assert parse.overheating(hot) is True
+
+    # `POWERON` 이 성공해도 일부 모듈만 올라온 상태가 있다 (POWER=3).
+    part = dict(DEFAULT_STATUS, POWER='3')
+    got = parse.health_problems(part)
+    assert any('POWER=3' in m for m in got), got
+    assert parse.health_problems(dict(DEFAULT_STATUS, POWER='4')) == []
+
+
+def test_missing_health_fields_are_not_counted_as_faults():
+    """**보고하지 않는 필드를 이상으로 세지 않는다.**
+
+    실기 응답을 아직 못 봤다(PROVISIONAL).  없는 필드를 이상으로 세면 첫
+    실행이 통째로 경보가 되고, 그러면 진짜 이상이 그 소음에 묻힌다.
+    """
+    lean = {k: v for k, v in DEFAULT_STATUS.items()
+            if k not in ('POWERGOOD', 'OVERHEAT', 'POWER')}
+    assert parse.health_problems(lean) == []
+    assert parse.power_state(lean) is None
+
+
 def test_fake_controller_status_uses_the_real_field_names():
     """가짜 상대역이 매뉴얼 필드 이름을 쓰는지 -- 시험이 헛돌지 않게.
 

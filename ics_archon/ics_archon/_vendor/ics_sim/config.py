@@ -267,6 +267,20 @@ class ReadoutCfg:
     pctread_tick: float = 3.37
     pctread_final: int = 100
 
+    #: **`Acquisition Complete.` 를 컨트롤러 프레임별로 낼지** (기본 꺼짐).
+    #:
+    #: 꺼져 있으면 종전대로 4개를 **같은 이벤트 루프 틱**에 내보내므로 산포가
+    #: 사실상 0 이고, DevNote 3.3 의 1.8초 창이 **구조적으로** 보장된다.
+    #: 켜면 그 4개의 산포가 **두 컨트롤러의 실제 시차**가 되어 그 보장이
+    #: 없어진다 -- 얻는 것은 관측자가 "MK 는 끝났고 NT 가 아직" 을 화면에서
+    #: 보는 것뿐이고, OBSAgent 는 4개가 언제 왔는지를 창 검사 외에는 쓰지
+    #: 않는다.  **실기 시차 실측 전에는 이득 크기를 알 수 없어 기본이 꺼짐**
+    #: 이다 (`tools/probe_archon.py` 3단계).
+    acq_per_frame: bool = False
+    #: 첫 프레임 완료 뒤 나머지가 이 시간 안에 안 오면 경고 [s].
+    #: 1.8초 창보다 안쪽에 둔다 -- 창을 깨기 전에 알아야 한다.
+    acq_skew_warn: float = 1.0
+
     def steps(self) -> list[int]:
         """100 미만의 진행률 시퀀스.  실측: 6,17,28,...,94."""
         out: list[int] = []
@@ -784,6 +798,8 @@ def load(path: str | None = None) -> SimConfig:
         r.pctread_step = int(s.get('pctread_step', str(r.pctread_step)))
         r.pctread_tick = float(s.get('pctread_tick', str(r.pctread_tick)))
         r.pctread_final = int(s.get('pctread_final', str(r.pctread_final)))
+        r.acq_per_frame = _bool(s, 'acq_per_frame', r.acq_per_frame)
+        r.acq_skew_warn = float(s.get('acq_skew_warn', str(r.acq_skew_warn)))
 
     if cp.has_section('obsagent'):
         s = cp['obsagent']

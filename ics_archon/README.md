@@ -21,12 +21,12 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 |---|---|
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
 | [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (98항목) |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (110항목). 배치본은 `-m "not repo_only"` (103항목) |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
 | [`README_labtest.md`](README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
-| [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.1.1`, science 유닛) |
+| [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.1.2`, science 유닛) |
 | [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 원본 그대로, 미개정 |
 | [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **labtest 전용 검증** (19항목) — `python tests/verify_labtest_v11.py` |
 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
@@ -49,7 +49,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 세부는 전부 **[README_labtest.md](README_labtest.md)** 에 있다. 여기서는
 폴더를 처음 보는 사람이 알아야 할 것만 적는다.
 
-- **현행은 `v1.1.1`** (science 유닛, BIGBUF=1). v1.0 원본은 **실제로 돌려서 쓰던
+- **현행은 `v1.1.2`** (science 유닛, BIGBUF=1). v1.0 원본은 **실제로 돌려서 쓰던
   검증된 코드**이고, v1.1 은 그 위에 raw spec 을 얹은 개정판이다.
 - **컨트롤러와의 왕복에서 v1.1 이 추가한 명령은 `STATUS` 하나뿐**이다. 그래서
   `TELEMETRY_ENABLE = False` 로 두면 왕복이 v1.0 과 완전히 같아진다 — 실기에서
@@ -296,20 +296,24 @@ Restart=on-failure
 
 ```bash
 cd ~/AICS/src/ics_archon
-python3 -m pytest tests -q        # 배치본은 7 실패가 정상 -- 아래 참조
+python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
 ```
 
-⚠️ **배치본에서는 7개가 실패한다 (91 통과).**  설치가 깨진 것이 아니다 —
-그 7개는 **저장소에만 있는 원천**을 대조하는 시험이다.
+⚠️ **배치본에서는 `-m "not repo_only"` 를 붙인다.**  붙이지 않으면 7개가
+실패하는데 설치가 깨진 것이 아니다 — 그 7개는 **저장소에만 있는 원천**을
+대조하는 시험이라 배치본에는 대조할 상대가 없다.
 
-| 실패 | 개수 | 왜 |
+| `repo_only` 표식 | 개수 | 왜 |
 |---|---|---|
-| `test_fitswrite.py` 견본 pair 바이트 재현 | 4 | 견본 pair 파일이 저장소 밖(`raw_fits_spec` 계통)에 있다 |
+| `test_fitswrite.py` 견본 pair 바이트 재현 | 4 | 견본 pair 파일이 배포 트리 밖(`raw_fits_spec/`)에 있다 |
 | `test_vendor.py` 벤더 표류 대조 | 3 | 형제 `ics_sim/` 원천이 배치본에 없다 |
 
-**그 밖의 실패는 정상이 아니다.**  91 통과 · 위 7개만 실패가 배치본의 기대값이다
-(2026-08-24 실측).  이 구분을 표식으로 자동화하는 것은 미해결 항목 F11 이다
-(`SMC_CLAUDE.md`).
+**103 통과 · 실패 0 이 배치본의 기대값이다.**  그 밖의 실패는 정상이 아니다.
+
+⚠️ **저장소에서는 `-m "not repo_only"` 를 쓰지 말 것.**  표식의 뜻은 "안 돌려도
+되는 시험" 이 아니라 "배치본에는 대조할 원천이 없다" 다.  저장소에서 빼면
+**벤더 표류와 견본 어긋남을 놓친다** — 그 둘이 raw spec 5장 개정이 왔을 때
+울리는 알람이다.  저장소에서는 표식 없이 전부 돌린다 (110항목).
 
 - **야간에는 갱신하지 않는다.** 돌고 있는 코드가 바뀐다.
 - `~/AICS/Config/` 의 ini 는 배포본 밖이라 **덮이지 않는다.** 새 키가 생겼는지는
@@ -405,7 +409,7 @@ direct-reply 로 전 경로가 돈다.
 
 | 문서 | 위치 |
 |---|---|
-| 경위·판단 (왜 그렇게 정했나) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.23 |
+| 경위·판단 (왜 그렇게 정했나) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.26 |
 | 산출 규격 (raw FITS pair) | [`../raw_fits_spec/`](../raw_fits_spec/README.md) |
 | 헤더 카드 템플릿 (공유 원천) | `../ics_sim/ics_sim/rawcards.py` |
 | 백엔드 계약 | `../ics_sim/ics_sim/hardware/base.py` (D-012) |
