@@ -57,12 +57,14 @@
 
 ```bash
 ./build-local.sh --site kmtna        # kmtna=SSO kmtnc=CTIO kmtns=SAAO kmtnt=TestBed
-~/AIC/build/TCSAgent/pctcs ~/AIC/Config/pctcs.ini
+~/AIC/bin/pctcs ~/AIC/Config/pctcs.ini
 ```
 
 Ubuntu 24.04 / g++ 13.3.0 에서 실제로 빌드해 `ics_sim`·XIS 와 연동까지 확인했다. **원 배포본(2014~2018, CentOS 계열)과 12년치 툴체인 차이로 그냥은 안 넘어가는 것이 여섯 가지 있고**, 그중 하나(`rl_refresh_line()` 을 readline 초기화 전에 호출)는 **빌드는 되고 실행이 즉사하는** 부류다. 전부 [tcsagent_report.md](tcsagent_report.md) **12절**에 정리했고 스크립트가 처리한다.
 
 ### 설치 자리를 옮겨도 재빌드는 필요 없다 (2026-08-24)
+
+> 벤치 전체를 세우는 절차는 [`../ics_archon/INSTALL.md`](../ics_archon/INSTALL.md).
 
 로그 경로 둘이 소스에 `#define` 으로 박혀 있는데, 성질이 다르다.
 

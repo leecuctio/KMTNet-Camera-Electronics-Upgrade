@@ -46,6 +46,7 @@ CONFIG="$ROOT/Config"
 LOGS="$ROOT/Logs"
 ISISDIR="$BUILD/ISISclient"
 OBSDIR="$BUILD/OBSAgent"
+BIN="$ROOT/bin"
 
 case "$BUILD" in
   "$REPO"|"$REPO"/*) die "빌드 디렉토리를 저장소 안에 두면 안 된다: $BUILD" ;;
@@ -70,28 +71,32 @@ check_header readline/readline.h "libreadline-dev"
 check_header curl/curl.h        "libcurl4-openssl-dev"   # v1.0.0 부터 -lcurl
 echo "   OK  $CXX_BIN + readline + curl"
 
-mkdir -p "$BUILD" "$CONFIG" "$LOGS/OBS"
+mkdir -p "$BUILD" "$CONFIG" "$LOGS/OBS" "$ROOT/bin"
 
 # --------------------------------------------- 1. ISISclient (libisis.a 재빌드)
-# 커밋된 .a 는 2014년 non-PIC 라 PIE 실행파일에 못 섞인다.  TCSAgent 쪽 사본과
-# 바이트 동일하므로 이미 빌드돼 있으면 그대로 쓴다.
-if [ -f "$ISISDIR/libisis.a" ]; then
-  say "1. ISISclient -- 이미 빌드돼 있다 ($ISISDIR), 건너뛴다"
-else
-  say "1. ISISclient 재빌드 -> $ISISDIR"
-  rm -rf "$ISISDIR"
-  cp -R "$SRC/ISISclient" "$ISISDIR"
-  cd "$ISISDIR"
-  rm -f libisis.a ./*.o
-  sed -i 's|^CC *=.*|CC          = /usr/bin/g++ -std=gnu++98|' Makefile
-  sed -i 's|strstr(addrhdr,">")>0|strstr(addrhdr,">") != NULL|' isismessage.c
-  sed -i '/^\*ISODate(void)/,/^}/ s|static char str\[11\];|static char str[24];|' isisutils.c
-  make clean >/dev/null
-  make "COMPDATE=$(date +%Y-%b-%d)" "COMPTIME=$(date +%T)" >/dev/null 2>&1 \
-    || die "libisis.a 빌드 실패"
-  [ -f libisis.a ] || die "libisis.a 가 만들어지지 않았다"
-  echo "   OK  libisis.a"
-fi
+# 커밋된 .a 는 2014년 non-PIC 라 PIE 실행파일에 못 섞인다:
+#   relocation R_X86_64_32 against '.rodata' can not be used when making a PIE object
+# **그래서 항상 다시 만든다.**
+#
+# 종전에는 $ISISDIR/libisis.a 가 있으면 건너뛰었다("TCSAgent 쪽 사본과 바이트
+# 동일하므로").  그런데 그게 참인지 확인하지 않았다 -- 옛 세션이나 다른 경로에서
+# 흘러든 .a 를 그대로 물고 위 PIE 오류로 죽는다 (2026-08-24 실측: 설치 루트를
+# 옮긴 뒤 정확히 이 증상).  $BUILD/ISISclient 는 이 스크립트와 TCSAgent 가
+# **공유**하는 자리라 누가 어떤 플래그로 만들었는지 추적할 수 없으므로, 몇 초
+# 아끼자고 그 위험을 남길 이유가 없다.  TCSAgent 는 처음부터 항상 재빌드였다.
+say "1. ISISclient 재빌드 -> $ISISDIR"
+rm -rf "$ISISDIR"
+cp -R "$SRC/ISISclient" "$ISISDIR"
+cd "$ISISDIR"
+rm -f libisis.a ./*.o
+sed -i 's|^CC *=.*|CC          = /usr/bin/g++ -std=gnu++98|' Makefile
+sed -i 's|strstr(addrhdr,">")>0|strstr(addrhdr,">") != NULL|' isismessage.c
+sed -i '/^\*ISODate(void)/,/^}/ s|static char str\[11\];|static char str[24];|' isisutils.c
+make clean >/dev/null
+make "COMPDATE=$(date +%Y-%b-%d)" "COMPTIME=$(date +%T)" >/dev/null 2>&1 \
+  || die "libisis.a 빌드 실패"
+[ -f libisis.a ] || die "libisis.a 가 만들어지지 않았다"
+echo "   OK  libisis.a ($(stat -c%s libisis.a) bytes)"
 
 # ----------------------------------------------------------------- 2. hiredis
 # Makefile 의 all: 은 공유 라이브러리만 만든다.  -lhiredis 로 링크하면 링커가
@@ -192,9 +197,23 @@ if [ "$MAKE_CONFIG" = 1 ]; then
   fi
 fi
 
+
+# ------------------------------------------------------------------ 5. 설치
+#
+# **bin/ 까지 넣는다** (운영자 요청 2026-08-24).  종전에는 build/ 에만 만들고
+# "여기서 실행하라" 고 안내했는데, 사람이 손으로 bin/ 에 복사해 두면 그 사본이
+# **개명·판올림 때 조용히 낡은 채로 남는다** -- 2026-08-24 에 설치 루트를 옮긴 뒤
+# bin/ 의 옛 판이 옛 경로를 물고 있어 실제로 걸렸다.  XIS 는 처음부터 bin/ 에
+# 설치했으므로 이제 셋이 같다.
+say "5. 설치 -> $BIN"
+mkdir -p "$BIN"
+install -m 0755 "$OBSDIR/KMTObs/obstool" "$BIN/" \
+  || die "obstool 설치 실패 -- 돌고 있으면 'Text file busy' 다.  내리고 다시 실행할 것"
+echo "   OK  $BIN/obstool"
+
 say "완료"
 cat <<EOF
-  실행:  $OBSDIR/KMTObs/obstool $CONFIG/obstool.ini
+  실행:  $BIN/obstool $CONFIG/obstool.ini
 
   !! 포트 6650 은 ics_sim/tools/xis_probe.py 도 쓴다.  띄우기 전에 프로브를 끌 것.
 

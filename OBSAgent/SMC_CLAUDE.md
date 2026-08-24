@@ -48,7 +48,7 @@
 
 ```bash
 ./build-local.sh --site kmtna
-~/AIC/build/OBSAgent/KMTObs/obstool ~/AIC/Config/obstool.ini
+~/AIC/bin/obstool ~/AIC/Config/obstool.ini
 ```
 
 Ubuntu 24.04 / g++ 13.3.0 에서 빌드해 **신규 `ics`(ics_sim)를 실제 XIS 허브 너머로 몰았다** — `status`/`kstatus` 왕복, DARK 노출 사이클 전 구간이 경고 없이 통과했다. 상세는 [obsagent_report.md](obsagent_report.md) **12절**.
@@ -60,6 +60,8 @@ Ubuntu 24.04 / g++ 13.3.0 에서 빌드해 **신규 `ics`(ics_sim)를 실제 XIS
 3. **하드코딩 경로 다섯 곳** (`obstool.h:158-162`) — 로그 넷과 `ObsStatus.txt`. ini 로는 못 고친다.
 
 ### 설치 자리를 옮겨도 재빌드는 필요 없다 (2026-08-24)
+
+> 벤치 전체를 세우는 절차는 [`../ics_archon/INSTALL.md`](../ics_archon/INSTALL.md).
 
 로그 경로가 `obstool.h` 에 `#define` 으로 박혀 있고, `build-local.sh` 가
 **일반 정규식 하나로 `/data/Logs/*` 를 전부** `$LOGS` 아래로 옮긴다(이름별
@@ -79,6 +81,32 @@ sed 가 아니다 — `grep OBSSTAT build-local.sh` 로는 안 보이니 주의)
   `$LOGS/ObsStatus.txt` 로 적어 준다.
 - 패치가 안 먹으면 `build-local.sh` 가 `die` 로 멈춘다 — sed 는 안 맞아도
   조용히 지나가므로 `grep -q` 검증을 붙였다.
+
+### ⚠️ 링크가 PIE 오류로 죽으면 `libisis.a` 다 (2026-08-24 실측)
+
+```
+ld: libisis.a(isismessage.o): relocation R_X86_64_32 against `.rodata'
+    can not be used when making a PIE object; recompile with -fPIE
+```
+
+커밋된 `libisis.a` 는 2014년 non-PIC 빌드라 요즘 기본값인 PIE 실행 파일에 못
+섞인다.  **종전에는 이 스크립트가 `libisis.a` 가 있으면 재빌드를 건너뛰어서**,
+옛 세션이나 다른 경로에서 흘러든 `.a` 를 그대로 물고 이 오류로 죽었다 — 설치
+루트를 `~/AIC` 로 옮긴 직후에 정확히 이 증상이 났다.
+
+`$BUILD/ISISclient` 는 **이 스크립트와 TCSAgent 가 공유**하는 자리라 누가 어떤
+플래그로 만들었는지 추적할 수 없다.  그래서 **항상 재빌드**로 바꿨다(TCSAgent 는
+처음부터 그랬다).  몇 초면 끝나고, 그 대신 이 부류의 실패가 사라진다.
+
+빌드 산출물이 꼬였다고 의심되면 **`build/` 아래만** 지우면 된다 — 전부 생성물이다:
+
+```bash
+rm -rf ~/AIC/build/ISISclient ~/AIC/build/OBSAgent ~/AIC/build/TCSAgent
+```
+
+⚠️ `~/AIC/build/xis` 는 지울 필요가 없다(XIS 는 `libisis.a` 를 쓰지 않는다).
+`Config/`·`Logs/`·`data/` 는 **생성물이 아니다** — 특히 `Config/*.expnum` 은
+노출 번호 카운터라 절대 지우지 말 것.
 
 ⚠️ **`ObsStatus.txt` 쓰기 실패는 조용하지 않다** — `main.c:790` 이 5초마다
 `Warning: Failed to write the observation status file` 을 청록색으로 찍는다.

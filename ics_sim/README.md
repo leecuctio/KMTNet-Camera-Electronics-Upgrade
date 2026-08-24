@@ -215,9 +215,12 @@ python -m pytest tests -q
 ```
 창 0  XIS          ~/AIC/bin/isis -f$HOME/AIC/Config/isis.ini
 창 1  ics_sim      python3 -m ics_sim -c ~/AIC/Config/ics_sim.ini --xis-host 127.0.0.1 --xis-port 6660
-창 2  OBSAgent     ~/AIC/build/OBSAgent/KMTObs/obstool ~/AIC/Config/obstool.ini
-창 3  TCSAgent     ~/AIC/build/TCSAgent/pctcs ~/AIC/Config/pctcs.ini
+창 2  TCSAgent     ~/AIC/bin/pctcs ~/AIC/Config/pctcs.ini
+창 3  OBSAgent     ~/AIC/bin/obstool ~/AIC/Config/obstool.ini
 ```
+
+**순서대로 띄운다** — 허브(XIS)가 먼저 서야 나머지가 등록하고, **OBSAgent 는
+기동 중에 TC 와 ICS 둘 다에 접속하므로 맨 뒤**다.
 
 ### `tools/xis_probe.py` — 노드 하나를 흉내 내는 프로브
 

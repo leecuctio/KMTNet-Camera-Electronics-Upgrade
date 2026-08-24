@@ -47,6 +47,7 @@ CONFIG="$ROOT/Config"
 LOGS="$ROOT/Logs/TC"
 ISISDIR="$BUILD/ISISclient"
 AGENTDIR="$BUILD/TCSAgent"
+BIN="$ROOT/bin"
 
 case "$BUILD" in
   "$REPO"|"$REPO"/*) die "빌드 디렉토리를 저장소 안에 두면 안 된다: $BUILD" ;;
@@ -69,7 +70,7 @@ fi
 rm -f "/tmp/tcs_dep_check.$$.cc"
 echo "   OK  $CXX_BIN + readline"
 
-mkdir -p "$BUILD" "$CONFIG" "$LOGS"
+mkdir -p "$BUILD" "$CONFIG" "$LOGS" "$ROOT/bin"
 
 # --------------------------------------------- 1. ISISclient (libisis.a 재빌드)
 #
@@ -176,9 +177,23 @@ if [ "$MAKE_CONFIG" = 1 ]; then
 EOF
 fi
 
+
+# ------------------------------------------------------------------ 4. 설치
+#
+# **bin/ 까지 넣는다** (운영자 요청 2026-08-24).  종전에는 build/ 에만 만들고
+# "여기서 실행하라" 고 안내했는데, 사람이 손으로 bin/ 에 복사해 두면 그 사본이
+# **개명·판올림 때 조용히 낡은 채로 남는다** -- 2026-08-24 에 설치 루트를 옮긴 뒤
+# bin/ 의 옛 판이 옛 경로를 물고 있어 실제로 걸렸다.  XIS 는 처음부터 bin/ 에
+# 설치했으므로 이제 셋이 같다.
+say "4. 설치 -> $BIN"
+mkdir -p "$BIN"
+install -m 0755 "$AGENTDIR/pctcs" "$BIN/" \
+  || die "pctcs 설치 실패 -- 돌고 있으면 'Text file busy' 다.  내리고 다시 실행할 것"
+echo "   OK  $BIN/pctcs"
+
 say "완료"
 cat <<EOF
-  실행:  $AGENTDIR/pctcs $CONFIG/pctcs.ini
+  실행:  $BIN/pctcs $CONFIG/pctcs.ini
 
   기대: '> Event Logging started successfully' 와 TC% 프롬프트.
         Telcom/AUX 가 없으면 두 링크는 DOWN 으로 뜬다 -- 정상이다.

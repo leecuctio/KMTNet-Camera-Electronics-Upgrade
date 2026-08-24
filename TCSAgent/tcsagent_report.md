@@ -288,7 +288,7 @@ BLG02  17:54:52.760  -29:01:25.10  1
 ~/AIC/Config/{isis,ics_sim,pctcs,obstool}.ini
 ~/AIC/Logs/{TC,OBS}/               에이전트 로그
 ~/AIC/build/ISISclient/            재빌드된 libisis.a (OBSAgent 와 공용)
-~/AIC/build/TCSAgent/pctcs         v1.7.2
+~/AIC/bin/pctcs                    v1.7.2
 ```
 
 ### 12.2 설정 — 사이트 ini 에서 바꾸는 네 줄
