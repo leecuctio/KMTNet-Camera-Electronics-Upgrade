@@ -39,15 +39,19 @@ UNIT_IP = '13' # AC13   #  <---- Set this
 UNIT_IPADDR = '10.0.0.'+UNIT_IP
 UNIT_TIMEOUT = 1
 
-## 저장소 -- **리눅스 경로다** (운영자 확정 2026-08-23: 전 계통 리눅스 구동).
-## 구판은 윈도우 드라이브 문자였다 -- C:/DATA · H:/DATA(SSDA) · L:/DATA(SSDB).
-## 리눅스에서는 그 문자가 경로로 성립하지 않아 `createFolder` 가 cwd 아래
-## 'C:' 라는 이름의 디렉터리를 만들어 버린다 (오류도 안 난다).
-##   <---- Set this: 실제 마운트 지점으로.  USB SSD 는 보통 /media/<user>/<label>
-##   또는 /mnt/<label> 이고, `lsblk -o NAME,LABEL,MOUNTPOINT` 로 확인한다.
-DATA_STORAGE_C = '/data'            # 내장 (OS 디스크)
-DATA_STORAGE_A = '/mnt/ssda/DATA'   # SSDA (USB)
-DATA_STORAGE_B = '/mnt/ssdb/DATA'   # SSDB (USB)
+## 저장소 -- **자료는 무조건 이 한 곳으로 간다** (운영자 확정 2026-08-24).
+##
+## v1.1.2 까지는 세 갈래였다 (DATA_STORAGE_C/A/B = 내장 · USB SSD 둘) -- 데이터셋
+## 마다 골라 넘겼다.  벤치 설치가 `~/AIC` 한 벌로 통일되면서(INSTALL.md) 저장
+## 자리도 한 곳이다.  다른 디스크로 보내려면 이 값을 바꾸는 대신 `~/AIC/data`
+## 를 심볼릭 링크로 둔다 -- 그래야 ics_sim/ics_archon 본편과 자리가 같아진다.
+##
+## **`~` 는 GetDataset 이 펼친다.**  여기서 os.path.expanduser 로 감싸지 않는
+## 이유는 `import os` 가 아래(모듈 본문 앞머리)에 있어서다 -- 이 자리에서
+## 부르면 NameError 다.  펼치지 않은 값이 os.makedirs 로 넘어가면 **작업
+## 디렉터리 아래에 '~' 라는 이름의 폴더**가 생기고 오류도 안 난다
+## (ics_sim config.py `_path_or` 의 2026-08-23 실측과 같은 함정).
+DATA_STORAGE = '~/AIC/data'    #  <---- Set this: 취득 자료 저장 자리
 
 #--------------------------------
 # raw spec v1.3 identity setup  (v1.1 신설)
@@ -72,8 +76,8 @@ OBSERVER_NAME = 'HELab'         # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
-SCRIPT_VERSION = '1.1.2'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
-SCRIPT_BUILD = '2026-08-23T12:00Z'  # 소스를 고치면 같이 올린다
+SCRIPT_VERSION = '1.1.3'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
+SCRIPT_BUILD = '2026-08-24T12:00Z'  # 소스를 고치면 같이 올린다
 
 ## 위 손편집 항목(`<---- Set this`)을 **기동 시점에 한 번** 검증한다.
 ##
@@ -241,7 +245,7 @@ TEST_EXPTIMES_GxT = (0,)
 
 ## Importing modules
 
-import sys, os
+import sys, os, shutil
 import socket, configparser, select, time  # for Archon control
 import numpy as np
 
@@ -1188,6 +1192,89 @@ def SetDatasetConfig(DatasetType):
 
 ## Process multiple integration & FITS output for an iFlat dataset
 ## Note: bWaitFlush and bFullFlush are used when using non-prep version    
+## 프레임 하나가 파일에서 차지하는 바이트 -- 헤더 4블록 + 데이터 + 2880 패딩.
+FRAME_FILE_BYTES = (2880 * 4
+                    + HDR_NAXIS1 * HDR_NAXIS2 * 2
+                    + (-(HDR_NAXIS1 * HDR_NAXIS2 * 2)) % 2880)
+GIB = 1073741824.0
+
+
+def _expected_dataset_bytes():
+    """이 데이터셋이 쓸 바이트.  SetDatasetConfig 가 정한 값을 그대로 센다.
+
+    아래 노출 루프와 **같은 셈이어야 한다** -- REF 는 맨 앞에 한 장 더 붙고
+    노출마다 한 장씩 붙으며, DARK 는 0 초 노출마다 한 장씩 붙는다.
+    """
+    nframe = len(TEST_EXPTIMES) * TEST_FRAMENUM
+    if TEST_REF_ENABLE:
+        nframe += 1 + len(TEST_EXPTIMES)
+    if TEST_DARK_ENABLE:
+        nframe += sum(1 for ms in TEST_EXPTIMES if ms == 0)
+    return nframe * FRAME_FILE_BYTES
+
+
+def _check_data_storage(datastorage):
+    """저장 자리를 **POWERON 전에** 확인한다 (v1.1.3 신설).
+
+    `createFolder` 는 OSError 를 삼키고 메시지만 찍는다.  그래서 경로가 틀리면
+    폴더가 안 생긴 채로 진행하고, 그 다음 `os.listdir(datadir)` 이
+    FileNotFoundError 로 터진다 -- 그 자리가 노출 루프 `try/finally` 의
+    **바깥**이라 POWEROFF 를 못 보내고 **전원을 켠 채로** 끝난다.  ACF 선검사와
+    같은 자리에서 같은 방식으로 막는다.
+    """
+    ## **없으면 만들지 않고 거부한다.**  만들어 주면 오타가 조용히 새 트리를
+    ## 만든다 -- '~' 를 안 펼친 경우(cwd 아래 '~' 폴더)와 마운트가 안 붙은
+    ## 경우(외장 대신 OS 디스크에 수십 GiB)가 둘 다 이리로 온다.  저장 자리를
+    ## 만드는 것은 운영자 몫이다 (INSTALL.md "2. 자리 만들기").
+    if not os.path.isdir(datastorage):
+        raise SystemExit(
+            "> ERROR: data storage not found -- '%s'\n"
+            ">        cwd '%s'\n"
+            '>        **만들어 주지 않는다.**  마운트가 안 붙었거나 경로가 틀린\n'
+            '>        것을 폴더 생성으로 덮으면 자료가 엉뚱한 곳에 쌓인다.\n'
+            '>        자리를 먼저 만들어라 -- mkdir -p, 또는 마운트 확인\n'
+            '>        (lsblk -o NAME,LABEL,MOUNTPOINT).'
+            % (datastorage, os.getcwd()))
+
+    ## 읽기전용 마운트는 isdir 로 안 잡힌다 -- 실제로 써 봐야 안다.
+    ## 외장 디스크가 I/O 오류를 내면 커널이 조용히 ro 로 다시 붙인다.
+    probe = os.path.join(datastorage, '.labtest_write_test')
+    try:
+        with open(probe, 'wb'):
+            pass
+        os.remove(probe)
+    except OSError as e:
+        raise SystemExit(
+            "> ERROR: data storage not writable -- '%s'\n"
+            '>        %s\n'
+            '>        읽기전용으로 붙었거나 권한이 없다 (`mount | grep` 로 확인).'
+            % (datastorage, e))
+
+    ## 여유 용량.  모자라면 노출 중간에 ENOSPC 로 끊긴다 -- 전원을 켠 뒤라
+    ## 여기서 막는 것이 낫다.  데이터셋마다 보므로 첫 데이터셋이 통과하고
+    ## 셋째에서 걸릴 수 있다 -- 그때도 그 데이터셋의 POWERON 앞이다.
+    need = _expected_dataset_bytes()
+    free = shutil.disk_usage(datastorage).free
+    if free < need:
+        raise SystemExit(
+            "> ERROR: data storage too small -- '%s'\n"
+            '>        need %.2f GiB (%d frames) / free %.2f GiB\n'
+            '>        비우거나 다른 디스크로 옮겨라.'
+            % (datastorage, need / GIB, need // FRAME_FILE_BYTES, free / GIB))
+
+    ## 마운트 지점이 아니면 **경고만** 한다 -- `~/AIC/data` 를 OS 디스크의
+    ## 평범한 디렉터리로 두는 것도 정상 배치다 (INSTALL.md).  다만 외장
+    ## 디스크를 쓸 작정이었는데 안 붙은 경우가 이리로 오므로 알리기는 한다.
+    ## 심볼릭 링크로 걸었으면 링크가 가리키는 자리를 본다.
+    if not os.path.ismount(os.path.realpath(datastorage)):
+        print("> WARNING: '%s' 는 마운트 지점이 아니다 -- OS 디스크에 쌓인다"
+              % datastorage)
+        print('>          외장 디스크를 쓸 작정이었으면 마운트를 확인하라.')
+    print("> Data storage '%s' -- free %.2f GiB / need %.2f GiB"
+          % (datastorage, free / GIB, need / GIB))
+    print()
+
+
 def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage):
 
     global archon
@@ -1211,6 +1298,17 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
             '>        경로가 상대경로다 -- 스크립트를 그 상위 폴더에서 '
             '실행했는지 확인하라.'
             % (AcfPath, os.path.abspath(AcfPath), os.getcwd()))
+
+    ## **`~` 를 여기서 펼친다.**  DataStorage 는 이 아래 datadir 조립에만
+    ## 쓰이므로(한 곳), 인자를 다시 묶는 것으로 아래 전부가 따라온다.
+    DataStorage = os.path.expanduser(DataStorage)
+
+    ## 저장소 선검사 -- ACF 와 같은 자리(POWERON 앞)에서 본다.
+    ## SetDatasetConfig 를 여기로 올린 이유는 예상 용량을 알기 위해서다.  이
+    ## 함수는 전역 대입과 print 뿐이라 컨트롤러와 무관하다 (v1.1.2 까지는
+    ## 노출 루프 바로 앞, 즉 POWERON 뒤에서 불렀다).
+    SetDatasetConfig(DatasetId%10)
+    _check_data_storage(DataStorage)
 
     CURRENT_ACF = AcfPath    # FITS CTRL1CFG/RDMODE 의 근거 (raw spec 5.5절)
 
@@ -1389,7 +1487,6 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
 
     # Multiple Exposure loop
     
-    SetDatasetConfig(DatasetId%10)
     nframe = StartNum
     ## 노출 루프를 try/finally 로 감싼다 -- **예외로 중간에 빠져나가도 CCD
     ## 바이어스/클록은 끈다.**  v1.0 은 감싸지 않았고, Exposure()/GetDataset()
@@ -1555,22 +1652,22 @@ print()
 '''
 #20250401 U13-xTalk/Dark-Med
 TestRunNum = 3
-GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 7211, 0, DATA_STORAGE_A)
-GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 7511, 0, DATA_STORAGE_B)
-GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 7811, 0, DATA_STORAGE_A)
+GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 7211, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 7511, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 7811, 0, DATA_STORAGE)
 
 #20250406 U13-iFlat
 TestRunNum = 3
-GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 7213, 0, DATA_STORAGE_A)
-GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 7513, 0, DATA_STORAGE_A)
-GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 7813, 0, DATA_STORAGE_B)
+GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 7213, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 7513, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 7813, 0, DATA_STORAGE)
 '''
 
 #20250413 U23-xTalk/Dark
 TestRunNum = 3
-GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 3211, 0, DATA_STORAGE_B)
-GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 3511, 0, DATA_STORAGE_B)
-GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 3811, 0, DATA_STORAGE_A)
+GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 3211, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 3511, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 3811, 0, DATA_STORAGE)
 
 
 ## Disconnect from Archon

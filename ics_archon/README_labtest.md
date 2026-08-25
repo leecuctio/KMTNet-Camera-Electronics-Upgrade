@@ -15,9 +15,9 @@
 
 | 파일 | 정체 |
 |---|---|
-| [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.1.2'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
+| [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.1.3'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
 | [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 512 MB 버퍼 3개 구성. 원본 그대로, **미개정** (아래 "guide 유닛" 참조) |
-| [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **실기 없이 돌리는 검증** (15항목) — 가짜 Archon + astropy 실파일 |
+| [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **실기 없이 돌리는 검증** (31항목) — 가짜 Archon + astropy 실파일 |
 | `__ref_archon_control/archon_kmtnet_labtest_v1.0.{bigbuf,smallbuf}.py` | **v1.0 원본** (읽기 전용). 되돌려 비교할 때 쓴다 |
 
 ## 이 판이 무엇인가
@@ -32,7 +32,7 @@
 그래서 **`TELEMETRY_ENABLE = False` 로 두면 왕복이 v1.0 과 완전히 같아진다** —
 문제가 보일 때 원인을 가르는 가장 빠른 수단이다.
 
-## 검증 상태 (v1.1.2, 2026-08-23)
+## 검증 상태 (v1.1.3, 2026-08-24)
 
 | 항목 | 상태 |
 |---|---|
@@ -43,6 +43,7 @@
 | 비ASCII 손편집 값을 기동에서 거부 · 헤더 바이트 정렬 유지 | ✅ 실측 |
 | 기하·표본 불일치를 fetch 전에 거부 | ✅ 실측 |
 | 없는 ACF 를 접속·전원 전에 거부 | ✅ 실측 |
+| **저장 자리**(없음·읽기전용·용량 부족·안 펼친 `~`)를 접속·전원 전에 거부 | ✅ 실측 |
 | **실기 왕복** (POWERON → LOADPARAMS → FRAME 폴링 → FETCH) | ❌ **미검증** |
 | 실제 픽셀이 담긴 FITS 를 converter 에 투입 | ❌ 미검증 |
 
@@ -54,11 +55,12 @@
 python ics_archon/tests/verify_labtest_v11.py
 ```
 
-19개 항목 전부 통과해야 한다(실패 0). 스크립트를 손봤으면 돌려 보고 나가라.
+31개 항목 전부 통과해야 한다(실패 0).  읽기전용 자리 검사 1건은 POSIX 에서만
+돌고 윈도우에서는 `SKIP` 으로 넘어간다. 스크립트를 손봤으면 돌려 보고 나가라.
 
 ## 돌리기 전에 손볼 자리
 
-행 번호는 `v1.1.2`(2026-08-23) 기준이다. **리눅스 포팅으로 앞부분이 12줄쯤 밀렸다** — 옮겨졌으면 이렇게 찾는다:
+행 번호는 `v1.1.3`(2026-08-24) 기준이다. 옮겨졌으면 이렇게 찾는다:
 
 ```bash
 grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmtnet_labtest_v1.1.bigbuf.py
@@ -69,16 +71,17 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
 | 34 | `DATA_PREFIX` | `'AC13A'` | 로그·SMS 표시용 라벨. **파일명에는 안 들어간다** |
 | 36 | `UNIT_ID` | `7` | |
 | 37 | `UNIT_IP` | `'13'` | 주소는 `10.0.0.<UNIT_IP>` |
-| **59** | `SITE_CODE` | `'KMTT'` | 테스트베드. 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP` 이 여기서 유도된다** |
-| **60** | `UNIT_CTRLTAG` | `'MK'` | **신설.** 이 유닛이 담당하는 detector pair. `MK`/`NT` 가 아니면 기동 시 거부 |
-| **62** | `UNIT_CTRL_ID` | `'KMTT-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
-| **63** | `UNIT_CTRL_SN` | `'STA-0287'` | **신설.** 백플레인 시리얼 |
-| 64 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
-| 72 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
-| 73 | `TELEMETRY_TIMEOUT` | `3.0` | STATUS 응답 대기 상한 [s] |
-| 75~76 | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.1.2'` / `'2026-08-23T12:00Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
-| 180~181 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
-| 1554~1573 | 실행부 3블록 | — | 앞 2블록은 `'''`(1541~1553)로 묶여 있고 **1555~1559 가 활성**(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
+| **54** | `DATA_STORAGE` | `'~/AIC/data'` | **v1.1.3 에서 한 곳으로 합쳤다** (구판은 `_C`/`_A`/`_B` 세 갈래). `~` 는 `GetDataset` 이 펼친다 — 다른 디스크로 보내려면 이 값 대신 **`~/AIC/data` 를 심볼릭 링크로** 둔다 (INSTALL.md) |
+| **63** | `SITE_CODE` | `'KMTT'` | 테스트베드. 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP` 이 여기서 유도된다** |
+| **64** | `UNIT_CTRLTAG` | `'MK'` | **신설.** 이 유닛이 담당하는 detector pair. `MK`/`NT` 가 아니면 기동 시 거부 |
+| **66** | `UNIT_CTRL_ID` | `'KMTT-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
+| **67** | `UNIT_CTRL_SN` | `'STA-0287'` | **신설.** 백플레인 시리얼 |
+| 68 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
+| 76 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
+| 77 | `TELEMETRY_TIMEOUT` | `3.0` | STATUS 응답 대기 상한 [s] |
+| 79~80 | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.1.3'` / `'2026-08-24T12:00Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
+| 184~185 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
+| 1651~1670 | 실행부 3블록 | — | 앞 2블록은 `'''`(1652~1664)로 묶여 있고 **1666~1670 이 활성**(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
 
 > 🔴 **활성 블록의 유닛 번호를 확인하라.** `DatasetId` 는
 > `[UnitID(1)][TestSetup(2)][DatasetType(1)]` 이고, 활성 블록의 `3211`/`3511`/
@@ -98,12 +101,12 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
 
 그 밖에 확인할 것:
 
-- `acf/KMTNet_Sci_{fast,comp,slow}_med_U<IP>.acf` (108~110행) — **v1.1.1 부터는
+- `acf/KMTNet_Sci_{fast,comp,slow}_med_U<IP>.acf` (118~120행) — **v1.1.1 부터는
   스크립트가 데이터셋 시작에 직접 확인하고, 없으면 접속·전원 전에 멈춘다.**
   경로가 상대경로이므로 **작업 디렉터리**가 그 상위 폴더여야 한다
-- `DATA_STORAGE_A`/`_B`/`_C` 경로가 마운트돼 있는지 (48~50행, **v1.1.2 에서 리눅스 경로로 바꿨다** — `/data` · `/mnt/ssda/DATA` · `/mnt/ssdb/DATA`. USB SSD 마운트 지점은 기계마다 다르니 `lsblk -o NAME,LABEL,MOUNTPOINT` 로 확인할 것) — 그리고 **여유
+- `DATA_STORAGE` 자리가 **이미 있는지** (54행). **v1.1.3 부터 스크립트가 데이터셋 시작에 직접 확인하고, 없거나 못 쓰거나 좁으면 접속·전원 전에 멈춘다** — 그리고 **만들어 주지 않는다**(마운트가 안 붙은 것을 폴더 생성으로 덮으면 자료가 엉뚱한 곳에 쌓인다). 자리는 운영자가 먼저 만든다 — `mkdir -p ~/AIC/data`, 다른 디스크로 보낼 거면 심볼릭 링크 (INSTALL.md "2. 자리 만들기"). — 그리고 **여유
   용량**(아래 "첫 실행은 작게" 의 표)
-- `TEMP_SLOTS` (594행) — 지금은 `BACKPLANE_TEMP` + AD 모듈 4장(MOD5~8).
+- `TEMP_SLOTS` (598행) — 지금은 `BACKPLANE_TEMP` + AD 모듈 4장(MOD5~8).
   카드 폭(51자)을 넘으면 잘리고 경고가 난다. **모듈 나열 순서의 정본 명세는
   규격 수록 예정**이라 확정되면 교체한다
 - ~~**`twilio` 가 깔려 있는지.**~~ **v1.1.2 에서 고쳤다.** SMS 함수 본문은 전부
@@ -128,15 +131,14 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
 | 파일 하나 | **344.25 MiB** (헤더 11,520 + 데이터 360,960,000 + 패딩 1,920 B) |
 | 데이터셋 하나 | **7.06 GiB** / 노출 시간 합계 159 초 (+ 독출 × 21) |
 | 활성 블록 3개 | **63 프레임 / 21.18 GiB** |
-| — `DATA_STORAGE_B` | **14.12 GiB** (`3211` + `3511`) |
-| — `DATA_STORAGE_A` | **7.06 GiB** (`3811`) |
+| — 전부 `DATA_STORAGE` 한 곳 | **21.18 GiB** — v1.1.3 에서 갈래를 합쳤으므로 `~/AIC/data` 하나가 이만큼을 감당해야 한다 |
 
 **실기로 한 번도 돌리지 않은 판이므로 이걸 첫 실행으로 삼지 않는다.** 뭔가
 틀렸으면 21 GiB 를 쓴 뒤에 알게 된다. 1프레임으로 먼저 확인한다:
 
 ```python
-TEST_FRAMENUM_xTalk = 1        # 174행 (원래 3)
-TEST_EXPTIMES_xTalk = (0,)     # 175행 (원래 7개)
+TEST_FRAMENUM_xTalk = 1        # 184행 (원래 3)
+TEST_EXPTIMES_xTalk = (0,)     # 185행 (원래 7개)
 ```
 
 → 1프레임 / 344 MiB / 노출 0 초. 활성 블록에서 `GetDataset` 한 줄만 남기고
@@ -174,6 +176,10 @@ v1.1:  KMTT.<YYYYMMDD>.<NNNNNN>.MK.fits      <SITE>.<날짜>.<번호>.<MK|NT>
 | `WARNING: filename clash -- number bumped NNNNNN -> MMMMMM (D-016)` | 같은 이름이 있어 번호를 올려 저장했다. 헤더에 `FILENAME ≠ ORIGNAME` 으로 남는다. **프레임마다 뜬다면 아래 '재실행' 항목을 볼 것** |
 | `WARNING: <dir> 에 오늘(UT ...) 자 파일이 이미 N 개 있다 -- ...` | 데이터셋 시작에 한 번. **같은 UT 날짜의 재실행은 멱등하지 않다** — 아래 참조 |
 | `WARNING: POWEROFF 를 못 보냈다 (...)` | 예외로 빠져나가는 중에 전원 끄기까지 실패했다. **유닛 전원 상태를 직접 확인하라** |
+| `ERROR: data storage not found -- '...'` (데이터셋 시작에서 멈춤) | 저장 자리가 없다. **스크립트는 만들지 않는다** — `~` 가 안 펼쳐졌거나(cwd 아래 `~` 폴더), 마운트가 안 붙었거나, 경로 오타다. `mkdir -p` 로 먼저 만들어라 |
+| `ERROR: data storage not writable -- '...'` | 읽기전용으로 붙었거나 권한이 없다. `mount \| grep` 으로 확인 |
+| `ERROR: data storage too small -- '...'` | 이 데이터셋이 쓸 바이트보다 여유가 적다. 비우거나 다른 디스크로 |
+| `WARNING: '<dir>' 는 마운트 지점이 아니다 -- OS 디스크에 쌓인다` | 알리기만 하고 **계속 간다.** `~/AIC/data` 를 OS 디스크에 두는 것도 정상 배치다 (INSTALL.md) — 외장을 쓸 작정이었으면 마운트를 확인하라 |
 | `ERROR: ACF not found -- '...'` (데이터셋 시작에서 멈춤) | ACF 파일이 없다. 함께 찍히는 `resolved to` 절대경로와 `cwd` 를 보라 — **작업 디렉터리가 다른 것**이 가장 흔하다 |
 | `ERROR: <이름> = ... 에 비ASCII 문자가 있다` (기동에서 멈춤) | 손편집 값에 한글/기호가 있다. ASCII 로 바꿔라 — 그대로면 FITS 가 통째로 안 읽힌다 |
 | `RuntimeError: frame data N B (...) != header NAXIS ...` | 실제 프레임 크기가 헤더 선언과 다르다. ACF 기하나 `samplemode` 를 확인하라. **fetch 전에 멈추므로 첫 프레임에서 드러난다** |
@@ -212,7 +218,7 @@ python -c "from astropy.io import fits; h=fits.open('KMTT.20260822.321100.MK.fit
 
 ## 이상할 때 — 원인을 가르는 순서
 
-1. **`TELEMETRY_ENABLE = False`** (66행). 이러면 컨트롤러와의 왕복이 v1.0 과
+1. **`TELEMETRY_ENABLE = False`** (76행). 이러면 컨트롤러와의 왕복이 v1.0 과
    동일해진다. 그래도 문제가 남으면 **원인은 내 개정 밖**이다(헤더·파일명은
    호스트 쪽이라 취득에 관여하지 않는다).
 2. 그래도 재현되면 `__ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py`
@@ -356,4 +362,5 @@ v1.1 을 만든 뒤 스크립트를 원본과 대조 검토해 **6건을 고쳤�
 | v1.0 | 실험실에서 실제로 돌려 쓰던 원본 (`__ref_archon_control/` 에 보존) |
 | v1.1.0 | raw spec v1.3 적용 (파일명·헤더 144카드·데이터부 패딩·STATUS 텔레메트리) + 적대적 검토 6건 수정 |
 | v1.1.1 | 감사에서 잡힌 회귀 4건 수정 — STATUS 시한 초과 후 연결 재수립 / 비ASCII 손편집 값 기동 거부 / 기하·표본 불일치 fetch 전 거부 / 예외에도 `POWEROFF` 보장. 함께: 재실행 시 번호 밀림 경고(같은 UT 날짜), ACF 선검사 |
+| v1.1.3 | **저장 자리 한 곳으로** (운영자 확정 2026-08-24) — 세 갈래(`_C`/`_A`/`_B`)를 `DATA_STORAGE = ~/AIC/data` 하나로 합치고, `~` 를 `GetDataset` 이 펼치게 했다(안 펼치면 **cwd 아래 `~` 폴더**가 생기고 오류도 안 난다 — `ics_sim config.py` 의 2026-08-23 실측과 같은 함정). 함께 **저장소 선검사**를 ACF 와 같은 자리(POWERON 앞)에 넣었다 — `createFolder` 가 OSError 를 삼켜서, 경로가 틀리면 POWERON 뒤 `os.listdir` 에서 터지고 그 자리가 노출 루프 `try/finally` 의 **바깥**이라 전원을 켠 채 끝났다. 용량을 세려고 `SetDatasetConfig` 호출을 POWERON 앞으로 올렸다(전역 대입과 `print` 뿐이라 컨트롤러와 무관) |
 | v1.1.2 | **리눅스 포팅** (운영자 확정 2026-08-23: 전 계통 리눅스 구동) — 저장소 경로를 윈도우 드라이브 문자(`C:/DATA`·`H:/DATA`·`L:/DATA`)에서 POSIX 경로로, 그리고 **쓰지도 않는 `twilio` import** 를 `try/except` 로 감쌌다(그 패키지가 없는 기계에서 스크립트가 아예 시작하지 못했다). 컨트롤러와의 왕복은 한 줄도 바뀌지 않았다 |

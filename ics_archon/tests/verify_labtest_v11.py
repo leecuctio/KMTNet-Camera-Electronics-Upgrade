@@ -37,11 +37,16 @@ def grab(*names):
 
 
 WANT = ('RAWCARDS', 'SITE_INFO', 'HDR_NAXIS1', 'HDR_NAXIS2', 'TEMP_NC',
-        'VOLT_RAILS', 'TEMP_SLOTS',
+        'VOLT_RAILS', 'TEMP_SLOTS', 'FRAME_FILE_BYTES', 'GIB',
         'archoncmd', 'archon_status', '_resync_archon_link', 'status_number',
         'fits_card', 'build_header', 'resolve_pair_number',
-        '_check_identity_setup')
+        '_check_identity_setup',
+        '_expected_dataset_bytes', '_check_data_storage')
 G = {'os': os, 'socket': socket, 'time': time, 'select': __import__('select'),
+     'shutil': __import__('shutil'),
+     # _expected_dataset_bytes 가 읽는 데이터셋 설정 (xTalk 기본값)
+     'TEST_EXPTIMES': (0, 1000, 4000, 0, 16000, 32000, 0), 'TEST_FRAMENUM': 3,
+     'TEST_REF_ENABLE': False, 'TEST_DARK_ENABLE': False,
      'msgref': 0, 'msgbuf': b'', 'archon': None,
      'TELEMETRY_ENABLE': True, 'TELEMETRY_TIMEOUT': 3.0,
      'UNIT_IPADDR': '127.0.0.1', 'UNIT_TIMEOUT': 1,
@@ -262,6 +267,78 @@ try:
     check(True, '실재하는 파일은 통과한다')
 except SystemExit:
     check(False, '실재하는 파일은 통과한다', '멀쩡한 파일을 거부함')
+
+## ---------------------------------------------------------------------------
+## T8 -- 저장소 선검사 (v1.1.3 신설)
+##
+## createFolder() 가 OSError 를 삼키는 탓에, 저장 경로가 틀리면 POWERON 뒤
+## os.listdir 에서 터지고 그 자리는 노출 루프 try/finally 의 바깥이라
+## **전원을 켠 채로** 끝났다.  ACF 와 같은 자리(POWERON 앞)에서 막는다.
+print('\n[T8] 저장소 선검사 -- 접속·전원 전에 잡나')
+
+import shutil as _shutil
+import tempfile as _tempfile
+
+_tmp = _tempfile.mkdtemp(prefix='labtest_t8_')
+try:
+    # 프레임 수 계산이 노출 루프의 셈과 맞나 (xTalk 기본: 7 노출 x 3, REF/DARK 없음)
+    _want = 21 * G['FRAME_FILE_BYTES']
+    check(G['_expected_dataset_bytes']() == _want, '데이터셋 바이트 계산 (21프레임)',
+          '%d B' % G['_expected_dataset_bytes']())
+    check(G['FRAME_FILE_BYTES'] == 360973440, '프레임 하나 = 344.25 MiB',
+          '%d B' % G['FRAME_FILE_BYTES'])
+
+    # 멀쩡한 자리는 통과하고, 탐침 파일을 남기지 않는다
+    try:
+        G['_check_data_storage'](_tmp)
+        check(True, '실재하는 자리는 통과한다')
+    except SystemExit as e:
+        check(False, '실재하는 자리는 통과한다', str(e))
+    check(os.listdir(_tmp) == [], '쓰기 탐침을 남기지 않는다', repr(os.listdir(_tmp)))
+
+    # 없는 자리는 거부하고, **만들지 않는다**
+    _absent = os.path.join(_tmp, 'no_such_mount')
+    try:
+        G['_check_data_storage'](_absent)
+        check(False, '없는 자리를 거부한다', '통과해버림')
+    except SystemExit as e:
+        check('not found' in str(e), '없는 자리를 거부한다')
+        check(not os.path.exists(_absent), '거부하면서 만들지 않는다')
+
+    # 펼치지 않은 '~' -- 실제로 밟기 쉬운 자리다 (ini·INSTALL.md 표기가 '~/AIC/data')
+    try:
+        G['_check_data_storage']('~/AIC/data')
+        check(False, "안 펼친 '~' 를 거부한다", '통과해버림')
+    except SystemExit:
+        check(not os.path.exists('~'), "안 펼친 '~' 를 거부한다 (cwd 에 '~' 폴더 없음)")
+
+    # 여유 용량보다 큰 데이터셋은 거부한다
+    _saved = G['TEST_FRAMENUM']
+    G['TEST_FRAMENUM'] = 10 ** 7          # 수 EiB -- 어떤 디스크로도 못 담는다
+    try:
+        G['_check_data_storage'](_tmp)
+        check(False, '용량이 모자라면 거부한다', '통과해버림')
+    except SystemExit as e:
+        check('too small' in str(e), '용량이 모자라면 거부한다')
+    finally:
+        G['TEST_FRAMENUM'] = _saved
+
+    # 읽기전용 마운트 (POSIX 에서만 재현된다 -- Windows 는 chmod 가 이렇게 안 먹는다)
+    if os.name != 'nt':
+        _ro = _tempfile.mkdtemp(prefix='labtest_t8_ro_')
+        os.chmod(_ro, 0o555)
+        try:
+            G['_check_data_storage'](_ro)
+            check(False, '읽기전용 자리를 거부한다', '통과해버림')
+        except SystemExit as e:
+            check('not writable' in str(e), '읽기전용 자리를 거부한다')
+        finally:
+            os.chmod(_ro, 0o755)
+            _shutil.rmtree(_ro, ignore_errors=True)
+    else:
+        print('  SKIP  읽기전용 자리를 거부한다  -- POSIX 에서만 재현된다')
+finally:
+    _shutil.rmtree(_tmp, ignore_errors=True)
 
 fake.stop = True
 fake.srv.close()
