@@ -131,22 +131,46 @@
     기본 30초). 전원 차단보다 **앞**이다 — 전원은 몇 초 더 켜져 있어도 되지만
     독출을 마친 프레임은 다시 못 찍는다 (F3).
 
-## 상태 (2026-08-24 — 작업 1·2 반영, 커밋 완료)
+## 상태 (2026-08-25 — 커밋 완료, **벤치에서 첫 연동 시험 진행 중**)
 
-### 완료 — `ics_archon` v0.0.0 + 작업 1·2
+### ⏳ 지금 진행 중인 것 — 관측 스크립트 첫 구동
 
-**1단계(`ics_sim` + labtest 합본)가 커밋 2건으로 올라갔고**, 그 위에 목이
-지시한 **작업 1(병렬 독출)·작업 2(F1~F12)** 를 반영했다.  실기 왕복만
-미검증이다.
+목이 벤치(`kmtnet-sso`)에서 `aic_integration_test_v0.0.osc` 를 **한 번에**
+돌리고 있다 (`+opause` 를 로컬에서 주석 처리했다 — 그래서 **목의 사본은
+`ostart` 줄번호가 저장소 판과 다르다**).
 
-    6a94e57  ics_archon v0.0 -- ics_sim + labtest 합본으로 실기 백엔드 신설
-    ecf3487  ics_sim: 바깥 백엔드용 확장점 + 경로·영속성 결함 4건
-    6cfc3c0  ics_archon: 두 컨트롤러 병렬 독출 + v0 미해결 F1~F12
+**결과가 오면 할 일**: `obs.event.*.log` · `isis.*.log` · `ls -l ~/AIC/data` 를
+받아 아래를 판정한다.
+
+  * 노출마다 `Acquisition Complete.` 4회 · `Wrote` 4회 · `EXPSTATUS=IDLE` 1회
+  * 시간 창 3종(1.8 / 0.9 / 25초) — `ics_sim/obsagent_model.py` 의
+    `CamStatusReplay` 에 발신 스트림을 먹여 `check_windows()` 로 잰다
+  * CamStatus 전이 — DARK/BIAS 가 `INT_2` 를 건너뛰는지, 역행 0인지
+  * **P2 겹침 구간**에서 파일 일련번호가 밀리지 않았는지
+  * 헤더 — `EXPTIME`·`IMAGETYP`·`FILTER`·`OBJECT`·`RA/DEC` 가 줄마다 맞는지
+
+⚠️ **아직 확인 안 된 것**: `FILTER` 값(`n`/`i`/`r`/`v`)이 벤치의 필터 설정과
+맞는지.  파서가 `sys.filterlabel[]` 과 대조해서 안 맞으면 **그 줄만** "unrecognized
+filter name" 경고와 함께 skip 된다 (`loadconfig.c:1377`).
+
+### 완료 — `ics_archon` v0.0.0 + 작업 1·2 + 사이트/대수 개정
+
+브랜치 `ics-archon-v1.0-build`, **`main` 미합류.**  origin 동기.
+
+    c205571  osc 관측줄에 PROJID 열 추가 -- 26줄이 통째로 버려지고 있었다
+    0c77058  labtest v1.1.3 -- 취득 전에 저장 자리를 검사한다   (작성=목)
+    3bf2d73  사이트 판별을 OBSERVATORY 로 · 컨트롤러 대수를 ini 로
+    b9132b1  관측 시험 스크립트 신설 -- 하룻밤을 압축한 연동 시험
+    7d80a68  벤치 설치 문서 + build-local.sh 를 bin/ 설치까지
     bed73e7  설치 루트 AICS -> AIC 개명 + 경로가 재빌드에 묶여 있던 것 해소
+    6cfc3c0  ics_archon: 두 컨트롤러 병렬 독출 + v0 미해결 F1~F12
 
-브랜치 `ics-archon-v1.0-build`, **`main` 미합류.**  검증 상태:
-`ics_archon` **110 통과 / 실패 0** (98 -> 110) · 벤더 표류 **없음**.
-`ics_sim` **330 통과 / 실패 0** (325 -> 330, `tests/test_acq_per_frame.py` 5항목).
+별도 브랜치 **`archongui-analysis`**(`2239583`, `main` 기반) — `ArchonGUI/
+QT_INSTALL.md` 뿐이다.  STA 가 준 GUI 의 Qt5 빌드 절차이고 `ics_archon` 과
+무관해 따로 관리한다 (작성=목).
+
+검증: `ics_sim` **306 통과** · `ics_archon` **139 통과** · 벤더 표류 **없음**
+· labtest 하네스 **31항목**(읽기전용 1건은 POSIX 전용, 윈도우는 SKIP).
 
 **작업 1·2 에서 바뀐 자리** (경위는 DevNote 11.26)
 
@@ -268,12 +292,34 @@
   labtest 는 2026-05-28 에 이 명령을 뺐다("remove to fetch debug"). **v0.0 은
   되돌렸다** (`[archon] lock_buffer`) — 아래 검토사항 A5 가 그 이유다.
 
+## 관측 스크립트 (`.osc`) — 알고 시작할 것
+
+`aic_integration_test_v0.0.osc` 를 다룰 때 **소스로 확인한 사실**이다
+(`OBSAgent/OBSAgent.latest/KMTObs/`).  추측하지 말고 여기를 볼 것.
+
+| | |
+|---|---|
+| **관측줄 형식** | `PROJID LABEL RA DEC COPT IMGTYP OBJECT FILTER EXPTIME UTOBS UTTOL [VelRA VelDEC]` — **맨 앞이 `PROJID`** (`loadconfig.c:1148`) |
+| ⚠️ **저장소 견본이 낡았다** | `bak.sample.osc`(2017)·`functest.osc`(2020)는 `ProjID` 열이 생기기 전(v0.6.4) 판이라 **10열**이다.  그대로 베끼면 `0 of N exposures imported` 가 난다 (2026-08-25 실측).  **정본은 `osc/osc.dflat/` 의 최신 판** |
+| 줄이 버려지는 조건 | ①열 부족(`rtn<9`) ②필터 이름을 `sys.filterlabel[]` 에서 못 찾음 ③`ExpTime` 이 `[0.05, 18000]` 밖 (BIAS 는 값을 안 본다) — 셋 다 **파싱 오류가 아니라 skip** 이라 "import 실패" 로만 보인다 |
+| 콘솔 명령 | `osc`/`oscript`/`oscr` 로드 · **`ostart <줄번호>`(번호 필수)** · `oresume`/`or`/`resume` 재개 · `ostat`/`os` · `ostop` · `oabort` |
+| 줄번호 세는 법 | **주석·빈줄을 뺀 순번**.  `+` 지시어와 관측줄을 함께 센다 (운영자 확인) |
+| 경로 | `'/'`·`'.'`·`'~'` 로 시작하지 않으면 `DEFAULT_OSCDIR`(`/home/dts/osc/`, 컴파일 상수)이 앞에 붙는다 → **절대경로로 줄 것** |
+| 두는 자리 | **`~/AIC/osc/`** (`Config/`·`Logs/`·`data/` 와 같은 층).  저장소에서 복사해 쓴다 |
+| `tstow` vs `stow` | **같은 명령**이다 (`commands.h` cmdtab, 도움말 `commands.c:1550`) |
+
+**저장소에 사본이 두 벌이다** — `ics_sim/osc/` 와 `ics_archon/osc/`.  같은
+스크립트로 시뮬과 실기를 나란히 시험하려는 것이고, `ics_archon/tests/
+test_osc_script.py`(9항목)가 **바이트 동일성 · `ostart` 표 정합 · 11열 ·
+`ExpTime` 범위 · `+msgout` ASCII** 를 지킨다.  **한쪽만 고치면 실패한다.**
+
 ## ▶ 이어서 시작하는 자리
 
 | 순서 | 할 일 |
 |---|---|
 | **1** | ~~`ics_archon` v0.0 작성~~ **완료 (2026-08-23)**, ~~커밋~~ **완료 (2026-08-24, `ecf3487`+`6a94e57`)** |
 | **1.5** | ~~작업 1(병렬 독출) · 작업 2(F1~F12)~~ **완료·커밋 (2026-08-24, `6cfc3c0`)** — 아래 "작업 1·2" 절 |
+| **1.7** | ⏳ **관측 스크립트 첫 구동 결과 판정** — 위 "지금 진행 중인 것".  로그가 오면 그것부터 |
 | **2** | **다듬기** — "검토사항 A"(실기 없이 되는 것)를 처리한다 → `v0.1`. ⚠️ **결정사항·P1·P2 는 승인 대기가 아니다** — 아래 "남은 판단은 실기 시험에서 하나씩" (목 확정 2026-08-24) |
 | **3** | **시험 결과 반영** — labtest 실기 구동 결과 + `ics_sim` 시험 결과로 디버깅·업데이트. "검토사항 B" 가 그 목록이다. **1·2 와 병행이며 이것을 기다리지 않는다** |
 | **4** | **main 합류** — **v0 완성 또는 v1 즈음, 진행하면서 판단**(목 2026-08-23). 미리 정해진 시점은 없다. 방식은 `--no-ff` 거품 머지. ⚠️ **합류할 때 저장소 루트 `README.md` 에 [`ics_archon/INSTALL.md`](INSTALL.md) 링크를 넣는다** (목 2026-08-24 — 루트는 Leecu 영역이라 그때 함께) |
