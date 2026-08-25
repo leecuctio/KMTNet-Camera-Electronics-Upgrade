@@ -57,7 +57,11 @@
 #   - ics_sim 콘솔 출력    (wire=true 면 송수신이 그대로 찍힌다)
 #   - 산출 파일 목록       ls -l <data_dir>
 #
-# 컬럼:  LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+# 컬럼:  PROJID  LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+#        ⚠️ **맨 앞이 PROJID 다** (obstool v0.6.4 에서 추가된 열).  이것이 빠지면
+#        sscanf 가 열을 한 칸씩 밀어 읽고 그 줄은 통째로 버려진다 -- 저장소의
+#        옛 견본(bak.sample.osc 2017 · functest.osc 2020)은 이 열이 없는 판이라
+#        그대로 베끼면 "0 of N exposures imported" 가 된다 (2026-08-25 실측).
 #        보정 프레임은 RA/DEC/COPT 를 '- - -' 로 두어 망원경을 건드리지 않는다.
 #
 
@@ -79,13 +83,13 @@
 
    +filter   n
 
-  cal.bias.1   - - -   bias   bias   n   -    - -
-  cal.bias.2   - - -   bias   bias   n   -    - -
-  cal.bias.3   - - -   bias   bias   n   -    - -
+  ENG  cal.bias.1   - - -   bias   bias   n   -    - -
+  ENG  cal.bias.2   - - -   bias   bias   n   -    - -
+  ENG  cal.bias.3   - - -   bias   bias   n   -    - -
 
-  cal.dark.2s.1  - - -  dark   dark   n   2    - -
-  cal.dark.2s.2  - - -  dark   dark   n   2    - -
-  cal.dark.10s   - - -  dark   dark   n   10   - -
+  ENG  cal.dark.2s.1  - - -  dark   dark   n   2    - -
+  ENG  cal.dark.2s.2  - - -  dark   dark   n   2    - -
+  ENG  cal.dark.10s   - - -  dark   dark   n   10   - -
 
 +msgout  [[ P1 -- EVENING CALIBRATION END ]]
 +opause
@@ -97,11 +101,11 @@
 # ===========================================================================
 +msgout  [[ P2 -- PIPELINE OVERLAP 1s x5 START ]]
 
-  ovl.1   - - -   dark   dark   n   1   - -
-  ovl.2   - - -   dark   dark   n   1   - -
-  ovl.3   - - -   dark   dark   n   1   - -
-  ovl.4   - - -   dark   dark   n   1   - -
-  ovl.5   - - -   dark   dark   n   1   - -
+  ENG  ovl.1   - - -   dark   dark   n   1   - -
+  ENG  ovl.2   - - -   dark   dark   n   1   - -
+  ENG  ovl.3   - - -   dark   dark   n   1   - -
+  ENG  ovl.4   - - -   dark   dark   n   1   - -
+  ENG  ovl.5   - - -   dark   dark   n   1   - -
 
 +msgout  [[ P2 -- PIPELINE OVERLAP END ]]
 +opause
@@ -136,12 +140,12 @@
    +dlamp    ON                   # 돔플랫 램프 점등
    +delay    5
 
-# LABEL         RA DEC COPT  IMGTYP    OBJECT  FILTER  EXPTIME  UTOBS UTTOL
-  dflat.i.1     - - -        domeflat  dflat   i       3        - -
-  dflat.i.2     - - -        domeflat  dflat   i       3        - -
-  dflat.r.1     - - -        domeflat  dflat   r       3        - -
-  dflat.r.2     - - -        domeflat  dflat   r       3        - -
-  dflat.v.1     - - -        domeflat  dflat   v       3        - -
+# PROJID LABEL   RA DEC COPT  IMGTYP   OBJECT  FILTER  EXPTIME  UTOBS UTTOL
+  ENG  dflat.i.1     - - -        domeflat  dflat   i       3        - -
+  ENG  dflat.i.2     - - -        domeflat  dflat   i       3        - -
+  ENG  dflat.r.1     - - -        domeflat  dflat   r       3        - -
+  ENG  dflat.r.2     - - -        domeflat  dflat   r       3        - -
+  ENG  dflat.v.1     - - -        domeflat  dflat   v       3        - -
 
    +dlamp    OFF                  # 램프 소등
    +delay    2
@@ -170,23 +174,23 @@
 
    +dfocus   -0.20
    +delay    2
-  foc.m20    - - -   object   focus.test   i   2   - -
+  ENG  foc.m20    - - -   object   focus.test   i   2   - -
 
    +dfocus   +0.05
    +delay    2
-  foc.m15    - - -   object   focus.test   i   2   - -
+  ENG  foc.m15    - - -   object   focus.test   i   2   - -
 
    +dfocus   +0.05
    +delay    2
-  foc.m10    - - -   object   focus.test   i   2   - -
+  ENG  foc.m10    - - -   object   focus.test   i   2   - -
 
    +dfocus   +0.05
    +delay    2
-  foc.m05    - - -   object   focus.test   i   2   - -
+  ENG  foc.m05    - - -   object   focus.test   i   2   - -
 
    +dfocus   +0.05
    +delay    2
-  foc.00     - - -   object   focus.test   i   2   - -
+  ENG  foc.00     - - -   object   focus.test   i   2   - -
 
 +msgout  [[ P4 -- FOCUS RUN END ]]
 +opause
@@ -204,12 +208,12 @@
    +tcmd     unkill
    +delay    2
 
-# LABEL      RA         DEC         COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS UTTOL
-  blg.01.i   17:54:24   -31:08:00   1     object  BLG01    i       5        - -
-  blg.01.r   17:54:24   -31:08:00   1     object  BLG01    r       5        - -
-  blg.02.i   17:54:24   -29:01:30   1     object  BLG02    i       5        - -
-  blg.03.i   18:02:00   -27:56:30   1     object  BLG03    i       5        - -
-  blg.31.v   18:13:32   -25:50:00   1     object  BLG31    v       5        - -
+# PROJID LABEL  RA         DEC        COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS UTTOL
+  BLG  blg.01.i   17:54:24   -31:08:00   1     object  BLG01    i       5        - -
+  BLG  blg.01.r   17:54:24   -31:08:00   1     object  BLG01    r       5        - -
+  BLG  blg.02.i   17:54:24   -29:01:30   1     object  BLG02    i       5        - -
+  BLG  blg.03.i   18:02:00   -27:56:30   1     object  BLG03    i       5        - -
+  BLG  blg.31.v   18:13:32   -25:50:00   1     object  BLG31    v       5        - -
 
 +msgout  [[ P5 -- SCIENCE END ]]
 +opause

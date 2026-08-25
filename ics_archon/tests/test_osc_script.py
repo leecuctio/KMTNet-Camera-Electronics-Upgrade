@@ -95,6 +95,63 @@ def test_every_phase_marker_is_in_the_table():
 
 
 @pytest.mark.parametrize('path', COPIES)
+def test_every_exposure_line_has_the_projid_column(path):  # noqa: ANN001
+    """⚠️ **관측줄의 맨 앞은 `PROJID` 다** -- 빠지면 그 줄이 통째로 버려진다.
+
+    obstool 은 관측줄을 이렇게 읽는다 (`loadconfig.c:1148`):
+
+        PROJID LABEL RA DEC COPT IMGTYP OBJECT FILTER EXPTIME UTOBS UTTOL
+        [VelRA VelDEC]
+
+    `sscanf` 가 **최소 9열**을 요구하고(`rtn<9` 면 skip), 열이 하나 밀리면
+    필터·노출시간 검사에서 걸려 결국 버려진다.
+
+    2026-08-25 실측: `PROJID` 를 빠뜨려 **"0 of 26 exposures imported"** 가
+    났다.  저장소의 옛 견본(`bak.sample.osc` 2017 · `functest.osc` 2020)이
+    `ProjID` 열이 생기기 전(v0.6.4) 판이라 그대로 베낀 것이 원인이었다 --
+    **오래된 예시를 베낄 때는 그 사이에 형식이 바뀌었는지 본다.**
+    """
+    text = read(path).decode('utf-8')
+    bad = []
+    for n, raw in enumerate(text.splitlines(), start=1):
+        t = raw.strip()
+        if not t or t.startswith('#') or t.startswith('+'):
+            continue
+        fields = t.split('#')[0].split()
+        if len(fields) < 11:
+            bad.append((n, len(fields), t[:60]))
+    detail = '; '.join('%d행 %d열: %s' % b for b in bad)
+    assert not bad, ('관측줄에 열이 모자란다 (PROJID 부터 UTTOL 까지 11열) -- ' + detail)
+
+
+@pytest.mark.parametrize('path', COPIES)
+def test_exposure_times_are_inside_the_accepted_range(path):  # noqa: ANN001
+    """`ExpTime` 이 [0.05, 18000] 밖이면 그 줄이 버려진다 (BIAS 는 예외).
+
+    `loadconfig.c:1398` -- 범위 밖은 경고와 함께 skip 이다.  BIAS 는 값을
+    보지 않고 0 으로 못박으므로 `-` 로 두어도 된다.
+    """
+    text = read(path).decode('utf-8')
+    bad = []
+    for n, raw in enumerate(text.splitlines(), start=1):
+        t = raw.strip()
+        if not t or t.startswith('#') or t.startswith('+'):
+            continue
+        f = t.split('#')[0].split()
+        imgtyp, exptime = f[5].upper(), f[8]
+        if imgtyp == 'BIAS':
+            continue                      # 값을 안 본다
+        try:
+            v = float(exptime)
+        except ValueError:
+            bad.append((n, exptime, '숫자가 아니다'))
+            continue
+        if not (0.05 <= v <= 18000.0):
+            bad.append((n, exptime, '범위 밖'))
+    assert not bad, '노출 시간이 거부된다: %r' % (bad,)
+
+
+@pytest.mark.parametrize('path', COPIES)
 def test_the_script_is_ascii_safe_where_the_wire_reads_it(path):  # noqa: ANN001
     """`+msgout` 문구는 ASCII 여야 한다.
 
