@@ -48,7 +48,7 @@ SSH 키를 쓰는 기계라면 `git@github.com:leecuctio/KMTNet-Camera-Electroni
 ## 2. 자리 만들기
 
 ```bash
-mkdir -p ~/AIC/{src,bin,Config/acf,Logs,data}
+mkdir -p ~/AIC/{src,bin,Config/acf,Logs,data,osc}
 ```
 
 `~/AIC/data` 를 다른 디스크로 보내려면 실제 디렉터리 대신 링크를 둔다:
@@ -68,6 +68,7 @@ mkdir -p /mnt/bigdisk/data && ln -s /mnt/bigdisk/data ~/AIC/data
 | `bin/` | 설치된 실행 파일 | ✅ 다시 만들면 됨 |
 | `Config/` | 설정 + **`*.expnum`(노출 번호 카운터)** | ❌ **절대 금지** |
 | `Logs/` · `data/` | 로그 · 취득 자료 | ❌ |
+| `osc/` | 관측 스크립트(`.osc`) — 저장소에서 복사해 둔다 | ✅ 다시 복사하면 됨 |
 
 ## 3. C 프로그램 셋 빌드
 
@@ -103,13 +104,20 @@ cp ics_archon/ics_archon.ini ~/AIC/Config/ics_archon.ini
 cp <어딘가>/KMTNet_Sci_*.acf ~/AIC/Config/acf/
 ```
 
+관측 스크립트(`.osc`)는 `~/AIC/osc/` 에 둔다 — obstool 이 절대경로로 읽는다:
+
+```bash
+cp ics_sim/osc/*.osc ~/AIC/osc/
+```
+
 `ics_sim`·`ics_archon` 은 설치하지 않고 체크아웃에서 돌린다.  배포본을 따로 두려면
 [README.md](README.md) "3. 배포본 놓기" 의 방법 A(폴더 복사) / B(배포용 클론).
 
 > **개발 클론에서 직접 돌리지 않는다.**  야간에 `git pull` 이나 브랜치 전환이
 > 일어나면 돌고 있는 코드가 바뀐다.
 
-고칠 것은 `[node] site` 와 `[archon]`(컨트롤러 배선) 이다 — 자세히는
+고칠 것은 `[node] observatory`(사이트 — `KASI`/`CTIO`/`SSO`/`SAAO`)와
+`[archon]`(컨트롤러 배선 · `n_controllers`) 이다 — 자세히는
 [README.md](README.md) "4. 설정".
 
 ## 5. 확인
@@ -251,6 +259,7 @@ bash ./TCSAgent/build-local.sh
 | 문서 | 무엇 |
 |---|---|
 | [README.md](README.md) | `ics_archon` 구성 · 배포본 놓기 · 설정 · **실기 첫 실행 5단계** |
+| [QT_INSTALL.md](QT_INSTALL.md) | **ArchonGUI**(STA Qt5 GUI) 빌드용 Qt5 설치 · `Unknown module(s)` 처방 |
 | [SMC_CLAUDE.md](SMC_CLAUDE.md) | 인수인계 — 절대 깨뜨리면 안 되는 것 · 결정사항 · Archon 매뉴얼 확정 사실 |
 | [`../OBSAgent/SMC_CLAUDE.md`](../OBSAgent/SMC_CLAUDE.md) · [`../TCSAgent/SMC_CLAUDE.md`](../TCSAgent/SMC_CLAUDE.md) | 각 에이전트 재빌드 걸림돌 · 경로 상수의 성질 |
 | [`../ics_sim/xis/xis.md`](../ics_sim/xis/xis.md) | XIS 빌드 걸림돌 · 설정 파일 함정 3종 |

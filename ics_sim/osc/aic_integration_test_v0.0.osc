@@ -1,0 +1,254 @@
+#
+# AIC 연동 시험용 관측 스크립트 v0.0 -- 하룻밤을 압축한 것
+#
+#   - 대상 : OBSAgent(obstool) -> XIS -> ics_sim,  망원경/AUX 는 TCS 시뮬레이터
+#   - 작성 : 2026-08-24
+#   - 원형 : osc/test.dflat.osc (2021-03-10, chasm) 의 순서를 그대로 따랐다.
+#            **지연만 시뮬 속도에 맞춰 줄였다** -- 실기 값은 그 파일에 있다
+#            (m1cover 31s · homedome 300s · tme 240s · 돔셔터 230s).
+#
+# 두는 자리:  **`~/AIC/osc/`** -- Config/ · Logs/ · data/ 와 같은 층이다.
+#             저장소의 이 파일을 거기 복사해 쓴다:
+#
+#               mkdir -p ~/AIC/osc
+#               cp ~/CEU/KMTNet-Camera-Electronics-Upgrade/ics_sim/osc/*.osc ~/AIC/osc/
+#
+# ⚠️ **저장소에 같은 내용이 두 벌 있다** (운영자 지시 2026-08-25):
+#      ics_sim/osc/aic_integration_test_v0.0.osc      (시뮬 연동 시험)
+#      ics_archon/osc/aic_integration_test_v0.0.osc   (실기 연동 시험)
+#    같은 스크립트로 시뮬과 실기를 나란히 시험하기 위한 것이다.  **한쪽만
+#    고치면 갈라진다** -- 고쳤으면 반드시 다른 쪽에 복사할 것.  어긋나면
+#    ics_archon/tests/test_osc_script.py 가 실패한다.
+#
+# 실행 (obstool 콘솔):
+#
+#   OBS% osc ~/AIC/osc/aic_integration_test_v0.0.osc
+#   OBS% ostart <줄번호>        # 그 줄부터 시작.  **번호가 필수다** --
+#                               #   빼면 "Usage: sstart <lineidx>" 로 거부한다
+#                               #   (commands.c cmd_oscstart)
+#   OBS% oresume                # +opause 에서 멈춘 뒤 이어서  (or / resume 도 같다)
+#   OBS% ostat                  # 지금 어디까지 왔나 (os 도 같다)
+#   OBS% ostop                  # 중단  (oabort 는 즉시 중단)
+#
+#   둘 다 진행을 재개하지만 **ostart 는 자리를 지정**하고 oresume 은 멈춘
+#   자리에서 잇는다.  블록을 건너뛰거나 다시 돌릴 때 ostart 를 쓴다.
+#
+# 줄번호 = **주석·빈줄을 뺀 순번**이다 (+ 지시어와 관측줄을 함께 센다).
+# 이 파일은 전부 112줄이고, 블록 첫 줄은 이렇다:
+#
+#   ostart   1   P0  설정
+#   ostart   7   P1  저녁 보정 (BIAS x3 · DARK 2s x2 + 10s)
+#   ostart  17   P2  파이프라인 겹침 (1s x5)
+#   ostart  25   P3  돔플랫 (돔·거울덮개·망원경·필터·셔터)
+#   ostart  51   P4  초점 (dfocus -0.20 -> +0.05 x4)
+#   ostart  77   P5  과학 관측 (BLG 5필드, 슬루+필터)
+#   ostart  90   P6  마무리 (tstow / stow 둘 다 확인)
+#
+#   ⚠️ **줄을 더하거나 빼면 이 표가 어긋난다.**  고친 뒤에는 다시 세거나
+#      OBS% ostat 으로 확인할 것.
+#
+#   ⚠️ 경로가 '/', '.', '~' 로 시작하지 않으면 obstool 이 DEFAULT_OSCDIR
+#      ("/home/dts/osc/", 컴파일 상수)를 앞에 붙인다 -- 벤치에 없는 자리다
+#      (commands.c:3759).  그래서 절대경로로 준다.
+#
+# 판정에 쓸 것 (돌린 뒤 클루디에게):
+#   - obstool 이벤트 로그  ~/AIC/Logs/OBS/obs.event.*.log
+#   - XIS 서버 로그        ~/AIC/Logs/isis.<날짜>.log
+#   - ics_sim 콘솔 출력    (wire=true 면 송수신이 그대로 찍힌다)
+#   - 산출 파일 목록       ls -l <data_dir>
+#
+# 컬럼:  LABEL  RA  DEC  COPT  IMGTYP  OBJECT  FILTER  EXPTIME  UTOBS  UTTOL
+#        보정 프레임은 RA/DEC/COPT 를 '- - -' 로 두어 망원경을 건드리지 않는다.
+#
+
++msgout  [[ P0 -- SETUP ]]
+
+   +ProjID       ENG
+   +Datasource   SIM
+   +DMAWait      500
+   +Observer     ics_sim integration test
+
++opause
+
+# ===========================================================================
+# P1. 저녁 보정 -- 망원경도 셔터도 건드리지 않는다.  가장 단순한 갈래부터.
+#     보는 것: Acquisition Complete. 4회 · Wrote 4회 · EXPSTATUS=IDLE 1회
+#              DARK/BIAS 는 CamStatus 의 INT_2 를 건너뛴다
+# ===========================================================================
++msgout  [[ P1 -- EVENING CALIBRATION START ]]
+
+   +filter   n
+
+  cal.bias.1   - - -   bias   bias   n   -    - -
+  cal.bias.2   - - -   bias   bias   n   -    - -
+  cal.bias.3   - - -   bias   bias   n   -    - -
+
+  cal.dark.2s.1  - - -  dark   dark   n   2    - -
+  cal.dark.2s.2  - - -  dark   dark   n   2    - -
+  cal.dark.10s   - - -  dark   dark   n   10   - -
+
++msgout  [[ P1 -- EVENING CALIBRATION END ]]
++opause
+
+# ===========================================================================
+# P2. 파이프라인 겹침 -- 짧은 노출을 연달아
+#     보는 것: 프레임 N 의 Wrote 가 프레임 N+1 준비 중에 도착하는 레거시 거동.
+#             그리고 파일 일련번호가 밀리지 않는가 (DevNote 12.10 이 겪은 부류)
+# ===========================================================================
++msgout  [[ P2 -- PIPELINE OVERLAP 1s x5 START ]]
+
+  ovl.1   - - -   dark   dark   n   1   - -
+  ovl.2   - - -   dark   dark   n   1   - -
+  ovl.3   - - -   dark   dark   n   1   - -
+  ovl.4   - - -   dark   dark   n   1   - -
+  ovl.5   - - -   dark   dark   n   1   - -
+
++msgout  [[ P2 -- PIPELINE OVERLAP END ]]
++opause
+
+# ===========================================================================
+# P3. 돔플랫 -- 여기서부터 망원경·돔·거울덮개가 움직인다 (TCS 시뮬레이터)
+#     순서는 test.dflat.osc 그대로.  지연만 줄였다.
+#     보는 것: 셔터가 열리는 갈래 · CamStatus 가 INT_2 를 밟는가 · 필터 교체
+# ===========================================================================
++msgout  [[ P3 -- DOME FLAT START ]]
+
+   +acmd     shutter both close   # 돔셔터 닫기   (실기 Typ. 230s)
+   +delay    5
+
+   +tcmd     homedome             # 돔 홈        (실기 Max. 300s)
+   +delay    5
+
+   +acmd     m1cover open         # 거울덮개 열기 (실기 Typ. 31s)
+   +delay    5
+
+   +tcmd     unkill               # TCS 서보 인가
+   +delay    2
+   +tcmd     track off            # 추적 정지
+   +delay    2
+
+   +tme      43.5   270           # 돔플랫 자세 (SSO 값, test.dflat.osc)
+   +delay    10                   # (실기 Max. 240s)
+
+   +tcmd     kill                 # TCS 서보 차단
+   +delay    2
+
+   +dlamp    ON                   # 돔플랫 램프 점등
+   +delay    5
+
+# LABEL         RA DEC COPT  IMGTYP    OBJECT  FILTER  EXPTIME  UTOBS UTTOL
+  dflat.i.1     - - -        domeflat  dflat   i       3        - -
+  dflat.i.2     - - -        domeflat  dflat   i       3        - -
+  dflat.r.1     - - -        domeflat  dflat   r       3        - -
+  dflat.r.2     - - -        domeflat  dflat   r       3        - -
+  dflat.v.1     - - -        domeflat  dflat   v       3        - -
+
+   +dlamp    OFF                  # 램프 소등
+   +delay    2
+
++msgout  [[ P3 -- DOME FLAT END ]]
++opause
+
+# ===========================================================================
+# P4. 초점 조정 -- +dfocus 로 한 단계씩 움직이며 짧게 찍는다
+#     보는 것: 초점 명령이 AUX 로 나가고 노출이 그 사이에 정상 진행하는가
+#     ⚠️ +dfocus 는 **상대 이동**이다.  아래는 -0.20 내렸다가 그대로 되돌린다
+#        (+0.05 x 4).  순 이동량 0.
+# ===========================================================================
++msgout  [[ P4 -- FOCUS RUN START ]]
+
+   +acmd     shutter both open    # 돔셔터 열기 (실기 Typ. 230s)
+   +delay    5
+   +tcmd     unkill
+   +delay    2
+
+   +tme      60   120             # 하늘 쪽으로
+   +delay    10
+
+   +filter   i
+   +delay    2
+
+   +dfocus   -0.20
+   +delay    2
+  foc.m20    - - -   object   focus.test   i   2   - -
+
+   +dfocus   +0.05
+   +delay    2
+  foc.m15    - - -   object   focus.test   i   2   - -
+
+   +dfocus   +0.05
+   +delay    2
+  foc.m10    - - -   object   focus.test   i   2   - -
+
+   +dfocus   +0.05
+   +delay    2
+  foc.m05    - - -   object   focus.test   i   2   - -
+
+   +dfocus   +0.05
+   +delay    2
+  foc.00     - - -   object   focus.test   i   2   - -
+
++msgout  [[ P4 -- FOCUS RUN END ]]
++opause
+
+# ===========================================================================
+# P5. 과학 관측 -- 실제 야간처럼 슬루 + 필터 교체 + 노출
+#     보는 것: 헤더의 RA/DEC/OBJECT/FILTER 가 줄마다 맞는가 ·
+#             TCSSTATUS/AUXSTATUS 질의가 노출마다 왕복하는가
+# ===========================================================================
++msgout  [[ P5 -- SCIENCE START ]]
+
+   +projid   BLG
+   +tcmd     track off
+   +delay    2
+   +tcmd     unkill
+   +delay    2
+
+# LABEL      RA         DEC         COPT  IMGTYP  OBJECT   FILTER  EXPTIME  UTOBS UTTOL
+  blg.01.i   17:54:24   -31:08:00   1     object  BLG01    i       5        - -
+  blg.01.r   17:54:24   -31:08:00   1     object  BLG01    r       5        - -
+  blg.02.i   17:54:24   -29:01:30   1     object  BLG02    i       5        - -
+  blg.03.i   18:02:00   -27:56:30   1     object  BLG03    i       5        - -
+  blg.31.v   18:13:32   -25:50:00   1     object  BLG31    v       5        - -
+
++msgout  [[ P5 -- SCIENCE END ]]
++opause
+
+# ===========================================================================
+# P6. 마무리 -- 아침 정리
+# ===========================================================================
++msgout  [[ P6 -- SHUTDOWN START ]]
+
+   +tcmd     track off
+   +delay    2
+
+# tstow 와 stow 는 **같은 명령**이다 -- cmdtab 이 둘 다 cmd_tc 로 보내고
+# (commands.h), 도움말도 한 줄에 같이 설명하며(commands.c:1550 "tstow / stow -
+# tracking off & move telescope to stow position(zenith)"), osc 응답 검사가
+# "STOW"/"TSTOW" 둘 다 "stow commanded" 로 대조한다(commands.c:997-998).
+# **둘 다 실제로 도는지 확인한다** -- 사이에 망원경을 옮겨 두 번째가 무의미해지지
+# 않게 한다.
++msgout  [[ P6a -- TSTOW ]]
+   +tstow                         # 스토우 (별칭 1)
+   +delay    10
+
++msgout  [[ P6b -- MOVE AWAY THEN STOW ]]
+   +tcmd     unkill
+   +delay    2
+   +tme      60   120             # 스토우 자세에서 벗어난다
+   +delay    10
+   +stow                          # 스토우 (별칭 2)
+   +delay    10
+
+   +acmd     m1cover close        # 거울덮개 닫기
+   +delay    5
+   +acmd     shutter both close   # 돔셔터 닫기
+   +delay    5
+   +tcmd     stowdome             # 돔 스토우
+   +delay    5
+   +tcmd     kill                 # TCS 서보 차단
+
++msgout  [[ P6 -- SHUTDOWN END ]]
+
++msgout  [[ ALL PHASES COMPLETE ]]
++opause
