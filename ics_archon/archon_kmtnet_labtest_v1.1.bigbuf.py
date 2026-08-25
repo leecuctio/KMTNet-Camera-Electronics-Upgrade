@@ -600,14 +600,23 @@ VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
 ## 그 자리에 sentinel 을 넣고 건너뛰지 않는다 -- 건너뛰면 뒤 항목이 앞으로
 ## 당겨져 소비자가 구분할 수 없다.
 ##
-## 여기 담은 MOD5~MOD8 은 이 시스템의 AD(비디오) 모듈이다 -- 매뉴얼 p.20 이
-## AD 모듈은 중앙 4슬롯(5-8)에만 꽂힌다고 하고, v1.0 스크립트의
-## `MOD5/PREAMPGAIN`~`MOD8/PREAMPGAIN` 설정 블록이 그 4장을 가리킨다.
-## ⚠️ **모듈 나열 순서의 정본 명세는 규격 수록 예정이다** (통합 문서 §1) --
-## 확정되면 이 목록을 그것으로 교체한다.  늘릴 때는 카드 폭(51)을 넘지
-## 않는지 확인할 것 (넘으면 `fits_card` 가 잘라내고 경고한다).
-TEMP_SLOTS = ('BACKPLANE_TEMP', 'MOD5/TEMP', 'MOD6/TEMP', 'MOD7/TEMP',
-              'MOD8/TEMP')
+## ✅ **규격 수록이 끝났다 -- v1.5 5.6.1절이 science 10자리를 확정했다**
+## (운영자 확정 2026-08-25).  자리 표:
+##
+##     1 Backplane      2 Mod1:LVDS     3 Mod2:Driver    4 Mod3:Driver
+##     5 Mod4:LVXBias   6 Mod5:ADM      7 Mod8:ADM       8 Mod9:HVYBias
+##     9 Mod10:Driver  10 Mod11:Driver
+##
+## 목록에 없는 모듈(6·7·12)은 자리를 차지하지 않는다 -- 자리 수 자체가 구성
+## 판별에 쓰인다.  종전 잠정안은 `BACKPLANE_TEMP`+`MOD5`~`MOD8` 5자리였는데
+## (매뉴얼 p.20 의 "AD 모듈은 중앙 4슬롯" 근거), 견본 pair 의 `C1_TEMP` 는
+## 처음부터 10개였다 -- 잠정안이 견본과 갈려 있었다.
+## 카드 폭은 51자다 -- 10자리 x '%.1f'(4자) + 공백 9 = 49자로 들어간다.
+## ⚠️ `ics_sim.rawhdr.TEMP_SLOTS` 가 정본이고 이것은 그 사본이다.
+## `tests/test_labtest_spec_copy.py` 가 둘이 갈라지면 잡는다.
+TEMP_SLOTS = ('BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP',
+              'MOD4/TEMP', 'MOD5/TEMP', 'MOD8/TEMP', 'MOD9/TEMP',
+              'MOD10/TEMP', 'MOD11/TEMP')
 
 ## 사이트 코드 -> (OBSERVAT, ORIGIN, TELESCOP)  -- raw spec 2.2절 표 · 5.3절.
 ##

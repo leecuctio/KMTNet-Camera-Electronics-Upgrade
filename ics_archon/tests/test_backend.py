@@ -287,7 +287,9 @@ def test_header_carries_the_facts_only_the_controller_knows(tmp_path, fakes):  #
     for n in (1, 2):
         assert mk['CTRL%dSN' % n].strip() == '0024498A715E301C'
         assert mk['CTRL%dCFG' % n].strip() == 'test'      # ACF 파일명
-        assert len(mk['C%d_TEMP' % n].split()) == 5       # BACKPLANE + MOD5~8
+        # 규격 5.6.1절 -- science 10자리 (Backplane + Mod1·2·3·4·5·8·9·10·11).
+        # v1.5 전에는 잠정 5자리(BACKPLANE + MOD5~8)였고 견본과 갈려 있었다.
+        assert len(mk['C%d_TEMP' % n].split()) == 10
         assert len(mk['C%d_VOLT' % n].split()) == 7       # 전원 레일 7개
         assert len(mk['C%d_CURR' % n].split()) == 7
     # 5.9절 "반드시 동일" -- pair 상이 7장만 다르다

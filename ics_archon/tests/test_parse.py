@@ -89,13 +89,13 @@ def test_telemetry_keeps_one_slot_per_item_even_when_missing():
     없으면 MOD7 값이 MOD6 자리에 앉는다.
     """
     status = dict(DEFAULT_STATUS)
-    del status['MOD6/TEMP']
+    del status['MOD2/TEMP']                      # 자리 3 (규격 5.6.1절 표)
     status['P5V_V'] = 'FAULT'                    # 비수치 토큰
     telem = parse.telemetry_of(status)
-    assert len(telem['temp']) == len(parse.TEMP_SLOTS)
+    assert len(telem['temp']) == len(parse.TEMP_SLOTS) == 10
     assert len(telem['volt']) == len(telem['curr']) == len(parse.VOLT_RAILS)
-    assert telem['temp'][2] == parse.SLOT_NC     # MOD6 자리
-    assert telem['temp'][3] == 33.0              # MOD7 은 제자리
+    assert telem['temp'][2] == parse.SLOT_NC     # Mod2 자리
+    assert telem['temp'][3] == 30.3              # Mod3 은 제자리
     assert telem['volt'][1] == parse.SLOT_NC     # P5V 자리
     assert telem['volt'][2] == 5.834             # P6V 는 제자리
 
@@ -130,15 +130,39 @@ def test_unit_identity_uses_backplane_id_as_the_serial():
 
 
 def test_module_map_confirms_the_ad_slot_assumption():
-    """`TEMP_SLOTS` 는 AD(비디오) 모듈이 슬롯 5~8 이라고 전제한다 (p.20).
+    """AD(비디오) 모듈은 중앙 4슬롯(5~8)에만 꽂힌다 (매뉴얼 p.20).
 
     `MODn_TYPE=2` 가 AD 다 -- 실기에서 이 가정을 확인하는 수단이고,
     `ArchonController._log_module_map()` 이 어긋나면 경고한다.
+
+    ⚠️ **그 범위와 `Cn_TEMP` 자리 표는 다른 것이다.**  규격 5.6.1절은 열 자리
+    중 `Mod5:ADM`·`Mod8:ADM` **둘만** AD 로 싣는다 -- 5~8 전부가 아니다.
+    (자리 수가 장착·보고되는 모듈 수를 따르므로 자리 수 자체가 구성 판별에
+    쓰인다.)  둘을 섞으면 카드 자리 수가 조용히 달라진다.
     """
     mods = parse.module_types(DEFAULT_SYSTEM)
     assert [s for s, t in mods.items() if t == 2] == [5, 6, 7, 8]
     assert parse.MODULE_TYPES[2] == 'AD'
-    assert all('MOD%d/TEMP' % s in parse.TEMP_SLOTS for s in (5, 6, 7, 8))
+    # 자리 표에 실리는 AD 는 5·8 뿐이고 6·7 은 자리를 차지하지 않는다.
+    assert 'MOD5/TEMP' in parse.TEMP_SLOTS and 'MOD8/TEMP' in parse.TEMP_SLOTS
+    assert 'MOD6/TEMP' not in parse.TEMP_SLOTS
+    assert 'MOD7/TEMP' not in parse.TEMP_SLOTS
+
+
+def test_cn_temp_slot_order_follows_spec_5_6_1():
+    """`Cn_TEMP` 열 자리가 **규격 5.6.1절 표 그대로**여야 한다.
+
+    자리 자체가 항목이므로(값에 이름표가 없다) 순서가 하나만 밀려도 소비자는
+    **다른 모듈의 온도를 그 모듈 값으로 읽는다** -- 아무 오류도 나지 않는다.
+    v1.5 반영 전에는 잠정 5자리였고 견본 pair(10개)와 갈려 있었다.
+    """
+    assert parse.TEMP_SLOTS == (
+        'BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP', 'MOD4/TEMP',
+        'MOD5/TEMP', 'MOD8/TEMP', 'MOD9/TEMP', 'MOD10/TEMP', 'MOD11/TEMP')
+    # 자리를 차지하지 않는 모듈이 보고돼도 카드에는 안 실린다.
+    telem = parse.telemetry_of(DEFAULT_STATUS)
+    assert len(telem['temp']) == 10
+    assert 32.5 not in telem['temp'] and 33.0 not in telem['temp']  # Mod6·7
 
 
 def test_module_types_cover_the_whole_manual_list_including_the_ad_family():

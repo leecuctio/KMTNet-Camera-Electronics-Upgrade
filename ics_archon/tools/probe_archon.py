@@ -103,9 +103,11 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     ad = sorted(s for s, t in mods.items() if t in parse.AD_TYPES)
     print('\n   모듈: %s' % (shown or '(보고 없음)'))
     if ad == [5, 6, 7, 8]:
-        say(OK, 'AD(비디오) 모듈이 슬롯 5~8 -- TEMP_SLOTS 가정이 맞다')
+        say(OK, 'AD(비디오) 모듈이 슬롯 5~8 -- 규격 5.6.1절의 '
+                'Mod5:ADM / Mod8:ADM 과 정합한다')
     elif ad:
-        say(BAD, 'AD 모듈이 슬롯 %s 다 -- parse.TEMP_SLOTS 를 고쳐야 한다' % ad,
+        say(BAD, 'AD 모듈이 슬롯 %s 다 -- 규격 5.6.1절 자리 표(Mod5·Mod8)와 '
+                 '다르므로 규격부터 확인해야 한다' % ad,
             '지금 목록: %s' % ' '.join(parse.TEMP_SLOTS))
     else:
         say(WARN, 'AD 모듈을 못 찾았다 (MODn_TYPE 2/13/14/15) -- 슬롯 '
@@ -156,6 +158,21 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
         print('     %-8s= %r' % (key, cards[key]))
         if len(str(cards[key])) > 51:
             say(BAD, '%s 가 견본 폭(51자)을 넘는다 -- 잘려서 실린다' % key)
+
+    # **자리마다 무엇인지 눈으로 대조할 수 있게 이름표를 붙여 준다.**  카드에는
+    # 이름표가 없고(자리 = 항목, 규격 5.6.1절) 값만 나열되므로, 실기 첫 실행에서
+    # "이 자리가 정말 그 모듈인가" 를 확인할 수 있는 자리는 여기뿐이다.
+    # 순서가 하나만 밀려도 값은 그럴듯하고 아무 경고도 안 뜬다.
+    print('\n   자리 표 (규격 5.6.1절) -- 값이 그 모듈의 것인지 대조할 것:')
+    temps = str(cards['C1_TEMP']).split()
+    for i, label in enumerate(rawhdr.TEMP_SLOT_LABELS):
+        got = temps[i] if i < len(temps) else '(없음)'
+        print('     %2d  %-14s %s' % (i + 1, label, got))
+    if len(temps) != len(rawhdr.TEMP_SLOT_LABELS):
+        say(BAD, 'C1_TEMP 가 %d자리다 -- 규격 5.6.1절은 %d자리다'
+            % (len(temps), len(rawhdr.TEMP_SLOT_LABELS)),
+            '자리 수 자체가 모듈 구성을 뜻한다 -- 규격부터 확인할 것')
+    print('     레일  %s' % ' · '.join(parse.VOLT_RAILS))
 
     # -- FRAME -------------------------------------------------------------
     fields = await ctrl.query('FRAME', timeout=5.0)

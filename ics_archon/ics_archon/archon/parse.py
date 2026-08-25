@@ -36,22 +36,16 @@ log = logging.getLogger('ics_archon.parse')
 #: 여기 사본을 두면 규격이 개정될 때 한쪽만 고쳐진다.
 VOLT_RAILS = rawhdr.VOLT_RAILS
 
-#: `Cn_TEMP` 자리 순서 (raw spec 5.6절, 매뉴얼 p.47-48).
+#: `Cn_TEMP` 자리 순서 -- **정본은 `rawhdr.TEMP_SLOTS`** (raw spec 5.6.1절).
 #:
-#: **자리 = 항목이므로 목록이 고정이어야 한다.**  결측이면 그 자리에 sentinel
-#: 을 넣고 건너뛰지 않는다 -- 건너뛰면 뒤 항목이 앞으로 당겨져 소비자가
-#: 구분할 방법이 없다 (labtest v1.1 이 고친 결함).
+#: ✅ **규격 수록이 끝났다** (v1.5, 2026-08-25).  종전 주석이 "모듈 나열 순서의
+#: 정본 명세는 규격 수록 예정" 이라며 잠정 5자리(`BACKPLANE_TEMP` + `MOD5`~
+#: `MOD8`)를 두고 있었는데, 5.6.1절이 **science 10자리**를 확정했다.  견본
+#: pair 의 `C1_TEMP` 도 처음부터 10개였다 -- 잠정안이 견본과 갈려 있었다.
 #:
-#: MOD5~MOD8 은 이 시스템의 AD(비디오) 모듈이다 -- 매뉴얼 p.20 이 AD 모듈은
-#: 중앙 4슬롯(5-8)에만 꽂힌다고 하고, labtest 의 `MOD5/PREAMPGAIN` ~
-#: `MOD8/PREAMPGAIN` 설정 블록이 그 4장을 가리킨다.
-#:
-#: ⚠️ **모듈 나열 순서의 정본 명세는 규격 수록 예정이다** (통합 문서 §1) --
-#: 확정되면 이 목록을 그것으로 교체한다.  늘릴 때는 카드 폭(51자)을 넘지
-#: 않는지 확인할 것.  **실기 미검증 자리 1번**이다
-#: (`ics_archon/SMC_CLAUDE.md`).
-TEMP_SLOTS: tuple[str, ...] = ('BACKPLANE_TEMP', 'MOD5/TEMP', 'MOD6/TEMP',
-                               'MOD7/TEMP', 'MOD8/TEMP')
+#: `VOLT_RAILS` 와 같은 이유로 **여기 사본을 두지 않는다** -- 규격이 개정될 때
+#: 한쪽만 고쳐지는 것을 막는다.
+TEMP_SLOTS: tuple[str, ...] = rawhdr.TEMP_SLOTS
 
 #: 나열 카드의 결측 자리에 넣는 값.  raw spec 5.0절의 HK 온도 sentinel 을
 #: 그대로 쓴다 -- 수치가 아니므로 `rawhdr._join_readings` 가 문자열로 잇는다.

@@ -585,9 +585,45 @@ def thermal_header(sensors: dict | None) -> dict[str, object]:
     return out
 
 
-#: `Cn_VOLT`/`Cn_CURR` 의 자리 순서 (raw spec 5.6절) -- Archon STATUS 의
+#: `Cn_VOLT`/`Cn_CURR` 의 자리 순서 (raw spec **5.6.1절**) -- Archon STATUS 의
 #: 전원 레일 필드 `P2V5_V/I` … `P35V_V/I` 에 대응한다 (Archon 매뉴얼 p.47).
+#: 두 카드가 같은 순서를 쓴다.
 VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
+
+#: `Cn_TEMP` 의 자리 순서 -- **science 컨트롤러 10자리** (raw spec **5.6.1절**,
+#: 운영자 확정 2026-08-25).  Archon STATUS 의 모듈 온도 필드에 대응한다.
+#:
+#:     자리  1  Backplane        6  Mod5:ADM
+#:           2  Mod1:LVDS        7  Mod8:ADM
+#:           3  Mod2:Driver      8  Mod9:HVYBias
+#:           4  Mod3:Driver      9  Mod10:Driver
+#:           5  Mod4:LVXBias    10  Mod11:Driver
+#:
+#: **자리 자체가 항목이다** -- 값에 이름표가 없으므로 읽는 쪽은 이 표로만
+#: 해석한다.  그래서 결측이면 그 자리에 sentinel 을 넣고 **건너뛰지 않는다**:
+#: 건너뛰면 뒤 항목이 앞으로 당겨져 소비자가 구분할 방법이 없다 (labtest v1.1
+#: 이 고친 결함).
+#:
+#: **목록에 없는 모듈(6 · 7 · 12)은 자리를 차지하지 않는다** -- 자리 수가
+#: 장착·보고되는 모듈 수를 따르므로 **자리 수 자체가 구성 판별에 쓰인다**.
+#: 구성이 바뀌면 `CAMVER`(HW) · `CTRLnCFG`(설정) 범프로 드러나야 한다 (4.3절).
+#:
+#: ⚠️ **guide 컨트롤러는 8자리로 다르다** (Backplane · Mod3 · Mod4 · Mod5 ·
+#: Mod6 · Mod7 · Mod9 · Mod10) -- 원장 7장 기재분이고 **실기 대조 전**이다
+#: (**OI-19**).  guide raw 규격을 세울 때 실측으로 확정한다.  전원 레일 7자리는
+#: science 와 같다.
+#:
+#: ⚠️ 종전 구현은 `BACKPLANE_TEMP` + `MOD5~MOD8` **5자리**였다 (AD 모듈이
+#: 중앙 4슬롯이라는 매뉴얼 p.20 근거의 잠정안).  v1.5 5.6.1절이 정본을 세우면서
+#: 교체했다 -- 견본 pair 의 `C1_TEMP` 도 처음부터 10개였다.
+TEMP_SLOTS = ('BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP',
+              'MOD4/TEMP', 'MOD5/TEMP', 'MOD8/TEMP', 'MOD9/TEMP',
+              'MOD10/TEMP', 'MOD11/TEMP')
+
+#: `TEMP_SLOTS` 자리별 항목 이름 (raw spec 5.6.1절 표) -- 진단 출력용.
+TEMP_SLOT_LABELS = ('Backplane', 'Mod1:LVDS', 'Mod2:Driver', 'Mod3:Driver',
+                    'Mod4:LVXBias', 'Mod5:ADM', 'Mod8:ADM', 'Mod9:HVYBias',
+                    'Mod10:Driver', 'Mod11:Driver')
 
 
 def _join_readings(values, fmt: str) -> str:

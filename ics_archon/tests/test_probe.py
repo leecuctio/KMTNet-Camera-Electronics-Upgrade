@@ -116,7 +116,7 @@ def test_stage1_reports_missing_status_fields_per_slot(tmp_path):  # noqa: ANN00
     """온도 슬롯·전원 레일 결측을 **자리 단위로** 보고한다."""
     from fake_archon import DEFAULT_STATUS
     status = dict(DEFAULT_STATUS)
-    del status['MOD7/TEMP']
+    del status['MOD9/TEMP']
     del status['P6V_I']
     srv = FakeArchon(width=NX, height=NY, status=status)
     srv.start()
@@ -126,7 +126,7 @@ def test_stage1_reports_missing_status_fields_per_slot(tmp_path):  # noqa: ANN00
         srv.shutdown()
     assert rc == 1
     text = labels()
-    assert 'MOD7/TEMP' in text
+    assert 'MOD9/TEMP' in text
     assert '전원 레일 결측: P6V' in text
 
 
@@ -195,7 +195,9 @@ def test_stage3_measures_readout_and_writes_one_readable_fits(fake, tmp_path):  
         assert h['BITPIX'] == 16 and h['BZERO'] == 32768
         # 컨트롤러 유래 카드가 실값이다
         assert h['CTRL1SN'].strip() == '0024498A715E301C'
-        assert len(h['C1_TEMP'].split()) == 5
+        # 규격 5.6.1절 -- science 는 열 자리다 (v1.5 전에는 잠정 5자리였다)
+        assert len(h['C1_TEMP'].split()) == 10
+        assert len(h['C1_VOLT'].split()) == len(h['C1_CURR'].split()) == 7
         # 원천이 없는 것은 sentinel 로 남는다
         assert h['CCDTEMP'].strip() == '-999.99'
         # 관측 카드는 이 도구가 채우지 않는다 (TC 에 붙지 않는다)

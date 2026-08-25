@@ -102,6 +102,19 @@ def test_labtest_site_table_matches_the_spec_5_3_1():
 
 
 @pytest.mark.repo_only
+def test_labtest_temp_slots_match_spec_5_6_1():
+    """내장 `TEMP_SLOTS`/`VOLT_RAILS` = 규격 5.6.1절 자리 표.
+
+    자리 자체가 항목이라 순서가 하나만 밀려도 실험실 자료의 온도가 **다른
+    모듈 것으로 읽힌다** -- 값이 그럴듯해서 아무도 의심하지 않는다.
+    """
+    from ics_sim import rawhdr
+
+    assert tuple(_literal('TEMP_SLOTS')) == rawhdr.TEMP_SLOTS
+    assert tuple(_literal('VOLT_RAILS')) == rawhdr.VOLT_RAILS
+
+
+@pytest.mark.repo_only
 def test_labtest_number_space_matches_d018():
     """되감음 경계·상한이 `rawpair.NUM_SPACE` 와 같아야 한다 (D-018).
 
@@ -116,3 +129,28 @@ def test_labtest_number_space_matches_d018():
     body = body[:body.index('\ndef ', 1)]
     assert str(rawpair.NUM_SPACE) in body.replace('_', ''), (
         f'labtest 의 번호 공간이 {rawpair.NUM_SPACE} 가 아니다 (D-018)')
+
+
+def test_the_shipped_archon_ini_agrees_with_the_spec_requery_delay():
+    """`ics_archon.ini` 의 재질의 지연이 규격 5.7.1절 값이어야 한다.
+
+    ⚠️ **이 값은 지연이자 재질의 문턱이다** -- `EXPTIME <= 이 값` 이면
+    재질의하지 않는다.  실기가 읽는 것은 ini 이므로, 코드 기본값만 고치고
+    ini 를 두면 **실기에서만 문턱이 다르다.**  v1.5 반영 1차에서 실제로
+    `ics_sim.ini` 는 1.0 인데 `ics_archon.ini` 만 3.0 으로 남아 있었다.
+
+    `repo_only` 를 붙이지 않는다 -- ini 는 배치본에도 함께 간다.
+    """
+    import configparser
+
+    from ics_sim.config import SimConfig
+
+    ini = os.path.join(ROOT, 'ics_archon.ini')
+    assert os.path.exists(ini), f'실기 ini 가 없다 ({ini})'
+    cp = configparser.ConfigParser(inline_comment_prefixes=('#',))
+    cp.read(ini, encoding='utf-8')
+    got = cp['timing'].getfloat('aux_requery_after_shopen')
+    assert got == SimConfig().timing.aux_requery_after_shopen, (
+        f'ics_archon.ini 의 aux_requery_after_shopen 이 {got} 인데 코드 '
+        f'기본값은 {SimConfig().timing.aux_requery_after_shopen} 다 -- '
+        '규격 5.7.1절과 함께 움직여야 한다')

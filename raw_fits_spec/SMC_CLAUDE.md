@@ -110,16 +110,20 @@
 
 ⚠️ **`ics-archon-v1.0-build` 머지 때 충돌한다** — 그 브랜치가 같은 파일들을 이미 고쳤다(`3bf2d73` 사이트 판별을 `OBSERVATORY` 로 · `9545f64` ics_sim v0.2.0). 특히 `rawpair.py`·`config.py`·`state.py`·`siteid.py`(브랜치에선 삭제)·시험 3종이 겹친다. **머지는 `main` 쪽 값(`KMTK`/`KASI`/1.0/`EXPNUM_SPACE`)을 정본으로 삼아 해소한다.**
 
-**⚠️ 아직 남은 후속 — `ics_archon` (그 브랜치 몫, 운영자 확정 2026-08-25)**
+**✅ 후속 넷 — `ics_archon` 브랜치에서 완료 (2026-08-26)**
 
-이 라운드가 **`main` 에 없는 코드**에 걸리는 일감을 넷 만들었다. 전부 `ics-archon-v1.0-build` 가 `main` 을 머지로 받는 시점에 함께 처리한다 — 여기서 고치면 그 브랜치의 사이트 판별 개정(`3bf2d73`)·`ics_sim` v0.2.0(`9545f64`)과 정면으로 충돌한다.
+이 라운드가 **`main` 에 없는 코드**에 걸리는 일감을 넷 만들었고, `ics-archon-v1.0-build` 가 `main` 을 머지로 받으면서 전부 처리했다 (그 브랜치 커밋 — DevNote **11.28**).
 
-| # | 일감 | 걸리는 자리 |
+| # | 일감 | 결과 |
 |---|---|---|
-| 1 | 견본 오타 2건 + **시각 카드 4장** + **`CHMAP` 8장** + **폐지 4장 제거·공백 패딩** 을 기계 사본에 반영 | 아래 표 3곳 |
-| 2 | **D-017** 사이트 코드 · **D-018** 번호 공간 · 재질의 1초 · `FPAID` 사이트 유도 | `ics_archon/ics_archon/_vendor/ics_sim/` 전체 — **`main` 의 `ics_sim` 을 그대로 가져오면 된다** |
-| 3 | 폐지 4장 · `CHMAP` 4자 · `TELESCOP`/`FPAID` 표 | `archon_kmtnet_labtest_v1.1.bigbuf.py` 내장 템플릿 · `ics_archon/tests/` |
-| 4 | 규격 참조 판올림 | `ics_archon/README.md` · 인수인계의 raw spec 인용 |
+| 1 | 견본 오타 2건 + **시각 카드 4장** + **`CHMAP` 8장** + **폐지 4장 제거·공백 패딩** 을 기계 사본에 반영 | ✅ 사본 3곳 전부. `#EOF` 제거로 견본이 4x2880 = 11,520B 가 되면서 **labtest 의 `build_header` 가 헤더 조립을 거부**했다 — 정렬 단정만 있고 패딩이 없었다. 같은 패딩을 넣었다 |
+| 2 | **D-017** 사이트 코드 · **D-018** 번호 공간 · 재질의 1초 · `FPAID` 사이트 유도 | ✅ ⚠️ **"`main` 의 `ics_sim` 을 그대로 가져오면 된다" 는 이 브랜치에 맞지 않았다** — `main` 쪽은 IP 판별 구판이라 `siteid.py` 를 되살리게 되고, `state.EXPNUM_SPACE` 도 같은 뜻의 두 번째 상수가 된다. **값만** 가져오고 구조는 브랜치 것을 지켰다. `FPAID` 사이트 유도는 `main` 에 없어서 브랜치에서 새로 구현했다(`rawhdr.fpaid_of()`) |
+| 3 | 폐지 4장 · `CHMAP` 4자 · `TELESCOP`/`FPAID` 표 | ✅ + **labtest 사본 표류 감시 시험 신설** (`ics_archon/tests/test_labtest_spec_copy.py`, 5항목) — 사본 셋 중 이것만 아무도 안 보고 있었다 |
+| 4 | 규격 참조 판올림 | ✅ `README.md`·`README_labtest.md`·`SMC_CLAUDE.md`·labtest 머리말 |
+
+**표에 없었는데 나온 것 — `Cn_TEMP` 자리 수 (5.6.1절).** 구현이 잠정 **5자리**(`BACKPLANE_TEMP`+`MOD5`~`MOD8`)였는데 5.6.1절이 science **10자리**를 확정했고, **견본 pair 의 `C1_TEMP` 는 처음부터 10개**였다 — 잠정안이 견본과 갈려 있었다. 바이트 대사가 못 잡은 이유는 그 시험이 **견본 값을 그대로 되먹여서** 실기 파서(`parse.telemetry_of`)를 지나지 않기 때문이다. 정본을 `rawhdr.TEMP_SLOTS` 에 세우고 두 경로를 잇는 시험을 새로 붙였다.
+
+검증: `ics_sim` **321 통과** · `ics_archon` **145 통과** · **견본 v1.5 pair 바이트 단위 재현**(MK·NT, 불일치 0).
 
 ✅ **배선표 갈림 해소 (2026-08-25)** — `__reference/` 읽기 전용 규칙대로 v1.0 은 손대지 않고 사본을 sub레포 루트로 올려 **`Detector_Ch_to_AmpID_Map_v1.1.txt`** 로 고쳤다(4자 채널 토큰 + `IMGSEC` `D-BOT`). 규격 머리말·4.5절·`raw_fits_spec/README.md` 의 참조를 v1.1 로 옮겼다. 구 v1.0 은 원본 기록으로 `__reference/` 에 남는다 — **그것을 읽는 외부 도구가 있으면 v1.1 로 옮겨야 한다.**
 
@@ -135,7 +139,7 @@
 | `ics_archon/ics_archon/_vendor/ics_sim/rawcards.py` | 위와 바이트 동일 사본 |
 | `ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py` | 504 · 531 (`# 견본 원문` 주석 포함) |
 
-**셋 다 `main` 에 없다** — `rawcards.py` 를 들여온 커밋 `9545f64`(ics_sim v0.2.0, 템플릿 주도 재편)가 `ics-archon-v1.0-build` 전용이고 `main` 에는 `ics_archon/` 폴더 자체가 없다. 그래서 **이 라운드를 main 에 올린 뒤, 그 브랜치가 main 을 머지로 받는 시점에 함께 고친다.** 그 전까지 그 브랜치의 `raw_fits_spec/` 은 HEAD 상태(오타 있는 견본)로 두어 시험 녹색을 유지한다 — 실제로 되돌려 두었고 `ics_sim` **306 통과** 확인.
+**셋 다 `main` 에 없다** — `rawcards.py` 를 들여온 커밋 `9545f64`(ics_sim v0.2.0, 템플릿 주도 재편)가 `ics-archon-v1.0-build` 전용이고 `main` 에는 `ics_archon/` 폴더 자체가 없다. 그래서 **이 라운드를 main 에 올린 뒤, 그 브랜치가 main 을 머지로 받는 시점에 함께 고쳤다** (2026-08-26 완료). ✅ 이제 그 세 사본은 **시험이 지킨다** — `_vendor` 는 `test_vendor.py`, labtest 내장본은 신설 `test_labtest_spec_copy.py` 다.
 
 `#EOF` 제거는 안전하다 — `ics_sim/tests/test_raw_draft.py:67` · `ics_archon/tests/test_fitswrite.py:46` 둘 다 조건부로 뗀다. `__reference/` 의 레거시 실측 헤더 20여 장은 **사실 기록이므로 오타를 그대로 둔다**.
 
