@@ -17,7 +17,7 @@ from conftest import make_config
     ('ctio', 'KMTC'),
     ('saao', 'KMTS'),
     ('sso', 'KMTA'),
-    ('testbed', 'KMTT'),
+    ('kasi', 'KMTK'),
 ])
 def test_site_telid_pairs_valid(site, telid):
     cfg = make_config()

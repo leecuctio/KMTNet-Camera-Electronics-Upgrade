@@ -390,14 +390,18 @@ def test_longitude_is_west_positive_at_every_site(code):
         f'{code}: 서경 {west_deg} 가 동경 {east_deg} 와 맞지 않는다')
 
 
-def test_testbed_has_no_coordinates_on_purpose():
-    """테스트베드는 좌표를 **일부러** 비워 둔다.
+def test_kasi_has_no_coordinates_on_purpose():
+    """KASI(실험실)는 **좌표만** 일부러 비워 둔다.
 
     아무 좌표나 넣으면 시험 산출물이 실제 관측처럼 보인다 (OI-11).
+    다만 `TELESCOP` 은 **값이 있다** -- D-017 항목 6 이 `'KMTNet 1.6m #0'` 으로
+    정했다 (raw spec 5.3.1절).  종전 `KMTT` 판에서는 이것도 sentinel 이었다.
     """
-    h = rawhdr.site_header('KMTT')
+    h = rawhdr.site_header('KMTK')
     assert str(h['LATITUDE']) == 'NC'
-    assert str(h['TELESCOP']) == 'NC'
+    assert str(h['LONGITUD']) == 'NC'
+    assert int(h['ELEVATIO']) == -1
+    assert str(h['TELESCOP']) == 'KMTNet 1.6m #0'
     assert h['ELEVATIO'] == -1
 
 
@@ -405,7 +409,7 @@ def test_origin_is_where_the_file_was_generated():
     """`ORIGIN` = **"이 파일이 생성된 곳"** (운영자 확정 2026-08-21, v1.7).
 
     관측소 raw 는 관측소 이름(`OBSERVAT` 와 중복 감수 -- 레거시 계승),
-    테스트베드 raw 는 `KASI`.  KASI 파이프라인 산출물(MEF·L1)이
+    KASI(실험실) raw 는 `KASI`.  KASI 파이프라인 산출물(MEF·L1)이
     `ORIGIN='KASI'` 를 갖는다 -- MEF 쪽은 상수화가 C-항목이다.
     종전의 "raw 도 기관명 `KASI` 고정" 구현은 이 확정으로 대체됐다.
     `[site]` ini 의 `origin` 키가 유도값을 이긴다 (ICS INI 카드).
@@ -415,9 +419,9 @@ def test_origin_is_where_the_file_was_generated():
                                 ctrltag='MK', filename='x', created='y')
     assert str(h['ORIGIN']) == 'CTIO'        # 관측소 raw = 관측소 이름
     assert str(h['OBSERVAT']) == 'CTIO'
-    h = rawpair.identity_header(site_code='KMTT', suffix='20260813.000001',
+    h = rawpair.identity_header(site_code='KMTK', suffix='20260813.000001',
                                 ctrltag='MK', filename='x', created='y')
-    assert str(h['ORIGIN']) == 'KASI'        # 테스트베드 raw = KASI
+    assert str(h['ORIGIN']) == 'KASI'        # KASI(실험실) raw = KASI
     h = rawpair.identity_header(site_code='KMTA', suffix='20260813.000001',
                                 ctrltag='MK', filename='x', created='y',
                                 origin='KASI')
@@ -587,7 +591,7 @@ OBSDATE_CASES = [
     ('KMTA', '01:30', '20260813'), ('KMTA', '23:59', '20260813'),
     ('KMTS', '00:00', '20260812'), ('KMTS', '10:29', '20260812'),
     ('KMTS', '10:30', '20260813'), ('KMTS', '23:59', '20260813'),
-    ('KMTT', '00:00', '20260813'), ('KMTT', '23:59', '20260813'),
+    ('KMTK', '00:00', '20260813'), ('KMTK', '23:59', '20260813'),
 ]
 
 
@@ -615,14 +619,14 @@ def test_every_site_boundary_is_local_1230():
             f'{site}: 경계가 현지 {local_min // 60}:{local_min % 60:02d} 다')
 
 
-def test_unknown_site_code_falls_back_to_testbed():
-    """`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTT` (운영자 확정 2026-08-13).
+def test_unknown_site_code_falls_back_to_kasi():
+    """`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTK` (운영자 확정 2026-08-13).
 
     TC 가 보내는 `TELID` 에 사이트가 아닌 `KMTN`(pctcs 기본값, `pctcs.h:115`)이
     올 수 있어서 필요하다.
     """
-    assert rawpair.normalize_site('KMTN') == 'KMTT'
-    assert rawpair.normalize_site('') == 'KMTT'
+    assert rawpair.normalize_site('KMTN') == 'KMTK'
+    assert rawpair.normalize_site('') == 'KMTK'
     assert rawpair.normalize_site('kmtc') == 'KMTC'      # 대소문자 무관
     for real in ('KMTC', 'KMTS', 'KMTA'):
         assert rawpair.normalize_site(real) == real

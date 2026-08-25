@@ -175,7 +175,7 @@ def detector_header(instrume: str,
     """5.4절 detector · camera · mosaic 배치 (16장).
 
     Args:
-        instrume: `[node] telid` (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  기본 형식은
+        instrume: `[node] telid` (`KMTC`/`KMTS`/`KMTA`/`KMTK`).  기본 형식은
             **`'<SITE> 18k CCD'`** (운영자 확정 2026-08-21, Header_and_Refs
             v1.7 3.1절 · 확정 초안 v1.0) -- 레거시는 사이트 코드만 넣었다
             (`INSTRUME='KMTS'`).
@@ -511,7 +511,11 @@ def observation_header(*, imgtype: str, objname: str, projid: str,
 #: 다르지만 **운영자가 준 문자열을 그대로 싣는다** -- 정규화하면 레거시
 #: 아카이브와 문자열 비교가 깨진다.
 #:
-#: `TELESCOP` 의 `#1`/`#2`/`#3` 은 사이트에 대응한다 (CTIO/SAAO/SSO).
+#: `TELESCOP` 의 번호는 사이트에 대응한다 -- **CTIO `#1` · SAAO `#2` · SSO `#3` ·
+#: KASI `#0`** (raw spec 5.3.1절, D-017 항목 6).  SSO 값은 레거시 실측
+#: (`KMTNk.20170209.044131`: `OBSERVAT='SSO'` + `TELESCOP='KMTNet 1.6m #3'`)로
+#: 확인됐다.  ⚠️ **망원경 번호와 `FPAID` 번호는 관측소 셋 모두 어긋난다**
+#: (CTIO 망원경 #1·FPA #2 등) -- 오타로 보고 맞추면 검출기 귀속이 틀어진다.
 #:
 #: ⚠️ **`[site]` 설정이 있으면 그쪽이 이긴다** -- 현장이 정본이다.  이 표는
 #: 설정이 없을 때(단위 시험·최초 배포)의 기본값이다.
@@ -522,8 +526,10 @@ VERIFIED_SITES = {
              'elevatio': 1800, 'telescop': 'KMTNet 1.6m #2'},
     'KMTA': {'latitude': '-31:16:24', 'longitud': '210:56:08',
              'elevatio': 1150, 'telescop': 'KMTNet 1.6m #3'},
-    # KMTT(테스트베드)는 실재 좌표가 없다.  일부러 비워 둔다 -- 아무 좌표나
-    # 넣으면 시험 산출물이 실제 관측처럼 보인다.
+    # KMTK(KASI 실험실)는 실재 관측 좌표가 없다.  측지값은 **일부러 비워** 둔다
+    # -- 아무 좌표나 넣으면 시험 산출물이 실제 관측처럼 보인다.  `telescop` 만
+    # 싣는 것은 D-017 항목 6 이 `'KMTNet 1.6m #0'` 으로 정했기 때문이다.
+    'KMTK': {'telescop': 'KMTNet 1.6m #0'},
 }
 
 
@@ -531,7 +537,7 @@ def site_header(site_code: str, cfg_site: dict | None = None) -> dict[str, objec
     """5.9절 관측소 측지값.
 
     Args:
-        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTT`.
+        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTK`.
         cfg_site: `[site]` 설정.  주어지면 실측 표보다 **우선한다** -- 현장이
             정본이기 때문이다.
     """
@@ -566,8 +572,11 @@ def site_header(site_code: str, cfg_site: dict | None = None) -> dict[str, objec
 #: (운영자 확정 2026-08-21, Header_and_Refs v1.8 3.7절·7장).  `WALLBRD` 는
 #: wallboard 의 모음 탈락 축약 -- 8자 절단형 `WALLBOAR`(초안 v0.3.4)를 대체했다.
 #: `DEWPRES` 는 형과 표기가 달라 따로 다룬다.
-DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX',
-               'AIR_IN', 'AIR_OUT', 'GLYC_IN', 'GLYC_OUT')
+#:
+#: ⚠️ **`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` 4장은 폐지됐다** (운영자 확정
+#: 2026-08-25, raw spec v1.5 -- 5.6절이 18장에서 14장으로 줄었고 5.10절 폐지
+#: 목록에 등재됐다).  standalone RTD 계통이었다.  되살리려면 규격부터 고칠 것.
+DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX')
 
 #: 측정 불가를 뜻하는 `DEWPRES` 값 (운영자 확정 2026-08-21).
 DEWPRES_NC = '9.99e-9'

@@ -27,10 +27,10 @@ PRESCNY =                    0 / Prescan rows per amplifier (frame-edge side)
 OVRSCNX =                   48 / Overscan columns per amplifier (side varies)   
 OVRSCNY =                   84 / Overscan rows per amplifier (frame-center side)
 COMMENT   Map of CCD output channels, raw X ascending within each card          
-CHMAP_LT= 'M16,M15,M14,M13,M12,M11,M10,M09' / CCD output ch, left-half TOP      
-CHMAP_LB= 'M01,M02,M03,M04,M05,M06,M07,M08' / CCD output ch, left-half BOT      
-CHMAP_RT= 'K08,K07,K06,K05,K04,K03,K02,K01' / CCD output ch, right-half TOP     
-CHMAP_RB= 'K09,K10,K11,K12,K13,K14,K15,K16' / CCD output ch, right-half BOT     
+CHMAP_LT= 'MD16,MD15,MD14,MD13,MD12,MD11,MD10,MD09' / CCD out ch, left-half TOP 
+CHMAP_LB= 'MA01,MA02,MA03,MA04,MA05,MA06,MA07,MA08' / CCD out ch, left-half BOT 
+CHMAP_RT= 'KA08,KA07,KA06,KA05,KA04,KA03,KA02,KA01' / CCD out ch, right-half TOP
+CHMAP_RB= 'KD09,KD10,KD11,KD12,KD13,KD14,KD15,KD16' / CCD out ch, right-half BOT
 COMMENT   Observatory Information ____________________________________________  
 ORIGIN  = 'SSO               ' / Location where the data was generated          
 OBSERVAT= 'SSO               ' / Observatory Site                               
@@ -69,10 +69,6 @@ PT30N2  = '-154.56           ' / PT-30 #2 cold-end temperature [deg C]
 CHARCOAL= '-215.67           ' / Charcoal canister temperature [deg C]          
 WALLBRD = '+16.78            ' / Wallboard temperature [deg C]                  
 HEBOX   = '+33.21            ' / HE box internal temperature [deg C]            
-AIR_IN  = '+34.56            ' / Air temperature at heat exchanger inlet [degC] 
-AIR_OUT = '+31.23            ' / Air temperature at heat exchanger outlet [degC]
-GLYC_IN = '+21.23            ' / Glycol temperature at HE box inlet [degC]      
-GLYC_OUT= '+24.56            ' / Glycol temperature at HE box outlet [degC]     
 C1_TEMP = '40.1 41.2 42.3 43.4 44.5 45.6 46.7 47.8 48.9 49.0  ' / Ctr-1 T[C]    
 C1_VOLT = '2.512 5.023 5.834 -5.945 16.956 -17.067 35.089     ' / Ctr-1 V[V]    
 C1_CURR = '4.698 4.487 2.176 0.465 0.454 0.443 0.032          ' / Ctr-1 I[A]    
@@ -82,8 +78,8 @@ C2_CURR = '4.712 4.423 2.134 0.445 0.456 0.467 0.078          ' / Ctr-2 I[A]
 COMMENT   TCS Information and Status _________________________________________  
 TCSLINK = 'Up                ' / TCS Communications Link Status                 
 TCSARC  = 'Enabled           ' / TCS Link Auto Recovery Mode Status             
-TCSQDATE= '2026-08-21T12:34:57.312' / UTC Date and Time of last TCS query       
-TCSUDATE= '2026-08-21T12:34:58.109' / UTC Date and Time of last TCS update      
+TCSQDATE= '2026-08-21T12:34:56.266' / UTC Date and Time of last TCS query       
+TCSUDATE= '2026-08-21T12:34:55.469' / UTC Date and Time of last TCS update      
 TCSTIME = 'UTC               ' / TCS Time System                                
 RADECSYS= 'ICRS              ' / Telescope Coordinate System                    
 RA      = '11:49:59.88       ' / Telescope RA                                   
@@ -110,8 +106,8 @@ DAZERR  = '+0.2              ' / Dome azimuth synchronization error
 COMMENT   AUX Information and Status _________________________________________  
 AUXLINK = 'Up                ' / AUX Control System Comm Link Status            
 AUXARC  = 'Enabled           ' / AUX Link Auto Recovery Mode Status             
-AUXQDATE= '2026-08-21T12:34:57.089' / UTC Date and Time of last AUX query       
-AUXUDATE= '2026-08-21T12:34:57.842' / UTC Date and Time of last AUX update      
+AUXQDATE= '2026-08-21T12:34:56.489' / UTC Date and Time of last AUX query       
+AUXUDATE= '2026-08-21T12:34:55.736' / UTC Date and Time of last AUX update      
 FSSTAT  = 'STANDBY           ' / Filter-Shutter Subsystem Status                
 FILTOP  = 'STANDBY           ' / Filter Operational Status                      
 FILNUM  = '1                 ' / Filter selector position number                
@@ -142,4 +138,8 @@ ENS7    = '0.0               ' / Environment Sensor 7 in deg C or percent RH
 FSATEMP = '23.4              ' / FSA internal temperature in degree C           
 FSAHUM  = '12.3              ' / FSA internal humidity in percent RH            
 END                                                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
 #EOF

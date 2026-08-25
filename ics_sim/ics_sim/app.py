@@ -49,7 +49,7 @@ class IcsSim:
         self.router = NodeRouter(cfg.node)
         # `site_code` 는 파일명 `<YYYYMMDD>`(사이트별 관측일)와 헤더 정체성에
         # 함께 쓰인다.  `normalize_site()` 를 지나므로 `KMTC`/`KMTS`/`KMTA` 밖은
-        # 모두 `KMTT` 로 떨어진다 (운영자 확정 2026-08-13).
+        # 모두 `KMTK` 로 떨어진다 (운영자 확정 2026-08-13, 코드는 D-017 개정).
         site, self.site_why = self._resolve_site()
         self.state = IcsState(expnum_file=cfg.paths.expnum_file,
                               site_code=site)
@@ -78,7 +78,7 @@ class IcsSim:
     def _resolve_site(self) -> tuple[str, str]:
         """실효 사이트 코드와 그 근거.  **IP 판정이 ini 를 이긴다** (D-015).
 
-        벤치에서 `[node] site` 를 `sso` 로 두더라도 파일명은 `KMTT.…` 여야
+        벤치에서 `[node] site` 를 `sso` 로 두더라도 파일명은 `KMTK.…` 여야
         한다는 것이 요구사항이므로(운영자 확정 2026-08-13), **설정 밖에서 오는
         신호가 이겨야** 한다.  ini 값은 버리지 않고 대조해 경고를 남긴다 -- 실제
         사이트 머신이 벤치로 판정되는 상황(NIC 다운, 모르는 세그먼트)이 그
@@ -90,7 +90,7 @@ class IcsSim:
         declared = rawpair.normalize_site(cfg.node.telid)
         if declared != cfg.node.telid.strip().upper():
             log.warning('[node] telid=%r 는 실재 사이트 코드가 아니라서 %s 로 '
-                        '읽었다 -- KMTC/KMTS/KMTA/KMTT 중 하나로 둘 것',
+                        '읽었다 -- KMTC/KMTS/KMTA/KMTK 중 하나로 둘 것',
                         cfg.node.telid, declared)
         if not cfg.node.site_from_ip:
             return declared, f'[node] telid={declared} (IP 판정 꺼짐)'
@@ -132,12 +132,12 @@ class IcsSim:
     def _warn_if_real_frames_would_be_labelled_bench(self) -> None:
         """실물 컨트롤러인데 사이트가 벤치로 판정된 경우 (D-015).
 
-        **이 조합만 조용히 넘어갈 수 있어서 따로 잡는다.**  판정이 `KMTT` 면
+        **이 조합만 조용히 넘어갈 수 있어서 따로 잡는다.**  판정이 `KMTK` 면
         보통은 정말 벤치이고 시뮬 프레임이라 문제가 없다.  그런데 백엔드가
-        `archon` 이면 **실화소가 `KMTT.…` 이름으로 아카이브에 들어간다** --
+        `archon` 이면 **실화소가 `KMTK.…` 이름으로 아카이브에 들어간다** --
         사이트 정체를 영구히 잃는 경로다.
 
-        `config.validate()` 는 `testbed`+`KMTT` 를 정합으로 보고 통과시키고
+        `config.validate()` 는 `kasi`+`KMTK` 를 정합으로 보고 통과시키고
         (내부적으로 일관되므로 맞다), `_resolve_site()` 의 경고는 판정과 ini 가
         **다를 때만** 뜬다.  둘이 같으면서 둘 다 벤치인 경우가 남으므로 여기서
         본다.
@@ -145,7 +145,7 @@ class IcsSim:
         시뮬 백엔드에서는 아무 말도 하지 않는다 -- 벤치가 조용해야 사람이
         경고를 무시하는 것을 학습하지 않는다.
         """
-        if self.state.site_code != rawpair.TESTBED_SITE:
+        if self.state.site_code != rawpair.KASI_SITE:
             return
         if rawhdr.datasrc_of(self.backend.name) != rawhdr.DATASRC_REAL:
             return
@@ -154,7 +154,7 @@ class IcsSim:
             '**실화소가 %s.… 이름으로 저장된다.**  호스트가 사이트 대역'
             '(192.168.13/14/15.x)에 없다는 뜻이니, 기기망 NIC 이 내려갔거나 '
             '망 구성이 바뀐 것이다.  자료를 찍기 전에 확인할 것 (D-015)',
-            rawpair.TESTBED_SITE, self.backend.name, rawpair.TESTBED_SITE)
+            rawpair.KASI_SITE, self.backend.name, rawpair.KASI_SITE)
 
     def log_identity_banner(self) -> None:
         """기동 시 **사이트 정체를 한 덩어리로** 남긴다.

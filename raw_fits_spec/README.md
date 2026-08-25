@@ -32,7 +32,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | --- | --- |
 | Raw 규격/구성 버전 파악 | 별도 버전 카드 없음(`RAWVER` 미도입 — v1.13 확인 요망 11) — **`CAMVER`(HW) · `CTRLxCFG`(FW/설정) · `DETID` · `CHMAP_*` 조합**으로 파악 |
 | 파일 구성 | 노출 1회 = raw FITS 2개 (`MK` = M,K / `NT` = N,T) |
-| 파일명 | `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {`KMTC`=CTIO, `KMTS`=SAAO, `KMTA`=SSO, `KMTT`=테스트베드} (D-011) |
+| 파일명 | `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {`KMTC`=CTIO, `KMTS`=SAAO, `KMTA`=SSO, `KMTK`=KASI} (D-011 · **D-017** 개정) |
 | 파일 구조 | single HDU, `BITPIX=16` + `BZERO=32768`, `19200 x 9400` |
 | 파일당 amplifier | 32 (chip 2 × amp 16) |
 | 기준 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1, docx 동본) |
@@ -42,7 +42,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 | 경로 | 내용 |
 | --- | --- |
-| `KMT_CEU_Raw_FITS_Specification_v1.5.md` | ✅ **현행 raw spec (2026-08-25)** — 파일 구조 · 파일명(D-011/D-014) · 충돌·정체성(D-016) · geometry(포장 규범 조항 + amp 전수 표 64행 + X overscan `RRRRLLLL` 확정) · 헤더 keyword 135장(초안 v1.0 pair 기준) · MEF/파이프라인 연동 요점 · 검증 체크리스트 · OI · e2v 데이터시트 부록. 배경·경위는 원장(Header_and_Refs)과 통합 문서로 링크. **v1.5 = 1~4장 검토 반영(v1.4) 위에 5장 검토 개시분** — `Cn_*` 자리 순서 명세(5.6.1) · 견본 comment 오타 정정 |
+| `KMT_CEU_Raw_FITS_Specification_v1.5.md` | ✅ **현행 raw spec (2026-08-25)** — 파일 구조 · 파일명(D-011/D-014) · 충돌·정체성(D-016) · geometry(포장 규범 조항 + amp 전수 표 64행 + X overscan `RRRRLLLL` 확정) · 헤더 keyword **131장**(초안 v1.0 pair 기준 — v1.5 에서 HK 4장 폐지) · MEF/파이프라인 연동 요점 · 검증 체크리스트 · OI · e2v 데이터시트 부록. 배경·경위는 원장(Header_and_Refs)과 통합 문서로 링크. **v1.5 = 1~4장 검토 반영(v1.4) 위에 5장 검토 개시분** — `Cn_*` 자리 순서 명세(5.6.1) · 견본 comment 오타 정정 |
 | `archive/` | **최근 구판만 유지** — 운영자가 주기적으로 살펴보고 없어도 될 파일은 지운다(2026-08-23 기준: Header_and_Refs v1.8~v1.13 · Specification v1.2/v1.3 · Impacts_and_Identity v0.5 가 잔류). 지워진 구판·전신 문서(MEF_Impacts·Numbering_and_Identity·raw↔MEF 키워드 대응표 등)는 **git 이력과 운영자 외부 백업(`__backup_raw_fits_spec_oldver`)에 보존** — 대응표의 살아있는 내용은 전부 흡수됐다: **판정 준거는 Header_and_Refs 0장**, 카드 대응은 같은 문서 각 장의 `Use in MEF` 열, MEF/converter 쪽 미결 4건은 통합 문서 v0.6 §6 (ACT-011) |
 | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md` | **v1.14 (2026-08-23) — 판정 준거를 본문 0장으로 편입**(구 검토 문서 폐기에 따른 근거 보전: 준거 순위 · converter 3상태 × ICD 규정/침묵 교차표 · 준거 공백 210 중 36/174 · 추출 함정). v1.13 (2026-08-22) — 운영자 3~5차 개정과 확인 요망 종결분을 반영한 수기 개정판** (v1.6 까지는 기계 추출 생성물, 구판은 `archive/`). **raw 카드 기준은 레거시 raw 실측 헤더**이고 **레거시 123개를 전량 귀속**시킨다 — converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정(7장) · 폐지(8장·8.1·8.2). v1.10 에서 **도입/계획 판정 완결 — 미정 0**, v1.11 에서 **돔 Source 를 TCS relay or REDIS 로 변경** + **확인 요망 1~5 종결**(`EXPTIME`/`LEDFLASH` 정수형 · `ICSBUILD` 프로그램명 제거), v1.12 에서 **확인 요망 9 종결**(HK 온도·습도 문자열 계승), v1.13 에서 **잔여 전량 종결**(sentinel `'-999.99'` 단일값 · CTRL1ID 포맷+ICS INI 편집성 · "– 철회" 라벨 · 버전 문자열 귀속/caldb 계층 규칙 · PRESCN 키워드 변경 계승 · 규격 버전 카드 미도입 — 버전 파악은 `CAMVER`·`CTRLxCFG`·`DETID`·`CHMAP_*` 조합) — **D-016 등재까지 완료(2026-08-22), V1 재작성 착수 조건 완성**. 10~12장은 subframe 제기 · converter 자기 상수 카드 · raw 직접 사용자 안내 |
 | `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` | **Draft v0.6 (2026-08-22) — 통합 문서: "Raw FITS 헤더 개정에 따른 MEF ICD · MEF Converter 개정 및 검토 사항".** **Part 1** = LEECU 전달용 개정 요청 목록 — C-항목 신설·개정, raw↔MEF 이름 대응, ICD·정의서 개정 후보, MEF/converter 쪽 미결 4건(§6). **Part 2** = 번호·충돌·정체성의 **파급 요약** — 정본은 raw spec 2.3절 + D-016 으로 이동(내용 이중화 방지 축약). 전신들(v0.4/v0.2/v0.5)은 `archive/` |
@@ -58,7 +58,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 | `KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1_KO.md` | — | v4.1 ICD의 **국문본. 이 디렉토리가 유일본** |
 | `KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` | `../mef_fits_spec/` | 규격 6.5절 대조표의 원본. 바이트 동일 사본 |
 | `KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md` | `../mef_converter/` | Archon raw 검증 결과. 바이트 동일 사본 |
-| `Detector_Ch_to_AmpID_Map_v1.0.txt` | — | **검출기 출력 채널 ↔ MEF AmpID 64행 맵** (구 AMPID.txt, 검토 완료 후 v1.0 승격 2026-08-21). CtrUnit–Port–CCD/CH–IMGSEC–MEF_AmpID — `CHMAP_*` 카드와 raw spec 4.5절 amp 전수 표의 **기계 가독 정본** |
+| `Detector_Ch_to_AmpID_Map_v1.1.txt` | — | ✅ **검출기 출력 채널 ↔ MEF AmpID 64행 맵 (현행)** — CtrUnit–Port–CCD/CH–IMGSEC–MEF_AmpID. `CHMAP_*` 카드와 raw spec 4.5절 amp 전수 표의 **기계 가독 정본**. **v1.1 (2026-08-25)**: 채널 토큰 3자→4자 `<chip><A\|D><nn>` · `IMGSEC` `B-BOT`→`D-BOT` 16행. 구 v1.0 은 `__reference/` 에 원본 기록으로 남는다 (읽기 전용 규칙상 사본을 루트로 올려 고쳤다) |
 | `CCD290-99 datasheet (V2 - Aug 2016).pdf` | e2v A1A-778871 V2 | **검출기 데이터시트** (운영자 확보 2026-08-22) — raw spec **부록 A** 의 원전: image section A/D · 레지스터 1152+prescan 27(레거시 `PRESCANX=27` 출처) · OS1–16 · split-frame 독출 |
 | `Detector_and_Amp_Info_cards_v1.0.txt` | — | **확정 Detector/Amplifier 카드 블록** MK·NT 정본 (구 AMPCARD.txt, v1.0 승격 2026-08-21) |
 | `Archon_Unit_Info.txt` | — | **사이트별 Archon 유닛 정체** — SCI×2 + GUI×1 의 유닛 ID(`<SITE>-SCI-101` 등, ID 숫자 = IP)와 STA 시리얼. `CTRL1ID`/`CTRL1SN`/`CTRL2ID`/`CTRL2SN` 실값의 원자료 |
@@ -109,7 +109,7 @@ v1.0에서 제기한 OBSAgent 규약 충돌 2건은 **v1.1에서 해결되었고
 
 | ID | 결정 |
 | --- | --- |
-| ~~OI-1~~ | 파일명은 `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {`KMTC`, `KMTS`, `KMTA`, `KMTT`} (D-011, 2026-08-10). `<NNNNNN>`는 **6자리 zero-padding 필수**. converter v2.2.0에서 정규식 개정 + `OBSERVAT` 교차 검증 |
+| ~~OI-1~~ | 파일명은 `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {`KMTC`, `KMTS`, `KMTA`, `KMTK`} (D-011, 2026-08-10 · 넷째 코드는 **D-017**, 2026-08-25 개정). `<NNNNNN>`는 **6자리 zero-padding 필수**. converter v2.2.0에서 정규식 개정 + `OBSERVAT` 교차 검증 |
 | ~~OI-2~~ | **저장 단위와 통보 단위를 분리.** 파일은 컨트롤러당 1개(2개), `STATUS: Wrote`는 CCD당 1회(4회)를 레거시 형태 논리 이름(`KMTN<c>.…`, 불변)으로 발신. OBSAgent 변경 없음 |
 | ~~OI-8~~ | NT 헤더 완전성 요구가 **ICD v4.1에 반영되었다** (2026-08-10) |
 | ~~OI-10~~ | 파일명 `<YYYYMMDD>`는 **그 사이트의 관측일**이다 — UT 에 사이트별 보정을 더한 뒤 날짜만 취한다. 경계는 세 사이트 모두 현지 12:30 (D-014, 2026-08-13). 종전 잠정안(UT 날짜)은 한 밤의 자료를 두 디렉토리로 갈랐다 |

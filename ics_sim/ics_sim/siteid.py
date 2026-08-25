@@ -69,12 +69,13 @@ SITE_SUBNETS: tuple[tuple[str, str], ...] = (
 #: 테스트베드는 `192.168.x.x` 를 쓰지 않는다는 것을 운영자가 확인해 줬고,
 #: 벤치는 사이트 이름 설정을 `kmtnet-sso`/`kmtnet-ctio`/`kmtnet-saao`/
 #: `kmtnet-kasi`/`kmtnet-helab` 등 무엇으로 두더라도 **파일명은 항상
-#: `KMTT.…`** 여야 한다.  그래서 판정이 ini 를 이긴다.
+#: `KMTK.…`** 여야 한다.  그래서 판정이 ini 를 이긴다.
 #:
 #: `192.168.x.x` 인데 13/14/15 가 아닌 경우도 벤치로 본다(운영자 확정).
 #: 실제 사이트에 우리가 모르는 세그먼트가 있다면 **ini 의 `site` 와 어긋나므로
 #: `resolve()` 의 경고가 그걸 드러낸다** -- 조용히 지나가지 않는다.
-BENCH_SITE = 'KMTT'
+#: **D-017 (2026-08-25)**: 구 `KMTT`(TESTBED)를 `KMTK`(KASI)가 대체한다.
+BENCH_SITE = 'KMTK'
 
 #: 대역별 탐침 목표.  UDP `connect()` 는 **패킷을 보내지 않는다** -- 커널
 #: 라우팅 테이블만 조회해 출발 주소를 고른다.  hostname 에 등록되지 않은 NIC

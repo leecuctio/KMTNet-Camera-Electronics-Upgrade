@@ -13,7 +13,7 @@
 
 단, 고정인 것은 **Wrote 메시지에 싣는 논리 이름**이다 (D-011/D-010).  실기
 (ics_archon)의 디스크 실물은 컨트롤러당 1개 <SITE>.<날짜>.<번호>.<MK|NT>.fits
-2개로 저장하고 (<SITE> 는 [node] site 에서 유도한 KMTC/KMTS/KMTA/KMTT,
+2개로 저장하고 (<SITE> 는 [node] site 에서 유도한 KMTC/KMTS/KMTA/KMTK,
 D-011), 이 논리 이름은 통보 전용이 된다 -- filename() 은 그때 논리 이름
 생성기와 물리 경로로 분리된다 (raw_fits_spec 2.3/2.5절, DevNote 9.1/13장 C-16).
 시뮬은 레거시 재현이 목적이라 논리 이름 그대로 저장까지 한다.
@@ -29,6 +29,13 @@ from datetime import datetime, timezone
 from . import build_id
 
 log = logging.getLogger('ics_sim.state')
+
+
+#: 노출 번호 공간 (**D-018**, 2026-08-25).  `000000`-`999999`, 1000000 에서 되감음.
+#: 구 규칙은 `099999` 상한이었다 -- 6자리 형식에 5자리만 쓰는 셈이라 규칙이
+#: 둘로 갈려 있었고, 공간이 10배가 되면 D-016 이 다루는 되감김 충돌 자체가
+#: 드물어진다.
+EXPNUM_SPACE = 1_000_000
 
 
 class ExpStatus:
@@ -150,14 +157,14 @@ class IcsState:
     expnum_file: str = ''
     ledflash_ms: int = 0
     expstatus: str = ExpStatus.IDLE
-    #: 사이트 코드 (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  파일명 `<YYYYMMDD>` 가
+    #: 사이트 코드 (`KMTC`/`KMTS`/`KMTA`/`KMTK`).  파일명 `<YYYYMMDD>` 가
     #: **사이트별 관측일** 이므로 날짜를 만들 때마다 필요하다
     #: (`rawpair.observing_date`, 운영자 확정 2026-08-13).
     #:
     #: 상태에 둔 이유: `next_suffix()` 와 `peek_suffix()` 가 **같은 규칙**을
     #: 써야 하는데 호출측이 매번 넘기게 하면 한쪽을 빠뜨린다 -- 그러면 EXPNUM
     #: 응답과 실제 파일명의 날짜가 갈리고, 그건 야간 경계에서만 드러난다.
-    site_code: str = 'KMTT'
+    site_code: str = 'KMTK'
     #: FITS `ICSBUILD` -- **이 프로그램의** 빌드 식별자 (규격 5.1절).
     #:
     #: 한때 기본값이 레거시 ICS 의 `'KX2016-03-23:1381'` 이었다.  없는 것이
@@ -259,7 +266,11 @@ class IcsState:
         return f'ICS.{stamp_guide(when)}.{self.expnum:06d}'
 
     def advance(self) -> None:
-        self.expnum += 1
+        # **D-018 (2026-08-25)**: 번호 공간은 `000000`-`999999` 로 6자리를 전부
+        # 쓰고, 1000000 에 닿으면 `000000` 으로 되감는다.  구 규칙은 `099999`
+        # 상한이라 맨 앞 자리가 늘 `0` 이었다.  되감지 않으면 `:06d` 가 7자리를
+        # 내놓아 파일명 형식(6자리 고정폭)이 깨진다.
+        self.expnum = (self.expnum + 1) % EXPNUM_SPACE
         self.suffix_taken = False
 
     # -- expnum 지속 (2026-08-11 운영자 확정) -----------------------------

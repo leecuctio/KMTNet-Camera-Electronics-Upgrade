@@ -70,16 +70,16 @@ BENCH_CASES = [
 def test_anything_else_is_bench(addrs):
     """`KMTC`/`KMTS`/`KMTA` 대역이 아니면 모두 벤치다 (운영자 확정 2026-08-13).
 
-    테스트베드는 `192.168.x.x` 를 쓰지 않고, 벤치는 `[node] site` 를 무엇으로
-    두더라도 파일명이 `KMTT.…` 여야 한다.
+    KASI(실험실)는 `192.168.x.x` 를 쓰지 않고, 벤치는 `[node] site` 를 무엇으로
+    두더라도 파일명이 `KMTK.…` 여야 한다.
     """
-    assert siteid.site_of(addrs)[0] == siteid.BENCH_SITE == 'KMTT'
+    assert siteid.site_of(addrs)[0] == siteid.BENCH_SITE == 'KMTK'
 
 
 def test_no_address_at_all_is_bench_not_an_error():
     """네트워크가 없는 노트북도 정상 상황이다 -- 예외를 던지지 않는다."""
     code, why = siteid.site_of(())
-    assert code == 'KMTT'
+    assert code == 'KMTK'
     assert '네트워크' in why
 
 
@@ -96,7 +96,7 @@ def test_a_site_band_wins_over_other_interfaces():
 def test_detecting_on_this_machine_does_not_raise():
     """실제 호스트에서 돌려도 예외가 없고 네 코드 중 하나가 나온다."""
     code, why = siteid.detect()
-    assert code in ('KMTC', 'KMTS', 'KMTA', 'KMTT')
+    assert code in ('KMTC', 'KMTS', 'KMTA', 'KMTK')
     assert why
 
 
@@ -108,21 +108,21 @@ def test_local_addresses_never_include_loopback():
 # -- 판정이 ini 를 이긴다 -------------------------------------------------
 
 def test_ip_detection_overrides_the_declared_site(monkeypatch, caplog):
-    """벤치에서 `site=sso` 로 둬도 파일명은 `KMTT.…` 여야 한다.
+    """벤치에서 `site=sso` 로 둬도 파일명은 `KMTK.…` 여야 한다.
 
     운영자 요구사항이다 -- 벤치는 사이트 이름을 `kmtnet-sso`/`kmtnet-ctio` 등
-    무엇으로 두더라도 파일명이 `KMTT` 다.  그러려면 **설정 밖에서 오는 신호가
+    무엇으로 두더라도 파일명이 `KMTK` 다.  그러려면 **설정 밖에서 오는 신호가
     이겨야** 한다.
     """
     from ics_sim.app import IcsSim
-    monkeypatch.setattr(siteid, 'detect', lambda: ('KMTT', '10.0.0.5 (bench)'))
+    monkeypatch.setattr(siteid, 'detect', lambda: ('KMTK', '10.0.0.5 (bench)'))
     cfg = make_config(node__site='sso', node__telid='KMTA',
                       node__site_from_ip=True)
     app = IcsSim.__new__(IcsSim)
     app.cfg = cfg
     with caplog.at_level(logging.WARNING):
         site, why = app._resolve_site()
-    assert site == 'KMTT', 'IP 판정이 ini 를 이겨야 한다'
+    assert site == 'KMTK', 'IP 판정이 ini 를 이겨야 한다'
     assert any('판정을 따른다' in r.message for r in caplog.records)
 
 
@@ -267,7 +267,7 @@ def test_canned_mode_never_feeds_the_telid_check(caplog):
 
 def test_resolved_site_reaches_the_filename():
     """판정 → `state.site_code` → 파일명 prefix 로 이어져야 한다."""
-    for code in ('KMTC', 'KMTS', 'KMTA', 'KMTT'):
+    for code in ('KMTC', 'KMTS', 'KMTA', 'KMTK'):
         name = rawpair.physical_name(code, '20260813.000001', 'MK')
         assert name.startswith(f'{code}.')
         assert name.endswith('.MK.fits')

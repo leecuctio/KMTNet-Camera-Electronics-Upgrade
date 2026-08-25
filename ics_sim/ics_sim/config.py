@@ -31,7 +31,7 @@ _RESERVED_IDS = frozenset({'AL', 'ALL', 'XIS'})
 #: raw pair 물리 파일명 <SITE> prefix 로도 쓰인다 (raw_fits_spec 2.3절).
 log = logging.getLogger('ics_sim.config')
 
-_SITE_TELID = {'ctio': 'KMTC', 'saao': 'KMTS', 'sso': 'KMTA', 'testbed': 'KMTT'}
+_SITE_TELID = {'ctio': 'KMTC', 'saao': 'KMTS', 'sso': 'KMTA', 'kasi': 'KMTK'}
 
 
 class ConfigError(Exception):
@@ -47,7 +47,7 @@ class NodeCfg:
     #: 호스트 IP 로 사이트를 판정할지 (기본 켬).
     #:
     #: **판정이 ini 를 이긴다.**  벤치에서 `site` 를 `sso` 로 두더라도 파일명은
-    #: `KMTT.…` 여야 한다는 것이 요구사항이고(운영자 확정 2026-08-13), 그러려면
+    #: `KMTK.…` 여야 한다는 것이 요구사항이고(운영자 확정 2026-08-13), 그러려면
     #: 설정 밖에서 오는 신호가 이겨야 한다.  어긋나면 경고를 남긴다.
     #:
     #: **시험은 이걸 끈다** (`tests/conftest.py`) -- 켜 두면 판정이 시험을 돌리는
@@ -236,7 +236,11 @@ class TimingCfg:
     #: 있다(`CLOSED`/`UNKNOWN`).  운영자는 `SHUTOP='OPENING'` 으로 충분하다고
     #: 확정했다.  Full/Half 2중 블레이드 중 Full 리밋이 더 일찍 트립하는지는
     #: 모르므로 **벤치 실측으로 조정할 수 있게 설정값으로 뺐다** (규격 OI-14).
-    aux_requery_after_shopen: float = 3.0
+    #: **3.0 -> 1.0 (운영자 확정 2026-08-25, raw spec 5.7.1절).**  값을 줄이면
+    #: 재질의가 걸리는 노출 문턱도 함께 내려간다 -- `_integrate_shutter()` 가
+    #: `exptime <= delay` 면 재질의하지 않으므로, 1초 노출까지가 개시 직전 값을
+    #: 그대로 쓰는 구간이 된다.
+    aux_requery_after_shopen: float = 1.0
     countdown_tick_dark: float = 5.00
     countdown_tick_shop: float = 5.217
     shutter_to_readout: float = 6.00

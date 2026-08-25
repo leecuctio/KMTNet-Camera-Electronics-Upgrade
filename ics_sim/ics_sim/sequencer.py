@@ -425,7 +425,8 @@ class Sequencer:
             ERROR                       ->  UNKNOWN
             NC (초기값)                 ->  UNKNOWN   (comsoft.c:907-908)
 
-        그래서 갱신 시점(`SHOPEN`+3초)이 블레이드 주행(5초) 중간이어도
+        그래서 갱신 시점(`SHOPEN`+`aux_requery_after_shopen`, 현행 **1초** --
+        2026-08-25 에 3초에서 내렸다)이 블레이드 주행(5초) 중간이어도
         `SHUTOP='OPENING'` -> `SHUTTER='OPEN'` 이 된다.  한때 "주행 중이라 `CLOSED`
         가 나올 수 있으니 이 방향은 검사하면 오탐" 이라고 판단했는데 **틀렸다**
         (운영자 지적, 2026-08-13).  파생표를 확인하고 양방향으로 되돌렸다.

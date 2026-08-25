@@ -263,7 +263,7 @@ amp section(§7) · `AMPINFO` 컬럼군(§8) · 표 역할(§9)이다. 그래서
 | `DETECTOR` | O | O | `DETECTOR` | `'e2v CCD290-99'` | ICS INI |
 | `CCDXBIN` | O | O | `CCDXBIN` | `1` (2 & 3 reserved) | ICS code* / user selection |
 | `CCDYBIN` | O | O | `CCDYBIN` | `1` (2 & 3 reserved) | ICS code* / user selection |
-| `OBSERVAT` | O | O | `OBSERVAT` · `SITEID` | `TESTBED` / `CTIO` / `SAAO` / `SSO` | ICS INI |
+| `OBSERVAT` | O | O | `OBSERVAT` · `SITEID` | `CTIO` / `SSO` / `SAAO` / `KASI` (**D-017** — 구 `TESTBED` 대체) | ICS INI |
 | `TELESCOP` | O | O | `TELESCOP` | `'KMTNet 1.6m Sim/#1/#2/#3'` | ICS INI |
 | `LATITUDE` | O | O | `LATITUDE` | `'+dd:mm:ss.ss'` | ICS INI (=Legacy) |
 | `LONGITUD` | O | O | `LONGITUD` | `'dd:mm:ss.ss'` (West) | ICS INI (=Legacy) |
@@ -274,7 +274,7 @@ amp section(§7) · `AMPINFO` 컬럼군(§8) · 표 역할(§9)이다. 그래서
 | `PROJID` | O | O | `PROJID` `+amp` | `OBS`* / user input | ICS code* / user input |
 | `IMAGETYP` | O | O | `IMAGETYP` `+amp` | `BIAS`* / `DARK` / `OBJECT` / `FLAT` / `SKY` / `DOMEFLAT` | ICS code* / user selection |
 | `OBSTYPE` | O | O | `OBSTYPE` `+amp` | `BIAS`* / `DARK` / `OBJECT` / `FLAT` / `SKY` / `DOMEFLAT` / user input | `IMAGETYP`* / user input |
-| `INSTRUME` | O | O | `INSTRUME` | `'KMTT/KMTA/KMTC/KMTS 18k CCD'` | ICS INI |
+| `INSTRUME` | O | O | `INSTRUME` | `'KMTK/KMTA/KMTC/KMTS 18k CCD'` (넷째 코드 **D-017** 개정) | ICS INI |
 | `UNIQNAME` | O | **X** | `UNIQNAME` | replaced with `ORIGNAME` card | ICS code |
 
 **신규는 `FIELDID` 하나뿐이다.** 없으면 `OBJECT` 값이 그대로 들어간다 — 레거시가 필드명을 `OBJECT` 에 넣던 관행을 코드가 흡수한 형태다.
@@ -448,10 +448,10 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `PT30N1` | O | O | `PT30N1` | PT-30 #1 cold-end [degC] | ICG RTD measurement |
 | `PT30N2` | O | O | `PT30N2` | PT-30 #2 cold-end [degC] | ICG RTD measurement |
 | `CHARCOAL` | O | O | `CHARCOAL` | charcoal canister [degC] | ICG RTD measurement |
-| `AIR_IN` | O | O | `AIR_IN` | 열교환기 흡기 [degC] — IN 이 따뜻한 쪽(레거시 의미 유지) | standalone RTD readout unit |
-| `AIR_OUT` | O | O | `AIR_OUT` | 열교환기 배기 [degC] | standalone RTD readout unit |
-| `GLYC_IN` | O | O | `GLYC_IN` | HE box 유입 glycol [degC] | standalone RTD readout unit |
-| `GLYC_OUT` | O | O | `GLYC_OUT` | HE box 배출 glycol [degC] | standalone RTD readout unit |
+| ~~`AIR_IN`~~ | **폐지** | — | — | ~~열교환기 흡기 [degC]~~ — **raw spec v1.5 에서 폐지 (운영자 확정 2026-08-25)**, 5.10절 목록 | ~~standalone RTD readout unit~~ |
+| ~~`AIR_OUT`~~ | **폐지** | — | — | ~~열교환기 배기 [degC]~~ — v1.5 폐지 | ~~standalone RTD readout unit~~ |
+| ~~`GLYC_IN`~~ | **폐지** | — | — | ~~HE box 유입 glycol [degC]~~ — v1.5 폐지 | ~~standalone RTD readout unit~~ |
+| ~~`GLYC_OUT`~~ | **폐지** | — | — | ~~HE box 배출 glycol [degC]~~ — v1.5 폐지 | ~~standalone RTD readout unit~~ |
 | `CHKIMG` | **X** | **X** | `CHKIMG` |  | Pipeline 에서 판별하는 대상 — raw 카드 아님 (v1.10) |
 | `CHKIMG_C` | **X** | **X** | `CHKIMG_C` |  | Pipeline 에서 판별하는 대상 — raw 카드 아님 (v1.10) |
 
@@ -463,7 +463,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 
 **HK 온도·습도 카드는 전부 문자열이다 (확인 요망 9 종결 — 운영자 확정 2026-08-22).** 레거시 실측이 이미 부호 포함 문자열(`'-103.16 '` · `'+34.98  '`)이었고 converter 는 pass-through 라 문자열 계승이 아카이브 전체의 형을 통일한다 — 신규만 실수형이면 같은 이름에 두 형이 섞인다. 표기는 초안대로 **부호 포함 소수 2자리**(`'-101.23'` · `'+16.78'`)다. **측정불가 sentinel 은 온도·습도 전 카드 `'-999.99'` 단일값** — 온도로는 불가능한 값이고 습도로는 음수라 불가능하다 (기각안: `-99.99` 는 CCDTEMP 냉각 램프가 실제로 지나가는 값, 습도 `0.00` 은 유효 측정값). `ics_sim` 의 실수형 구현이 고칠 대상이다.
 
-**`DEWPRES` 는 문자열 카드다** — 지수 표기 `x.xxe-x` 를 고정하려면 실수 카드로는 안 되고(astropy 가 표기를 정한다), 측정불가는 전부 **`9.99e-9`** 로 접는다. HK 카드의 공급 계통은 셋으로 갈린다 — Archon 쪽 `ICG RTD measurement` · 별도 장치 `standalone RTD readout unit`(AIR/GLYC) · `Tapaculo sensor`(`HEBOX`, 7장). 레거시의 "AUX relay" 출처는 HK 에서 전부 물러났다.
+**`DEWPRES` 는 문자열 카드다** — 지수 표기 `x.xxe-x` 를 고정하려면 실수 카드로는 안 되고(astropy 가 표기를 정한다), 측정불가는 전부 **`9.99e-9`** 로 접는다. HK 카드의 공급 계통은 셋으로 갈린다 — Archon 쪽 `ICG RTD measurement` · 별도 장치 `standalone RTD readout unit`(AIR/GLYC) · `Tapaculo sensor`(`HEBOX`, 7장). 레거시의 "AUX relay" 출처는 HK 에서 전부 물러났다. ⚠️ **raw spec v1.5(2026-08-25)에서 `AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` 4장이 폐지되어 `standalone RTD readout unit` 계통은 raw 헤더에서 비었다** — 공급 계통은 이제 `ICG RTD` 와 `Tapaculo` 둘이다.
 
 ## 4. `card()` 밖에서 쓰이는 둘
 
@@ -541,7 +541,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `AMPMAP` | **X** | `EXPLICIT`이면 아래 표가 유효. `DEFAULT`면 converter의<br>추정식을 쓴다는 선언 | **v1.7: `CHMAP_*` 4장으로 대체** — 선언 카드 자체가 불필요해졌다 |
 | `AMPNAX1` | **O** | **amp 타일의 X 크기** = `1200` (prescan+image+overscan) | `NAXIS1/AMPNAX1 = 16` 으로 타일 수 파생. MEF `RAWXTILE` 과 값 동일, 이름 상이 |
 | `AMPNAX2` | **O** | **amp 타일의 Y 크기** = `4700` = `NAXIS2/NEND` (타일 규약) | `AMPNAX2−IMAGEY = 84` 가 중앙 overscan 의 amp 몫 — **물리 분배는 OI-4** |
-| ~~`BCKTEMP`~~ → **`Cn_TEMP` `Cn_VOLT` `Cn_CURR`**<br>로 변경·확장 | **O** (변경·확장) | Archon unit monitoring (Archon telemetry). Sci: n=1,2 · Gui: n=1.<br>Temp 는 Backplane 이후 Slot 순서, Volt/Curr 는<br>P2V5·P5V·P6V·N6V·P17V·N17V·P35V 순서 —<br>**공백 구분 나열**(자리=항목) | Sci module 순서: Backplane, Slot1 LVDS, Slot2 Driver, Slot3 Driver,<br>Slot4 LVX Bias, Slot5 ADM, Slot8 ADM, Slot9 HVY Bias, Slot10 Driver,<br>Slot11 Driver / Gui: Backplane, Slot3 Driver, Slot4 Driver, Slot5 AD,<br>Slot6 AD, Slot7 HeaterX, Slot9 HVY Bias, Slot10 HeaterX —<br>✅ **raw spec 5.6.1절에 명세로 수록 완료**(v1.5, 2026-08-25).<br>Gui 순서는 실기 대조 전이라 **OI-19** 로 승계 |
+| ~~`BCKTEMP`~~ → **`Cn_TEMP` `Cn_VOLT` `Cn_CURR`**<br>로 변경·확장 | **O** (변경·확장) | Archon unit monitoring (Archon telemetry). Sci: n=1,2 · Gui: n=1.<br>Temp 는 Backplane 이후 Slot 순서, Volt/Curr 는<br>P2V5·P5V·P6V·N6V·P17V·N17V·P35V 순서 —<br>**공백 구분 나열**(자리=항목) | Sci module 순서: Backplane, Slot1 LVDS, Slot2 Driver, Slot3 Driver,<br>Slot4 LVX Bias, Slot5 ADM, Slot8 ADM, Slot9 HVY Bias, Slot10 Driver,<br>Slot11 Driver / Gui: Backplane, Slot3 Driver, Slot4 Driver, Slot5 AD,<br>Slot6 AD, Slot7 HeaterX, Slot9 HVY Bias, Slot10 HeaterX —<br>✅ **raw spec 5.6.1절에 명세로 수록 완료**(v1.5, 2026-08-25). ⚠️ **표기 개정 (2026-08-25)**: 위 `Slot<n>` 은 구 표기다 — 현행은 **`Mod<n>`**(Module) 이고 첫 모듈은 **`Mod1`** 이다(`Mod1:LVDS` · `Mod2:Driver` …). 자리 순서 자체는 그대로다.<br>Gui 순서는 실기 대조 전이라 **OI-19** 로 승계 |
 | `BUFNO` | **X** | 사용한 Archon frame buffer | 모니터링 불필요(버퍼를 번갈아 사용) |
 | `CAMVER` | **O** | Camera electronics version — INI 설정, 값 `CEU-v2.1`. **HW·성능상 변경사항이 있을 때만 올린다** — 전자부 세대 판단의 참조점(운영자, 2026-08-22). 설정 상세 추적은 `CTRLxCFG` 몫 | v1.9 신설 (초안 v0.3.6) |
 | `CCDCOLS` | **X** | chip 1개의 active column | **`IMAGEX × 8` 로 파생 — 카드 불요** (v1.7) |
@@ -552,7 +552,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `CHIP1` | **X** | X 1–9600 절반의 chip | `DETID` 유지 확정(3.1)과 함께 **관련 키워드 검토 때 재론** |
 | `CHIP2` | **X** | X 9601–19200 절반의 chip | 〃 |
 | `CHIPS` | **X** | 이 파일에 담긴 chip (X 낮은 쪽부터) | 〃 |
-| `CHMAP_LT` `CHMAP_LB`<br>`CHMAP_RT` `CHMAP_RB` | **O** | **CCD 출력 채널 맵 4장** — 사분면(좌/우 절반 × TOP/BOT 행)별<br>8토큰, raw X 오름차순. 예: `'M16,M15,…,M09'` | `AMOD<nn>`/`ACHN<nn>` 색인형 65장을 대체.<br>converter C-11 이 이 카드에서 `MODULE`/`CHANNEL` 을<br>채우도록 개정 대상. 값 = **CCD 출력단**(Archon module/channel 은 다음 단, OI-9) |
+| `CHMAP_LT` `CHMAP_LB`<br>`CHMAP_RT` `CHMAP_RB` | **O** | **CCD 출력 채널 맵 4장** — 사분면(좌/우 절반 × TOP/BOT 행)별<br>8토큰, raw X 오름차순. **토큰은 4자 `<chip><A\|D><nn>`**<br>(01–08=`A` · 09–16=`D`, raw spec v1.5 개정 — 구 3자 `M16` 대체).<br>예: `'MD16,MD15,…,MD09'` | `AMOD<nn>`/`ACHN<nn>` 색인형 65장을 대체.<br>converter C-11 이 이 카드에서 `MODULE`/`CHANNEL` 을<br>채우도록 개정 대상. 값 = **CCD 출력단**(Archon module/channel 은 다음 단, OI-9) |
 | `CTRLERR` | **X** | `TELEMETRY.ERRORFLAG` | 별도 모니터링 하므로 미적용 |
 | `CTRLSTAT` | **X** | `TELEMETRY.STATUS` | `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` 와 중복 |
 | `CTRLTAG` | **X** | **이 파일이 pair의 어느 쪽인가** (`MK`/`NT`) | 아카이브 근거 — `FILENAME`(+`ORIGNAME`)/`CTRLTAG` (D-012 문구 개정).<br>**v1.9 미도입 확정 — `DETID` 와 값 중복.** pair 식별은<br>`FILENAME` 의 `.MK`/`.NT` 꼬리로 충분 |
@@ -756,7 +756,7 @@ NAMPRAW =                   32 / Number of amplifiers in the raw FITS file
 | --- | --- | --- |
 | `STRIPID` | `((amp-1) % 8) + 1` | `1` / `5` |
 | `ENDID` | `amp<=8` 이면 `TOP`, 아니면 `BOT` | `TOP` / `BOT` |
-| `EXTNAME` · `AMPNAME` | `{chip}{strip:02d}{T|B}` | `M01T` / `M05B` |
+| `EXTNAME` · `AMPNAME` | `{chip}{strip:02d}{T\|B}` | `M01T` / `M05B` |
 | `AMPID` | `AMP_BASE[chip] + amp` (M0 K16 N32 T48) | `1` / `13` |
 | `AMPSEQ` | `amp` (chip 안 번호) | `1` / `13` |
 | `CHIPID` | `chip` | `M` / `M` |
@@ -813,7 +813,7 @@ geometry 를 재구성할 재료는 **raw 헤더 안에 다 있다** — 11.1 �
 | `IMAGEX/Y` · `PRESCNX/Y` · `OVRSCNX/Y` | 타일 해부 — image 1152 × 4616 · prescan 0 · overscan 48(좌우 가변) / 84(중앙 쪽) |
 | `OSCNPATT` | strip 별 overscan 좌우 (`RRRRLLLL`) (v1.9 미도입 — 세부는 규격 조항) |
 | `NAMPDET` · `NAMPRAW` | chip 당 amp 수 (16) · 이 파일의 amp 수 (32) |
-| `CHMAP_LT/LB/RT/RB` | CCD 출력 채널 맵 — 사분면별 8토큰, raw X 오름차순 |
+| `CHMAP_LT/LB/RT/RB` | CCD 출력 채널 맵 — 사분면별 8토큰(**4자 `<chip><A\|D><nn>`**, v1.5), raw X 오름차순 |
 | `DETID` | 이 파일에 담긴 chip 쌍 (`MK`/`NT`). `CHIPS`·`CHIP1`·`CHIP2` 는 v1.9 미도입(7장) |
 | `MIDOSCB` · `MIDOSCT` | 중앙 overscan 의 BOT/TOP 몫 (v1.9 미도입 — `OVRSCNY` 로 충분) |
 | `RDDIRT` · `RDDIRB` | 독출 방향 (v1.9 미도입 — 세부는 raw FITS spec 수록). 행 순서(구 `ROWORDR`)는 규격 포장 규범 조항으로 이관 |

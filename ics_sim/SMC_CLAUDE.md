@@ -43,6 +43,27 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - 송신 전 `validate()` 가 6가지 오염 패턴을 검사한다.
 - `--bug-compat` 로 레거시 오염을 재현할 수 있다(골든 대조용, 기본 꺼짐).
 
+## ⚠️ raw spec v1.5 반영 (2026-08-25) — 사이트 코드·번호 공간이 바뀌었다
+
+**raw spec v1.5 의 5장 검토 라운드가 `ics_sim` 까지 내려왔다** (운영자 지시로 `main` 에서 직접 반영). 아래는 값이 바뀐 자리다 — 여기를 모르고 옛 상수를 기대하면 시험이 깨진다.
+
+| 무엇 | 전 → 후 | 자리 |
+| --- | --- | --- |
+| **사이트 코드 (D-017)** | `KMTT`/`TESTBED` → **`KMTK`/`KASI`** | `rawpair.OBSERVAT`·`ORIGIN_OF`·`OBSDATE_SHIFT_MIN` · `config._SITE_TELID`(`testbed`→`kasi`) · `state.site_code` 기본값 · `siteid.BENCH_SITE` · `ics_sim.ini` `[site.kasi]` |
+| **상수 개명** | `rawpair.TESTBED_SITE` → **`rawpair.KASI_SITE`** | 참조는 `app.py` 두 곳. **옛 이름은 없다** — `AttributeError` 로 드러난다 |
+| **노출 번호 공간 (D-018)** | `099999` 상한 → **`000000`–`999999`** | `state.EXPNUM_SPACE = 1_000_000` **신설**, `advance()` 가 `% EXPNUM_SPACE` 로 되감는다. 되감지 않으면 `:06d` 가 7자리를 내놓아 파일명 형식이 깨진다 |
+| **셔터 재질의** | `3.0` → **`1.0`** 초 | `config.TimingCfg.aux_requery_after_shopen` · `ics_sim.ini`. ⚠️ **이 값은 재질의가 걸리는 노출 문턱이기도 하다** — `_integrate_shutter()` 가 `exptime <= delay` 면 재질의하지 않으므로 **1초 이하 노출**이 개시 직전 값을 그대로 쓰는 구간이 됐다 (종전엔 3초 이하) |
+| **HK 카드 4장 폐지** | `AIR_IN`·`AIR_OUT`·`GLYC_IN`·`GLYC_OUT` 제거 | `rawhdr.DEWAR_CARDS` 가 10장 → **6장**. `standalone RTD` 공급 계통이 통째로 비었다 |
+| **`TELESCOP` 사이트 상수** | KASI 값 신설 | `rawhdr.VERIFIED_SITES` 에 `'KMTK': {'telescop': 'KMTNet 1.6m #0'}`. **좌표는 여전히 비운다** — `LATITUDE`/`LONGITUD`/`ELEVATIO` 는 sentinel |
+
+⚠️ **망원경 번호와 `FPAID` 번호는 관측소 셋 모두 어긋난다** (CTIO 망원경 `#1`·FPA `#2` / SSO `#3`·`FPA#1` / SAAO `#2`·`FPA#3`). 오타로 보고 맞추면 검출기 귀속이 틀어진다. `FPAID` 는 아직 `main` 의 `ics_sim` 에 없다(브랜치에서 들어온 `[camera] fpaid` 키).
+
+**검증 한계** — 반영 당시 환경에 `pytest` 가 없어 **시험 모음을 돌리지 못했다.** 모듈 import 로 상수·`site_header()` 4사이트·`DEWAR_CARDS`·`advance()` 되감음을 확인하고 전 파일 문법 검사만 통과시켰다. **`pytest` 가 있는 자리에서 한 번 돌릴 것.**
+
+**DevNote 항목을 새로 달지 않았다** — `main` 의 DevNote 는 11.18 까지인데 `ics-archon-v1.0-build` 가 11.19~11.27 을 이미 쓰고 있어 번호가 충돌한다. 대신 **11.15·11.16 절 머리에 갱신 포인터**를 달았고 경위 정본은 `../raw_fits_spec/SMC_CLAUDE.md` 와 `DECISION_LOG` D-017·D-018 이다. 머지 이후 번호를 이어서 정리할 것.
+
+⚠️ **`ics-archon-v1.0-build` 머지 때 충돌한다** — 그 브랜치가 같은 파일을 이미 고쳤다(`3bf2d73` 사이트 판별을 `OBSERVATORY` 로 · `9545f64` ics_sim v0.2.0). `rawpair.py`·`config.py`·`state.py`·`siteid.py`(브랜치에선 삭제)·시험 3종이 겹친다. **해소는 `main` 값(`KMTK`/`KASI`/`1.0`/`EXPNUM_SPACE`)을 정본으로.**
+
 ## 상태 (2026-08-13)
 
 - **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2), **자기 발신 에코 필터·브로드캐스트 중복 억제·노드 ID 검증**(3.1.2 — 실물 XIS 연동의 전제)
@@ -57,7 +78,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 - **식별 keyword 재정의 (2026-08-12)** — 레거시 실측 헤더를 근거로 `EXPID`/`EXPNUM` 을 없애고 `UNIQNAME` 을 **정본**(불변)·`FILENAME` 을 **실제로 쓴 이름**으로 갈랐다. 이름이 겹치면 개명 대신 `clash/` 격리 + 시각 접미 + `NAMECLSH` 카드 세 겹. 경위는 DevNote **11.13.2**
 - **헤더 전면 재검토 (2026-08-13)** — 레거시 raw 123개 카드를 하나씩 맞대어 **계승 5 · 개칭 1 · 폐지 16** 으로 판정했다(규격 5.13절, **D-013**). 그리고 규격 5.3~5.10 을 실제로 구현했다 — 헤더가 **68장 → 221장**. **규격 안의 불일치 하나를 잡았다**: converter 는 `CTRL1ID`/`CTRL2ID` 색인형을 MK 헤더에서 직접 읽는데 종전 규격은 단수형을 싣게 해서, 그대로 두면 MEF 의 컨트롤러 정체가 **오류 없이 전부 `UNKNOWN`** 이 됐다. 신설 `rawhdr.py`, 백엔드 계약 4개 확장, 시험 59개 추가. 경위는 DevNote **11.14**
 - **파일명 날짜부 = 사이트별 관측일 (2026-08-13)** — UT 에 사이트별 보정을 더한 뒤 날짜만 취한다. 경계는 CTIO UT 16:30 · SAAO UT 10:30 · SSO UT 01:30 이고 **셋 다 현지 12:30** 이다. 종전 잠정안(UT 날짜)은 CTIO·SAAO 에서 **한 밤의 자료를 두 디렉토리로 갈랐다** — 아무 오류 없이. `DATE-OBS` 는 `SHOPEN` 지시 시각의 UT(밀리초까지)이고 중복이던 `UT` 카드는 없앴다. **OI-10 종결 · OI-12 해소**, **D-014**, 경위는 DevNote **11.15**
-- **사이트는 호스트 IP 로 판정한다 (2026-08-13)** — `[node] site` 한 줄이 사이트 코드 → 좌표 → 관측일 경계 → 파일명까지 전부 끌고 가서, 그 한 줄이 틀리면 **아무 오류 없이** 전부 틀린다. 설정 묶음을 통째로 잘못 복사하면 **그 안의 어떤 값으로도 못 잡는다** — 그래서 설정 밖에서 오는 신호가 필요했다. `192.168.14`→`KMTC` · `.13`→`KMTS` · `.15`→`KMTA` · **그 밖은 전부 `KMTT`**(벤치). **판정이 ini 를 이긴다.** TCS 의 `TELID` 는 `pctcs.ini` 설정이고 기본값이 `KMTN` 이라 같은 실수를 하므로 판정 근거로는 못 쓰고 **교차검증에만** 쓴다. 신설 `siteid.py`, **D-015**, 배포 절차는 [`../project_management/operations/ICS_DEPLOYMENT_CHECKLIST.md`](../project_management/operations/ICS_DEPLOYMENT_CHECKLIST.md)(ACT-010), 경위는 DevNote **11.16**
+- **사이트는 호스트 IP 로 판정한다 (2026-08-13)** — `[node] site` 한 줄이 사이트 코드 → 좌표 → 관측일 경계 → 파일명까지 전부 끌고 가서, 그 한 줄이 틀리면 **아무 오류 없이** 전부 틀린다. 설정 묶음을 통째로 잘못 복사하면 **그 안의 어떤 값으로도 못 잡는다** — 그래서 설정 밖에서 오는 신호가 필요했다. `192.168.14`→`KMTC` · `.13`→`KMTS` · `.15`→`KMTA` · **그 밖은 전부 `KMTK`**(KASI, 구 `KMTT` — D-017). **판정이 ini 를 이긴다.** TCS 의 `TELID` 는 `pctcs.ini` 설정이고 기본값이 `KMTN` 이라 같은 실수를 하므로 판정 근거로는 못 쓰고 **교차검증에만** 쓴다. 신설 `siteid.py`, **D-015**, 배포 절차는 [`../project_management/operations/ICS_DEPLOYMENT_CHECKLIST.md`](../project_management/operations/ICS_DEPLOYMENT_CHECKLIST.md)(ACT-010), 경위는 DevNote **11.16**
 - **raw ↔ MEF 키워드 대응표 (2026-08-13, 검토 대기)** — 289행 전수. MEF 쪽은 문서가 아니라 **converter 코드에서 기계 추출**했다(코드가 최종본이므로). 결정이 필요한 10항목은 문서 5장이고, **Archon setup·구성·유닛 텔레메트리 카드의 이름과 구성**이 핵심이다 — 실기가 이 이름으로 자료를 쌓은 뒤 이름이 바뀌면 그때까지의 아카이브가 영구히 안 읽힌다. [`../raw_fits_spec/KMT_CEU_Raw_to_MEF_Keyword_Map_v0.5_REVIEW.md`](../raw_fits_spec/KMT_CEU_Raw_to_MEF_Keyword_Map_v0.5_REVIEW.md), **ACT-011**, 경위는 DevNote **11.17**
 - **다음 단계**: ① TCS 시뮬레이터 설치 + 연동 시험(아래 "이어서 시작하는 자리") ② `ics_archon` — **Archon 3 unit**(과학 2 + **가이드 1**, DevNote 9.1) 제어. **파일 구성·이름·헤더 규약은 이미 시뮬이 지키고 있고 저장형(`BITPIX=16`+`BZERO=32768`)도 맞췄으므로** 남은 것은 실제 픽셀·실물 크기(19200×9400)·픽셀 배치, 그리고 백엔드 4개(`controller_info`/`sensors`/`voltages`/`amp_map`)를 채우는 일이다 (C-8, DevNote 9.1·11.14)
 
@@ -70,7 +91,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 | ~~**1**~~ | ~~**`ExpNum` 교정의 실물 재확인**~~ — **완료 (2026-08-11 2차, DevNote 3.7.2).** 노출 2회로 판정: readout 중 `ExpNum` == 그 프레임의 파일 번호, 종료 후 `ExpNum`==`FitsNum`, `EXPNUM` 응답 N+1, `FitsOsc` `CHECK`→`NO`. 타임아웃 창 3종도 두 프레임에서 밀리초까지 동일. **전제였던 EXPNUM 카운터 결함을 먼저 고쳐야 했다**(11.12) — fail-safe 가 침묵해야 이 판정이 성립한다<br>※ **1회만 돌리면 판정이 안 된다.** OBSAgent 가 받은 값을 `strNextNum` 에 담아 두고 **다음 노출 시작 시** `strCurNum` 으로 승격해 표시하므로(`commands.c:835,848`), 1회 세션에서는 `ExpNum=00000000.000000` 이 정상이다 |
 | **2** | **Telcom/AUX 시뮬레이터 설치** — KASI 제작본이 `../../__localonly_tcs_simulator/TCS_simulation.zip` 에 있다. **빌드가 없다**(stdlib 전용, Python 3.12+ 필요 — Ubuntu 24.04 기본이 3.12 라 그대로 된다). `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 절차와 함정은 아래 블록. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
 | **3** | **세부 연동 시험** — `STOP`/`ABORT`(9.2.1 의 `DONE:` 본문은 실측 근거 없이 정한 것) · `GO n`(6.1) · `.osc` 스크립트 관측(3.5) · 결함 주입 6종(**실물 OBSAgent 의 경보·`opause` 경로를 확인하는 유일한 수단**) |
-| **4** | **벤치에서 확인할 것 셋 (2026-08-13 추가)** — ⓐ `siteid.detect()` 가 `kmtnet-sso` 에서 무엇을 내놓나. 벤치는 `192.168.x.x` 를 안 쓰므로 **`KMTT`(벤치) 가 정답**이고, 그 밖이 나오면 판정 규칙을 다시 봐야 한다 ⓑ 벤치 ini 에 `[node] site = testbed` 를 넣어 IP 판정과 설정이 어긋나지 않게 할 것 ⓒ **`SHOPEN`+3초에 AUX 상태가 실제로 갱신돼 있나**(**OI-13**) — `SHUTOP` 가 그 시점에 `OPENING`/`OPENED` 중 무엇인지 실측해야 헤더의 `SHUTTER` 가 노출 중 값이라고 말할 수 있다 |
+| **4** | **벤치에서 확인할 것 셋 (2026-08-13 추가)** — ⓐ `siteid.detect()` 가 `kmtnet-sso` 에서 무엇을 내놓나. 벤치는 `192.168.x.x` 를 안 쓰므로 **`KMTK`(KASI) 가 정답**이고, 그 밖이 나오면 판정 규칙을 다시 봐야 한다 ⓑ 벤치 ini 에 `[node] site = kasi` 를 넣어 IP 판정과 설정이 어긋나지 않게 할 것 ⓒ **`SHOPEN`+`aux_requery_after_shopen`(현행 **1초**, 2026-08-25 에 3초에서 내림)에 AUX 상태가 실제로 갱신돼 있나**(**OI-13**) — `SHUTOP` 가 그 시점에 `OPENING`/`OPENED` 중 무엇인지 실측해야 헤더의 `SHUTTER` 가 노출 중 값이라고 말할 수 있다 |
 
 판정 기준과 지난 결과는 [DevNote 3.7](DevNote.md). 시험 도구는 `tools/xis_probe.py`(노드 하나를 흉내 내는 프로브 — 포트 6650 이라 `obstool` 과 겹친다).
 

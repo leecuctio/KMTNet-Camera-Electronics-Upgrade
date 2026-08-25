@@ -15,7 +15,7 @@
 **논리 이름의 `KMTN` prefix 는 사이트 코드와 무관하게 불변이다.** OBSAgent 가
 `"KMTN"` 문자열 위치 +6 부터 15자를 잘라 `FitsNum` 으로 쓰기 때문이다
 (DevNote 3.2, `commands.c` 776-784).  물리 파일명에 쓰는 `KMTC`/`KMTS`/`KMTA`/
-`KMTT` 는 `KMTN` 을 부분 문자열로 포함하지 않으므로, 물리 경로가 메시지에
+`KMTK` 는 `KMTN` 을 부분 문자열로 포함하지 않으므로, 물리 경로가 메시지에
 섞여 들어가도 그 파서가 오반응하지 않는다 (규격 2.3절).
 
 **`LASTFILE` 은 이제 실재 경로가 아니다.** 논리 이름은 CCD 단위 식별자일 뿐이고
@@ -45,37 +45,44 @@ CHIPLIST = 'M,K,N,T'
 
 #: 사이트 코드 → `OBSERVAT` 헤더값.  규격 2.3절 표.  파일명 `<SITE>` 와
 #: `OBSERVAT` 가 어긋나면 converter v2.2.0 이 오류로 잡는다.
-OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'TESTBED'}
+OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTK': 'KASI'}
 
 #: 사이트 코드 → `ORIGIN` 기본값.  **`ORIGIN` = "이 파일이 생성된 곳"** (운영자
 #: 확정 2026-08-21, Header_and_Refs v1.7): 관측소 raw 는 관측소 이름
-#: (`OBSERVAT` 와 중복 감수 -- 레거시 계승), 테스트베드 raw 는 `KASI`.
+#: (`OBSERVAT` 와 중복 감수 -- 레거시 계승), KASI(실험실) raw 는 `KASI`.
+#: **D-017 이후 `OBSERVAT` 와 네 자리 모두 값이 같다** -- 뜻(생성처 vs 관측소)이
+#: 달라 카드는 합치지 않는다.
 #: KASI 서버 파이프라인 산출물(MEF·L1)이 `ORIGIN='KASI'` 를 갖는다.
 #: `[site]`/`[site.<이름>]` 의 `origin` 키로 덮어쓸 수 있다 (ICS INI 카드).
-ORIGIN_OF = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'KASI'}
+ORIGIN_OF = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTK': 'KASI'}
 
-#: 실재하는 과학 사이트 코드.  이 셋 밖은 모두 테스트베드로 떨어진다.
+#: 실재하는 과학 사이트 코드.  이 셋 밖은 모두 KASI 로 떨어진다.
 REAL_SITES = ('KMTC', 'KMTS', 'KMTA')
-TESTBED_SITE = 'KMTT'
+
+#: 관측소가 아닌 자리(실험실·벤치·데모)의 사이트 코드.  **D-017 (2026-08-25)**
+#: 로 구 `TESTBED`/`KMTT` 를 대체한다 -- `OBSERVAT` 넷이 전부 관측소 이름이 되게
+#: 하려는 것이고, 그 자리에서 실제로 자료를 만드는 곳이 KASI 이기 때문이다.
+KASI_SITE = 'KMTK'
 
 
 def normalize_site(code: str) -> str:
-    """사이트 코드를 정규화한다.  **`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTT`.**
+    """사이트 코드를 정규화한다.  **`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTK`.**
 
-    운영자 확정 (2026-08-13).  실재하는 관측소는 셋뿐이므로, 모르는 값을 그대로
-    싣기보다 테스트베드로 떨어뜨리는 것이 안전하다 -- 파일명 `<SITE>` 는
-    converter 정규식(`^(KMTC|KMTS|KMTA|KMTT)[.]…`)이 받는 넷 중 하나여야 하고,
+    운영자 확정 (2026-08-13, 코드는 D-017 로 개정 2026-08-25).  실재하는 관측소는
+    셋뿐이므로, 모르는 값을 그대로 싣기보다 KASI 로 떨어뜨리는 것이 안전하다 --
+    파일명 `<SITE>` 는
+    converter 정규식(`^(KMTC|KMTS|KMTA|KMTK)[.]…`)이 받는 넷 중 하나여야 하고,
     낯선 코드는 정규식에 걸려 변환 자체가 fallback 경로로 빠진다.
 
     TC 가 보내는 `TELID` 에 사이트가 아닌 `KMTN`(pctcs 기본값, `pctcs.h:115`)이
     올 수 있어서 이 함수가 특히 필요하다.
 
-    ⚠️ **떨어뜨리는 것이 곧 안전은 아니다.** 실제 관측 자료가 `KMTT` 이름으로
+    ⚠️ **떨어뜨리는 것이 곧 안전은 아니다.** 실제 관측 자료가 `KMTK` 이름으로
     저장되면 사이트 정체를 잃는다 -- 그래서 호출측은 정규화가 실제로 일어났을 때
     경고를 남겨야 한다 (`sequencer` 참고).
     """
     up = (code or '').strip().upper()
-    return up if up in REAL_SITES else TESTBED_SITE
+    return up if up in REAL_SITES else KASI_SITE
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +117,7 @@ OBSDATE_SHIFT_MIN = {
     'KMTC': +7 * 60 + 30,     # 경계 UT 16:30  (현지 12:30, UT-4)
     'KMTS': -(10 * 60 + 30),  # 경계 UT 10:30  (현지 12:30, UT+2)
     'KMTA': -(1 * 60 + 30),   # 경계 UT 01:30  (현지 12:30, UT+11)
-    'KMTT': 0,                # 테스트베드는 관측 야간이 없다 -- UT 날짜 그대로
+    'KMTK': 0,                # KASI(실험실)는 관측 야간이 없다 -- UT 날짜 그대로
 }
 
 
@@ -139,7 +146,7 @@ def observing_date(when: datetime, site_code: str) -> str:
 
     Args:
         when: UT 시각 (timezone-aware).
-        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTT`.  그 밖은 `KMTT` 로 정규화된다.
+        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTK`.  그 밖은 `KMTK` 로 정규화된다.
     """
     site = normalize_site(site_code)
     shift = OBSDATE_SHIFT_MIN[site]
@@ -286,7 +293,7 @@ def identity_header(*, site_code: str, suffix: str, ctrltag: str,
     (운영자 확정 2026-08-12).
 
     Args:
-        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTT` (`[node] telid`).
+        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTK` (`[node] telid`).
         suffix: `<YYYYMMDD>.<NNNNNN>`.
         ctrltag: `MK` 또는 `NT`.
         filename: **실제로 쓰는** 파일의 이름 -- 경로와 **확장자를 뗀** 형태

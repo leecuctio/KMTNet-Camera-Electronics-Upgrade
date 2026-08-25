@@ -4,13 +4,13 @@
 
 | 연동 | 값 |
 | --- | --- |
-| 정본 헤더 견본 | [`KMTA.20260821.012345.MK.fits.header.v1.0.txt`](KMTA.20260821.012345.MK.fits.header.v1.0.txt) · [`…NT.fits.header.v1.0.txt`](KMTA.20260821.012345.NT.fits.header.v1.0.txt) — 5장 카드 전량의 **바이트 단위 견본**(각 **144 레코드 = 값 카드 135 + COMMENT 8 + END 1**, 정확히 4×2880 = 11,520 바이트). 메모장용 사본 `…_REFTEXT.txt` 는 카드마다 LF 를 넣고 끝에 `#EOF` 를 붙인 것으로, **LF 를 걷어내면 정본과 바이트 동일**하다 |
+| 정본 헤더 견본 | [`KMTA.20260821.012345.MK.fits.header.v1.0.txt`](KMTA.20260821.012345.MK.fits.header.v1.0.txt) · [`…NT.fits.header.v1.0.txt`](KMTA.20260821.012345.NT.fits.header.v1.0.txt) — 5장 카드 전량의 **바이트 단위 견본**(각 **144 레코드 = 값 카드 131 + COMMENT 8 + END 1 + 공백 4**, 정확히 4×2880 = 11,520 바이트 — `END` 는 140번째이고 그 뒤 4장은 블록을 채우는 공백 레코드다). 메모장용 사본 `…_REFTEXT.txt` 는 카드마다 LF 를 넣고 끝에 `#EOF` 를 붙인 것으로, **LF 를 걷어내면 정본과 바이트 동일**하다 |
 | 카드 판정 원장 (배경·경위) | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md) — 이하 **원장**. 카드별 계승/개칭/폐지 근거, converter 대조, 레거시 123개 전량 귀속 |
 | MEF·파이프라인 파급 | [`KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md`](KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md) — 이하 **통합 문서**. LEECU 전달용 C-항목·이름 대응 |
 | 결정 기록 | `../project_management/governance/DECISION_LOG.md` — D-002(chip order) · D-010(Wrote 분리) · D-011(파일명) · D-012(백엔드 계약) · D-013(레거시 판정) · D-014(관측일) · D-015(사이트 판정) · **D-016(충돌·정체성)** |
 | 연동 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1) |
 | 연동 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) |
-| Amp 배선 맵 (기계 사본) | [`__reference/Detector_Ch_to_AmpID_Map_v1.0.txt`](__reference/Detector_Ch_to_AmpID_Map_v1.0.txt) — 4.5절 표의 기계 가독 정본 |
+| Amp 배선 맵 (기계 사본) | [`Detector_Ch_to_AmpID_Map_v1.1.txt`](Detector_Ch_to_AmpID_Map_v1.1.txt) — 4.5절 표의 기계 가독 정본. v1.0(`__reference/`)은 3자 채널 표기 · `IMGSEC:B-BOT` 판이고 **이 판이 대체한다** |
 | 검출기 데이터시트 | `__reference/CCD290-99 datasheet (V2 - Aug 2016).pdf` (e2v A1A-778871 V2) — 부록 A 의 원전 |
 
 > **절 구성이 구판(v1.2)과 다르다.** 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 이 판 기준으로 재확인할 것. 배경·경위 설명은 이 문서에 다시 적지 않는다 — **원장**과 **통합 문서**의 장·절을 가리킨다.
@@ -56,25 +56,25 @@ STA Archon science controller 2대가 노출 1회당 만드는 **raw FITS pair(M
 <SITE>.<YYYYMMDD>.<NNNNNN>.NT.fits
 ```
 
-- `<SITE>` — 4자 대문자 사이트 코드, TC 텔레메트리 `TELID` 규약과 동일. **이 넷 밖의 값은 전부 `KMTT` 로 정규화**하고 경고를 남긴다. 실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015).
+- `<SITE>` — 4자 대문자 사이트 코드, TC 텔레메트리 `TELID` 규약과 동일. **이 넷 밖의 값은 전부 `KMTK` 로 정규화**하고 경고를 남긴다. 실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015).
 
   | `<SITE>` | 사이트 | `OBSERVAT` | L0 MEF prefix |
   | --- | --- | --- | --- |
   | `KMTC` | CTIO | `CTIO` | `kmtc` |
   | `KMTS` | SAAO | `SAAO` | `kmts` |
   | `KMTA` | SSO | `SSO` | `kmta` |
-  | `KMTT` | 테스트베드 | `TESTBED` | `kmtt` |
+  | `KMTK` | KASI | `KASI` | `kmtk` |
 
-- `<YYYYMMDD>` — **그 사이트의 관측일** (D-014): UT 에 사이트별 보정을 더한 뒤 날짜만 취한다. 경계는 CTIO UT 16:30(`+7:30`) · SAAO UT 10:30(`−10:30`) · SSO UT 01:30(`−1:30`) · KMTT 보정 0. **검산 불변식: 세 경계가 모두 현지 12:30.** 구현은 "보정 후 날짜만 취하는 한 줄"이어야 한다 — 경계를 `if` 로 나열하면 off-by-one 이 1년에 몇 번만 드러난다. **`<YYYYMMDD>` 는 `DATE-OBS` 의 날짜와 일반적으로 다르며 그것이 의도다** — 둘을 같다고 가정하는 도구를 만들면 안 된다.
-- `<NNNNNN>` — **6자리 고정폭, 0 좌측 패딩** 노출 번호. pair 양쪽 동일. converter 정규식(`^(KMTC|KMTS|KMTA|KMTT)\.(\d{8})\.(\d{6})\.MK\.fits$`)과 `find_pair()`(`.MK.fits`↔`.NT.fits` 치환)가 이 형식에 걸려 있다 — 자릿수 위반은 짝 탐색 실패 또는 fallback 경로다.
+- `<YYYYMMDD>` — **그 사이트의 관측일** (D-014): UT 에 사이트별 보정을 더한 뒤 날짜만 취한다. 경계는 CTIO UT 16:30(`+7:30`) · SAAO UT 10:30(`−10:30`) · SSO UT 01:30(`−1:30`) · KMTK 보정 0. **검산 불변식: 세 경계가 모두 현지 12:30.** 구현은 "보정 후 날짜만 취하는 한 줄"이어야 한다 — 경계를 `if` 로 나열하면 off-by-one 이 1년에 몇 번만 드러난다. **`<YYYYMMDD>` 는 `DATE-OBS` 의 날짜와 일반적으로 다르며 그것이 의도다** — 둘을 같다고 가정하는 도구를 만들면 안 된다.
+- `<NNNNNN>` — **6자리 고정폭, 0 좌측 패딩** 노출 번호. pair 양쪽 동일. converter 정규식(`^(KMTC|KMTS|KMTA|KMTK)\.(\d{8})\.(\d{6})\.MK\.fits$`)과 `find_pair()`(`.MK.fits`↔`.NT.fits` 치환)가 이 형식에 걸려 있다 — 자릿수 위반은 짝 탐색 실패 또는 fallback 경로다.
 - **파일명 `<SITE>` 와 헤더 `OBSERVAT` 는 일치해야 한다** — converter 가 교차 검증하며 **불일치는 이 규격에서 유일한 하드 실패**다 (5.3절).
 
 ### 2.3 노출 번호와 이름 충돌 처리 (D-016)
 
 **충돌 시 격리·개명 대신 노출 번호를 증가시켜 저장한다.** 정본은 DECISION_LOG **D-016** (Accepted, 2026-08-22).
 
-1. 번호 공간은 **`000000`–`099999`** — 카운터는 100000 도달 시 `000000` 으로 되감는다 (레거시 관례).
-2. 쓰기 전에 후보 N 의 **MK·NT 두 경로를 모두 선검사** — 점유 시 N+1 재검사(099999 넘으면 000000). **+1 이 100000회(공간 한 바퀴)를 초과하면 멈추고 ERROR, 저장하지 않는다.** 실패 조건은 이것 하나뿐이다.
+1. 번호 공간은 **`000000`–`999999`** — 6자리를 전부 쓰며 카운터는 1000000 도달 시 `000000` 으로 되감는다 (**D-018** — 구 `099999` 상한을 대체한다).
+2. 쓰기 전에 후보 N 의 **MK·NT 두 경로를 모두 선검사** — 점유 시 N+1 재검사(999999 넘으면 000000). **+1 이 1000000회(공간 한 바퀴)를 초과하면 멈추고 ERROR, 저장하지 않는다.** 실패 조건은 이것 하나뿐이다.
 3. 확정 N 으로 **카운터를 동기화**한다 (평소 영속화 경로 그대로, 점프는 경고 로그).
 4. **정체성 카드 둘을 모든 파일에 항상 기록한다:**
 
@@ -159,26 +159,27 @@ Y:  1 ..... 4616 | 4617 .. 4700 | 4701 .. 4784 | 4785 ..... 9400
 
 ### 4.5 Amp 전수 표 (64행)
 
-**기계 가독 정본은 [`__reference/Detector_Ch_to_AmpID_Map_v1.0.txt`](__reference/Detector_Ch_to_AmpID_Map_v1.0.txt)** 이고 아래 표는 그 전개다. 헤더의 `CHMAP_LT/LB/RT/RB` 카드(5.2절)는 이 표의 CCD 출력 채널 열을 raw X 오름차순으로 투영한 것이다.
+**기계 가독 정본은 [`Detector_Ch_to_AmpID_Map_v1.1.txt`](Detector_Ch_to_AmpID_Map_v1.1.txt)** 이고 아래 표는 그 전개다. 헤더의 `CHMAP_LT/LB/RT/RB` 카드(5.2절)는 이 표의 CCD 출력 채널 열을 raw X 오름차순으로 투영한 것이다.
 
 | Raw file | 사분면 | Port | CCD 출력 채널 (raw X 오름차순, tile 1→8) | IMGSEC | MEF AmpID | 검증 상태 |
 | --- | --- | :---: | --- | :---: | --- | --- |
-| MK | 좌반 TOP (`CHMAP_LT`) | A | M16, M15, M14, M13, M12, M11, M10, M09 | D-TOP | 01–08 | 배선표 v1.0 (2026-08-21 검토 완료) |
-| MK | 좌반 BOT (`CHMAP_LB`) | A | M01, M02, M03, M04, M05, M06, M07, M08 | A-BOT | 09–16 | 〃 |
-| MK | 우반 TOP (`CHMAP_RT`) | B | K08, K07, K06, K05, K04, K03, K02, K01 | A-TOP | 17–24 | 〃 |
-| MK | 우반 BOT (`CHMAP_RB`) | B | K09, K10, K11, K12, K13, K14, K15, K16 | B-BOT | 25–32 | 〃 |
-| NT | 좌반 TOP (`CHMAP_LT`) | A | N08, N07, N06, N05, N04, N03, N02, N01 | A-TOP | 33–40 | 〃 |
-| NT | 좌반 BOT (`CHMAP_LB`) | A | N09, N10, N11, N12, N13, N14, N15, N16 | B-BOT | 41–48 | 〃 |
-| NT | 우반 TOP (`CHMAP_RT`) | B | T16, T15, T14, T13, T12, T11, T10, T09 | D-TOP | 49–56 | 〃 |
-| NT | 우반 BOT (`CHMAP_RB`) | B | T01, T02, T03, T04, T05, T06, T07, T08 | A-BOT | 57–64 | 〃 |
+| MK | 좌반 TOP (`CHMAP_LT`) | A | MD16, MD15, MD14, MD13, MD12, MD11, MD10, MD09 | D-TOP | 01–08 | 배선표 v1.0 (2026-08-21 검토 완료) |
+| MK | 좌반 BOT (`CHMAP_LB`) | A | MA01, MA02, MA03, MA04, MA05, MA06, MA07, MA08 | A-BOT | 09–16 | 〃 |
+| MK | 우반 TOP (`CHMAP_RT`) | B | KA08, KA07, KA06, KA05, KA04, KA03, KA02, KA01 | A-TOP | 17–24 | 〃 |
+| MK | 우반 BOT (`CHMAP_RB`) | B | KD09, KD10, KD11, KD12, KD13, KD14, KD15, KD16 | D-BOT | 25–32 | 〃 |
+| NT | 좌반 TOP (`CHMAP_LT`) | A | NA08, NA07, NA06, NA05, NA04, NA03, NA02, NA01 | A-TOP | 33–40 | 〃 |
+| NT | 좌반 BOT (`CHMAP_LB`) | A | ND09, ND10, ND11, ND12, ND13, ND14, ND15, ND16 | D-BOT | 41–48 | 〃 |
+| NT | 우반 TOP (`CHMAP_RT`) | B | TD16, TD15, TD14, TD13, TD12, TD11, TD10, TD09 | D-TOP | 49–56 | 〃 |
+| NT | 우반 BOT (`CHMAP_RB`) | B | TA01, TA02, TA03, TA04, TA05, TA06, TA07, TA08 | A-BOT | 57–64 | 〃 |
 
-- 검증 불변식: 카드당 8토큰 · `CHMAP_L*` 접두 = `DETID[0]` · `CHMAP_R*` 접두 = `DETID[1]` · chip 당 채널 01–16 전량 · pair 합계 64.
+- **토큰 형식 `<chip><A|D><nn>` — 4자 고정** (운영자 확정 2026-08-25). 가운데 글자는 채널 번호에서 결정된다: **01–08 = `A` · 09–16 = `D`** (e2v image section, 부록 A). 종전 3자 표기(`M16`)를 대체한다.
+- 검증 불변식: 카드당 8토큰 · 토큰 4자 · `CHMAP_L*` 첫 글자 = `DETID[0]` · `CHMAP_R*` 첫 글자 = `DETID[1]` · 가운데 글자가 번호 규칙과 일치 · chip 당 채널 01–16 전량 · pair 합계 64.
 - **TOP/BOT 대역이 chip 마다 반대**다 (M: TOP=16–09 / K: TOP=08–01 등) — converter 현행 추정식(`MODULE`/`CHANNEL`)과 다르므로 MEF 쪽 재정의가 C-11 이다 (통합 문서 §1).
-- `IMGSEC` 의 `A`/`D` 는 **e2v 데이터시트의 image section 명칭으로 확인**됐다 — A = 아래 half(레지스터 E/F, OS1–8), D = 위 half(레지스터 G/H, OS9–16). 부록 A 참조. ⚠️ **`B` 표기는 데이터시트에 없다**(섹션은 A·D 뿐) — K·N 조의 `B-BOT` 이 무엇을 가리키는지 해명이 남았다 (OI-17 잔여). amp 별 물리 독출 방향은 클럭 결선(ACF) 소관이라 실기 확인 대상이다 (OI-3 · OI-9).
+- `IMGSEC` 의 `A`/`D` 는 **e2v 데이터시트의 image section 명칭으로 확인**됐다 — A = 아래 half(레지스터 E/F, OS1–8), D = 위 half(레지스터 G/H, OS9–16). 부록 A 참조. ✅ **구 `B-BOT` 은 `D-BOT` 으로 정정됐다 (운영자 확정 2026-08-25 — OI-17 잔여 ① 종결).** 채널↔OS 대응 확정(잔여 ② 종결)으로 `채널 09–16 = OS9–16 = 위 half = 섹션 D` 가 데이터시트까지 이어지고, 데이터시트에 `B` 섹션이 없으므로 `B` 는 **원전 없는 표기**였다(부록 A). 이제 `IMGSEC` 은 **앞 글자 = image section(A·D) · 뒤 = raw 타일 위치(TOP·BOT)** 로 두 축이 깨끗하게 분리된다. `D` 가 TOP·BOT 양쪽에 나타나는 것은 모순이 아니다 — 위 half 가 chip 장착 방향에 따라 raw 아래쪽에 놓이기 때문이고, **그 방향이 갈리는 이유(K·N 조 180° 회전 장착)가 OI-17 의 마지막 잔여 ③** 이다. amp 별 물리 독출 방향은 클럭 결선(ACF) 소관이라 실기 확인 대상이다 (OI-3 · OI-9).
 
 ## 5. 헤더 Keyword 규격
 
-**정본 견본은 헤더 초안 v1.0 pair** — 카드 순서·comment·패딩까지 바이트 단위 기준이다. 이 장의 표는 그 견본의 전 카드(값 135장)를 블록 순서대로 규정한다. 카드별 판정 경위는 원장 3·6·7·8장.
+**정본 견본은 헤더 초안 v1.0 pair** — 카드 순서·comment·패딩까지 바이트 단위 기준이다. 이 장의 표는 그 견본의 전 카드(**값 131장** — v1.5 에서 HK 4장 폐지)를 블록 순서대로 규정한다. 카드별 판정 경위는 원장 3·6·7·8장.
 
 ### 5.0 작성 정책
 
@@ -223,7 +224,7 @@ Y:  1 ..... 4616 | 4617 .. 4700 | 4701 .. 4784 | 4785 ..... 9400
 | --- | :---: | --- | --- |
 | `INSTRUME` | S | `'<SITE코드> 18k CCD'` (예 `'KMTA 18k CCD'`) | ICS INI |
 | `CAMVER` | S | `'CEU-v2.1'` — **HW·성능상 변경이 있을 때만 올린다**: 전자부 세대 판별의 참조점 | ICS INI |
-| `FPAID` | S | `'FPA#1'` — 검출기 조립 정체 | ICS INI |
+| `FPAID` | S | 검출기 조립 정체 — 사이트별 상수, **5.3.1절 표** (견본 = SSO 이므로 `'FPA#1'`) | ICS INI |
 | `DETECTOR` | S | `'e2v CCD290-99'` | ICS INI |
 | `DETID` | S | `'MK'` / `'NT'` — **이 파일의 detector pair** (pair 상이, 5.9절) | ICS code |
 | `PIXSIZE` | R | `10.0` [μm] | ICS code |
@@ -236,7 +237,7 @@ Y:  1 ..... 4616 | 4617 .. 4700 | 4701 .. 4784 | 4785 ..... 9400
 | `IMAGEX` `IMAGEY` | I | `1152` · `4616` | ICS code |
 | `PRESCNX` `PRESCNY` | I | `0` · `0` (side varies / frame-edge side) — 레거시 `PRESCANX`(27)의 **키워드 변경 계승** (원장 확인 요망 10) | ICS code |
 | `OVRSCNX` `OVRSCNY` | I | `48` (side varies) · `84` (**frame-center side**) | ICS code |
-| `CHMAP_LT` `CHMAP_LB` `CHMAP_RT` `CHMAP_RB` | S | CCD 출력 채널 8토큰, raw X 오름차순 (4.5절 표 — pair 상이) | ICS code |
+| `CHMAP_LT` `CHMAP_LB` `CHMAP_RT` `CHMAP_RB` | S | CCD 출력 채널 8토큰, 토큰 형식 `<chip><A\|D><nn>`(4자), raw X 오름차순 (4.5절 표 — pair 상이) | ICS code |
 
 축별 합 불변식이 comment 에 자체 문서화된다. `AMPNAX1/2` 값이 바뀌는 것은 geometry 변경 = `CAMVER`/`CTRLxCFG` 범프 사안 (4.3절).
 
@@ -244,15 +245,33 @@ Y:  1 ..... 4616 | 4617 .. 4700 | 4701 .. 4784 | 4785 ..... 9400
 
 | Keyword | 형 | 값 | 출처 |
 | --- | :---: | --- | --- |
-| `ORIGIN` | S | **"이 파일이 생성된 곳"** — 관측소 raw = `SSO`/`CTIO`/`SAAO`, 테스트베드 raw = `KASI` (KASI 파이프라인 산출물도 `KASI` — MEF 는 상수화 C-항목) | ICS INI (사이트 유도) |
-| `OBSERVAT` | S | `TESTBED`/`CTIO`/`SAAO`/`SSO` — **파일명 `<SITE>` 와 교차 검증, 불일치는 변환 오류** (유일한 하드 실패) | ICS INI |
-| `TELESCOP` | S | `'KMTNet 1.6m #1/#2/#3'` (테스트베드 `Sim`) | ICS INI |
+| `ORIGIN` | S | **"이 파일이 생성된 곳"** — `SSO`/`CTIO`/`SAAO`/`KASI` (KASI 파이프라인 산출물도 `KASI` — MEF 는 상수화 C-항목). **D-017 이후 `OBSERVAT` 와 값이 같다** — 뜻은 다르지만(생성처 vs 관측소) 네 자리 모두 일치한다 | ICS INI (사이트 유도) |
+| `OBSERVAT` | S | `CTIO`/`SSO`/`SAAO`/`KASI` (D-017 — `TESTBED` 폐지) — **파일명 `<SITE>` 와 교차 검증, 불일치는 변환 오류** (유일한 하드 실패) | ICS INI |
+| `TELESCOP` | S | 사이트별 상수 — **5.3.1절 표** | ICS INI |
 | `LATITUDE` | S | `'-31:16:24'` 등 — 문자열 그대로 (정규화 금지) | ICS INI |
 | `LONGITUD` | S | **서경** `[deg W]` — SSO `'210:56:08'` 등. 동경으로 고치면 부호 뒤집힌 좌표가 박힌다 | ICS INI |
 | `ELEVATIO` | I | 사이트 고도 [m] | ICS INI |
 | `OBSERVER` | S | `'KMTNetOp'`* / user input | ICS code* / user input |
 
-측지 실측값·서경 규약 검증은 구판 OI-11 기록(archive v1.2 9장) 참조. 테스트베드는 좌표를 **일부러 비워** sentinel 을 싣는다.
+측지 실측값·서경 규약 검증은 구판 OI-11 기록(archive v1.2 9장) 참조. KASI 는 좌표를 **일부러 비워** sentinel 을 싣는다.
+
+#### 5.3.1 사이트별 상수 (normative)
+
+사이트가 정해지면 아래 다섯 값이 **기본값으로 함께 정해진다** — ICS 는 사이트 하나에서 전부 유도한다. 다만 **ICS INI 에 값이 있으면 그쪽이 이긴다**(`[site.<이름>]`·`[site]` — 현장이 정본이라는 기존 규칙, `rawhdr.site_header()`). 표는 설정이 없을 때의 기본값이자 대조 기준이다.
+
+| 사이트 | `<SITE>` (파일명) | `OBSERVAT` | `ORIGIN` | `TELESCOP` | `FPAID` |
+| --- | :---: | :---: | :---: | --- | :---: |
+| CTIO | `KMTC` | `CTIO` | `CTIO` | `'KMTNet 1.6m #1'` | `'FPA#2'` |
+| SSO | `KMTA` | `SSO` | `SSO` | `'KMTNet 1.6m #3'` | `'FPA#1'` |
+| SAAO | `KMTS` | `SAAO` | `SAAO` | `'KMTNet 1.6m #2'` | `'FPA#3'` |
+| KASI | `KMTK` | `KASI` | `KASI` | `'KMTNet 1.6m #0'` | `'FPA#0'` |
+
+> ⚠️ **망원경 번호와 FPA 번호는 일부러 다르다 — 맞추려 들면 안 된다.** CTIO 는 망원경 `#1` 인데 FPA 는 `#2`, SSO 는 망원경 `#3` 인데 FPA 는 `#1`, SAAO 는 망원경 `#2` 인데 FPA 는 `#3` 이다. **세 사이트 모두 어긋난다.** 망원경 번호는 설치 순서, `FPAID` 는 **검출기 조립체 자체의 정체**이고 조립체는 사이트 간 이동이 가능하므로 두 번호가 일치할 이유가 없다. 어긋난 것을 오타로 보고 "고치면" 자료의 검출기 귀속이 통째로 틀어진다.
+
+- `FPA#0` 은 KASI(실험실) 조립체다 — 관측소 셋이 `#1`–`#3` 을 쓰므로 `0` 이 남는 자리다.
+- **KASI 는 망원경·FPA 둘 다 `#0`** 이다(운영자 확정 2026-08-25) — 관측소 셋이 `#1`–`#3` 을 쓰므로 `0` 이 남는 자리다. 종전 테스트베드 값 `'Sim'` 을 대체한다. ⚠️ **KASI 에서 두 번호가 일치하는 것은 우연이다** — 위 경고대로 관측소 셋은 전부 어긋난다. `#0`/`#0` 을 보고 "원래 같은 번호"로 읽으면 안 된다.
+- **`TELESCOP` 의 SSO 값은 레거시 실측으로 확인됐다** — `__reference/Legacy raw fits header samples/KMTNk.20170209.044131.Rawheader.txt` 가 `OBSERVAT='SSO'` 와 `TELESCOP='KMTNet 1.6m #3'` 을 함께 싣는다. 저장소에 실측이 있는 사이트는 SSO 뿐이고 CTIO·SAAO·KASI 값은 운영자 제시분이다.
+- `<SITE>`↔`OBSERVAT` 교차 검증(2.2절)은 이 표의 두 열이 근거다 — **불일치가 이 규격의 유일한 하드 실패**다.
 
 ### 5.4 Exposure · 파일 정체성 (10장)
 
@@ -282,7 +301,7 @@ Y:  1 ..... 4616 | 4617 .. 4700 | 4701 .. 4784 | 4785 ..... 9400
 
 guide FITS 는 `CTRL1xx` 한 벌만 싣고, 컨트롤러 수가 늘면 `CTRLnxx` 벌이 늘어나는 확장 규약이다.
 
-### 5.6 Camera System House Keeping (18장)
+### 5.6 Camera System House Keeping (14장)
 
 전부 **문자열** (5.0절 형 규칙). 공급 3계통 — `ICG RTD`(Archon 쪽) · `standalone RTD`(별도 판독 장치) · `Tapaculo`(환경 센서, 5.8절 FSA).
 
@@ -295,8 +314,6 @@ guide FITS 는 `CTRL1xx` 한 벌만 싣고, 컨트롤러 수가 늘면 `CTRLnxx`
 | `CHARCOAL` | charcoal canister [deg C] | ICG RTD |
 | `WALLBRD` | wallboard [deg C] | ICG RTD |
 | `HEBOX` | HE box 내부 [deg C] | Tapaculo |
-| `AIR_IN` `AIR_OUT` | 열교환기 흡기/배기 [deg C] — **IN 이 따뜻한 쪽** (레거시 의미 유지) | standalone RTD |
-| `GLYC_IN` `GLYC_OUT` | HE box 유입/배출 glycol [deg C] | standalone RTD |
 | `C1_TEMP` `C1_VOLT` `C1_CURR` | 컨트롤러 1 모듈별 온도/전압/전류 — **공백 구분 나열, 자리 = 항목**. 자리 순서 명세는 **5.6.1절** | Archon |
 | `C2_TEMP` `C2_VOLT` `C2_CURR` | 컨트롤러 2 동형 — 자리 순서 동일 | Archon |
 
@@ -310,9 +327,9 @@ guide FITS 는 `CTRL1xx` 한 벌만 싣고, 컨트롤러 수가 늘면 `CTRLnxx`
 
 | 자리 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 항목 | `Backplane` | `M1:LVDS` | `S2:Driver` | `S3:Driver` | `S4:LVXBias` | `S5:ADM` | `S8:ADM` | `S9:HVYBias` | `S10:Driver` | `S11:Driver` |
+| 항목 | `Backplane` | `Mod1:LVDS` | `Mod2:Driver` | `Mod3:Driver` | `Mod4:LVXBias` | `Mod5:ADM` | `Mod8:ADM` | `Mod9:HVYBias` | `Mod10:Driver` | `Mod11:Driver` |
 
-`S<n>` = Archon 백플레인 슬롯 `n`, 콜론 뒤는 모듈 종류. **목록에 없는 슬롯(6 · 7 · 12)은 자리를 차지하지 않는다** — 자리 수는 장착·보고되는 모듈 수를 따르므로 자리 수 자체가 구성 판별에 쓰인다.
+`Mod<n>` = Archon 백플레인 **모듈** `n` (`Mod` = Module), 콜론 뒤는 모듈 종류. 1번 자리 `Backplane` 만 모듈 번호 체계 밖이다. **목록에 없는 모듈(6 · 7 · 12)은 자리를 차지하지 않는다** — 자리 수는 장착·보고되는 모듈 수를 따르므로 자리 수 자체가 구성 판별에 쓰인다.
 
 **`Cn_VOLT` · `Cn_CURR` — 전원 레일 7자리** (두 카드 같은 순서)
 
@@ -320,9 +337,9 @@ guide FITS 는 `CTRL1xx` 한 벌만 싣고, 컨트롤러 수가 늘면 `CTRLnxx`
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 레일 | P2V5 | P5V | P6V | N6V | P17V | N17V | P35V |
 
-**guide 컨트롤러**(`DATASRC = 'ARCHON_GUIDE'`)는 모듈 구성이 달라 `C1_TEMP` 가 **8자리**다 — Backplane · S3 Driver · S4 Driver · S5 AD · S6 AD · S7 HeaterX · S9 HVYBias · S10 HeaterX. 전원 레일 7자리는 science 와 같다. ⚠️ guide 순서는 **원장 7장 기재분이고 실기 대조 전이다** (OI-19).
+**guide 컨트롤러**(`DATASRC = 'ARCHON_GUIDE'`)는 모듈 구성이 달라 `C1_TEMP` 가 **8자리**다 — Backplane · Mod3 Driver · Mod4 Driver · Mod5 AD · Mod6 AD · Mod7 HeaterX · Mod9 HVYBias · Mod10 HeaterX. 전원 레일 7자리는 science 와 같다. ⚠️ guide 순서는 **원장 7장 기재분이고 실기 대조 전이다** (OI-19).
 
-> ⚠️ **표기 확인 대기 — 2번 자리의 `M1`** — 나머지가 전부 `S<n>` 인데 첫 모듈만 `M1` 이다. 원장 7장은 같은 자리를 "Slot1 LVDS" 로 기재하므로 **슬롯 1 을 가리키는 것으로 읽으면 정합**하고, 이 표는 운영자 원문 표기를 그대로 실었다. `M` 이 슬롯과 다른 체계(module 번호 등)라면 `S<n>` 과 섞여 있어 읽는 쪽이 오독할 수 있으니 **표기를 한 체계로 통일할지 확인이 필요하다.** 자리 순서 자체에는 이견이 없다.
+> **표기 체계 (운영자 확정 2026-08-25)** — 종전 표기 `S<n>`(Slot)을 **`Mod<n>`(Module)** 로 바꿨다. Archon 백플레인의 그 자리를 가리키는 정확한 이름이 모듈이기 때문이다. 2번 자리의 `M1` 은 **`Mod1` 의 오타였다**(운영자 확인) — 다른 체계가 아니라 같은 모듈 번호이고, 원장 7장의 "Slot1 LVDS" 와도 같은 자리를 가리킨다. **이로써 열 자리 중 `Backplane` 을 뺀 아홉이 모두 `Mod<n>` 한 체계로 통일됐다.** 자리 순서 자체에는 처음부터 이견이 없었다.
 
 ### 5.7 TCS Information and Status (27장)
 
@@ -330,9 +347,9 @@ TCS 중계값은 문자열로 싣는다 (레거시 계승). 시각 카드는 `Z`
 
 | Keyword | 값 | 출처 |
 | --- | --- | --- |
-| `TCSLINK` | `Up` / `Idle` / `Down` | ICS code |
-| `TCSARC` | `Enabled` 등 — 링크 자동복구 모드 | ICS code |
-| `TCSQDATE` `TCSUDATE` | 마지막 TCS 질의/갱신 UTC (밀리초) | ICS code |
+| `TCSLINK` | `Up` / `Idle` / `Down` | TCS relay |
+| `TCSARC` | `Enabled` 등 — 링크 자동복구 모드 | TCS relay |
+| `TCSQDATE` `TCSUDATE` | 마지막 TCS 질의/갱신 UTC (밀리초) — 순서 규약은 **5.7.1절** | TCS relay |
 | `TCSTIME` | TCS 가 보고한 time system (`'UTC'`) — `TIMESYS`(ICS)와 분리 | TCS relay |
 | `RADECSYS` | `'ICRS'` | TCS relay |
 | `RA` `DEC` `EQUINOX` `HA` `ST` `SECZ` `ALT` `AZ` | 포인팅 (`'hh:mm:ss.ss'` 등 레거시 형식) | TCS relay |
@@ -340,15 +357,44 @@ TCS 중계값은 문자열로 싣는다 (레거시 계승). 시각 카드는 `Z`
 | `DSSTAT` `DSUP` `DSLW` `DSSAF` `DSAUTO` `DSALT` `DSAZ` `DSTELALT` `DSTELAZ` | 돔 셔터·지향 — **newTCS 편입으로 출처가 TCS 계통** (원장 3.6절). `DSTELALT` 는 레거시 `DSTEL` 의 개칭 — 중계 필드명이 무엇이든 ICS 가 이 카드명으로 싣는다 | TCS relay or REDIS |
 | `DALTERR` `DAZERR` | 돔–망원경 지향차 [deg] | ICS calculation |
 
+#### 5.7.1 `QDATE` / `UDATE` 순서 규약 (normative)
+
+`TCSQDATE`·`TCSUDATE`·`AUXQDATE`·`AUXUDATE` 는 **ICS 가 만드는 값이 아니라 TC(TCSAgent · AUXAgent) 응답 필드를 그대로 중계한 것**이다. ICS 가 직접 채우는 경우는 TC 무응답 폴백(`tc_timeout_mode=canned`)뿐이다. 따라서 아래 부등식은 ICS 가 강제하는 규칙이 아니라 **TC 의 스탬프 방식에서 따라 나오는 성질**이며, raw 를 읽는 쪽은 이 순서를 전제해도 된다.
+
+**두 시각의 정의** — TC 원전 주석(`TCSAgent/TCSAgent.latest/KMTNet/commands.c:1553` · `:2902`)
+
+| 카드 | 원전 표현 | 스탬프 시점 |
+| --- | --- | --- |
+| `*QDATE` | query time | ICS 의 질의를 받아 **TC 가 응답을 조립하는 순간**의 현재 UTC |
+| `*UDATE` | updated time | TC 가 망원경·AUX 로부터 **텔레메트리 패킷을 마지막으로 받은** 시각 |
+
+**(a) `UDATE` ≤ `QDATE`** — `UDATE` 는 이미 받아 둔 패킷의 시각이고 `QDATE` 는 그 값을 꺼내 응답을 만드는 시각이므로 **구조적으로 뒤집힐 수 없다**. 두 값의 차가 곧 헤더에 실린 TCS/AUX 값의 **나이(staleness)** 다. 레거시 실측(`KMTNk.20170209.044131`)에서 AUX 98 ms · TCS 703 ms 였다.
+
+**(b) 기준은 `QDATE`** 다. `UDATE` 는 TC 의 폴링 주기에 딸린 값이라 노출과 직접 묶이지 않는다 — 노출과의 관계를 따질 때는 `QDATE` 만 본다.
+
+**(c) `QDATE` 의 자리는 `DATE-OBS`(= ICS 가 `SHOPEN` 을 지시한 시각, 5.4절) 전후**이고 경로에 따라 앞뒤가 갈린다.
+
+| 경로 | `TCSQDATE` | `AUXQDATE` |
+| --- | --- | --- |
+| **DARK / BIAS** (셔터 안 엶) | ERASE 단계 질의 → **`< DATE-OBS`** | 노출 개시 **직전** 질의 → **`< DATE-OBS`** |
+| **셔터 노출**, `EXPTIME > 1 s` | 위와 같음 → **`< DATE-OBS`** | `SHOPEN`+**1 s** 재질의 → **`> DATE-OBS`** |
+| **셔터 노출**, `EXPTIME ≤ 1 s` | 위와 같음 → **`< DATE-OBS`** | 재질의 없음(개시 직전 값 유지) → **`< DATE-OBS`** |
+
+셔터 노출에서 AUX 를 다시 묻는 것은 블레이드가 움직일 시간을 주기 위해서다 — `SHUTTER` 는 `SHUTOP` 의 순수 함수라(5.8절) 개시 직전 값은 아직 `CLOSED` 다. **노출이 재질의 시점보다 짧으면 재질의하지 않는다**: 셔터가 이미 닫힌 뒤의 값을 노출 중 값으로 싣게 되기 때문이다. 지연은 ICS INI 의 `aux_requery_after_shopen` 이고 **벤치 실측 확정 전이다 (OI-13)**.
+
+> ⚠️ **재질의는 신규 ICS 고유 동작이다 — 레거시에 선례가 없다.** 레거시 실측은 `IMAGETYP='OBJECT'` · `EXPTIME=30` 프레임인데도 `AUXQDATE` 가 `DATE-OBS` 보다 10.0 s 앞서고(`TCSQDATE` 는 6.6 s 앞) `SHUTTER='CLOSED'` 가 실려 있다 — 셔터가 열린 뒤 다시 묻지 않았다는 뜻이다. 그 값이 노출과 무관하다는 것이 재질의를 넣은 이유다.
+
+> **정본 견본은 BIAS 라 (c) 표의 첫 줄만 담는다.** 셔터 노출의 `AUXQDATE > DATE-OBS` 는 견본에 실물이 없으므로 **이 절이 유일한 근거**다.
+
 ### 5.8 AUX Information and Status (33장)
 
 | Keyword | 값 | 출처 |
 | --- | --- | --- |
-| `AUXLINK` | `Up` / `Down` | ICS code |
-| `AUXARC` `AUXQDATE` `AUXUDATE` | 링크 복구 모드 · 질의/갱신 UTC | ICS code |
+| `AUXLINK` | `Up` / `Down` | AUX relay |
+| `AUXARC` `AUXQDATE` `AUXUDATE` | 링크 복구 모드 · 질의/갱신 UTC — 순서 규약은 **5.7.1절** | AUX relay |
 | `FSSTAT` `FILTOP` `FILNUM` `FILTER` | 필터-셔터 계통 상태 · 필터 | AUX relay |
 | `SHUTOP` | `NC`/`STANDBY`/`OPENING`/`OPENED`/`CLOSING`/`RELOADING`/`ERROR` | AUX relay |
-| `SHUTTER` | `OPEN`/`CLOSED`/`UNKNOWN` — **`SHUTOP` 의 순수 함수**, "완전 개방"을 뜻하지 않는다. `SHOPEN`+3초 재질의로 노출 중 값 반영 (OI-13) | AUX relay |
+| `SHUTTER` | `OPEN`/`CLOSED`/`UNKNOWN` — **`SHUTOP` 의 순수 함수**, "완전 개방"을 뜻하지 않는다. `SHOPEN`+1초 재질의로 노출 중 값 반영 (5.7.1절 · OI-13) | AUX relay |
 | `FASTAT` `FAFOCUS` `FATILTNS` `FATILTEW` `FAPOSS` `FALIMS` `FAPOSE` `FALIME` `FAPOSW` `FALIMW` | 초점 액추에이터 | AUX relay |
 | `MCSTAT` `MCPOS` | 미러 커버 | AUX relay |
 | `ENSTAT` `ENFAN` `ENS1`–`ENS7` | 환경 계통 (ENS 값은 중계 그대로, 소수 1자리) | AUX relay |
@@ -371,7 +417,7 @@ TCS 중계값은 문자열로 싣는다 (레거시 계승). 시각 카드는 `Z`
 | Section 좌표·amp 식별 | `CCDSEC` `AMPSEC` `DATASEC` `BIASSEC` `AMPID` `READDIR` 등 | 4장 geometry 에서 계산 — 중복은 불일치 원천 |
 | Calibration | `GAIN` `RDNOISE` `SATLEVEL` `LINMAX` · crosstalk 전체 · **`XTALKVER` `REFVER` `CATVER`** | pipeline caldb 소관 — **계층 규칙**(1장): raw 미기재 · L0 재량 · L1 필수 |
 | WCS · 파생 시각 | `CTYPE*` … · `JD` `MJD-OBS` `UT` `DARKTIME` `TSHOPEN` `TSHSHUT` | L1 / `DATE-OBS`·`EXPTIME` 파생 |
-| 폐지·미도입 | `UNIQNAME` `NAMECLSH` `PAIRFILE` `CTRLTAG` `RAWVER` `RAWPROD` `OSCNPATT` `ROWORDR` `RDDIRT/B` `MIDOSC*` `CHIP1/2` `CHIPS` `HEMODE` `NPHLINES` `CHKIMG(_C)` chiller 4장 `FSADEW` `FSAALRM` 전압 색인 계열 `AMOD/ACHN` 등 | 판정 근거는 **원장 7·8장** (전량 귀속) |
+| 폐지·미도입 | `UNIQNAME` `NAMECLSH` `PAIRFILE` `CTRLTAG` `RAWVER` `RAWPROD` `OSCNPATT` `ROWORDR` `RDDIRT/B` `MIDOSC*` `CHIP1/2` `CHIPS` `HEMODE` `NPHLINES` `CHKIMG(_C)` chiller 4장 `FSADEW` `FSAALRM` 전압 색인 계열 `AMOD/ACHN` · **`AIR_IN` `AIR_OUT` `GLYC_IN` `GLYC_OUT`**(v1.5 폐지) 등 | 판정 근거는 **원장 7·8장** (전량 귀속) |
 
 **규격/구성 버전의 자기 선언 카드는 없다** — `CAMVER`(HW) · `CTRLxCFG`(FW/설정) · `DETID` · `CHMAP_*` 조합으로 파악한다 (원장 확인 요망 11).
 
@@ -399,7 +445,7 @@ raw 사용자를 위한 요점 — 상세와 LEECU 실행 목록은 **통합 문
 | --- | --- | --- |
 | 1 | 파일 구조 | single HDU · `BITPIX=16` · `BZERO=32768` · 19200×9400 · 2880 패딩 (3장) |
 | 2 | 파일명 | 정규식 일치 · 6자리 zero-padding · pair 양쪽 존재 · `<SITE>`↔`OBSERVAT` 일치 (2.2절) |
-| 3 | 카드 전량 | 견본 v1.0 대비 값 카드 135장 전량 존재, 카드 **형** 일치 (식별자 = 문자열) |
+| 3 | 카드 전량 | 견본 v1.0 대비 값 카드 131장 전량 존재, 카드 **형** 일치 (식별자 = 문자열). `END` 뒤 공백 레코드는 값으로 세지 않는다 |
 | 4 | 정체성 | `FILENAME`=실명 · `ORIGNAME` 존재 · 평시 두 값 동일 (2.3절) |
 | 5 | Pair 규칙 | 상이 7장 / 나머지 동일 (5.9절) |
 | 6 | geometry 선언 | `AMPNAX1 = PRESCNX+IMAGEX+OVRSCNX` · `AMPNAX2 = PRESCNY+IMAGEY+OVRSCNY` · `CHMAP` 불변식 (4.5절) |
@@ -417,12 +463,12 @@ raw 사용자를 위한 요점 — 상세와 LEECU 실행 목록은 **통합 문
 | OI-5 | Binning | 1×1 전용. `CCDXBIN`/`CCDYBIN` 2·3 reserved — 계획 확정 시 geometry 확장 |
 | OI-7 | raw 무결성 | `CHECKSUM`/`DATASUM` 미도입 — 도입 여부 결정 대기 |
 | OI-9 | 배선 실측 | 4.5절 표의 실기 대조 (`XTALKCAL=True` 전제조건). CCD 채널 라벨 ↔ Archon tap 대응은 STA 문서/Tom O'Brien 협의 |
-| OI-13 | 셔터 상태 반영 지연 | `SHOPEN`+3초 재질의 시점에 AUX 상태기계가 넘어가 있는지 벤치 실측 (`aux_requery_after_shopen`) |
+| OI-13 | 셔터 상태 반영 지연 | `SHOPEN`+**1초** 재질의(5.7.1절) 시점에 AUX 상태기계가 넘어가 있는지 벤치 실측 (`aux_requery_after_shopen`). 값이 바뀌면 5.7.1절 (c) 표의 `EXPTIME` 문턱도 함께 바뀐다 |
 | ~~OI-15~~ | ~~X overscan 패턴 4:4 vs 5:3~~ | **종결 (2026-08-22)** — 실제 획득 자료 육안 확인으로 `RRRRLLLL`(4:4) 확정(운영자, 4.1절). 레거시 MEF `AMPSEC` 의 M/T=5:3 · K/N=3:5 는 레거시 계통의 관찰이며 신규에 적용되지 않는다 |
 | OI-16 | Tapaculo 원값 포맷 | `FSATEMP`/`FSAHUM`(+`HEBOX`) 원값 포맷 확인 후 "원값 그대로 싣기"로 최종 확정 (5.8절) |
-| OI-17 | e2v 데이터시트 대응 (**부분 종결** — 원전 확보 2026-08-22, 부록 A 신설) | 확인된 것: `A`/`D` = image section 명칭, 레지스터 E/F·G/H, OS1–16, prescan 27(레거시 `PRESCANX=27` 의 원전). **잔여**: ① `IMGSEC` 의 `B` 표기 해명 ② CCD 출력 채널(`M01` 등) ↔ OS 번호 대응 확정 ③ K·N 조가 M·T 조와 IMGSEC 체계가 다른 이유(180° 회전 장착 추정 — OI-15 와 연동) |
+| OI-17 | e2v 데이터시트 대응 (**부분 종결** — 원전 확보 2026-08-22, 부록 A 신설) | 확인된 것: `A`/`D` = image section 명칭, 레지스터 E/F·G/H, OS1–16, prescan 27(레거시 `PRESCANX=27` 의 원전). ~~① `IMGSEC` 의 `B` 표기~~ **종결 (2026-08-25)** — 원전 없는 표기로 판정, `D-BOT` 으로 정정. ~~② CCD 출력 채널 ↔ OS 번호 대응~~ **종결 (2026-08-25)** — 번호가 그대로 대응한다(운영자 확정). **잔여 ③ 뿐**: K·N 조가 M·T 조와 IMGSEC 배치가 갈리는 이유(180° 회전 장착 추정 — OI-15 와 연동) |
 | OI-18 | NT 파일 `CCDTEMP` 귀속 | 대표 센서("M")가 NT 파일에서도 그대로인지 확인 (5.6절) |
-| OI-19 | guide 컨트롤러 `Cn_TEMP` 자리 순서 | 5.6.1절의 guide 8자리(Backplane · S3 · S4 · S5 · S6 · S7 · S9 · S10)는 **원장 7장 기재분이고 실기 대조 전**이다. guide FITS 규격을 세울 때 실측으로 확정 |
+| OI-19 | guide 컨트롤러 `Cn_TEMP` 자리 순서 | 5.6.1절의 guide 8자리(Backplane · Mod3 · Mod4 · Mod5 · Mod6 · Mod7 · Mod9 · Mod10)는 **원장 7장 기재분이고 실기 대조 전**이다. guide FITS 규격을 세울 때 실측으로 확정 |
 | — | subframe/ROI | **이 규격은 전면 독출 전용** — 부분 독출은 원점 카드가 없어 표현 불가. 필요 시 별도 확장 (원장 10장 제기) |
 
 해결된 구판 OI(1·2·6·8·10·11·12)의 경위는 archive 의 v1.2 9장.
@@ -446,7 +492,7 @@ raw 사용자를 위한 요점 — 상세와 LEECU 실행 목록은 **통합 문
 | --- | --- | --- |
 | v1.0~v1.2 | 2026-08-06 ~ 08-13 | 구판 "Raw FITS Pair 규격" — 이력은 archive 판 11장 |
 | — | 2026-08-18 | 전면 재검토 개시 (⛔ 재작성중) — 검토는 원장(Header_and_Refs) v1.7~v1.14 사이클로 진행 |
-| **v1.5** | **2026-08-25** | **5장 검토 개시분.** ① **5.6.1절 신설 — `Cn_*` 자리 순서 명세**(운영자 제시): `Cn_TEMP` science 10자리(`Backplane` · `M1:LVDS` · `S2:Driver` · `S3:Driver` · `S4:LVXBias` · `S5:ADM` · `S8:ADM` · `S9:HVYBias` · `S10:Driver` · `S11:Driver` — 운영자 원문 표기 그대로) · `Cn_VOLT`/`Cn_CURR` 7자리(P2V5 P5V P6V N6V P17V N17V P35V, 종전 5.6절 괄호 주석에서 승격) · guide 8자리는 원장 기재분으로 **OI-19** 신설. 원장 7장이 "이 순서를 raw FITS spec 에 명세로 수록"으로 남겨 둔 항목을 닫는다. ② **견본 헤더 comment 오타 2건 정정**(운영자) — `Telesope`→`Telescope`(`ALT`) · `Acutator`→`Actuator`(`FASTAT`). 레거시 계승 과정에서 딸려 온 오타이고, `__reference/` 의 레거시 실측 헤더는 사실 기록이므로 그대로 둔다. 꼬리 `#EOF` 4바이트를 떼어 **견본이 정확히 4×2880 = 11,520 바이트**가 됐다(종전 11,524 는 2880 의 배수가 아니었다). 메모장용 사본 `…_REFTEXT.txt` 2장 신설. ③ 머리말 견본 카드 수 정정 — "143카드 = 값 135 + COMMENT 7 + END" → **144 레코드 = 값 135 + COMMENT 8 + END 1**(COMMENT 실측 8장) |
+| **v1.5** | **2026-08-25** | **5장 검토 개시분.** ① **5.6.1절 신설 — `Cn_*` 자리 순서 명세**(운영자 제시): `Cn_TEMP` science 10자리(`Backplane` · `M1:LVDS` · `S2:Driver` · `S3:Driver` · `S4:LVXBias` · `S5:ADM` · `S8:ADM` · `S9:HVYBias` · `S10:Driver` · `S11:Driver` — 운영자 원문 표기 그대로) · `Cn_VOLT`/`Cn_CURR` 7자리(P2V5 P5V P6V N6V P17V N17V P35V, 종전 5.6절 괄호 주석에서 승격) · guide 8자리는 원장 기재분으로 **OI-19** 신설. 원장 7장이 "이 순서를 raw FITS spec 에 명세로 수록"으로 남겨 둔 항목을 닫는다. ② **견본 헤더 comment 오타 2건 정정**(운영자) — `Telesope`→`Telescope`(`ALT`) · `Acutator`→`Actuator`(`FASTAT`). 레거시 계승 과정에서 딸려 온 오타이고, `__reference/` 의 레거시 실측 헤더는 사실 기록이므로 그대로 둔다. 꼬리 `#EOF` 4바이트를 떼어 **견본이 정확히 4×2880 = 11,520 바이트**가 됐다(종전 11,524 는 2880 의 배수가 아니었다). 메모장용 사본 `…_REFTEXT.txt` 2장 신설. ③ 머리말 견본 카드 수 정정 — "143카드 = 값 135 + COMMENT 7 + END" → **144 레코드 = 값 135 + COMMENT 8 + END 1**(COMMENT 실측 8장) ④ **5.7.1절 신설 — `QDATE`/`UDATE` 순서 규약**(normative). 이 값들이 ICS 산출이 아니라 **TC 응답 중계**임을 명시하고(5.7·5.8 출처 열 `ICS code`→`TCS relay`/`AUX relay` 정정 — 원장 v1.14 와 정합), TC 원전 정의(`commands.c:1553`·`:2902`)로부터 **`UDATE` ≤ `QDATE`** 를 세웠다. **기준은 `QDATE`**, 자리는 `DATE-OBS`(=`SHOPEN` 지시 시각) 전후이며 경로별로 갈린다(DARK/BIAS = 개시 직전 · 셔터 노출 = `SHOPEN`+1 s 재질의). **견본 시각 카드 4장을 이 규약대로 정정** — 08-22 판은 `UDATE` 를 `QDATE` 뒤로, `QDATE` 를 `DATE-OBS` 뒤로 두어 소스 정의·레거시 실측(`KMTNk.20170209`)·시뮬 구현 셋 모두와 어긋나 있었다. 재질의 지연 **3 s → 1 s**(OI-13).  ⑤ **`Cn_*` 자리 표기 `S<n>`(Slot) → `Mod<n>`(Module)**(운영자 확정) — 2번 자리의 `M1` 은 **`Mod1` 의 오타였다**(운영자 확인). `Backplane` 을 뺀 아홉 자리가 한 체계로 통일됐고 원장 7장의 "Slot1 LVDS" 와도 정합한다. 5.6.1절의 표기 확인 대기가 닫혔다.  ⑥ **`CHMAP_*` 토큰을 3자에서 4자 `<chip><A\|D><nn>` 으로**(운영자 확정): 채널 **01–08 = `A` · 09–16 = `D`**(e2v image section, 부록 A). 견본 8장·4.5절 표·5.2절 행 반영. 80칼럼 예산상 견본 comment 를 `CCD output ch,…`→`CCD out ch,…` 로 줄였다. 이 규칙이 4.5절 `IMGSEC` 의 `B-BOT` 을 `D-BOT` 으로 지목했고 **⑩ 에서 확정됐다**.  ⑦ **사이트 코드 개정 (D-017)** — `OBSERVAT` = `CTIO`/`SSO`/`SAAO`/**`KASI`**, 파일명 접두어 = `KMTC`/`KMTA`/`KMTS`/**`KMTK`**. `TESTBED`·`KMTT` 폐지.  ⑧ **노출 번호 공간 개정 (D-018)** — `000000`–**`999999`**, 되감음 1000000→`000000`, 충돌 루프 상한 1000000회 (D-016 항목 1·2 대체).  ⑨ **5.3.1절 신설 — 사이트별 상수표**(운영자 확정, D-017 항목 6): `TELESCOP` = CTIO `#1` · SSO `#3` · SAAO `#2`, `FPAID` = CTIO `FPA#2` · SSO `FPA#1` · SAAO `FPA#3` · KASI `FPA#0`. **견본 값은 손대지 않았다** — 견본은 SSO(`KMTA`)이고 `TELESCOP='KMTNet 1.6m #3'` · `FPAID='FPA#1'` 둘 다 이 표와 맞는다. 5.2절 `FPAID` 행과 5.3절 `TELESCOP` 행은 값을 빼고 5.3.1절로 위임했다(같은 값이 세 자리에 흩어지면 갈라진다). **KASI `TELESCOP` = `'KMTNet 1.6m #0'`**(운영자 확정, 구 테스트베드 값 `'Sim'` 대체) — KASI 만 망원경·FPA 가 둘 다 `#0` 인데 우연이며 관측소 셋은 전부 어긋난다. SSO 값은 **레거시 실측**(`KMTNk.20170209`: `OBSERVAT='SSO'`+`TELESCOP='KMTNet 1.6m #3'`)이 뒷받침한다. ⑩ **`IMGSEC` 의 `B` 종결 — OI-17 잔여 ①·② 동시 해소**(운영자 확정). 채널 번호 = OS 번호가 확정되어(잔여 ②) `채널 09–16 = OS9–16 = 위 half = 섹션 D` 가 데이터시트까지 이어지고, 데이터시트에 `B` 섹션이 없으므로 배선표의 `B-BOT` 16행(K·N 조 채널 09–16)은 원전 없는 오기로 판정돼 **`D-BOT`** 으로 정정했다. 이제 `IMGSEC` 은 앞 = image section(A·D) · 뒤 = raw 타일 위치(TOP·BOT) 두 축으로 분리된다. **OI-17 잔여는 ③(K·N 180° 회전 장착 확인) 하나뿐.** ⑪ **기계 정본 판 올림 — `Detector_Ch_to_AmpID_Map_v1.1.txt`**: ⑥ 의 4자 채널 표기와 ⑩ 의 `D-BOT` 을 반영한 64행. `__` 접두 폴더 읽기 전용 규칙(운영자 2026-08-22)에 따라 `__reference/` 의 v1.0 을 편집하지 않고 **사본을 sub레포 루트로 올려** 고쳤다 — v1.0 은 원본 기록으로 남는다. 4.5절·머리말의 참조를 v1.1 로 옮겼다. ⑫ **HK 카드 4장 폐지 (운영자 확정)** — `AIR_IN` · `AIR_OUT` · `GLYC_IN` · `GLYC_OUT`(standalone RTD 계통, 5.6절). 5.6절이 **18장 → 14장**, 견본 값 카드가 **135 → 131** 이 됐다. 견본은 **`END` 뒤에 공백 레코드 4장을 채워** 144 레코드·4×2880 = 11,520 바이트를 유지한다(FITS 표준 패딩, 3장). 5.10절 폐지 목록에 등재했다. |
 | **v1.4** | **2026-08-22** | **운영자 1~4장 검토 반영.** ① **2.5절(ICS `Wrote` 통보 규약) 삭제** — 취득 SW 소관이라 raw 규격의 몫이 아니다(정본은 `ics_sim/DevNote.md` 3.2). raw 사용자가 알아야 할 "`LASTFILE` 은 실재 경로가 아니다"만 2.3절 5항으로 흡수. ② **4.1 X overscan `RRRRLLLL` 확정** — 실제 획득 자료 육안 확인(운영자), "검증 표본 대조 남음" 경고 삭제 · **OI-15 종결**. ③ **4.2 다이어그램에 BOT/TOP Y overscan 84/84 분리 표시**(타일 규약 층 — 물리 clocking 분배는 OI-4 유지). ④ **견본 헤더 파일명을 규격에 정합** — `KMTA.20260818.…` → **`KMTA.20260821.…`** (MK·NT): 견본의 `DATE-OBS` 2026-08-21T12:34:56.789 에 SSO 관측일 보정(2.2절)을 적용하면 관측일이 `20260821` 이라 **파일명 쪽이 틀렸다**. 2.3절 예시 블록도 견본 값과 일치시켰다 — "`FILENAME` = 실제 저장명"이라는 규칙의 유일한 바이트 기준물이 스스로 그 규칙을 지키게 됐다. ⑤ 4.4 열 제목 `Amp 범위` → **`AmpID 범위`**, 값도 **MEF AmpID(01–64) 기준으로 정합**(구 표의 `1–8`/`9–16` 은 chip 로컬 번호라 MEF AmpID 로 읽으면 절반만 맞았다 — 우반 chip 의 `17–24` 도 TOP) + half 판정식 명시. ※ 5장 이후는 팀 협의 후 별도 판에서 다룬다 |
 | v1.3 | 2026-08-22 | **재작성판 발행 + 문서명 변경**(Pair_Spec → Specification). 확인 요망 11건 전량 종결분 반영: 헤더 5장을 **초안 v1.0 pair(135 값 카드) 기준으로 전면 교체** — Detector 블록 타일 해부(`PRESCNX/Y`·`OVRSCNX/Y`·`CHMAP_*`) · `FILENAME`/`ORIGNAME` 정체성(D-016, `UNIQNAME`·`NAMECLSH`·`clash/`·`PAIRFILE`·`CTRLTAG` 폐지) · 컨트롤러 블록(`CTRLxID/SN/CFG` · `ICSBUILD` 신형식 · `RDMODE`) · HK 재구성(문자열 형 · sentinel `'-999.99'`/`'9.99e-9'` · `Cn_*`) · 돔 출처 TCS 편입 · `EXPTIME` 조건부 형 · `LEDFLASH` [ms]. **4.3 포장 규범 조항 신설**(`ROWORDR`/`OSCNPATT` 카드 대체, 고정 = `CAMVER`+`CTRLxCFG`) · **4.5 amp 전수 표 신설**(기계 사본 = 채널맵 v1.0). 규격 버전 카드 미도입 확정. XTALKVER 계층 규칙(raw/L0/L1) 명시. OI 재편(15~18 신설) |
 | v1.3 | 2026-08-22 | 제자리 개정(발행 당일 보강): **부록 A 신설 — e2v CCD290-99 데이터시트(V2 2016-08, `__reference` 확보) 대응.** 4.5절 `IMGSEC` 의 `A`/`D` = image section 명칭 확인(`B` 는 원전에 없음 — 해명 잔여), 레지스터 1152 active + prescan 27 = 레거시 `PRESCANX=27` 의 원전 확인, 독출 방향 = 클럭 결선(ACF) 소관 확인. OI-17 부분 종결, K·N 회전 장착 추정을 OI-15 와 연동 |
@@ -464,4 +510,16 @@ raw 사용자를 위한 요점 — 상세와 LEECU 실행 목록은 **통합 문
 | 독출 모드 | full-frame / **split full-frame** — 전송 방향은 클럭 결선으로 선택 (A→E · D→G 가 분할 독출, 역방향 가능) | 4.2절 상·하 동시 독출. **amp 별 물리 독출 방향은 데이터시트가 고정하지 않는다** — ACF(=`CTRLxCFG`) 소관, 실기 확인 OI-3 | ✓ (방향은 OI-3) |
 | Dump drain | fixed-barrier dump drain (고속 폐기) | preheat/dump 운용은 timing script 소관 — raw 카드 없음 (`NPHLINES` 미도입, 원장 6장) | ✓ |
 
-**IMGSEC 문자에 대한 판정** — 채널맵의 `A`/`D` 는 위 image section 명칭과 일치한다: M·T chip 은 `A-BOT`(섹션 A 가 프레임 아래)·`D-TOP`, K·N chip 은 `A-TOP`(섹션 A 가 프레임 **위**)·`B-BOT`. 섹션 A 가 위로 가는 배치는 **die 의 180° 회전 장착**을 시사한다 — M·T 조와 K·N 조가 갈리는 이유가 그것인지 확인은 OI-17 잔여다. (X overscan 좌우 패턴은 조와 무관하게 `RRRRLLLL` 로 확정됐다 — 4.1절.) **`B` 표기는 데이터시트에 없다**(image section 은 A·D 뿐, 레지스터는 E/F/G/H) — 원전 해명이 OI-17 의 잔여다.
+**IMGSEC 문자에 대한 판정** — 채널맵의 `A`/`D` 는 위 image section 명칭과 일치한다: M·T chip 은 `A-BOT`(섹션 A 가 프레임 아래)·`D-TOP`, K·N chip 은 `A-TOP`(섹션 A 가 프레임 **위**)·`D-BOT`(구 `B-BOT`, 2026-08-25 정정). 섹션 A 가 위로 가는 배치는 **die 의 180° 회전 장착**을 시사한다 — M·T 조와 K·N 조가 갈리는 이유가 그것인지 확인이 **OI-17 의 마지막 잔여 ③** 이다. (X overscan 좌우 패턴은 조와 무관하게 `RRRRLLLL` 로 확정됐다 — 4.1절.) **`B` 표기는 데이터시트에 없다**(image section 은 A·D 뿐, 레지스터는 E/F/G/H).
+
+**채널 ↔ OS 대응이 확정되면서(운영자 2026-08-25, OI-17 잔여 ② 종결) 사슬이 닫혔다**:
+
+```
+채널 nn  =  OS nn            (운영자 확정 2026-08-25)
+OS 1–8   =  아래 half = 섹션 A   (데이터시트)
+OS 9–16  =  위 half   = 섹션 D   (데이터시트)
+────────────────────────────────────────────
+채널 01–08 = A · 09–16 = D      ← 5.2/4.5절 CHMAP 토큰 규칙의 근거
+```
+
+따라서 **`B` 를 image section 으로 읽을 자리가 없다.** 배선표 v1.0 의 `B-BOT` 16행(K·N 조 채널 09–16)은 `D-BOT` 의 오기였고 **운영자 확정으로 정정됐다 (2026-08-25, OI-17 잔여 ① 종결)** — 4.5절 표와 기계 정본 `Detector_Ch_to_AmpID_Map_v1.1.txt` 양쪽에 반영됐다.
