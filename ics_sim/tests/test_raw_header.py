@@ -493,7 +493,11 @@ def test_rdmode_defaults_to_normal():
     ch = rawhdr.controller_header({'units': ()}, backend_name='sim',
                                   ics_build='x')
     assert str(ch['RDMODE']) == 'NORMAL'
-    assert str(ch['CTRL1ID']) == 'NC'    # 백엔드도 INI 도 없으면 sentinel
+    # 백엔드도 INI 도 없으면 **카드는 남기고 값은 sentinel** (규격 5.0절).
+    # 1대만 운영할 때 빠진 쪽도 이 자리로 떨어진다 -- 카드를 빼면 pair 두
+    # 파일의 카드 수가 달라져 converter 와 견본 대사가 구조 변경으로 읽는다.
+    # ini 에 `none`/`NC` 라고 적은 것도 같은 뜻이다 (운영자 확정 2026-08-25).
+    assert str(ch['CTRL1ID']) == 'NC'
 
 
 # -- ICSBUILD ---------------------------------------------------------------

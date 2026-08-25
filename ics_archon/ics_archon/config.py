@@ -31,6 +31,7 @@ from . import _simpath
 _simpath.ensure()
 
 from ics_sim import rawhdr, rawpair          # noqa: E402
+from ics_sim.config import ControllersCfg    # noqa: E402
 
 log = logging.getLogger('ics_archon.config')
 
@@ -45,6 +46,21 @@ class ArchonConfigError(Exception):
 @dataclass
 class ArchonCfg:
     """컨트롤러 계통 설정.  기본값은 실험실 스크립트의 실측값에서 왔다."""
+
+    # -- 대수 ------------------------------------------------------------
+    #: **운영할 컨트롤러 수** (`[archon] n_controllers`, 운영자 지시
+    #: 2026-08-24).  `1` 또는 `2` 뿐이고 **그 밖의 값은 기동을 거부**한다.
+    #:
+    #: `1` 이면 어느 쪽 한 대인지를 `[controllers] ctrl1_id`/`ctrl2_id` 의
+    #: **선언 여부**가 정한다 -- `ctrl1_id` 가 있으면 `MK`, `ctrl2_id` 가 있으면
+    #: `NT`.  결정된 값은 `solo_tag` 에 담긴다.
+    #:
+    #: ⚠️ 1대 운영은 CCD 가 둘뿐이므로 **OBSAgent 규약을 만족하지 못한다**
+    #: (`Acquisition Complete.`/`Wrote` 가 4회가 아니라 2회).  실험실 단독
+    #: 취득용이고, 관측 시퀀스 시험은 2대에서 한다 (README "실기 첫 실행 4단계").
+    n_controllers: int = 2
+    #: 1대 운영일 때의 태그 (`MK` 또는 `NT`).  2대면 빈 문자열.
+    solo_tag: str = ''
 
     # -- 접속 ------------------------------------------------------------
     #: 컨트롤러 태그 -> IP.  비어 있는 태그는 **없는 컨트롤러**다.
@@ -162,7 +178,10 @@ class ArchonCfg:
         `[archon]` 에 주소가 없는 태그는 경고와 함께 뺀다.
         """
         out = []
+        allowed = (self.solo_tag,) if self.n_controllers == 1 else CTRLTAGS
         for tag, chips in rawpair.CONTROLLERS:
+            if tag not in allowed:
+                continue                      # [archon] n_controllers 가 뺐다
             if not any(c in ccds for c in chips):
                 continue
             if not self.hosts.get(tag):
@@ -239,6 +258,55 @@ def _bool(sec, key: str, default: bool) -> bool:
         '[archon] %s 는 true/false 여야 한다: %r' % (key, raw))
 
 
+def _solo_tag(cp: configparser.ConfigParser, n_controllers: int) -> str:
+    """1대 운영일 때 어느 컨트롤러인지 (`MK`/`NT`).  2대면 빈 문자열.
+
+    **`[controllers] ctrl1_id`/`ctrl2_id` 의 선언 여부가 정한다** (운영자 지시
+    2026-08-24) -- 색인 1 이 `MK`, 2 가 `NT` 다 (`rawpair.CONTROLLERS` 순서).
+
+    "없음" 은 **비워 두거나 `NC`** 다 (운영자 확정 2026-08-25) -- `NC` 는
+    헤더에 실릴 규격 5.0절 sentinel 과 같은 낱말이다.  그래서 1대 운영을 두
+    방식으로 적을 수 있다:
+
+        ctrl1_id = KMTA-SCI-103      # 한쪽만 적는다 (키를 지워도 된다)
+        ctrl2_id =
+
+        ctrl1_id = KMTA-SCI-103      # 둘 다 적고 한쪽을 NC 로 둔다
+        ctrl2_id = NC
+
+    ⚠️ **이름 문자열은 읽지 않는다.**  색인 1 은 언제나 `MK`, 2 는 언제나
+    `NT` 다 -- 이름 끝 번호(101/102/103/104…)는 유닛마다 다르고 색인과 아무
+    관계가 없다.  정본은 배선(`ctrl_mk_host`/`ctrl_nt_host`)이다.
+
+    Raises:
+        ArchonConfigError: 1대인데 둘 다 선언됐을 때.  어느 쪽인지 정할 수
+            없는 상태로 진행하면 **엉뚱한 chip 이름으로 자료가 저장된다.**
+    """
+    if n_controllers != 1:
+        return ''
+    sec = cp['controllers'] if cp.has_section('controllers') else {}
+
+    def declared(n: int) -> bool:
+        # 표기 판정은 `ControllersCfg` 가 정본이다 -- 두 자리가 갈리면 "ini 에
+        # 적었는데 헤더와 대수 판정이 서로 다르게 읽는" 상태가 된다.
+        raw = str(sec.get('ctrl%d_id' % n, '') or '').split('#')[0]
+        return not ControllersCfg.is_absent(raw)
+
+    one, two = declared(1), declared(2)
+    if one and two:
+        raise ArchonConfigError(
+            '[archon] n_controllers=1 인데 [controllers] 에 ctrl1_id 와 '
+            'ctrl2_id 가 **둘 다** 선언돼 있다 -- 어느 컨트롤러를 쓸지 정할 수 '
+            '없다.  쓰지 않는 쪽을 비우거나 NC 로 둘 것')
+    if two:
+        return CTRLTAGS[1]
+    if not one:
+        log.warning('[archon] n_controllers=1 인데 [controllers] 에 ctrl1_id 도 '
+                    'ctrl2_id 도 선언돼 있지 않다 -- %s 로 본다.  의도한 쪽의 '
+                    'ctrl<n>_id 를 채워 명시할 것', CTRLTAGS[0])
+    return CTRLTAGS[0]
+
+
 def load(path: str) -> ArchonCfg:
     """ini 에서 `[archon]` 절을 읽는다.  절이 없으면 기본값."""
     cfg = ArchonCfg()
@@ -294,6 +362,15 @@ def load(path: str) -> ArchonCfg:
     cfg.fetch_timeout = _num(s, 'fetch_timeout', cfg.fetch_timeout, float)
     cfg.progress_step = _num(s, 'progress_step', cfg.progress_step, int)
 
+    # **컨트롤러 대수** -- 1 또는 2 만 받는다 (운영자 지시 2026-08-24).
+    cfg.n_controllers = _num(s, 'n_controllers', cfg.n_controllers, int)
+    if cfg.n_controllers not in (1, 2):
+        raise ArchonConfigError(
+            '[archon] n_controllers 는 1 또는 2 여야 한다 (받은 값: %r).  '
+            '카메라는 컨트롤러 2대 구성이고, 1 은 실험실 단독 취득용이다'
+            % (cfg.n_controllers,))
+    cfg.solo_tag = _solo_tag(cp, cfg.n_controllers)
+
     cfg.naxis1 = _num(s, 'naxis1', cfg.naxis1, int)
     cfg.naxis2 = _num(s, 'naxis2', cfg.naxis2, int)
     cfg.burst_len = _num(s, 'burst_len', cfg.burst_len, int)
@@ -337,6 +414,19 @@ def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
         notes.append('[archon] frame_timeout <= 0 -- 프레임이 안 나오면 영구히 '
                      '기다린다.  EXPSTATUS=READOUT 에 갇혀 OBSAgent 가 opause '
                      '로 간다')
+    # **대수와 CCD 목록이 어긋나면 통보와 산출물이 갈린다.**  1대인데 `ccds` 가
+    # 네 개면 시퀀서는 CCD 4개분 `Acquisition Complete.`/`Wrote` 를 내보내는데
+    # 파일은 한 컨트롤러분(2 chip)만 나온다 -- OBSAgent 는 4개를 다 받았으니
+    # 정상으로 보고, 없어진 파일은 아무도 알려주지 않는다.
+    if cfg.n_controllers == 1:
+        missing = [c for tag, chips in rawpair.CONTROLLERS if tag != cfg.solo_tag
+                   for c in chips if c in ccds]
+        if missing:
+            notes.append(
+                '[archon] n_controllers=1 (%s) 인데 [node] ic_ids 에 %s 가 '
+                '남아 있다 -- 그 chip 의 파일은 생기지 않는데 통보는 나간다.  '
+                'ic_ids/cb_ids 를 %s 쪽 2개로 줄일 것'
+                % (cfg.solo_tag, '/'.join(missing), cfg.solo_tag))
     if not cfg.telemetry:
         notes.append('[archon] telemetry=false -- Cn_TEMP/VOLT/CURR 가 NC 로 '
                      '실린다 (왕복은 labtest v1.0 계보와 같아진다)')

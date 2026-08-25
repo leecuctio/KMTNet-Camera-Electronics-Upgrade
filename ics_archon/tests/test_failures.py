@@ -51,7 +51,6 @@ def cfgs(tmp_path, **over):  # noqa: ANN001
     cfg.logging.wire = False
     cfg.paths.data_dir = str(tmp_path / 'rawdata')
     cfg.paths.expnum_file = str(tmp_path / 'expnum')
-    cfg.node.site_from_ip = False
     cfg.hardware.backend = 'archon'
 
     acfg = acfg_mod.load(INI)
@@ -352,7 +351,9 @@ def test_shutdown_waits_for_frames_that_are_still_being_saved(tmp_path):  # noqa
     """
     cfg, acfg = cfgs(tmp_path, full_flush_on_erase=False)
     # 저장을 늦춰 "독출은 끝났는데 파일은 아직" 창을 넓힌다.
-    cfg.timing.write_delay = 10.0            # scaled(0.02) = 0.2초
+    # 저장을 늦춰 "독출은 끝났는데 파일은 아직" 창을 넓힌다.  전체 스위트를
+    # 돌릴 때는 부하로 폴링이 밀리므로 넉넉히 둔다 (0.2초면 간헐 실패했다).
+    cfg.timing.write_delay = 50.0            # scaled(0.02) = 1.0초
     mk = FakeArchon(width=NX, height=NY)
     nt = FakeArchon(width=NX, height=NY)
     mk.start(); nt.start()

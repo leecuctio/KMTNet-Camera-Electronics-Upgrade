@@ -60,8 +60,6 @@ def make_cfgs(tmp_path, mk: FakeArchon, nt: FakeArchon):  # noqa: ANN001
     cfg.logging.wire = False
     cfg.paths.data_dir = str(tmp_path / 'rawdata')
     cfg.paths.expnum_file = str(tmp_path / 'expnum')
-    # IP 판정을 끈다 -- 켜 두면 파일명 <SITE> 가 시험 머신의 주소에 좌우된다.
-    cfg.node.site_from_ip = False
     cfg.hardware.backend = 'archon'
 
     acfg = acfg_mod.load(INI)

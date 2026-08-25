@@ -15,7 +15,7 @@ import os
 import time
 from typing import Awaitable
 
-from . import rawhdr, rawpair, siteid
+from . import rawhdr, rawpair
 from .auxcontrol import AuxControlClient
 from .commands import Dispatcher
 from .config import SimConfig
@@ -77,36 +77,22 @@ class IcsSim:
         self._last_broadcast: tuple[str, float] = ('', 0.0)
 
     def _resolve_site(self) -> tuple[str, str]:
-        """실효 사이트 코드와 그 근거.  **IP 판정이 ini 를 이긴다** (D-015).
+        """실효 사이트 코드와 그 근거.
 
-        벤치에서 `[node] site` 를 `sso` 로 두더라도 파일명은 `KMTT.…` 여야
-        한다는 것이 요구사항이므로(운영자 확정 2026-08-13), **설정 밖에서 오는
-        신호가 이겨야** 한다.  ini 값은 버리지 않고 대조해 경고를 남긴다 -- 실제
-        사이트 머신이 벤치로 판정되는 상황(NIC 다운, 모르는 세그먼트)이 그
-        경고로 드러난다.
+        **`[node] observatory` 한 값이 정한다** (운영자 지시 2026-08-24).
+        `config.load()` 가 이미 그 값을 검증하고 `telid`/`site` 를 유도해
+        두었으므로 여기서는 읽어 오기만 한다 -- 모르는 값이면 설정 읽기
+        단계에서 이미 거부됐다.
 
-        `site_from_ip=false` 면 ini 를 그대로 쓴다.  시험이 이 경로를 쓴다.
+        ⚠️ 종전에는 **호스트 IP 판정(D-015)이 ini 를 이겼다.**  그 경로는
+        폐지했다: NIC 가 내려가거나 낯선 대역에 붙으면 실제 관측 자료가
+        `KMTT.…` 이름으로 저장되는 위험이 있었고, 그것을 막는 대가로 "설정이
+        맞는데도 판정이 이긴다" 는 반대 위험을 안고 있었다.  이제는 설정
+        한 줄이 정본이고, 대신 그 값이 **틀리면 기동이 멈춘다.**
         """
-        cfg = self.cfg
-        declared = rawpair.normalize_site(cfg.node.telid)
-        if declared != cfg.node.telid.strip().upper():
-            log.warning('[node] telid=%r 는 실재 사이트 코드가 아니라서 %s 로 '
-                        '읽었다 -- KMTC/KMTS/KMTA/KMTT 중 하나로 둘 것',
-                        cfg.node.telid, declared)
-        if not cfg.node.site_from_ip:
-            return declared, f'[node] telid={declared} (IP 판정 꺼짐)'
+        n = self.cfg.node
+        return n.telid, f'[node] observatory={n.observatory}'
 
-        detected, why = siteid.detect()
-        if detected != declared:
-            log.warning(
-                '사이트 판정이 설정과 다르다 -- **판정을 따른다**.\n'
-                '  호스트 IP 판정 : %s   (%s)\n'
-                '  ini 선언       : %s   ([node] site=%s telid=%s)\n'
-                '파일명은 %s.… 로 저장된다.  현장 장비라면 ini 가 잘못 배포된 '
-                '것이거나 기기망 NIC 가 내려간 것이다 -- 자료를 찍기 전에 '
-                '확인할 것 (D-015)',
-                detected, why, declared, cfg.node.site, cfg.node.telid, detected)
-        return detected, why
 
     # -- 생명주기 ---------------------------------------------------------
 
@@ -138,10 +124,9 @@ class IcsSim:
         `archon` 이면 **실화소가 `KMTT.…` 이름으로 아카이브에 들어간다** --
         사이트 정체를 영구히 잃는 경로다.
 
-        `config.validate()` 는 `testbed`+`KMTT` 를 정합으로 보고 통과시키고
-        (내부적으로 일관되므로 맞다), `_resolve_site()` 의 경고는 판정과 ini 가
-        **다를 때만** 뜬다.  둘이 같으면서 둘 다 벤치인 경우가 남으므로 여기서
-        본다.
+        사이트는 이제 `[node] observatory` 한 줄이 정하므로(2026-08-24) 오배포는
+        **그 줄 하나가 틀린 것**이다.  실물 백엔드로 벤치 이름을 달고 찍는 상황이
+        그 증상이다.
 
         시뮬 백엔드에서는 아무 말도 하지 않는다 -- 벤치가 조용해야 사람이
         경고를 무시하는 것을 학습하지 않는다.
@@ -151,19 +136,19 @@ class IcsSim:
         if rawhdr.datasrc_of(self.backend.name) == rawhdr.DATASRC_SIM:
             return
         log.warning(
-            '사이트가 %s(벤치)로 판정됐는데 백엔드가 실물 %r 이다 -- '
-            '**실화소가 %s.… 이름으로 저장된다.**  호스트가 사이트 대역'
-            '(192.168.13/14/15.x)에 없다는 뜻이니, 기기망 NIC 이 내려갔거나 '
-            '망 구성이 바뀐 것이다.  자료를 찍기 전에 확인할 것 (D-015)',
+            '사이트가 %s(벤치)인데 백엔드가 실물 %r 이다 -- **실화소가 %s.… '
+            '이름으로 저장된다.**  관측소 장비라면 [node] observatory 가 '
+            'TESTBED 로 남아 있는 것이니 CTIO/SSO/SAAO 중 맞는 값으로 고칠 것.  '
+            '자료를 찍기 전에 확인할 것',
             rawpair.TESTBED_SITE, self.backend.name, rawpair.TESTBED_SITE)
 
     def log_identity_banner(self) -> None:
         """기동 시 **사이트 정체를 한 덩어리로** 남긴다.
 
         **오배포를 자료 한 장 찍기 전에 사람 눈에 띄게 하는 것이 목적이다.**
-        `[node] site` 한 줄이 사이트 코드 -> 좌표 -> 관측일 경계 -> 파일명까지
-        전부 끌고 가므로(D-011·D-014), 그 한 줄이 틀리면 **아무 오류 없이** 전부
-        틀린다.  헤더에 `OBSERVAT`/좌표가 남으니 사후 탐지는 가능하지만,
+        `[node] observatory` 한 줄이 사이트 코드 -> 좌표 -> 관측일 경계 ->
+        파일명 -> `INSTRUME` 까지 전부 끌고 가므로(D-011·D-014), 그 한 줄이
+        틀리면 **아무 오류 없이** 전부 틀린다.  헤더에 `OBSERVAT`/좌표가 남으니 사후 탐지는 가능하지만,
         그때는 이미 아카이브에 들어가 있다 -- 그래서 **t=0 에 보여주는 쪽**이
         런타임 검사보다 값싸고 확실하다.
 
@@ -198,12 +183,10 @@ class IcsSim:
                   if boundary != '(없음)' else
                   'UT 날짜 그대로 (테스트베드는 관측 야간 개념이 없다)')
 
-        declared = rawpair.normalize_site(cfg.node.telid)
-        mark = '' if declared == site else f'   ⚠️ ini 는 {declared} 라고 적혀 있다'
         rows = [
             ('사이트', f'{site}   (OBSERVAT='
-                       f'{rawpair.OBSERVAT.get(site, "?")}){mark}'),
-            ('판정 근거', getattr(self, 'site_why', '(없음)')),
+                       f'{rawpair.OBSERVAT.get(site, "?")})'),
+            ('근거', getattr(self, 'site_why', '(없음)')),
             ('TELESCOP', str(geo['TELESCOP'])),
             ('위치', where),
             ('관측일 경계', obsday),

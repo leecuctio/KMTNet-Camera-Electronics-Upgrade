@@ -358,6 +358,13 @@ def controller_header(info: dict, *, backend_name: str, ics_build: str,
     while len(units) < 2:
         units.append({})
     out: dict[str, object] = {'DATASRC': datasrc_of(backend_name)}
+    # **없는 컨트롤러도 카드는 남긴다** (운영자 지시 2026-08-24).  1대만 운영할
+    # 때 빠진 쪽의 `CTRLnID/SN/CFG` 를 빼 버리면 pair 두 파일의 카드 수가
+    # 달라지고, converter 와 견본 대사가 그것을 구조 변경으로 읽는다.
+    #
+    # 값은 규격 5.0절의 문자열 sentinel **`'NC'`** 다 (운영자 확정 2026-08-25).
+    # ini 에 `none` 이라고 적은 것도 "없다" 는 뜻이므로 같은 자리로 떨어진다 --
+    # 이 셋만 다른 표기를 쓰면 규격과 갈린다.
     for n, unit in enumerate(units[:2], start=1):
         out[f'CTRL{n}ID'] = str(unit.get('id', 'NC'))
         out[f'CTRL{n}SN'] = str(unit.get('sn', 'NC'))

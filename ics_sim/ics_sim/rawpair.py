@@ -41,7 +41,44 @@ CONTROLLERS: tuple[tuple[str, tuple[str, str]], ...] = (
 
 #: 사이트 코드 → `OBSERVAT` 헤더값.  raw spec 2.2절 표.  파일명 `<SITE>` 와
 #: `OBSERVAT` 가 어긋나면 converter v2.2.0 이 오류로 잡는다.
+#:
+#: **`[node] observatory` 에 적는 값이 곧 이 카드값이다** (운영자 확정
+#: 2026-08-25) -- 네 사이트 모두 어휘가 같다.  그래서 ini 를 보면 헤더에 무엇이
+#: 실릴지 그대로 보이고, converter 의 `OBS_PREFIX`(`CTIO`/`SAAO`/`SSO`/
+#: `TESTBED`)·raw spec 2.2절과도 어긋나지 않는다.
+#:
+#: ⚠️ 테스트베드의 `ORIGIN` 은 `KASI` 로 **다르다**(`ORIGIN_OF`) -- `ORIGIN` 은
+#: "이 파일이 생성된 곳" 이고 `OBSERVAT` 는 "관측소" 라 뜻이 다르다.  둘을
+#: 같게 만들려고 어느 한쪽을 고치지 말 것.
 OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'TESTBED'}
+
+#: `OBSERVATORY`(ini) → 사이트 코드.  **사이트 판별의 단일 권위**다
+#: (운영자 지시 2026-08-24 -- 종전의 호스트 IP 판정은 폐지됐다).
+#:
+#: **위 `OBSERVAT` 표의 역방향**이다 -- 값 어휘가 같으므로 ini 에 적은 낱말이
+#: 그대로 헤더 카드가 된다.
+SITE_OF_OBSERVATORY = {v: k for k, v in OBSERVAT.items()}
+
+#: 사이트 코드 → `[site.<이름>]` 절 이름.
+SITE_SECTION = {'KMTC': 'ctio', 'KMTS': 'saao', 'KMTA': 'sso', 'KMTT': 'testbed'}
+
+
+def site_of_observatory(name: str) -> tuple[str, str]:
+    """`OBSERVATORY` 값 → (사이트 코드, 정규화된 `OBSERVATORY`).
+
+    받는 값은 `CTIO`/`SSO`/`SAAO`/`TESTBED` 넷뿐이다 -- FITS `OBSERVAT`
+    카드값과 같은 어휘다.  **모르는 값이면
+    `ValueError`** -- 종전 `normalize_site()` 처럼 조용히 테스트베드로
+    떨어뜨리지 않는다.  사이트는 파일명 `<SITE>`·좌표·`ORIGIN` 을 함께 끌고
+    가므로, 오타 하나가 자료의 정체를 통째로 바꾼다 (D-015 의 교훈).
+    """
+    up = (name or '').strip().upper()
+    code = SITE_OF_OBSERVATORY.get(up)
+    if code is None:
+        raise ValueError(
+            'OBSERVATORY=%r 를 모르겠다 -- CTIO / SSO / SAAO / TESTBED 중 '
+            '하나여야 한다' % (name,))
+    return code, up
 
 #: 사이트 코드 → `ORIGIN` 기본값.  **`ORIGIN` = "이 파일이 생성된 곳"** (운영자
 #: 확정 2026-08-21, Header_and_Refs v1.7): 관측소 raw 는 관측소 이름

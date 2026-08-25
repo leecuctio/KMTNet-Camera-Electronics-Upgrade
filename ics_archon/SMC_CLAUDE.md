@@ -95,6 +95,34 @@
 11-1. **실기는 `[timing] time_scale = 1.0` 이어야 한다.** 적분은 컨트롤러가
     재므로 축척을 따라오지 않는다 — 카운트다운이 먼저 끝나면 셔터가 강제로
     닫혀 **노출이 잘린 채 `EXPTIME` 은 요청값으로** 실린다.
+10-1. **사이트는 `[node] observatory` 한 줄이 정한다** (2026-08-24).
+    `CTIO`/`SSO`/`SAAO`/`TESTBED` 넷뿐이고 **적은 값이 그대로 `OBSERVAT`
+    카드**가 된다. 거기서 `telid`(사이트 코드)·`site`(`[site.*]` 절)가
+    **유도**되어 파일명 `<SITE>` · 좌표 · `ORIGIN` · `INSTRUME` 가 함께
+    따라온다. **모르는 값은 기동을 거부한다.**
+    ⚠️ 종전의 **호스트 IP 판정(D-015)은 폐지**했다 — `siteid.py` 를 지웠으니
+    되살리지 말 것. 두 위험(틀린 설정 vs 틀린 판정) 중 설정 쪽을 택한
+    결과이고 경위는 DevNote 11.27 이다.
+10-2. **컨트롤러 대수는 `[archon] n_controllers` 다** (1 또는 2, 그 밖은 기동
+    거부). 1대일 때 어느 쪽인지는 `[controllers] ctrl1_id`(→MK)/`ctrl2_id`
+    (→NT) **선언 여부**가 정하고 둘 다 진짜로 선언하면 거부한다. "없음" 은
+    빈 값 · `NC` 가 같은 뜻이라 **한쪽만 적어도, 둘 다 적고 한쪽을
+    `NC` 로 둬도 된다**(2대 ini 를 그대로 가져와 한 줄만 고치는 쓰임).
+    **빠진 컨트롤러의 `CTRLnID/SN/CFG` 카드는 빼지 않고 값에 규격 5.0절
+    sentinel `NC` 가 실린다** — 카드를 빼면 pair 두 파일의 카드 수가 달라져
+    converter 와 견본 대사가 구조 변경으로 읽는다.
+10-3. ⚠️ **색인이 태그를 정한다 — 이름 문자열은 절대 읽지 않는다**
+    (운영자 확정 2026-08-25). 색인 1 = `ctrl1_*` 로 정의한 컨트롤러 =
+    **무조건 `MK`**, 색인 2 = `ctrl2_*` = **무조건 `NT`** 다
+    (`rawpair.CONTROLLERS` 순서).
+    - **이름 끝 번호(`101`/`102`/`103`/`104`…)는 유닛마다 다르고 색인과 아무
+      관계가 없다.** `KMTA-SCI-104` 가 색인 1 에 올 수 있다.
+    - `ctrl1_id = NT` 라고 적어도 색인 1 이므로 `MK` 다.
+    - **정본은 배선**(`[archon] ctrl_mk_host`/`ctrl_nt_host`)이지 이름이
+      아니다. 실험실에서 유닛을 바꿔 꽂는 일이 실제로 있다.
+    - 이름으로 유추하는 코드를 넣지 말 것 — 그러면 **운영이 이름 한 번 바꾸는
+      것이 자료의 정체를 바꾼다.** `tests/test_controllers.py` 의
+      `test_the_index_alone_decides_the_tag_never_the_string` 이 지킨다.
 11. **전원을 켠 채로 끝내지 않는다.** `IcsArchon.stop()` 이 `backend.shutdown()`
     을 부른다 — 검출기 쪽 위험이다. 전원 차단 여부는 확인된 상태(`powered`)가
     아니라 **`power_attempted`** 로 판단한다: `POWERON` 응답을 잃으면 컨트롤러는
@@ -198,7 +226,7 @@
     CTRL1ID/SN/CFG CTRL2ID/SN/CFG RDMODE                  [controllers]
 
 함께 못박은 것 — ini 가 **백엔드 보고값(`BACKPLANE_ID`)을 이긴다**, 비우면
-컨트롤러 값이 실린다, `[node] site` 한 줄이 파일명 `<SITE>`·`OBSERVAT`·좌표·
+컨트롤러 값이 실린다, `[node] observatory` 한 줄이 파일명 `<SITE>`·`OBSERVAT`·좌표·
 `ORIGIN` 을 **함께** 끌고 간다(한쪽만 따라오면 converter 의 유일한 하드 실패),
 테스트베드는 좌표가 sentinel.
 

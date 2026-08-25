@@ -19,6 +19,10 @@ import os
 import re
 from dataclasses import dataclass, field
 
+# rawpair 는 표준 라이브러리만 쓰고 config 를 되import 하지 않는다 --
+# 순환이 없다.  사이트 어휘의 정본이 그쪽이므로 여기서 가져다 쓴다.
+from . import rawpair
+
 DEFAULT_INI = 'ics_sim.ini'
 
 #: IMPv2 노드 이름 규칙 (프로토콜 스펙 2.3절): 2~8자, A-Z 0-9 . _
@@ -40,19 +44,22 @@ class ConfigError(Exception):
 
 @dataclass
 class NodeCfg:
-    #: ini 에 **선언된** 사이트.  `site_from_ip` 가 켜져 있으면 실효 사이트는
-    #: 호스트 IP 로 정해지고 이 값은 **대조용**으로만 남는다 (D-015).
-    site: str = 'ctio'
-    telid: str = 'KMTC'
-    #: 호스트 IP 로 사이트를 판정할지 (기본 켬).
+    #: **사이트 판별의 단일 권위** (`[node] observatory`, 운영자 지시
+    #: 2026-08-24).  `CTIO` / `SSO` / `SAAO` / `TESTBED` 넷뿐이고, **적은 값이
+    #: 그대로 FITS `OBSERVAT` 카드**가 된다 (운영자 확정 2026-08-25).
     #:
-    #: **판정이 ini 를 이긴다.**  벤치에서 `site` 를 `sso` 로 두더라도 파일명은
-    #: `KMTT.…` 여야 한다는 것이 요구사항이고(운영자 확정 2026-08-13), 그러려면
-    #: 설정 밖에서 오는 신호가 이겨야 한다.  어긋나면 경고를 남긴다.
+    #: 여기서 아래 `telid`(사이트 코드)와 `site`(`[site.<이름>]` 절 이름)가
+    #: **유도된다** -- 로더가 채우므로 ini 에 따로 적지 않는다.  그래서 파일명
+    #: `<SITE>` · 좌표 · `ORIGIN` · `INSTRUME` 가 한 값에서 함께 따라온다.
     #:
-    #: **시험은 이걸 끈다** (`tests/conftest.py`) -- 켜 두면 판정이 시험을 돌리는
-    #: 머신의 IP 에 좌우돼 기대 파일명이 흔들린다.
-    site_from_ip: bool = True
+    #: ⚠️ 종전의 **호스트 IP 판정(D-015)은 폐지됐다.**  NIC 상태나 배포된 망에
+    #: 따라 자료의 정체가 바뀌는 것보다, 설정 한 줄이 정본인 쪽이 낫다는 판단
+    #: 이다.  모르는 값은 **기동에서 거부**한다(조용히 테스트베드로 떨어뜨리지
+    #: 않는다).
+    observatory: str = 'TESTBED'
+    #: `observatory` 에서 유도된다.  직접 적지 말 것.
+    site: str = 'testbed'
+    telid: str = 'KMTT'
     ics_id: str = 'ICS'
     ic_ids: tuple[str, ...] = ('K.IC', 'M.IC', 'T.IC', 'N.IC')
     cb_ids: tuple[str, ...] = ('K.CB', 'M.CB', 'T.CB', 'N.CB')
@@ -191,15 +198,42 @@ class ControllersCfg:
     #: `NORMAL`.  MEF `READMODE`(`'64AMP'`, 구조 선언)와 **별개**다.
     rdmode: str = ''
 
+    #: "그 컨트롤러가 없다" 를 ini 에 적는 방법 -- **비워 두거나 `NC`** 다
+    #: (운영자 확정 2026-08-25).  `NC` 는 헤더에 실릴 규격 5.0절 sentinel 과
+    #: 같은 낱말이라 **ini 에 적은 것이 그대로 카드가 된다.**
+    #:
+    #: 표기를 하나로 둔 것이 요점이다 -- 1대 운영을 두 방식으로 적을 수 있되
+    #: (한쪽만 적기 / 둘 다 적고 한쪽을 NC), 낱말은 하나여야 "어느 표기가
+    #: 맞나" 를 묻지 않는다.
+    ABSENT = ('', 'nc')
+
+    @classmethod
+    def is_absent(cls, value: object) -> bool:
+        """그 값이 "없음" 표기인가 (빈 값 · `NC`, 대소문자 무관)."""
+        return str(value or '').strip().lower() in cls.ABSENT
+
+    def declared(self, n: int) -> bool:
+        """색인 `n`(1=MK, 2=NT)의 컨트롤러가 ini 에 **선언돼 있나**.
+
+        1대 운영에서 어느 쪽 컨트롤러인지 가르는 근거다 (운영자 지시
+        2026-08-24).  `ABSENT` 표기는 선언으로 세지 않는다.
+        """
+        return not self.is_absent(getattr(self, f'ctrl{n}_id', ''))
+
     def overrides(self) -> dict[int, dict]:
         """`rawhdr.controller_header()` 오버라이드 -- 색인(1=MK, 2=NT)별
-        `{'id','sn','cfg'}`.  빈 값은 빼고 넘긴다."""
+        `{'id','sn','cfg'}`.  빈 값은 빼고 넘긴다.
+
+        **`NC` 는 빈 값과 똑같이 뺀다** (운영자 확정 2026-08-25) -- 그러면
+        헤더에 규격 5.0절의 sentinel `'NC'` 가 실려 결과가 같다.  ini 에 적은
+        낱말과 카드에 실리는 낱말이 같으므로 표기를 새로 만들 필요가 없다."""
         out: dict[int, dict] = {}
         for n in (1, 2):
             ov = {k: v for k, v in (
                 ('id', getattr(self, f'ctrl{n}_id')),
                 ('sn', getattr(self, f'ctrl{n}_sn')),
-                ('cfg', getattr(self, f'ctrl{n}_cfg'))) if v}
+                ('cfg', getattr(self, f'ctrl{n}_cfg')))
+                if not self.is_absent(v)}
             if ov:
                 out[n] = ov
         return out
@@ -473,19 +507,24 @@ class SimConfig:
         if self.node.master not in self.node.ccds:
             raise ConfigError(f'master={self.node.master} 가 ic_ids 에 없습니다')
 
-        # site <-> telid 정합 (D-011).  telid 는 AUXSTATUS 응답값이자 실기
-        # (ics_archon) raw pair 물리 파일명의 <SITE> prefix 가 되므로, 설정
-        # 오배포(예: CTIO ini 를 SAAO 에 배포)가 여기서 잡히지 않으면 잘못된
-        # 사이트 코드가 아카이브 파일명에 영구히 박힌다 (raw spec 2.2절).
-        expected_telid = _SITE_TELID.get(self.node.site.lower())
-        if expected_telid is None:
+        # 사이트 정합 (D-011).  `telid`/`site` 는 이제 `observatory` 에서
+        # **유도**되므로 둘이 어긋날 길이 없다 -- 대신 유도가 실제로 일어났는지
+        # 확인한다.  손으로 필드를 덮어쓴 코드(주로 시험)가 어긋난 조합을
+        # 만들면 잘못된 사이트 코드가 아카이브 파일명에 영구히 박힌다
+        # (raw spec 2.2절).
+        try:
+            code, _obs = rawpair.site_of_observatory(self.node.observatory)
+        except ValueError as exc:
+            raise ConfigError('[node] %s' % exc) from exc
+        if self.node.telid.upper() != code:
             raise ConfigError(
-                f'site={self.node.site!r} 는 ctio/saao/sso/testbed 중 하나여야 '
-                '합니다')
-        if self.node.telid.upper() != expected_telid:
+                f'observatory={self.node.observatory} 는 telid={code} 인데 '
+                f'{self.node.telid} 로 되어 있습니다 (D-011)')
+        if self.node.site.lower() != rawpair.SITE_SECTION[code]:
             raise ConfigError(
-                f'site={self.node.site} 와 telid={self.node.telid} 가 어긋납니다 '
-                f'(기대값 {expected_telid}, D-011)')
+                f'observatory={self.node.observatory} 는 '
+                f'site={rawpair.SITE_SECTION[code]} 인데 {self.node.site} 로 '
+                '되어 있습니다')
 
         # 노드 ID 검증.  v2.9.1 허브는 이름을 전혀 검사하지 않으므로(주소
         # 충돌 검사도, ServerID 사칭 방어도 없음 -- xis/xis.md 6.3) 잘못된
@@ -687,9 +726,21 @@ def load(path: str | None = None) -> SimConfig:
     if cp.has_section('node'):
         s = cp['node']
         n = cfg.node
-        n.site = s.get('site', n.site).strip()
-        n.telid = s.get('telid', n.telid).strip()
-        n.site_from_ip = _bool(s, 'site_from_ip', n.site_from_ip)
+        # **`observatory` 하나가 사이트를 정한다.**  `site`/`telid` 는 여기서
+        # 유도하므로 ini 에 적어도 무시된다 -- 두 자리가 어긋나면 파일명과
+        # 좌표가 갈리고, 그 갈림은 자료를 다 찍은 뒤에야 드러난다.
+        n.observatory = s.get('observatory', n.observatory).strip()
+        try:
+            n.telid, n.observatory = rawpair.site_of_observatory(n.observatory)
+        except ValueError as exc:
+            raise ConfigError('[node] %s' % exc) from exc
+        n.site = rawpair.SITE_SECTION[n.telid]
+        for stale in ('site', 'telid', 'site_from_ip'):
+            if stale in s:
+                log.warning('[node] %s 는 이제 쓰이지 않는다 -- 사이트는 '
+                            'observatory=%s 가 정한다 (site=%s telid=%s '
+                            '유도됨).  ini 에서 지울 것',
+                            stale, n.observatory, n.site, n.telid)
         n.ics_id = s.get('ics_id', n.ics_id).strip()
         n.ic_ids = _words(s, 'ic_ids', n.ic_ids)
         n.cb_ids = _words(s, 'cb_ids', n.cb_ids)

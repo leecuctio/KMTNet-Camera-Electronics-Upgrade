@@ -59,10 +59,9 @@ def make_config(**over) -> config.SimConfig:
     # 기대값으로 박아 둔 테스트(test_expnum_* 등)가 실행 순서에 좌우된다.
     # 지속 자체는 test_expnum_persist.py 가 tmp_path 로 따로 검증한다.
     cfg.paths.expnum_file = ''
-    # **IP 로 사이트를 판정하지 않는다.**  켜 두면 판정이 시험을 돌리는
-    # 머신의 IP 에 좌우돼 기대 파일명(`KMTC.…`)이 흔들린다.  판정 자체는
-    # test_site_id.py 가 가짜 주소로 따로 검증한다.
-    cfg.node.site_from_ip = False
+    # 사이트는 `[node] observatory` 가 정한다 -- `node__observatory='SSO'`
+    # 처럼 넘기면 `telid`/`site` 는 따라오지 않으므로(필드 직접 대입이다)
+    # 시험은 그 셋을 함께 맞춰야 한다.  `site_of()` 헬퍼를 쓸 것.
     for key, value in over.items():
         section, _, name = key.partition('__')
         setattr(getattr(cfg, section), name, value)

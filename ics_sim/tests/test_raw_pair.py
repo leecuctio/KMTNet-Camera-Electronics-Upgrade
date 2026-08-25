@@ -96,7 +96,7 @@ def test_logical_name_keeps_kmtn_even_when_site_is_not_ctio(tmp_path):
     OBSAgent 가 `"KMTN"` 위치 +6 부터 15자를 잘라 `FitsNum` 으로 쓰므로
     (DevNote 3.2) 이걸 사이트 코드로 바꾸면 파싱이 깨진다.
     """
-    run, cfg = _run(tmp_path, node__site='sso', node__telid='KMTA')
+    run, cfg = _run(tmp_path, node__observatory='SSO', node__site='sso', node__telid='KMTA')
     assert cfg.node.telid == 'KMTA'
     assert [n.split('.')[0] for n in _written(tmp_path)] == ['KMTA', 'KMTA']
     relays = [m for m in run.to('OBS') if 'Wrote LASTFILE=' in m]
@@ -204,7 +204,7 @@ def test_observat_agrees_with_the_filename_site_code(tmp_path):
 
     converter v2.2.0 이 이 둘을 교차 검증한다 -- **유일한 변환 하드 실패**다.
     """
-    _run(tmp_path, node__site='sso', node__telid='KMTA')
+    _run(tmp_path, node__observatory='SSO', node__site='sso', node__telid='KMTA')
     for name, h in _headers(tmp_path).items():
         assert (str(h['OBSERVAT']).strip()
                 == rawpair.OBSERVAT[name.split('.')[0]] == 'SSO')
@@ -372,7 +372,7 @@ def test_detected_site_wins_over_the_ini_all_the_way_to_the_header(tmp_path):
     """
     # ini 는 SSO(KMTA) 라고 선언하지만 판정은 벤치(KMTT) -- 벤치의 실제 상황이다
     cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path),
-                      node__site='sso', node__telid='KMTA')
+                      node__observatory='SSO', node__site='sso', node__telid='KMTA')
     from ics_sim.app import IcsSim
     original = IcsSim._resolve_site
     IcsSim._resolve_site = lambda self: ('KMTT', '(시험 강제)')

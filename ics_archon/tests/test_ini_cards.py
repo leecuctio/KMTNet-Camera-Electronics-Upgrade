@@ -51,7 +51,7 @@ BASE_INI = os.path.normpath(os.path.join(
 
 #: **기본값과 겹치지 않는 값들.**  겹치면 배선이 끊겨도 통과한다.
 INI_OVERRIDES = {
-    'node': {'site': 'sso', 'telid': 'KMTA', 'site_from_ip': 'false'},
+    'node': {'observatory': 'SSO'},
     'site': {'telescop': 'PROBE-TELESCOPE 9.9m', 'latitude': '-12:34:56.78',
              'longitud': '123:45:67', 'elevatio': '4242',
              'origin': 'INIORIGIN'},
@@ -219,7 +219,7 @@ def test_site_switch_moves_geometry_and_observat_together(tmp_path):  # noqa: AN
     `<SITE>` 와 `OBSERVAT` 를 교차 검증해 거부하는 유일한 하드 실패다.
     """
     over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
-    over['node'] = {'site': 'ctio', 'telid': 'KMTC', 'site_from_ip': 'false'}
+    over['node'] = {'observatory': 'CTIO'}
     over['site'] = {}                    # 덮어쓰기를 비워 사이트 표를 쓰게 한다
     run(tmp_path, over)
     names = sorted(os.path.basename(p)
@@ -238,7 +238,7 @@ def test_site_switch_moves_geometry_and_observat_together(tmp_path):  # noqa: AN
 def test_testbed_leaves_the_coordinates_as_sentinels(tmp_path):  # noqa: ANN001
     """테스트베드는 좌표를 **일부러 비운다** -- 시험 산출물이 관측처럼 보이면 안 된다."""
     over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
-    over['node'] = {'site': 'testbed', 'telid': 'KMTT', 'site_from_ip': 'false'}
+    over['node'] = {'observatory': 'TESTBED'}
     over['site'] = {}
     run(tmp_path, over)
     head = headers(tmp_path)['MK']

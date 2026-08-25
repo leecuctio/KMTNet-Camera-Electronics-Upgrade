@@ -213,8 +213,12 @@ cp <어딘가>/KMTNet_Sci_*.acf            ~/AIC/Config/acf/
 
 ```ini
 [node]
-site         = testbed              # 관측소 반입 시 ctio | saao | sso
-telid        = KMTT                 # 사이트 판정(IP)이 이 값을 이긴다 (D-015)
+observatory  = TESTBED              # **사이트를 정하는 단 하나의 값**
+                                    #   CTIO | SSO | SAAO | TESTBED
+                                    #   적은 값이 그대로 OBSERVAT 카드가 되고,
+                                    #   사이트 코드 KMTC/KMTA/KMTS/KMTT 가 유도돼
+                                    #   파일명·좌표·ORIGIN·INSTRUME 를 함께 끌고
+                                    #   간다.  모르는 값은 기동 거부
 ic_ids       = M.IC, K.IC           # 유닛 한 대만 돌릴 때 (2대면 4개)
 cb_ids       = M.CB, K.CB
 
@@ -223,6 +227,7 @@ data_dir     = ~/AIC/data
 expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 
 [archon]
+n_controllers = 1                   # 유닛 한 대만 돌릴 때.  2대면 2
 ctrl_mk_host = 10.0.0.13
 acf_mk       = ~/AIC/Config/acf/KMTNet_Sci_fast_med_U13.acf
 
@@ -374,10 +379,23 @@ ic_ids = M.IC, K.IC        # NT 를 빼면 그 파일은 생기지 않는다
 cb_ids = M.CB, K.CB
 master = K
 
+[controllers]
+ctrl1_id = KMTA-SCI-101    # **선언한 쪽이 그 한 대다** (색인 1 = MK)
+
 [archon]
+n_controllers = 1          # 1 또는 2.  그 밖은 기동 거부
 ctrl_mk_host = 10.0.0.13
 acf_mk       = acf/KMTNet_Sci_fast_med_U13.acf
 ```
+
+> `n_controllers = 1` 이면 `[controllers] ctrl1_id`(→`MK`) / `ctrl2_id`(→`NT`)
+> 의 **선언 여부**가 어느 컨트롤러인지 정한다.  둘 다 선언하면 기동을 거부한다.
+> ⚠️ **색인이 태그를 정하고 이름 문자열은 읽지 않는다** — 이름 끝 번호
+> (`101`/`103`/`104`…)는 유닛마다 다르고 색인과 관계없다.  정본은 배선
+> (`ctrl_mk_host`/`ctrl_nt_host`)이다.
+> "없음" 은 빈 값 · `NC` 가 같은 뜻이라 **한쪽만 적어도, 둘 다 적고
+> 한쪽을 `NC` 로 둬도 된다.**  빠진 쪽의 `CTRLnID/SN/CFG` 카드는 **빼지 않고**
+> 값에 규격 5.0절 sentinel `NC` 가 실린다.
 
 ```bash
 python -m ics_archon
