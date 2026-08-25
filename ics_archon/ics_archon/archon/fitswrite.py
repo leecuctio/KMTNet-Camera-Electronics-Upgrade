@@ -153,9 +153,13 @@ def header_bytes(cards, naxis1: int, naxis2: int) -> bytes:  # noqa: ANN001
             구조 카드는 없어도 되고, 있으면 그것을 쓴다 (시험 편의).
         naxis1/naxis2: 구조 카드가 없을 때 선언할 기하.
 
-    견본 pair 는 값 135 + COMMENT 8 + END = **144카드 = 2880B x 4** 라 패딩이
-    필요 없다.  그래도 `END` 뒤를 공백으로 채워 정렬을 보장한다 -- 카드 수가
-    바뀌는 개정이 오면 여기서 조용히 흡수돼야 한다.
+    견본 pair 는 v1.5 에서 값 **131** + COMMENT 8 + END 1 = 140 레코드가 됐고
+    (HK 4장 폐지), `END` 뒤를 **공백 레코드 4장**으로 채워 144 레코드 ·
+    2880B x 4 = 11,520 바이트를 유지한다 (FITS 표준 패딩, 규격 3장).
+
+    ⚠️ **그 패딩이 여기 있어서 v1.5 반영이 조용히 흡수됐다.**  같은 개정에서
+    labtest 스크립트의 `build_header` 는 패딩 없이 정렬 단정만 두고 있었고,
+    카드가 4장 줄자 헤더 조립이 통째로 거부됐다 -- 단정만으로는 부족하다.
     """
     have_structural = any(k in rawcards.STRUCTURAL for k, _v, _c in cards)
     out: list[str] = []

@@ -124,7 +124,7 @@ class DetectorBackend(Protocol):
     # -- FITS 헤더용 컨트롤러 사실 (raw spec 5.5·5.6절) --------------------
     #
     # **왜 텔레메트리 중계가 아니라 백엔드인가.**  레거시 raw 헤더에서 듀어
-    # 온도(`CCDTEMP` `PT30N1` `CHARCOAL` `GLYC_IN` …)는 `ENS7` **뒤에** 있고
+    # 온도(`CCDTEMP` `PT30N1` `CHARCOAL` `WALLBRD` …)는 `ENS7` **뒤에** 있고
     # AUX 텔레메트리 필드 집합에는 없다 -- 각 IC 가 자기 듀어 RTD 를 직접
     # 읽었다는 뜻이다.  신규는 Archon 계통이 그 센서를 읽으므로 값의 출처가
     # TC 중계(`telemetry.py`)가 아니라 이쪽이다 (D-013).

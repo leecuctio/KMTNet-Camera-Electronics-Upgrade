@@ -1,7 +1,9 @@
 # Raw FITS 헤더 개정에 따른 MEF ICD · MEF Converter 개정 및 검토 사항
 
-**v0.6 (Draft)** · 2026-08-22 · **Part 1** = 헤더 카드 개정이 MEF 쪽 3자(ICD v4.1 · MEF keyword 정의서 v1.0 · converter v2.2.0)에 요구하는 개정 목록 · **Part 2** = raw 파일 번호 · 정체성 · 충돌 처리 재설계와 그 MEF 파급
+**v0.6 (Draft)** · 2026-08-22 · **제자리 개정 2026-08-25** (raw spec v1.5 5장 검토 라운드 반영 — 아래 블록) · **Part 1** = 헤더 카드 개정이 MEF 쪽 3자(ICD v4.1 · MEF keyword 정의서 v1.0 · converter v2.2.0)에 요구하는 개정 목록 · **Part 2** = raw 파일 번호 · 정체성 · 충돌 처리 재설계와 그 MEF 파급
 
+> **제자리 개정 (2026-08-25) — raw spec v1.5 5장 검토 라운드 반영.** 판 이름은 그대로 두고 내용만 보강했다(참조 안정성 — raw spec·README 가 이 파일명을 가리킨다). 반영: ① **D-017 사이트 코드** — `TESTBED`/`KMTT` 폐지, `KASI`/`KMTK`. §1 의 철회됐던 `OBSERVAT` 항목을 **C-재개** 로 되살렸고 §3 의 "파일명 체계 불변" 기술을 정정했다 ② **D-018 번호 공간** `000000`–`999999`(Part 2 §2·§3) ③ **`CHMAP_*` 토큰 3자→4자** `<chip><A\|D><nn>`(C-11 · §2 — **구 3자 파서는 고쳐야 한다**) ④ **HK 카드 4장 폐지**(`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT`) — §1 HK 항목 ④ · §4 신설 ⑤ **`IMGSEC` `B-BOT`→`D-BOT`**(OI-17 잔여 ①·② 종결, §5) ⑥ **`TELESCOP`/`FPAID` 사이트별 상수표**(D-017 항목 6, §4) ⑦ OI-13 재질의 3초→1초.
+>
 > **v0.6 에서 바뀐 것 — raw spec 발행에 따른 정합 (2026-08-22).** ① 재작성판 **`KMT_CEU_Raw_FITS_Specification`(raw spec)** 이 발행되어 구 규격 참조를 전부 현행판으로 교체했다 — 이후 운영자 1~4장 검토 반영판 **v1.4** 로 갱신(X overscan `RRRRLLLL` 확정 → §3·§5 의 4:4 vs 5:3 항목 종결). ② **Part 2 를 파급 요약으로 축약** — 번호·충돌·정체성의 정본이 raw spec 2.3절과 DECISION_LOG **D-016** 으로 옮겨졌으므로, 본문(§1~§5·§8)을 걷어내고 MEF/구현 파급(구 §6·§7)만 남겼다(내용 이중화 방지). 전신 v0.5 는 `archive/`.
 
 > **v0.5 에서 바뀐 것 — 두 문서를 하나로 합쳤다 (운영자 지시 2026-08-22).**
@@ -25,16 +27,16 @@
 | 항목 | 내용 | 판단 요청 |
 | --- | --- | --- |
 | **C-신설: MEF `UNIQNAME` 공급원** | raw `UNIQNAME` 폐지 후 `v2_1.py:405`의 `v("UNIQNAME","")`가 **항상 빈 문자열**을 반환한다(오류 없음) | 대안 (a) raw `FILENAME` 카드에서 채움 (b) 디스크 파일명(`mk_path`)에서 파생 — 이미 AMPINFO `RAWFILE`이 같은 원천을 씀 (c) MEF `UNIQNAME` 자체를 폐지 — MEF `FILENAME` · `RAWFILE`로 충분. **raw 쪽 권고: (c) 검토, 최소 (b)** |
-| ~~`OBSERVAT` 관련~~ (v0.2 등재 → **종결**) | 사이트 코드 재정의안이 **철회**되고 `OBSERVAT` 는 현행 체계 그대로 `TESTBED`/`CTIO`/`SAAO`/`SSO` 로 확정됐다(운영자, 2026-08-21) | **개정 항목 없음** — converter 교차검증·ICD 2.1·`rawpair.py` 와 완전 정합 |
+| **C-재개: `OBSERVAT`·`<SITE>` 사이트 코드 (D-017, 2026-08-25)** | v0.2 에 등재됐다가 2026-08-21 에 **철회·종결**됐던 항목이 **되살아났다.** 운영자가 `TESTBED`/`KMTT` 를 폐지하고 **`KASI`/`KMTK`** 로 확정했다 — `OBSERVAT` ∈ {`CTIO`,`SSO`,`SAAO`,`KASI`}, 파일명 접두어 ∈ {`KMTC`,`KMTA`,`KMTS`,`KMTK`}. `ics_sim` 반영 완료(`rawpair.OBSERVAT`·`ORIGIN_OF`·`KASI_SITE`·보정표·`config._SITE_TELID`·`siteid.BENCH_SITE`). | ⚠️ **converter 파일명 정규식 `^(KMTC\|KMTS\|KMTA\|KMTT)\.` 의 넷째 대안을 `KMTK` 로 바꿔야 한다** — 안 바꾸면 KASI 자료가 짝 탐색에 걸리지 않는다. L0 MEF prefix `kmtt`→`kmtk`. **ICD v4.1 §2.1 본문도 아직 `KMTT`** 다 |
 | **C-신설(경미): MEF `ORIGIN` 을 상수로** | `ORIGIN` 개념이 **"이 파일이 생성된 곳"** 으로 확정됐다: 관측소 raw = 관측소 이름 · 테스트베드 raw = `KASI` · **KASI 파이프라인 산출물 = `KASI`**. 현행 converter 는 raw `ORIGIN` 을 MEF 로 복사한다(`v2_1.py:341`, `v("ORIGIN","KASI")`) — MEF 는 파이프라인 산출물이므로 개념과 어긋난다 | MEF PRIMARY 의 `ORIGIN` 을 복사 대신 **상수 `'KASI'`** 로 기록. 한 줄 수정, 긴급도 낮음(관측소 raw 를 KASI 서버에서 변환하는 현행 흐름에서만 차이 발생) |
 | C-신설(선택): `ORIGNAME` pass-through | 충돌 신호(`FILENAME ≠ ORIGNAME`)는 raw에만 있다. MEF 층 충돌 필터가 필요할 때만 추가 | raw 헤더 층 필터가 기본이므로 필수 아님 |
-| **C-11 개정** | amp `MODULE`/`CHANNEL` 공급원: 구 규격의 `AMOD<nn>`/`ACHN<nn>` 색인형 65장 → **`CHMAP_LT`/`CHMAP_LB`/`CHMAP_RT`/`CHMAP_RB` 4장**으로 재설계됐다. 현행 추정식(`MODULE=1+((amp-1)//8)`, `CHANNEL=1+((amp-1)%8)`, 'placeholder' 주석)은 실배선(CCD 출력 채널이 chip당 1–16, TOP/BOT 대역이 chip마다 반대)과 다르다 | `XTALKGROUP` 파생도 이 값 기준으로 재정의. `AMPMAP` 선언 카드는 폐지 방향 |
+| **C-11 개정** | ⚠️ **토큰 폭이 3자→4자로 바뀌었다 (2026-08-25, raw spec v1.5)** — `<chip><A\|D><nn>`(01–08=`A`·09–16=`D`). 구 3자(`M16`)를 파싱하는 코드는 고쳐야 한다. amp `MODULE`/`CHANNEL` 공급원: 구 규격의 `AMOD<nn>`/`ACHN<nn>` 색인형 65장 → **`CHMAP_LT`/`CHMAP_LB`/`CHMAP_RT`/`CHMAP_RB` 4장**으로 재설계됐다. 현행 추정식(`MODULE=1+((amp-1)//8)`, `CHANNEL=1+((amp-1)%8)`, 'placeholder' 주석)은 실배선(CCD 출력 채널이 chip당 1–16, TOP/BOT 대역이 chip마다 반대)과 다르다 | `XTALKGROUP` 파생도 이 값 기준으로 재정의. `AMPMAP` 선언 카드는 폐지 방향 |
 | C-5 · C-13 개정 | "raw geometry 선언 카드 대조" → **포장 규범 조항 + 표본 검증** 체계로 재조정 — `OSCNPATT` 는 raw **미도입 확정**(v1.9), `ROWORDR` 와 함께 규격 조항으로 이관. 대조표에 2장의 이름 대응을 명시 | |
 | C-12 | amp `READDIR` 공급원 후보였던 `RDDIRT`/`RDDIRB` 는 raw **미도입 확정**(v1.9) — 대조 근거를 카드가 아니라 **규격 조항 + 표본 검증**으로 갱신. OI-3(실기 확인) 유지 | |
-| **C-신설: HK 온도 카드 재구성** (2026-08-21) | 온도센서 구성 변경으로 raw 의 Camera System House Keeping 블록이 재편됐다 — **신설 `DMPTEMP`(DMP 온도) · `WALLBRD`(wallboard 온도 — v0.2 의 `WALLBOAR` 에서 개명) · `HEBOX`(HE box 내부 온도)**, `AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` comment 정의 확정(AIR는 열교환기 기준 — IN이 따뜻한 쪽, 레거시 의미 유지), `DEWPRES` 단위 [torr] · 포맷 `x.xxe-x` · **측정불가 sentinel `9.99e-9`**(값 0/이상값/게이지 비숫자 — 규격 5.0 sentinel 표에 DEWPRES 전용 예외로 등재 필요), **`CCDTEMP` 의미 변경**: 구 설계(`CCDTEMP1`·`CCDTEMP2` 평균 파생, D-013)에서 **실측 센서 1개 값**("CCD temperature M")으로. `RTD12` 폐지는 확정대로(D-013). **출처 확정(v0.3)** — `CCDTEMP`·`DEWPRES`·`PT30N*`·`CHARCOAL`·`DMPTEMP`·`WALLBRD` = ICG RTD measurement / `AIR_*`·`GLYC_*` = standalone RTD readout unit / `HEBOX` = Tapaculo sensor | ① converter 가 `DMPTEMP`/`WALLBRD`/`HEBOX` 를 읽지 않음 — MEF 로 보내려면 읽기 추가 ② MEF/L1 의 `CCDTEMP` 정의를 "평균 파생"에서 "대표 센서 실측"으로 갱신 (L1 `CARRY_KEYS` 가 `CCDTEMP` 이름을 요구하므로 이름은 불변) ③ `CCDTEMP1`/`CCDTEMP2` 후보는 **제외 확정**(운영자, 2026-08-21) — 평균 파생 설계 폐기에 따름 |
+| **C-신설: HK 온도 카드 재구성** (2026-08-21) | 온도센서 구성 변경으로 raw 의 Camera System House Keeping 블록이 재편됐다 — **신설 `DMPTEMP`(DMP 온도) · `WALLBRD`(wallboard 온도 — v0.2 의 `WALLBOAR` 에서 개명) · `HEBOX`(HE box 내부 온도)**, `AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` comment 정의 확정(AIR는 열교환기 기준 — IN이 따뜻한 쪽, 레거시 의미 유지), `DEWPRES` 단위 [torr] · 포맷 `x.xxe-x` · **측정불가 sentinel `9.99e-9`**(값 0/이상값/게이지 비숫자 — 규격 5.0 sentinel 표에 DEWPRES 전용 예외로 등재 필요), **`CCDTEMP` 의미 변경**: 구 설계(`CCDTEMP1`·`CCDTEMP2` 평균 파생, D-013)에서 **실측 센서 1개 값**("CCD temperature M")으로. `RTD12` 폐지는 확정대로(D-013). **출처 확정(v0.3)** — `CCDTEMP`·`DEWPRES`·`PT30N*`·`CHARCOAL`·`DMPTEMP`·`WALLBRD` = ICG RTD measurement / `AIR_*`·`GLYC_*` = standalone RTD readout unit / `HEBOX` = Tapaculo sensor | ① converter 가 `DMPTEMP`/`WALLBRD`/`HEBOX` 를 읽지 않음 — MEF 로 보내려면 읽기 추가 ② MEF/L1 의 `CCDTEMP` 정의를 "평균 파생"에서 "대표 센서 실측"으로 갱신 (L1 `CARRY_KEYS` 가 `CCDTEMP` 이름을 요구하므로 이름은 불변) ③ `CCDTEMP1`/`CCDTEMP2` 후보는 **제외 확정**(운영자, 2026-08-21) — 평균 파생 설계 폐기에 따름 ④ ⚠️ **추가 (2026-08-25): `AIR_IN`·`AIR_OUT`·`GLYC_IN`·`GLYC_OUT` 4장이 raw 에서 폐지됐다** (운영자 확정, raw spec v1.5 — 5.6절 18장→14장, 5.10절 폐지 목록 등재). `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` Thermal/dewar 행이 아직 넷을 싣고 있고 converter 도 pass-through 한다 — **raw 가 공급을 끊으므로 MEF 쪽에서 함께 폐지할지, 다른 공급원을 둘지 LEECU 판단이 필요하다.** standalone RTD 계통이 raw 헤더에서 완전히 비었다 |
 | **C-신설: MEF `UT` 조립 원천** (2026-08-21) | raw 가 `TSHOPEN`/`TSHSHUT` 를 싣지 않는 것으로 판정됐다(Header_and_Refs v1.9 3.2절). converter 는 `DATE-OBS` 날짜부 + raw `TSHOPEN` 으로 MEF `UT` 를 조립하므로(`v2_1.py:440` · `:583`) **MEF `UT` 시각부가 빈다** — 오류 없음 | `UT` 조립 원천을 `DATE-OBS` 의 시각부로 교체 (`DATE-OBS` 는 밀리초까지 담는다, D-014) |
 | C-신설(경미): MEF `DARKTIME` 공급원 | raw `DARKTIME` 미기재 판정 — 값이 `EXPTIME` 과 동일해 파생으로 충분(v1.9 3.2절). 현행 converter 기본값 `0.0` 이 MEF 에 박힌다 | `EXPTIME` 값으로 파생 기록, 또는 MEF `DARKTIME` 폐지 판단 |
-| **C-후보 신설: MEF `VOLTINFO`/`TELEMETRY` 공급원** (2026-08-22) | raw 가 컨트롤러별 텔레메트리 카드 **`C1_TEMP`·`C1_VOLT`·`C1_CURR` / `C2_*`** 를 도입했다(v1.9, 구 `BCKTEMP` 확장) — MEF `VOLTINFO`/`TELEMETRY` 를 실측값으로 채울 원천이 처음 생겼다. converter 는 이 카드들을 아직 읽지 않는다 | 현행 placeholder 경로(C-18)를 raw `Cn_*` 기반 채움으로 **대체**하는 안 — 도입 시 읽기 추가 + 조립 규칙(모듈 순서 명세는 raw 규격 수록 예정) 정의 |
+| **C-후보 신설: MEF `VOLTINFO`/`TELEMETRY` 공급원** (2026-08-22) | raw 가 컨트롤러별 텔레메트리 카드 **`C1_TEMP`·`C1_VOLT`·`C1_CURR` / `C2_*`** 를 도입했다(v1.9, 구 `BCKTEMP` 확장) — MEF `VOLTINFO`/`TELEMETRY` 를 실측값으로 채울 원천이 처음 생겼다. converter 는 이 카드들을 아직 읽지 않는다 | 현행 placeholder 경로(C-18)를 raw `Cn_*` 기반 채움으로 **대체**하는 안 — 도입 시 읽기 추가 + 조립 규칙 정의 — **모듈·레일 자리 순서 명세는 raw spec 5.6.1절에 수록됐다** (v1.5, 2026-08-25) |
 | (기록) `DATASRC` 값 체계 확장 · chiller 블록 미기재 | `ARCHON`/`SIM` → **`ARCHON_SCIENCE`/`ARCHON_GUIDE`/`SIM`**(`HEMODE` 흡수) · chiller 4장(`CHSTAT` `CHOP` `CHSET` `CHPROC`)은 raw 미기재 **확정**(운영자가 초안에서 삭제, 2026-08-21 · 재삭제 검증 2026-08-22) | converter 는 `DATASRC`/`CHOP`/`CHSET`/`CHPROC` 를 읽지 않고 `CHSTAT` 는 기본값 `""` 경로 — 영향 없음/경미, 기록만 |
 | (기록, v0.5) 돔 Source 변경 · `LEDFLASH` 단위 변경 · `ICSBUILD` 형식 변경 | ① 돔 카드(`DSSTAT`~`DSTELAZ`)의 공급원이 `AUX relay` → **`TCS relay or REDIS`**(newTCS 편입), `DALTERR`/`DAZERR` 는 **`ICS calculation`** — 값 공급 계통의 변경이지 카드 이름·형식 변경이 아니다 ② `LEDFLASH` 단위 [seconds] → **[milliseconds] 정수**(운영자 확정 2026-08-22 — 카드 comment 가 단위 명시) ③ `ICSBUILD` 형식 `<프로그램>-v<버전>:<빌드일시>` → **`v<버전>:<빌드일시>Z`**(프로그램 식별은 `DATASRC` 담당) | 셋 다 converter 미독 카드(`LEDFLASH` `ICSBUILD`) 또는 pass-through 값이라 **converter 동작 불변 — 기록만**. 단 하류 도구가 `LEDFLASH` 를 초로 읽지 않게 ICD/정의서 부속 문서에 단위 변경을 전파할 것 |
 
@@ -54,7 +56,7 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 | `OVRSCNY` = 84 | (없음 — `MIDOVSCY`=168=2×84 관계, 분배는 OI-4) | |
 | `NAMPDET` = 16 | `AMPPCD`(정의서) | raw는 `NAMPS` · `AMPPCD` 폐지 (Header_and_Refs v1.6 8.1절) |
 | `NAMPRAW` = 32 | (없음 — raw 파일 단위 개념) | |
-| `CHMAP_LT/LB/RT/RB` | AMPINFO `MODULE` · `CHANNEL` (C-11) | 값 = CCD 출력 채널, 자릿수 고정 3자 토큰 8개 |
+| `CHMAP_LT/LB/RT/RB` | AMPINFO `MODULE` · `CHANNEL` (C-11) | 값 = CCD 출력 채널, **고정 4자 토큰 8개** — `<chip><A\|D><nn>`, 01–08=`A` · 09–16=`D` (raw spec v1.5, 2026-08-25 개정. **구 3자 `M16` 을 파싱하는 코드는 고쳐야 한다**) |
 | `DETID` = 'MK'/'NT' | ((TBD)) | MEF 목적지 미정 — 레거시 계승, 값 재정의(pair) |
 | `FILENAME` | MEF `FILENAME`(자체 생성) · AMPINFO `RAWFILE` | converter는 raw `FILENAME` **카드**를 읽지 않음(디스크명만 사용) |
 | `ORIGNAME` | (없음 — 선택 pass-through, §1) | |
@@ -76,13 +78,17 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 - ~~**`READMODE` 값 충돌**: ICD/정의서는 `READMODE='64AMP'`(구조 선언), raw 초안은 `'FAST'`(독출 속도 모드)로 쓰려 했다 — 같은 이름, 다른 뜻. 이름 분리 필요~~ → **해소(v1.9)**: raw 쪽이 **`RDMODE`** 로 개명 도입되어 이름이 갈라졌다 — MEF `READMODE='64AMP'` 는 그대로, **ICD 개정 항목 없음**.
 - **AMPINFO의 상류 공급원 명시**: "authoritative 64-row map"의 배선 열(MODULE/CHANNEL)이 converter 추정식이 아니라 **raw `CHMAP_*` + 재작성판의 amp 전수 표**에서 온다는 것을 명시.
 - **overscan 좌우 패턴 — 종결(2026-08-22)**: 신규는 **`RRRRLLLL`(4:4) 확정**이다(실제 획득 자료 육안 확인, raw spec 4.1절). 레거시 MEF `AMPSEC` 의 M/T=5:3 · K/N=3:5 는 레거시 계통의 관찰이므로 신규 L0 에 적용하지 말 것 — ICD·정의서가 레거시 패턴을 전제하고 있으면 갱신 대상이다. geometry 가 바뀌면 **raw 쪽은 `CAMVER`(HW)/`CTRLxCFG`(설정) 범프 · MEF 쪽은 `GEOMVER` 동반 범프** — `RAWVER` 는 미도입 확정이다(Header_and_Refs v1.13 확인 요망 11: 규격/구성 버전은 `CAMVER`·`CTRLxCFG`·`DETID`·`CHMAP_*` 조합으로 파악).
-- 파일명 체계(D-011)는 **불변** — 충돌 번호 증가 시에도 형식은 같고 번호만 다르다. `find_pair()` · 정규식 영향 없음.
+- ⚠️ **파일명 `<SITE>` 넷째 코드 개정 (D-017, 2026-08-25) — ICD §2.1 갱신 필요.** `KMTT`(TESTBED) → **`KMTK`(KASI)**. **converter 정규식 `^(KMTC\|KMTS\|KMTA\|KMTT)\.` 의 넷째 대안을 바꾸지 않으면 KASI 자료가 `find_pair()` 에 걸리지 않는다.** L0 MEF prefix `kmtt`→`kmtk` 도 함께. **형식(필드 폭·구분자·6자리 zero-padding)은 불변**이고 바뀐 것은 코드 하나다.
+- **번호 공간 확대 (D-018, 2026-08-25)**: `000000`–`099999` → **`000000`–`999999`**. 정규식이 `\d{6}` 이라 **converter·ICD 형식 영향은 없다** — 다만 "앞자리가 항상 `0`" 을 전제한 도구가 있다면 그건 깨진다.
+- 충돌 번호 증가 시에도 파일명 형식은 같고 번호만 다르다.
 
 ## 4. MEF Keywords 정의서 v1.0 개정 후보
 
 - **`XTALKVER` · `REFVER` · `CATVER` 의 계층 규칙 (운영자 확정 2026-08-22)**: 이 셋의 정본은 **pipeline calibration DB** 다(C-14) — HW·성능 변화 없이도 pipeline setup 에서 바뀔 수 있는 값이라 raw 는 싣지 않는다. **전처리 전 MEF(L0)에 넣을지는 pipeline 팀 판단**이고, **전처리 후 산출물(L1)에는 필수**다 — 보정에 실제 적용한 버전이므로. 정의서/ICD 에 이 계층을 명시할 것.
 - `UNIQNAME` 항목: 공급원 변경 또는 폐지(§1 C-신설과 연동).
 - `NAMPS`=64 · `AMPPCD`=16: raw 쪽 폐지(v1.6 8.1)와의 관계 명시 — MEF 유지 여부는 LEECU 판단(MEF는 카메라 전체 관점이라 유지가 자연스러울 수 있음).
+- ⚠️ **Thermal/dewar 행에서 `AIR_IN`·`AIR_OUT`·`GLYC_IN`·`GLYC_OUT` 4장의 거취 (2026-08-25)**: raw spec v1.5 가 이 넷을 **폐지**했다(5.6절 18장→14장, 5.10절 등재). 정의서 v1.0 은 아직 넷을 싣고 converter 도 pass-through 한다 — **raw 가 공급을 끊으므로 MEF 에서도 폐지할지, 다른 공급원을 둘지 LEECU 판단이 필요하다.** 이로써 `standalone RTD readout unit` 계통이 raw 헤더에서 완전히 비었다(공급은 `ICG RTD`·`Tapaculo` 둘만 남는다).
+- **사이트별 상수표 신설 (D-017 항목 6, raw spec 5.3.1절)**: `TELESCOP` = CTIO `#1` · SSO `#3` · SAAO `#2` · KASI `#0` / `FPAID` = CTIO `FPA#2` · SSO `FPA#1` · SAAO `FPA#3` · KASI `FPA#0`. ⚠️ **망원경 번호와 FPA 번호는 관측소 셋 모두 어긋난다** — MEF 쪽에서 둘을 맞추는 파생을 넣으면 검출기 귀속이 틀어진다.
 - (기록) 레거시 MEF의 `AMPNAME2`('im16')가 배선 identity를 헤더에 실은 선례 — `CHMAP_*` 채택의 계보.
 
 ## 5. 미결(OI-*)과의 연동
@@ -92,6 +98,8 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 | OI-3 (`ROWORDR`/`RDDIR*`) | 포장 규범 조항 이관 후 flat/star 시험은 "사실 확인"이 아니라 **준수 검증**이 된다 |
 | OI-4 (중앙 168행 분배) | raw `OVRSCNY`=84는 타일 규약 값이다. 물리 분배는 실측 후 `MIDOSCT`/`MIDOSCB`로 |
 | OI-9 (배선 실측) | `CHMAP_*` 값의 실측 확정 + Archon module/channel 층(`XTALKCAL=True` 전제). CCD 출력 채널 라벨과 Archon tap의 대응은 STA 문서/Tom O'Brien 협의 |
+| ~~OI-17 잔여 ①·②~~ | **종결 (2026-08-25)** — 운영자가 **채널 번호 = OS 번호**를 확정(잔여 ②)했고, 그로써 `채널 09–16 = OS9–16 = 위 half = 섹션 D` 가 e2v 데이터시트까지 이어져 `IMGSEC` 의 `B-BOT` 16행이 **`D-BOT`** 으로 정정됐다(잔여 ①). 기계 정본이 `Detector_Ch_to_AmpID_Map_v1.1.txt` 로 판올림됐다 — **구 v1.0(3자 토큰·`B-BOT`)을 읽는 도구는 고쳐야 한다.** 잔여는 ③(K·N 조 180° 회전 장착 확인)뿐 |
+| OI-13 (셔터 반영 지연) | 재질의 지연이 **3초 → 1초**로 바뀌었다(운영자 2026-08-25, raw spec 5.7.1절). `AUXQDATE` 가 `DATE-OBS` 뒤로 가는 경로의 문턱도 `EXPTIME > 1 s` 로 함께 내려간다 |
 | ~~(신규 제안)~~ | ~~X overscan 패턴 4:4 vs 5:3 검증~~ — **종결(2026-08-22)**: 실제 획득 자료 육안 확인으로 `RRRRLLLL`(4:4) 확정 (raw spec 4.1절) |
 
 ## 6. MEF/converter 쪽 미결 안건 (v0.5 신설 — 구 검토 문서에서 이관)
@@ -109,7 +117,7 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 
 # Part 2 — raw 파일 번호 · 정체성 · 충돌 처리 (파급 요약)
 
-> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.4.md`](KMT_CEU_Raw_FITS_Specification_v1.4.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 000000–099999, 선검사, 상한 100000회) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
+> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.5.md`](KMT_CEU_Raw_FITS_Specification_v1.5.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 **000000–999999**, 선검사, 상한 **1000000회** — **D-018**, 2026-08-25 로 구 `099999`·100000회를 대체) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
 
 ## 1. 하류 도구 요구사항
 
@@ -126,7 +134,7 @@ converter(v2.2.0)는 raw `UNIQNAME` 을 읽어 MEF `UNIQNAME` 으로 옮긴다(`
 | 파일 | 변경 |
 | --- | --- |
 | `rawpair.py` | 선검사 루프(되감음 · 상한 100000회) 신설, clash 격리 로직 제거, `UNIQNAME` 제거, `ORIGNAME` 항상 기록 |
-| `state.py` | 확정 N 으로 카운터 동기화, 000000–099999 순환 |
+| `state.py` | 확정 N 으로 카운터 동기화, **000000–999999 순환** (D-018, 2026-08-25 — 구 `099999`) |
 | `sequencer._store()` | 확정된 이름만 수령 (이름 결정은 rawpair 몫) |
 | `tests/test_raw_header.py` | `UNIQNAME` 필수 목록 제거·RETIRED 추가, `NAMECLSH` 시험 교체, 평시 `FILENAME`==`ORIGNAME` 불변식, 충돌·되감음·상한 시험 신설 |
 
@@ -140,7 +148,7 @@ converter(v2.2.0)는 raw `UNIQNAME` 을 읽어 MEF `UNIQNAME` 으로 옮긴다(`
 | 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |
-| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.4.md`](KMT_CEU_Raw_FITS_Specification_v1.4.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
+| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.5.md`](KMT_CEU_Raw_FITS_Specification_v1.5.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
 | 전신 문서 | `archive/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md` · `archive/KMT_CEU_Raw_Numbering_and_Identity_v0.2.md` |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |
 | 검토 진행 상태 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) |

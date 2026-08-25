@@ -17,7 +17,8 @@
 |---|---|
 | [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.1.3'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
 | [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 512 MB 버퍼 3개 구성. 원본 그대로, **미개정** (아래 "guide 유닛" 참조) |
-| [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **실기 없이 돌리는 검증** (31항목) — 가짜 Archon + astropy 실파일 |
+| [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **실기 없이 돌리는 검증** (32항목) — 가짜 Archon + astropy 실파일 |
+| [`tests/test_labtest_spec_copy.py`](tests/test_labtest_spec_copy.py) | **규격 사본 표류 감시** (4항목, 2026-08-26 신설) — 내장 `RAWCARDS`·`CHMAP`·`SITE_INFO`·번호 공간이 `ics_sim` 과 갈라지면 실패한다 |
 | `__ref_archon_control/archon_kmtnet_labtest_v1.0.{bigbuf,smallbuf}.py` | **v1.0 원본** (읽기 전용). 되돌려 비교할 때 쓴다 |
 
 ## 이 판이 무엇인가
@@ -72,9 +73,9 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
 | 36 | `UNIT_ID` | `7` | |
 | 37 | `UNIT_IP` | `'13'` | 주소는 `10.0.0.<UNIT_IP>` |
 | **54** | `DATA_STORAGE` | `'~/AIC/data'` | **v1.1.3 에서 한 곳으로 합쳤다** (구판은 `_C`/`_A`/`_B` 세 갈래). `~` 는 `GetDataset` 이 펼친다 — 다른 디스크로 보내려면 이 값 대신 **`~/AIC/data` 를 심볼릭 링크로** 둔다 (INSTALL.md) |
-| **63** | `SITE_CODE` | `'KMTT'` | 테스트베드. 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP` 이 여기서 유도된다** |
+| **63** | `SITE_CODE` | `'KMTK'` | KASI(실험실). 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP`/`FPAID` 가 여기서 유도된다** (5.3.1절). ⚠️ D-017 로 구 `KMTT` 폐지 |
 | **64** | `UNIT_CTRLTAG` | `'MK'` | **신설.** 이 유닛이 담당하는 detector pair. `MK`/`NT` 가 아니면 기동 시 거부 |
-| **66** | `UNIT_CTRL_ID` | `'KMTT-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
+| **66** | `UNIT_CTRL_ID` | `'KMTK-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
 | **67** | `UNIT_CTRL_SN` | `'STA-0287'` | **신설.** 백플레인 시리얼 |
 | 68 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
 | 76 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
@@ -154,15 +155,15 @@ TEST_EXPTIMES_xTalk = (0,)     # 185행 (원래 7개)
 틀리면 여기서 멈춘다(오타가 노출 도중에 터지지 않게 하려는 것):
 
 ```
-Identity: SITE=KMTT  DETID=MK  CTRL1=KMTT-SCI-101 (STA-0287)
-          OBSERVAT=TESTBED  ORIGIN=KASI  TELESCOP=Sim
+Identity: SITE=KMTK  DETID=MK  CTRL1=KMTK-SCI-101 (STA-0287)
+          OBSERVAT=KASI  ORIGIN=KASI  TELESCOP=KMTNet 1.6m #0
 ```
 
 **노출마다** — 파일명 형식이 바뀌었다:
 
 ```
 v1.0:  AC13A.<YYYYMMDD>.<NNNNNN>.fits
-v1.1:  KMTT.<YYYYMMDD>.<NNNNNN>.MK.fits      <SITE>.<날짜>.<번호>.<MK|NT>
+v1.1:  KMTK.<YYYYMMDD>.<NNNNNN>.MK.fits      <SITE>.<날짜>.<번호>.<MK|NT>
 ```
 
 **경고가 뜨면** 뜻은 이렇다:
@@ -211,7 +212,7 @@ v1.0 은 같은 파일명을 `'wb'` 로 열어 **덮어썼다**. v1.1 은 D-016 
 **첫 프레임이 나오면** 확인:
 
 ```bash
-python -c "from astropy.io import fits; h=fits.open('KMTT.20260822.321100.MK.fits'); print(h[0].data.shape, repr(h[0].header['DETID']), repr(h[0].header['C1_TEMP']), repr(h[0].header['DATE-OBS']))"
+python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fits'); print(h[0].data.shape, repr(h[0].header['DETID']), repr(h[0].header['C1_TEMP']), repr(h[0].header['DATE-OBS']))"
 ```
 
 기대: `(9400, 19200)` · `'MK'` · 온도 나열(또는 `'NC'`) · UTC 밀리초.
@@ -227,10 +228,10 @@ python -c "from astropy.io import fits; h=fits.open('KMTT.20260822.321100.MK.fit
 
 ## v1.1 에서 바뀐 것 (raw spec 적용, 2026-08-22)
 
-정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md)
+정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.5.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.5.md)
 
 1. **파일명** — `AC13A.<날짜>.<번호>.fits` → **`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits`**
-   (D-011). 실험실은 `SITE_CODE='KMTT'`(테스트베드), 날짜는 UT(KMTT 보정 0,
+   (D-011). 실험실은 `SITE_CODE='KMTK'`(KASI), 날짜는 UT(KMTK 보정 0,
    D-014), 번호는 기존 DS 체계(6자리 `[Unit][Setup][Type][SN]`) 유지 —
    converter 정규식(`\d{6}`)에 그대로 걸린다.
 2. **이름 충돌 = 번호 증가** (D-016) — 쓰기 전에 후보 번호의 MK·NT 두 경로를
@@ -256,7 +257,7 @@ python -c "from astropy.io import fits; h=fits.open('KMTT.20260822.321100.MK.fit
    `ICSBUILD` = `v<버전>:<빌드일시>Z`, `DATASRC='ARCHON_SCIENCE'`.
 
 > **⚠️ 기존 분석 스크립트는 그대로 못 쓴다.** 파일명이 `AC13A.*` 에서
-> `KMTT.*.MK` 로 바뀌었고(glob 패턴 갱신 필요), 날짜부가 Local → **UTC** 라
+> `KMTK.*.MK` 로 바뀌었고(glob 패턴 갱신 필요), 날짜부가 Local → **UTC** 라
 > KST 00:00~09:00 취득분은 파일명에 **전날 날짜**가 박힌다(D-014 대로다).
 > `SHUTOPEN`(정수 0/1)과 `TIME-OBS`(Local)는 폐지 — 대체는
 > `IMAGETYP`/`OBSTYPE` + `LEDFLASH`[ms] + `DATE-OBS` 한 장이다.
@@ -305,7 +306,7 @@ v1.1 을 만든 뒤 스크립트를 원본과 대조 검토해 **6건을 고쳤�
 | 텔레메트리 나열이 결측 항목을 **건너뛰어** "자리 = 항목"(5.6절)을 조용히 깼다 — MOD3 결측이면 MOD4 값이 MOD3 자리에 앉고, volt/curr 항목 수가 서로 달라질 수 있었다 | 자리마다 sentinel. 슬롯 목록을 `TEMP_SLOTS` 상수로 (BACKPLANE + AD 모듈 4장 — **모듈 순서 정본은 규격 수록 예정**이라 그때 교체) |
 | 프레임 fetch 후·쓰기 전 미처리 예외 2종 — STATUS 의 비수치 토큰 하나, `UNIT_CTRLTAG` 오타(KeyError). **이미 읽어낸 노출이 통째로 버려졌다** | `status_number()` 가 sentinel + 경고로 흡수 · `_check_identity_setup()` 이 기동 시점 1회 검증 |
 | `CTRL1*`/`C1_*` 에 자기 유닛 값을 넣어 5.9절 위반 — `C1_*` 는 "내 컨트롤러"가 아니라 **컨트롤러 1 고정**이다 | `UNIT_CTRLTAG` 가 색인 자리를 정한다 (NT 유닛이면 `CTRL2*`/`C2_*`) |
-| `SITE_CODE` 를 주석 지시대로 관측소 코드로 바꾸면 `OBSERVAT` 가 `TESTBED` 로 남아 **규격의 유일한 하드 실패** | `SITE_INFO` 표에서 `OBSERVAT`/`ORIGIN`/`TELESCOP` 유도 |
+| `SITE_CODE` 를 주석 지시대로 관측소 코드로 바꾸면 `OBSERVAT` 가 옛 사이트로 남아 **규격의 유일한 하드 실패** | `SITE_INFO` 표에서 `OBSERVAT`/`ORIGIN`/`TELESCOP`/`FPAID` 유도 |
 | `OBJECT` 가 `filenum // 100` 역산을 써서 iFlat(116 프레임)의 `nframe >= 100` 구간에서 `DS<번호+1>` | 죽은 `prefix` 인자를 `datasetid` 로 교체 — 호출측이 넘긴다 |
 
 수정 후에도 **견본 바이트 재현(144카드, 불일치 0)** 은 그대로다.

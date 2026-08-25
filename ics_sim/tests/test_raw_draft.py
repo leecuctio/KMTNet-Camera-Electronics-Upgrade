@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.4 5장).
+"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.5 5장).
 
 정본 견본은 `raw_fits_spec/KMTA.20260821.012345.{MK,NT}.fits.header.v1.0.txt`
 (경로는 박지 않고 glob 으로 찾는다 -- `_find_draft`)
@@ -62,12 +62,28 @@ DRAFTS = {'MK': _find_draft('MK'), 'NT': _find_draft('NT')}
 
 
 def _cards(path: pathlib.Path) -> list[str]:
-    """견본을 80바이트 카드 이미지 목록으로 (`#EOF` 꼬리는 뗀다)."""
+    """견본을 80바이트 카드 이미지 목록으로 (`END` **뒤 공백 패딩은 뗀다**).
+
+    ⚠️ **v1.5 에서 견본의 꼬리가 바뀌었다.**  종전에는 `#EOF` 4바이트가 붙어
+    11,524 바이트(2880 의 배수가 아니었다)였는데, v1.5 가 그것을 떼고 `END`
+    뒤를 **공백 레코드 4장**으로 채워 144 레코드 · 4x2880 = **11,520 바이트**로
+    맞췄다 (FITS 표준 패딩, raw spec 3장).  그래서 여기서는 `END` 까지만 카드로
+    보고 뒤의 공백 레코드는 버린다 -- 값 카드로 세면 파서가 `= ` 를 못 찾는다.
+    """
     raw = path.read_bytes()
-    if raw.endswith(b'#EOF'):
+    if raw.endswith(b'#EOF'):          # 메모장용 사본(`_REFTEXT`)의 꼬리
         raw = raw[:-4]
-    assert len(raw) % 80 == 0, f'{path}: 80바이트 정렬이 아니다 ({len(raw)})'
-    return [raw[i:i + 80].decode('ascii') for i in range(0, len(raw), 80)]
+    assert len(raw) % 2880 == 0, (
+        f'{path}: 2880 바이트 블록 정렬이 아니다 ({len(raw)}) -- FITS 헤더는 '
+        '블록 단위로 채워져야 한다 (raw spec 3장)')
+    images = [raw[i:i + 80].decode('ascii') for i in range(0, len(raw), 80)]
+    for i, c in enumerate(images):
+        if c[:8].rstrip() == 'END':
+            tail = images[i + 1:]
+            assert all(t.strip() == '' for t in tail), (
+                f'{path}: END 뒤에 공백이 아닌 레코드가 있다 -- {tail!r}')
+            return images[:i + 1]
+    raise AssertionError(f'{path}: END 레코드가 없다')
 
 
 def _parse(card: str) -> tuple[str, str, int, str, str]:
@@ -130,11 +146,19 @@ def test_template_matches_the_draft_structure():
 
 
 def test_draft_counts_match_the_spec():
-    """값 135 + COMMENT 8 (raw spec 문서의 "값 카드 135장")."""
+    """값 **131** + COMMENT 8 + END 1 + 공백 4 = 144 레코드 (raw spec v1.5).
+
+    v1.5 가 HK 4장(`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT`)을 폐지해 값 카드가
+    135 -> 131 이 됐고, `END` 뒤를 공백 레코드로 채워 11,520 바이트를 유지한다.
+    """
+    raw = DRAFTS['MK'].read_bytes()
+    assert len(raw) == 11520, (
+        f'견본이 4x2880 = 11,520 바이트가 아니다 ({len(raw)}) -- v1.5 에서 '
+        '`#EOF` 를 떼고 END 뒤 공백 4장으로 맞췄다')
     cards = [_parse(c) for c in _cards(DRAFTS['MK'])
              if c[:8].rstrip() != 'END']
     values = [c for c in cards if c[0] != 'COMMENT']
-    assert len(values) == 135
+    assert len(values) == 131
     assert len(cards) - len(values) == 8
 
 
@@ -305,14 +329,19 @@ def test_written_file_matches_the_template_order(tmp_path):
 
 
 def test_chmap_matches_the_machine_copy():
-    """`CHMAP_*` 상수 = 기계 가독 정본(채널맵 v1.0)과 일치 (raw spec 4.5절).
+    """`CHMAP_*` 상수 = 기계 가독 정본(채널맵 **v1.1**)과 일치 (raw spec 4.5절).
+
+    ⚠️ **v1.1 이 정본이고 자리도 옮겼다** (2026-08-25): 토큰이 4자가 되고
+    `IMGSEC` 의 `B-BOT` 이 `D-BOT` 으로 정정되면서, `__` 접두 폴더 읽기 전용
+    규칙에 따라 `__reference/` 의 v1.0 은 원본 기록으로 두고 사본을 sub레포
+    루트로 올려 고쳤다.  v1.0 을 계속 가리키면 3자 토큰과 대조하게 된다.
 
     **없으면 skip 이 아니라 실패다** -- `_find_draft` 와 같은 이유다(그쪽
     docstring 참고).  4.5절이 이 파일을 "기계 가독 정본"으로 규정했으므로
     없는 것 자체가 결함이고, skip 으로 두면 정본이 사라져도 스위트가 초록으로
     지나간다.  구 이름 `..._when_present` 의 "있으면" 이 그 헐거움이었다.
     """
-    ref = SPEC_DIR / '__reference' / 'Detector_Ch_to_AmpID_Map_v1.0.txt'
+    ref = SPEC_DIR / 'Detector_Ch_to_AmpID_Map_v1.1.txt'
     assert ref.exists(), (
         f'기계 사본을 찾을 수 없다 ({ref}) -- raw spec 4.5절의 정본이고, '
         '이 대조가 없으면 CHMAP 상수가 배선표와 갈라져도 잡히지 않는다')

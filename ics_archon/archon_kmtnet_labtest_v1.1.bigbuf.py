@@ -4,17 +4,25 @@
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
 # Ref.version: archon_kmtnet_stascience_modtm_imgacq_v0.3_kasi.STA0287.102.py (2026-05-29/SMC)
 #
-# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md)
-#   ※ v1.3 기준으로 작성했고 v1.4 는 1~4장 표현만 바뀌어 구현 영향이 없다
-#     (2.5절 삭제 = 취득 SW 소관 이관 · 4.1 RRRRLLLL 확정 · 4.2/4.4 표기).
-#   - 파일명: <SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits (D-011).  SITE 는 테스트베드
-#     KMTT, 날짜는 UT (KMTT 보정 0), 번호는 기존 DS 체계(6자리) 유지.
+# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.5.md)
+#   ※ 최초 작성은 v1.3 기준. v1.4 는 1~4장 표현만 바뀌어 구현 영향이 없었고
+#     (2.5절 삭제 = 취득 SW 소관 이관 · 4.1 RRRRLLLL 확정 · 4.2/4.4 표기),
+#     **v1.5 (2026-08-26 반영)는 값이 바뀌어 아래 다섯 자리를 고쳤다.**
+#   - 파일명: <SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits (D-011).  SITE 는 실험실이라
+#     KMTK(KASI), 날짜는 UT (KMTK 보정 0), 번호는 기존 DS 체계(6자리) 유지.
+#     ⚠️ v1.5/D-017: 구 KMTT(TESTBED) 폐지 -- KMTK(KASI) 가 그 자리를 잇는다.
 #   - 이름 충돌: 격리·개명 대신 번호 증가 (D-016) — 쓰기 전에 MK·NT 두 경로를
-#     선검사하고, 카운터 최초 배정명은 ORIGNAME 카드로 남긴다.
-#   - FITS 헤더: 견본 초안 v1.0 pair 의 값 카드 135장 + COMMENT 8장 + END = 144카드
-#     (정확히 2880B x 4블록).  카드 순서·comment·패딩은 견본과 바이트 단위 동일
-#     (기계 사본 = ics_sim/rawcards.py 와 같은 원천).  실험실에서 모르는 값은
-#     규격 5.0절 sentinel ('NC' / -1 / '-999.99' / '9.99e-9').
+#     선검사하고, 카운터 최초 배정명은 ORIGNAME 카드로 남긴다.  번호 공간은
+#     D-018 로 000000-999999 가 되어 이 스크립트의 6자리 되감음과 같아졌다.
+#   - FITS 헤더: 견본 초안 v1.0 pair 의 값 카드 **131장** + COMMENT 8장 + END 1
+#     + 공백 4 = 144 레코드 (정확히 2880B x 4블록).  카드 순서·comment·패딩은
+#     견본과 바이트 단위 동일 (기계 사본 = ics_sim/rawcards.py 와 같은 원천).
+#     실험실에서 모르는 값은 규격 5.0절 sentinel ('NC' / -1 / '-999.99' /
+#     '9.99e-9').
+#   - v1.5 개정분: ① HK 4장 폐지 (AIR_IN/AIR_OUT/GLYC_IN/GLYC_OUT) ② CHMAP_*
+#     토큰 3자 -> 4자 <chip><A|D><nn> (01-08=A · 09-16=D) ③ 견본 comment 오타
+#     2건 정정 (Telesope->Telescope · Acutator->Actuator) ④ 사이트 코드 D-017
+#     ⑤ TELESCOP/FPAID 를 SITE_CODE 에서 유도 (5.3.1절).
 #   - Archon STATUS 텔레메트리: C1_TEMP(BACKPLANE_TEMP+MODn/TEMP) ·
 #     C1_VOLT/C1_CURR(P2V5 P5V P6V N6V P17V N17V P35V 레일) — Archon 매뉴얼 p.47-49.
 #   - 데이터부 2880B 패딩 (규격 3장 — v1.0 은 마지막 블록이 잘려 있었다).
@@ -57,13 +65,14 @@ DATA_STORAGE = '~/AIC/data'    #  <---- Set this: 취득 자료 저장 자리
 # raw spec v1.3 identity setup  (v1.1 신설)
 #
 # 파일명 <SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits (D-011) 과 헤더 5장의
-# ICS INI 출처 카드를 채우는 값들.  실험실은 테스트베드라 SITE_CODE='KMTT',
-# OBSERVAT='TESTBED', ORIGIN='KASI' 로 유도된다 (규격 2.2·5.3절).
+# ICS INI 출처 카드를 채우는 값들.  실험실은 KASI 라 SITE_CODE='KMTK',
+# OBSERVAT='KASI', ORIGIN='KASI' 로 유도된다 (규격 2.2·5.3절, D-017).
 
-SITE_CODE = 'KMTT'          # 테스트베드.  관측소 반입 시 KMTC/KMTS/KMTA
+SITE_CODE = 'KMTK'          # KASI(실험실).  관측소 반입 시 KMTC/KMTS/KMTA
+                            # ⚠️ D-017(2026-08-25): 구 KMTT(TESTBED) 폐지
 UNIT_CTRLTAG = 'MK'         #  <---- Set this: 이 유닛이 담당하는 detector pair
                             #        (MK = science ctrl 1 / NT = science ctrl 2)
-UNIT_CTRL_ID = 'KMTT-SCI-101'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
+UNIT_CTRL_ID = 'KMTK-SCI-101'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
 UNIT_CTRL_SN = 'STA-0287'       #  <---- Set this: FITS CTRL1SN (백플레인 시리얼)
 OBSERVER_NAME = 'HELab'         # FITS OBSERVER
 
@@ -433,10 +442,10 @@ RAWCARDS = (
     ('OVRSCNY', 'I', 0, 'Overscan rows per amplifier (frame-center side)'),
     ('COMMENT', '', 0, '  Map of CCD output channels, raw X ascending within '
                        'each card'),
-    ('CHMAP_LT', 'S', 31, 'CCD output ch, left-half TOP'),
-    ('CHMAP_LB', 'S', 31, 'CCD output ch, left-half BOT'),
-    ('CHMAP_RT', 'S', 31, 'CCD output ch, right-half TOP'),
-    ('CHMAP_RB', 'S', 31, 'CCD output ch, right-half BOT'),
+    ('CHMAP_LT', 'S', 39, 'CCD out ch, left-half TOP'),
+    ('CHMAP_LB', 'S', 39, 'CCD out ch, left-half BOT'),
+    ('CHMAP_RT', 'S', 39, 'CCD out ch, right-half TOP'),
+    ('CHMAP_RB', 'S', 39, 'CCD out ch, right-half BOT'),
     ('COMMENT', '', 0, '  Observatory Information '
                        '____________________________________________'),
     ('ORIGIN', 'S', 18, 'Location where the data was generated'),
@@ -477,10 +486,6 @@ RAWCARDS = (
     ('CHARCOAL', 'S', 18, 'Charcoal canister temperature [deg C]'),
     ('WALLBRD', 'S', 18, 'Wallboard temperature [deg C]'),
     ('HEBOX', 'S', 18, 'HE box internal temperature [deg C]'),
-    ('AIR_IN', 'S', 18, 'Air temperature at heat exchanger inlet [degC]'),
-    ('AIR_OUT', 'S', 18, 'Air temperature at heat exchanger outlet [degC]'),
-    ('GLYC_IN', 'S', 18, 'Glycol temperature at HE box inlet [degC]'),
-    ('GLYC_OUT', 'S', 18, 'Glycol temperature at HE box outlet [degC]'),
     ('C1_TEMP', 'S', 51, 'Ctr-1 T[C]'),
     ('C1_VOLT', 'S', 51, 'Ctr-1 V[V]'),
     ('C1_CURR', 'S', 51, 'Ctr-1 I[A]'),
@@ -501,7 +506,7 @@ RAWCARDS = (
     ('HA', 'S', 18, 'Hour Angle at start of obs'),
     ('ST', 'S', 18, 'Local Sidereal Time at start of obs'),
     ('SECZ', 'S', 18, 'Secant of ZD (Airmass) at start of obs'),
-    ('ALT', 'S', 18, 'Telesope Altitude (elevation) in degrees'),   # 견본 원문
+    ('ALT', 'S', 18, 'Telescope Altitude (elevation) in degrees'),  # v1.5 정정
     ('AZ', 'S', 18, 'Telescope Azimuth in degrees'),
     ('TCSDRIVE', 'S', 18, 'Telescope Drive Status'),
     ('TELMOVE', 'S', 18, 'Telescope Motion Status'),
@@ -528,7 +533,7 @@ RAWCARDS = (
     ('FILTER', 'S', 18, 'Filter Name in the beam'),
     ('SHUTOP', 'S', 18, 'Shutter Operational Status'),
     ('SHUTTER', 'S', 18, 'Shutter Position'),
-    ('FASTAT', 'S', 18, 'Focus Acutator Subsystem Status'),         # 견본 원문
+    ('FASTAT', 'S', 18, 'Focus Actuator Subsystem Status'),         # v1.5 정정
     ('FAFOCUS', 'S', 18, 'Focus Position Offset in millimeters'),
     ('FATILTNS', 'S', 18, 'Focus Tilt NS Offset Angle in arcsec'),
     ('FATILTEW', 'S', 18, 'Focus Tilt EW Offset Angle in arcsec'),
@@ -560,19 +565,25 @@ HDR_NAXIS1 = 19200
 HDR_NAXIS2 = 9400
 
 ## CHMAP_* 4장 -- raw spec 4.5절 amp 전수 표의 투영 (pair 상이).
+##
+## **토큰은 4자 <chip><A|D><nn> 이다** (v1.5, 운영자 확정 2026-08-25).
+## 가운데 글자는 채널 번호가 정한다 -- 01-08 = A · 09-16 = D (e2v image
+## section, 부록 A).  종전 3자 표기(M16)를 대체했다.  chip 이나 사분면에서
+## 유추하면 안 된다 -- 같은 chip 안에 MD16 과 MA01 이 함께 나온다.
+## 기계 정본: raw_fits_spec/Detector_Ch_to_AmpID_Map_v1.1.txt
 ## 기계 가독 정본: raw_fits_spec/__reference/Detector_Ch_to_AmpID_Map_v1.0.txt
 CHMAP = {
     'MK': {
-        'CHMAP_LT': 'M16,M15,M14,M13,M12,M11,M10,M09',
-        'CHMAP_LB': 'M01,M02,M03,M04,M05,M06,M07,M08',
-        'CHMAP_RT': 'K08,K07,K06,K05,K04,K03,K02,K01',
-        'CHMAP_RB': 'K09,K10,K11,K12,K13,K14,K15,K16',
+        'CHMAP_LT': 'MD16,MD15,MD14,MD13,MD12,MD11,MD10,MD09',
+        'CHMAP_LB': 'MA01,MA02,MA03,MA04,MA05,MA06,MA07,MA08',
+        'CHMAP_RT': 'KA08,KA07,KA06,KA05,KA04,KA03,KA02,KA01',
+        'CHMAP_RB': 'KD09,KD10,KD11,KD12,KD13,KD14,KD15,KD16',
     },
     'NT': {
-        'CHMAP_LT': 'N08,N07,N06,N05,N04,N03,N02,N01',
-        'CHMAP_LB': 'N09,N10,N11,N12,N13,N14,N15,N16',
-        'CHMAP_RT': 'T16,T15,T14,T13,T12,T11,T10,T09',
-        'CHMAP_RB': 'T01,T02,T03,T04,T05,T06,T07,T08',
+        'CHMAP_LT': 'NA08,NA07,NA06,NA05,NA04,NA03,NA02,NA01',
+        'CHMAP_LB': 'ND09,ND10,ND11,ND12,ND13,ND14,ND15,ND16',
+        'CHMAP_RT': 'TD16,TD15,TD14,TD13,TD12,TD11,TD10,TD09',
+        'CHMAP_RB': 'TA01,TA02,TA03,TA04,TA05,TA06,TA07,TA08',
     },
 }
 
@@ -603,13 +614,19 @@ TEMP_SLOTS = ('BACKPLANE_TEMP', 'MOD5/TEMP', 'MOD6/TEMP', 'MOD7/TEMP',
 ## **파일명 `<SITE>` 와 헤더 `OBSERVAT` 불일치는 이 규격에서 유일한 하드
 ## 실패다** (converter 가 교차 검증해 거부한다).  그래서 `SITE_CODE` 하나만
 ## 고치면 나머지가 따라오게 유도한다 -- 리터럴로 박아 두면 관측소 반입 때
-## 파일명만 바뀌고 헤더는 `TESTBED` 로 남아 그 실행분 전량이 거부된다.
-## `ORIGIN` = "이 파일이 생성된 곳" (관측소 raw = 관측소명, 테스트베드 = KASI).
+## 파일명만 바뀌고 헤더는 옛 사이트로 남아 그 실행분 전량이 거부된다.
+## `ORIGIN` = "이 파일이 생성된 곳" (관측소 raw = 관측소명, 실험실 = KASI).
+##
+## ⚠️ **`TELESCOP` 과 `FPAID` 도 사이트가 정한다** (raw spec **5.3.1절**,
+## D-017 항목 6, 운영자 확정 2026-08-25).  망원경 번호와 FPA 번호는 **관측소
+## 셋 모두 어긋난다** -- CTIO 망원경 #1·FPA #2 / SSO #3·FPA #1 / SAAO #2·FPA #3.
+## 어긋난 것을 오타로 보고 맞추면 검출기 귀속이 통째로 틀어진다.
+## (KASI 만 #0/#0 으로 같은데 그건 우연이다.)
 SITE_INFO = {
-    'KMTC': ('CTIO',    'CTIO', 'KMTNet 1.6m #1'),
-    'KMTS': ('SAAO',    'SAAO', 'KMTNet 1.6m #2'),
-    'KMTA': ('SSO',     'SSO',  'KMTNet 1.6m #3'),
-    'KMTT': ('TESTBED', 'KASI', 'Sim'),
+    'KMTC': ('CTIO', 'CTIO', 'KMTNet 1.6m #1', 'FPA#2'),
+    'KMTS': ('SAAO', 'SAAO', 'KMTNet 1.6m #2', 'FPA#3'),
+    'KMTA': ('SSO',  'SSO',  'KMTNet 1.6m #3', 'FPA#1'),
+    'KMTK': ('KASI', 'KASI', 'KMTNet 1.6m #0', 'FPA#0'),
 }
 
 
@@ -662,10 +679,17 @@ def fits_card(key, kind, width, comment, value):
 
 
 def build_header(values):
-    """값 딕셔너리 -> 2880B 정렬 헤더 (144카드 = 4블록).
+    """값 딕셔너리 -> 2880B 정렬 헤더 (144 레코드 = 4블록).
 
     RAWCARDS 템플릿 순서 그대로 조립한다 -- 템플릿에 없는 키는 버려지고,
     빠진 카드는 형별 sentinel 로 남는다 (규격 5.0절).
+
+    **END 뒤는 공백 레코드로 블록을 채운다** (FITS 표준 패딩, 규격 3장).
+    v1.5 에서 HK 4장이 폐지돼 값 131 + COMMENT 8 + END 1 = 140 레코드
+    (11,200B)가 됐는데, 그건 2880 의 배수가 아니다 -- 공백 4장을 채워야
+    144 레코드 · 11,520B 가 되고 견본 pair 와 바이트로 같아진다.
+    ⚠️ 패딩 없이 단정만 두면 **카드 수가 바뀌는 개정마다 헤더 조립이 통째로
+    거부된다** (v1.5 반영 때 실제로 그랬다).
     """
     cards = []
     for key, kind, width, comment in RAWCARDS:
@@ -679,9 +703,12 @@ def build_header(values):
         cards.append(fits_card(key, kind, width, comment, value))
     cards.append('END'.ljust(80))
     head = ''.join(cards)
+    ## END 뒤를 공백 레코드로 채워 블록을 맞춘다 (규격 3장).
+    head += ' ' * ((-len(head)) % 2880)
     ## **문자 수가 아니라 바이트 수**로 단정한다 -- 파일에 쓰는 것은
     ## bytes(head,'utf-8') 이고, 비ASCII 가 섞이면 문자 수는 맞는데 바이트
     ## 수가 어긋나 파일 전체가 안 읽힌다 (len(head) 로는 못 잡는다).
+    ## 패딩을 문자 수로 계산했으므로 이 단정이 그 경우를 그대로 잡아낸다.
     nbytes = len(head.encode('utf-8'))
     assert nbytes % 2880 == 0, (
         'FITS 헤더가 2880B 정렬이 아니다 (%dB) -- 비ASCII 문자?' % nbytes)
@@ -814,9 +841,10 @@ def resolve_pair_number(datadir, date_part, number):
     MK·NT 두 경로를 선검사하고, 점유 시 +1 재검사 (999999 넘으면 000000).
     한 바퀴(1000000회)를 초과하면 예외 -- 유일한 저장 실패 조건이다.
 
-    관측 운용의 번호 공간은 000000-099999 지만, 실험실 DS 번호 체계
-    ([Unit][Setup][Type][SN])는 6자리 전체를 쓰므로 되감음도 6자리로 돈다.
-    파일명 형식(\d{6})은 동일해 converter 정규식에 그대로 걸린다."""
+    **D-018 (2026-08-25)로 관측 운용의 번호 공간도 000000-999999 가 됐다** --
+    실험실 DS 번호 체계([Unit][Setup][Type][SN])가 6자리 전체를 쓰던 것과
+    이제 같다.  구 규칙(099999 상한)과 갈려 있던 자리가 하나 없어졌다.
+    파일명 형식(\d{6})은 처음부터 동일해 converter 정규식에 그대로 걸린다."""
     n = number % 1000000
     for _ in range(1000000):
         clash = False
@@ -846,7 +874,7 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
     * 관측소 정체(`OBSERVAT`/`ORIGIN`/`TELESCOP`)는 `SITE_CODE` 에서 유도한다.
     * 컨트롤러 카드는 `UNIT_CTRLTAG` 가 정하는 **색인 자리**로 들어간다.
     """
-    observat, origin, telescop = SITE_INFO[SITE_CODE]
+    observat, origin, telescop, fpaid = SITE_INFO[SITE_CODE]
     ctrl_index = 1 if UNIT_CTRLTAG == 'MK' else 2
     if ExpTimeMs <= 0:
         imgtype = 'BIAS'
@@ -868,7 +896,7 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         'NAXIS1': HDR_NAXIS1, 'NAXIS2': HDR_NAXIS2,   # 2-chip frame (3장)
         'BSCALE': 1, 'BZERO': 32768, 'BUNIT': 'ADU',
         'INSTRUME': '%s 18k CCD' % SITE_CODE,
-        'CAMVER': 'CEU-v2.1', 'FPAID': 'FPA#1',
+        'CAMVER': 'CEU-v2.1', 'FPAID': fpaid,      # 5.3.1절 -- 사이트 유도
         'DETECTOR': 'e2v CCD290-99',
         'DETID': UNIT_CTRLTAG,
         'PIXSIZE': 10.0, 'PIXSCALE': 0.395,
@@ -881,7 +909,7 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         # 5.3 -- **SITE_CODE 에서 유도한다** (SITE_INFO).  파일명 <SITE> 와
         # OBSERVAT 불일치가 이 규격의 유일한 하드 실패이므로 리터럴로 박아
         # 두면 안 된다.  좌표(LATITUDE/LONGITUD/ELEVATIO)는 값 딕셔너리에
-        # 넣지 않아 sentinel 로 남는다 -- 테스트베드는 일부러 비우는 것이
+        # 넣지 않아 sentinel 로 남는다 -- KASI(실험실)는 일부러 비우는 것이
         # 규격이고(5.3절), 관측소 반입 시에는 측지값을 여기 채워야 한다.
         'OBSERVAT': observat, 'ORIGIN': origin, 'TELESCOP': telescop,
         'OBSERVER': OBSERVER_NAME,
@@ -907,8 +935,9 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         'DEWPRES': DEWPRES_NC,
         'CCDTEMP': TEMP_NC, 'DMPTEMP': TEMP_NC, 'PT30N1': TEMP_NC,
         'PT30N2': TEMP_NC, 'CHARCOAL': TEMP_NC, 'WALLBRD': TEMP_NC,
-        'HEBOX': TEMP_NC, 'AIR_IN': TEMP_NC, 'AIR_OUT': TEMP_NC,
-        'GLYC_IN': TEMP_NC, 'GLYC_OUT': TEMP_NC,
+        'HEBOX': TEMP_NC,
+        # AIR_IN/AIR_OUT/GLYC_IN/GLYC_OUT 4장은 v1.5 에서 폐지됐다
+        # (standalone RTD 계통, 5.6절 18장 -> 14장 · 5.10절 폐지 목록).
         'FSATEMP': TEMP_NC, 'FSAHUM': TEMP_NC,
     }
     values.update(CHMAP[UNIT_CTRLTAG])
@@ -971,7 +1000,7 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     archoncmd('LOADPARAMS')
 
     # DATE-OBS = 노출 지시(LOADPARAMS) 시점의 UTC, 밀리초까지 (raw spec 5.4절).
-    # 파일명 날짜부는 관측일인데 KMTT(테스트베드)는 보정 0 = UT 날짜 그대로
+    # 파일명 날짜부는 관측일인데 KMTK(KASI 실험실)는 보정 0 = UT 날짜 그대로
     # (D-014).  구판의 Local 시각·TIME-OBS 카드는 폐지 -- 시각은 전부 UTC 로
     # TIMESYS 가 선언한다.
     # TODO: 컨트롤러 정밀 시각은 TIMER + BUFnTIMESTAMP(10ns tick, 매뉴얼
@@ -1600,11 +1629,11 @@ SetDatasetConfig(DS_GXT  );RepDatasetConfig();print();
 sys.exit() ######## ForDBG
 '''
 '''
-#### Check for FITS Header format (raw spec v1.3 -- 144카드 = 4블록)
+#### Check for FITS Header format (raw spec v1.5 -- 144 레코드 = 4블록)
 CURRENT_ACF = UNIT_ACF_SCI_FAST_MEDIUM
 hb = build_spec_header(True, 12345, '2026-08-22T12:34:56.789',
-                       CURRENT_ACF, 'KMTT.20260822.321101.MK',
-                       'KMTT.20260822.321101.MK', 3211)
+                       CURRENT_ACF, 'KMTK.20260822.321101.MK',
+                       'KMTK.20260822.321101.MK', 3211)
 print('FITS header check (%d cards)\n' % (len(hb)//80) + '-'*80)
 for i in range(len(hb)//80):
     print("%03d: %s|" % ( (i+1), hb[80*i:80+80*i] ) )

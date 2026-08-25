@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 """raw spec 5장 헤더 카드 템플릿 — 초안 헤더 v1.0 pair 의 기계 사본.
 
-**5장의 판 근거는 v1.3 이다** -- 현행 규격 문서는 v1.4 지만 그 개정은
-1~4장에 그쳤고 5장 이후는 검토 전이다(raw_fits_spec/SMC_CLAUDE.md).
+**5장의 판 근거는 v1.5 다** -- 2026-08-25 에 5장 검토 라운드가 마감되면서
+값 카드가 **135 -> 131** 로 줄었고(HK 4장 폐지) `CHMAP_*` 토큰이 4자가 됐다.
+견본 pair 도 `#EOF` 를 떼고 `END` 뒤를 공백 레코드 4장으로 채워 **144 레코드 ·
+4x2880 = 11,520 바이트**가 됐다.
 
 정본은 [`raw_fits_spec/KMTA.20260821.012345.MK.fits.header.v1.0.txt`] (·NT) --
 **카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다 (raw spec 5장
@@ -59,10 +61,10 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('OVRSCNY', 'I', 0, 'Overscan rows per amplifier (frame-center side)'),
     ('COMMENT', '', 0, '  Map of CCD output channels, raw X ascending within '
                        'each card'),
-    ('CHMAP_LT', 'S', 31, 'CCD output ch, left-half TOP'),
-    ('CHMAP_LB', 'S', 31, 'CCD output ch, left-half BOT'),
-    ('CHMAP_RT', 'S', 31, 'CCD output ch, right-half TOP'),
-    ('CHMAP_RB', 'S', 31, 'CCD output ch, right-half BOT'),
+    ('CHMAP_LT', 'S', 39, 'CCD out ch, left-half TOP'),
+    ('CHMAP_LB', 'S', 39, 'CCD out ch, left-half BOT'),
+    ('CHMAP_RT', 'S', 39, 'CCD out ch, right-half TOP'),
+    ('CHMAP_RB', 'S', 39, 'CCD out ch, right-half BOT'),
     ('COMMENT', '', 0, '  Observatory Information '
                        '____________________________________________'),
     ('ORIGIN', 'S', 18, 'Location where the data was generated'),
@@ -103,10 +105,6 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('CHARCOAL', 'S', 18, 'Charcoal canister temperature [deg C]'),
     ('WALLBRD', 'S', 18, 'Wallboard temperature [deg C]'),
     ('HEBOX', 'S', 18, 'HE box internal temperature [deg C]'),
-    ('AIR_IN', 'S', 18, 'Air temperature at heat exchanger inlet [degC]'),
-    ('AIR_OUT', 'S', 18, 'Air temperature at heat exchanger outlet [degC]'),
-    ('GLYC_IN', 'S', 18, 'Glycol temperature at HE box inlet [degC]'),
-    ('GLYC_OUT', 'S', 18, 'Glycol temperature at HE box outlet [degC]'),
     ('C1_TEMP', 'S', 51, 'Ctr-1 T[C]'),
     ('C1_VOLT', 'S', 51, 'Ctr-1 V[V]'),
     ('C1_CURR', 'S', 51, 'Ctr-1 I[A]'),
@@ -127,8 +125,8 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('HA', 'S', 18, 'Hour Angle at start of obs'),
     ('ST', 'S', 18, 'Local Sidereal Time at start of obs'),
     ('SECZ', 'S', 18, 'Secant of ZD (Airmass) at start of obs'),
-    # 'Telesope' 는 견본의 원문이다 -- 고치면 바이트 대사가 어긋난다.
-    ('ALT', 'S', 18, 'Telesope Altitude (elevation) in degrees'),
+    # v1.5 에서 견본의 오타 `Telesope` 를 `Telescope` 로 정정했다 (운영자).
+    ('ALT', 'S', 18, 'Telescope Altitude (elevation) in degrees'),
     ('AZ', 'S', 18, 'Telescope Azimuth in degrees'),
     ('TCSDRIVE', 'S', 18, 'Telescope Drive Status'),
     ('TELMOVE', 'S', 18, 'Telescope Motion Status'),
@@ -155,8 +153,8 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('FILTER', 'S', 18, 'Filter Name in the beam'),
     ('SHUTOP', 'S', 18, 'Shutter Operational Status'),
     ('SHUTTER', 'S', 18, 'Shutter Position'),
-    # 'Acutator' 도 견본 원문이다.
-    ('FASTAT', 'S', 18, 'Focus Acutator Subsystem Status'),
+    # v1.5 에서 견본의 오타 `Acutator` 를 `Actuator` 로 정정했다 (운영자).
+    ('FASTAT', 'S', 18, 'Focus Actuator Subsystem Status'),
     ('FAFOCUS', 'S', 18, 'Focus Position Offset in millimeters'),
     ('FATILTNS', 'S', 18, 'Focus Tilt NS Offset Angle in arcsec'),
     ('FATILTEW', 'S', 18, 'Focus Tilt EW Offset Angle in arcsec'),

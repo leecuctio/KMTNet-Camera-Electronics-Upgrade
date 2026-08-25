@@ -189,9 +189,38 @@ def test_check_geometry_catches_a_broken_constant(monkeypatch):
 def test_check_geometry_catches_a_broken_chmap(monkeypatch):
     """CHMAP 불변식 (4.5절): 8토큰 · 접두=DETID 글자 · 채널 01–16 전량."""
     broken = {k: dict(v) for k, v in rawhdr.CHMAP.items()}
-    broken['MK']['CHMAP_LT'] = 'M16,M15,M14,M13,M12,M11,M10,M10'  # M09 누락
+    broken['MK']['CHMAP_LT'] = 'MD16,MD15,MD14,MD13,MD12,MD11,MD10,MD10'
     monkeypatch.setattr(rawhdr, 'CHMAP', broken)
     with pytest.raises(ValueError, match='채널 01–16'):
+        rawhdr.check_geometry()
+
+
+def test_chmap_tokens_are_four_chars(monkeypatch):
+    """**토큰은 4자 `<chip><A|D><nn>` 이다** (v1.5 -- 3자 표기를 대체했다).
+
+    구판 3자 토큰(`M16`)이 되살아나면 여기서 걸린다.  걸리지 않으면 파일에
+    실린 뒤에 발견되고, 그때는 이미 아카이브에 들어가 있다.
+    """
+    broken = {k: dict(v) for k, v in rawhdr.CHMAP.items()}
+    broken['MK']['CHMAP_LT'] = 'M16,M15,M14,M13,M12,M11,M10,M09'
+    monkeypatch.setattr(rawhdr, 'CHMAP', broken)
+    with pytest.raises(ValueError, match='4자가 아니다'):
+        rawhdr.check_geometry()
+
+
+def test_chmap_middle_letter_is_decided_by_the_channel_number(monkeypatch):
+    """가운데 글자는 **번호만이 정한다** -- `01`–`08`=`A` · `09`–`16`=`D`.
+
+    chip 이나 사분면에서 유추하면 안 된다 (raw spec 4.5절 · 부록 A: 채널 번호 =
+    OS 번호 = 아래/위 half).  `IMGSEC` 의 구 `B-BOT` 이 원전 없는 표기로
+    판정돼 `D-BOT` 이 된 것도 이 사슬이 닫혔기 때문이다 (OI-17 잔여 ①·②).
+    """
+    assert [rawhdr.chmap_section(n) for n in (1, 8, 9, 16)] == ['A', 'A', 'D', 'D']
+    broken = {k: dict(v) for k, v in rawhdr.CHMAP.items()}
+    # 채널 09–16 인데 `A` 로 적었다 -- 위 half 를 아래 half 라고 말하는 셈이다.
+    broken['MK']['CHMAP_LT'] = 'MA16,MA15,MA14,MA13,MA12,MA11,MA10,MA09'
+    monkeypatch.setattr(rawhdr, 'CHMAP', broken)
+    with pytest.raises(ValueError, match='가운데 글자'):
         rawhdr.check_geometry()
 
 
@@ -410,24 +439,60 @@ def test_longitude_is_west_positive_at_every_site(code):
         f'{code}: 서경 {west_deg} 가 동경 {east_deg} 와 맞지 않는다')
 
 
-def test_testbed_has_no_coordinates_on_purpose():
-    """테스트베드는 좌표를 **일부러** 비워 둔다 -- 아무 좌표나 넣으면 시험
-    산출물이 실제 관측처럼 보인다.  `TELESCOP='Sim'` 만 규격이 정한 값이다
-    (raw spec 5.3절)."""
-    h = rawhdr.observatory_header('KMTT')
+def test_kasi_has_no_coordinates_on_purpose():
+    """KASI(실험실)는 **좌표만** 일부러 비워 둔다 (raw spec OI-11).
+
+    아무 좌표나 넣으면 시험 산출물이 실제 관측처럼 보인다.  다만 `TELESCOP` 은
+    **값이 있다** -- D-017 항목 6 이 `'KMTNet 1.6m #0'` 으로 정했다 (5.3.1절).
+    구 `KMTT` 판에서는 `'Sim'` 이었다.
+    """
+    h = rawhdr.observatory_header('KMTK')
     assert str(h['LATITUDE']) == 'NC'
-    assert str(h['TELESCOP']) == 'Sim'
+    assert str(h['LONGITUD']) == 'NC'
+    assert str(h['TELESCOP']) == 'KMTNet 1.6m #0'
     assert h['ELEVATIO'] == -1
+
+
+@pytest.mark.parametrize('code, telescop, fpaid', [
+    ('KMTC', 'KMTNet 1.6m #1', 'FPA#2'),
+    ('KMTA', 'KMTNet 1.6m #3', 'FPA#1'),
+    ('KMTS', 'KMTNet 1.6m #2', 'FPA#3'),
+    ('KMTK', 'KMTNet 1.6m #0', 'FPA#0'),
+])
+def test_site_constants_table_5_3_1(code, telescop, fpaid):
+    """5.3.1절 -- 사이트 하나가 `TELESCOP` 과 `FPAID` 를 함께 정한다.
+
+    ⚠️ **망원경 번호와 FPA 번호는 관측소 셋 모두 어긋난다.**  이 시험이
+    그 어긋남 자체를 못박는다 -- 다음 사람이 "오타네" 하고 맞추면 여기서
+    걸린다.  맞추면 검출기 귀속이 통째로 틀어진다 (D-017 항목 6).
+    """
+    assert str(rawhdr.observatory_header(code)['TELESCOP']) == telescop
+    assert rawhdr.fpaid_of(code) == fpaid
+    assert str(rawhdr.instrument_header('MK', code)['FPAID']) == fpaid
+    if code != 'KMTK':
+        tel_no = telescop.rsplit('#', 1)[1]
+        fpa_no = fpaid.rsplit('#', 1)[1]
+        assert tel_no != fpa_no, (
+            f'{code}: 망원경 #{tel_no} 와 FPA #{fpa_no} 가 같아졌다 -- '
+            '5.3.1절은 관측소 셋 모두 어긋난다고 못박았다')
+
+
+def test_ini_fpaid_wins_over_the_site_table():
+    """현장이 정본이다 -- `[camera] fpaid` 가 사이트 유도값을 이긴다."""
+    h = rawhdr.instrument_header('MK', 'KMTA', {'fpaid': 'FPA#9'})
+    assert str(h['FPAID']) == 'FPA#9'
 
 
 def test_origin_is_where_the_file_was_generated():
     """`ORIGIN` = "이 파일이 생성된 곳" (raw spec 5.3절).
 
-    관측소 raw = 관측소명 · 테스트베드 raw = `KASI`.  `[site]` ini 의
-    `origin` 키가 유도값을 이긴다 (ICS INI 카드).
+    관측소 raw = 관측소명 · KASI(실험실) raw = `KASI`.  `[site]` ini 의
+    `origin` 키가 유도값을 이긴다 (ICS INI 카드).  **D-017 이후 네 자리 모두
+    `OBSERVAT` 와 값이 같지만 뜻이 달라 카드는 합치지 않는다.**
     """
     assert str(rawhdr.observatory_header('KMTC')['ORIGIN']) == 'CTIO'
-    assert str(rawhdr.observatory_header('KMTT')['ORIGIN']) == 'KASI'
+    assert str(rawhdr.observatory_header('KMTK')['ORIGIN']) == 'KASI'
+    assert str(rawhdr.observatory_header('KMTK')['OBSERVAT']) == 'KASI'
     h = rawhdr.observatory_header('KMTA', {'origin': 'KASI'})
     assert str(h['ORIGIN']) == 'KASI'
     assert str(h['OBSERVAT']) == 'SSO'    # OBSERVAT 는 안 바뀐다 (교차 검증 키)
@@ -569,7 +634,7 @@ OBSDATE_CASES = [
     ('KMTA', '01:30', '20260813'), ('KMTA', '23:59', '20260813'),
     ('KMTS', '00:00', '20260812'), ('KMTS', '10:29', '20260812'),
     ('KMTS', '10:30', '20260813'), ('KMTS', '23:59', '20260813'),
-    ('KMTT', '00:00', '20260813'), ('KMTT', '23:59', '20260813'),
+    ('KMTK', '00:00', '20260813'), ('KMTK', '23:59', '20260813'),
 ]
 
 
@@ -591,10 +656,14 @@ def test_every_site_boundary_is_local_1230():
             f'{site}: 경계가 현지 {local_min // 60}:{local_min % 60:02d} 다')
 
 
-def test_unknown_site_code_falls_back_to_testbed():
-    """`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTT` (운영자 확정 2026-08-13)."""
-    assert rawpair.normalize_site('KMTN') == 'KMTT'
-    assert rawpair.normalize_site('') == 'KMTT'
+def test_unknown_site_code_falls_back_to_kasi():
+    """`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTK` (운영자 확정 2026-08-13).
+
+    TC 가 보내는 `TELID` 에 사이트가 아닌 `KMTN`(pctcs 기본값, `pctcs.h:115`)이
+    올 수 있어서 필요하다.
+    """
+    assert rawpair.normalize_site('KMTN') == 'KMTK'
+    assert rawpair.normalize_site('') == 'KMTK'
     assert rawpair.normalize_site('kmtc') == 'KMTC'      # 대소문자 무관
     for real in ('KMTC', 'KMTS', 'KMTA'):
         assert rawpair.normalize_site(real) == real

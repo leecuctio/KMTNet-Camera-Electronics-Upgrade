@@ -41,11 +41,20 @@ def _find_draft(tag: str) -> str:
 
 
 def _cards_of(path: str) -> list[str]:
-    """견본 파일을 80자 카드로 자른다 (`#EOF` 표시는 버린다)."""
+    """견본 파일을 80자 카드로 자른다.
+
+    ⚠️ **v1.5 에서 꼬리가 바뀌었다.**  종전에는 `#EOF` 4바이트가 붙어 11,524
+    자였는데(2880 의 배수가 아니었다), v1.5 가 그것을 떼고 `END` 뒤를 **공백
+    레코드 4장**으로 채워 144 레코드 · 4x2880 = **11,520 자**로 맞췄다 (FITS
+    표준 패딩, raw spec 3장).  공백 레코드도 카드로 돌려준다 -- `header_bytes()`
+    가 만드는 패딩과 바이트로 대사해야 하기 때문이다.
+    """
     text = open(path, encoding='ascii').read()
-    if text.endswith('#EOF'):
+    if text.endswith('#EOF'):          # 메모장용 사본(`_REFTEXT`)의 꼬리
         text = text[:-4]
-    assert len(text) % 80 == 0, '견본이 80자 카드의 배수가 아니다'
+    assert len(text) % 2880 == 0, (
+        '견본이 2880자 블록의 배수가 아니다 (%d) -- FITS 헤더는 블록 단위로 '
+        '채워져야 한다 (raw spec 3장)' % len(text))
     return [text[i:i + 80] for i in range(0, len(text), 80)]
 
 
@@ -57,6 +66,8 @@ def _parse_card(card: str):  # noqa: ANN202
     가 본다)과 섞이지 않는다.
     """
     key = card[:8].rstrip()
+    if not card.strip():               # `END` 뒤 블록 채움 (v1.5)
+        return 'PAD', None, ''
     if key == 'COMMENT':
         return 'COMMENT', card[8:].rstrip(), ''
     if key == 'END':
@@ -85,12 +96,17 @@ def _parse_card(card: str):  # noqa: ANN202
 def test_card_images_reproduce_the_draft_byte_for_byte(tag):  # noqa: ANN001
     """견본 144카드를 되먹이면 같은 바이트가 나와야 한다."""
     cards = _cards_of(_find_draft(tag))
-    assert len(cards) == 144, '견본은 144카드 = 2880B x 4 다'
+    assert len(cards) == 144, '견본은 144레코드 = 2880B x 4 다'
+    # v1.5: 값 131 + COMMENT 8 + END 1 + 공백 4 = 144.
+    assert sum(1 for c in cards if _parse_card(c)[0] == 'PAD') == 4
     mismatch = []
     for i, card in enumerate(cards, start=1):
         key, value, comment = _parse_card(card)
         if key == 'END':
             assert card == 'END'.ljust(80)
+            continue
+        if key == 'PAD':
+            assert card == ' ' * 80
             continue
         again = fitswrite.card_image(key, value, comment)
         if again != card:
@@ -115,7 +131,8 @@ def test_header_bytes_of_the_draft_is_exactly_the_draft(tag):  # noqa: ANN001
     naxis = {k: v for k, v, _ in parsed if k in ('NAXIS1', 'NAXIS2')}
     # END 와 구조 카드를 뺀 목록 -> `render()` 가 주는 형태와 같다.
     body = [(k, v, c) for k, v, c in parsed
-            if k != 'END' and k not in fitswrite.rawcards.STRUCTURAL]
+            if k not in ('END', 'PAD')
+            and k not in fitswrite.rawcards.STRUCTURAL]
     blob = fitswrite.header_bytes(body, naxis['NAXIS1'], naxis['NAXIS2'])
     assert len(blob) % 2880 == 0
     assert blob.decode('ascii') == ''.join(cards)
@@ -223,7 +240,7 @@ def test_write_frame_round_trips_through_astropy(tmp_path):  # noqa: ANN001
              ('COMMENT', '  Test block ' + '_' * 10, ''),
              ('OBJECT', 'DS0000'.ljust(18), 'Object name'),
              ('EXPTIME', 30, 'Exposure time [s]')]
-    path = str(tmp_path / 'KMTT.20260823.000001.MK.fits')
+    path = str(tmp_path / 'KMTK.20260823.000001.MK.fits')
     rate = fitswrite.write_frame(path, cards, raw, naxis1=nx, naxis2=ny)
 
     assert rate > 0
@@ -274,7 +291,7 @@ def test_an_existing_file_is_never_overwritten(tmp_path):  # noqa: ANN001
     크게 뜬다.  이름을 정하는 것은 여전히 시퀀서다 -- 여기서는 "덮어쓰지
     않겠다" 고만 한다.
     """
-    path = str(tmp_path / 'KMTT.20260823.000001.MK.fits')
+    path = str(tmp_path / 'KMTK.20260823.000001.MK.fits')
     assert _dummy_frame(path) > 0
     first = open(path, 'rb').read()
 

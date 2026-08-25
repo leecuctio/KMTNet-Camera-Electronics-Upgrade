@@ -244,7 +244,7 @@ def test_pair_of_files_with_spec_geometry_and_pixels(tmp_path, fakes):  # noqa: 
                  glob.glob(str(tmp_path / 'rawdata' / '*.fits')))
     assert len(got) == 2, got
     assert got[0].endswith('.MK.fits') and got[1].endswith('.NT.fits')
-    assert got[0].startswith('KMTT.'), '테스트베드 <SITE> 가 아니다'
+    assert got[0].startswith('KMTK.'), 'KASI(실험실) <SITE> 가 아니다'
     assert got[0][:-8] == got[1][:-8], 'pair 의 이름 줄기가 다르다'
 
     for name in got:

@@ -16,8 +16,8 @@
 **논리 이름의 `KMTN` prefix 는 사이트 코드와 무관하게 불변이다.** OBSAgent 가
 `"KMTN"` 문자열 위치 +6 부터 15자를 잘라 `FitsNum` 으로 쓰기 때문이다
 (DevNote 3.2, `commands.c` 776-784).  물리 파일명에 쓰는 `KMTC`/`KMTS`/`KMTA`/
-`KMTT` 는 `KMTN` 을 부분 문자열로 포함하지 않으므로, 물리 경로가 메시지에
-섞여 들어가도 그 파서가 오반응하지 않는다 (DevNote 3.2).
+`KMTK` 는 `KMTN` 을 부분 문자열로 포함하지 않으므로, 물리 경로가 메시지에
+섞여 들어가도 그 파서가 오반응하지 않는다 (규격 2.3절, DevNote 3.2).
 
 **`LASTFILE` 은 실재 경로가 아니다.** 논리 이름은 CCD 단위 식별자일 뿐이고
 디스크에는 컨트롤러 파일 2개만 있다.  하류 도구의 근거는 raw 헤더의
@@ -44,13 +44,16 @@ CONTROLLERS: tuple[tuple[str, tuple[str, str]], ...] = (
 #:
 #: **`[node] observatory` 에 적는 값이 곧 이 카드값이다** (운영자 확정
 #: 2026-08-25) -- 네 사이트 모두 어휘가 같다.  그래서 ini 를 보면 헤더에 무엇이
-#: 실릴지 그대로 보이고, converter 의 `OBS_PREFIX`(`CTIO`/`SAAO`/`SSO`/
-#: `TESTBED`)·raw spec 2.2절과도 어긋나지 않는다.
+#: 실릴지 그대로 보이고, raw spec 2.2절 표와도 어긋나지 않는다.
 #:
-#: ⚠️ 테스트베드의 `ORIGIN` 은 `KASI` 로 **다르다**(`ORIGIN_OF`) -- `ORIGIN` 은
-#: "이 파일이 생성된 곳" 이고 `OBSERVAT` 는 "관측소" 라 뜻이 다르다.  둘을
-#: 같게 만들려고 어느 한쪽을 고치지 말 것.
-OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'TESTBED'}
+#: ⚠️ **D-017 (2026-08-25)로 넷째 자리가 바뀌었다** -- `TESTBED`/`KMTT` 를
+#: 폐지하고 `KASI`/`KMTK` 가 그 자리를 잇는다.  `OBSERVAT` 넷이 전부 관측소
+#: 이름이 되게 하려는 것이다.  이 개정으로 `ORIGIN_OF` 와 **네 자리 값이 모두
+#: 같아졌지만 뜻은 여전히 다르다** -- `ORIGIN` 은 "이 파일이 생성된 곳",
+#: `OBSERVAT` 는 "관측소".  값이 같아졌다고 어느 한쪽을 없애지 말 것.
+#: converter 쪽 대응(파일명 정규식·L0 prefix `kmtt`->`kmtk`)은 LEECU 소관의
+#: C-항목이다.
+OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTK': 'KASI'}
 
 #: `OBSERVATORY`(ini) → 사이트 코드.  **사이트 판별의 단일 권위**다
 #: (운영자 지시 2026-08-24 -- 종전의 호스트 IP 판정은 폐지됐다).
@@ -60,15 +63,15 @@ OBSERVAT = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'TESTBED'}
 SITE_OF_OBSERVATORY = {v: k for k, v in OBSERVAT.items()}
 
 #: 사이트 코드 → `[site.<이름>]` 절 이름.
-SITE_SECTION = {'KMTC': 'ctio', 'KMTS': 'saao', 'KMTA': 'sso', 'KMTT': 'testbed'}
+SITE_SECTION = {'KMTC': 'ctio', 'KMTS': 'saao', 'KMTA': 'sso', 'KMTK': 'kasi'}
 
 
 def site_of_observatory(name: str) -> tuple[str, str]:
     """`OBSERVATORY` 값 → (사이트 코드, 정규화된 `OBSERVATORY`).
 
-    받는 값은 `CTIO`/`SSO`/`SAAO`/`TESTBED` 넷뿐이다 -- FITS `OBSERVAT`
+    받는 값은 `CTIO`/`SSO`/`SAAO`/`KASI` 넷뿐이다 (D-017) -- FITS `OBSERVAT`
     카드값과 같은 어휘다.  **모르는 값이면
-    `ValueError`** -- 종전 `normalize_site()` 처럼 조용히 테스트베드로
+    `ValueError`** -- 종전 `normalize_site()` 처럼 조용히 KASI 로
     떨어뜨리지 않는다.  사이트는 파일명 `<SITE>`·좌표·`ORIGIN` 을 함께 끌고
     가므로, 오타 하나가 자료의 정체를 통째로 바꾼다 (D-015 의 교훈).
     """
@@ -76,39 +79,46 @@ def site_of_observatory(name: str) -> tuple[str, str]:
     code = SITE_OF_OBSERVATORY.get(up)
     if code is None:
         raise ValueError(
-            'OBSERVATORY=%r 를 모르겠다 -- CTIO / SSO / SAAO / TESTBED 중 '
+            'OBSERVATORY=%r 를 모르겠다 -- CTIO / SSO / SAAO / KASI 중 '
             '하나여야 한다' % (name,))
     return code, up
 
 #: 사이트 코드 → `ORIGIN` 기본값.  **`ORIGIN` = "이 파일이 생성된 곳"** (운영자
 #: 확정 2026-08-21, Header_and_Refs v1.7): 관측소 raw 는 관측소 이름
-#: (`OBSERVAT` 와 중복 감수 -- 레거시 계승), 테스트베드 raw 는 `KASI`.
+#: (`OBSERVAT` 와 중복 감수 -- 레거시 계승), KASI(실험실) raw 는 `KASI`.
+#: **D-017 이후 `OBSERVAT` 와 네 자리 모두 값이 같다** -- 뜻(생성처 vs 관측소)이
+#: 달라 카드는 합치지 않는다.
 #: KASI 서버 파이프라인 산출물(MEF·L1)이 `ORIGIN='KASI'` 를 갖는다.
 #: `[site]`/`[site.<이름>]` 의 `origin` 키로 덮어쓸 수 있다 (ICS INI 카드).
-ORIGIN_OF = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTT': 'KASI'}
+ORIGIN_OF = {'KMTC': 'CTIO', 'KMTS': 'SAAO', 'KMTA': 'SSO', 'KMTK': 'KASI'}
 
-#: 실재하는 과학 사이트 코드.  이 셋 밖은 모두 테스트베드로 떨어진다.
+#: 실재하는 과학 사이트 코드.  이 셋 밖은 모두 KASI 로 떨어진다.
 REAL_SITES = ('KMTC', 'KMTS', 'KMTA')
-TESTBED_SITE = 'KMTT'
+
+#: 관측소가 아닌 자리(실험실·벤치·데모)의 사이트 코드.  **D-017 (2026-08-25)**
+#: 로 구 `TESTBED`/`KMTT` 를 대체한다 -- `OBSERVAT` 넷이 전부 관측소 이름이 되게
+#: 하려는 것이고, 그 자리에서 실제로 자료를 만드는 곳이 KASI 이기 때문이다.
+KASI_SITE = 'KMTK'
 
 
 def normalize_site(code: str) -> str:
-    """사이트 코드를 정규화한다.  **`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTT`.**
+    """사이트 코드를 정규화한다.  **`KMTC`/`KMTS`/`KMTA` 밖은 모두 `KMTK`.**
 
-    운영자 확정 (2026-08-13).  실재하는 관측소는 셋뿐이므로, 모르는 값을 그대로
-    싣기보다 테스트베드로 떨어뜨리는 것이 안전하다 -- 파일명 `<SITE>` 는
-    converter 정규식(`^(KMTC|KMTS|KMTA|KMTT)[.]…`)이 받는 넷 중 하나여야 하고,
+    운영자 확정 (2026-08-13, 코드는 D-017 로 개정 2026-08-25).  실재하는 관측소는
+    셋뿐이므로, 모르는 값을 그대로 싣기보다 KASI 로 떨어뜨리는 것이 안전하다 --
+    파일명 `<SITE>` 는
+    converter 정규식(`^(KMTC|KMTS|KMTA|KMTK)[.]…`)이 받는 넷 중 하나여야 하고,
     낯선 코드는 정규식에 걸려 변환 자체가 fallback 경로로 빠진다.
 
     TC 가 보내는 `TELID` 에 사이트가 아닌 `KMTN`(pctcs 기본값, `pctcs.h:115`)이
     올 수 있어서 이 함수가 특히 필요하다.
 
-    ⚠️ **떨어뜨리는 것이 곧 안전은 아니다.** 실제 관측 자료가 `KMTT` 이름으로
+    ⚠️ **떨어뜨리는 것이 곧 안전은 아니다.** 실제 관측 자료가 `KMTK` 이름으로
     저장되면 사이트 정체를 잃는다 -- 그래서 호출측은 정규화가 실제로 일어났을 때
     경고를 남겨야 한다 (`sequencer` 참고).
     """
     up = (code or '').strip().upper()
-    return up if up in REAL_SITES else TESTBED_SITE
+    return up if up in REAL_SITES else KASI_SITE
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +153,7 @@ OBSDATE_SHIFT_MIN = {
     'KMTC': +7 * 60 + 30,     # 경계 UT 16:30  (현지 12:30, UT-4)
     'KMTS': -(10 * 60 + 30),  # 경계 UT 10:30  (현지 12:30, UT+2)
     'KMTA': -(1 * 60 + 30),   # 경계 UT 01:30  (현지 12:30, UT+11)
-    'KMTT': 0,                # 테스트베드는 관측 야간이 없다 -- UT 날짜 그대로
+    'KMTK': 0,                # KASI(실험실)는 관측 야간이 없다 -- UT 날짜 그대로
 }
 
 
@@ -172,7 +182,7 @@ def observing_date(when: datetime, site_code: str) -> str:
 
     Args:
         when: UT 시각 (timezone-aware).
-        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTT`.  그 밖은 `KMTT` 로 정규화된다.
+        site_code: `KMTC`/`KMTS`/`KMTA`/`KMTK`.  그 밖은 `KMTK` 로 정규화된다.
     """
     site = normalize_site(site_code)
     shift = OBSDATE_SHIFT_MIN[site]
@@ -244,12 +254,25 @@ def logical_path(data_dir: str, ccd: str, suffix: str) -> str:
 #
 # 전제: 저장 디렉토리의 쓰기 주체는 **ICS 하나뿐**이다 (raw spec 2.3절 7항).
 
-#: 노출 번호 공간 -- `000000`–`099999`, 100000 에서 되감는다 (레거시 관례).
-NUM_SPACE = 100000
+#: 노출 번호 공간 -- **`000000`–`999999`, 1000000 에서 되감는다** (**D-018**,
+#: 2026-08-25).  파일명 `<NNNNNN>` 의 6자리를 전부 쓴다.
+#:
+#: 구 규칙은 `099999` 상한이었다 (레거시 관례) -- 6자리 형식에 다섯 자리만 쓰는
+#: 셈이라 "6자리 고정폭"과 "10만 상한" 을 따로 기억해야 했고, 맨 앞 자리가 늘
+#: `0` 이었다.  공간이 10배가 되면 **D-016 이 다루는 되감김 충돌 자체가
+#: 드물어진다** -- 되감김이 그 충돌의 주된 원인이기 때문이다.
+#:
+#: 자릿수·zero-padding 규칙은 D-011 그대로라 **파일명 형식은 바뀌지 않는다.**
+#: 기존 `0xxxxx` 자료와도 충돌하지 않는다 (새 공간이 옛 공간을 포함한다).
+NUM_SPACE = 1_000_000
 
 
 class NumberSpaceExhausted(Exception):
-    """번호 공간 한 바퀴(100000회)를 돌아도 빈 이름이 없다 (D-016 2항).
+    """번호 공간 한 바퀴(**1000000회**, D-018)를 돌아도 빈 이름이 없다.
+
+    상한이 10만에서 100만으로 늘어도 **종료 보장은 그대로**다 -- 여전히 "공간
+    한 바퀴" 이고, 루프가 그 횟수에 이르렀다면 저장 자리가 실제로 가득 찬 것이다
+    (D-016 2항).
 
     이 규격의 **유일한 저장 실패 조건**이다 -- 호출측은 ERROR 를 내고
     저장하지 않는다.
@@ -275,8 +298,9 @@ def resolve_pair_number(data_dir: str, site_code: str, date_part: str,
     """쓸 노출 번호를 정한다 -- D-016 선검사 루프.
 
     쓰기 전에 후보 N 의 **MK·NT 두 경로를 모두 선검사**하고, 점유 시 N+1 로
-    재검사한다 (099999 넘으면 000000 으로 되감음).  +1 이 100000회(공간 한
-    바퀴)를 초과하면 `NumberSpaceExhausted` -- 저장하지 않는다.
+    재검사한다 (**999999** 넘으면 000000 으로 되감음, D-018).  +1 이
+    **1000000회**(공간 한 바퀴)를 초과하면 `NumberSpaceExhausted` -- 저장하지
+    않는다.  실패 조건은 이것 하나뿐이다.
 
     Args:
         check: False 면 존재 확인을 건너뛰고 그대로 돌려준다

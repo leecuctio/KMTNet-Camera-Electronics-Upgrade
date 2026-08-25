@@ -26,7 +26,7 @@
 | --- | --- |
 | Product | KMT-CEU L0 64-amplifier raw MEF |
 | Geometry version (`GEOMVER`) | `CEU-L0AMP-v2.1` |
-| Raw 입력 파일명 | `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {KMTC, KMTS, KMTA, KMTT} (ICD v4.1 §2.1, D-011) |
+| Raw 입력 파일명 | `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {KMTC, KMTS, KMTA, KMTK} (ICD v4.1 §2.1, D-011 · 넷째 코드 **D-017**, 2026-08-25). ⚠️ **ICD v4.1 본문은 아직 `KMTT`** — 갱신은 LEECU 몫이고 converter 정규식도 함께 바뀌어야 한다 (D-017 영향 절) |
 | 기준 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) |
 | HDU count | 69 = PRIMARY + 64 amp IMAGE + 4 BINTABLE |
 | Binary tables | `AMPINFO`, `XTALKINFO`, `VOLTINFO`, `TELEMETRY` |

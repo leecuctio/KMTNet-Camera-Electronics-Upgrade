@@ -213,12 +213,14 @@ cp <어딘가>/KMTNet_Sci_*.acf            ~/AIC/Config/acf/
 
 ```ini
 [node]
-observatory  = TESTBED              # **사이트를 정하는 단 하나의 값**
-                                    #   CTIO | SSO | SAAO | TESTBED
+observatory  = KASI                 # **사이트를 정하는 단 하나의 값**
+                                    #   CTIO | SSO | SAAO | KASI
                                     #   적은 값이 그대로 OBSERVAT 카드가 되고,
-                                    #   사이트 코드 KMTC/KMTA/KMTS/KMTT 가 유도돼
-                                    #   파일명·좌표·ORIGIN·INSTRUME 를 함께 끌고
-                                    #   간다.  모르는 값은 기동 거부
+                                    #   사이트 코드 KMTC/KMTA/KMTS/KMTK 가 유도돼
+                                    #   파일명·좌표·ORIGIN·INSTRUME·TELESCOP·
+                                    #   FPAID 를 함께 끌고 간다.  모르는 값은
+                                    #   기동 거부.  ⚠️ D-017: 구 TESTBED/KMTT
+                                    #   는 폐지됐다 -- 남아 있으면 기동이 멈춘다
 ic_ids       = M.IC, K.IC           # 유닛 한 대만 돌릴 때 (2대면 4개)
 cb_ids       = M.CB, K.CB
 

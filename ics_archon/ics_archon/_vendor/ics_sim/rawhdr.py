@@ -81,28 +81,47 @@ DETECTOR = 'e2v CCD290-99'
 #: `ICS INI` 카드의 코드 기본값 -- ini 가 비어 있을 때 쓴다 (raw spec 5.2·5.5절).
 CAMVER = 'CEU-v2.1'      # **HW·성능상 변경이 있을 때만 올린다** -- 포장 규범
                          # 조항(4.3)의 고정 대상 = CAMVER + CTRLxCFG
-FPAID = 'FPA#1'
+#: ⚠️ `FPAID` 는 이제 **사이트가 정한다** -- 정본은 `VERIFIED_SITES` 와
+#: `fpaid_of()` 이고 모듈 상수는 두지 않는다 (raw spec 5.3.1절, D-017 항목 6).
 RDMODE = 'NORMAL'
 
 #: `CHMAP_*` 4장 (raw spec 4.5절 amp 전수 표의 투영, pair 상이).
-#: 기계 가독 정본은 `raw_fits_spec/__reference/Detector_Ch_to_AmpID_Map_v1.0.txt`.
+#: 기계 가독 정본은 `raw_fits_spec/Detector_Ch_to_AmpID_Map_v1.1.txt`.
 #: 값 = CCD 출력 채널, raw X 오름차순.  **TOP/BOT 대역이 chip 마다 반대**인
 #: 것이 실배선이다 (M: TOP=16→09 / K: TOP=08→01 등) -- converter 추정식과
 #: 다르므로 MEF 쪽 재정의가 C-11 이다.
+#:
+#: **토큰은 4자 `<chip><A|D><nn>` 이다** (운영자 확정 2026-08-25, raw spec v1.5
+#: 4.5·5.2절).  가운데 글자는 **채널 번호가 정한다** -- `01`–`08` = `A` ·
+#: `09`–`16` = `D` (e2v image section, 부록 A: 채널 번호 = OS 번호 = 아래/위
+#: half).  종전 3자 표기(`M16`)를 대체했고, 기계 정본도 v1.1 에서 같은 판정으로
+#: `B-BOT` 을 `D-BOT` 으로 고쳤다 (OI-17 잔여 ①·② 종결).
+#:
+#: ⚠️ 가운데 글자를 chip 이나 사분면에서 유추하지 말 것 -- **번호만이 정한다.**
+#: 같은 chip 안에서 `MD16`(위 half)과 `MA01`(아래 half)이 함께 나온다.
 CHMAP = {
     'MK': {
-        'CHMAP_LT': 'M16,M15,M14,M13,M12,M11,M10,M09',
-        'CHMAP_LB': 'M01,M02,M03,M04,M05,M06,M07,M08',
-        'CHMAP_RT': 'K08,K07,K06,K05,K04,K03,K02,K01',
-        'CHMAP_RB': 'K09,K10,K11,K12,K13,K14,K15,K16',
+        'CHMAP_LT': 'MD16,MD15,MD14,MD13,MD12,MD11,MD10,MD09',
+        'CHMAP_LB': 'MA01,MA02,MA03,MA04,MA05,MA06,MA07,MA08',
+        'CHMAP_RT': 'KA08,KA07,KA06,KA05,KA04,KA03,KA02,KA01',
+        'CHMAP_RB': 'KD09,KD10,KD11,KD12,KD13,KD14,KD15,KD16',
     },
     'NT': {
-        'CHMAP_LT': 'N08,N07,N06,N05,N04,N03,N02,N01',
-        'CHMAP_LB': 'N09,N10,N11,N12,N13,N14,N15,N16',
-        'CHMAP_RT': 'T16,T15,T14,T13,T12,T11,T10,T09',
-        'CHMAP_RB': 'T01,T02,T03,T04,T05,T06,T07,T08',
+        'CHMAP_LT': 'NA08,NA07,NA06,NA05,NA04,NA03,NA02,NA01',
+        'CHMAP_LB': 'ND09,ND10,ND11,ND12,ND13,ND14,ND15,ND16',
+        'CHMAP_RT': 'TD16,TD15,TD14,TD13,TD12,TD11,TD10,TD09',
+        'CHMAP_RB': 'TA01,TA02,TA03,TA04,TA05,TA06,TA07,TA08',
     },
 }
+
+
+def chmap_section(channel: int) -> str:
+    """채널 번호가 정하는 `CHMAP_*` 가운데 글자.  01–08 = `A` · 09–16 = `D`.
+
+    raw spec 4.5절 · 부록 A -- 채널 번호 = OS 번호이고 OS1–8 이 아래 half(섹션
+    A) · OS9–16 이 위 half(섹션 D) 다.  **chip 이나 사분면은 보지 않는다.**
+    """
+    return 'A' if 1 <= channel <= 8 else 'D'
 
 
 def check_geometry() -> None:
@@ -129,8 +148,9 @@ def check_geometry() -> None:
         if got != want:
             raise ValueError(f'raw spec 4장 불변식 위반 -- {label} '
                              f'({got} != {want})')
-    # 4.5절 CHMAP 불변식: 카드당 8토큰 · 접두 = DETID 글자 · chip 당 채널
-    # 01–16 전량 · pair 합계 64.
+    # 4.5절 CHMAP 불변식 (v1.5): 카드당 8토큰 · **토큰 4자** · 첫 글자 = DETID
+    # 글자 · **가운데 글자가 번호 규칙(01–08=A · 09–16=D)과 일치** · chip 당
+    # 채널 01–16 전량 · pair 합계 64.
     total = 0
     for detid, cards in CHMAP.items():
         chans: dict[str, set[int]] = {detid[0]: set(), detid[1]: set()}
@@ -141,10 +161,20 @@ def check_geometry() -> None:
                 raise ValueError(f'{detid} {key}: 8토큰이 아니다 -- {tokens}')
             chip = detid[0] if side == 'L' else detid[1]
             for t in tokens:
+                if len(t) != 4:
+                    raise ValueError(
+                        f'{detid} {key}: 토큰 {t!r} 가 4자가 아니다 '
+                        f'(<chip><A|D><nn>, raw spec 4.5절)')
                 if t[0] != chip:
                     raise ValueError(
                         f'{detid} {key}: 접두 {t[0]} 가 chip {chip} 와 다르다')
-                chans[chip].add(int(t[1:]))
+                num = int(t[2:])
+                want = chmap_section(num)
+                if t[1] != want:
+                    raise ValueError(
+                        f'{detid} {key}: 토큰 {t!r} 의 가운데 글자가 {t[1]} 인데 '
+                        f'채널 {num:02d} 는 {want} 여야 한다 (01–08=A · 09–16=D)')
+                chans[chip].add(num)
             total += 8
         for chip, seen in chans.items():
             if seen != set(range(1, 17)):
@@ -165,7 +195,8 @@ def instrument_header(ctrltag: str, site_code: str,
     Args:
         ctrltag: `MK` 또는 `NT`.  `DETID`/`CHMAP_*` 가 여기서 갈린다
             (pair 상이 7장 중 5장, raw spec 5.9절).
-        site_code: `INSTRUME` 기본값 유도 (`'<SITE> 18k CCD'`, 운영자 확정).
+        site_code: `INSTRUME` 기본값(`'<SITE> 18k CCD'`, 운영자 확정)과
+            **`FPAID`** 를 유도한다 (raw spec 5.3.1절, D-017 항목 6).
         cfg_camera: `[camera]` 설정 (`detector`/`camver`/`instrume`/`fpaid`).
             주어지면 기본값보다 **우선한다** -- Source 가 `ICS INI` 인 카드는
             ini 에서 수정할 수 있어야 한다 (운영자 지시 2026-08-22).
@@ -175,7 +206,7 @@ def instrument_header(ctrltag: str, site_code: str,
     out: dict[str, object] = {
         'INSTRUME': str(c.get('instrume', f'{site_code.upper()} 18k CCD')),
         'CAMVER': str(c.get('camver', CAMVER)),
-        'FPAID': str(c.get('fpaid', FPAID)),
+        'FPAID': str(c.get('fpaid') or fpaid_of(site_code)),
         'DETECTOR': str(c.get('detector', DETECTOR)),
         'DETID': tag,
         'PIXSIZE': PIXSIZE, 'PIXSCALE': PIXSCALE,
@@ -196,7 +227,7 @@ def instrument_header(ctrltag: str, site_code: str,
 #
 # **좌표를 코드에 박지 않는다.**  운영자가 세 사이트 실측값을 확인해 줬고
 # (2026-08-13), `[site]`/`[site.<코드>]` 설정이 있으면 그쪽이 이긴다 --
-# 현장이 정본이다.  테스트베드는 좌표를 **일부러 비워** sentinel 을 싣는다
+# 현장이 정본이다.  KASI(실험실)는 좌표를 **일부러 비워** sentinel 을 싣는다
 # (아무 좌표나 넣으면 시험 산출물이 실제 관측처럼 보인다).
 
 #: 사이트별 측지값 (운영자 확인 2026-08-13).
@@ -210,20 +241,46 @@ def instrument_header(ctrltag: str, site_code: str,
 #: CTIO 만 90 미만이라 `+` 부호가 붙고 나머지는 0~360 이라 형태가 달라 보이지만
 #: **규약은 같다.**  다음 사람이 "왜 339도?" 하고 동경으로 고치면 부호가 뒤집힌
 #: 좌표가 아카이브에 영구히 박힌다 -- 겉보기엔 유효한 좌표라 아무도 의심하지
-#: 않는다.  형식(초의 소수점 자리, `+` 부호 유무)도 사이트마다 다르지만
-#: **운영자가 준 문자열을 그대로 싣는다** -- 정규화하면 레거시 아카이브와
-#: 문자열 비교가 깨진다.
+#: 않는다 (raw spec OI-11).  형식(초의 소수점 자리, `+` 부호 유무)도 사이트마다
+#: 다르지만 **운영자가 준 문자열을 그대로 싣는다** -- 정규화하면 레거시
+#: 아카이브와 문자열 비교가 깨진다.
+#:
+#: **`telescop`·`fpaid` 는 사이트가 정하는 상수다** (raw spec **5.3.1절**,
+#: D-017 항목 6, 운영자 확정 2026-08-25).  사이트 하나에서 다섯 값(`<SITE>` ·
+#: `OBSERVAT` · `ORIGIN` · `TELESCOP` · `FPAID`)이 함께 유도되고 낱개 설정은
+#: 두지 않는다 -- 다만 `[site.*]` / `[camera] fpaid` 에 값이 있으면 그쪽이
+#: 이긴다 (현장이 정본).
+#:
+#: ⚠️ **망원경 번호와 `FPAID` 번호는 관측소 셋 모두 어긋난다** -- CTIO 망원경
+#: `#1`·FPA `#2`, SSO `#3`·FPA `#1`, SAAO `#2`·FPA `#3`.  망원경 번호는 설치
+#: 순서이고 `FPAID` 는 **조립체 자체의 정체**이며 조립체는 사이트 간 이동이
+#: 가능하다.  **어긋난 것을 오타로 보고 맞추면 검출기 귀속이 통째로 틀어진다.**
+#: KASI 만 `#0`/`#0` 으로 같은데 그건 우연이다.
+#:
+#: SSO 값은 **레거시 실측**으로 확인됐다 (`KMTNk.20170209.044131`:
+#: `OBSERVAT='SSO'` + `TELESCOP='KMTNet 1.6m #3'`).  나머지 셋은 운영자 제시분.
 VERIFIED_SITES = {
     'KMTC': {'latitude': '-30:10:01.84', 'longitud': '+70:48:14.39',
-             'elevatio': 2140, 'telescop': 'KMTNet 1.6m #1'},
+             'elevatio': 2140, 'telescop': 'KMTNet 1.6m #1', 'fpaid': 'FPA#2'},
     'KMTS': {'latitude': '-32:22:42', 'longitud': '339:11:22',
-             'elevatio': 1800, 'telescop': 'KMTNet 1.6m #2'},
+             'elevatio': 1800, 'telescop': 'KMTNet 1.6m #2', 'fpaid': 'FPA#3'},
     'KMTA': {'latitude': '-31:16:24', 'longitud': '210:56:08',
-             'elevatio': 1150, 'telescop': 'KMTNet 1.6m #3'},
-    # KMTT(테스트베드)는 실재 좌표가 없다 -- 일부러 비워 sentinel 을 싣는다.
-    # `TELESCOP='Sim'` 만 규격이 정한 값이다 (raw spec 5.3절).
-    'KMTT': {'telescop': 'Sim'},
+             'elevatio': 1150, 'telescop': 'KMTNet 1.6m #3', 'fpaid': 'FPA#1'},
+    # KMTK(KASI 실험실)는 실재 관측 좌표가 없다.  측지값은 **일부러 비워** 둔다
+    # -- 아무 좌표나 넣으면 시험 산출물이 실제 관측처럼 보인다.  `telescop`/
+    # `fpaid` 만 값이 있는 것은 D-017 항목 6 이 `'KMTNet 1.6m #0'` / `'FPA#0'`
+    # 으로 정했기 때문이다 (구 `KMTT` 판의 `TELESCOP='Sim'` 을 대체한다).
+    'KMTK': {'telescop': 'KMTNet 1.6m #0', 'fpaid': 'FPA#0'},
 }
+
+
+def fpaid_of(site_code: str) -> str:
+    """사이트가 정하는 `FPAID` (raw spec 5.3.1절, D-017 항목 6).
+
+    모르는 코드면 규격 5.0절 문자열 sentinel `'NC'` 다 -- 아무 조립체 번호나
+    싣는 것보다 "모른다" 가 낫다.
+    """
+    return str(VERIFIED_SITES.get(site_code.upper(), {}).get('fpaid', 'NC'))
 
 
 def observatory_header(site_code: str, cfg_site: dict | None = None,
@@ -232,7 +289,8 @@ def observatory_header(site_code: str, cfg_site: dict | None = None,
 
     `OBSERVAT` 는 파일명 `<SITE>` 와 교차 검증되는 **유일한 변환 하드 실패**
     카드다 (raw spec 2.2절).  `ORIGIN` = "이 파일이 생성된 곳" -- 관측소 raw 는
-    관측소명, 테스트베드 raw 는 `KASI` (운영자 확정 2026-08-21).  `[site]` 의
+    관측소명, KASI(실험실) raw 는 `KASI` (운영자 확정 2026-08-21).  **D-017
+    이후 네 자리 모두 `OBSERVAT` 와 값이 같아졌지만 뜻은 다르다.**  `[site]` 의
     `origin` 키가 유도값을 이긴다.
     """
     from . import rawpair                      # 순환 import 회피 (이름 규약 쪽)
@@ -380,8 +438,12 @@ def controller_header(info: dict, *, backend_name: str, ics_build: str,
 
 #: 듀어·HK 센서 카드 -- 견본 v1.0 의 수록 순서.  출처 3계통은 백엔드
 #: `sensors()` docstring 참조 (ICG RTD / standalone RTD / Tapaculo).
-DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX',
-               'AIR_IN', 'AIR_OUT', 'GLYC_IN', 'GLYC_OUT')
+#:
+#: ⚠️ **`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` 4장은 폐지됐다** (운영자 확정
+#: 2026-08-25, raw spec v1.5 -- 5.6절이 18장에서 14장으로 줄었고 5.10절 폐지
+#: 목록에 등재됐다).  standalone RTD 계통이 통째로 비었다.  견본 값 카드도
+#: 135 -> **131** 이 됐다.  되살리려면 **규격부터** 고칠 것.
+DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX')
 
 #: 측정 불가를 뜻하는 `DEWPRES` 값 (운영자 확정 2026-08-21).
 DEWPRES_NC = '9.99e-9'

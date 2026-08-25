@@ -50,7 +50,7 @@ class IcsSim:
         self.router = NodeRouter(cfg.node)
         # `site_code` 는 파일명 `<YYYYMMDD>`(사이트별 관측일)와 헤더 정체성에
         # 함께 쓰인다.  `normalize_site()` 를 지나므로 `KMTC`/`KMTS`/`KMTA` 밖은
-        # 모두 `KMTT` 로 떨어진다 (운영자 확정 2026-08-13).
+        # 모두 `KMTK` 로 떨어진다 (운영자 확정 2026-08-13, 코드는 D-017 개정).
         site, self.site_why = self._resolve_site()
         self.state = IcsState(expnum_file=cfg.paths.expnum_file,
                               site_code=site)
@@ -86,7 +86,7 @@ class IcsSim:
 
         ⚠️ 종전에는 **호스트 IP 판정(D-015)이 ini 를 이겼다.**  그 경로는
         폐지했다: NIC 가 내려가거나 낯선 대역에 붙으면 실제 관측 자료가
-        `KMTT.…` 이름으로 저장되는 위험이 있었고, 그것을 막는 대가로 "설정이
+        `KMTK.…` 이름으로 저장되는 위험이 있었고, 그것을 막는 대가로 "설정이
         맞는데도 판정이 이긴다" 는 반대 위험을 안고 있었다.  이제는 설정
         한 줄이 정본이고, 대신 그 값이 **틀리면 기동이 멈춘다.**
         """
@@ -117,38 +117,38 @@ class IcsSim:
                  ', '.join(self.router.registered_ids), self.backend.name)
 
     def _warn_if_real_frames_would_be_labelled_bench(self) -> None:
-        """실물 컨트롤러인데 사이트가 벤치로 판정된 경우 (D-015).
+        """실물 컨트롤러인데 사이트가 `KMTK`(KASI) 인 경우 (D-011 · D-017).
 
-        **이 조합만 조용히 넘어갈 수 있어서 따로 잡는다.**  판정이 `KMTT` 면
-        보통은 정말 벤치이고 시뮬 프레임이라 문제가 없다.  그런데 백엔드가
-        `archon` 이면 **실화소가 `KMTT.…` 이름으로 아카이브에 들어간다** --
+        **이 조합만 조용히 넘어갈 수 있어서 따로 잡는다.**  사이트가 `KMTK` 면
+        보통은 정말 실험실이고 시뮬 프레임이라 문제가 없다.  그런데 백엔드가
+        `archon` 이면 **실화소가 `KMTK.…` 이름으로 아카이브에 들어간다** --
         사이트 정체를 영구히 잃는 경로다.
 
         사이트는 이제 `[node] observatory` 한 줄이 정하므로(2026-08-24) 오배포는
-        **그 줄 하나가 틀린 것**이다.  실물 백엔드로 벤치 이름을 달고 찍는 상황이
-        그 증상이다.
+        **그 줄 하나가 틀린 것**이다.  실물 백엔드로 KASI 이름을 달고 찍는
+        상황이 그 증상이다.
 
-        시뮬 백엔드에서는 아무 말도 하지 않는다 -- 벤치가 조용해야 사람이
+        시뮬 백엔드에서는 아무 말도 하지 않는다 -- 실험실이 조용해야 사람이
         경고를 무시하는 것을 학습하지 않는다.
         """
-        if self.state.site_code != rawpair.TESTBED_SITE:
+        if self.state.site_code != rawpair.KASI_SITE:
             return
         if rawhdr.datasrc_of(self.backend.name) == rawhdr.DATASRC_SIM:
             return
         log.warning(
-            '사이트가 %s(벤치)인데 백엔드가 실물 %r 이다 -- **실화소가 %s.… '
-            '이름으로 저장된다.**  관측소 장비라면 [node] observatory 가 '
-            'TESTBED 로 남아 있는 것이니 CTIO/SSO/SAAO 중 맞는 값으로 고칠 것.  '
-            '자료를 찍기 전에 확인할 것',
-            rawpair.TESTBED_SITE, self.backend.name, rawpair.TESTBED_SITE)
+            '사이트가 %s(KASI/실험실)인데 백엔드가 실물 %r 이다 -- **실화소가 '
+            '%s.… 이름으로 저장된다.**  관측소 장비라면 [node] observatory 가 '
+            'KASI 로 남아 있는 것이니 CTIO/SSO/SAAO 중 맞는 값으로 고칠 것.  '
+            '자료를 찍기 전에 확인할 것 (D-017)',
+            rawpair.KASI_SITE, self.backend.name, rawpair.KASI_SITE)
 
     def log_identity_banner(self) -> None:
         """기동 시 **사이트 정체를 한 덩어리로** 남긴다.
 
         **오배포를 자료 한 장 찍기 전에 사람 눈에 띄게 하는 것이 목적이다.**
         `[node] observatory` 한 줄이 사이트 코드 -> 좌표 -> 관측일 경계 ->
-        파일명 -> `INSTRUME` 까지 전부 끌고 가므로(D-011·D-014), 그 한 줄이
-        틀리면 **아무 오류 없이** 전부 틀린다.  헤더에 `OBSERVAT`/좌표가 남으니 사후 탐지는 가능하지만,
+        파일명 -> `INSTRUME` -> `TELESCOP`/`FPAID` 까지 전부 끌고 가므로
+        (D-011·D-014·D-017), 그 한 줄이 틀리면 **아무 오류 없이** 전부 틀린다.  헤더에 `OBSERVAT`/좌표가 남으니 사후 탐지는 가능하지만,
         그때는 이미 아카이브에 들어가 있다 -- 그래서 **t=0 에 보여주는 쪽**이
         런타임 검사보다 값싸고 확실하다.
 
@@ -162,6 +162,8 @@ class IcsSim:
         cfg, st = self.cfg, self.state
         site = st.site_code
         geo = rawhdr.observatory_header(site, cfg.site_for(site))
+        instr = rawhdr.instrument_header(rawpair.CONTROLLERS[0][0], site,
+                                         cfg.camera.as_dict())
         suffix = f'{st.obs_date()}.{st.expnum:06d}'
         example = rawpair.physical_name(site, suffix, rawpair.CONTROLLERS[0][0])
 
@@ -181,13 +183,17 @@ class IcsSim:
         boundary = rawpair.boundary_ut(site)
         obsday = (f'UT {boundary}   -- 파일명 <YYYYMMDD> 가 이 경계로 갈린다'
                   if boundary != '(없음)' else
-                  'UT 날짜 그대로 (테스트베드는 관측 야간 개념이 없다)')
+                  'UT 날짜 그대로 (KASI 는 관측 야간 개념이 없다)')
 
         rows = [
             ('사이트', f'{site}   (OBSERVAT='
                        f'{rawpair.OBSERVAT.get(site, "?")})'),
             ('근거', getattr(self, 'site_why', '(없음)')),
             ('TELESCOP', str(geo['TELESCOP'])),
+            # `FPAID` 도 사이트가 정한다 (raw spec 5.3.1절, D-017 항목 6) --
+            # 사이트를 바꾸면 **조용히 따라오는** 값이라 배너에 세운다.
+            # ⚠️ 망원경 번호와 FPA 번호는 관측소 셋 모두 어긋나는 것이 정상이다.
+            ('FPAID', str(instr['FPAID']).strip()),
             ('위치', where),
             ('관측일 경계', obsday),
             ('파일명 예시', example),

@@ -317,7 +317,7 @@ def _write_probe_fits(raw, fs, ctrl, acfg, args) -> None:  # noqa: ANN001
     stem = 'probe.%s.%s' % (time.strftime('%Y%m%dT%H%M%S', time.gmtime()),
                             ctrl.tag)
     cards = rawhdr.spec_cards(
-        ctrltag=ctrl.tag, site_code='KMTT',
+        ctrltag=ctrl.tag, site_code='KMTK',
         backend_name='archon', ics_build=_build_id(),
         ctrl_info={'units': (
             {**parse.unit_identity(ctrl.system),

@@ -96,10 +96,16 @@
     재므로 축척을 따라오지 않는다 — 카운트다운이 먼저 끝나면 셔터가 강제로
     닫혀 **노출이 잘린 채 `EXPTIME` 은 요청값으로** 실린다.
 10-1. **사이트는 `[node] observatory` 한 줄이 정한다** (2026-08-24).
-    `CTIO`/`SSO`/`SAAO`/`TESTBED` 넷뿐이고 **적은 값이 그대로 `OBSERVAT`
+    `CTIO`/`SSO`/`SAAO`/`KASI` 넷뿐이고 **적은 값이 그대로 `OBSERVAT`
     카드**가 된다. 거기서 `telid`(사이트 코드)·`site`(`[site.*]` 절)가
-    **유도**되어 파일명 `<SITE>` · 좌표 · `ORIGIN` · `INSTRUME` 가 함께
-    따라온다. **모르는 값은 기동을 거부한다.**
+    **유도**되어 파일명 `<SITE>` · 좌표 · `ORIGIN` · `INSTRUME` · **`TELESCOP`
+    · `FPAID`**(raw spec 5.3.1절)가 함께 따라온다. **모르는 값은 기동을
+    거부한다.**
+    ⚠️ **D-017 (2026-08-25)**: 넷째 값이 `TESTBED`/`KMTT` 에서 **`KASI`/`KMTK`**
+    로 바뀌었다. 벤치에 `observatory = TESTBED` 로 설치된 사본은 **기동이
+    멈춘다** — `KASI` 로 고칠 것. `[site.testbed]` 절도 `[site.kasi]` 다.
+    ⚠️ **망원경 번호와 `FPAID` 번호는 관측소 셋 모두 어긋난다**(CTIO 망원경
+    `#1`·`FPA#2` 등). 오타로 보고 맞추면 검출기 귀속이 틀어진다.
     ⚠️ 종전의 **호스트 IP 판정(D-015)은 폐지**했다 — `siteid.py` 를 지웠으니
     되살리지 말 것. 두 위험(틀린 설정 vs 틀린 판정) 중 설정 쪽을 택한
     결과이고 경위는 DevNote 11.27 이다.
@@ -131,7 +137,61 @@
     기본 30초). 전원 차단보다 **앞**이다 — 전원은 몇 초 더 켜져 있어도 되지만
     독출을 마친 프레임은 다시 못 찍는다 (F3).
 
-## 상태 (2026-08-25 — 커밋 완료, **벤치에서 첫 연동 시험 진행 중**)
+## 상태 (2026-08-26 — **raw spec v1.5 반영 완료**, 벤치 첫 연동 시험 대기)
+
+### ✅ raw spec v1.5 반영 (2026-08-26) — `main` 머지 + 전 계층 정합
+
+**5장 검토 라운드가 내려왔다.**  `main` 이 raw spec v1.5 를 발행하고 구판(IP
+판별) `ics_sim` 에 먼저 반영했으며(`13e02b2`), 이 브랜치가 `main` 을 **머지해서**
+`observatory` 판별 구조 위에서 완결했다.  `13e02b2` 커밋 메시지가 "머지 충돌
+해소는 **`main` 값을 정본으로**" 라고 지시했고 그대로 했다 — 다만 **값만**
+정본이고 구조는 이 브랜치 것을 지켰다 (아래 "머지에서 내린 판단" 참조).
+
+⚠️ **벤치에 이미 설치된 사본은 `ics_archon.ini` 를 고쳐야 기동한다** —
+`[node] observatory = TESTBED` 는 이제 **모르는 값이라 기동을 거부**한다.
+`KASI` 로 바꾸고 `[site.testbed]` 절도 `[site.kasi]` 로 고칠 것.
+
+| 무엇 | 전 → 후 | 어디 |
+|---|---|---|
+| **D-017 사이트 코드** | `KMTT`/`TESTBED` → **`KMTK`/`KASI`** | `rawpair`(`OBSERVAT`·`SITE_OF_OBSERVATORY`·`SITE_SECTION`·`ORIGIN_OF`·관측일 보정) · `config`(`_SITE_TELID`·`NodeCfg` 기본값) · `state.site_code` · `app` 경고 · 두 ini · labtest `SITE_CODE` · `probe_archon` |
+| **상수 개명** | `rawpair.TESTBED_SITE` → **`KASI_SITE`** | 옛 이름은 없다 — `AttributeError` 로 드러난다 |
+| **D-017 항목 6 (5.3.1절)** | `TELESCOP`·`FPAID` 를 **사이트가 정한다** | `rawhdr.VERIFIED_SITES` 에 네 사이트 `telescop`+`fpaid`, 신설 `rawhdr.fpaid_of()`.  **모듈 상수 `FPAID='FPA#1'` 은 없앴다** — `[camera] fpaid` 가 있으면 그쪽이 이긴다 |
+| **D-018 번호 공간** | `099999` 상한 → **`000000`–`999999`** | `rawpair.NUM_SPACE = 1_000_000` 하나.  `EXPNUM <n>` 입구 검사·되감음·충돌 루프 상한이 전부 그 상수를 본다 |
+| **HK 4장 폐지** | `AIR_IN`·`AIR_OUT`·`GLYC_IN`·`GLYC_OUT` | `rawhdr.DEWAR_CARDS` 10 → **6** · `rawcards.CARDS` · labtest 템플릿+값.  견본 값 카드 **135 → 131** |
+| **`CHMAP_*` 토큰** | 3자 `M16` → **4자 `MD16`** | `rawhdr.CHMAP` · `check_geometry()` 불변식(4자·가운데 글자 규칙) · 신설 `rawhdr.chmap_section()` · `rawcards` 폭 31→39 · comment `CCD output ch,`→`CCD out ch,` · labtest |
+| **견본 comment 오타 2건** | `Telesope`→`Telescope` · `Acutator`→`Actuator` | `rawcards.CARDS` · labtest 템플릿 |
+| **셔터 재질의** | `3.0` → **`1.0`** 초 | `config.TimingCfg` · `ics_sim.ini`.  ⚠️ **재질의가 걸리는 노출 문턱이기도 하다** — 이제 **1초 이하** 노출이 개시 직전 값을 그대로 쓴다 (5.7.1절 (c) 표) |
+| **기계 정본 판올림** | 채널맵 v1.0 → **v1.1** | `IMGSEC` 의 `B-BOT`→`D-BOT` 정정 포함.  자리도 `__reference/` 에서 sub레포 루트로 옮겨졌다 |
+
+**직접 고친 결함 하나 — labtest 헤더 조립이 통째로 거부됐다.**  값 카드가 4장
+줄자 헤더가 140 레코드 = 11,200B 가 되는데 **2880 의 배수가 아니다.**
+`archon/fitswrite.py::header_bytes` 는 `END` 뒤를 공백으로 채우고 있었지만
+(주석이 "카드 수가 바뀌는 개정이 오면 여기서 조용히 흡수돼야 한다" 고 예고해
+두었다) **labtest 의 `build_header` 는 패딩 없이 정렬 단정만 두고 있었다.**
+같은 패딩을 넣어 견본과 같은 144 레코드 · 11,520B 가 되게 했다.
+
+**신설 시험 — 규격 사본 셋 중 하나가 무방비였다.**
+`tests/test_labtest_spec_copy.py`(4항목).  `ics_sim/rawcards.py` 와 `_vendor`
+는 `sync_vendor`+`test_vendor` 가 지키는데 **labtest 내장 `RAWCARDS` 만 아무도
+안 봤다** — 갈라져도 `ics_archon` 시험은 전부 초록이고, 실험실에서 찍은 파일만
+카드 구성이 달라져 converter 가 구조 변경으로 읽는다.  이제 `RAWCARDS`·`CHMAP`
+·`SITE_INFO`·번호 공간 넷을 원천과 대조한다 (표류를 주입해 실제로 잡히는 것을
+확인했다).
+
+**머지에서 내린 판단 (값은 `main`, 구조는 브랜치)**
+
+| 자리 | 무엇을 택했나 | 왜 |
+|---|---|---|
+| `ics_sim/siteid.py` · `tests/test_site_id.py` | **삭제 유지** (`main` 은 고쳤다) | D-015 IP 판정은 이 브랜치가 폐지했다 (목 확정 2026-08-24, DevNote 11.27).  되살리면 그 결정이 뒤집힌다 |
+| 노출 번호 공간 상수 | `rawpair.NUM_SPACE` **하나만** (`main` 의 `state.EXPNUM_SPACE` 는 채택 안 함) | 같은 뜻의 상수를 둘로 두면 다음 개정에서 한쪽만 바뀐다.  값(1000000)은 `main` 정본 그대로 |
+| 절 참조 | 브랜치 쪽 (`raw spec 5.5절` 등) | `main` 주석의 `규격 5.1절` 은 구판(v1.2) 번호다 |
+| `FPAID` | **브랜치에서 새로 구현** | `main` 은 5.3.1절을 문서에만 반영하고 `FPAID='FPA#1'` 상수를 그대로 뒀다 — 사이트를 바꿔도 FPA 번호가 안 따라오는 상태였다 |
+
+**검증** — `ics_sim` **313 통과** · `ics_archon` **143 통과** · 벤더 표류
+**없음** · labtest 하네스 **32항목 0실패**.  그리고 **견본 v1.5 pair 를 바이트
+단위로 재현**한다(MK·NT, 불일치 0) — 헤더 층이 규격과 같다는 가장 강한 신호다.
+⚠️ 종전 인수인계의 "`pytest` 가 없어 시험을 못 돌렸다"(`main` 쪽 기록)는 이제
+해소됐다 — 이 환경에 `pytest` 를 넣고 전부 돌렸다.
 
 ### ⏳ 지금 진행 중인 것 — 관측 스크립트 첫 구동
 
@@ -169,8 +229,9 @@ filter name" 경고와 함께 skip 된다 (`loadconfig.c:1377`).
 QT_INSTALL.md` 뿐이다.  STA 가 준 GUI 의 Qt5 빌드 절차이고 `ics_archon` 과
 무관해 따로 관리한다 (작성=목).
 
-검증: `ics_sim` **306 통과** · `ics_archon` **139 통과** · 벤더 표류 **없음**
-· labtest 하네스 **31항목**(읽기전용 1건은 POSIX 전용, 윈도우는 SKIP).
+검증: `ics_sim` **313 통과** · `ics_archon` **143 통과** · 벤더 표류 **없음**
+· labtest 하네스 **32항목**(읽기전용 1건은 POSIX 전용, 윈도우는 SKIP).
+(2026-08-26 v1.5 반영 뒤 수치다 — 종전 306/139/31.)
 
 **작업 1·2 에서 바뀐 자리** (경위는 DevNote 11.26)
 
@@ -206,7 +267,8 @@ QT_INSTALL.md` 뿐이다.  STA 가 준 GUI 의 Qt5 빌드 절차이고 `ics_arch
   물어보고 **독출 시간·FETCH 속도를 실측**한다. 절차는 README.
 - `ics_sim` 변경은 **확장점 3개 + 결함 4건**이고 시뮬 거동은 무변경이다
   (커밋 `ecf3487`, 시험 318 -> **325 통과**). 규약은 안 건드렸다 — 위 규약 2번.
-- **독립 배포**: `_vendor/ics_sim/`(24모듈) + `MANIFEST.sha256`.
+- **독립 배포**: `_vendor/ics_sim/`(**23모듈** — `siteid.py` 폐지로 24 에서 줄었다)
+  + `MANIFEST.sha256`.
   `ics_sim` 을 설치하지 않고 `ics_archon` 만 두어도 돈다 (목 2026-08-23 지시).
 
 **검증된 것**
@@ -252,7 +314,7 @@ QT_INSTALL.md` 뿐이다.  STA 가 준 GUI 의 Qt5 빌드 절차이고 `ics_arch
 함께 못박은 것 — ini 가 **백엔드 보고값(`BACKPLANE_ID`)을 이긴다**, 비우면
 컨트롤러 값이 실린다, `[node] observatory` 한 줄이 파일명 `<SITE>`·`OBSERVAT`·좌표·
 `ORIGIN` 을 **함께** 끌고 간다(한쪽만 따라오면 converter 의 유일한 하드 실패),
-테스트베드는 좌표가 sentinel.
+KASI(실험실)는 좌표가 sentinel.
 
 **고친 결함 9건.** 전부 회귀 시험을 붙였다 (`test_ini_cards.py` ·
 `test_failures.py`, 시험 57 -> **85개** — 그 뒤 독립 배포·병렬 검토를 넣어
@@ -319,7 +381,8 @@ test_osc_script.py`(9항목)가 **바이트 동일성 · `ostart` 표 정합 · 
 |---|---|
 | **1** | ~~`ics_archon` v0.0 작성~~ **완료 (2026-08-23)**, ~~커밋~~ **완료 (2026-08-24, `ecf3487`+`6a94e57`)** |
 | **1.5** | ~~작업 1(병렬 독출) · 작업 2(F1~F12)~~ **완료·커밋 (2026-08-24, `6cfc3c0`)** — 아래 "작업 1·2" 절 |
-| **1.7** | ⏳ **관측 스크립트 첫 구동 결과 판정** — 위 "지금 진행 중인 것".  로그가 오면 그것부터 |
+| **1.6** | ~~raw spec v1.5 반영~~ **완료 (2026-08-26)** — `main` 머지 + 전 계층 정합.  위 "raw spec v1.5 반영" 절 |
+| **1.7** | ⏳ **관측 스크립트 첫 구동 결과 판정** — 위 "지금 진행 중인 것".  로그가 오면 그것부터.  ⚠️ **벤치 ini 의 `observatory` 를 `KASI` 로 먼저 고쳐야 기동한다** |
 | **2** | **다듬기** — "검토사항 A"(실기 없이 되는 것)를 처리한다 → `v0.1`. ⚠️ **결정사항·P1·P2 는 승인 대기가 아니다** — 아래 "남은 판단은 실기 시험에서 하나씩" (목 확정 2026-08-24) |
 | **3** | **시험 결과 반영** — labtest 실기 구동 결과 + `ics_sim` 시험 결과로 디버깅·업데이트. "검토사항 B" 가 그 목록이다. **1·2 와 병행이며 이것을 기다리지 않는다** |
 | **4** | **main 합류** — **v0 완성 또는 v1 즈음, 진행하면서 판단**(목 2026-08-23). 미리 정해진 시점은 없다. 방식은 `--no-ff` 거품 머지. ⚠️ **합류할 때 저장소 루트 `README.md` 에 [`ics_archon/INSTALL.md`](INSTALL.md) 링크를 넣는다** (목 2026-08-24 — 루트는 Leecu 영역이라 그때 함께) |
@@ -658,12 +721,14 @@ for f in ~/AIC/bin/*; do printf '%-12s %s
 기준이 아니다 — 이름은 그대로 둔다. **아직은 합류하지 않는다.**
 
 ⚠️ **그래서 main 을 주기적으로 들여와야 한다.** 그냥 두면 완성 시점에 큰 충돌
-하나를 맞는다. 특히 **raw spec 5장 검토**가 위험하다 — v1.4 는 1~4장만
-반영했고 5장 이후는 팀 협의 후 다음 판이므로, 그 개정이 오면 견본 pair 와
-`rawcards.py`(그리고 labtest 스크립트의 내장 `RAWCARDS`)를 **직접** 건드린다.
-바이트 대사 시험이 그때 알람 역할을 한다 — `ics_archon/tests/test_fitswrite.py`
-가 견본을 **패턴으로** 찾고 없으면 실패한다(skip 이 아니다). 합류 방식은
-`--no-ff` 거품 머지.
+하나를 맞는다.
+
+✅ **그 예고가 그대로 일어났고, 2026-08-26 에 들여왔다** — raw spec **v1.5** 의
+5장 검토분(HK 4장 폐지 · `CHMAP_*` 4자 토큰 · comment 오타 2건 · D-017 사이트
+코드 · D-018 번호 공간)이 견본 pair 와 `rawcards.py` 와 labtest 내장
+`RAWCARDS` 를 **셋 다** 건드렸다. 예고대로 **바이트 대사 시험이 알람 역할을
+했다** (`tests/test_fitswrite.py` · `ics_sim/tests/test_raw_draft.py`).
+자세한 것은 위 "raw spec v1.5 반영" 절. 합류 방식은 `--no-ff` 거품 머지.
 
 ## Archon 매뉴얼에서 확정한 사실 (`__ref_archon_control/`)
 

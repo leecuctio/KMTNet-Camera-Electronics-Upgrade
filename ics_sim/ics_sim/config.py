@@ -35,7 +35,7 @@ _RESERVED_IDS = frozenset({'AL', 'ALL', 'XIS'})
 #: raw pair 물리 파일명 <SITE> prefix 로도 쓰인다 (raw spec 2.2절).
 log = logging.getLogger('ics_sim.config')
 
-_SITE_TELID = {'ctio': 'KMTC', 'saao': 'KMTS', 'sso': 'KMTA', 'testbed': 'KMTT'}
+_SITE_TELID = {'ctio': 'KMTC', 'saao': 'KMTS', 'sso': 'KMTA', 'kasi': 'KMTK'}
 
 
 class ConfigError(Exception):
@@ -45,7 +45,7 @@ class ConfigError(Exception):
 @dataclass
 class NodeCfg:
     #: **사이트 판별의 단일 권위** (`[node] observatory`, 운영자 지시
-    #: 2026-08-24).  `CTIO` / `SSO` / `SAAO` / `TESTBED` 넷뿐이고, **적은 값이
+    #: 2026-08-24).  `CTIO` / `SSO` / `SAAO` / `KASI` 넷뿐이고, **적은 값이
     #: 그대로 FITS `OBSERVAT` 카드**가 된다 (운영자 확정 2026-08-25).
     #:
     #: 여기서 아래 `telid`(사이트 코드)와 `site`(`[site.<이름>]` 절 이름)가
@@ -54,12 +54,16 @@ class NodeCfg:
     #:
     #: ⚠️ 종전의 **호스트 IP 판정(D-015)은 폐지됐다.**  NIC 상태나 배포된 망에
     #: 따라 자료의 정체가 바뀌는 것보다, 설정 한 줄이 정본인 쪽이 낫다는 판단
-    #: 이다.  모르는 값은 **기동에서 거부**한다(조용히 테스트베드로 떨어뜨리지
+    #: 이다.  모르는 값은 **기동에서 거부**한다(조용히 KASI 로 떨어뜨리지
     #: 않는다).
-    observatory: str = 'TESTBED'
+    #:
+    #: ⚠️ **D-017 (2026-08-25)**: 넷째 값이 `TESTBED` 에서 **`KASI`** 로 바뀌었고
+    #: 사이트 코드도 `KMTT` -> **`KMTK`** 다.  `[site.testbed]` 절을 쓰던 ini 는
+    #: `[site.kasi]` 로 고쳐야 한다 -- 옛 이름은 알 수 없는 사이트로 무시된다.
+    observatory: str = 'KASI'
     #: `observatory` 에서 유도된다.  직접 적지 말 것.
-    site: str = 'testbed'
-    telid: str = 'KMTT'
+    site: str = 'kasi'
+    telid: str = 'KMTK'
     ics_id: str = 'ICS'
     ic_ids: tuple[str, ...] = ('K.IC', 'M.IC', 'T.IC', 'N.IC')
     cb_ids: tuple[str, ...] = ('K.CB', 'M.CB', 'T.CB', 'N.CB')
@@ -132,7 +136,7 @@ class SiteCfg:
     elevatio: int = -1
     telescop: str = ''
     #: FITS `ORIGIN` 덮어쓰기.  비우면 사이트 유도값(`rawpair.ORIGIN_OF` --
-    #: 관측소 raw = 관측소명, 테스트베드 = `KASI`, 운영자 확정 2026-08-21).
+    #: 관측소 raw = 관측소명, KASI(실험실) = `KASI`, 운영자 확정 2026-08-21).
     origin: str = ''
 
     def as_dict(self) -> dict:
@@ -275,7 +279,11 @@ class TimingCfg:
     #: 있다(`CLOSED`/`UNKNOWN`).  운영자는 `SHUTOP='OPENING'` 으로 충분하다고
     #: 확정했다.  Full/Half 2중 블레이드 중 Full 리밋이 더 일찍 트립하는지는
     #: 모르므로 **벤치 실측으로 조정할 수 있게 설정값으로 뺐다** (raw spec OI-13).
-    aux_requery_after_shopen: float = 3.0
+    #: **3.0 -> 1.0 (운영자 확정 2026-08-25, raw spec 5.7.1절).**  값을 줄이면
+    #: 재질의가 걸리는 노출 문턱도 함께 내려간다 -- `_integrate_shutter()` 가
+    #: `exptime <= delay` 면 재질의하지 않으므로, 1초 노출까지가 개시 직전 값을
+    #: 그대로 쓰는 구간이 된다.
+    aux_requery_after_shopen: float = 1.0
     countdown_tick_dark: float = 5.00
     countdown_tick_shop: float = 5.217
     shutter_to_readout: float = 6.00
@@ -806,7 +814,7 @@ def load(path: str | None = None) -> SimConfig:
         code = _SITE_TELID.get(name)
         if code is None:
             log.warning('[%s] 는 알 수 없는 사이트 이름이라 무시한다 -- '
-                        'ctio/saao/sso/testbed 중 하나여야 한다', section)
+                        'ctio/saao/sso/kasi 중 하나여야 한다', section)
             continue
         cfg.site_table[code] = _read_site(cp[section])
     if cp.has_section('site'):

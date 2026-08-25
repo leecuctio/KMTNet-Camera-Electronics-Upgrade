@@ -235,19 +235,24 @@ def test_site_switch_moves_geometry_and_observat_together(tmp_path):  # noqa: AN
     assert names[0].split('.')[0] == 'KMTC'
 
 
-def test_testbed_leaves_the_coordinates_as_sentinels(tmp_path):  # noqa: ANN001
-    """테스트베드는 좌표를 **일부러 비운다** -- 시험 산출물이 관측처럼 보이면 안 된다."""
+def test_kasi_leaves_the_coordinates_as_sentinels(tmp_path):  # noqa: ANN001
+    """KASI(실험실)는 **좌표만** 일부러 비운다 -- 시험 산출물이 관측처럼
+    보이면 안 된다.  `TELESCOP`/`FPAID` 는 D-017 항목 6 이 값을 정했다
+    (raw spec 5.3.1절) -- 구 `TESTBED` 판의 `'Sim'` 을 대체한다."""
     over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
-    over['node'] = {'observatory': 'TESTBED'}
+    over['node'] = {'observatory': 'KASI'}
     over['site'] = {}
+    over['camera'] = {k: v for k, v in over.get('camera', {}).items()
+                      if k != 'fpaid'}
     run(tmp_path, over)
     head = headers(tmp_path)['MK']
-    assert head['OBSERVAT'].strip() == 'TESTBED'
+    assert head['OBSERVAT'].strip() == 'KASI'
     assert head['LATITUDE'].strip() == 'NC'
     assert head['LONGITUD'].strip() == 'NC'
     assert head['ELEVATIO'] == -1
     assert head['ORIGIN'].strip() == 'KASI'
-    assert head['TELESCOP'].strip() == 'Sim'
+    assert head['TELESCOP'].strip() == 'KMTNet 1.6m #0'
+    assert head['FPAID'].strip() == 'FPA#0'
 
 
 def test_archon_geometry_ini_reaches_naxis(tmp_path):  # noqa: ANN001

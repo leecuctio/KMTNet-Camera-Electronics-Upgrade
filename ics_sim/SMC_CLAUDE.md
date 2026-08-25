@@ -65,6 +65,35 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 - 송신 전 `validate()` 가 6가지 오염 패턴을 검사한다.
 - `--bug-compat` 로 레거시 오염을 재현할 수 있다(골든 대조용, 기본 꺼짐).
 
+## ⚠️ raw spec v1.5 반영 (2026-08-26, 이 브랜치에서 마무리)
+
+**v1.5 의 5장 검토 라운드가 `ics_sim` 까지 내려왔다.**  `main` 이 구판(IP 판별)
+`ics_sim` 에 먼저 반영했고(`13e02b2`), 이 브랜치가 그것을 머지해 **`observatory`
+판별 구조 위에서 완결**했다.  값이 바뀐 자리 — 여기를 모르고 옛 상수를 기대하면
+시험이 깨진다.
+
+| 무엇 | 전 → 후 | 자리 |
+| --- | --- | --- |
+| **사이트 코드 (D-017)** | `KMTT`/`TESTBED` → **`KMTK`/`KASI`** | `rawpair.OBSERVAT`·`SITE_OF_OBSERVATORY`·`SITE_SECTION`·`ORIGIN_OF`·`OBSDATE_SHIFT_MIN` · `config._SITE_TELID`(`testbed`→`kasi`)·`NodeCfg` 기본값 · `state.site_code` · `ics_sim.ini` `[node] observatory` + `[site.kasi]` |
+| **상수 개명** | `rawpair.TESTBED_SITE` → **`rawpair.KASI_SITE`** | 참조는 `app.py` 두 곳.  **옛 이름은 없다** — `AttributeError` 로 드러난다 |
+| **노출 번호 공간 (D-018)** | `099999` 상한 → **`000000`–`999999`** | `rawpair.NUM_SPACE = 1_000_000`.  ⚠️ `main` 은 `state.EXPNUM_SPACE` 를 따로 신설했는데 **이 브랜치는 채택하지 않았다** — 같은 뜻의 상수를 둘로 두지 않는다.  `state` 는 종전대로 `rawpair.NUM_SPACE` 하나를 쓴다 |
+| **셔터 재질의** | `3.0` → **`1.0`** 초 | `config.TimingCfg.aux_requery_after_shopen` · `ics_sim.ini`.  ⚠️ **이 값은 재질의가 걸리는 노출 문턱이기도 하다** — `_integrate_shutter()` 가 `exptime <= delay` 면 재질의하지 않으므로 **1초 이하 노출**이 개시 직전 값을 그대로 쓰는 구간이 됐다 (종전엔 3초 이하) |
+| **HK 카드 4장 폐지** | `AIR_IN`·`AIR_OUT`·`GLYC_IN`·`GLYC_OUT` 제거 | `rawhdr.DEWAR_CARDS` 10장 → **6장** · `rawcards.CARDS` 에서 제거.  `standalone RTD` 공급 계통이 통째로 비었다.  견본 값 카드 **135 → 131** |
+| **`CHMAP_*` 토큰** | 3자 `M16` → **4자 `MD16`** | `rawhdr.CHMAP` · `check_geometry()` 불변식 · `rawcards` 폭 31→39 · comment `CCD output ch,`→`CCD out ch,` |
+| **사이트별 상수 (5.3.1)** | `TELESCOP`+`FPAID` 를 사이트가 정한다 | `rawhdr.VERIFIED_SITES` 에 네 사이트 `telescop`+`fpaid`.  KASI = `'KMTNet 1.6m #0'`/`'FPA#0'`.  **좌표는 여전히 비운다** |
+| **견본 comment 오타 2건** | `Telesope`→`Telescope` · `Acutator`→`Actuator` | `rawcards.CARDS` |
+
+⚠️ **망원경 번호와 `FPAID` 번호는 관측소 셋 모두 어긋난다** (CTIO 망원경 `#1`·`FPA#2` /
+SSO `#3`·`FPA#1` / SAAO `#2`·`FPA#3`).  오타로 보고 맞추면 검출기 귀속이 틀어진다.
+
+경위·판단은 **DevNote 11.28**.  `ics_archon` 쪽 반영분(벤더 재생성 · labtest 내장
+사본 · 신설 표류 감시 시험)은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md)
+"raw spec v1.5 반영" 절.
+
+⚠️ **벤치 설치본은 ini 를 고쳐야 기동한다** -- `[node] observatory = TESTBED` 는
+이제 모르는 값이라 **기동을 거부**한다.  `KASI` 로 바꾸고 `[site.testbed]` 절도
+`[site.kasi]` 로 고칠 것.
+
 ## 상태 (2026-08-25)
 
 ### ⏳ 지금 진행 중 — 관측 스크립트로 첫 연동 시험
@@ -108,7 +137,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 - **식별 keyword 재정의 (2026-08-12)** — 레거시 실측 헤더를 근거로 `EXPID`/`EXPNUM` 을 없애고 `UNIQNAME` 을 **정본**(불변)·`FILENAME` 을 **실제로 쓴 이름**으로 갈랐다. 이름이 겹치면 개명 대신 `clash/` 격리 + 시각 접미 + `NAMECLSH` 카드 세 겹. 경위는 DevNote **11.13.2**
 - **헤더 전면 재검토 (2026-08-13)** — 레거시 raw 123개 카드를 하나씩 맞대어 **계승 5 · 개칭 1 · 폐지 16** 으로 판정했다(규격 5.13절, **D-013**). 그리고 규격 5.3~5.10 을 실제로 구현했다 — 헤더가 **68장 → 221장**. **규격 안의 불일치 하나를 잡았다**: converter 는 `CTRL1ID`/`CTRL2ID` 색인형을 MK 헤더에서 직접 읽는데 종전 규격은 단수형을 싣게 해서, 그대로 두면 MEF 의 컨트롤러 정체가 **오류 없이 전부 `UNKNOWN`** 이 됐다. 신설 `rawhdr.py`, 백엔드 계약 4개 확장, 시험 59개 추가. 경위는 DevNote **11.14**
 - **파일명 날짜부 = 사이트별 관측일 (2026-08-13)** — UT 에 사이트별 보정을 더한 뒤 날짜만 취한다. 경계는 CTIO UT 16:30 · SAAO UT 10:30 · SSO UT 01:30 이고 **셋 다 현지 12:30** 이다. 종전 잠정안(UT 날짜)은 CTIO·SAAO 에서 **한 밤의 자료를 두 디렉토리로 갈랐다** — 아무 오류 없이. `DATE-OBS` 는 `SHOPEN` 지시 시각의 UT(밀리초까지)이고 중복이던 `UT` 카드는 없앴다. **OI-10 종결 · OI-12 해소**, **D-014**, 경위는 DevNote **11.15**
-- ~~**사이트는 호스트 IP 로 판정한다 (2026-08-13)**~~ — **폐지 (2026-08-24, DevNote 11.27).** 이제 **`[node] observatory`**(`CTIO`/`SSO`/`SAAO`/`TESTBED`) 한 줄이 정본이고 거기서 `telid`·`site`·좌표·`ORIGIN`·`INSTRUME` 가 함께 유도된다. `siteid.py` 와 `site_from_ip` 는 지웠다. D-015 가 막으려던 것(틀린 설정)과 이번에 막는 것(틀린 판정)은 **다른 위험**이고, 운영자가 설정 쪽을 택했다 — NIC 이 내려가면 진짜 관측 자료가 `KMTT.…` 로 저장되던 것이 그 이유다. 모르는 값은 **기동 거부**. ini 어휘를 `CTIO`/`SSO`/`SAAO`/`TESTBED` 로 둔 것이 요점이다 — **적은 값이 그대로 `OBSERVAT` 카드**라 규격·converter 를 고칠 일이 없다
+- ~~**사이트는 호스트 IP 로 판정한다 (2026-08-13)**~~ — **폐지 (2026-08-24, DevNote 11.27).** 이제 **`[node] observatory`**(`CTIO`/`SSO`/`SAAO`/`KASI`) 한 줄이 정본이고 거기서 `telid`·`site`·좌표·`ORIGIN`·`INSTRUME` 가 함께 유도된다. `siteid.py` 와 `site_from_ip` 는 지웠다. D-015 가 막으려던 것(틀린 설정)과 이번에 막는 것(틀린 판정)은 **다른 위험**이고, 운영자가 설정 쪽을 택했다 — NIC 이 내려가면 진짜 관측 자료가 `KMTK.…` 로 저장되던 것이 그 이유다. 모르는 값은 **기동 거부**. ini 어휘를 `CTIO`/`SSO`/`SAAO`/`KASI` 로 둔 것이 요점이다 — **적은 값이 그대로 `OBSERVAT` 카드**라 규격·converter 를 고칠 일이 없다
 - **raw ↔ MEF 키워드 대응표 (2026-08-13, 검토 대기)** — 289행 전수. MEF 쪽은 문서가 아니라 **converter 코드에서 기계 추출**했다(코드가 최종본이므로). **Archon setup·구성·유닛 텔레메트리 카드의 이름과 구성**이 핵심이다 — 실기가 이 이름으로 자료를 쌓은 뒤 이름이 바뀌면 그때까지의 아카이브가 영구히 안 읽힌다. 정본은 판정 원장 [`../raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md) (대응 관계 = `Use in MEF` 열, 판정 준거 = 0장), 미결 4건은 [`../raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md`](../raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md) §6, **ACT-011**. ⚠️ **`ics_sim` 의 현재 출력은 raw 쪽 사실의 근거가 아니다**(순환) — 원장 0장 참조. 경위는 DevNote **11.17**
 - **raw spec v1.3 전면 정렬 (2026-08-22)** — 헤더 층을 **템플릿 주도**로 재편했다: 신설 [`ics_sim/rawcards.py`](ics_sim/rawcards.py) 가 초안 헤더 v1.0 pair 의 **기계 사본**(값 135 + COMMENT 8, 카드 순서·comment·패딩)이고, `rawhdr` 는 값 풀만 공급한다. 견본 값을 넣으면 견본이 **바이트 단위로 재현**된다(`tests/test_raw_draft.py` 대사 — 불일치 0). D-016 충돌 처리(선검사·번호 증가·되감음·상한, `UNIQNAME`/`NAMECLSH`/`clash/` 폐지, `ORIGNAME` 상시), 백엔드 계약 개정(`voltages`/`amp_map` 폐지 → `controller_telemetry` 신설), TC 중계 카드 전부 문자열화(`TCSTIME` 이관 · `DALTERR`/`DAZERR` 계산), **`fits_shape = spec`** 이면 실물 19200×9400 을 4장 기하 구조(암프별 offset·X/중앙 overscan) 그대로 생성 — **converter end-to-end 로 69-HDU L0 MEF 생성 검증 완료**. 테스트 **317개** 전부 통과(OBSAgent 규약 시험은 무수정). v0.2.0. 경위·판단은 DevNote **11.19**
 - **적대적 검토 + 12건 수정 (2026-08-22)** — v1.3 정렬분을 관점 4개(규격 준수·동시성·archon 스크립트·OBSAgent 규약)로 재검토하고 반박 검증을 붙여 **확정 14건 중 12건**을 고쳤다. 큰 것: ⚠️ **critical** — D-016 선검사가 외부 `INITIALIZE` 로 오염된 채널 suffix 를 파싱해 **노출 태스크를 죽였다**(IDLE·Wrote·advance 전부 유실 → `opause`); **pair 동일성(5.9절)이 구조적으로 없었다**(백엔드 사실을 컨트롤러별로 따로 질의 — 시뮬 고정값 때문에 시험이 통과하던 부류); 노출 메타데이터 경합; 구판부터 있던 **사이트 갈림**(파일명·헤더가 IP 판정 대신 ini 원값, D-015 위반)·STOP 이벤트 잔류·ABORT 의 앞 프레임 저장 파괴. archon v1.1 도 6건 전량 수정(카드 폭 클램프·자리 sentinel·예외 방어·컨트롤러 색인·SITE 유도·OBJECT 역산). **남겼던 2건은 둘 다 닫혔다** — `IMAGETYP='STANDARD'` 폐지(운영자 확정) · 견본 헤더 날짜 불일치(정본 개명으로 해결). 전부 DevNote **11.20**
@@ -126,7 +155,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 | ~~**1**~~ | ~~**`ExpNum` 교정의 실물 재확인**~~ — **완료 (2026-08-11 2차, DevNote 3.7.2).** 노출 2회로 판정: readout 중 `ExpNum` == 그 프레임의 파일 번호, 종료 후 `ExpNum`==`FitsNum`, `EXPNUM` 응답 N+1, `FitsOsc` `CHECK`→`NO`. 타임아웃 창 3종도 두 프레임에서 밀리초까지 동일. **전제였던 EXPNUM 카운터 결함을 먼저 고쳐야 했다**(11.12) — fail-safe 가 침묵해야 이 판정이 성립한다<br>※ **1회만 돌리면 판정이 안 된다.** OBSAgent 가 받은 값을 `strNextNum` 에 담아 두고 **다음 노출 시작 시** `strCurNum` 으로 승격해 표시하므로(`commands.c:835,848`), 1회 세션에서는 `ExpNum=00000000.000000` 이 정상이다 |
 | **2** | **Telcom/AUX 시뮬레이터 설치** — KASI 제작본이 `../../__localonly_tcs_simulator/TCS_simulation.zip` 에 있다. **빌드가 없다**(stdlib 전용, Python 3.12+ 필요 — Ubuntu 24.04 기본이 3.12 라 그대로 된다). `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 절차와 함정은 아래 블록. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
 | **3** | **세부 연동 시험** — `STOP`/`ABORT`(9.2.1 의 `DONE:` 본문은 실측 근거 없이 정한 것) · `GO n`(6.1) · `.osc` 스크립트 관측(3.5) · 결함 주입 6종(**실물 OBSAgent 의 경보·`opause` 경로를 확인하는 유일한 수단**) |
-| **4** | **벤치에서 확인할 것 (2026-08-13, ⓐⓑ 는 2026-08-24 폐지)** — ~~ⓐ `siteid.detect()` 판정~~ · ~~ⓑ `[node] site = testbed`~~ → **사이트는 이제 `[node] observatory = TESTBED` 한 줄이다**(IP 판정 폐지, DevNote 11.27) ⓒ **`SHOPEN`+3초에 AUX 상태가 실제로 갱신돼 있나**(**OI-13**) — `SHUTOP` 가 그 시점에 `OPENING`/`OPENED` 중 무엇인지 실측해야 헤더의 `SHUTTER` 가 노출 중 값이라고 말할 수 있다 |
+| **4** | **벤치에서 확인할 것 (2026-08-13, ⓐⓑ 는 2026-08-24 폐지)** — ~~ⓐ `siteid.detect()` 판정~~ · ~~ⓑ `[node] site = testbed`~~ → **사이트는 이제 `[node] observatory = KASI` 한 줄이다**(IP 판정 폐지, DevNote 11.27) ⓒ **`SHOPEN`+`aux_requery_after_shopen`(현행 **1초** — 2026-08-25 에 3초에서 내렸다)에 AUX 상태가 실제로 갱신돼 있나**(**OI-13**) — `SHUTOP` 가 그 시점에 `OPENING`/`OPENED` 중 무엇인지 실측해야 헤더의 `SHUTTER` 가 노출 중 값이라고 말할 수 있다 |
 
 판정 기준과 지난 결과는 [DevNote 3.7](DevNote.md). 시험 도구는 `tools/xis_probe.py`(노드 하나를 흉내 내는 프로브 — 포트 6650 이라 `obstool` 과 겹친다).
 

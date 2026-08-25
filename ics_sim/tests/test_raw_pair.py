@@ -159,7 +159,7 @@ def test_identifier_cards_stay_strings(tmp_path):
         for key in ('FILENAME', 'ORIGNAME', 'DETID', 'OBSERVAT', 'ORIGIN',
                     'BUNIT'):
             assert isinstance(h[key], str), f'{key}: {type(h[key])}'
-        assert re.fullmatch(r'KMT[CSAT]\.\d{8}\.\d{6}\.(MK|NT)',
+        assert re.fullmatch(r'KMT[CSAK]\.\d{8}\.\d{6}\.(MK|NT)',
                             str(h['FILENAME'])), h['FILENAME']
 
 
@@ -243,7 +243,7 @@ def test_collision_bumps_the_number_and_keeps_both_files(tmp_path):
         assert str(h['ORIGNAME']).strip() != str(h['FILENAME']).strip(), (
             '충돌 신호는 FILENAME ≠ ORIGNAME 이다')
         # 번호만 다르고 형식은 같다 (D-011 불변 -- find_pair() 영향 없음)
-        assert re.fullmatch(r'KMT[CSAT]\.\d{8}\.\d{6}\.(MK|NT)', stem)
+        assert re.fullmatch(r'KMT[CSAK]\.\d{8}\.\d{6}\.(MK|NT)', stem)
     # pair 양쪽이 같은 번호로 함께 증가한다
     assert len({tuple(n.split('.')[1:3]) for n in new}) == 1
 
@@ -264,14 +264,20 @@ def test_counter_is_synchronized_to_the_final_number(tmp_path):
 
 
 def test_resolve_pair_number_wraps_and_caps(tmp_path, monkeypatch):
-    """되감음(099999 -> 000000)과 상한(공간 한 바퀴) -- D-016 1·2항."""
-    # 되감음: 99999 가 점유되어 있으면 000000 으로 넘어간다
+    """되감음(**999999** -> 000000)과 상한(공간 한 바퀴) -- D-016 1·2항 + D-018.
+
+    ⚠️ **경계가 `099999` 에서 `999999` 로 옮겨졌다** (D-018, 2026-08-25).
+    구 경계를 그대로 두면 `100000` 부터가 통째로 안 쓰이는 자리가 된다.
+    """
+    # 되감음: 999999 가 점유되어 있으면 000000 으로 넘어간다
+    last = rawpair.NUM_SPACE - 1
+    assert last == 999999, 'D-018: 번호 공간은 000000-999999 다'
     taken = {os.path.normpath(p) for p in rawpair.pair_paths(
-        str(tmp_path), 'KMTA', '20260822', 99999)}
+        str(tmp_path), 'KMTA', '20260822', last)}
     monkeypatch.setattr(os.path, 'exists',
                         lambda p: os.path.normpath(p) in taken)
     got = rawpair.resolve_pair_number(str(tmp_path), 'KMTA', '20260822',
-                                      99999)
+                                      last)
     assert got == 0
 
     # 상한: 전부 점유면 NumberSpaceExhausted -- 유일한 저장 실패 조건
@@ -293,12 +299,21 @@ def test_resolve_pair_number_checks_both_members(tmp_path):
 
 
 def test_expnum_wraps_at_the_number_space():
-    """카운터 자체도 000000–099999 순환이다 (D-016 1항)."""
+    """카운터 자체도 **000000–999999** 순환이다 (D-016 1항 · D-018).
+
+    되감지 않으면 `:06d` 가 7자리를 내놓아 파일명 6자리 고정폭이 깨진다.
+    구 경계(`99999`)에서는 넘어가지 않는다는 것도 함께 못박는다 -- 그 자리가
+    아직 되감기면 새 공간의 90%가 사라진 것이다.
+    """
     from ics_sim.state import IcsState
     st = IcsState()
     st.expnum = 99999
     st.advance()
+    assert st.expnum == 100000        # 구 경계에서는 되감지 않는다
+    st.expnum = rawpair.NUM_SPACE - 1
+    st.advance()
     assert st.expnum == 0
+    assert len(f'{rawpair.NUM_SPACE - 1:06d}') == 6
 
 
 # -- sentinel (raw spec 5.0절) ----------------------------------------------
@@ -362,20 +377,21 @@ def test_header_carries_detector_identity(tmp_path):
 # -- D-015: 실효 사이트가 파일명·헤더까지 일관되게 흘러가나 --------------------
 
 def test_detected_site_wins_over_the_ini_all_the_way_to_the_header(tmp_path):
-    """**IP 판정이 ini 를 이긴다** (D-015, raw spec 2.2절) -- 파일명·`OBSERVAT`
-    ·관측일 경계가 **모두 같은 사이트**여야 한다.
+    """**실효 사이트 하나가 셋을 함께 정한다** -- 파일명 `<SITE>`·`OBSERVAT`·
+    관측일 경계가 **모두 같은 사이트**여야 한다 (raw spec 2.2절).
 
     구판은 관측일만 판정값(`state.site_code`)을 쓰고 파일명 `<SITE>` 와
     `OBSERVAT` 는 ini 원값(`cfg.node.telid`)을 썼다 -- 판정과 ini 가 다르면
     한 파일 안에서 사이트가 갈렸고, 기동 배너가 찍는 파일명 예시와도
     어긋났다.  **경고만 나고 자료는 조용히 섞이는** 부류다.
     """
-    # ini 는 SSO(KMTA) 라고 선언하지만 판정은 벤치(KMTT) -- 벤치의 실제 상황이다
+    # ini 는 SSO(KMTA) 라고 선언하는데 실효 사이트를 KASI(KMTK) 로 강제한다 --
+    # 둘이 갈렸을 때 파일명·헤더·관측일이 **함께** 실효값을 따라가는지 본다.
     cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path),
                       node__observatory='SSO', node__site='sso', node__telid='KMTA')
     from ics_sim.app import IcsSim
     original = IcsSim._resolve_site
-    IcsSim._resolve_site = lambda self: ('KMTT', '(시험 강제)')
+    IcsSim._resolve_site = lambda self: ('KMTK', '(시험 강제)')
     try:
         drive(SCRIPT, cfg)
     finally:
@@ -383,19 +399,19 @@ def test_detected_site_wins_over_the_ini_all_the_way_to_the_header(tmp_path):
 
     names = _written(tmp_path)
     assert names, '저장이 안 됐다'
-    assert [n.split('.')[0] for n in names] == ['KMTT', 'KMTT'], names
+    assert [n.split('.')[0] for n in names] == ['KMTK', 'KMTK'], names
     for name, h in _headers(tmp_path).items():
-        assert str(h['OBSERVAT']).strip() == 'TESTBED', name
-        # 관측일도 같은 사이트 규칙(KMTT = UT 날짜 그대로)이어야 한다
+        assert str(h['OBSERVAT']).strip() == 'KASI', name
+        # 관측일도 같은 사이트 규칙(KMTK = UT 날짜 그대로)이어야 한다
         iso = str(h['DATE-OBS'])
         when = datetime.strptime(iso, '%Y-%m-%dT%H:%M:%S.%f').replace(
             tzinfo=timezone.utc)
-        assert name.split('.')[1] == rawpair.observing_date(when, 'KMTT')
+        assert name.split('.')[1] == rawpair.observing_date(when, 'KMTK')
 
 
 # -- D-016 1항: 번호 공간을 명령 입구에서 강제한다 ---------------------------
 
-@pytest.mark.parametrize('bad', ['100000', '1000000', '-5'])
+@pytest.mark.parametrize('bad', ['1000000', '1234567', '-5'])
 def test_expnum_command_rejects_values_outside_the_number_space(bad):
     r"""`EXPNUM <n>` 은 카운터로 들어오는 유일한 외부 경로다 -- 범위를 안 막으면
     7자리 suffix 나 부호가 자리를 먹는 이름이 와이어로 나간다 (DevNote 3.4 의
@@ -406,7 +422,7 @@ def test_expnum_command_rejects_values_outside_the_number_space(bad):
 
 
 def test_expnum_command_accepts_the_edges_of_the_space():
-    for good in ('0', '99999'):
+    for good in ('0', '99999', '100000', '999999'):   # D-018: 6자리 전부
         run = drive([f'OBS>ICS expnum {good}'])
         replies = [m for m in run.find('EXPNUM') if 'Filename=' in m]
         assert replies, good
@@ -501,4 +517,4 @@ def test_external_initialize_cannot_break_the_frame(tmp_path, injected):
     names = _written(tmp_path)
     assert len(names) == 2, names
     for n in names:
-        assert re.fullmatch(r'KMT[CSAT]\.\d{8}\.\d{6}\.(MK|NT)\.fits', n), n
+        assert re.fullmatch(r'KMT[CSAK]\.\d{8}\.\d{6}\.(MK|NT)\.fits', n), n

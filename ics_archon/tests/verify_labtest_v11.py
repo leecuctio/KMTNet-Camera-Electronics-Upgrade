@@ -50,8 +50,8 @@ G = {'os': os, 'socket': socket, 'time': time, 'select': __import__('select'),
      'msgref': 0, 'msgbuf': b'', 'archon': None,
      'TELEMETRY_ENABLE': True, 'TELEMETRY_TIMEOUT': 3.0,
      'UNIT_IPADDR': '127.0.0.1', 'UNIT_TIMEOUT': 1,
-     'SITE_CODE': 'KMTT', 'UNIT_CTRLTAG': 'MK',
-     'UNIT_CTRL_ID': 'KMTT-SCI-101', 'UNIT_CTRL_SN': 'STA-0287',
+     'SITE_CODE': 'KMTK', 'UNIT_CTRLTAG': 'MK',
+     'UNIT_CTRL_ID': 'KMTK-SCI-101', 'UNIT_CTRL_SN': 'STA-0287',
      'OBSERVER_NAME': 'HELab', 'SCRIPT_VERSION': '1.1.0',
      'SCRIPT_BUILD': '2026-08-22T09:00Z', 'DATA_PREFIX': 'AC13A'}
 exec(compile(grab(*WANT), SRC, 'exec'), G)
@@ -177,7 +177,7 @@ G['archon'].close()
 
 print('\n[T3] 비ASCII 정체 문자열 -- 기동에서 막히나')
 for name, val in (('OBSERVER_NAME', 'HELab 차상목'),
-                  ('UNIT_CTRL_ID', 'KMTT-과학-101'),
+                  ('UNIT_CTRL_ID', 'KMTK-과학-101'),
                   ('UNIT_CTRL_SN', 'STA-0287\u00b5')):
     keep = G[name]
     G[name] = val

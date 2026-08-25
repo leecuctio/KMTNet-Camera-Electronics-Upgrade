@@ -23,7 +23,7 @@ from conftest import make_config
     ('CTIO', 'KMTC', 'ctio'),
     ('SAAO', 'KMTS', 'saao'),
     ('SSO', 'KMTA', 'sso'),
-    ('TESTBED', 'KMTT', 'testbed'),
+    ('KASI', 'KMTK', 'kasi'),
 ])
 def test_observatory_drives_site_and_telid(observatory, telid, site):
     """넷뿐인 어휘가 사이트 코드와 `[site.*]` 절을 함께 정한다."""
@@ -37,15 +37,15 @@ def test_observatory_drives_site_and_telid(observatory, telid, site):
 def test_observatory_is_case_insensitive():
     """ini 손편집 관용 -- 소문자로 적어도 받는다."""
     assert rawpair.site_of_observatory('sso')[0] == 'KMTA'
-    assert rawpair.site_of_observatory('  Testbed  ')[0] == 'KMTT'
+    assert rawpair.site_of_observatory('  Kasi  ')[0] == 'KMTK'
 
 
 def test_unknown_observatory_is_rejected_not_downgraded():
-    """⚠️ **모르는 값을 테스트베드로 떨어뜨리지 않는다.**
+    """⚠️ **모르는 값을 KASI 로 떨어뜨리지 않는다.**
 
-    종전 `normalize_site()` 는 모르는 코드를 조용히 `KMTT` 로 만들었다.
-    그 관대함이 위험한 이유는, 관측소 자료가 벤치 이름으로 아카이브에 들어가도
-    아무 오류가 안 나기 때문이다.  이제는 기동이 멈춘다.
+    종전 `normalize_site()` 는 모르는 코드를 조용히 `KMTK`(구 `KMTT`) 로
+    만들었다.  그 관대함이 위험한 이유는, 관측소 자료가 실험실 이름으로
+    아카이브에 들어가도 아무 오류가 안 나기 때문이다.  이제는 기동이 멈춘다.
     """
     with pytest.raises(ValueError):
         rawpair.site_of_observatory('LASILLA')
@@ -70,7 +70,7 @@ def test_validate_rejects_a_hand_broken_combination():
 def test_instrume_follows_the_site():
     """`INSTRUME` 기본값이 사이트 코드를 따라간다 -- `'<SITE> 18k CCD'`."""
     for observatory, telid in (('CTIO', 'KMTC'), ('SSO', 'KMTA'),
-                               ('SAAO', 'KMTS'), ('TESTBED', 'KMTT')):
+                               ('SAAO', 'KMTS'), ('KASI', 'KMTK')):
         code, _ = rawpair.site_of_observatory(observatory)
         assert code == telid
         head = rawhdr.instrument_header('MK', code)

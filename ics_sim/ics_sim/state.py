@@ -13,9 +13,11 @@
 
 단, 고정인 것은 **Wrote 메시지에 싣는 논리 이름**이다 (D-011/D-010).  디스크
 실물은 컨트롤러당 1개 <SITE>.<날짜>.<번호>.<MK|NT>.fits 2개이고, 그 `<SITE>`
-는 **호스트 IP 로 판정한 실효 사이트**(아래 `site_code`)다 -- 판정이 ini 를
-이긴다 (D-015, raw spec 2.2절).  논리 이름은 통보 전용이다 (DevNote 3.2
--- v1.4 에서 규격 2.5절이 삭제되고 정본이 그쪽으로 옮겨졌다).
+는 **`[node] observatory` 한 줄이 정한 사이트 코드**(아래 `site_code`)다 --
+KMTC/KMTS/KMTA/KMTK 넷뿐이고 그 밖은 기동을 거부한다 (D-011 · D-017, raw spec
+2.2절).  ⚠️ 종전의 호스트 IP 판정(D-015)은 폐지됐다 (목 확정 2026-08-24,
+DevNote 11.27).  논리 이름은 통보 전용이다 (DevNote 3.2 -- raw spec v1.4 에서
+규격 2.5절이 삭제되고 정본이 그쪽으로 옮겨졌다).
 """
 
 from __future__ import annotations
@@ -169,7 +171,7 @@ class IcsState:
     #: 6자리 파일 일련번호.  레거시 IC 는 4자리였고 그 불일치를 INITIALIZE 로
     #: 우회했다(ics_legacy_report 3.4절).  신규는 애초에 6자리로 통일한다.
     #:
-    #: **번호 공간은 `000000`–`099999`** 이고 100000 에서 되감는다
+    #: **번호 공간은 `000000`–`999999`** 이고 1000000 에서 되감는다 (D-018)
     #: (`rawpair.NUM_SPACE`, D-016 1항 -- 레거시 관례).
     #:
     #: **재실행에도 되돌아가지 않는다** -- 마지막으로 쓴 번호를 `expnum_file` 에
@@ -185,14 +187,14 @@ class IcsState:
     expnum_file: str = ''
     ledflash_ms: int = 0
     expstatus: str = ExpStatus.IDLE
-    #: 사이트 코드 (`KMTC`/`KMTS`/`KMTA`/`KMTT`).  파일명 `<YYYYMMDD>` 가
+    #: 사이트 코드 (`KMTC`/`KMTS`/`KMTA`/`KMTK`).  파일명 `<YYYYMMDD>` 가
     #: **사이트별 관측일** 이므로 날짜를 만들 때마다 필요하다
     #: (`rawpair.observing_date`, 운영자 확정 2026-08-13).
     #:
     #: 상태에 둔 이유: `next_suffix()` 와 `peek_suffix()` 가 **같은 규칙**을
     #: 써야 하는데 호출측이 매번 넘기게 하면 한쪽을 빠뜨린다 -- 그러면 EXPNUM
     #: 응답과 실제 파일명의 날짜가 갈리고, 그건 야간 경계에서만 드러난다.
-    site_code: str = 'KMTT'
+    site_code: str = 'KMTK'
     #: FITS `ICSBUILD` -- **이 프로그램의** 빌드 식별자 (raw spec 5.5절).
     #:
     #: 한때 기본값이 레거시 ICS 의 `'KX2016-03-23:1381'` 이었다.  없는 것이
@@ -294,7 +296,10 @@ class IcsState:
         return f'ICS.{stamp_guide(when)}.{self.expnum:06d}'
 
     def advance(self) -> None:
-        # 번호 공간 000000–099999 순환 (rawpair.NUM_SPACE, D-016 1항).
+        # **D-018 (2026-08-25)**: 번호 공간은 `000000`-`999999` 로 6자리를 전부
+        # 쓰고, 1000000 에 닿으면 `000000` 으로 되감는다.  구 규칙은 `099999`
+        # 상한이라 맨 앞 자리가 늘 `0` 이었다.  되감지 않으면 `:06d` 가 7자리를
+        # 내놓아 파일명 형식(6자리 고정폭)이 깨진다 (`rawpair.NUM_SPACE`).
         self.expnum = (self.expnum + 1) % NUM_SPACE
         self.suffix_taken = False
 
@@ -343,7 +348,7 @@ class IcsState:
             log.warning('expnum 기록이 음수다 (%s: %d) -- %06d 부터 시작한다',
                         path, last, self.expnum)
             return
-        # 마지막이 099999 였으면 000000 으로 되감는다 (D-016 1항).
+        # 마지막이 999999 였으면 000000 으로 되감는다 (D-016 1항 · D-018).
         self.expnum = (last + 1) % NUM_SPACE
         log.info('expnum 기록을 이어받는다 -- 마지막 %06d, 이번 %06d (%s)',
                  last, self.expnum, path)
