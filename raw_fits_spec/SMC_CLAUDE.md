@@ -6,11 +6,11 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec v1.4 (2026-08-22)
+## ✅ 현행 규격 — raw spec v1.5 (2026-08-25)
 
-**[`KMT_CEU_Raw_FITS_Specification_v1.4.md`](KMT_CEU_Raw_FITS_Specification_v1.4.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체)에 **운영자 1~4장 검토를 반영한 판**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3).
+**[`KMT_CEU_Raw_FITS_Specification_v1.5.md`](KMT_CEU_Raw_FITS_Specification_v1.5.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → **v1.5 = 5장 검토 개시분**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 · v1.4).
 
-- **5장 이후는 아직 검토 전이다** — 팀 협의 후 다음 판에서 다룬다(운영자, 2026-08-22).
+- **5장 검토가 열려 있다 (v1.5, 2026-08-25~)** — 들어온 것: `Cn_*` 자리 순서 명세(**5.6.1절 신설**, 운영자 제시) · 견본 헤더 comment 오타 2건 정정. 이 라운드의 나머지 결정도 **v1.5 에 누적**한 뒤 한 번에 발행·태그한다 (같은 판 이름으로 내용이 갈리는 인용 불안정을 막는다 — 원장 v1.12 판 분리의 교훈).
 
 - **절 구성이 구판과 다르다** — 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 현행 기준으로 재확인. ⚠️ **v1.4 에서 2.5절(Wrote 통보)이 삭제돼 절 번호가 또 바뀌었다**(2장은 2.1~2.4). `ics_sim` 쪽 참조 정리는 **완료**(2026-08-22, v1.3 정렬과 함께 — 아래 "다음 사람이 할 일" 3). ICD v4.1 §12 의 위임 대상 갱신은 LEECU 몫으로 남아 있다.
 - 헤더 5장의 바이트 단위 정본은 **초안 헤더 v1.0 pair**(`KMTA...MK/NT.fits.header.v1.0.txt`)다.
@@ -19,7 +19,7 @@
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Specification_v1.4.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
+| `KMT_CEU_Raw_FITS_Specification_v1.5.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
 | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기) — v1.14 에서 구 검토 문서 폐기분을 본문으로 편입했다. converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
 | `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` | **통합 문서** — Part 1: LEECU 전달용 C-항목·이름 대응·MEF/converter 쪽 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.4/v0.2/v0.5 는 `archive/` |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
@@ -41,7 +41,35 @@
 - **ICD 는 PRIMARY keyword 를 열거하지 않는다.** converter 가 만드는 카드 이름 210개 중 ICD 에 나오는 것은 36개뿐이고 174개(83%)가 없다. 그 침묵 구간이 곧 이 검토가 결정할 몫이다.
 - 확정된 근거는 `../project_management/governance/DECISION_LOG.md` 의 **D-번호**다. 이 폴더가 기대는 것은 **D-011**(사이트 코드 파일명) · **D-013**(레거시 keyword 판정) · **D-016**(충돌 번호 증가 · `FILENAME`/`ORIGNAME` 정체성, 2026-08-22 등재).
 
-## ▶ 이어서 시작하는 자리 (2026-08-22 기준)
+## ▶ 이어서 시작하는 자리 (2026-08-25 기준)
+
+### ⏳ 열려 있는 라운드 — raw spec **v1.5** (5장 검토, 2026-08-25~)
+
+**작업 자리가 `KMTNet-CEU-main` 워크트리(브랜치 `main`)로 옮겨졌다**(운영자). `ics-archon-v1.0-build` 쪽 `raw_fits_spec/` 은 손대지 않는다 — 두 곳에서 같은 파일을 고치면 머지가 지저분해진다.
+
+**들어온 것**
+
+1. **견본 헤더 comment 오타 2건 정정 (운영자 직접 수정)** — `Telesope`→`Telescope`(`ALT`) · `Acutator`→`Actuator`(`FASTAT`). 꼬리 `#EOF` 4바이트도 떨어져 **견본이 정확히 4×2880 = 11,520 바이트**가 됐다(종전 11,524 는 2880 의 배수가 아니었다). 구조 전수 검증 통과 — 144 레코드 · 값 135 + COMMENT 8 + END · 중복 keyword 0 · 바이트-9 위반 0 · 제어문자 0 · **MK↔NT 상이 정확히 7장**(5.9절 pair 규칙).
+2. **메모장용 사본 신설** — `…MK/NT.fits.header.v1.0_REFTEXT.txt`: 카드마다 **LF**(CRLF 아님) + 끝에 `#EOF`, 11,669 바이트 = 144×81 + 5. **LF 를 걷어내면 정본과 바이트 동일**이다. 정본(연속 80칼럼)은 그대로 두고 보기용만 분리했다 — 정본 자체를 개명·변환했던 `…fits__header.…` 안은 폐기(되살리려면 `git checkout`).
+3. **`Cn_*` 자리 순서 명세 — 5.6.1절 신설**(운영자 제시). 원장 7장이 "이 순서를 raw FITS spec 에 명세로 수록"으로 남겨 둔 지시를 닫았다(원장은 제자리 보강으로 그리 가리키게 했다). guide 8자리는 실기 대조 전이라 **OI-19** 신설.
+4. 머리말 견본 카드 수 정정 — "143카드 = 값 135 + COMMENT 7 + END" → **144 레코드 = 값 135 + COMMENT 8 + END 1**(COMMENT 실측 8장).
+
+**⚠️ 다른 브랜치에 걸린 후속 — 코드 사본 3곳**
+
+견본은 **바이트 정본**이고 이를 그대로 베낀 기계 사본이 셋 있다. 오타 정정을 따라가지 않으면 대사 시험이 깨진다 (실측: `ics_sim/tests/test_raw_draft.py` **3 failed**).
+
+| 파일 | 줄 |
+|---|---|
+| `ics_sim/ics_sim/rawcards.py` | 130–131 · 158–159 (오타 + "고치면 바이트 대사가 어긋난다" 주석 2줄도 함께) |
+| `ics_archon/ics_archon/_vendor/ics_sim/rawcards.py` | 위와 바이트 동일 사본 |
+| `ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py` | 504 · 531 (`# 견본 원문` 주석 포함) |
+
+**셋 다 `main` 에 없다** — `rawcards.py` 를 들여온 커밋 `9545f64`(ics_sim v0.2.0, 템플릿 주도 재편)가 `ics-archon-v1.0-build` 전용이고 `main` 에는 `ics_archon/` 폴더 자체가 없다. 그래서 **이 라운드를 main 에 올린 뒤, 그 브랜치가 main 을 머지로 받는 시점에 함께 고친다.** 그 전까지 그 브랜치의 `raw_fits_spec/` 은 HEAD 상태(오타 있는 견본)로 두어 시험 녹색을 유지한다 — 실제로 되돌려 두었고 `ics_sim` **306 통과** 확인.
+
+`#EOF` 제거는 안전하다 — `ics_sim/tests/test_raw_draft.py:67` · `ics_archon/tests/test_fitswrite.py:46` 둘 다 조건부로 뗀다. `__reference/` 의 레거시 실측 헤더 20여 장은 **사실 기록이므로 오타를 그대로 둔다**.
+
+**확인 대기 2건**: ① `Cn_TEMP` 2번 자리 표기 — 나머지가 전부 `S<n>` 인데 첫 모듈만 `M1:LVDS` 다. **운영자 원문 표기를 그대로 실었고**(원장 7장의 "Slot1 LVDS" 와 같은 자리로 읽으면 정합), 한 체계로 통일할지는 확인 대기. 자리 순서 자체엔 이견 없음 ② 라운드 종료 시 발행·태그(`raw-spec-v1.5`) 시점.
+
 
 ### 🏁 최종 2 — raw spec **v1.4** (운영자 1~4장 검토 반영, 2026-08-22)
 

@@ -1,6 +1,7 @@
 # raw FITS 헤더 카드 — converter 가 읽는 것 · 읽지 않는 것 · 도입 후보 · 폐지된 것
 
 **v1.14** · 개정 2026-08-23 · **판정 준거를 본문에 편입(0장 신설)** — 폐기 문서 의존 제거
+> **제자리 보강 (2026-08-25)** — 7장 `Cn_*` 행의 지시 "이 순서를 raw FITS spec 에 명세로 수록"이 이행됐다. 정본은 **raw spec 5.6.1절**(v1.5)이고, 이 행은 이제 그리로 가리킨다. 판정 내용에는 변화가 없다.
 
 > **v1.14 에서 바뀐 것 — 판정 근거가 문서 안으로 들어왔다.**
 >
@@ -540,7 +541,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `AMPMAP` | **X** | `EXPLICIT`이면 아래 표가 유효. `DEFAULT`면 converter의<br>추정식을 쓴다는 선언 | **v1.7: `CHMAP_*` 4장으로 대체** — 선언 카드 자체가 불필요해졌다 |
 | `AMPNAX1` | **O** | **amp 타일의 X 크기** = `1200` (prescan+image+overscan) | `NAXIS1/AMPNAX1 = 16` 으로 타일 수 파생. MEF `RAWXTILE` 과 값 동일, 이름 상이 |
 | `AMPNAX2` | **O** | **amp 타일의 Y 크기** = `4700` = `NAXIS2/NEND` (타일 규약) | `AMPNAX2−IMAGEY = 84` 가 중앙 overscan 의 amp 몫 — **물리 분배는 OI-4** |
-| ~~`BCKTEMP`~~ → **`Cn_TEMP` `Cn_VOLT` `Cn_CURR`**<br>로 변경·확장 | **O** (변경·확장) | Archon unit monitoring (Archon telemetry). Sci: n=1,2 · Gui: n=1.<br>Temp 는 Backplane 이후 Slot 순서, Volt/Curr 는<br>P2V5·P5V·P6V·N6V·P17V·N17V·P35V 순서 —<br>**공백 구분 나열**(자리=항목) | Sci module 순서: Backplane, Slot1 LVDS, Slot2 Driver, Slot3 Driver,<br>Slot4 LVX Bias, Slot5 ADM, Slot8 ADM, Slot9 HVY Bias, Slot10 Driver,<br>Slot11 Driver / Gui: Backplane, Slot3 Driver, Slot4 Driver, Slot5 AD,<br>Slot6 AD, Slot7 HeaterX, Slot9 HVY Bias, Slot10 HeaterX —<br>**이 순서를 raw FITS spec 에 명세로 수록** |
+| ~~`BCKTEMP`~~ → **`Cn_TEMP` `Cn_VOLT` `Cn_CURR`**<br>로 변경·확장 | **O** (변경·확장) | Archon unit monitoring (Archon telemetry). Sci: n=1,2 · Gui: n=1.<br>Temp 는 Backplane 이후 Slot 순서, Volt/Curr 는<br>P2V5·P5V·P6V·N6V·P17V·N17V·P35V 순서 —<br>**공백 구분 나열**(자리=항목) | Sci module 순서: Backplane, Slot1 LVDS, Slot2 Driver, Slot3 Driver,<br>Slot4 LVX Bias, Slot5 ADM, Slot8 ADM, Slot9 HVY Bias, Slot10 Driver,<br>Slot11 Driver / Gui: Backplane, Slot3 Driver, Slot4 Driver, Slot5 AD,<br>Slot6 AD, Slot7 HeaterX, Slot9 HVY Bias, Slot10 HeaterX —<br>✅ **raw spec 5.6.1절에 명세로 수록 완료**(v1.5, 2026-08-25).<br>Gui 순서는 실기 대조 전이라 **OI-19** 로 승계 |
 | `BUFNO` | **X** | 사용한 Archon frame buffer | 모니터링 불필요(버퍼를 번갈아 사용) |
 | `CAMVER` | **O** | Camera electronics version — INI 설정, 값 `CEU-v2.1`. **HW·성능상 변경사항이 있을 때만 올린다** — 전자부 세대 판단의 참조점(운영자, 2026-08-22). 설정 상세 추적은 `CTRLxCFG` 몫 | v1.9 신설 (초안 v0.3.6) |
 | `CCDCOLS` | **X** | chip 1개의 active column | **`IMAGEX × 8` 로 파생 — 카드 불요** (v1.7) |

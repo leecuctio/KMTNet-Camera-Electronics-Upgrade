@@ -34,7 +34,7 @@
 | **C-신설: HK 온도 카드 재구성** (2026-08-21) | 온도센서 구성 변경으로 raw 의 Camera System House Keeping 블록이 재편됐다 — **신설 `DMPTEMP`(DMP 온도) · `WALLBRD`(wallboard 온도 — v0.2 의 `WALLBOAR` 에서 개명) · `HEBOX`(HE box 내부 온도)**, `AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` comment 정의 확정(AIR는 열교환기 기준 — IN이 따뜻한 쪽, 레거시 의미 유지), `DEWPRES` 단위 [torr] · 포맷 `x.xxe-x` · **측정불가 sentinel `9.99e-9`**(값 0/이상값/게이지 비숫자 — 규격 5.0 sentinel 표에 DEWPRES 전용 예외로 등재 필요), **`CCDTEMP` 의미 변경**: 구 설계(`CCDTEMP1`·`CCDTEMP2` 평균 파생, D-013)에서 **실측 센서 1개 값**("CCD temperature M")으로. `RTD12` 폐지는 확정대로(D-013). **출처 확정(v0.3)** — `CCDTEMP`·`DEWPRES`·`PT30N*`·`CHARCOAL`·`DMPTEMP`·`WALLBRD` = ICG RTD measurement / `AIR_*`·`GLYC_*` = standalone RTD readout unit / `HEBOX` = Tapaculo sensor | ① converter 가 `DMPTEMP`/`WALLBRD`/`HEBOX` 를 읽지 않음 — MEF 로 보내려면 읽기 추가 ② MEF/L1 의 `CCDTEMP` 정의를 "평균 파생"에서 "대표 센서 실측"으로 갱신 (L1 `CARRY_KEYS` 가 `CCDTEMP` 이름을 요구하므로 이름은 불변) ③ `CCDTEMP1`/`CCDTEMP2` 후보는 **제외 확정**(운영자, 2026-08-21) — 평균 파생 설계 폐기에 따름 |
 | **C-신설: MEF `UT` 조립 원천** (2026-08-21) | raw 가 `TSHOPEN`/`TSHSHUT` 를 싣지 않는 것으로 판정됐다(Header_and_Refs v1.9 3.2절). converter 는 `DATE-OBS` 날짜부 + raw `TSHOPEN` 으로 MEF `UT` 를 조립하므로(`v2_1.py:440` · `:583`) **MEF `UT` 시각부가 빈다** — 오류 없음 | `UT` 조립 원천을 `DATE-OBS` 의 시각부로 교체 (`DATE-OBS` 는 밀리초까지 담는다, D-014) |
 | C-신설(경미): MEF `DARKTIME` 공급원 | raw `DARKTIME` 미기재 판정 — 값이 `EXPTIME` 과 동일해 파생으로 충분(v1.9 3.2절). 현행 converter 기본값 `0.0` 이 MEF 에 박힌다 | `EXPTIME` 값으로 파생 기록, 또는 MEF `DARKTIME` 폐지 판단 |
-| **C-후보 신설: MEF `VOLTINFO`/`TELEMETRY` 공급원** (2026-08-22) | raw 가 컨트롤러별 텔레메트리 카드 **`C1_TEMP`·`C1_VOLT`·`C1_CURR` / `C2_*`** 를 도입했다(v1.9, 구 `BCKTEMP` 확장) — MEF `VOLTINFO`/`TELEMETRY` 를 실측값으로 채울 원천이 처음 생겼다. converter 는 이 카드들을 아직 읽지 않는다 | 현행 placeholder 경로(C-18)를 raw `Cn_*` 기반 채움으로 **대체**하는 안 — 도입 시 읽기 추가 + 조립 규칙(모듈 순서 명세는 raw 규격 수록 예정) 정의 |
+| **C-후보 신설: MEF `VOLTINFO`/`TELEMETRY` 공급원** (2026-08-22) | raw 가 컨트롤러별 텔레메트리 카드 **`C1_TEMP`·`C1_VOLT`·`C1_CURR` / `C2_*`** 를 도입했다(v1.9, 구 `BCKTEMP` 확장) — MEF `VOLTINFO`/`TELEMETRY` 를 실측값으로 채울 원천이 처음 생겼다. converter 는 이 카드들을 아직 읽지 않는다 | 현행 placeholder 경로(C-18)를 raw `Cn_*` 기반 채움으로 **대체**하는 안 — 도입 시 읽기 추가 + 조립 규칙 정의 — **모듈·레일 자리 순서 명세는 raw spec 5.6.1절에 수록됐다** (v1.5, 2026-08-25) |
 | (기록) `DATASRC` 값 체계 확장 · chiller 블록 미기재 | `ARCHON`/`SIM` → **`ARCHON_SCIENCE`/`ARCHON_GUIDE`/`SIM`**(`HEMODE` 흡수) · chiller 4장(`CHSTAT` `CHOP` `CHSET` `CHPROC`)은 raw 미기재 **확정**(운영자가 초안에서 삭제, 2026-08-21 · 재삭제 검증 2026-08-22) | converter 는 `DATASRC`/`CHOP`/`CHSET`/`CHPROC` 를 읽지 않고 `CHSTAT` 는 기본값 `""` 경로 — 영향 없음/경미, 기록만 |
 | (기록, v0.5) 돔 Source 변경 · `LEDFLASH` 단위 변경 · `ICSBUILD` 형식 변경 | ① 돔 카드(`DSSTAT`~`DSTELAZ`)의 공급원이 `AUX relay` → **`TCS relay or REDIS`**(newTCS 편입), `DALTERR`/`DAZERR` 는 **`ICS calculation`** — 값 공급 계통의 변경이지 카드 이름·형식 변경이 아니다 ② `LEDFLASH` 단위 [seconds] → **[milliseconds] 정수**(운영자 확정 2026-08-22 — 카드 comment 가 단위 명시) ③ `ICSBUILD` 형식 `<프로그램>-v<버전>:<빌드일시>` → **`v<버전>:<빌드일시>Z`**(프로그램 식별은 `DATASRC` 담당) | 셋 다 converter 미독 카드(`LEDFLASH` `ICSBUILD`) 또는 pass-through 값이라 **converter 동작 불변 — 기록만**. 단 하류 도구가 `LEDFLASH` 를 초로 읽지 않게 ICD/정의서 부속 문서에 단위 변경을 전파할 것 |
 
@@ -109,7 +109,7 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 
 # Part 2 — raw 파일 번호 · 정체성 · 충돌 처리 (파급 요약)
 
-> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.4.md`](KMT_CEU_Raw_FITS_Specification_v1.4.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 000000–099999, 선검사, 상한 100000회) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
+> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.5.md`](KMT_CEU_Raw_FITS_Specification_v1.5.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 000000–099999, 선검사, 상한 100000회) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
 
 ## 1. 하류 도구 요구사항
 
@@ -140,7 +140,7 @@ converter(v2.2.0)는 raw `UNIQNAME` 을 읽어 MEF `UNIQNAME` 으로 옮긴다(`
 | 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |
-| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.4.md`](KMT_CEU_Raw_FITS_Specification_v1.4.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
+| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.5.md`](KMT_CEU_Raw_FITS_Specification_v1.5.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
 | 전신 문서 | `archive/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md` · `archive/KMT_CEU_Raw_Numbering_and_Identity_v0.2.md` |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |
 | 검토 진행 상태 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) |
