@@ -80,9 +80,13 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
 | 104 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
 | 112 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
 | 113 | `TELEMETRY_TIMEOUT` | `3.0` | STATUS 응답 대기 상한 [s] |
-| **115~116** | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.3.0'` / `'2026-08-26T18:05Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
-| 220~221 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
-| 1825~1846 | 실행부 | — | 구 캠페인 3블록은 `'''` 로 묶여 있고 **1846 한 줄이 활성**(`UNIT_ACF_SCI_NORMAL`, DatasetId 2844)(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
+| **115** | `FRAME_WAIT_MAX` | `20` | 노출시간 위에 더 기다릴 상한 [s]. 넘으면 예외 → `finally` 의 `POWEROFF`. **무인 실행에서 전원을 켠 채 매달리는 것을 막는다** |
+| **123** | `FRAME_DUMP_ENABLE` | `True` | 프레임 대기 중 상태를 주기적으로 찍나. **취득이 정상으로 돌기 시작하면 `False`** — 진행 막대만 남는다 |
+| **125** | `FRAME_DUMP_EVERY` | `8` | 몇 회전마다 (8 ≈ 5초) |
+| **126** | `FRAME_DUMP_STATUS` | `True` | `POWER`/`POWERGOOD`/`TIMER` 도 함께. 끄면 `FRAME` 질의 하나만 (왕복 3 → 1) |
+| **130~131** | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.3.0'` / `'2026-08-26T18:05Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
+| 235~236 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
+| 1891~1912 | 실행부 | — | 구 캠페인 3블록은 `'''` 로 묶여 있고 **1912 한 줄이 활성**(`UNIT_ACF_SCI_NORMAL`, DatasetId 2844)(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
 
 > 🔴 **활성 블록의 유닛 번호를 확인하라.** `DatasetId` 는
 > `[UnitID(1)][TestSetup(2)][DatasetType(1)]` 이고, 활성 블록의 `3211`/`3511`/

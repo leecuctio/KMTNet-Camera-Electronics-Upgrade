@@ -112,9 +112,20 @@ OBSERVER_NAME = 'SMC'           # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
-FRAME_WAIT_MAX = 20         # 노출시간 위에 더 기다릴 상한 [s].  넘으면
-                            # 예외 -> finally 의 POWEROFF 로 빠진다.
-FRAME_DUMP_EVERY = 8        # 몇 회전마다 FRAME 상태를 찍나 (0 이면 끔)
+FRAME_WAIT_MAX = 20         #  <---- 노출시간 위에 더 기다릴 상한 [s].
+                            #        넘으면 예외 -> finally 의 POWEROFF.
+
+## 프레임 대기 중 상태를 주기적으로 찍는다 -- 취득이 안 끝날 때
+## "노출이 안 걸렸나 / 독출이 안 끝나나" 를 가르는 계측이다.
+##   FRAME 이 안 오름           -> 노출 미개시
+##   FRAME 은 오르는데 COMPLETE=0 -> 독출이 버퍼를 못 채움
+##   TIMER 가 안 변함           -> 타이밍 코어 정지
+FRAME_DUMP_ENABLE = True    #  <---- 덤프를 찍나 (False 면 진행 막대만).
+                            #        **취득이 정상으로 돌면 False 로 끈다**
+FRAME_DUMP_EVERY = 8        #  <---- 몇 회전마다 (8 = 약 5초)
+FRAME_DUMP_STATUS = True    #  <---- POWER/POWERGOOD/TIMER 도 함께.
+                            #        끄면 FRAME 질의 하나만 -- 왕복이
+                            #        셋에서 하나로 준다
 
 SCRIPT_VERSION = '1.3.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
 SCRIPT_BUILD = '2026-08-26T18:05Z'  # 소스를 고치면 같이 올린다
@@ -1170,35 +1181,39 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
         time.sleep(sleepint);  print(end=progbar, flush=True)
         waited += sleepint
         spin += 1
-        if FRAME_DUMP_EVERY and spin % FRAME_DUMP_EVERY == 0:
+        if (FRAME_DUMP_ENABLE and FRAME_DUMP_EVERY
+                and spin % FRAME_DUMP_EVERY == 0):
             fs = {}
             for pair in archoncmd('FRAME').split():
                 k, _, v = pair.decode().partition('=')
                 fs[k] = v
-            st = {}
-            try:
-                for pair in archoncmd('STATUS', TELEMETRY_TIMEOUT).split():
-                    k, _, v = pair.decode().partition('=')
-                    st[k] = v
-            except Exception as e:
-                st['ERR'] = str(e)
-            ## TIMER 는 STATUS 필드가 아니라 **별도 명령**이다 (10ns tick,
-            ## 매뉴얼 p.49-50).  값이 회전마다 변하지 않으면 **타이밍 코어가
-            ## 멈춘 것**이고, 그것이 프레임이 안 나오는 직접 원인이다.
-            try:
-                st['TIMER'] = archoncmd('TIMER', TELEMETRY_TIMEOUT).decode()
-            except Exception as e:
-                st['TIMER'] = 'ERR(%s)' % e
-            print('\n   [%4.0fs] RBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s'
-                  '  POWER=%s  POWERGOOD=%s  TIMER=%s'
-                  % (waited, fs.get('RBUF'),
-                     fs.get('BUF1FRAME'), fs.get('BUF2FRAME'),
-                     fs.get('BUF3FRAME'),
-                     fs.get('BUF1COMPLETE'), fs.get('BUF2COMPLETE'),
-                     fs.get('BUF3COMPLETE'),
-                     st.get('POWER', st.get('ERR', '?')),
-                     st.get('POWERGOOD', '?'), st.get('TIMER', '?')),
-                  end='\n   ', flush=True)
+            line = ('[%4.0fs] RBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s'
+                    % (waited, fs.get('RBUF'),
+                       fs.get('BUF1FRAME'), fs.get('BUF2FRAME'),
+                       fs.get('BUF3FRAME'),
+                       fs.get('BUF1COMPLETE'), fs.get('BUF2COMPLETE'),
+                       fs.get('BUF3COMPLETE')))
+            if FRAME_DUMP_STATUS:
+                st = {}
+                try:
+                    for pair in archoncmd('STATUS',
+                                          TELEMETRY_TIMEOUT).split():
+                        k, _, v = pair.decode().partition('=')
+                        st[k] = v
+                except Exception as e:
+                    st['ERR'] = str(e)
+                ## TIMER 는 STATUS 필드가 아니라 **별도 명령**이다
+                ## (10ns tick, 매뉴얼 p.49-50).
+                try:
+                    st['TIMER'] = archoncmd('TIMER',
+                                            TELEMETRY_TIMEOUT).decode()
+                except Exception as e:
+                    st['TIMER'] = 'ERR(%s)' % e
+                line += ('  POWER=%s  POWERGOOD=%s  TIMER=%s'
+                         % (st.get('POWER', st.get('ERR', '?')),
+                            st.get('POWERGOOD', '?'),
+                            st.get('TIMER', '?')))
+            print('\n   ' + line, end='\n   ', flush=True)
     print(progend)
     
     # Fetch frame
