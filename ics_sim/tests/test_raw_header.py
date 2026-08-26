@@ -75,7 +75,7 @@ def test_pair_rule_exactly_six_cards_differ(tmp_path):
     converter 는 MK 헤더만 읽으므로(master metadata), "나머지 동일" 이 깨지면
     NT 쪽 사실이 MEF 에서 **오류 없이** 사라진다.
 
-    ⚠️ `EXPID` 는 "반드시 동일" 쪽이다 -- 태그가 없어 pair 양쪽이 같고, 그래서
+    ⚠️ `EXPID` 는 "반드시 동일" 쪽이다 -- `DETID` 필드가 없어 pair 양쪽이 같고, 그래서
     짝을 잇는 단일 키가 된다 (D-019).  여기 diff 에 뜨면 그 성질이 깨진 것이다.
     """
     heads = _headers(tmp_path)

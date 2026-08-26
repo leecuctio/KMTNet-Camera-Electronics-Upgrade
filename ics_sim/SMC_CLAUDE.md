@@ -69,12 +69,12 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 ## ⚠️ raw spec v1.6 반영 (2026-08-26) -- 정체성 카드가 바뀌었다
 
 **`ORIGNAME` 이 폐지되고 `EXPID` 가 대신한다** (D-019).  값은
-`<SITE>.<YYYYMMDD>.<NNNNNN>` 이고 **컨트롤러 태그가 없어 pair 양쪽이 같다** --
+`<SITE>.<YYYYMMDD>.<NNNNNN>` 이고 **`DETID` 필드가 없어 pair 양쪽이 같다** --
 그래서 `rawcards.PAIR_DIFF` 가 **7장 -> 6장**이 됐다.
 
 | 무엇 | 전 → 후 | 자리 |
 |---|---|---|
-| 정체성 카드 | `ORIGNAME`(태그 있음) → **`EXPID`**(태그 없음, pair 동일) | `rawcards.CARDS`·`PAIR_DIFF` · `rawhdr.exposure_header(expid=)` · 신설 `rawpair.exposure_id()` · `sequencer`(`name_stem()` 호출이 빠졌다) |
+| 정체성 카드 | `ORIGNAME`(`DETID` 필드 있음) → **`EXPID`**(없음, pair 동일) | `rawcards.CARDS`·`PAIR_DIFF` · `rawhdr.exposure_header(expid=)` · 신설 `rawpair.exposure_id()` · `sequencer`(`name_stem()` 호출이 빠졌다) |
 | `FILENAME` comment | → `FITS file name as written to storage` | `rawcards.CARDS` |
 | `Cn_*` 구분자 | 공백 → **`|`** | `rawhdr._join_readings()`.  ⚠️ 슬래시는 FITS comment 구분자와 겹쳐 배제했다 |
 | `Cn_*` comment | `Ctr-n` → **`Ctrl-n`** | `rawcards.CARDS` 6장 |

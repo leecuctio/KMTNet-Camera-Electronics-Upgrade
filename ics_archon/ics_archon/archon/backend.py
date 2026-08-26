@@ -81,7 +81,7 @@ def _frame_key(header) -> str:  # noqa: ANN001
 
     ⚠️ **v1.6(D-019)에서 구 `ORIGNAME` 을 대체했다.**  값에 컨트롤러 태그가
     없어졌지만 자리 수(`<SITE>.<날짜>.<번호>`)는 같으므로 뽑는 규칙은 그대로다 --
-    오히려 태그가 없어 pair 양쪽이 같은 키를 준다.
+    오히려 `DETID` 필드가 없어 pair 양쪽이 같은 키를 준다.
     """
     from ics_sim import rawcards
     try:

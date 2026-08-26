@@ -335,7 +335,7 @@ def exposure_header(*, imgtype: str, objname: str, projid: str,
       converter 의 실패 경로가 발동하지 않는다 (raw spec 5.0절, C-6).
     * `FILENAME` = 실제 저장명(확장자 없음, 아카이브 유일 키) ·
       `EXPID` = 카운터 최초 배정 노출 식별자 `<SITE>.<YYYYMMDD>.<NNNNNN>`
-      (**컨트롤러 태그 없음 -> pair 양쪽 동일**, D-019).  **충돌 신호 =
+      (**`DETID` 필드 없음 -> pair 양쪽 동일**, D-019).  **충돌 신호 =
       `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 != `EXPID`** 다 --
       카드 존재가 아니라 (D-016).  구판의 `UNIQNAME`/`NAMECLSH` 는 폐지됐다.
 

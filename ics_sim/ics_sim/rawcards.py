@@ -192,7 +192,7 @@ STRUCTURAL = frozenset(
 #: 반드시 동일이다.
 #:
 #: ⚠️ **v1.6(D-019)에서 7장 -> 6장이 됐다.**  구 `ORIGNAME` 은 `.MK`/`.NT`
-#: `DETID` 필드를 달아 상이였는데, 이를 대체한 `EXPID` 는 태그가 없어 **양쪽 동일**
+#: `DETID` 필드를 달아 상이였는데, 이를 대체한 `EXPID` 는 `DETID` 필드가 없어 **양쪽 동일**
 #: 이다 -- 그래서 짝을 잇는 단일 키가 된다.
 PAIR_DIFF = ('DETID', 'CHMAP_LT', 'CHMAP_LB', 'CHMAP_RT', 'CHMAP_RB',
              'FILENAME')

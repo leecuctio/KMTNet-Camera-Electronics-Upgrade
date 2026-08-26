@@ -130,7 +130,7 @@ def _headers(tmp_path) -> dict[str, object]:
 
 
 def test_expid_format_and_pair_identity():
-    """`EXPID` = `<SITE>.<YYYYMMDD>.<NNNNNN>` — **태그 없음 · pair 동일** (D-019).
+    """`EXPID` = `<SITE>.<YYYYMMDD>.<NNNNNN>` — **`DETID` 필드 없음 · pair 동일** (D-019).
 
     형식이 규약인 이유: 하류가 `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값과 **문자열
     비교**해 충돌을 판별한다(규격 2.3절).  한 자리라도 어긋나면 그 비교가 늘

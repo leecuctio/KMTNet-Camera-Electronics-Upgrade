@@ -204,7 +204,7 @@ def name_stem(site_code: str, suffix: str, ctrltag: str) -> str:
     """`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>` -- **확장자 없는 이름** (2.3절).
 
     헤더의 `FILENAME` 에 싣는 형태다 (구 `ORIGNAME` 은 D-019 로 폐지 --
-    태그 없는 `exposure_id()` 가 대신한다).  **확장자를 붙이지 않는 것이
+    `DETID` 필드 없는 `exposure_id()` 가 대신한다).  **확장자를 붙이지 않는 것이
     레거시 관례**다 -- 실측 헤더가 `FILENAME = 'KMTNk.20170209.044131'` 로
     `.fits` 없이 기록했다(`__reference/Legacy raw fits header samples/`).
     """
