@@ -174,7 +174,7 @@ v1.1:  KMTK.<YYYYMMDD>.<NNNNNN>.MK.fits      <SITE>.<날짜>.<번호>.<MK|NT>
 | `WARNING: resyncing the Archon link (STATUS reply abandoned)` | STATUS 가 시한 안에 안 와서 **연결을 새로 열었다.** 취득은 계속된다 |
 | `WARNING: FITS card C1_TEMP value too long (N > M) -- truncated` | `TEMP_MODS` 를 줄인다. 카드는 유효한 상태로 유지된다 |
 | `WARNING: FITS card ... has non-ASCII characters ... replaced with ?` | 헤더에 들어온 비ASCII 를 `?` 로 바꿨다. 값은 잃지만 파일은 온전하다 |
-| `WARNING: filename clash -- number bumped NNNNNN -> MMMMMM (D-016)` | 같은 이름이 있어 번호를 올려 저장했다. 헤더에 **`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 ≠ `EXPID`** 로 남는다 (v1.6/D-019 — 구 `ORIGNAME`). **프레임마다 뜬다면 아래 '재실행' 항목을 볼 것** |
+| `WARNING: filename clash -- number bumped NNNNNN -> MMMMMM (D-016)` | 같은 이름이 있어 번호를 올려 저장했다. 헤더에 **`FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 ≠ `EXPID`** 로 남는다 (v1.6/D-019 — 구 `ORIGNAME`). **프레임마다 뜬다면 아래 '재실행' 항목을 볼 것** |
 | `WARNING: <dir> 에 오늘(UT ...) 자 파일이 이미 N 개 있다 -- ...` | 데이터셋 시작에 한 번. **같은 UT 날짜의 재실행은 멱등하지 않다** — 아래 참조 |
 | `WARNING: POWEROFF 를 못 보냈다 (...)` | 예외로 빠져나가는 중에 전원 끄기까지 실패했다. **유닛 전원 상태를 직접 확인하라** |
 | `ERROR: data storage not found -- '...'` (데이터셋 시작에서 멈춤) | 저장 자리가 없다. **스크립트는 만들지 않는다** — `~` 가 안 펼쳐졌거나(cwd 아래 `~` 폴더), 마운트가 안 붙었거나, 경로 오타다. `mkdir -p` 로 먼저 만들어라 |
@@ -203,7 +203,7 @@ v1.0 은 같은 파일명을 `'wb'` 로 열어 **덮어썼다**. v1.1 은 D-016 
 
 - 이전 폴더를 비우거나 옮긴다 (권장)
 - 끊긴 자리부터 `StartNum` 으로 이어받는다 — 이 경로는 충돌이 안 난다
-- 그대로 두고 `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` 로 사후에 가른다 (D-019)
+- 그대로 두고 `FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID` 로 사후에 가른다 (D-019)
 
 선검사 비용은 문제되지 않는다 — 프레임당 `os.path.exists` 2회(앞에 k개가
 점유돼 있으면 최대 2(k+1)회)이고, 116프레임을 3회차까지 밀어 올려도 누적
@@ -228,7 +228,7 @@ python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fit
 
 ## v1.1 에서 바뀐 것 (raw spec 적용, 2026-08-22)
 
-정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md)
+정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md)
 
 1. **파일명** — `AC13A.<날짜>.<번호>.fits` → **`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits`**
    (D-011). 실험실은 `SITE_CODE='KMTK'`(KASI), 날짜는 UT(KMTK 보정 0,
@@ -236,7 +236,7 @@ python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fit
    converter 정규식(`\d{6}`)에 그대로 걸린다.
 2. **이름 충돌 = 번호 증가** (D-016) — 쓰기 전에 후보 번호의 MK·NT 두 경로를
    선검사하고 점유 시 +1. 카운터(DS 체계) 최초 배정분은 **`EXPID`** 카드로
-   남는다 — 충돌 신호 = `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 ≠ `EXPID`.
+   남는다 — 충돌 신호 = `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 ≠ `EXPID`.
    ⚠️ v1.6(D-019)에서 구 `ORIGNAME` 을 대체했다. `EXPID` 는 컨트롤러 태그가
    없어 **pair 양쪽이 같은 값**이다.
 3. **헤더 전면 교체** — 구 12카드 → **견본 초안 v1.0 pair 의 144 레코드**

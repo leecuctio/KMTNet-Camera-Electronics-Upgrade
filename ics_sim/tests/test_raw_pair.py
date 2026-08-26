@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Raw FITS pair — 이름·번호·충돌 처리 (D-010/D-011/D-012/**D-016**/**D-019**).
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md` 2장,
+규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md` 2장,
 `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` 2.1·3절.
 
 **한 노출이 만드는 것**
@@ -132,7 +132,7 @@ def _headers(tmp_path) -> dict[str, object]:
 def test_expid_format_and_pair_identity():
     """`EXPID` = `<SITE>.<YYYYMMDD>.<NNNNNN>` — **태그 없음 · pair 동일** (D-019).
 
-    형식이 규약인 이유: 하류가 `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값과 **문자열
+    형식이 규약인 이유: 하류가 `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값과 **문자열
     비교**해 충돌을 판별한다(규격 2.3절).  한 자리라도 어긋나면 그 비교가 늘
     참이 되어 **충돌이 조용히 안 잡힌다.**
 
@@ -161,7 +161,7 @@ def test_expid_format_and_pair_identity():
 def test_identity_cards_present_and_consistent(tmp_path):
     """`FILENAME`(유일 키) + `EXPID`(카운터 배정 식별자) -- 모든 파일에 항상
     (raw spec 2.3절 4항).  구판의 `UNIQNAME`/`CTRLTAG`/`CHIPS`/`PAIRFILE`
-    계열은 폐지됐다 -- pair 식별은 `FILENAME` 꼬리 `.MK`/`.NT` 로 충분하다."""
+    계열은 폐지됐다 -- pair 식별은 `FILENAME` `DETID` 필드 `.MK`/`.NT` 로 충분하다."""
     _run(tmp_path)
     hdrs = _headers(tmp_path)
     assert len(hdrs) == 2
@@ -171,11 +171,11 @@ def test_identity_cards_present_and_consistent(tmp_path):
         assert str(h['FILENAME']).endswith(f'.{tag}')
         # ⚠️ `EXPID` 에는 컨트롤러 태그가 **없다** (D-019) -- pair 양쪽 동일.
         assert not str(h['EXPID']).strip().endswith(('.MK', '.NT'))
-        # 평시 불변식(충돌 없음): `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀
+        # 평시 불변식(충돌 없음): `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀
         # 값 == `EXPID`.  이 등식이 깨진 것이 곧 충돌 신호다 (2.3절).
         assert str(h['FILENAME']).strip().rsplit('.', 1)[0] == \
             str(h['EXPID']).strip()
-    # 짝 이름은 꼬리 치환으로 유도된다 (PAIRFILE 카드는 없다)
+    # 짝 이름은 `DETID` 필드 치환으로 유도된다 (PAIRFILE 카드는 없다)
     mk_stem = str(by_tag['MK']['FILENAME'])
     assert mk_stem[:-2] + 'NT' == str(by_tag['NT']['FILENAME'])
 
@@ -247,7 +247,7 @@ def test_observat_agrees_with_the_filename_site_code(tmp_path):
 def test_collision_bumps_the_number_and_keeps_both_files(tmp_path):
     """이름이 겹치면 **번호를 올려 저장한다** -- 격리·개명이 아니다 (D-016).
 
-    충돌 사실은 `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` 비교 하나로 남는다 (카드 존재가
+    충돌 사실은 `FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID` 비교 하나로 남는다 (카드 존재가
     아니다).  구판의 `clash/` 디렉토리·`NAMECLSH` 카드·WARNING 메시지는
     전부 폐지됐다.
     """
@@ -274,7 +274,7 @@ def test_collision_bumps_the_number_and_keeps_both_files(tmp_path):
         assert str(h['FILENAME']).strip() == stem       # 실제 저장명
         assert str(h['EXPID']).strip() != \
             str(h['FILENAME']).strip().rsplit('.', 1)[0], (
-                '충돌 신호는 FILENAME 의 꼬리를 뗀 값 != EXPID 다 (D-019)')
+                '충돌 신호는 FILENAME 의 `DETID` 필드를 뗀 값 != EXPID 다 (D-019)')
         # 번호만 다르고 형식은 같다 (D-011 불변 -- find_pair() 영향 없음)
         assert re.fullmatch(r'KMT[CSAK]\.\d{8}\.\d{6}\.(MK|NT)', stem)
     # pair 양쪽이 같은 번호로 함께 증가한다

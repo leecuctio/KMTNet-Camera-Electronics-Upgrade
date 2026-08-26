@@ -320,6 +320,6 @@ def test_d016_collision_check_is_on_even_when_write_fits_is_false(tmp_path):  # 
     bumped = [n for n in after if n not in first]
     with fits.open(str(tmp_path / 'rawdata' / bumped[0])) as hdul:
         h = hdul[0].header
-    # 충돌 신호 = `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 != `EXPID`
+    # 충돌 신호 = `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 != `EXPID`
     assert h['FILENAME'].strip().rsplit('.', 1)[0] != h['EXPID'].strip(), (
         '번호가 밀렸는데 EXPID 가 같다 -- 충돌 신호가 없다')

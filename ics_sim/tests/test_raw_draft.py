@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.6 5장).
+"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.7 5장).
 
 정본 견본은 `raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0.txt`
 (경로는 박지 않고 glob 으로 찾는다 -- `_find_draft`)
@@ -166,7 +166,7 @@ def test_draft_counts_match_the_spec():
 def test_pair_diff_is_exactly_the_six_cards():
     """반드시 상이 **6장** (raw spec 5.9절) -- 견본에서 직접 센다.
 
-    v1.6 에서 7장 -> 6장이 됐다.  구 `ORIGNAME` 은 `.MK`/`.NT` 꼬리를 달아
+    v1.6 에서 7장 -> 6장이 됐다.  구 `ORIGNAME` 은 `DETID` 필드(`.MK`/`.NT`)를 달아
     상이였는데, 이를 대체한 `EXPID` 는 태그가 없어 **양쪽 동일**이다 --
     그래서 짝을 잇는 단일 키가 된다.
     """

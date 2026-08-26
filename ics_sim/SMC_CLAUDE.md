@@ -82,7 +82,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 | 카드 폭 초과 | 값을 잘랐다 → **comment 를 먼저 자른다** | 규격 5.0절 신설.  이 저장소에서 카드 이미지를 만드는 곳은 **셋** — `archon/fitswrite.card_image()` · **astropy 경로 `fitsout._fit_to_card()`** · labtest `fits_card()` |
 
 ⚠️ **충돌 판별이 한 단계 늘었다** -- 종전 `FILENAME != ORIGNAME`(직접 비교)에서
-**`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 != `EXPID`** 로.  꼬리 제거는 이미
+**`FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 != `EXPID`** 로.  `DETID` 필드 제거는 이미
 규격 2.3절 5항이 정의한 연산이다.
 
 **⚠️ 전수 검사에서 더 나온 둘 (2026-08-26)** — `ics_sim` 쪽만 적는다.

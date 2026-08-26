@@ -4,7 +4,7 @@
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
 # Ref.version: archon_kmtnet_stascience_modtm_imgacq_v0.3_kasi.STA0287.102.py (2026-05-29/SMC)
 #
-# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md)
+# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md)
 #   ※ 최초 작성은 v1.3 기준. v1.4 는 1~4장 표현만 바뀌어 구현 영향이 없었고
 #     (2.5절 삭제 = 취득 SW 소관 이관 · 4.1 RRRRLLLL 확정 · 4.2/4.4 표기),
 #     **v1.5 (2026-08-26 반영)는 값이 바뀌어 아래 다섯 자리를 고쳤다.**
@@ -1165,7 +1165,7 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     #
     # 파일명: <SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits (D-011).  이름이 겹치면
     # 번호를 올려 저장하고(D-016 선검사), 카운터(여기서는 DS 체계) 최초
-    # 배정분은 EXPID 카드로 남는다 (D-019) -- 충돌 신호 = FILENAME 의 꼬리를
+    # 배정분은 EXPID 카드로 남는다 (D-019) -- 충돌 신호 = FILENAME 의 `DETID` 필드를
     # 뗀 값 != EXPID.
     # 구판의 '%s.%s.%06d.fits'%(prefix,...) 이름은 폐지 -- 죽은 prefix 인자를
     # datasetid 로 교체했다.  OBJECT 카드가 쓰던 filenum//100 역산은 iFlat

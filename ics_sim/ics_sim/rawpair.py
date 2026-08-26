@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Raw FITS pair — 이름·번호·충돌 처리 (저장 단위와 통보 단위의 분리).
 
-근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md`] 2장과
+근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md`] 2장과
 [`mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`] 2.1·3절이다.
 결정 기록은 D-010(통보 분리) · D-011(사이트 코드) · D-012(계약 개정) ·
 **D-016(충돌 번호 증가) · D-019(`FILENAME`/`EXPID` 정체성)**.
@@ -21,7 +21,7 @@
 
 **`LASTFILE` 은 실재 경로가 아니다.** 논리 이름은 CCD 단위 식별자일 뿐이고
 디스크에는 컨트롤러 파일 2개만 있다.  하류 도구의 근거는 raw 헤더의
-**`FILENAME`(+`EXPID`)** 이다 (D-016 · D-019) -- 짝 이름은 `FILENAME` 꼬리의
+**`FILENAME`(+`EXPID`)** 이다 (D-016 · D-019) -- 짝 이름은 `FILENAME` `DETID` 필드의
 `.MK`↔`.NT` 치환으로 항상 유도된다 (`PAIRFILE` 카드는 폐지).
 """
 
@@ -265,7 +265,7 @@ def logical_path(data_dir: str, ccd: str, suffix: str) -> str:
 # `clash/` 격리 + 시각 접미 + `NAMECLSH` 카드 세 겹은 폐지됐다 -- 격리는
 # "덮어쓰지 않기"는 지켰지만 정상 산출물 흐름에서 프레임을 빼돌렸고, 하류
 # 색인이 격리 디렉토리를 몰랐다.  번호 증가는 프레임을 정상 흐름에 남기고,
-# 충돌 사실은 `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` 비교 하나로 남는다 (D-019).
+# 충돌 사실은 `FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID` 비교 하나로 남는다 (D-019).
 #
 # 전제: 저장 디렉토리의 쓰기 주체는 **ICS 하나뿐**이다 (raw spec 2.3절 7항).
 
@@ -295,7 +295,7 @@ class NumberSpaceExhausted(Exception):
 
 
 def pair_tag(ctrltag: str) -> str:
-    """짝의 컨트롤러 태그 (`FILENAME` 꼬리 `.MK`↔`.NT` 치환 규약)."""
+    """짝의 컨트롤러 태그 (`FILENAME` `DETID` 필드 `.MK`↔`.NT` 치환 규약)."""
     tags = [t for t, _ in CONTROLLERS]
     return tags[1] if ctrltag.upper() == tags[0] else tags[0]
 

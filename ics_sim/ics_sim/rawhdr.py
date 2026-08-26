@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """raw spec 5장 헤더의 **값 공급** — instrument·detector·노출·컨트롤러·HK.
 
-근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md`] 4·5장이고
+근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md`] 4·5장이고
 결정 기록은 D-013(레거시 판정) · D-016(충돌·정체성).  카드의 **순서·comment·
 패딩(틀)**은 `rawcards.py` 템플릿이 갖고, 이 모듈은 그 틀에 부을 **값**을
 출처별 블록 함수로 만든다.  경위는 DevNote 11.14(구판 구현) · 11.19(v1.3 정렬).
@@ -336,7 +336,7 @@ def exposure_header(*, imgtype: str, objname: str, projid: str,
     * `FILENAME` = 실제 저장명(확장자 없음, 아카이브 유일 키) ·
       `EXPID` = 카운터 최초 배정 노출 식별자 `<SITE>.<YYYYMMDD>.<NNNNNN>`
       (**컨트롤러 태그 없음 -> pair 양쪽 동일**, D-019).  **충돌 신호 =
-      `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 != `EXPID`** 다 --
+      `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 != `EXPID`** 다 --
       카드 존재가 아니라 (D-016).  구판의 `UNIQNAME`/`NAMECLSH` 는 폐지됐다.
 
     구판이 여기서 만들던 `MJD-OBS`/`UT`/`TSHOPEN`/`TSHSHUT`/`DARKTIME` 은
