@@ -1182,6 +1182,13 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
                     st[k] = v
             except Exception as e:
                 st['ERR'] = str(e)
+            ## TIMER 는 STATUS 필드가 아니라 **별도 명령**이다 (10ns tick,
+            ## 매뉴얼 p.49-50).  값이 회전마다 변하지 않으면 **타이밍 코어가
+            ## 멈춘 것**이고, 그것이 프레임이 안 나오는 직접 원인이다.
+            try:
+                st['TIMER'] = archoncmd('TIMER', TELEMETRY_TIMEOUT).decode()
+            except Exception as e:
+                st['TIMER'] = 'ERR(%s)' % e
             print('\n   [%4.0fs] RBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s'
                   '  POWER=%s  POWERGOOD=%s  TIMER=%s'
                   % (waited, fs.get('RBUF'),
