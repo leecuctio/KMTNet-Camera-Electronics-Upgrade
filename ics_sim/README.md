@@ -93,7 +93,7 @@ python -m ics_sim --fits --data-dir ./icsdata
 ```
 
 `numpy`/`astropy` 가 있으면 노출마다 **raw pair 2개**(`<SITE>.<날짜>.<번호>.MK/NT.fits`)를
-저장한다 — 헤더는 raw spec 의 값 카드 135장 전량(견본 초안 v1.0 pair 와 바이트
+저장한다 — 헤더는 raw spec 의 값 카드 131장 전량(견본 초안 v1.0 pair 와 바이트
 단위 동일, `ics_sim/rawcards.py`), 더미 픽셀. `ics_sim.ini` 에서 `fits_shape = spec`
 으로 두면 실물 크기(19200×9400, 파일당 344 MiB)를 4장 geometry 구조(amp tile·
 X/중앙 overscan) 그대로 만들어 **converter 에 바로 넣을 수 있다.**
@@ -188,7 +188,7 @@ CLI 인자가 같은 키를 덮어쓴다. 전 항목 설명은 [DevNote 7장](De
 python -m pytest tests -q
 ```
 
-**318개 전부 통과** (2026-08-22).
+**329개 전부 통과** (2026-08-26).
 
 | 파일 | 지키는 것 |
 |---|---|
@@ -198,7 +198,7 @@ python -m pytest tests -q
 | `test_stop_abort.py` | STOP/ABORT — 레거시 분기·거부 문자열, 중지 후 IDLE 복귀 |
 | `test_xis_echo.py` | XIS 경유 시의 자기 발신 에코·브로드캐스트 중복·노드 ID 검증 |
 | `test_auxcontrol.py` | AUX 연동 — 가짜 AUX 서버로 실제 TCP 왕복, 어떤 응답에도 노출 완주 |
-| `test_raw_draft.py` | **견본 초안 v1.0 pair 와의 카드 전량 대사** — 템플릿 구조·바이트 재현·pair 상이 7장 (raw spec 7장 체크리스트 #3·#5) |
+| `test_raw_draft.py` | **견본 초안 v1.0 pair 와의 카드 전량 대사** — 템플릿 구조·바이트 재현·pair 상이 6장 (raw spec 7장 체크리스트 #3·#5) |
 | `test_raw_header.py` / `test_raw_pair.py` | raw spec 헤더 내용 / 이름·번호·D-016 충돌 처리 |
 | `test_geometry_vs_converter.py` | geometry 상수 ↔ converter 하드코딩의 코드-대-코드 대조 (4.3절 포장 조항) |
 | `test_config_site.py` | 사이트 코드와 `telid` 정합 |

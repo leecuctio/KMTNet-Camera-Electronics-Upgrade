@@ -47,7 +47,7 @@ from ics_archon import config as acfg_mod                 # noqa: E402
 from ics_archon.archon import fitswrite, parse            # noqa: E402
 from ics_archon.archon.controller import ArchonController  # noqa: E402
 from ics_archon.archon.protocol import ArchonError        # noqa: E402
-from ics_sim import rawhdr                                # noqa: E402
+from ics_sim import rawcards, rawhdr                      # noqa: E402
 
 OK, WARN, BAD = '  OK  ', ' 확인 ', ' 문제 '
 _verdicts: list[tuple[str, str]] = []
@@ -154,10 +154,24 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     # 이 컨트롤러가 색인 1(MK) 자리라고 보고 카드를 만들어 본다.
     cards = rawhdr.ctrl_telemetry_header([parse.telemetry_of(status), {}])
     print('\n   헤더에 이렇게 실린다:')
+    comments = {k: c for k, _t, _w, c in rawcards.CARDS}
     for key in ('C1_TEMP', 'C1_VOLT', 'C1_CURR'):
-        print('     %-8s= %r' % (key, cards[key]))
-        if len(str(cards[key])) > 51:
-            say(BAD, '%s 가 견본 폭(51자)을 넘는다 -- 잘려서 실린다' % key)
+        value = str(cards[key])
+        print('     %-8s= %r' % (key, value))
+        # **폭 판정은 실제 카드 조립기에 물어본다.**  규격 5.0절(v1.6)의 규범은
+        # "comment 를 먼저 자르고 값은 마지막" 인데, 어느 단계에 걸리는지는
+        # comment 길이에 달려 있다 -- 여기서 문턱을 다시 계산하면 조립기와
+        # 갈라진다.  카드를 실제로 만들어 보고 무엇이 남았나를 본다.
+        comment = comments[key]
+        card = fitswrite.card_image(key, value, comment)
+        if value not in card:
+            say(BAD, '%s 의 **값이 잘려서** 실린다 -- 자리 나열 카드라 뒤 '
+                     '항목이 통째로 사라진다 (규격 5.0절 · 5.6.1절)' % key,
+                '값 %d자 -- comment 를 다 지워도 안 들어간다' % len(value))
+        elif not card.rstrip().endswith(comment):
+            say(WARN, '%s 가 견본 폭(51자)을 넘어 **comment 가 줄어** 실린다 '
+                      '(규격 5.0절 -- 값은 온전하다)' % key,
+                '값 %d자' % len(value))
 
     # **자리마다 무엇인지 눈으로 대조할 수 있게 이름표를 붙여 준다.**  카드에는
     # 이름표가 없고(자리 = 항목, 규격 5.6.1절) 값만 나열되므로, 실기 첫 실행에서

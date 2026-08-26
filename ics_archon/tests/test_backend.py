@@ -293,7 +293,7 @@ def test_header_carries_the_facts_only_the_controller_knows(tmp_path, fakes):  #
         assert len(mk['C%d_TEMP' % n].strip().split('|')) == 10
         assert len(mk['C%d_VOLT' % n].strip().split('|')) == 7   # 전원 레일 7개
         assert len(mk['C%d_CURR' % n].strip().split('|')) == 7
-    # 5.9절 "반드시 동일" -- pair 상이 7장만 다르다
+    # 5.9절 "반드시 동일" -- pair 상이 6장만 다르다 (v1.6: 7 -> 6)
     for card in ('C1_TEMP', 'C1_VOLT', 'C2_CURR', 'CTRL1SN', 'DATE-OBS'):
         assert mk[card] == nt[card], card
     assert mk['DETID'].strip() == 'MK' and nt['DETID'].strip() == 'NT'
@@ -417,7 +417,11 @@ def test_status_timeout_does_not_lose_the_frame(tmp_path):  # noqa: ANN001
     path = glob.glob(str(tmp_path / 'rawdata' / '*.MK.fits'))
     assert path, '프레임을 잃었다 -- STATUS 실패가 취득을 죽였다'
     with fits.open(path[0]) as hdul:
-        assert hdul[0].header['C1_TEMP'].strip() == 'NC'
+        # **전 자리 결측도 자리 수만큼 `NC` 다** (규격 5.6.1절 "자리는 비우지
+        # 않는다") -- 한 토큰짜리 `'NC'` 는 자리 수가 1이 되어 읽는 쪽에
+        # 모듈 구성이 달라 보인다.
+        from ics_sim import rawhdr
+        assert hdul[0].header['C1_TEMP'].strip() ==             '|'.join(['NC'] * len(rawhdr.TEMP_SLOTS))
         # 컨트롤러 정체는 SYSTEM 에서 오므로 살아 있어야 한다
         assert hdul[0].header['CTRL1SN'].strip() == '0024498A715E301C'
 

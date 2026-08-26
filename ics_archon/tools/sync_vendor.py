@@ -142,21 +142,39 @@ def main(argv=None) -> int:  # noqa: ANN001
                                    + (' …' if len(items) > 6 else '')))
 
     drift = added or removed or changed
+
+    # 매니페스트 자체도 확인한다 -- 내장본이 원천과 같더라도 매니페스트가
+    # 낡아 있으면 배포된 트리에서 자가 확인이 안 된다.
+    #
+    # ⚠️ **`--check` 만이 아니라 동기화 경로도 이 검사를 쓴다** (2026-08-26).
+    # 종전에는 동기화 쪽이 `read_manifest()` 의 **존재 여부**만 보고 "이미
+    # 동기 상태다" 로 빠져나갔다.  원천과 내장본을 **둘 다 손으로 같게
+    # 고치면**(개정 반영에서 흔한 일이다) 옮길 파일이 없어 그 경로를 타는데,
+    # 그때 매니페스트만 낡은 채로 남는다 -- 도구는 초록인데
+    # `test_vendor.py` 는 빨갛고, 도구가 방금 "할 일 없다" 고 말한 뒤라
+    # 원인을 찾기 어렵다.
+    want = read_manifest()
+    have = {r: digest(os.path.join(DEST, r)) for r in rel_dst}
+    stale_manifest = want != have
+    if stale_manifest:
+        print('  매니페스트가 내장본과 어긋난다 (%d vs %d 항목)'
+              % (len(want), len(have)))
+
     if args.check:
-        # 매니페스트 자체도 확인한다 -- 내장본이 원천과 같더라도 매니페스트가
-        # 낡아 있으면 배포된 트리에서 자가 확인이 안 된다.
-        want = read_manifest()
-        have = {r: digest(os.path.join(DEST, r)) for r in rel_dst}
-        if want != have:
-            print('  매니페스트가 내장본과 어긋난다 (%d vs %d 항목)'
-                  % (len(want), len(have)))
-            drift = True
+        drift = drift or stale_manifest
         print('\n%s' % ('어긋남 있음 -- 동기화가 필요하다 (--check 없이 다시 '
                         '돌려라)' if drift else '동기 상태다'))
         return 1 if drift else 0
 
-    if not drift and read_manifest():
+    if not drift and not stale_manifest:
         print('\n이미 동기 상태다 -- 아무것도 바꾸지 않았다')
+        return 0
+
+    if not drift:
+        # 파일은 같고 매니페스트만 낡았다 -- 다시 옮길 것 없이 해시만 고친다.
+        write_manifest(have)
+        print('\n매니페스트만 갱신했다 -- %d 파일 (내장본은 원천과 이미 같다)'
+              % len(have))
         return 0
 
     # **디렉터리를 통째로 다시 만든다.**  파일만 덮으면 원천에서 지운 모듈이

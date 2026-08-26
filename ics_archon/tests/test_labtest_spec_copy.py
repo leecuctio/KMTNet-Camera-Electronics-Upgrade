@@ -34,6 +34,33 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # ics_archo
 LABTEST = os.path.join(ROOT, 'archon_kmtnet_labtest_v1.1.bigbuf.py')
 
 
+def _funcs(*names):  # noqa: ANN202
+    """labtest 소스에서 함수 정의만 뽑아 **격리된 이름공간에서 실행**한다.
+
+    상수 대조(`_literal`)만으로는 못 잡는 것이 있다 -- 카드 절단 규범처럼
+    **동작**이 규격 사항인 자리다.  `tests/verify_labtest_v11.py` 와 같은
+    수법이고, 그쪽과 달리 필요한 함수만 가져온다.
+    """
+    src = io.open(LABTEST, encoding='utf-8-sig').read()
+    tree = ast.parse(src)
+    chunks = []
+    for node in tree.body:
+        got = None
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            got = node
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id in names:
+                    got = node
+        if got is not None:
+            chunks.append(ast.get_source_segment(src, got))
+    ns: dict = {}
+    exec(compile('\n\n'.join(chunks), LABTEST, 'exec'), ns)   # noqa: S102
+    missing = [n for n in names if n not in ns]
+    assert not missing, f'labtest 에 {missing} 정의가 없다'
+    return ns
+
+
 def _literal(name: str):  # noqa: ANN202
     """labtest 소스에서 최상단 상수 하나를 값으로 꺼낸다."""
     assert os.path.exists(LABTEST), (
@@ -168,3 +195,71 @@ def test_the_shipped_archon_ini_agrees_with_the_spec_requery_delay():
         f'ics_archon.ini 의 aux_requery_after_shopen 이 {got} 인데 코드 '
         f'기본값은 {SimConfig().timing.aux_requery_after_shopen} 다 -- '
         '규격 5.7.1절과 함께 움직여야 한다')
+
+
+@pytest.mark.repo_only
+def test_labtest_card_width_rule_matches_spec_5_0():
+    """labtest 의 `fits_card` 도 **comment 를 먼저 자른다** (규격 5.0절, v1.6).
+
+    ⚠️ **v1.6 에서 규칙이 뒤집혔다** -- 종전에는 값을 자르고 comment 를 살렸다.
+    본편은 `archon/fitswrite.card_image()` 가 그렇게 바뀌었는데 **labtest 사본만
+    구 규칙으로 남아 있었다** (2026-08-26 전수 검사에서 발견).  그러면 실험실
+    자료만 `Cn_*` 나열 카드의 **뒤 항목이 조용히 사라진다** -- 자리가 곧
+    항목이라(5.6.1절) 읽는 쪽은 그 사실을 알 방법이 없다.
+    """
+    g = _funcs('fits_card')
+    long = '|'.join(['-40.1'] * 10)               # 59자 -- 견본 폭(51) 초과
+    assert len(long) == 59
+    card = g['fits_card']('C1_TEMP', 'S', 51, 'Ctrl-1 T[C]', long)
+    assert len(card) == 80
+    assert card.count("'") == 2, '카드가 깨지면 파일 전체를 못 읽는다'
+    assert long in card, '값이 온전해야 한다 -- 잘린 것은 comment 여야 한다'
+    assert not card.rstrip().endswith('Ctrl-1 T[C]'), 'comment 가 줄어야 한다'
+
+    # comment 를 다 지워도 안 들어가면 그때 값을 자른다 -- 인용부호는 산다.
+    huge = '|'.join(['-999.99'] * 10)             # 79자 (구 sentinel 의 모습)
+    card2 = g['fits_card']('C1_TEMP', 'S', 51, 'Ctrl-1 T[C]', huge)
+    assert len(card2) == 80 and card2.count("'") == 2
+
+    # 규격이 정한 `NC` 로 열 자리를 채우면 잘리지 않는다 (5.6.1절의 이유).
+    ok = '|'.join(['NC'] * 10)
+    card3 = g['fits_card']('C1_TEMP', 'S', 51, 'Ctrl-1 T[C]', ok)
+    assert ok in card3 and card3.rstrip().endswith('Ctrl-1 T[C]')
+
+
+@pytest.mark.repo_only
+def test_labtest_quotes_inside_a_value_are_doubled():
+    """값 안의 `'` 는 겹쳐 쓴다 (FITS 표준 4.2.1) -- 본편과 같은 방어다.
+
+    안 겹치면 그 자리가 값의 끝으로 읽혀 **카드가 통째로 깨지는데** 경고가 한
+    줄도 안 뜬다.  labtest 사본에만 이 방어가 없었다.
+    """
+    g = _funcs('fits_card')
+    card = g['fits_card']('OBJECT', 'S', 18, 'Name of object', "O'Brien")
+    assert "O''Brien" in card
+    assert len(card) == 80
+
+
+@pytest.mark.repo_only
+def test_labtest_absent_controller_fills_every_slot():
+    """전 자리 결측도 **자리 수만큼** `NC` 다 (규격 5.6.1절).
+
+    실험실은 컨트롤러 한 대만 돌리므로 나머지 한 벌이 늘 이 경우다 --
+    `'NC'` 한 토큰이면 자리 수가 1이 되어 읽는 쪽에 모듈 구성이 달라 보인다.
+    """
+    g = _funcs('fits_card', 'status_number', 'all_slots_nc',
+               'ctrl_telemetry_cards', 'SLOT_NC', 'TEMP_NC',
+               'TEMP_SLOTS', 'VOLT_RAILS')
+    cards = g['ctrl_telemetry_cards'](None, 1)
+    for n in (1, 2):
+        assert cards['C%d_TEMP' % n] == '|'.join(
+            ['NC'] * len(g['TEMP_SLOTS']))
+        assert cards['C%d_VOLT' % n] == cards['C%d_CURR' % n] == '|'.join(
+            ['NC'] * len(g['VOLT_RAILS']))
+    # 값이 있어도 미장착 컨트롤러 쪽은 자리를 채운 채로 남는다.
+    status = {k: '40.1' for k in g['TEMP_SLOTS']}
+    status.update({r + '_V': '5.0' for r in g['VOLT_RAILS']})
+    status.update({r + '_I': '1.0' for r in g['VOLT_RAILS']})
+    cards2 = g['ctrl_telemetry_cards'](status, 1)
+    assert len(cards2['C1_TEMP'].split('|')) == len(g['TEMP_SLOTS'])
+    assert cards2['C2_TEMP'] == '|'.join(['NC'] * len(g['TEMP_SLOTS']))

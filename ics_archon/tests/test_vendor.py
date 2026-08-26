@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -126,6 +127,62 @@ def test_sync_check_agrees():
                        cwd=ROOT, capture_output=True, text=True,
                        encoding='utf-8', errors='replace')
     assert r.returncode == 0, r.stdout + r.stderr
+
+@pytest.mark.repo_only
+def test_sync_repairs_a_stale_manifest_instead_of_reporting_green(tmp_path):
+    """**파일은 같고 매니페스트만 낡은 상태**를 동기화가 고쳐야 한다.
+
+    ⚠️ 2026-08-26 전수 검사에서 실제로 걸린 결함이다.  `sync_vendor.py` 의
+    동기화 경로가 `read_manifest()` 의 **존재 여부**만 보고 "이미 동기 상태다"
+    로 빠져나갔다 -- 원천과 내장본을 **둘 다 손으로 같게 고치면**(개정 반영에서
+    흔한 일이다) 옮길 파일이 없어 그 경로를 타는데, 그때 매니페스트만 낡은 채로
+    남는다.
+
+    그러면 도구는 초록인데 `test_vendor_matches_its_own_manifest` 는 빨갛다.
+    **도구가 방금 "할 일 없다" 고 말한 뒤라 원인을 찾기 어려운 것이 요점이다** --
+    배포된 트리는 원천이 없어 매니페스트가 유일한 자가 확인 수단인데, 그것이
+    낡았다는 사실을 아무도 알려 주지 않는다.
+
+    매니페스트를 되돌려 놓고 나가므로 저장소 상태는 그대로다.
+    """
+    keep = io.open(MANIFEST, encoding='utf-8').read()
+    try:
+        # 해시 한 줄을 망가뜨린다 -- 파일 자체는 손대지 않는다.
+        rows = keep.splitlines()
+        hit = next(i for i, r in enumerate(rows)
+                   if r and not r.startswith('#'))
+        rows[hit] = '0' * 64 + rows[hit][64:]
+        io.open(MANIFEST, 'w', encoding='utf-8', newline='\n').write(
+            '\n'.join(rows) + '\n')
+
+        # --check 는 어긋남을 알려야 한다.
+        r = subprocess.run(
+            [sys.executable, os.path.join(ROOT, 'tools', 'sync_vendor.py'),
+             '--check'], cwd=ROOT, capture_output=True, text=True,
+            encoding='utf-8', errors='replace')
+        assert r.returncode != 0, (
+            '--check 가 낡은 매니페스트를 못 잡았다' + r.stdout)
+
+        # 동기화는 그것을 **고쳐야** 한다 (초록이라고 말하고 넘어가면 안 된다).
+        r = subprocess.run(
+            [sys.executable, os.path.join(ROOT, 'tools', 'sync_vendor.py')],
+            cwd=ROOT, capture_output=True, text=True,
+            encoding='utf-8', errors='replace')
+        assert r.returncode == 0, r.stdout + r.stderr
+
+        got = io.open(MANIFEST, encoding='utf-8').read()
+        assert '0' * 64 not in got, (
+            '동기화가 낡은 매니페스트를 그대로 뒀다 -- 도구는 초록인데 '
+            '시험은 빨간 상태가 다시 만들어진다' + r.stdout)
+
+        # 고친 뒤에는 --check 가 조용해야 한다.
+        r = subprocess.run(
+            [sys.executable, os.path.join(ROOT, 'tools', 'sync_vendor.py'),
+             '--check'], cwd=ROOT, capture_output=True, text=True,
+            encoding='utf-8', errors='replace')
+        assert r.returncode == 0, r.stdout + r.stderr
+    finally:
+        io.open(MANIFEST, 'w', encoding='utf-8', newline='\n').write(keep)
 
 
 # ---------------------------------------------------------------------------

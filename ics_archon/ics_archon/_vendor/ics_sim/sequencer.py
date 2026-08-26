@@ -475,7 +475,7 @@ class Sequencer:
             'ctrl_telem': self._backend_fact('controller_telemetry',
                                              default=None),
             # HK 는 카메라 계통 단위이고 `CCDTEMP` 도 pair 양쪽이 같은 대표
-            # 센서다(견본 v1.0 에서 상이 7장에 없다) -- 그래서 대표 pair 의
+            # 센서다(견본 v1.0 에서 상이 6장에 없다) -- 그래서 대표 pair 의
             # chip 으로 한 번 읽어 양쪽에 싣는다.  대표 센서의 귀속 자체는
             # 실기 확인 항목이다 (OI-18) -- 그때 바뀌는 것은 "어느 센서인가"
             # 이고 "양쪽이 같다" 는 5.9절 규칙은 그대로다.

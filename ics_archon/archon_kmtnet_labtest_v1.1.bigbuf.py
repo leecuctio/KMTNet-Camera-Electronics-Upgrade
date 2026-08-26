@@ -4,7 +4,7 @@
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
 # Ref.version: archon_kmtnet_stascience_modtm_imgacq_v0.3_kasi.STA0287.102.py (2026-05-29/SMC)
 #
-# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.5.md)
+# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md)
 #   ※ 최초 작성은 v1.3 기준. v1.4 는 1~4장 표현만 바뀌어 구현 영향이 없었고
 #     (2.5절 삭제 = 취득 SW 소관 이관 · 4.1 RRRRLLLL 확정 · 4.2/4.4 표기),
 #     **v1.5 (2026-08-26 반영)는 값이 바뀌어 아래 다섯 자리를 고쳤다.**
@@ -20,6 +20,17 @@
 #     견본과 바이트 단위 동일 (기계 사본 = ics_sim/rawcards.py 와 같은 원천).
 #     실험실에서 모르는 값은 규격 5.0절 sentinel ('NC' / -1 / '-999.99' /
 #     '9.99e-9').
+#   - v1.6 개정분 (2026-08-26 반영): ① ORIGNAME 폐지 · EXPID 신설 (위) ②
+#     FILENAME comment -> 'FITS file name as written to storage' ③ Cn_*
+#     구분자 공백 -> 파이프(|) · comment Ctr-n -> Ctrl-n · 결측 자리
+#     sentinel 을 NC 로 (SLOT_NC -- 단일 HK 카드의 '-999.99' 와 다르다) ④
+#     규격 5.0절에 카드 폭 초과 규범 신설: 80자를 넘으면 **comment 를 뒤에서
+#     자르고 값은 자르지 않는다**.  comment 를 다 잘라도 넘칠 때만 값을
+#     자르고 경고한다 (fits_card).  ⚠️ 나열 카드는 자리가 곧 항목이라 값이
+#     잘리면 뒤 항목이 조용히 사라진다.
+#     ⚠️ 전 자리 결측은 'NC' 한 토큰이 아니라 **자리 수만큼** 'NC|NC|...'
+#     다 (5.6.1절 "자리는 비우지 않는다" -- 자리 수 자체가 모듈 구성
+#     판별에 쓰인다).  all_slots_nc() 가 그것을 만든다.
 #   - v1.5 개정분: ① HK 4장 폐지 (AIR_IN/AIR_OUT/GLYC_IN/GLYC_OUT) ② CHMAP_*
 #     토큰 3자 -> 4자 <chip><A|D><nn> (01-08=A · 09-16=D) ③ 견본 comment 오타
 #     2건 정정 (Telesope->Telescope · Acutator->Actuator) ④ 사이트 코드 D-017
@@ -63,7 +74,7 @@ UNIT_TIMEOUT = 1
 DATA_STORAGE = '~/AIC/data'    #  <---- Set this: 취득 자료 저장 자리
 
 #--------------------------------
-# raw spec v1.3 identity setup  (v1.1 신설)
+# raw spec identity setup  (v1.1 신설 -- 현행 판 v1.6)
 #
 # 파일명 <SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits (D-011) 과 헤더 5장의
 # ICS INI 출처 카드를 채우는 값들.  실험실은 KASI 라 SITE_CODE='KMTK',
@@ -401,12 +412,16 @@ def SetConfig(key, cfg):
 
 
 #-------------------------------------------------------------------------------
-# raw spec v1.3 FITS header  (v1.1 전면 교체 -- 구 SetHeader 12카드 폐지)
+# raw spec FITS header  (v1.1 이 구 SetHeader 12카드를 전면 교체했다)
 #
 # 카드 목록·순서·comment·문자열 패딩 폭의 정본은 초안 헤더 v1.0 pair
-# (raw_fits_spec/KMTA.20260821.012345.{MK,NT}.fits.header.v1.0.txt) 이고,
+# (raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0.txt) 이고,
 # 아래 RAWCARDS 는 그 기계 사본이다 (ics_sim/rawcards.py 와 같은 원천).
-# 값 135 + COMMENT 8 + END = 144카드 = 2880B x 4블록 (패딩 불필요).
+# 값 131 + COMMENT 8 + END 1 = 140 레코드 -- 2880 의 배수가 아니므로
+# build_header() 가 END 뒤를 공백 레코드 4장으로 채워 144 레코드 ·
+# 2880B x 4블록을 맞춘다 (v1.5 에서 HK 4장이 폐지되며 135 -> 131).
+# 판 근거는 v1.6 -- 정체성 카드가 ORIGNAME 에서 EXPID 로 바뀌었고(D-019),
+# Cn_* 나열 카드가 파이프 구분 · 결측 자리 NC 가 됐다.
 #
 # 형: 'L' logical / 'I' 정수 (EXPTIME 은 소수점 있으면 실수) / 'R' 실수 /
 #     'S' 문자열 (폭만큼 우측 공백 패딩).  'COMMENT' 는 블록 구분 카드.
@@ -618,7 +633,8 @@ VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
 ## 판별에 쓰인다.  종전 잠정안은 `BACKPLANE_TEMP`+`MOD5`~`MOD8` 5자리였는데
 ## (매뉴얼 p.20 의 "AD 모듈은 중앙 4슬롯" 근거), 견본 pair 의 `C1_TEMP` 는
 ## 처음부터 10개였다 -- 잠정안이 견본과 갈려 있었다.
-## 카드 폭은 51자다 -- 10자리 x '%.1f'(4자) + 공백 9 = 49자로 들어간다.
+## 카드 폭은 51자다 -- 10자리 x '%.1f'(4자) + 파이프 9 = 49자로 들어간다
+## (v1.6 에서 구분자가 공백에서 파이프로 바뀌었다 -- 폭 비용은 0이다).
 ## ⚠️ `ics_sim.rawhdr.TEMP_SLOTS` 가 정본이고 이것은 그 사본이다.
 ## `tests/test_labtest_spec_copy.py` 가 둘이 갈라지면 잡는다.
 TEMP_SLOTS = ('BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP',
@@ -652,11 +668,19 @@ def fits_card(key, kind, width, comment, value):
     comment 없는 수치 카드도 ' /' 를 붙인다 -- 견본이 그렇다 (astropy 는
     생략하지만 정본은 견본이다).
 
-    **폭을 넘는 문자열은 잘라내고 경고한다.**  안 자르면 카드가 80바이트에서
-    통째로 절단되어 **닫는 인용부호와 comment 가 사라지고** astropy·converter
-    가 파싱조차 못 한다 -- 규격 5장 머리말이 "카드 순서·comment·패딩까지
-    바이트 단위 기준"이라고 못박은 것을 정면으로 깨는 쪽이다.  값이 잘리는
-    것은 눈에 보이는 손실이고, 카드가 깨지는 것은 파일 전체를 못 읽게 한다.
+    **폭이 모자라면 comment 를 먼저 줄인다** (규격 **5.0절**, 운영자 확정
+    2026-08-26).  값이 자료이고 comment 는 설명이기 때문이다 -- 특히 `Cn_*`
+    나열 카드는 **자리가 곧 항목**이라(5.6.1절) 값이 잘리면 뒤 항목이 통째로
+    사라지는데 읽는 쪽은 그 사실을 알 방법이 없다.  자리 뜻의 정본은 어차피
+    규격 5.6.1절 표다.
+
+    comment 를 전부 지워도 넘치면 그때 **값을 자르고 경고한다.**  안 자르면
+    카드가 80바이트에서 통째로 절단되어 **닫는 인용부호와 comment 가 사라지고**
+    astropy·converter 가 파싱조차 못 한다 -- 규격 5장 머리말이 "카드 순서·
+    comment·패딩까지 바이트 단위 기준"이라고 못박은 것을 정면으로 깨는 쪽이다.
+
+    ⚠️ 본편 `ics_archon/archon/fitswrite.card_image()` 와 **같은 규칙**이다 --
+    한쪽만 고치면 실험실 자료만 다른 절단 규범을 따르게 된다.
     """
     if key == 'COMMENT':
         # 'COMMENT'(7자) + 공백 1 + 본문 (본문은 견본 col 9 부터의 원문)
@@ -671,13 +695,36 @@ def fits_card(key, kind, width, comment, value):
             print('> WARNING: FITS card %s value has non-ASCII characters '
                   '(%r) -- replaced with ?' % (key.strip(), text))
             text = text.encode('ascii', 'replace').decode('ascii')
+        ## **값 안의 홑따옴표는 겹쳐 쓴다** (FITS 표준 4.2.1).  안 겹치면 그
+        ## 자리가 값의 끝으로 읽혀 카드가 통째로 깨지는데 경고가 한 줄도 안
+        ## 뜬다.  본편 card_image() 와 같은 방어다.
+        text = text.replace("'", "''")
         # 값이 들어갈 수 있는 최대 폭 = 80 - ("KEY     = '" + "'" + " / " + comment)
         room = 80 - (10 + 1 + 1 + (3 + len(comment) if comment else 2))
         room = max(room, width)      # 견본 폭은 항상 들어간다
         if len(text) > room:
-            print("> WARNING: FITS card %s value too long (%d > %d) -- "
-                  "truncated" % (key.strip(), len(text), room))
-            text = text[:room]
+            ## **comment 를 먼저 줄인다** (5.0절).  comment 를 다 지웠을 때의
+            ## 최대 폭은 ' /' 만 남기고 계산한다.
+            room_bare = max(80 - (10 + 1 + 1 + 2), width)
+            if len(text) <= room_bare:
+                keep = 80 - (10 + 1 + 1 + 3) - len(text)
+                comment = comment[:max(keep, 0)].rstrip()
+                print("> WARNING: FITS card %s value is long (%d chars) -- "
+                      "comment shortened, value kept (spec 5.0)"
+                      % (key.strip(), len(text)))
+            else:
+                print("> WARNING: FITS card %s value too long (%d > %d) -- "
+                      "comment dropped and value truncated.  If this is a "
+                      "slot list, trailing items are gone (spec 5.6.1)"
+                      % (key.strip(), len(text), room_bare))
+                comment = ''
+                text = text[:room_bare]
+            ## **겹친 따옴표 한가운데서 자르면 안 된다** -- 홀수 개가 남으면
+            ## 그것이 값의 끝으로 읽혀, 길이를 맞추려다 위에서 막은 결함을
+            ## 그대로 만든다.
+            trail = len(text) - len(text.rstrip("'"))
+            if trail % 2:
+                text = text[:-1]
         if len(text) < width:
             text = text.ljust(width)
         base = "%-8s= '%s'" % (key, text)
@@ -691,6 +738,13 @@ def fits_card(key, kind, width, comment, value):
             token = repr(float(value))
         base = '%-8s= %20s' % (key, token)
     base += ' / %s' % comment if comment else ' /'
+    if len(base) > 80:
+        ## 값은 위에서 폭에 맞췄으니 넘치는 것은 comment 쪽이다.  자체로는
+        ## 파싱을 깨지 않지만(인용부호는 살아 있다) **조용한 절단**이라 알린다
+        ## -- 견본 폭 + comment 가 80자를 넘는 조합은 템플릿 개정에서만 나온다.
+        print('> WARNING: FITS card %s is %d chars -- comment cut by %d '
+              '(template width %d + comment %d exceeds 80)'
+              % (key.strip(), len(base), len(base) - 80, width, len(comment)))
     return base.ljust(80)[:80]
 
 
@@ -818,8 +872,19 @@ def status_number(status, key, fmt):
         return SLOT_NC
 
 
+def all_slots_nc(n):
+    """전 자리 결측 -- `'NC|NC|…'` n자리 (규격 5.6.1절 "자리는 비우지 않는다").
+
+    ⚠️ `'NC'` **한 토큰으로 내면 안 된다.**  같은 절이 자리 수 자체를 모듈
+    구성 판별에 쓰라고 규정하므로, 한 토큰짜리는 읽는 쪽에 "모듈 한 장짜리
+    컨트롤러" 로 보인다.  규격이 전 자리 결측(STATUS 무응답 · 미장착 모듈)을
+    "드물지 않다" 고 못박고 그 모습을 열 자리 `NC` 로 보인 것이 이 때문이다.
+    """
+    return '|'.join([SLOT_NC] * n)
+
+
 def ctrl_telemetry_cards(status, ctrl_index):
-    """STATUS -> Cn_TEMP/Cn_VOLT/Cn_CURR (규격 5.6절 -- 공백 구분, 자리=항목).
+    """STATUS -> Cn_TEMP/Cn_VOLT/Cn_CURR (규격 5.6절 -- 파이프 구분, 자리=항목).
 
     temp = `TEMP_SLOTS` 순, volt/curr = `VOLT_RAILS` 의 `_V`/`_I` 쌍.
     **결측 자리에도 sentinel 을 넣는다** -- 건너뛰면 뒤 항목이 앞으로 당겨져
@@ -834,14 +899,16 @@ def ctrl_telemetry_cards(status, ctrl_index):
             벌은 sentinel 이고, 두 대분을 합치는 것은 ics_archon 본편 몫이다.
     """
     out = {}
+    ## 실험실은 컨트롤러 한 대만 돌린다 -- 나머지 한 벌은 **미장착**이고,
+    ## 규격 5.6.1절이 그것을 "전 자리 결측" 으로 다룬다.
     other = 2 if ctrl_index == 1 else 1
-    out['C%d_TEMP' % other] = 'NC'
-    out['C%d_VOLT' % other] = 'NC'
-    out['C%d_CURR' % other] = 'NC'
+    out['C%d_TEMP' % other] = all_slots_nc(len(TEMP_SLOTS))
+    out['C%d_VOLT' % other] = all_slots_nc(len(VOLT_RAILS))
+    out['C%d_CURR' % other] = all_slots_nc(len(VOLT_RAILS))
     if not status:
-        out['C%d_TEMP' % ctrl_index] = 'NC'
-        out['C%d_VOLT' % ctrl_index] = 'NC'
-        out['C%d_CURR' % ctrl_index] = 'NC'
+        out['C%d_TEMP' % ctrl_index] = all_slots_nc(len(TEMP_SLOTS))
+        out['C%d_VOLT' % ctrl_index] = all_slots_nc(len(VOLT_RAILS))
+        out['C%d_CURR' % ctrl_index] = all_slots_nc(len(VOLT_RAILS))
         return out
     ## 구분자는 **파이프**다 (규격 5.6.1절, 운영자 확정 2026-08-26).  공백
     ## 하나였는데 음수가 섞이면 경계가 눈으로 안 갈렸다.  ⚠️ 슬래시를 쓰지
@@ -881,7 +948,7 @@ def resolve_pair_number(datadir, date_part, number):
 
 def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
                       OrigStem, DatasetId):
-    """raw spec v1.3 5장 값 채우기 -- 실험실에서 아는 값 + sentinel.
+    """raw spec 5장 값 채우기 -- 실험실에서 아는 값 + sentinel (현행 v1.6).
 
     * IMAGETYP: 노출 조건에서 유도 -- 0초는 BIAS, 트리거 없으면 DARK,
       트리거(LED) 노출은 FLAT (대문자 통제 어휘, 규격 5.4절).
@@ -1093,7 +1160,7 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     msgref = (msgref + 1) % 256
     print(' complete')
 
-    # Rebuild image data & write a FITS  (raw spec v1.3)
+    # Rebuild image data & write a FITS  (raw spec 현행 v1.6)
     #
     # 파일명: <SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits (D-011).  이름이 겹치면
     # 번호를 올려 저장하고(D-016 선검사), 카운터(여기서는 DS 체계) 최초
@@ -1652,7 +1719,7 @@ SetDatasetConfig(DS_GXT  );RepDatasetConfig();print();
 sys.exit() ######## ForDBG
 '''
 '''
-#### Check for FITS Header format (raw spec v1.5 -- 144 레코드 = 4블록)
+#### Check for FITS Header format (raw spec -- 144 레코드 = 4블록)
 CURRENT_ACF = UNIT_ACF_SCI_FAST_MEDIUM
 hb = build_spec_header(True, 12345, '2026-08-22T12:34:56.789',
                        CURRENT_ACF, 'KMTK.20260822.321101.MK',

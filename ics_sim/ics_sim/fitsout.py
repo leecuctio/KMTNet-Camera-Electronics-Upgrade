@@ -23,6 +23,55 @@ log = logging.getLogger('ics_sim.fits')
 #: FITS 헤더 키워드는 8자 이하여야 한다 (raw spec 5.0절 -- `HIERARCH` 금지).
 _MAX_KEY = 8
 
+#: 값 하나가 카드 **한 장**에 들어갈 수 있는 최대 길이 (raw spec **5.0절**).
+#: `KEY     = '`(11) + 값 + `'`(1) = 80 이 되는 지점이고, 규격이 "값만으로
+#: 68자 초과" 라고 적은 그 수다.
+#:
+#: ⚠️ **이보다 길면 astropy 가 `CONTINUE` 규약으로 카드를 여러 장으로 늘린다.**
+#: 그러면 견본이 못박은 **144 레코드 · 11,520 바이트**가 깨지고, 경고는 한 줄도
+#: 안 뜬다.  5.0절이 "값을 자르되 경고를 남긴다" 고 한 자리다.
+_VALUE_MAX = 68
+
+
+def _fit_to_card(key: str, text: str, comment: str) -> tuple[str, str]:
+    """raw spec **5.0절** 카드 폭 규범 -- **comment 를 먼저 자르고, 값은 마지막.**
+
+    값이 자료이고 comment 는 설명이기 때문이다 -- 특히 `Cn_*` 나열 카드는
+    **자리가 곧 항목**이라(5.6.1절) 값이 잘리면 뒤 항목이 통째로 사라지는데
+    읽는 쪽은 그 사실을 알 방법이 없다.  자리 뜻의 정본은 5.6.1절 표다.
+
+    astropy 도 값이 길면 comment 를 먼저 줄이므로 첫 단계는 맡겨도 되지만,
+    **둘째 단계는 맡길 수 없다** -- 값만으로 68자를 넘으면 astropy 는 자르지
+    않고 `CONTINUE` 로 **카드 수를 늘린다**(`_VALUE_MAX` 주석).  그래서 여기서
+    미리 잘라 규격대로 경고를 남긴다.  `ics_archon/archon/fitswrite.card_image()`
+    가 같은 규칙을 자기 카드 조립기에 갖고 있다 -- 이쪽은 astropy 경로 몫이다.
+
+    Returns:
+        `(값, comment)` -- 그대로일 수도, 한쪽이 짧아졌을 수도 있다.
+    """
+    # astropy 는 값 안의 홑따옴표를 겹쳐 쓴다 (FITS 표준 4.2.1) -- 폭은 겹친
+    # 뒤 길이로 따져야 한다.
+    def _wide(s: str) -> int:
+        return len(s.replace("'", "''"))
+
+    room = _VALUE_MAX - (3 + len(comment) if comment else 0)
+    if _wide(text) <= room:
+        return text, comment
+    if _wide(text) <= _VALUE_MAX:
+        keep = max(_VALUE_MAX - _wide(text) - 3, 0)
+        log.warning('FITS 카드 %s 의 값이 길어 comment 를 줄였다 (값 %d자) -- '
+                    '값은 그대로다 (raw spec 5.0절)', key, _wide(text))
+        return text, comment[:keep].rstrip()
+    # comment 를 다 지워도 안 들어간다 -- 값을 자르고 **경고를 남긴다**.
+    cut = text
+    while cut and _wide(cut) > _VALUE_MAX:
+        cut = cut[:-1]
+    log.warning('FITS 카드 %s 의 값이 너무 길다 (%d > %d) -- comment 를 다 '
+                '지워도 안 들어가 값을 잘라낸다.  자리 나열 카드면 뒤 항목이 '
+                '사라진다 (raw spec 5.0절 · 5.6.1절)',
+                key, _wide(text), _VALUE_MAX)
+    return cut, ''
+
 
 class FitsStr(str):
     """**문자열로 강제**할 헤더값.  숫자처럼 보여도 숫자로 바꾸지 않는다.
@@ -109,6 +158,9 @@ def apply_cards(hdr, cards) -> None:  # noqa: ANN001
     문자열 값은 템플릿 폭까지 패딩된 채로 온다 -- astropy 는 넘겨준 문자열의
     꼬리 공백을 보존하므로 카드 이미지가 견본과 바이트 단위로 같아진다.
     `COMMENT` 는 블록 구분 카드로 그 자리에 삽입한다.
+
+    폭이 모자라는 카드는 `_fit_to_card()` 가 규격 5.0절대로 다듬는다 --
+    comment 를 먼저 자르고, 값은 마지막에 자르며 경고를 남긴다.
     """
     from astropy.io import fits
     for key, value, comment in cards:
@@ -116,6 +168,8 @@ def apply_cards(hdr, cards) -> None:  # noqa: ANN001
             if key == 'COMMENT':
                 hdr.append(fits.Card('COMMENT', value), end=True)
             else:
+                if isinstance(value, str):
+                    value, comment = _fit_to_card(key, value, comment)
                 hdr.append(fits.Card(key, value, comment), end=True)
         except Exception as exc:  # 헤더 하나 때문에 노출을 망치지 않는다
             log.error('header %s=%r rejected: %s', key, value, exc)

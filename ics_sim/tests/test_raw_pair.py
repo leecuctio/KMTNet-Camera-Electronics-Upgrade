@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Raw FITS pair — 이름·번호·충돌 처리 (D-010/D-011/D-012/**D-016**).
+"""Raw FITS pair — 이름·번호·충돌 처리 (D-010/D-011/D-012/**D-016**/**D-019**).
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md` 2장,
+규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md` 2장,
 `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` 2.1·3절.
 
 **한 노출이 만드는 것**
@@ -171,8 +171,8 @@ def test_identity_cards_present_and_consistent(tmp_path):
         assert str(h['FILENAME']).endswith(f'.{tag}')
         # ⚠️ `EXPID` 에는 컨트롤러 태그가 **없다** (D-019) -- pair 양쪽 동일.
         assert not str(h['EXPID']).strip().endswith(('.MK', '.NT'))
-        # 평시 불변식: 충돌이 없으면 두 값이 같다
-        # 평시(충돌 없음): `FILENAME` 의 태그를 뗀 값 == `EXPID`
+        # 평시 불변식(충돌 없음): `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀
+        # 값 == `EXPID`.  이 등식이 깨진 것이 곧 충돌 신호다 (2.3절).
         assert str(h['FILENAME']).strip().rsplit('.', 1)[0] == \
             str(h['EXPID']).strip()
     # 짝 이름은 꼬리 치환으로 유도된다 (PAIRFILE 카드는 없다)

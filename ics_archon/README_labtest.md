@@ -174,7 +174,7 @@ v1.1:  KMTK.<YYYYMMDD>.<NNNNNN>.MK.fits      <SITE>.<날짜>.<번호>.<MK|NT>
 | `WARNING: resyncing the Archon link (STATUS reply abandoned)` | STATUS 가 시한 안에 안 와서 **연결을 새로 열었다.** 취득은 계속된다 |
 | `WARNING: FITS card C1_TEMP value too long (N > M) -- truncated` | `TEMP_SLOTS` 를 줄인다. 카드는 유효한 상태로 유지된다 |
 | `WARNING: FITS card ... has non-ASCII characters ... replaced with ?` | 헤더에 들어온 비ASCII 를 `?` 로 바꿨다. 값은 잃지만 파일은 온전하다 |
-| `WARNING: filename clash -- number bumped NNNNNN -> MMMMMM (D-016)` | 같은 이름이 있어 번호를 올려 저장했다. 헤더에 `FILENAME ≠ ORIGNAME` 으로 남는다. **프레임마다 뜬다면 아래 '재실행' 항목을 볼 것** |
+| `WARNING: filename clash -- number bumped NNNNNN -> MMMMMM (D-016)` | 같은 이름이 있어 번호를 올려 저장했다. 헤더에 **`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 ≠ `EXPID`** 로 남는다 (v1.6/D-019 — 구 `ORIGNAME`). **프레임마다 뜬다면 아래 '재실행' 항목을 볼 것** |
 | `WARNING: <dir> 에 오늘(UT ...) 자 파일이 이미 N 개 있다 -- ...` | 데이터셋 시작에 한 번. **같은 UT 날짜의 재실행은 멱등하지 않다** — 아래 참조 |
 | `WARNING: POWEROFF 를 못 보냈다 (...)` | 예외로 빠져나가는 중에 전원 끄기까지 실패했다. **유닛 전원 상태를 직접 확인하라** |
 | `ERROR: data storage not found -- '...'` (데이터셋 시작에서 멈춤) | 저장 자리가 없다. **스크립트는 만들지 않는다** — `~` 가 안 펼쳐졌거나(cwd 아래 `~` 폴더), 마운트가 안 붙었거나, 경로 오타다. `mkdir -p` 로 먼저 만들어라 |
@@ -228,7 +228,7 @@ python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fit
 
 ## v1.1 에서 바뀐 것 (raw spec 적용, 2026-08-22)
 
-정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.5.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.5.md)
+정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md)
 
 1. **파일명** — `AC13A.<날짜>.<번호>.fits` → **`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits`**
    (D-011). 실험실은 `SITE_CODE='KMTK'`(KASI), 날짜는 UT(KMTK 보정 0,
@@ -239,16 +239,21 @@ python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fit
    남는다 — 충돌 신호 = `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 ≠ `EXPID`.
    ⚠️ v1.6(D-019)에서 구 `ORIGNAME` 을 대체했다. `EXPID` 는 컨트롤러 태그가
    없어 **pair 양쪽이 같은 값**이다.
-3. **헤더 전면 교체** — 구 12카드 → **견본 초안 v1.0 pair 의 144카드**
-   (값 135 + COMMENT 8 + END = 정확히 2880B×4블록). 카드 순서·comment·문자열
+3. **헤더 전면 교체** — 구 12카드 → **견본 초안 v1.0 pair 의 144 레코드**
+   (값 131 + COMMENT 8 + END 1 + 공백 4 = 정확히 2880B×4블록). 카드 순서·comment·문자열
    패딩까지 견본과 **바이트 단위 동일** (검증: 견본 값을 넣으면 견본이 그대로
    재현된다 — 불일치 0). 실험실에서 모르는 값(TCS/AUX/듀어 HK)은 규격 5.0절
    sentinel (`'NC'`/`-1`/`'-999.99'`/`'9.99e-9'`).
-4. **Archon STATUS 텔레메트리** — `Cn_TEMP`(BACKPLANE_TEMP + AD 모듈 온도),
-   `Cn_VOLT`/`Cn_CURR`(전원 레일 P2V5 P5V P6V N6V P17V N17V P35V) — 매뉴얼
+4. **Archon STATUS 텔레메트리** — `Cn_TEMP`(science 10자리: Backplane +
+   Mod1·2·3·4·5·8·9·10·11 — 규격 5.6.1절 자리 표),
+   `Cn_VOLT`/`Cn_CURR`(전원 레일 7자리 P2V5 P5V P6V N6V P17V N17V P35V) — 매뉴얼
    p.47–49. **색인 `n` 은 `UNIT_CTRLTAG` 가 정한다**(MK→1 / NT→2, 5.9절) —
    `C1_*` 는 "내 컨트롤러"가 아니라 컨트롤러 1 고정이다. 실험실은 한 대만
-   돌리므로 나머지 한 벌은 `'NC'` 이고, 두 대분 합치기는 본편 몫이다.
+   돌리므로 나머지 한 벌은 **자리 수만큼 채운** `'NC|NC|…'` 이고(규격
+   5.6.1절 "자리는 비우지 않는다" — 자리 수 자체가 모듈 구성 판별에
+   쓰이므로 `'NC'` 한 토큰으로 내지 않는다), 두 대분 합치기는 본편 몫이다.
+   **구분자는 파이프(`|`)** 이고 결측 자리 sentinel 은 `NC` 다 (v1.6) —
+   단일 HK 카드의 `'-999.99'` 와 다르다.
 5. **`IMAGETYP` 유도** — 0초=`BIAS` / 트리거 없음=`DARK` / 트리거(LED) 노출=`FLAT`.
    `LEDFLASH` 는 트리거 노출이면 노출시간[ms] (실험실 광원이 트리거 라인으로
    노출 내내 켜지므로). `OBJECT`=`DS<번호>` 로 데이터셋 정체를 남긴다.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""raw spec v1.3 5장 헤더 내용을 지킨다 (D-013 · D-016 · 판정 원장).
+"""raw spec 5장 헤더 내용을 지킨다 (D-013 · D-016 · D-019 · 판정 원장).
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md` 4·5장.
+규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md` 4·5장.
 견본과의 바이트 대사는 `test_raw_draft.py`, 이름·번호·충돌은
 `test_raw_pair.py` -- 이 파일은 **실제 노출 사이클이 만든 헤더의 내용**을
 지킨다.  나눈 이유는 실패한 테스트 이름이 원인을 가리켜야 하기 때문이다.
@@ -45,7 +45,7 @@ def _headers(tmp_path, **over):
 # -- 카드 전량: 템플릿의 모든 카드가 실제로 실리나 ---------------------------
 
 def test_every_template_card_is_written_in_both_files(tmp_path):
-    """raw spec 7장 체크리스트 #3 -- 값 카드 135장 전량 존재.
+    """raw spec 7장 체크리스트 #3 -- 값 카드 131장 전량 존재.
 
     목록을 손으로 적지 않고 `rawcards.CARDS` 에서 뽑는다 -- 견본이 개정되면
     템플릿 대사(`test_raw_draft.py`)가 먼저 걸리고, 여기는 구현이 템플릿을
@@ -67,13 +67,16 @@ def test_bitpix_is_16_so_the_converter_can_read_it(tmp_path):
         assert h['BSCALE'] == 1
 
 
-# -- 5.9 pair 규칙: 상이 7장 / 나머지 동일 -----------------------------------
+# -- 5.9 pair 규칙: 상이 6장 / 나머지 동일 (v1.6: 7 -> 6) --------------------
 
-def test_pair_rule_exactly_seven_cards_differ(tmp_path):
-    """raw spec 7장 체크리스트 #5.
+def test_pair_rule_exactly_six_cards_differ(tmp_path):
+    """raw spec 7장 체크리스트 #5 -- **상이 6장** (v1.6 에서 7장에서 줄었다).
 
     converter 는 MK 헤더만 읽으므로(master metadata), "나머지 동일" 이 깨지면
     NT 쪽 사실이 MEF 에서 **오류 없이** 사라진다.
+
+    ⚠️ `EXPID` 는 "반드시 동일" 쪽이다 -- 태그가 없어 pair 양쪽이 같고, 그래서
+    짝을 잇는 단일 키가 된다 (D-019).  여기 diff 에 뜨면 그 성질이 깨진 것이다.
     """
     heads = _headers(tmp_path)
     mk, nt = heads['MK'], heads['NT']
@@ -385,7 +388,11 @@ def test_missing_representative_sensor_is_sentinel_with_a_warning(caplog):
 # -- 5.6 Cn_* 컨트롤러 텔레메트리 --------------------------------------------
 
 def test_ctrl_telemetry_is_pipe_joined_and_identical_in_both_files(tmp_path):
-    """`Cn_*` -- 공백 구분 나열, 자리=항목, pair 동일 (5.6·5.9절)."""
+    """`Cn_*` -- **파이프(`|`) 구분** 나열, 자리=항목, pair 동일 (5.6·5.9절).
+
+    구분자는 v1.6 에서 공백에서 파이프로 바뀌었다 -- 값에 이름표가 없어 경계를
+    눈으로 세야 하는데 음수가 섞이면(`16.956 -17.067`) 공백으로는 안 갈렸다.
+    """
     heads = _headers(tmp_path)
     for card in ('C1_TEMP', 'C1_VOLT', 'C1_CURR',
                  'C2_TEMP', 'C2_VOLT', 'C2_CURR'):
@@ -395,14 +402,48 @@ def test_ctrl_telemetry_is_pipe_joined_and_identical_in_both_files(tmp_path):
 
 
 def test_ctrl_telemetry_formats_and_sentinels():
+    """수치 표기 고정 -- 온도 1자리 · 전압/전류 3자리, 파이프 구분 (5.6절).
+
+    ⚠️ 여기 넣는 목록은 자리 수가 규격(10/7)보다 짧다.  **표기만 보는 시험**
+    이라 그렇게 뒀고, 그래서 `_join_readings` 가 "자리 수가 어긋난다" 를 에러
+    로그로 남긴다 -- 그것이 맞는 동작이다 (실기에서 자리 수가 밀리면 값이
+    다른 모듈 것으로 읽힌다).  자리 채움 자체는 아래 두 시험이 본다.
+    """
     h = rawhdr.ctrl_telemetry_header([
         {'temp': [40.12, 41.0], 'volt': [2.5119], 'curr': [0.0321]},
     ])
     assert h['C1_TEMP'] == '40.1|41.0'      # 온도 소수 1자리 · 파이프 구분
     assert h['C1_VOLT'] == '2.512'          # 전압/전류 소수 3자리
     assert h['C1_CURR'] == '0.032'
-    # 두 번째 컨트롤러 몫이 없으면 문자열 sentinel
-    assert h['C2_TEMP'] == h['C2_VOLT'] == h['C2_CURR'] == 'NC'
+
+
+def test_absent_controller_still_fills_every_slot():
+    """**전 자리 결측도 자리 수만큼 `NC` 다** (raw spec 5.6.1절).
+
+    ⚠️ `'NC'` 한 토큰으로 내면 안 된다.  같은 절이 **자리 수 자체를 모듈 구성
+    판별에 쓰라**고 규정하므로, 한 토큰짜리는 읽는 쪽에 "모듈 한 장짜리
+    컨트롤러" 로 보인다.  규격이 전 자리 결측(STATUS 무응답 · 미장착 모듈)을
+    "드물지 않다" 고 못박고 그 모습을 열 자리 `NC` 로 보인 것이 이 때문이다.
+    """
+    h = rawhdr.ctrl_telemetry_header([{'temp': [40.1], 'volt': [], 'curr': []}])
+    assert h['C2_TEMP'] == '|'.join(['NC'] * len(rawhdr.TEMP_SLOTS))
+    assert h['C2_VOLT'] == h['C2_CURR'] == '|'.join(
+        ['NC'] * len(rawhdr.VOLT_RAILS))
+    # 자리 수가 규격 표와 같아야 한다 -- 그것으로 구성을 읽기 때문이다.
+    assert len(str(h['C2_TEMP']).split('|')) == 10
+    assert len(str(h['C2_VOLT']).split('|')) == 7
+    # 한 대분만 결측이어도 나머지 카드는 그대로다.
+    assert h['C1_TEMP'] == '40.1'
+
+
+def test_missing_slot_inside_a_list_is_nc_not_none():
+    """목록 안의 빈 자리도 `NC` -- `None` 이 `'None'` 으로 실리면 안 된다.
+
+    `archon/parse.slot_value()` 가 이미 sentinel 로 채워 보내지만, 나열 카드는
+    **자리가 곧 항목**이라 여기가 마지막 방어선이다 (5.6.1절).
+    """
+    h = rawhdr.ctrl_telemetry_header([{'temp': [40.1, None, 42.3, '']}])
+    assert str(h['C1_TEMP']).split('|')[:4] == ['40.1', 'NC', '42.3', 'NC']
 
 
 # -- 5.3 측지값: 추측하지 않는다 ---------------------------------------------
@@ -718,3 +759,87 @@ def test_retired_standard_command_is_rejected():
     assert run.find("Didn't understand"), run.sent
     # 상태가 오염되지 않았는지 -- 거부이므로 imgtype 이 바뀌면 안 된다
     assert not [m for m in run.sent if 'ImageType=STANDARD' in m]
+
+
+# -- 5.0 카드 폭 초과: comment 를 먼저 자른다 (v1.6 신설) --------------------
+
+def test_over_long_value_shortens_the_comment_first(caplog):
+    """**폭이 모자라면 comment 를 먼저 줄인다** (raw spec **5.0절**, v1.6).
+
+    값이 자료이고 comment 는 설명이기 때문이다.  `Cn_*` 나열 카드는 자리가 곧
+    항목이라(5.6.1절) 값이 잘리면 **뒤 항목이 통째로 사라지는데 읽는 쪽은 그
+    사실을 알 방법이 없다.**
+
+    astropy 도 값이 길면 comment 를 먼저 줄이지만, 그 판단을 astropy 에 맡겨
+    두면 다음 시험의 경우를 못 막는다.
+    """
+    from ics_sim import fitsout
+
+    long = '|'.join(['-40.1'] * 10)               # 59자 -- 견본 폭(51) 초과
+    value, comment = fitsout._fit_to_card('C1_TEMP', long, 'Ctrl-1 T[C]')
+    assert value == long, '값이 온전해야 한다 -- 잘린 것은 comment 여야 한다'
+    assert len(comment) < len('Ctrl-1 T[C]')
+
+    card = str(fits.Card('C1_TEMP', value, comment))
+    assert len(card) == 80 and card.count("'") == 2
+
+
+def test_a_value_too_long_for_any_comment_is_cut_not_spilled_into_continue():
+    """comment 를 다 지워도 넘치면 **값을 자르고 경고한다** (5.0절).
+
+    ⚠️ 이 자리를 astropy 에 맡기면 안 된다 -- astropy 는 값을 자르지 않고
+    `CONTINUE` 규약으로 **카드를 여러 장으로 늘린다.**  그러면 견본이 못박은
+    **144 레코드 · 11,520 바이트**가 깨지고 경고는 한 줄도 안 뜬다.
+    """
+    from ics_sim import fitsout
+
+    huge = 'X' * 120
+    value, comment = fitsout._fit_to_card('OBJECT', huge, 'Name of object')
+    assert comment == '' and len(value) == 68
+
+    # 다듬은 뒤에는 카드가 정확히 한 장이다.
+    assert len(str(fits.Card('OBJECT', value, comment))) == 80
+    # 다듬지 않으면 세 장이 된다 -- 이 시험이 지키는 것이 그것이다.
+    assert len(str(fits.Card('OBJECT', huge, 'Name of object'))) > 80
+
+
+def test_the_sample_template_never_trips_the_width_rule():
+    """견본 템플릿 카드는 **하나도** 다듬기에 걸리지 않는다.
+
+    걸린다면 견본 자체가 80자를 넘는다는 뜻이고, 바이트 정본이 깨진 것이다.
+    폭 규범이 견본 재현을 건드리지 않는다는 것을 여기서 못박는다.
+    """
+    from ics_sim import fitsout
+
+    for key, kind, width, comment in rawcards.CARDS:
+        if key == 'COMMENT' or kind != 'S':
+            continue
+        text = 'x' * width
+        got, cut = fitsout._fit_to_card(key, text, comment)
+        assert got == text and cut == comment, key
+
+
+def test_a_long_observer_input_does_not_grow_the_header(tmp_path):
+    """관측자가 긴 이름을 쳐도 헤더 레코드 수가 늘지 않는다.
+
+    `OBJECT`/`OBSERVER`/`PROJID` 는 **관측자가 치는 값**이라 길이가 바깥에서
+    온다 -- 규격이 정한 폭(18)을 넘겨 오는 것을 ICS 가 막을 방법이 없다.
+    다듬지 않으면 astropy 가 `CONTINUE` 로 카드를 늘리고, 그 순간 견본이
+    못박은 **2880B 정렬과 144 레코드**가 깨진다 (5.0절).
+    """
+    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
+    drive(['OBS>ICS OBJECT ' + 'X' * 100, 'OBS>ICS EXP 5', 'OBS>ICS GO 1'],
+          cfg)
+    names = [n for n in sorted(os.listdir(tmp_path)) if n.endswith('.fits')]
+    assert names, '프레임이 저장되지 않았다'
+    for name in names:
+        path = os.path.join(tmp_path, name)
+        with fits.open(path) as hdul:
+            h = hdul[0].header
+        assert 'CONTINUE' not in h, name
+        assert len(str(h['OBJECT'])) <= 68, '값이 카드 한 장을 넘었다'
+        # 헤더부가 2880B 정렬인지 -- 바이트로 직접 센다.
+        with open(path, 'rb') as f:
+            blob = f.read()
+        end = blob.find(b'END' + b' ' * 77)
+        assert end >= 0 and end % 80 == 0, name

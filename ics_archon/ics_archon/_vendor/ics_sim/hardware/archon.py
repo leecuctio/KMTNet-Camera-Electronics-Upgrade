@@ -31,7 +31,7 @@
         뜻은 `ics_archon/README_labtest.md`.
         v1.0 원본과 Archon 매뉴얼 2부는
         `ics_archon/__ref_archon_control/`(읽기 전용) 에 있다.
-  * `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md`
+  * `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md`
         **write_frame() 이 맞춰야 할 1차 산출 규격** -- Archon raw FITS pair.
         2장 파일명(D-011)·충돌 처리(D-016), 4장 geometry, 5장 헤더 keyword
         (견본 = 초안 헤더 v1.0 pair, 틀은 `ics_sim/rawcards.py`).

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """raw spec 5장 헤더의 **값 공급** — instrument·detector·노출·컨트롤러·HK.
 
-근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md`] 4·5장이고
+근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md`] 4·5장이고
 결정 기록은 D-013(레거시 판정) · D-016(충돌·정체성).  카드의 **순서·comment·
 패딩(틀)**은 `rawcards.py` 템플릿이 갖고, 이 모듈은 그 틀에 부을 **값**을
 출처별 블록 함수로 만든다.  경위는 DevNote 11.14(구판 구현) · 11.19(v1.3 정렬).
@@ -194,7 +194,8 @@ def instrument_header(ctrltag: str, site_code: str,
 
     Args:
         ctrltag: `MK` 또는 `NT`.  `DETID`/`CHMAP_*` 가 여기서 갈린다
-            (pair 상이 7장 중 5장, raw spec 5.9절).
+            (pair 상이 **6장** 중 5장, raw spec 5.9절 -- v1.6 에서
+            `ORIGNAME` 이 빠져 7장에서 줄었다).
         site_code: `INSTRUME` 기본값(`'<SITE> 18k CCD'`, 운영자 확정)과
             **`FPAID`** 를 유도한다 (raw spec 5.3.1절, D-017 항목 6).
         cfg_camera: `[camera]` 설정 (`detector`/`camver`/`instrume`/`fpaid`).
@@ -628,11 +629,18 @@ TEMP_SLOT_LABELS = ('Backplane', 'Mod1:LVDS', 'Mod2:Driver', 'Mod3:Driver',
                     'Mod10:Driver', 'Mod11:Driver')
 
 
-def _join_readings(values, fmt: str) -> str:
+#: 나열 카드의 결측 자리 sentinel (raw spec **5.6.1절**).  단일 HK 카드의
+#: `'-999.99'` 와 **다르다** -- 7자짜리가 열 자리를 채우면 79자가 되어 카드
+#: 폭을 크게 넘기는데 `NC` 면 29자다.  `archon/parse.SLOT_NC` 와 같은 값이고,
+#: 그쪽이 STATUS 를 읽을 때 이미 이 값으로 자리를 채워 보낸다.
+SLOT_NC = 'NC'
+
+
+def _join_readings(values, fmt: str, slots: int) -> str:
     """텔레메트리 나열 카드 본문 -- **`|` 구분, 자리 = 항목** (raw spec 5.6.1절).
 
     수치는 `fmt` 로 표기를 고정하고(견본: 온도 1자리 · 전압/전류 3자리),
-    문자열은 그대로 잇는다.  비어 있으면 `'NC'` -- 나열 카드라 온도·습도
+    문자열은 그대로 잇는다.  값이 없는 자리는 `'NC'` -- 나열 카드라 온도·습도
     단일값 sentinel(`-999.99`)이 아니라 문자열 공통 sentinel 이다.
 
     **구분자는 파이프다** (운영자 확정 2026-08-26, v1.6).  공백 하나였는데
@@ -641,15 +649,38 @@ def _join_readings(values, fmt: str) -> str:
 
     ⚠️ **슬래시를 쓰지 말 것** -- FITS 의 comment 구분자와 같은 글자라, 인용
     부호를 먼저 찾지 않는 파서에서 값이 첫 슬래시에서 잘린다 (5.6.1절).
+
+    ⚠️ **한 자리도 못 받았어도 자리 수만큼 `NC` 를 채운다** (`slots`).  규격
+    5.6.1절 "자리는 비우지 않는다" 이고, 같은 절이 STATUS 무응답·미장착 모듈로
+    **전 자리가 결측인 경우를 드물지 않다고 못박으며** 그 모습을
+    `'NC|NC|…'` 열 자리로 보인다.  `'NC'` 한 토큰으로 내면 **자리 수가 1이
+    되는데, 자리 수 자체가 모듈 구성 판별에 쓰이므로**(같은 절) 읽는 쪽에는
+    "모듈 한 장짜리 컨트롤러" 로 보인다 -- `tools/probe_archon.py` 의 자리 표
+    대조도 그것을 규격 위반으로 짚는다.
+
+    Args:
+        values: 자리 순서대로의 값.  비었으면 전 자리 결측이다.
+        fmt: 수치 표기 (`'.1f'` / `'.3f'`).
+        slots: 이 카드의 자리 수 (`len(TEMP_SLOTS)` / `len(VOLT_RAILS)`).
     """
     if not values:
-        return 'NC'
+        return '|'.join([SLOT_NC] * slots)
     parts = []
     for v in values:
-        if isinstance(v, (int, float)):
+        if isinstance(v, bool) or v is None or v == '':
+            # `bool` 은 `int` 의 하위형이라 `format(True, '.1f')` 가 `1.0` 이
+            # 된다 -- 텔레메트리 자리에 올 값이 아니므로 결측으로 본다.
+            parts.append(SLOT_NC)
+        elif isinstance(v, (int, float)):
             parts.append(format(v, fmt))
         else:
             parts.append(str(v))
+    if len(parts) != slots:
+        # 자리 수가 규격과 다르면 읽는 쪽은 **다른 모듈 구성**으로 읽는다.
+        # 여기서 채우거나 잘라 맞추지 않는다 -- 어느 자리가 밀렸는지 모르는
+        # 채로 맞추면 값이 엉뚱한 모듈 것으로 실린다 (5.6.1절 "자리 = 항목").
+        log.error('나열 카드 자리 수가 %d 인데 규격은 %d 다 -- 백엔드가 준 '
+                  '목록이 규격 5.6.1절 자리 표와 어긋난다', len(parts), slots)
     return '|'.join(parts)
 
 
@@ -658,8 +689,12 @@ def ctrl_telemetry_header(telem: list[dict] | None) -> dict[str, object]:
 
     MEF `VOLTINFO`/`TELEMETRY` 를 실측으로 채울 원천이다 (C-후보, 통합 문서
     §1).  **양쪽 파일에 두 대분을 같은 값으로 싣는다** (5.9절 "반드시 동일") --
-    그래서 인자가 컨트롤러별 목록 하나다.  모듈 나열 순서 명세는 규격 수록
-    예정이라(통합 문서 §1) 여기서는 백엔드가 준 순서를 그대로 쓴다.
+    그래서 인자가 컨트롤러별 목록 하나다.  자리 순서 명세는 규격 **5.6.1절**
+    이고(v1.5 수록), 여기서는 백엔드가 그 순서로 준 목록을 그대로 쓴다.
+
+    ⚠️ **한 대분이 통째로 없어도 카드는 자리 수만큼 `NC` 를 싣는다** -- 실험실
+    처럼 컨트롤러 한 대만 돌 때(미장착)와 STATUS 무응답이 그 경우이고, 규격
+    5.6.1절이 둘 다 "전 자리 결측" 으로 다룬다.
 
     Args:
         telem: 색인 순서(1=MK, 2=NT)의 `{'temp': [...], 'volt': [...],
@@ -670,9 +705,12 @@ def ctrl_telemetry_header(telem: list[dict] | None) -> dict[str, object]:
         units.append({})
     out: dict[str, object] = {}
     for n, unit in enumerate(units[:2], start=1):
-        out[f'C{n}_TEMP'] = _join_readings(unit.get('temp'), '.1f')
-        out[f'C{n}_VOLT'] = _join_readings(unit.get('volt'), '.3f')
-        out[f'C{n}_CURR'] = _join_readings(unit.get('curr'), '.3f')
+        out[f'C{n}_TEMP'] = _join_readings(unit.get('temp'), '.1f',
+                                           len(TEMP_SLOTS))
+        out[f'C{n}_VOLT'] = _join_readings(unit.get('volt'), '.3f',
+                                           len(VOLT_RAILS))
+        out[f'C{n}_CURR'] = _join_readings(unit.get('curr'), '.3f',
+                                           len(VOLT_RAILS))
     return out
 
 

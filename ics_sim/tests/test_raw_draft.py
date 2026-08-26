@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.5 5장).
+"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.6 5장).
 
-정본 견본은 `raw_fits_spec/KMTA.20260821.012345.{MK,NT}.fits.header.v1.0.txt`
+정본 견본은 `raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0.txt`
 (경로는 박지 않고 glob 으로 찾는다 -- `_find_draft`)
 -- **카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다 (5장 머리말).
 이 파일은 세 겹으로 대사한다:
@@ -12,7 +12,8 @@
 2. **바이트 대사** -- 견본의 값을 역산해 풀에 넣고 조립하면, 견본의 카드
    이미지 80바이트가 **그대로** 재현되는가 (구조 카드 7장 제외 -- astropy 가
    데이터에서 만들므로 상수로 따로 확인한다).
-3. **pair 규칙** -- 반드시 상이 7장 / 나머지 동일 (5.9절).
+3. **pair 규칙** -- 반드시 상이 **6장** / 나머지 동일 (5.9절 -- v1.6 에서
+   `ORIGNAME` 이 폐지되고 태그 없는 `EXPID` 로 대체돼 7장에서 줄었다).
 
 raw spec 검증 체크리스트 #3(카드 전량)·#5(pair 규칙)·#6(geometry 선언)의
 자동 구현이다 (7장).
@@ -146,7 +147,7 @@ def test_template_matches_the_draft_structure():
 
 
 def test_draft_counts_match_the_spec():
-    """값 **131** + COMMENT 8 + END 1 + 공백 4 = 144 레코드 (raw spec v1.5).
+    """값 **131** + COMMENT 8 + END 1 + 공백 4 = 144 레코드 (v1.5 이후 불변).
 
     v1.5 가 HK 4장(`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT`)을 폐지해 값 카드가
     135 -> 131 이 됐고, `END` 뒤를 공백 레코드로 채워 11,520 바이트를 유지한다.
@@ -162,8 +163,13 @@ def test_draft_counts_match_the_spec():
     assert len(cards) - len(values) == 8
 
 
-def test_pair_diff_is_exactly_the_seven_cards():
-    """반드시 상이 7장 (raw spec 5.9절) -- 견본에서 직접 센다."""
+def test_pair_diff_is_exactly_the_six_cards():
+    """반드시 상이 **6장** (raw spec 5.9절) -- 견본에서 직접 센다.
+
+    v1.6 에서 7장 -> 6장이 됐다.  구 `ORIGNAME` 은 `.MK`/`.NT` 꼬리를 달아
+    상이였는데, 이를 대체한 `EXPID` 는 태그가 없어 **양쪽 동일**이다 --
+    그래서 짝을 잇는 단일 키가 된다.
+    """
     mk, nt = _sample('MK'), _sample('NT')
     assert set(mk) == set(nt)
     diff = sorted(k for k in mk if mk[k] != nt[k])

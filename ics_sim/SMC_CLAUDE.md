@@ -77,14 +77,26 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 | `FILENAME` comment | → `FITS file name as written to storage` | `rawcards.CARDS` |
 | `Cn_*` 구분자 | 공백 → **`|`** | `rawhdr._join_readings()`.  ⚠️ 슬래시는 FITS comment 구분자와 겹쳐 배제했다 |
 | `Cn_*` comment | `Ctr-n` → **`Ctrl-n`** | `rawcards.CARDS` 6장 |
-| 나열 결측 sentinel | `-999.99` → **`NC`** | `archon/parse.SLOT_NC`.  ⚠️ **단일 HK 카드는 `-999.99` 그대로다** |
-| 카드 폭 초과 | 값을 잘랐다 → **comment 를 먼저 자른다** | `archon/fitswrite.card_image()` (규격 5.0절 신설) |
+| 나열 결측 sentinel | `-999.99` → **`NC`** | 정본은 **`rawhdr.SLOT_NC`**(`archon/parse.SLOT_NC` 가 받아 쓴다).  ⚠️ **단일 HK 카드는 `-999.99` 그대로다** |
+| 카드 폭 초과 | 값을 잘랐다 → **comment 를 먼저 자른다** | 규격 5.0절 신설.  이 저장소에서 카드 이미지를 만드는 곳은 **셋** — `archon/fitswrite.card_image()` · **astropy 경로 `fitsout._fit_to_card()`** · labtest `fits_card()` |
 
 ⚠️ **충돌 판별이 한 단계 늘었다** -- 종전 `FILENAME != ORIGNAME`(직접 비교)에서
 **`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 != `EXPID`** 로.  꼬리 제거는 이미
 규격 2.3절 5항이 정의한 연산이다.
 
-경위·판단은 **DevNote 11.29**.  `ics_archon` 쪽 반영분과 **다음 세션 착수점**(origin 푸시 · `raw-spec-v1.6` 태그 · 벤치 ini · converter)은
+**⚠️ 전수 검사에서 더 나온 둘 (2026-08-26)** — `ics_sim` 쪽만 적는다.
+
+- **전 자리 결측은 `NC` 한 토큰이 아니라 자리 수만큼** `NC|NC|…` 다.
+  `rawhdr._join_readings(values, fmt, slots)` 에 자리 수 인자가 생겼다 —
+  규격 5.6.1절 "자리는 비우지 않는다" 이고, 같은 절이 **자리 수 자체를 모듈
+  구성 판별에 쓰라**고 하므로 한 토큰짜리는 "모듈 한 장짜리 컨트롤러" 로
+  읽힌다.  목록 안의 `None`/빈 값도 `NC` 로 간다.
+- **astropy 는 값이 68자를 넘으면 자르지 않고 `CONTINUE` 로 카드를 늘린다** —
+  그 순간 견본이 못박은 144 레코드·11,520B 가 깨지는데 경고가 없다.
+  `fitsout._fit_to_card()` 가 규격 5.0절대로 잘라 막는다.  값의 출처가
+  `OBJECT`/`OBSERVER`/`PROJID`(관측자 입력)라 길이는 바깥에서 온다.
+
+경위·판단은 **DevNote 11.29**, 전수 검사는 **DevNote 11.30**.  `ics_archon` 쪽 반영분과 **다음 세션 착수점**(origin 푸시 · `raw-spec-v1.6` 태그 · 벤치 ini · converter)은
 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "다음 세션이 먼저 알아야 할 것".
 
 ## ⚠️ raw spec v1.5 반영 (2026-08-26, 이 브랜치에서 마무리)

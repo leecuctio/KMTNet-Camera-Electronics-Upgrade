@@ -56,7 +56,12 @@ TEMP_SLOTS: tuple[str, ...] = rawhdr.TEMP_SLOTS
 #: 조용히 사라진다.**  `NC` 면 29자로 들어간다.
 #:
 #: **전 자리가 결측인 경우는 드물지 않다** -- STATUS 무응답 · 미장착 모듈.
-SLOT_NC = 'NC'
+#: 그 경우 카드는 `'NC'` 한 토큰이 아니라 **자리 수만큼** `'NC|NC|…'` 로
+#: 실린다 (`rawhdr._join_readings`) -- 자리 수 자체가 모듈 구성 판별에 쓰이기
+#: 때문이다 (5.6.1절).
+#:
+#: `VOLT_RAILS`/`TEMP_SLOTS` 와 같은 이유로 **여기 사본을 두지 않는다.**
+SLOT_NC: str = rawhdr.SLOT_NC
 
 
 def keyvals(payload: bytes | str) -> dict[str, str]:
@@ -229,8 +234,10 @@ def telemetry_of(status: dict[str, str] | None) -> dict[str, list]:
     개수**만 지킨다.
 
     비어 있으면 빈 dict 를 돌려준다 -- `rawhdr.ctrl_telemetry_header()` 가
-    그것을 `'NC'` 로 만든다.  자리마다 sentinel 을 채워 보내면 "물어봤는데 다
-    결측" 과 "안 물어봤다" 가 헤더에서 구별되지 않는다.
+    그것을 **자리 수만큼의** `'NC|NC|…'` 로 만든다 (규격 5.6.1절 "자리는
+    비우지 않는다").  STATUS 무응답과 미장착 모듈을 규격이 똑같이 "전 자리
+    결측" 으로 다루므로, 헤더에서 그 둘을 가르지 않는다 -- 가르려고 `'NC'` 한
+    토큰을 쓰면 **자리 수가 1이 되어** 읽는 쪽에는 모듈 구성이 달라 보인다.
     """
     if not status:
         return {}
