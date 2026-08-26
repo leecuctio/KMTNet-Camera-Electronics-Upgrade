@@ -78,7 +78,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 | `FILENAME` comment | → `FITS file name as written to storage` | `rawcards.CARDS` |
 | `Cn_*` 구분자 | 공백 → **`|`** | `rawhdr._join_readings()`.  ⚠️ 슬래시는 FITS comment 구분자와 겹쳐 배제했다 |
 | `Cn_*` comment | `Ctr-n` → **`Ctrl-n`** | `rawcards.CARDS` 6장 |
-| 나열 결측 sentinel | `-999.99` → **`NC`** | 정본은 **`rawhdr.SLOT_NC`**(`archon/parse.SLOT_NC` 가 받아 쓴다).  ⚠️ **단일 HK 카드는 `-999.99` 그대로다** |
+| 나열 결측 sentinel | `-999.99` → **`NC`** | 정본은 **`rawhdr.FIELD_NC`**(`archon/parse.FIELD_NC` 가 받아 쓴다).  ⚠️ **단일 HK 카드는 `-999.99` 그대로다** |
 | 카드 폭 초과 | 값을 잘랐다 → **comment 를 먼저 자른다** | 규격 5.0절 신설.  이 저장소에서 카드 이미지를 만드는 곳은 **셋** — `archon/fitswrite.card_image()` · **astropy 경로 `fitsout._fit_to_card()`** · labtest `fits_card()` |
 
 ⚠️ **충돌 판별이 한 단계 늘었다** -- 종전 `FILENAME != ORIGNAME`(직접 비교)에서
@@ -129,7 +129,9 @@ SSO `#3`·`FPA#1` / SAAO `#2`·`FPA#3`).  오타로 보고 맞추면 검출기 �
 이제 모르는 값이라 **기동을 거부**한다.  `KASI` 로 바꾸고 `[site.testbed]` 절도
 `[site.kasi]` 로 고칠 것.
 
-## 상태 (2026-08-25)
+## 상태 (2026-08-26 — raw spec v1.5·v1.6 반영 완료)
+
+**검증(2026-08-26 실측)** — `ics_sim` **330 통과** · 형제 `ics_archon` **152 통과**(배치본 135 + `repo_only` 17) · 벤더 표류 없음 · 견본 v1.6 pair 바이트 단위 재현.
 
 ### ⏳ 지금 진행 중 — 관측 스크립트로 첫 연동 시험
 
@@ -161,7 +163,7 @@ SSO `#3`·`FPA#1` / SAAO `#2`·`FPA#3`).  오타로 보고 맞추면 검출기 �
 ### 종전 상태
 
 - **구현 완료**: 전체 노출 사이클(DARK/BIAS/OBJECT), `GO n` 다중 노출, 전 명령 디스패치, 텔레메트리 중계, 옵션 FITS, 콘솔, 결함 주입 6종, **`STOP`/`ABORT`**(9.2.1), **AUX control TCP 연동**(9.2.2), **자기 발신 에코 필터·브로드캐스트 중복 억제·노드 ID 검증**(3.1.2 — 실물 XIS 연동의 전제)
-- **테스트 306개 전부 통과** (2026-08-25 기준. 2026-08-22 v1.3 정렬로 헤더 시험 재편 + 적대적 검토 회귀 시험 추가 — 구 324개 → 318개, 그 뒤 `ics_archon` 확장점·경로 결함 회귀로 +7, 병렬 독출 스위치로 +5, **사이트 판별 개정으로 IP 판정 전용 시험 28개 삭제·사이트 시험 11개 신설**)
+- **테스트 330개 전부 통과** (2026-08-26 기준 실측. 2026-08-22 v1.3 정렬로 헤더 시험 재편 + 적대적 검토 회귀 시험 추가 — 구 324개 → 318개, 그 뒤 `ics_archon` 확장점·경로 결함 회귀로 +7, 병렬 독출 스위치로 +5, **사이트 판별 개정으로 IP 판정 전용 시험 28개 삭제·사이트 시험 11개 신설**)
 - **실물 연동 시험 완료 (2026-08-11)** — 재빌드한 XIS(v2.9.1) 허브에 **실물 TCSAgent·OBSAgent 와 함께** 물려 돌렸다. 9개 노드 ID 등록·에코 필터·재등록·개별 IC 라우팅·노출 사이클 전 구간 통과, 타임아웃 창 3종 모두 큰 여유. **`ExpNum` 응답 값이 한 칸 밀리는 결함 하나를 잡아 고쳤다**(DevNote 3.4·12.14). 전체 결과는 DevNote **3.7**
 - **아직 안 만든 것**: `BIN` 하나. `strict_legacy` 면 무응답이고, 구현 지침은 `commands.py` docstring 에 있다.
 - **일부러 안 만든 것**: `ROI`/`DISPL`/`MOVIE` — **레거시 ICS 명령 테이블에 아예 없어서** 핸들러를 두지 않았다. 레거시와 똑같이 `Didn't understand` 로 거부된다(DevNote 6.8).
@@ -180,7 +182,7 @@ SSO `#3`·`FPA#1` / SAAO `#2`·`FPA#3`).  오타로 보고 맞추면 검출기 �
 - **바깥 백엔드용 확장점 + 결함 4건 (2026-08-24, 커밋 `ecf3487`)** — `ics_archon` 이 규약을 안 고치고 실기 백엔드를 끼울 수 있도록 **확장점 3개**를 열었다: `hardware.register_backend()` · `DetectorBackend.writes_files` · `DetectorBackend.begin_exposure(seconds, opens_shutter)`. 함께 고친 결함 4건 — ⓐ **D-016 충돌 선검사가 `[paths] write_fits` 에 묶여 있었다**(그 플래그는 시뮬 전용이라, 항상 파일을 쓰는 백엔드를 `write_fits=false` 로 돌리면 검사가 꺼진 채 **같은 이름을 조용히 덮어썼다**) ⓑ `data_dir`·`logging.file` 의 `~` 미확장(`os.makedirs` 가 `./~/AIC/data` 를 아무 불평 없이 만든다) ⓒ `_head()` 가 `\#` 를 안 벗겨 `FPAID='FPA\#1'` ⓓ **expnum 기록이 `os.replace` 뿐이어서 원자적이기만 하고 영속이 아니었다** — 전원 손실에 번호가 되돌아간다. 내용·디렉터리 둘 다 fsync. **시뮬 거동 무변경 · 규약 무변경.** 경위는 DevNote **11.24**
 - **다음 단계**: ⓪ ⭐ **두 컨트롤러 병렬 독출 개정 (목 2026-08-24 지시, 착수 전 승인 필요)** — FRAME 검사를 두 대 동시에 · fetch 병렬(이미 됨) · 프레임별 `Acquisition Complete.`. **이 폴더의 규약을 고치는 첫 건**이고 위 ⚠️ 경고와 같은 자리다. 계획·비용·의견은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "다음 세션 작업 지시" ① TCS 시뮬레이터 설치 + 연동 시험(아래 "이어서 시작하는 자리") ② **`ics_archon` v0.0 이 나왔다 (2026-08-23, DevNote 11.23)** — 과학 2 unit 제어·raw pair 저장·헤더까지 가짜 컨트롤러로 전 경로가 돌고 견본과 바이트 단위로 일치한다. 남은 것은 **실기 왕복**(미검증)과 **듀어·환경 HK**(`sensors()` — 원형이 없다), 그리고 **가이드 unit**(guide raw 규격 미정)이다. 결정·검토사항 목록은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md)
 
-## ▶ 이어서 시작하는 자리 (2026-08-13 기준)
+## ▶ 이어서 시작하는 자리 (2026-08-26 기준)
 
 **벤치가 SSO AIC 리눅스(`kmtnet-sso`)에 그대로 살아 있다.** 창 네 개 — 0=XIS · 1=`ics_sim` · 2=`obstool` · 3=`pctcs`. 기동 명령은 [README](README.md) "실물 연동 시험", 설치·빌드는 [`../TCSAgent/tcsagent_report.md`](../TCSAgent/tcsagent_report.md) · [`../OBSAgent/obsagent_report.md`](../OBSAgent/obsagent_report.md) 각 12절(`build-local.sh` 한 줄이면 재현된다).
 

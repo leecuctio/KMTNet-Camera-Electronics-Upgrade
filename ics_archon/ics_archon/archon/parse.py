@@ -61,7 +61,7 @@ TEMP_MODS: tuple[str, ...] = rawhdr.TEMP_MODS
 #: 때문이다 (5.6.1절).
 #:
 #: `VOLT_RAILS`/`TEMP_MODS` 와 같은 이유로 **여기 사본을 두지 않는다.**
-SLOT_NC: str = rawhdr.SLOT_NC
+FIELD_NC: str = rawhdr.FIELD_NC
 
 
 def keyvals(payload: bytes | str) -> dict[str, str]:
@@ -207,7 +207,7 @@ def next_frame(fields: dict[str, str], prev: int) -> FrameStatus | None:
 # STATUS
 # ---------------------------------------------------------------------------
 
-def slot_value(status: dict[str, str], key: str) -> float | str:
+def field_value(status: dict[str, str], key: str) -> float | str:
     """STATUS 필드 하나를 수치로.  **결측·비수치는 sentinel 문자열.**
 
     `float()` 을 방어 없이 쓰면 STATUS 가 비수치 토큰 하나를 주는 것만으로
@@ -217,13 +217,13 @@ def slot_value(status: dict[str, str], key: str) -> float | str:
     """
     raw = status.get(key)
     if raw is None:
-        return SLOT_NC
+        return FIELD_NC
     try:
         return float(raw)
     except (TypeError, ValueError):
         log.warning('STATUS %s=%r 가 수치가 아니다 -- %s 로 싣는다',
-                    key, raw, SLOT_NC)
-        return SLOT_NC
+                    key, raw, FIELD_NC)
+        return FIELD_NC
 
 
 def telemetry_of(status: dict[str, str] | None) -> dict[str, list]:
@@ -242,9 +242,9 @@ def telemetry_of(status: dict[str, str] | None) -> dict[str, list]:
     if not status:
         return {}
     return {
-        'temp': [slot_value(status, k) for k in TEMP_MODS],
-        'volt': [slot_value(status, r + '_V') for r in VOLT_RAILS],
-        'curr': [slot_value(status, r + '_I') for r in VOLT_RAILS],
+        'temp': [field_value(status, k) for k in TEMP_MODS],
+        'volt': [field_value(status, r + '_V') for r in VOLT_RAILS],
+        'curr': [field_value(status, r + '_I') for r in VOLT_RAILS],
     }
 
 

@@ -158,7 +158,7 @@
 | **`FILENAME` comment** | → `FITS file name as written to storage` | 종전 문구가 `ORIGNAME` 과 똑같이 "ICS 가 배정" 계열이라 둘의 차이가 안 드러났다 |
 | **`Cn_*` 구분자** | 공백 → **`\|`** | `rawhdr._join_readings()` · labtest.  ⚠️ **슬래시는 배제했다** — FITS comment 구분자와 같은 글자라 인용부호를 먼저 찾지 않는 파서에서 값이 첫 슬래시에서 잘린다 |
 | **`Cn_*` comment** | `Ctr-n` → **`Ctrl-n`** | `rawcards.CARDS` 6장 · labtest |
-| **나열 결측 sentinel** | `-999.99` → **`NC`** | 정본은 `rawhdr.SLOT_NC`, `archon/parse.SLOT_NC` 가 그것을 받아 쓴다 · labtest `SLOT_NC`.  ⚠️ **단일 HK 카드(`CCDTEMP` 등)는 `-999.99` 그대로다.**  **전 자리 결측은 `NC` 한 토큰이 아니라 자리 수만큼** `NC|NC|…` 다 (아래 전수 검사) |
+| **나열 결측 sentinel** | `-999.99` → **`NC`** | 정본은 `rawhdr.FIELD_NC`, `archon/parse.FIELD_NC` 가 그것을 받아 쓴다 · labtest `FIELD_NC`.  ⚠️ **단일 HK 카드(`CCDTEMP` 등)는 `-999.99` 그대로다.**  **전 자리 결측은 `NC` 한 토큰이 아니라 자리 수만큼** `NC|NC|…` 다 (아래 전수 검사) |
 | **카드 폭 초과** | 값을 잘랐다 → **comment 를 먼저 자른다** | 규격 5.0절 신설.  **구현 자리가 셋이다** — `archon/fitswrite.card_image()` · astropy 경로(`fitsout._fit_to_card()`) · labtest `fits_card()`.  ⚠️ 1차 반영에서 첫째만 고쳐졌다 (아래 전수 검사) |
 | **견본 노출 번호** | `012345`/`012340` → **`123456`/`123450`** | 견본 파일 이름도 함께 옮겨졌다 |
 

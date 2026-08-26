@@ -129,7 +129,7 @@ def test_labtest_site_table_matches_the_spec_5_3_1():
 
 
 @pytest.mark.repo_only
-def test_labtest_temp_slots_match_spec_5_6_1():
+def test_labtest_temp_mods_match_spec_5_6_1():
     """내장 `TEMP_MODS`/`VOLT_RAILS` = 규격 5.6.1절 자리 표.
 
     자리 자체가 항목이라 순서가 하나만 밀려도 실험실 자료의 온도가 **다른
@@ -142,8 +142,8 @@ def test_labtest_temp_slots_match_spec_5_6_1():
 
 
 @pytest.mark.repo_only
-def test_labtest_slot_sentinel_matches_spec_5_6_1():
-    """내장 `SLOT_NC` = 나열 카드 결측 sentinel (`'NC'`, 규격 5.6.1절).
+def test_labtest_field_sentinel_matches_spec_5_6_1():
+    """내장 `FIELD_NC` = 나열 카드 결측 sentinel (`'NC'`, 규격 5.6.1절).
 
     ⚠️ 단일 HK 카드의 `TEMP_NC`(`'-999.99'`)와 **다른 값**이라 헷갈리기 쉽다.
     7자짜리로 되돌아가면 열 자리를 채웠을 때 79자가 되어 카드 폭을 넘기고,
@@ -151,7 +151,7 @@ def test_labtest_slot_sentinel_matches_spec_5_6_1():
     """
     from ics_archon.archon import parse
 
-    assert _literal('SLOT_NC') == parse.SLOT_NC == 'NC'
+    assert _literal('FIELD_NC') == parse.FIELD_NC == 'NC'
     assert _literal('TEMP_NC') == '-999.99', '단일 HK sentinel 은 그대로다'
 
 
@@ -241,14 +241,14 @@ def test_labtest_quotes_inside_a_value_are_doubled():
 
 
 @pytest.mark.repo_only
-def test_labtest_absent_controller_fills_every_slot():
+def test_labtest_absent_controller_fills_every_field():
     """전 자리 결측도 **자리 수만큼** `NC` 다 (규격 5.6.1절).
 
     실험실은 컨트롤러 한 대만 돌리므로 나머지 한 벌이 늘 이 경우다 --
     `'NC'` 한 토큰이면 자리 수가 1이 되어 읽는 쪽에 모듈 구성이 달라 보인다.
     """
-    g = _funcs('fits_card', 'status_number', 'all_slots_nc',
-               'ctrl_telemetry_cards', 'SLOT_NC', 'TEMP_NC',
+    g = _funcs('fits_card', 'status_number', 'all_fields_nc',
+               'ctrl_telemetry_cards', 'FIELD_NC', 'TEMP_NC',
                'TEMP_MODS', 'VOLT_RAILS')
     cards = g['ctrl_telemetry_cards'](None, 1)
     for n in (1, 2):

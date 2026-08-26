@@ -82,7 +82,7 @@ def test_samplemode_doubles_the_byte_count_not_the_geometry():
     assert fs32.data_bytes == 2 * fs16.data_bytes == 100 * 50 * 4
 
 
-def test_telemetry_keeps_one_slot_per_item_even_when_missing():
+def test_telemetry_keeps_one_field_per_item_even_when_missing():
     """**자리 = 항목** (raw spec 5.6절).  결측이면 그 자리에 sentinel 이다.
 
     건너뛰면 뒤 항목이 앞으로 당겨져 소비자가 구분할 방법이 없다 -- MOD6 이
@@ -94,9 +94,9 @@ def test_telemetry_keeps_one_slot_per_item_even_when_missing():
     telem = parse.telemetry_of(status)
     assert len(telem['temp']) == len(parse.TEMP_MODS) == 10
     assert len(telem['volt']) == len(telem['curr']) == len(parse.VOLT_RAILS)
-    assert telem['temp'][2] == parse.SLOT_NC     # Mod2 자리
+    assert telem['temp'][2] == parse.FIELD_NC     # Mod2 자리
     assert telem['temp'][3] == 30.3              # Mod3 은 제자리
-    assert telem['volt'][1] == parse.SLOT_NC     # P5V 자리
+    assert telem['volt'][1] == parse.FIELD_NC     # P5V 자리
     assert telem['volt'][2] == 5.834             # P6V 는 제자리
 
 
@@ -149,7 +149,7 @@ def test_module_map_confirms_the_ad_slot_assumption():
     assert 'MOD7/TEMP' not in parse.TEMP_MODS
 
 
-def test_cn_temp_slot_order_follows_spec_5_6_1():
+def test_cn_temp_mod_order_follows_spec_5_6_1():
     """`Cn_TEMP` 열 자리가 **규격 5.6.1절 표 그대로**여야 한다.
 
     자리 자체가 항목이므로(값에 이름표가 없다) 순서가 하나만 밀려도 소비자는

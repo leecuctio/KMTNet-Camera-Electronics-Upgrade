@@ -259,7 +259,7 @@ bash ./TCSAgent/build-local.sh
 | 문서 | 무엇 |
 |---|---|
 | [README.md](README.md) | `ics_archon` 구성 · 배포본 놓기 · 설정 · **실기 첫 실행 5단계** |
-| [QT_INSTALL.md](QT_INSTALL.md) | **ArchonGUI**(STA Qt5 GUI) 빌드용 Qt5 설치 · `Unknown module(s)` 처방 |
+| `ArchonGUI/QT_INSTALL.md` (브랜치 `archongui-analysis`) | **ArchonGUI**(STA Qt5 GUI) 빌드용 Qt5 설치 · `Unknown module(s)` 처방. ⚠️ 이 브랜치에는 없다 — `ics_archon` 과 무관해 따로 관리한다 |
 | [SMC_CLAUDE.md](SMC_CLAUDE.md) | 인수인계 — 절대 깨뜨리면 안 되는 것 · 결정사항 · Archon 매뉴얼 확정 사실 |
 | [`../OBSAgent/SMC_CLAUDE.md`](../OBSAgent/SMC_CLAUDE.md) · [`../TCSAgent/SMC_CLAUDE.md`](../TCSAgent/SMC_CLAUDE.md) | 각 에이전트 재빌드 걸림돌 · 경로 상수의 성질 |
 | [`../ics_sim/xis/xis.md`](../ics_sim/xis/xis.md) | XIS 빌드 걸림돌 · 설정 파일 함정 3종 |

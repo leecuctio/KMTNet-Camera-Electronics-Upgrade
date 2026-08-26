@@ -112,8 +112,8 @@ def test_stage1_reports_a_wrong_ad_slot_as_a_problem(tmp_path):  # noqa: ANN001
     assert 'AD 모듈이 슬롯 [3, 4] 다' in labels()
 
 
-def test_stage1_reports_missing_status_fields_per_slot(tmp_path):  # noqa: ANN001
-    """온도 슬롯·전원 레일 결측을 **자리 단위로** 보고한다."""
+def test_stage1_reports_each_missing_status_field(tmp_path):  # noqa: ANN001
+    """온도 자리·전원 레일 결측을 **자리 하나씩** 보고한다."""
     from fake_archon import DEFAULT_STATUS
     status = dict(DEFAULT_STATUS)
     del status['MOD9/TEMP']

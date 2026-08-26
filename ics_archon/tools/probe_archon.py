@@ -124,7 +124,7 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
         say(BAD, '온도 슬롯 %d/%d 결측: %s'
             % (len(missing), len(parse.TEMP_MODS), ' '.join(missing)),
             '그 자리는 %s 로 실린다 (자리=항목이라 건너뛰지 않는다)'
-            % parse.SLOT_NC)
+            % parse.FIELD_NC)
     else:
         say(OK, '온도 슬롯 %d개 전부 있다' % len(parse.TEMP_MODS))
 

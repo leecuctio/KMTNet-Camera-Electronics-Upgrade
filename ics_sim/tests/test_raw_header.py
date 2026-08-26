@@ -112,6 +112,8 @@ RETIRED = (
     'GAIN RDNOISE SATLEVEL LINMAX XTALKVER REFVER CATVER '
     # chiller 블록 (운영자 삭제 2026-08-21)
     'CHSTAT CHOP CHSET CHPROC '
+    # standalone RTD 계통 HK 4장 (v1.5 폐지, 규격 5.10절)
+    'AIR_IN AIR_OUT GLYC_IN GLYC_OUT '
     # 구판 geometry 선언 27장의 잔재
     'RAWNAX1 RAWNAX2 NXTILE RAWXTILE AMPDATA OVERSCNX PRESCANX OVERSCNY '
     'NSTRIP NEND AMPPCD STRIPDIR TOPROWS BOTROWS CHIPFLP READMODE READARCH '
@@ -456,7 +458,7 @@ def test_temp_mod_order_is_anchored_to_the_spec_table():
         'P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
 
 
-def test_absent_controller_still_fills_every_slot():
+def test_absent_controller_still_fills_every_field():
     """**전 자리 결측도 자리 수만큼 `NC` 다** (raw spec 5.6.1절).
 
     ⚠️ `'NC'` 한 토큰으로 내면 안 된다.  같은 절이 **자리 수 자체를 모듈 구성
@@ -475,10 +477,10 @@ def test_absent_controller_still_fills_every_slot():
     assert h['C1_TEMP'] == '40.1'
 
 
-def test_missing_slot_inside_a_list_is_nc_not_none():
+def test_missing_field_inside_a_list_is_nc_not_none():
     """목록 안의 빈 자리도 `NC` -- `None` 이 `'None'` 으로 실리면 안 된다.
 
-    `archon/parse.slot_value()` 가 이미 sentinel 로 채워 보내지만, 나열 카드는
+    `archon/parse.field_value()` 가 이미 sentinel 로 채워 보내지만, 나열 카드는
     **자리가 곧 항목**이라 여기가 마지막 방어선이다 (5.6.1절).
     """
     h = rawhdr.ctrl_telemetry_header([{'temp': [40.1, None, 42.3, '']}])

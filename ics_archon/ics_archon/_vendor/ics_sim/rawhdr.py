@@ -637,18 +637,19 @@ TEMP_MOD_LABELS = ('Backplane', 'Mod1:LVDS', 'Mod2:Driver', 'Mod3:Driver',
 
 #: 나열 카드의 결측 자리 sentinel (raw spec **5.6.1절**).
 #:
-#: ⚠️ 여기서 `SLOT` 은 **나열 카드의 토큰 자리**를 뜻한다 -- 백플레인 모듈이
-#: 아니다(전압·전류 7레일에도 이 값을 쓴다).  모듈 쪽 상수를 v1.5 표기에 맞춰
-#: `TEMP_SLOTS` -> `TEMP_MODS` 로 개명할 때 이 이름을 함께 옮기지 않은 이유다.
+#: `FIELD` = **나열 카드의 토큰 자리**다 -- 백플레인 모듈이 아니다(전압·전류
+#: 7레일에도 이 값을 쓴다).  구 이름은 `SLOT_NC` 였는데 **`slot` 이 컨트롤러의
+#: 실제 슬롯과 혼동돼** `field` 로 옮겼다 (운영자 2026-08-26).  모듈 자리를
+#: 가리키는 상수는 `TEMP_MODS` 로 따로 있다.
 #:
 #: 단일 HK 카드의
 #: `'-999.99'` 와 **다르다** -- 7자짜리가 열 자리를 채우면 79자가 되어 카드
-#: 폭을 크게 넘기는데 `NC` 면 29자다.  `archon/parse.SLOT_NC` 와 같은 값이고,
+#: 폭을 크게 넘기는데 `NC` 면 29자다.  `archon/parse.FIELD_NC` 와 같은 값이고,
 #: 그쪽이 STATUS 를 읽을 때 이미 이 값으로 자리를 채워 보낸다.
-SLOT_NC = 'NC'
+FIELD_NC = 'NC'
 
 
-def _join_readings(values, fmt: str, slots: int) -> str:
+def _join_readings(values, fmt: str, n_fields: int) -> str:
     """텔레메트리 나열 카드 본문 -- **`|` 구분, 자리 = 항목** (raw spec 5.6.1절).
 
     수치는 `fmt` 로 표기를 고정하고(견본: 온도 1자리 · 전압/전류 3자리),
@@ -662,7 +663,7 @@ def _join_readings(values, fmt: str, slots: int) -> str:
     ⚠️ **슬래시를 쓰지 말 것** -- FITS 의 comment 구분자와 같은 글자라, 인용
     부호를 먼저 찾지 않는 파서에서 값이 첫 슬래시에서 잘린다 (5.6.1절).
 
-    ⚠️ **한 자리도 못 받았어도 자리 수만큼 `NC` 를 채운다** (`slots`).  규격
+    ⚠️ **한 자리도 못 받았어도 자리 수만큼 `NC` 를 채운다** (`n_fields`).  규격
     5.6.1절 "자리는 비우지 않는다" 이고, 같은 절이 STATUS 무응답·미장착 모듈로
     **전 자리가 결측인 경우를 드물지 않다고 못박으며** 그 모습을
     `'NC|NC|…'` 열 자리로 보인다.  `'NC'` 한 토큰으로 내면 **자리 수가 1이
@@ -673,26 +674,26 @@ def _join_readings(values, fmt: str, slots: int) -> str:
     Args:
         values: 자리 순서대로의 값.  비었으면 전 자리 결측이다.
         fmt: 수치 표기 (`'.1f'` / `'.3f'`).
-        slots: 이 카드의 자리 수 (`len(TEMP_MODS)` / `len(VOLT_RAILS)`).
+        n_fields: 이 카드의 자리 수 (`len(TEMP_MODS)` / `len(VOLT_RAILS)`).
     """
     if not values:
-        return '|'.join([SLOT_NC] * slots)
+        return '|'.join([FIELD_NC] * n_fields)
     parts = []
     for v in values:
         if isinstance(v, bool) or v is None or v == '':
             # `bool` 은 `int` 의 하위형이라 `format(True, '.1f')` 가 `1.0` 이
             # 된다 -- 텔레메트리 자리에 올 값이 아니므로 결측으로 본다.
-            parts.append(SLOT_NC)
+            parts.append(FIELD_NC)
         elif isinstance(v, (int, float)):
             parts.append(format(v, fmt))
         else:
             parts.append(str(v))
-    if len(parts) != slots:
+    if len(parts) != n_fields:
         # 자리 수가 규격과 다르면 읽는 쪽은 **다른 모듈 구성**으로 읽는다.
         # 여기서 채우거나 잘라 맞추지 않는다 -- 어느 자리가 밀렸는지 모르는
         # 채로 맞추면 값이 엉뚱한 모듈 것으로 실린다 (5.6.1절 "자리 = 항목").
         log.error('나열 카드 자리 수가 %d 인데 규격은 %d 다 -- 백엔드가 준 '
-                  '목록이 규격 5.6.1절 자리 표와 어긋난다', len(parts), slots)
+                  '목록이 규격 5.6.1절 자리 표와 어긋난다', len(parts), n_fields)
     return '|'.join(parts)
 
 

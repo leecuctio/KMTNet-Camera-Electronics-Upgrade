@@ -23,14 +23,14 @@
 #   - v1.6 개정분 (2026-08-26 반영): ① ORIGNAME 폐지 · EXPID 신설 (위) ②
 #     FILENAME comment -> 'FITS file name as written to storage' ③ Cn_*
 #     구분자 공백 -> 파이프(|) · comment Ctr-n -> Ctrl-n · 결측 자리
-#     sentinel 을 NC 로 (SLOT_NC -- 단일 HK 카드의 '-999.99' 와 다르다) ④
+#     sentinel 을 NC 로 (FIELD_NC -- 단일 HK 카드의 '-999.99' 와 다르다) ④
 #     규격 5.0절에 카드 폭 초과 규범 신설: 80자를 넘으면 **comment 를 뒤에서
 #     자르고 값은 자르지 않는다**.  comment 를 다 잘라도 넘칠 때만 값을
 #     자르고 경고한다 (fits_card).  ⚠️ 나열 카드는 자리가 곧 항목이라 값이
 #     잘리면 뒤 항목이 조용히 사라진다.
 #     ⚠️ 전 자리 결측은 'NC' 한 토큰이 아니라 **자리 수만큼** 'NC|NC|...'
 #     다 (5.6.1절 "자리는 비우지 않는다" -- 자리 수 자체가 모듈 구성
-#     판별에 쓰인다).  all_slots_nc() 가 그것을 만든다.
+#     판별에 쓰인다).  all_fields_nc() 가 그것을 만든다.
 #   - v1.5 개정분: ① HK 4장 폐지 (AIR_IN/AIR_OUT/GLYC_IN/GLYC_OUT) ② CHMAP_*
 #     토큰 3자 -> 4자 <chip><A|D><nn> (01-08=A · 09-16=D) ③ 견본 comment 오타
 #     2건 정정 (Telesope->Telescope · Acutator->Actuator) ④ 사이트 코드 D-017
@@ -611,7 +611,7 @@ TEMP_NC = '-999.99'     # HK 온도·습도 문자열 카드의 측정불가 단
 ## 폭(80)을 넘긴다.  그러면 comment 를 다 지워도 값이 잘리고, 나열 카드에서
 ## 값이 잘리면 **뒤 항목이 조용히 사라진다**.  'NC' 면 29자로 들어간다.
 ## 전 자리 결측은 드물지 않다 -- STATUS 무응답 · 미장착 모듈.
-SLOT_NC = 'NC'
+FIELD_NC = 'NC'
 DEWPRES_NC = '9.99e-9'  # DEWPRES 전용
 
 ## Cn_VOLT/Cn_CURR 의 자리 순서 -- Archon STATUS 의 전원 레일 (매뉴얼 p.47)
@@ -864,16 +864,16 @@ def status_number(status, key, fmt):
     """
     raw = status.get(key)
     if raw is None:
-        return SLOT_NC
+        return FIELD_NC
     try:
         return fmt % float(raw)
     except (TypeError, ValueError):
         print("> WARNING: STATUS %s=%r is not numeric -- writing %s"
-              % (key, raw, SLOT_NC))
-        return SLOT_NC
+              % (key, raw, FIELD_NC))
+        return FIELD_NC
 
 
-def all_slots_nc(n):
+def all_fields_nc(n):
     """전 자리 결측 -- `'NC|NC|…'` n자리 (규격 5.6.1절 "자리는 비우지 않는다").
 
     ⚠️ `'NC'` **한 토큰으로 내면 안 된다.**  같은 절이 자리 수 자체를 모듈
@@ -881,7 +881,7 @@ def all_slots_nc(n):
     컨트롤러" 로 보인다.  규격이 전 자리 결측(STATUS 무응답 · 미장착 모듈)을
     "드물지 않다" 고 못박고 그 모습을 열 자리 `NC` 로 보인 것이 이 때문이다.
     """
-    return '|'.join([SLOT_NC] * n)
+    return '|'.join([FIELD_NC] * n)
 
 
 def ctrl_telemetry_cards(status, ctrl_index):
@@ -903,13 +903,13 @@ def ctrl_telemetry_cards(status, ctrl_index):
     ## 실험실은 컨트롤러 한 대만 돌린다 -- 나머지 한 벌은 **미장착**이고,
     ## 규격 5.6.1절이 그것을 "전 자리 결측" 으로 다룬다.
     other = 2 if ctrl_index == 1 else 1
-    out['C%d_TEMP' % other] = all_slots_nc(len(TEMP_MODS))
-    out['C%d_VOLT' % other] = all_slots_nc(len(VOLT_RAILS))
-    out['C%d_CURR' % other] = all_slots_nc(len(VOLT_RAILS))
+    out['C%d_TEMP' % other] = all_fields_nc(len(TEMP_MODS))
+    out['C%d_VOLT' % other] = all_fields_nc(len(VOLT_RAILS))
+    out['C%d_CURR' % other] = all_fields_nc(len(VOLT_RAILS))
     if not status:
-        out['C%d_TEMP' % ctrl_index] = all_slots_nc(len(TEMP_MODS))
-        out['C%d_VOLT' % ctrl_index] = all_slots_nc(len(VOLT_RAILS))
-        out['C%d_CURR' % ctrl_index] = all_slots_nc(len(VOLT_RAILS))
+        out['C%d_TEMP' % ctrl_index] = all_fields_nc(len(TEMP_MODS))
+        out['C%d_VOLT' % ctrl_index] = all_fields_nc(len(VOLT_RAILS))
+        out['C%d_CURR' % ctrl_index] = all_fields_nc(len(VOLT_RAILS))
         return out
     ## 구분자는 **파이프**다 (규격 5.6.1절, 운영자 확정 2026-08-26).  공백
     ## 하나였는데 음수가 섞이면 경계가 눈으로 안 갈렸다.  ⚠️ 슬래시를 쓰지

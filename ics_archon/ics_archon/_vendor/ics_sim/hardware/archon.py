@@ -157,7 +157,7 @@ class ArchonBackend:
         #         목록에 없는 모듈(6·7·12)은 자리를 차지하지 않는다.
         #       - volt/curr: 전원 레일 P2V5/P5V/P6V/N6V/P17V/N17V/P35V 의
         #         `_V`/`_I` 쌍, 자리 순서는 rawhdr.VOLT_RAILS (7자리).
-        #       읽지 못한 자리는 건너뛰지 말고 rawhdr.SLOT_NC 로 채운다 --
+        #       읽지 못한 자리는 건너뛰지 말고 rawhdr.FIELD_NC 로 채운다 --
         #       건너뛰면 뒤 항목이 앞으로 당겨져 소비자가 구분할 수 없다.
         #       **양쪽 파일에 두 대분을 같은 값으로** (raw spec 5.9절).
         log.warning('controller_telemetry: %s', _NOT_YET)
