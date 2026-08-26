@@ -2,6 +2,8 @@
 
 **v1.14** · 개정 2026-08-23 · **판정 준거를 본문에 편입(0장 신설)** — 폐기 문서 의존 제거
 > **제자리 보강 (2026-08-25)** — 7장 `Cn_*` 행의 지시 "이 순서를 raw FITS spec 에 명세로 수록"이 이행됐다. 정본은 **raw spec 5.6.1절**(v1.5)이고, 이 행은 이제 그리로 가리킨다. 판정 내용에는 변화가 없다.
+>
+> **제자리 보강 (2026-08-26) — raw spec v1.6 반영.** ⑬ **`ORIGNAME` 폐지 · `EXPID` 신설** — 값이 `<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **컨트롤러 태그가 없어 pair 양쪽에서 같다.** 5.9절 "반드시 상이" 가 **7장 → 6장**이 되고, 짝을 잇는 **단일 키**가 카드 추가 없이 생긴다(폐지된 `PAIRFILE` 의 역할). 충돌 판별은 `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값과 비교하는 것으로 바뀐다. ⚠️ **converter 에서 `ORIGNAME` 을 읽던 자리는 `EXPID` 로 옮겨야 한다** (C-항목). ⑭ **`FILENAME` comment** `'Filename assigned by ICS'` → `'FITS file name as written to storage'` — 종전 문구가 `ORIGNAME` 과 똑같이 "ICS 가 배정" 계열이라 둘의 차이가 드러나지 않았다. ⑮ 견본 노출 번호 `012345`/`012340` → `123456`/`123450` 이고 **견본 파일 이름도 함께 옮겼다**.
 
 > **v1.14 에서 바뀐 것 — 판정 근거가 문서 안으로 들어왔다.**
 >
@@ -275,7 +277,7 @@ amp section(§7) · `AMPINFO` 컬럼군(§8) · 표 역할(§9)이다. 그래서
 | `IMAGETYP` | O | O | `IMAGETYP` `+amp` | `BIAS`* / `DARK` / `OBJECT` / `FLAT` / `SKY` / `DOMEFLAT` | ICS code* / user selection |
 | `OBSTYPE` | O | O | `OBSTYPE` `+amp` | `BIAS`* / `DARK` / `OBJECT` / `FLAT` / `SKY` / `DOMEFLAT` / user input | `IMAGETYP`* / user input |
 | `INSTRUME` | O | O | `INSTRUME` | `'KMTK/KMTA/KMTC/KMTS 18k CCD'` (넷째 코드 **D-017** 개정) | ICS INI |
-| `UNIQNAME` | O | **X** | `UNIQNAME` | replaced with `ORIGNAME` card | ICS code |
+| `UNIQNAME` | O | **X** | `UNIQNAME` | replaced with `EXPID` card (v1.6 — 구 `ORIGNAME`) | ICS code |
 
 **신규는 `FIELDID` 하나뿐이다.** 없으면 `OBJECT` 값이 그대로 들어간다 — 레거시가 필드명을 `OBJECT` 에 넣던 관행을 코드가 흡수한 형태다.
 
@@ -555,12 +557,12 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `CHMAP_LT` `CHMAP_LB`<br>`CHMAP_RT` `CHMAP_RB` | **O** | **CCD 출력 채널 맵 4장** — 사분면(좌/우 절반 × TOP/BOT 행)별<br>8토큰, raw X 오름차순. **토큰은 4자 `<chip><A\|D><nn>`**<br>(01–08=`A` · 09–16=`D`, raw spec v1.5 개정 — 구 3자 `M16` 대체).<br>예: `'MD16,MD15,…,MD09'` | `AMOD<nn>`/`ACHN<nn>` 색인형 65장을 대체.<br>converter C-11 이 이 카드에서 `MODULE`/`CHANNEL` 을<br>채우도록 개정 대상. 값 = **CCD 출력단**(Archon module/channel 은 다음 단, OI-9) |
 | `CTRLERR` | **X** | `TELEMETRY.ERRORFLAG` | 별도 모니터링 하므로 미적용 |
 | `CTRLSTAT` | **X** | `TELEMETRY.STATUS` | `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` 와 중복 |
-| `CTRLTAG` | **X** | **이 파일이 pair의 어느 쪽인가** (`MK`/`NT`) | 아카이브 근거 — `FILENAME`(+`ORIGNAME`)/`CTRLTAG` (D-012 문구 개정).<br>**v1.9 미도입 확정 — `DETID` 와 값 중복.** pair 식별은<br>`FILENAME` 의 `.MK`/`.NT` 꼬리로 충분 |
+| `CTRLTAG` | **X** | **이 파일이 pair의 어느 쪽인가** (`MK`/`NT`) | 아카이브 근거 — `FILENAME`(+`EXPID`)/`CTRLTAG` (D-012 문구 개정).<br>**v1.9 미도입 확정 — `DETID` 와 값 중복.** pair 식별은<br>`FILENAME` 의 `.MK`/`.NT` 꼬리로 충분 |
 | `DATASUM` | **X** | FITS 표준 datasum | 미사용 |
 | `DMPTEMP` | **O** | DMP 온도 [degC] — HK 재구성 신설 (v1.8) | `ICG RTD measurement` |
 | `EXECODE` | **X** | ICS relay 필드 |  |
 | `FPAID` | **O** | **Focal Plane Assembly ID** (예: `'FPA#1'`) | 검출기 조립 정체는 FPA 단위 — FPA↔CCD 시리얼 대응표는 규격 부록 몫 |
-| `FRAMENO` | **X** | controller frame counter | 진단용, MEF 목적지 없음 — `FILENAME`/`ORIGNAME` 과 중복이므로 미적용 |
+| `FRAMENO` | **X** | controller frame counter | 진단용, MEF 목적지 없음 — `FILENAME`/`EXPID` 와 중복이므로 미적용 |
 | `HEBOX` | **O** | HE box 내부 온도 [degC] — HK 재구성 신설 (v1.8) | `Tapaculo sensor` |
 | `IMAGEX` | **O** | amp 당 image(active) 열 수 = `1152` | MEF `AMPDATA` 와 값 동일, 이름 상이 — `Use in MEF` 열이 그 대응이다 |
 | `IMAGEY` | **O** | amp 당 image(active) 행 수 = `4616` | `IMAGEX` 와 같음 — `Use in MEF` 열 참조 |
@@ -568,7 +570,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `MIDOSCT` | **X** | 중앙 overscan 중 TOP half에서 나온 row 수 | 〃 |
 | `NAMPRAW` | O | **이 파일에 담긴 amplifier 수** (chip 2 × amp 16) |  |
 | `NXTILE` | **X** | X 방향 amp tile 수 (chip 2 × strip 8) | **`NAXIS1 / AMPNAX1` 로 파생 — 카드 불요** (v1.7) |
-| `ORIGNAME` | **O** | **카운터가 이 노출에 처음 배정한 이름** — 모든 파일에 항상 기록,<br>`FILENAME ≠ ORIGNAME` 이 충돌 신호 | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절, **D-016 등재**).<br>상세: 통합 문서 v0.5 Part 2 |
+| ~~`ORIGNAME`~~ → **`EXPID`** | **O** | **카운터가 이 노출에 처음 배정한 식별자** `<SITE>.<YYYYMMDD>.<NNNNNN>` — 모든 파일에 항상 기록.<br>**컨트롤러 태그가 없어 pair 양쪽 동일** → 짝을 잇는 단일 키.<br>충돌 신호 = `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절, **D-016 등재**).<br>**v1.6 에서 `ORIGNAME` → `EXPID` 개명·재정의** (운영자 확정 2026-08-26).<br>상세: 통합 문서 v0.5 Part 2 |
 | `OSCNPATT` | **X** | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽).<br>**근거는 converter의 `is_bias_right()`** —<br>`strip_id(amp)=((amp-1)%8)+1`,<br>`is_bias_right(amp)= 1≤amp≤4 or 9≤amp≤12` | converter 가 이 카드를 읽지 않아 **선언과 하드코딩이<br>갈라져도 변환 쪽에서 못 잡는다**(C-5/C-13). 취득 SW 쪽 방어는<br>`test_geometry_vs_converter.py`. **v1.9 미도입 — 헤더가<br>복잡해지므로 세부내용은 raw FITS spec 에 수록**(포장 규범 조항 이관 전제) |
 | `OVRSCNX` | **O** | amp 당 X overscan 열 수 = `48` (side varies) | 폐지된 `OVERSCNX`(레거시 32)와 **이름 분리** — 8.1절의 미정 해소 |
 | `OVRSCNY` | **O** | amp 당 Y overscan 행 수 = `84` (frame-center side) | 폐지된 `OVERSCNY` 와 **이름 분리**. 84/84 분배는 OI-4 |
@@ -658,7 +660,7 @@ NAMPRAW =                   32 / Number of amplifiers in the raw FITS file
 | 폐지 카드 | 폐지 근거 | 대신 보는 것 |
 | --- | --- | --- |
 | `UNIQNAME` (레거시 계승분) | "불변 정본 키"라는 뜻이 이탈했다 — 번호 증가 방식이 `FILENAME` 의 유일성을 구조로 보장하므로 잉여가 되고, 뜻이 두 번 흐른 이름에 세 번째 뜻을 얹지 않는다(D-013 원칙). ⚠️ converter 가 이 카드를 읽어 MEF `UNIQNAME` 으로 옮기므로(`v2_1.py:405`) **폐지 후 MEF 가 빈 문자열을 받는다** — C-항목으로 LEECU 이관 (MEF Impacts 문서 1장) | **`FILENAME`**(실명 · 아카이브 유일 키) + **`ORIGNAME`**(카운터가 처음 배정한 이름, 항상 기록) |
-| `NAMECLSH` (규격 v1.2 신설분) | 충돌 신호가 카드 존재에서 **값 비교**로 이동했다 | `FILENAME ≠ ORIGNAME` 이 곧 충돌 신호. `ORIGNAME` 결측은 헤더 결함으로 분류 |
+| `NAMECLSH` (규격 v1.2 신설분) | 충돌 신호가 카드 존재에서 **값 비교**로 이동했다 | `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` 가 곧 충돌 신호 (v1.6 — 구 `ORIGNAME`). `EXPID` 결측은 헤더 결함으로 분류 |
 
 `clash/` 격리 디렉토리와 `.clash<UTC>` 접미사, "PAIRFILE 은 명목 이름으로 열화될 수 있다" 조항도 함께 폐지된다. ics_sim 의 RETIRED(부활 금지) 목록에 `UNIQNAME`·`NAMECLSH` 를 추가해야 한다.
 
@@ -817,7 +819,7 @@ geometry 를 재구성할 재료는 **raw 헤더 안에 다 있다** — 11.1 �
 | `DETID` | 이 파일에 담긴 chip 쌍 (`MK`/`NT`). `CHIPS`·`CHIP1`·`CHIP2` 는 v1.9 미도입(7장) |
 | `MIDOSCB` · `MIDOSCT` | 중앙 overscan 의 BOT/TOP 몫 (v1.9 미도입 — `OVRSCNY` 로 충분) |
 | `RDDIRT` · `RDDIRB` | 독출 방향 (v1.9 미도입 — 세부는 raw FITS spec 수록). 행 순서(구 `ROWORDR`)는 규격 포장 규범 조항으로 이관 |
-| `FILENAME` · `ORIGNAME` | 실명(아카이브 유일 키) · 카운터 최초 배정 이름. **pair 식별은 `FILENAME` 의 `.MK`/`.NT` 꼬리** — `CTRLTAG` · `PAIRFILE` 은 v1.9 미도입(`DETID` 와 값 중복 · 규약으로 예측 가능) |
+| `FILENAME` · `EXPID` | 실명(아카이브 유일 키) · 카운터 최초 배정 노출 식별자(**pair 동일**, v1.6 — 구 `ORIGNAME`). **pair 식별은 `FILENAME` 의 `.MK`/`.NT` 꼬리** — `CTRLTAG` · `PAIRFILE` 은 v1.9 미도입(`DETID` 와 값 중복 · 규약으로 예측 가능) |
 | `RDMODE` · `CAMVER` · `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` | readout mode(값 예 `'NORMAL'`) · 카메라 전자부 버전(`'CEU-v2.1'`) · Archon unit 텔레메트리 나열(v1.9, 7장) |
 
 ### 12.2 raw 헤더에 **없는** 것 — 직접 계산해야 한다
@@ -865,7 +867,7 @@ Y:  TOP -> NAXIS2-IMAGEY+1 .. NAXIS2      (예: 4785:9400)
 - **v1.10 으로 도입 판정이 완결됐고, v1.11~v1.13 으로 확인 요망 11건이 전량 종결됐으며, 충돌·정체성 결정이 D-016 으로 등재됐다** — 3장·6장 계획 열과 7장 도입 여부에 빈칸이 없고, 어긋남 목록도 비었다. **V1 재작성 착수 조건이 완성됐다.**
 - **HK 블록의 형 논쟁은 v1.12 로 닫혔다** — 온도·습도 전 카드 문자열(레거시 계승), sentinel `'-999.99'` 단일값, `DEWPRES` 만 `9.99e-9`. 남은 것은 `ics_sim` 의 실수형→문자열 전환(구현 일감)과 Tapaculo 원값 포맷 확인이다.
 - **이름은 같은데 뜻이 달라진 카드 문제는 v1.7 개칭으로 닫혔다** — `OVERSCNX`→`OVRSCNX` · `PRESCANX`→`PRESCNX` · `OVERSCNY`→`OVRSCNY`(뜻 재정의 겸 개명) · `NAMPS` 폐지(8.1절). **`READMODE`** 의 값 충돌(`FAST` vs `64AMP`)은 v1.9 에서 raw `RDMODE` / MEF `READMODE` 로 **이름을 분리해 종결**했다(7장) — 남은 동명이의는 **`DETID`** 하나다(뜻 재정의 유지 — 3.1 comment 가 새 뜻을 명시).
-- **`UNIQNAME` 은 폐지됐다**(8.2절) — 정체성은 `FILENAME`(유일 키) + `ORIGNAME`(항상 기록, 불일치 = 충돌 신호)이 담당한다. ⚠️ converter 가 `UNIQNAME` 을 읽어 MEF 로 옮기므로 C-항목 처리 전까지 MEF `UNIQNAME` 이 빈 문자열이 된다.
+- **`UNIQNAME` 은 폐지됐다**(8.2절) — 정체성은 `FILENAME`(유일 키) + `EXPID`(항상 기록, 불일치 = 충돌 신호. v1.6 — 구 `ORIGNAME`)가 담당한다. ⚠️ converter 가 `UNIQNAME` 을 읽어 MEF 로 옮기므로 C-항목 처리 전까지 MEF `UNIQNAME` 이 빈 문자열이 된다.
 - **`OBSERVAT` 는 현행 체계 그대로 확정됐다**(`TESTBED`/`CTIO`/`SAAO`/`SSO` — 3.1절) — converter 교차검증과 완전 정합, 개정 불요. `ORIGIN` 은 "파일이 생성된 곳"(raw=관측소·테스트베드는 KASI, 파이프라인 산출물=KASI) — MEF `ORIGIN` 을 복사에서 상수 `'KASI'` 로 바꾸는 경미 C-항목만 남는다.
 - `X` 중 **`XTALKVER` · `REFVER` · `CATVER` 셋은 결함이 아니다** — 규격 5.12 가 calibration DB 소관으로 정리했고 변경점 C-14 가 caldb 주입으로 바꾼다.
 - **7장 63장은 어긋나도 드러나지 않는다** — converter 가 읽지 않으므로 MEF 에 흔적이 남지 않는다. 확정(`O`) 카드도 converter 쪽 대조(C-5/C-11/C-13)가 붙기 전까지는 같은 처지다.
