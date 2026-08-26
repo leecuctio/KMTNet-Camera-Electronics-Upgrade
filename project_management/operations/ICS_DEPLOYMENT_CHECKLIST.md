@@ -78,6 +78,6 @@ ICS 를 띄우면 로그 맨 앞에 정체 블록이 한 번 찍힌다. **이걸
 ## 관련 문서
 
 - 사이트 판정 규약 — `governance/DECISION_LOG.md` **D-015**
-- 관측일 규칙 — **D-014**, `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md` 2.2절 (구 Pair_Spec v1.2 → 개명·개정)
+- 관측일 규칙 — **D-014**, `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md` 2.2절 (구 Pair_Spec v1.2 → 개명·개정)
 - 사이트 코드 prefix — **D-011**
 - 구현·경위 — `ics_sim/DevNote.md` 11.15 · 11.16

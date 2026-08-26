@@ -4,7 +4,7 @@
 
 > **제자리 개정 (2026-08-25) — raw spec v1.5 5장 검토 라운드 반영.** 판 이름은 그대로 두고 내용만 보강했다(참조 안정성 — raw spec·README 가 이 파일명을 가리킨다). 반영: ① **D-017 사이트 코드** — `TESTBED`/`KMTT` 폐지, `KASI`/`KMTK`. §1 의 철회됐던 `OBSERVAT` 항목을 **C-재개** 로 되살렸고 §3 의 "파일명 체계 불변" 기술을 정정했다 ② **D-018 번호 공간** `000000`–`999999`(Part 2 §2·§3) ③ **`CHMAP_*` 토큰 3자→4자** `<chip><A\|D><nn>`(C-11 · §2 — **구 3자 파서는 고쳐야 한다**) ④ **HK 카드 4장 폐지**(`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT`) — §1 HK 항목 ④ · §4 신설 ⑤ **`IMGSEC` `B-BOT`→`D-BOT`**(OI-17 잔여 ①·② 종결, §5) ⑥ **`TELESCOP`/`FPAID` 사이트별 상수표**(D-017 항목 6, §4) ⑦ OI-13 재질의 3초→1초.
 >
-> **제자리 개정 (2026-08-26) — raw spec v1.6 반영.** ⑧ **`ORIGNAME` 폐지 · `EXPID` 신설** (운영자 확정).  값이 `<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **컨트롤러 태그가 없어 pair 양쪽에서 같다** — 5.9절 "반드시 상이" 가 **7장 → 6장**이 됐다.  **converter 파급 둘**: ⓐ `ORIGNAME` 을 읽던 자리는 `EXPID` 로 옮긴다 ⓑ 충돌 판별이 "두 값 직접 비교" 에서 **`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 뒤 비교**로 한 단계 는다.  **얻는 것**: `EXPID` 가 pair 양쪽에 같은 값이라 **짝 탐색을 파일명 파싱 없이 이 카드 하나로** 할 수 있다(폐지된 `PAIRFILE` 이 하려던 일).  ⑨ `FILENAME` comment 개정.
+> **제자리 개정 (2026-08-26) — raw spec v1.6 반영.** ⑧ **`ORIGNAME` 폐지 · `EXPID` 신설** (운영자 확정).  값이 `<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **컨트롤러 태그가 없어 pair 양쪽에서 같다** — 5.9절 "반드시 상이" 가 **7장 → 6장**이 됐다.  **converter 파급 둘**: ⓐ `ORIGNAME` 을 읽던 자리는 `EXPID` 로 옮긴다 ⓑ 충돌 판별이 "두 값 직접 비교" 에서 **`FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 뒤 비교**로 한 단계 는다.  **얻는 것**: `EXPID` 가 pair 양쪽에 같은 값이라 **짝 탐색을 파일명 파싱 없이 이 카드 하나로** 할 수 있다(폐지된 `PAIRFILE` 이 하려던 일).  ⑨ `FILENAME` comment 개정.
 >
 > **v0.6 에서 바뀐 것 — raw spec 발행에 따른 정합 (2026-08-22).** ① 재작성판 **`KMT_CEU_Raw_FITS_Specification`(raw spec)** 이 발행되어 구 규격 참조를 전부 현행판으로 교체했다 — 이후 운영자 1~4장 검토 반영판 **v1.4** 로 갱신(X overscan `RRRRLLLL` 확정 → §3·§5 의 4:4 vs 5:3 항목 종결). ② **Part 2 를 파급 요약으로 축약** — 번호·충돌·정체성의 정본이 raw spec 2.3절과 DECISION_LOG **D-016** 으로 옮겨졌으므로, 본문(§1~§5·§8)을 걷어내고 MEF/구현 파급(구 §6·§7)만 남겼다(내용 이중화 방지). 전신 v0.5 는 `archive/`.
 
@@ -31,7 +31,7 @@
 | **C-신설: MEF `UNIQNAME` 공급원** | raw `UNIQNAME` 폐지 후 `v2_1.py:405`의 `v("UNIQNAME","")`가 **항상 빈 문자열**을 반환한다(오류 없음) | 대안 (a) raw `FILENAME` 카드에서 채움 (b) 디스크 파일명(`mk_path`)에서 파생 — 이미 AMPINFO `RAWFILE`이 같은 원천을 씀 (c) MEF `UNIQNAME` 자체를 폐지 — MEF `FILENAME` · `RAWFILE`로 충분. **raw 쪽 권고: (c) 검토, 최소 (b)** |
 | **C-재개: `OBSERVAT`·`<SITE>` 사이트 코드 (D-017, 2026-08-25)** | v0.2 에 등재됐다가 2026-08-21 에 **철회·종결**됐던 항목이 **되살아났다.** 운영자가 `TESTBED`/`KMTT` 를 폐지하고 **`KASI`/`KMTK`** 로 확정했다 — `OBSERVAT` ∈ {`CTIO`,`SSO`,`SAAO`,`KASI`}, 파일명 접두어 ∈ {`KMTC`,`KMTA`,`KMTS`,`KMTK`}. `ics_sim` 반영 완료(`rawpair.OBSERVAT`·`ORIGIN_OF`·`KASI_SITE`·보정표·`config._SITE_TELID`·`siteid.BENCH_SITE`). | ⚠️ **converter 파일명 정규식 `^(KMTC\|KMTS\|KMTA\|KMTT)\.` 의 넷째 대안을 `KMTK` 로 바꿔야 한다** — 안 바꾸면 KASI 자료가 짝 탐색에 걸리지 않는다. L0 MEF prefix `kmtt`→`kmtk`. **ICD v4.1 §2.1 본문도 아직 `KMTT`** 다 |
 | **C-신설(경미): MEF `ORIGIN` 을 상수로** | `ORIGIN` 개념이 **"이 파일이 생성된 곳"** 으로 확정됐다: 관측소 raw = 관측소 이름 · 테스트베드 raw = `KASI` · **KASI 파이프라인 산출물 = `KASI`**. 현행 converter 는 raw `ORIGIN` 을 MEF 로 복사한다(`v2_1.py:341`, `v("ORIGIN","KASI")`) — MEF 는 파이프라인 산출물이므로 개념과 어긋난다 | MEF PRIMARY 의 `ORIGIN` 을 복사 대신 **상수 `'KASI'`** 로 기록. 한 줄 수정, 긴급도 낮음(관측소 raw 를 KASI 서버에서 변환하는 현행 흐름에서만 차이 발생) |
-| C-신설(선택): `EXPID` pass-through | 충돌 신호(`FILENAME` 꼬리 뗀 값 ≠ `EXPID`)는 raw에만 있다. MEF 층 충돌 필터가 필요할 때만 추가. **v1.6 개정 — 구 `ORIGNAME`** | raw 헤더 층 필터가 기본이므로 필수 아님 |
+| C-신설(선택): `EXPID` pass-through | 충돌 신호(`FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID`)는 raw에만 있다. MEF 층 충돌 필터가 필요할 때만 추가. **v1.6 개정 — 구 `ORIGNAME`** | raw 헤더 층 필터가 기본이므로 필수 아님 |
 | **C-11 개정** | ⚠️ **토큰 폭이 3자→4자로 바뀌었다 (2026-08-25, raw spec v1.5)** — `<chip><A\|D><nn>`(01–08=`A`·09–16=`D`). 구 3자(`M16`)를 파싱하는 코드는 고쳐야 한다. amp `MODULE`/`CHANNEL` 공급원: 구 규격의 `AMOD<nn>`/`ACHN<nn>` 색인형 65장 → **`CHMAP_LT`/`CHMAP_LB`/`CHMAP_RT`/`CHMAP_RB` 4장**으로 재설계됐다. 현행 추정식(`MODULE=1+((amp-1)//8)`, `CHANNEL=1+((amp-1)%8)`, 'placeholder' 주석)은 실배선(CCD 출력 채널이 chip당 1–16, TOP/BOT 대역이 chip마다 반대)과 다르다 | `XTALKGROUP` 파생도 이 값 기준으로 재정의. `AMPMAP` 선언 카드는 폐지 방향 |
 | C-5 · C-13 개정 | "raw geometry 선언 카드 대조" → **포장 규범 조항 + 표본 검증** 체계로 재조정 — `OSCNPATT` 는 raw **미도입 확정**(v1.9), `ROWORDR` 와 함께 규격 조항으로 이관. 대조표에 2장의 이름 대응을 명시 | |
 | C-12 | amp `READDIR` 공급원 후보였던 `RDDIRT`/`RDDIRB` 는 raw **미도입 확정**(v1.9) — 대조 근거를 카드가 아니라 **규격 조항 + 표본 검증**으로 갱신. OI-3(실기 확인) 유지 | |
@@ -119,12 +119,12 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 
 # Part 2 — raw 파일 번호 · 정체성 · 충돌 처리 (파급 요약)
 
-> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.6.md`](KMT_CEU_Raw_FITS_Specification_v1.6.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 **000000–999999**, 선검사, 상한 **1000000회** — **D-018**, 2026-08-25 로 구 `099999`·100000회를 대체) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
+> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.7.md`](KMT_CEU_Raw_FITS_Specification_v1.7.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 **000000–999999**, 선검사, 상한 **1000000회** — **D-018**, 2026-08-25 로 구 `099999`·100000회를 대체) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
 
 ## 1. 하류 도구 요구사항
 
-- 충돌 필터는 **raw 헤더 층**(아카이브 색인 · DTS · QL)에서 **`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 ≠ `EXPID`** 로 돈다 (v1.6 — 구 `FILENAME ≠ ORIGNAME`). 재저장 유령 중복은 fail-open — 이 필터가 거른다는 전제가 요구사항이다.
-- 아카이브 근거는 **`FILENAME`(+`EXPID`)**. pair 쪽 식별은 `FILENAME` 꼬리 `.MK`↔`.NT` 치환 — **또는 `EXPID` 가 양쪽 같으므로 그 값으로 묶어도 된다** (v1.6).
+- 충돌 필터는 **raw 헤더 층**(아카이브 색인 · DTS · QL)에서 **`FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 ≠ `EXPID`** 로 돈다 (v1.6 — 구 `FILENAME ≠ ORIGNAME`). 재저장 유령 중복은 fail-open — 이 필터가 거른다는 전제가 요구사항이다.
+- 아카이브 근거는 **`FILENAME`(+`EXPID`)**. pair 쪽 식별은 `FILENAME` 의 `DETID` 필드 `.MK`↔`.NT` 치환 — **또는 `EXPID` 가 양쪽 같으므로 그 값으로 묶어도 된다** (v1.6).
 - MEF 층 필터가 필요해지면 converter 변경점에 `EXPID` pass-through 를 추가한다 (Part 1 §1).
 
 ## 2. MEF / converter 연동
@@ -138,7 +138,7 @@ converter(v2.2.0)는 raw `UNIQNAME` 을 읽어 MEF `UNIQNAME` 으로 옮긴다(`
 | `rawpair.py` | 선검사 루프(되감음 · 상한 100000회 → **D-018 로 1000000회**) 신설, clash 격리 로직 제거, `UNIQNAME` 제거, `ORIGNAME` 항상 기록 (**v1.6 에서 `EXPID` 로 대체 — 반영은 `ics-archon-v1.0-build` 몫**) |
 | `state.py` | 확정 N 으로 카운터 동기화, **000000–999999 순환** (D-018, 2026-08-25 — 구 `099999`) |
 | `sequencer._store()` | 확정된 이름만 수령 (이름 결정은 rawpair 몫) |
-| `tests/test_raw_header.py` | `UNIQNAME` 필수 목록 제거·RETIRED 추가, `NAMECLSH` 시험 교체, 평시 `FILENAME`==`ORIGNAME` 불변식(**v1.6: 꼬리 뗀 값 == `EXPID`**), 충돌·되감음·상한 시험 신설 |
+| `tests/test_raw_header.py` | `UNIQNAME` 필수 목록 제거·RETIRED 추가, `NAMECLSH` 시험 교체, 평시 `FILENAME`==`ORIGNAME` 불변식(**v1.6: `DETID` 필드 뗀 값 == `EXPID`**), 충돌·되감음·상한 시험 신설 |
 
 ---
 
@@ -150,7 +150,7 @@ converter(v2.2.0)는 raw `UNIQNAME` 을 읽어 MEF `UNIQNAME` 으로 옮긴다(`
 | 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |
-| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.6.md`](KMT_CEU_Raw_FITS_Specification_v1.6.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
+| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.7.md`](KMT_CEU_Raw_FITS_Specification_v1.7.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
 | 전신 문서 | `archive/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md` · `archive/KMT_CEU_Raw_Numbering_and_Identity_v0.2.md` |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |
 | 검토 진행 상태 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) |
