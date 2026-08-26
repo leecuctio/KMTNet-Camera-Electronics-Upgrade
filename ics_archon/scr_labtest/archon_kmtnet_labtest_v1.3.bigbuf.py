@@ -112,6 +112,10 @@ OBSERVER_NAME = 'SMC'           # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
+FRAME_WAIT_MAX = 300        # 노출시간 위에 더 기다릴 상한 [s].  넘으면
+                            # 예외 -> finally 의 POWEROFF 로 빠진다
+FRAME_DUMP_EVERY = 8        # 몇 회전마다 FRAME 상태를 찍나 (0 이면 끔) (0 이면 끔)
+
 SCRIPT_VERSION = '1.3.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
 SCRIPT_BUILD = '2026-08-26T18:05Z'  # 소스를 고치면 같이 올린다
 
@@ -1109,7 +1113,7 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
             frame, buf, framew, frameh, samplemode, baseaddr = newest()   ## for using bigbuffer
             if frame != lastframe:
                 break
-            time.sleep(0.4);  print(end=progbar);
+            time.sleep(0.4);  print(end=progbar, flush=True);
         print(progend)
 
     # Get current frame number & date
@@ -1142,12 +1146,41 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     else:
         print('>> CCD Flush / Exposure / Readout progress: \n   ', end='')
         sleepint = 0.65
+    ## 프레임 완료 대기 -- 시한과 상태 덤프를 둔다 (2026-08-27 신설).
+    ##
+    ## v1.2 까지는 시한이 없어 컨트롤러가 프레임을 못 끝내면 **CCD 전원을 켠
+    ## 채 무한정** 돌았다.  사람이 Ctrl+C 를 눌러야만 finally 의 POWEROFF 가
+    ## 나갔다 -- 무인 실행에서는 그것도 없다.
+    ##
+    ## 덤프는 "노출이 안 걸렸나 / 독출이 안 끝나나" 를 가른다:
+    ##   FRAME 이 안 오름          -> 노출 미개시 (LOADPARAMS·타이밍)
+    ##   FRAME 은 오르는데 COMPLETE=0 -> 독출이 버퍼를 못 채움 (기하·tap)
+    spin = 0
+    waited = 0.0
+    deadline = exptime / 1000.0 + FRAME_WAIT_MAX
     while True:
-        #frame, buf, framew, frameh, samplemode = newest()
-        frame, buf, framew, frameh, samplemode, baseaddr = newest()   ## for using bigbuffer
+        frame, buf, framew, frameh, samplemode, baseaddr = newest()
         if frame != lastframe:
             break
-        time.sleep(sleepint);  print(end=progbar);
+        if waited > deadline:
+            raise TimeoutError(
+                'frame did not complete in %.0fs (exptime %.1fs + %ds) -- '
+                'lastframe=%d' % (deadline, exptime / 1000.0,
+                                  FRAME_WAIT_MAX, lastframe))
+        time.sleep(sleepint);  print(end=progbar, flush=True)
+        waited += sleepint
+        spin += 1
+        if FRAME_DUMP_EVERY and spin % FRAME_DUMP_EVERY == 0:
+            fs = {}
+            for pair in archoncmd('FRAME').split():
+                k, _, v = pair.decode().partition('=')
+                fs[k] = v
+            print('\n   [%4.0fs] RBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s'
+                  % (waited, fs.get('RBUF'),
+                     fs.get('BUF1FRAME'), fs.get('BUF2FRAME'),
+                     fs.get('BUF3FRAME'),
+                     fs.get('BUF1COMPLETE'), fs.get('BUF2COMPLETE'),
+                     fs.get('BUF3COMPLETE')), end='\n   ', flush=True)
     print(progend)
     
     # Fetch frame
@@ -1231,7 +1264,7 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     if bWaitFlush: 
         print(">> Waiting for flushing more: ", end='')
         for ii in range(14):
-            time.sleep(0.5); print(end=progbar);
+            time.sleep(0.5); print(end=progbar, flush=True);
         print(progend)
           
     print()
@@ -1600,7 +1633,7 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
     if bWaitFlush or bFullFlush:
         print(" and Waiting for CCD flush..\n  ", end='')
         for i in range(24):
-            time.sleep(0.5); print(end=progbar);
+            time.sleep(0.5); print(end=progbar, flush=True);
         print(end=progend)
     print('\n')
 
@@ -1797,7 +1830,7 @@ _check_identity_setup()
 print('Identity: SITE=%s  DETID=%s  CTRL%d=%s (%s)'
       % (SITE_CODE, UNIT_CTRLTAG, 1 if UNIT_CTRLTAG == 'MK' else 2,
          UNIT_CTRL_ID, UNIT_CTRL_SN))
-print('          OBSERVAT=%s  ORIGIN=%s  TELESCOP=%s'
+print('          OBSERVAT=%s  ORIGIN=%s  TELESCOP=%s  FPAID=%s'
       % SITE_INFO[SITE_CODE])
 print()
 

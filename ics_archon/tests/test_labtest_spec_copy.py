@@ -312,3 +312,61 @@ def test_smallbuf_rawcards_matches_the_template():
     from ics_sim import rawcards
     got = _literal('RAWCARDS', path=SMALLBUF)
     assert tuple(tuple(c) for c in got) == rawcards.CARDS
+
+
+@pytest.mark.repo_only
+@pytest.mark.parametrize('path', [LABTEST, SMALLBUF],
+                         ids=['bigbuf', 'smallbuf'])
+def test_startup_identity_banner_actually_formats(path):
+    """기동 배너의 `%` 서식이 **실제로 맞는지** 돌려서 확인한다.
+
+    ⚠️ 이 시험이 있는 이유 -- 2026-08-27 벤치에서 배너가 `TypeError: not all
+    arguments converted` 로 죽었다.  `SITE_INFO` 가 규격 5.3.1(D-017)로
+    `FPAID` 를 얻어 **4-튜플**이 됐는데 배너 서식은 `%s` 셋에 머물러 있었다.
+
+    다른 시험이 못 잡은 까닭은 `_funcs()` 가 **고른 함수 정의만** 격리
+    실행하기 때문이다 -- 모듈 최상단 기동 블록은 아무도 돌리지 않았다.
+    여기서는 그 두 줄을 상수와 함께 실제로 포매팅해 본다.
+    """
+    ns = {}
+    src = io.open(path, encoding='utf-8-sig').read()
+    want = ('SITE_INFO', 'SITE_CODE', 'UNIT_CTRLTAG',
+            'UNIT_CTRL_ID', 'UNIT_CTRL_SN')
+    for node in ast.parse(src).body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id in want:
+                    ns[t.id] = ast.literal_eval(node.value)
+    missing = [k for k in want if k not in ns]
+    assert not missing, f'배너가 쓰는 상수가 없다: {missing}'
+
+    # 소스에서 배너 서식 문자열 두 개를 그대로 꺼내 쓴다 -- 여기에 베껴
+    # 적으면 소스가 바뀌어도 이 시험만 통과하는 함정이 생긴다.
+    fmts = [n.value for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and ('OBSERVAT=%s' in n.value or 'Identity: SITE=%s' in n.value)]
+    assert len(fmts) == 2, f'배너 서식 문자열을 둘 찾지 못했다 ({len(fmts)})'
+
+    for fmt in fmts:
+        if fmt.startswith('Identity:'):
+            fmt % (ns['SITE_CODE'], ns['UNIT_CTRLTAG'],
+                   1 if ns['UNIT_CTRLTAG'] == 'MK' else 2,
+                   ns['UNIT_CTRL_ID'], ns['UNIT_CTRL_SN'])
+        else:
+            for code, row in ns['SITE_INFO'].items():
+                fmt % row      # 사이트 넷 모두 -- 한 줄만 길이가 달라도 걸린다
+
+
+@pytest.mark.repo_only
+def test_site_info_rows_all_have_the_same_width():
+    """`SITE_INFO` 네 줄의 길이가 같아야 한다 (규격 5.3.1절 표).
+
+    한 줄만 항목이 늘거나 줄면 그 사이트를 고른 실행에서만 배너·헤더가
+    어긋난다 -- 실험실은 `KMTK` 만 쓰므로 관측소 줄의 어긋남은 반입 뒤에야
+    드러난다.
+    """
+    rows = _literal('SITE_INFO')
+    widths = {k: len(v) for k, v in rows.items()}
+    assert len(set(widths.values())) == 1, f'줄 길이가 갈렸다: {widths}'
+    assert set(rows) == {'KMTC', 'KMTS', 'KMTA', 'KMTK'}, (
+        'D-017 사이트 넷이어야 한다: %s' % sorted(rows))
