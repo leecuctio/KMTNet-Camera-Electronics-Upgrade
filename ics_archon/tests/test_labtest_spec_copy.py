@@ -115,6 +115,20 @@ def test_labtest_temp_slots_match_spec_5_6_1():
 
 
 @pytest.mark.repo_only
+def test_labtest_slot_sentinel_matches_spec_5_6_1():
+    """내장 `SLOT_NC` = 나열 카드 결측 sentinel (`'NC'`, 규격 5.6.1절).
+
+    ⚠️ 단일 HK 카드의 `TEMP_NC`(`'-999.99'`)와 **다른 값**이라 헷갈리기 쉽다.
+    7자짜리로 되돌아가면 열 자리를 채웠을 때 79자가 되어 카드 폭을 넘기고,
+    나열 카드에서 값이 잘리면 **뒤 항목이 조용히 사라진다.**
+    """
+    from ics_archon.archon import parse
+
+    assert _literal('SLOT_NC') == parse.SLOT_NC == 'NC'
+    assert _literal('TEMP_NC') == '-999.99', '단일 HK sentinel 은 그대로다'
+
+
+@pytest.mark.repo_only
 def test_labtest_number_space_matches_d018():
     """되감음 경계·상한이 `rawpair.NUM_SPACE` 와 같아야 한다 (D-018).
 

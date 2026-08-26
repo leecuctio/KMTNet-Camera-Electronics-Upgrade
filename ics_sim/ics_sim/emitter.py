@@ -421,7 +421,8 @@ class Emitter:
 
     # 구판의 `name_clash()`(파일명 fail-safe WARNING 발신)는 없앴다 --
     # D-016 이 격리·개명을 폐지하고 **충돌 시 번호 증가 + WARNING 로그**로
-    # 바꿨다 (raw spec 2.3절, D-016).  충돌 사실은 헤더의 `FILENAME ≠ ORIGNAME`
+    # 바꿨다 (raw spec 2.3절, D-016).  충돌 사실은 헤더의 `FILENAME` 꼬리를
+    # 뗀 값 ≠ `EXPID`
     # 값 비교로 남고, 하류 필터가 그것을 근거로 돈다.
 
     # -- out-of-band ------------------------------------------------------

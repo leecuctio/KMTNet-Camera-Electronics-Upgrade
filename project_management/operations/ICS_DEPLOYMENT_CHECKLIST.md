@@ -82,6 +82,7 @@ ICS 를 띄우면 로그 맨 앞에 정체 블록이 한 번 찍힌다. **이걸
 
 - 사이트 판별 — `governance/DECISION_LOG.md` **D-017**(사이트 코드 넷) · ~~**D-015**~~(IP 판정, 폐지 — DevNote 11.27)
 - 노출 번호 공간 — **D-018** (`000000`–`999999`)
-- 관측일 규칙 — **D-014**, `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.5.md` 2.2절 (구 Pair_Spec v1.2 → 개명·개정)
+- 노출 정체성 카드 — **D-019** (`ORIGNAME` 폐지 · `EXPID` 신설, pair 양쪽 동일)
+- 관측일 규칙 — **D-014**, `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.6.md` 2.2절 (구 Pair_Spec v1.2 → 개명·개정)
 - 사이트 코드 prefix — **D-011**
 - 구현·경위 — `ics_sim/DevNote.md` 11.15 · ~~11.16~~ · **11.27**(판별 개정) · **11.28**(raw spec v1.5 반영)

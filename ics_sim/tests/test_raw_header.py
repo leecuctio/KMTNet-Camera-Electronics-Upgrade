@@ -122,8 +122,12 @@ RETIRED = (
     'CREATOR DATE '
     # 레거시 판정 폐지 (D-013)
     'READOUT GAINDL PIXITIME DMAWAIT ICROLE CTCSOURC CTCFILE KBUILD MBUILD '
-    'TBUILD NBUILD GBUILD RTD12 INPUTFMT CTRLNAME CTRLSN CTRLFW EXPID '
-    'EXPNUM CCDTEMP1 CCDTEMP2 TELID TCSLIMIT EXECODE DSTEL'
+    'TBUILD NBUILD GBUILD RTD12 INPUTFMT CTRLNAME CTRLSN CTRLFW '
+    'EXPNUM CCDTEMP1 CCDTEMP2 TELID TCSLIMIT EXECODE DSTEL '
+    # v1.6(D-019) 폐지 -- `EXPID` 가 대체한다.
+    # ⚠️ `EXPID` 는 D-013 에서 폐지됐다가 **v1.6 에서 되살아났으므로** 이
+    # 목록에 있으면 안 된다 (현행 카드다).  `EXPNUM` 은 여전히 미도입이다.
+    'ORIGNAME'
 ).split()
 
 
@@ -241,7 +245,7 @@ def test_exptime_is_integer_by_default_and_float_when_fractional():
     """`EXPTIME` 정수형 기본 · 소수점 아래 값이 있을 때만 실수형 (5.4절)."""
     base = dict(imgtype='OBJECT', objname='x', projid='x',
                 date_obs='2026-08-22T00:00:00.000', filename='f',
-                origname='f')
+                expid='f')
     whole = rawcards.render(rawhdr.build_pool(
         ctrltag='MK', site_code='KMTA', backend_name='sim', ics_build='x',
         ctrl_info={'units': ()}, ctrl_telem=None, sensors=None, cfg_site=None,
@@ -267,7 +271,7 @@ def test_missing_date_obs_omits_the_card():
         ctrl_info={'units': ()}, ctrl_telem=None, sensors=None, cfg_site=None,
         cfg_camera=None, cfg_ctrl=None, rdmode='', telem_cards={},
         date_obs='', exptime=0, ledflash_ms=0, imgtype='BIAS', objname='x',
-        projid='x', observer='x', filename='f', origname='f'))
+        projid='x', observer='x', filename='f', expid='f'))
     assert rawcards.value_of(cards, 'DATE-OBS') is None
     assert not any(k == 'DATE-OBS' for k, v, c in cards)
 
@@ -380,13 +384,13 @@ def test_missing_representative_sensor_is_sentinel_with_a_warning(caplog):
 
 # -- 5.6 Cn_* 컨트롤러 텔레메트리 --------------------------------------------
 
-def test_ctrl_telemetry_is_space_joined_and_identical_in_both_files(tmp_path):
+def test_ctrl_telemetry_is_pipe_joined_and_identical_in_both_files(tmp_path):
     """`Cn_*` -- 공백 구분 나열, 자리=항목, pair 동일 (5.6·5.9절)."""
     heads = _headers(tmp_path)
     for card in ('C1_TEMP', 'C1_VOLT', 'C1_CURR',
                  'C2_TEMP', 'C2_VOLT', 'C2_CURR'):
         assert heads['MK'][card] == heads['NT'][card], card
-    volt = str(heads['MK']['C1_VOLT']).split()
+    volt = str(heads['MK']['C1_VOLT']).strip().split('|')
     assert len(volt) == len(rawhdr.VOLT_RAILS) == 7   # P2V5 … P35V
 
 
@@ -394,7 +398,7 @@ def test_ctrl_telemetry_formats_and_sentinels():
     h = rawhdr.ctrl_telemetry_header([
         {'temp': [40.12, 41.0], 'volt': [2.5119], 'curr': [0.0321]},
     ])
-    assert h['C1_TEMP'] == '40.1 41.0'      # 온도 소수 1자리
+    assert h['C1_TEMP'] == '40.1|41.0'      # 온도 소수 1자리 · 파이프 구분
     assert h['C1_VOLT'] == '2.512'          # 전압/전류 소수 3자리
     assert h['C1_CURR'] == '0.032'
     # 두 번째 컨트롤러 몫이 없으면 문자열 sentinel

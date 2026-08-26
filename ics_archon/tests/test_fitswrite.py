@@ -151,19 +151,47 @@ def test_non_ascii_is_replaced_not_left_to_break_the_file():
     assert '?' in card
 
 
-def test_over_long_string_is_clamped_so_the_card_stays_parsable():
-    """폭 초과를 안 자르면 **닫는 인용부호와 comment 가 사라진다.**
+def test_over_long_value_shortens_the_comment_first_not_the_value():
+    """**폭이 모자라면 comment 를 먼저 줄인다** (raw spec **5.0절**, v1.6).
 
-    값이 잘리는 것은 눈에 보이는 손실이고, 카드가 깨지는 것은 파일 전체를 못
-    읽게 한다.  온도 슬롯을 13개로 늘리면 실제로 그렇게 된다.
+    값이 자료이고 comment 는 설명이기 때문이다.  특히 `Cn_*` 나열 카드는
+    **자리가 곧 항목**이라(5.6.1절) 값이 잘리면 **뒤 항목이 통째로 사라지는데
+    읽는 쪽은 그 사실을 알 방법이 없다.**  comment 가 짧아진 것은 눈에 보이고,
+    자리 뜻의 정본은 어차피 규격 5.6.1절 표다.
+
+    ⚠️ **v1.6 에서 규칙이 뒤집혔다** -- 종전에는 값을 자르고 comment 를 살렸다.
     """
-    long = ' '.join(['-999.99'] * 13)             # 103자
-    # comment 는 견본 그대로 -- 값만 넘치게 한다.
-    card = fitswrite.card_image('C1_TEMP', long, 'Ctr-1 T[C]')
+    # 음수 열 자리 = 59자.  견본 폭(51)은 넘지만 comment 를 줄이면 들어간다.
+    long = '|'.join(['-40.1'] * 10)
+    assert len(long) == 59
+    card = fitswrite.card_image('C1_TEMP', long, 'Ctrl-1 T[C]')
     assert len(card) == 80
     assert card.count("'") == 2                   # 인용부호가 살아 있다
-    assert card.endswith('Ctr-1 T[C]')            # comment 도 살아 있다
-    assert card[11:11 + 51].strip().count('-999.99') == 6   # 51자로 잘렸다
+    assert long in card, '값이 온전해야 한다 -- 잘린 것은 comment 여야 한다'
+    assert not card.endswith('Ctrl-1 T[C]'), 'comment 가 줄어야 한다'
+
+
+def test_value_is_cut_only_when_the_comment_is_already_gone():
+    """comment 를 전부 지워도 넘치면 그때 값을 자르고 **경고한다** (5.0절).
+
+    규격 위반 상태이므로 조용히 지나가면 안 된다.  안 자르면 카드가 80자에서
+    통째로 절단돼 **닫는 인용부호가 사라지고** astropy 가 파싱조차 못 한다.
+
+    `Cn_*` 는 결측 자리를 `NC` 로 두어(5.6.1절) 이 경우가 실제로 오지 않게
+    했다 -- 구 sentinel `-999.99` 로 열 자리를 채우면 79자가 되어 여기 걸린다.
+    """
+    huge = '|'.join(['-999.99'] * 10)             # 79자 -- 구 sentinel 이 그랬다
+    assert len(huge) == 79
+    card = fitswrite.card_image('C1_TEMP', huge, 'Ctrl-1 T[C]')
+    assert len(card) == 80
+    assert card.count("'") == 2, '카드가 깨지면 파일 전체를 못 읽는다'
+
+    # 규격이 정한 `NC` 를 쓰면 잘리지 않는다 -- 그것이 이 sentinel 의 이유다.
+    ok = '|'.join(['NC'] * 10)
+    card2 = fitswrite.card_image('C1_TEMP', ok, 'Ctrl-1 T[C]')
+    # 카드는 80자로 패딩되므로 comment 존재는 rstrip 한 뒤에 본다.
+    assert len(card2) == 80 and ok in card2
+    assert card2.rstrip().endswith('Ctrl-1 T[C]')
 
 
 def test_a_quote_inside_a_string_value_is_doubled_not_left_to_break_the_card():

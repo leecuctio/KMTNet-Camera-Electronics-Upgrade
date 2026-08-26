@@ -12,7 +12,8 @@
 #     KMTK(KASI), 날짜는 UT (KMTK 보정 0), 번호는 기존 DS 체계(6자리) 유지.
 #     ⚠️ v1.5/D-017: 구 KMTT(TESTBED) 폐지 -- KMTK(KASI) 가 그 자리를 잇는다.
 #   - 이름 충돌: 격리·개명 대신 번호 증가 (D-016) — 쓰기 전에 MK·NT 두 경로를
-#     선검사하고, 카운터 최초 배정명은 ORIGNAME 카드로 남긴다.  번호 공간은
+#     선검사하고, 카운터 최초 배정분은 EXPID 카드로 남긴다 (v1.6/D-019 --
+#     구 ORIGNAME).  EXPID 는 컨트롤러 태그가 없어 pair 양쪽이 같다.  번호 공간은
 #     D-018 로 000000-999999 가 되어 이 스크립트의 6자리 되감음과 같아졌다.
 #   - FITS 헤더: 견본 초안 v1.0 pair 의 값 카드 **131장** + COMMENT 8장 + END 1
 #     + 공백 4 = 144 레코드 (정확히 2880B x 4블록).  카드 순서·comment·패딩은
@@ -464,8 +465,8 @@ RAWCARDS = (
     ('LEDFLASH', 'I', 0, 'Time to flash projector LEDs [milliseconds]'),
     ('TIMESYS', 'S', 18, 'ICS Time System'),
     ('DATE-OBS', 'S', 23, 'UTC Date and Time at start of obs'),
-    ('FILENAME', 'S', 23, 'Filename assigned by ICS'),
-    ('ORIGNAME', 'S', 23, 'Original filename assigned by ICS counter'),
+    ('FILENAME', 'S', 23, 'FITS file name as written to storage'),
+    ('EXPID', 'S', 20, 'Exposure identifier assigned by ICS counter'),
     ('COMMENT', '', 0, '  Controller and ICS Information '
                        '_____________________________________'),
     ('DATASRC', 'S', 24, 'Pixel data source type'),
@@ -486,12 +487,12 @@ RAWCARDS = (
     ('CHARCOAL', 'S', 18, 'Charcoal canister temperature [deg C]'),
     ('WALLBRD', 'S', 18, 'Wallboard temperature [deg C]'),
     ('HEBOX', 'S', 18, 'HE box internal temperature [deg C]'),
-    ('C1_TEMP', 'S', 51, 'Ctr-1 T[C]'),
-    ('C1_VOLT', 'S', 51, 'Ctr-1 V[V]'),
-    ('C1_CURR', 'S', 51, 'Ctr-1 I[A]'),
-    ('C2_TEMP', 'S', 51, 'Ctr-2 T[C]'),
-    ('C2_VOLT', 'S', 51, 'Ctr-2 V[V]'),
-    ('C2_CURR', 'S', 51, 'Ctr-2 I[A]'),
+    ('C1_TEMP', 'S', 51, 'Ctrl-1 T[C]'),
+    ('C1_VOLT', 'S', 51, 'Ctrl-1 V[V]'),
+    ('C1_CURR', 'S', 51, 'Ctrl-1 I[A]'),
+    ('C2_TEMP', 'S', 51, 'Ctrl-2 T[C]'),
+    ('C2_VOLT', 'S', 51, 'Ctrl-2 V[V]'),
+    ('C2_CURR', 'S', 51, 'Ctrl-2 I[A]'),
     ('COMMENT', '', 0, '  TCS Information and Status '
                        '_________________________________________'),
     ('TCSLINK', 'S', 18, 'TCS Communications Link Status'),
@@ -589,6 +590,12 @@ CHMAP = {
 
 ## sentinel (raw spec 5.0절)
 TEMP_NC = '-999.99'     # HK 온도·습도 문자열 카드의 측정불가 단일값
+## Cn_* **나열 카드 안**의 결측 자리 (규격 5.6.1절, 운영자 확정 2026-08-26).
+## ⚠️ 위 TEMP_NC 와 다르다 -- 7자짜리가 열 자리를 채우면 79자가 되어 카드
+## 폭(80)을 넘긴다.  그러면 comment 를 다 지워도 값이 잘리고, 나열 카드에서
+## 값이 잘리면 **뒤 항목이 조용히 사라진다**.  'NC' 면 29자로 들어간다.
+## 전 자리 결측은 드물지 않다 -- STATUS 무응답 · 미장착 모듈.
+SLOT_NC = 'NC'
 DEWPRES_NC = '9.99e-9'  # DEWPRES 전용
 
 ## Cn_VOLT/Cn_CURR 의 자리 순서 -- Archon STATUS 의 전원 레일 (매뉴얼 p.47)
@@ -802,13 +809,13 @@ def status_number(status, key, fmt):
     """
     raw = status.get(key)
     if raw is None:
-        return TEMP_NC
+        return SLOT_NC
     try:
         return fmt % float(raw)
     except (TypeError, ValueError):
         print("> WARNING: STATUS %s=%r is not numeric -- writing %s"
-              % (key, raw, TEMP_NC))
-        return TEMP_NC
+              % (key, raw, SLOT_NC))
+        return SLOT_NC
 
 
 def ctrl_telemetry_cards(status, ctrl_index):
@@ -836,11 +843,14 @@ def ctrl_telemetry_cards(status, ctrl_index):
         out['C%d_VOLT' % ctrl_index] = 'NC'
         out['C%d_CURR' % ctrl_index] = 'NC'
         return out
-    out['C%d_TEMP' % ctrl_index] = ' '.join(
+    ## 구분자는 **파이프**다 (규격 5.6.1절, 운영자 확정 2026-08-26).  공백
+    ## 하나였는데 음수가 섞이면 경계가 눈으로 안 갈렸다.  ⚠️ 슬래시를 쓰지
+    ## 말 것 -- FITS comment 구분자와 같은 글자라 순진한 파서가 값을 자른다.
+    out['C%d_TEMP' % ctrl_index] = '|'.join(
         status_number(status, key, '%.1f') for key in TEMP_SLOTS)
-    out['C%d_VOLT' % ctrl_index] = ' '.join(
+    out['C%d_VOLT' % ctrl_index] = '|'.join(
         status_number(status, rail + '_V', '%.3f') for rail in VOLT_RAILS)
-    out['C%d_CURR' % ctrl_index] = ' '.join(
+    out['C%d_CURR' % ctrl_index] = '|'.join(
         status_number(status, rail + '_I', '%.3f') for rail in VOLT_RAILS)
     return out
 
@@ -928,7 +938,10 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         'EXPTIME': exptime,
         'LEDFLASH': ExpTimeMs if ShutOpen else 0,
         'TIMESYS': 'UTC', 'DATE-OBS': DateObs,
-        'FILENAME': FileStem, 'ORIGNAME': OrigStem,
+        # EXPID 는 **컨트롤러 태그를 붙이지 않는다** -- pair 양쪽이 같은
+        # 값을 싣고 그것이 짝을 잇는 키가 된다 (D-019, 규격 5.9절).
+        'FILENAME': FileStem,
+        'EXPID': OrigStem.rsplit('.', 1)[0],
         # 5.5 -- 컨트롤러 정체는 **색인 자리**로 들어간다.  `CTRL1*` 는 "내
         # 컨트롤러" 가 아니라 컨트롤러 1(MK 쪽) 고정이다 (5.9절 "양쪽 파일에
         # 같은 값") -- NT 유닛 값을 CTRL1* 에 넣으면 pair 두 파일이 같은
@@ -1084,7 +1097,8 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     #
     # 파일명: <SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits (D-011).  이름이 겹치면
     # 번호를 올려 저장하고(D-016 선검사), 카운터(여기서는 DS 체계) 최초
-    # 배정명은 ORIGNAME 카드로 남는다 -- 충돌 신호 = FILENAME != ORIGNAME.
+    # 배정분은 EXPID 카드로 남는다 (D-019) -- 충돌 신호 = FILENAME 의 꼬리를
+    # 뗀 값 != EXPID.
     # 구판의 '%s.%s.%06d.fits'%(prefix,...) 이름은 폐지 -- 죽은 prefix 인자를
     # datasetid 로 교체했다.  OBJECT 카드가 쓰던 filenum//100 역산은 iFlat
     # (116 프레임)의 nframe>=100 구간에서 DatasetId+1 이 되어, DS7213 실행이

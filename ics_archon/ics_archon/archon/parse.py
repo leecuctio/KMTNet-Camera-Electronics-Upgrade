@@ -47,9 +47,16 @@ VOLT_RAILS = rawhdr.VOLT_RAILS
 #: 한쪽만 고쳐지는 것을 막는다.
 TEMP_SLOTS: tuple[str, ...] = rawhdr.TEMP_SLOTS
 
-#: 나열 카드의 결측 자리에 넣는 값.  raw spec 5.0절의 HK 온도 sentinel 을
-#: 그대로 쓴다 -- 수치가 아니므로 `rawhdr._join_readings` 가 문자열로 잇는다.
-SLOT_NC = rawhdr.TEMP_NC
+#: 나열 카드의 결측 자리에 넣는 값 -- **`'NC'`** (raw spec **5.6.1절**, 운영자
+#: 확정 2026-08-26).
+#:
+#: ⚠️ 단일 HK 온도 카드(`CCDTEMP` 등)의 `'-999.99'` 와 **다르다.**  7자짜리
+#: sentinel 이 열 자리를 채우면 79자가 되어 카드 폭(80)을 넘긴다 -- comment 를
+#: 다 지워도 안 들어가 값이 잘리고, 나열 카드에서 값이 잘리면 **뒤 항목이
+#: 조용히 사라진다.**  `NC` 면 29자로 들어간다.
+#:
+#: **전 자리가 결측인 경우는 드물지 않다** -- STATUS 무응답 · 미장착 모듈.
+SLOT_NC = 'NC'
 
 
 def keyvals(payload: bytes | str) -> dict[str, str]:

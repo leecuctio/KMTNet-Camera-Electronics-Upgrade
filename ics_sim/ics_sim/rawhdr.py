@@ -319,8 +319,8 @@ def observatory_header(site_code: str, cfg_site: dict | None = None,
 
 def exposure_header(*, imgtype: str, objname: str, projid: str,
                     exptime: float, ledflash_ms: int, date_obs: str,
-                    filename: str, origname: str) -> dict[str, object]:
-    """5.4절 -- 노출 식별 + `FILENAME`/`ORIGNAME` 정체성 (D-016).
+                    filename: str, expid: str) -> dict[str, object]:
+    """5.4절 -- 노출 식별 + `FILENAME`/`EXPID` 정체성 (D-016 · **D-019**).
 
     * `IMAGETYP`/`OBSTYPE` 는 **대문자** 통제 어휘 -- L1 파이프라인이 문자열
       비교로 검사한다.  `OBSTYPE` 는 `IMAGETYP` 와 동일 어휘다 (raw spec 5.4절).
@@ -333,7 +333,9 @@ def exposure_header(*, imgtype: str, objname: str, projid: str,
       들어오면 `None` 으로 만들어 **카드를 내지 않는다** -- "지금"으로 채우면
       converter 의 실패 경로가 발동하지 않는다 (raw spec 5.0절, C-6).
     * `FILENAME` = 실제 저장명(확장자 없음, 아카이브 유일 키) ·
-      `ORIGNAME` = 카운터 최초 배정명.  **충돌 신호 = 두 값의 불일치**다 --
+      `EXPID` = 카운터 최초 배정 노출 식별자 `<SITE>.<YYYYMMDD>.<NNNNNN>`
+      (**컨트롤러 태그 없음 -> pair 양쪽 동일**, D-019).  **충돌 신호 =
+      `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 != `EXPID`** 다 --
       카드 존재가 아니라 (D-016).  구판의 `UNIQNAME`/`NAMECLSH` 는 폐지됐다.
 
     구판이 여기서 만들던 `MJD-OBS`/`UT`/`TSHOPEN`/`TSHSHUT`/`DARKTIME` 은
@@ -354,7 +356,7 @@ def exposure_header(*, imgtype: str, objname: str, projid: str,
         'TIMESYS': 'UTC',
         'DATE-OBS': date_obs or None,
         'FILENAME': filename,
-        'ORIGNAME': origname,
+        'EXPID': expid,
     }
 
 
@@ -627,11 +629,18 @@ TEMP_SLOT_LABELS = ('Backplane', 'Mod1:LVDS', 'Mod2:Driver', 'Mod3:Driver',
 
 
 def _join_readings(values, fmt: str) -> str:
-    """텔레메트리 나열 카드 본문 -- **공백 구분, 자리 = 항목** (raw spec 5.6절).
+    """텔레메트리 나열 카드 본문 -- **`|` 구분, 자리 = 항목** (raw spec 5.6.1절).
 
     수치는 `fmt` 로 표기를 고정하고(견본: 온도 1자리 · 전압/전류 3자리),
     문자열은 그대로 잇는다.  비어 있으면 `'NC'` -- 나열 카드라 온도·습도
     단일값 sentinel(`-999.99`)이 아니라 문자열 공통 sentinel 이다.
+
+    **구분자는 파이프다** (운영자 확정 2026-08-26, v1.6).  공백 하나였는데
+    음수가 섞이면(`16.956 -17.067 35.089`) 경계가 눈으로 안 갈렸다.  폭
+    비용은 없다 -- 구분자는 어느 쪽이든 1자다.
+
+    ⚠️ **슬래시를 쓰지 말 것** -- FITS 의 comment 구분자와 같은 글자라, 인용
+    부호를 먼저 찾지 않는 파서에서 값이 첫 슬래시에서 잘린다 (5.6.1절).
     """
     if not values:
         return 'NC'
@@ -641,7 +650,7 @@ def _join_readings(values, fmt: str) -> str:
             parts.append(format(v, fmt))
         else:
             parts.append(str(v))
-    return ' '.join(parts)
+    return '|'.join(parts)
 
 
 def ctrl_telemetry_header(telem: list[dict] | None) -> dict[str, object]:
@@ -679,7 +688,7 @@ def build_pool(*, ctrltag: str, site_code: str, backend_name: str,
                telem_cards: dict[str, object],
                date_obs: str, exptime: float, ledflash_ms: int,
                imgtype: str, objname: str, projid: str, observer: str,
-               filename: str, origname: str) -> dict[str, object]:
+               filename: str, expid: str) -> dict[str, object]:
     """규격 5장 값 풀 하나로.  카드 조립은 `rawcards.render()` 가 한다.
 
     `telem_cards`(TC 중계, `telemetry.fits_header_dict()`)를 바닥에 깔고 이
@@ -693,7 +702,7 @@ def build_pool(*, ctrltag: str, site_code: str, backend_name: str,
     pool.update(exposure_header(imgtype=imgtype, objname=objname,
                                 projid=projid, exptime=exptime,
                                 ledflash_ms=ledflash_ms, date_obs=date_obs,
-                                filename=filename, origname=origname))
+                                filename=filename, expid=expid))
     pool.update(controller_header(ctrl_info, backend_name=backend_name,
                                   ics_build=ics_build, cfg_ctrl=cfg_ctrl,
                                   rdmode=rdmode))

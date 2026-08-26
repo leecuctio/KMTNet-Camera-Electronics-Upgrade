@@ -83,8 +83,8 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('LEDFLASH', 'I', 0, 'Time to flash projector LEDs [milliseconds]'),
     ('TIMESYS', 'S', 18, 'ICS Time System'),
     ('DATE-OBS', 'S', 23, 'UTC Date and Time at start of obs'),
-    ('FILENAME', 'S', 23, 'Filename assigned by ICS'),
-    ('ORIGNAME', 'S', 23, 'Original filename assigned by ICS counter'),
+    ('FILENAME', 'S', 23, 'FITS file name as written to storage'),
+    ('EXPID', 'S', 20, 'Exposure identifier assigned by ICS counter'),
     ('COMMENT', '', 0, '  Controller and ICS Information '
                        '_____________________________________'),
     ('DATASRC', 'S', 24, 'Pixel data source type'),
@@ -105,12 +105,12 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('CHARCOAL', 'S', 18, 'Charcoal canister temperature [deg C]'),
     ('WALLBRD', 'S', 18, 'Wallboard temperature [deg C]'),
     ('HEBOX', 'S', 18, 'HE box internal temperature [deg C]'),
-    ('C1_TEMP', 'S', 51, 'Ctr-1 T[C]'),
-    ('C1_VOLT', 'S', 51, 'Ctr-1 V[V]'),
-    ('C1_CURR', 'S', 51, 'Ctr-1 I[A]'),
-    ('C2_TEMP', 'S', 51, 'Ctr-2 T[C]'),
-    ('C2_VOLT', 'S', 51, 'Ctr-2 V[V]'),
-    ('C2_CURR', 'S', 51, 'Ctr-2 I[A]'),
+    ('C1_TEMP', 'S', 51, 'Ctrl-1 T[C]'),
+    ('C1_VOLT', 'S', 51, 'Ctrl-1 V[V]'),
+    ('C1_CURR', 'S', 51, 'Ctrl-1 I[A]'),
+    ('C2_TEMP', 'S', 51, 'Ctrl-2 T[C]'),
+    ('C2_VOLT', 'S', 51, 'Ctrl-2 V[V]'),
+    ('C2_CURR', 'S', 51, 'Ctrl-2 I[A]'),
     ('COMMENT', '', 0, '  TCS Information and Status '
                        '_________________________________________'),
     ('TCSLINK', 'S', 18, 'TCS Communications Link Status'),
@@ -184,10 +184,14 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
 STRUCTURAL = frozenset(
     ('SIMPLE', 'BITPIX', 'NAXIS', 'NAXIS1', 'NAXIS2', 'BSCALE', 'BZERO'))
 
-#: pair 에서 **반드시 상이**해야 하는 7장 (raw spec 5.9절).  나머지 값 카드는
+#: pair 에서 **반드시 상이**해야 하는 6장 (raw spec 5.9절).  나머지 값 카드는
 #: 반드시 동일이다.
+#:
+#: ⚠️ **v1.6(D-019)에서 7장 -> 6장이 됐다.**  구 `ORIGNAME` 은 `.MK`/`.NT`
+#: 꼬리를 달아 상이였는데, 이를 대체한 `EXPID` 는 태그가 없어 **양쪽 동일**
+#: 이다 -- 그래서 짝을 잇는 단일 키가 된다.
 PAIR_DIFF = ('DETID', 'CHMAP_LT', 'CHMAP_LB', 'CHMAP_RT', 'CHMAP_RB',
-             'FILENAME', 'ORIGNAME')
+             'FILENAME')
 
 #: keyword -> 블록 제목 (COMMENT 카드의 본문에서 유도).
 SECTION: dict[str, str] = {}

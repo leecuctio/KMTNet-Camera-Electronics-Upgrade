@@ -129,8 +129,37 @@ def _headers(tmp_path) -> dict[str, object]:
     return out
 
 
+def test_expid_format_and_pair_identity():
+    """`EXPID` = `<SITE>.<YYYYMMDD>.<NNNNNN>` — **태그 없음 · pair 동일** (D-019).
+
+    형식이 규약인 이유: 하류가 `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값과 **문자열
+    비교**해 충돌을 판별한다(규격 2.3절).  한 자리라도 어긋나면 그 비교가 늘
+    참이 되어 **충돌이 조용히 안 잡힌다.**
+
+    ⚠️ 값이 `<SITE>` 접두로 시작하는 것이 **형 사고를 막는 구조**이기도 하다 --
+    구 `EXPID`(`'20260811.000001'`)는 숫자로 읽혀 실수 카드가 됐고 6자리
+    zero-padding 이 파괴됐다 (DevNote 11.13.2).  접두가 있으면 그 여지가 없다.
+    """
+    import re
+
+    expid = rawpair.exposure_id('KMTA', '20260821.123450')
+    assert expid == 'KMTA.20260821.123450'
+    assert re.fullmatch(r'KMT[CSAK]\.\d{8}\.\d{6}', expid), expid
+    # 컨트롤러 태그가 붙으면 안 된다 -- 붙는 순간 pair 상이가 되어 5.9절 위반.
+    assert not expid.endswith(('.MK', '.NT'))
+    # 같은 노출이면 두 컨트롤러가 같은 값을 얻는다 (짝을 잇는 단일 키).
+    assert rawpair.exposure_id('KMTA', '20260821.123450') == expid
+    # 숫자로 읽히지 않는다 -- 실수 카드 사고(11.13.2)의 구조적 방어.
+    try:
+        float(expid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('EXPID 가 숫자로 읽힌다 -- zero-padding 이 위험하다')
+
+
 def test_identity_cards_present_and_consistent(tmp_path):
-    """`FILENAME`(유일 키) + `ORIGNAME`(카운터 배정명) -- 모든 파일에 항상
+    """`FILENAME`(유일 키) + `EXPID`(카운터 배정 식별자) -- 모든 파일에 항상
     (raw spec 2.3절 4항).  구판의 `UNIQNAME`/`CTRLTAG`/`CHIPS`/`PAIRFILE`
     계열은 폐지됐다 -- pair 식별은 `FILENAME` 꼬리 `.MK`/`.NT` 로 충분하다."""
     _run(tmp_path)
@@ -140,9 +169,12 @@ def test_identity_cards_present_and_consistent(tmp_path):
     assert set(by_tag) == {'MK', 'NT'}
     for tag, h in by_tag.items():
         assert str(h['FILENAME']).endswith(f'.{tag}')
-        assert str(h['ORIGNAME']).endswith(f'.{tag}')
+        # ⚠️ `EXPID` 에는 컨트롤러 태그가 **없다** (D-019) -- pair 양쪽 동일.
+        assert not str(h['EXPID']).strip().endswith(('.MK', '.NT'))
         # 평시 불변식: 충돌이 없으면 두 값이 같다
-        assert h['FILENAME'] == h['ORIGNAME']
+        # 평시(충돌 없음): `FILENAME` 의 태그를 뗀 값 == `EXPID`
+        assert str(h['FILENAME']).strip().rsplit('.', 1)[0] == \
+            str(h['EXPID']).strip()
     # 짝 이름은 꼬리 치환으로 유도된다 (PAIRFILE 카드는 없다)
     mk_stem = str(by_tag['MK']['FILENAME'])
     assert mk_stem[:-2] + 'NT' == str(by_tag['NT']['FILENAME'])
@@ -156,7 +188,7 @@ def test_identifier_cards_stay_strings(tmp_path):
     """
     _run(tmp_path)
     for h in _headers(tmp_path).values():
-        for key in ('FILENAME', 'ORIGNAME', 'DETID', 'OBSERVAT', 'ORIGIN',
+        for key in ('FILENAME', 'EXPID', 'DETID', 'OBSERVAT', 'ORIGIN',
                     'BUNIT'):
             assert isinstance(h[key], str), f'{key}: {type(h[key])}'
         assert re.fullmatch(r'KMT[CSAK]\.\d{8}\.\d{6}\.(MK|NT)',
@@ -172,17 +204,17 @@ def test_identifier_cards_stay_strings(tmp_path):
 def test_serial_keeps_its_zero_padding(tmp_path, suffix):
     """식별자의 6자리 zero-padding 이 헤더를 왕복해도 살아남아야 한다.
 
-    템플릿이 `FILENAME`/`ORIGNAME` 을 문자열 형으로 못박으므로(rawcards)
+    템플릿이 `FILENAME`/`EXPID` 를 문자열 형으로 못박으므로(rawcards)
     실수 카드가 될 수 없다 -- 그 성질을 왕복으로 확인한다.
     """
     from ics_sim import rawcards
     from ics_sim.fitsout import apply_cards
     stem = rawpair.name_stem('KMTA', suffix, 'MK')
-    cards = rawcards.render({'FILENAME': stem, 'ORIGNAME': stem})
+    cards = rawcards.render({'FILENAME': stem, 'EXPID': stem})
     hdr = fits.Header()
     apply_cards(hdr, [c for c in cards
-                      if c[0] in ('FILENAME', 'ORIGNAME')])
-    for key in ('FILENAME', 'ORIGNAME'):
+                      if c[0] in ('FILENAME', 'EXPID')])
+    for key in ('FILENAME', 'EXPID'):
         assert isinstance(hdr[key], str), f'{key}: {type(hdr[key])}'
         assert f'.{suffix}.' in hdr[key], f'{key}={hdr[key]!r}'
 
@@ -215,7 +247,7 @@ def test_observat_agrees_with_the_filename_site_code(tmp_path):
 def test_collision_bumps_the_number_and_keeps_both_files(tmp_path):
     """이름이 겹치면 **번호를 올려 저장한다** -- 격리·개명이 아니다 (D-016).
 
-    충돌 사실은 `FILENAME ≠ ORIGNAME` 값 비교 하나로 남는다 (카드 존재가
+    충돌 사실은 `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` 비교 하나로 남는다 (카드 존재가
     아니다).  구판의 `clash/` 디렉토리·`NAMECLSH` 카드·WARNING 메시지는
     전부 폐지됐다.
     """
@@ -240,8 +272,9 @@ def test_collision_bumps_the_number_and_keeps_both_files(tmp_path):
             h = hdul[0].header
         stem = os.path.splitext(n)[0]
         assert str(h['FILENAME']).strip() == stem       # 실제 저장명
-        assert str(h['ORIGNAME']).strip() != str(h['FILENAME']).strip(), (
-            '충돌 신호는 FILENAME ≠ ORIGNAME 이다')
+        assert str(h['EXPID']).strip() != \
+            str(h['FILENAME']).strip().rsplit('.', 1)[0], (
+                '충돌 신호는 FILENAME 의 꼬리를 뗀 값 != EXPID 다 (D-019)')
         # 번호만 다르고 형식은 같다 (D-011 불변 -- find_pair() 영향 없음)
         assert re.fullmatch(r'KMT[CSAK]\.\d{8}\.\d{6}\.(MK|NT)', stem)
     # pair 양쪽이 같은 번호로 함께 증가한다

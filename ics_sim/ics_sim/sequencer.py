@@ -422,7 +422,7 @@ class Sequencer:
         # MK·NT 두 경로를 **pair 동시**로 선검사한다.  번호가 오르면 카운터를
         # 확정 번호로 동기화하고 WARNING 로그를 남긴다 (격리·개명 통보는
         # 폐지 -- 구판 `clash/`·`NAMECLSH`·fail-safe 메시지가 이 자리에 있었다).
-        # 카운터가 처음 배정한 이름은 `ORIGNAME` 으로 모든 파일에 남는다.
+        # 카운터가 처음 배정한 것은 `EXPID` 로 모든 파일에 남는다 (D-019).
         orig_suffix = suffix
         date_part, _, num_str = suffix.partition('.')
         # `isdigit()` 로 먼저 걸러 **선검사가 프레임을 죽이지 못하게** 한다.
@@ -852,7 +852,8 @@ class Sequencer:
                 값이다.  이름 결정은 `_frame` 몫이고 여기서는 수령만 한다
                 (통합 문서 Part 2 §3).  다시 계산하면 파이프라인된 다음
                 프레임의 번호를 집어 온다 (12.10 에서 실제로 겪은 경합).
-            orig_suffix: 카운터가 처음 배정한 suffix -- `ORIGNAME` 의 근거.
+            orig_suffix: 카운터가 처음 배정한 suffix -- `EXPID` 의 근거
+                (D-019.  구 `ORIGNAME` 을 대체한다).
                 충돌이 없었으면 `suffix` 와 같다.
             snap: **노출당 한 번 굳힌** pair 공통 사실 -- 백엔드 3계약 결과와
                 노출 메타데이터.  여기서 다시 질의·조회하지 않는 것이 5.9절
@@ -902,10 +903,12 @@ class Sequencer:
                 ledflash_ms=snap['ledflash_ms'],
                 imgtype=snap['imgtype'], objname=snap['objname'],
                 projid=snap['projid'], observer=snap['observer'],
-                # FILENAME = 실제 저장명 · ORIGNAME = 카운터 최초 배정명.
+                # FILENAME = 실제 저장명 · EXPID = 카운터 최초 배정 식별자.
                 # 충돌 신호 = 두 값의 불일치 (D-016).
                 filename=rawpair.name_stem(site, suffix, ctrltag),
-                origname=rawpair.name_stem(site, orig_suffix, ctrltag))
+                # `EXPID` 는 **컨트롤러 태그를 붙이지 않는다** -- pair 양쪽이
+                # 같은 값을 싣고 그것이 짝을 잇는 키가 된다 (D-019, 5.9절).
+                expid=rawpair.exposure_id(site, orig_suffix))
 
             try:
                 rate = await self.backend.write_frame(ctrltag, chips, path,

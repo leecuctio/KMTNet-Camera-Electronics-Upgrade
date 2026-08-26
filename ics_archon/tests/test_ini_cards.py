@@ -315,10 +315,11 @@ def test_d016_collision_check_is_on_even_when_write_fits_is_false(tmp_path):  # 
                    for p in glob.glob(str(tmp_path / 'rawdata' / '*.fits')))
     assert len(after) == 4, (
         '같은 이름을 덮어썼다 -- D-016 선검사가 꺼져 있다: %r' % after)
-    # 덮어쓰지 않았으면 번호가 밀렸고 ORIGNAME 이 그 신호로 남는다
+    # 덮어쓰지 않았으면 번호가 밀렸고 EXPID 가 그 신호로 남는다 (D-019)
     from astropy.io import fits
     bumped = [n for n in after if n not in first]
     with fits.open(str(tmp_path / 'rawdata' / bumped[0])) as hdul:
         h = hdul[0].header
-    assert h['FILENAME'].strip() != h['ORIGNAME'].strip(), (
-        '번호가 밀렸는데 ORIGNAME 이 같다 -- 충돌 신호가 없다')
+    # 충돌 신호 = `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 != `EXPID`
+    assert h['FILENAME'].strip().rsplit('.', 1)[0] != h['EXPID'].strip(), (
+        '번호가 밀렸는데 EXPID 가 같다 -- 충돌 신호가 없다')

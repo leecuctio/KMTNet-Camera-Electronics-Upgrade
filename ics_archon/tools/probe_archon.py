@@ -164,7 +164,9 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     # "이 자리가 정말 그 모듈인가" 를 확인할 수 있는 자리는 여기뿐이다.
     # 순서가 하나만 밀려도 값은 그럴듯하고 아무 경고도 안 뜬다.
     print('\n   자리 표 (규격 5.6.1절) -- 값이 그 모듈의 것인지 대조할 것:')
-    temps = str(cards['C1_TEMP']).split()
+    # 구분자는 파이프다 (규격 5.6.1절, v1.6) -- 공백으로 쪼개면 열 자리가
+    # 통째로 1번 자리에 들어간다.
+    temps = str(cards['C1_TEMP']).strip().split('|')
     for i, label in enumerate(rawhdr.TEMP_SLOT_LABELS):
         got = temps[i] if i < len(temps) else '(없음)'
         print('     %2d  %-14s %s' % (i + 1, label, got))
@@ -348,7 +350,9 @@ def _write_probe_fits(raw, fs, ctrl, acfg, args) -> None:  # noqa: ANN001
         exptime=args.expose / 1000.0, ledflash_ms=0,
         imgtype='DARK' if args.expose else 'BIAS', objname='PROBE',
         projid='ENG', observer='probe',
-        filename=stem, origname=stem)
+        # probe 는 카운터를 쓰지 않으므로 `EXPID` 도 같은 stem 이다
+        # (충돌 판별이 성립하지 않는 진단 산출물이다).
+        filename=stem, expid=stem)
 
     path = os.path.join(args.out, stem + '.fits')
     t0 = time.monotonic()

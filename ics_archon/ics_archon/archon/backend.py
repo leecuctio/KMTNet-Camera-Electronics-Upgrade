@@ -73,14 +73,19 @@ log = logging.getLogger('ics_archon.hw')
 SHUTTER_FORCE_MARGIN = 1.0
 
 def _frame_key(header) -> str:  # noqa: ANN001
-    """헤더의 `ORIGNAME` 에서 `<YYYYMMDD>.<NNNNNN>` 을 뽑는다.
+    """헤더의 `EXPID` 에서 `<YYYYMMDD>.<NNNNNN>` 을 뽑는다.
 
-    `ORIGNAME` = 카운터가 **처음 배정한** 이름이고, 그것이 `initialize()` 가
-    받은 suffix 와 같다 (D-016 번호 밀림은 그 뒤에 결정된다).
+    `EXPID` = 카운터가 **처음 배정한** 식별자 `<SITE>.<YYYYMMDD>.<NNNNNN>` 이고,
+    그것이 `initialize()` 가 받은 suffix 와 같다 (D-016 번호 밀림은 그 뒤에
+    결정된다).
+
+    ⚠️ **v1.6(D-019)에서 구 `ORIGNAME` 을 대체했다.**  값에 컨트롤러 태그가
+    없어졌지만 자리 수(`<SITE>.<날짜>.<번호>`)는 같으므로 뽑는 규칙은 그대로다 --
+    오히려 태그가 없어 pair 양쪽이 같은 키를 준다.
     """
     from ics_sim import rawcards
     try:
-        stem = rawcards.value_of(header, 'ORIGNAME')
+        stem = rawcards.value_of(header, 'EXPID')
     except Exception:                       # noqa: BLE001
         return ''
     parts = str(stem or '').strip().split('.')
@@ -88,7 +93,7 @@ def _frame_key(header) -> str:  # noqa: ANN001
 
 
 def _frame_key_from_path(path: str) -> str:
-    """`ORIGNAME` 이 없을 때의 대체 -- 경로에서 뽑는다 (시험용 헤더 등)."""
+    """`EXPID` 가 없을 때의 대체 -- 경로에서 뽑는다 (시험용 헤더 등)."""
     parts = os.path.basename(path).split('.')
     return '%s.%s' % (parts[1], parts[2]) if len(parts) >= 4 else ''
 
@@ -481,15 +486,15 @@ class ArchonBackend:
         ctrl = self.ctrls[controller]
         # **내 프레임을 표로 집어 온다** (FIFO).  컨트롤러 상태를 다시 읽으면
         # 파이프라인된 다음 프레임의 것을 집는다 (`FrameTicket` docstring).
-        # **`ORIGNAME` 으로 내 표를 집는다** (blocker B).
+        # **`EXPID` 로 내 표를 집는다** (blocker B).
         #
         # ⚠️ `path`(= `FILENAME`)를 쓰면 안 된다.  D-016 이름 충돌로 번호가
         # 밀리면 `path` 는 **밀린 번호**인데 `initialize()` 가 받은 suffix 는
         # 카운터가 처음 배정한 번호다(밀림은 획득 뒤에 결정된다) -- 그러면 표를
         # 못 찾아 **그 프레임이 저장되지 않는다.**  실측으로 걸렸다.
         #
-        # `ORIGNAME` 이 바로 그 최초 배정명이므로(sequencer `orig_suffix`)
-        # `initialize()` 가 받은 값과 일치한다.
+        # `EXPID` 가 바로 그 최초 배정분이므로(sequencer `orig_suffix`)
+        # `initialize()` 가 받은 값과 일치한다 (D-019 -- 구 `ORIGNAME`).
         want = _frame_key(header) or _frame_key_from_path(path)
         ticket = ctrl.take_ticket(want)
         if ticket is None:

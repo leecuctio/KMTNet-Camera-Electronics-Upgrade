@@ -205,9 +205,10 @@ def _rebuild(tag: str) -> list[str]:
                'fsahum': float(sample['FSAHUM'])}
     for card in rawhdr.DEWAR_CARDS:
         sensors[card.lower()] = float(sample[card])
-    ctel = [{'temp': [float(x) for x in sample[f'C{n}_TEMP'].split()],
-             'volt': [float(x) for x in sample[f'C{n}_VOLT'].split()],
-             'curr': [float(x) for x in sample[f'C{n}_CURR'].split()]}
+    # v1.6: 나열 카드 구분자는 파이프다 (규격 5.6.1절).
+    ctel = [{'temp': [float(x) for x in sample[f'C{n}_TEMP'].strip().split('|')],
+             'volt': [float(x) for x in sample[f'C{n}_VOLT'].strip().split('|')],
+             'curr': [float(x) for x in sample[f'C{n}_CURR'].strip().split('|')]}
             for n in (1, 2)]
     cfg_ctrl = {n: {'id': sample[f'CTRL{n}ID'].strip(),
                     'sn': sample[f'CTRL{n}SN'].strip(),
@@ -225,7 +226,7 @@ def _rebuild(tag: str) -> list[str]:
         ledflash_ms=int(sample['LEDFLASH']),
         imgtype=sample['IMAGETYP'].strip(), objname=sample['OBJECT'].strip(),
         projid=sample['PROJID'].strip(), observer=sample['OBSERVER'].strip(),
-        filename=sample['FILENAME'], origname=sample['ORIGNAME'])
+        filename=sample['FILENAME'], expid=sample['EXPID'])
     out = []
     for key, val, com in cards:
         if key == 'COMMENT':
@@ -281,7 +282,7 @@ def test_tcstime_comes_from_the_tcs_wire_not_from_ics():
         cfg_site=None, cfg_camera=None, cfg_ctrl=None, rdmode='',
         telem_cards=h, date_obs='2026-08-22T00:00:00.000', exptime=0,
         ledflash_ms=0, imgtype='BIAS', objname='x', projid='x', observer='x',
-        filename='f', origname='f')
+        filename='f', expid='f')
     assert pool['TIMESYS'] == 'UTC'
     assert pool['TCSTIME'] == 'TAI'
 
@@ -312,7 +313,7 @@ def test_written_file_matches_the_template_order(tmp_path):
         cfg_site=None, cfg_camera=None, cfg_ctrl=None, rdmode='',
         telem_cards=telem, date_obs='2026-08-22T00:00:00.000', exptime=0,
         ledflash_ms=0, imgtype='BIAS', objname='x', projid='x', observer='x',
-        filename='f', origname='f')
+        filename='f', expid='f')
     path = str(tmp_path / 'x.fits')
     assert write_dummy_fits(path, np.zeros((4, 4)), cards) >= 0
     hdr = fits.getheader(path)

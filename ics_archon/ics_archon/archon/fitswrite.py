@@ -80,10 +80,16 @@ def card_image(key: str, value: object, comment: str) -> str:
     comment 없는 수치 카드에도 `' /'` 를 붙인다 -- 견본이 그렇다 (astropy 는
     생략하지만 정본은 견본이다).
 
-    **폭을 넘는 문자열은 잘라내고 경고한다.**  안 자르면 카드가 80자에서 통째로
-    절단되어 **닫는 인용부호와 comment 가 사라지고** astropy·converter 가
-    파싱조차 못 한다 -- 값이 잘리는 것은 눈에 보이는 손실이고, 카드가 깨지는
-    것은 파일 전체를 못 읽게 한다 (labtest v1.1 이 고친 결함).
+    **폭이 모자라면 comment 를 먼저 줄인다** (raw spec **5.0절**, 운영자 확정
+    2026-08-26).  값이 자료이고 comment 는 설명이기 때문이다 -- 특히 `Cn_*`
+    나열 카드는 **자리가 곧 항목**이라(5.6.1절) 값이 잘리면 뒤 항목이 통째로
+    사라지는데 읽는 쪽은 그 사실을 알 방법이 없다.  자리 뜻의 정본은 어차피
+    규격 5.6.1절 표다.
+
+    comment 를 전부 지워도 넘치면 그때 **값을 자르고 경고한다** -- 규격 위반
+    상태이므로 조용히 지나가면 안 된다.  안 자르면 카드가 80자에서 통째로
+    절단되어 **닫는 인용부호가 사라지고** astropy·converter 가 파싱조차 못
+    한다 (labtest v1.1 이 고친 결함).
     """
     if key == 'COMMENT':
         # 'COMMENT'(7자) + 공백 1 + 본문 (본문은 견본 9열부터의 원문)
@@ -112,9 +118,22 @@ def card_image(key: str, value: object, comment: str) -> str:
         room = 80 - (10 + 1 + 1 + (3 + len(comment) if comment else 2))
         room = max(room, width)      # 견본 폭은 항상 들어간다
         if len(text) > room:
-            log.warning('FITS 카드 %s 의 값이 너무 길다 (%d > %d) -- 잘라낸다',
-                        key.strip(), len(text), room)
-            text = text[:room]
+            # **comment 를 먼저 줄인다** (5.0절).  comment 를 다 지웠을 때의
+            # 최대 폭은 `' /'` 만 남기고 계산한다.
+            room_bare = max(80 - (10 + 1 + 1 + 2), width)
+            if len(text) <= room_bare:
+                keep = 80 - (10 + 1 + 1 + 3) - len(text)
+                comment = comment[:max(keep, 0)].rstrip()
+                log.warning('FITS 카드 %s 의 값이 길어 comment 를 줄였다 '
+                            '(값 %d자) -- 값은 그대로다 (raw spec 5.0절)',
+                            key.strip(), len(text))
+            else:
+                log.warning('FITS 카드 %s 의 값이 너무 길다 (%d > %d) -- '
+                            'comment 를 다 지워도 안 들어가 값을 잘라낸다. '
+                            '자리 나열 카드면 뒤 항목이 사라진다 (5.6.1절)',
+                            key.strip(), len(text), room_bare)
+                comment = ''
+                text = text[:room_bare]
             # **겹친 따옴표 한가운데서 자르면 안 된다.**  홀수 개가 남으면
             # 그것이 값의 끝으로 읽혀 카드가 깨진다 -- 길이를 맞추려다 위에서
             # 막은 결함을 그대로 만드는 셈이다.

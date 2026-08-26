@@ -5,7 +5,7 @@
 근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.4.md`] 2장과
 [`mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`] 2.1·3절이다.
 결정 기록은 D-010(통보 분리) · D-011(사이트 코드) · D-012(계약 개정) ·
-**D-016(충돌 번호 증가 · `FILENAME`/`ORIGNAME` 정체성)**.
+**D-016(충돌 번호 증가) · D-019(`FILENAME`/`EXPID` 정체성)**.
 
 **한 노출이 만드는 것**
 
@@ -21,7 +21,7 @@
 
 **`LASTFILE` 은 실재 경로가 아니다.** 논리 이름은 CCD 단위 식별자일 뿐이고
 디스크에는 컨트롤러 파일 2개만 있다.  하류 도구의 근거는 raw 헤더의
-**`FILENAME`(+`ORIGNAME`)** 이다 (D-016) -- 짝 이름은 `FILENAME` 꼬리의
+**`FILENAME`(+`EXPID`)** 이다 (D-016 · D-019) -- 짝 이름은 `FILENAME` 꼬리의
 `.MK`↔`.NT` 치환으로 항상 유도된다 (`PAIRFILE` 카드는 폐지).
 """
 
@@ -203,11 +203,26 @@ def controller_of(ccd: str) -> str:
 def name_stem(site_code: str, suffix: str, ctrltag: str) -> str:
     """`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>` -- **확장자 없는 이름** (2.3절).
 
-    헤더의 `FILENAME`/`ORIGNAME` 에 싣는 형태다.  **확장자를 붙이지 않는 것이
+    헤더의 `FILENAME` 에 싣는 형태다 (구 `ORIGNAME` 은 D-019 로 폐지 --
+    태그 없는 `exposure_id()` 가 대신한다).  **확장자를 붙이지 않는 것이
     레거시 관례**다 -- 실측 헤더가 `FILENAME = 'KMTNk.20170209.044131'` 로
     `.fits` 없이 기록했다(`__reference/Legacy raw fits header samples/`).
     """
     return f'{site_code.upper()}.{suffix}.{ctrltag.upper()}'
+
+
+def exposure_id(site_code: str, suffix: str) -> str:
+    """`<SITE>.<YYYYMMDD>.<NNNNNN>` -- `EXPID` 카드 값 (raw spec 2.3절, **D-019**).
+
+    `name_stem()` 과 달리 **컨트롤러 태그를 붙이지 않는다.**  그래서 pair 양쪽
+    파일이 같은 값을 싣고, 짝을 잇는 **단일 키**가 된다 (5.9절 "반드시 동일") --
+    폐지된 `PAIRFILE` 이 하려던 일을 카드 추가 없이 해낸다.
+
+    ⚠️ 여기 담는 `suffix` 는 **카운터가 처음 배정한 것**이다.  충돌로 번호가
+    밀리면 `FILENAME` 만 따라 올라가고 이 값은 그대로 남아, 둘의 불일치가 곧
+    충돌 신호가 된다 (D-016 · D-019).
+    """
+    return f'{site_code.upper()}.{suffix}'
 
 
 def physical_name(site_code: str, suffix: str, ctrltag: str) -> str:
@@ -250,7 +265,7 @@ def logical_path(data_dir: str, ccd: str, suffix: str) -> str:
 # `clash/` 격리 + 시각 접미 + `NAMECLSH` 카드 세 겹은 폐지됐다 -- 격리는
 # "덮어쓰지 않기"는 지켰지만 정상 산출물 흐름에서 프레임을 빼돌렸고, 하류
 # 색인이 격리 디렉토리를 몰랐다.  번호 증가는 프레임을 정상 흐름에 남기고,
-# 충돌 사실은 `FILENAME ≠ ORIGNAME` 값 비교 하나로 남는다.
+# 충돌 사실은 `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` 비교 하나로 남는다 (D-019).
 #
 # 전제: 저장 디렉토리의 쓰기 주체는 **ICS 하나뿐**이다 (raw spec 2.3절 7항).
 

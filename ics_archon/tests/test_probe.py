@@ -196,8 +196,9 @@ def test_stage3_measures_readout_and_writes_one_readable_fits(fake, tmp_path):  
         # 컨트롤러 유래 카드가 실값이다
         assert h['CTRL1SN'].strip() == '0024498A715E301C'
         # 규격 5.6.1절 -- science 는 열 자리다 (v1.5 전에는 잠정 5자리였다)
-        assert len(h['C1_TEMP'].split()) == 10
-        assert len(h['C1_VOLT'].split()) == len(h['C1_CURR'].split()) == 7
+        assert len(h['C1_TEMP'].strip().split('|')) == 10
+        assert len(h['C1_VOLT'].strip().split('|')) == 7
+        assert len(h['C1_CURR'].strip().split('|')) == 7
         # 원천이 없는 것은 sentinel 로 남는다
         assert h['CCDTEMP'].strip() == '-999.99'
         # 관측 카드는 이 도구가 채우지 않는다 (TC 에 붙지 않는다)

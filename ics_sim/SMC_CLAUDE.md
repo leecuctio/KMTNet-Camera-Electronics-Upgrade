@@ -65,6 +65,28 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 - 송신 전 `validate()` 가 6가지 오염 패턴을 검사한다.
 - `--bug-compat` 로 레거시 오염을 재현할 수 있다(골든 대조용, 기본 꺼짐).
 
+## ⚠️ raw spec v1.6 반영 (2026-08-26) -- 정체성 카드가 바뀌었다
+
+**`ORIGNAME` 이 폐지되고 `EXPID` 가 대신한다** (D-019).  값은
+`<SITE>.<YYYYMMDD>.<NNNNNN>` 이고 **컨트롤러 태그가 없어 pair 양쪽이 같다** --
+그래서 `rawcards.PAIR_DIFF` 가 **7장 -> 6장**이 됐다.
+
+| 무엇 | 전 → 후 | 자리 |
+|---|---|---|
+| 정체성 카드 | `ORIGNAME`(태그 있음) → **`EXPID`**(태그 없음, pair 동일) | `rawcards.CARDS`·`PAIR_DIFF` · `rawhdr.exposure_header(expid=)` · 신설 `rawpair.exposure_id()` · `sequencer`(`name_stem()` 호출이 빠졌다) |
+| `FILENAME` comment | → `FITS file name as written to storage` | `rawcards.CARDS` |
+| `Cn_*` 구분자 | 공백 → **`|`** | `rawhdr._join_readings()`.  ⚠️ 슬래시는 FITS comment 구분자와 겹쳐 배제했다 |
+| `Cn_*` comment | `Ctr-n` → **`Ctrl-n`** | `rawcards.CARDS` 6장 |
+| 나열 결측 sentinel | `-999.99` → **`NC`** | `archon/parse.SLOT_NC`.  ⚠️ **단일 HK 카드는 `-999.99` 그대로다** |
+| 카드 폭 초과 | 값을 잘랐다 → **comment 를 먼저 자른다** | `archon/fitswrite.card_image()` (규격 5.0절 신설) |
+
+⚠️ **충돌 판별이 한 단계 늘었다** -- 종전 `FILENAME != ORIGNAME`(직접 비교)에서
+**`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 != `EXPID`** 로.  꼬리 제거는 이미
+규격 2.3절 5항이 정의한 연산이다.
+
+경위·판단은 **DevNote 11.29**.  `ics_archon` 쪽 반영분과 **다음 세션 착수점**(origin 푸시 · `raw-spec-v1.6` 태그 · 벤치 ini · converter)은
+[`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "다음 세션이 먼저 알아야 할 것".
+
 ## ⚠️ raw spec v1.5 반영 (2026-08-26, 이 브랜치에서 마무리)
 
 **v1.5 의 5장 검토 라운드가 `ics_sim` 까지 내려왔다.**  `main` 이 구판(IP 판별)
