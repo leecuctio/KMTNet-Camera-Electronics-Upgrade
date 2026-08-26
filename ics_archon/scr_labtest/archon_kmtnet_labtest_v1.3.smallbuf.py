@@ -86,7 +86,7 @@
 
 DATA_PREFIX = 'KMTK'   #  <---- Set this (로그·SMS 표시용 유닛 라벨)
 
-UNIT_ID = 'KMTK-SCI-101'   #  <---- Set this
+UNIT_ID = 'KMTC-SCI-101'   #  <---- Set this
 UNIT_IP = '101'            #  <---- Set this
 
 UNIT_IPADDR = '10.0.0.'+UNIT_IP
@@ -138,15 +138,15 @@ FRAME_WAIT_MAX = 20         #  <---- 노출시간 위에 더 기다릴 상한 [s
 ##   FRAME 이 안 오름           -> 노출 미개시
 ##   FRAME 은 오르는데 COMPLETE=0 -> 독출이 버퍼를 못 채움
 ##   TIMER 가 안 변함           -> 타이밍 코어 정지
-FRAME_DUMP_ENABLE = True    #  <---- 덤프를 찍나 (False 면 진행 막대만).
+FRAME_DUMP_ENABLE = False   #  <---- 덤프를 찍나 (False 면 진행 막대만).
                             #        **취득이 정상으로 돌면 False 로 끈다**
 FRAME_DUMP_EVERY = 8        #  <---- 몇 회전마다 (8 = 약 5초)
 FRAME_DUMP_STATUS = True    #  <---- POWER/POWERGOOD/TIMER 도 함께.
                             #        끄면 FRAME 질의 하나만 -- 왕복이
                             #        셋에서 하나로 준다
 
-SCRIPT_VERSION = '1.3.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
-SCRIPT_BUILD = '2026-08-26T18:05Z'  # 소스를 고치면 같이 올린다
+SCRIPT_VERSION = '1.3.4'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
+SCRIPT_BUILD = '2026-08-26T20:11Z'  # 소스를 고치면 같이 올린다
 
 ## 위 손편집 항목(`<---- Set this`)을 **기동 시점에 한 번** 검증한다.
 ##
@@ -1105,6 +1105,42 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
 
 
 ## Single exposure and writing a FITS
+def _frame_snapshot(with_status=True):
+    """FRAME (+STATUS·TIMER) 한 줄.  주기 덤프와 실패 스냅샷이 같이 쓴다.
+
+    TIMER 는 STATUS 필드가 아니라 **별도 명령**이다 (10ns tick, 매뉴얼
+    p.49-50).  값이 회전마다 변하지 않으면 타이밍 코어가 멈춘 것이다.
+    """
+    fs = {}
+    try:
+        for pair in archoncmd('FRAME', TELEMETRY_TIMEOUT).split():
+            k, _, v = pair.decode().partition('=')
+            fs[k] = v
+    except Exception as e:
+        return 'FRAME 질의 실패: %s' % e
+    line = ('RBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s'
+            % (fs.get('RBUF'),
+               fs.get('BUF1FRAME'), fs.get('BUF2FRAME'), fs.get('BUF3FRAME'),
+               fs.get('BUF1COMPLETE'), fs.get('BUF2COMPLETE'),
+               fs.get('BUF3COMPLETE')))
+    if not with_status:
+        return line
+    st = {}
+    try:
+        for pair in archoncmd('STATUS', TELEMETRY_TIMEOUT).split():
+            k, _, v = pair.decode().partition('=')
+            st[k] = v
+    except Exception as e:
+        st['ERR'] = str(e)
+    try:
+        st['TIMER'] = archoncmd('TIMER', TELEMETRY_TIMEOUT).decode()
+    except Exception as e:
+        st['TIMER'] = 'ERR(%s)' % e
+    return line + ('  POWER=%s  POWERGOOD=%s  TIMER=%s'
+                   % (st.get('POWER', st.get('ERR', '?')),
+                      st.get('POWERGOOD', '?'), st.get('TIMER', '?')))
+
+
 def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
              datadir):
 
@@ -1188,6 +1224,12 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
         if frame != lastframe:
             break
         if waited > deadline:
+            print('\n>> Failed to readout complete!\n')
+            ## 실패한 순간의 상태를 **항상** 남긴다 -- FRAME_DUMP_ENABLE
+            ## 과 무관하다.  이 증상은 간헐이라(가동시간이 길어지면
+            ## 재발하는 것으로 보인다) 평소 덤프를 꺼 두면 정작 재발했을
+            ## 때 증거가 남지 않는다.
+            print('   %s' % _frame_snapshot(), flush=True)
             raise TimeoutError(
                 'frame did not complete in %.0fs (exptime %.1fs + %ds) -- '
                 'lastframe=%d' % (deadline, exptime / 1000.0,
@@ -1197,37 +1239,9 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
         spin += 1
         if (FRAME_DUMP_ENABLE and FRAME_DUMP_EVERY
                 and spin % FRAME_DUMP_EVERY == 0):
-            fs = {}
-            for pair in archoncmd('FRAME').split():
-                k, _, v = pair.decode().partition('=')
-                fs[k] = v
-            line = ('[%4.0fs] RBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s'
-                    % (waited, fs.get('RBUF'),
-                       fs.get('BUF1FRAME'), fs.get('BUF2FRAME'),
-                       fs.get('BUF3FRAME'),
-                       fs.get('BUF1COMPLETE'), fs.get('BUF2COMPLETE'),
-                       fs.get('BUF3COMPLETE')))
-            if FRAME_DUMP_STATUS:
-                st = {}
-                try:
-                    for pair in archoncmd('STATUS',
-                                          TELEMETRY_TIMEOUT).split():
-                        k, _, v = pair.decode().partition('=')
-                        st[k] = v
-                except Exception as e:
-                    st['ERR'] = str(e)
-                ## TIMER 는 STATUS 필드가 아니라 **별도 명령**이다
-                ## (10ns tick, 매뉴얼 p.49-50).
-                try:
-                    st['TIMER'] = archoncmd('TIMER',
-                                            TELEMETRY_TIMEOUT).decode()
-                except Exception as e:
-                    st['TIMER'] = 'ERR(%s)' % e
-                line += ('  POWER=%s  POWERGOOD=%s  TIMER=%s'
-                         % (st.get('POWER', st.get('ERR', '?')),
-                            st.get('POWERGOOD', '?'),
-                            st.get('TIMER', '?')))
-            print('\n   ' + line, end='\n   ', flush=True)
+            print('\n   [%4.0fs] %s'
+                  % (waited, _frame_snapshot(FRAME_DUMP_STATUS)),
+                  end='\n   ', flush=True)
     print(progend)
     
     # Fetch frame

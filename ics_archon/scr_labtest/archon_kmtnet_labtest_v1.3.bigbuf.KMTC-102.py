@@ -1,4 +1,4 @@
-﻿# archon_kmtnet_labtest_v1.3.bigbuf.py
+﻿# archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py
 # revised on 2026-08-26 by SMC
 #
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
@@ -7,7 +7,7 @@
 # v1.3 (2026-08-26): CEU 샘플영상 획득용 코드 추가
 #   Target 데이터셋 신설 (DS_TARGET = 4 — 비어 있던 자리를 써서 기존 번호 안 건드림)
 #   TEST_DARK_NUMBER 도입 — dark 를 여러 장 찍을 수 있게. 다섯 데이터셋 전부 + _expected_dataset_bytes() 까지 일관 반영
-#   실기 유닛 정보 — STA-0284(CTIO 행 유닛), IP .101, ACF KMTC_SCI_101_STA0284_R2608_MK.acf, 관측자 SMC
+#   실기 유닛 정보 — STA-0285(CTIO 행 유닛 NT), IP .102, ACF KMTC_SCI_102_STA0285_R2608_NT.acf, 관측자 SMC
 #   저장 자리 DS 폴더 분리 해제
 #   헤더는 규격 v1.7 그대로 (SITE_CODE=KMTK = 실험실에서 딴 자료)
 #
@@ -68,8 +68,8 @@
 
 DATA_PREFIX = 'KMTK'   #  <---- Set this (로그·SMS 표시용 유닛 라벨)
 
-UNIT_ID = 'KMTC-SCI-101'   #  <---- Set this
-UNIT_IP = '101'            #  <---- Set this
+UNIT_ID = 'KMTC-SCI-102'   #  <---- Set this
+UNIT_IP = '102'            #  <---- Set this
 
 UNIT_IPADDR = '10.0.0.'+UNIT_IP
 UNIT_TIMEOUT = 1
@@ -97,10 +97,10 @@ DATA_STORAGE = '~/AIC/data'    #  <---- Set this: 취득 자료 저장 자리
 
 SITE_CODE = 'KMTK'          # KASI(실험실).  관측소 반입 시 KMTC/KMTS/KMTA
                             # ⚠️ D-017(2026-08-25): 구 KMTT(TESTBED) 폐지
-UNIT_CTRLTAG = 'MK'         #  <---- Set this: 이 유닛이 담당하는 detector pair
+UNIT_CTRLTAG = 'NT'         #  <---- Set this: 이 유닛이 담당하는 detector pair
                             #        (MK = science ctrl 1 / NT = science ctrl 2)
-UNIT_CTRL_ID = 'KMTC-SCI-101'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
-UNIT_CTRL_SN = 'STA-0284'       #  <---- Set this: FITS CTRL1SN (seril number on real pannel lable)
+UNIT_CTRL_ID = 'KMTC-SCI-102'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
+UNIT_CTRL_SN = 'STA-0285'       #  <---- Set this: FITS CTRL1SN (seril number on real pannel lable)
 OBSERVER_NAME = 'SMC'           # FITS OBSERVER
 
 ## Archon STATUS 텔레메트리(Cn_TEMP/VOLT/CURR)를 헤더에 실을지.
@@ -166,7 +166,7 @@ def _check_identity_setup():
 #--------------------------------
 # ACF lists
 
-UNIT_ACF_SCI_NORMAL = '../Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf'
+UNIT_ACF_SCI_NORMAL = '../Config/acf/KMTC_SCI_102_STA0285_R2608_NT.acf'
 
 
 #--------------------------------
@@ -1923,7 +1923,7 @@ GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 3511, 0, DATA_STORAGE)
 GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 3811, 0, DATA_STORAGE)
 '''
 
-GetDataset(UNIT_ACF_SCI_NORMAL, False, False, 2844, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_NORMAL, False, False, 2854, 0, DATA_STORAGE)
 
 
 ## Disconnect from Archon

@@ -34,6 +34,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # ics_archo
 LABTEST = os.path.join(ROOT, 'scr_labtest', 'archon_kmtnet_labtest_v1.3.bigbuf.py')
 SMALLBUF = os.path.join(ROOT, 'scr_labtest',
                         'archon_kmtnet_labtest_v1.3.smallbuf.py')
+UNIT_NT = os.path.join(ROOT, 'scr_labtest',
+                       'archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py')
 
 
 def _funcs(*names):  # noqa: ANN202
@@ -370,3 +372,50 @@ def test_site_info_rows_all_have_the_same_width():
     assert len(set(widths.values())) == 1, f'줄 길이가 갈렸다: {widths}'
     assert set(rows) == {'KMTC', 'KMTS', 'KMTA', 'KMTK'}, (
         'D-017 사이트 넷이어야 한다: %s' % sorted(rows))
+
+
+#: NT 사본이 기준(MK) 판과 달라도 되는 자리 -- 전부 `<---- Set this` 손편집
+#: 항목이거나 그것을 적어 둔 머리말이다.
+NT_ALLOWED = ('UNIT_ID', 'UNIT_IP', 'UNIT_CTRLTAG', 'UNIT_CTRL_ID',
+              'UNIT_CTRL_SN', 'UNIT_ACF_SCI_NORMAL', 'GetDataset(',
+              '실기 유닛 정보', 'bigbuf.py', 'bigbuf.KMTC-102.py')
+
+
+@pytest.mark.repo_only
+def test_nt_copy_differs_only_in_unit_settings():
+    """NT 유닛 사본이 **유닛 설정 밖에서** 기준 판과 갈라지지 않는다.
+
+    사본이 셋이 됐다(기준=MK · NT · smallbuf).  한쪽에만 고치면 반드시
+    표류한다 -- 오늘 잡은 결함이 거의 그 부류였고, 실제로 운영자의 NT 사본은
+    `_frame_snapshot` 도입 전 판이라 실패 스냅샷이 빠져 있었다.
+
+    유닛 설정은 손편집 항목이므로 달라야 정상이고, 그 밖은 글자까지 같아야
+    한다.
+    """
+    import difflib
+
+    def body(path):
+        return io.open(path, encoding='utf-8-sig').read().split('\n')
+
+    bad = [ln for ln in difflib.unified_diff(body(LABTEST), body(UNIT_NT),
+                                             lineterm='', n=0)
+           if ln[:1] in '+-' and ln[:3] not in ('+++', '---')
+           and not any(k in ln for k in NT_ALLOWED)]
+    assert not bad, (
+        'NT 사본이 유닛 설정 밖에서 갈라졌다 -- 기준 판의 개정을 옮기지 '
+        '않은 것이 아닌지 보라:\n' + '\n'.join(bad[:20]))
+
+
+@pytest.mark.repo_only
+def test_nt_copy_carries_the_nt_identity():
+    """NT 사본의 정체가 실제로 NT 여야 한다 (원자료 표와 1:1)."""
+    got = {k: _literal(k, path=UNIT_NT)
+           for k in ('UNIT_CTRLTAG', 'UNIT_CTRL_ID', 'UNIT_CTRL_SN',
+                     'UNIT_IP', 'SITE_CODE')}
+    assert got['UNIT_CTRLTAG'] == 'NT'
+    assert got['UNIT_CTRL_ID'] == 'KMTC-SCI-102'
+    # __reference/Archon_Unit_Info.txt: KMTC-SCI-102 <-> STA0285
+    assert got['UNIT_CTRL_SN'] == 'STA-0285'
+    assert got['UNIT_IP'] == '102', 'ID 숫자 = IP (규격 5.5절)'
+    # 자료를 딴 곳은 실험실이다 -- 유닛 정체와 다른 축이다
+    assert got['SITE_CODE'] == 'KMTK'
