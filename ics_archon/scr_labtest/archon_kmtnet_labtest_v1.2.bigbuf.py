@@ -1,8 +1,16 @@
-﻿# archon_kmtnet_labtest_v1.1.bigbuf.py
+﻿# archon_kmtnet_labtest_v1.2.bigbuf.py
 # revised on 2026-08-22 by SMC
 #
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
 # Ref.version: archon_kmtnet_stascience_modtm_imgacq_v0.3_kasi.STA0287.102.py (2026-05-29/SMC)
+#
+# v1.2 (2026-08-26): raw spec v1.5/v1.6 반영으로 **헤더 내용이 바뀌었다** --
+#   값 카드 135 -> 131 (HK 4장 폐지) · CHMAP_* 4자 토큰 · ORIGNAME -> EXPID ·
+#   Cn_* 구분자 공백 -> '|' · 결측 자리 sentinel 'NC' · 카드 폭 초과 규범.
+#   ⚠️ **판을 올린 이유**: 이 상수 둘이 그대로 FITS ICSBUILD 카드에 실린다.
+#   1.1.3 에 머물러 있으면 135카드/공백구분 프레임과 131카드/파이프 프레임이
+#   **같은 ICSBUILD 로 찍혀** 나중에 헤더만 보고 구분할 수 없다.
+#   파일명도 함께 옮겼다 (구 archon_kmtnet_labtest_v1.1.bigbuf.py).
 #
 # v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md)
 #   ※ 최초 작성은 v1.3 기준. v1.4 는 1~4장 표현만 바뀌어 구현 영향이 없었고
@@ -97,8 +105,8 @@ OBSERVER_NAME = 'HELab'         # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
-SCRIPT_VERSION = '1.1.3'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
-SCRIPT_BUILD = '2026-08-24T12:00Z'  # 소스를 고치면 같이 올린다
+SCRIPT_VERSION = '1.2.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
+SCRIPT_BUILD = '2026-08-26T15:53Z'  # 소스를 고치면 같이 올린다
 
 ## 위 손편집 항목(`<---- Set this`)을 **기동 시점에 한 번** 검증한다.
 ##
@@ -420,7 +428,9 @@ def SetConfig(key, cfg):
 # 값 131 + COMMENT 8 + END 1 = 140 레코드 -- 2880 의 배수가 아니므로
 # build_header() 가 END 뒤를 공백 레코드 4장으로 채워 144 레코드 ·
 # 2880B x 4블록을 맞춘다 (v1.5 에서 HK 4장이 폐지되며 135 -> 131).
-# 판 근거는 v1.6 -- 정체성 카드가 ORIGNAME 에서 EXPID 로 바뀌었고(D-019),
+# 판 근거는 v1.7 -- 단 v1.7 은 파일명 넷째 필드를 <DETID> 로 명명했을
+# 뿐이고 카드 내용은 v1.6 그대로다.  v1.6 이 정체성 카드를 ORIGNAME 에서
+# EXPID 로 바꿨고(D-019),
 # Cn_* 나열 카드가 파이프 구분 · 결측 자리 NC 가 됐다.
 #
 # 형: 'L' logical / 'I' 정수 (EXPTIME 은 소수점 있으면 실수) / 'R' 실수 /
@@ -1006,7 +1016,7 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         'EXPTIME': exptime,
         'LEDFLASH': ExpTimeMs if ShutOpen else 0,
         'TIMESYS': 'UTC', 'DATE-OBS': DateObs,
-        # EXPID 는 **컨트롤러 태그를 붙이지 않는다** -- pair 양쪽이 같은
+        # EXPID 는 **`DETID` 필드를 붙이지 않는다** -- pair 양쪽이 같은
         # 값을 싣고 그것이 짝을 잇는 키가 된다 (D-019, 규격 5.9절).
         'FILENAME': FileStem,
         'EXPID': OrigStem.rsplit('.', 1)[0],

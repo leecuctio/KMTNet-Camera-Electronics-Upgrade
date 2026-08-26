@@ -19,16 +19,16 @@
 따라 쓰였다.
 
 이미 저장소에 있는 자산:
-  * `ics_archon/archon_kmtnet_labtest_v1.1.bigbuf.py` (현행, v1.1.1)
+  * `ics_archon/scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py` (현행, v1.2.0)
         Archon 텍스트/바이너리 프로토콜로 노출·FETCH·raw spec 헤더까지 하는
         실동작 스크립트 (science = bigbuf 구성.  guide 는
-        `archon_kmtnet_labtest_v1.0.smallbuf.py` 참조 -- 미개정).  명령
+        `scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py` 참조 -- 미개정).  명령
         시퀀스(POWERON, WCONFIG/APPLYALL, LOADPARAMS, STATUS/FRAME 폴링,
         1 KiB 블록 FETCH)를 그대로 옮겨오면 된다.
         ⚠️ **헤더·텔레메트리는 실기 미검증이다** -- STATUS 필드 이름 · 독출
         시간 · 산출물 실물 3자리가 그렇다.  옮길 때 잠정 표시를 남긴다
         (`ics_archon/SMC_CLAUDE.md` "ics_archon v0.0").  손볼 자리·경고의
-        뜻은 `ics_archon/README_labtest.md`.
+        뜻은 `ics_archon/scr_labtest/README_labtest.md`.
         v1.0 원본과 Archon 매뉴얼 2부는
         `ics_archon/__ref_archon_control/`(읽기 전용) 에 있다.
   * `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md`

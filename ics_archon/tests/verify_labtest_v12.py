@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""archon_kmtnet_labtest_v1.1.bigbuf.py 회귀 검증 -- 실기 없이 돌린다.
+"""scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py 회귀 검증 -- 실기 없이 돌린다.
 
-    python tests/verify_labtest_v11.py      # 0 = 전부 통과, 1 = 실패 있음
+    python tests/verify_labtest_v12.py      # 0 = 전부 통과, 1 = 실패 있음
 
 **왜 있나.** v1.1 이 넣은 세 가지(STATUS 질의·비ASCII 손편집 값·데이터부
 패딩)가 각각 취득을 죽이거나 파일을 통째로 못 읽게 만드는 경로를 열었다 --
@@ -16,7 +16,7 @@ import ast, io, os, socket, sys, textwrap, threading, time
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   os.pardir, 'archon_kmtnet_labtest_v1.1.bigbuf.py')
+                   os.pardir, 'scr_labtest', 'archon_kmtnet_labtest_v1.2.bigbuf.py')
 text = open(SRC, encoding='utf-8-sig').read()
 tree = ast.parse(text)
 

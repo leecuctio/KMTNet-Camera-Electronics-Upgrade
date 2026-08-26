@@ -17,7 +17,7 @@ raw spec v1.5 반영 때 실제로 그 위험이 드러났다 -- HK 4장 폐지�
 토큰·comment 오타 2건이 전부 이 세 사본에 **각각** 들어가야 했다.
 
 ⚠️ **스크립트를 import 하지 않는다.**  최상단에서 실물 컨트롤러에 접속하므로
-`ast` 로 상수 정의만 뽑아 읽는다 (`tests/verify_labtest_v11.py` 와 같은 수법).
+`ast` 로 상수 정의만 뽑아 읽는다 (`tests/verify_labtest_v12.py` 와 같은 수법).
 """
 
 from __future__ import annotations
@@ -31,14 +31,14 @@ import pytest
 import ics_archon  # noqa: F401  -- `_simpath` 가 형제/내장 `ics_sim` 을 배선한다
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # ics_archon/
-LABTEST = os.path.join(ROOT, 'archon_kmtnet_labtest_v1.1.bigbuf.py')
+LABTEST = os.path.join(ROOT, 'scr_labtest', 'archon_kmtnet_labtest_v1.2.bigbuf.py')
 
 
 def _funcs(*names):  # noqa: ANN202
     """labtest 소스에서 함수 정의만 뽑아 **격리된 이름공간에서 실행**한다.
 
     상수 대조(`_literal`)만으로는 못 잡는 것이 있다 -- 카드 절단 규범처럼
-    **동작**이 규격 사항인 자리다.  `tests/verify_labtest_v11.py` 와 같은
+    **동작**이 규격 사항인 자리다.  `tests/verify_labtest_v12.py` 와 같은
     수법이고, 그쪽과 달리 필요한 함수만 가져온다.
     """
     src = io.open(LABTEST, encoding='utf-8-sig').read()

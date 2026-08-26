@@ -10,7 +10,7 @@
 컨트롤러 제어를 넣은 프로그램이다. 최종적으로 `ics` 로 개명해 운영 배포한다.
 
 제어 코드의 원형은 같은 폴더의 실험실 취득 스크립트
-(`archon_kmtnet_labtest_v1.1.bigbuf.py`, 1년 실사용으로 검증된 v1.0 계보)다.
+(`scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py`, 1년 실사용으로 검증된 v1.0 계보)다.
 그 스크립트는 **계속 남는다** — 실험실 단독 취득에 쓰는 별개 도구다.
 
 ## 먼저 읽을 것
@@ -24,7 +24,7 @@
 | `ics_archon/archon/controller.py` 머리말 | **"노출을 누가 재나"** — 이 층의 가장 중요한 판단 |
 | `ics_archon/archon/backend.py` 머리말 | 계약과 실기의 어긋남 3건 · 동기 접근자가 스냅샷을 읽는 이유 |
 | [README.md](README.md) "실기 첫 실행 절차" | ⭐ **실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
-| [README_labtest.md](README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
+| [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
 | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.25 | 왜 그렇게 정했나 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
 | [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) | 물려받은 층의 상태·규약 |
 | [`../raw_fits_spec/`](../raw_fits_spec/README.md) | 산출 규격(raw FITS pair). 헤더 5장의 바이트 정본은 견본 pair |
@@ -199,7 +199,7 @@
 
 | # | 무엇이 규격과 갈렸나 | 어디 |
 |---|---|---|
-| 1 | **5.0절 폭 초과 규범이 labtest 사본에만 안 갔다** — 값을 먼저 잘랐다.  실험실 자료만 `Cn_*` 의 **뒤 항목이 조용히 사라진다**(자리=항목이라 읽는 쪽은 모른다).  옆에서: 홑따옴표 겹쳐쓰기 방어도 labtest 에만 없었다 | `archon_kmtnet_labtest_v1.1.bigbuf.py::fits_card()` |
+| 1 | **5.0절 폭 초과 규범이 labtest 사본에만 안 갔다** — 값을 먼저 잘랐다.  실험실 자료만 `Cn_*` 의 **뒤 항목이 조용히 사라진다**(자리=항목이라 읽는 쪽은 모른다).  옆에서: 홑따옴표 겹쳐쓰기 방어도 labtest 에만 없었다 | `archon_kmtnet_labtest_v1.2.bigbuf.py::fits_card()` |
 | 2 | **"자리는 비우지 않는다" 를 카드 전체가 빌 때 안 지켰다** — 전 자리 결측을 `'NC'` **한 토큰**으로 냈다.  5.6.1절이 **자리 수 자체를 모듈 구성 판별에 쓰라**고 하므로 읽는 쪽엔 "모듈 한 장짜리 컨트롤러" 로 보인다.  ⚠️ **`tools/probe_archon.py` 는 이미 그것을 빨강으로 짚고 있었다** — 산출부와 검사부가 다른 규격을 따랐다.  옆에서: 목록 안 `None` 이 `'None'` 으로 실렸다 | `rawhdr._join_readings()` · labtest `ctrl_telemetry_cards()` |
 | 3 | **5.0절 둘째 문단이 `ics_sim` 쪽에 없었다** — 값만 68자를 넘으면 astropy 가 자르지 않고 `CONTINUE` 로 **카드를 늘린다**.  견본이 못박은 144 레코드·11,520B 가 깨지는데 경고가 없다.  `OBJECT`/`OBSERVER`/`PROJID` 는 **관측자가 치는 값**이라 길이가 바깥에서 온다 (실측: 100자 → 카드 3장) | `fitsout.apply_cards()` — 신설 `_fit_to_card()` |
 | 4 | **동기화 도구가 초록이라 말한 뒤 시험이 빨갰다** — 동기화 경로가 매니페스트의 **존재 여부**만 봤다.  원천·내장본을 둘 다 손으로 같게 고치면(개정 반영에서 흔하다) 옮길 파일이 없어 그 경로를 타고, 매니페스트만 낡는다 | `tools/sync_vendor.py` |

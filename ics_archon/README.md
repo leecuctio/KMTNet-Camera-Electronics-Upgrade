@@ -26,10 +26,10 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
-| [`README_labtest.md`](README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
-| [`archon_kmtnet_labtest_v1.1.bigbuf.py`](archon_kmtnet_labtest_v1.1.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.1.2`, science 유닛) |
-| [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 원본 그대로, 미개정 |
-| [`tests/verify_labtest_v11.py`](tests/verify_labtest_v11.py) | **labtest 전용 검증** (19항목) — `python tests/verify_labtest_v11.py` |
+| [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
+| [`scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.2.0`, science 유닛) |
+| [`scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 원본 그대로, 미개정 |
+| [`tests/verify_labtest_v12.py`](tests/verify_labtest_v12.py) | **labtest 전용 검증** (19항목) — `python tests/verify_labtest_v12.py` |
 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
 
@@ -47,7 +47,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 
 ## 실험실 취득 스크립트 — 핵심 참고사항
 
-세부는 전부 **[README_labtest.md](README_labtest.md)** 에 있다. 여기서는
+세부는 전부 **[README_labtest.md](scr_labtest/README_labtest.md)** 에 있다. 여기서는
 폴더를 처음 보는 사람이 알아야 할 것만 적는다.
 
 - **현행은 `v1.1.2`** (science 유닛, BIGBUF=1). v1.0 원본은 **실제로 돌려서 쓰던
