@@ -17,7 +17,7 @@ raw spec v1.5 반영 때 실제로 그 위험이 드러났다 -- HK 4장 폐지�
 토큰·comment 오타 2건이 전부 이 세 사본에 **각각** 들어가야 했다.
 
 ⚠️ **스크립트를 import 하지 않는다.**  최상단에서 실물 컨트롤러에 접속하므로
-`ast` 로 상수 정의만 뽑아 읽는다 (`tests/verify_labtest_v12.py` 와 같은 수법).
+`ast` 로 상수 정의만 뽑아 읽는다 (`tests/verify_labtest_v13.py` 와 같은 수법).
 """
 
 from __future__ import annotations
@@ -31,14 +31,16 @@ import pytest
 import ics_archon  # noqa: F401  -- `_simpath` 가 형제/내장 `ics_sim` 을 배선한다
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # ics_archon/
-LABTEST = os.path.join(ROOT, 'scr_labtest', 'archon_kmtnet_labtest_v1.2.bigbuf.py')
+LABTEST = os.path.join(ROOT, 'scr_labtest', 'archon_kmtnet_labtest_v1.3.bigbuf.py')
+SMALLBUF = os.path.join(ROOT, 'scr_labtest',
+                        'archon_kmtnet_labtest_v1.3.smallbuf.py')
 
 
 def _funcs(*names):  # noqa: ANN202
     """labtest 소스에서 함수 정의만 뽑아 **격리된 이름공간에서 실행**한다.
 
     상수 대조(`_literal`)만으로는 못 잡는 것이 있다 -- 카드 절단 규범처럼
-    **동작**이 규격 사항인 자리다.  `tests/verify_labtest_v12.py` 와 같은
+    **동작**이 규격 사항인 자리다.  `tests/verify_labtest_v13.py` 와 같은
     수법이고, 그쪽과 달리 필요한 함수만 가져온다.
     """
     src = io.open(LABTEST, encoding='utf-8-sig').read()
@@ -61,19 +63,23 @@ def _funcs(*names):  # noqa: ANN202
     return ns
 
 
-def _literal(name: str):  # noqa: ANN202
-    """labtest 소스에서 최상단 상수 하나를 값으로 꺼낸다."""
-    assert os.path.exists(LABTEST), (
-        f'labtest 스크립트가 없다 ({LABTEST}) -- 1년 실사용으로 검증된 계보이고 '
+def _literal(name: str, path: str = None):  # noqa: ANN202,RUF013
+    """labtest 소스에서 최상단 상수 하나를 값으로 꺼낸다.
+
+    `path` 를 주면 그 사본에서 꺼낸다 (smallbuf 대조용).
+    """
+    path = path or LABTEST
+    assert os.path.exists(path), (
+        f'labtest 스크립트가 없다 ({path}) -- 1년 실사용으로 검증된 계보이고 '
         '실험실 단독 취득에 계속 쓰는 도구다')
-    src = io.open(LABTEST, encoding='utf-8-sig').read()
+    src = io.open(path, encoding='utf-8-sig').read()
     for node in ast.parse(src).body:
         if not isinstance(node, ast.Assign):
             continue
         for target in node.targets:
             if isinstance(target, ast.Name) and target.id == name:
                 return ast.literal_eval(node.value)
-    raise AssertionError(f'labtest 에 {name} 정의가 없다')
+    raise AssertionError(f'{os.path.basename(path)} 에 {name} 정의가 없다')
 
 
 @pytest.mark.repo_only
@@ -263,3 +269,46 @@ def test_labtest_absent_controller_fills_every_field():
     cards2 = g['ctrl_telemetry_cards'](status, 1)
     assert len(cards2['C1_TEMP'].split('|')) == len(g['TEMP_MODS'])
     assert cards2['C2_TEMP'] == '|'.join(['NC'] * len(g['TEMP_MODS']))
+
+
+@pytest.mark.repo_only
+def test_smallbuf_copy_differs_only_in_buffer_addressing():
+    """smallbuf 사본이 bigbuf 와 **버퍼 주소 지정 말고는 갈라지지 않는다.**
+
+    두 사본이 각자 규격을 좇으면 반드시 표류한다 -- 오늘까지 잡은 결함이
+    거의 전부 그 부류였다.  여기서는 **머리말을 뺀 본문**을 줄 단위로 대조해
+    허용된 자리 밖의 차이를 잡는다.
+
+    허용되는 것은 다섯 자리뿐이다: `newest()` 의 `BUFnBASE` 읽기와 반환
+    튜플, 그것을 받는 네 자리의 언패킹, `FETCH` 주소.  판별은 줄에 남긴
+    표지(`bigbuffer` · `baseaddr` · `newest()` · `FETCH`)로 한다.
+    """
+    import difflib
+    allow = ('bigbuffer', 'baseaddr', 'rbufbase', 'newest()', 'FETCH',
+             'newestframe', 'samplemode',
+             'BUFnBASE', 'BUF%dBASE', 'small buffer', 'large buffer',
+             '구성별 차이', '양쪽에서 동작')
+
+    def body(path):
+        lines = io.open(path, encoding='utf-8-sig').read().split('\n')
+        # 머리말(첫 주석 블록)은 파일마다 다르므로 뺀다 -- 첫 코드 줄부터
+        for i, ln in enumerate(lines):
+            if ln.strip() and not ln.lstrip().startswith('#'):
+                return lines[i:]
+        return lines
+
+    big, small = body(LABTEST), body(SMALLBUF)
+    bad = [ln for ln in difflib.unified_diff(big, small, lineterm='', n=0)
+           if ln[:1] in '+-' and ln[:3] not in ('+++', '---')
+           and not any(k in ln for k in allow)]
+    assert not bad, (
+        'smallbuf 가 버퍼 주소 지정 밖에서 갈라졌다 -- 규격 반영을 한쪽에만 '
+        '한 것이 아닌지 보라:\n' + '\n'.join(bad[:20]))
+
+
+@pytest.mark.repo_only
+def test_smallbuf_rawcards_matches_the_template():
+    """smallbuf 의 `RAWCARDS` 도 `ics_sim.rawcards.CARDS` 그대로여야 한다."""
+    from ics_sim import rawcards
+    got = _literal('RAWCARDS', path=SMALLBUF)
+    assert tuple(tuple(c) for c in got) == rawcards.CARDS

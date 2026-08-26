@@ -19,7 +19,7 @@
 따라 쓰였다.
 
 이미 저장소에 있는 자산:
-  * `ics_archon/scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py` (현행, v1.2.0)
+  * `ics_archon/scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py` (현행, v1.3.0)
         Archon 텍스트/바이너리 프로토콜로 노출·FETCH·raw spec 헤더까지 하는
         실동작 스크립트 (science = bigbuf 구성.  guide 는
         `scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py` 참조 -- 미개정).  명령

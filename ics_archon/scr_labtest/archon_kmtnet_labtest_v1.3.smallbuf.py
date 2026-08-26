@@ -1,8 +1,33 @@
-﻿# archon_kmtnet_labtest_v1.2.bigbuf.py
-# revised on 2026-08-22 by SMC
+﻿# archon_kmtnet_labtest_v1.3.smallbuf.py
+# revised on 2026-08-26 by SMC
 #
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
 # Ref.version: archon_kmtnet_stascience_modtm_imgacq_v0.3_kasi.STA0287.102.py (2026-05-29/SMC)
+#
+# ⚠️ **이 스크립트의 위치** (운영자 2026-08-26)
+#
+#    smallbuf.py 스크립트는 구버전의 science 유닛을 구동하던 코드로서,
+#    smallbuf로 구성되는 guide 유닛 제어용 코드 작성 시 참고할 코드이다.
+#    다만, bigbuf 스크립트의 코드로도 smallbuf 구성 유닛의 동작이 가능할
+#    수도 있으니, 참조 바람.
+#
+#    -- bigbuf 가 구성 무관인 이유: FETCH 주소를 프레임 상태의 BUFnBASE 에서
+#       읽는데, 그 값은 컨트롤러가 어떤 버퍼 구성이든 자기 배치대로 준다.
+#       ※ 설계상 그렇다는 것이고 small buffer 유닛에서 **실기 검증은 아직
+#       없다** -- 첫 guide 구동 때 확인할 항목이다.
+#
+#    bigbuf v1.3 과 다른 것은 **버퍼 주소 지정 다섯 자리뿐**이다:
+#      - newest() 가 BUFnBASE 를 돌려주지 않는다 (5-튜플)
+#      - 그것을 받던 네 자리가 5-튜플 언패킹으로 돌아간다
+#      - FETCH 주소가 small buffer 배치식 ((buf+1)|4)<<29 다
+#    나머지(헤더·규격 정합·데이터셋 구성·검사)는 bigbuf 와 **글자까지 같다**.
+#
+# v1.3 (2026-08-26): CEU 샘플영상 획득용 코드 추가
+#   Target 데이터셋 신설 (DS_TARGET = 4 — 비어 있던 자리를 써서 기존 번호 안 건드림)
+#   TEST_DARK_NUMBER 도입 — dark 를 여러 장 찍을 수 있게. 다섯 데이터셋 전부 + _expected_dataset_bytes() 까지 일관 반영
+#   실기 유닛 정보 — STA-0284(CTIO 행 유닛), IP .101, ACF KMTC_SCI_101_STA0284_R2608_MK.acf, 관측자 SMC
+#   저장 자리 DS 폴더 분리 해제
+#   헤더는 규격 v1.7 그대로 (SITE_CODE=KMTK = 실험실에서 딴 자료)
 #
 # v1.2 (2026-08-26): raw spec v1.5/v1.6 반영으로 **헤더 내용이 바뀌었다** --
 #   값 카드 135 -> 131 (HK 4장 폐지) · CHMAP_* 4자 토큰 · ORIGNAME -> EXPID ·
@@ -59,10 +84,10 @@
 #--------------------------------
 # Unit/Storage setup
 
-DATA_PREFIX = 'AC13A'   #  <---- Set this (로그·SMS 표시용 유닛 라벨)
+DATA_PREFIX = 'KMTK'   #  <---- Set this (로그·SMS 표시용 유닛 라벨)
 
-UNIT_ID = 7  # AC13A    #  <---- Set this
-UNIT_IP = '13' # AC13   #  <---- Set this
+UNIT_ID = 'KMTK-SCI-101'   #  <---- Set this
+UNIT_IP = '101'            #  <---- Set this
 
 UNIT_IPADDR = '10.0.0.'+UNIT_IP
 UNIT_TIMEOUT = 1
@@ -92,9 +117,9 @@ SITE_CODE = 'KMTK'          # KASI(실험실).  관측소 반입 시 KMTC/KMTS/K
                             # ⚠️ D-017(2026-08-25): 구 KMTT(TESTBED) 폐지
 UNIT_CTRLTAG = 'MK'         #  <---- Set this: 이 유닛이 담당하는 detector pair
                             #        (MK = science ctrl 1 / NT = science ctrl 2)
-UNIT_CTRL_ID = 'KMTK-SCI-101'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
-UNIT_CTRL_SN = 'STA-0287'       #  <---- Set this: FITS CTRL1SN (백플레인 시리얼)
-OBSERVER_NAME = 'HELab'         # FITS OBSERVER
+UNIT_CTRL_ID = 'KMTC-SCI-101'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
+UNIT_CTRL_SN = 'STA-0284'       #  <---- Set this: FITS CTRL1SN (seril number on real pannel lable)
+OBSERVER_NAME = 'SMC'           # FITS OBSERVER
 
 ## Archon STATUS 텔레메트리(Cn_TEMP/VOLT/CURR)를 헤더에 실을지.
 ##
@@ -105,8 +130,8 @@ OBSERVER_NAME = 'HELab'         # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
-SCRIPT_VERSION = '1.2.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
-SCRIPT_BUILD = '2026-08-26T15:53Z'  # 소스를 고치면 같이 올린다
+SCRIPT_VERSION = '1.3.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
+SCRIPT_BUILD = '2026-08-26T18:05Z'  # 소스를 고치면 같이 올린다
 
 ## 위 손편집 항목(`<---- Set this`)을 **기동 시점에 한 번** 검증한다.
 ##
@@ -144,9 +169,7 @@ def _check_identity_setup():
 #--------------------------------
 # ACF lists
 
-UNIT_ACF_SCI_FAST_MEDIUM = 'acf/KMTNet_Sci_fast_med_U'+UNIT_IP+'.acf'
-UNIT_ACF_SCI_COMP_MEDIUM = 'acf/KMTNet_Sci_comp_med_U'+UNIT_IP+'.acf'
-UNIT_ACF_SCI_SLOW_MEDIUM = 'acf/KMTNet_Sci_slow_med_U'+UNIT_IP+'.acf'
+UNIT_ACF_SCI_NORMAL = '../Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf'
 
 
 #--------------------------------
@@ -196,6 +219,7 @@ TEST_SHOPEN = False
 TEST_REF_ENABLE = False
 TEST_REF_EXPTIME = 0  # ms
 TEST_DARK_ENABLE = False
+TEST_DARK_NUMBER = 0
 TEST_DARK_EXPTIME = 0
 TEST_FRAMENUM = 0
 TEST_EXPTIMES = (0,)
@@ -209,6 +233,7 @@ TEST_SHOPEN_xTalk = True
 TEST_REF_ENABLE_xTalk = False
 TEST_REF_EXPTIME_xTalk = 0  # ms
 TEST_DARK_ENABLE_xTalk = False
+TEST_DARK_NUMBER_xTalk = 0
 TEST_DARK_EXPTIME_xTalk = 0
 TEST_FRAMENUM_xTalk = 3  # frame number in each subset
 TEST_EXPTIMES_xTalk = (0, 1000, 4000, 0, 16000, 32000, 0)
@@ -237,6 +262,7 @@ TEST_SHOPEN_iFlat = True
 TEST_REF_ENABLE_iFlat = True
 TEST_REF_EXPTIME_iFlat = 12000  # ms
 TEST_DARK_ENABLE_iFlat = True
+TEST_DARK_NUMBER_iFlat = 1
 TEST_DARK_EXPTIME_iFlat = 25000
 TEST_FRAMENUM_iFlat = 3  # frame number in each subset
 #TEST_EXPTIMES_iFlat = tuple(range(   0,  900, 100)) + (0,) \
@@ -250,10 +276,25 @@ TEST_EXPTIMES_iFlat = (0,) \
 ##   New LED: saturation started on center from 24s, fully saturated at 30s
 ##   Max.ExpTime: 1048574ms(1048.574s) = (0x00100000 - 2) = 0x000FFFFE
 
+## Target dataset
+## with LED set to marked position
+## Num of frame: 4 + 4 + 4 = 12 frames
+## Running time: 0.2 hours (10 min)
+TEST_SHOPEN_Target = True
+TEST_REF_ENABLE_Target = False
+TEST_REF_EXPTIME_Target = 0  # ms
+TEST_DARK_ENABLE_Target = True
+TEST_DARK_NUMBER_Target = 4
+TEST_DARK_EXPTIME_Target = 3000
+TEST_FRAMENUM_Target = 4  # frame number in each subset
+TEST_EXPTIMES_Target = (3000, 0,)
+
+## Gui-xtalk test dataset
 TEST_SHOPEN_GxT = False
 TEST_REF_ENABLE_GxT = False
 TEST_REF_EXPTIME_GxT = 0  # ms
 TEST_DARK_ENABLE_GxT = False
+TEST_DARK_NUMBER_GxT = 0
 TEST_DARK_EXPTIME_GxT = 0
 TEST_FRAMENUM_GxT = 15  # frame number in each subset
 TEST_EXPTIMES_GxT = (0,)
@@ -292,11 +333,12 @@ HIGH = 1
 UNDEF = 2
 DEFAULT = LOW
 
-DS_CHECK = 0
-DS_XTALK = 1
-DS_DARK  = 2
-DS_IFLAT = 3
-DS_GXT   = 5
+DS_CHECK  = 0
+DS_XTALK  = 1
+DS_DARK   = 2
+DS_IFLAT  = 3
+DS_TARGET = 4
+DS_GXT    = 5
 
 AMPCFG = ('Low','High', 'Undef')
 
@@ -403,10 +445,9 @@ def newest():
             newestbuf = i
     framew = int(framestatus['BUF%dWIDTH' % (newestbuf + 1)])
     frameh = int(framestatus['BUF%dHEIGHT' % (newestbuf + 1)])
-    rbufbase = int(framestatus['BUF%dBASE' % (newestbuf + 1)])   ## for using bigbuffer
     samplemode = int(framestatus['BUF%dSAMPLE' % (newestbuf + 1)])
     #return (newestframe, newestbuf, framew, frameh, samplemode)
-    return (newestframe, newestbuf, framew, frameh, samplemode, rbufbase)   ## for using bigbuffer
+    return (newestframe, newestbuf, framew, frameh, samplemode)
 
 
 ## Set PostAmpGain
@@ -1074,23 +1115,20 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
 
     # Flush using a full readout
     if bFullFlush:
-        #lastframe, lastbuf, _, _, _ = newest()
-        lastframe, lastbuf, _, _, _, _ = newest()   ## for using bigbuffer
+        lastframe, lastbuf, _, _, _ = newest()
         SetConfig('PARAMETER2', 'IntMS=0')
         SetConfig('PARAMETER1', 'Exposures=1')
         archoncmd('LOADPARAMS')
         print('>> Flushing with a full readout..\n   ', end='')
         while True:
-            #frame, buf, framew, frameh, samplemode = newest()
-            frame, buf, framew, frameh, samplemode, baseaddr = newest()   ## for using bigbuffer
+            frame, buf, framew, frameh, samplemode = newest()
             if frame != lastframe:
                 break
             time.sleep(0.4);  print(end=progbar);
         print(progend)
 
     # Get current frame number & date
-    #lastframe, lastbuf, _, _, _ = newest()
-    lastframe, lastbuf, _, _, _, _ = newest()   ## for using bigbuffer
+    lastframe, lastbuf, _, _, _ = newest()
     
     # Set exposure time
     SetConfig('PARAMETER2', 'IntMS=%d' % exptime)
@@ -1119,8 +1157,7 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
         print('>> CCD Flush / Exposure / Readout progress: \n   ', end='')
         sleepint = 0.65
     while True:
-        #frame, buf, framew, frameh, samplemode = newest()
-        frame, buf, framew, frameh, samplemode, baseaddr = newest()   ## for using bigbuffer
+        frame, buf, framew, frameh, samplemode = newest()
         if frame != lastframe:
             break
         time.sleep(sleepint);  print(end=progbar);
@@ -1154,11 +1191,10 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     linesize = BURST_LEN
     lines = (framesize + linesize - 1) // linesize
     ref = msgref
-    #archonsend('FETCH%08X%08X' % (((buf + 1) | 4) << 29, lines))  # small buffer (Addr: A/C/E)
-    #archonsend('FETCH%08X%08X' % ((buf*3 + 10) << 28, lines))  # large buffer (Addr: A/D)
-    #archonsend('FETCH%08X%08X' % (((buf^1)*3 + 10) << 28, lines))  # large buffer (Addr: D/A)
-    archonsend('FETCH%08X%08X' % (baseaddr, lines))  # small/large buffer (Addr from BUFnBASE in the frame status)
-    ## codes are added for using bigbuffer
+    archonsend('FETCH%08X%08X' % (((buf + 1) | 4) << 29, lines))  # small buffer (Addr: A/C/E)
+    ## bigbuf 판은 여기서 BUFnBASE(프레임 상태)의 주소를 그대로 쓴다 --
+    ## 그 방식은 small/large 양쪽에서 동작한다.  이 사본은 구성별 차이를
+    ## 보이려고 small buffer 배치식을 남긴다.
 
     fitsbuf = bytearray();
     bytesremaining = framesize        
@@ -1227,6 +1263,9 @@ def RepDatasetConfig():
     elif TEST_DATASET == DS_IFLAT:
         print('-'*28);
         print("iFlat dataset configuration")
+    elif TEST_DATASET == DS_TARGET:
+        print('-'*28);
+        print("Target dataset configuration")
     elif TEST_DATASET == DS_GXT:
         print('-'*28);
         print("GxT dataset configuration")
@@ -1251,9 +1290,9 @@ def RepDatasetConfig():
             nframe+=1
 
         if TEST_DARK_ENABLE and exptime==0:
-            print ("  %03d: %5.1fs dark" % (nframe,TEST_DARK_EXPTIME/1000))
-            nframe+=1
-
+            for i in range(0, TEST_DARK_NUMBER):
+                print ("  %03d: %5.1fs dark" % (nframe,TEST_DARK_EXPTIME/1000))
+                nframe+=1
         if TEST_REF_ENABLE:
             print ("  %03d: %5.1fs reference" % (nframe,TEST_REF_EXPTIME/1000))
             nframe+=1
@@ -1271,17 +1310,19 @@ def SetDatasetConfig(DatasetType):
     global TEST_REF_ENABLE
     global TEST_REF_EXPTIME
     global TEST_DARK_ENABLE
+    global TEST_DARK_NUMBER
     global TEST_DARK_EXPTIME
     global TEST_FRAMENUM
     global TEST_EXPTIMES
     
-    TEST_DATASET = DatasetType  # 0: Check 1: xTalk / 2: Dark / 3: iFlat
+    TEST_DATASET = DatasetType  # 0: Check 1: xTalk / 2: Dark / 3: iFlat / 4: Target / 5: Gui-xTalk
 
     if DatasetType == DS_XTALK:
         TEST_SHOPEN = TEST_SHOPEN_xTalk
         TEST_REF_ENABLE = TEST_REF_ENABLE_xTalk
         TEST_REF_EXPTIME = TEST_REF_EXPTIME_xTalk
         TEST_DARK_ENABLE = TEST_DARK_ENABLE_xTalk
+        TEST_DARK_NUMBER = TEST_DARK_NUMBER_xTalk
         TEST_DARK_EXPTIME = TEST_DARK_EXPTIME_xTalk
         TEST_FRAMENUM = TEST_FRAMENUM_xTalk
         TEST_EXPTIMES = TEST_EXPTIMES_xTalk
@@ -1300,15 +1341,27 @@ def SetDatasetConfig(DatasetType):
         TEST_REF_ENABLE = TEST_REF_ENABLE_iFlat
         TEST_REF_EXPTIME = TEST_REF_EXPTIME_iFlat
         TEST_DARK_ENABLE = TEST_DARK_ENABLE_iFlat
+        TEST_DARK_NUMBER = TEST_DARK_NUMBER_iFlat
         TEST_DARK_EXPTIME = TEST_DARK_EXPTIME_iFlat
         TEST_FRAMENUM = TEST_FRAMENUM_iFlat
         TEST_EXPTIMES = TEST_EXPTIMES_iFlat
         print("Set dataset type = iFlat")
+    elif DatasetType == DS_TARGET:
+        TEST_SHOPEN = TEST_SHOPEN_Target
+        TEST_REF_ENABLE = TEST_REF_ENABLE_Target
+        TEST_REF_EXPTIME = TEST_REF_EXPTIME_Target
+        TEST_DARK_ENABLE = TEST_DARK_ENABLE_Target
+        TEST_DARK_NUMBER = TEST_DARK_NUMBER_Target
+        TEST_DARK_EXPTIME = TEST_DARK_EXPTIME_Target
+        TEST_FRAMENUM = TEST_FRAMENUM_Target
+        TEST_EXPTIMES = TEST_EXPTIMES_Target
+        print("Set dataset type = Target")
     elif DatasetType == DS_GXT:
         TEST_SHOPEN = TEST_SHOPEN_GxT
         TEST_REF_ENABLE = TEST_REF_ENABLE_GxT
         TEST_REF_EXPTIME = TEST_REF_EXPTIME_GxT
         TEST_DARK_ENABLE = TEST_DARK_ENABLE_GxT
+        TEST_DARK_NUMBER = TEST_DARK_NUMBER_GxT
         TEST_DARK_EXPTIME = TEST_DARK_EXPTIME_GxT
         TEST_FRAMENUM = TEST_FRAMENUM_GxT
         TEST_EXPTIMES = TEST_EXPTIMES_GxT
@@ -1339,7 +1392,7 @@ def _expected_dataset_bytes():
     if TEST_REF_ENABLE:
         nframe += 1 + len(TEST_EXPTIMES)
     if TEST_DARK_ENABLE:
-        nframe += sum(1 for ms in TEST_EXPTIMES if ms == 0)
+        nframe += sum(1 for ms in TEST_EXPTIMES if ms == 0) * TEST_DARK_NUMBER
     return nframe * FRAME_FILE_BYTES
 
 
@@ -1590,7 +1643,8 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
 
     # Setup for data directory
     
-    datadir = "%s/DS%04d" % (DataStorage, DatasetId)
+    #datadir = "%s/DS%04d" % (DataStorage, DatasetId)
+    datadir = DataStorage
     createFolder(datadir)
 
     ## **같은 UT 날짜에** 파일이 남아 있는 DS 폴더를 StartNum=0 으로 다시
@@ -1632,11 +1686,13 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
                 filenum = DatasetId*100 + nframe; nframe+=1;
                 Exposure(TEST_SHOPEN, exptime, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
             if TEST_DARK_ENABLE and exptime==0:
-                filenum = DatasetId*100 + nframe; nframe+=1;
-                Exposure(False, TEST_DARK_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
+                for i in range(0, TEST_DARK_NUMBER):
+                    filenum = DatasetId*100 + nframe; nframe+=1;
+                    Exposure(False, TEST_DARK_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
             if TEST_REF_ENABLE:
                 filenum = DatasetId*100 + nframe; nframe+=1;
                 Exposure(TEST_SHOPEN, TEST_REF_EXPTIME, bWaitFlush, bFullFlush, filenum, DatasetId, datadir)
+
     finally:
         # CCD input bias/clock power OFF
         print("> CCD input bias/clock power OFF")
@@ -1648,7 +1704,7 @@ def GetDataset(AcfPath, bWaitFlush, bFullFlush, DatasetId, StartNum, DataStorage
             print('> WARNING: POWEROFF 를 못 보냈다 (%s)' % e)
             print('>          유닛 전원 상태를 직접 확인하라.')
         print()
-
+    
     # Finish
 
     #print('> [ DS%04d %sGain C%+.2fV ] dataset complete.\n\n' % (DatasetId, Gain[AmpGain], Clamp) )
@@ -1791,13 +1847,15 @@ TestRunNum = 3
 GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 7213, 0, DATA_STORAGE)
 GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 7513, 0, DATA_STORAGE)
 GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 7813, 0, DATA_STORAGE)
-'''
 
 #20250413 U23-xTalk/Dark
 TestRunNum = 3
 GetDataset(UNIT_ACF_SCI_FAST_MEDIUM, False, False, 3211, 0, DATA_STORAGE)
 GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 3511, 0, DATA_STORAGE)
 GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 3811, 0, DATA_STORAGE)
+'''
+
+GetDataset(UNIT_ACF_SCI_NORMAL, False, False, 2844, 0, DATA_STORAGE)
 
 
 ## Disconnect from Archon

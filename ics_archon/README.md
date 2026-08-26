@@ -27,9 +27,9 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
 | [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
-| [`scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.2.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.2.0`, science 유닛) |
+| [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.2.0`, science 유닛) |
 | [`scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 원본 그대로, 미개정 |
-| [`tests/verify_labtest_v12.py`](tests/verify_labtest_v12.py) | **labtest 전용 검증** (19항목) — `python tests/verify_labtest_v12.py` |
+| [`tests/verify_labtest_v13.py`](tests/verify_labtest_v13.py) | **labtest 전용 검증** (19항목) — `python tests/verify_labtest_v13.py` |
 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
 
@@ -430,8 +430,13 @@ direct-reply 로 전 경로가 돈다.
   `CCDTEMP` 를 비롯한 5.6절 카드가 sentinel 로 실린다.
 - **LED 프로젝터** (`flash_led`) — 실기 배선이 미확정이라 값만 기억하고
   하드웨어를 만지지 않는다.
-- **guide 계통** — guide raw 규격이 아직 없다.  착수 시 smallbuf 구성 +
-  `DATASRC='ARCHON_GUIDE'` + `CTRL1xx` 한 벌 규약 (raw spec 5.5절).
+- **guide 계통** — guide raw 규격이 아직 없다.  착수 시 `DATASRC='ARCHON_GUIDE'`
+  + `CTRL1xx` 한 벌 규약 (raw spec 5.5절) + 기하를 guide 크기로 + `Cn_TEMP`
+  8자리(OI-19).  **참고 코드**: `scr_labtest/…v1.3.smallbuf.py` 는 구버전
+  science 유닛을 구동하던 코드로, smallbuf로 구성되는 guide 유닛 제어용 코드
+  작성 시 참고한다.  다만 **bigbuf 스크립트의 코드로도 smallbuf 구성 유닛의
+  동작이 가능할 수도 있으니** 그쪽도 참조할 것 — FETCH 주소를 `BUFnBASE` 에서
+  읽어 설계상 구성 무관이다(실기 검증은 첫 guide 구동 때).
 - **binning** (`BIN` 명령) — `ics_sim` 쪽도 스텁이다.
 
 ## 관련 문서

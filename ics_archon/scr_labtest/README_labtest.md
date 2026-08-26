@@ -15,9 +15,9 @@
 
 | 파일 | 정체 |
 |---|---|
-| [`archon_kmtnet_labtest_v1.2.bigbuf.py`](archon_kmtnet_labtest_v1.2.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.2.0'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
-| [`archon_kmtnet_labtest_v1.0.smallbuf.py`](archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 512 MB 버퍼 3개 구성. 원본 그대로, **미개정** (아래 "guide 유닛" 참조) |
-| [`tests/verify_labtest_v12.py`](../tests/verify_labtest_v12.py) | **실기 없이 돌리는 검증** (32항목) — 가짜 Archon + astropy 실파일 |
+| [`archon_kmtnet_labtest_v1.3.bigbuf.py`](archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.3.0'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
+| [`archon_kmtnet_labtest_v1.3.smallbuf.py`](archon_kmtnet_labtest_v1.3.smallbuf.py) | **구버전 science 유닛을 구동하던 코드** — smallbuf로 구성되는 **guide 유닛 제어용 코드 작성 시 참고**한다(운영자 2026-08-26). bigbuf 와 **버퍼 주소 지정 다섯 자리만** 다르다 |
+| [`tests/verify_labtest_v13.py`](../tests/verify_labtest_v13.py) | **실기 없이 돌리는 검증** (32항목) — 가짜 Archon + astropy 실파일 |
 | [`tests/test_labtest_spec_copy.py`](../tests/test_labtest_spec_copy.py) | **규격 사본 표류 감시** (4항목, 2026-08-26 신설) — 내장 `RAWCARDS`·`CHMAP`·`SITE_INFO`·번호 공간이 `ics_sim` 과 갈라지면 실패한다 |
 | `__ref_archon_control/archon_kmtnet_labtest_v1.0.{bigbuf,smallbuf}.py` | **v1.0 원본** (읽기 전용). 되돌려 비교할 때 쓴다 |
 
@@ -33,7 +33,7 @@
 그래서 **`TELEMETRY_ENABLE = False` 로 두면 왕복이 v1.0 과 완전히 같아진다** —
 문제가 보일 때 원인을 가르는 가장 빠른 수단이다.
 
-## 검증 상태 (v1.2.0, 2026-08-26)
+## 검증 상태 (v1.3.0, 2026-08-26)
 
 | 항목 | 상태 |
 |---|---|
@@ -53,7 +53,7 @@
 실기 없이 돌리는 검증은 언제든 다시 할 수 있다:
 
 ```bash
-python ics_archon/tests/verify_labtest_v12.py
+python ics_archon/tests/verify_labtest_v13.py
 ```
 
 31개 항목 전부 통과해야 한다(실패 0).  읽기전용 자리 검사 1건은 POSIX 에서만
@@ -61,28 +61,28 @@ python ics_archon/tests/verify_labtest_v12.py
 
 ## 돌리기 전에 손볼 자리
 
-행 번호는 **`v1.2.0`(2026-08-26) 실측**이다. ⚠️ 판이 오르면 밀리므로 **어긋나면 아래 `grep` 으로 찾는다** — 종전 표는 28행쯤 어긋난 채 남아 있었다:
+행 번호는 **`v1.3.0`(2026-08-26) 실측**이다. ⚠️ 판이 오르면 밀리므로 **어긋나면 아래 `grep` 으로 찾는다** — 종전 표는 28행쯤 어긋난 채 남아 있었다:
 
 ```bash
-grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmtnet_labtest_v1.2.bigbuf.py
+grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmtnet_labtest_v1.3.bigbuf.py
 ```
 
 | 행 | 항목 | 지금 값 | 비고 |
 |---:|---|---|---|
-| 62 | `DATA_PREFIX` | `'AC13A'` | 로그·SMS 표시용 라벨. **파일명에는 안 들어간다** |
-| 64 | `UNIT_ID` | `7` | |
-| 65 | `UNIT_IP` | `'13'` | 주소는 `10.0.0.<UNIT_IP>` |
-| **82** | `DATA_STORAGE` | `'~/AIC/data'` | **v1.1.3 에서 한 곳으로 합쳤다** (구판은 `_C`/`_A`/`_B` 세 갈래). `~` 는 `GetDataset` 이 펼친다 — 다른 디스크로 보내려면 이 값 대신 **`~/AIC/data` 를 심볼릭 링크로** 둔다 (INSTALL.md) |
-| **91** | `SITE_CODE` | `'KMTK'` | KASI(실험실). 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP`/`FPAID` 가 여기서 유도된다** (5.3.1절). ⚠️ D-017 로 구 `KMTT` 폐지 |
-| **93** | `UNIT_CTRLTAG` | `'MK'` | **신설.** 이 유닛이 담당하는 detector pair. `MK`/`NT` 가 아니면 기동 시 거부 |
-| **95** | `UNIT_CTRL_ID` | `'KMTK-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
-| **96** | `UNIT_CTRL_SN` | `'STA-0287'` | **신설.** 백플레인 시리얼 |
-| 97 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
-| 105 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
-| 106 | `TELEMETRY_TIMEOUT` | `3.0` | STATUS 응답 대기 상한 [s] |
-| **108~109** | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.2.0'` / `'2026-08-26T15:53Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
-| 213~214 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
-| 1780~1799 | 실행부 3블록 | — | 앞 2블록은 `'''` 로 묶여 있고 **1795~1798 이 활성**(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
+| 69 | `DATA_PREFIX` | `'AC13A'` | 로그·SMS 표시용 라벨. **파일명에는 안 들어간다** |
+| 71 | `UNIT_ID` | `7` | |
+| 72 | `UNIT_IP` | `'13'` | 주소는 `10.0.0.<UNIT_IP>` |
+| **89** | `DATA_STORAGE` | `'~/AIC/data'` | **v1.1.3 에서 한 곳으로 합쳤다** (구판은 `_C`/`_A`/`_B` 세 갈래). `~` 는 `GetDataset` 이 펼친다 — 다른 디스크로 보내려면 이 값 대신 **`~/AIC/data` 를 심볼릭 링크로** 둔다 (INSTALL.md) |
+| **98** | `SITE_CODE` | `'KMTK'` | KASI(실험실). 관측소 반입 시 `KMTC`/`KMTS`/`KMTA` — **`OBSERVAT`/`ORIGIN`/`TELESCOP`/`FPAID` 가 여기서 유도된다** (5.3.1절). ⚠️ D-017 로 구 `KMTT` 폐지 |
+| **100** | `UNIT_CTRLTAG` | `'MK'` | **신설.** 이 유닛이 담당하는 detector pair. `MK`/`NT` 가 아니면 기동 시 거부 |
+| **102** | `UNIT_CTRL_ID` | `'KMTK-SCI-101'` | **신설.** FITS `CTRL<n>ID` |
+| **103** | `UNIT_CTRL_SN` | `'STA-0287'` | **신설.** 백플레인 시리얼 |
+| 104 | `OBSERVER_NAME` | `'HELab'` | FITS `OBSERVER` |
+| 112 | `TELEMETRY_ENABLE` | `True` | 문제가 보이면 `False` (아래 "이상할 때") |
+| 113 | `TELEMETRY_TIMEOUT` | `3.0` | STATUS 응답 대기 상한 [s] |
+| **115~116** | `SCRIPT_VERSION`/`SCRIPT_BUILD` | `'1.3.0'` / `'2026-08-26T18:05Z'` | FITS `ICSBUILD`. **소스를 고치면 같이 올린다.** 카드에 들어갈 자리가 26자라 `v<버전>:<빌드>` 가 그 길이를 넘으면 잘리고 경고가 난다 — 지금은 24자이므로 **초 단위를 넣으면(27자) 잘린다** |
+| 220~221 | `TEST_FRAMENUM_xTalk` / `TEST_EXPTIMES_xTalk` | `3` / 7개 | 연막시험 때 줄이는 자리 (아래 "첫 실행은 작게") |
+| 1825~1846 | 실행부 | — | 구 캠페인 3블록은 `'''` 로 묶여 있고 **1846 한 줄이 활성**(`UNIT_ACF_SCI_NORMAL`, DatasetId 2844)(`3211`/`3511`/`3811`, 2025-04-13 자). 아래 ⚠️ 참조 |
 
 > 🔴 **활성 블록의 유닛 번호를 확인하라.** `DatasetId` 는
 > `[UnitID(1)][TestSetup(2)][DatasetType(1)]` 이고, 활성 블록의 `3211`/`3511`/
@@ -344,15 +344,39 @@ v1.1 을 만든 뒤 스크립트를 원본과 대조 검토해 **6건을 고쳤�
   라는 원인이 화면에 안 나왔다. 데이터셋 시작에 `os.path.isfile` 로 확인하고
   절대경로·`cwd` 와 함께 멈춘다. POWERON 앞이라 멈춰도 안전하다.
 
-## guide 유닛 (smallbuf) — 아직 미개정
+## smallbuf 사본 — guide 스크립트를 만들 때의 참고 코드
 
-`archon_kmtnet_labtest_v1.0.smallbuf.py` 는 **원본 그대로**다. **guide raw 규격이
-아직 없어서** spec 적용 대상이 아니다. 착수할 때 필요한 것:
+> **smallbuf.py 스크립트는 구버전의 science 유닛을 구동하던 코드로서, smallbuf로
+> 구성되는 guide 유닛 제어용 코드 작성 시 참고할 코드이다. 다만, bigbuf 스크립트의
+> 코드로도 smallbuf 구성 유닛의 동작이 가능할 수도 있으니, 참조 바람.**
+> (운영자 2026-08-26)
+
+**왜 그럴 수 있나** — bigbuf 는 FETCH 주소를 프레임 상태의 `BUFnBASE` 에서 읽고,
+그 값은 컨트롤러가 **어떤 버퍼 구성이든 자기 배치대로** 돌려준다. 설계상 구성에
+무관하다는 뜻이다.
+
+> ※ 설계상 그렇다는 것이고 **small buffer 유닛에서 실기 검증은 아직 없다.**
+> 첫 guide 구동 때 확인할 항목이다.
+
+**bigbuf v1.3 과 다른 자리 — 다섯 곳뿐** (2026-08-26 에 v1.3 으로 맞췄다):
+
+- `newest()` 가 `BUFnBASE` 를 돌려주지 않는다 (5-튜플)
+- 그것을 받던 네 자리가 5-튜플 언패킹
+- `FETCH` 주소가 small buffer 배치식 `((buf+1)|4)<<29`
+
+헤더·규격 정합·데이터셋 구성·검사는 **글자까지 같다** — 견본 대조 139장 불일치 0.
+`test_labtest_spec_copy.py` 의 두 시험이 그 밖의 자리에서 갈라지는 것을 막는다.
+
+⚠️ **이것은 guide 유닛용 스크립트가 아니다.** 기하가 science(19200×9400)이고
+`DATASRC`·`CTRL1xx` 규약도 science 그대로다.
+
+**guide 스크립트 착수 때 필요한 것** (raw spec 기준):
 
 - `DATASRC='ARCHON_GUIDE'` + `CTRL1xx` **한 벌** 규약 (raw spec 5.5절)
-- 버퍼 구성이 다르다 — 512 MB × 3 (science 는 BIGBUF=1 로 768 MB × 2)
-- ⚠️ **헤더가 science 크기(19200×9400)를 하드코딩하고 있으므로 그대로 쓰면
-  안 된다.** v1.1.1 의 기하 대조가 이 경우를 fetch 전에 거부한다
+- **기하를 guide 크기로** — 지금 두 사본 다 science 를 하드코딩한다.
+  v1.1.1 의 기하 대조가 어긋난 경우를 fetch 전에 거부하므로 안전 장치는 있다
+- `Cn_TEMP` **8자리** (Backplane · Mod3 · Mod4 · Mod5 · Mod6 · Mod7 · Mod9 ·
+  Mod10) — 원장 7장 기재분이고 **실기 대조 전이다** (규격 8장 **OI-19**)
 
 ## 첫 실행 결과 (기록용 — 돌린 뒤 채운다)
 
@@ -372,4 +396,5 @@ v1.1 을 만든 뒤 스크립트를 원본과 대조 검토해 **6건을 고쳤�
 | v1.1.1 | 감사에서 잡힌 회귀 4건 수정 — STATUS 시한 초과 후 연결 재수립 / 비ASCII 손편집 값 기동 거부 / 기하·표본 불일치 fetch 전 거부 / 예외에도 `POWEROFF` 보장. 함께: 재실행 시 번호 밀림 경고(같은 UT 날짜), ACF 선검사 |
 | v1.1.2 | **리눅스 포팅** (운영자 확정 2026-08-23: 전 계통 리눅스 구동) — 저장소 경로를 윈도우 드라이브 문자(`C:/DATA`·`H:/DATA`·`L:/DATA`)에서 POSIX 경로로, 그리고 **쓰지도 않는 `twilio` import** 를 `try/except` 로 감쌌다(그 패키지가 없는 기계에서 스크립트가 아예 시작하지 못했다). 컨트롤러와의 왕복은 한 줄도 바뀌지 않았다 |
 | v1.1.3 | **저장 자리 한 곳으로** (운영자 확정 2026-08-24) — 세 갈래(`_C`/`_A`/`_B`)를 `DATA_STORAGE = ~/AIC/data` 하나로 합치고, `~` 를 `GetDataset` 이 펼치게 했다(안 펼치면 **cwd 아래 `~` 폴더**가 생기고 오류도 안 난다 — `ics_sim config.py` 의 2026-08-23 실측과 같은 함정). 함께 **저장소 선검사**를 ACF 와 같은 자리(POWERON 앞)에 넣었다 — `createFolder` 가 OSError 를 삼켜서, 경로가 틀리면 POWERON 뒤 `os.listdir` 에서 터지고 그 자리가 노출 루프 `try/finally` 의 **바깥**이라 전원을 켠 채 끝났다. 용량을 세려고 `SetDatasetConfig` 호출을 POWERON 앞으로 올렸다(전역 대입과 `print` 뿐이라 컨트롤러와 무관) |
+| **v1.3.0** | **Target 데이터셋 신설** (2026-08-26, 운영자): `DS_TARGET = 4`(비어 있던 자리) · `TEST_DARK_NUMBER` 도입으로 dark 를 여러 장 찍는다(다섯 데이터셋 전부 + `_expected_dataset_bytes()` 동반) · 실기 유닛 정보(`STA-0284`, IP `.101`, ACF `KMTC_SCI_101_STA0284_R2608_MK.acf`, 관측자 `SMC`) · `DATA_STORAGE` 한 곳에 저장(DS 폴더 분리 해제).  **`CTRL1ID` = `KMTC-SCI-101`** — CTIO 로 갈 유닛을 실험실에서 시험하므로 **유닛 정체는 시리얼과 1:1**(원자료 `Archon_Unit_Info.txt`)로 두고, 자료를 딴 곳은 `SITE_CODE='KMTK'` 가 따로 말한다 |
 | **v1.2.0** | **raw spec v1.5/v1.6 반영 — 헤더 내용 변경** (2026-08-26): 값 카드 135 → **131**(HK 4장 폐지) · `CHMAP_*` **4자 토큰** · `ORIGNAME` → **`EXPID`** · `Cn_*` 구분자 공백 → **`\|`** · 결측 자리 sentinel **`NC`** · 카드 폭 초과 규범(comment 를 뒤에서 자른다) · D-017 사이트 코드 · D-018 번호 공간.  **판을 올린 이유**: `SCRIPT_VERSION`/`SCRIPT_BUILD` 가 그대로 `ICSBUILD` 카드에 실리므로, 1.1.3 에 머물면 헤더가 다른 두 종류 프레임이 같은 값으로 찍힌다.  파일명도 `…v1.2.bigbuf.py` 로 옮겼다 |
