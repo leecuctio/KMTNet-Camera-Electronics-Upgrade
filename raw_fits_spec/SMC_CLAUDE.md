@@ -6,9 +6,9 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec v1.6 (2026-08-26)
+## ✅ 현행 규격 — raw spec v1.7 (2026-08-26)
 
-**[`KMT_CEU_Raw_FITS_Specification_v1.6.md`](KMT_CEU_Raw_FITS_Specification_v1.6.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → **v1.5 = 5장 검토 개시분**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 · v1.4).
+**[`KMT_CEU_Raw_FITS_Specification_v1.7.md`](KMT_CEU_Raw_FITS_Specification_v1.7.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → **v1.5 = 5장 검토 개시분**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 · v1.4).
 
 - **5장 검토가 열려 있다 (v1.5~v1.6, 2026-08-25~)** — 들어온 것: `Cn_*` 자리 순서 명세(**5.6.1절 신설**, 운영자 제시) · 견본 헤더 comment 오타 2건 정정 · **노출 정체성 카드 개정**(v1.6 — `ORIGNAME` → **`EXPID`**, `FILENAME` comment). 이 라운드의 나머지 결정도 **v1.5 에 누적**한 뒤 한 번에 발행·태그한다 (같은 판 이름으로 내용이 갈리는 인용 불안정을 막는다 — 원장 v1.12 판 분리의 교훈).
 
@@ -19,7 +19,7 @@
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Specification_v1.6.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
+| `KMT_CEU_Raw_FITS_Specification_v1.7.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
 | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기) — v1.14 에서 구 검토 문서 폐기분을 본문으로 편입했다. converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
 | `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` | **통합 문서** — Part 1: LEECU 전달용 C-항목·이름 대응·MEF/converter 쪽 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.4/v0.2/v0.5 는 `archive/` |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
@@ -67,6 +67,21 @@
 
 ## ▶ 이어서 시작하는 자리 (2026-08-25 기준)
 
+### ✅ v1.7 발행 — 파일명 넷째 필드에 이름을 준다 `<DETID>` (2026-08-26)
+
+**대기 안건이던 "꼬리 → `DETID` 필드" 를 이 판에서 처리했다** (운영자 지시).
+
+2.2절 문법이 앞 세 자리만 이름을 갖고 넷째는 리터럴 `MK`/`NT` 였다. 이름이 없으니 D-019 를 쓰는 문서들이 그 필드를 **"꼬리"·"태그" 라고 제각각** 불렀는데, 값은 정확히 `DETID` 카드의 값이다.
+
+```text
+<SITE>.<YYYYMMDD>.<NNNNNN>.<DETID>.fits
+```
+
+- **본체** — 2.2절 문법 개정 + `<DETID>` 필드 설명 신설(값 = `DETID` 카드, 파일명에서 이 필드만 pair 상이)
+- **딸림 17곳** — 2.3절 충돌 판별·5항 짝 이름 유도 · 5.9절 pair 규칙 · **DECISION_LOG D-019 항목 4·"잃는 것"** · **통합 문서**(LEECU 전달분) · README · 원장 v1.14. **규칙은 그대로고 부르는 이름만 정해졌다.**
+- **`__reference/Detector_Ch_to_AmpID_Map_v1.0.txt` 삭제**(운영자) — 4자 채널 표기 이전 판 + `B-BOT` 오기라 혼동만 준다. v1.6 ⑪ 의 "v1.0 은 원본 기록으로 남는다" 를 **같은 판에서 철회**했다(없는 파일을 가리키는 문장이 남지 않게). 원본은 git 이력 `44ab878`~ 에 있다.
+- ⏳ **코드 약 25곳은 아직 구 낱말이다** — `ics-archon-v1.0-build` 브랜치 소관(`rawhdr`·`rawpair`·`emitter`·`rawcards`·시험 6·labtest·양쪽 SMC_CLAUDE). 그 브랜치가 main 을 머지로 받을 때 따라간다. **규격이 먼저 서고 코드가 뒤따르는 순서다.**
+
 ### ✅ v1.6 발행 — 노출 정체성 카드 개정 (2026-08-26)
 
 **`ORIGNAME` 을 폐지하고 `EXPID` 를 세웠다** (운영자 확정).  값이
@@ -77,7 +92,7 @@
 | 정체성 카드 | `ORIGNAME= 'KMTA.….123450.MK'` (pair 상이) → `EXPID   = 'KMTA.20260821.123450'` (**pair 동일**) |
 | `FILENAME` comment | `'Filename assigned by ICS'` → `'FITS file name as written to storage'` |
 | 5.9절 pair 상이 | **7장 → 6장** — 짝을 잇는 **단일 키**가 카드 추가 없이 생겼다(폐지된 `PAIRFILE` 의 역할) |
-| 충돌 판별 | `FILENAME ≠ ORIGNAME`(직접 비교) → **`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 ≠ `EXPID`** |
+| 충돌 판별 | `FILENAME ≠ ORIGNAME`(직접 비교) → **`FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 ≠ `EXPID`** |
 | 견본 노출 번호 | `012345`/`012340` → **`123456`/`123450`** (D-018 로 6자리 전부를 쓰므로 맨 앞이 `0` 이 아닌 값). **견본 파일 이름도 함께 옮겼다** |
 
 ⚠️ **`EXPID` 는 2026-08-12 에 삭제됐던 이름을 되살린 것이다** (구판 v1.2
@@ -93,7 +108,7 @@ labtest 내장본 · 시험 3종 · `_vendor`.  **여기서 고치면 그 브랜
 (D-017 때 겪은 그대로).
 
 ⚠️ **converter 파급 (LEECU 소관)** — `ORIGNAME` 을 읽던 코드는 `EXPID` 로
-옮겨야 하고, 충돌 판별이 "두 값 직접 비교" 에서 "꼬리를 뗀 뒤 비교" 로 한 단계
+옮겨야 하고, 충돌 판별이 "두 값 직접 비교" 에서 "`DETID` 필드를 뗀 뒤 비교" 로 한 단계
 늘어난다.  대신 **짝 탐색을 파일명 파싱 없이 `EXPID` 하나로** 할 수 있게 됐다.
 
 ### ⏳ 열려 있는 라운드 — raw spec **v1.5~v1.6** (5장 검토, 2026-08-25~)
@@ -235,7 +250,7 @@ labtest 내장본 · 시험 3종 · `_vendor`.  **여기서 고치면 그 브랜
 - **`RDMODE` 개명 도입** — raw 독출 속도 모드 선언. MEF `READMODE`(`'64AMP'`, 구조 선언)와 이름이 갈라져 **값 충돌 미결이 종결**됐다 (MEF Impacts v0.4 3장에 해소 표시).
 - **`BCKTEMP` → `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` 확장** — 컨트롤러별 텔레메트리 3종(모듈 순서 명세는 spec 수록 예정). MEF `VOLTINFO`/`TELEMETRY` 공급원 **C-후보**로 연결 (MEF Impacts v0.4 1장).
 - **`CAMVER` 신설** — 카메라 시스템 버전 선언.
-- **미도입 `X` 확정** — `CTRLTAG` · `PAIRFILE`(pair 식별은 `FILENAME` 꼬리 `.MK`/`.NT` 로 충분) · `OSCNPATT` · `RDDIRT`/`RDDIRB` · `MIDOSC*` · 전압 색인 계열 · `RAWVER`/`RAWPROD` · `FSADEW`/`FSAALRM`. → Numbering v0.2 · MEF Impacts v0.4 에 반영 완료.
+- **미도입 `X` 확정** — `CTRLTAG` · `PAIRFILE`(pair 식별은 `FILENAME` `DETID` 필드 `.MK`/`.NT` 로 충분) · `OSCNPATT` · `RDDIRT`/`RDDIRB` · `MIDOSC*` · 전압 색인 계열 · `RAWVER`/`RAWPROD` · `FSADEW`/`FSAALRM`. → Numbering v0.2 · MEF Impacts v0.4 에 반영 완료.
 - **확정 초안 v0.3.6** — 돔 블록이 TCS 절로 이동, 카드 8장 추가.
 - **미결 갱신** — ⚠️ 확인 요망 **11건**(신규: 10번 `PRESCN` 모순 · 11번 `RAWVER` 공백 포함, v1.9 머리말) · `CHKIMG` 2장 판정 · 충돌 처리/정체성의 D-등재.
 

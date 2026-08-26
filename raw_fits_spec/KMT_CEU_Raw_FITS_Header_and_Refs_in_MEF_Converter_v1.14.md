@@ -3,8 +3,10 @@
 **v1.14** · 개정 2026-08-23 · **판정 준거를 본문에 편입(0장 신설)** — 폐기 문서 의존 제거
 > **제자리 보강 (2026-08-25)** — 7장 `Cn_*` 행의 지시 "이 순서를 raw FITS spec 에 명세로 수록"이 이행됐다. 정본은 **raw spec 5.6.1절**(v1.5)이고, 이 행은 이제 그리로 가리킨다. 판정 내용에는 변화가 없다.
 >
-> **제자리 보강 (2026-08-26) — raw spec v1.6 반영.** ⑬ **`ORIGNAME` 폐지 · `EXPID` 신설** — 값이 `<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **컨트롤러 태그가 없어 pair 양쪽에서 같다.** 5.9절 "반드시 상이" 가 **7장 → 6장**이 되고, 짝을 잇는 **단일 키**가 카드 추가 없이 생긴다(폐지된 `PAIRFILE` 의 역할). 충돌 판별은 `FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값과 비교하는 것으로 바뀐다. ⚠️ **converter 에서 `ORIGNAME` 을 읽던 자리는 `EXPID` 로 옮겨야 한다** (C-항목). ⑭ **`FILENAME` comment** `'Filename assigned by ICS'` → `'FITS file name as written to storage'` — 종전 문구가 `ORIGNAME` 과 똑같이 "ICS 가 배정" 계열이라 둘의 차이가 드러나지 않았다. ⑮ 견본 노출 번호 `012345`/`012340` → `123456`/`123450` 이고 **견본 파일 이름도 함께 옮겼다**.
+> **제자리 보강 (2026-08-26) — raw spec v1.6 반영.** ⑬ **`ORIGNAME` 폐지 · `EXPID` 신설** — 값이 `<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **컨트롤러 태그가 없어 pair 양쪽에서 같다.** 5.9절 "반드시 상이" 가 **7장 → 6장**이 되고, 짝을 잇는 **단일 키**가 카드 추가 없이 생긴다(폐지된 `PAIRFILE` 의 역할). 충돌 판별은 `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값과 비교하는 것으로 바뀐다. ⚠️ **converter 에서 `ORIGNAME` 을 읽던 자리는 `EXPID` 로 옮겨야 한다** (C-항목). ⑭ **`FILENAME` comment** `'Filename assigned by ICS'` → `'FITS file name as written to storage'` — 종전 문구가 `ORIGNAME` 과 똑같이 "ICS 가 배정" 계열이라 둘의 차이가 드러나지 않았다. ⑮ 견본 노출 번호 `012345`/`012340` → `123456`/`123450` 이고 **견본 파일 이름도 함께 옮겼다**.
 
+> **제자리 보강 (2026-08-26) — raw spec v1.7 반영.** ⑭ 충돌 판별을 서술하는 낱말이 정해졌다 — 파일명 넷째 필드가 `<DETID>` 로 명명되면서(규격 2.2절) 이 문서의 "꼬리" 5곳을 **`DETID` 필드**로 옮겼다. 판정 내용에는 변화가 없다.
+>
 > **v1.14 에서 바뀐 것 — 판정 근거가 문서 안으로 들어왔다.**
 >
 > 1. **0장 신설 — 준거 순위와 판정 구간.** 이 문서가 카드를 `O`/`X` 로 놓을 때 쓴 판정 기준이 그동안 별도 검토 문서(키워드맵 v0.7)에만 있었다. 그 문서는 흡수 완료로 삭제됐는데(운영자 재가 2026-08-22) **판정 기준까지 같이 사라져** 근거 없이 결론만 남은 상태였다. 순위표 · converter 3상태 × ICD 규정/침묵 교차표 · 준거 공백의 크기(210개 중 ICD 36 / 없는 것 174) · 추출 함정을 본문으로 들여왔다.
@@ -557,7 +559,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `CHMAP_LT` `CHMAP_LB`<br>`CHMAP_RT` `CHMAP_RB` | **O** | **CCD 출력 채널 맵 4장** — 사분면(좌/우 절반 × TOP/BOT 행)별<br>8토큰, raw X 오름차순. **토큰은 4자 `<chip><A\|D><nn>`**<br>(01–08=`A` · 09–16=`D`, raw spec v1.5 개정 — 구 3자 `M16` 대체).<br>예: `'MD16,MD15,…,MD09'` | `AMOD<nn>`/`ACHN<nn>` 색인형 65장을 대체.<br>converter C-11 이 이 카드에서 `MODULE`/`CHANNEL` 을<br>채우도록 개정 대상. 값 = **CCD 출력단**(Archon module/channel 은 다음 단, OI-9) |
 | `CTRLERR` | **X** | `TELEMETRY.ERRORFLAG` | 별도 모니터링 하므로 미적용 |
 | `CTRLSTAT` | **X** | `TELEMETRY.STATUS` | `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` 와 중복 |
-| `CTRLTAG` | **X** | **이 파일이 pair의 어느 쪽인가** (`MK`/`NT`) | 아카이브 근거 — `FILENAME`(+`EXPID`)/`CTRLTAG` (D-012 문구 개정).<br>**v1.9 미도입 확정 — `DETID` 와 값 중복.** pair 식별은<br>`FILENAME` 의 `.MK`/`.NT` 꼬리로 충분 |
+| `CTRLTAG` | **X** | **이 파일이 pair의 어느 쪽인가** (`MK`/`NT`) | 아카이브 근거 — `FILENAME`(+`EXPID`)/`CTRLTAG` (D-012 문구 개정).<br>**v1.9 미도입 확정 — `DETID` 와 값 중복.** pair 식별은<br>`FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)로 충분 |
 | `DATASUM` | **X** | FITS 표준 datasum | 미사용 |
 | `DMPTEMP` | **O** | DMP 온도 [degC] — HK 재구성 신설 (v1.8) | `ICG RTD measurement` |
 | `EXECODE` | **X** | ICS relay 필드 |  |
@@ -570,7 +572,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `MIDOSCT` | **X** | 중앙 overscan 중 TOP half에서 나온 row 수 | 〃 |
 | `NAMPRAW` | O | **이 파일에 담긴 amplifier 수** (chip 2 × amp 16) |  |
 | `NXTILE` | **X** | X 방향 amp tile 수 (chip 2 × strip 8) | **`NAXIS1 / AMPNAX1` 로 파생 — 카드 불요** (v1.7) |
-| ~~`ORIGNAME`~~ → **`EXPID`** | **O** | **카운터가 이 노출에 처음 배정한 식별자** `<SITE>.<YYYYMMDD>.<NNNNNN>` — 모든 파일에 항상 기록.<br>**컨트롤러 태그가 없어 pair 양쪽 동일** → 짝을 잇는 단일 키.<br>충돌 신호 = `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절, **D-016 등재**).<br>**v1.6 에서 `ORIGNAME` → `EXPID` 개명·재정의** (운영자 확정 2026-08-26).<br>상세: 통합 문서 v0.5 Part 2 |
+| ~~`ORIGNAME`~~ → **`EXPID`** | **O** | **카운터가 이 노출에 처음 배정한 식별자** `<SITE>.<YYYYMMDD>.<NNNNNN>` — 모든 파일에 항상 기록.<br>**컨트롤러 태그가 없어 pair 양쪽 동일** → 짝을 잇는 단일 키.<br>충돌 신호 = `FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID` | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절, **D-016 등재**).<br>**v1.6 에서 `ORIGNAME` → `EXPID` 개명·재정의** (운영자 확정 2026-08-26).<br>상세: 통합 문서 v0.5 Part 2 |
 | `OSCNPATT` | **X** | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽).<br>**근거는 converter의 `is_bias_right()`** —<br>`strip_id(amp)=((amp-1)%8)+1`,<br>`is_bias_right(amp)= 1≤amp≤4 or 9≤amp≤12` | converter 가 이 카드를 읽지 않아 **선언과 하드코딩이<br>갈라져도 변환 쪽에서 못 잡는다**(C-5/C-13). 취득 SW 쪽 방어는<br>`test_geometry_vs_converter.py`. **v1.9 미도입 — 헤더가<br>복잡해지므로 세부내용은 raw FITS spec 에 수록**(포장 규범 조항 이관 전제) |
 | `OVRSCNX` | **O** | amp 당 X overscan 열 수 = `48` (side varies) | 폐지된 `OVERSCNX`(레거시 32)와 **이름 분리** — 8.1절의 미정 해소 |
 | `OVRSCNY` | **O** | amp 당 Y overscan 행 수 = `84` (frame-center side) | 폐지된 `OVERSCNY` 와 **이름 분리**. 84/84 분배는 OI-4 |
@@ -660,7 +662,7 @@ NAMPRAW =                   32 / Number of amplifiers in the raw FITS file
 | 폐지 카드 | 폐지 근거 | 대신 보는 것 |
 | --- | --- | --- |
 | `UNIQNAME` (레거시 계승분) | "불변 정본 키"라는 뜻이 이탈했다 — 번호 증가 방식이 `FILENAME` 의 유일성을 구조로 보장하므로 잉여가 되고, 뜻이 두 번 흐른 이름에 세 번째 뜻을 얹지 않는다(D-013 원칙). ⚠️ converter 가 이 카드를 읽어 MEF `UNIQNAME` 으로 옮기므로(`v2_1.py:405`) **폐지 후 MEF 가 빈 문자열을 받는다** — C-항목으로 LEECU 이관 (MEF Impacts 문서 1장) | **`FILENAME`**(실명 · 아카이브 유일 키) + **`ORIGNAME`**(카운터가 처음 배정한 이름, 항상 기록) |
-| `NAMECLSH` (규격 v1.2 신설분) | 충돌 신호가 카드 존재에서 **값 비교**로 이동했다 | `FILENAME` 의 꼬리를 뗀 값 ≠ `EXPID` 가 곧 충돌 신호 (v1.6 — 구 `ORIGNAME`). `EXPID` 결측은 헤더 결함으로 분류 |
+| `NAMECLSH` (규격 v1.2 신설분) | 충돌 신호가 카드 존재에서 **값 비교**로 이동했다 | `FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID` 가 곧 충돌 신호 (v1.6 — 구 `ORIGNAME`). `EXPID` 결측은 헤더 결함으로 분류 |
 
 `clash/` 격리 디렉토리와 `.clash<UTC>` 접미사, "PAIRFILE 은 명목 이름으로 열화될 수 있다" 조항도 함께 폐지된다. ics_sim 의 RETIRED(부활 금지) 목록에 `UNIQNAME`·`NAMECLSH` 를 추가해야 한다.
 
@@ -819,7 +821,7 @@ geometry 를 재구성할 재료는 **raw 헤더 안에 다 있다** — 11.1 �
 | `DETID` | 이 파일에 담긴 chip 쌍 (`MK`/`NT`). `CHIPS`·`CHIP1`·`CHIP2` 는 v1.9 미도입(7장) |
 | `MIDOSCB` · `MIDOSCT` | 중앙 overscan 의 BOT/TOP 몫 (v1.9 미도입 — `OVRSCNY` 로 충분) |
 | `RDDIRT` · `RDDIRB` | 독출 방향 (v1.9 미도입 — 세부는 raw FITS spec 수록). 행 순서(구 `ROWORDR`)는 규격 포장 규범 조항으로 이관 |
-| `FILENAME` · `EXPID` | 실명(아카이브 유일 키) · 카운터 최초 배정 노출 식별자(**pair 동일**, v1.6 — 구 `ORIGNAME`). **pair 식별은 `FILENAME` 의 `.MK`/`.NT` 꼬리** — `CTRLTAG` · `PAIRFILE` 은 v1.9 미도입(`DETID` 와 값 중복 · 규약으로 예측 가능) |
+| `FILENAME` · `EXPID` | 실명(아카이브 유일 키) · 카운터 최초 배정 노출 식별자(**pair 동일**, v1.6 — 구 `ORIGNAME`). **pair 식별은 `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)** — `CTRLTAG` · `PAIRFILE` 은 v1.9 미도입(`DETID` 와 값 중복 · 규약으로 예측 가능) |
 | `RDMODE` · `CAMVER` · `Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` | readout mode(값 예 `'NORMAL'`) · 카메라 전자부 버전(`'CEU-v2.1'`) · Archon unit 텔레메트리 나열(v1.9, 7장) |
 
 ### 12.2 raw 헤더에 **없는** 것 — 직접 계산해야 한다
