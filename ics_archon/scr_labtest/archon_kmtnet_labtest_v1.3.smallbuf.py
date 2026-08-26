@@ -130,9 +130,9 @@ OBSERVER_NAME = 'SMC'           # FITS OBSERVER
 TELEMETRY_ENABLE = True     #  <---- 문제가 보이면 False
 TELEMETRY_TIMEOUT = 3.0     # STATUS 응답 대기 상한 [s]
 
-FRAME_WAIT_MAX = 300        # 노출시간 위에 더 기다릴 상한 [s].  넘으면
-                            # 예외 -> finally 의 POWEROFF 로 빠진다
-FRAME_DUMP_EVERY = 8        # 몇 회전마다 FRAME 상태를 찍나 (0 이면 끔) (0 이면 끔)
+FRAME_WAIT_MAX = 20         # 노출시간 위에 더 기다릴 상한 [s].  넘으면
+                            # 예외 -> finally 의 POWEROFF 로 빠진다.
+FRAME_DUMP_EVERY = 8        # 몇 회전마다 FRAME 상태를 찍나 (0 이면 끔)
 
 SCRIPT_VERSION = '1.3.0'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
 SCRIPT_BUILD = '2026-08-26T18:05Z'  # 소스를 고치면 같이 올린다
@@ -1189,12 +1189,23 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
             for pair in archoncmd('FRAME').split():
                 k, _, v = pair.decode().partition('=')
                 fs[k] = v
+            st = {}
+            try:
+                for pair in archoncmd('STATUS', TELEMETRY_TIMEOUT).split():
+                    k, _, v = pair.decode().partition('=')
+                    st[k] = v
+            except Exception as e:
+                st['ERR'] = str(e)
             print('\n   [%4.0fs] RBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s'
+                  '  POWER=%s  POWERGOOD=%s  TIMER=%s'
                   % (waited, fs.get('RBUF'),
                      fs.get('BUF1FRAME'), fs.get('BUF2FRAME'),
                      fs.get('BUF3FRAME'),
                      fs.get('BUF1COMPLETE'), fs.get('BUF2COMPLETE'),
-                     fs.get('BUF3COMPLETE')), end='\n   ', flush=True)
+                     fs.get('BUF3COMPLETE'),
+                     st.get('POWER', st.get('ERR', '?')),
+                     st.get('POWERGOOD', '?'), st.get('TIMER', '?')),
+                  end='\n   ', flush=True)
     print(progend)
     
     # Fetch frame
