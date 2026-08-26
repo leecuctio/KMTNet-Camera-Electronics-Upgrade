@@ -417,6 +417,45 @@ def test_ctrl_telemetry_formats_and_sentinels():
     assert h['C1_CURR'] == '0.032'
 
 
+def test_temp_mod_order_is_anchored_to_the_spec_table():
+    """`TEMP_MOD_LABELS` 를 **규격 5.6.1절 표에 못박고**, `TEMP_MODS` 를 그
+    자리에 1:1 로 묶는다.
+
+    ⚠️ **두 튜플의 지위가 다르다.**  `TEMP_MOD_LABELS` 는 규격 5.6.1절 표
+    그 자체이고, `TEMP_MODS`(Archon STATUS 필드명)는 **규격에 없다** -- 각
+    자리에서 어떤 필드를 읽을지는 매뉴얼 p.47-49 근거의 구현 대응이다.
+    그래서 앞은 규격 글자와, 뒤는 **자리 대응**과 대조한다.
+
+    ⚠️ 이 저장소의 다른 시험은 전부 **상수를 기준으로** 기대값을 만든다 --
+    `len(rawhdr.TEMP_MODS)` 로 자리 수를 세거나(아래 시험), labtest 내장 사본을
+    `rawhdr` 와 대조하거나(`ics_archon/tests/test_labtest_spec_copy.py`).
+    그래서 **원천인 이 튜플 자체가 틀리면 사본도 같이 틀린 채 전부 통과한다.**
+    여기만 규격 표의 글자를 손으로 적어 앵커 노릇을 한다.
+
+    자리가 곧 항목이라 순서가 하나만 밀려도 읽는 쪽이 **다른 모듈의 온도를
+    본다** -- 값이 다 그럴듯한 범위라 눈으로도, 바이트 대사로도 안 잡힌다
+    (견본은 sim 이 순서대로 준 값이라 라벨을 재배열해도 출력이 같다).
+    """
+    # raw spec 5.6.1절 "`Cn_TEMP` -- Archon 모듈 온도, science 컨트롤러 10자리"
+    assert rawhdr.TEMP_MOD_LABELS == (
+        'Backplane', 'Mod1:LVDS', 'Mod2:Driver', 'Mod3:Driver',
+        'Mod4:LVXBias', 'Mod5:ADM', 'Mod8:ADM', 'Mod9:HVYBias',
+        'Mod10:Driver', 'Mod11:Driver')
+    # STATUS 필드명(규격 아님 -- 매뉴얼 p.47-49)이 그 자리와 1:1 이어야 한다.
+    assert rawhdr.TEMP_MODS == (
+        'BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP', 'MOD4/TEMP',
+        'MOD5/TEMP', 'MOD8/TEMP', 'MOD9/TEMP', 'MOD10/TEMP', 'MOD11/TEMP')
+    assert len(rawhdr.TEMP_MODS) == len(rawhdr.TEMP_MOD_LABELS) == 10
+    # 목록에 없는 모듈(6·7·12)은 자리를 차지하지 않는다 -- 자리 수가 구성이다.
+    mods = [f.split('/')[0] for f in rawhdr.TEMP_MODS[1:]]
+    assert mods == ['MOD1', 'MOD2', 'MOD3', 'MOD4', 'MOD5',
+                    'MOD8', 'MOD9', 'MOD10', 'MOD11']
+    assert len(set(mods)) == len(mods), '모듈이 겹친다'
+    # 5.6.1절 전원 레일 7자리.
+    assert rawhdr.VOLT_RAILS == (
+        'P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
+
+
 def test_absent_controller_still_fills_every_slot():
     """**전 자리 결측도 자리 수만큼 `NC` 다** (raw spec 5.6.1절).
 
@@ -426,7 +465,7 @@ def test_absent_controller_still_fills_every_slot():
     "드물지 않다" 고 못박고 그 모습을 열 자리 `NC` 로 보인 것이 이 때문이다.
     """
     h = rawhdr.ctrl_telemetry_header([{'temp': [40.1], 'volt': [], 'curr': []}])
-    assert h['C2_TEMP'] == '|'.join(['NC'] * len(rawhdr.TEMP_SLOTS))
+    assert h['C2_TEMP'] == '|'.join(['NC'] * len(rawhdr.TEMP_MODS))
     assert h['C2_VOLT'] == h['C2_CURR'] == '|'.join(
         ['NC'] * len(rawhdr.VOLT_RAILS))
     # 자리 수가 규격 표와 같아야 한다 -- 그것으로 구성을 읽기 때문이다.

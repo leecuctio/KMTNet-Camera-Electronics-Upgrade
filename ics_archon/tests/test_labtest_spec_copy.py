@@ -130,14 +130,14 @@ def test_labtest_site_table_matches_the_spec_5_3_1():
 
 @pytest.mark.repo_only
 def test_labtest_temp_slots_match_spec_5_6_1():
-    """내장 `TEMP_SLOTS`/`VOLT_RAILS` = 규격 5.6.1절 자리 표.
+    """내장 `TEMP_MODS`/`VOLT_RAILS` = 규격 5.6.1절 자리 표.
 
     자리 자체가 항목이라 순서가 하나만 밀려도 실험실 자료의 온도가 **다른
     모듈 것으로 읽힌다** -- 값이 그럴듯해서 아무도 의심하지 않는다.
     """
     from ics_sim import rawhdr
 
-    assert tuple(_literal('TEMP_SLOTS')) == rawhdr.TEMP_SLOTS
+    assert tuple(_literal('TEMP_MODS')) == rawhdr.TEMP_MODS
     assert tuple(_literal('VOLT_RAILS')) == rawhdr.VOLT_RAILS
 
 
@@ -249,17 +249,17 @@ def test_labtest_absent_controller_fills_every_slot():
     """
     g = _funcs('fits_card', 'status_number', 'all_slots_nc',
                'ctrl_telemetry_cards', 'SLOT_NC', 'TEMP_NC',
-               'TEMP_SLOTS', 'VOLT_RAILS')
+               'TEMP_MODS', 'VOLT_RAILS')
     cards = g['ctrl_telemetry_cards'](None, 1)
     for n in (1, 2):
         assert cards['C%d_TEMP' % n] == '|'.join(
-            ['NC'] * len(g['TEMP_SLOTS']))
+            ['NC'] * len(g['TEMP_MODS']))
         assert cards['C%d_VOLT' % n] == cards['C%d_CURR' % n] == '|'.join(
             ['NC'] * len(g['VOLT_RAILS']))
     # 값이 있어도 미장착 컨트롤러 쪽은 자리를 채운 채로 남는다.
-    status = {k: '40.1' for k in g['TEMP_SLOTS']}
+    status = {k: '40.1' for k in g['TEMP_MODS']}
     status.update({r + '_V': '5.0' for r in g['VOLT_RAILS']})
     status.update({r + '_I': '1.0' for r in g['VOLT_RAILS']})
     cards2 = g['ctrl_telemetry_cards'](status, 1)
-    assert len(cards2['C1_TEMP'].split('|')) == len(g['TEMP_SLOTS'])
-    assert cards2['C2_TEMP'] == '|'.join(['NC'] * len(g['TEMP_SLOTS']))
+    assert len(cards2['C1_TEMP'].split('|')) == len(g['TEMP_MODS'])
+    assert cards2['C2_TEMP'] == '|'.join(['NC'] * len(g['TEMP_MODS']))

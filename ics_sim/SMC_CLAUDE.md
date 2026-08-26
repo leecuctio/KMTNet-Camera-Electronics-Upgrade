@@ -36,7 +36,8 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 6. **`EXPSTATUS=` 는 전이 시 1회, `OBS` 로만** — 과다 발신하면 CamStatus 가 역행한다.
 
 ⚠️ **2026-08-24 — 사이트 판별이 바뀌었다** (운영자 지시, DevNote 11.27).
-`[node] observatory`(`CTIO`/`SSO`/`SAAO`/`TESTBED`) 한 줄이 정본이고 거기서
+`[node] observatory`(`CTIO`/`SSO`/`SAAO`/**`KASI`** — 넷째 값은 **D-017**
+(2026-08-25)로 구 `TESTBED` 를 대체했다) 한 줄이 정본이고 거기서
 `telid`/`site` 가 유도된다. **적은 값이 그대로 `OBSERVAT` 카드**라 규격 2.2절·
 converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐지** —
 `siteid.py` 를 지웠다. 모르는 값은 **기동 거부**.

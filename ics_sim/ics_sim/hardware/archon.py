@@ -150,10 +150,15 @@ class ArchonBackend:
 
     def controller_telemetry(self) -> list[dict]:
         # TODO: 두 컨트롤러의 STATUS 에서 채운다 (Archon 매뉴얼 p.47-49).
-        #       - temp: BACKPLANE_TEMP + MODm/TEMP (모듈 순서 명세는 규격
-        #         수록 예정 -- 통합 문서 §1)
+        #       - temp: **자리 순서는 규격 5.6.1절이 정한다**(science 10자리,
+        #         rawhdr.TEMP_MOD_LABELS).  그 자리에 넣을 STATUS 필드는
+        #         rawhdr.TEMP_MODS -- BACKPLANE_TEMP + MODm/TEMP 대응이며
+        #         **규격이 아니라 매뉴얼 p.47-49 근거의 구현 판단**이다.
+        #         목록에 없는 모듈(6·7·12)은 자리를 차지하지 않는다.
         #       - volt/curr: 전원 레일 P2V5/P5V/P6V/N6V/P17V/N17V/P35V 의
-        #         `_V`/`_I` 쌍, 자리 순서는 rawhdr.VOLT_RAILS.
+        #         `_V`/`_I` 쌍, 자리 순서는 rawhdr.VOLT_RAILS (7자리).
+        #       읽지 못한 자리는 건너뛰지 말고 rawhdr.SLOT_NC 로 채운다 --
+        #       건너뛰면 뒤 항목이 앞으로 당겨져 소비자가 구분할 수 없다.
         #       **양쪽 파일에 두 대분을 같은 값으로** (raw spec 5.9절).
         log.warning('controller_telemetry: %s', _NOT_YET)
         return []

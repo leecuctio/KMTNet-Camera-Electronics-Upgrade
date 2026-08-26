@@ -93,7 +93,7 @@ def test_stage1_is_read_only_and_confirms_the_three_assumptions(fake, tmp_path):
 
 
 def test_stage1_reports_a_wrong_ad_slot_as_a_problem(tmp_path):  # noqa: ANN001
-    """AD 모듈이 다른 슬롯에 있으면 `TEMP_SLOTS` 가 어긋난다 -- 문제로 낸다.
+    """AD 모듈이 다른 슬롯에 있으면 `TEMP_MODS` 가 어긋난다 -- 문제로 낸다.
 
     **이것이 미검증 1번의 실제 판정 경로다.**  조용히 넘기면 `Cn_TEMP` 의 자리가
     실물과 다른 채로 자료가 쌓인다.

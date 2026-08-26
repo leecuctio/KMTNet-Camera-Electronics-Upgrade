@@ -234,7 +234,7 @@
 | **HK 4장 폐지** | `AIR_IN`·`AIR_OUT`·`GLYC_IN`·`GLYC_OUT` | `rawhdr.DEWAR_CARDS` 10 → **6** · `rawcards.CARDS` · labtest 템플릿+값.  견본 값 카드 **135 → 131** |
 | **`CHMAP_*` 토큰** | 3자 `M16` → **4자 `MD16`** | `rawhdr.CHMAP` · `check_geometry()` 불변식(4자·가운데 글자 규칙) · 신설 `rawhdr.chmap_section()` · `rawcards` 폭 31→39 · comment `CCD output ch,`→`CCD out ch,` · labtest |
 | **견본 comment 오타 2건** | `Telesope`→`Telescope` · `Acutator`→`Actuator` | `rawcards.CARDS` · labtest 템플릿 |
-| **5.6.1절 신설 (`Cn_*` 자리 순서)** | `Cn_TEMP` science **5자리 → 10자리** | `rawhdr.TEMP_SLOTS`(정본 신설) + `TEMP_SLOT_LABELS` · `parse.TEMP_SLOTS` 가 그것을 참조 · labtest 사본 · `fake_archon` · probe.  **아래 "재검토에서 나온 것" 참조** |
+| **5.6.1절 신설 (`Cn_*` 자리 순서)** | `Cn_TEMP` science **5자리 → 10자리** | `rawhdr.TEMP_MODS`(정본 신설) + `TEMP_MOD_LABELS` · `parse.TEMP_MODS` 가 그것을 참조 · labtest 사본 · `fake_archon` · probe.  **아래 "재검토에서 나온 것" 참조** |
 
 ### 🔍 재검토에서 나온 것 (2026-08-26, 목 지시로 한 바퀴 더)
 
@@ -244,11 +244,11 @@
 **① `Cn_TEMP` 가 자리 수부터 틀렸다 (5.6.1절).**  코드는 `BACKPLANE_TEMP` +
 `MOD5`~`MOD8` **5자리**였는데 규격 5.6.1절은 science **10자리**를 확정했고,
 **견본 pair 의 `C1_TEMP` 도 처음부터 10개**였다 — 잠정안이 견본과 갈려
-있었던 것이다.  `parse.TEMP_SLOTS` 의 주석이 "모듈 나열 순서의 정본 명세는
+있었던 것이다.  `parse.TEMP_MODS` 의 주석이 "모듈 나열 순서의 정본 명세는
 규격 수록 예정 … 확정되면 이 목록을 그것으로 교체한다" 고 남겨 둔 자리이고,
 v1.5 가 바로 그 수록이다.
 
-- 정본을 `rawhdr.TEMP_SLOTS` 에 세우고(`VOLT_RAILS` 와 같은 자리) `parse` 는
+- 정본을 `rawhdr.TEMP_MODS` 에 세우고(`VOLT_RAILS` 와 같은 자리) `parse` 는
   그것을 참조한다 — **사본을 늘리지 않는다.**
 - **자리 = 항목**이라 순서가 하나만 밀려도 소비자는 다른 모듈의 온도를 그
   모듈 값으로 읽는다.  값이 그럴듯해서 아무 경고도 안 뜬다.
@@ -283,7 +283,7 @@ shopen` 은 지연이자 **재질의가 걸리는 노출 문턱**인데(그 두 
 
 **probe 1단계가 이제 자리 표를 눈으로 대조하게 해 준다.**  `Cn_TEMP` 는 값에
 이름표가 없어서(자리 = 항목) 실기에서 "이 자리가 정말 그 모듈인가" 를 확인할
-길이 없었다.  `tools/probe_archon.py` 가 `rawhdr.TEMP_SLOT_LABELS` 로 자리별
+길이 없었다.  `tools/probe_archon.py` 가 `rawhdr.TEMP_MOD_LABELS` 로 자리별
 이름표를 찍고, 자리 수가 규격과 다르면 **문제로 낸다**:
 
     자리 표 (규격 5.6.1절) -- 값이 그 모듈의 것인지 대조할 것:
@@ -716,7 +716,7 @@ README 로 나눈다.
 
 | 미검증 자리 | 실기에서 확정될 값 | 코드 표시 |
 |---|---|---|
-| STATUS 필드·모듈 나열 순서 | `TEMP_SLOTS`(BACKPLANE + MOD5~8)가 실물과 맞는지. **정본 명세는 규격 수록 예정** | `parse.TEMP_SLOTS` |
+| STATUS 필드·모듈 나열 순서 | `TEMP_MODS`(BACKPLANE + MOD5~8)가 실물과 맞는지. **정본 명세는 규격 수록 예정** | `parse.TEMP_MODS` |
 | 독출 시간·진행률 거동 | `BUFnLINES` 가 선형인지, 독출 개시 전 0 구간이 있는지. **FETCH+저장이 `Wrote` 25초 창에 들어가는지** | `controller.wait_frame` · `backend.readout` |
 | 픽셀 좌우 배치 | Archon 이 주는 X 순서가 raw spec 4.1절(`chips[0]` = X 낮은 쪽)과 같은지 | `backend.write_frame` |
 | 산출물 실물 | 기하(19200×9400) · `DETID` · `DATE-OBS` · converter 투입 | `fitswrite.write_frame` |
@@ -854,9 +854,9 @@ for f in ~/AIC/bin/*; do printf '%-12s %s
 `EXPNUM` 명령/질의(OBSAgent 가 readout 중 스스로 묻는다 — DevNote 3장 4항),
 파일명에서는 `<SITE>.<YYYYMMDD>.<NNNNNN>` 의 뒤 6자리다.
 
-- **번호 공간**: `rawpair.NUM_SPACE = 100000` -> 관측 운용은 `000000`~`099999`
-  이고 넘으면 되감는다. 6자리 형식은 유지된다(실험실 DS 체계가 6자리 전체를
-  쓰기 때문 — raw spec 2.3절).
+- **번호 공간**: `rawpair.NUM_SPACE = 1_000_000` -> `000000`~**`999999`** 이고
+  1000000 에서 `000000` 으로 되감는다 (**D-018**, 2026-08-25 — 구 `099999`
+  상한을 대체했다). 6자리 형식 전체를 쓴다 (raw spec 2.3절).
 - **저장 위치**: `[paths] expnum_file` (`~` 확장됨). 비우면 **설정 파일 옆**으로 자동 결정
   (`config.resolve_expnum_file`) — `~/AIC/Config/ics_archon.ini` 면
   `~/AIC/Config/ics_archon.expnum`. `data_dir` 와 **일부러 분리**했다: 저장
@@ -909,7 +909,7 @@ Notes(2014-10-30), 쪽수는 매뉴얼 기준.
   `HEIGHT`/`SAMPLE` · **`BUFnLINES`(라인 진행)** · `BUFnPIXELS`(픽셀 진행) ·
   `BUFnTIMESTAMP`. 진행률은 `BUF<WBUF>LINES / BUF<WBUF>HEIGHT` 다.
 - **AD(비디오) 모듈은 중앙 4슬롯(5-8)에만** 꽂힌다 (p.20) — 모듈당 4채널(tap).
-  그래서 `TEMP_SLOTS` 기본값이 `BACKPLANE_TEMP + MOD5~8/TEMP` 다.
+  그래서 `TEMP_MODS` 기본값이 `BACKPLANE_TEMP + MOD5~8/TEMP` 다.
   `ArchonController._log_module_map()` 이 기동에서 이 가정을 실물과 대조한다.
 - **컨트롤러는 적용된 ACF 이름을 보고하지 않는다** (p.54) — `CTRLnCFG` 는
   호스트가 관리한다.

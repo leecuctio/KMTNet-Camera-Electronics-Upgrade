@@ -107,7 +107,7 @@ grep -n "Set this\|^TELEMETRY_\|^SITE_CODE\|^TestRunNum\|^GetDataset" archon_kmt
   경로가 상대경로이므로 **작업 디렉터리**가 그 상위 폴더여야 한다
 - `DATA_STORAGE` 자리가 **이미 있는지** (54행). **v1.1.3 부터 스크립트가 데이터셋 시작에 직접 확인하고, 없거나 못 쓰거나 좁으면 접속·전원 전에 멈춘다** — 그리고 **만들어 주지 않는다**(마운트가 안 붙은 것을 폴더 생성으로 덮으면 자료가 엉뚱한 곳에 쌓인다). 자리는 운영자가 먼저 만든다 — `mkdir -p ~/AIC/data`, 다른 디스크로 보낼 거면 심볼릭 링크 (INSTALL.md "2. 자리 만들기"). — 그리고 **여유
   용량**(아래 "첫 실행은 작게" 의 표)
-- `TEMP_SLOTS` (598행) — 지금은 `BACKPLANE_TEMP` + AD 모듈 4장(MOD5~8).
+- `TEMP_MODS` (598행) — 지금은 `BACKPLANE_TEMP` + AD 모듈 4장(MOD5~8).
   카드 폭(51자)을 넘으면 잘리고 경고가 난다. **모듈 나열 순서의 정본 명세는
   규격 수록 예정**이라 확정되면 교체한다
 - ~~**`twilio` 가 깔려 있는지.**~~ **v1.1.2 에서 고쳤다.** SMS 함수 본문은 전부
@@ -172,7 +172,7 @@ v1.1:  KMTK.<YYYYMMDD>.<NNNNNN>.MK.fits      <SITE>.<날짜>.<번호>.<MK|NT>
 |---|---|
 | `WARNING: STATUS query failed (...) -- telemetry cards go NC for the rest of this run` | 텔레메트리만 포기하고 **취득은 계속된다.** 설계된 동작이다 — `Cn_*` 카드가 `'NC'` 로 실린다 |
 | `WARNING: resyncing the Archon link (STATUS reply abandoned)` | STATUS 가 시한 안에 안 와서 **연결을 새로 열었다.** 취득은 계속된다 |
-| `WARNING: FITS card C1_TEMP value too long (N > M) -- truncated` | `TEMP_SLOTS` 를 줄인다. 카드는 유효한 상태로 유지된다 |
+| `WARNING: FITS card C1_TEMP value too long (N > M) -- truncated` | `TEMP_MODS` 를 줄인다. 카드는 유효한 상태로 유지된다 |
 | `WARNING: FITS card ... has non-ASCII characters ... replaced with ?` | 헤더에 들어온 비ASCII 를 `?` 로 바꿨다. 값은 잃지만 파일은 온전하다 |
 | `WARNING: filename clash -- number bumped NNNNNN -> MMMMMM (D-016)` | 같은 이름이 있어 번호를 올려 저장했다. 헤더에 **`FILENAME` 의 `.MK`/`.NT` 꼬리를 뗀 값 ≠ `EXPID`** 로 남는다 (v1.6/D-019 — 구 `ORIGNAME`). **프레임마다 뜬다면 아래 '재실행' 항목을 볼 것** |
 | `WARNING: <dir> 에 오늘(UT ...) 자 파일이 이미 N 개 있다 -- ...` | 데이터셋 시작에 한 번. **같은 UT 날짜의 재실행은 멱등하지 않다** — 아래 참조 |
@@ -310,7 +310,7 @@ v1.1 을 만든 뒤 스크립트를 원본과 대조 검토해 **6건을 고쳤�
 | 무엇이 문제였나 | 어떻게 고쳤나 |
 |---|---|
 | `fits_card` 가 폭 초과 문자열을 클램프하지 않아 80바이트에서 통째로 절단 — **닫는 인용부호·comment 가 사라져** astropy·converter 가 파싱 불가 (온도 13슬롯이면 실제로 그렇게 된다). `build_header` 의 `% 2880` 단언은 원리상 이걸 못 잡는다 | 들어갈 자리를 계산해 잘라내고 **경고**한다 |
-| 텔레메트리 나열이 결측 항목을 **건너뛰어** "자리 = 항목"(5.6절)을 조용히 깼다 — MOD3 결측이면 MOD4 값이 MOD3 자리에 앉고, volt/curr 항목 수가 서로 달라질 수 있었다 | 자리마다 sentinel. 슬롯 목록을 `TEMP_SLOTS` 상수로 (BACKPLANE + AD 모듈 4장 — **모듈 순서 정본은 규격 수록 예정**이라 그때 교체) |
+| 텔레메트리 나열이 결측 항목을 **건너뛰어** "자리 = 항목"(5.6절)을 조용히 깼다 — MOD3 결측이면 MOD4 값이 MOD3 자리에 앉고, volt/curr 항목 수가 서로 달라질 수 있었다 | 자리마다 sentinel. 슬롯 목록을 `TEMP_MODS` 상수로 (BACKPLANE + AD 모듈 4장 — **모듈 순서 정본은 규격 수록 예정**이라 그때 교체) |
 | 프레임 fetch 후·쓰기 전 미처리 예외 2종 — STATUS 의 비수치 토큰 하나, `UNIT_CTRLTAG` 오타(KeyError). **이미 읽어낸 노출이 통째로 버려졌다** | `status_number()` 가 sentinel + 경고로 흡수 · `_check_identity_setup()` 이 기동 시점 1회 검증 |
 | `CTRL1*`/`C1_*` 에 자기 유닛 값을 넣어 5.9절 위반 — `C1_*` 는 "내 컨트롤러"가 아니라 **컨트롤러 1 고정**이다 | `UNIT_CTRLTAG` 가 색인 자리를 정한다 (NT 유닛이면 `CTRL2*`/`C2_*`) |
 | `SITE_CODE` 를 주석 지시대로 관측소 코드로 바꾸면 `OBSERVAT` 가 옛 사이트로 남아 **규격의 유일한 하드 실패** | `SITE_INFO` 표에서 `OBSERVAT`/`ORIGIN`/`TELESCOP`/`FPAID` 유도 |

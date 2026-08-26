@@ -421,7 +421,7 @@ def test_status_timeout_does_not_lose_the_frame(tmp_path):  # noqa: ANN001
         # 않는다") -- 한 토큰짜리 `'NC'` 는 자리 수가 1이 되어 읽는 쪽에
         # 모듈 구성이 달라 보인다.
         from ics_sim import rawhdr
-        assert hdul[0].header['C1_TEMP'].strip() ==             '|'.join(['NC'] * len(rawhdr.TEMP_SLOTS))
+        assert hdul[0].header['C1_TEMP'].strip() ==             '|'.join(['NC'] * len(rawhdr.TEMP_MODS))
         # 컨트롤러 정체는 SYSTEM 에서 오므로 살아 있어야 한다
         assert hdul[0].header['CTRL1SN'].strip() == '0024498A715E301C'
 

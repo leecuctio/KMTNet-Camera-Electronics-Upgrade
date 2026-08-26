@@ -37,7 +37,7 @@ def grab(*names):
 
 
 WANT = ('RAWCARDS', 'SITE_INFO', 'HDR_NAXIS1', 'HDR_NAXIS2', 'TEMP_NC',
-        'VOLT_RAILS', 'TEMP_SLOTS', 'FRAME_FILE_BYTES', 'GIB',
+        'VOLT_RAILS', 'TEMP_MODS', 'FRAME_FILE_BYTES', 'GIB',
         'archoncmd', 'archon_status', '_resync_archon_link', 'status_number',
         'fits_card', 'build_header', 'resolve_pair_number',
         '_check_identity_setup',

@@ -202,7 +202,7 @@ class ArchonBackend:
             try:
                 await ctrl.prepare()
                 ctrl.release_current()
-                # PROVISIONAL: STATUS 필드 이름(`TEMP_SLOTS`)은 실기 미검증이다.
+                # PROVISIONAL: STATUS 필드 이름(`TEMP_MODS`)은 실기 미검증이다.
                 await ctrl.refresh_status()
             except (ArchonError, TimeoutError, OSError) as exc:
                 log.error('%s: 준비 실패 -- %s', tag, exc)
@@ -571,7 +571,7 @@ class ArchonBackend:
         자리 수가 1이 되어 읽는 쪽에 모듈 구성이 달라 보인다).
 
         PROVISIONAL -- 필드 이름·모듈 나열 순서는 실기 미검증이다
-        (`parse.TEMP_SLOTS`).
+        (`parse.TEMP_MODS`).
         """
         out = []
         for tag in CTRLTAGS:

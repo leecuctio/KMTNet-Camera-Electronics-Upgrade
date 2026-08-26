@@ -108,7 +108,7 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     elif ad:
         say(BAD, 'AD 모듈이 슬롯 %s 다 -- 규격 5.6.1절 자리 표(Mod5·Mod8)와 '
                  '다르므로 규격부터 확인해야 한다' % ad,
-            '지금 목록: %s' % ' '.join(parse.TEMP_SLOTS))
+            '지금 목록: %s' % ' '.join(parse.TEMP_MODS))
     else:
         say(WARN, 'AD 모듈을 못 찾았다 (MODn_TYPE 2/13/14/15) -- 슬롯 '
             '가정을 확인할 것')
@@ -119,14 +119,14 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     print('\n>> STATUS (%d 필드)' % len(status))
     dump(status)
 
-    missing = [k for k in parse.TEMP_SLOTS if k not in status]
+    missing = [k for k in parse.TEMP_MODS if k not in status]
     if missing:
         say(BAD, '온도 슬롯 %d/%d 결측: %s'
-            % (len(missing), len(parse.TEMP_SLOTS), ' '.join(missing)),
+            % (len(missing), len(parse.TEMP_MODS), ' '.join(missing)),
             '그 자리는 %s 로 실린다 (자리=항목이라 건너뛰지 않는다)'
             % parse.SLOT_NC)
     else:
-        say(OK, '온도 슬롯 %d개 전부 있다' % len(parse.TEMP_SLOTS))
+        say(OK, '온도 슬롯 %d개 전부 있다' % len(parse.TEMP_MODS))
 
     rails = [r for r in parse.VOLT_RAILS
              if r + '_V' not in status or r + '_I' not in status]
@@ -181,12 +181,12 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     # 구분자는 파이프다 (규격 5.6.1절, v1.6) -- 공백으로 쪼개면 열 자리가
     # 통째로 1번 자리에 들어간다.
     temps = str(cards['C1_TEMP']).strip().split('|')
-    for i, label in enumerate(rawhdr.TEMP_SLOT_LABELS):
+    for i, label in enumerate(rawhdr.TEMP_MOD_LABELS):
         got = temps[i] if i < len(temps) else '(없음)'
         print('     %2d  %-14s %s' % (i + 1, label, got))
-    if len(temps) != len(rawhdr.TEMP_SLOT_LABELS):
+    if len(temps) != len(rawhdr.TEMP_MOD_LABELS):
         say(BAD, 'C1_TEMP 가 %d자리다 -- 규격 5.6.1절은 %d자리다'
-            % (len(temps), len(rawhdr.TEMP_SLOT_LABELS)),
+            % (len(temps), len(rawhdr.TEMP_MOD_LABELS)),
             '자리 수 자체가 모듈 구성을 뜻한다 -- 규격부터 확인할 것')
     print('     레일  %s' % ' · '.join(parse.VOLT_RAILS))
 

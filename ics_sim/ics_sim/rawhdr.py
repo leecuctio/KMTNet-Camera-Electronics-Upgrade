@@ -619,17 +619,29 @@ VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
 #: ⚠️ 종전 구현은 `BACKPLANE_TEMP` + `MOD5~MOD8` **5자리**였다 (AD 모듈이
 #: 중앙 4슬롯이라는 매뉴얼 p.20 근거의 잠정안).  v1.5 5.6.1절이 정본을 세우면서
 #: 교체했다 -- 견본 pair 의 `C1_TEMP` 도 처음부터 10개였다.
-TEMP_SLOTS = ('BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP',
+TEMP_MODS = ('BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP',
               'MOD4/TEMP', 'MOD5/TEMP', 'MOD8/TEMP', 'MOD9/TEMP',
               'MOD10/TEMP', 'MOD11/TEMP')
 
-#: `TEMP_SLOTS` 자리별 항목 이름 (raw spec 5.6.1절 표) -- 진단 출력용.
-TEMP_SLOT_LABELS = ('Backplane', 'Mod1:LVDS', 'Mod2:Driver', 'Mod3:Driver',
+#: `TEMP_MODS` 자리별 항목 이름 -- **규격 5.6.1절 표 그 자체**다 (진단 출력·대사용).
+#:
+#: ⚠️ **두 상수의 지위가 다르다.**  이 라벨 튜플은 규격이 정한 것이고,
+#: 위 `TEMP_MODS`(STATUS 필드명)는 **규격에 없다** -- 각 자리에 어떤 Archon
+#: STATUS 필드를 읽어 넣을지는 매뉴얼 p.47-49 근거의 **구현 대응**이다.
+#: 규격은 헤더에 무엇이 어느 자리에 실리는지를 정하지, ICS 가 그 값을 어디서
+#: 긁어오는지를 정하지 않는다.  자리 순서만 둘이 같아야 한다.
+TEMP_MOD_LABELS = ('Backplane', 'Mod1:LVDS', 'Mod2:Driver', 'Mod3:Driver',
                     'Mod4:LVXBias', 'Mod5:ADM', 'Mod8:ADM', 'Mod9:HVYBias',
                     'Mod10:Driver', 'Mod11:Driver')
 
 
-#: 나열 카드의 결측 자리 sentinel (raw spec **5.6.1절**).  단일 HK 카드의
+#: 나열 카드의 결측 자리 sentinel (raw spec **5.6.1절**).
+#:
+#: ⚠️ 여기서 `SLOT` 은 **나열 카드의 토큰 자리**를 뜻한다 -- 백플레인 모듈이
+#: 아니다(전압·전류 7레일에도 이 값을 쓴다).  모듈 쪽 상수를 v1.5 표기에 맞춰
+#: `TEMP_SLOTS` -> `TEMP_MODS` 로 개명할 때 이 이름을 함께 옮기지 않은 이유다.
+#:
+#: 단일 HK 카드의
 #: `'-999.99'` 와 **다르다** -- 7자짜리가 열 자리를 채우면 79자가 되어 카드
 #: 폭을 크게 넘기는데 `NC` 면 29자다.  `archon/parse.SLOT_NC` 와 같은 값이고,
 #: 그쪽이 STATUS 를 읽을 때 이미 이 값으로 자리를 채워 보낸다.
@@ -661,7 +673,7 @@ def _join_readings(values, fmt: str, slots: int) -> str:
     Args:
         values: 자리 순서대로의 값.  비었으면 전 자리 결측이다.
         fmt: 수치 표기 (`'.1f'` / `'.3f'`).
-        slots: 이 카드의 자리 수 (`len(TEMP_SLOTS)` / `len(VOLT_RAILS)`).
+        slots: 이 카드의 자리 수 (`len(TEMP_MODS)` / `len(VOLT_RAILS)`).
     """
     if not values:
         return '|'.join([SLOT_NC] * slots)
@@ -706,7 +718,7 @@ def ctrl_telemetry_header(telem: list[dict] | None) -> dict[str, object]:
     out: dict[str, object] = {}
     for n, unit in enumerate(units[:2], start=1):
         out[f'C{n}_TEMP'] = _join_readings(unit.get('temp'), '.1f',
-                                           len(TEMP_SLOTS))
+                                           len(TEMP_MODS))
         out[f'C{n}_VOLT'] = _join_readings(unit.get('volt'), '.3f',
                                            len(VOLT_RAILS))
         out[f'C{n}_CURR'] = _join_readings(unit.get('curr'), '.3f',

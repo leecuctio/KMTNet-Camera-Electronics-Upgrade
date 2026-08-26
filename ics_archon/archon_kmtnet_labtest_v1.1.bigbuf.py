@@ -586,8 +586,9 @@ HDR_NAXIS2 = 9400
 ## 가운데 글자는 채널 번호가 정한다 -- 01-08 = A · 09-16 = D (e2v image
 ## section, 부록 A).  종전 3자 표기(M16)를 대체했다.  chip 이나 사분면에서
 ## 유추하면 안 된다 -- 같은 chip 안에 MD16 과 MA01 이 함께 나온다.
-## 기계 정본: raw_fits_spec/Detector_Ch_to_AmpID_Map_v1.1.txt
-## 기계 가독 정본: raw_fits_spec/__reference/Detector_Ch_to_AmpID_Map_v1.0.txt
+## 기계 가독 정본(현행): raw_fits_spec/Detector_Ch_to_AmpID_Map_v1.1.txt
+##   -- 대조는 이것으로 한다.  `__reference/..._v1.0.txt` 는 개정 전 원본
+##      기록이다 (`__` 접두 폴더가 읽기 전용이라 사본을 루트로 올려 고쳤다).
 CHMAP = {
     'MK': {
         'CHMAP_LT': 'MD16,MD15,MD14,MD13,MD12,MD11,MD10,MD09',
@@ -635,9 +636,9 @@ VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
 ## 처음부터 10개였다 -- 잠정안이 견본과 갈려 있었다.
 ## 카드 폭은 51자다 -- 10자리 x '%.1f'(4자) + 파이프 9 = 49자로 들어간다
 ## (v1.6 에서 구분자가 공백에서 파이프로 바뀌었다 -- 폭 비용은 0이다).
-## ⚠️ `ics_sim.rawhdr.TEMP_SLOTS` 가 정본이고 이것은 그 사본이다.
+## ⚠️ `ics_sim.rawhdr.TEMP_MODS` 가 정본이고 이것은 그 사본이다.
 ## `tests/test_labtest_spec_copy.py` 가 둘이 갈라지면 잡는다.
-TEMP_SLOTS = ('BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP',
+TEMP_MODS = ('BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP',
               'MOD4/TEMP', 'MOD5/TEMP', 'MOD8/TEMP', 'MOD9/TEMP',
               'MOD10/TEMP', 'MOD11/TEMP')
 
@@ -886,7 +887,7 @@ def all_slots_nc(n):
 def ctrl_telemetry_cards(status, ctrl_index):
     """STATUS -> Cn_TEMP/Cn_VOLT/Cn_CURR (규격 5.6절 -- 파이프 구분, 자리=항목).
 
-    temp = `TEMP_SLOTS` 순, volt/curr = `VOLT_RAILS` 의 `_V`/`_I` 쌍.
+    temp = `TEMP_MODS` 순, volt/curr = `VOLT_RAILS` 의 `_V`/`_I` 쌍.
     **결측 자리에도 sentinel 을 넣는다** -- 건너뛰면 뒤 항목이 앞으로 당겨져
     "자리 = 항목" 규약이 조용히 깨진다(소비자가 구분할 방법이 없다).
 
@@ -902,11 +903,11 @@ def ctrl_telemetry_cards(status, ctrl_index):
     ## 실험실은 컨트롤러 한 대만 돌린다 -- 나머지 한 벌은 **미장착**이고,
     ## 규격 5.6.1절이 그것을 "전 자리 결측" 으로 다룬다.
     other = 2 if ctrl_index == 1 else 1
-    out['C%d_TEMP' % other] = all_slots_nc(len(TEMP_SLOTS))
+    out['C%d_TEMP' % other] = all_slots_nc(len(TEMP_MODS))
     out['C%d_VOLT' % other] = all_slots_nc(len(VOLT_RAILS))
     out['C%d_CURR' % other] = all_slots_nc(len(VOLT_RAILS))
     if not status:
-        out['C%d_TEMP' % ctrl_index] = all_slots_nc(len(TEMP_SLOTS))
+        out['C%d_TEMP' % ctrl_index] = all_slots_nc(len(TEMP_MODS))
         out['C%d_VOLT' % ctrl_index] = all_slots_nc(len(VOLT_RAILS))
         out['C%d_CURR' % ctrl_index] = all_slots_nc(len(VOLT_RAILS))
         return out
@@ -914,7 +915,7 @@ def ctrl_telemetry_cards(status, ctrl_index):
     ## 하나였는데 음수가 섞이면 경계가 눈으로 안 갈렸다.  ⚠️ 슬래시를 쓰지
     ## 말 것 -- FITS comment 구분자와 같은 글자라 순진한 파서가 값을 자른다.
     out['C%d_TEMP' % ctrl_index] = '|'.join(
-        status_number(status, key, '%.1f') for key in TEMP_SLOTS)
+        status_number(status, key, '%.1f') for key in TEMP_MODS)
     out['C%d_VOLT' % ctrl_index] = '|'.join(
         status_number(status, rail + '_V', '%.3f') for rail in VOLT_RAILS)
     out['C%d_CURR' % ctrl_index] = '|'.join(

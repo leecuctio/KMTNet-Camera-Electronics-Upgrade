@@ -92,7 +92,7 @@ def test_telemetry_keeps_one_slot_per_item_even_when_missing():
     del status['MOD2/TEMP']                      # 자리 3 (규격 5.6.1절 표)
     status['P5V_V'] = 'FAULT'                    # 비수치 토큰
     telem = parse.telemetry_of(status)
-    assert len(telem['temp']) == len(parse.TEMP_SLOTS) == 10
+    assert len(telem['temp']) == len(parse.TEMP_MODS) == 10
     assert len(telem['volt']) == len(telem['curr']) == len(parse.VOLT_RAILS)
     assert telem['temp'][2] == parse.SLOT_NC     # Mod2 자리
     assert telem['temp'][3] == 30.3              # Mod3 은 제자리
@@ -144,9 +144,9 @@ def test_module_map_confirms_the_ad_slot_assumption():
     assert [s for s, t in mods.items() if t == 2] == [5, 6, 7, 8]
     assert parse.MODULE_TYPES[2] == 'AD'
     # 자리 표에 실리는 AD 는 5·8 뿐이고 6·7 은 자리를 차지하지 않는다.
-    assert 'MOD5/TEMP' in parse.TEMP_SLOTS and 'MOD8/TEMP' in parse.TEMP_SLOTS
-    assert 'MOD6/TEMP' not in parse.TEMP_SLOTS
-    assert 'MOD7/TEMP' not in parse.TEMP_SLOTS
+    assert 'MOD5/TEMP' in parse.TEMP_MODS and 'MOD8/TEMP' in parse.TEMP_MODS
+    assert 'MOD6/TEMP' not in parse.TEMP_MODS
+    assert 'MOD7/TEMP' not in parse.TEMP_MODS
 
 
 def test_cn_temp_slot_order_follows_spec_5_6_1():
@@ -156,7 +156,7 @@ def test_cn_temp_slot_order_follows_spec_5_6_1():
     **다른 모듈의 온도를 그 모듈 값으로 읽는다** -- 아무 오류도 나지 않는다.
     v1.5 반영 전에는 잠정 5자리였고 견본 pair(10개)와 갈려 있었다.
     """
-    assert parse.TEMP_SLOTS == (
+    assert parse.TEMP_MODS == (
         'BACKPLANE_TEMP', 'MOD1/TEMP', 'MOD2/TEMP', 'MOD3/TEMP', 'MOD4/TEMP',
         'MOD5/TEMP', 'MOD8/TEMP', 'MOD9/TEMP', 'MOD10/TEMP', 'MOD11/TEMP')
     # 자리를 차지하지 않는 모듈이 보고돼도 카드에는 안 실린다.
@@ -222,7 +222,7 @@ def test_missing_health_fields_are_not_counted_as_faults():
 def test_fake_controller_status_uses_the_real_field_names():
     """가짜 상대역이 매뉴얼 필드 이름을 쓰는지 -- 시험이 헛돌지 않게.
 
-    이름을 우리끼리 지어 두면 `TEMP_SLOTS`/`VOLT_RAILS` 가 무엇과도 맞물리지
+    이름을 우리끼리 지어 두면 `TEMP_MODS`/`VOLT_RAILS` 가 무엇과도 맞물리지
     않은 채 초록이 된다.
     """
     srv = FakeArchon()

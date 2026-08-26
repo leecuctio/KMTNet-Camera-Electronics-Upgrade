@@ -756,7 +756,7 @@ class ArchonController:
             self._log_module_map()
 
     def _log_module_map(self) -> None:
-        """슬롯별 모듈 형을 한 번 찍는다 -- `TEMP_SLOTS` 가정의 실기 확인."""
+        """슬롯별 모듈 형을 한 번 찍는다 -- `TEMP_MODS` 가정의 실기 확인."""
         mods = parse.module_types(self.system)
         if not mods:
             return
@@ -767,5 +767,5 @@ class ArchonController:
         log.info('%s: 모듈 %s', self.tag, shown)
         if sorted(ad) != [5, 6, 7, 8]:
             log.warning('%s: AD(비디오) 모듈이 슬롯 %s 에 있다 -- parse.'
-                        'TEMP_SLOTS 는 5~8 을 전제한다.  Cn_TEMP 의 자리가 '
+                        'TEMP_MODS 는 5~8 을 전제한다.  Cn_TEMP 의 자리가 '
                         '어긋날 수 있으니 목록을 고칠 것', self.tag, sorted(ad))

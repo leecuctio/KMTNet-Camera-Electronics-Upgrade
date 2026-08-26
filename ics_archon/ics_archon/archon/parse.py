@@ -36,7 +36,7 @@ log = logging.getLogger('ics_archon.parse')
 #: 여기 사본을 두면 규격이 개정될 때 한쪽만 고쳐진다.
 VOLT_RAILS = rawhdr.VOLT_RAILS
 
-#: `Cn_TEMP` 자리 순서 -- **정본은 `rawhdr.TEMP_SLOTS`** (raw spec 5.6.1절).
+#: `Cn_TEMP` 자리 순서 -- **정본은 `rawhdr.TEMP_MODS`** (raw spec 5.6.1절).
 #:
 #: ✅ **규격 수록이 끝났다** (v1.5, 2026-08-25).  종전 주석이 "모듈 나열 순서의
 #: 정본 명세는 규격 수록 예정" 이라며 잠정 5자리(`BACKPLANE_TEMP` + `MOD5`~
@@ -45,7 +45,7 @@ VOLT_RAILS = rawhdr.VOLT_RAILS
 #:
 #: `VOLT_RAILS` 와 같은 이유로 **여기 사본을 두지 않는다** -- 규격이 개정될 때
 #: 한쪽만 고쳐지는 것을 막는다.
-TEMP_SLOTS: tuple[str, ...] = rawhdr.TEMP_SLOTS
+TEMP_MODS: tuple[str, ...] = rawhdr.TEMP_MODS
 
 #: 나열 카드의 결측 자리에 넣는 값 -- **`'NC'`** (raw spec **5.6.1절**, 운영자
 #: 확정 2026-08-26).
@@ -60,7 +60,7 @@ TEMP_SLOTS: tuple[str, ...] = rawhdr.TEMP_SLOTS
 #: 실린다 (`rawhdr._join_readings`) -- 자리 수 자체가 모듈 구성 판별에 쓰이기
 #: 때문이다 (5.6.1절).
 #:
-#: `VOLT_RAILS`/`TEMP_SLOTS` 와 같은 이유로 **여기 사본을 두지 않는다.**
+#: `VOLT_RAILS`/`TEMP_MODS` 와 같은 이유로 **여기 사본을 두지 않는다.**
 SLOT_NC: str = rawhdr.SLOT_NC
 
 
@@ -242,7 +242,7 @@ def telemetry_of(status: dict[str, str] | None) -> dict[str, list]:
     if not status:
         return {}
     return {
-        'temp': [slot_value(status, k) for k in TEMP_SLOTS],
+        'temp': [slot_value(status, k) for k in TEMP_MODS],
         'volt': [slot_value(status, r + '_V') for r in VOLT_RAILS],
         'curr': [slot_value(status, r + '_I') for r in VOLT_RAILS],
     }
@@ -357,7 +357,7 @@ def unit_identity(system: dict[str, str] | None) -> dict[str, str]:
 def module_types(system: dict[str, str] | None) -> dict[int, int]:
     """슬롯 번호 -> 모듈 형 (`MODn_TYPE`, 매뉴얼 p.46).
 
-    `TEMP_SLOTS` 의 AD 모듈 가정(5-8)을 **실기에서 확인하는 수단**이다 --
+    `TEMP_MODS` 의 AD 모듈 가정(5-8)을 **실기에서 확인하는 수단**이다 --
     형 2 가 AD 다.  기동 배너에 찍어 두면 슬롯 가정이 틀린 것이 첫 실행에서
     드러난다.
     """
@@ -382,7 +382,7 @@ MODULE_TYPES = {0: 'None', 1: 'Driver', 2: 'AD', 3: 'LVBias', 4: 'HVBias',
                 13: 'ADF', 14: 'ADX', 15: 'ADLN'}
 
 #: **비디오(AD) 계열 전부.**  `2` 하나만 보면 ADF/ADX/ADLN 이 꽂힌 백플레인에서
-#: "AD 모듈을 못 찾았다" 가 되어, 슬롯 가정(`TEMP_SLOTS`)을 확인하라고 만든
+#: "AD 모듈을 못 찾았다" 가 되어, 슬롯 가정(`TEMP_MODS`)을 확인하라고 만든
 #: 1단계 탐침이 **모듈이 제자리에 있는데도 경고**를 낸다.  실기 첫 실행에서
 #: 가장 먼저 보는 화면이라 그 오경보 하나가 진짜 문제를 덮는다.
 AD_TYPES = frozenset({2, 13, 14, 15})
