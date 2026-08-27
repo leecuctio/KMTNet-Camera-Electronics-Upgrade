@@ -206,7 +206,7 @@ def _rebuild(tag: str) -> list[str]:
     telem = relay.fits_header_dict(sample['DATE-OBS'])
 
     sensors = {'dewpres': float(sample['DEWPRES']),
-               'ccdtemp1': float(sample['CCDTEMP']),
+               'ccdtemp': float(sample['CCDTEMP']),
                'fsatemp': float(sample['FSATEMP']),
                'fsahum': float(sample['FSAHUM'])}
     for card in rawhdr.DEWAR_CARDS:

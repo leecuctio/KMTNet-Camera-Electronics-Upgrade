@@ -371,20 +371,32 @@ def test_thermal_cards_survive_a_backend_that_reads_nothing():
             == '-999.99')
 
 
-def test_ccdtemp_uses_the_representative_sensor_only():
-    """대표 센서는 `ccdtemp1` -- 백엔드가 `ccdtemp` 를 따로 줘도 무시한다."""
-    h = rawhdr.thermal_header({'ccdtemp1': -100.0, 'ccdtemp2': -102.0,
-                               'ccdtemp': 0.0})
-    assert str(h['CCDTEMP']) == '-100.00', '대표 센서(ccdtemp1)가 아닌 값을 썼다'
+def test_ccdtemp_is_one_representative_key_not_a_per_chip_pair():
+    """대표 센서는 **`ccdtemp` 하나**다 -- chip 으로 규정하지 않는다.
+
+    ⚠️ **종전에는 `ccdtemp1`(대표)/`ccdtemp2`(이웃) 두 키였고 `ccdtemp` 는
+    "따로 줘도 무시하는" 키였다** (2026-08-27 정리).  센서가 듀어에 하나뿐이고
+    chip 귀속 정보가 없다고 확정되면서, 무시 규칙의 존재 이유("두 번째 사실을
+    만들지 않기")가 사라졌다 -- 그래서 `ccdtemp` 를 대표 이름으로 승격하고
+    옛 두 키는 없앴다.
+    """
+    h = rawhdr.thermal_header({'ccdtemp': -100.0})
+    assert str(h['CCDTEMP']) == '-100.00'
+    # 옛 키는 **더 이상 읽지 않는다** -- 남겨 두면 두 이름이 공존한다.
+    stale = rawhdr.thermal_header({'ccdtemp1': -100.0, 'ccdtemp2': -102.0})
+    assert str(stale['CCDTEMP']) == '-999.99', '폐기한 옛 키를 아직 읽는다'
 
 
 def test_missing_representative_sensor_is_sentinel_with_a_warning(caplog):
-    """대표 센서가 죽었을 때 이웃 값(ccdtemp2)으로 대체하지 않는다."""
+    """대표가 없으면 **다른 값으로 대체하지 않는다** -- sentinel + 경고.
+
+    대체 후보가 눈에 보이는 것이 함정이다(`DMPTEMP` · `Cn_TEMP` 모듈 온도).
+    """
     import logging
     with caplog.at_level(logging.WARNING):
-        h = rawhdr.thermal_header({'ccdtemp2': -103.0})
+        h = rawhdr.thermal_header({'dmptemp': -103.0})
     assert str(h['CCDTEMP']) == '-999.99'
-    assert any('ccdtemp1' in r.message for r in caplog.records)
+    assert any('ccdtemp' in r.message for r in caplog.records)
 
 
 # -- 5.6 Cn_* 컨트롤러 텔레메트리 --------------------------------------------

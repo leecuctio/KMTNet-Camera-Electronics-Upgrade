@@ -588,7 +588,7 @@ class ArchonBackend:
         남는다 (raw spec 5.0절) -- `CCDTEMP='-999.99'` 가 그 표시다.
 
         붙일 때의 계약은 `base.py` 의 이 메서드 docstring 에 다 적혀 있다
-        (키 이름 · 대표 센서 `ccdtemp1` · 못 읽은 항목은 넣지 않기).
+        (키 이름 · 대표 센서 `ccdtemp` · 못 읽은 항목은 넣지 않기).
         """
         if not self._warned_sensors:
             self._warned_sensors = True

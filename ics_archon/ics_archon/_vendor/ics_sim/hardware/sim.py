@@ -247,17 +247,17 @@ class SimBackend:
 
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
         # 레거시 실측 헤더(SSO 2017)와 견본 v1.0 의 값 범위를 쓴다.
-        # chip 마다 조금 다르게 만들어 대표 센서(ccdtemp1 -> CCDTEMP)와 이웃
-        # 센서(ccdtemp2, 진단용)가 구분되는지 시험할 수 있게 한다.
+        # ⚠️ 종전에는 `ccdtemp1`/`ccdtemp2` 를 chip 마다 다르게 냈다 --
+        #    **센서는 듀어에 하나뿐이고 chip 귀속 정보가 없다**(운영자
+        #    2026-08-27).  둘째 키는 원천이 없으므로 만들지 않는다.
         base = -103.16
         return {
-            'ccdtemp1': round(base - 0.05, 2),
-            'ccdtemp2': round(base + 0.05, 2),
+            'ccdtemp': round(base - 0.05, 2),
             'dmptemp': -122.34,
             'pt30n1': -151.68, 'pt30n2': -147.39, 'charcoal': -197.79,
             'wallbrd': 16.78, 'hebox': 33.21,
-            'air_in': 34.98, 'air_out': 31.26,
-            'glyc_in': 27.97, 'glyc_out': 29.01,
+            # `air_*`/`glyc_*` 는 내지 않는다 -- 카드 4장이 v1.5 에서 폐지돼
+            # 호출측이 값을 버린다 (2026-08-27 계약 정리).
             'fsatemp': 23.4, 'fsahum': 12.3,       # Tapaculo (raw spec 5.8절)
             # `dewpres` 는 넣지 않는다 -- 레거시도 `'N/A'` 였다.  호출측이
             # sentinel 을 채우는 경로를 실제로 밟게 하려는 것이다.

@@ -560,20 +560,29 @@ def format_ens(value: object) -> str:
 def thermal_header(sensors: dict | None) -> dict[str, object]:
     """5.6절 HK 12장 + 5.8절 Tapaculo 2장 (`FSATEMP`/`FSAHUM`).
 
-    **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** (운영자 확정 2026-08-21,
-    comment "CCD temperature M").  대표 센서는 백엔드 `ccdtemp1` 이고, **죽었을
-    때 이웃 센서(`ccdtemp2`)로 대체하지 않는다** -- 대표가 아닌 값을 대표라고
-    적으면 조용히 틀린 값이 된다.  L1 `CARRY_KEYS` 가 이 이름을 요구하므로
-    카드를 비우지 않고 sentinel 로 싣는다.  NT 파일의 대표 센서 귀속은 확인
-    항목이다 (OI-18).
+    **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** (운영자 확정 2026-08-21).
+    대표 센서는 백엔드 `ccdtemp` 이고, **죽었을 때 다른 값으로 대체하지
+    않는다** -- 대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다.
+    L1 `CARRY_KEYS` 가 이 이름을 요구하므로 카드를 비우지 않고 sentinel 로
+    싣는다.
+
+    ⚠️ **chip 으로 규정하지 않는다** (운영자 2026-08-27) -- 듀어의 CCD 대표
+    온도 하나이고 chip 귀속 정보는 없다.  종전 `ccdtemp1`/`ccdtemp2` 는
+    `ccdtemp` 하나로 합쳤다.  **카드 comment 의 `M` 을 없애는 것은 raw spec
+    v1.8 작업**이다(견본 pair 바이트가 정본이라 규격과 함께 움직인다) --
+    그때까지 comment 는 종전 문안 그대로다.
+
+    ⚠️ **대체 후보가 눈에 보인다는 것이 함정이다** -- `DMPTEMP` 나 `Cn_TEMP`
+    의 모듈 온도로 메우고 싶어지는데, 그러면 파일만으로 검산할 수 없는 값이
+    대표 자리에 앉는다.
 
     **온도·습도 카드는 전부 문자열이다** (raw spec 5.0절).
     """
     s = sensors or {}
-    t1 = s.get('ccdtemp1', s.get('ccdtmp1'))
+    t1 = s.get('ccdtemp')
     if t1 is None:
-        log.warning('대표 chip 온도(ccdtemp1)를 못 읽었다 -- CCDTEMP 를 '
-                    'sentinel(%s)로 싣는다. 이웃 센서로 대체하지 않는다 '
+        log.warning('CCD 대표 온도(ccdtemp)를 못 읽었다 -- CCDTEMP 를 '
+                    'sentinel(%s)로 싣는다. 다른 센서로 대체하지 않는다 '
                     '(대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다)',
                     TEMP_NC)
     out: dict[str, object] = {

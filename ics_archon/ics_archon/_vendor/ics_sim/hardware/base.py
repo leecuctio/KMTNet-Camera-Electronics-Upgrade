@@ -167,18 +167,29 @@ class DetectorBackend(Protocol):
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
         """chip 온도 + 듀어·환경 센서 (raw spec 5.6절 + 5.8절 Tapaculo 2장).
 
-        키는 소문자: `ccdtemp1` `ccdtemp2` `dewpres` `dmptemp` `pt30n1`
-        `pt30n2` `charcoal` `wallbrd` `hebox` `air_in` `air_out` `glyc_in`
-        `glyc_out` `fsatemp` `fsahum`.  공급 3계통(ICG RTD / standalone RTD /
-        Tapaculo)은 raw spec 5.6절 표 참조 -- `hebox`/`fsatemp`/`fsahum` 이
-        Tapaculo 다.  읽지 못한 항목은 **넣지 않는다** -- 호출측이 sentinel
-        (`'-999.99'`, `dewpres` 만 `'9.99e-9'`)로 채운다.
+        키는 소문자 **아홉**뿐이다: `ccdtemp` `dewpres` `dmptemp` `pt30n1`
+        `pt30n2` `charcoal` `wallbrd`(ICG RTD) · `hebox` `fsatemp` `fsahum`
+        (Tapaculo).  공급 계통은 raw spec 5.6절 표 참조.  읽지 못한 항목은
+        **넣지 않는다** -- 호출측이 sentinel(`'-999.99'`, `dewpres` 만
+        `'9.99e-9'`)로 채운다.
 
-        **`ccdtemp1` 이 FITS `CCDTEMP` 의 실측 원천이다** (운영자 확정
-        2026-08-21 -- 평균 파생 폐기).  `ccdtemp2` 는 진단·로그용으로만 남고
-        raw 카드가 아니다.  백엔드가 `ccdtemp` 를 따로 줘도 호출측이 무시한다
-        -- 대표 센서와 어긋날 수 있는 두 번째 사실을 만들지 않는다.
-        NT 파일의 대표 센서 귀속은 확인 항목이다 (OI-18).
+        ⚠️ **`air_in`/`air_out`/`glyc_in`/`glyc_out` 은 없앴다** (2026-08-27).
+        standalone RTD 계통의 그 카드 4장이 **v1.5 에서 폐지**됐고
+        (`rawhdr.DEWAR_CARDS` 에 없다) 호출측이 값을 버리므로, 계약에 남겨
+        두면 백엔드가 **아무도 읽지 않는 값을 읽으러 간다.**
+
+        **`ccdtemp` 가 FITS `CCDTEMP` 의 실측 원천이다** (운영자 확정
+        2026-08-21 평균 파생 폐기 -> 2026-08-27 이름·귀속 정리).
+
+        ⚠️ **chip 으로 규정하지 않는다** -- 듀어의 **CCD 대표 온도** 하나이고,
+        그 센서가 어느 chip 근처인지는 **정보가 없다**(운영자 2026-08-27).
+        그래서 종전의 `ccdtemp1`/`ccdtemp2` 두 키를 **`ccdtemp` 하나로
+        합쳤다** -- 두 번째 센서는 원천이 없으므로 있는 척하지 않는다.
+
+        ⚠️ **대표가 없으면 다른 값으로 대체하지 않는다** -- 못 읽었으면
+        sentinel 이다.  대체 후보가 눈에 보인다는 것이 함정이다(`DMPTEMP` ·
+        `Cn_TEMP` 의 모듈 온도) -- 대표가 아닌 값을 대표라고 적으면 조용히
+        틀린 값이 되고, 파일만으로는 검산할 수 없다.
         """
 
 
