@@ -1210,12 +1210,12 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
         if frame != lastframe:
             break
         if waited > deadline:
-            print('\n>> Failed to readout complete!\n')
+            print('\n>> Failed to readout complete!')
             ## 실패한 순간의 상태를 **항상** 남긴다 -- FRAME_DUMP_ENABLE
             ## 과 무관하다.  이 증상은 간헐이라(가동시간이 길어지면
             ## 재발하는 것으로 보인다) 평소 덤프를 꺼 두면 정작 재발했을
             ## 때 증거가 남지 않는다.
-            print('   %s' % _frame_snapshot(), flush=True)
+            print('   %s\n' % _frame_snapshot(), flush=True)
             raise TimeoutError(
                 'frame did not complete in %.0fs (exptime %.1fs + %ds) -- '
                 'lastframe=%d' % (deadline, exptime / 1000.0,

@@ -1,26 +1,8 @@
-﻿# archon_kmtnet_labtest_v1.3.smallbuf.py
+﻿# archon_kmtnet_labtest_v1.3.bigbuf.py
 # revised on 2026-08-26 by SMC
 #
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
 # Ref.version: archon_kmtnet_stascience_modtm_imgacq_v0.3_kasi.STA0287.102.py (2026-05-29/SMC)
-#
-# ⚠️ **이 스크립트의 위치** (운영자 2026-08-26)
-#
-#    smallbuf.py 스크립트는 구버전의 science 유닛을 구동하던 코드로서,
-#    smallbuf로 구성되는 guide 유닛 제어용 코드 작성 시 참고할 코드이다.
-#    다만, bigbuf 스크립트의 코드로도 smallbuf 구성 유닛의 동작이 가능할
-#    수도 있으니, 참조 바람.
-#
-#    -- bigbuf 가 구성 무관인 이유: FETCH 주소를 프레임 상태의 BUFnBASE 에서
-#       읽는데, 그 값은 컨트롤러가 어떤 버퍼 구성이든 자기 배치대로 준다.
-#       ※ 설계상 그렇다는 것이고 small buffer 유닛에서 **실기 검증은 아직
-#       없다** -- 첫 guide 구동 때 확인할 항목이다.
-#
-#    bigbuf v1.3 과 다른 것은 **버퍼 주소 지정 다섯 자리뿐**이다:
-#      - newest() 가 BUFnBASE 를 돌려주지 않는다 (5-튜플)
-#      - 그것을 받던 네 자리가 5-튜플 언패킹으로 돌아간다
-#      - FETCH 주소가 small buffer 배치식 ((buf+1)|4)<<29 다
-#    나머지(헤더·규격 정합·데이터셋 구성·검사)는 bigbuf 와 **글자까지 같다**.
 #
 # v1.3 (2026-08-26): CEU 샘플영상 획득용 코드 추가
 #   Target 데이터셋 신설 (DS_TARGET = 4 — 비어 있던 자리를 써서 기존 번호 안 건드림)
@@ -86,8 +68,8 @@
 
 DATA_PREFIX = 'KMTK'   #  <---- Set this (로그·SMS 표시용 유닛 라벨)
 
-UNIT_ID = 'KMTC-SCI-101'   #  <---- Set this
-UNIT_IP = '101'            #  <---- Set this
+UNIT_ID = 'KMTC-SCI-113'   #  <---- Set this
+UNIT_IP = '113'            #  <---- Set this
 
 UNIT_IPADDR = '10.0.0.'+UNIT_IP
 UNIT_TIMEOUT = 1
@@ -117,8 +99,8 @@ SITE_CODE = 'KMTK'          # KASI(실험실).  관측소 반입 시 KMTC/KMTS/K
                             # ⚠️ D-017(2026-08-25): 구 KMTT(TESTBED) 폐지
 UNIT_CTRLTAG = 'MK'         #  <---- Set this: 이 유닛이 담당하는 detector pair
                             #        (MK = science ctrl 1 / NT = science ctrl 2)
-UNIT_CTRL_ID = 'KMTC-SCI-101'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
-UNIT_CTRL_SN = 'STA-0284'       #  <---- Set this: FITS CTRL1SN (seril number on real pannel lable)
+UNIT_CTRL_ID = 'KMTC-SCI-113'   #  <---- Set this: FITS CTRL1ID (예 KMTA-SCI-101)
+UNIT_CTRL_SN = 'STA-0200'       #  <---- Set this: FITS CTRL1SN (seril number on real pannel lable)
 OBSERVER_NAME = 'SMC'           # FITS OBSERVER
 
 ## Archon STATUS 텔레메트리(Cn_TEMP/VOLT/CURR)를 헤더에 실을지.
@@ -184,7 +166,7 @@ def _check_identity_setup():
 #--------------------------------
 # ACF lists
 
-UNIT_ACF_SCI_NORMAL = '../Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf'
+UNIT_ACF_SCI_NORMAL = '../Config/acf/KMTK_SCI_113_STA0200_R2608_MK.acf'
 
 
 #--------------------------------
@@ -460,9 +442,10 @@ def newest():
             newestbuf = i
     framew = int(framestatus['BUF%dWIDTH' % (newestbuf + 1)])
     frameh = int(framestatus['BUF%dHEIGHT' % (newestbuf + 1)])
+    rbufbase = int(framestatus['BUF%dBASE' % (newestbuf + 1)])   ## for using bigbuffer
     samplemode = int(framestatus['BUF%dSAMPLE' % (newestbuf + 1)])
     #return (newestframe, newestbuf, framew, frameh, samplemode)
-    return (newestframe, newestbuf, framew, frameh, samplemode)
+    return (newestframe, newestbuf, framew, frameh, samplemode, rbufbase)   ## for using bigbuffer
 
 
 ## Set PostAmpGain
@@ -1166,20 +1149,23 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
 
     # Flush using a full readout
     if bFullFlush:
-        lastframe, lastbuf, _, _, _ = newest()
+        #lastframe, lastbuf, _, _, _ = newest()
+        lastframe, lastbuf, _, _, _, _ = newest()   ## for using bigbuffer
         SetConfig('PARAMETER2', 'IntMS=0')
         SetConfig('PARAMETER1', 'Exposures=1')
         archoncmd('LOADPARAMS')
         print('>> Flushing with a full readout..\n   ', end='')
         while True:
-            frame, buf, framew, frameh, samplemode = newest()
+            #frame, buf, framew, frameh, samplemode = newest()
+            frame, buf, framew, frameh, samplemode, baseaddr = newest()   ## for using bigbuffer
             if frame != lastframe:
                 break
             time.sleep(0.4);  print(end=progbar, flush=True);
         print(progend)
 
     # Get current frame number & date
-    lastframe, lastbuf, _, _, _ = newest()
+    #lastframe, lastbuf, _, _, _ = newest()
+    lastframe, lastbuf, _, _, _, _ = newest()   ## for using bigbuffer
     
     # Set exposure time
     SetConfig('PARAMETER2', 'IntMS=%d' % exptime)
@@ -1220,7 +1206,7 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     waited = 0.0
     deadline = exptime / 1000.0 + FRAME_WAIT_MAX
     while True:
-        frame, buf, framew, frameh, samplemode = newest()
+        frame, buf, framew, frameh, samplemode, baseaddr = newest()
         if frame != lastframe:
             break
         if waited > deadline:
@@ -1272,10 +1258,11 @@ def Exposure(shopen, exptime, bWaitFlush, bFullFlush, filenum, datasetid,
     linesize = BURST_LEN
     lines = (framesize + linesize - 1) // linesize
     ref = msgref
-    archonsend('FETCH%08X%08X' % (((buf + 1) | 4) << 29, lines))  # small buffer (Addr: A/C/E)
-    ## bigbuf 판은 여기서 BUFnBASE(프레임 상태)의 주소를 그대로 쓴다 --
-    ## 그 방식은 small/large 양쪽에서 동작한다.  이 사본은 구성별 차이를
-    ## 보이려고 small buffer 배치식을 남긴다.
+    #archonsend('FETCH%08X%08X' % (((buf + 1) | 4) << 29, lines))  # small buffer (Addr: A/C/E)
+    #archonsend('FETCH%08X%08X' % ((buf*3 + 10) << 28, lines))  # large buffer (Addr: A/D)
+    #archonsend('FETCH%08X%08X' % (((buf^1)*3 + 10) << 28, lines))  # large buffer (Addr: D/A)
+    archonsend('FETCH%08X%08X' % (baseaddr, lines))  # small/large buffer (Addr from BUFnBASE in the frame status)
+    ## codes are added for using bigbuffer
 
     fitsbuf = bytearray();
     bytesremaining = framesize        
@@ -1936,7 +1923,7 @@ GetDataset(UNIT_ACF_SCI_COMP_MEDIUM, False, False, 3511, 0, DATA_STORAGE)
 GetDataset(UNIT_ACF_SCI_SLOW_MEDIUM, False, False, 3811, 0, DATA_STORAGE)
 '''
 
-GetDataset(UNIT_ACF_SCI_NORMAL, False, False, 2844, 0, DATA_STORAGE)
+GetDataset(UNIT_ACF_SCI_NORMAL, False, False, 2004, 8, DATA_STORAGE)
 
 
 ## Disconnect from Archon

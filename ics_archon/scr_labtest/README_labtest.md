@@ -17,6 +17,7 @@
 |---|---|
 | [`archon_kmtnet_labtest_v1.3.bigbuf.py`](archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행** (`SCRIPT_VERSION='1.3.0'`). **science 유닛용** — BIGBUF=1, 768 MB 버퍼 2개 구성. v1.0.bigbuf 에 raw spec 을 적용한 판 |
 | [`archon_kmtnet_labtest_v1.3.smallbuf.py`](archon_kmtnet_labtest_v1.3.smallbuf.py) | **구버전 science 유닛을 구동하던 코드** — smallbuf로 구성되는 **guide 유닛 제어용 코드 작성 시 참고**한다(운영자 2026-08-26). bigbuf 와 **버퍼 주소 지정 다섯 자리만** 다르다 |
+| [`archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py`](archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py) · [`…KMTC-113.py`](archon_kmtnet_labtest_v1.3.bigbuf.KMTC-113.py) · [`…KMTS-101.py`](archon_kmtnet_labtest_v1.3.bigbuf.KMTS-101.py) | **유닛별 사본** — 기준 판에서 `<---- Set this` 항목만 바꾼 것. **기준 판 자체가 `KMTC-101`(MK) 설정**이라 그 사본은 따로 두지 않는다 |
 | [`tests/verify_labtest_v13.py`](../tests/verify_labtest_v13.py) | **실기 없이 돌리는 검증** (32항목) — 가짜 Archon + astropy 실파일 |
 | [`tests/test_labtest_spec_copy.py`](../tests/test_labtest_spec_copy.py) | **규격 사본 표류 감시** (4항목, 2026-08-26 신설) — 내장 `RAWCARDS`·`CHMAP`·`SITE_INFO`·번호 공간이 `ics_sim` 과 갈라지면 실패한다 |
 | `__ref_archon_control/archon_kmtnet_labtest_v1.0.{bigbuf,smallbuf}.py` | **v1.0 원본** (읽기 전용). 되돌려 비교할 때 쓴다 |
@@ -59,7 +60,11 @@ python ics_archon/tests/verify_labtest_v13.py
 31개 항목 전부 통과해야 한다(실패 0).  읽기전용 자리 검사 1건은 POSIX 에서만
 돌고 윈도우에서는 `SKIP` 으로 넘어간다. 스크립트를 손봤으면 돌려 보고 나가라.
 
-## ⚠️ 미해결 — 프레임이 한 장도 안 나오는 증상 (2026-08-27)
+## ✅ 종결 — 프레임이 한 장도 안 나오던 증상 (2026-08-27)
+
+**원인: `Sync In` 이 물려 있었고, 상대 컨트롤러가 클록을 잡고 있었다** (운영자).
+101(STA-0284)의 **전원부 고장**으로 클록이 나오지 않아, 102(STA-0285)의 타이밍
+코어가 외부 동기를 영원히 기다렸다. 101 쪽을 정리한 뒤 102 는 정상 취득했다.
 
 **증상.** `POWERON` 까지 정상인데 프레임 카운터가 오르지 않는다:
 
@@ -69,24 +74,60 @@ python ics_archon/tests/verify_labtest_v13.py
 >> Failed to readout complete!
 ```
 
-**지금까지 가려낸 것** — 아래는 **원인이 아니다**:
+**⚠️ 이 증상을 만나면 `Sync In` 부터 본다.** 관측된 것이 전부 이 원인과 맞는다:
+
+| 관측 | 이 원인이면 |
+|---|---|
+| `POWER=4` · `POWERGOOD=1` | 자기 전원은 정상 — **`POWERGOOD` 은 외부 클록 의존을 보지 않는다** |
+| `FRAME=0/0/0` 영구 | 코어가 동기를 기다리느라 프레임을 만들지 않는다 |
+| 명령 응답은 정상 | 통신 경로는 타이밍과 독립이다 |
+| 전원 리셋 무효 | 리셋해도 상대가 클록을 주지 않는다 |
+| ACF·파라미터 정상 | 설정 문제가 아니다 |
+
+**`POWERGOOD=1` 은 하드웨어 정상을 보장하지 않는다** — 컨트롤러 자기 전원만
+보고한다. 전원이 정상 보고인데 프레임이 0장이면 **외부 클록(Sync In)과 상대
+유닛**을 의심하라.
+
+**이번에 아니라고 가려낸 것** — 같은 증상이 또 나오면 여기부터 다시 뒤지지 말 것:
 
 | 짚었던 것 | 결과 |
 |---|---|
 | ACF 파라미터 슬롯 불일치 | `PARAMETER1=Exposures` · `PARAMETER2=IntMS` 로 정확 |
-| 셔터 트리거 (`TRIGOUTFORCE`) | `ShutOpen=True` 로도 전에 성공한 적 있음 |
+| 셔터 트리거 (`TRIGOUTFORCE`) | `ShutOpen=True` 로도 전에 성공 |
 | 전원 이상 | `POWER=4` · `POWERGOOD=1` |
 | 컨트롤러 상태 꼬임 | 전원 리셋으로 안 바뀜 |
+| MK↔NT ACF 차이 | 구조 동등 — 다른 값 33개는 `IP` 와 amp 배정뿐 (`../acf/README.md`) |
 
-두 유닛이 **서로 다른 단계**에서 어긋난다 — NT(STA-0285)는 프레임 0장,
-MK(STA-0284)는 `CONFIG LOAD` 오류.  하드웨어 쪽이 의심된다 (운영자).
+**남은 계측.** 시한 초과 시에는 `FRAME_DUMP_ENABLE` 과 **무관하게** 진단 한 장이
+항상 남는다. 재발하면 **가동 경과 시간** · 그 스냅샷 줄 · 한 유닛인지 둘 다인지 ·
+`Sync In` 결선 상태를 함께 남길 것.
 
-**⚠️ 관찰할 것 — 가동시간이 길어지면 재발하는지** (운영자 2026-08-27).
-그래서 **시한 초과 시에는 `FRAME_DUMP_ENABLE` 과 무관하게 진단 한 장이 항상
-남는다** — 평소 덤프를 꺼 두어도 재발한 순간의 상태는 기록된다.
+## 유닛별 사본
 
-재발하면 남길 것: **가동 경과 시간** · 그 스냅샷 줄 · 한 유닛인지 둘 다인지 ·
-`TIMER` 가 변하는지(변하지 않으면 타이밍 코어 정지).
+기준 판(`…v1.3.bigbuf.py`)이 **`KMTC-101`(MK) 설정 그대로**이고, 나머지 유닛은
+`<---- Set this` 항목만 바꾼 사본을 둔다. 벤치에서는 각 사본을 `~/AIC/scr/` 에
+놓고 쓴다.
+
+| 사본 | `CTRLTAG` | `CTRL_ID` | `CTRL_SN` | IP | ACF |
+|---|---|---|---|---|---|
+| (기준 판) | MK | `KMTC-SCI-101` | `STA-0284` | `.101` | `KMTC_SCI_101_…MK` |
+| `KMTC-102` | NT | `KMTC-SCI-102` | `STA-0285` | `.102` | `KMTC_SCI_102_…NT` |
+| `KMTC-113` | MK | `KMTC-SCI-113` | `STA-0200` | `.113` | `KMTK_SCI_113_…MK` |
+| `KMTS-101` | MK | `KMTS-SCI-101` | `STA-0286` | `.101` | `KMTS_SCI_101_…MK` |
+
+유닛 ↔ 시리얼 정본은 `../../raw_fits_spec/__reference/Archon_Unit_Info.txt` 다
+(113 은 시험 유닛이라 그 표에 없다).
+
+⚠️ **113 의 사이트 코드가 섞여 있다** — 스크립트는 `KMTC-SCI-113`, ACF 는
+`KMTK_SCI_113_…` 다. 113 이 **CTIO 설치 후보**가 되면서 생긴 혼용이고, **설치
+위치가 정해지면 일괄 통일할 예정**이다 (운영자 2026-08-27). **오류로 보고 고치지
+말 것.**
+
+⚠️ `SITE_CODE` 는 어느 사본이든 `KMTK` 다 — **자료를 딴 곳**(KASI 실험실)이지
+유닛 정체가 아니다. 두 축을 섞지 말 것.
+
+**사본이 갈라지지 않게 시험이 지킨다** (`../tests/test_labtest_spec_copy.py`):
+손편집 항목 밖의 차이 · 정체와 시리얼의 1:1 · **가리키는 ACF 의 실재**.
 
 ## 돌리기 전에 손볼 자리
 

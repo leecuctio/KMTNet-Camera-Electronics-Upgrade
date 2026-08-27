@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import io
+import glob
 import os
 
 import pytest
@@ -34,8 +35,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # ics_archo
 LABTEST = os.path.join(ROOT, 'scr_labtest', 'archon_kmtnet_labtest_v1.3.bigbuf.py')
 SMALLBUF = os.path.join(ROOT, 'scr_labtest',
                         'archon_kmtnet_labtest_v1.3.smallbuf.py')
-UNIT_NT = os.path.join(ROOT, 'scr_labtest',
-                       'archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py')
+#: 유닛별 사본 -- 기준(bigbuf) 판에서 손편집 항목만 바꾼 것들.
+UNIT_COPIES = sorted(glob.glob(os.path.join(
+    ROOT, 'scr_labtest', 'archon_kmtnet_labtest_v1.3.bigbuf.KMT*.py')))
 
 
 def _funcs(*names):  # noqa: ANN202
@@ -374,48 +376,90 @@ def test_site_info_rows_all_have_the_same_width():
         'D-017 사이트 넷이어야 한다: %s' % sorted(rows))
 
 
-#: NT 사본이 기준(MK) 판과 달라도 되는 자리 -- 전부 `<---- Set this` 손편집
+#: 유닛 사본이 기준 판과 달라도 되는 자리 -- 전부 `<---- Set this` 손편집
 #: 항목이거나 그것을 적어 둔 머리말이다.
-NT_ALLOWED = ('UNIT_ID', 'UNIT_IP', 'UNIT_CTRLTAG', 'UNIT_CTRL_ID',
-              'UNIT_CTRL_SN', 'UNIT_ACF_SCI_NORMAL', 'GetDataset(',
-              '실기 유닛 정보', 'bigbuf.py', 'bigbuf.KMTC-102.py')
+UNIT_ALLOWED = ('UNIT_ID', 'UNIT_IP', 'UNIT_CTRLTAG', 'UNIT_CTRL_ID',
+                'UNIT_CTRL_SN', 'UNIT_ACF_SCI_NORMAL', 'GetDataset(',
+                'DATA_PREFIX', 'OBSERVER_NAME', 'SITE_CODE',
+                '실기 유닛 정보', 'bigbuf.py', 'bigbuf.KMT')
+
+#: 유닛 정체의 정본은 `raw_fits_spec/__reference/Archon_Unit_Info.txt` 다
+#: (ID 숫자 = IP).  113 은 시험 유닛이라 그 표에 없다.
+UNIT_IDENTITY = {
+    'KMTC-102': ('NT', 'KMTC-SCI-102', 'STA-0285', '102'),
+    'KMTS-101': ('MK', 'KMTS-SCI-101', 'STA-0286', '101'),
+    # ⚠️ 113 은 시험 유닛이면서 **CTIO 설치 후보**라 표기가 섞여 있다
+    #    (운영자 2026-08-27) -- 스크립트는 `KMTC-SCI-113`, ACF 는
+    #    `KMTK_SCI_113_…` 다.  설치 위치가 정해지면 일괄 통일할 예정이므로
+    #    **지금은 그대로 둔다.**  오류로 보고 고치지 말 것.
+    'KMTC-113': ('MK', 'KMTC-SCI-113', 'STA-0200', '113'),
+}
 
 
 @pytest.mark.repo_only
-def test_nt_copy_differs_only_in_unit_settings():
-    """NT 유닛 사본이 **유닛 설정 밖에서** 기준 판과 갈라지지 않는다.
+def test_unit_copies_exist():
+    """유닛 사본이 하나라도 있어야 이 아래 시험이 뜻을 가진다."""
+    assert UNIT_COPIES, 'scr_labtest/ 에 유닛 사본이 없다'
 
-    사본이 셋이 됐다(기준=MK · NT · smallbuf).  한쪽에만 고치면 반드시
-    표류한다 -- 오늘 잡은 결함이 거의 그 부류였고, 실제로 운영자의 NT 사본은
-    `_frame_snapshot` 도입 전 판이라 실패 스냅샷이 빠져 있었다.
 
-    유닛 설정은 손편집 항목이므로 달라야 정상이고, 그 밖은 글자까지 같아야
-    한다.
+@pytest.mark.repo_only
+@pytest.mark.parametrize('path', UNIT_COPIES,
+                         ids=lambda p: os.path.basename(p).split('.')[-2])
+def test_unit_copy_differs_only_in_unit_settings(path):
+    """유닛 사본이 **손편집 항목 밖에서** 기준 판과 갈라지지 않는다.
+
+    사본이 넷이다(기준=KMTC-101 · 102 · 113 · KMTS-101 · smallbuf).  한쪽에만
+    고치면 반드시 표류한다 -- 실제로 운영자의 NT 사본이 `_frame_snapshot`
+    도입 전 판이라 실패 스냅샷이 빠져 있었다 (2026-08-27).
     """
     import difflib
 
-    def body(path):
-        return io.open(path, encoding='utf-8-sig').read().split('\n')
+    def body(p):
+        return io.open(p, encoding='utf-8-sig').read().split('\n')
 
-    bad = [ln for ln in difflib.unified_diff(body(LABTEST), body(UNIT_NT),
+    bad = [ln for ln in difflib.unified_diff(body(LABTEST), body(path),
                                              lineterm='', n=0)
            if ln[:1] in '+-' and ln[:3] not in ('+++', '---')
-           and not any(k in ln for k in NT_ALLOWED)]
+           and not any(k in ln for k in UNIT_ALLOWED)]
     assert not bad, (
-        'NT 사본이 유닛 설정 밖에서 갈라졌다 -- 기준 판의 개정을 옮기지 '
-        '않은 것이 아닌지 보라:\n' + '\n'.join(bad[:20]))
+        '%s 가 손편집 항목 밖에서 갈라졌다 -- 기준 판의 개정을 옮기지 않은 '
+        '것이 아닌지 보라:\n%s'
+        % (os.path.basename(path), '\n'.join(bad[:20])))
 
 
 @pytest.mark.repo_only
-def test_nt_copy_carries_the_nt_identity():
-    """NT 사본의 정체가 실제로 NT 여야 한다 (원자료 표와 1:1)."""
-    got = {k: _literal(k, path=UNIT_NT)
-           for k in ('UNIT_CTRLTAG', 'UNIT_CTRL_ID', 'UNIT_CTRL_SN',
-                     'UNIT_IP', 'SITE_CODE')}
-    assert got['UNIT_CTRLTAG'] == 'NT'
-    assert got['UNIT_CTRL_ID'] == 'KMTC-SCI-102'
-    # __reference/Archon_Unit_Info.txt: KMTC-SCI-102 <-> STA0285
-    assert got['UNIT_CTRL_SN'] == 'STA-0285'
-    assert got['UNIT_IP'] == '102', 'ID 숫자 = IP (규격 5.5절)'
-    # 자료를 딴 곳은 실험실이다 -- 유닛 정체와 다른 축이다
-    assert got['SITE_CODE'] == 'KMTK'
+@pytest.mark.parametrize('path', UNIT_COPIES,
+                         ids=lambda p: os.path.basename(p).split('.')[-2])
+def test_unit_copy_carries_its_own_identity(path):
+    """사본의 정체가 파일 이름과 맞고, 시리얼과 1:1 이어야 한다.
+
+    ⚠️ `SITE_CODE` 는 검사하지 않는다 -- 자료를 딴 곳(실험실 `KMTK`)과 유닛
+    정체는 **다른 축**이고, 설치 위치가 정해지면 일괄 통일할 예정이다
+    (운영자 2026-08-27).
+    """
+    tag = os.path.basename(path).split('.')[-2]
+    want = UNIT_IDENTITY.get(tag)
+    if want is None:
+        pytest.skip('%s 의 기대 정체가 UNIT_IDENTITY 에 없다 -- 사본을 '
+                    '늘렸으면 거기에도 적어라' % tag)
+    ctrltag, ctrl_id, ctrl_sn, ip = want
+    assert _literal('UNIT_CTRLTAG', path=path) == ctrltag
+    assert _literal('UNIT_CTRL_ID', path=path) == ctrl_id
+    assert _literal('UNIT_CTRL_SN', path=path) == ctrl_sn
+    assert _literal('UNIT_IP', path=path) == ip, 'ID 숫자 = IP (규격 5.5절)'
+
+
+@pytest.mark.repo_only
+@pytest.mark.parametrize('path', UNIT_COPIES,
+                         ids=lambda p: os.path.basename(p).split('.')[-2])
+def test_unit_copy_points_at_an_acf_that_exists(path):
+    """사본이 가리키는 ACF 가 저장소에 실재해야 한다.
+
+    2026-08-27 에 두 사본이 없는 ACF 를 가리키고 있었다 (구 `KMTT_` 이름과
+    아직 안 올린 SAAO 판).  벤치에서는 `~/AIC/Config/acf/` 를 보지만,
+    저장소가 정본이므로 여기서 어긋나면 배포가 어긋난다.
+    """
+    acf = _literal('UNIT_ACF_SCI_NORMAL', path=path)
+    name = os.path.basename(acf)
+    assert os.path.exists(os.path.join(ROOT, 'acf', name)), (
+        '%s 가 가리키는 %s 가 ics_archon/acf/ 에 없다' % (os.path.basename(path), name))
