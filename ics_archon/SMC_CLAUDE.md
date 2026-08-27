@@ -137,7 +137,7 @@
     기본 30초). 전원 차단보다 **앞**이다 — 전원은 몇 초 더 켜져 있어도 되지만
     독출을 마친 프레임은 다시 못 찍는다 (F3).
 
-## 상태 (2026-08-26 — **raw spec v1.5·v1.6 반영 완료**, 벤치 첫 연동 시험 대기)
+## 상태 (2026-08-27 — **텔레메트리 감시 설계 확정 · 구현 미착수**, 벤치 연동 시험 대기)
 
 ### ✅ raw spec v1.6 반영 (2026-08-26) — 정체성 카드가 바뀌었다
 
@@ -514,6 +514,557 @@ KASI(실험실)는 좌표가 sentinel.
 test_osc_script.py`(9항목)가 **바이트 동일성 · `ostart` 표 정합 · 11열 ·
 `ExpTime` 범위 · `+msgout` ASCII** 를 지킨다.  **한쪽만 고치면 실패한다.**
 
+## 텔레메트리 감시 · 기록 (설계 확정 2026-08-27, 미구현)
+
+원형은 `__ref_archon_control/archon_kmtnet_guide_tvm_v0.9.kasi.STA0201_IP162.py`
+(가이드 유닛 TVM 감시 스크립트)와 그 실측 로그
+`__ref_archon_control/tvm.gui.log.sample.txt`(658행, 2026-08-19~22)다.
+
+⚠️ **그 스크립트를 "science 판으로 복제" 하는 것이 아니다.** 참고만 하고
+science 컨트롤러 값을 읽어 **들고 있는** 것이 일이다 (운영자 2026-08-27).
+복제가 성립하지 않는 이유는 아래 "왜 science 에는 RTD·진공이 없나".
+
+### 층 나누기 — 같은 `STATUS` 응답이지만 성격이 다르다
+
+| 층 | 무엇 | 규격 접촉 |
+|---|---|---|
+| **1** | science 컨트롤러 **주기 감시·기록** — 온도 10 + 레일 7×2 = **24개 값** | 없음 (`parse.telemetry_of()` 를 그대로 쓴다) |
+| **2** | 같은 응답에서 **바이어스 16채널 V/I** · `VALID`/`COUNT`/`LOG` 도 기록 | 지금은 **로그만**. 헤더 수록은 **계획됨** — 규격 개정 필요 (운영자 2026-08-27) |
+| **3** | `sensors()` 의 `ICG RTD` 계통 — ⚠️ **`ics_archon` 소관이 아니다.** `icg_archon` 이 읽어 넘긴다 (운영자 2026-08-27) | 규격 5.6절 HK 카드 |
+
+**층 1·2 가 `ics_archon` 의 일감이고 층 3 은 `icg_archon` 을 기다린다.**  그때까지
+`backend.sensors()` 는 **빈 dict 를 그대로 유지**하고 HK 카드 7장은 sentinel 로
+실린다.  아래 "층 3" 절은 **`icg_archon` 을 만들 때 쓸 해독 규칙**이다 — 이 세션에
+실측으로 확정해 뒀으니 그때 다시 조사하지 말 것.
+
+⚠️ **가이드 TVM 스크립트는 실험실 Test Dewar 감시용이고 ICS 와 함께 쓰이지
+않는다** (운영자 2026-08-27).  그래서 "ics_archon 이 그 로그 파일을 임시로
+읽는다" 안(③)은 **채택되지 않았다** — 파일 계층의 낡은 값 함정을 피할 수 있게
+됐고, 대신 `icg_archon` 이 나오기까지 HK 는 sentinel 로 남는다.
+⚠️ 같은 이유로 **지금 실측값은 시험 듀어의 것**이다 — 운용 듀어 값이 아니다.
+
+**층 1 은 새 판독기가 아니라 기록기다.** `parse.telemetry_of()` 가 이미 정확히
+그 24개를 `{'temp':[10], 'volt':[7], 'curr':[7]}` 로 돌려준다 — 파싱 코드도,
+규격 협의도, converter 영향도 없다. 그리고 감시와 FITS 헤더가 **같은 함수**를
+읽으므로 둘이 어긋날 수 없다(기계 사본을 넷째로 만들지 않는다).
+
+원장 v1.14:466 이 `CCDTEMP` 대표 센서를 두고 **"센서 이상은 취득 SW 로그가
+담는다"** 고 약속해 뒀는데 **그 로그가 지금 없다.** 층 1 이 그 약속의 이행물이다.
+
+### ⚠️ 반드시 지킬 것 넷 (운영자 승인 2026-08-27)
+
+1. **락을 새로 만들지 않는다** — `ArchonController._lock` 을 그대로 탄다
+   (`refresh_status()` 를 부르면 자동으로 직렬화된다). 단 **FETCH 가 락을
+   344 MiB 동안 쥔다**(`fetch_timeout=0` 이면 크기에서 유도, 최대 344초) —
+   감시 주기가 그만큼 밀린다. **"간격을 못 맞췄다" 를 오류로 보지 말고 밀린
+   시간을 로그에 적고 넘어간다. 밀린 만큼 몰아서 뜨는 것은 절대 금지.**
+2. **`telemetry_enabled` 래치를 감시가 되돌리지 않는다** — 그 플래그는 "한 번
+   실패하면 이 실행 동안 안 묻는다" 다(F8). 감시가 재시도하며 그것을 다시 켜면
+   **취득 경로의 판단이 감시 쪽 사정으로 뒤집힌다.** 감시는 자기 실패 카운터를
+   따로 들고 백오프로 재시도하며, 성공해도 헤더용 래치는 만지지 않는다.
+3. **파일은 컨트롤러당 하나 + 날짜별로 가른다** (`telemetry.<태그>.<YYYYMMDD>.csv`).
+   **위치는 `~/AIC/log/`** 다 (운영자 확정 2026-08-27) — `[paths] data_dir` 밑에
+   두면 자료와 함께 굴러가 아카이브 정책에 걸린다.
+   **기록 간격은 수십 초 ~ 수 분**이다 (운영자 2026-08-27) — 기본값 20초로 두고
+   ini 로 늘릴 수 있게 한다.  이 간격이라 FETCH 락(최대 수 분)에 밀려 표본
+   한두 개를 건너뛰는 것은 **문제로 보지 않는다** (위 규칙 1).
+   한 파일에 무한 append 하면 밤새 돌린 것이 하나로 뭉친다. 그리고 **헤더 줄을
+   반드시 넣는다** — 원형 `tvm.gui.log` 는 열 이름이 없어 스크립트 소스를 봐야
+   몇 번째가 무엇인지 알 수 있고, **자리 수가 바뀌면 과거 파일이 조용히
+   오독된다**. 열 이름은 `rawhdr.TEMP_MOD_LABELS` 를 쓴다(규격 5.6.1 표 그 자체).
+4. **`EXPSTATUS` 를 한 열로 같이 적는다** — 나중에 "이 온도가 독출 중 값인지
+   대기 중 값인지" 를 반드시 묻게 되고, **사후에 시각으로 맞출 수는 없다.**
+
+### ⚠️ 함정: 헤더용 스냅샷과 살아 있는 스냅샷을 갈라야 한다
+
+지금 `Cn_TEMP/VOLT/CURR` 의 뜻은 **"노출 개시 시점 값"** 이다 — `initialize()`
+에서 `refresh_status()` 로 뜨고, 헤더 스냅샷은 `ics_sim/sequencer.py` 의 `snap`
+에서 **독출이 끝난 뒤** 굳히는데 그 사이 아무도 갱신하지 않으므로 결과적으로 개시
+시점 값이 실린다 (`backend.py` 머리말 근거: labtest 도 노출 앞에서 떴다).
+
+배경 감시가 `ctrl.status` 를 계속 덮으면 굳히는 순간에 잡히는 것은 **마지막 폴링
+값**이다. 독출 자체가 모듈을 데우므로 값이 다르고, 게다가 **폴링 간격·락 경합에
+따라 노출마다 달라져 비결정적이 된다.** 카드의 뜻이 조용히 바뀌는 부류다.
+
+| 자리 | 갱신 | 소비자 |
+|---|---|---|
+| `ctrl.status` | 노출 개시에 **언 것** (지금 그대로) | `controller_telemetry()` → **헤더 전용** |
+| `ctrl.status_live` + `status_live_at` | 감시가 계속 갱신 | 기록 · 콘솔 · ICS `STATUS` 응답 · 건강검사 |
+
+`controller_telemetry()` 는 계속 언 쪽을 읽어야 한다 — 여기 손대면 규격의 뜻이
+바뀐다.
+
+### 기록 형태
+
+```
+telemetry.<태그>.<YYYYMMDD>.csv        # 주기 스냅샷, 고정 열
+  utc, age_ms, expstatus,
+  valid, count, fresh, log_n,          # fresh = count 가 직전 행과 달라졌나
+  power, powergood, overheat,
+  T1..T10                              # 규격 5.6.1 자리, [deg C]
+  V1..V7 [V], I1..I7 [A]               # P2V5..P35V  (단위 A)
+  rail_flag                            # p.41 power good 범위 이탈
+  B_<label>_V [V], B_<label>_I [mA] x 16   # 바이어스 (단위 mA — 섞지 말 것)
+
+ctrllog.<태그>.<YYYYMMDD>.log          # FETCHLOG 로 빼낸 항목 + 빼낸 시각
+```
+
+경로는 `~/AIC/log/` 다.
+
+**✅ 7레일이 맞다는 것이 실측으로 확정됐다** (운영자 2026-08-27) — science
+컨트롤러에서 `N35V` · `P100V` · `N100V` · `USER` 가 **전부 0 V / 0 A** 로 나온다.
+안 쓰이는 레일이고, 매뉴얼 p.42-43 과 정합한다(표준 전원이 만들지 않는다).
+`HEATER` 도 science 에서는 무의미하다.
+
+- **`USER` 를 나중에 쓰게 되더라도 `Cn_VOLT` 에 넣지 않는다** — 그때는 우리가
+  다른 의도로 전압 출력이 필요해서 쓰는 것이므로 **별도로 관리한다**
+  (운영자 2026-08-27).
+- ⚠️ **`HEATER`(+28 V)는 guide 에서 실재하고 기록할 계획이다** (HeaterX 두 장).
+  guide 감시 열에는 `HEATER_V/I` 를 넣는다 — science 열과 **다른 표**가 된다.
+
+- **시작·종료·재연결을 한 줄씩 남긴다.** 원형 로그에 60초 넘는 공백이 셋
+  (178초 · 6.2시간 · 3.0일) 있는데 **스크립트가 죽은 것인지 사람이 껐다 켠
+  것인지 로그만으로는 알 수 없다.** `age_ms`/`fresh` 도 같은 목적이다.
+- `valid=0` 행도 **버리지 않고 기록**한다 — 언제부터 이상했는지가 자료다.
+- `ctrllog` 에는 **우리가 빼낸 시각도 함께** 적는다 (컨트롤러 항목에 자체 시각이
+  붙는지 미확인 — 아래 P-d).
+
+### `FETCHLOG` 는 **쓰지 않는다** (운영자 확정 2026-08-27) — `LOG=n` 만 기록
+
+**결정**: 드레인은 감시에 넣지 않는다.  `STATUS` 의 **`LOG=n` 한 열만** 남긴다.
+
+**근거** — `FETCHLOG` 를 밀었던 가장 강한 논거가 "`POWER=3`(Intermediate)은
+**주어가 없는 증상**이다(어느 모듈·채널인지 STATUS 에 필드가 없다)" 였는데,
+**바이어스 16채널 V/I 를 기록하기로 정해지면서 그 자리가 메워졌다** -- 어느
+채널이 안 올라왔는지 로그가 직접 말한다.  남은 것은 "눈 감은 창"(APPLYALL ·
+POWERON 대기 · FETCH 락)이었는데, **기록 간격이 수십 초 ~ 수 분**이므로
+(운영자 2026-08-27) 그 창은 표본 한두 개를 건너뛰는 것에 그친다.
+
+**`LOG=n` 은 남긴다** -- 이미 파싱하는 응답 안에 있어 왕복이 0 이고, 드레인을
+안 해도 신호가 된다: **값이 오르면 컨트롤러가 무언가 기록하고 있다**는 뜻이고,
+우리 로그와 나란히 놓으면 "우리가 못 본 사건이 있었나" 를 알 수 있다.
+
+**승격 기준** (probe 1단계에서 사람이 한 번 찍어 보고 판단) --
+① 항목이 **모듈·채널 수준의 정체**를 담으면(예 `MOD9 HVHC4 failed to reach
+setpoint`) 드레인을 넣을 값이 있다 ② `config applied` · `frame complete` 수준
+이면 **쓰지 않는다** (우리 로그가 이미 더 잘 담는다).
+
+안 쓰기로 한 이유가 된 위험 셋 -- 매뉴얼이 한 줄뿐이고 깊이·넘침 정책·응답
+형식이 전부 미기재다:
+
+1. **파괴적 읽기 가능성** — "oldest 를 fetch" 는 큐에서 빼는 것으로 읽힌다.
+   그러면 STA GUI 를 같이 붙여둔 사람은 그 항목을 못 본다. 벤치(Rev F)는 접속이
+   하나라 무의미하고 **관측소(Rev H, 4접속)에서는 실질 문제**다.
+2. **인식 못 한 명령은 무응답**(p.45) — 펌웨어 판에 없으면 **영구 정지**다.
+   반드시 상한 + 첫 실패에 이 실행 동안 끄는 래치.
+3. **드레인 상한** — `while LOG>0: FETCHLOG` 는 락을 오래 쥔다. 한 주기에
+   **최대 20개**만 빼고 남으면 다음 주기로. 그리고 `LOG` 값 자체를 열로 남긴다
+   — **상한 근처에 계속 붙어 있으면 그것이 "놓치고 있다" 는 신호**다(깊이를
+   모르는 채로도 읽을 수 있다).
+
+### 층 2 — 바이어스 측정값의 헤더 수록 (계획, 규격 개정 사안)
+
+운영자가 **헤더에도 적절히 넣을 계획**이라고 확정했다(2026-08-27).  단
+**일단은 로그부터** 만든다.  넣을 때 미리 알아야 할 것:
+
+- **카드 하나에 안 들어간다.**  16채널 × (V, I) = 32개 값이고 `.3f`(예
+  `-17.067`, 7자)로 `|` 구분하면 `32×7 + 31 = 255자` 다.  견본의 `C1_TEMP` 는
+  값 폭 **51자**이고 FITS 문자열 값의 물리 상한은 68자다(comment 자리를 빼면
+  실질 ~60자).  **8채널이 한 카드의 한계**다 (`8×7 + 7 = 63자`).
+- 그래서 갈래가 둘이다:
+  - **8개씩 균등 분할** — `Cn_BV1`/`Cn_BV2`/`Cn_BI1`/`Cn_BI2` → 컨트롤러당 4장,
+    **pair 8장**.  자리 표가 단순하지만 모듈 경계를 넘어 섞인다.
+  - **모듈·계열별 분할** — `MOD4/LVHC` 6 · `MOD9/HVHC` 6 · `MOD9/HVLC` 4 세
+    묶음 × (V, I) → 컨트롤러당 6장, **pair 12장**.  자리가 하드웨어를 따라가
+    읽는 쪽이 해석하기 쉽다.
+- ⚠️ **자리 = 항목 규범을 따르면 채널 구성이 규격에 박힌다** (5.6.1절).  ACF 를
+  바꿔 라벨 붙은 채널이 늘거나 줄면 자리 수가 달라지고, 그것은 `CAMVER`(HW) ·
+  `CTRLnCFG`(설정) 범프로 드러나야 한다(4.3절 포장 규범).  지금 16채널은
+  `KMTK_SCI_113` ACF 기준이다.
+- ⚠️ **`POWER=4` 가 아닐 때의 값은 ~0 V 다**(p.77).  헤더에 실을 때 그 상태를
+  구분할 수단이 없으면 `BIAS`/전원 꺼진 프레임의 카드가 "전 채널 0 V" 로 남아
+  고장처럼 보인다 — 로그의 `power` 열에 해당하는 것이 헤더에도 필요하다.
+
+### 왜 science 에는 RTD·진공이 없나 (ACF 로 확정)
+
+|  | MOD1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **science** | 10 LVDS | 1 Drv | 1 Drv | 9 LVXBias | **17 ADM** | 0 | 0 | **17 ADM** | 8 또는 **18** | 1 Drv | 1 Drv |
+| **guide** | 0 | 0 | 1 Drv | 1 Drv | 2 AD | 2 AD | **11 HeaterX** | 0 | 8 HVXBias | **11 HeaterX** | 0 |
+
+science ACF 5종에는 `SENSORxTYPE`/`SENSORxLABEL` 키가 **하나도 없고**
+`VCPU_LINES=1`(빈 프로그램)이다. HeaterX 가 없으므로 `MODm/TEMPA/B/C` 도
+`VCPU_OUTREGn` 도 나오지 않는다(p.48 "Heater(X) only" · "Modules with DIO").
+
+**덤으로 자리 수가 규격과 맞는 것이 확인됐다** — science 장착 모듈은
+1·2·3·4·5·8·9·10·11 = **10자리**(`rawhdr.TEMP_MODS` 와 일치), guide 는
+3·4·5·6·7·9·10 = **8자리**(규격 5.6.1 의 guide 8자리, **OI-19**). 실기 STATUS
+대조는 여전히 남아 있지만 근거가 하나 늘었다.
+
+### 층 3 (`icg_archon` 소관) — 가이드 유닛 HeaterX 가 `ICG RTD` 계통이다
+
+가이드 ACF 의 센서 이름표가 규격 5.6절 HK 카드와 **일대일**이다. 즉
+"C. 원천이 아예 없는 것" 에 적어둔 `ICG RTD` 계통의 원형이 이 스크립트다.
+
+| STATUS 필드 | ACF 이름표 | raw 카드 | 지금 상태 |
+|---|---|---|---|
+| `MOD7/TEMPA` | `RTD4_Charcoal_TBC` | `CHARCOAL` | ⚠️ **미연결** |
+| `MOD7/TEMPB` | `RTD1_PT30-1` | `PT30N1` | 정상 |
+| `MOD7/TEMPC` | `RTD3_PT30-2_TBC` | `PT30N2` | ⚠️ **미연결** |
+| `MOD10/TEMPA` | `RTD9_DMP` | `DMPTEMP` | 정상 |
+| `MOD10/TEMPB` | `RTD8_CCD` | **`CCDTEMP`** | 정상 (⚠️ 하한 문제) |
+| `MOD10/TEMPC` | `RTD5_WB` | `WALLBRD` | 정상 |
+| `MOD10/VCPU_OUTREG0~9` | (MKS 356 게이지) | **`DEWPRES`** | 정상 |
+| — | — | `HEBOX` | Tapaculo (별개 계통) |
+
+**`sensors()` 가 채울 키는 7개로 확정됐다** (`ccdtemp` `dmptemp` `pt30n1`
+`pt30n2` `charcoal` `wallbrd` `dewpres`). `air_*`/`glyc_*` 4장은 v1.5 에서
+폐지, `hebox`/`fsatemp`/`fsahum` 은 Tapaculo. 즉 **가이드 HeaterX 6채널 + 진공이
+규격이 요구하는 `ICG RTD` 전량**이고, 층 3 은 부분 구현이 아니라 **완결**이다.
+(단 미연결 2채널 때문에 실값은 5장으로 시작한다.)
+
+#### ✅ `ccdtemp1`/`ccdtemp2` 를 `ccdtemp` 하나로 합쳤다 (2026-08-27, 반영 완료)
+
+운영자 확정: **CCD1/CCD2 를 구분하지 않고 CCD 대표 온도 하나만 읽는다.  `ccdtemp2`
+관련 유산은 전부 없앤다.**  chip 귀속은 **정보가 없으므로 규정하지 않는다.**
+
+⚠️ **이름 충돌이 하나 있었다** — 종전 계약이 `ccdtemp` 를 **"백엔드가 따로 줘도
+무시하는" 키**로 명시했고(`base.py`), `test_raw_header.py` 가 `'ccdtemp': 0.0` 을
+일부러 넘겨 무시되는지 검사했다.  그 규칙의 존재 이유가 "센서가 둘이니 두 번째
+사실을 만들지 않기" 였으므로, **센서가 하나로 확정되면서 규칙 자체가 사라졌다** --
+그래서 `ccdtemp` 를 대표 이름으로 승격하고 무시 규칙을 지웠다.
+
+**"대체 금지" 원칙은 남겼다** (운영자 지시) -- 예시만 갱신했다.  없는
+`ccdtemp2` 대신 **실제로 유혹이 되는 것**(`DMPTEMP` · `Cn_TEMP` 의 모듈 온도)을
+경고 대상으로 적었다.
+
+고친 자리 (`ccdtemp1` → `ccdtemp`, `ccdtemp2` 제거):
+
+| 파일 | 무엇 |
+|---|---|
+| `ics_sim/ics_sim/hardware/base.py` | 계약 키 목록 + 대표 센서 문단 (무시 규칙 삭제) |
+| `ics_sim/ics_sim/rawhdr.py` | `thermal_header` docstring + `s.get('ccdtemp')` (별칭 `ccdtmp1` 도 제거) |
+| `ics_sim/ics_sim/hardware/sim.py` | 시뮬이 내는 키 둘 → 하나 |
+| `ics_sim/ics_sim/hardware/archon.py` | 스텁 TODO 주석 |
+| `ics_sim/tests/test_raw_draft.py` | 견본 재현 입력 키 |
+| `ics_sim/tests/test_raw_header.py` | 두 시험 개작 — **옛 키를 아직 읽으면 실패**하는 회귀 추가 |
+| `ics_archon/ics_archon/archon/backend.py` | `sensors()` docstring 인용 |
+| `ics_archon/_vendor/ics_sim/` 4파일 | `tools/sync_vendor.py` 재실행 (생성물) |
+
+**손대지 않은 것**: `ics_sim/DevNote.md` 의 `ccdtemp1` 언급은 **이력**이라 그대로
+둔다.  `raw_fits_spec` 의 `CCDTEMP1`/`CCDTEMP2` **카드** 언급은 다른 것이다 --
+그 둘은 애초에 도입 후보에서 제외 확정된 **FITS 카드 이름**이고, 여기서 없앤
+것은 **백엔드 계약 키**다.
+
+✅ **`air_*`/`glyc_*` 죽은 키도 없앴다** (운영자 지시 2026-08-27).  계약 키
+목록에 넷이 남아 있고 `sim.py` 도 그것을 냈는데, **해당 카드 4장이 v1.5 에서
+폐지**돼(`DEWAR_CARDS` 에 없다) 호출측이 값을 버리고 있었다 -- 계약에 남겨 두면
+백엔드가 **아무도 읽지 않는 값을 읽으러 간다.**  이제 계약 키는 **아홉**이다
+(`ccdtemp` `dewpres` `dmptemp` `pt30n1` `pt30n2` `charcoal` `wallbrd` /
+`hebox` `fsatemp` `fsahum`).  고친 자리: `base.py` 계약 · `sim.py` 반환 ·
+`archon.py` 스텁 주석 + `_vendor` 재생성.
+
+⚠️ **대문자 카드 이름 언급은 그대로 뒀다** -- `rawhdr.py`(폐지 근거 주석) ·
+labtest 5사본(개정 이력) · `test_raw_header.py`(**나오면 안 되는 카드** 목록)는
+전부 "폐지됐다" 를 기록하는 자리다.  `mef_converter` 두 곳은 MEF 쪽이라 범위
+밖이다(LEECU 소관, raw 가 공급을 끊었다는 것은 이미 C-항목으로 등재).
+
+### 층 3 (`icg_archon` 소관) — 진공(`DEWPRES`) 해독 규칙
+
+가이드 ACF `MOD10` 의 VCPU 프로그램이 정본이다 (p.90 포트 주소표와 대조):
+
+```
+LOAD r0, 0x0800 / OUTPUT r0, 11    ; UART 분주기 11 -> 115200/12 = 9600 baud
+'#','0','5','R','D',13             ; MKS 356 에 "#05RD<CR>"
+LOAD Port, RegPort (0x0200)        ; OUTREG0 부터
+LOAD Count, 9   / SkipLoop         ; 앞 9글자 버림
+LOAD Count, 10  / StoreLoop        ; <- 10글자를 OUTREG0..OUTREG9 에 한 칸당 한 글자
+    IF C GOTO MainLoop             ;    글자가 모자라면 중도 포기
+LOAD Port, 0x020F / ADD Alive,1    ; <- OUTREG15 = 성공 폴링 횟수
+    OUTPUT Port, Alive
+```
+
+- `OUTREG0~9` = 응답 **10글자**의 ASCII 코드, `OUTREG10~14` 미사용,
+  **`OUTREG15` = Alive 카운터**.
+- ⚠️ **`Alive` 를 봐야 신선도를 안다.** 게이지 응답이 짧으면 StoreLoop 중간에서
+  `IF C GOTO MainLoop` 로 빠져나가는데 그때 **`OUTREG0~9` 는 직전 값이 그대로
+  남고 `Alive` 도 안 올라간다** — 옛 값이 새 값처럼 보인다(F8 과 같은 부류).
+- **정상 판정은 "직전보다 증가" 하나뿐이다.** `Alive` 가 0 이거나 감소했으면
+  **VCPU 재시작**(`APPLYALL`)이고, 두 번 연속 안 변했으면 게이지 이상 →
+  둘 다 `DEWPRES` 는 sentinel `9.99e-9`.
+- 원형 스크립트는 `OUTREG9` 를 종결 표시로 써서 **10번째 글자를 버린다**(9글자만
+  이어붙인다). 실측에서는 응답이 항상 `x.xxe-04`(8자)라 **무해했다** — 658행
+  전부 정상 파싱, sentinel 0건. 자릿수가 바뀌는 경우까지 무해한지는 STATUS 원문
+  덤프로 확인할 일이고 **우선순위는 낮다.**
+- `DEWPRES` 재포맷은 **하지 않는다.** `rawhdr.format_dewpres` 가 이미
+  `6.93e-04` → `6.93e-4` 로 만들고(지수 앞 0 제거) 인정 범위
+  `[1e-8, 1e+3]` 도 검사한다. `sensors()` 는 **원값을 넘기면 된다.**
+
+### 층 3 (`icg_archon` 소관) — 실측 로그 판정 (`tvm.gui.log.sample.txt`, 658행)
+
+**✅ 단위는 섭씨다. 매뉴얼 p.48 "in K" 는 오기.** 273.15 변환을 하면 안 된다.
+
+```
+260819 113602 … PT30-1 +20.8  DMP +20.3  CCD1 +21.1  WB +18.8  BP +33.8
+260822 223514 … PT30-1 -29.5  DMP -31.8  CCD1 -27.7  WB  +7.8  BP +34.4
+```
+
+음수가 나오므로 켈빈일 수 없다. 보강 증거 — **미연결 채널이 정확히 `-273.2`**
+를 낸다(= 0 K 를 섭씨로 옮긴 값). 펌웨어가 내부적으로 켈빈을 다루고 보고할 때
+273.15 를 빼는 구조로 보이고, 매뉴얼은 그 내부 표현을 적은 듯하다.
+
+**⚠️ 결측 판정은 값이 아니라 ACF 한계로 한다.** 미연결 채널이 `-273.2` 만
+내는 것이 아니다 — `RTD3_PT30-2_TBC` 는 639행이 `-273.2` 인데 **19행이
+`-196.9`~`-206.1`** 로 튄다. 그 값은 PT-30 cold-end 로서 **완전히 그럴듯해서**
+값만으로는 가릴 수 없다. ACF 의 `SENSORx{LOWER,UPPER}LIMIT` 로 판정하면 노이즈
+까지 잡힌다:
+
+| 채널 | ACF 한계 | 실측 범위 | 판정 |
+|---|---|---|---|
+| MOD7A `RTD4_Charcoal_TBC` | −230 … 50 | −273.2 고정 (distinct 1) | 밖 → **미측정** |
+| MOD7B `RTD1_PT30-1` | −180 … 50 | −29.5 … +20.8 | 안 (정상) |
+| MOD7C `RTD3_PT30-2_TBC` | −180 … 50 | −273.2 / −196.9…−206.1 | **둘 다 밖** → 미측정 |
+| MOD10A `RTD9_DMP` | −150 … 50 | −31.8 … +20.3 | 안 |
+| MOD10B `RTD8_CCD` | **−30 … 60** | −27.7 … +21.1 | 안, **아슬아슬** |
+| MOD10C `RTD5_WB` | −120 … 50 | +7.8 … +18.8 | 안 |
+
+라벨의 `_TBC` 접미사가 실제로 "미연결" 을 뜻했다.
+
+#### ✅ 원인 규명 + 수정 완료 — MOD10 센서 B/C 스왑에서 limit 이 안 따라갔다
+
+**경위** (운영자 2026-08-27): MOD10 의 **센서 B/C 위치를 맞바꿨는데**(B←RTD8_CCD,
+C←RTD5_WB) **그때 limit 설정을 안 옮겼다.**  그래서 CCD 채널이 벽면보드용
+범위(−30 … +60/70)를, 벽면보드가 CCD 용 범위(−120 … +50)를 쓰고 있었다.
+
+저장소 ACF 넷을 대조해 그 사건을 특정했다 — **스왑은 `_rtd9cal` 판을 만들 때
+일어났다**:
+
+| ACF | 센서 B | B limit | 센서 C | C limit |
+|---|---|---|---|---|
+| `for1110` (스왑 전) | `RTD5_WB_TBC` | −30.0 / 70.0 | `RTD8_CCD1_TBC` | −120 / 50.0 |
+| `for1259` (스왑 전) | `RTD5_WB_TBC` | −30 / 60 | `RTD8_CCD1_TBC` | −120 / 50.0 |
+| `for1110_rtd9cal` (스왑 후) | `RTD8_CCD1` | −30.0 / 70.0 ← 안 옮겨짐 | `RTD5_WB` | −120 / 50.0 |
+| `for1259_rtd9cal` (스왑 후) | `RTD8_CCD1` | −30 / 60 ← 안 옮겨짐 | `RTD5_WB` | −120 / 50.0 |
+
+**스왑 전 판에서는 limit 이 라벨과 맞아 있었다** — 즉 원래 값이 옳았고 스왑에서
+라벨만 옮겨진 것이다.  같은 사건이 TVM 스크립트 **v0.8 → v0.9**(2026-08-14 →
+08-15)의 라벨 뒤바뀜으로도 남아 있다.
+
+**고친 것** (`_rtd9cal` 판 둘, 2026-08-27):
+
+    MOD10\SENSORBLABEL      = RTD8_CCD1  ->  RTD8_CCD
+    MOD10\SENSORBLOWERLIMIT = -30        ->  -120        (CCD)
+    MOD10\SENSORBUPPERLIMIT = 60 / 70.0  ->  50.0
+    MOD10\SENSORCLOWERLIMIT = -120       ->  -30         (WB)
+    MOD10\SENSORCUPPERLIMIT = 50.0       ->  70.0
+
+⚠️ **`for1259_rtd9cal` 의 WB 상한은 60 → 70.0 으로 올라갔다** — 순수 스왑이면
+60 인데 운영자가 70 을 정본으로 확정했다(`for1110` 계열의 값).  실측 WB 범위가
+**+7.8 … +18.8** 이라 어느 쪽이든 여유는 크다.
+
+⚠️ **`_TBC` 판 둘(스왑 전)은 손대지 않았다** — 그 판에서는 limit 이 이미 라벨과
+맞고, 고치면 옛 배치의 이력이 사라진다.  라벨의 `_TBC` 접미사도 그 판의 사실이다.
+
+**판을 올렸다** — `R2601` → **`R0827`** (운영자 지시 2026-08-27):
+
+    acf/kmtnet_guide_STA0201_162_R0827_for1110_rtd9cal.acf
+    acf/kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf   ⭐ 현행
+    acf/archive/…_R2601_…_rtd9cal.acf  × 2                   (구판 보존)
+
+⚠️ **`R0827` 은 판 번호 규칙의 예외다** — `R2608`·`R2601` 은 `YYMM` 인데 이것은
+`MMDD` 다.  **숫자 크기로 정렬하면 구판보다 앞에 온다**(0827 < 2601) — 순서는
+파일명이 아니라 `acf/README.md` 와 git 이력으로 판단할 것.
+
+⚠️ **저장소 사본을 고친 것이 실기에 반영되는 것은 아니다** — 운영자가 그 ACF 를
+유닛에 올려야(`APPLYALL`) 적용된다.  **다음 감시 로그로 확인할 항목**이다:
+CCD 채널이 −30 아래로 내려가도 값이 유지되는지(종전 설정이면 한계 밖).
+
+⚠️ **실험실 TVM 스크립트의 `UNIT_ACF` 가 구 파일명을 가리킨다** —
+`__ref_archon_control/` 은 참고 원본 보관용이라 여기서 고치지 않았다.  운영자가
+작업본을 새 이름으로 고쳐야 한다.
+
+**폴링 간격**은 중앙값 22초(`INTERVAL_LOG` 20 + 취득 ~2초)다.
+
+### 규격 쪽 후속 (다음 판올림 때)
+
+#### ⭐ `CCDTEMP` 에서 chip 귀속을 없앤다 (운영자 확정 2026-08-27) — v1.8 작업
+
+**결정**: `CCDTEMP` 를 **특정 chip 으로 규정하지 않고 "CCD 대표 온도"** 로 한다.
+카드 comment 의 `M` 도 없앤다.  **대표 센서가 어느 chip 근처인지는 정보가 지금
+없다** — 그래서 있는 척하지 않는다.
+
+**시점**: 이 브랜치(`ics-archon-v1.0-build`) 작업을 끝낸 뒤 **`main` 으로 넘어가
+헤더 정본을 고치고 raw spec **v1.8** 로 판올림하면서** 함께 반영한다 (운영자
+2026-08-27).  ⚠️ **이 브랜치에서 손대지 말 것** — 견본 pair 바이트가 정본이라
+규격 판올림과 함께 움직여야 한다.
+
+**따라오는 것**: `OI-18`("대표 센서 M 이 NT 파일에서도 그대로인지 확인")은
+**종결이 아니라 폐기**다 — 물음의 전제(chip 귀속이 있다)가 사라진다.  pair 두
+파일에 같은 값이 실리는 것은 5.9절 "반드시 동일" 로 자동 충족되고, 견본도 이미
+두 파일이 `'-101.23'` 으로 같다.
+
+**comment 문안 후보** — 카드 여유는 **47자**다
+(`CCDTEMP ` 8 + `= ` 2 + `'...18자...'` 20 + ` / ` 3 = 33, 80−33):
+
+    Representative CCD temperature [deg C]     37자   <- 추천
+    CCD representative temperature [deg C]     37자
+    CCD temperature [deg C]                    23자   (mef_converter 와 같은 문안)
+
+추천은 첫째다 — 이웃 카드가 전부 `<대상> temperature [deg C]` 꼴이다
+(`DMP temperature` · `Wallboard temperature` · `HE box internal temperature`).
+
+**⚠️ 영향 전수** (2026-08-27 실측).  `CARRY_KEYS` 는 **이름만** 요구하므로
+소비자 계약은 안 깨지고, `mef_converter` 두 곳은 이미 `M` 이 없다.
+
+| 갈래 | 자리 |
+|---|---|
+| **문자열 정본** | `ics_sim/ics_sim/rawcards.py` |
+| **문서 인용** | `ics_sim/ics_sim/rawhdr.py`(docstring) |
+| **생성물** (`tools/sync_vendor.py` 재실행) | `ics_archon/_vendor/ics_sim/rawcards.py` · `rawhdr.py` |
+| **labtest 내장 사본 5** | `ics_archon/scr_labtest/…v1.3.{bigbuf,smallbuf}.py` (+ KMTC-102 · KMTC-113 · KMTS-101) |
+| ⭐ **견본 pair 바이트 정본 4** | `raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0{,_REFTEXT}.txt` |
+| **규격·원장 문서 4** | 규격 v1.7(5.6절 표 + 8장 OI 표) · 원장 v1.14(2곳) · `Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` · `raw_fits_spec/SMC_CLAUDE.md` |
+| **OI-18 언급 (문자열과 별개)** | `ics_sim/ics_sim/hardware/base.py:181` · `rawhdr.py:568` · `sequencer.py:480` (+ `_vendor` 3, 생성물) · `raw_fits_spec/README.md:121` · `raw_fits_spec/SMC_CLAUDE.md:216` |
+| **기계 검증** | `ics_sim/tests/test_raw_draft.py`(견본 바이트) · `ics_archon/tests/test_fitswrite.py`(카드 이미지) · `ics_archon/tests/test_labtest_spec_copy.py`(사본 표류) |
+
+**손대지 않을 것**: `ics_sim/DevNote.md` 의 `CCD temperature M` 언급은 **이력**
+이므로 그대로 둔다 (v1.6 전수 검사에서 세운 방침 — 라운드별 기록은 현재값으로
+덮지 않는다).
+
+**함께 결정할 것**: 견본 pair 파일명이 `…header.v1.0.txt` 인데 comment 가 바뀌면
+**견본 판을 올릴지**(→ `v1.1`, 구판은 `archive/` 로) 아니면 v1.0 파일을 제자리에서
+고칠지.  견본은 바이트 정본이므로 전자가 규범에 맞아 보인다.
+#### ⭐ `ICG` RTD 구성 변경은 `CAMVER` 로 흡수한다 (운영자 확정 2026-08-27) — v1.8 작업
+
+**결정**: HK 7장의 출처(`ICG RTD`)를 가리키는 **새 카드는 두지 않는다.**  RTD 의
+배치·귀속이 바뀌면 **HW 변경으로 보고 `CAMVER` 를 올린다.**  (후보였던 `ICGCFG`
+카드 신설은 채택되지 않았다.)
+
+**왜 문제가 되나** — `CTRLnCFG` 는 **science 컨트롤러 둘의 ACF** 다.  그런데
+RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가이드 ACF** 이고
+그 이름은 science 헤더에 실리지 않는다.  그래서 4.3절이 "구성이 바뀌면
+`CAMVER`(HW)·`CTRLnCFG`(설정) 범프로 드러난다" 고 한 장치가 **HK 7장에는 안
+걸렸다.**  `CAMVER` 로 흡수하면 4.3절의 기존 구조를 그대로 쓰면서 그 구멍이
+닫힌다 — 새 카드가 없으므로 converter·L1 에 영향이 없다.
+
+⚠️ **다만 조건이 둘 있다.  이것 없이는 범프가 범례 없는 깃발이 된다.**
+
+1. **규범을 규격에 명시해야 한다** (4.3절) — "**듀어 RTD 의 배치·귀속 변경도
+   `CAMVER` 범프 사유다**".  안 적으면 다음 사람이 "가이드 ACF 는 science HW 가
+   아니다" 로 읽고 안 올린다.  지금 4.3절은 고정 대상만 정하고 **무엇이 범프
+   사유인지는 열거하지 않는다.**
+2. **`CAMVER` 값 ↔ 구성 대장이 있어야 한다.**  `CAMVER` 는 문자열 하나라 범프는
+   "무언가 바뀌었다" 만 말하고 **"무엇이" 는 말하지 않는다.**  `CEU-v2.1` →
+   어느 RTD 배치인지를 찾을 표가 없으면 과거 자료를 해석할 수 없다.  위치는
+   `project_management` 또는 `raw_fits_spec` 원장 중 하나로 정할 것.
+
+⚠️ **부작용 하나** — `CAMVER` 는 "전자부 세대 판별의 참조점"(규격 5.4절)이라
+캘리브레이션 게이팅에 쓰일 값이다.  RTD 라벨 재배치로 그것이 움직이면, 신호
+계통이 안 바뀌었는데도 소비자에게는 세대가 바뀐 것으로 보인다.  **대장(조건 2)이
+그 구분을 대신해야 한다.**
+
+**운영 절차도 정해야 한다** — 지금 `ics_archon.ini` 의 `[camera] camver` 는 비어
+있고 코드 기본값 `'CEU-v2.1'` 이 실린다.  범프는 ini 에 값을 적는 방식이 되므로
+**벤치와 관측소가 각자 다른 값을 들 수 있다.**  누가 언제 올리는지를 규범에 함께
+적을 것.
+
+✅ **지금은 이력이 깨끗하다** — science raw 자료가 아직 한 장도 없다.  이미
+일어난 MOD10 센서 B/C 뒤바뀜(2026-08-14/15, `_rtd9cal` 판)은 이 규범 하에서는
+범프 사유였지만 **오염된 자료가 없다.**  규범을 **첫 science 프레임 전에** 세우면
+이력에 구멍이 안 생긴다 — 그것이 이 항목의 시한이다.
+
+- **`Cn_VOLT` 7레일은 그대로 둔다** — 표준 전원이 만드는 전량임이 확인됐다
+  (위 매뉴얼 사실). 종전에 "12레일이므로 늘려야 한다" 고 적었던 검토는 **철회**
+  한다.
+
+## ▶ 다음 세션 작업 지시 (2026-08-27 마감 — ⭐ 새 세션이면 여기부터)
+
+이 세션은 **가이드 유닛 TVM 감시 스크립트를 읽고 텔레메트리 감시·기록을 설계**
+했다.  조사·설계·문서·부수 결함 수정은 다 끝났고 **감시 구현은 코드 0줄**이다
+(운영자가 토큰 한도로 다음 세션으로 넘겼다).  경위는 위
+[텔레메트리 감시 · 기록](#텔레메트리-감시--기록-설계-확정-2026-08-27-미구현) 절과
+[`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.32.
+
+### ⭐ 작업 A — 층 1·2 구현 (이 세션의 본 일감, **미착수**)
+
+설계·규칙·로그 형태가 위 절에 **전부** 있다.  다시 조사하지 말고 그대로 만들 것.
+
+| 무엇 | 어디 |
+|---|---|
+| `ctrl.status_live` + `status_live_at` 신설, **헤더용 `ctrl.status` 와 분리** | `archon/controller.py` |
+| 주기 감시 태스크 -- `IcsSim.spawn()` 으로 띄운다 (`ics_sim` 무수정) | `app.py` |
+| CSV 기록 (컨트롤러당·날짜당 1파일, `~/AIC/log/`) | 새 모듈 |
+| ini 키 -- `monitor` · `monitor_interval` · `monitor_log` | `config.py` `[archon]` |
+| 바이어스 16채널 V/I 판독 (`MOD4/LVHC` · `MOD9/HVHC` · `MOD9/HVLC`, 이름은 **ACF LABEL 에서**) | `archon/parse.py` |
+
+⚠️ **반드시 지킬 것 넷**(위 절)을 먼저 읽을 것 -- 특히 ① 락을 새로 만들지 않기
+② `telemetry_enabled` 래치를 감시가 되돌리지 않기.
+
+**승인된 부수 항목 둘** (운영자 2026-08-27):
+
+- **D4 -- `VALID=0` 이면 헤더를 `NC` 로 떨어뜨린다.**  `telemetry_of()` 가 빈
+  dict 를 돌려주면 `rawhdr` 가 자리 수만큼 `NC|NC|…` 로 만든다(규격 5.6.1절이
+  이미 그 경로다 -- 새 규격 불필요).  ⚠️ **`VALID` 필드가 없는 경우와 `VALID=0`
+  을 갈라야 한다** -- 구 펌웨어에서 첫 실행이 통째로 `NC` 가 된다(F2 원칙).
+- **D5 -- `-SYNCH` 결함(G5)을 감시와 함께 고친다.**  `backend.status()` 의
+  `synched` 가 `parse.power_good(ctrl.status)` 이고 첫 노출 전엔 `ctrl.status`
+  가 비어 **관측자 화면에 4채널 전부 `-SYNCH`** 로 보인다.  `status_live` 가
+  생기면 링크가 올라온 순간부터 답할 수 있다.
+
+### 작업 B — probe 1단계 확인 항목 (실기 붙일 때, `tools/probe_archon.py`)
+
+| # | 확인 | 왜 |
+|---|---|---|
+| P-a | `LOG` 값의 상한 (드레인 안 하고 관찰) | 버퍼 깊이 = 매뉴얼 미기재 |
+| P-b | `FETCHLOG` 뒤 `LOG` 감소 여부 | 파괴적 읽기인지 |
+| P-c | `LOG=0` 일 때 `FETCHLOG` 응답 | **무응답이면 영구 정지**(p.45) -- 래치 필요 |
+| P-d | 로그 한 줄 생김새 (자체 시각·심각도) | `FETCHLOG` **승격 기준** 판정 |
+| P-e | 형 17(ADM)·18(HVYBias) 실물 보고 | 이 세션에 ACF 로만 확인했다 |
+| P-f | 자리 표 대조 (`field_order_problems()` 가 조용한지) | 규격 5.6.1 실물 정합 |
+| P-g | `VALID`/`COUNT`/`POWER`/`OVERHEAT` 실제 보고 여부 | D4 · F2 의 PROVISIONAL |
+
+### 작업 C — raw spec **v1.8** (`main` 에서, 다음 판올림)
+
+⚠️ **이 브랜치에서 손대지 말 것** -- 견본 pair 바이트가 정본이라 규격과 함께
+움직인다.  상세와 **영향 전수 목록**은 위 [규격 쪽 후속](#규격-쪽-후속-다음-판올림-때) 절.
+
+1. **`CCDTEMP` 에서 chip 귀속 제거** -- comment 의 `M` 을 없앤다.  추천 문안
+   `Representative CCD temperature [deg C]`(37자, 여유 47자).  **영향 18곳 +
+   견본 pair 바이트** -- 목록이 그 절에 있다.
+2. **`OI-18` 폐기** -- 물음의 전제(chip 귀속)가 사라졌다.  종결이 아니라 폐기다.
+3. **`CAMVER` 규범 명시** (4.3절) -- "듀어 RTD 의 배치·귀속 변경도 `CAMVER` 범프
+   사유다".  ⚠️ **`CAMVER` 값 ↔ 구성 대장**과 **누가 언제 올리나**를 함께 정해야
+   범프가 범례 없는 깃발이 되지 않는다.
+4. **D3 -- 바이어스 측정값의 헤더 카드 배치.**  32개 값이 카드 하나에 안 들어간다
+   (8개가 한 카드 한계).  두 갈래와 계산이 위 [층 2](#층-2--바이어스-측정값의-헤더-수록-계획-규격-개정-사안) 절에.
+
+### 작업 D — `icg_archon` (별개 프로그램, 착수 미정)
+
+층 3(`sensors()` 의 `ICG RTD` 계통)이 **`ics_archon` 소관이 아니다**(운영자
+2026-08-27).  그때까지 `backend.sensors()` 는 빈 dict 이고 HK 카드 7장은
+sentinel 이다.  **해독 규칙은 이 세션에 실측으로 다 확정해 뒀다** -- 위 "층 3"
+세 절(대응 표 · 진공 `Alive` 규칙 · 실측 로그 판정).  다시 조사하지 말 것.
+
+착수할 때 정할 것: **D1 -- `icg_archon` → `ics_archon` HK 전달 경로.**  후보 셋
+(IMPv2 메시지 / 파일 / 공유 상태)이고 각각 걸림돌이 있다.  어느 쪽이든 **"이 값이
+몇 초 전 것인가" 를 함께 실어야** 한다 -- 없으면 `Alive` 로 잡은 신선도가 전달
+계층에서 다시 사라진다.
+
+### 운영자 몫 (실기)
+
+1. **`R0827` ACF 를 유닛에 올린다** (`APPLYALL`) -- 저장소만 고친 상태다.
+2. 실험실 TVM 스크립트의 `UNIT_ACF` 를 **새 파일명으로** 고친다
+   (`__ref_archon_control/` 은 참고 원본 보관용이라 여기서 고치지 않았다).
+3. 다음 감시 로그로 **CCD 채널이 −30 아래를 읽는지** 확인 -- 종전 설정이면
+   한계 밖이라 못 읽는다.
+
+### 낮은 우선순위
+
+- 진공 응답 **10번째 글자**가 무해한지 STATUS 원문으로 확인 (실측 658행에서는
+  무해했다 -- 응답이 항상 `x.xxe-04` 8자).
+- guide 8자리 자리 표(**OI-19**) -- guide raw 규격을 세울 때.
+- `field_order_problems()` 는 science 10자리 기준이라 **guide 유닛에 probe 를
+  돌리면 어긋남으로 보고된다** -- guide 규격이 나오면 자리 표를 유닛 종류로 가를 것.
 ## ▶ 다음 세션이 먼저 알아야 할 것 (2026-08-26 마감 시점)
 
 **전부 커밋·푸시됐고 태그(`raw-spec-v1.6`)도 붙었다.**
@@ -732,7 +1283,7 @@ README 로 나눈다.
 - **듀어·환경 HK** (`sensors()`) — 공급 3계통(ICG RTD · standalone RTD readout
   unit · Tapaculo). labtest 도 안 읽으므로 옮겨올 원형이 없다. 붙일 때의 계약은
   `ics_sim/hardware/base.py` 의 `sensors()` docstring 에 다 있다(키 이름 · 대표
-  센서 `ccdtemp1` · 못 읽은 항목은 넣지 않기).
+  센서 `ccdtemp` · 못 읽은 항목은 넣지 않기).
 - **guide 계통** — guide raw 규격 미정.
 - **binning** (`BIN`) — `ics_sim` 쪽도 스텁이다.
 
@@ -898,10 +1449,106 @@ Notes(2014-10-30), 쪽수는 매뉴얼 기준.
 - **프로토콜** (p.45): `>xxCMD\n` → `<xxRESPONSE\n` / `?xx\n`(오류) /
   `<xx:`+1024B(이진, **개행 없음**). **인식 못 한 명령은 무응답**이고,
   참조번호는 호스트가 정하는 꼬리표라 값을 건너뛰어도 어긋나지 않는다.
-- **STATUS** (p.47-49): `POWERGOOD` · `BACKPLANE_TEMP` · 모듈별 `MODm/TEMP` ·
-  전원 레일 `P2V5_V/I` … `P35V_V/I`(그 위로 `N35V`/`P100V`/`N100V`/`USER`/
-  `HEATER` 도 있다). **raw spec `Cn_VOLT` 의 자리 순서가 이 레일 순서**다
-  (`P2V5 P5V P6V N6V P17V N17V P35V` — 7개만 쓴다).
+- **STATUS** (p.47-49): `VALID` · `COUNT` · `LOG` · `POWER`(0~5) ·
+  `POWERGOOD` · `OVERHEAT` · `BACKPLANE_TEMP` · 모듈별 `MODm/TEMP` · 전원 레일
+  `P2V5_V/I` … `P35V_V/I`. **raw spec `Cn_VOLT` 의 자리 순서가 이 레일 순서**다
+  (`P2V5 P5V P6V N6V P17V N17V P35V`).
+  - **`VALID=n`** — "n=1 이면 나머지 필드가 유효" (p.47). ⚠️ **필드가 없는
+    경우와 `VALID=0` 을 갈라야 한다** — 없다고 전 자리를 결측으로 만들면 구
+    펌웨어에서 첫 실행이 통째로 `NC` 가 된다 (F2 원칙 "보고하지 않는 필드는
+    이상으로 세지 않는다").
+  - **`COUNT=n`** — 컨트롤러가 **내부 상태 레지스터를 갱신한 횟수** (p.47,
+    p.79 GUI 설명이 같은 말을 한다). 두 질의 사이에 안 변하면 **새로 잰 것이
+    아니라 같은 블록**이다. **감소하면 래핑 또는 컨트롤러 재기동**이다 — 폭
+    (16/32bit)은 미기재.
+  - **`LOG=n`** + **`FETCHLOG`**(p.50, "Fetches the oldest log entry") —
+    컨트롤러가 자기 로그를 들고 있다. ⚠️ **깊이·넘침 정책·응답 형식·비었을 때
+    응답이 전부 미기재**다 (매뉴얼 전체에서 로그 언급이 이 둘 + p.73 GUI
+    설명, 셋뿐).
+- ⭐ **`Cn_VOLT` 의 7레일이 "7개만 골라 쓴 것" 이 아니라 표준 구성의 전량이다**
+  (p.43): "The standard Archon power supply … generate **+2.5V, +5V, +6V, -6V,
+  +17V, -17V, and +35V** … along with +12V fan and +28V heater voltages."
+  `P100V`/`N100V` 는 **XV 섀시 전용 핀아웃**이고(표준의 `-35V`·`User` 자리를
+  대체, p.41-42) 우리 유닛은 `BACKPLANE_TYPE=1`(X12) + XVBias(형 12) 미장착이라
+  해당 없다. `N35V` 는 커넥터에 핀만 있고 표준 전원이 만들지 않는다.
+  그리고 p.42: "Only the voltages used by the installed modules need be
+  supplied … Switches must be set on P1 and P7 to indicate which supply
+  voltages are being used" — **안 쓰는 레일은 배선도 감시도 안 된다.**
+  ⚠️ **`HEATER`(+28 V)는 guide 유닛에서 실재하는 레일**이다 (HeaterX 두 장) —
+  guide raw 규격을 세울 때 8자리 온도와 함께 챙길 것.
+- **전원 정상(power good) 범위** (p.41) — 감시가 수치만 적지 않고 **이탈을
+  표시**할 근거다. ⚠️ **비대칭이라 ±% 규칙을 쓰면 틀린다**(N6V 하한 5.3 vs
+  P6V 5.5). 그리고 이 값은 **전원 보드의 저항으로 정해지는 기본값**이므로
+  ini 로 덮을 수 있게 둘 것.
+
+  | 레일 | 범위 | 레일 | 범위 |
+  |---|---|---|---|
+  | P2V5 | +2.1 … +2.9 | N17V | −16.6 … −17.7 |
+  | P5V | +4.4 … +5.6 | P35V | +34.3 … +36.0 |
+  | P6V | +5.5 … +6.6 | (N35V) | −33.8 … −35.9 |
+  | N6V | −5.3 … −6.6 | Heater/User | +18.0 … +36.0 |
+
+  레일 V/I 의 출처는 백플레인 ADC 가 아니라 **전원 보드**다 (p.43: "monitored
+  and digitized … retrieved by the backplane over a cable connected to **P9**").
+  그래서 P9 가 헐거우면 **레일 V/I 만 이상해지고 나머지 STATUS 는 정상**이다.
+- **모듈별 실측 V/I 가 따로 있다** (p.48) — 모듈 형에 따라 키가 다르고
+  **전류 단위가 mA 다** (시스템 레일은 A — 섞으면 1000배 틀린다).
+
+  | 필드 | 조건 | 채널 |
+  |---|---|---|
+  | `MODm/LVLC_Vn` `_In` | LV(X)Bias | n=1~24 → LV1~LV24 (10 mA max) |
+  | `MODm/LVHC_Vn` `_In` | LV(X)Bias | n=1~6 → LV25~LV30 (500 mA max) |
+  | `MODm/HVLC_Vn` `_In` | HV(X)Bias | n=1~24 → HV1~HV24 (10 mA max) |
+  | `MODm/HVHC_Vn` `_In` | HV(X)Bias | n=1~6 → HV25~HV30 (250 mA max) |
+  | `MODm/MAG_*` `OFS_*` | HS only | 우리 구성에 HS 모듈은 없다 |
+
+  science ACF 에 채널 이름표가 붙어 있다 — `MOD9\HVHC_LABEL1..6` =
+  `DD-B ODD-B ODA-B DD-A ODD-A ODA-A`, `MOD9\HVLC_LABEL{11,12,23,24}` =
+  `RDA-B RDD-B RDA-A RDD-A`, `MOD4\LVHC_LABEL1..6` =
+  `OG-A CLAMP_N-A CLAMP_P-A CLAMP_P-B CLAMP_N-B OG-B`. **16채널이 CCD 바이어스**다.
+  ⚠️ **`POWER=4` 가 아니면 전 채널이 ~0 V 다** (p.77 "When power to the CCD is
+  off, all channels should be at about zero volts") — 전원 꺼진 동안의 값을
+  고장으로 오독하지 말 것.
+- ⚠️ **ACF 설정 키와 STATUS 키의 문자열이 같다.** `MODm/HVHC_Vi` 는 ACF 에서
+  **지령값**("Set the power on voltage", p.60)이고 STATUS 에서 **실측값**
+  ("voltage reading", p.48)이다. `parse_acf()` 가 `\` → `/` 로 정규화하므로
+  `self.config` 와 `self.status` 의 키가 **글자 하나까지 같아진다.** 값도
+  15 vs 15.02 로 비슷해서 잘못된 dict 를 뒤져도 그럴듯해 보인다 — **두 dict 를
+  절대 합치지 말 것.**
+- **컨트롤러가 전원 투입 때 바이어스를 스스로 검사한다** (p.29 · p.31):
+  "all biases are set to 0 V. The biases are **checked** … each bias is set to
+  its operating level in a user programmable sequence. **At each step, the bias
+  levels are checked before proceeding**." → 지령대로 안 올라온 바이어스는
+  시퀀스가 안 끝나 `POWER=3`(Intermediate)으로 나오고, 그것은
+  `parse.health_problems()`(F2)가 이미 잡는다. **검사는 투입 시점만이므로
+  밤중 표류는 안 잡힌다** — 그것이 감시 기록의 몫이다.
+- **Rev F 이하는 동시 접속이 하나뿐이다** (p.15): "Rev F and older backplanes
+  can only support a **single connection at a time**. … Rev H backplanes
+  currently support up to four simultaneous connections." `BACKPLANE_REV` 는
+  0=A, 1=B… 이므로 **5=Rev F, 7=Rev H**. 우리 ACF 실측:
+
+  | 유닛 | REV | 동시 접속 |
+  |---|---|---|
+  | KMTK_SCI_113 (KASI 벤치) · guide STA0201 | 5 = **Rev F** | **1개** |
+  | KMTC/KMTS (관측소, STA0284/0285/0286) | 7 = Rev H | 4개 |
+
+  → **벤치에서는 별개 감시 프로세스가 `ics_archon` 과 공존할 수 없다.**
+  감시를 `ics_archon` 안에 두는 것은 취향이 아니라 하드웨어가 정한 결론이다.
+- **VCPU / `VCPU_OUTREGn`** (p.86-90) — DIO 가 있는 모듈마다 **100 MHz 16비트
+  CPU** 가 들어 있고, ACF 에 어셈블리를 텍스트로 써 넣으면 컨트롤러가 컴파일해
+  태운다(512줄, 명령 하나 10 ns). 매뉴얼이 **우리 용례를 예시로 든다** —
+  "useful for … **reading an RS-232 vacuum gauge**".
+  - VCPU ↔ 호스트는 **16비트 레지스터 16칸씩** 두 방향. 호스트→VCPU 는
+    `VCPU_INREGn`(ACF), VCPU→호스트는 **`VCPU_OUTREGn`(STATUS 보고)**.
+  - **OUTREG 자체에는 정해진 뜻이 없다** — "그 모듈의 VCPU 프로그램이 무엇을
+    넣기로 했는가" 가 전부다. **정본은 ACF 안의 그 프로그램**이고 매뉴얼로는
+    알 수 없다.
+  - 출력 포트 주소 `0x020b` = OUTREG `b` 에 쓰기 (p.90). 그래서 guide ACF 의
+    `RegPort = 0x0200` 이 OUTREG0 이고 `0x020F` 가 OUTREG15 다.
+  - ⚠️ **`APPLYALL`/`APPLYMOD`/`APPLYDIO` 가 VCPU 를 재시작한다** — "held in
+    reset while it's being configured, and then begins running from address 0".
+    그래서 `prepare()` 의 `APPLYALL` 직후에는 OUTREG 가 잔재이고, 첫 성공
+    폴링까지 **최소 0.15초 + 게이지 응답시간**의 창이 있다.
 - **SYSTEM** (p.46): `BACKPLANE_ID`(16진 16자리 고유 ID = 시리얼 대용) ·
   `BACKPLANE_TYPE`(1=X12, 2=X16) · `BACKPLANE_REV` · `BACKPLANE_VERSION` ·
   `MOD_PRESENT` · `MODn_TYPE`(2 = AD). **모델명 문자열 필드는 없다.**
@@ -909,8 +1556,16 @@ Notes(2014-10-30), 쪽수는 매뉴얼 기준.
   `HEIGHT`/`SAMPLE` · **`BUFnLINES`(라인 진행)** · `BUFnPIXELS`(픽셀 진행) ·
   `BUFnTIMESTAMP`. 진행률은 `BUF<WBUF>LINES / BUF<WBUF>HEIGHT` 다.
 - **AD(비디오) 모듈은 중앙 4슬롯(5-8)에만** 꽂힌다 (p.20) — 모듈당 4채널(tap).
-  그래서 `TEMP_MODS` 기본값이 `BACKPLANE_TEMP + MOD5~8/TEMP` 다.
-  `ArchonController._log_module_map()` 이 기동에서 이 가정을 실물과 대조한다.
+  ⚠️ **이 잠정안은 실기 ACF 와 어긋난다** (2026-08-27 확인, 아래 G1~G3).
+  실기 science 는 AD 계열이 **슬롯 5·8 둘뿐**이고 6·7 은 빈 슬롯(형 0)이며,
+  형 번호가 매뉴얼에 없는 **17(ADM)** 이다. `TEMP_MODS` 는 이미 규격 5.6.1 의
+  10자리(1·2·3·4·5·8·9·10·11)로 교체됐는데 `_log_module_map()` 의 경고 조건만
+  `[5,6,7,8]` 로 남아 있다.
+- **`MODn_TYPE` 은 매뉴얼이 15까지만 정의하고 "16+: Unknown" 이다** (p.46).
+  실기 science ACF 는 `MOD5/MOD8_TYPE=17`, KMTC/KMTS 는 `MOD9_TYPE=18` —
+  **매뉴얼보다 새로운 형**이다. 이름은 규격 5.6.1 라벨표가 이미 갖고 있다
+  (**17 = ADM**, **18 = HVYBias**), 그리고 매뉴얼 p.25 에 ADM 모듈 설명이
+  따로 있다(18채널 18bit 12.5 MHz).
 - **컨트롤러는 적용된 ACF 이름을 보고하지 않는다** (p.54) — `CTRLnCFG` 는
   호스트가 관리한다.
 - **파라미터 갱신** (p.52): `LOADPARAMS`(전부) · `LOADPARAM p`(하나) ·

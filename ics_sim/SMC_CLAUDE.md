@@ -66,6 +66,18 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 - 송신 전 `validate()` 가 6가지 오염 패턴을 검사한다.
 - `--bug-compat` 로 레거시 오염을 재현할 수 있다(골든 대조용, 기본 꺼짐).
 
+## ⚠️ 백엔드 계약 `sensors()` 가 바뀌었다 (2026-08-27) -- 키 아홉
+
+**`ics_archon` 세션에서 이 폴더의 계약을 고쳤다.**  경위는 [DevNote 11.32](DevNote.md), 일감 지시는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "▶ 다음 세션 작업 지시".
+
+- **`ccdtemp1`/`ccdtemp2` → `ccdtemp` 하나.**  운영자 확정(2026-08-27) -- CCD1/CCD2 를 구분하지 않고 **듀어의 CCD 대표 온도 하나**만 읽는다.  chip 귀속은 **정보가 없으므로 규정하지 않는다.**
+  - ⚠️ **종전 계약이 `ccdtemp` 를 "백엔드가 따로 줘도 무시하는" 키로 명시**했고 `tests/test_raw_header.py` 가 그것을 못박고 있었다.  규칙의 존재 이유("센서가 둘이니 두 번째 사실을 만들지 않기")가 사라져 **규칙을 지웠다.**  `ccdtemp1`/`ccdtemp2` 를 **아직 읽으면 실패**하는 회귀가 들어 있다.
+  - **"대체 금지" 원칙은 남아 있다** -- 예시만 갱신했다(없는 `ccdtemp2` → 실제로 유혹이 되는 `DMPTEMP`·`Cn_TEMP` 모듈 온도).
+- **`air_in`/`air_out`/`glyc_in`/`glyc_out` 넷을 없앴다.**  해당 카드 4장이 v1.5 에서 폐지돼(`rawhdr.DEWAR_CARDS` 에 없다) 호출측이 값을 버리고 있었다 -- 계약에 남겨 두면 백엔드가 **아무도 읽지 않는 값을 읽으러 간다.**
+- 고친 파일: `hardware/base.py`(계약) · `rawhdr.py`(`thermal_header`) · `hardware/sim.py` · `hardware/archon.py`(스텁 주석) · `tests/test_raw_header.py` · `tests/test_raw_draft.py`.  `ics_archon/_vendor` 는 `tools/sync_vendor.py` 로 재생성했다.
+- ⚠️ **`CCDTEMP` 카드 comment 의 `M` 제거는 이것과 별개**이고 **raw spec v1.8 작업**이다 (견본 pair 바이트가 정본이라 규격과 함께 `main` 에서 움직인다).
+- **시험**: `ics_sim` **330 통과** · `ics_archon` **171 통과**.  ⚠️ 두 스위트를 **동시에 돌리지 말 것** -- `ics_archon` 의 `test_shutdown_waits_for_frames…` 가 부하로 간헐 실패한다.
+
 ## ⚠️ raw spec v1.6 반영 (2026-08-26) -- 정체성 카드가 바뀌었다
 
 **`ORIGNAME` 이 폐지되고 `EXPID` 가 대신한다** (D-019).  값은
