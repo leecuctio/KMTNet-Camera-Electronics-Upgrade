@@ -756,16 +756,24 @@ class ArchonController:
             self._log_module_map()
 
     def _log_module_map(self) -> None:
-        """슬롯별 모듈 형을 한 번 찍는다 -- `TEMP_MODS` 가정의 실기 확인."""
+        """슬롯별 모듈 형을 한 번 찍는다 -- 규격 5.6.1절 자리 표의 실기 확인.
+
+        ⚠️ **종전에는 "AD 모듈이 슬롯 5~8 인가" 로 판정했고 그것이 틀렸다**
+        (2026-08-27).  실기 science 는 AD 계열이 5·8 둘뿐이라 **정상 구성에서
+        경고가 났다.**  판정은 `parse.field_order_problems()` 로 옮겼다 --
+        자리 표가 자리를 준 모듈과 실제 장착 모듈이 같은지를 본다.
+        """
         mods = parse.module_types(self.system)
         if not mods:
             return
         shown = ', '.join(
             '%d:%s' % (s, parse.MODULE_TYPES.get(t, '?%d' % t))
             for s, t in sorted(mods.items()) if t)
-        ad = [s for s, t in mods.items() if t in parse.AD_TYPES]
         log.info('%s: 모듈 %s', self.tag, shown)
-        if sorted(ad) != [5, 6, 7, 8]:
-            log.warning('%s: AD(비디오) 모듈이 슬롯 %s 에 있다 -- parse.'
-                        'TEMP_MODS 는 5~8 을 전제한다.  Cn_TEMP 의 자리가 '
-                        '어긋날 수 있으니 목록을 고칠 것', self.tag, sorted(ad))
+        # 비디오 모듈 위치는 **참고로만** 찍는다 -- 판정 근거가 아니다.
+        ad = sorted(s for s, t in mods.items() if t in parse.AD_TYPES)
+        log.info('%s: 비디오(AD 계열) 모듈 슬롯 %s', self.tag, ad or '없음')
+        for note in parse.field_order_problems(self.system):
+            log.warning('%s: 규격 5.6.1절 자리 표와 어긋난다 -- %s.  Cn_TEMP '
+                        '자리가 밀릴 수 있으니 rawhdr.TEMP_MODS 를 확인할 것',
+                        self.tag, note)

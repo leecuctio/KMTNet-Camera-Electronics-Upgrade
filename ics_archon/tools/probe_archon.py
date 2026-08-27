@@ -102,16 +102,24 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
                       for s, t in sorted(mods.items()) if t)
     ad = sorted(s for s, t in mods.items() if t in parse.AD_TYPES)
     print('\n   모듈: %s' % (shown or '(보고 없음)'))
-    if ad == [5, 6, 7, 8]:
-        say(OK, 'AD(비디오) 모듈이 슬롯 5~8 -- 규격 5.6.1절의 '
-                'Mod5:ADM / Mod8:ADM 과 정합한다')
-    elif ad:
-        say(BAD, 'AD 모듈이 슬롯 %s 다 -- 규격 5.6.1절 자리 표(Mod5·Mod8)와 '
-                 '다르므로 규격부터 확인해야 한다' % ad,
-            '지금 목록: %s' % ' '.join(parse.TEMP_MODS))
+    print('   비디오(AD 계열) 슬롯: %s' % (ad or '없음'))
+
+    # ⚠️ 종전에는 'AD 가 슬롯 5~8 인가' 로 판정했고 그것이 틀렸다 (2026-08-27).
+    #    실기 science 는 AD 계열이 5·8 둘뿐이라 **정상 구성에서 BAD 가 났다.**
+    #    판정은 자리 표(규격 5.6.1절) 대 실제 장착 모듈 비교로 바꿨다.
+    problems = parse.field_order_problems(system)
+    slots = sorted(parse.temp_mod_slots())
+    if not problems:
+        say(OK, '장착 모듈이 규격 5.6.1절 자리 표와 정합한다 (%d자리: %s)'
+                % (len(parse.TEMP_MODS), slots))
     else:
-        say(WARN, 'AD 모듈을 못 찾았다 (MODn_TYPE 2/13/14/15) -- 슬롯 '
-            '가정을 확인할 것')
+        for note in problems:
+            say(BAD, note, '지금 자리 표(%d자리): %s'
+                           % (len(parse.TEMP_MODS), ' '.join(parse.TEMP_MODS)))
+    if not ad:
+        say(WARN, '비디오(AD 계열) 모듈을 못 찾았다 (형 %s) -- 형 번호가 '
+                  '매뉴얼·표에 없는 신형일 수 있다'
+                  % ', '.join(str(t) for t in sorted(parse.AD_TYPES)))
 
     # -- STATUS ------------------------------------------------------------
     await ctrl.refresh_status()

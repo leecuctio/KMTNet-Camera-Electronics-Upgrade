@@ -375,14 +375,83 @@ def module_types(system: dict[str, str] | None) -> dict[int, int]:
     return out
 
 
-#: `MODn_TYPE` 값 -> 이름 (매뉴얼 p.46 전량).  AD = 비디오 모듈.
+#: `MODn_TYPE` 값 -> 이름.  AD = 비디오 모듈.
+#:
+#: **매뉴얼 p.46 은 15 까지만 정의하고 "16+: Unknown" 이다** -- 그 뒤에 나온
+#: 모듈이 있어서다 (운영자 확정 2026-08-27).  실기 ACF 실측으로 둘이 확정됐고,
+#: 규격 5.6.1절 라벨표(`TEMP_MOD_LABELS`)가 같은 이름을 쓴다:
+#:
+#:     17 = ADM       science `MOD5`/`MOD8`.  매뉴얼 p.25 에 모듈 설명은 있다
+#:                    (18채널 · 18bit · 12.5 MHz) -- 형 번호만 빠져 있었다
+#:     18 = HVYBias   science `MOD9` (KMTC/KMTS).  KMTK 벤치기는 아직 8(HVXBias)
+#:
+#: ⚠️ **16 은 아직 모른다** -- 매뉴얼 목차에 `DriverX` 장이 따로 있으니(p.28)
+#: 그것이거나 다른 신형일 수 있다.  **추측해서 넣지 말 것** -- 이름표가 틀리면
+#: 기동 배너가 사람을 잘못 안심시킨다.  모르는 형은 `?16` 처럼 번호가 찍힌다.
 MODULE_TYPES = {0: 'None', 1: 'Driver', 2: 'AD', 3: 'LVBias', 4: 'HVBias',
                 5: 'Heater', 7: 'HS', 8: 'HVXBias', 9: 'LVXBias',
                 10: 'LVDS', 11: 'HeaterX', 12: 'XVBias',
-                13: 'ADF', 14: 'ADX', 15: 'ADLN'}
+                13: 'ADF', 14: 'ADX', 15: 'ADLN',
+                # 매뉴얼 밖 -- 실기 ACF 실측 + 규격 5.6.1 라벨표 (2026-08-27)
+                17: 'ADM', 18: 'HVYBias'}
 
 #: **비디오(AD) 계열 전부.**  `2` 하나만 보면 ADF/ADX/ADLN 이 꽂힌 백플레인에서
-#: "AD 모듈을 못 찾았다" 가 되어, 슬롯 가정(`TEMP_MODS`)을 확인하라고 만든
-#: 1단계 탐침이 **모듈이 제자리에 있는데도 경고**를 낸다.  실기 첫 실행에서
-#: 가장 먼저 보는 화면이라 그 오경보 하나가 진짜 문제를 덮는다.
-AD_TYPES = frozenset({2, 13, 14, 15})
+#: "AD 모듈을 못 찾았다" 가 되어, 슬롯 가정을 확인하라고 만든 1단계 탐침이
+#: **모듈이 제자리에 있는데도 경고**를 낸다.  실기 첫 실행에서 가장 먼저 보는
+#: 화면이라 그 오경보 하나가 진짜 문제를 덮는다.
+#:
+#: ⚠️ **`17`(ADM) 이 실기 science 의 비디오 모듈이다** (2026-08-27 추가).  이것이
+#: 빠져 있어서 실기 ACF(`MOD5/MOD8_TYPE=17`)에서 `ad` 가 **빈 목록**이 되고,
+#: 배너가 "AD 모듈을 못 찾았다" 를 냈다 -- F9 가 막으려던 그 오경보가 형 번호가
+#: 달라 그대로 재현됐다.
+#:
+#: ⚠️ **이것으로 자리 표를 판정하지 않는다** -- 그것은 `field_order_problems()`
+#: 의 일이다.  여기는 배너에 "비디오 모듈이 어느 슬롯인가" 를 참고로 찍는 데만
+#: 쓴다.
+AD_TYPES = frozenset({2, 13, 14, 15, 17})
+
+
+def temp_mod_slots() -> frozenset:
+    """`TEMP_MODS` 가 자리를 준 슬롯 번호 (`BACKPLANE_TEMP` 는 슬롯이 없다)."""
+    out = set()
+    for field in TEMP_MODS:
+        if field.startswith('MOD') and '/' in field:
+            try:
+                out.add(int(field[3:field.index('/')]))
+            except ValueError:
+                continue
+    return frozenset(out)
+
+
+def field_order_problems(system: dict[str, str] | None) -> list[str]:
+    """`SYSTEM` 의 장착 모듈이 **규격 5.6.1절 자리 표와 맞나** (없으면 빈 목록).
+
+    ⚠️ **종전 판정은 "AD 모듈이 슬롯 5~8 인가" 였고 그것이 틀렸다**
+    (2026-08-27).  매뉴얼 p.20 의 "AD 는 중앙 4슬롯" 을 옮긴 잠정안이었는데,
+    실기 science 는 AD 계열이 **5·8 둘뿐**이고 6·7 은 빈 슬롯(형 0)이다 --
+    `TEMP_MODS` 는 이미 규격 5.6.1절의 10자리로 교체됐는데 이 판정만 남아
+    **정상 구성에서 경고가 났다.**
+
+    그래서 AD 슬롯을 짚는 대신 **정말 지켜야 하는 불변식**을 검사한다 --
+    "자리 표가 자리를 준 모듈" 과 "실제로 장착·보고된 모듈" 이 같은가.  자리
+    수 자체가 모듈 구성 판별에 쓰이므로(5.6.1절) 이것이 어긋나면 소비자는
+    **다른 모듈의 온도를 그 모듈 값으로 읽는다.**
+
+    슬롯 번호를 못박지 않으므로 science 10자리와 guide 8자리에 **같은 검사가
+    그대로** 쓰인다.
+    """
+    mods = module_types(system)
+    if not mods:
+        return []
+    present = frozenset(s for s, t in mods.items() if t)
+    expected = temp_mod_slots()
+    bad: list[str] = []
+    extra = sorted(present - expected)
+    missing = sorted(expected - present)
+    if extra:
+        bad.append('장착된 슬롯 %s 가 자리 표에 없다 -- 그 모듈 온도는 '
+                   'Cn_TEMP 에 실리지 않는다' % extra)
+    if missing:
+        bad.append('자리 표의 슬롯 %s 가 미장착·무보고다 -- 그 자리는 NC 로 '
+                   '실린다' % missing)
+    return bad

@@ -129,19 +129,18 @@ def test_unit_identity_uses_backplane_id_as_the_serial():
     assert parse.unit_identity({'BACKPLANE_ID': 'X'}) == {'sn': 'X'}
 
 
-def test_module_map_confirms_the_ad_slot_assumption():
-    """AD(비디오) 모듈은 중앙 4슬롯(5~8)에만 꽂힌다 (매뉴얼 p.20).
+def test_module_map_matches_the_spec_field_table_not_the_old_ad_range():
+    """가짜 `SYSTEM` 은 **실기 science 구성**이고 자리 표와 같아야 한다.
 
-    `MODn_TYPE=2` 가 AD 다 -- 실기에서 이 가정을 확인하는 수단이고,
-    `ArchonController._log_module_map()` 이 어긋나면 경고한다.
-
-    ⚠️ **그 범위와 `Cn_TEMP` 자리 표는 다른 것이다.**  규격 5.6.1절은 열 자리
-    중 `Mod5:ADM`·`Mod8:ADM` **둘만** AD 로 싣는다 -- 5~8 전부가 아니다.
-    (자리 수가 장착·보고되는 모듈 수를 따르므로 자리 수 자체가 구성 판별에
-    쓰인다.)  둘을 섞으면 카드 자리 수가 조용히 달라진다.
+    ⚠️ **종전 이름은 `..._confirms_the_ad_slot_assumption` 이었고, 그 가정
+    (매뉴얼 p.20 "AD 는 중앙 4슬롯 5~8")은 폐기됐다** (2026-08-27).  실기는
+    AD 계열이 **5·8 둘뿐**이고 6·7 은 빈 슬롯이다 -- 규격 5.6.1절의 열 자리와
+    정확히 같다.  가짜가 옛 가정을 담고 있어서 **정상 구성에서 경고가 나던
+    결함을 이 시험들이 통과시켰다.**
     """
     mods = parse.module_types(DEFAULT_SYSTEM)
-    assert [s for s, t in mods.items() if t == 2] == [5, 6, 7, 8]
+    assert sorted(s for s, t in mods.items() if t) == [1, 2, 3, 4, 5, 8, 9, 10, 11]
+    assert sorted(s for s, t in mods.items() if t in parse.AD_TYPES) == [5, 8]
     assert parse.MODULE_TYPES[2] == 'AD'
     # 자리 표에 실리는 AD 는 5·8 뿐이고 6·7 은 자리를 차지하지 않는다.
     assert 'MOD5/TEMP' in parse.TEMP_MODS and 'MOD8/TEMP' in parse.TEMP_MODS
@@ -183,6 +182,74 @@ def test_module_types_cover_the_whole_manual_list_including_the_ad_family():
                    'MOD7_TYPE': '14', 'MOD8_TYPE': '14'})
     mods = parse.module_types(system)
     assert sorted(s for s, t in mods.items() if t in parse.AD_TYPES) == [5, 6, 7, 8]
+
+
+
+
+#: 실기 science ACF 의 모듈 구성.  **가짜 `DEFAULT_SYSTEM` 이 이미 그 값**이라
+#: (`fake_archon.py`, 2026-08-27) 사본을 두지 않고 그것을 가리킨다 -- 사본을
+#: 두면 한쪽만 고쳐진다.  KMTC/KMTS 는 `MOD9_TYPE` 이 18(HVYBias)이다.
+REAL_SCIENCE_SYSTEM = DEFAULT_SYSTEM
+
+
+def test_module_types_name_the_post_manual_modules_17_and_18():
+    """매뉴얼(2021)은 15 까지만 정의하고 "16+: Unknown" 이다 (p.46).
+
+    실기 science ACF 는 `MOD5/MOD8_TYPE=17`(ADM) 이고 KMTC/KMTS 는
+    `MOD9_TYPE=18`(HVYBias) -- **매뉴얼보다 새로운 모듈**이다 (운영자 확정
+    2026-08-27).  이름표가 없으면 기동 배너가 `5:?17 8:?17` 로 찍힌다.
+    """
+    assert parse.MODULE_TYPES[17] == 'ADM'
+    assert parse.MODULE_TYPES[18] == 'HVYBias'
+    # 16 은 아직 모른다 -- 추측해서 채우지 않았는지 못박는다.
+    assert 16 not in parse.MODULE_TYPES
+
+
+def test_ad_types_include_adm_so_the_real_backplane_is_not_a_false_alarm():
+    """`17`(ADM) 이 빠져 있어서 실기에서 `ad` 가 **빈 목록**이 됐다.
+
+    F9 가 13/14/15 를 넣어 막으려던 그 오경보("AD 모듈을 못 찾았다")가 형
+    번호가 달라 그대로 재현됐다 -- 실기 첫 실행에서 가장 먼저 보는 화면이다.
+    """
+    assert 17 in parse.AD_TYPES
+    mods = parse.module_types(REAL_SCIENCE_SYSTEM)
+    assert sorted(s for s, t in mods.items() if t in parse.AD_TYPES) == [5, 8]
+
+
+def test_real_science_layout_matches_the_spec_field_table():
+    """⭐ **회귀** -- 실기 정상 구성이 경고를 내지 않아야 한다.
+
+    종전 판정은 `sorted(ad) != [5, 6, 7, 8]` 였다 (매뉴얼 p.20 "AD 는 중앙
+    4슬롯" 을 옮긴 잠정안).  실기 science 는 AD 계열이 **5·8 둘뿐**이고 6·7 은
+    빈 슬롯이라 **정상 구성에서 경고가 났다.**  판정을 자리 표(규격 5.6.1절)
+    대 실제 장착 모듈 비교로 바꿨다.
+    """
+    assert parse.temp_mod_slots() == frozenset({1, 2, 3, 4, 5, 8, 9, 10, 11})
+    assert parse.field_order_problems(REAL_SCIENCE_SYSTEM) == []
+    # 형 18(KMTC/KMTS)로 바뀌어도 자리 수는 같다 -- 자리 표는 형이 아니라
+    # **장착 여부**를 본다.
+    kmtc = dict(REAL_SCIENCE_SYSTEM, MOD9_TYPE='18')
+    assert parse.field_order_problems(kmtc) == []
+    # 보고가 아예 없으면 판정하지 않는다 (없는 필드를 이상으로 세지 않는다, F2).
+    assert parse.field_order_problems({}) == []
+    assert parse.field_order_problems(None) == []
+
+
+def test_field_order_problems_names_both_directions_of_mismatch():
+    """자리 표와 실물이 어긋나면 **어느 쪽으로** 어긋났는지 말해야 한다.
+
+    자리 수 자체가 모듈 구성 판별에 쓰이므로(5.6.1절), 어긋난 채로 실으면
+    소비자는 **다른 모듈의 온도를 그 모듈 값으로 읽는다** -- 아무 오류도 나지
+    않는다.
+    """
+    # 슬롯 6·7 이 장착됐고(자리 표에 없다) 9·10·11 이 없다(자리 표에 있다).
+    wrong = {k: v for k, v in REAL_SCIENCE_SYSTEM.items()
+             if k not in ('MOD9_TYPE', 'MOD10_TYPE', 'MOD11_TYPE')}
+    wrong.update({'MOD6_TYPE': '17', 'MOD7_TYPE': '17'})
+    bad = parse.field_order_problems(wrong)
+    assert len(bad) == 2
+    assert '[6, 7]' in bad[0]
+    assert '[9, 10, 11]' in bad[1]
 
 
 def test_health_problems_names_power_and_overheat_faults():

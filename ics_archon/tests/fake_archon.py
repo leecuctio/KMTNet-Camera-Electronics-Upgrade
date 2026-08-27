@@ -47,14 +47,25 @@ DEFAULT_STATUS = {
     'P35V_V': '35.089', 'P35V_I': '0.032',
 }
 
-#: 기본 `SYSTEM` 응답 -- AD 모듈이 슬롯 5~8 (매뉴얼 p.20 · p.46).
+#: 기본 `SYSTEM` 응답 -- **실기 science 구성 그대로** (`acf/KMTK_SCI_113_
+#: STA0200_R2608_MK.acf` 실측, 2026-08-27).  장착은 1·2·3·4·5·8·9·10·11 이고
+#: 6·7·12 는 빈 슬롯(형 0) -- 규격 5.6.1절의 **열 자리와 정확히 같다.**
+#:
+#: ⚠️ 종전 값은 "AD 모듈이 슬롯 5~8"(매뉴얼 p.20 의 잠정안)이었다.  가짜가
+#: 실기와 다르면 **실기에서만 나는 결함을 시험이 못 잡는다** -- 실제로
+#: `_log_module_map()`/probe 의 슬롯 판정이 정상 구성에서 경고를 내던 것을
+#: 이 시험들이 통과시켰다.
+#:
+#: 형 17(ADM)·18(HVYBias)은 **매뉴얼 밖**이다 (p.46 은 "16+: Unknown").
+#: KMTC/KMTS 는 `MOD9_TYPE=18` 이고 KMTK 벤치기는 8(HVXBias) 이다.
 DEFAULT_SYSTEM = {
-    'BACKPLANE_TYPE': '1', 'BACKPLANE_REV': '2',
+    'BACKPLANE_TYPE': '1', 'BACKPLANE_REV': '5',
     'BACKPLANE_VERSION': '1.0.408',
     'BACKPLANE_ID': '0024498A715E301C',
-    'MOD_PRESENT': '01F0',
-    'MOD1_TYPE': '1', 'MOD2_TYPE': '1', 'MOD3_TYPE': '3', 'MOD4_TYPE': '4',
-    'MOD5_TYPE': '2', 'MOD6_TYPE': '2', 'MOD7_TYPE': '2', 'MOD8_TYPE': '2',
+    'MOD_PRESENT': '0DBF',
+    'MOD1_TYPE': '10', 'MOD2_TYPE': '1', 'MOD3_TYPE': '1', 'MOD4_TYPE': '9',
+    'MOD5_TYPE': '17', 'MOD6_TYPE': '0', 'MOD7_TYPE': '0', 'MOD8_TYPE': '17',
+    'MOD9_TYPE': '8', 'MOD10_TYPE': '1', 'MOD11_TYPE': '1', 'MOD12_TYPE': '0',
 }
 
 BURST = 1024

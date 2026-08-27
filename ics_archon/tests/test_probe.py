@@ -86,21 +86,25 @@ def test_stage1_is_read_only_and_confirms_the_three_assumptions(fake, tmp_path):
 
     # 세 가정을 다 확인했다.
     text = labels()
-    assert 'AD(비디오) 모듈이 슬롯 5~8' in text        # STATUS 자리
+    assert '규격 5.6.1절 자리 표와 정합한다' in text     # STATUS 자리
     assert 'BUFnLINES' in text                          # 진행률
     assert '기하가 선언과 일치' in text                 # 산출물 기하
     assert 'BACKPLANE_ID' in text                       # CTRLnSN 원천
 
 
-def test_stage1_reports_a_wrong_ad_slot_as_a_problem(tmp_path):  # noqa: ANN001
-    """AD 모듈이 다른 슬롯에 있으면 `TEMP_MODS` 가 어긋난다 -- 문제로 낸다.
+def test_stage1_reports_a_module_layout_that_breaks_the_field_table(tmp_path):  # noqa: ANN001
+    """장착 모듈이 자리 표와 어긋나면 문제로 낸다.
 
     **이것이 미검증 1번의 실제 판정 경로다.**  조용히 넘기면 `Cn_TEMP` 의 자리가
     실물과 다른 채로 자료가 쌓인다.
+
+    ⚠️ **판정 기준이 바뀌었다** (2026-08-27) -- 종전에는 "AD 모듈이 슬롯 5~8
+    인가" 였고 실기 정상 구성(AD = 5·8)에서 오경보를 냈다.  지금은 자리 표
+    (규격 5.6.1절)가 자리를 준 모듈과 실제 장착 모듈을 비교한다.
     """
     system = {'BACKPLANE_ID': 'AB', 'BACKPLANE_TYPE': '1',
               'BACKPLANE_VERSION': '1.0.408',
-              'MOD3_TYPE': '2', 'MOD4_TYPE': '2',
+              'MOD3_TYPE': '17', 'MOD4_TYPE': '17',
               'MOD5_TYPE': '1', 'MOD6_TYPE': '1'}
     srv = FakeArchon(width=NX, height=NY, system=system)
     srv.start()
@@ -109,7 +113,10 @@ def test_stage1_reports_a_wrong_ad_slot_as_a_problem(tmp_path):  # noqa: ANN001
     finally:
         srv.shutdown()
     assert rc == 1
-    assert 'AD 모듈이 슬롯 [3, 4] 다' in labels()
+    text = labels()
+    # 슬롯 6 은 장착됐지만 자리 표에 없고, 1·2·8·9·10·11 은 자리 표에 있는데 없다.
+    assert '[6]' in text
+    assert '자리 표의 슬롯' in text
 
 
 def test_stage1_reports_each_missing_status_field(tmp_path):  # noqa: ANN001
