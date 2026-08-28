@@ -26,7 +26,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
-| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 9개 + `archive/` 구판 2개) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
+| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 6개 = science 5 + guide 1, `archive/` 구판 2개) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
 | [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.3.4`, science 유닛).  유닛별 사본 셋(`KMTC-102`·`KMTC-113`·`KMTS-101`)이 나란히 있고 `tests/test_labtest_spec_copy.py` 가 표류를 막는다 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |
@@ -493,6 +493,14 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 무슨 일이 있어도 `POWEROFF`. **여기서 나오는 값이 3단계의 산출물이다** —
 독출 실측 시간 · 진행률 보고 횟수 · FETCH MiB/s · FITS 1장(`probe.*.fits`,
 관측 번호 공간을 건드리지 않는다).
+
+⭐ **`POWERON` 로그도 여기서 처음 본다** (2026-08-28 추가) — flush 대기
+(`poweron_wait`, 기본 12초) **안에서** `STATUS` 를 되물어 `POWER=4` 를
+확인하고 `POWER=4 (On) 확인 -- N초` 를 남긴다.  **`N` 이 실측 램프 시간**이라
+12초가 충분한지의 근거가 된다.  4 에 못 닿으면 `ERROR` 한 줄이 나가지만
+**막지는 않는다** — 값이 아직 실기 미검증이라 오독으로 관측을 세우는 쪽이 더
+나쁘다.  ⚠️ 대기 시간 자체는 램프가 아니라 **CCD flush** 를 기다리는 것이라
+`POWER=4` 를 봤다고 줄이지 말 것.
 
 > 실측한 독출 시간을 `[timing]` 에 넣고, `write_delay + FETCH + 저장`이
 > **25초 창**(`[obsagent] force_fitssaved`)에 들어가는지 확인한다.

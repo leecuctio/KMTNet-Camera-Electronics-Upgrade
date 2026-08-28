@@ -8,11 +8,30 @@
 *.ini text eol=lf
 *.acf text eol=lf
 # 관측 스크립트도 LF -- obstool 의 GetArg 는 공백으로만 자르므로 CRLF 면
-# 줄 끝 필드에 '' 이 붙는다 (.ini/.acf 와 같은 부류).
+# 줄 끝 필드에 '\r' 이 붙는다 (.ini/.acf 와 같은 부류).
 *.osc text eol=lf
 # 벤더 매니페스트도 LF -- 이것만 속성이 없어 CRLF 로 체크아웃되고,
 # sync_vendor.py 가 LF 로 다시 써서 작업 트리가 매번 흔들린다.
 *.sha256 text eol=lf
+# 이 파일 자신도 LF -- 규칙이 없어 core.autocrlf(윈도우 true)에 맡겨져
+# 있었고, 그래서 작업 트리가 CRLF 로 체크아웃돼 편집할 때마다 흔들렸다.
+.gitattributes text eol=lf
+
+# 참고 원본 보관함은 **받은 바이트 그대로** 둔다 (2026-08-28).
+#
+# `__ref_archon_control/` 은 벤더·실기에서 받은 원본을 그대로 쌓아 두는 자리다.
+# 위 `*.acf text eol=lf` 가 여기까지 걸리면 CRLF 원본이 LF 로 정규화돼서
+# **"원본 그대로" 라는 그 폴더의 존재 이유가 없어진다** -- 정본(`acf/`)과 바이트가
+# 같아져 버리므로, 보관본을 둔 것이 아무것도 안 남기는 셈이 된다.
+# 실제로 원본은 판마다 갈린다 -- `R2601` 계열은 CRLF(GUI 내보내기), `R0827`
+# 계열은 LF 다.  그 차이 자체가 "이 판을 무엇이 만들었나" 의 단서다.
+#
+# ⚠️ **정본 `acf/` 는 그대로 LF 다.**  전 계통 리눅스 구동이고 CRLF 면 값 뒤에
+# `\r` 이 붙은 채로 파서에 들어간다 -- 그것이 위 규칙의 이유이고, 여기서
+# 되돌리는 것이 아니다.  이 규칙은 **보관함에만** 건다.
+# ⚠️ 같은 폴더의 `*.py` 는 `-text` 를 걸지 않는다.  이미 LF 로 커밋돼 있고,
+# 사람이 읽는 것이라 바이트 보존의 값이 없다.
+**/__ref_archon_control/**/*.acf -text
 
 # iCal must use CRLF line endings (RFC 5545).
 *.ics text eol=crlf

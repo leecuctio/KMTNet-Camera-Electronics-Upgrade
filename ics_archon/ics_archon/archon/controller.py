@@ -101,6 +101,14 @@ T_SYSTEM = 15.0
 T_APPLY = 60.0
 T_POWER = 30.0
 
+#: `POWERON` 뒤 `POWER` 를 다시 물어보는 간격 [s].
+#:
+#: **`poweron_wait` 를 줄이지 않는다** -- 그 시간은 전원 램프가 아니라 **CCD
+#: flush** 를 기다리는 것이라(labtest 24 x 0.5), `POWER=4` 를 봤다고 일찍
+#: 빠져나오면 첫 프레임이 flush 가 덜 된 상태로 나간다.  여기서 하는 것은 그
+#: 대기 **안에서** 전원이 실제로 올라왔는지 확인하는 것뿐이다.
+T_POWER_POLL = 1.0
+
 
 class ArchonController:
     """컨트롤러 한 대 (`MK` 또는 `NT`)."""
@@ -370,14 +378,85 @@ class ArchonController:
         끝난다**(검출기 쪽 위험, 규약 11).  확인된 상태(`powered`)와 시도한
         사실(`power_attempted`)을 갈라 두면 종료는 안전한 쪽으로, 재준비는
         확인된 쪽으로 판단할 수 있다.
+
+        flush 대기 **안에서** `POWER=4` 를 확인한다 -- `_await_power()`.
+        대기 시간(`poweron_wait`)은 그대로다: 그 시간은 전원 램프가 아니라
+        **CCD flush** 를 기다리는 것이라 일찍 빠져나오면 안 된다.
         """
         self.power_attempted = True
         await self.cmd('POWERON', timeout=T_POWER)
         self.powered = True
         delay = self.cfg.poweron_wait if wait is None else wait
-        if delay > 0:
-            log.info('%s: POWERON -- CCD flush %.1f초 대기', self.tag, delay)
+        if delay <= 0:
+            return
+        log.info('%s: POWERON -- CCD flush %.1f초 대기', self.tag, delay)
+        if not self.cfg.telemetry:
+            # 규약 4 -- `telemetry=false` 는 **왕복을 labtest v1.0 계보와 똑같이
+            # 둔다**는 뜻이다.  확인 질의도 왕복이므로 여기서는 걸지 않는다.
             await asyncio.sleep(delay)
+            return
+        await self._await_power(delay)
+
+    async def _await_power(self, delay: float) -> None:
+        """flush 대기 **안에서** `POWER=4` 를 확인한다 (modtm 계보, 2026-08-28).
+
+        **`POWERON` 이 성공 응답을 준 것과 전원이 실제로 올라온 것은 다르다**
+        (`parse.POWER_STATES` 의 주석이 이미 그렇게 적어 두고 있었는데 아무도
+        확인하지 않았다).  실험실 계보 둘이 여기서 갈린다 -- labtest v1.0/v1.3
+        은 응답만 보고 12초를 세고, `__ref_archon_control/modtm_*.py` 는
+        `STATUS` 를 되물어 `POWER==4` 를 확인한 뒤에야 진행한다.  modtm 쪽이
+        옳다: 확인이 없으면 전원이 안 올라온 채로 노출이 걸리고, 밖에서는
+        **"취득 실패" 로만** 보인다 (F2 가 막으려던 바로 그 모양).
+
+        ⚠️ **막지는 않는다.**  `_check_health()` 와 같은 자리다 -- 이 필드는
+        아직 실기 미검증(PROVISIONAL)이라 오독 하나로 관측을 세우는 쪽이 더
+        나쁘다.  대신 원인이 보이도록 크게 남긴다.
+
+        ⚠️ **`_check_health()` 를 부르지 않는다.**  램프 도중의 `POWER=3`
+        (Intermediate -- 일부 모듈만 올라왔다)은 **정상 경과**인데, 그것을
+        건강 판정에 넣으면 켤 때마다 "컨트롤러 상태 이상" 이 뜬다.  같은
+        이유로 스냅샷(`status`/`status_live`)도 덮지 않는다 -- 저 둘은 각각
+        헤더와 감시의 것이고, 여기 값은 **지나가는 상태**다.
+        """
+        deadline = time.monotonic() + delay
+        started = time.monotonic()
+        state = None
+        while time.monotonic() < deadline:
+            await asyncio.sleep(min(T_POWER_POLL,
+                                    max(deadline - time.monotonic(), 0.0)))
+            try:
+                fields = await self.query('STATUS',
+                                          timeout=self.cfg.status_timeout)
+            except (ArchonError, TimeoutError, OSError) as exc:
+                log.warning('%s: POWERON 확인 질의가 실패했다 (%s) -- 확인 없이 '
+                            '남은 flush 시간만 기다린다', self.tag, exc)
+                break
+            state = parse.power_state(fields)
+            if state is None:
+                # **보고가 없는 것을 이상으로 세지 않는다** (F2 원칙).  구
+                # 펌웨어는 `POWER` 를 아예 안 낸다 -- 그때는 확인 수단이 없는
+                # 것이지 전원이 안 올라온 것이 아니다.
+                log.info('%s: STATUS 에 POWER 필드가 없다 -- POWERON 확인을 '
+                         '건너뛴다 (구 펌웨어일 수 있다)', self.tag)
+                break
+            if state == parse.POWER_ON:
+                log.info('%s: POWER=4 (On) 확인 -- %.1f초 걸렸다.  남은 flush '
+                         '시간을 마저 기다린다', self.tag,
+                         time.monotonic() - started)
+                break
+        # ⚠️ **마지막으로 읽은 값을 버리지 않는다.**  `POWER=3` 을 보다가 시한이
+        # 끝난 것과 한 번도 못 물어본 것은 다른 사실이고, 아래 판정이 그 둘을
+        # 갈라야 한다 (`state is None` 이 "확인 못 했다" 다).
+        elapsed = time.monotonic() - started
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+        if state is not None and state != parse.POWER_ON:
+            log.error('%s: POWERON 뒤 %.1f초가 지나도 POWER=%d %s 다 -- 이 '
+                      '상태에서 건 노출은 자료가 아니라 잔해일 수 있다.  유닛 '
+                      '전원과 ACF 적용을 확인하라 (매뉴얼 p.47)',
+                      self.tag, elapsed, state,
+                      parse.POWER_STATES.get(state, '?'))
 
     async def power_off(self) -> None:
         """전원 OFF.  **실패해도 예외를 올리지 않는다.**

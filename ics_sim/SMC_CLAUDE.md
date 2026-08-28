@@ -76,8 +76,25 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 - **`air_in`/`air_out`/`glyc_in`/`glyc_out` 넷을 없앴다.**  해당 카드 4장이 v1.5 에서 폐지돼(`rawhdr.DEWAR_CARDS` 에 없다) 호출측이 값을 버리고 있었다 -- 계약에 남겨 두면 백엔드가 **아무도 읽지 않는 값을 읽으러 간다.**
 - 고친 파일: `hardware/base.py`(계약) · `rawhdr.py`(`thermal_header`) · `hardware/sim.py` · `hardware/archon.py`(스텁 주석) · `tests/test_raw_header.py` · `tests/test_raw_draft.py`.  `ics_archon/_vendor` 는 `tools/sync_vendor.py` 로 재생성했다.
 - ⚠️ **`CCDTEMP` 카드 comment 의 `M` 제거는 이것과 별개**이고 **raw spec v1.8 작업**이다 (견본 pair 바이트가 정본이라 규격과 함께 `main` 에서 움직인다).
-- **시험**: `ics_sim` **330 통과** · `ics_archon` **207 통과** (2026-08-28 기준).  ⚠️ 두 스위트를 **동시에 돌리지 말 것** -- `ics_archon` 의 `test_shutdown_waits_for_frames…` 가 부하로 간헐 실패한다.
+- **시험**: `ics_sim` **330 통과** · `ics_archon` **214 통과** (2026-08-28 세션 2 기준).  ⚠️ 두 스위트를 **동시에 돌리지 말 것** -- `ics_archon` 의 `test_shutdown_waits_for_frames…` 가 부하로 간헐 실패한다.
   - ⚠️ **여기 적혀 있던 "`ics_archon` 171 통과" 는 사실이 아니었다** (2026-08-28 정정) -- 그때 `_vendor/MANIFEST.sha256` 이 어긋난 채 커밋돼 `test_vendor.py` 두 시험이 실패하고 있었다(**169 통과 · 2 실패**).  원인은 `sync_vendor.py` 를 돌린 **뒤에** 원천을 한 번 더 고친 것이다.  경위·교훈은 [DevNote 11.33](DevNote.md).
+
+## ✅ 참고 자료 재검토도 **이 폴더는 무개정** (2026-08-28 세션 2)
+
+운영자가 `ics_archon/__ref_archon_control/` 에 실험실 실사용 스크립트 일곱과 ACF
+원본 열하나를 반입했고, 본편에 옮길 것을 전수로 봤다.  **`ics_sim` 은 한 줄도 안
+고쳤다** -- 그래서 `tools/sync_vendor.py` 를 돌릴 일도 없었고
+`_vendor/MANIFEST.sha256` 도 그대로다.
+
+옮긴 것은 하나뿐이고 전부 `ics_archon` 쪽이다: **`POWERON` 뒤 `POWER=4` 확인**
+(`archon/controller.py`).  경위·미채택 근거·부산물(guide 자리 표 = `OI-19` 의 답)은
+[DevNote 11.34](DevNote.md)와
+[`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "참고 자료 재검토".
+
+⚠️ **이 폴더에 걸리는 것 하나** -- guide 자리 표가 **8자리**(백플레인 +
+MOD3·4·5·6·7·9·10)로 확정됐는데 `rawhdr.TEMP_MODS`/`TEMP_MOD_LABELS` 는
+**science 10자리 하나뿐**이다.  guide raw 규격을 세울 때 **유닛 종류로 자리
+표를 가르는 것**이 이 폴더의 일감이 된다.  지금 손대지 말 것 -- 규격이 먼저다.
 
 ## ✅ `ics_archon` 층 1·2 감시가 붙었다 (2026-08-28) -- **이 폴더는 무개정**
 

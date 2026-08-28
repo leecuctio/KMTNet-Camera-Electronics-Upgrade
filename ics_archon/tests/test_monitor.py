@@ -667,6 +667,40 @@ def test_startup_connect_failure_does_not_stop_the_app(tmp_path):  # noqa: ANN00
 # 실기 ACF 정합 -- 층 2 의 열이 유닛마다 갈리지 않나
 # ---------------------------------------------------------------------------
 
+def _repo_acfs():
+    """저장소 `acf/` 의 현행 ACF 를 **내용으로** science/guide 로 가른다.
+
+    ⚠️ **파일명으로 가르지 않는다.**  종전에는 `kmtnet_guide_*.acf` 로 글롭
+    했는데, 2026-08-28 에 guide 정본이 `KMTK_GUI_162_STA0201_R2608.acf` 로
+    개명되자 **글롭이 빈 목록이 되어 시험이 깨졌다** -- 이름은 규칙이 정비되면
+    바뀌고, 그때마다 시험이 무엇을 검사하던 것인지 알 수 없게 된다.
+
+    가르는 것은 `BIGBUF` 다 (`acf/README.md`) -- science 는 `1`(768 MB x 2),
+    guide 는 `0`(512 MB x 3).  구판이 섞이지 않게 `archive/` 는 보지 않는다
+    (글롭이 한 층만 훑는다).
+
+    항목마다 `(경로, [CONFIG], [SYSTEM])` 을 준다 -- **`MODn_TYPE` 은 `[SYSTEM]`
+    에 있다**(매뉴얼 p.46).  `[CONFIG]` 에는 설정 항목이 있는 슬롯만 나오므로
+    거기서 장착 여부를 세면 AD 모듈처럼 설정이 없는 슬롯을 통째로 놓친다.
+    """
+    import configparser
+    import glob
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    science, guide = [], []
+    for path in sorted(glob.glob(os.path.join(root, 'acf', '*.acf'))):
+        cp = configparser.RawConfigParser(strict=False)
+        cp.read(path)
+        cfg = {k.upper().replace(chr(92), '/'): v.replace('"', '')
+               for k, v in cp.items('CONFIG')}
+        system = {k.upper(): v.replace('"', '')
+                  for k, v in (cp.items('SYSTEM') if cp.has_section('SYSTEM')
+                               else ())}
+        (guide if cfg.get('BIGBUF', '1').strip() == '0' else science).append(
+            (path, cfg, system))
+    return science, guide
+
+
 @pytest.mark.repo_only
 def test_every_science_acf_declares_the_same_16_bias_channels():
     """**science 유닛 다섯이 같은 16채널을 선언한다** (2026-08-28 실측).
@@ -678,19 +712,11 @@ def test_every_science_acf_declares_the_same_16_bias_channels():
 
     ⚠️ **guide 는 18채널이고 라벨도 다르다** -- 아래 시험이 그 사실을 못박는다.
     """
-    import configparser
-    import glob
-
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    science = sorted(glob.glob(os.path.join(root, 'acf', 'KMT*_SCI_*.acf')))
+    science, _guide = _repo_acfs()
     assert len(science) == 5, science           # 실기 5종 (CTIO 2 · SAAO 1 · KASI 2)
 
     seen = {}
-    for path in science:
-        cp = configparser.RawConfigParser(strict=False)
-        cp.read(path)
-        cfg = {k.upper().replace(chr(92), '/'): v.replace('"', '')
-               for k, v in cp.items('CONFIG')}
+    for path, cfg, _system in science:
         seen[os.path.basename(path)] = tuple(
             label for _p, label in parse.bias_channels(cfg))
 
@@ -700,6 +726,55 @@ def test_every_science_acf_declares_the_same_16_bias_channels():
     for name, labels in seen.items():
         assert labels == expected, name
     assert len(expected) == 16
+
+
+@pytest.mark.repo_only
+def test_the_science_slot_table_matches_the_real_acfs():
+    """**규격 5.6.1절 자리 표를 실기 ACF 로 되짚는다** (2026-08-28).
+
+    `rawhdr.TEMP_MODS` 는 규격이 정한 열 자리이고, 어느 슬롯에 모듈이 실제로
+    꽂혀 있는지는 ACF 의 `MODn_TYPE`(`0` = 빈 슬롯, 매뉴얼 p.46)이 말한다.
+    둘이 어긋나면 소비자가 **다른 모듈의 온도를 그 모듈 값으로 읽는다.**
+
+    ⭐ 근거가 하나 더 생겼다 -- `__ref_archon_control/modtm_sci_*.py`(2026-05,
+    실사용본)가 `STATUS` 에서 읽는 자리가 **`BACKPLANE_TEMP` + MOD1·2·3·4·5·
+    8·9·10·11 로 정확히 같다.**  규격과 무관하게 쓰인 스크립트가 같은 표에
+    닿았다는 것이 자리 표의 독립 확인이다.
+    """
+    science, _guide = _repo_acfs()
+    expect = {1, 2, 3, 4, 5, 8, 9, 10, 11}
+    assert set(parse.temp_mod_slots()) == expect
+    for path, _cfg, system in science:
+        assert system, '%s 에 [SYSTEM] 이 없다' % os.path.basename(path)
+        mounted = {s for s, t in parse.module_types(system).items() if t}
+        assert mounted == expect, os.path.basename(path)
+        assert not parse.field_order_problems(system), os.path.basename(path)
+
+
+@pytest.mark.repo_only
+def test_the_guide_unit_has_a_different_slot_table_which_is_still_open():
+    """⚠️ **guide 는 자리 표가 다르다** -- MOD3·4·5·6·7·9·10 (+ 백플레인 = 8자리).
+
+    미해결 `OI-19`("guide 8자리 자리 표")의 **답이 실물로 나왔다** (2026-08-28,
+    `acf/KMTK_GUI_162_STA0201_R2608.acf`).  같은 구성을 `__ref_archon_control/
+    modtm_gui_imgacq_v0.3….py` 가 독립으로 읽고 있다 -- 그 스크립트도 MOD3·4·
+    5·6·7·9·10 만 훑는다.
+
+    ⚠️ **이 시험은 그 사실을 못박을 뿐 규격을 바꾸지 않는다.**  `TEMP_MODS`
+    (science 10자리)를 guide 에 그대로 쓰면 `field_order_problems()` 가
+    어긋남을 보고하고 감시 열 이름(`T1..T10`)도 틀린다 -- guide raw 규격을
+    세울 때 유닛 종류로 자리 표를 가르는 것이 남은 일이다.
+    """
+    _science, guides = _repo_acfs()
+    assert guides, 'guide ACF 가 없다'
+    for path, _cfg, system in guides:
+        mounted = {s for s, t in parse.module_types(system).items() if t}
+        assert mounted == {3, 4, 5, 6, 7, 9, 10}, os.path.basename(path)
+        # 자리 수는 백플레인을 더해 여덟이다 (science 는 열).
+        assert len(mounted) + 1 == 8
+        # science 와 같은 표를 쓰면 어긋남으로 잡힌다 -- 그것이 정상이다.
+        assert parse.field_order_problems(system), (
+            'guide 구성인데 science 자리 표가 조용하다 -- 판정이 헐거워졌다')
 
 
 @pytest.mark.repo_only
@@ -714,17 +789,10 @@ def test_guide_labels_contain_a_slash_which_matters_for_the_header():
 
     guide 는 **18채널**이라 science 10자리/8자리처럼 자리 수도 다르다.
     """
-    import configparser
-    import glob
-
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    guides = sorted(glob.glob(os.path.join(root, 'acf', 'kmtnet_guide_*.acf')))
+    _science, guides = _repo_acfs()
     assert guides, 'guide ACF 가 없다'
 
-    cp = configparser.RawConfigParser(strict=False)
-    cp.read(guides[0])
-    cfg = {k.upper().replace(chr(92), '/'): v.replace('"', '')
-           for k, v in cp.items('CONFIG')}
+    _path, cfg, _system = guides[0]
     labels = [label for _p, label in parse.bias_channels(cfg)]
     assert len(labels) == 18, labels
     assert any('/' in label for label in labels), labels

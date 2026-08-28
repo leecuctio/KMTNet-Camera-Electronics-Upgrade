@@ -705,3 +705,151 @@ def test_relative_data_dir_is_flagged_for_archon(tmp_path):  # noqa: ANN001
     cfg.paths.data_dir = os.path.expanduser('~/AIC/data')
     assert not any('상대경로' in n
                    for n in acfg_mod.validate(acfg, tuple(cfg.node.ccds), cfg))
+
+
+# ---------------------------------------------------------------------------
+# POWERON -- "응답은 왔는데 전원이 안 올라왔다"
+# ---------------------------------------------------------------------------
+#
+# 실험실 계보 둘이 여기서 갈린다 (2026-08-28 참고자료 재검토):
+# labtest v1.0/v1.3 은 `POWERON` 응답만 보고 12초를 세고,
+# `__ref_archon_control/modtm_*.py` 는 `STATUS` 를 되물어 `POWER==4` 를
+# 확인한다.  본편은 modtm 쪽을 따른다 -- 확인이 없으면 전원이 안 올라온 채로
+# 노출이 걸리고 밖에서는 "취득 실패" 로만 보인다 (F2 가 막으려던 모양).
+
+
+def _power_run(tmp_path, srv, **over):  # noqa: ANN001, ANN202
+    """`power_on()` 한 번 -- 컨트롤러만 세우고 부른다."""
+    from ics_archon.archon.controller import ArchonController
+
+    _cfg, acfg = cfgs(tmp_path, **over)
+    del _cfg
+
+    async def run():  # noqa: ANN202
+        ctrl = ArchonController('MK', acfg)
+        ctrl.link.port = srv.port
+        await ctrl.connect()
+        try:
+            await ctrl.power_on()
+        finally:
+            await ctrl.close()
+
+    asyncio.run(run())
+
+
+def test_poweron_is_verified_against_the_power_field(tmp_path, caplog):  # noqa: ANN001
+    """**램프 도중의 `POWER=3` 은 정상 경과이고 경보가 아니다.**
+
+    바이어스는 단계로 올라온다(p.47 의 `3` = Intermediate, 일부 모듈만).  그
+    값을 `_check_health()` 에 넣으면 **켤 때마다** "컨트롤러 상태 이상" 이 뜨고,
+    반복되는 경고는 사람이 경고를 무시하도록 학습시킨다.  확인 경로는 건강
+    판정과 갈라 두고, `4` 에 닿았다는 것만 알린다.
+    """
+    from fake_archon import FULL_STATUS
+
+    srv = FakeArchon(width=NX, height=NY, status=dict(FULL_STATUS),
+                     power_ramp=2)
+    srv.start()
+    try:
+        with caplog.at_level('INFO', logger='ics_archon.ctrl'):
+            _power_run(tmp_path, srv, poweron_wait=1.5)
+    finally:
+        srv.shutdown()
+    text = caplog.text
+    assert 'POWER=4' in text, text
+    assert '컨트롤러 상태 이상' not in text, ('램프 도중의 POWER=3 이 건강 '
+                                             '판정으로 샜다: %s' % text)
+
+
+def test_poweron_that_never_reaches_four_is_reported_but_does_not_block(tmp_path,  # noqa: ANN001
+                                                                       caplog):
+    """**막지는 않는다** -- `_check_health()` 와 같은 자리다.
+
+    이 필드는 아직 실기 미검증(PROVISIONAL)이라 오독 하나로 관측을 통째로
+    세우는 쪽이 더 나쁘다.  대신 원인이 보이도록 크게 남긴다 -- 종전에는 전원이
+    안 올라온 것이 밖에서 "취득 실패" 로만 보였다.
+    """
+    from fake_archon import FULL_STATUS
+
+    # 램프가 끝나지 않는다 -- 대기 시간 안에 `4` 에 못 닿는다.
+    srv = FakeArchon(width=NX, height=NY, status=dict(FULL_STATUS),
+                     power_ramp=50)
+    srv.start()
+    try:
+        with caplog.at_level('INFO', logger='ics_archon.ctrl'):
+            _power_run(tmp_path, srv, poweron_wait=1.2)
+    finally:
+        srv.shutdown()
+    errs = [r.getMessage() for r in caplog.records if r.levelname == 'ERROR']
+    assert any('POWER=3' in m for m in errs), caplog.text
+
+
+def test_poweron_is_not_verified_when_telemetry_is_off(tmp_path):  # noqa: ANN001
+    """**규약 4 -- `telemetry=false` 는 왕복을 labtest v1.0 계보와 같게 둔다.**
+
+    확인 질의도 왕복이다.  그 설정에서 `STATUS` 가 하나라도 늘면 "실기에서
+    원인을 가르는 첫 수단" 이라는 그 설정의 존재 이유가 없어진다.
+    """
+    from fake_archon import FULL_STATUS
+
+    srv = FakeArchon(width=NX, height=NY, status=dict(FULL_STATUS))
+    srv.start()
+    try:
+        _power_run(tmp_path, srv, poweron_wait=0.3, telemetry=False)
+    finally:
+        srv.shutdown()
+    assert 'STATUS' not in srv.seen, srv.seen
+    assert 'POWERON' in srv.seen, srv.seen
+
+
+def test_a_firmware_without_the_power_field_is_not_an_error(tmp_path, caplog):  # noqa: ANN001
+    """**보고가 없는 필드를 이상으로 세지 않는다** (F2 원칙).
+
+    `DEFAULT_STATUS` 는 `POWER` 를 아예 안 내는 응답이다(구 펌웨어).  그때는
+    확인 수단이 없는 것이지 전원이 안 올라온 것이 아니다 -- 여기서 오류를 내면
+    첫 실행이 통째로 경보가 된다.
+    """
+    srv = FakeArchon(width=NX, height=NY)       # DEFAULT_STATUS -- POWER 없음
+    srv.start()
+    try:
+        with caplog.at_level('INFO', logger='ics_archon.ctrl'):
+            _power_run(tmp_path, srv, poweron_wait=0.6)
+    finally:
+        srv.shutdown()
+    assert not [r for r in caplog.records if r.levelname == 'ERROR'], caplog.text
+    assert 'POWER 필드가 없다' in caplog.text, caplog.text
+
+
+def test_the_startup_path_runs_the_check_without_deadlocking(tmp_path, caplog):  # noqa: ANN001
+    """**`prepare()` 를 통째로 밟는다** -- 확인이 락 안에서 도는지.
+
+    `_await_power()` 는 `query()` 를 부르고 그것이 `ArchonController._lock` 을
+    잡는다.  `power_on()` 이 그 락을 쥔 채로 부르면 **재진입 없는
+    `asyncio.Lock` 이라 그대로 멈춘다** -- 위 시험 넷은 `power_on()` 을 바로
+    부르므로 그 경로를 못 밟는다.  여기서 ACF 적용 → 전원 → `SYSTEM` 까지
+    실제 순서로 지나간다.
+    """
+    from fake_archon import FULL_STATUS
+    from ics_archon.archon.controller import ArchonController
+
+    srv = FakeArchon(width=NX, height=NY, status=dict(FULL_STATUS),
+                     power_ramp=1)
+    srv.start()
+    try:
+        _cfg, acfg = cfgs(tmp_path, poweron_wait=1.0)
+        del _cfg
+
+        async def run():  # noqa: ANN202
+            ctrl = ArchonController('MK', acfg)
+            ctrl.link.port = srv.port
+            try:
+                await asyncio.wait_for(ctrl.prepare(), timeout=20)
+            finally:
+                await ctrl.close()
+
+        with caplog.at_level('INFO', logger='ics_archon.ctrl'):
+            asyncio.run(run())
+    finally:
+        srv.shutdown()
+    assert 'POWER=4' in caplog.text, caplog.text
+    assert srv.seen.count('APPLYALL') == 1, srv.seen

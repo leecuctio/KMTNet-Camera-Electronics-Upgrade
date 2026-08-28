@@ -103,6 +103,7 @@ class FakeArchon(threading.Thread):
                  status_delay: float = 0.0, nbuf: int = 2,
                  fresh: bool = False,
                  count_step: int = 1,
+                 power_ramp: int = 0,
                  unknown: tuple[str, ...] = (),
                  reject: tuple[str, ...] = ()) -> None:
         super().__init__()
@@ -116,6 +117,15 @@ class FakeArchon(threading.Thread):
         #: `STATUS` 를 이만큼 늦게 답한다 -- 시한 초과 경로를 재현한다.
         self.status_delay = status_delay
         self.count_step = count_step
+        #: `POWERON` 뒤 `POWER` 가 **`4` 로 오르기까지 걸리는 STATUS 질의 횟수.**
+        #:
+        #: 실기의 바이어스 램프를 흉내낸다 -- 매뉴얼 p.47 의 `3`(Intermediate,
+        #: 일부 모듈만 올라왔다)을 이만큼 낸 뒤에 `4` 로 간다.  ⚠️ **`POWER` 를
+        #: 안 내는 `STATUS`(`DEFAULT_STATUS`)에는 영향이 없다** -- 그것도 실재
+        #: 하는 경우(구 펌웨어)이고, 없는 필드를 만들어 내면 "보고 없는 필드를
+        #: 이상으로 세지 않는다" 를 검사하는 시험이 무의미해진다.
+        self.power_ramp = power_ramp
+        self._ramp_left = 0
         #: 이 접두로 시작하는 명령은 **무응답** (매뉴얼 p.45 의 "ignored").
         self.unknown = tuple(unknown)
         #: 이 접두로 시작하는 명령은 `?xx` 로 거부한다.
@@ -221,6 +231,9 @@ class FakeArchon(threading.Thread):
             # `COUNT` 는 컨트롤러가 상태 블록을 갱신한 횟수다 (p.47) -- 여기서는
             # 응답마다 올린다.  ⚠️ 실기는 **자기 주기**로 갱신하므로 두 번 연달아
             # 물으면 같은 값이 올 수 있다.  `count_step=0` 이 그 경우다.
+            if self._ramp_left and 'POWER' in self.status:
+                self._ramp_left -= 1
+                self.status['POWER'] = '3' if self._ramp_left else '4'
             if self.count_step and 'COUNT' in self.status:
                 try:
                     self.status['COUNT'] = str(int(self.status['COUNT'])
@@ -250,10 +263,20 @@ class FakeArchon(threading.Thread):
         elif cmd in ('APPLYALL', 'APPLYSYSTEM', 'APPLYCDS', 'LOADTIMING'):
             self._reply(conn, ref)
         elif cmd == 'POWERON':
+            # **`POWER` 를 같이 움직인다.**  종전에는 `powered` 만 바뀌어서
+            # `STATUS` 의 `POWER` 가 `POWERON` 과 무관하게 늘 `4` 였다 -- 그
+            # 가짜로는 "응답은 왔는데 전원이 안 올라왔다" 를 한 번도 못 밟는다
+            # (`controller._await_power()` 가 보는 바로 그 경우).
             self.powered = True
+            if 'POWER' in self.status:
+                self._ramp_left = self.power_ramp
+                self.status['POWER'] = '3' if self.power_ramp else '4'
             self._reply(conn, ref)
         elif cmd == 'POWEROFF':
             self.powered = False
+            self._ramp_left = 0
+            if 'POWER' in self.status:
+                self.status['POWER'] = '2'      # Off (p.47)
             self._reply(conn, ref)
         elif cmd == 'LOADPARAMS':
             self._reply(conn, ref)
