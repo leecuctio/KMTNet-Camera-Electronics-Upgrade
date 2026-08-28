@@ -28,6 +28,10 @@ def make_cfg(tmp, name, overrides=None):
         cp.read_file(fp)
     cp.set("paths", "runroot", os.path.join(tmp, name + "_run"))
     cp.set("paths", "configdir", os.path.join(GMON_DIR, "config"))
+    # 시험 속도: TCS 폴백 질의가 실서버로 나가지 않고 즉시 실패하도록
+    cp.set("ics", "host", "127.0.0.1")
+    cp.set("ics", "port", "9")
+    cp.set("ics", "timeout_sec", "0.2")
     for (sec, key), val in (overrides or {}).items():
         cp.set(sec, key, val)
     path = os.path.join(tmp, name + ".conf")
@@ -145,20 +149,22 @@ def main():
     assert sent is True and abs(got3[-1] - (-7.95)) < 1e-9
 
     # ---------- 5. 기본 sender + dry_run=yes → 소켓을 열지 않음 ----------
-    c4 = gmon_mod.FocusController(cfg)      # sender 미주입 → _udp_send
+    import gtcs as gtcs_mod
+    c4 = gmon_mod.FocusController(cfg)      # sender 미주입 → _udp_send(gtcs 경유)
     assert c4.dry_run is True               # gmon.conf 기본값
     assert c4._sender == c4._udp_send
-    real_socket = gmon_mod.socket.socket
+    real_socket = gtcs_mod.socket.socket
     def _no_socket(*a, **k):
         raise AssertionError("dry_run인데 socket이 열림")
-    gmon_mod.socket.socket = _no_socket
+    gtcs_mod.socket.socket = _no_socket
     try:
+        # fw가 신선(방금 기록)하므로 temp_source=auto여도 TCS 질의 없음
         sent, reason = c4.try_send(manual=True)  # fw temp=16.0 → ref=-6.632 (안전)
+        # dry_run 분기 직접 확인: 마커 반환, 전송 없음
+        assert c4._udp_send(-5.0) == "dry-run"
     finally:
-        gmon_mod.socket.socket = real_socket
+        gtcs_mod.socket.socket = real_socket
     assert sent is True
-    # dry_run 분기 직접 확인: 마커 반환, 전송 없음
-    assert c4._udp_send(-5.0) == "dry-run"
 
     # ---------- 6. incr/decr ↔ gcommon.read_dfocus 라운드트립 ----------
     c5 = gmon_mod.FocusController(cfg)

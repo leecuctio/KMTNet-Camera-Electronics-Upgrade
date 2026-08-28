@@ -75,6 +75,7 @@ STA Archon 컨트롤러 1대 + CCD47-20 가이드 CCD 4칩(N, S, E, W) 구성용
 | `old/do-plotFWHM` (Perl)   | gnuplot 실시간 그래프                    | `gplot.py`                           |
 | `old/do-killPlot`          | `killall`로 일괄 종료                    | `gmon.py` OFF (pidfile 기반 SIGTERM) |
 | `old/gmon.cfg`             | dfocus 영속                              | `run/dfocus.txt`                     |
+| (SAAO `run/tcon`, `nc -u`) | TCS 서버 질의(auxstatus)·fttgoto·dtilt   | `gtcs.py` (질의/이동 클라이언트 + CLI) |
 | `old/default.sex` 등       | sex/psfex 설정                           | `config/` (default.sex 등 5종)       |
 
 ### 주요 개선
@@ -187,10 +188,16 @@ GUI는 중복 실행되지 않는다(`run/pid/gmon.pid`). GUI 없이 headless로
 1. **ON** — gwatch(감시 데몬)와 gplot(그래프)을 기동. ICS가 저장한 프레임이
    `run/incoming/`에 도착할 때마다 자동으로 분할→FWHM→스냅샷→그래프 갱신.
 2. **AUTO** — `period_sec`(기본 120초) 주기로 최신 온도(T)에서
-   `ref = slope*T − (base + dfocus)`를 계산해 TCS로 전송. 안전범위
-   `[safe_min, safe_max]` 밖이거나 직전 주기 계산값 대비 `|Δ| ≥ max_jump`이면
-   그 주기는 보류. 비교 기준은 전송 여부와 무관하게 매 주기 갱신되므로
-   (레거시 `dref` 동일) 점프가 지속돼도 다음 주기에는 전송이 재개된다.
+   `ref = slope*T − (base + dfocus)`를 계산해 TCS로 전송(`gtcs` 경유
+   `abc>tc fttgoto <ref>`). 안전범위 `[safe_min, safe_max]` 밖이거나 직전
+   주기 계산값 대비 `|Δ| ≥ max_jump`이면 그 주기는 보류. 비교 기준은 전송
+   여부와 무관하게 매 주기 갱신되므로(레거시 `dref` 동일) 점프가 지속돼도
+   다음 주기에는 전송이 재개된다.
+   온도 출처는 `[focus] temp_source`: 기본 `auto` = 오늘 밤 fw파일의
+   TEMP(=ENS3, 운용판 파리티) 우선, fw가 없거나 `fw_stale_sec`(기본 900초)보다
+   오래되면 **TCS `auxstatus`의 `ENS<temp_sensor>`로 폴백** — 밤 시작 등
+   관측 전에도 초점 보정이 동작한다. 제어부 하단 TCS 라벨에 서버에서 읽은
+   온도·현재 초점(FAFOCUS)·틸트·셔터 상태가 `status_sec` 주기로 표시된다.
 3. **MAN** — 현재 ref를 1회 즉시 전송 (안전범위만 검사).
 4. **±step / ±big_step** — dfocus를 `step`(기본 0.005) 또는 `big_step`(기본
    0.5, 운용판 2021-01 "big adjust") 단위로 조정. `run/dfocus.txt`에 영속되어
@@ -209,6 +216,7 @@ gsplit.py  RAW.fits [-o OUTDIR] [--json]     → 4파일 생성, stdout에 경�
 gpsf.py    STEM 또는 --raw RAW.fits [--workdir D]  → sex+psfex+기록, result JSON 출력
 gsnap.py   result.<stem>.json [--backend auto|ds9|mpl]  → PNG 생성
 gplot.py   [--oneshot] [--term qt|x11|png] [--out FILE] [--datafile F]  → 그래프
+gtcs.py    auxstatus | fttgoto FOC [TNS TEW] | dtilt DNS DEW | raw CMD  → TCS 질의/이동
 gwatch.py  [--once] [--foreground]           → 감시 루프 (pidfile 단일 실행)
 gmon.py                                       → GUI (내부에서 gwatch/gplot 기동·정지)
 tools/make_synthetic.py -o OUT.fits [--fwhm-px 3.5] [--nstars 40] [--truth J.json]

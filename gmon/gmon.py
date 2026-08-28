@@ -19,7 +19,10 @@ GUI가 떠 있는 동안(run/pid/gmon.pid) gwatch는 외부 gnuplot 라이브 �
 
 초점 제어는 GUI와 분리된 FocusController(tests/test_focus.py 대상):
   ref = slope*T − (base + dfocus),
-  T = 최신 fw 줄(시각 fwN fwE fwW fwS FOCUS TEMP SECZ)의 TEMP — 공백분리 7번째 필드.
+  T = 최신 fw 줄(시각 fwN fwE fwW fwS FOCUS TEMP SECZ)의 TEMP — 공백분리 7번째
+  필드. [focus] temp_source=auto면 fw가 없거나 fw_stale_sec보다 오래됐을 때
+  TCS auxstatus의 ENS<temp_sensor>로 폴백한다(gtcs.py — 레거시 old/gmon의
+  `tc auxstat` 직접 질의 복원). 전송도 gtcs.TcsClient.fttgoto 경유.
 안전범위 [safe_min, safe_max] 밖이면 전송하지 않는다(AUTO/MAN 공통).
 AUTO는 직전 주기 기준값과 |Δ| ≥ max_jump면 그 주기만 보류(첫 전송은 허용),
 MAN은 max_jump 무시. 기준값은 레거시(old/gmon runcmd의 `set dref $ref`)와
@@ -33,13 +36,14 @@ dfocus는 run/dfocus.txt에 영속(gcommon.read_dfocus/write_dfocus).
 import argparse
 import glob
 import os
-import socket
 import subprocess
 import sys
+import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gcommon
+import gtcs
 
 GMON_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -82,6 +86,12 @@ class FocusController:
         self.host = cfg.get("ics", "host", fallback="127.0.0.1")
         self.port = cfg.getint("ics", "port", fallback=6660)
         self.dry_run = cfg.getbool("ics", "dry_run", fallback=True)
+        # 온도 출처: fw=오늘 밤 fw파일(운용판 파리티) / tcs=서버 auxstatus /
+        # auto=fw 우선, 없거나 fw_stale_sec보다 오래되면 서버로 폴백
+        self.temp_source = cfg.get("focus", "temp_source", fallback="auto")
+        self.temp_sensor = cfg.getint("focus", "temp_sensor", fallback=3)
+        self.fw_stale_sec = cfg.getfloat("focus", "fw_stale_sec", fallback=900.0)
+        self.tcs = gtcs.TcsClient(cfg, log=self.log)
         self.dfocus = gcommon.read_dfocus(cfg)
         self.last_ref = None   # 직전 주기 계산 ref (레거시 dref — AUTO max_jump 기준)
         self.last_fw = None    # 최신 fw 줄 파싱 dict (표시용)
@@ -103,6 +113,10 @@ class FocusController:
         if len(parts) < 8:
             return None
         try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            mtime = None
+        try:
             return {
                 "time": parts[0],
                 "fwn": float(parts[1]),
@@ -113,14 +127,40 @@ class FocusController:
                 "temp": float(parts[6]),  # 공백분리 7번째 필드 = TEMP
                 "secz": float(parts[7]),
                 "line": lines[-1],
+                "source": "fw",
+                "mtime": mtime,  # temp_source=auto의 신선도 판정용
             }
         except ValueError:
             return None
 
+    def _is_stale(self, rec):
+        """fw 레코드가 fw_stale_sec보다 오래됐는가 (mtime 없으면 신선 취급)."""
+        mtime = rec.get("mtime")
+        return mtime is not None and (time.time() - mtime) > self.fw_stale_sec
+
     # ---- 계산·전송 ----
     def compute_ref(self):
-        """ref = slope*T − (base + dfocus). fw 줄이 없으면 None."""
-        rec = self._fw_reader()
+        """ref = slope*T − (base + dfocus). 온도를 못 구하면 None.
+
+        온도 출처(temp_source): fw=오늘 밤 fw파일 마지막 줄의 TEMP(=ENS3,
+        운용판 파리티), tcs=TCS auxstatus의 ENS<temp_sensor>, auto=fw 우선이되
+        fw가 없거나 fw_stale_sec보다 오래되면 서버로 폴백 (레거시 old/gmon의
+        주석 처리된 `tc auxstat` 직접 질의를 복원한 것 — 밤 시작 등 fw가 아직
+        없을 때도 초점 보정이 동작한다).
+        """
+        rec = None
+        if self.temp_source in ("fw", "auto"):
+            rec = self._fw_reader()
+            if (rec is not None and self.temp_source == "auto"
+                    and self._is_stale(rec)):
+                self.log.info("fw stale (> %.0fs) — TCS 온도로 폴백",
+                              self.fw_stale_sec)
+                rec = None
+        if rec is None and self.temp_source in ("tcs", "auto"):
+            t = self.tcs.temperature()
+            if t is not None:
+                rec = {"temp": t, "source": "tcs",
+                       "line": "TCS ENS%d=%.1f" % (self.temp_sensor, t)}
         self.last_fw = rec
         if not rec or rec.get("temp") is None:
             return None
@@ -152,17 +192,8 @@ class FocusController:
         return True, "sent %.3f" % ref
 
     def _udp_send(self, ref):
-        msg = "abc>tc fttgoto %.3f" % ref
-        if self.dry_run:
-            self.log.info("dry_run: %s (UDP not sent)", msg)
-            return "dry-run"
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            sock.sendto(msg.encode("ascii"), (self.host, self.port))
-        finally:
-            sock.close()
-        self.log.info("sent: %s -> %s:%d", msg, self.host, self.port)
-        return "udp"
+        """기본 sender — TCS fttgoto (gtcs가 dry_run·전송·응답 처리)."""
+        return self.tcs.fttgoto(ref)
 
     # ---- dfocus 증감 (run/dfocus.txt 영속) ----
     def _shift(self, delta):
@@ -260,6 +291,13 @@ class GmonApp:
         self.lproc = tk.Label(ctrlf, anchor="w", text="gwatch: ? / gplot: ?")
         self.lfw.grid(row=4, column=0, columnspan=5, sticky="we")
         self.lproc.grid(row=5, column=0, columnspan=5, sticky="we")
+
+        # TCS 서버 상태 (auxstatus): 온도·초점·틸트·셔터 — 백그라운드 질의
+        self.ltcs = tk.Label(ctrlf, anchor="w", text="TCS: -")
+        self.ltcs.grid(row=6, column=0, columnspan=5, sticky="we")
+        self._tcs_status = None
+        if cfg.getbool("ics", "status_query", fallback=True):
+            threading.Thread(target=self._tcs_poll, daemon=True).start()
 
         ctrlf.grid(row=0, column=0, sticky="nw", padx=6, pady=6)
 
@@ -401,6 +439,13 @@ class GmonApp:
             self.l4.config(text="ref %.3f" % ref, fg="black", bg="green")
 
     # ---- 주기 상태 갱신 ----
+    def _tcs_poll(self):
+        """백그라운드 TCS auxstatus 질의 — 결과 저장만, 표시는 _status_tick."""
+        period = max(2.0, self.cfg.getfloat("ics", "status_sec", fallback=10.0))
+        while True:
+            self._tcs_status = self.ctrl.tcs.auxstatus()
+            time.sleep(period)
+
     def _status_tick(self):
         gw = gcommon.PidFile(self.cfg, "gwatch").other_pid()
         gp = gcommon.PidFile(self.cfg, "gplot").other_pid()
@@ -410,6 +455,18 @@ class GmonApp:
         rec = self.ctrl._fw_reader()
         self.ctrl.last_fw = rec
         self.lfw.config(text="fw: %s" % (rec["line"] if rec else "-"))
+        kv = self._tcs_status
+        if kv:
+            def fv(key, fmt):
+                v = kv.get(key)
+                return (fmt % v) if isinstance(v, float) else "-"
+            sensor = self.ctrl.temp_sensor
+            self.ltcs.config(text="TCS: T(ENS%d)=%s F=%s tiltNS/EW=%s/%s shut=%s"
+                             % (sensor, fv("ENS%d" % sensor, "%.1f"),
+                                fv("FAFOCUS", "%+.3f"), fv("FATILTNS", "%+.1f"),
+                                fv("FATILTEW", "%+.1f"), kv.get("SHUTTER", "-")))
+        else:
+            self.ltcs.config(text="TCS: 무응답")
         self.root.after(2000, self._status_tick)
 
     # ---- 우측 패널: 최신 PSF 스냅샷 자동 표시 ----

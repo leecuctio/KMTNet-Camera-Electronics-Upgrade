@@ -40,6 +40,8 @@ gmon/
   gpsf.py              sex+psfex 실행, FWHM 추출·기록 (do-sex.psfex 후속)
   gsnap.py             3×3 PSF 스냅샷 PNG (ds9/XPA 우선, matplotlib 폴백)
   gplot.py             gnuplot 실시간 FWHM 그래프 (do-plotFWHM 후속)
+  gtcs.py              TCS/ICS UDP 클라이언트 — auxstatus 질의·fttgoto/dtilt
+                       (레거시 nc -w 1 -u 파리티; old/gmon·tcon의 서버 통신 후속)
   gcommon.py           공용: 설정 로더, 밤 파일명, pidfile, 로깅
   config/
     default.sex  default.param.psfex  default.psfex  default.conv  default.nnw
@@ -129,12 +131,20 @@ safe_min  = -8.0
 safe_max  = -5.0            ; 운용판 2026-03-13 재정의 (-8.0 < ref < -5.0)
 max_jump  = 0.1             ; AUTO에서 직전 ref와 차이가 이 이상이면 전송 보류
 period_sec = 120
+temp_source  = auto         ; 온도 출처: fw|tcs|auto (auto=fw 우선, 서버 폴백)
+temp_sensor  = 3            ; TCS auxstatus의 ENS<n> (fw TEMP=ENS3 동일 센서)
+fw_stale_sec = 900          ; auto에서 fw 마지막 기록의 신선도 한계(초)
 
 [ics]
 mode     = file             ; file=수신 디렉토리 감시(기본) | legacy-udp=레거시 트리거
 host     = 192.168.13.109
 port     = 6660
-dry_run  = yes              ; yes면 TCS/ICS로 실제 UDP 전송 안 함 (로그만)
+dry_run  = yes              ; yes면 이동 명령(fttgoto/dtilt) 미전송 (질의는 허용)
+timeout_sec  = 1.0          ; UDP 응답 대기 (레거시 nc -w 1 파리티)
+from         = abc          ; ISIS 라우팅 발신자 ("<from>><tc> <명령>")
+tc           = tc
+status_query = yes          ; GUI의 주기 auxstatus 상태 표시
+status_sec   = 10
 ```
 
 ## 5. 데이터 형식 계약
@@ -189,6 +199,7 @@ gsplit.py  RAW.fits [-o OUTDIR] [--json]     → 4파일 생성, stdout에 경�
 gpsf.py    STEM 또는 --raw RAW.fits [--workdir D]  → sex+psfex+기록, result JSON 출력
 gsnap.py   result.<stem>.json [--backend auto|ds9|mpl]  → PNG 생성
 gplot.py   [--oneshot] [--term qt|x11|png] [--out FILE] [--datafile F]  → 그래프
+gtcs.py    auxstatus | fttgoto FOC [TNS TEW] | dtilt DNS DEW | raw CMD  → TCS 질의/이동
 gwatch.py  [--once] [--foreground]           → 감시 루프 (pidfile 단일 실행)
 gmon.py                                       → GUI (내부에서 gwatch/gplot 기동·정지)
 tools/make_synthetic.py -o OUT.fits [--fwhm-px 3.5] [--nstars 40] [--truth J.json]
@@ -218,6 +229,17 @@ psf.snap.*.png 자동 감지, 3초 주기) / FWHM 그래프 창(gplot --oneshot
   (공백분리 7번째). 상수 출처: SAAO 운용판 2026-03 (slope −0.067, base 5.56,
   안전범위 −8.0~−5.0). GUI에는 ±step(0.005) 버튼과 ±big_step(0.5) 버튼
   (운용판 2021-01 "big adjust") 총 4개를 둔다.
+- **서버 질의 (gtcs.py, tests/test_tcs.py 대상)**: ISIS 허브(host:port)로
+  `<from>>tc auxstatus` UDP 질의 → KEY=VALUE 응답 파싱 (근거:
+  TCSAgent/TCSAgent.latest/KMTNet/commands.c cmd_auxstatus). 온도 ENS1..7,
+  현재 초점 FAFOCUS, 틸트 FATILTNS/EW, 셔터 SHUTTER, 액추에이터 FAPOSS/E/W.
+  temp_source=auto면 fw파일이 없거나 fw_stale_sec보다 오래됐을 때 서버
+  ENS<temp_sensor>로 온도를 폴백한다 (레거시 old/gmon에 주석으로 남아 있던
+  `tc auxstat` 직접 질의의 복원 — 밤 시작 등 fw 데이터가 없어도 AUTO 동작).
+- 이동 명령은 gtcs 경유: `fttgoto <foc> [<tns> <tew>]`(절대),
+  `dtilt <dns> <dew>`(상대 틸트 — 레거시 tcon 파리티). dry_run=yes면 이동은
+  로그만 남기고 질의는 정상 수행. GUI는 status_query=yes일 때 백그라운드
+  스레드로 auxstatus를 status_sec 주기 질의해 상태 라벨에 표시한다.
 - 안전범위 [safe_min, safe_max] 밖이면 전송 안 함.
 - AUTO: period_sec 주기, 직전 전송값과 |Δ| ≥ max_jump이면 보류(레거시 의미 유지).
 - MAN: 1회 즉시 전송(안전범위만 검사).
