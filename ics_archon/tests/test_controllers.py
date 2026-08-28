@@ -251,3 +251,116 @@ def test_nc_is_absent_in_both_layers():
     assert c.declared(1) is False
     assert c.declared(2) is True
     assert 1 not in c.overrides()
+
+
+# ---------------------------------------------------------------------------
+# 저장 자리 선검사 (labtest v1.1.3 이 세운 규칙, 2026-08-28)
+# ---------------------------------------------------------------------------
+#
+# **저장 경로가 틀렸다는 것이 드러나는 자리가 종전에는 `write_frame()` 이었다**
+# -- 그 시점에는 이미 fetch 를 마친 뒤라 **다 읽어낸 노출을 잃는다.**  labtest 가
+# 같은 이유로 이 검사를 `POWERON` 앞으로 올렸다.
+
+def _sim_cfg(data_dir: str):  # noqa: ANN201
+    """`_storage_checks` 가 보는 최소한의 `ics_sim` 설정."""
+    from ics_sim import config as simcfg
+
+    cfg = simcfg.SimConfig()
+    cfg.paths.data_dir = data_dir
+    return cfg
+
+
+def _storage_notes(tmp_path, data_dir, **over):  # noqa: ANN001
+    cfg = acfg_mod.ArchonCfg(**over)
+    return acfg_mod._storage_checks(cfg, _sim_cfg(str(data_dir)))
+
+
+def test_storage_check_does_not_create_a_missing_data_dir(tmp_path):  # noqa: ANN001
+    """⚠️ **없다고 만들지 않는다** -- 마운트 지점을 가리면 자료가 숨는다.
+
+    가장 흔한 원인이 "마운트가 안 붙었다" 인데, 그때 만들어 버리면 OS 디스크에
+    쌓이기 시작하고 **나중에 마운트가 붙으면 그 자료가 통째로 안 보인다.**
+    """
+    missing = tmp_path / 'not-mounted'
+    notes = _storage_notes(tmp_path, missing)
+    assert len(notes) == 1 and '마운트' in notes[0]
+    assert not missing.exists(), '검사가 폴더를 만들면 안 된다'
+
+
+def test_storage_check_flags_a_tight_disk(tmp_path):  # noqa: ANN001
+    """pair 한 장이 688 MiB 라, 여유가 그 열 배에 못 미치면 알린다.
+
+    문턱을 절대값(GB)이 아니라 **pair 장수**로 둔 것이 요점이다 -- 기하가
+    바뀌면 뜻이 함께 따라가야 한다.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    # 실물 기하(19200x9400)면 pair 한 장이 688 MiB 다.
+    notes = _storage_notes(tmp_path, data)
+    tight = [n for n in notes if '여유가' in n]
+    # 이 기계의 여유에 따라 갈리므로 **문구가 아니라 계산**을 본다.
+    import shutil as _shutil
+    free = _shutil.disk_usage(str(data)).free
+    need = rawhdr.RAW_NAXIS1 * rawhdr.RAW_NAXIS2 * 2 * 2 * acfg_mod.STORAGE_MIN_PAIRS
+    assert bool(tight) == (free < need)
+
+
+def test_storage_check_is_quiet_when_there_is_room(tmp_path):  # noqa: ANN001
+    """작은 기하(시험용)에서는 조용해야 한다 -- 경고가 늘 뜨면 무시하게 된다."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    assert _storage_notes(tmp_path, data, naxis1=12, naxis2=4) == []
+
+
+# ---------------------------------------------------------------------------
+# 헤더에 실릴 ini 값의 비ASCII (labtest 3중 방어의 첫째, 2026-08-28)
+# ---------------------------------------------------------------------------
+
+def test_non_ascii_ini_values_are_flagged_at_startup():
+    """한글 한 자가 섞이면 그 카드가 `????` 로 실린다 -- 기동에서 알린다.
+
+    ⚠️ **기동을 막지는 않는다.**  labtest 는 거부하지만 그쪽은 사람이 붙어 있는
+    실험실 스크립트이고, 여기는 OBSAgent 가 상대인 상주 프로그램이다 -- 카드
+    한 장 때문에 관측을 통째로 못 하게 만드는 쪽이 더 나쁘다.
+    """
+    from ics_sim import config as simcfg
+
+    cfg = simcfg.SimConfig()
+    cfg.controllers.ctrl1_id = 'KMTA-SCI-101'
+    cfg.camera.camver = 'CEU-차상목'            # 손편집 오염
+    notes = acfg_mod._ascii_checks(cfg)
+    assert len(notes) == 1 and 'camver' in notes[0]
+    assert 'ctrl1_id' not in notes[0]           # ASCII 는 안 센다
+
+    cfg.camera.camver = 'CEU-v2.1'
+    assert acfg_mod._ascii_checks(cfg) == []
+
+    # ⚠️ **사이트별 표도 본다** -- 실제로 쓰이는 것은 `[site.<코드>]` 쪽이라,
+    # `[site]` 덮어쓰기만 검사하면 현장 값이 통째로 빠진다.
+    from ics_sim.config import SiteCfg
+
+    cfg.site_table['KMTK'] = SiteCfg(telescop='KMTNet 1.6m #0 실험실')
+    notes = acfg_mod._ascii_checks(cfg)
+    assert len(notes) == 1 and 'site.kmtk' in notes[0], notes
+
+
+def test_the_ascii_check_covers_every_ini_sourced_header_field():
+    """⚠️ **목록을 코드로 못박아 둔다** -- 카드가 늘면 검사가 따라가야 한다.
+
+    `[site]`/`[camera]`/`[controllers]` 에 헤더 카드가 늘 때 이 목록만 안 늘면
+    새 카드가 조용히 검사 밖으로 빠진다.  그 어긋남을 여기서 잡는다.
+    """
+    from ics_sim import config as simcfg
+
+    covered = {(sec, f) for sec, fields in acfg_mod._HEADER_INI_FIELDS
+               for f in fields}
+    cfg = simcfg.SimConfig()
+    for section, _fields in acfg_mod._HEADER_INI_FIELDS:
+        block = getattr(cfg, section, None)
+        assert block is not None, section
+        for name in vars(block):
+            if name.startswith('_') or not isinstance(getattr(block, name), str):
+                continue
+            assert (section, name) in covered, (
+                '%s.%s 가 문자열인데 비ASCII 검사 목록에 없다 -- 헤더에 실리는 '
+                '값이면 _HEADER_INI_FIELDS 에 넣을 것' % (section, name))

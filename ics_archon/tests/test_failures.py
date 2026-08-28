@@ -60,6 +60,9 @@ def cfgs(tmp_path, **over):  # noqa: ANN001
     acfg.poweron_wait = 0.0
     acfg.frame_poll = 0.01
     acfg.connect_retry = 1
+    # 감시는 끈다 -- `test_backend.make_cfgs` 와 같은 이유(홈에 진짜 CSV 를
+    # 쌓고 기동 시점에 링크를 잡는다).  `over` 로 켤 수는 있다.
+    acfg.monitor = False
     for k, v in over.items():
         setattr(acfg, k, v)
     return cfg, acfg
@@ -636,11 +639,17 @@ def test_time_scale_other_than_one_is_flagged_for_archon(tmp_path):  # noqa: ANN
     cfg, acfg = cfgs(tmp_path)
     cfg.timing.time_scale = 0.02
     notes = acfg_mod.validate(acfg, tuple(cfg.node.ccds), cfg)
-    assert any('time_scale' in n and 'EXPTIME' in n for n in notes), notes
+    assert any('[timing] time_scale' in n and 'EXPTIME' in n
+               for n in notes), notes
 
     cfg.timing.time_scale = 1.0
-    assert not any('time_scale' in n
-                   for n in acfg_mod.validate(acfg, tuple(cfg.node.ccds), cfg))
+    again = acfg_mod.validate(acfg, tuple(cfg.node.ccds), cfg)
+    # ⚠️ **`'[timing] time_scale'` 로 찾는다 -- 낱말만 보면 안 된다.**  pytest 의
+    # `tmp_path` 는 **시험 이름에서 만들어지고**(`…test_time_scale_other_than_one0`),
+    # 경로를 그대로 싣는 경고가 하나라도 있으면 그 이름이 걸린다.  실제로
+    # 저장 자리 선검사(2026-08-28)를 넣자마자 이 시험이 그렇게 깨졌다 --
+    # 제품 결함이 아니라 **시험이 너무 헐거웠던 것**이다.
+    assert not any('[timing] time_scale' in n for n in again), again
 
 
 def test_aux_and_inject_are_flagged_for_archon(tmp_path):  # noqa: ANN001

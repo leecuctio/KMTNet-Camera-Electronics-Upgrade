@@ -62,6 +62,11 @@ def block(title: str) -> None:
     print('\n' + '=' * 74 + '\n ' + title + '\n' + '-' * 74)
 
 
+def _num(value, digits: int) -> str:
+    """수치는 자리수 고정, sentinel 문자열(`'NC'`)은 그대로."""
+    return ('%.*f' % (digits, value)) if isinstance(value, float) else str(value)
+
+
 def dump(fields: dict, per_line: int = 3) -> None:
     """`KEY=VALUE` 를 보기 좋게.  **원문을 다 보여 준다** -- 우리가 모르는
     필드가 있는지가 이 도구의 요점이므로 추려서 보여 주면 안 된다."""
@@ -197,6 +202,77 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
             % (len(temps), len(rawhdr.TEMP_MOD_LABELS)),
             '자리 수 자체가 모듈 구성을 뜻한다 -- 규격부터 확인할 것')
     print('     레일  %s' % ' · '.join(parse.VOLT_RAILS))
+
+    # -- 응답 자체의 건강 필드 (P-g) --------------------------------------
+    # `VALID`/`COUNT`/`LOG` 는 **실기 보고 여부가 미확인**이었다 (PROVISIONAL).
+    # D4(`VALID=0` -> 헤더 NC)와 F2(보고 없는 필드는 이상으로 세지 않는다)가
+    # 둘 다 이 세 값의 실물에 달려 있으므로 여기서 눈으로 확인한다.
+    valid = parse.status_valid(status)
+    if valid is None:
+        say(WARN, 'VALID 를 보고하지 않는다 -- D4(무효 응답을 헤더 NC 로)가 '
+                  '작동하지 않는다.  값은 그대로 실린다(F2)')
+    else:
+        say(OK if valid else BAD, 'VALID = %s' % status.get('VALID'),
+            '' if valid else 'D4 -- 이 응답의 Cn_* 는 NC 로 실린다')
+    count = parse.status_count(status)
+    if count is None:
+        say(WARN, 'COUNT 를 보고하지 않는다 -- 기록의 fresh 열이 NC 가 된다 '
+                  '(같은 블록을 다시 읽었는지 못 가른다)')
+    else:
+        say(OK, 'COUNT = %d  (두 질의 사이에 안 변하면 같은 블록이다)' % count)
+    log_n = parse.log_count(status)
+    if log_n is None:
+        say(WARN, 'LOG 를 보고하지 않는다 -- 감시 기록의 log_n 열이 NC 가 된다')
+    else:
+        say(OK, 'LOG = %d  (FETCHLOG 는 쓰지 않는다 -- 이 값만 기록한다)'
+            % log_n,
+            'P-a/P-b/P-c/P-d: 드레인 승격은 사람이 한 번 보고 판단한다')
+
+    # -- 전원 레일 정상 범위 (매뉴얼 p.41) --------------------------------
+    rail_bad = parse.rail_problems(status, acfg.rail_limits)
+    if rail_bad:
+        say(BAD, '전원 레일이 정상 범위 밖이다 -- %s' % ' / '.join(rail_bad),
+            '기본값은 매뉴얼 p.41 이고 전원 보드 저항으로 정해진다(p.42) -- '
+            '유닛이 다르면 [archon.rails] 로 덮을 것')
+    else:
+        say(OK, '전원 레일 %d개가 정상 범위 안이다 (매뉴얼 p.41)'
+            % len(parse.VOLT_RAILS))
+
+    # -- 층 2 -- 바이어스 채널 (ACF 이름표 x STATUS 실측) ------------------
+    # ⚠️ 이름표는 **ACF**, 값은 **STATUS** 다.  두 dict 의 키 문자열이 같아서
+    #    (지령값 vs 실측값) 섞으면 그럴듯한 거짓말이 나온다.
+    if not ctrl.config:
+        acf_path = acfg.acf.get(ctrl.tag, '')
+        if acf_path:
+            try:
+                ctrl.parse_acf(acf_path)        # 파일만 읽는다 -- 왕복 없음
+            except ArchonError as exc:
+                say(WARN, '바이어스 이름표를 못 읽었다 (%s)' % exc)
+    channels = parse.bias_channels(ctrl.config)
+    if not channels:
+        say(WARN, 'ACF 에서 이름표 붙은 바이어스 채널을 못 찾았다 -- '
+                  '--acf 나 [archon] acf_%s 를 주면 층 2 를 대조한다'
+                  % ctrl.tag.lower())
+    else:
+        print('\n   바이어스 %d채널 (이름표는 ACF, 값은 STATUS -- 단위 V / mA):'
+              % len(channels))
+        for label, volt, curr in parse.bias_readings(status, channels):
+            print('     %-12s %10s V   %10s mA'
+                  % (label, _num(volt, 3), _num(curr, 3)))
+        missing = [label for label, v, _i in
+                   parse.bias_readings(status, channels)
+                   if not isinstance(v, float)]
+        if missing:
+            say(BAD, '바이어스 %d채널을 STATUS 가 보고하지 않는다: %s'
+                % (len(missing), ' '.join(missing)),
+                'ACF 이름표와 모듈 형이 맞는지 볼 것 (LV(X)Bias 는 LVLC/LVHC, '
+                'HV(X)Bias 는 HVLC/HVHC 만 낸다 -- 매뉴얼 p.48)')
+        else:
+            say(OK, '바이어스 %d채널의 V/I 를 전부 읽었다' % len(channels))
+        pstate = parse.power_state(status)
+        if pstate is not None and pstate != parse.POWER_ON:
+            say(WARN, 'POWER=%d 라 바이어스가 ~0 V 로 나온다 (매뉴얼 p.77) -- '
+                      '위 값을 고장으로 읽지 말 것' % pstate)
 
     # -- FRAME -------------------------------------------------------------
     fields = await ctrl.query('FRAME', timeout=5.0)
@@ -445,6 +521,11 @@ async def amain(args) -> int:  # noqa: ANN001
     acfg.port = args.port
     acfg.frame_poll = args.poll
     acfg.progress_step = 1               # 촘촘히 본다 (거동 확인이 목적)
+    if args.acf:
+        # **`--acf` 가 ini 를 이긴다.**  이렇게 해 두면 1단계의 바이어스 채널
+        # 표(층 2)도 그 ACF 의 이름표를 쓴다 -- 안 넘기면 `--acf` 를 주고도
+        # 1단계가 "이름표를 못 찾았다" 를 낸다.
+        acfg.acf[args.tag] = args.acf
     ctrl = ArchonController(args.tag, acfg)
 
     print('probe_archon -- %s (%s:%d), 선언 기하 %d x %d (%.1f MiB)'

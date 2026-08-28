@@ -22,15 +22,15 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
 | [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다 |
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (110항목). 배치본은 `-m "not repo_only"` (103항목) |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (207항목, 약 3분). 배치본은 `-m "not repo_only"` (173항목).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
-| [`acf/`](acf/) | **Archon 설정 파일 정본** (8개) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
+| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 9개 + `archive/` 구판 2개) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
 | [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
-| [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.2.0`, science 유닛) |
-| [`scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py) | **guide 유닛용 참고 사본** — 원본 그대로, 미개정 |
-| [`tests/verify_labtest_v13.py`](tests/verify_labtest_v13.py) | **labtest 전용 검증** (19항목) — `python tests/verify_labtest_v13.py` |
+| [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.3.4`, science 유닛).  유닛별 사본 셋(`KMTC-102`·`KMTC-113`·`KMTS-101`)이 나란히 있고 `tests/test_labtest_spec_copy.py` 가 표류를 막는다 |
+| [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |
+| [`tests/verify_labtest_v13.py`](tests/verify_labtest_v13.py) | **labtest 전용 검증** (32항목, 실패 0이어야 한다) — `python tests/verify_labtest_v13.py`.  읽기전용 자리 1건은 POSIX 에서만 돌고 윈도우에서는 `SKIP` |
 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
 
@@ -84,6 +84,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | `archon/protocol.py` | 저수준 왕복 — 텍스트/이진 프레이밍, 참조번호, 시한 초과 후 재동기 |
 | `archon/parse.py` | `SYSTEM`/`STATUS`/`FRAME` 해석. **왕복이 없어** 실기 응답 한 줄로 재현할 수 있다 |
 | `archon/controller.py` | 컨트롤러 한 대의 제어 시퀀스 — ACF · 전원 · 노출 · 독출 · FETCH (asyncio) |
+| `archon/monitor.py` | 텔레메트리 주기 감시·기록 (층 1·2) — CSV, `~/AIC/log/` |
 | `archon/fitswrite.py` | raw pair 바이트 기록 — 견본 v1.0 이 정본, 데이터부 2880B 패딩 |
 | `archon/backend.py` | `ics_sim` `DetectorBackend` 구현 (D-012) |
 | `app.py` · `__main__.py` | `ics_sim.IcsSim` 에 백엔드를 끼우고 `ICSBUILD`/`RDMODE`/종료를 갈아낀다 |
@@ -100,6 +101,99 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 **적분은 컨트롤러가 잰다.**  시퀀서의 카운트다운은 관측자 알림이고 하드웨어를
 몰지 않는다.  그래서 `STOP` 은 적분을 자르지 못하고 셔터만 강제로 닫는다 —
 근거와 한계는 `archon/controller.py` 머리말에 있다.
+
+## 텔레메트리 감시·기록 (층 1·2)
+
+컨트롤러 온도 10 + 전원 레일 7×2 + **바이어스 16채널 V/I** 를 주기적으로 떠서
+CSV 로 남긴다.  원장 v1.14 가 `CCDTEMP` 대표 센서를 두고 **"센서 이상은 취득 SW
+로그가 담는다"** 고 약속해 뒀는데 그 로그가 없었다 — 이것이 그 이행물이다.
+
+```
+~/AIC/log/telemetry.MK.20260828.csv        # 컨트롤러당 · 날짜당 하나
+~/AIC/log/telemetry.NT.20260828.csv
+```
+
+| 열 | 무엇 |
+|---|---|
+| `utc` `age_ms` `lag_ms` | 시각 · 값의 나이 · **주기가 밀린 정도** |
+| `expstatus` | ⚠️ 이 온도가 **독출 중 값인지 대기 중 값인지** — 사후에 시각으로 맞출 수 없다 |
+| `valid` `count` `fresh` `log_n` | 응답 자체의 건강 (`fresh` = `COUNT` 가 직전 행과 달라졌나) |
+| `power` `powergood` `overheat` | 전원·과열 |
+| `T1..T10 [C]` | 규격 5.6.1절 **자리 = 항목** (열 이름이 `rawhdr.TEMP_MOD_LABELS`) |
+| `V1..V7 [V]` `I1..I7 [A]` | 시스템 레일 — ⚠️ 전류 단위 **A** |
+| `rail_flag` | 매뉴얼 p.41 정상 범위 이탈 (막지는 않는다) |
+| `B_<라벨>_V [V]` `_I [mA]` | 바이어스 — ⚠️ 전류 단위 **mA**.  이름표는 **ACF** 에서 온다 |
+| `event` | `start` `stop` `offline` `poll_failed` `resumed` |
+
+**설정** (`[archon]`):
+
+```ini
+monitor          = true      # telemetry=false 면 이 값과 무관하게 안 돈다
+monitor_interval = 20.0      # 수십 초 ~ 수 분 (운영자 확정)
+monitor_log      = ~/AIC/log
+```
+
+### 접속자는 컨트롤러당 하나다 (운영자 확정 2026-08-28)
+
+**본편이 기동에서 컨트롤러에 접속하고, 그 뒤에 감시를 시작한다.**  science
+컨트롤러는 `ics_archon` 이, guide 는 `icg_archon` 이 맡고 **한 컨트롤러에 여러
+노드가 붙는 구성은 두지 않는다.**  감시는 별개 프로세스가 아니라 이 프로세스
+안의 태스크이고 **같은 소켓·같은 락**을 탄다.
+
+- 접속은 `monitor` 설정과 **무관하다** — `monitor = false` 로 둬도 기동에서
+  붙는다(그 스위치는 CSV 기록과 주기 폴링만 끈다).
+- 기동 접속이 실패해도 **기동을 막지 않는다** — 컨트롤러 전원이 나중에 들어오는
+  배치가 실재한다.  감시가 `monitor_interval` 마다 다시 시도하고, 감시를 껐으면
+  첫 노출의 `prepare()` 가 시도한다.
+- ⚠️ 그래서 **본편이 떠 있는 동안에는 STA GUI 도 `probe_archon` 도 붙이지
+  않는다** — 설정으로 피하는 것이 아니라 **본편을 내리고 쓴다.**  Rev F
+  백플레인(KASI 벤치기 `KMTK_SCI_113` · guide 유닛)은 동시 접속이 하나뿐이고
+  (매뉴얼 p.15), Rev H(4접속)에서도 규칙은 같다.
+
+**알아 둘 것 넷:**
+
+1. **헤더용 값과 다른 자리에 든다.**  `Cn_TEMP/VOLT/CURR` 의 뜻은 여전히 "노출
+   개시 시점 값" 이고, 감시는 `ctrl.status_live` 만 갱신한다.  섞으면 카드의
+   뜻이 **폴링 간격·락 경합에 따라 노출마다 달라지는 값**으로 조용히 바뀐다.
+2. **FETCH 가 락을 344 MiB 동안 쥔다** — 그동안 주기가 밀린다.  그것은 오류가
+   아니라 `lag_ms` 에 적을 사실이고, **밀린 만큼 몰아서 뜨지 않는다.**
+3. **`valid=0` 행도 버리지 않는다** — 언제부터 이상했는지가 자료다.  같은 응답이
+   **헤더에서는 `NC`** 로 떨어진다(D4).
+4. **`FETCHLOG` 는 쓰지 않는다** — `LOG=n` 한 열만 남긴다 (왕복 0).  드레인
+   승격은 `probe_archon` 1단계로 한 번 보고 판단한다.
+
+## 프레임이 안 나올 때 — `Sync In` 부터 본다
+
+실기에서 **프레임이 한 장도 안 나오던 증상**의 원인은 `Sync In` 이 물려 상대
+컨트롤러가 클록을 잡고 있던 것이었다 (labtest 2026-08-27 종결).  그때 관측된
+조합이 이것이다:
+
+```
+POWER=4  POWERGOOD=1  FRAME=0/0/0  (영구)
+```
+
+**`POWERGOOD=1` 은 하드웨어 정상을 보장하지 않는다** — 컨트롤러 **자기 전원만**
+보고하고 외부 클록 의존을 보지 않는다.  그래서 `ics_archon` 은 프레임 대기에
+시한을 두고, **시한을 넘기면 진단 한 장을 항상 남긴다**(`frame_dump` 설정과
+무관):
+
+```
+ERROR ... 프레임 대기 시한 초과 -- RBUF=0 WBUF=0  FRAME=0/0/0  COMPLETE=0/0/0
+          LINES=0/0/0  POWER=4  POWERGOOD=1  OVERHEAT=0  TIMER=...
+```
+
+| 보이는 것 | 뜻 |
+|---|---|
+| `FRAME` 이 안 오름 | 노출 미개시 — `LOADPARAMS`·타이밍·**Sync In** |
+| `FRAME` 은 오르는데 `COMPLETE=0` | 독출이 버퍼를 못 채운다 — 기하·tap |
+| `TIMER` 가 안 변함 | 타이밍 코어 정지 |
+
+평상시에 계속 보고 싶으면 `[archon] frame_dump = 5` (초).  ⚠️ **정상 취득이
+도는 동안은 꺼 둔다** — 한 번에 왕복이 셋 는다.
+
+⚠️ **시한은 적분이 끝난 뒤부터 센다** (`frame_timeout`).  DARK/BIAS 는 컨트롤러가
+적분을 재므로 `IntMS` 를 걸고 곧바로 기다리는데, 시한을 지시 시점부터 세면
+600초 dark 가 300초 상한에 걸려 **정상 프레임 중에 `DMA WAIT TIMEOUT`** 이 난다.
 
 ## 설치 · 배치 (리눅스)
 
@@ -237,6 +331,11 @@ expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 n_controllers = 1                   # 유닛 한 대만 돌릴 때.  2대면 2
 ctrl_mk_host = 10.0.0.13
 acf_mk       = ~/AIC/Config/acf/KMTNet_Sci_fast_med_U13.acf
+monitor      = true                 # 텔레메트리 주기 감시·기록 (위 절)
+                                    #   ⚠️ 접속은 이 값과 무관하다 -- 본편이
+                                    #   기동에서 붙는다.  이 스위치는 CSV 기록과
+                                    #   주기 폴링만 끈다
+monitor_log  = ~/AIC/log            # ⚠️ data_dir 밑에 두지 말 것
 
 [controllers]
 ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
@@ -344,17 +443,35 @@ python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
 없다. `tools/probe_archon.py` 가 위험이 낮은 것부터 하나씩 확인한다 — 본편과
 **같은 모듈**을 쓰므로 여기서 통과한 것은 본편에서도 통과한다.
 
+⚠️ **본편을 내리고 돌린다.**  `ics_archon` 은 기동에서 컨트롤러에 접속하고
+**접속자는 컨트롤러당 하나**다(운영자 확정 2026-08-28).  Rev F 백플레인은 동시
+접속이 하나뿐이라(매뉴얼 p.15) 물리적으로도 못 붙고, Rev H 라도 같은 규칙이다.
+
 ### 1단계 — 읽기 전용 (전원을 켜지 않는다)
 
 ```bash
 python tools/probe_archon.py --host 10.0.0.13
 ```
 
-`SYSTEM`·`STATUS`·`FRAME` 원문을 다 찍고, 가정을 대조한다 — AD 모듈 슬롯(5~8) ·
-온도 슬롯·전원 레일 결측 · 기하 vs 선언 · `BUFnLINES` 존재 · `Cn_*` 카드의 폭
-(견본 51자를 넘으면 규격 5.0절대로 **comment 가 먼저 줄고**, 66자를 넘어야
-값이 잘린다) · **`Cn_TEMP` 자리 수가 규격 5.6.1절 표와 같은지**.
+`SYSTEM`·`STATUS`·`FRAME` 원문을 다 찍고, 가정을 대조한다 — 장착 모듈이 규격
+5.6.1절 자리 표와 맞는지 · 온도 슬롯·전원 레일 결측 · 기하 vs 선언 ·
+`BUFnLINES` 존재 · `Cn_*` 카드의 폭(견본 51자를 넘으면 규격 5.0절대로
+**comment 가 먼저 줄고**, 66자를 넘어야 값이 잘린다) · **`Cn_TEMP` 자리 수가
+규격 5.6.1절 표와 같은지**.
 **여기서 `문제` 가 하나라도 나오면 그것부터 고친다.**
+
+여기에 **감시가 기다리는 확인 항목**도 함께 나온다 (2026-08-28 추가):
+
+| 보이는 것 | 무엇을 판정하나 |
+|---|---|
+| `VALID` / `COUNT` / `LOG` 보고 여부 | D4(무효 응답 → 헤더 `NC`) · 기록의 `fresh`/`log_n` 열이 살아 있나 |
+| 전원 레일 정상 범위 (p.41) | `rail_flag` 열의 기준.  유닛이 다르면 `[archon.rails]` 로 덮는다 |
+| **바이어스 채널 표** | 층 2 — 이름표는 **ACF**, 값은 **STATUS** 다.  ⚠️ 두 dict 의 키 문자열이 같으니 섞어 읽지 말 것 |
+
+⚠️ **`LOG` 은 여기서 사람이 한 번 보고 판단할 것이 있다** — 값의 상한, 로그 한
+줄의 생김새(자체 시각·심각도가 붙나).  항목이 **모듈·채널 수준의 정체**를 담으면
+(`MOD9 HVHC4 failed to reach setpoint` 같은) `FETCHLOG` 드레인을 넣을 값이 있고,
+`config applied` 수준이면 **안 쓴다**(우리 로그가 이미 더 잘 담는다).
 
 ### 2단계 — ACF 대조 (여전히 읽기 전용)
 
@@ -439,12 +556,18 @@ direct-reply 로 전 경로가 돈다.
   동작이 가능할 수도 있으니** 그쪽도 참조할 것 — FETCH 주소를 `BUFnBASE` 에서
   읽어 설계상 구성 무관이다(실기 검증은 첫 guide 구동 때).
 - **binning** (`BIN` 명령) — `ics_sim` 쪽도 스텁이다.
+- **바이어스 측정값의 헤더 수록** (층 2) — 지금은 **로그만**이다.  헤더에 넣는
+  것은 규격 개정 사안이고(32개 값이 카드 하나에 안 들어간다 — 8채널이 한 카드의
+  한계), 갈래 둘과 계산이 `SMC_CLAUDE.md` "층 2" 절에 있다.
+- **`FETCHLOG` 드레인** — 안 쓰기로 확정했다.  `LOG=n` 한 열만 남긴다.  승격
+  기준(항목이 모듈·채널 수준의 정체를 담는가)은 `probe_archon` 1단계로 한 번
+  보고 판단한다.
 
 ## 관련 문서
 
 | 문서 | 위치 |
 |---|---|
-| 경위·판단 (왜 그렇게 정했나) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.26 |
+| 경위·판단 (왜 그렇게 정했나) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.33 |
 | 산출 규격 (raw FITS pair) | [`../raw_fits_spec/`](../raw_fits_spec/README.md) |
 | 헤더 카드 템플릿 (공유 원천) | `../ics_sim/ics_sim/rawcards.py` |
 | 백엔드 계약 | `../ics_sim/ics_sim/hardware/base.py` (D-012) |

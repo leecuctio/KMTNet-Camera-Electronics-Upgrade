@@ -602,6 +602,18 @@ class ArchonBackend:
 
         `datasource` 는 레거시 어휘(`ADC`/`CTC`/`SIM`)를 따른다 -- 실기 Archon
         은 AD 모듈로 읽으므로 `ADC` 다 (DevNote 6.4).
+
+        **`synched` 는 살아 있는 스냅샷을 본다** (D5, 2026-08-28).  종전에는
+        헤더용 `ctrl.status` 를 읽었는데 그것은 **첫 노출 전까지 비어 있어서**,
+        관측자 화면에 4채널 전부 `-SYNCH` 로 보였다 (G5).  `commands.py` 가
+        `ChannelState.synched` 기본값 `True` 를 이 반환값으로 덮으므로 침묵할
+        수도 없다.  이제 순서가 셋이다:
+
+        1. 감시가 뜬 `status_live` (기동 직후부터 있다)
+        2. 없으면 노출 개시에 언 `status` (감시를 껐을 때)
+        3. **둘 다 없으면 링크 상태** -- 아직 한 번도 못 물어본 것이므로
+           "이상하다는 증거가 없다" 가 맞다.  여기서 `False` 를 내면 **모르는
+           것을 고장이라고 말하는 것**이 된다.
         """
         try:
             ctrl = self.ctrls[self._tag_of(ccd)]
@@ -612,11 +624,32 @@ class ArchonBackend:
         return {
             'driving': 1 if ctrl.powered else 0,
             'fibers': ctrl.link.connected,
-            'synched': parse.power_good(ctrl.status),
+            'synched': self._synched(ctrl),
             'datasource': 'ADC',
             'shutter_open': ctrl.integrating,
             'led_ms': self._led_ms,
         }
+
+    @staticmethod
+    def _synched(ctrl: ArchonController) -> bool:
+        """`+SYNCH`/`-SYNCH` 플래그의 값 (위 `status()` 의 3단계).
+
+        ⚠️ **`POWERGOOD` 은 이 물음에 정확히 답하지 못한다.**  실기에서
+        프레임이 한 장도 안 나오던 증상의 원인이 **`Sync In` 이 물려 상대
+        컨트롤러가 클록을 잡고 있던 것**이었는데, 그때 `POWER=4` ·
+        `POWERGOOD=1` 이었다 (labtest 2026-08-27 종결,
+        `../../scr_labtest/README_labtest.md`).  `POWERGOOD` 은 **컨트롤러
+        자기 전원만** 보고하고 외부 클록 의존을 보지 않는다.
+
+        Archon `STATUS` 에 동기 여부를 직접 말하는 필드는 없다.  그래서 이
+        플래그는 "전원 계통에 이상이 없다" 까지만 뜻하고, 진짜 동기 정지는
+        **프레임이 안 나오는 것**으로 드러난다 -- 그 자리는
+        `controller.wait_frame()` 의 시한과 진단 덤프가 맡는다.
+        """
+        live = ctrl.status_live or ctrl.status
+        if not live:
+            return ctrl.link.connected
+        return parse.power_good(live)
 
     # -- 생명주기 (계약 밖 -- app.py 가 부른다) ---------------------------
 

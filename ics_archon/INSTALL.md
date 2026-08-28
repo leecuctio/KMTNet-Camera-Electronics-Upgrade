@@ -48,7 +48,7 @@ SSH 키를 쓰는 기계라면 `git@github.com:leecuctio/KMTNet-Camera-Electroni
 ## 2. 자리 만들기
 
 ```bash
-mkdir -p ~/AIC/{src,bin,Config/acf,Logs,data,osc}
+mkdir -p ~/AIC/{src,bin,Config/acf,Logs,data,osc,log}
 ```
 
 `~/AIC/data` 를 다른 디스크로 보내려면 실제 디렉터리 대신 링크를 둔다:
@@ -68,7 +68,16 @@ mkdir -p /mnt/bigdisk/data && ln -s /mnt/bigdisk/data ~/AIC/data
 | `bin/` | 설치된 실행 파일 | ✅ 다시 만들면 됨 |
 | `Config/` | 설정 + **`*.expnum`(노출 번호 카운터)** | ❌ **절대 금지** |
 | `Logs/` · `data/` | 로그 · 취득 자료 | ❌ |
+| `log/` | **텔레메트리 감시 기록**(`telemetry.<MK\|NT>.<YYYYMMDD>.csv`) | ⚠️ 아래 |
 | `osc/` | 관측 스크립트(`.osc`) — 저장소에서 복사해 둔다 | ✅ 다시 복사하면 됨 |
+
+⚠️ **`log/` 와 `Logs/` 는 다른 것이다** (대소문자만 다르다 — 리눅스에서는
+갈리지만 눈으로는 안 갈린다).  `Logs/` 는 레거시 C 계통(obstool·XIS)의 자리이고
+`log/` 는 `ics_archon` 의 텔레메트리 CSV 다.  **`data/` 밑에 두지 않은 것이
+요구사항이다** — 자료와 함께 굴러가면 아카이브 정책에 걸린다 (운영자 확정
+2026-08-27).  지워도 프로그램은 돌지만, **센서 표류를 되짚을 유일한 기록**이라
+자료와 같은 기간 보존하는 편이 맞다.  자리는 `[archon] monitor_log` 로 옮길 수
+있다.
 
 ## 3. C 프로그램 셋 빌드
 

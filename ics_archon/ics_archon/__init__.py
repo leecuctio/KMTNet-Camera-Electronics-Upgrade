@@ -5,7 +5,8 @@
 `ics_sim` 이 만든 층(시퀀서 · 명령 처리부 · OBSAgent 메시지 규약 · raw spec
 헤더)을 **무개정으로** 쓰고, 그 아래 `DetectorBackend` 자리에 실제 Archon
 컨트롤러 제어를 넣는다.  제어 코드의 원형은 실험실 취득 스크립트
-(`../archon_kmtnet_labtest_v1.1.bigbuf.py`, 1년 실사용으로 검증된 v1.0 계보)다.
+(`../scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`, 1년 실사용으로 검증된
+v1.0 계보)다.
 
     python -m ics_archon -c ics_archon.ini
 
@@ -29,7 +30,7 @@ __version__ = '0.0.0'
 #: 일시를 주장하고, 헤더에서 소스 상태를 되짚는 목적이 무력해진다.  이유는
 #: `ics_sim/__init__.py` 의 같은 상수 주석에 다 적혀 있다 (파일 mtime 을 쓰지
 #: 않는 이유 포함).
-__build_date__ = '2026-08-23T06:00Z'
+__build_date__ = '2026-08-28T04:00Z'
 
 
 def build_id() -> str:

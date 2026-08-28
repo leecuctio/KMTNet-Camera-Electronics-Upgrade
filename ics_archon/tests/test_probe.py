@@ -249,3 +249,42 @@ def test_stage3_survives_a_controller_with_no_frames_yet(tmp_path):  # noqa: ANN
     assert rc == 0, labels()
     assert '완료된 프레임이 아직 없다' in labels()
     assert len(glob.glob(str(tmp_path / 'probe.*.fits'))) == 1
+
+
+def test_stage1_reads_the_health_fields_and_the_bias_table(tmp_path):  # noqa: ANN001
+    """P-g · P-h · P-i -- 실기에서 사람이 눈으로 확인할 자리들.
+
+    ⚠️ **기본 가짜(`DEFAULT_STATUS`)는 `VALID`/`COUNT`/`LOG`/`POWER`/`OVERHEAT`
+    를 안 낸다** -- 그것도 실재하는 경우(구 펌웨어)라 그대로 두고, 여기서는 다
+    내는 `FULL_STATUS` 로 **확인 쪽 경로**를 밟는다.  둘 다 안 밟으면 실기에서
+    처음 실행된다.
+
+    바이어스 표는 **이름표를 ACF 에서, 값을 STATUS 에서** 읽는다 -- 두 dict 의
+    키 문자열이 같아서(지령값 vs 실측값) 섞으면 그럴듯한 거짓말이 나온다.
+    """
+    from fake_archon import FULL_STATUS
+    from test_monitor import ACF_BIAS, _bias_status
+
+    status = dict(_bias_status(), **{k: FULL_STATUS[k] for k in
+                                     ('VALID', 'COUNT', 'LOG', 'POWER',
+                                      'OVERHEAT')})
+    acf = tmp_path / 'bias.acf'
+    acf.write_text(ACF_BIAS, encoding='ascii')
+
+    srv = FakeArchon(width=NX, height=NY, status=status)
+    srv.start()
+    try:
+        rc = run(['--host', '127.0.0.1', '--port', str(srv.port),
+                  '--acf', str(acf)], tmp_path)
+    finally:
+        srv.shutdown()
+
+    text = labels()
+    assert rc == 0, text
+    assert 'VALID = 1' in text
+    assert 'COUNT = ' in text
+    assert 'LOG = 0' in text                    # ⚠️ '0' 과 '보고 없음' 은 다르다
+    assert 'POWER = 4' in text
+    assert '전원 레일 7개가 정상 범위 안이다' in text
+    assert '바이어스 16채널의 V/I 를 전부 읽었다' in text
+    assert probe_archon.BAD not in marks(), text

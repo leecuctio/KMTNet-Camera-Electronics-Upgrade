@@ -47,6 +47,26 @@ DEFAULT_STATUS = {
     'P35V_V': '35.089', 'P35V_I': '0.032',
 }
 
+#: **매뉴얼 p.47 이 나열한 건강 필드를 다 내는** `STATUS` -- `DEFAULT_STATUS`
+#: 와 갈라 둔 것이 의도다.
+#:
+#: ⚠️ **둘 다 실재하는 경우다.**  `DEFAULT_STATUS` 는 그 필드들을 **보고하지
+#: 않는** 응답이고(구 펌웨어 · F2 원칙이 지켜야 하는 쪽), 이것은 다 보고하는
+#: 응답이다.  기본을 이쪽으로 바꾸면 "보고 없는 필드를 이상으로 세지 않는다"
+#: 를 검사하는 시험들이 통째로 무의미해지고, 반대로 이것이 없으면 감시 기록의
+#: `valid`/`count`/`fresh`/`log_n`/`power` 열이 **한 번도 실값으로 안 돌아간다.**
+#:
+#: 값의 근거: `VALID=1`(p.47) · `COUNT` 는 상태 갱신 횟수 · `LOG=0` ·
+#: `POWER=4`(On) · `OVERHEAT=0`.
+#:
+#: `COUNT` 는 `FakeArchon(count_step=)` 이 `STATUS` 응답마다 올린다 (기본 1,
+#: `0` 이면 얼어붙는다 -- 감시 기록의 `fresh=0` 경로를 밟는 설정이다).
+#: ⚠️ **실기는 질의가 아니라 자기 주기로 갱신한다** -- 두 번 연달아 물으면 같은
+#: 값이 올 수 있다.  그래서 `fresh` 는 "새로 잰 값인가" 의 **신호**이지 보장이
+#: 아니다.
+FULL_STATUS = dict(DEFAULT_STATUS, VALID='1', COUNT='100', LOG='0',
+                   POWER='4', OVERHEAT='0')
+
 #: 기본 `SYSTEM` 응답 -- **실기 science 구성 그대로** (`acf/KMTK_SCI_113_
 #: STA0200_R2608_MK.acf` 실측, 2026-08-27).  장착은 1·2·3·4·5·8·9·10·11 이고
 #: 6·7·12 는 빈 슬롯(형 0) -- 규격 5.6.1절의 **열 자리와 정확히 같다.**
@@ -82,6 +102,7 @@ class FakeArchon(threading.Thread):
                  system: dict | None = None,
                  status_delay: float = 0.0, nbuf: int = 2,
                  fresh: bool = False,
+                 count_step: int = 1,
                  unknown: tuple[str, ...] = (),
                  reject: tuple[str, ...] = ()) -> None:
         super().__init__()
@@ -94,6 +115,7 @@ class FakeArchon(threading.Thread):
         self.system = dict(DEFAULT_SYSTEM if system is None else system)
         #: `STATUS` 를 이만큼 늦게 답한다 -- 시한 초과 경로를 재현한다.
         self.status_delay = status_delay
+        self.count_step = count_step
         #: 이 접두로 시작하는 명령은 **무응답** (매뉴얼 p.45 의 "ignored").
         self.unknown = tuple(unknown)
         #: 이 접두로 시작하는 명령은 `?xx` 로 거부한다.
@@ -196,6 +218,15 @@ class FakeArchon(threading.Thread):
         elif cmd == 'STATUS':
             if self.status_delay:
                 time.sleep(self.status_delay)
+            # `COUNT` 는 컨트롤러가 상태 블록을 갱신한 횟수다 (p.47) -- 여기서는
+            # 응답마다 올린다.  ⚠️ 실기는 **자기 주기**로 갱신하므로 두 번 연달아
+            # 물으면 같은 값이 올 수 있다.  `count_step=0` 이 그 경우다.
+            if self.count_step and 'COUNT' in self.status:
+                try:
+                    self.status['COUNT'] = str(int(self.status['COUNT'])
+                                               + self.count_step)
+                except ValueError:
+                    pass
             self._reply(conn, ref, self._kv(self.status))
         elif cmd == 'FRAME':
             self._reply(conn, ref, self._kv(self._frame_fields()))

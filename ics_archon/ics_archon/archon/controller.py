@@ -130,6 +130,32 @@ class ArchonController:
         #: `STATUS_SNAPSHOT` 을 노출 앞에서 떴다.
         self.system: dict[str, str] = {}
         self.status: dict[str, str] = {}
+        #: **살아 있는 스냅샷** -- 배경 감시가 계속 갱신한다 (층 1·2, 2026-08-28).
+        #:
+        #: ⚠️ **`status` 와 갈라 둔 것이 핵심이다.**  `Cn_TEMP/VOLT/CURR` 의 뜻은
+        #: "노출 개시 시점 값" 이고, 그것은 `status` 가 `initialize()` 에서 언
+        #: 뒤 아무도 안 건드리기 때문에 성립한다.  감시가 `status` 를 계속
+        #: 덮으면 헤더 스냅샷이 굳는 순간에 잡히는 것은 **마지막 폴링 값**이 되고
+        #: -- 독출이 모듈을 데우므로 값이 다르다 -- **폴링 간격·락 경합에 따라
+        #: 노출마다 달라져 비결정적**이 된다.  카드의 뜻이 조용히 바뀌는 부류다.
+        #:
+        #: | 자리 | 갱신 | 소비자 |
+        #: |---|---|---|
+        #: | `status` | 노출 개시에 **언 것** | `controller_telemetry()` -> 헤더 전용 |
+        #: | `status_live` | 감시가 계속 | 기록 · ICS `STATUS` 응답 · 건강검사 |
+        self.status_live: dict[str, str] = {}
+        #: `status_live` 를 뜬 시각 (`time.time()`, UTC epoch).  0 이면 아직 없다.
+        #: 기록의 `age_ms` 열이 이것으로 계산된다 -- **"이 값이 몇 초 전 것인가"**
+        #: 를 함께 싣지 않으면 신선도가 전달 계층에서 사라진다.
+        self.status_live_at: float = 0.0
+        #: 감시 폴링이 **연달아** 실패한 횟수.  성공하면 0 으로 돌아간다.
+        #:
+        #: ⚠️ **`telemetry_enabled` 와 별개다** (반드시 지킬 것 2).  그 래치는
+        #: "한 번 실패하면 이 실행 동안 헤더용으로 안 묻는다" 이고(F8), 감시가
+        #: 재시도하며 그것을 다시 켜면 **취득 경로의 판단이 감시 쪽 사정으로
+        #: 뒤집힌다.**  감시는 자기 카운터로 백오프하고 헤더용 래치는 만지지
+        #: 않는다.
+        self.status_live_fails: int = 0
         #: STATUS 가 한 번 실패하면 이 실행 동안 다시 묻지 않는다 -- 어긋난
         #: 뒤에도 노출마다 되풀이하는 것은 위험을 반복하는 일이다.  카드
         #: 몇 장보다 취득이 우선이다.
@@ -403,8 +429,130 @@ class ArchonController:
             log.warning('%s: STATUS 질의 실패 (%s) -- 이 실행 동안 텔레메트리를 '
                         '끈다.  Cn_* 는 NC 로 실린다', self.tag, exc)
 
-    def _check_health(self) -> None:
+    async def refresh_status_live(self) -> bool:
+        """**감시용** `STATUS` 스냅샷.  성공하면 `True`.
+
+        헤더용 `refresh_status()` 와 갈라 둔 자리다 -- 규칙 넷을 여기서 지킨다
+        (`../SMC_CLAUDE.md` "반드시 지킬 것 넷", 운영자 승인 2026-08-27):
+
+        1. **락을 새로 만들지 않는다** -- `query()` 가 `self._lock` 을 타므로
+           FETCH·노출 왕복과 자동으로 직렬화된다.  ⚠️ 그래서 **FETCH 가 락을
+           344 MiB 동안 쥐면 감시 주기가 그만큼 밀린다.**  그것은 오류가 아니라
+           기록할 사실이다 -- 밀린 시간은 기록의 `lag_ms` 열에 남고, **밀린
+           만큼 몰아서 뜨지 않는다**(그건 감시가 아니라 부하다).
+        2. **`telemetry_enabled` 를 만지지 않는다** -- 그 래치는 취득 경로의
+           판단이다(F8).  감시의 성공·실패는 `status_live_fails` 로만 센다.
+        3. `self.status`(헤더용 언 스냅샷)를 **덮지 않는다.**
+        4. 실패하면 `status_live` 를 **버린다** -- 낡은 값이 새 값처럼 보이는
+           것이 가장 나쁘다(`refresh_status()` 가 헤더 쪽에서 같은 판단을 한다).
+           `status_live_at` 은 지우지 않는다 -- **"마지막으로 성공한 것이
+           언제인가"** 는 버릴 값이 아니라 진단이다.  그 값이 기록에 `age_ms`
+           로 나가는 것은 폴링이 성공한 행에서만이다.
+
+        `[archon] telemetry = false` 면 아무것도 하지 않는다 -- 그 설정의 뜻이
+        "컨트롤러와의 왕복을 labtest v1.0 계보와 똑같이 둔다" 이므로 감시도
+        예외가 아니다.
+        """
+        if not self.cfg.telemetry:
+            return False
+        try:
+            fields = await self.query('STATUS',
+                                      timeout=self.cfg.status_timeout)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            self.status_live_fails += 1
+            self.status_live = {}
+            # **같은 줄을 주기마다 되풀이하지 않는다** -- 20초 간격이면 밤새
+            # 수천 줄이 되고, 반복되는 경고는 사람이 경고를 무시하도록
+            # 학습시킨다.  첫 실패와 그 뒤 10회마다만 알린다 (기록 쪽에는
+            # `poll_failed` 행이 빠짐없이 남으므로 사실은 안 잃는다).
+            if self.status_live_fails == 1 or self.status_live_fails % 10 == 0:
+                log.warning('%s: 감시 STATUS 실패 %d회 연속 (%s) -- 취득용 '
+                            '텔레메트리 래치는 건드리지 않는다', self.tag,
+                            self.status_live_fails, exc)
+            return False
+        if self.status_live_fails:
+            log.info('%s: 감시 STATUS 복구 (%d회 실패 뒤)',
+                     self.tag, self.status_live_fails)
+        self.status_live_fails = 0
+        self.status_live = fields
+        self.status_live_at = time.time()
+        self._check_health(fields)
+        return True
+
+    async def timer(self) -> str:
+        """`TIMER` -- 컨트롤러의 10 ns tick 카운터 (매뉴얼 p.49).  실패하면 `''`.
+
+        **STATUS 필드가 아니라 별도 명령이다** -- labtest 가 2026-08-27 에
+        따로 뽑아낸 자리다(`e5d72b5`).  값이 회전마다 변하지 않으면 **타이밍
+        코어가 멈춘 것**이고, 그것이 "노출이 안 걸렸나 / 독출이 안 끝나나" 를
+        가르는 마지막 계측이다.
+
+        ⚠️ 진단용이라 **예외를 올리지 않는다** -- 이것을 부르는 자리는 이미
+        무언가 잘못된 순간이고, 거기서 새 예외를 내면 원인이 가려진다.
+        """
+        try:
+            raw = await self.cmd('TIMER', timeout=T_FAST)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            return 'ERR(%s)' % exc
+        return raw.decode('ascii', 'replace').strip()
+
+    async def diagnostic_snapshot(self, with_status: bool = True) -> str:
+        """진단 한 줄 -- `FRAME` (+ `POWER`/`POWERGOOD`/`TIMER`).
+
+        **labtest `_frame_snapshot()` 을 그대로 옮겼다** (v1.3.4, 2026-08-27).
+        실기에서 프레임이 한 장도 안 나오던 증상을 가른 것이 이 한 줄이었고,
+        원인은 결국 **`Sync In` 이 물려 상대 컨트롤러가 클록을 잡고 있던 것**
+        이었다 (`../scr_labtest/README_labtest.md`).  그때 관측된 조합이
+        `POWER=4` · `POWERGOOD=1` · `FRAME=0/0/0` 영구였다 --
+        **`POWERGOOD` 은 외부 클록 의존을 보지 않는다.**
+
+        읽는 법:
+
+        | 보이는 것 | 뜻 |
+        |---|---|
+        | `FRAME` 이 안 오름 | 노출 미개시 (`LOADPARAMS`·타이밍·**Sync In**) |
+        | `FRAME` 은 오르는데 `COMPLETE=0` | 독출이 버퍼를 못 채운다 (기하·tap) |
+        | `TIMER` 가 안 변함 | 타이밍 코어 정지 |
+
+        ⚠️ **예외를 올리지 않는다.**  실패한 순간에 부르는 것이므로 링크가 이미
+        깨져 있을 수 있다 -- 그때는 실패 사유를 그 자리에 적는다.
+        """
+        try:
+            fields = await self.query('FRAME', timeout=T_FAST)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            return 'FRAME 질의 실패: %s' % exc
+        line = ('RBUF=%s WBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s  '
+                'LINES=%s/%s/%s'
+                % (fields.get('RBUF', '?'), fields.get('WBUF', '?'),
+                   fields.get('BUF1FRAME', '?'), fields.get('BUF2FRAME', '?'),
+                   fields.get('BUF3FRAME', '?'),
+                   fields.get('BUF1COMPLETE', '?'),
+                   fields.get('BUF2COMPLETE', '?'),
+                   fields.get('BUF3COMPLETE', '?'),
+                   fields.get('BUF1LINES', '?'), fields.get('BUF2LINES', '?'),
+                   fields.get('BUF3LINES', '?')))
+        if not with_status:
+            return line
+        # **감시가 이미 떠 둔 값을 쓰지 않는다** -- 지금 이 순간의 값이라야
+        # 진단이 된다.  왕복이 둘 늘지만 부르는 자리는 실패한 순간뿐이다.
+        try:
+            status = await self.query('STATUS',
+                                      timeout=self.cfg.status_timeout)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            status = {'POWER': 'ERR(%s)' % exc}
+        return line + ('  POWER=%s  POWERGOOD=%s  OVERHEAT=%s  TIMER=%s'
+                       % (status.get('POWER', '?'),
+                          status.get('POWERGOOD', '?'),
+                          status.get('OVERHEAT', '?'), await self.timer()))
+
+    def _check_health(self, status: dict[str, str] | None = None) -> None:
         """`STATUS` 응답에서 전원·과열 이상을 읽어 알린다 (F2).
+
+        인자를 안 주면 헤더용 스냅샷(`self.status`)을 본다.  감시는
+        `status_live` 를 넘겨 **같은 판정**을 쓴다 -- `_health_bad` 래치를
+        공유하므로 취득 경로와 감시가 같은 이상을 두 번 알리지 않는다.
+        (⚠️ 이 래치는 **로그 중복 방지**일 뿐 취득 판단이 아니다 -- "감시가
+        취득 경로의 판단을 뒤집지 않는다" 규칙에 걸리지 않는다.)
 
         **막지는 않는다.**  이 필드들은 아직 실기 미검증(PROVISIONAL)이라,
         오독 하나로 관측을 통째로 세우는 쪽이 더 나쁘다 -- 첫 실행에서
@@ -412,7 +560,8 @@ class ArchonController:
         보이도록 크게 남긴다: 종전에는 전원 이상이 밖에서 "취득 실패" 로만
         보였다.
         """
-        bad = parse.health_problems(self.status)
+        bad = parse.health_problems(self.status if status is None
+                                    else status)
         if not bad:
             self._health_bad = False
             return
@@ -600,18 +749,48 @@ class ArchonController:
         reported = -1
         prev = ticket.prev_frame
         limit = float(getattr(self.cfg, 'frame_timeout', 0.0) or 0.0)
-        deadline = (time.monotonic() + limit) if limit > 0 else None
+        started = time.monotonic()
+        # **상한은 적분이 끝난 뒤부터 센다** (2026-08-28 수정).
+        #
+        # 종전에는 `now + frame_timeout` 이라 **DARK/BIAS 의 긴 노출에서 헛
+        # 시한**이 났다: 셔터 노출은 시퀀서가 카운트다운을 다 하고 `readout()`
+        # 을 부르므로 여기 들어올 때 적분이 이미 끝나 있지만, DARK/BIAS 는
+        # `_readout_stream()` 이 `IntMS=<적분시간>` 으로 걸고 **곧바로** 여기로
+        # 들어온다 -- 300초 상한에 600초 dark 를 걸면 프레임이 정상으로 나오는
+        # 중에 `DMA WAIT TIMEOUT` 이 났다.  labtest 도 같은 계산이다
+        # (`deadline = exptime/1000 + FRAME_WAIT_MAX`, v1.3.4).
+        deadline = None
+        if limit > 0:
+            deadline = max(started, ticket.int_until or 0.0) + limit
+        # 프레임 대기 중 주기 덤프 -- 취득이 안 끝날 때 "노출이 안 걸렸나 /
+        # 독출이 안 끝나나" 를 가르는 계측이다 (labtest `FRAME_DUMP_ENABLE`).
+        # **정상 취득이 도는 동안은 꺼 둔다**(기본 0) -- 왕복이 셋 늘어난다.
+        dump_every = float(getattr(self.cfg, 'frame_dump', 0.0) or 0.0)
+        next_dump = (started + dump_every) if dump_every > 0 else None
         while True:
-            if deadline is not None and time.monotonic() > deadline:
+            now = time.monotonic()
+            if deadline is not None and now > deadline:
                 # **영구 대기를 오류로 바꾼다.**  독출이 시작되지 않으면
                 # `EXPSTATUS=READOUT` 에 갇혀 관측자 화면이 멈추고 OBSAgent 가
                 # `force_idle` 타임아웃으로 `opause` 에 빠진다 -- 조용한 정지가
                 # 가장 나쁜 실패다.
+                #
+                # **실패한 순간의 진단을 항상 남긴다** -- `frame_dump` 설정과
+                # 무관하다 (labtest v1.3.4 가 세운 규칙).  이 증상은 간헐이라
+                # 평소 덤프를 꺼 두면 정작 재발했을 때 증거가 남지 않는다.
+                # ⚠️ 실기에서 이 조합(`POWER=4` · `POWERGOOD=1` · `FRAME` 정지)
+                # 의 원인은 **`Sync In` 이 물려 상대 컨트롤러가 클록을 잡고
+                # 있던 것**이었다 -- `POWERGOOD` 은 외부 클록을 보지 않는다.
+                log.error('%s: 프레임 대기 시한 초과 -- %s', self.tag,
+                          await self.diagnostic_snapshot())
                 raise ArchonError(
-                    '%s: 프레임 %d 이 %.0f초 안에 나오지 않았다 -- 독출이 '
-                    '시작되지 않았을 수 있다(ACF·클록·LOADPARAMS 를 보라). '
-                    '[archon] frame_timeout 으로 상한을 조정한다'
-                    % (self.tag, prev + 1, limit), cmd='FRAME')
+                    '%s: 프레임 %d 이 %.0f초 안에 나오지 않았다 (적분 %.1f초 '
+                    '뒤부터 셌다) -- 독출이 시작되지 않았을 수 있다.  ACF·'
+                    'LOADPARAMS·클록, 그리고 **Sync In 결선과 상대 유닛**을 '
+                    '보라.  [archon] frame_timeout 으로 상한을 조정한다'
+                    % (self.tag, prev + 1, limit,
+                       max((ticket.int_until or started) - started, 0.0)),
+                    cmd='FRAME')
             fields = await self.query('FRAME', timeout=T_FAST)
             # **"내 다음 프레임" 을 찾는다** -- "최신 프레임" 이 아니다.  저장이
             # 늦으면 그 사이 프레임이 더 나와 있고, 최신 것을 집으면 이 파일이
@@ -634,6 +813,11 @@ class ArchonController:
             if pct is not None and pct >= reported + step:
                 reported = pct
                 yield pct
+            if next_dump is not None and time.monotonic() >= next_dump:
+                next_dump = time.monotonic() + dump_every
+                log.info('%s: 프레임 대기 %.0f초 -- %s', self.tag,
+                         time.monotonic() - started,
+                         await self.diagnostic_snapshot())
             await asyncio.sleep(interval)
 
     async def await_frame(self, ticket: FrameTicket) -> parse.FrameStatus:

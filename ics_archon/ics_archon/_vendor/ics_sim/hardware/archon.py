@@ -19,10 +19,11 @@
 따라 쓰였다.
 
 이미 저장소에 있는 자산:
-  * `ics_archon/scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py` (현행, v1.3.0)
+  * `ics_archon/scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py` (현행, v1.3.4)
         Archon 텍스트/바이너리 프로토콜로 노출·FETCH·raw spec 헤더까지 하는
-        실동작 스크립트 (science = bigbuf 구성.  guide 는
-        `scr_labtest/archon_kmtnet_labtest_v1.0.smallbuf.py` 참조 -- 미개정).  명령
+        실동작 스크립트 (science = bigbuf 구성.  small buffer 주소 지정은
+        같은 폴더의 `…v1.3.smallbuf.py` 가 참고 코드다 -- 그 자체는 science
+        스크립트이고, v1.0 원본은 `__ref_archon_control/` 에 있다).  명령
         시퀀스(POWERON, WCONFIG/APPLYALL, LOADPARAMS, STATUS/FRAME 폴링,
         1 KiB 블록 FETCH)를 그대로 옮겨오면 된다.
         ⚠️ **헤더·텔레메트리는 실기 미검증이다** -- STATUS 필드 이름 · 독출

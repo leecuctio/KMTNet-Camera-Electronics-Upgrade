@@ -226,7 +226,8 @@ def field_value(status: dict[str, str], key: str) -> float | str:
         return FIELD_NC
 
 
-def telemetry_of(status: dict[str, str] | None) -> dict[str, list]:
+def telemetry_of(status: dict[str, str] | None, *,
+                 honour_valid: bool = True) -> dict[str, list]:
     """`STATUS` -> 백엔드 `controller_telemetry()` 한 컨트롤러분.
 
     `{'temp': [...], 'volt': [...], 'curr': [...]}` -- 표기 고정(온도 1자리 ·
@@ -238,8 +239,22 @@ def telemetry_of(status: dict[str, str] | None) -> dict[str, list]:
     비우지 않는다").  STATUS 무응답과 미장착 모듈을 규격이 똑같이 "전 자리
     결측" 으로 다루므로, 헤더에서 그 둘을 가르지 않는다 -- 가르려고 `'NC'` 한
     토큰을 쓰면 **자리 수가 1이 되어** 읽는 쪽에는 모듈 구성이 달라 보인다.
+
+    Args:
+        honour_valid: `VALID=0` 이면 **전 자리를 결측으로 본다** (D4, 운영자
+            승인 2026-08-27).  매뉴얼 p.47 이 "n = 1 if remaining status fields
+            are valid" 라고 못박으므로, `VALID=0` 인 응답의 온도·전압을 헤더에
+            실으면 **무효인 값이 실측값으로 남는다.**  ⚠️ **필드가 없는 경우와
+            `VALID=0` 을 가른다** -- 없다고 결측으로 만들면 그 필드를 보고하지
+            않는 펌웨어에서 첫 실행이 통째로 `NC` 가 된다 (F2 원칙).
+
+            **감시 기록은 `False` 로 부른다** -- `valid=0` 행도 버리지 않고
+            남기는 것이 규칙이고(언제부터 이상했는지가 자료다), 유효 여부는
+            기록의 `valid` 열이 따로 말한다.
     """
     if not status:
+        return {}
+    if honour_valid and status_valid(status) is False:
         return {}
     return {
         'temp': [field_value(status, k) for k in TEMP_MODS],
@@ -311,6 +326,14 @@ def health_problems(status: dict[str, str] | None) -> list[str]:
     if not status:
         return []
     bad: list[str] = []
+    # ⚠️ **`VALID=0` 이면 나머지 필드를 판정하지 않는다** (2026-08-28).
+    # 매뉴얼 p.47 이 "n = 1 if remaining status fields are valid" 라고 못박으므로
+    # `POWER`/`POWERGOOD`/`OVERHEAT` 도 그 "나머지" 에 든다 -- 무효인 블록을
+    # 읽어 `POWER=0 Unknown` 같은 **가짜 경보**를 내면, 진짜 전원 이상이 왔을
+    # 때 사람이 그것을 이미 무시하도록 학습돼 있다.  같은 응답이 헤더에서는
+    # `NC` 로 떨어진다(D4) -- 두 경로가 같은 판단을 해야 한다.
+    if status_valid(status) is False:
+        return ['VALID=0 (이 응답의 나머지 필드는 무효다 -- 판정을 보류한다)']
     if 'POWERGOOD' in status and not power_good(status):
         bad.append('POWERGOOD=0 (시스템 전원 공급 이상)')
     if overheating(status):
@@ -319,6 +342,221 @@ def health_problems(status: dict[str, str] | None) -> list[str]:
     if state is not None and state != POWER_ON:
         bad.append('POWER=%d %s' % (state, POWER_STATES.get(state, '?')))
     return bad
+
+
+# ---------------------------------------------------------------------------
+# STATUS -- 감시·기록 (층 1·2)
+# ---------------------------------------------------------------------------
+#
+# **판독기가 아니라 기록기다.**  층 1(온도 10 + 레일 7x2 = 24개)은 위
+# `telemetry_of()` 가 이미 정확히 그 값을 준다 -- 감시와 FITS 헤더가 **같은
+# 함수**를 읽으므로 둘이 어긋날 수 없다(기계 사본을 넷째로 만들지 않는다).
+# 여기 있는 것은 그 위에 얹는 것들이다: 응답 자체의 건강 필드(`VALID`/`COUNT`/
+# `LOG`), 레일 정상 범위 판정, 그리고 층 2 의 바이어스 16채널이다.
+
+
+def status_valid(status: dict[str, str] | None) -> bool | None:
+    """`VALID` (매뉴얼 p.47) -- 나머지 필드가 유효한가.  **보고가 없으면 `None`.**
+
+    세 값을 갈라야 한다:
+
+    | 반환 | 뜻 | 헤더 |
+    |---|---|---|
+    | `True` | `VALID=1` -- 나머지 필드가 유효하다 | 실측값 |
+    | `False` | `VALID=0` -- **컨트롤러가 무효라고 말했다** | `NC` (D4) |
+    | `None` | 필드가 없다 -- 이 펌웨어는 보고하지 않는다 | 실측값 (F2) |
+
+    ⚠️ **`None` 을 `False` 로 접으면 안 된다.**  그러면 `VALID` 를 보고하지
+    않는 펌웨어에서 **첫 실행이 통째로 `NC`** 가 된다 -- "보고하지 않는 필드는
+    이상으로 세지 않는다" 는 F2 원칙 그대로다.
+    """
+    if not status:
+        return None
+    raw = status.get('VALID')
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip()) != 0
+    except (TypeError, ValueError):
+        log.warning('STATUS VALID=%r 를 정수로 읽을 수 없다 -- 판정을 '
+                    '보류한다(보고 없음과 같게 다룬다)', raw)
+        return None
+
+
+def status_count(status: dict[str, str] | None) -> int | None:
+    """`COUNT` (매뉴얼 p.47) -- 내부 상태 레지스터를 갱신한 횟수.
+
+    **두 질의 사이에 안 변하면 새로 잰 것이 아니라 같은 블록이다.**  값 자체는
+    뜻이 없고 **직전 행과의 차이**가 신선도다 -- 기록의 `fresh` 열이 그것이다.
+    감소하면 래핑 또는 컨트롤러 재기동이다(폭은 매뉴얼 미기재).
+    """
+    return _opt_int(status, 'COUNT')
+
+
+def log_count(status: dict[str, str] | None) -> int | None:
+    """`LOG` (매뉴얼 p.47) -- 컨트롤러가 들고 있는 로그 항목 수.
+
+    ⚠️ **`FETCHLOG` 로 빼내지 않는다** (운영자 확정 2026-08-27).  이 값 한 열만
+    남긴다 -- 이미 파싱하는 응답 안에 있어 **왕복이 0** 이고, 드레인을 안 해도
+    신호가 된다: 값이 오르면 컨트롤러가 무언가 기록하고 있다는 뜻이고, 우리
+    로그와 나란히 놓으면 "우리가 못 본 사건이 있었나" 를 알 수 있다.  **상한
+    근처에 계속 붙어 있으면 놓치고 있다는 신호**다(깊이를 모르는 채로도 읽을
+    수 있다).  드레인 승격 기준은 probe 1단계(P-d)가 판단한다.
+    """
+    return _opt_int(status, 'LOG')
+
+
+def _opt_int(status: dict[str, str] | None, key: str) -> int | None:
+    """정수 필드 하나.  **없거나 안 읽히면 `None`** (0 이 아니다).
+
+    `0` 으로 접으면 "보고하지 않는다" 와 "0 개다" 가 같아진다 -- `LOG` 에서는
+    그 둘이 정반대의 뜻이다.
+    """
+    if not status:
+        return None
+    raw = status.get(key)
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+#: 전원 레일의 **정상(power good) 범위** -- 매뉴얼 p.41 표 (`(하한, 상한)` [V]).
+#:
+#: 감시가 수치만 적지 않고 **이탈을 표시**할 근거다.  ⚠️ **비대칭이라 ±% 규칙을
+#: 쓰면 틀린다** -- `N6V` 는 하한 −6.6 / 상한 −5.3 인데 `P6V` 는 +5.5 / +6.6 이다.
+#:
+#: ⚠️ 이 값은 **전원 보드의 저항으로 정해지는 기본값**이므로 (p.42 "The allowed
+#: nominal levels are set by resistors on the power board") 유닛마다 다를 수
+#: 있다 -- `[archon.rails]` 로 덮을 수 있게 뒀다.
+#:
+#: 자리 순서는 `VOLT_RAILS`(규격 5.6.1절)와 같고 **`P17V`(+16.4 … +17.5)** 도
+#: 표에 있다 -- `SMC_CLAUDE.md` 로 옮겨 적은 표에서 이 한 줄이 빠져 있었다
+#: (2026-08-28 매뉴얼 원문으로 확인해 채웠다).
+RAIL_LIMITS: dict[str, tuple[float, float]] = {
+    'P2V5': (2.1, 2.9),
+    'P5V': (4.4, 5.6),
+    'P6V': (5.5, 6.6),
+    'N6V': (-6.6, -5.3),
+    'P17V': (16.4, 17.5),
+    'N17V': (-17.7, -16.6),
+    'P35V': (34.3, 36.0),
+}
+
+
+def rail_problems(status: dict[str, str] | None,
+                  limits: dict[str, tuple[float, float]] | None = None
+                  ) -> list[str]:
+    """정상 범위를 벗어난 레일 (없으면 빈 목록).  기록의 `rail_flag` 열.
+
+    **보고가 없는 레일은 세지 않는다** (F2 원칙) -- 안 쓰는 레일은 애초에
+    배선도 감시도 되지 않으므로(p.42) 결측이 정상이다.  값이 비수치인 경우도
+    같다: 그것은 `telemetry_of()` 가 이미 `NC` 로 남긴다.
+
+    ⚠️ **`POWER=4` 가 아니면 바이어스가 ~0 V 다**(p.77).  그건 CCD 바이어스지
+    시스템 레일이 아니라 여기에는 영향이 없다 -- 두 층을 섞지 말 것.
+    """
+    table = RAIL_LIMITS if limits is None else limits
+    if not status:
+        return []
+    bad: list[str] = []
+    for rail in VOLT_RAILS:
+        span = table.get(rail)
+        if span is None:
+            continue
+        value = field_value(status, rail + '_V')
+        if not isinstance(value, float):
+            continue                    # 결측·비수치 -- NC 로 이미 남는다
+        lo, hi = span
+        if value < lo or value > hi:
+            bad.append('%s=%.3fV (정상 %.1f..%.1f)' % (rail, value, lo, hi))
+    return bad
+
+
+# -- 층 2 -- 바이어스 채널 ---------------------------------------------------
+#
+# ⚠️ **ACF 설정 키와 STATUS 키의 문자열이 같다.**  `MODm/HVHC_V1` 은 ACF 에서
+# **지령값**("Set the power on voltage", p.60)이고 STATUS 에서 **실측값**
+# ("voltage reading", p.48)이다.  `controller.parse_acf()` 가 역슬래시를 `/` 로
+# 정규화하므로 `ctrl.config` 와 `ctrl.status` 의 키가 **글자 하나까지 같아진다**
+# -- 값도 15 vs 15.02 로 비슷해서 잘못된 dict 를 뒤져도 그럴듯해 보인다.
+#
+# 그래서 아래 둘은 **인자를 갈라 받는다**: 이름표(어느 채널이 있나)는 ACF 에서,
+# 값은 STATUS 에서.  **두 dict 를 절대 합치지 말 것.**
+
+#: 바이어스 계열 이름 -- 모듈 형에 따라 키가 다르다 (매뉴얼 p.48).
+#:
+#:     LVLC  n=1~24   LV(X)Bias, 10 mA max     LVHC  n=1~6   500 mA max
+#:     HVLC  n=1~24   HV(X)Bias, 10 mA max     HVHC  n=1~6   250 mA max
+#:
+#: ⚠️ **전류 단위가 mA 다** -- 시스템 레일(`P2V5_I` 등)은 A 다.  섞으면 1000배
+#: 틀린다.  기록의 열 이름에 단위를 박아 두는 이유가 이것이다.
+BIAS_SERIES = ('HVHC', 'HVLC', 'LVHC', 'LVLC')
+
+
+def bias_channels(config: dict[str, str] | None) -> list[tuple[str, str]]:
+    """**ACF** 에서 이름표가 붙은 바이어스 채널을 찾는다.
+
+    돌려주는 것은 `[(필드 앞자리, 이름표), ...]` 이고 앞자리는 `'MOD9/HVHC_1'`
+    꼴이다 -- 실제 STATUS 키는 `MOD9/HVHC_V1` · `MOD9/HVHC_I1` 이라
+    `bias_readings()` 가 조립한다.
+
+    **왜 ACF 에서 찾나** -- STATUS 는 계열마다 24(또는 6)채널을 전부 보고하지만
+    실제로 CCD 에 물린 것은 이름표가 붙은 것뿐이다.  `KMTK_SCI_113` ACF 기준으로
+    `MOD4/LVHC` 6 + `MOD9/HVHC` 6 + `MOD9/HVLC` 4 = **16채널**이고 나머지는
+    0 V 로 나온다.  전량을 적으면 열이 100개를 넘고 그 대부분이 상수 0 이다.
+
+    **슬롯을 못박지 않는다** -- ACF 를 훑어 찾으므로 채널 구성이 다른 ACF 나
+    guide 유닛에도 같은 코드가 그대로 쓰인다.  ⚠️ 그리고 그 구성 변경은
+    `CTRLnCFG`(설정) 범프로 드러나야 한다 (규격 4.3절) -- 열 수가 조용히 바뀌면
+    과거 기록 파일이 오독된다.  기록이 **날짜별 파일 + 헤더 줄**을 두는 이유가
+    그것이다.
+
+    정렬은 `(모듈 번호, 계열, 채널 번호)` 다 -- 실기 science 에서는
+    `MOD4/LVHC1..6` -> `MOD9/HVHC1..6` -> `MOD9/HVLC{11,12,23,24}` 순이 된다.
+    """
+    if not config:
+        return []
+    found: list[tuple[int, str, int, str]] = []
+    for key, value in config.items():
+        label = (value or '').strip()
+        if not label or not key.startswith('MOD') or '_LABEL' not in key:
+            continue
+        head, _, chan_txt = key.partition('_LABEL')
+        mod_txt, _, series = head.partition('/')
+        if series not in BIAS_SERIES:
+            continue
+        try:
+            mod = int(mod_txt[3:])
+            chan = int(chan_txt)
+        except ValueError:
+            continue
+        found.append((mod, series, chan, label))
+    return [('MOD%d/%s_%d' % (mod, series, chan), label)
+            for mod, series, chan, label in sorted(found)]
+
+
+def bias_readings(status: dict[str, str] | None,
+                  channels: list[tuple[str, str]]
+                  ) -> list[tuple[str, float | str, float | str]]:
+    """**STATUS** 에서 그 채널들의 실측 V [V] · I [mA] 를 읽는다.
+
+    `[(이름표, V, I), ...]` -- 결측·비수치는 `field_value()` 가 `'NC'` 로
+    남긴다(자리를 비우지 않는다).
+
+    ⚠️ **`POWER=4` 가 아닐 때의 값은 전 채널 ~0 V 다** (매뉴얼 p.77).  그래서
+    기록에 `power` 열이 함께 있어야 하고, 없으면 `BIAS`·전원 꺼진 구간이
+    "전 채널 고장" 으로 보인다.
+    """
+    out = []
+    for prefix, label in channels:
+        head, _, chan = prefix.rpartition('_')
+        out.append((label,
+                    field_value(status or {}, '%s_V%s' % (head, chan)),
+                    field_value(status or {}, '%s_I%s' % (head, chan))))
+    return out
 
 
 # ---------------------------------------------------------------------------

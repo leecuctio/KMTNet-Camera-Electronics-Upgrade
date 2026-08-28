@@ -24,6 +24,7 @@ from __future__ import annotations
 import configparser
 import logging
 import os
+import shutil
 from dataclasses import dataclass, field
 
 from . import _simpath
@@ -101,6 +102,40 @@ class ArchonCfg:
     telemetry: bool = True
     status_timeout: float = 3.0
 
+    # -- 텔레메트리 주기 감시·기록 (층 1·2, 2026-08-28) --------------------
+    #: 배경 감시를 돌릴지.  **`telemetry = false` 면 이 값과 무관하게 안 돈다**
+    #: -- 그 설정의 뜻이 "컨트롤러와의 왕복을 labtest v1.0 계보와 똑같이 둔다"
+    #: 이므로 감시도 예외가 아니다.
+    #:
+    #: 감시는 **헤더용 스냅샷(`ctrl.status`)을 건드리지 않는다** -- 살아 있는
+    #: 값은 `ctrl.status_live` 에 따로 든다.  섞으면 `Cn_TEMP` 의 뜻이 "노출
+    #: 개시 시점 값" 에서 "마지막 폴링 값" 으로 조용히 바뀌고, 폴링 간격·락
+    #: 경합에 따라 **노출마다 달라져 비결정적**이 된다.
+    monitor: bool = True
+    #: 기록 간격 [s].  운영자 확정 **수십 초 ~ 수 분** (2026-08-27) -- 기본 20초.
+    #:
+    #: 이 간격이라 FETCH 락(최대 수 분)에 밀려 표본 한두 개를 건너뛰는 것은
+    #: **문제로 보지 않는다.**  밀린 시간은 기록의 `lag_ms` 열에 남고, 밀린
+    #: 만큼 몰아서 뜨지는 않는다.
+    monitor_interval: float = 20.0
+    #: 기록 자리.  **`~/AIC/log/`** (운영자 확정 2026-08-27).
+    #:
+    #: ⚠️ `[paths] data_dir` 밑에 두지 않는다 -- 자료와 함께 굴러가 아카이브
+    #: 정책에 걸린다.  `~` 는 읽을 때 펼친다(안 펼치면 **cwd 아래 `~` 폴더**가
+    #: 조용히 생기고 오류도 안 난다).
+    monitor_log: str = '~/AIC/log'
+    #: 전원 레일의 정상 범위 [V].  **`None` 이면 매뉴얼 p.41 기본값**
+    #: (`archon.parse.RAIL_LIMITS`).
+    #:
+    #: 그 값은 **전원 보드의 저항으로 정해지는 기본값**이라(p.42) 유닛마다 다를
+    #: 수 있어 `[archon.rails]` 절로 덮을 수 있게 뒀다.  ⚠️ **비대칭이라 ±%
+    #: 규칙을 쓰면 틀린다** -- `N6V` 는 −6.6 … −5.3 인데 `P6V` 는 +5.5 … +6.6 이다.
+    #:
+    #: 기본값을 여기 사본으로 두지 않는 이유는 `parse.VOLT_RAILS` 와 같다 --
+    #: 한쪽만 고쳐지는 것을 막는다 (그리고 `config` 가 `archon` 을 import 하면
+    #: 순환이 된다).
+    rail_limits: dict | None = None
+
     # -- 노출·독출 -------------------------------------------------------
     #: 셔터 트리거(TRIGOUTFORCE)를 내는 컨트롤러.  `both` 면 둘 다.
     #: 실기 배선이 확인되면 한쪽으로 좁힌다 (검토사항).
@@ -118,6 +153,17 @@ class ArchonCfg:
     lock_buffer: bool = True
     #: FRAME 폴링 간격 [s].  labtest 는 0.5/0.65 를 썼다.
     frame_poll: float = 0.5
+    #: 프레임 대기 중 **진단 덤프**를 몇 초마다 찍을지.  `0` 이면 끈다(기본).
+    #:
+    #: labtest `FRAME_DUMP_ENABLE` 의 자리다 (v1.3.4, 2026-08-27).  취득이 안
+    #: 끝날 때 "노출이 안 걸렸나 / 독출이 안 끝나나" 를 가르는 계측이고,
+    #: **정상 취득이 도는 동안은 꺼 둔다** -- 한 번에 왕복이 셋(FRAME·STATUS·
+    #: TIMER) 늘어난다.
+    #:
+    #: ⚠️ **시한 초과 때의 진단 한 장은 이 값과 무관하게 항상 남는다** --
+    #: 그 증상은 간헐이라(가동 시간이 길어지면 재발했다) 평소 덤프를 꺼 두면
+    #: 정작 재발했을 때 증거가 없다.
+    frame_dump: float = 0.0
     #: 노출 지시부터 프레임 완료까지의 상한 [s].  0 이면 무한 대기.
     #:
     #: **없으면 조용히 멈춘다.**  labtest 는 `while True` 로 프레임 번호가
@@ -307,6 +353,51 @@ def _solo_tag(cp: configparser.ConfigParser, n_controllers: int) -> str:
     return CTRLTAGS[0]
 
 
+def _rail_limits(cp: configparser.ConfigParser) -> dict | None:
+    """`[archon.rails]` -> `{레일: (하한, 상한)}`.  절이 없으면 `None`(기본값).
+
+    형식은 `p2v5 = 2.1, 2.9` 다 (레일 이름은 대소문자를 안 가린다).  **기본값은
+    매뉴얼 p.41 이고 `archon.parse.RAIL_LIMITS` 가 정본**이다 -- 여기서는 그것을
+    통째로 대체하지 않고 **적힌 레일만 덮는다**: 한 레일을 조정하려다 나머지
+    여섯의 판정이 통째로 사라지면 그것이 조용한 감시 구멍이 된다.
+
+    ⚠️ 이 값은 전원 보드의 저항으로 정해지므로(p.42) 유닛마다 다를 수 있다.
+    그리고 **비대칭이다** -- `-6.6, -5.3` 처럼 작은 쪽을 앞에 적는다(순서가
+    뒤집혀 있으면 바로잡고 알린다).
+    """
+    if not cp.has_section('archon.rails'):
+        return None
+    # **지연 import** -- 모듈 최상단에서 `archon` 을 끌어오면 `archon/__init__`
+    # -> `backend` -> `config` 로 순환한다.
+    from .archon import parse as _parse
+
+    out = dict(_parse.RAIL_LIMITS)
+    for key, raw in cp.items('archon.rails'):
+        rail = key.strip().upper()
+        parts = [p.strip() for p in str(raw).split(',')]
+        if len(parts) != 2:
+            raise ArchonConfigError(
+                "[archon.rails] %s 는 '하한, 상한' 두 값이어야 한다: %r"
+                % (key, raw))
+        try:
+            lo, hi = float(parts[0]), float(parts[1])
+        except ValueError:
+            raise ArchonConfigError(
+                '[archon.rails] %s 의 값이 수치가 아니다: %r' % (key, raw)
+            ) from None
+        if lo > hi:
+            log.warning('[archon.rails] %s 의 하한·상한이 뒤집혀 있다 (%g, %g) '
+                        '-- 바로잡아 쓴다.  음전압 레일은 -6.6, -5.3 처럼 작은 '
+                        '쪽을 앞에 적는다', key, lo, hi)
+            lo, hi = hi, lo
+        if rail not in out:
+            log.warning('[archon.rails] %r 는 규격 5.6.1절 레일 목록에 없다 '
+                        '(%s) -- 판정에 쓰이지 않는다',
+                        key, ' '.join(_parse.VOLT_RAILS))
+        out[rail] = (lo, hi)
+    return out
+
+
 def load(path: str) -> ArchonCfg:
     """ini 에서 `[archon]` 절을 읽는다.  절이 없으면 기본값."""
     cfg = ArchonCfg()
@@ -347,6 +438,16 @@ def load(path: str) -> ArchonCfg:
     cfg.telemetry = _bool(s, 'telemetry', cfg.telemetry)
     cfg.status_timeout = _num(s, 'status_timeout', cfg.status_timeout, float)
 
+    cfg.monitor = _bool(s, 'monitor', cfg.monitor)
+    cfg.monitor_interval = _num(s, 'monitor_interval', cfg.monitor_interval,
+                                float)
+    # **`~` 를 펼친다.**  안 펼치면 `os.makedirs` 가 작업 디렉터리 아래에 `~`
+    # 라는 폴더를 아무 불평 없이 만들고, 오류가 없으므로 기록이 엉뚱한 곳에
+    # 쌓이는 것이 드러나지 않는다 (`ics_sim config.py` 의 2026-08-23 실측).
+    raw_log = _text(s, 'monitor_log', cfg.monitor_log)
+    cfg.monitor_log = os.path.expanduser(raw_log) if raw_log else ''
+    cfg.rail_limits = _rail_limits(cp)
+
     cfg.shutter_ctrl = _head(s, 'shutter_ctrl', cfg.shutter_ctrl).upper()
     if cfg.shutter_ctrl not in CTRLTAGS + ('BOTH',):
         raise ArchonConfigError(
@@ -356,6 +457,7 @@ def load(path: str) -> ArchonCfg:
                                     cfg.full_flush_on_erase)
     cfg.lock_buffer = _bool(s, 'lock_buffer', cfg.lock_buffer)
     cfg.frame_poll = _num(s, 'frame_poll', cfg.frame_poll, float)
+    cfg.frame_dump = _num(s, 'frame_dump', cfg.frame_dump, float)
     cfg.frame_timeout = _num(s, 'frame_timeout', cfg.frame_timeout, float)
     cfg.shutdown_drain = _num(s, 'shutdown_drain', cfg.shutdown_drain,
                               float)
@@ -441,6 +543,130 @@ def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
             '상한을 조여 놔도 전송에서 그만큼 매달린다.  실측 MiB/s 가 나오면 '
             'fetch_timeout 에 적을 것 (F5)' % (fetch_cap, cfg.frame_timeout))
     notes += _cross_checks(cfg, sim_cfg)
+    notes += _storage_checks(cfg, sim_cfg)
+    notes += _ascii_checks(sim_cfg)
+    return notes
+
+
+#: 헤더에 그대로 실리는 **손편집 ini 값**들 -- `(절, 필드)`.
+#:
+#: labtest 는 이 값들을 기동에서 검사한다(`_check_identity_setup()`).  여기서도
+#: 같은 자리를 본다 -- 목록을 코드로 못박아 두면 `[site]`/`[camera]` 에 카드가
+#: 늘 때 이 검사가 따라가지 않는 것이 드러난다.
+_HEADER_INI_FIELDS = (
+    ('controllers', ('ctrl1_id', 'ctrl1_sn', 'ctrl1_cfg',
+                     'ctrl2_id', 'ctrl2_sn', 'ctrl2_cfg', 'rdmode')),
+    ('camera', ('detector', 'camver', 'instrume', 'fpaid')),
+    ('site_override', ('telescop', 'origin', 'latitude', 'longitud')),
+)
+
+
+def _ascii_checks(sim_cfg) -> list[str]:  # noqa: ANN001
+    """헤더에 실릴 ini 값에 **비ASCII 가 섞였나** (labtest 3중 방어의 첫째).
+
+    **FITS 헤더는 ASCII 전용이다** (raw spec 5.0절).  한글 한 자가 섞이면
+    `fitswrite.card_image()` 가 `?` 로 바꿔 파일은 온전하지만 **값은 잃는다** --
+    그리고 그 경고는 카드마다·프레임마다 뜨므로, 밤새 돌리고 나서야 헤더가
+    `????` 로 찬 것을 보게 된다.  labtest 는 같은 이유로 **기동에서** 검사한다.
+
+    ⚠️ **기동을 막지는 않는다.**  labtest 는 거부하지만 그쪽은 사람이 붙어 있는
+    실험실 스크립트이고, 여기는 OBSAgent 가 상대인 상주 프로그램이다 -- 카드
+    한 장 때문에 관측을 통째로 못 하게 만드는 쪽이 더 나쁘다.  대신 기동 배너
+    옆에 크게 남는다.
+
+    바이트 정렬은 `fitswrite` 가 따로 지킨다(문자 수가 아니라 **바이트 수**로
+    단정한다) -- 그것이 labtest 3중 방어의 둘째·셋째다.
+    """
+    notes: list[str] = []
+    if sim_cfg is None:
+        return notes
+    bad: list[str] = []
+
+    def _scan(label: str, block, fields) -> None:  # noqa: ANN001
+        if block is None:
+            return
+        for field_name in fields:
+            value = getattr(block, field_name, '')
+            if isinstance(value, str) and value and not value.isascii():
+                bad.append('[%s] %s=%r' % (label, field_name, value))
+
+    for section, fields in _HEADER_INI_FIELDS:
+        _scan(section.replace('_override', ''),
+              getattr(sim_cfg, section, None), fields)
+    # **사이트별 표도 본다** -- 실제로 쓰이는 것은 `[site.<코드>]` 쪽이고,
+    # `[site]` 덮어쓰기만 검사하면 현장 값이 통째로 빠진다.
+    site_fields = dict(_HEADER_INI_FIELDS)['site_override']
+    for code, block in sorted(getattr(sim_cfg, 'site_table', {}).items()):
+        _scan('site.%s' % str(code).lower(), block, site_fields)
+    if bad:
+        notes.append(
+            '헤더에 실릴 ini 값에 **비ASCII 문자**가 있다: %s -- FITS 헤더는 '
+            'ASCII 전용이라(raw spec 5.0절) 그 자리가 `?` 로 바뀌어 실린다.  '
+            '값은 잃고 파일은 온전하다.  ASCII 로 고칠 것' % ', '.join(bad))
+    return notes
+
+
+#: 저장 자리 여유를 볼 때의 기준 -- **pair 몇 장분**인가.
+#:
+#: 절대값(GB)으로 두면 기하가 바뀔 때 뜻이 달라진다.  10장은 "밤새 돌릴 양" 이
+#: 아니라 **"지금 당장 몇 장은 찍을 수 있다"** 의 문턱이다 -- 실기 pair 한 장이
+#: 688 MiB(344 x 2)라 10장이면 약 6.7 GiB 다.
+STORAGE_MIN_PAIRS = 10
+
+
+def _storage_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
+    """저장 자리를 **기동에서** 본다 (labtest v1.1.3 이 세운 규칙).
+
+    **왜 기동인가** -- 저장 경로가 틀렸다는 것이 드러나는 자리가 종전에는
+    `write_frame()` 이었고, 그 시점에는 이미 **fetch 를 마친 뒤**다.  즉 다
+    읽어낸 노출을 잃는다.  labtest 는 이 검사를 `POWERON` 앞으로 올려서 같은
+    문제를 닫았다(`createFolder` 가 `OSError` 를 삼켜 전원을 켠 채로 끝나던
+    경로였다 -- README_labtest v1.1.3).
+
+    **막지는 않는다.**  경고만 낸다 -- 관측소에서 마운트가 늦게 붙는 배치가
+    실재하고, 여기서 기동을 거부하면 그 배치가 통째로 못 돌아간다.  대신
+    기동 배너 옆에 크게 남아 자료 한 장 찍기 전에 사람 눈에 띈다.
+    """
+    notes: list[str] = []
+    if sim_cfg is None:
+        return notes
+    path = os.path.expanduser(getattr(sim_cfg.paths, 'data_dir', '') or '')
+    if not path:
+        return notes
+
+    if not os.path.isdir(path):
+        # ⚠️ **없다고 만들지 않는다.**  가장 흔한 원인이 "마운트가 안 붙었다"
+        # 인데, 그때 만들어 버리면 **마운트 지점을 가려** OS 디스크에 자료가
+        # 쌓이기 시작한다 -- 그리고 나중에 마운트가 붙으면 그 자료가 통째로
+        # 안 보이게 된다.
+        notes.append(
+            '[paths] data_dir 이 아직 없다 -- %r.  저장할 때 만들어지지만, '
+            '외장을 쓸 작정이었으면 **마운트를 먼저 확인하라** (없는 채로 두면 '
+            'OS 디스크에 쌓이고 나중에 마운트가 붙으면 그 자료가 가려진다)'
+            % path)
+        return notes
+
+    if not os.access(path, os.W_OK):
+        notes.append(
+            '[paths] data_dir 에 쓸 수 없다 -- %r.  읽기전용으로 붙었거나 '
+            '권한이 없다.  **이대로면 독출을 마친 프레임을 저장 단계에서 '
+            '잃는다** (mount | grep 으로 확인)' % path)
+        return notes
+
+    try:
+        free = shutil.disk_usage(path).free
+    except OSError as exc:                          # pragma: no cover
+        notes.append('[paths] data_dir 의 여유 용량을 못 읽었다 (%s) -- %r'
+                     % (exc, path))
+        return notes
+
+    pair = cfg.frame_bytes * 2                      # 컨트롤러 2대 = 파일 2개
+    if free < pair * STORAGE_MIN_PAIRS:
+        notes.append(
+            '[paths] data_dir 여유가 %.1f GiB 뿐이다 (%r) -- pair 한 장이 '
+            '%.0f MiB 라 %d장도 안 들어간다.  **디스크가 차면 그 프레임은 '
+            'fetch 를 마친 뒤에 사라진다**'
+            % (free / (1 << 30), path, pair / (1 << 20), STORAGE_MIN_PAIRS))
     return notes
 
 
@@ -490,11 +716,25 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
             % (sim_cfg.paths.data_dir, _os.path.abspath(sim_cfg.paths.data_dir)))
 
     # 실기에서 뜻이 없는 설정 -- 고쳐도 아무 일이 없다는 사실을 알린다.
+    #
+    # ⚠️ **기본값과 다를 때만** 센다.  "안 쓰인다" 를 늘 외치면 그것이 배경
+    # 소음이 되고, 사람이 **실제로 고쳐 놓은 것**을 알리는 이 경고의 목적이
+    # 사라진다.
     dead = []
     if sim_cfg.paths.write_fits:
         dead.append('[paths] write_fits(시뮬 전용)')
     if tuple(sim_cfg.paths.fits_shape) != (256, 256):
         dead.append('[paths] fits_shape(시뮬 전용)')
+    # **archon 은 진행률을 컨트롤러의 `FRAME`(BUFnLINES/BUFnHEIGHT)에서 얻는다**
+    # -- 시뮬의 계단 파라미터 셋은 아예 안 쓰인다 (`pctread_final` 만 쓴다).
+    # 검토사항 A2 (2026-08-28 처리).
+    readout = getattr(sim_cfg, 'readout', None)
+    for key, default in (('pctread_start', 6), ('pctread_step', 11),
+                         ('pctread_tick', 3.37)):
+        got = getattr(readout, key, default)
+        if got != default:
+            dead.append('[readout] %s=%g(시뮬 전용 -- 진행률은 컨트롤러 '
+                        'FRAME 에서 온다)' % (key, got))
     if dead:
         notes.append('archon 백엔드가 보지 않는 설정이 바뀌어 있다: %s -- '
                      '실기 산출물에는 영향이 없다' % ', '.join(dead))

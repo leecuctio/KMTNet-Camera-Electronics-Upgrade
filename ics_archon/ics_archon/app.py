@@ -16,10 +16,15 @@
    아는 유일한 근거가 그 파일명이다.
 4. **종료** -- 전원을 끄고 연결을 닫는다.  전원을 켠 채로 끝나는 것은 검출기
    쪽 위험이다.
+5. **접속과 텔레메트리 감시** -- 기동에서 컨트롤러에 접속하고, 그 뒤에 컨트롤러
+   마다 주기 감시 태스크를 띄운다 (층 1·2, `archon/monitor.py`).
+   `IcsSim.spawn()` 을 쓰므로 `ics_sim` 은 무수정이다.  **한 컨트롤러의 접속자는
+   이 프로세스 하나다** -- guide 는 `icg_archon` 이 같은 방식으로 맡는다.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -31,6 +36,8 @@ from ics_sim.app import IcsSim                            # noqa: E402
 from ics_sim.hardware import register_backend             # noqa: E402
 
 from .archon.backend import ArchonBackend                 # noqa: E402
+from .archon.monitor import TelemetryMonitor              # noqa: E402
+from .archon.protocol import ArchonError                  # noqa: E402
 
 log = logging.getLogger('ics_archon.app')
 
@@ -71,6 +78,13 @@ class IcsArchon(IcsSim):
         # `ICSBUILD` -- 이 프로그램의 것으로.
         self.state.ics_build = build_id()
 
+        #: 돌고 있는 텔레메트리 감시 (`start()` 가 띄우고 `stop()` 이 세운다).
+        self._monitors: list[TelemetryMonitor] = []
+        #: 그 태스크 -- 종료에서 **실제로 기다리려면** 참조가 필요하다.
+        #: (`IcsSim` 도 참조를 들고 있지만 그쪽은 `super().stop()` 에서
+        #: 취소할 뿐이라, 우리가 원하는 "먼저 곱게 세운다" 를 못 한다.)
+        self._monitor_tasks: list = []
+
         # `RDMODE` -- ini 가 비었으면 ACF 이름에서.
         if not cfg.controllers.rdmode:
             for tag in ('MK', 'NT'):
@@ -94,6 +108,10 @@ class IcsArchon(IcsSim):
             log.warning('[archon]: %s', note)
         await super().start()
         self._log_archon_banner()
+        # **접속을 먼저 연다 -- 감시는 그 뒤에 시작한다** (운영자 2026-08-28).
+        # 한 컨트롤러의 접속자는 이 프로세스 하나다.
+        await self._connect_controllers()
+        self._start_monitors()
 
     async def stop(self) -> None:
         """종료 -- **백엔드를 먼저 내린다.**
@@ -103,6 +121,8 @@ class IcsArchon(IcsSim):
         (labtest 가 노출 루프를 `try/finally` 로 감싼 것과 같은 이유 --
         DevNote 11.22 (4)).
         """
+        # **감시를 가장 먼저 세운다** -- 아래 `_stop_monitors()` 참조.
+        await self._stop_monitors()
         # **저장 중인 프레임을 먼저 지킨다.**  `super().stop()` 이 태스크를
         # 취소하고 `backend.shutdown()` 이 링크를 닫으므로, 그 전에 기다리지
         # 않으면 독출을 마친 프레임이 파일 없이 사라진다 -- 전원을 끄는 것보다
@@ -121,6 +141,92 @@ class IcsArchon(IcsSim):
                 log.exception('백엔드 종료 중 예외 -- 유닛 전원 상태를 직접 '
                               '확인하라')
         await super().stop()
+
+    async def _connect_controllers(self) -> None:
+        """**기동에서 각 컨트롤러에 접속한다** (운영자 확정 2026-08-28).
+
+        `ics_archon` 이 그 컨트롤러의 **유일한 접속자**다.  `icg_archon` 이
+        guide 를 맡고, 한 컨트롤러에 여러 노드가 붙는 구성은 두지 않는다 --
+        Rev F 백플레인은 동시 접속이 하나뿐이고(매뉴얼 p.15), Rev H(4접속)에서도
+        같은 규칙을 쓴다.  **소유자가 하나면 "누가 이 값을 읽었나" 를 물을 일이
+        없다.**
+
+        그래서 접속을 여는 자리를 여기로 못박았다 -- 종전에는 첫 노출의
+        `prepare()` 였고, 감시를 넣으면서 잠깐 **감시 태스크의 부수효과**가 됐다.
+        둘 다 "접속이 언제 열리나" 를 코드 흐름에서 읽기 어렵게 만든다.
+
+        **실패해도 기동을 막지 않는다.**  컨트롤러 전원이 나중에 들어오는 배치가
+        실재하고, 여기서 죽으면 그 배치가 통째로 못 돈다.  감시가
+        `monitor_interval` 마다 다시 시도하고(`monitor = false` 면 첫 노출의
+        `prepare()` 가 시도한다), 못 붙은 사실은 아래 배너와 로그에 남는다.
+        """
+        for ctrl in self.backend._active():
+            if ctrl.link.connected:
+                continue
+            try:
+                await ctrl.connect()
+            except (ArchonError, TimeoutError, OSError) as exc:
+                log.warning('%s: 기동 접속 실패 (%s) -- 기동은 계속한다.  '
+                            '컨트롤러 전원과 [archon] ctrl_%s_host 를 확인하라',
+                            ctrl.tag, exc, ctrl.tag.lower())
+                continue
+            log.info('%s: 접속 %s:%d', ctrl.tag, ctrl.link.host, ctrl.link.port)
+
+    def _start_monitors(self) -> None:
+        """컨트롤러마다 텔레메트리 감시 태스크를 띄운다 (층 1·2).
+
+        **`IcsSim.spawn()` 을 그대로 쓴다** -- `ics_sim` 은 한 줄도 안 고친다.
+        그쪽이 태스크 참조를 들고 있다가 `stop()` 에서 취소하므로, 우리는 그보다
+        **먼저** 멈춰 세우기만 하면 된다 (아래 `stop()`).
+
+        ⚠️ **감시는 `ctrl.status_live` 만 갱신한다** -- 헤더용 `ctrl.status` 는
+        노출 개시에 언 채로 남는다.  그 둘을 섞으면 `Cn_TEMP/VOLT/CURR` 의 뜻이
+        "노출 개시 시점 값" 에서 "마지막 폴링 값" 으로 조용히 바뀐다.
+        """
+        if not self.acfg.monitor:
+            log.info('[archon] monitor=false -- 텔레메트리 감시를 걸지 않는다')
+            return
+        ctrls = getattr(self.backend, 'ctrls', None)
+        if not ctrls:
+            return
+        for tag in self.backend.tags:
+            mon = TelemetryMonitor(ctrls[tag], self.acfg,
+                                   expstatus=lambda: self.state.expstatus)
+            self._monitors.append(mon)
+            self._monitor_tasks.append(self.spawn(mon.run()))
+
+    async def _stop_monitors(self) -> None:
+        """감시를 **가장 먼저** 세운다 -- 종료 순서가 중요하다.
+
+        `backend.shutdown()` 이 `POWEROFF` 를 내고 링크를 닫는데, 그 사이에
+        감시가 `STATUS` 를 물면 종료 때마다 `poll_failed` 행이 남아 **진짜
+        고장과 구별되지 않는다.**  그래서 전원을 끄기 전에 세운다.
+
+        **끝날 때까지 기다린다** -- 세우라고 표시만 하고 넘어가면(`sleep(0)`)
+        폴링 중이던 감시가 `POWEROFF`·`close()` 와 겹쳐 바로 그 헛 `poll_failed`
+        를 남긴다.
+
+        ⚠️ **다만 무한정 기다리지는 않는다.**  FETCH 가 락을 수 분 쥐고 있으면
+        감시는 그 뒤에나 깨어난다 -- 그때까지 종료를 붙잡아 두면 전원 차단이
+        늦어진다(검출기 쪽 위험).  상한을 넘기면 취소하는데, 그래도 마지막
+        `stop` 행은 남는다 -- 감시의 `finally` 가 취소 경로에서도 그것을 적는다.
+        """
+        if not self._monitors:
+            return
+        for mon in self._monitors:
+            mon.stop()
+        tasks = [t for t in self._monitor_tasks if not t.done()]
+        if tasks:
+            _done, pending = await asyncio.wait(
+                tasks, timeout=max(self.acfg.status_timeout, 1.0) + 1.0)
+            for task in pending:
+                log.warning('감시가 제때 멈추지 않았다 -- 취소한다 (FETCH 락에 '
+                            '걸려 있을 수 있다)')
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+        self._monitors.clear()
+        self._monitor_tasks.clear()
 
     def _log_archon_banner(self) -> None:
         """컨트롤러 배선과 **미검증 자리**를 기동에 한 번 보여 준다.
@@ -142,6 +248,9 @@ class IcsArchon(IcsSim):
                           % (a.naxis1, a.naxis2, a.frame_bytes / (1 << 20))),
             ('텔레메트리', 'STATUS 질의 켜짐' if a.telemetry
                             else '꺼짐 -- Cn_* 는 NC'),
+            ('감시·기록', ('%.0f초 간격 -> %s' % (a.monitor_interval,
+                                                 a.monitor_log))
+                          if (a.monitor and a.telemetry) else '꺼짐'),
             ('셔터 트리거', a.shutter_ctrl),
             ('ERASE', '전체 독출 flush' if a.full_flush_on_erase else '건너뜀'),
             # **어느 `ics_sim` 사본이 돌고 있나.**  저장소 배치에는 형제 원천과
