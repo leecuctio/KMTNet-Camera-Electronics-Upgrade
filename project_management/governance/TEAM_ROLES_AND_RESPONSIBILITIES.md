@@ -130,7 +130,7 @@ work package별 책임 매트릭스를 제공한다면, 이 문서는 **사람 �
 | --- | --- | --- |
 | STA | Wallboard 제작·공급사 | Production Wallboard 제작, Archon 컨트롤러 공급, 기술 지원 |
 | Tom | STA 측 기술 협력 | Wallboard 제작/인수 자문 (Consulted). **SSO 현장 방문용역(전문가 참여)은 2026-08-23 기준 협의 중** (ACT-007) |
-| Greg | 기술 자문 (서면) | **서면(문서) 기반 전문가 자문으로 참여 확정** (2026-08-23 결정, Consulted) — 카메라 재설치·전자부 교체 관련 검토 의견을 서면으로 제공, 현장 방문 없음 |
+| Greg | STA 측 기술 자문 (서면) | **서면(문서) 기반 전문가 자문으로 참여 확정** (2026-08-23 결정, Consulted) — **Archon 카메라 설정 확인 및 영상 최종 분석/조정 자문**을 서면으로 제공, 현장 방문 없음 |
 | Rick | 소프트웨어 자문 | Software Migration 자문 (Consulted) |
 
 ## 책임 요약 매트릭스
@@ -142,12 +142,12 @@ work package별 책임 매트릭스를 제공한다면, 이 문서는 **사람 �
 | Software Migration | 차상목, 홍성욱 | — | Rick, 김동진, 이상민 |
 | Network/Configuration | 김동진 | — | 홍성욱, 이상민 |
 | Logistics | 이용석, 이동주 | — | 차상목 |
-| Science Verification | 김재우 | — | 차상목, 홍성욱 |
-| 카메라 탈거·장착 | 차상목, 이용석 | 이상민 | Tom, Greg(서면), STA |
+| Science Verification | 김재우 | — | 차상목, 홍성욱, Greg(서면 — 영상 최종 분석/조정) |
+| 카메라 탈거·장착 | 차상목, 이용석 | 이상민 | Tom, STA |
 | 클린부스 조립 | 이용석, 이상민 | — | 차상목(최종 검토) |
-| 시험관측 (관측 프로그램) | 이상민 | 차상목, 홍성욱 | 김재우 |
+| 시험관측 (관측 프로그램) | 이상민 | 차상목, 홍성욱 | 김재우, Greg(서면) |
 | Documentation | 홍성욱, 이동주 | 이충욱 | 김동진, 차상목 |
-| Site Upgrade | 차상목, 이용석, 이상민, 김동진 | — | Tom, Greg(서면), STA |
+| Site Upgrade | 차상목, 이용석, 이상민, 김동진 | — | Tom, Greg(서면 — Archon 설정 확인), STA |
 
 ## 운영 규칙
 

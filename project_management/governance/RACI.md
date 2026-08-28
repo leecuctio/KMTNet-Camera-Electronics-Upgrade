@@ -14,7 +14,7 @@
 | Logistics | 이충욱 | 이용석, 이동주 | 차상목 | 전체 |
 | Full Rehearsal | 이충욱 | 차상목, 홍성욱, 김동진, 이상민 | 김재우 | 전체 |
 | Site Upgrade | 이충욱 | 차상목, 이용석, 이상민, 김동진 | Tom, Greg(서면), STA | 전체 |
-| Science Verification | 김재우 | 김재우 | 차상목, 홍성욱 | 이충욱 |
+| Science Verification | 김재우 | 김재우 | 차상목, 홍성욱, Greg(서면) | 이충욱 |
 | Documentation | 이충욱 | 홍성욱, 이동주 | 김동진, 차상목 | 전체 |
 
 ## 관리 규칙
