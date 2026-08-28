@@ -1,0 +1,28 @@
+#!/usr/bin/perl -W
+
+#
+# KMTNet Guider 
+# leecu@kasi.re.kr (2018-02-01)
+# 
+# 2018-02-02: orientation is confirmed and applied
+# 2018-02-03: guide orientation has been re-checked
+# 2018-02-09: prevent redundant execution 
+# 2018-02-10: enable the XPA function 
+#
+
+$num_args = $#ARGV + 1;
+if ($num_args != 1) {
+   print "\nUsage: ./do-sex.psfex 20180131T144100.0001.fits or ./do-sex.psfex\n";
+   $region = `ls -tr KMTNg*.fits | tail -n 1 | awk \'{print substr(\$1,8,30)}\'`;
+   chop $region;
+   print $region;
+   $chkpsf = "psf.snap.".$region.".png";
+   print $chkpsf;
+   if(-e $chkpsf){
+      exit;
+   }   
+}else{
+   $region = $ARGV[0];
+   print $region;
+}
+
