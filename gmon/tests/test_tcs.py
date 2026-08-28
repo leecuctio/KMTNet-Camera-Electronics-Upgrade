@@ -167,6 +167,45 @@ def main():
     assert ctrl6.compute_ref() is None
     assert len(srv.requests) == n0, "temp_source=fw인데 서버 질의 발생"
 
+    # ---------- 7. tools/tcs_sim.py 실물 왕복: 상태가 실제로 움직인다 ----------
+    import subprocess
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    probe.bind(("127.0.0.1", 0))
+    sim_port = probe.getsockname()[1]
+    probe.close()
+    cfg7 = make_cfg(tmp, "sim", sim_port, {("ics", "dry_run"): "no"})
+    proc = subprocess.Popen(
+        [sys.executable, os.path.join(GMON_DIR, "tools", "tcs_sim.py"),
+         "-c", cfg7.path, "--port", str(sim_port), "--temp", "6.6",
+         "--drift", "0", "--focus", "-6.5", "--quiet"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        cli7 = gtcs.TcsClient(cfg7)
+        kv7 = None
+        for _ in range(30):                       # 기동 대기 (~3s)
+            kv7 = cli7.auxstatus()
+            if kv7 is not None:
+                break
+            time.sleep(0.1)
+        assert kv7 is not None, "tcs_sim 무응답"
+        assert kv7["FAFOCUS"] == -6.5 and kv7["SHUTTER"] == "OPEN"
+        t = cli7.temperature(status=kv7)
+        assert t is not None and 6.0 < t < 7.2, t  # drift 0, 잡음 ±0.05
+        # fttgoto → FAFOCUS 갱신 확인
+        assert cli7.fttgoto(-6.123).startswith("TC>ABC DONE: FTTGOTO")
+        assert cli7.focus() == -6.123
+        # dtilt → 틸트 누적 확인
+        ns0, ew0 = cli7.tilt()
+        cli7.dtilt(0.1, -0.5)
+        ns1, ew1 = cli7.tilt()
+        assert abs(ns1 - (ns0 + 0.1)) < 1e-9 and abs(ew1 - (ew0 - 0.5)) < 1e-9
+        # simset(시뮬레이터 전용) → 셔터 상태 강제
+        cli7.command("simset SHUTTER=CLOSE")
+        assert cli7.shutter() == "CLOSE"
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
     srv.stop()
     shutil.rmtree(tmp, ignore_errors=True)
     print("OK test_tcs")

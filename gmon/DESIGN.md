@@ -200,6 +200,9 @@ gpsf.py    STEM 또는 --raw RAW.fits [--workdir D]  → sex+psfex+기록, resul
 gsnap.py   result.<stem>.json [--backend auto|ds9|mpl]  → PNG 생성
 gplot.py   [--oneshot] [--term qt|x11|png] [--out FILE] [--datafile F]  → 그래프
 gtcs.py    auxstatus | fttgoto FOC [TNS TEW] | dtilt DNS DEW | raw CMD  → TCS 질의/이동
+tools/tcs_sim.py [--temp T] [--drift A] [--period S] [--focus F] [--port N]
+           → TCS auxstatus 시뮬레이터 (상태 유지 UDP 서버 — 로컬 전 체인 시험용;
+             cmd_auxstatus 필드 순서 재현, fttgoto/dtilt 반영, simset 강제 설정)
 gwatch.py  [--once] [--foreground]           → 감시 루프 (pidfile 단일 실행)
 gmon.py                                       → GUI (내부에서 gwatch/gplot 기동·정지)
 tools/make_synthetic.py -o OUT.fits [--fwhm-px 3.5] [--nstars 40] [--truth J.json]

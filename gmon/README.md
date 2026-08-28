@@ -174,6 +174,18 @@ cd gmon
 /opt/miniconda3/bin/python gmon.py
 ```
 
+TCS 없이 로컬에서 전 체인(초점 보정 포함)을 돌려보려면 시뮬레이터를 먼저 띄운다
+(`[ics] host=127.0.0.1`일 때, 터미널 별도):
+
+```sh
+/opt/miniconda3/bin/python tools/tcs_sim.py        # TCS 시뮬레이터 (Ctrl-C 종료)
+/opt/miniconda3/bin/python gtcs.py auxstatus       # 연결 확인
+```
+
+이후 gmon.py를 띄우면 TCS 라벨에 시뮬레이터의 온도·초점이 표시되고, 온도가
+사인 곡선으로 드리프트하므로 AUTO 초점 추적을 관찰할 수 있다 (`dry_run=no`로
+바꾸면 fttgoto가 시뮬레이터의 FAFOCUS를 실제로 움직인다).
+
 GUI는 **독립 창 3개**로 구성된다:
 - **제어부** (메인 창) — 레거시 배치 버튼 + 상태 라벨 + SNAP/PLOT 버튼
 - **PSF 스냅샷** (별도 창) — 최신 `psf.snap.*.png` 3초 주기 자동 갱신
@@ -217,6 +229,9 @@ gpsf.py    STEM 또는 --raw RAW.fits [--workdir D]  → sex+psfex+기록, resul
 gsnap.py   result.<stem>.json [--backend auto|ds9|mpl]  → PNG 생성
 gplot.py   [--oneshot] [--term qt|x11|png] [--out FILE] [--datafile F]  → 그래프
 gtcs.py    auxstatus | fttgoto FOC [TNS TEW] | dtilt DNS DEW | raw CMD  → TCS 질의/이동
+tools/tcs_sim.py [--temp 6.6] [--drift 1.5] [--period 3600] [--focus -6.5]
+           → TCS auxstatus 시뮬레이터 (로컬 UDP 서버; fttgoto/dtilt로 상태 이동,
+             온도 사인 드리프트, simset KEY=VALUE로 임의 상태 강제)
 gwatch.py  [--once] [--foreground]           → 감시 루프 (pidfile 단일 실행)
 gmon.py                                       → GUI (내부에서 gwatch/gplot 기동·정지)
 tools/make_synthetic.py -o OUT.fits [--fwhm-px 3.5] [--nstars 40] [--truth J.json]
