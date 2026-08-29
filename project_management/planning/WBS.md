@@ -9,7 +9,7 @@
 | WBS | Work Package | Key Outputs | Primary Owner | 관리 파일 |
 | --- | --- | --- | --- | --- |
 | WP1 | Project Management | PMP, 일정표, 주간회의, Gate 승인 | 이충욱 | `planning/`, `governance/` |
-| WP2 | Hardware Preparation | HE Box, Wallboard, Archon, PCC, spare parts | 차상목, 이용석 | `logistics/`, `sites/` |
+| WP2 | Hardware Preparation | HE Box, Wallboard, Archon, PCC, spare parts | 차상목, 이상민, 이용석 | `logistics/`, `sites/` |
 | WP3 | Software Migration | OSU review, Archon interface, FITS, 관측 스크립트 | 차상목, 홍성욱 | `configuration/` |
 | WP4 | Logistics | Shipping list, packing list, 해운/항공, 통관, 현지 수령 | 이용석, 이동주 | `logistics/` |
 | WP5 | Integration & Full Rehearsal | End-to-End test, burn-in, Go/No-Go 자료 | 전체 | `governance/`, `science/` |
