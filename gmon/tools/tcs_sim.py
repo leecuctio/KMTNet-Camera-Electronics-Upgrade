@@ -165,7 +165,15 @@ class TcsSim:
 
     def serve(self, host, port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((host, port))
+        try:
+            sock.bind((host, port))
+        except OSError as exc:
+            print("tcs_sim: %s:%d 바인드 실패 (%s)" % (host, port, exc))
+            print("  이미 실행 중인 인스턴스가 있는지 확인하세요:"
+                  "  lsof -nP -iUDP:%d" % port)
+            print("  이미 떠 있다면 다시 띄울 필요 없이 그대로 사용하면 됩니다"
+                  " (확인: gtcs.py auxstatus)")
+            return 1
         print("tcs_sim: %s:%d 대기 (name=%s telid=%s, ENS3=%.1f±%.1f°C/%ds,"
               " FAFOCUS=%+.3f) — Ctrl-C로 종료"
               % (host, port, self.name, self.telid, self.temp0, self.drift,
@@ -205,12 +213,21 @@ def main(argv=None):
     host = args.host or cfg.get("ics", "host", fallback="127.0.0.1")
     port = args.port if args.port is not None else cfg.getint(
         "ics", "port", fallback=6660)
+    # 단일 실행 가드 (run/pid/tcs_sim.pid) — 중복 기동 시 안내 후 종료
+    pf = gcommon.PidFile(cfg, "tcs_sim")
+    if not pf.acquire():
+        print("tcs_sim이 이미 실행 중입니다 (pid=%s) — 다시 띄울 필요 없이"
+              " 그대로 사용하면 됩니다 (확인: gtcs.py auxstatus)"
+              % pf.other_pid())
+        return 0
     sim = TcsSim(args, cfg)
     try:
-        sim.serve(host, port)
+        return sim.serve(host, port) or 0
     except KeyboardInterrupt:
         print("\ntcs_sim 종료")
-    return 0
+        return 0
+    finally:
+        pf.release()
 
 
 if __name__ == "__main__":
