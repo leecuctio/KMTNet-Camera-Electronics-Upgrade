@@ -9,18 +9,83 @@
 
 ## 목록
 
-| 파일 | 유닛 | `TAPLINES` | `BIGBUF` | Pixels × Lines | IP |
+| 파일 | 유닛 | `TAPLINES` | `BIGBUF` | **저장** 픽셀/탭 × 줄 | IP |
 |---|---|---:|---:|---|---|
-| `KMTC_SCI_101_STA0284_R2608_MK.acf` | CTIO science 1 (MK) | 33 | 1 | 1201 × 4700 | `.101` |
-| `KMTC_SCI_102_STA0285_R2608_NT.acf` | CTIO science 2 (NT) | 33 | 1 | 1201 × 4700 | `.102` |
-| `KMTS_SCI_101_STA0286_R2608_MK.acf` | SAAO science 1 (MK) | 33 | 1 | 1201 × 4700 | `.101` |
-| `KMTK_SCI_113_STA0200_R2608_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | 1201 × 4700 | `.113` |
-| `KMTK_SCI_113_STA0200_R2608_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | 1201 × 4700 | `.113` |
-| `KMTK_GUI_162_STA0201_R2608.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | 600 × 1033 | `.162` |
+| `KMTC_SCI_101_STA0284_R2608_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
+| `KMTC_SCI_102_STA0285_R2608_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` |
+| `KMTS_SCI_101_STA0286_R2608_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
+| `KMTK_SCI_113_STA0200_R2608_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
+| `KMTK_SCI_113_STA0200_R2608_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
+| `KMTK_GUI_162_STA0201_R2608.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
+
+⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
+바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
+(`Pixels=1201`/`600`)을 싣고 있었다** (2026-08-29 정정).
 
 ⚠️ **구 `KMTT_SCI_113…` 2장은 폐기했다** (2026-08-27, 운영자) — `KMTT` 는
 **D-017 에서 폐지된 사이트 코드**이고, `KMTK_…` 가 그 개명본이다(내용 동일함을
 대조로 확인). 되살릴 일이 있으면 git 이력에 있다.
+
+## ⚠️ 읽는 픽셀 수와 **저장되는** 픽셀 수가 다르다 (2026-08-29 확인)
+
+**타이밍 파라미터 `Pixels` 는 시퀀서가 몇 개를 디지타이즈하나이고, 프레임에 실제로
+담기는 것은 `PIXELCOUNT` 다.**  Archon GUI 에서는 **CDS/Deint 탭의 "Pixels per
+Tap"** 이 그 값이다 (운영자 확인 2026-08-29).
+
+| | 시퀀서가 디지타이즈 | **프레임에 저장** | 버려짐 |
+|---|---:|---:|---:|
+| guide | `Pixels=600` + 1 = **601** | `PIXELCOUNT=`**528** | 73 |
+| science | `Pixels=1201` + 1 = **1202** | `PIXELCOUNT=`**1200** | 2 |
+
+    LINE43  LCLK;   CALL SkipPixelFirst(PreSkipPixels)    8   버리며 지나감(디지타이즈 안 함)
+    LINE44  RGHIGH; CALL PixelFirst(Pixels)             600   디지타이즈
+    LINE45  RGHIGH; CALL SkipPixelFirst(PostSkipPixels)   0
+    LINE46  RGHIGH; CALL PixelFirst(OverscanPixels)       0
+    LINE47  RGHIGH; CALL PixelFirst                       1   ← 인자 없는 호출 = 1개 더
+
+**그래서 저장 영상은 채널(탭)당 528 컬럼**이고, guide 프레임 전체는
+**8탭 × 528 = `NAXIS1=4224`**, `NAXIS2=1033` 이다.  science 는 16탭 × 1200 =
+`NAXIS1=19200`, 2 × 4700 = `NAXIS2=9400` (`../ics_archon.ini` 의 `naxis1`/`naxis2`).
+
+**근거가 셋 일치한다** -- ① ACF 의 `PIXELCOUNT` ② Archon GUI 의 "Pixels per Tap"
+③ **`gmon` v2 의 실측 7장**(`main` 브랜치, `gmon/DESIGN.md` 2절: "`NAXIS1=4224 =
+8 세그먼트 × 528컬럼`").
+
+⚠️ **science 의 여유 2 와 guide 의 73 은 성격이 다르다.**  science 쪽은 파이프라인
+flush 여유로 읽히는데, guide 는 73개를 클록해 놓고 버린다 -- **픽셀 클록 구간의 약
+12%** 다.  보관본까지 대조하면 **여섯 판이 전부 600/528 로 같아서**(`R2601`·
+`R0827` 계열, 그리고 다른 유닛 `STA0291` 까지) 최근에 잘못 건드린 것이 아니라
+처음부터 그런 설정이다.
+
+⏳ **`Pixels` 를 528 로 줄일 수 있는지는 실기 시험 항목이다** (운영자 2026-08-29).
+판정법은 **같은 조건에서 `Pixels=600` 과 `Pixels=528` 프레임을 찍어 바이트 비교** --
+같으면 저장 창이 앞 528 이고 무손실로 트림된다.  ⚠️ **줄이더라도 `LINE47` 의 인자
+없는 `CALL PixelFirst`(+1)는 남길 것** -- 그것이 flush 여유이고, science 가 1200
+저장에 1202 를 도는 이유다.  트림하면 ACF 개정이므로 판 번호가 오르고 규격 4.3절의
+`CTRLnCFG` 범프 사유가 된다.
+
+⚠️ **"600 중 어느 528 인가" 는 `gmon` 과 공유하는 물음이다.**  `gmon/DESIGN.md`
+10절이 "채널당 16컬럼(528−512)의 성격(프리스캔/다크 기준열)"을 커미셔닝 확인
+항목으로 올려 두었다 -- 같은 답을 두 문서가 기다린다.
+
+⭐ **`gmon` 은 이미 가정을 선언해 두었다** (`main` 브랜치 `gmon/gmon.conf`
+`[geometry]`).  소비자 쪽의 현행 전제이므로 guide raw 규격을 세울 때 **이것과
+어긋나면 분할이 깨진다**:
+
+    raw_nx = 4224 · raw_ny = 1033 · nseg = 8 · seg_width = 528
+    left_active  = 16,528     왼쪽 채널: 앞 16 컬럼이 비활성
+    right_active = 0,512      오른쪽 채널: 뒤 16 컬럼이 비활성
+    y_trim_bottom = 9         추가 9행은 아래쪽으로 가정
+
+즉 **16 컬럼이 채널 쌍의 바깥쪽에 붙는다**는 가정이다.  ⭐ 그것이 **규격 4.1절의
+science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- science 는
+`AMPNAX1 = 1200 = PRESCNX(0) + IMAGEX(1152) + OVRSCNX(48)` 이고 prescan 을 아예
+기록하지 않는다(`rawhdr.py`).  guide 528 = 16 + 512 도 같은 모양으로 읽힌다.
+**두 계통이 같은 규범을 따르는 것이 자연스럽고, 그러면 guide 규격은 science 의
+자리 잡는 방식을 그대로 물려받으면 된다** -- 다만 아직 실측 확정은 아니다.
+
+⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
+규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
 
 ## guide 정본을 하나로 줄였다 (2026-08-28, 운영자)
 
