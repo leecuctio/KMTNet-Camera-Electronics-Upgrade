@@ -39,6 +39,41 @@ log = logging.getLogger('ics_archon.config')
 #: 컨트롤러 태그 (`rawpair.CONTROLLERS` 의 색인 순서 = 1:MK, 2:NT)
 CTRLTAGS = tuple(tag for tag, _ in rawpair.CONTROLLERS)
 
+#: `CTRLnCFG` 값에서 떼는 설정 파일 확장자.  **이 둘만 뗀다** (운영자 확정
+#: 2026-08-29).
+#:
+#: ⚠️ **범용 `os.path.splitext` 를 쓰지 말 것** -- ACF 판 번호에 점이 들어간다
+#: (`KMTA_SCI_101_R2609.1.acf`).  확장자 없이 적힌 경로를 받으면 `splitext` 가
+#: `.1` 을 먹어 **판 번호가 조용히 깨진다**(`…_R2609`).  모르는 접미는 그대로
+#: 두는 것이 규칙이다 -- 임의로 떼면 값이 소리 없이 달라진다.
+#:
+#: `.cfg` 도 **같은 Archon 설정 파일**이다 (운영자 확인 2026-08-29) -- 다른
+#: 종류가 아니라 확장자 표기가 갈릴 수 있어서 둘을 나란히 받는다.
+CFG_SUFFIXES = ('.acf', '.cfg')
+
+
+def cfg_name_from_acf(path: str) -> str:
+    """ACF 경로에서 `CTRLnCFG` 값을 만든다 -- **폴더와 확장자를 뗀 이름**.
+
+    규격 5.5절이 못박은 형태다 (raw spec v1.8):
+
+        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf
+        ->               KMTC_SCI_101_STA0284_R2608_MK
+
+    경로가 비었거나 이름이 통째로 확장자면 빈 문자열을 돌려준다 -- 그러면
+    부르는 쪽이 "유도 실패" 를 알아보고 손편집 값이나 백엔드 보고값에
+    맡긴다.  `rdmode_from_acf()`(`app.py`)가 빈 문자열을 쓰는 것과 같은
+    약속이다.
+    """
+    name = os.path.basename((path or '').strip())
+    lowered = name.lower()
+    for suffix in CFG_SUFFIXES:
+        if lowered.endswith(suffix):
+            # **길이를 접미에서 뽑는다** -- 지금은 둘 다 4자라 리터럴 `-4` 로도
+            # 맞지만, 목록이 늘 때 그 우연에 기대면 값이 잘려 나간다.
+            return name[:-len(suffix)]
+    return name
+
 
 class ArchonConfigError(Exception):
     """`[archon]` 설정을 읽을 수 없다."""
@@ -553,6 +588,12 @@ def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
 #: labtest 는 이 값들을 기동에서 검사한다(`_check_identity_setup()`).  여기서도
 #: 같은 자리를 본다 -- 목록을 코드로 못박아 두면 `[site]`/`[camera]` 에 카드가
 #: 늘 때 이 검사가 따라가지 않는 것이 드러난다.
+#:
+#: ⚠️ **`ctrl1_cfg`/`ctrl2_cfg` 만은 손편집이 아닐 수 있다** -- 비어 있으면
+#: `IcsArchon.__init__()` 이 `[archon] acf_mk`/`acf_nt` 에서 파생해 채운다.
+#: 그래도 **목록에 남겨 둔다**: 파생이 `__init__`, 이 검사가 `start()` 라
+#: 여기서 보는 것은 이미 파생된 값이고, 그래야 **ACF 경로에 섞인 비ASCII 도**
+#: 걸린다.  뺐다면 파생된 값만 검사를 빠져나간다.
 _HEADER_INI_FIELDS = (
     ('controllers', ('ctrl1_id', 'ctrl1_sn', 'ctrl1_cfg',
                      'ctrl2_id', 'ctrl2_sn', 'ctrl2_cfg', 'rdmode')),
@@ -678,6 +719,32 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
     notes: list[str] = []
     if sim_cfg is None:
         return notes
+
+    # ⚠️ **헤더가 주장하는 설정 파일과 실제로 올리는 파일이 갈릴 수 있다.**
+    #
+    # `CTRLnCFG` 는 비어 있을 때만 ACF 경로에서 파생된다 -- 손으로 적어 둔
+    # 값이 있으면 그것이 이긴다(`[controllers]` 는 "채워져 있으면 INI 가
+    # 이긴다" 가 원칙이고, 원장 `Source = ICS INI` 카드는 전부 ini 에서
+    # 고칠 수 있어야 한다 -- 운영자 지시 2026-08-22).  그 대가로 **둘이
+    # 어긋난 채 배포되는 경로**가 남으므로, 여기서 소리 내어 알린다.
+    #
+    # 이 어긋남은 자료를 봐도 드러나지 않는다 -- 이름이 그럴듯하면 아무도
+    # 의심하지 않고, **그 사이트 자료만 영구히 다른 설정을 주장한다.**
+    # 사이트 정체 배너와 같은 부류의 방어다.
+    for tag in CTRLTAGS:
+        n = cfg.index_of(tag)
+        typed = str(getattr(sim_cfg.controllers, 'ctrl%d_cfg' % n, '')
+                    or '').strip()
+        derived = cfg_name_from_acf(cfg.acf.get(tag, ''))
+        if (typed and derived and typed != derived
+                and not ControllersCfg.is_absent(typed)):
+            notes.append(
+                '[controllers] ctrl%d_cfg=%r 가 [archon] acf_%s 에서 나오는 '
+                '이름(%r)과 다르다 -- 손으로 적은 값이 이기므로 헤더 CTRL%dCFG '
+                '는 %r 로 실리는데 컨트롤러에 올라가는 것은 %r 다.  비워 두면 '
+                'ACF 경로에서 자동으로 채워진다'
+                % (n, typed, tag.lower(), derived, n, typed,
+                   os.path.basename(cfg.acf.get(tag, ''))))
 
     # ⚠️ **시간 축척은 하드웨어를 따라오지 않는다.**  적분 길이를 재는 것은
     # 컨트롤러(`IntMS`)이고 시퀀서의 카운트다운은 알림이다.  축척을 낮추면

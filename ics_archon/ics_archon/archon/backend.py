@@ -60,7 +60,7 @@ _simpath.ensure()
 from ics_sim import rawpair                              # noqa: E402
 from ics_sim.hardware.base import BackendError           # noqa: E402
 
-from ..config import CTRLTAGS                            # noqa: E402
+from ..config import CTRLTAGS, cfg_name_from_acf         # noqa: E402
 from . import fitswrite, parse                           # noqa: E402
 from .controller import ArchonController                 # noqa: E402
 from .protocol import ArchonError                        # noqa: E402
@@ -556,8 +556,12 @@ class ArchonBackend:
             if ctrl is not None:
                 unit.update(parse.unit_identity(ctrl.system))
                 if ctrl.acf_path:
-                    unit['cfg'] = os.path.splitext(
-                        os.path.basename(ctrl.acf_path))[0]
+                    # ⚠️ **`splitext` 를 쓰지 않는다** -- ACF 판 번호에 점이
+                    # 들어가므로(`…_R2609.1`) 확장자 없이 적힌 경로에서 `.1` 을
+                    # 먹는다.  자르기 규칙은 `config.cfg_name_from_acf()` 한
+                    # 곳에만 둔다 -- `IcsArchon.__init__()` 의 파생과 값이
+                    # 갈리면 "ini 를 비웠을 때만 다른 이름" 이 된다.
+                    unit['cfg'] = cfg_name_from_acf(ctrl.acf_path)
             units.append(unit)
         return {'units': tuple(units)}
 

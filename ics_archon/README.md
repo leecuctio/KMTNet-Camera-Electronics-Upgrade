@@ -87,7 +87,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | `archon/monitor.py` | 텔레메트리 주기 감시·기록 (층 1·2) — CSV, `~/AIC/log/` |
 | `archon/fitswrite.py` | raw pair 바이트 기록 — 견본 v1.0 이 정본, 데이터부 2880B 패딩 |
 | `archon/backend.py` | `ics_sim` `DetectorBackend` 구현 (D-012) |
-| `app.py` · `__main__.py` | `ics_sim.IcsSim` 에 백엔드를 끼우고 `ICSBUILD`/`RDMODE`/종료를 갈아낀다 |
+| `app.py` · `__main__.py` | `ics_sim.IcsSim` 에 백엔드를 끼우고 `ICSBUILD`/`RDMODE`/`CTRLnCFG`/종료를 갈아낀다 |
 | `config.py` | `[archon]` 절 |
 
 ### 계약과 실기의 어긋남 — 백엔드가 흡수하는 셋
@@ -340,10 +340,19 @@ monitor_log  = ~/AIC/log            # ⚠️ data_dir 밑에 두지 말 것
 [controllers]
 ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
 ctrl1_sn     = STA-0288
+ctrl1_cfg    =                      # 비우면 [archon] acf_mk 에서 파생 (아래)
 
 [logging]
 file         = ~/AIC/Logs/ics_archon.log
 ```
+
+> **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29, 규격 v1.8 5.5절).
+> `[controllers] ctrlN_cfg` 를 **비워 두면** `[archon] acf_mk`/`acf_nt` 에서
+> **폴더와 확장자(`.acf`/`.cfg`)를 뗀 이름**이 실린다 —
+> `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf` →
+> `'KMTC_SCI_101_STA0284_R2608_MK'`.  적어 두면 **그 값이 이기고**, 파생값과
+> 다르면 기동에서 경고한다(헤더가 주장하는 설정 파일과 실제로 올리는 파일이
+> 갈린 자료는 나중에 봐도 드러나지 않는다).  `RDMODE` 와 같은 규칙이다.
 
 > **`~` 는 펼쳐진다** (`data_dir` · `expnum_file` · `logging file` · `acf_*`).
 > **상대경로는 권하지 않는다** — ini 위치가 아니라 **실행한 디렉터리** 기준으로

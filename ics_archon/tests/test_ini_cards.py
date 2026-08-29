@@ -3,7 +3,7 @@
 """ini -> FITS 카드 전수 대조 -- **`Source` 가 `ICS INI` 인 카드가 다 물리나.**
 
 판정 원장(`raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_
-v1.14.md`) 3장 표의 `Source (* default)` 열이 정본이고, 그중 `ICS INI` 인 카드는
+v1.15.md`) 3장 표의 `Source (* default)` 열이 정본이고, 그중 `ICS INI` 인 카드는
 **전부 ini 에서 수정 가능해야 한다**(운영자 지시 2026-08-22, 원장 확인 요망 6).
 
 원장이 `ICS INI` 로 못박은 14장:
@@ -84,7 +84,7 @@ EXPECT = {
 }
 
 
-def write_ini(tmp_path, overrides, acf: str):  # noqa: ANN001
+def write_ini(tmp_path, overrides, acf: str, acf_nt: str = ''):  # noqa: ANN001
     """저장소 ini 를 읽어 덮어쓴 사본을 만든다.
 
     **밑바탕을 저장소 ini 로 두는 것이 요점이다** -- 시험용 ini 를 따로 쓰면
@@ -101,7 +101,7 @@ def write_ini(tmp_path, overrides, acf: str):  # noqa: ANN001
     cp['archon']['ctrl_mk_host'] = '127.0.0.1'
     cp['archon']['ctrl_nt_host'] = '127.0.0.1'
     cp['archon']['acf_mk'] = acf
-    cp['archon']['acf_nt'] = acf
+    cp['archon']['acf_nt'] = acf_nt or acf
     cp['archon']['naxis1'] = str(NX)
     cp['archon']['naxis2'] = str(NY)
     cp['archon']['poweron_wait'] = '0'
@@ -135,15 +135,23 @@ async def _drive(ini, tmp_path, nt_port, script, settle=0.8):  # noqa: ANN001
         await app.stop()
 
 
-def run(tmp_path, overrides=None, script=None):  # noqa: ANN001
-    acf = tmp_path / 'test.acf'
-    acf.write_text(ACF_TEXT, encoding='ascii')
+def run(tmp_path, overrides=None, script=None,  # noqa: ANN001
+        acf_names=('test.acf', '')):
+    #: `acf_names` -- (MK, NT).  NT 를 비우면 MK 것을 함께 쓴다.  파일명이
+    #: 곧 `CTRL1CFG`/`CTRL2CFG` 파생의 입력이라 시험마다 갈아 끼울 수 있어야
+    #: 한다 (`ics_archon.ini` 의 `[archon] acf_mk`/`acf_nt`).
+    acfs = []
+    for name in (acf_names[0], acf_names[1] or acf_names[0]):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(ACF_TEXT, encoding='ascii')
+        acfs.append(str(path))
     mk = FakeArchon(width=NX, height=NY)
     nt = FakeArchon(width=NX, height=NY)
     mk.start()
     nt.start()
     try:
-        ini = write_ini(tmp_path, overrides or INI_OVERRIDES, str(acf))
+        ini = write_ini(tmp_path, overrides or INI_OVERRIDES, acfs[0], acfs[1])
         cp = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
         cp.read(ini, encoding='utf-8')
         cp['archon']['port'] = str(mk.port)
@@ -288,6 +296,87 @@ def test_rdmode_is_derived_from_the_acf_when_ini_is_empty(tmp_path):  # noqa: AN
     head = headers(tmp_path)['MK']
     assert head['RDMODE'].strip() == 'COMP'
     assert head['CTRL1CFG'].strip() == 'KMTNet_Sci_comp_med_U13'
+
+
+def test_ctrlcfg_is_derived_from_the_acf_path(tmp_path):  # noqa: ANN001
+    """`CTRL1CFG`/`CTRL2CFG` -- ini 가 비면 **적용 ACF 경로**에서 나온다.
+
+    규격 v1.8 5.5절이 *"폴더 경로와 확장자(`.acf`/`.cfg`)를 뗀 이름"* 으로
+    못박았다.  종전에는 `[controllers] ctrlN_cfg`(손편집)와 `[archon]
+    acf_mk`/`acf_nt`(실제로 올리는 파일)가 별개 키여서 **둘이 어긋난 채로
+    배포될 수 있었다** -- 그러면 그 사이트 자료만 영구히 다른 설정 이름을 단다.
+
+    **MK/NT 에 서로 다른 이름을 준다** -- 한 이름으로 시험하면 배정이 뒤바뀌어도
+    (`acf_mk` -> `CTRL2CFG`) 통과한다.  `.cfg` 도 같은 Archon 설정 파일이라
+    함께 뗀다 (운영자 확인 2026-08-29).
+    """
+    over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
+    over['controllers'] = {'ctrl1_cfg': '', 'ctrl2_cfg': ''}
+    run(tmp_path, over,
+        acf_names=(os.path.join('acf', 'KMTC_SCI_101_STA0284_R2608_MK.acf'),
+                   os.path.join('acf', 'KMTC_SCI_102_STA0285_R2608_NT.cfg')))
+    for tag, head in sorted(headers(tmp_path).items()):
+        # pair 두 파일에 **두 대분이 같이** 실린다 (규격 5.9절)
+        assert head['CTRL1CFG'].strip() == 'KMTC_SCI_101_STA0284_R2608_MK', tag
+        assert head['CTRL2CFG'].strip() == 'KMTC_SCI_102_STA0285_R2608_NT', tag
+
+
+def test_cfg_name_from_acf_only_strips_acf_and_cfg():
+    """⚠️ **판 번호에 점이 들어간다** -- 범용 `splitext` 를 쓰면 깨진다.
+
+    `KMTA_SCI_101_R2609.1.acf` 는 `splitext` 한 번으로도 맞지만, **확장자 없이
+    적힌 경로**를 받으면 `splitext` 가 `.1` 을 먹어 판 번호가 조용히 달라진다.
+    모르는 접미는 그대로 두는 것이 규칙이다 (운영자 확정 2026-08-29).
+    """
+    f = acfg_mod.cfg_name_from_acf
+    assert f('~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf') ==         'KMTC_SCI_101_STA0284_R2608_MK'
+    # 판 번호의 점을 먹지 않는다
+    assert f('acf/KMTA_SCI_101_R2609.1.acf') == 'KMTA_SCI_101_R2609.1'
+    assert f('acf/KMTA_SCI_101_R2609.1') == 'KMTA_SCI_101_R2609.1'
+    # `.cfg` 도 뗀다.  대소문자는 무시하되 **뗀 뒤의 이름은 원문 그대로**다
+    assert f('acf/KMTA_SCI_101_R2609.1.cfg') == 'KMTA_SCI_101_R2609.1'
+    assert f('acf/KMTK_GUI_162_STA0201_R2608.ACF') == 'KMTK_GUI_162_STA0201_R2608'
+    # 모르는 접미는 남긴다 -- 임의로 떼면 값이 소리 없이 달라진다
+    assert f('acf/KMTA_SCI_101_R2609.1.txt') == 'KMTA_SCI_101_R2609.1.txt'
+    # 유도 실패는 빈 문자열 (부르는 쪽이 손편집 값·백엔드 값에 맡긴다)
+    assert f('') == '' and f(None) == '' and f('acf/.acf') == ''
+
+
+def test_hand_typed_ctrlcfg_wins_but_the_mismatch_is_reported(tmp_path):  # noqa: ANN001
+    """손편집 값이 이긴다 -- 대신 **어긋나면 기동에서 알린다.**
+
+    `Source = ICS INI` 카드는 전부 ini 로 고칠 수 있어야 하므로(운영자 지시
+    2026-08-22) 파생이 덮지 않는다.  그 대가로 "헤더가 주장하는 설정 파일 !=
+    실제로 올리는 파일" 이 남는데, **그 어긋남은 자료를 봐도 드러나지 않는다** --
+    이름이 그럴듯하면 아무도 의심하지 않는다.
+    """
+    acf = tmp_path / 'KMTC_SCI_101_STA0284_R2608_MK.acf'
+    acf.write_text(ACF_TEXT, encoding='ascii')
+
+    def notes(ctrl1_cfg):  # noqa: ANN001
+        over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
+        over['controllers'] = {'ctrl1_cfg': ctrl1_cfg, 'ctrl2_cfg': ''}
+        ini = write_ini(tmp_path, over, str(acf))
+        cfg, acfg = simcfg.load(ini), acfg_mod.load(ini)
+        from ics_archon.app import fill_controller_cfg_names
+        fill_controller_cfg_names(cfg, acfg)
+        return cfg, [n for n in acfg_mod.validate(
+            acfg, tuple(cfg.node.ccds), cfg) if 'ctrl1_cfg' in n]
+
+    # ① 손으로 다른 이름을 적어 두면 -- 그 값이 실리고, 경고가 남는다
+    cfg, warned = notes('KMTC_SCI_101_STA0284_R2601_MK')
+    assert cfg.controllers.ctrl1_cfg == 'KMTC_SCI_101_STA0284_R2601_MK'
+    assert warned, '어긋난 것을 아무도 알리지 않는다'
+    assert 'KMTC_SCI_101_STA0284_R2608_MK' in warned[0]
+
+    # ② 비워 두면 파생이 채우고 -- 어긋날 수가 없으므로 조용하다
+    cfg, warned = notes('')
+    assert cfg.controllers.ctrl1_cfg == 'KMTC_SCI_101_STA0284_R2608_MK'
+    assert not warned, warned
+
+    # ③ `NC`(그 컨트롤러는 없다)는 파생이 덮지 않는다 -- 운영자 선언이다
+    cfg, _ = notes('NC')
+    assert cfg.controllers.ctrl1_cfg == 'NC'
 
 
 def test_d016_collision_check_is_on_even_when_write_fits_is_false(tmp_path):  # noqa: ANN001

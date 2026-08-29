@@ -43,6 +43,11 @@ log = logging.getLogger('ics_archon.app')
 
 #: ACF 이름에 들어 있는 독출 모드 토큰 -> FITS `RDMODE`.  labtest 의 유도
 #: 규칙 그대로다 (`KMTNet_Sci_fast_med_U13.acf` -> `FAST`).
+#:
+#: ⚠️ 같은 ACF 경로에서 `CTRLnCFG` 도 유도한다 -- 그쪽 규칙은
+#: `config.cfg_name_from_acf()` 다 (`[archon]` 을 읽는 자리에 뒀다).
+#: **둘의 자르기 규칙이 다르다**: 여기는 토큰을 찾을 뿐이라 `splitext` 로
+#: 충분하지만, `CTRLnCFG` 는 값 자체가 되므로 판 번호의 점을 먹으면 안 된다.
 _RDMODE_TOKENS = ('fast', 'comp', 'slow')
 
 
@@ -58,6 +63,46 @@ def rdmode_from_acf(path: str) -> str:
         if token in name:
             return token.upper()
     return ''
+
+
+def fill_controller_cfg_names(cfg, acfg) -> None:  # noqa: ANN001
+    """`[controllers] ctrlN_cfg` 가 비었으면 **적용 ACF 경로에서** 채운다.
+
+    raw spec v1.8 5.5절이 `CTRLnCFG` 를 *"폴더 경로와 확장자(`.acf`/`.cfg`)를
+    뗀 이름"* 으로 못박았고, 그 이름의 유일한 근거가 `[archon] acf_mk`/`acf_nt`
+    다 -- 컨트롤러는 적용 ACF 이름을 보고하지 않는다 (매뉴얼 p.54).
+
+    **왜 파생인가** -- 종전에는 `[controllers] ctrlN_cfg` 와 `[archon]
+    acf_mk`/`acf_nt` 가 같은 파일을 가리키는 **별개의 ini 키**여서 둘을 맞추는
+    것이 사람 몫이었다.  벤치와 관측소가 각자 ini 를 적으므로(`CAMVER` 와 같은
+    부류) 한쪽만 어긋나면 **그 사이트 자료만 영구히 다른 설정 이름**을 단다.
+
+    **왜 덮지 않나** -- 원장이 `Source = ICS INI` 로 못박은 카드는 전부 ini 에서
+    고칠 수 있어야 하고(운영자 지시 2026-08-22, `tests/test_ini_cards.py`),
+    `[controllers]` 의 원칙도 "채워져 있으면 INI 가 이긴다" 다.  아래 `RDMODE`
+    도 같은 규칙이라 한 블록 안의 우선순위가 하나로 유지된다.  대가로 남는
+    "둘이 어긋난 채 배포" 는 **기동 경고**로 드러낸다
+    (`config._cross_checks()`).  배포되는 `ics_archon.ini` 는 이 칸이 비어
+    있으므로 실기에서는 늘 파생이 채운다.
+
+    ⚠️ **`NC` 는 빈 값이 아니다** -- 운영자가 "그 컨트롤러는 없다" 고 적어 둔
+    것이므로(규격 5.0절 sentinel) 파생이 덮지 않는다.
+
+    ⚠️ **`ics_sim` 은 한 줄도 고치지 않는다** -- 이 함수가 `ics_sim` 의
+    `ControllersCfg` 를 **미리 채워** 넣을 뿐이고, 그 아래 사슬
+    (`overrides()` -> `sequencer` -> `rawhdr.controller_header()`)은 읽기만
+    한다.
+    """
+    for tag in acfg_mod.CTRLTAGS:
+        n = acfg.index_of(tag)
+        field = 'ctrl%d_cfg' % n
+        if str(getattr(cfg.controllers, field, '') or '').strip():
+            continue                       # 손편집 값(`NC` 포함)이 이긴다
+        derived = acfg_mod.cfg_name_from_acf(acfg.acf.get(tag, ''))
+        if derived:
+            setattr(cfg.controllers, field, derived)
+            log.info('CTRL%dCFG 를 ACF 경로에서 파생했다 -- %s (%s)',
+                     n, derived, acfg.acf.get(tag, ''))
 
 
 class IcsArchon(IcsSim):
@@ -84,6 +129,9 @@ class IcsArchon(IcsSim):
         #: (`IcsSim` 도 참조를 들고 있지만 그쪽은 `super().stop()` 에서
         #: 취소할 뿐이라, 우리가 원하는 "먼저 곱게 세운다" 를 못 한다.)
         self._monitor_tasks: list = []
+
+        # `CTRL1CFG`/`CTRL2CFG` -- ini 가 비었으면 적용 ACF 경로에서.
+        fill_controller_cfg_names(cfg, acfg)
 
         # `RDMODE` -- ini 가 비었으면 ACF 이름에서.
         if not cfg.controllers.rdmode:

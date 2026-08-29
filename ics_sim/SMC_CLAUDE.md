@@ -79,6 +79,27 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 - **시험**: `ics_sim` **330 통과** · `ics_archon` **214 통과** (2026-08-28 세션 2 기준).  ⚠️ 두 스위트를 **동시에 돌리지 말 것** -- `ics_archon` 의 `test_shutdown_waits_for_frames…` 가 부하로 간헐 실패한다.
   - ⚠️ **여기 적혀 있던 "`ics_archon` 171 통과" 는 사실이 아니었다** (2026-08-28 정정) -- 그때 `_vendor/MANIFEST.sha256` 이 어긋난 채 커밋돼 `test_vendor.py` 두 시험이 실패하고 있었다(**169 통과 · 2 실패**).  원인은 `sync_vendor.py` 를 돌린 **뒤에** 원천을 한 번 더 고친 것이다.  경위·교훈은 [DevNote 11.33](DevNote.md).
 
+## ✅ `CTRLnCFG` 파생 -- **패키지는 무개정, `ics_sim.ini` 주석만** (2026-08-29)
+
+`ics_archon` 이 `[archon] acf_mk`/`acf_nt` 경로에서 **폴더와 확장자를 떼어**
+`CTRL1CFG`/`CTRL2CFG` 를 채우기 시작했다 (규격 v1.8 5.5절, DevNote 11.35).
+
+**`ics_sim/` 패키지는 한 줄도 안 고쳤다** -- 그래서 `tools/sync_vendor.py` 를
+돌릴 일도 없었고 `_vendor/MANIFEST.sha256` 도 그대로다.  파생은
+`ControllersCfg.ctrl1_cfg` 를 **미리 채워** 넣을 뿐이고, 그 아래 사슬
+(`overrides()` -> `sequencer` -> `rawhdr.controller_header()` -> `rawcards`)은
+읽기만 한다 -- 그것이 이 설계의 요점이다.
+
+고친 것은 **`ics_sim.ini` 의 예시 주석 둘**뿐이다.  `KMTA_SCI_101_R2609.1.acf`
+가 규격 v1.8 이 지적한 바로 그 모양(**시리얼·검출기조가 빠졌고 확장자까지
+붙어 있다**)이어서, 실제 ACF 이름 규칙으로 옮기고 "경로·확장자를 뗀 이름" 임을
+적었다.
+
+⚠️ **이 폴더에서 알아 둘 것 하나** -- `[controllers] ctrlN_cfg` 는 여전히
+**손편집이 이기는** 값이다(`Source = ICS INI` 카드의 원칙).  `ics_archon` 은
+비어 있을 때만 채우고, 어긋나면 기동에서 경고한다.  구조적으로 못 어긋나게
+하려면 **키 자체를 없애야** 하는데 그것은 원장의 `Source` 열 개정 사안이다.
+
 ## ✅ 참고 자료 재검토도 **이 폴더는 무개정** (2026-08-28 세션 2)
 
 운영자가 `ics_archon/__ref_archon_control/` 에 실험실 실사용 스크립트 일곱과 ACF
