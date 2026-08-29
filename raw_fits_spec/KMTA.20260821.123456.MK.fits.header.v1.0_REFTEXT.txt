@@ -54,10 +54,10 @@ COMMENT   Controller and ICS Information _____________________________________
 DATASRC = 'ARCHON_SCIENCE          ' / Pixel data source type                   
 CTRL1ID = 'KMTA-SCI-101            ' / Controller 1 identifier                  
 CTRL1SN = 'STA-0288                ' / Controller 1 serial number               
-CTRL1CFG= 'KMTA_SCI_101_R2609.1    ' / Controller 1 Configuration file          
+CTRL1CFG= 'KMTA_SCI_101_STA0288_R2608_MK' / Controller 1 Configuration          
 CTRL2ID = 'KMTA-SCI-102            ' / Controller 2 identifier                  
 CTRL2SN = 'STA-0289                ' / Controller 2 serial number               
-CTRL2CFG= 'KMTA_SCI_102_R2609.1    ' / Controller 2 Configuration file          
+CTRL2CFG= 'KMTA_SCI_102_STA0289_R2608_NT' / Controller 2 Configuration          
 ICSBUILD= 'v0.1.2:2026-08-21T18:09Z' / ICS/ICG software version and build Info  
 RDMODE  = 'NORMAL                  ' / Readout mode setting                     
 COMMENT   Camera System House Keeping Data                                      
