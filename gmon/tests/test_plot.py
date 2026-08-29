@@ -95,6 +95,17 @@ def main():
     assert os.path.getsize(fwpng) > 10 * 1024, \
         "fw.png too small: %d" % os.path.getsize(fwpng)
 
+    # [1b] --size WxH: 지정 크기로 렌더 (GUI 창 크기 추종 경로)
+    import matplotlib.image as mpimg
+    fwpng2 = os.path.join(tmp, "fw2.png")
+    rc, out = run([PY, os.path.join(GMON, "gplot.py"), "-c", conf,
+                   "--oneshot", "--term", "png", "--size", "500x300",
+                   "--datafile", os.path.join(GMON, "old", "fw181022.dat"),
+                   "--out", fwpng2])
+    assert rc == 0, "gplot --size rc=%d\n%s" % (rc, out)
+    shape = mpimg.imread(fwpng2).shape
+    assert shape[0] == 300 and shape[1] == 500, shape
+
     # [2] gsnap --backend mpl : 합성 스냅샷 4장 → 3×3 PNG
     res1 = make_result(tmp, "20260829.031429")
     snap1 = os.path.join(tmp, "snap1.png")
@@ -146,6 +157,12 @@ def main():
     body = loop_text.split("while (1) {", 1)[1]
     assert body.index("set xdata") < body.index("stats "), loop_text
     assert "set xdata time" in body, loop_text
+    # 라벨 배치 계약: UTC 상단 왼쪽(label 1) / g·F 상단 오른쪽(label 2),
+    # 라이브 루프에서 매 주기 갱신 + X축은 Local Time
+    assert "set label 1" in loop_text and "at screen 0.01,0.97 left" in loop_text
+    assert "set label 2" in loop_text and "at screen 0.99,0.97 right" in loop_text
+    assert "set label 2" in body, "라이브 루프에서 g/F 라벨 미갱신"
+    assert "Local Time" in loop_text and "Universal Time" not in loop_text
 
     # [3] 한 칩 ok=false → 예외 없이 PNG 생성 (N/A 타일)
     res2 = make_result(tmp, "20260829.031530", bad_chip="e")
