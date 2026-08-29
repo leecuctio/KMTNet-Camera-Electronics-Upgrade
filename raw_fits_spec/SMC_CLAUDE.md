@@ -11,7 +11,7 @@
 **[`KMT_CEU_Raw_FITS_Specification_v1.8.md`](KMT_CEU_Raw_FITS_Specification_v1.8.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → v1.5·v1.6 = 5장 검토분 → v1.7 = 파일명 넷째 필드 `<DETID>` 명명 → **v1.8 = `OI-9` 폐기 + `CTRLnCFG` 예시 정합**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 ~ v1.7).
 
 - ✅ **5장 검토 라운드는 닫혔다** (v1.5~v1.7, 2026-08-25~26).  들어간 것: `Cn_*` 자리 순서 명세(**5.6.1절 신설**) · 견본 헤더 comment 오타 2건 · **노출 정체성 카드 개정**(v1.6 — `ORIGNAME` → **`EXPID`**) · **파일명 `<DETID>` 필드 명명**(v1.7).  **태그 `raw-spec-v1.7` 이 `182b7f3` 에 붙었고 origin 에도 있다.**
-- ⏭️ **다음 판은 v1.8 이다** — 대기 4건: `CCDTEMP` comment 의 chip 귀속(`M`) 제거 · `OI-18` 폐기 · `CAMVER` 범프 규범 명시 · **바이어스 측정값의 헤더 카드 배치**(D3).  상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "작업 C".
+- ⏭️ **다음 판은 v1.9 다** — 대기 4건은 **v1.8 에 안 들어갔다**(v1.8 은 `OI-9` 폐기와 `CTRLnCFG` 정합 둘뿐이다): `CCDTEMP` comment 의 chip 귀속(`M`) 제거 · `OI-18` 폐기 · `CAMVER` 범프 규범 명시 · **바이어스 측정값의 헤더 카드 배치**(D3).  상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속".
 - ✅ **v1.8 발행분 (2026-08-29)** — 세 문서를 함께 판올림했다:
   **규격 v1.7 → v1.8** · **원장 v1.14 → v1.15** · **통합문서 v0.6 → v0.7** (구판 `archive/`).
   - **`OI-9` 폐기** — *"실측하여 raw spec 과 mef spec 에 다 정리해놓았고, 이들 문서를
@@ -25,50 +25,50 @@
     읽도록 개정) 자체는 **converter 쪽 개정 항목으로 남아 있다** — 그건 LEECU 몫이다.
   - **`CTRLxCFG` 예시 값** — 규격 5장·원장 세 곳을 실제 ACF 이름 규칙으로 옮기고,
     **폴더 경로와 확장자(`.acf`/`.cfg`)를 뗀 이름**임을 규격에 명시했다.
-  ⏳ **코드 쪽은 `ics_archon` 브랜치 몫이다** — ini 값에서 확장자를 떼는 파생 구현과
-  코드 주석의 문서 경로 인용(18곳).  [[project-ctrlcfg-from-acf-path]] 메모리 참조.
+  ✅ **코드 쪽도 끝났다** (2026-08-29, `ics-archon-v1.0-build` `3dabe21`) — `ics_archon` 이
+  `[archon] acf_mk`/`acf_nt` 경로에서 폴더·확장자를 떼어 `CTRL1CFG`/`CTRL2CFG` 를 채운다.
+  문서 경로 인용도 전수 정합했다.  경위·판단은 `ics_sim/DevNote.md` **11.35**.
 
-### ⏳ `CTRLnCFG` 를 **실제 ACF 파일명**으로 맞춘다 (운영자 지시 2026-08-29)
+### ✅ `CTRLnCFG` 를 **실제 ACF 파일명**으로 맞췄다 (운영자 지시 2026-08-29, 완료)
 
-**값 = 적용된 ACF 파일명, 단 `.acf` 확장자는 뺀다.**  종전 견본 값
-(`'KMTA_SCI_101_R2609.1'`)은 실제 ACF 이름 규칙과 모양이 달랐다 -- **시리얼과
+**값 = 적용된 ACF 파일명, 단 폴더 경로와 확장자(`.acf`/`.cfg`)는 뺀다.**  종전 견본
+값(`'KMTA_SCI_101_R2609.1'`)은 실제 ACF 이름 규칙과 모양이 달랐다 -- **시리얼과
 검출기조가 빠져 있었다**.  규칙은 [`../ics_archon/acf/README.md`](../ics_archon/acf/README.md)
 "판 표기" 절: `<SITE>_<역할>_<유닛번호>_<시리얼>_<ACF판>[_<검출기조>]`.
 
-**운영자가 시안을 `…MK.fits.header.v1.0_REFTEXT.txt` 에 넣어 두었다** (2026-08-29):
+    CTRL1CFG= 'KMTA_SCI_101_STA0288_R2608_MK' / Controller 1 Configuration
+    CTRL2CFG= 'KMTA_SCI_102_STA0289_R2608_NT' / Controller 2 Configuration
 
-    CTRL1CFG= 'KMTA_SCI_101_STA0288_R2608_MK' / Controller 1 Configuration file
-    CTRL2CFG= 'KMTA_SCI_102_STA0289_R2608_NT' / Controller 2 Configuration file
-
-⏳ **아직 그 한 파일뿐이다.**  다음 작업 때 나머지에 전파한다:
+**전파 결과** -- 자리 전부 닫혔다:
 
 | 갈래 | 자리 | 상태 |
 |---|---|---|
-| 견본 pair | `…MK….v1.0_REFTEXT.txt` | ✅ 운영자 시안 |
-| 〃 | `…MK….v1.0.txt` · `…NT….v1.0.txt` · `…NT….v1.0_REFTEXT.txt` | ⏳ **셋 남았다** |
-| 규격 본문 | v1.7 5장 `CTRL1CFG` 행의 예시 값 | ⏳ |
-| 기계 사본 | `ics_sim/rawcards.py` · `_vendor`(sync) · labtest 내장 5 | ⏳ `ics-archon-v1.0-build` |
+| 견본 pair 4 | `…{MK,NT}….v1.0{,_REFTEXT}.txt` | ✅ 운영자 (판은 안 올렸다) |
+| 규격 본문 | 5장 `CTRL1CFG` 행 + "경로·확장자를 뗀 이름" 명시 | ✅ **v1.8** |
+| 원장 3곳 | 3.3절 표 · 대응표 두 행 | ✅ **v1.15** |
+| 기계 사본 3 | `ics_sim/rawcards.py` · `_vendor`(sync) · labtest 내장 5 | ✅ `ics-archon-v1.0-build` `b45fb31` |
+| 코드 (파생) | `ics_archon` 이 ACF 경로에서 유도 | ✅ `3dabe21` (DevNote 11.35) |
 
 **확인해 둔 것** (2026-08-29):
 
-- ✅ **카드 폭은 문제없다.**  새 값이 29자라 카드가 `8+2 + 31 + 3 = 44` 를 쓰고
-  **comment 여유가 36자**다 -- `Controller 1 Configuration file`(30자)이 들어간다.
-  운영자 시안도 **80자를 지키고 있다**(전 줄 80자 확인).
+- ✅ **카드 폭은 문제없다.**  값이 29자라 카드가 `8+2 + 31 + 3 = 44` 를 쓰고
+  **comment 여유가 36자**다.  실제로 실린 문안은 `Controller 1 Configuration`(26자)
+  이고 -- 종전 `… Configuration file`(30자)에서 `file` 을 뗐다: 값이 이제 **파일명이
+  아니라 확장자를 뗀 이름**이라 `file` 이 남으면 값의 형태와 어긋난다.  전 줄 80자를
+  지킨다.
 - ⚠️ **`CTRLnCFG` 는 pair 두 파일에 같은 값이어야 한다** -- 규격 5장이 "두 대분을
   양쪽 파일에 모두 싣는다(converter 가 MK 만 읽으므로)" 이므로, `NT` 파일의
   `CTRL1CFG` 도 `…_101_STA0288_R2608_MK` 여야 한다.  **MK/NT 로 갈리는 것은
   `DETID` 뿐**이다(2.2절 v1.7).
 - ⚠️ **`main` 에는 견본 바이트 대사 시험이 없다.**  `ics_sim/tests/test_raw_draft.py`
-  는 **`ics-archon-v1.0-build` 에만** 있다(main 327 vs 그 브랜치 330).  지금처럼
-  견본 넷이 갈린 상태를 **main 의 시험은 못 잡는다** -- 전파한 뒤 그 브랜치에서
-  돌려 확인할 것.
+  는 **`ics-archon-v1.0-build` 에만** 있다 -- 견본을 고치면 **그 브랜치에서** 돌려
+  확인할 것.  이번 판은 그렇게 확인했다(330 통과).
 
 ✅ **견본 판은 올리지 않는다 -- `v1.0` 제자리 수정** (운영자 확정 2026-08-29).
 *"변경사항이 마이너한 부분이므로 승격 안함"*.  `CTRLnCFG` 도 `CCDTEMP` 의 `M`
 제거도 카드 하나씩의 값·comment 변경이라 판을 가를 만한 구조 변경이 아니다.
-⚠️ [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속" 에는
-아직 *"전자(`v1.1` 승격)가 규범에 맞아 보인다"* 로 적혀 있다 -- **그 브랜치에서
-작업할 때 이 확정으로 고칠 것.**
+✅ [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속" 도 이
+확정으로 고쳐져 있다 (2026-08-29 확인).
 
 ⭐ **부수 이득 하나** -- 파일명이 그대로라 `ics_sim/tests/test_raw_draft.py` 의
 글롭(`*.fits.header.v1.0.txt`)이 계속 맞는다.  2026-08-22 에 견본을 개명했다가
@@ -259,7 +259,7 @@ labtest 내장본 · 시험 3종 · `_vendor`.  **여기서 고치면 그 브랜
 
 검증: `ics_sim` **321 통과** · `ics_archon` **145 통과** · **견본 v1.5 pair 바이트 단위 재현**(MK·NT, 불일치 0).
 
-✅ **배선표 갈림 해소 (2026-08-25)** — `__reference/` 읽기 전용 규칙대로 v1.0 은 손대지 않고 사본을 sub레포 루트로 올려 **`Detector_Ch_to_AmpID_Map_v1.1.txt`** 로 고쳤다(4자 채널 토큰 + `IMGSEC` `D-BOT`). 규격 머리말·4.5절·`raw_fits_spec/README.md` 의 참조를 v1.1 로 옮겼다. 구 v1.0 은 원본 기록으로 `__reference/` 에 남는다 — **그것을 읽는 외부 도구가 있으면 v1.1 로 옮겨야 한다.**
+✅ **배선표 갈림 해소 (2026-08-25)** — `__reference/` 읽기 전용 규칙대로 v1.0 은 손대지 않고 사본을 sub레포 루트로 올려 **`Detector_Ch_to_AmpID_Map_v1.1.txt`** 로 고쳤다(4자 채널 토큰 + `IMGSEC` `D-BOT`). 규격 머리말·4.5절·`raw_fits_spec/README.md` 의 참조를 v1.1 로 옮겼다. 구 v1.0 은 원본 기록으로 `__reference/` 에 남겼다 — **그것을 읽는 외부 도구가 있으면 v1.1 로 옮겨야 한다.** ⚠️ **그 v1.0 은 v1.7 에서 삭제됐다**(구 표기·`B-BOT` 오기가 혼동만 준다 — 아래 v1.7 절). 원본은 git 이력 `44ab878`~ 에 있다.
 
 ⚠️ **converter 정규식은 LEECU 소관이다** — `^(KMTC|KMTS|KMTA|KMTT)\.` 의 넷째 대안을 `KMTK` 로 바꾸지 않으면 KASI 자료가 짝 탐색에 걸리지 않는다. D-017 영향 절에 C-항목으로 적어 두었다. 번호 공간(D-018)은 정규식이 `\d{6}` 이라 영향 없다.
 

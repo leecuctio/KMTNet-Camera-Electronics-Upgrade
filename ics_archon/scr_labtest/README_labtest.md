@@ -334,7 +334,10 @@ python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fit
 6. **`DATE-OBS`** — 노출 지시(LOADPARAMS) 시점의 **UTC, 밀리초까지**
    (구판은 Local 날짜/시각 2카드). `TIME-OBS` 폐지.
 7. **데이터부 2880B 패딩** (규격 3장) — v1.0 은 마지막 블록이 잘려 있었다.
-8. `CTRL1CFG` = 적용한 ACF 파일명, `RDMODE` = ACF 속도 토큰(FAST/COMP/SLOW),
+8. `CTRL1CFG` = 적용한 ACF 이름 — **폴더 경로와 확장자(`.acf`/`.cfg`)를 뗀 값**
+   이다(raw spec v1.8 5.5절).  ⚠️ `splitext` 를 쓰지 않는다: ACF 판 번호에 점이
+   들어가므로(`…_R2609.1`) 확장자 없이 적힌 경로에서 `.1` 을 먹는다.
+   `RDMODE` = ACF 속도 토큰(FAST/COMP/SLOW),
    `ICSBUILD` = `v<버전>:<빌드일시>Z`, `DATASRC='ARCHON_SCIENCE'`.
 
 > **⚠️ 기존 분석 스크립트는 그대로 못 쓴다.** 파일명이 `AC13A.*` 에서

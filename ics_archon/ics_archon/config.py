@@ -746,6 +746,28 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
                 % (n, typed, tag.lower(), derived, n, typed,
                    os.path.basename(cfg.acf.get(tag, ''))))
 
+    # ⚠️ **`RDMODE` 유도가 현행 ACF 이름 규칙에서는 걸리지 않는다.**
+    #
+    # `app.rdmode_from_acf()` 는 이름에서 `fast`/`comp`/`slow` 토큰을 찾는데,
+    # 그 규칙은 labtest 시절 이름(`KMTNet_Sci_fast_med_U13.acf`)에서 왔다.
+    # **현행 정본 여섯은 전부 `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`
+    # 이라 속도 토큰이 없다** (`acf/README.md`) -- 그래서 ini 를 비워 두면
+    # 유도가 늘 실패하고 코드 기본값 `NORMAL` 이 조용히 실린다.
+    #
+    # **조용한 것이 문제다.**  `NORMAL` 은 그럴듯한 값이라 헤더만 봐서는
+    # "정말 NORMAL" 과 "못 알아봐서 NORMAL" 이 구별되지 않는다.  ⏳ 현행
+    # ACF 의 실제 독출 모드가 무엇인지는 **운영자가 정할 사안**이므로 여기서
+    # 값을 만들어 넣지 않고, 사실만 t=0 에 드러낸다.
+    if not str(getattr(sim_cfg.controllers, 'rdmode', '') or '').strip():
+        tagged = [t for t in CTRLTAGS if cfg.acf.get(t)]
+        if tagged:
+            notes.append(
+                '[controllers] rdmode 가 비었는데 ACF 이름(%s)에 속도 토큰'
+                '(fast/comp/slow)이 없다 -- 유도가 실패해 코드 기본값 '
+                "'NORMAL' 이 실린다.  현행 ACF 이름 규칙에는 그 토큰이 아예 "
+                '없으므로(acf/README.md) 실제 독출 모드를 ini 에 **직접 적을 것**'
+                % ' · '.join(os.path.basename(cfg.acf[t]) for t in tagged))
+
     # ⚠️ **시간 축척은 하드웨어를 따라오지 않는다.**  적분 길이를 재는 것은
     # 컨트롤러(`IntMS`)이고 시퀀서의 카운트다운은 알림이다.  축척을 낮추면
     # 카운트다운이 먼저 끝나 `close_shutter()` 가 **적분 중에** 불리고, 그것이

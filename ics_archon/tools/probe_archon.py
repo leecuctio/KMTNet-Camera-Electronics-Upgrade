@@ -19,7 +19,7 @@
         -> SYSTEM · STATUS · FRAME 원문 + 해석 + 가정 대조
 
     2단계  ACF 대조 (여전히 읽기 전용)
-        python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTNet_Sci_fast_med_U13.acf
+        python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2608_MK.acf
         -> 파라미터 슬롯이 컨트롤러 메모리와 맞는지 (RCONFIG 로 확인만)
 
     3단계  프레임 1장  ⚠️ **전원을 켜고 CCD 를 읽어낸다**

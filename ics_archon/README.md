@@ -22,7 +22,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
 | [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다 |
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (207항목, 약 3분). 배치본은 `-m "not repo_only"` (173항목).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**217항목**, 약 4분). 배치본은 `-m "not repo_only"` (**181항목**).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
@@ -35,8 +35,8 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
 
 `__` 접두 폴더는 읽기 전용이다 — 편집이 필요하면 이 루트로 사본을 떠서
-작업한다(운영자 규칙 2026-08-22). v1.1 이 바로 그 사본이고, v1.0 원본은
-`__ref_archon_control/` 에 남아 있어 이력이 보존된다.
+작업한다(운영자 규칙 2026-08-22). `scr_labtest/` 의 **v1.1~v1.3.4 계보가 바로 그
+사본**이고, v1.0 원본은 `__ref_archon_control/` 에 남아 있어 이력이 보존된다.
 
 > **용량 메모** (2026-08-22 실측): `__ref_archon_control/` 의 PDF 2부(4.1 MB)는
 > 저장소에 **각각 한 부뿐이다** — `cam_char/archon/` 을 포함해 다른 사본이 없다.
@@ -330,7 +330,7 @@ expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 [archon]
 n_controllers = 1                   # 유닛 한 대만 돌릴 때.  2대면 2
 ctrl_mk_host = 10.0.0.13
-acf_mk       = ~/AIC/Config/acf/KMTNet_Sci_fast_med_U13.acf
+acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf
 monitor      = true                 # 텔레메트리 주기 감시·기록 (위 절)
                                     #   ⚠️ 접속은 이 값과 무관하다 -- 본편이
                                     #   기동에서 붙는다.  이 스위치는 CSV 기록과
@@ -485,7 +485,7 @@ python tools/probe_archon.py --host 10.0.0.13
 ### 2단계 — ACF 대조 (여전히 읽기 전용)
 
 ```bash
-python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTNet_Sci_fast_med_U13.acf
+python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2608_MK.acf
 ```
 
 `[archon] param_intms_slot`/`param_exposures_slot` 이 그 ACF 에 있는지, 컨트롤러
@@ -530,7 +530,7 @@ ctrl1_id = KMTA-SCI-101    # **선언한 쪽이 그 한 대다** (색인 1 = MK)
 [archon]
 n_controllers = 1          # 1 또는 2.  그 밖은 기동 거부
 ctrl_mk_host = 10.0.0.13
-acf_mk       = acf/KMTNet_Sci_fast_med_U13.acf
+acf_mk       = acf/KMTC_SCI_101_STA0284_R2608_MK.acf
 ```
 
 > `n_controllers = 1` 이면 `[controllers] ctrl1_id`(→`MK`) / `ctrl2_id`(→`NT`)

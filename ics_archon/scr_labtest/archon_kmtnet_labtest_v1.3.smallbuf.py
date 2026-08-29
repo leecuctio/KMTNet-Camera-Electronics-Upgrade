@@ -27,7 +27,7 @@
 #   TEST_DARK_NUMBER 도입 — dark 를 여러 장 찍을 수 있게. 다섯 데이터셋 전부 + _expected_dataset_bytes() 까지 일관 반영
 #   실기 유닛 정보 — STA-0284(CTIO 행 유닛), IP .101, ACF KMTC_SCI_101_STA0284_R2608_MK.acf, 관측자 SMC
 #   저장 자리 DS 폴더 분리 해제
-#   헤더는 규격 v1.7 그대로 (SITE_CODE=KMTK = 실험실에서 딴 자료)
+#   헤더는 규격 v1.8 그대로 (SITE_CODE=KMTK = 실험실에서 딴 자료)
 #
 # v1.2 (2026-08-26): raw spec v1.5/v1.6 반영으로 **헤더 내용이 바뀌었다** --
 #   값 카드 135 -> 131 (HK 4장 폐지) · CHMAP_* 4자 토큰 · ORIGNAME -> EXPID ·
@@ -484,8 +484,10 @@ def SetConfig(key, cfg):
 # 값 131 + COMMENT 8 + END 1 = 140 레코드 -- 2880 의 배수가 아니므로
 # build_header() 가 END 뒤를 공백 레코드 4장으로 채워 144 레코드 ·
 # 2880B x 4블록을 맞춘다 (v1.5 에서 HK 4장이 폐지되며 135 -> 131).
-# 판 근거는 v1.7 -- 단 v1.7 은 파일명 넷째 필드를 <DETID> 로 명명했을
-# 뿐이고 카드 내용은 v1.6 그대로다.  v1.6 이 정체성 카드를 ORIGNAME 에서
+# 판 근거는 v1.8 -- v1.8 이 CTRLnCFG 를 '폴더 경로와 확장자를 뗀 이름' 으로
+# 못박으면서 그 두 카드의 폭이 24 -> 29 · comment 가 'Controller n
+# Configuration' 이 됐다.  v1.7 은 파일명 넷째 필드를 <DETID> 로 명명했을
+# 뿐이고 5장 카드는 안 건드렸다.  v1.6 이 정체성 카드를 ORIGNAME 에서
 # EXPID 로 바꿨고(D-019),
 # Cn_* 나열 카드가 파이프 구분 · 결측 자리 NC 가 됐다.
 #
@@ -1038,7 +1040,16 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
     exptime = ExpTimeMs / 1000.0
     if exptime == int(exptime):
         exptime = int(exptime)
-    acfname = os.path.splitext(os.path.basename(AcfPath))[0]
+    ## CTRL<n>CFG = 폴더 경로와 확장자를 뗀 ACF 이름 (raw spec v1.8 5.5절).
+    ## ⚠️ splitext 를 쓰지 않는다 -- ACF 판 번호에 점이 들어가므로
+    ##    (…_R2609.1) 확장자 없이 적힌 경로에서 .1 을 먹는다.
+    ##    '.acf'/'.cfg' 만 떼고 모르는 접미는 그대로 둔다.
+    ##    같은 규칙: ics_archon/ics_archon/config.py cfg_name_from_acf()
+    acfname = os.path.basename((AcfPath or '').strip())
+    for _suffix in ('.acf', '.cfg'):
+        if acfname.lower().endswith(_suffix):
+            acfname = acfname[:-len(_suffix)]
+            break
     rdmode = 'NORMAL'
     for token in ('fast', 'comp', 'slow'):
         if token in acfname.lower():

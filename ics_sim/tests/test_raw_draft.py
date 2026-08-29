@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.7 5장).
+"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.8 5장).
 
 정본 견본은 `raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0.txt`
 (경로는 박지 않고 glob 으로 찾는다 -- `_find_draft`)
