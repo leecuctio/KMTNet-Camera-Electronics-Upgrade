@@ -1364,7 +1364,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 3. "미해결 목록"(F1~F12 · P1) — **앞 세션 워크플로 결과를 근거로 쓰지 말라는
    경고**가 붙어 있다.
 
-### ⚠️ 새 세션이 밟기 쉬운 함정 넷
+### ⚠️ 새 세션이 밟기 쉬운 함정 다섯
 
 1. **`__ref_archon_control/` 은 읽기 전용이다.**  참고 원본 보관용이라 여기
    파일을 고치지 않는다 — `UNIT_ACF` 가 구 파일명을 가리켜도 **운영자가 자기
@@ -1385,7 +1385,15 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 3. **ACF 를 파일명으로 고르지 말 것.**  개명이 시험을 한 번 깼다
    (`kmtnet_guide_*.acf` 글롭이 빈 목록).  `tests/test_monitor.py` 의
    `_repo_acfs()` 가 **내용(`BIGBUF`)으로** 가른다 — 새 시험도 그것을 쓴다.
-4. **`test_shutdown_waits_for_frames_that_are_still_being_saved` 는 부하에서
+4. ⚠️ **이 브랜치의 `ics_sim/`·`ics_legacy/` 문서는 아직 옛 폴더 이름을 가리킨다.**
+   운영자가 2026-08-29 에 `__localonly_` 접두어를 뗐고(`__isislogs/` ·
+   `__osu_legacy/` · `__tcs_simulator/`) **정리는 `main` 에만 들어갔다**
+   (`c81c1f8`).  이 브랜치는 **다음에 main 을 들여올 때 같이 받기로 했다**
+   (목 2026-08-29).  그때까지 여기 문서의 `__localonly_…` 경로는 **없는
+   폴더**다 -- 특히 [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md)
+   항목 2(Telcom/AUX 시뮬레이터 설치)가 그 경로를 가리키는데 **살아 있는 다음
+   단계 지시**라 실제로 걸린다.  `__tcs_simulator/` 로 읽을 것.
+5. **`test_shutdown_waits_for_frames_that_are_still_being_saved` 는 부하에서
    간헐 실패한다.**  저장 창을 잡는 시험이라 그렇고, 그 시험 자신의 주석에
    이력이 있다.  단독으로 다시 돌려 보고 통과하면 그것이 답이다 —
    ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것.**
