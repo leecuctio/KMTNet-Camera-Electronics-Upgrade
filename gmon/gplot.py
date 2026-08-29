@@ -26,6 +26,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gcommon
@@ -97,20 +98,55 @@ def _stamp_line():
             ' at screen 0.01,0.97 left tc rgb "blue" font ",11"')
 
 
-def _gf_label_line(cfg, datafile):
-    """상단 오른쪽 파란 "g=… F=…" — 마지막 줄의 예측 초점(g)·현재 초점(F).
+def _fw_last_epoch(tok):
+    """fw 1열 시각(로컬) → epoch 초. 운용판 6필드 형식만 환산 (그 외 None)."""
+    if tok.count(":") != 5:
+        return None  # 구형(%d:%H:%M:%S 등)은 연·월 정보가 없어 UTC 환산 불가
+    try:
+        lt = time.strptime(tok, "%y:%m:%d:%H:%M:%S")
+        return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, lt.tm_hour,
+                            lt.tm_min, lt.tm_sec, 0, 0, -1))
+    except (ValueError, OverflowError):
+        return None
 
-    gnuplot의 system()으로 매 렌더마다 tail|awk를 실행하므로 라이브 루프에서도
-    최신 값으로 갱신된다. 파일이 비어 있으면 빈 라벨.
+
+def gf_text(cfg, datafile):
+    """상단 오른쪽 라벨 문자열 — "g=… F=…  (마지막 측정 UTC)".
+
+    g = slope×TEMP − (base+dfocus) (예측 초점), F = 마지막 줄 FOCUS.
+    괄호의 시각은 마지막 측정(fw 마지막 줄, 로컬 기록)을 UTC로 환산한 값.
+    파일이 없거나 비었으면 빈 문자열.
     """
-    slope = cfg.getfloat("focus", "slope", fallback=-0.067)
-    base = cfg.getfloat("focus", "base", fallback=5.56)
-    dfocus = gcommon.read_dfocus(cfg)
-    awk = ("{printf \\\"g=%%.3f  F=%%.3f\\\", %.6g*$7-(%.6g), $6}"
-           % (slope, base + dfocus))
-    return ("set label 2 system(\"tail -n 1 '%s' | awk '%s'\")"
-            " at screen 0.99,0.97 right tc rgb \"blue\" font \",11\""
-            % (datafile, awk))
+    try:
+        with open(datafile) as fp:
+            lines = [ln for ln in fp.read().splitlines() if ln.strip()]
+        parts = lines[-1].split()
+        g = (cfg.getfloat("focus", "slope", fallback=-0.067) * float(parts[6])
+             - (cfg.getfloat("focus", "base", fallback=5.56)
+                + gcommon.read_dfocus(cfg)))
+        text = "g=%.3f  F=%.3f" % (g, float(parts[5]))
+    except (OSError, IndexError, ValueError):
+        return ""
+    epoch = _fw_last_epoch(parts[0])
+    if epoch is not None:
+        text += time.strftime("  (%Y-%m-%dT%H:%M:%S UTC)", time.gmtime(epoch))
+    return text
+
+
+def _gf_label_line(cfg, datafile):
+    """상단 오른쪽 파란 라벨 설정 라인 — 내용은 gf_text()가 만든다.
+
+    gnuplot system()이 매 렌더마다 `gplot.py --gf-label`을 호출하므로 라이브
+    루프에서도 최신 값·시각으로 갱신된다 (로컬→UTC 환산은 파이썬에서 정확히).
+    """
+    py = cfg.tool("python")
+    if not (py and os.path.sep in py and os.path.exists(py)):
+        py = sys.executable
+    me = os.path.abspath(__file__)
+    return ("set label 2 system(\"'%s' '%s' --gf-label -c '%s'"
+            " --datafile '%s'\") at screen 0.99,0.97 right"
+            " tc rgb \"blue\" font \",11\""
+            % (py, me, cfg.path, datafile))
 
 
 def _plot_command(cfg, datafile):
@@ -196,6 +232,8 @@ def main(argv=None):
     ap.add_argument("--datafile", default=None, help="fw 데이터 파일(기본: 오늘 밤)")
     ap.add_argument("--size", default=None,
                     help="렌더 크기 WxH (예: 900x420; 기본 [plot] size)")
+    ap.add_argument("--gf-label", action="store_true",
+                    help="상단 오른쪽 라벨 문자열만 출력 (gnuplot system()용)")
     args = ap.parse_args(argv)
 
     size = None
@@ -207,11 +245,16 @@ def main(argv=None):
             ap.error("--size는 WxH 형식 (예: 900x420)")
 
     cfg = gcommon.load_config(args.config)
+    datafile = os.path.abspath(args.datafile) if args.datafile else gcommon.fw_path(cfg)
+
+    if args.gf_label:  # gnuplot system() 호출용 — 라벨 문자열만 출력하고 종료
+        sys.stdout.write(gf_text(cfg, datafile))
+        return 0
+
     gcommon.ensure_dirs(cfg)
     log = gcommon.setup_logger(cfg, "gplot")
 
     term = args.term or cfg.get("plot", "term", fallback="qt")
-    datafile = os.path.abspath(args.datafile) if args.datafile else gcommon.fw_path(cfg)
     out = None
     if term == "png":
         out = os.path.abspath(args.out) if args.out else os.path.join(

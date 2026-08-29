@@ -106,6 +106,23 @@ def main():
     shape = mpimg.imread(fwpng2).shape
     assert shape[0] == 300 and shape[1] == 500, shape
 
+    # [1c] --gf-label: 우상단 라벨 문자열 — g/F + 마지막 측정의 UTC 괄호
+    import re as _re
+    newfw = os.path.join(tmp, "fwnew.dat")
+    with open(newfw, "w") as fp:
+        fp.write("26:08:29:10:30:21 1.87 2.10 2.01 2.08 -6.500 6.6 1.27\n")
+    rc, out = run([PY, os.path.join(GMON, "gplot.py"), "-c", conf,
+                   "--gf-label", "--datafile", newfw])
+    assert rc == 0 and _re.match(
+        r"^g=-?\d+\.\d{3}  F=-6\.500"
+        r"  \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} UTC\)$", out.strip()), out
+    # 구형(연·월 없음)은 UTC 환산 불가 → 괄호 없이 g/F만
+    rc, out = run([PY, os.path.join(GMON, "gplot.py"), "-c", conf,
+                   "--gf-label", "--datafile",
+                   os.path.join(GMON, "old", "fw181022.dat")])
+    assert rc == 0 and _re.match(r"^g=-?\d+\.\d{3}  F=-?\d+\.\d{3}$",
+                                 out.strip()), out
+
     # [2] gsnap --backend mpl : 합성 스냅샷 4장 → 3×3 PNG
     res1 = make_result(tmp, "20260829.031429")
     snap1 = os.path.join(tmp, "snap1.png")
