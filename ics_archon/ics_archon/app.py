@@ -41,28 +41,13 @@ from .archon.protocol import ArchonError                  # noqa: E402
 
 log = logging.getLogger('ics_archon.app')
 
-#: ACF 이름에 들어 있는 독출 모드 토큰 -> FITS `RDMODE`.  labtest 의 유도
-#: 규칙 그대로다 (`KMTNet_Sci_fast_med_U13.acf` -> `FAST`).
-#:
-#: ⚠️ 같은 ACF 경로에서 `CTRLnCFG` 도 유도한다 -- 그쪽 규칙은
-#: `config.cfg_name_from_acf()` 다 (`[archon]` 을 읽는 자리에 뒀다).
-#: **둘의 자르기 규칙이 다르다**: 여기는 토큰을 찾을 뿐이라 `splitext` 로
-#: 충분하지만, `CTRLnCFG` 는 값 자체가 되므로 판 번호의 점을 먹으면 안 된다.
-_RDMODE_TOKENS = ('fast', 'comp', 'slow')
-
-
-def rdmode_from_acf(path: str) -> str:
-    """ACF 파일명에서 `RDMODE` 를 유도한다.  못 알아보면 빈 문자열.
-
-    빈 문자열을 돌려주는 것이 중요하다 -- 그러면 `rawhdr` 의 코드 기본값
-    (`NORMAL`)이 실린다.  여기서 `'NORMAL'` 을 만들어 넣으면 "유도 실패" 와
-    "정말 NORMAL" 이 구별되지 않는다.
-    """
-    name = os.path.splitext(os.path.basename(path or ''))[0].lower()
-    for token in _RDMODE_TOKENS:
-        if token in name:
-            return token.upper()
-    return ''
+#: ACF 경로에서 헤더 값을 뽑는 규칙 둘은 **`config.py` 에 함께 있다** --
+#: `rdmode_from_acf()`(`RDMODE`) · `cfg_name_from_acf()`(`CTRLnCFG`).
+#: 같은 입력에서 나오는 값들이라 한 곳에 두었고, `config._cross_checks()` 가
+#: 둘의 어긋남을 기동에서 본다.
+#: **둘의 자르기 규칙이 다르다**: `RDMODE` 는 토큰을 찾을 뿐이라 `splitext`
+#: 로 충분하지만, `CTRLnCFG` 는 값 자체가 되므로 판 번호의 점을 먹으면 안 된다.
+rdmode_from_acf = acfg_mod.rdmode_from_acf
 
 
 def fill_controller_cfg_names(cfg, acfg) -> None:  # noqa: ANN001

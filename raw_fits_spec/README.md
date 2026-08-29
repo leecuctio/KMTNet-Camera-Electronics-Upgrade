@@ -20,7 +20,7 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 > ✅ **현행 규격: [`KMT_CEU_Raw_FITS_Specification_v1.8.md`](KMT_CEU_Raw_FITS_Specification_v1.8.md) — "raw spec"** (2026-08-29). 2026-08-18~22 전면 재검토(확인 요망 11건 전량 종결 · D-016 등재)의 재작성판(v1.3) → 운영자 1~4장 검토 반영(v1.4) → 5장(헤더 keyword) 검토 개시분(v1.5) → 노출 정체성 카드 개정(v1.6 — `ORIGNAME` → **`EXPID`** · `FILENAME` comment) → 파일명 넷째 필드 명명(v1.7 — `<DETID>`) → **v1.8 이 `OI-9` 를 폐기하고 `CTRLnCFG` 를 실제 ACF 이름 규칙에 맞춘다**. 구 "Raw FITS Pair 규격" v1.2 를 개명·대체한다(구판은 `archive/`).
 
-> ⏭️ **다음 판(v1.9) 대기 4건** — `CCDTEMP` comment 의 chip 귀속(`M`) 제거 · `OI-18` 폐기 · `CAMVER` 범프 규범 명시(듀어 RTD 배치 변경 포함) · 바이어스 측정값의 헤더 카드 배치(D3). 상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속".
+> ⏭️ **다음 판(v1.9) 대기 5건** — `CCDTEMP` comment 의 chip 귀속(`M`) 제거 · `OI-18` 폐기 · `CAMVER` 범프 규범 명시(듀어 RTD 배치 변경 포함) · 바이어스 측정값의 헤더 카드 배치(D3) · **`RDMODE` 결측값 `UNKNOWN` 등재**(5.5절 + 5.0절 문자열 sentinel 어휘 — 코드는 이미 반영됐다). 상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속".
 >
 > ⚠️ **절 구성이 구판과 다르다** — 구판 절 번호(`규격 5.7절` 등)를 인용한 문서·코드 주석은 현행 기준으로 재확인할 것. v1.4 에서 **2.5절(Wrote 통보)이 삭제**돼 2장은 2.1~2.4 다. ICD v4.1 §12 와 `ics_sim`/`ics_archon` 주석의 버전 참조 갱신은 각 소관의 일감이다.
 

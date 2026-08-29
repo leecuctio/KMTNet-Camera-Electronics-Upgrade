@@ -652,10 +652,22 @@ def test_ics_ini_cards_are_editable_from_the_ini(tmp_path):
     assert cfg.site_for('KMTA').get('origin') == 'KASI'
 
 
-def test_rdmode_defaults_to_normal():
+def test_rdmode_falls_back_to_unknown_not_to_a_real_mode():
+    """⭐ **못 알아내면 `UNKNOWN`** (운영자 확정 2026-08-29).
+
+    종전 기본값 `'NORMAL'` 은 **실제로 쓰이는 값**이라, 헤더만 봐서는 "정말
+    NORMAL" 과 "못 알아봐서 NORMAL" 이 구별되지 않았다 -- 5.0절이 금지하는
+    "결측을 sentinel 로 가리는" 형태다.  ⚠️ 문자열 sentinel `'NC'` 와는 뜻이
+    다르다: `NC` 는 "그 자리가 없다", `UNKNOWN` 은 "있는데 모른다" 다.
+    """
     ch = rawhdr.controller_header({'units': ()}, backend_name='sim',
                                   ics_build='x')
-    assert str(ch['RDMODE']) == 'NORMAL'
+    assert str(ch['RDMODE']) == 'UNKNOWN'
+    assert str(ch['RDMODE']) != 'NORMAL', '실제로 쓰이는 값으로 결측을 가린다'
+    # ini 가 채워져 있으면 그 값이 그대로 실린다 (기본값이 이기지 않는다)
+    ch2 = rawhdr.controller_header({'units': ()}, backend_name='sim',
+                                   ics_build='x', rdmode='NORMAL')
+    assert str(ch2['RDMODE']) == 'NORMAL'
     # 백엔드도 INI 도 없으면 **카드는 남기고 값은 sentinel** (규격 5.0절).
     # 1대만 운영할 때 빠진 쪽도 이 자리로 떨어진다 -- 카드를 빼면 pair 두
     # 파일의 카드 수가 달라져 converter 와 견본 대사가 구조 변경으로 읽는다.

@@ -246,7 +246,6 @@ DRIVER = textwrap.dedent('''
     cfg.transport.bind_host = '127.0.0.1'; cfg.transport.bind_port = 0
     cfg.transport.send_gap_ms = 0.0
     cfg.behavior.console = False; cfg.logging.wire = False
-    cfg.node.site_from_ip = False
     cfg.paths.data_dir = os.path.join(sys.argv[1], 'rawdata')
     cfg.paths.expnum_file = os.path.join(sys.argv[1], 'expnum')
     cfg.hardware.backend = 'archon'

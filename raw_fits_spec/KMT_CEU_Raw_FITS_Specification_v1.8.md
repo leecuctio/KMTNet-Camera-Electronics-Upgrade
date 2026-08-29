@@ -2,12 +2,14 @@
 
 **v1.8** · 2026-08-29 · **현행** — 2026-08-18~22 전면 재검토(확인 요망 11건 전량 종결 · D-016 등재)를 반영한 재작성판. v1.4 가 운영자 1~4장 검토 반영판, v1.5 가 5장(헤더 keyword) 검토 개시분이고, **v1.6 은 노출 정체성 카드를 개정한다** (`ORIGNAME` → **`EXPID`**). 구 문서명 "KMT-CEU Raw FITS Pair 규격"(v1.2, `archive/`)을 개명·대체한다. 이 문서를 **raw spec(로우 스펙)** 이라 부른다.  **v1.8 은 `OI-9` 를 폐기하고 `CTRLnCFG` 예시를 실제 ACF 이름 규칙에 맞춘다.**
 
+> **제자리 정정 (2026-08-29) — 2.2절 `<SITE>` 의 사이트 판별 문장.** *"실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015)"* 가 남아 있었다. **D-015 는 2026-08-24 에 폐기됐고**(운영자 확정, `ics_sim/DevNote.md` 11.27) 사이트 판별은 **`[node] observatory` 한 줄**이 정본이다 — `siteid.py` 와 `site_from_ip` 는 삭제됐다. 같은 문장의 *"넷 밖의 값은 `KMTK` 로 정규화"* 도 현행과 다르다: **모르는 값은 기동을 거부한다**(`rawpair.site_of_observatory()` 가 `ValueError`). 폐기 결정이 v1.8 발행보다 앞서므로 판을 올리지 않고 제자리에서 고쳤다 — **규범 내용의 변경이 아니라 이미 내려진 결정을 뒤늦게 반영한 것**이다. 머리말 결정 기록 표의 `D-015` 표기도 함께 고쳤다.
+
 | 연동 | 값 |
 | --- | --- |
 | 정본 헤더 견본 | [`KMTA.20260821.123456.MK.fits.header.v1.0.txt`](KMTA.20260821.123456.MK.fits.header.v1.0.txt) · [`…NT.fits.header.v1.0.txt`](KMTA.20260821.123456.NT.fits.header.v1.0.txt) — 5장 카드 전량의 **바이트 단위 견본**(각 **144 레코드 = 값 카드 131 + COMMENT 8 + END 1 + 공백 4**, 정확히 4×2880 = 11,520 바이트 — `END` 는 140번째이고 그 뒤 4장은 블록을 채우는 공백 레코드다). 메모장용 사본 `…_REFTEXT.txt` 는 카드마다 LF 를 넣고 끝에 `#EOF` 를 붙인 것으로, **LF 를 걷어내면 정본과 바이트 동일**하다 |
 | 카드 판정 원장 (배경·경위) | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.15.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.15.md) — 이하 **원장**. 카드별 계승/개칭/폐지 근거, converter 대조, 레거시 123개 전량 귀속 |
 | MEF·파이프라인 파급 | [`KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.7.md`](KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.7.md) — 이하 **통합 문서**. LEECU 전달용 C-항목·이름 대응 |
-| 결정 기록 | `../project_management/governance/DECISION_LOG.md` — D-002(chip order) · D-010(Wrote 분리) · D-011(파일명) · D-012(백엔드 계약) · D-013(레거시 판정) · D-014(관측일) · D-015(사이트 판정) · **D-016(충돌·정체성)** |
+| 결정 기록 | `../project_management/governance/DECISION_LOG.md` — D-002(chip order) · D-010(Wrote 분리) · D-011(파일명) · D-012(백엔드 계약) · D-013(레거시 판정) · D-014(관측일) · ~~D-015~~(사이트 IP 판정 — **폐기 2026-08-24**, 판별은 `[node] observatory`) · **D-016(충돌·정체성)** · **D-017**(사이트 코드 넷) |
 | 연동 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1) |
 | 연동 converter | `../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py` (v2.2.0) |
 | Amp 배선 맵 (기계 사본) | [`Detector_Ch_to_AmpID_Map_v1.1.txt`](Detector_Ch_to_AmpID_Map_v1.1.txt) — 4.5절 표의 기계 가독 정본. v1.0(`__reference/`)은 3자 채널 표기 · `IMGSEC:B-BOT` 판이고 **이 판이 대체한다** |
@@ -58,7 +60,7 @@ STA Archon science controller 2대가 노출 1회당 만드는 **raw FITS pair(M
        KMTA.20260821.123456.NT.fits
 ```
 
-- `<SITE>` — 4자 대문자 사이트 코드, TC 텔레메트리 `TELID` 규약과 동일. **이 넷 밖의 값은 전부 `KMTK` 로 정규화**하고 경고를 남긴다. 실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015).
+- `<SITE>` — 4자 대문자 사이트 코드, TC 텔레메트리 `TELID` 규약과 동일. **실효 사이트는 ICS 설정 `[node] observatory` 한 줄이 정한다** (값 어휘는 `OBSERVAT` 카드와 같은 `CTIO`/`SSO`/`SAAO`/`KASI`, D-017). **그 넷 밖의 값은 기동을 거부한다** — 조용히 `KMTK` 로 떨어뜨리지 않는다: 사이트는 파일명 `<SITE>`·좌표·`ORIGIN`·관측일 경계를 함께 끌고 가므로 오타 하나가 자료의 정체를 통째로 바꾼다. ⚠️ **호스트 IP 로 판정하던 규약(D-015)은 폐기됐다** (2026-08-24) — NIC 이 내려가거나 낯선 대역에 붙으면 진짜 관측 자료가 벤치 이름으로 저장되는 반대 위험 때문이다. TC 가 보내는 `TELID` 는 **교차검증 경고에만** 쓰고 파일명에는 영향을 주지 않는다.
 
   | `<SITE>` | 사이트 | `OBSERVAT` | L0 MEF prefix |
   | --- | --- | --- | --- |

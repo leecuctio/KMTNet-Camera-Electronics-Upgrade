@@ -11,7 +11,7 @@
 **[`KMT_CEU_Raw_FITS_Specification_v1.8.md`](KMT_CEU_Raw_FITS_Specification_v1.8.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → v1.5·v1.6 = 5장 검토분 → v1.7 = 파일명 넷째 필드 `<DETID>` 명명 → **v1.8 = `OI-9` 폐기 + `CTRLnCFG` 예시 정합**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 ~ v1.7).
 
 - ✅ **5장 검토 라운드는 닫혔다** (v1.5~v1.7, 2026-08-25~26).  들어간 것: `Cn_*` 자리 순서 명세(**5.6.1절 신설**) · 견본 헤더 comment 오타 2건 · **노출 정체성 카드 개정**(v1.6 — `ORIGNAME` → **`EXPID`**) · **파일명 `<DETID>` 필드 명명**(v1.7).  **태그 `raw-spec-v1.7` 이 `182b7f3` 에 붙었고 origin 에도 있다.**
-- ⏭️ **다음 판은 v1.9 다** — 대기 4건은 **v1.8 에 안 들어갔다**(v1.8 은 `OI-9` 폐기와 `CTRLnCFG` 정합 둘뿐이다): `CCDTEMP` comment 의 chip 귀속(`M`) 제거 · `OI-18` 폐기 · `CAMVER` 범프 규범 명시 · **바이어스 측정값의 헤더 카드 배치**(D3).  상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속".
+- ⏭️ **다음 판은 v1.9 다** — 대기 **5건**은 **v1.8 에 안 들어갔다**(v1.8 은 `OI-9` 폐기와 `CTRLnCFG` 정합 둘뿐이다): `CCDTEMP` comment 의 chip 귀속(`M`) 제거 · `OI-18` 폐기 · `CAMVER` 범프 규범 명시 · **바이어스 측정값의 헤더 카드 배치**(D3) · ⭐ **`RDMODE` 결측값 `UNKNOWN` 등재**(5.5절 + 5.0절 sentinel 어휘 — **코드는 이미 갔다**, 운영자 확정 2026-08-29).  상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속".
 - ✅ **v1.8 발행분 (2026-08-29)** — 세 문서를 함께 판올림했다:
   **규격 v1.7 → v1.8** · **원장 v1.14 → v1.15** · **통합문서 v0.6 → v0.7** (구판 `archive/`).
   - **`OI-9` 폐기** — *"실측하여 raw spec 과 mef spec 에 다 정리해놓았고, 이들 문서를
@@ -232,7 +232,7 @@ labtest 내장본 · 시험 3종 · `_vendor`.  **여기서 고치면 그 브랜
 | `ics_sim/ics_sim/rawpair.py` | `OBSERVAT`·`ORIGIN_OF` 넷째 자리 → `KMTK:KASI` · `TESTBED_SITE` → **`KASI_SITE`** 개명 · `normalize_site()` · `OBSDATE_SHIFT_MIN` |
 | `config.py` | `_SITE_TELID` `testbed`→`kasi` · `aux_requery_after_shopen` **3.0 → 1.0** |
 | `state.py` | `site_code` 기본값 `KMTK` · **`EXPNUM_SPACE = 1_000_000` 신설**, `advance()` 가 되감는다 (D-018) |
-| `siteid.py` | `BENCH_SITE = 'KMTK'` |
+| ~~`siteid.py`~~ | `BENCH_SITE = 'KMTK'` — ⚠️ **그 파일은 2026-08-24 에 삭제됐다**(D-015 폐기). 이 행은 당시 `main` 기준 기록이다 |
 | `app.py` | `KASI_SITE` 참조 · 경고 문구 |
 | `rawhdr.py` | `DEWAR_CARDS` 에서 **폐지 4장 제거** · `VERIFIED_SITES` 에 **`KMTK: TELESCOP='KMTNet 1.6m #0'`** 추가 · TELESCOP 대응 주석 |
 | `hardware/base.py` | 폐지 카드를 예시로 쓰던 주석 |

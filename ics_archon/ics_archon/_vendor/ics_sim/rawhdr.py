@@ -83,7 +83,22 @@ CAMVER = 'CEU-v2.1'      # **HW·성능상 변경이 있을 때만 올린다** -
                          # 조항(4.3)의 고정 대상 = CAMVER + CTRLxCFG
 #: ⚠️ `FPAID` 는 이제 **사이트가 정한다** -- 정본은 `VERIFIED_SITES` 와
 #: `fpaid_of()` 이고 모듈 상수는 두지 않는다 (raw spec 5.3.1절, D-017 항목 6).
-RDMODE = 'NORMAL'
+#: ⭐ **못 알아냈을 때는 `UNKNOWN` 이다** (운영자 확정 2026-08-29).
+#:
+#: 종전 기본값은 `'NORMAL'` 이었는데, 그것은 **실제로 쓰이는 값**이라
+#: "정말 NORMAL" 과 "못 알아봐서 NORMAL" 이 헤더에서 구별되지 않았다 --
+#: 조용한 오염의 전형이다(5.0절 "결측을 sentinel 로 가리지 말 것").
+#: `UNKNOWN` 은 이 계보에 이미 있는 낱말이다 (`SHUTTER` 의 값 어휘 ·
+#: converter 가 raw 를 못 읽었을 때의 기본값).
+#:
+#: ⚠️ 문자열 sentinel `'NC'`(5.0절)와 **뜻이 다르다**: `NC` 는 "그 자리가
+#: 없다", `UNKNOWN` 은 "있는데 값을 모른다" 다.  독출 모드는 언제나 존재하므로
+#: `NC` 가 아니다.
+#:
+#: ⏳ **규격 등재는 v1.9 대기** -- 5.5절 `RDMODE` 행이 아직 `'NORMAL' 등` 이라
+#: 적고 있다.  코드가 먼저 간 예외이고, 그 이유는 값이 `NORMAL` 로 실리면
+#: **거짓말이 조용히 아카이브에 들어가기** 때문이다.
+RDMODE = 'UNKNOWN'
 
 #: `CHMAP_*` 4장 (raw spec 4.5절 amp 전수 표의 투영, pair 상이).
 #: 기계 가독 정본은 `raw_fits_spec/Detector_Ch_to_AmpID_Map_v1.1.txt`.
@@ -408,7 +423,8 @@ def controller_header(info: dict, *, backend_name: str, ics_build: str,
             **채워진 키는 백엔드 보고값을 이긴다** (ICS INI 카드, 운영자 지시
             2026-08-22).  실값 원자료는 `raw_fits_spec/__reference/
             Archon_Unit_Info.txt` (`KMTA-SCI-101`=STA-0288 등, ID 숫자 = IP).
-        rdmode: `[controllers] rdmode` -- 비면 코드 기본 `NORMAL`.
+        rdmode: `[controllers] rdmode` -- 비면 코드 기본 `UNKNOWN`
+            (운영자 확정 2026-08-29 -- 못 알아낸 것을 실값으로 가리지 않는다).
             MEF `READMODE`(`'64AMP'`, 구조 선언)와 **별개**다 (원장 v1.9).
     """
     units = [dict(u) for u in info.get('units', ())]

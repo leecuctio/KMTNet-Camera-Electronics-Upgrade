@@ -226,7 +226,13 @@ def _rebuild(tag: str) -> list[str]:
         ctrl_info={'units': ()}, ctrl_telem=ctel, sensors=sensors,
         # 견본은 관측소 raw(ORIGIN='SSO') -- KMTA 유도값과 같으므로
         # cfg_site 없이도 성립하지만, 유도 경로를 그대로 태운다.
-        cfg_site=None, cfg_camera=None, cfg_ctrl=cfg_ctrl, rdmode='',
+        # ⭐ `RDMODE` 도 **견본 값을 되먹인다** (2026-08-29).  종전에는 빈
+        # 문자열을 주고 코드 기본값이 견본과 맞기를 기대했는데, 그 기본값이
+        # `UNKNOWN` 으로 바뀌면서 드러났다 -- 견본의 `NORMAL` 은 **실제
+        # 관측값**이지 "못 알아낸 자리" 가 아니다.  이 시험의 규칙(견본 값을
+        # 넣으면 견본이 바이트로 재현된다)에 원래부터 이렇게 맞았어야 한다.
+        cfg_site=None, cfg_camera=None, cfg_ctrl=cfg_ctrl,
+        rdmode=sample['RDMODE'].strip(),
         telem_cards=telem,
         date_obs=sample['DATE-OBS'], exptime=int(sample['EXPTIME']),
         ledflash_ms=int(sample['LEDFLASH']),

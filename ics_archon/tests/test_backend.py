@@ -306,7 +306,12 @@ def test_header_carries_the_facts_only_the_controller_knows(tmp_path, fakes):  #
     # 원천이 아직 없는 것은 sentinel 로 남아야 한다 -- 값을 지어내지 않는다
     assert mk['CCDTEMP'].strip() == '-999.99'
     assert mk['DEWPRES'].strip() == '9.99e-9'
-    assert mk['RDMODE'].strip() == 'NORMAL'    # ACF 이름에 fast/comp/slow 없음
+    # ⭐ `RDMODE` 는 **더 이상 이 무리가 아니다** (2026-08-29) -- 저장소 ini 가
+    # `NORMAL` 을 적어 두므로 원천이 있다(현행 ACF 여섯의 실제 모드, 운영자
+    # 확정).  ACF 이름에 속도 토큰이 없어 유도는 빈손이고, 그때의 코드 기본값이
+    # **`UNKNOWN`** 인 것은 `test_ini_cards.py` 와 `ics_sim` 쪽 시험이 지킨다 --
+    # 여기서 보는 것은 **ini 값이 실제로 카드까지 닿는가** 다.
+    assert mk['RDMODE'].strip() == 'NORMAL'
 
 
 def test_imagetyp_and_dateobs_are_real_values_not_sentinels(tmp_path, fakes):  # noqa: ANN001
@@ -446,7 +451,7 @@ def test_rdmode_is_derived_from_the_acf_name(name, want):  # noqa: ANN001
     """컨트롤러는 적용된 ACF 이름을 보고하지 않는다 (매뉴얼 p.54).
 
     호스트가 아는 유일한 근거가 파일명이다.  **못 알아보면 빈 문자열**이라야
-    한다 -- `'NORMAL'` 을 만들어 넣으면 "유도 실패" 와 "정말 NORMAL" 이
+    한다 -- 여기서 값을 만들어 넣으면 "유도 실패" 와 "정말 그 값" 이
     구별되지 않는다.
     """
     assert rdmode_from_acf(name) == want

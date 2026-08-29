@@ -39,6 +39,34 @@ log = logging.getLogger('ics_archon.config')
 #: 컨트롤러 태그 (`rawpair.CONTROLLERS` 의 색인 순서 = 1:MK, 2:NT)
 CTRLTAGS = tuple(tag for tag, _ in rawpair.CONTROLLERS)
 
+#: ACF 이름에 들어 있는 독출 모드 토큰 -> FITS `RDMODE`.  labtest 의 유도
+#: 규칙 그대로다 (`KMTNet_Sci_fast_med_U13.acf` -> `FAST`).
+#:
+#: ⚠️ **현행 ACF 이름 규칙에는 이 토큰이 없다** (`acf/README.md` — 여섯 전부
+#: `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`).  그래서 실기에서 이 유도는
+#: 늘 빈손이고, `RDMODE` 는 **ini 에 적은 값**이 정본이다 (현행 전부 `NORMAL`,
+#: 운영자 확정 2026-08-29).  규칙을 남겨 둔 것은 속도별 ACF 가 다시 올 때를
+#: 위한 것이고, `_cross_checks()` 가 **양방향으로** 어긋남을 본다.
+_RDMODE_TOKENS = ('fast', 'comp', 'slow')
+
+
+def rdmode_from_acf(path: str) -> str:
+    """ACF 파일명에서 `RDMODE` 를 유도한다.  못 알아보면 빈 문자열.
+
+    빈 문자열을 돌려주는 것이 중요하다 -- 그러면 `rawhdr` 의 코드 기본값
+    (`NORMAL`)이 실린다.  여기서 `'NORMAL'` 을 만들어 넣으면 "유도 실패" 와
+    "정말 NORMAL" 이 구별되지 않는다.
+
+    ⚠️ 여기는 **토큰을 찾을 뿐**이라 `splitext` 로 충분하다 -- 값 자체가 되는
+    `cfg_name_from_acf()` 와 자르기 규칙이 다른 이유다.
+    """
+    name = os.path.splitext(os.path.basename(path or ''))[0].lower()
+    for token in _RDMODE_TOKENS:
+        if token in name:
+            return token.upper()
+    return ''
+
+
 #: `CTRLnCFG` 값에서 떼는 설정 파일 확장자.  **이 둘만 뗀다** (운영자 확정
 #: 2026-08-29).
 #:
@@ -62,7 +90,7 @@ def cfg_name_from_acf(path: str) -> str:
 
     경로가 비었거나 이름이 통째로 확장자면 빈 문자열을 돌려준다 -- 그러면
     부르는 쪽이 "유도 실패" 를 알아보고 손편집 값이나 백엔드 보고값에
-    맡긴다.  `rdmode_from_acf()`(`app.py`)가 빈 문자열을 쓰는 것과 같은
+    맡긴다.  바로 위 `rdmode_from_acf()` 가 빈 문자열을 쓰는 것과 같은
     약속이다.
     """
     name = os.path.basename((path or '').strip())
@@ -748,7 +776,7 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
 
     # ⚠️ **`RDMODE` 유도가 현행 ACF 이름 규칙에서는 걸리지 않는다.**
     #
-    # `app.rdmode_from_acf()` 는 이름에서 `fast`/`comp`/`slow` 토큰을 찾는데,
+    # `rdmode_from_acf()` 는 이름에서 `fast`/`comp`/`slow` 토큰을 찾는데,
     # 그 규칙은 labtest 시절 이름(`KMTNet_Sci_fast_med_U13.acf`)에서 왔다.
     # **현행 정본 여섯은 전부 `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`
     # 이라 속도 토큰이 없다** (`acf/README.md`) -- 그래서 ini 를 비워 두면
@@ -758,15 +786,32 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
     # "정말 NORMAL" 과 "못 알아봐서 NORMAL" 이 구별되지 않는다.  ⏳ 현행
     # ACF 의 실제 독출 모드가 무엇인지는 **운영자가 정할 사안**이므로 여기서
     # 값을 만들어 넣지 않고, 사실만 t=0 에 드러낸다.
-    if not str(getattr(sim_cfg.controllers, 'rdmode', '') or '').strip():
-        tagged = [t for t in CTRLTAGS if cfg.acf.get(t)]
-        if tagged:
+    rdmode = str(getattr(sim_cfg.controllers, 'rdmode', '') or '').strip()
+    tagged = [t for t in CTRLTAGS if cfg.acf.get(t)]
+    if not rdmode and tagged:
+        notes.append(
+            '[controllers] rdmode 가 비었는데 ACF 이름(%s)에 속도 토큰'
+            '(fast/comp/slow)이 없다 -- 유도가 실패해 코드 기본값 '
+            "'NORMAL' 이 실린다.  현행 ACF 이름 규칙에는 그 토큰이 아예 "
+            '없으므로(acf/README.md) 실제 독출 모드를 ini 에 **직접 적을 것** '
+            "(현행 여섯은 전부 'NORMAL' -- 운영자 확정 2026-08-29)"
+            % ' · '.join(os.path.basename(cfg.acf[t]) for t in tagged))
+
+    # ⚠️ **반대 방향** -- ini 에 적어 둔 값이 ACF 이름과 어긋나는 경우.
+    #
+    # 위 경고가 시킨 대로 `rdmode = NORMAL` 을 적어 두면 그 줄은 **ACF 를
+    # 바꿔도 따라오지 않는다.**  속도가 다른 ACF(`…_fast_…`)를 올린 뒤 이
+    # 줄을 안 고치면 헤더가 `NORMAL` 이라고 **거짓말**을 하고, 자료만 봐서는
+    # 드러나지 않는다 -- `CTRLnCFG` 어긋남과 정확히 같은 형태다.
+    for tag in tagged:
+        derived = rdmode_from_acf(cfg.acf[tag])
+        if rdmode and derived and derived != rdmode.upper():
             notes.append(
-                '[controllers] rdmode 가 비었는데 ACF 이름(%s)에 속도 토큰'
-                '(fast/comp/slow)이 없다 -- 유도가 실패해 코드 기본값 '
-                "'NORMAL' 이 실린다.  현행 ACF 이름 규칙에는 그 토큰이 아예 "
-                '없으므로(acf/README.md) 실제 독출 모드를 ini 에 **직접 적을 것**'
-                % ' · '.join(os.path.basename(cfg.acf[t]) for t in tagged))
+                '[controllers] rdmode=%r 인데 [archon] acf_%s 의 이름은 %r 를 '
+                '가리킨다(%s) -- ini 값이 이기므로 헤더 RDMODE 는 %r 로 실린다.  '
+                'ACF 를 바꾸고 이 줄을 안 고쳤는지 확인할 것'
+                % (rdmode, tag.lower(), derived,
+                   os.path.basename(cfg.acf[tag]), rdmode))
 
     # ⚠️ **시간 축척은 하드웨어를 따라오지 않는다.**  적분 길이를 재는 것은
     # 컨트롤러(`IntMS`)이고 시퀀서의 카운트다운은 알림이다.  축척을 낮추면

@@ -1033,7 +1033,10 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         if acfname.lower().endswith(_suffix):
             acfname = acfname[:-len(_suffix)]
             break
-    rdmode = 'NORMAL'
+    ## 못 알아내면 UNKNOWN (운영자 확정 2026-08-29) -- 'NORMAL' 은 실제로
+    ## 쓰이는 값이라 "정말 NORMAL" 과 "못 알아본 NORMAL" 이 구별되지 않는다.
+    ## ⚠️ 현행 ACF 이름 규칙에는 속도 토큰이 없어 이 유도는 늘 빈손이다.
+    rdmode = 'UNKNOWN'
     for token in ('fast', 'comp', 'slow'):
         if token in acfname.lower():
             rdmode = token.upper()

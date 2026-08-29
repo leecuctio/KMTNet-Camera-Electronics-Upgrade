@@ -216,8 +216,10 @@ def test_ini_beats_the_controller_reported_serial(tmp_path):  # noqa: ANN001
     head = headers(out2)['MK']
     assert head['CTRL1SN'].strip() == '0024498A715E301C', 'SYSTEM 값이 안 실렸다'
     assert head['CTRL1CFG'].strip() == 'test', 'ACF 파일명이 안 실렸다'
-    # ini 가 비면 ACF 이름에서 유도된다 -- 이 ACF 이름에는 토큰이 없으므로 기본값
-    assert head['RDMODE'].strip() == 'NORMAL'
+    # ini 가 비면 ACF 이름에서 유도된다 -- 이 ACF 이름에는 토큰이 없으므로
+    # 코드 기본값이 실리고, 그 값은 **`UNKNOWN`** 이다 (운영자 확정 2026-08-29).
+    # `NORMAL` 로 두면 "정말 NORMAL" 과 구별되지 않는다.
+    assert head['RDMODE'].strip() == 'UNKNOWN'
 
 
 def test_site_switch_moves_geometry_and_observat_together(tmp_path):  # noqa: ANN001
@@ -377,6 +379,43 @@ def test_hand_typed_ctrlcfg_wins_but_the_mismatch_is_reported(tmp_path):  # noqa
     # ③ `NC`(그 컨트롤러는 없다)는 파생이 덮지 않는다 -- 운영자 선언이다
     cfg, _ = notes('NC')
     assert cfg.controllers.ctrl1_cfg == 'NC'
+
+
+def test_rdmode_mismatch_with_the_acf_name_is_reported(tmp_path):  # noqa: ANN001
+    """`RDMODE` 도 **양방향**으로 본다 (2026-08-29).
+
+    현행 ACF 이름 규칙에는 속도 토큰(`fast`/`comp`/`slow`)이 아예 없어서
+    유도가 늘 실패한다 -- 그래서 ini 에 직접 적는다(현행 전부 `NORMAL`,
+    운영자 확정).  ⚠️ **그러면 그 줄은 ACF 를 바꿔도 따라오지 않는다** --
+    속도가 다른 ACF 를 올리고 이 줄을 안 고치면 헤더가 거짓말을 하고,
+    자료만 봐서는 드러나지 않는다.  `CTRLnCFG` 어긋남과 같은 형태다.
+    """
+    def notes(acf_name, rdmode):  # noqa: ANN001
+        acf = tmp_path / acf_name
+        acf.write_text(ACF_TEXT, encoding='ascii')
+        over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
+        over['controllers'] = {'rdmode': rdmode}
+        ini = write_ini(tmp_path, over, str(acf))
+        cfg, acfg = simcfg.load(ini), acfg_mod.load(ini)
+        from ics_archon.app import fill_controller_cfg_names
+        fill_controller_cfg_names(cfg, acfg)
+        return [n for n in acfg_mod.validate(
+            acfg, tuple(cfg.node.ccds), cfg) if 'rdmode' in n]
+
+    # ① 현행 이름 + ini 를 비우면 -- 유도가 실패한다는 사실을 알린다
+    warned = notes('KMTC_SCI_101_STA0284_R2608_MK.acf', '')
+    assert warned and '속도 토큰' in warned[0], warned
+
+    # ② 현행 이름 + ini 에 NORMAL -- 조용하다 (운영자가 확정한 값이다)
+    assert not notes('KMTC_SCI_101_STA0284_R2608_MK.acf', 'NORMAL')
+
+    # ③ ⚠️ 속도가 다른 ACF 를 올렸는데 ini 는 NORMAL 그대로 -- 헤더가 거짓말한다
+    warned = notes('KMTNet_Sci_fast_med_U13.acf', 'NORMAL')
+    assert warned, 'ACF 는 FAST 인데 ini 가 NORMAL 인 것을 아무도 안 알린다'
+    assert 'FAST' in warned[0]
+
+    # ④ 둘이 맞으면 조용하다
+    assert not notes('KMTNet_Sci_fast_med_U13.acf', 'FAST')
 
 
 def test_d016_collision_check_is_on_even_when_write_fits_is_false(tmp_path):  # noqa: ANN001
