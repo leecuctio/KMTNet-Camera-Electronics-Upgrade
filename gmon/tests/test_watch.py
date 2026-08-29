@@ -4,9 +4,10 @@
 검증 항목:
   1. 파이프라인 실패 노출은 delete_raw=yes여도 삭제되지 않고 run/failed/로
      보존 이동되며 processed.list에 기록되지 않는다 (재투입 시 재처리 가능).
-  2. 이미 처리된 노출(스냅샷 PNG 존재)은 finish_raw 경로: delete_raw=yes면
-     삭제 + processed.list 기록.
-  3. delete_raw=no면 성공/스킵 원본은 run/processed/로 이동.
+  2. incoming 재투입은 **무조건 재처리** — 스냅샷 PNG·processed.list가 있어도
+     건너뛰지 않는다 (스킵 로직 제거 확인).
+  3. finish_raw: delete_raw=yes → 삭제+기록, no → run/processed/ 이동
+     (같은 이름 재이동은 .N 접미).
   4. SIGTERM 핸들러용 stop()은 플래그만 세운다 (즉시 예외를 던지지 않음).
 
 pytest 불필요 — 단독 실행 assert 스크립트 (성공 시 "OK test_watch" 출력).
@@ -74,22 +75,26 @@ def main():
     assert stem_bad not in w.processed_stems(), \
         "실패 stem이 processed.list에 기록됨 (재처리 불가)"
 
-    # 재투입하면 다시 처리 대상이 된다 (already_done 아님)
-    assert not w.already_done(stem_bad)
-
-    # ---------- 2. 스킵(이미 처리) 노출: delete_raw=yes → 삭제 + 기록 ----------
+    # ---------- 2. 재투입은 무조건 재처리 (스킵 로직 제거 확인) ----------
+    assert not hasattr(w, "already_done"), "스킵 로직(already_done)이 남아 있음"
     done = put_raw(cfg, "junk.20260829.020202.fits")
     stem_done = "20260829.020202"
     snap = os.path.join(cfg.rundir("snap"), "psf.snap.%s.png" % stem_done)
-    with open(snap, "wb") as fp:  # 스냅샷 존재 → already_done
+    with open(snap, "wb") as fp:   # 스냅샷이 있어도
         fp.write(b"png")
-    w.handle(done)
-    assert not os.path.exists(done), "스킵 원본이 삭제되지 않음"
-    assert stem_done in w.processed_stems(), "스킵 stem 미기록"
-    assert not os.path.exists(
-        os.path.join(cfg.rundir("failed"), os.path.basename(done)))
+    w.mark_processed(stem_done)    # 이력에 있어도
+    w.handle(done)                 # → 건너뛰지 않고 처리 시도 (junk → 실패 격리)
+    assert os.path.exists(
+        os.path.join(cfg.rundir("failed"), os.path.basename(done))), \
+        "재투입이 재처리되지 않고 스킵됨"
+    assert not os.path.exists(done)
 
-    # ---------- 3. delete_raw=no: 실패는 failed/, 스킵은 processed/ ----------
+    # ---------- 3. finish_raw: yes=삭제+기록 / no=processed/ 이동(.N 접미) ----
+    ok1 = put_raw(cfg, "junk.20260829.050505.fits")
+    w.finish_raw(ok1, "20260829.050505")           # delete_raw=yes
+    assert not os.path.exists(ok1), "delete_raw=yes인데 원본이 남음"
+    assert "20260829.050505" in w.processed_stems()
+
     cfg2 = make_cfg(tmp, "delno", {("watch", "delete_raw"): "no"})
     gcommon.ensure_dirs(cfg2)
     w2 = make_watcher(cfg2)
@@ -101,15 +106,16 @@ def main():
     assert not os.path.exists(
         os.path.join(cfg2.rundir("processed"), os.path.basename(bad2)))
 
-    done2 = put_raw(cfg2, "junk.20260829.040404.fits")
-    stem_done2 = "20260829.040404"
-    snap2 = os.path.join(cfg2.rundir("snap"), "psf.snap.%s.png" % stem_done2)
-    with open(snap2, "wb") as fp:
-        fp.write(b"png")
-    w2.handle(done2)
-    assert os.path.exists(
-        os.path.join(cfg2.rundir("processed"), os.path.basename(done2)))
-    assert stem_done2 in w2.processed_stems()
+    ok2 = put_raw(cfg2, "junk.20260829.040404.fits")
+    w2.finish_raw(ok2, "20260829.040404")          # delete_raw=no → 이동
+    moved = os.path.join(cfg2.rundir("processed"), os.path.basename(ok2))
+    assert os.path.exists(moved), "delete_raw=no인데 processed/에 없음"
+    assert "20260829.040404" in w2.processed_stems()
+    ok2b = put_raw(cfg2, "junk.20260829.040404.fits")   # 같은 이름 재이동
+    w2.finish_raw(ok2b, "20260829.040404")
+    assert os.path.exists(moved + ".1") or os.path.exists(moved), \
+        "재이동 시 이름 충돌 처리 실패"
+    assert not os.path.exists(ok2b)
 
     # ---------- 4. stop()은 플래그만 세운다 ----------
     assert w2._stop is False

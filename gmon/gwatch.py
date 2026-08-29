@@ -7,12 +7,15 @@ gsplit.split_file → gpsf.py(서브프로세스, 종료코드 0/2 허용) → g
 (종료코드 0/2 허용, 2는 부분 성공 경고) → gplot 라이브 확인(pidfile) 후 없으면
 기동. 어느 단계가 실패해도 로그만 남기고 다음 파일 처리를 계속한다.
 
-원본 정리: 처리 성공(또는 이미 처리됨 건너뜀) 시 delete_raw=no면
-run/processed/로 이동, yes면 삭제하고 run/work/processed.list에 stem을 기록해
-재처리를 막는다(스냅샷 PNG 존재 검사와 함께 — DESIGN.md §5.6 파리티).
-파이프라인이 실패한 노출의 원본은 delete_raw 설정과 무관하게 삭제하지 않고
-run/failed/로 보존 이동하며 processed.list에도 기록하지 않는다 — 장애 해소 후
-run/incoming/으로 되돌리면 재처리된다.
+incoming에 있는 파일은 **항상 처리**한다 — 처리된 원본은 incoming 밖으로
+이동되므로, 같은 stem의 파일을 다시 넣는 것은 명시적 재처리 요청이다(시험
+프레임 반복 투입 등). 재투입 시 분할·result·스냅샷을 덮어쓰고 fw파일에는
+도착 시각으로 새 줄이 누적된다. 원본 정리: 성공 시 delete_raw=no면
+run/processed/로 이동(중복 이름은 .N 접미), yes면 삭제하고
+run/work/processed.list에 stem을 이력으로 기록. 파이프라인이 실패한 노출의
+원본은 delete_raw 설정과 무관하게 삭제하지 않고 run/failed/로 보존 이동하며
+processed.list에도 기록하지 않는다 — 장애 해소 후 run/incoming/으로 되돌리면
+재처리된다.
 
 사용법:
     gwatch.py [-c gmon.conf] [--once] [--foreground]
@@ -143,9 +146,10 @@ class Watcher:
         with open(self._processed_list_path(), "a") as fp:
             fp.write(stem + "\n")
 
-    def already_done(self, stem):
-        snap = os.path.join(self.cfg.rundir("snap"), "psf.snap.%s.png" % stem)
-        return os.path.exists(snap) or stem in self.processed_stems()
+    # (참고) 과거에는 스냅샷 PNG/processed.list 기준으로 재투입을 건너뛰었으나,
+    # 처리된 원본은 incoming 밖으로 이동되므로 incoming에 있는 파일은 정의상
+    # 새 요청이다 — 같은 시험 파일을 다시 넣으면 항상 재처리한다.
+    # processed.list는 처리 이력 기록으로만 유지한다.
 
     # ---- 처리 ----
     def _run(self, cmd):
@@ -229,11 +233,12 @@ class Watcher:
     def handle(self, raw):
         base = os.path.basename(raw)
         stem = gcommon.stem_from_raw(base)
-        if self.already_done(stem):
-            self.log.info("skip %s (already processed: %s)", base, stem)
-            self.finish_raw(raw, stem)
-            return
-        self.log.info("processing %s (stem=%s)", base, stem)
+        # incoming에 있는 파일은 무조건 처리한다 — 같은 stem 재투입이면
+        # 기존 산출물(분할·result·스냅샷)을 덮어쓰고 fw파일에 새 줄을 누적.
+        if stem in self.processed_stems():
+            self.log.info("reprocessing %s (이전 산출물 덮어씀: %s)", base, stem)
+        else:
+            self.log.info("processing %s (stem=%s)", base, stem)
         ok = True
         # (1) 분할 — 라이브러리 호출
         try:
@@ -263,7 +268,12 @@ class Watcher:
                 self.log.error("gsnap.py not found")
                 ok = False
             else:
-                rc = self._run([self.python, script, rjson, "-c", self.cfg.path])
+                # --out 명시 → gsnap의 '기존 PNG 있으면 생략'(레거시 파리티)을
+                # 우회해 재투입 시에도 스냅샷을 항상 갱신한다
+                snap_out = os.path.join(self.cfg.rundir("snap"),
+                                        "psf.snap.%s.png" % stem)
+                rc = self._run([self.python, script, rjson,
+                                "--out", snap_out, "-c", self.cfg.path])
                 if rc == 2:
                     self.log.warning("gsnap partial (rc=2): %s", stem)
                 elif rc != 0:

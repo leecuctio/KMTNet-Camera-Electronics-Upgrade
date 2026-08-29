@@ -196,8 +196,12 @@ auxstatus에서 FAFOCUS·FATILT*·FAPOS*·ENS*, tcsstatus에서 SECZ·ALT·AZ)�
 
 ### 5.5 fwAVG = **유효한 칩들의 산술평균** (레거시 버그: W 2회/S 누락 — 수정).
 
-### 5.6 스냅샷 PNG: `run/snap/psf.snap.<stem>.png` — 존재하면 해당 노출 재처리
-생략(레거시 파리티). **기준 화면: `old/psf.snap.20181003T011100.0001.fits.png`.**
+### 5.6 스냅샷 PNG: `run/snap/psf.snap.<stem>.png`
+**기준 화면: `old/psf.snap.20181003T011100.0001.fits.png`.**
+gsnap을 기본 출력 경로로 직접 부르면 기존 PNG가 있을 때 생략(레거시 파리티)
+하지만, gwatch는 `--out`을 명시해 항상 갱신한다 — **incoming 재투입은
+무조건 재처리**(§7): 처리된 원본은 incoming 밖으로 이동되므로 거기 있는
+파일은 정의상 새 요청이며, 같은 stem이면 산출물을 덮어쓰고 fw에 누적한다.
 - 3×3 배치(각 타일 ~200px, 전체 ~600×649): 중앙=정보 패널, 상=N, 좌=E, 우=W,
   하=S (나침반 배치), 모서리=검은 빈 칸, 타일 사이 밝은 분리선.
 - 각 PSF 타일: psfex 스냅샷의 **중앙부만 확대** — ds9 `zoom 16`과 동일하게
