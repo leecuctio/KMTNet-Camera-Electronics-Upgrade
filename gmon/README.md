@@ -197,8 +197,10 @@ gwatch는 외부 gnuplot 라이브 창을 띄우지 않으며(그래프는 전�
 GUI는 중복 실행되지 않는다(`run/pid/gmon.pid`). GUI 없이 headless로 돌리면
 기존처럼 외부 gnuplot 라이브 창이 뜬다.
 
-1. **ON** — gwatch(감시 데몬)와 gplot(그래프)을 기동. ICS가 저장한 프레임이
-   `run/incoming/`에 도착할 때마다 자동으로 분할→FWHM→스냅샷→그래프 갱신.
+1. **ON** — gwatch(감시 데몬)를 기동. ICS가 저장한 프레임이 `run/incoming/`에
+   도착할 때마다 자동으로 분할→FWHM→스냅샷→그래프 갱신. **그래프는 GUI
+   패널에 내장 표시**되므로 외부 gnuplot 창은 띄우지 않는다(남아 있으면
+   정리) — 외부 라이브 창은 GUI 없이 headless로 돌릴 때만 gwatch가 기동.
 2. **AUTO** — `period_sec`(기본 120초) 주기로 최신 온도(T)에서
    `ref = slope*T − (base + dfocus)`를 계산해 TCS로 전송(`gtcs` 경유
    `abc>tc fttgoto <ref>`). 안전범위 `[safe_min, safe_max]` 밖이거나 직전

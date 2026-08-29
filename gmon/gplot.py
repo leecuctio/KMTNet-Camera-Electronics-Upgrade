@@ -149,7 +149,9 @@ def run_live(cfg, log, datafile, term, out):
         with open(loop_path, "w") as fp:
             fp.write("\n".join(loop) + "\n")
         log.info("라이브 플롯 시작: %s (refresh %gs)", datafile, refresh)
-        child = subprocess.Popen([cfg.tool("gnuplot"), "-persist", loop_path])
+        # -persist 없음: 라이브 루프는 스스로 끝나지 않고, OFF(SIGTERM)로
+        # 종료할 때 -persist가 있으면 gnuplot_qt 잔상 창이 남는다
+        child = subprocess.Popen([cfg.tool("gnuplot"), loop_path])
 
         def _stop(signum, frame):
             child.terminate()

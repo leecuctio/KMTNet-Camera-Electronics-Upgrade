@@ -327,6 +327,11 @@ class GmonApp:
         # 초기 배치: 제어부 우측에 스냅샷, 제어부 아래에 그래프
         root.after(200, self._place_windows)
 
+        # 그래프는 이 패널에 내장 표시 — headless 시절 남은 외부 gplot 창이
+        # 있으면 정리한다 (그래프 창이 둘로 보이는 것 방지)
+        if gcommon.PidFile(cfg, "gplot").terminate():
+            self.log.info("외부 gplot 창 정리 (그래프는 패널에 내장 표시)")
+
         self._status_tick()
         self._snap_tick()
         self._plot_tick()
@@ -362,16 +367,17 @@ class GmonApp:
         self.log.info("%s launched", name)
 
     def do_on(self):
-        """ON: gwatch와 gplot 모두 기동 (DESIGN §7 — OFF와 대칭).
-
-        fw 데이터 파일이 아직 없으면 gplot은 로그를 남기고 곧 종료하며,
-        첫 노출 처리 후 gwatch.ensure_gplot()이 다시 기동한다.
+        """ON: gwatch 기동. 그래프는 GUI 패널(plot_win)에 내장 표시되므로
+        외부 gnuplot 라이브 창은 띄우지 않는다 — 창이 둘로 보이는 것 방지.
+        (headless 운용에서는 gwatch.ensure_gplot이 외부 창을 기동한다.)
+        혹시 headless 시절 남은 외부 gplot이 떠 있으면 여기서 정리한다.
         """
-        for name in ("gwatch", "gplot"):
-            if gcommon.PidFile(self.cfg, name).other_pid() is not None:
-                self.log.info("%s already running; ON ignored", name)
-            else:
-                self._launch_daemon(name)
+        if gcommon.PidFile(self.cfg, "gwatch").other_pid() is not None:
+            self.log.info("gwatch already running; ON ignored")
+        else:
+            self._launch_daemon("gwatch")
+        if gcommon.PidFile(self.cfg, "gplot").terminate():
+            self.log.info("외부 gplot 창 정리 (그래프는 패널에 내장 표시)")
         self.l5.config(text="MON")
         self.l1.config(fg="black", bg="green")
 
