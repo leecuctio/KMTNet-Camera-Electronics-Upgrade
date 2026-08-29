@@ -3,12 +3,12 @@
 """Scan XIS runtime logs for message shapes, contamination, and state transitions.
 
 DevNote 5장(메시지 오염 버그)과 6장(전량 스캔 신규 발견)의 근거를 만든 도구다.
-로그 자체는 저장소에 없지만(`__localonly_*` 규약) 이 스크립트를 남겨 두면 원본이
+로그 자체는 저장소에 없지만(**저장소 바깥**) 이 스크립트를 남겨 두면 원본이
 있는 컴퓨터에서 언제든 재검증할 수 있다.
 
 원본 위치 (비커밋):
     ics_legacy/__sample_isislog/                 9개월, 3사이트 샘플
-    ../../__localonly_isislogs/ISIS.ICSci.*/     전량 아카이브 (48GB, 1,113일)
+    ../../__isislogs/ISIS.ICSci.*/     전량 아카이브 (48GB, 1,113일)
 
 사용법::
 
@@ -184,7 +184,7 @@ def do_patterns(args: argparse.Namespace) -> None:
     with out:
         out.write('# Legacy ICS message-contamination samples.\n'
                   '# 생성: tools/scan_legacy_logs.py patterns <logdir>\n'
-                  '# 원본: ics_legacy/__sample_isislog/ (+ __localonly_isislogs/)\n'
+                  '# 원본: ics_legacy/__sample_isislog/ (+ __isislogs/)\n'
                   '# 각 줄은 ics_sim.emitter.validate() 가 위반으로 잡아야 한다.\n'
                   '# 형식: <관측 건수>\\t<메시지 원문>\n')
         for key, n in counts.most_common(args.limit):

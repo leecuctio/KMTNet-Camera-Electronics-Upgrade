@@ -1,6 +1,6 @@
 # Legacy ICS message-contamination samples.
 # 생성: tools/scan_legacy_logs.py patterns <logdir>
-# 원본: ics_legacy/__sample_isislog/ (+ __localonly_isislogs/)
+# 원본: ics_legacy/__sample_isislog/ (+ __isislogs/)
 # 각 줄은 ics_sim.emitter.validate() 가 위반으로 잡아야 한다.
 # 형식: <관측 건수>\t<메시지 원문>
 46622	K.IC>OBS STATUS: FLASHNOW  Integration Remaining=9 sec.

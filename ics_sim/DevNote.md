@@ -74,10 +74,10 @@
 | `ics_legacy/__sample_isislog/samples_for_bug.txt` | 2,755행 | **커밋 대상** | 사용자가 직접 추린 오염 버그 샘플 |
 | `…/samples_for_bug_integrat.txt` | 3,061행 | **커밋 대상** | 노출 국면(`INTEGRATING`)·카운트다운 구간 발췌. 3.2.2 와 5.1 의 근거 |
 | `…/samples_for_bug_pctread.txt` | 2,940행 | **커밋 대상** | readout 진행률 발췌(노출 294회분). 7장 `[readout]` 모델의 근거 |
-| `__localonly_isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **48GB, 1,113일분** | `__localonly_*` 비커밋 | 전량 스캔 — 샘플에 없던 시퀀스 발굴 |
+| `__isislogs/ISIS.ICSci.{CTIO,SAAO,SSO}.*` | **48GB, 1,113일분** | 저장소 바깥 -- 비커밋 | 전량 스캔 — 샘플에 없던 시퀀스 발굴 |
 | `ics_legacy/__dts_legacy/dts.icsci.*/` | 2,800 파일 / 24.7 MB | **커밋됨** | icsci 서버 `dts` 백업에서 소스·설정만 선별. **XIS 허브 소스**가 12.9 의 등록 방식 확정 근거. 단 **운영본은 `ISIS/server/`(v2.9.1)이지 `EXEC_ISIS/server/`(v2.7.3)가 아니다** — 12.12 |
 | `ics_sim/xis/` | 162 파일 / 1.5 MB | **커밋됨** | 위 백업에서 **XIS 관련 자산만 뽑아 정리한 보관본**. 소스·사이트별 운영 설정·기동 스크립트·은퇴 분기 실행파일. 체크섬 포함. 시작 문서 [`xis/xis.md`](xis/xis.md) |
-| `__localonly_osu_legacy/` | 원본 백업 + **VM 이미지 5개** | `__localonly_*` 비커밋 | `IC2.img` × 5, 각 8 GB. **IC/ICS 의 FreeBASIC 소스 전량**이 실행파일과 함께 들어 있다 — 5장·6.8·6.10 의 근거 |
+| `__osu_legacy/` | 원본 백업 + **VM 이미지 5개** | 저장소 바깥 -- 비커밋 | `IC2.img` × 5, 각 8 GB. **IC/ICS 의 FreeBASIC 소스 전량**이 실행파일과 함께 들어 있다 — 5장·6.8·6.10 의 근거 |
 
 확보된 VM 이미지 5개 (전부 CTIO, SAAO 는 ICSci 하나):
 
@@ -129,7 +129,7 @@ python tools/extract_golden.py <logfile> \
 
 ```bash
 # 안에 뭐가 있는지 (22,000행 남짓)
-7z l "__localonly_osu_legacy/IC2_KX20160323.1381_ICSci_CTIO/IC2.img"
+7z l "__osu_legacy/IC2_KX20160323.1381_ICSci_CTIO/IC2.img"
 
 # 소스 트리만 꺼낸다 -- 8GB 이미지지만 0.3초, 31MB
 7z x "…/IC2.img" -o<대상> -y -r \
@@ -138,7 +138,7 @@ python tools/extract_golden.py <logfile> \
 
 읽어야 할 것은 `KMTX\PAP7KX.{BAS,CMD,CCD}` 와 `SHARE\PAP7{.INC,COM.INC,.CMD,.DEC}` 다. `PAP3`~`PAP7` 세대가 모두 남아 있으니 **버전 간 diff 로 개정 의도**도 볼 수 있다. 배포 빌드는 `PAP7` — `PAP7KX.EXE` 타임스탬프(2016-03-23 18:59)가 이미지 이름·로그의 `ICSBUILD=KX2016-03-23:1381` 과 일치하는 것으로 확인했다.
 
-> **주의**: 소스는 `__localonly_*` 안에 있으므로 **커밋 대상이 아니다.** 문서에는 인용과 행 번호만 남긴다. 다른 컴퓨터에서 확인하려면 위 절차로 다시 꺼내면 된다.
+> **주의**: 소스는 **저장소 바깥**(`CEU/` 직속)에 있으므로 **커밋 대상이 아니다.** 문서에는 인용과 행 번호만 남긴다. 다른 컴퓨터에서 확인하려면 위 절차로 다시 꺼내면 된다.
 
 **CTIO 이미지와 SAAO 이미지는 어느 쪽을 써도 된다.** 두 이미지를 전수 대조한 결과 SHA256 은 다르지만 **프로그램과 소스는 완전히 동일**하다 — `\FREEBASI\` 600개 항목이 크기·타임스탬프까지 같고, 양쪽 로그의 실행파일 스탬프도 `Compile Date: 03-23-2016 / Compile Time: 18:59:51` 로 같다. 차이는 로그와 `.INI` 마지막 세션 상태뿐이다(공통 경로 22,254개 중 89개, 그중 82개가 로그). 상세는 `ics_legacy_report.md` 1.3.1⑥.
 
@@ -146,7 +146,11 @@ python tools/extract_golden.py <logfile> \
 
 ### 2.3 자료 취급 규약
 
-- `__localonly_*` 로 시작하는 폴더는 **git 에 올리지 않는다**(사용자 규약).
+- **저장소 바깥**(`CEU/` 직속)의 폴더는 git 이 아예 보지 못한다 -- `__isislogs/` ·
+  `__osu_legacy/` · `__tcs_simulator/` 가 그것이다.  ⚠️ 종전에는 `__localonly_`
+  접두어를 규약으로 삼았는데 **2026-08-29 에 폐지**됐다(접두어가 막아 준 것이
+  아니라 위치가 막고 있었다 -- `.gitignore` 에 그런 규칙은 없었다).  지금 `__` 는
+  **참고용** 표지일 뿐이다.
 - `*.log` 는 `.gitignore` 로 제외된다.
 - 따라서 **발췌본(`tests/fixtures/golden_*.txt`, `bug_patterns.txt`)을 커밋**해 원본 없는 환경에서도 테스트가 돈다. 8장 참고.
 
@@ -1179,7 +1183,7 @@ class DetectorBackend(Protocol):
 
 > **⚠️ 상대할 하드웨어의 규모 — Archon 은 2대가 아니라 3 unit 이고, 그중 하나가 가이드다 (2026-08-11 확인).**
 >
-> 근거는 `__localonly_tcs_simulator/KMTNet Cam Architecture R2.0.pdf` (Rev.2.0 / 2026-06-10, 작성 SMC) 다. 최상위 [`../README.md`](../README.md) 의 *"STA Archon controller 2대"* 는 **과학 계통만 센 값**이다.
+> 근거는 `__tcs_simulator/KMTNet Cam Architecture R2.0.pdf` (Rev.2.0 / 2026-06-10, 작성 SMC) 다. 최상위 [`../README.md`](../README.md) 의 *"STA Archon controller 2대"* 는 **과학 계통만 센 값**이다.
 >
 > | Unit | 담당 | 모듈 구성 |
 > |---|---|---|
@@ -1327,7 +1331,7 @@ shclose_cmd = FILTERS SET_SH CLOSE
 
 #### 9.2.3 KASI TCS 시뮬레이터의 AUX 서버와 대조 (2026-08-11)
 
-`FakeAux` 는 우리가 규격을 읽고 만든 것이라 **상대의 상태머신을 갖고 있지 않다**. KASI 가 별도로 만든 TCS 통신 시뮬레이터(`__localonly_tcs_simulator/TCS_simulation.zip`, 5750 Telcom + 5752 AUX)에는 그 상태머신이 있고, **`FILTERS SET_SH OPEN|CLOFE` 를 그쪽도 신설 verb 로 구현해 두었다** — 우리 `shopen_cmd`/`shclose_cmd` 기본값과 문자 단위로 일치한다(양쪽 모두 같은 담당자 합의에서 나왔으므로 당연한 결과지만, 실제로 맞물리는 것은 별개 사실이다).
+`FakeAux` 는 우리가 규격을 읽고 만든 것이라 **상대의 상태머신을 갖고 있지 않다**. KASI 가 별도로 만든 TCS 통신 시뮬레이터(`__tcs_simulator/TCS_simulation.zip`, 5750 Telcom + 5752 AUX)에는 그 상태머신이 있고, **`FILTERS SET_SH OPEN|CLOFE` 를 그쪽도 신설 verb 로 구현해 두었다** — 우리 `shopen_cmd`/`shclose_cmd` 기본값과 문자 단위로 일치한다(양쪽 모두 같은 담당자 합의에서 나왔으므로 당연한 결과지만, 실제로 맞물리는 것은 별개 사실이다).
 
 **개발 PC(Windows, Python 3.12)에서 시뮬레이터를 직접 띄워 와이어로 확인했다.** 벤치가 아니라 로컬 대조이므로 근거의 범위는 "프로토콜과 시간 예산" 까지다 — pctcs 를 경유한 `SHUTOP` 관측은 벤치 몫이다.
 

@@ -89,7 +89,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 | 순서 | 할 일 |
 |---|---|
 | ~~**1**~~ | ~~**`ExpNum` 교정의 실물 재확인**~~ — **완료 (2026-08-11 2차, DevNote 3.7.2).** 노출 2회로 판정: readout 중 `ExpNum` == 그 프레임의 파일 번호, 종료 후 `ExpNum`==`FitsNum`, `EXPNUM` 응답 N+1, `FitsOsc` `CHECK`→`NO`. 타임아웃 창 3종도 두 프레임에서 밀리초까지 동일. **전제였던 EXPNUM 카운터 결함을 먼저 고쳐야 했다**(11.12) — fail-safe 가 침묵해야 이 판정이 성립한다<br>※ **1회만 돌리면 판정이 안 된다.** OBSAgent 가 받은 값을 `strNextNum` 에 담아 두고 **다음 노출 시작 시** `strCurNum` 으로 승격해 표시하므로(`commands.c:835,848`), 1회 세션에서는 `ExpNum=00000000.000000` 이 정상이다 |
-| **2** | **Telcom/AUX 시뮬레이터 설치** — KASI 제작본이 `../../__localonly_tcs_simulator/TCS_simulation.zip` 에 있다. **빌드가 없다**(stdlib 전용, Python 3.12+ 필요 — Ubuntu 24.04 기본이 3.12 라 그대로 된다). `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 절차와 함정은 아래 블록. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
+| **2** | **Telcom/AUX 시뮬레이터 설치** — KASI 제작본이 `../../__tcs_simulator/TCS_simulation.zip` 에 있다. **빌드가 없다**(stdlib 전용, Python 3.12+ 필요 — Ubuntu 24.04 기본이 3.12 라 그대로 된다). `pctcs.ini` 의 `TCS_Host`/`AUX_Host` 가 이미 `127.0.0.1` 이라 그대로 맞물린다. 절차와 함정은 아래 블록. 판정: 두 링크 `DOWN`→`UP`, `tstat`/`astat` 실값, 그리고 **`ics_sim` 의 텔레메트리 중계가 `passthrough`(빈 필드)에서 실값으로 바뀌는 것** — FITS 헤더의 AUX/TCS 키워드가 처음 실값을 받는 자리 |
 | **3** | **세부 연동 시험** — `STOP`/`ABORT`(9.2.1 의 `DONE:` 본문은 실측 근거 없이 정한 것) · `GO n`(6.1) · `.osc` 스크립트 관측(3.5) · 결함 주입 6종(**실물 OBSAgent 의 경보·`opause` 경로를 확인하는 유일한 수단**) |
 | **4** | **벤치에서 확인할 것 셋 (2026-08-13 추가)** — ⓐ `siteid.detect()` 가 `kmtnet-sso` 에서 무엇을 내놓나. 벤치는 `192.168.x.x` 를 안 쓰므로 **`KMTK`(KASI) 가 정답**이고, 그 밖이 나오면 판정 규칙을 다시 봐야 한다 ⓑ 벤치 ini 에 `[node] site = kasi` 를 넣어 IP 판정과 설정이 어긋나지 않게 할 것 ⓒ **`SHOPEN`+`aux_requery_after_shopen`(현행 **1초**, 2026-08-25 에 3초에서 내림)에 AUX 상태가 실제로 갱신돼 있나**(**OI-13**) — `SHUTOP` 가 그 시점에 `OPENING`/`OPENED` 중 무엇인지 실측해야 헤더의 `SHUTTER` 가 노출 중 값이라고 말할 수 있다 |
 
@@ -97,7 +97,7 @@ OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 �
 
 ### TCS 시뮬레이터 — 설치 절차와 함정 (2026-08-11 사전 점검)
 
-자료는 `../../__localonly_tcs_simulator/` 에 있다 — `TCS_simulation.zip`(시뮬 본체) + 계통도 PDF 2종(레거시 R2 · 신규 CEU R2.0). **빌드가 없다.** 옮기고 `python3 -m sim.monitor` 로 끝이다.
+자료는 `../../__tcs_simulator/` 에 있다 — `TCS_simulation.zip`(시뮬 본체) + 계통도 PDF 2종(레거시 R2 · 신규 CEU R2.0). **빌드가 없다.** 옮기고 `python3 -m sim.monitor` 로 끝이다.
 
 ```bash
 export LANG=C.UTF-8                       # 아래 함정 ⑤
@@ -130,7 +130,7 @@ python3 -m sim.live_probe                 # 창 5 — 실소켓 33항목. 반드
 |---|---|---|
 | 샘플 로그 (9개월×3사이트) | `../ics_legacy/__sample_isislog/` | `*.log` 비커밋 |
 | 오염 버그 샘플 | `../ics_legacy/__sample_isislog/samples_for_bug.txt` | **커밋** |
-| 전량 아카이브 (48GB, 1,113일) | `../../__localonly_isislogs/` | 비커밋 |
+| 전량 아카이브 (48GB, 1,113일) | `../../__isislogs/` | 비커밋 |
 | 골든 픽스처 (발췌) | `tests/fixtures/golden_*.txt` | **커밋** |
 | 오염 패턴 (파생) | `tests/fixtures/bug_patterns.txt` | **커밋** |
 
@@ -178,7 +178,7 @@ python3 -m sim.live_probe                 # 창 5 — 실소켓 33항목. 반드
 - **`ICS` 는 IC 와 같은 소프트웨어**(`INSTRUMENT=ICS`, 디렉토리만 `\KMTX`). → 메시지 오염 버그가 ICS·IC 양쪽에 똑같이 나타나는 이유.
 - BUILD 접두어 = 프로그램 디렉토리: `KX`=\KMTX, `KS`=\KMTS, `KG`=\KMTG.
 - `SP` 노드(`KMTNsp`) = 과학 계열 예비 IC, XIS preset 의 `.107` 자리로 보인다.
-- **IC(VDOS) 본체 소스를 `IC2.img` 에서 확보했다 (2026-08-04).** `__localonly_osu_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` (각 8 GB, 비커밋). **C 가 아니라 FreeBASIC** 이고 실행파일과 소스가 함께 들어 있어 역어셈블이 필요 없었다. 꺼내는 절차는 [DevNote 2.2](DevNote.md) — 7-Zip 으로 0.3초면 된다.
+- **IC(VDOS) 본체 소스를 `IC2.img` 에서 확보했다 (2026-08-04).** `__osu_legacy/IC2_KX20160323.1381_ICSci_{CTIO,SAAO}/IC2.img` (각 8 GB, 비커밋). **C 가 아니라 FreeBASIC** 이고 실행파일과 소스가 함께 들어 있어 역어셈블이 필요 없었다. 꺼내는 절차는 [DevNote 2.2](DevNote.md) — 7-Zip 으로 0.3초면 된다.
 
 논의 전 과정(문제 발견 → 내 근거 없는 단언 → 사용자 지적 → 로그 실측 → 결정)은 [xis/xis.md 부록 A](xis/xis.md) 와 DevNote 12.7 에 남겨 뒀다.
 
