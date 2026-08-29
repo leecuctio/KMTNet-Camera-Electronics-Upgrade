@@ -526,15 +526,15 @@ from twilio.rest import Client
 
 def SMS_TIO_HELabAlerts(msg):
     try:
-        account_sid = '<redacted>'
-        auth_token = '<redacted>' 
+        account_sid = ''
+        auth_token = '' 
         # NOTE: credentials and phone numbers were redacted (2026-08-27)
         #       -- GitHub secret scanning rejected the push.  The real
         #       values live only in the operator's working copy.  This
         #       whole block is inside a disabled triple-quoted section.
  
         message = client.messages.create(body=msg,
-                        from_='<redacted>', to='<redacted>')
+                        from_='', to='')
  
         #print(message.sid)
         print("> SMS message '" + msg + "' sent via Twilio")
