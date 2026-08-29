@@ -131,10 +131,15 @@ class ArchonBackend:
         #: 태그 -> 이번 프레임의 이름.  `initialize()` 가 받아 두고 `trigger()`
         #: 와 `write_frame()` 이 저장 표를 맞추는 데 쓴다 (blocker B).
         self._suffix: dict[str, str] = {}
-        #: 셔터를 열지 않는 노출의 적분 시간 [s].  **시퀀서가 알려 주는 자리가
-        #: 계약에 없어서** `begin_exposure()` 훅으로 받는다 -- 없으면 0 이고,
-        #: 그러면 labtest 와 달리 컨트롤러가 적분을 재지 않는다 (blocker C).
-        self._dark_seconds = 0.0
+        #: 셔터를 열지 않는 노출의 적분 시간 [s] -- `begin_exposure()` 훅이
+        #: 채운다 (계약 `base.py`, blocker C).  **컨트롤러가 적분을 재게 하는
+        #: 값**이고, 없으면 labtest 와 달리 호스트 카운트다운이 재게 된다.
+        #:
+        #: ⚠️ **`None` 이 "못 받았다" 이고 `0.0` 은 실값이다.**  종전에는 둘 다
+        #: `0.0` 이어서 **`BIAS`(적분 0초가 정상)마다 "훅을 못 받았다" 경고**가
+        #: 떴다 -- 실제로 쓰이는 값을 결측 표시로 쓴 것이고, `RDMODE` 의 구
+        #: 기본값 `'NORMAL'` 과 같은 부류다 (2026-08-29 정정).
+        self._dark_seconds: float | None = None
         # **numpy 는 이 백엔드의 하드 의존이다** (엔디언 변환).  없으면 매
         # 프레임의 저장 단계에서 터지는데, 그때는 이미 fetch 를 마친 뒤라
         # 읽어낸 노출을 버린다 -- 기동에서 알아야 한다.
@@ -304,7 +309,10 @@ class ArchonBackend:
         시퀀서가 이 메서드를 갖고 있으면 부른다(`getattr`) -- 없는 백엔드는
         종전대로 돈다.
         """
-        self._dark_seconds = 0.0 if opens_shutter else max(seconds, 0.0)
+        # ⚠️ 셔터 노출이면 **`None` 으로 되돌린다** -- 이 값은 셔터를 열지 않는
+        # 노출 전용이고, 앞선 DARK 의 값이 남아 있으면 다음 경로에서 그것을
+        # 실값으로 오해한다.
+        self._dark_seconds = None if opens_shutter else max(seconds, 0.0)
 
     async def flash_led(self, milliseconds: int) -> None:
         """점검용 LED 프로젝터 (`FLASHNOW`).
@@ -358,16 +366,22 @@ class ArchonBackend:
         master = self.ctrls[self._tag_of(ccd)]
         pending = [c for c in self._active() if not c.triggered]
         if pending:
-            log.info('셔터를 열지 않는 노출 -- 독출 시점에 IntMS=0 으로 건다 '
-                     '(%s)', ', '.join(c.tag for c in pending))
-            # **적분 시간을 컨트롤러에 넘긴다** (blocker C).  `begin_exposure`
-            # 로 받아 둔 값이고, 훅이 안 불렸으면 0 이다 -- 그때는 v0.0 과 같은
-            # 거동(호스트가 적분을 잼)이고 경고를 남긴다.
-            ms = int(round(self._dark_seconds * 1000))
-            if ms <= 0 and self._dark_seconds == 0.0:
+            # **적분 시간을 컨트롤러에 넘긴다** (blocker C) -- `begin_exposure`
+            # 훅이 받아 둔 값이다.
+            #
+            # ⚠️ **`0.0` 과 `None` 을 가른다.**  `BIAS` 는 적분이 0초인 것이
+            # **정상**이고 그때 `IntMS=0` 은 맞는 값이다 -- 그것을 결측으로
+            # 세면 정상 노출마다 경고가 뜨고, 그 소음이 진짜 결측을 덮는다.
+            missing = self._dark_seconds is None
+            ms = int(round((self._dark_seconds or 0.0) * 1000))
+            log.info('셔터를 열지 않는 노출 -- 독출 시점에 IntMS=%d 으로 건다 '
+                     '(%s)', ms, ', '.join(c.tag for c in pending))
+            if missing:
                 log.warning('셔터를 열지 않는 노출인데 적분 시간을 못 받았다 -- '
                             'IntMS=0 으로 곧바로 읽어낸다(호스트가 적분을 잰 '
-                            '셈이다).  시퀀서에 begin_exposure 훅이 없다')
+                            '셈이다).  `begin_exposure()` 훅이 이 노출에서 '
+                            '불리지 않았다 -- 시퀀서가 그것을 부르는지 볼 것 '
+                            '(`sequencer._integrate_dark`)')
             try:
                 for c in pending:
                     await c.set_trigger_forced(True)

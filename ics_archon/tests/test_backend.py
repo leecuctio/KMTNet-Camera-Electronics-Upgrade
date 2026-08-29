@@ -619,3 +619,30 @@ def test_shutter_exposure_still_carries_its_time(tmp_path, fakes):  # noqa: ANN0
           ['OBS>ICS object M31', 'OBS>ICS exp 2', 'OBS>ICS go'])
     wrote = [t for t in fakes.mk.config.values() if 'IntMS=' in t]
     assert wrote[-1].endswith('IntMS=2000'), wrote
+
+
+def test_bias_is_zero_seconds_not_a_missing_hook(tmp_path, fakes, caplog):  # noqa: ANN001
+    """⚠️ **`BIAS` 는 적분이 0초인 것이 정상이다** -- 결측이 아니다.
+
+    종전에는 `_dark_seconds` 의 `0.0` 이 **"훅을 못 받았다"** 와 **"BIAS 라서
+    0초다"** 를 겸해서, **정상 `BIAS` 마다 "적분 시간을 못 받았다" 경고**가
+    떴다.  게다가 그 문구가 *"시퀀서에 begin_exposure 훅이 없다"* 였는데 훅은
+    2026-08-24(`ecf3487`)부터 있다 -- **두 번 틀린 경고**다.
+
+    실제로 쓰이는 값을 결측 표시로 쓰면 정상 동작이 경보가 되고, 그 소음이
+    **진짜 결측을 덮는다.**  `RDMODE` 의 구 기본값 `'NORMAL'` 과 같은 부류다
+    (2026-08-29 정정).
+    """
+    import logging
+    with caplog.at_level(logging.WARNING, logger='ics_archon.hw'):
+        drive(tmp_path, fakes,
+              ['OBS>ICS bias begin', 'OBS>ICS exp 0', 'OBS>ICS go'])
+
+    # ① BIAS 는 IntMS=0 이 맞는 값이다 -- 컨트롤러가 곧바로 읽어낸다
+    wrote = [t for t in fakes.mk.config.values() if 'IntMS=' in t]
+    assert wrote and wrote[-1].endswith('IntMS=0'), wrote
+
+    # ② 그런데 그것을 결측으로 경고하면 안 된다
+    noise = [r.getMessage() for r in caplog.records
+             if '적분 시간을 못 받았다' in r.getMessage()]
+    assert not noise, '정상 BIAS 인데 결측 경고가 떴다: %r' % noise
