@@ -358,6 +358,13 @@ class GmonApp:
         # fill/expand: 창 크기를 바꾸면 다음 렌더가 그 크기로 꽉 차게 그려짐
         self.plot_panel.pack(padx=4, pady=4, fill="both", expand=True)
         self.plot_win.protocol("WM_DELETE_WINDOW", self.plot_win.withdraw)
+        # 시작 크기는 [plot] size(기본 800×380)로 고정 — 이후 사용자가
+        # 바꾸면 렌더가 그 크기를 따라간다 (재시작 시 위치만 복원)
+        try:
+            pw, ph = cfg.getpair("plot", "size")
+        except Exception:
+            pw, ph = 800, 380
+        self.plot_win.geometry("%dx%d" % (int(pw), int(ph)))
 
         # 창 배치: 저장분(run/gui_geometry.json) 복원, 없으면 기본 배치.
         # 제어부 창 닫기 = 종료 시점에 세 창의 배치를 저장한다.
@@ -378,13 +385,13 @@ class GmonApp:
         try:
             self.root.update_idletasks()
             g = self._geoms
-            if g:  # 저장된 배치 복원 (제어부·스냅샷은 위치만, 그래프는 크기+위치)
+            if g:  # 저장된 배치 복원 — 위치만 (그래프 시작 크기는 800×380 고정)
                 if _pos_only(g.get("control")):
                     self.root.geometry(_pos_only(g["control"]))
                 if _pos_only(g.get("snap")):
                     self.snap_win.geometry(_pos_only(g["snap"]))
-                if g.get("plot"):
-                    self.plot_win.geometry(g["plot"])
+                if _pos_only(g.get("plot")):
+                    self.plot_win.geometry(_pos_only(g["plot"]))
                 return
             # 기본 배치: 제어부 우측에 스냅샷, 제어부 아래에 그래프
             rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
