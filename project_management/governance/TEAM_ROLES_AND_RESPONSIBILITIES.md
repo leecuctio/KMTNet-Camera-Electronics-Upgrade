@@ -100,18 +100,23 @@ work package별 책임 매트릭스를 제공한다면, 이 문서는 **사람 �
 - 의사결정 권한: configuration baseline·freeze 기준 제안
 - 대리(Backup): 홍성욱
 
-### 이상민 — Test Observation / Software / Site Support
+### 이상민 — Wallboard 교체 실무 / TCS 시뮬레이터·SW 간소화 / Test Observation
 
-- 주 역할: WP3 Consulted, WP5·WP7 site Responsible, 시험관측 주도
+- 주 역할: WP2 전자부·월보드 교체 실무 Responsible(차상목과 공동), WP3 Software
+  Responsible(TCS 시뮬레이터·간소화), WP5·WP7 site Responsible, 시험관측 주도
 - 핵심 책임
+  - **전자부·월보드 교체 전 과정 실무 담당** — 차상목과 함께 탈거 → 교체 →
+    재설치 전 단계를 수행하는 실무 인력 (2026-08-28 역할 확정)
+  - **TCS 시뮬레이터 개발·운용 및 소프트웨어 간소화 주력** — 리허설과
+    현장 검증에서 망원경 제어(TC) 쪽 상대역 제공, 관측 SW 체계 간소화
   - **카메라 업그레이드 후 관측 프로그램을 이용한 시험관측 주도 수행**
   - **클린부스(clean booth) 조립 주도** (이용석과 공동, 최종 검토는 차상목)
-  - **카메라 탈거·장착 작업 보조** (차상목·이용석 주도, 이상민 보조)
-  - 소프트웨어 이관·네트워크 구성 자문
-  - SSO pre-site checklist / Day 0 readiness 확정 참여 (ACT-006)
+  - 카메라 탈거·장착 작업 참여 (차상목·이용석 주도)
+  - SSO pre-site checklist / Day 0 readiness 확정 참여 (ACT-006, ACT-010)
   - Full Rehearsal 및 현장 설치 참여
-- 의사결정 권한: 시험관측 수행·판정 제안, 현장 기술 이슈 제안
-- 대리(Backup): 김동진
+- 의사결정 권한: 시험관측 수행·판정 제안, 현장 기술 이슈 제안, TCS
+  시뮬레이터·SW 간소화 방안 제안
+- 대리(Backup): 김동진(SW/네트워크), 차상목(교체 실무)
 
 ### 김재우 — Science Verification Lead
 
@@ -138,8 +143,8 @@ work package별 책임 매트릭스를 제공한다면, 이 문서는 **사람 �
 | 영역 | 1차 책임 | 지원/공동 | 자문 |
 | --- | --- | --- | --- |
 | Project Management | 이충욱 | 이동주 | 차상목, 홍성욱 |
-| Hardware (HE Box/Wallboard) | 차상목, 이용석 | — | 이상민, Tom, STA |
-| Software Migration | 차상목, 홍성욱 | — | Rick, 김동진, 이상민 |
+| Hardware (HE Box/Wallboard) | 차상목, 이용석 | 이상민 (월보드 교체 전 과정 실무) | Tom, STA |
+| Software Migration | 차상목, 홍성욱 | 이상민 (TCS 시뮬레이터·SW 간소화) | Rick, 김동진 |
 | Network/Configuration | 김동진 | — | 홍성욱, 이상민 |
 | Logistics | 이용석, 이동주 | — | 차상목 |
 | Science Verification | 김재우 | — | 차상목, 홍성욱, Greg(서면 — 영상 최종 분석/조정) |

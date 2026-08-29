@@ -9,7 +9,7 @@
 | Gate 1 Software Demonstration | 2026-08 중 | Archon/prototype 또는 production electronics 준비 | Bias, Dark, FITS, legacy software control 성공 | 이충욱 |
 | Gate 2 Full Rehearsal | 2026-09 | Production Wallboard, release candidate software, HE Box 준비 | Full observatory simulation 및 burn-in 성공 | 이충욱 |
 
-> **Gate 2 사전 검토**: 카메라 현지 재설치 리허설에서 도출된 수정사항·준비사항 검토 종합 회의를 **2026-09-01**에 개최한다 (전체 참석, 주관 이충욱 — ACT-012). 회의 결과는 Gate 2 package의 입력이 된다.
+> **Gate 2 사전 검토**: 카메라 현지 재설치 리허설에서 도출된 수정사항·준비사항 검토 종합 회의를 **2026-09-01**에 개최한다 (전체 참석, 주관 이충욱 — ACT-012). 회의 결과는 Gate 2 package의 입력이 된다. 아젠다: `../meetings/AGENDA_2026-09-01_COMPREHENSIVE_REVIEW.md`
 | Gate 3 SSO Acceptance | 2026-10-29 (현장) | SSO 전자부 교체·카메라 시험 완료 | 현장 시험관측 결과 기반 GO/NOGO + 김재우 science acceptance | 이충욱, 김재우 |
 | Gate 4 Final Acceptance | 2026-12 말 | 3개 사이트 설치 완료 | Science Acceptance 및 문서화 완료 | 이충욱 |
 

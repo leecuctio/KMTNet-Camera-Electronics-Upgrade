@@ -9,7 +9,7 @@
 | Project Management | 이충욱 | 이동주 | 차상목, 홍성욱 | 전체 |
 | HE Box Modification | 이충욱 | 차상목, 이용석 | 이상민 | 전체 |
 | Wallboard Production/Acceptance | 이충욱 | 차상목, STA | Tom | 전체 |
-| Software Migration | 이충욱 | 차상목, 홍성욱 | Rick, 김동진, 이상민 | 전체 |
+| Software Migration | 이충욱 | 차상목, 홍성욱, 이상민(TCS 시뮬레이터·SW 간소화) | Rick, 김동진 | 전체 |
 | Network/Configuration | 이충욱 | 김동진 | 홍성욱, 이상민 | 전체 |
 | Logistics | 이충욱 | 이용석, 이동주 | 차상목 | 전체 |
 | Full Rehearsal | 이충욱 | 차상목, 홍성욱, 김동진, 이상민 | 김재우 | 전체 |
