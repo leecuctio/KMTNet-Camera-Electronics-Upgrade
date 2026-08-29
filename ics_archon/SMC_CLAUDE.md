@@ -1424,6 +1424,73 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 "그 자리가 없다", `UNKNOWN` 은 "있는데 모른다" 다.  ⏳ **규격 등재는 v1.9 대기**
 (5.5절이 아직 `'NORMAL' 등` 이라 적는다).  경위는 DevNote **11.36**.
 
+### ⏳ ▶ **`main` 으로 넘어가서 할 일** (목 지시 2026-08-29)
+
+**순서**: `ics_archon` 작업을 끝낸 뒤 `main` 으로 전환해서 한다 (목 지시).
+⚠️ **시간 제약이 하나 있다** — 아래 1번은 **9/1 종합검토 회의(2026-09-01)** 에
+걸린다.  그런데 이 브랜치에 남은 것은 **작업 B(전부 실기 필요)** 라 "작업 완료"
+시점이 실기 일정에 매여 있다.  ⭐ **회의 전에 main 이 갱신되지 않으면 참석자는
+폐지된 IP 판정 절차서와 틀린 아젠다를 본다.**  1번만 먼저 옮기는 것은 5분이면
+되고 코드와 무관하다 — 목의 판단을 받을 것.
+
+#### 1. PM 문서 넷을 브랜치에서 가져온다 (`main` 이 아직 못 받았다)
+
+```bash
+git checkout main
+git checkout ics-archon-v1.0-build --   project_management/governance/DECISION_LOG.md   project_management/operations/ICS_DEPLOYMENT_CHECKLIST.md   project_management/planning/ACTION_REGISTER.md   project_management/meetings/AGENDA_2026-09-01_COMPREHENSIVE_REVIEW.md
+```
+
+⭐ **새로 고치는 게 아니라 브랜치 파일을 그대로 꺼내오는 것**이라, 그 파일들은
+양쪽 내용이 같아져 **나중 합류에서 충돌이 안 난다.**
+
+| 파일 | `main` 이 못 받은 것 |
+|---|---|
+| `DECISION_LOG.md` | **D-020 신설** · D-015 → `Superseded by D-020` |
+| `ICS_DEPLOYMENT_CHECKLIST.md` | ⚠️ **문서 전체가 아직 IP 판정 판**이다 (`3bf2d73` 이래 브랜치에만 있다) |
+| `ACTION_REGISTER.md` | ACT-009 — `main` 은 아직 *"IP 대역을 보고 자동 판단한다"* |
+| `AGENDA_2026-09-01_…md` | 없어진 리스크를 의제로, 없는 코드(`SITE_SUBNETS`) 갱신을 체크 항목으로 |
+
+#### 2. `DECISION_LOG` 의 **구현 상태가 낡았다** — 넷
+
+`raw spec v1.8` 기준으로 맞출 때 함께 볼 것.  넷 다 **`Accepted` 인데 상태 문구가
+"구현 예정/대기"** 이고, 실제로는 이 브랜치에 **구현이 끝나 있다**:
+
+| 결정 | 현재 문구 | 실제 |
+|---|---|---|
+| D-016 | `ics_sim` 구현 **예정** | ✅ 충돌 선검사·번호 증가 구현 (`test_d016_…`) |
+| D-017 | `ics_sim` 구현 **대기** | ✅ `rawpair.KASI_SITE` · `site_of_observatory()` |
+| D-018 | `ics_sim` 구현 **대기** | ✅ `rawpair.NUM_SPACE = 1_000_000` (⚠️ `main` 이 넣은 `state.EXPNUM_SPACE` 가 아니다 — 브랜치는 구조를 안 겹치게 했다) |
+| D-019 | `ics_sim`/`ics_archon` 구현 **대기** | ✅ `EXPID` 카드 · 견본 pair 반영 |
+
+⚠️ **어디에 구현됐는지를 함께 적을 것** — `main` 의 `ics_sim` 과 브랜치의
+`ics_sim` 이 구조가 다르다(D-018 이 그 예다).  *"구현 완료
+(`ics-archon-v1.0-build`; `main` 은 합류 대기)"* 처럼 갈라 적어야 한다.
+
+#### 3. 깨진 링크 둘 — `DECISION_LOG`
+
+`raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` 를 가리키는데
+**그 파일은 `archive/` 로 갔다.**  D-016 절의 `상태:` 줄(613)과 `영향:` 줄(636)
+둘이다.  경로에 `archive/` 를 넣거나 현행 `_v0.7.md` 로 옮길 것 — ⚠️ **다만
+Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 수 있다.**
+
+⚠️ **그 밖의 `raw spec v1.5 반영 완료` 류는 고치지 말 것** — 그 결정이 **어느
+판에 반영됐는지의 이력**이라, 현행 판(v1.8)으로 바꾸면 오히려 사실이 틀린다.
+
+#### 4. 보관본 변경 되돌리기 (목 지시 2026-08-29)
+
+`raw_fits_spec/archive/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` 의 한 줄
+(+1 −1, 구판 목록)이 브랜치에 있다.  **보관본은 손대지 않는 것이 규칙**이므로 뺀다.
+
+⚠️ **`main` 에서 "빼는" 것으로는 안 끝난다** — 브랜치에 남아 있으면 **나중 합류에
+다시 들어온다.**  영구히 빼려면 **브랜치에서 되돌려야** 한다.
+
+#### 5. `raw_fits_spec` 문서 넷도 같이 갈지 (목 판단)
+
+`main` 소관인데 이 브랜치가 고쳤다 — 규격 `v1.8`(2.2절 제자리 정정 · 머리말
+결정 기록 표) · `README.md` · `SMC_CLAUDE.md` · 통합문서 `v0.7`.  1번과 같은
+방법으로 옮길 수 있다.  ⚠️ 안 옮기면 **`main` 의 규격이 계속 "호스트 IP 로
+판정한다" 고 말한다.**
+
 ### 이 세션이 한 것 — 넷
 
 | # | 무엇 | 어디 |
