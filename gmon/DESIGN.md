@@ -105,6 +105,7 @@ pixel_scale   = 0.52        ; arcsec/px (레거시 가이더 값, 커미셔닝 �
 min_fwhm_px   = 1.0         ; 이 미만이면 실패 처리(0.0 포함)
 stat_region   = 10,500,70,970  ; 배경 stddev 측정 x1,x2,y1,y2 (1-기준, 레거시 동일)
 header_source = auto        ; auto=FITS 우선·결측은 TCS 보충 | fits=보충 없음 (§5.4a)
+fw_time       = arrival     ; fw 기록 시각: arrival=도착 시각(기본) | dateobs=관측시각
 
 [display]
 backend      = auto         ; auto|ds9|mpl  (auto: xpaset 있으면 ds9)
@@ -169,7 +170,10 @@ status_sec   = 10
   (운용판 2018-11-30 개정 형식 — gnuplot timefmt `%y:%m:%d:%H:%M:%S`)
 - fw*는 arcsec 소수2자리. FOCUS/TEMP는 헤더 결측("___") 시 같은 fw파일의
   직전 줄 값을 계승(운용판 파리티), 직전 줄이 없으면 0.0. SECZ 결측은 0.0.
-- 시각은 관측시각(DATE-OBS/TIME-OBS 있으면 그것, 없으면 처리 시각) 로컬 기준.
+- 시각은 **도착·처리 시각(now, 로컬)** 이 기본([pipeline] fw_time=arrival) —
+  라이브 처리에서 항상 오늘 밤 fw파일에 누적되어 그래프에 바로 나타난다
+  (밤 파일은 없으면 append로 자동 생성). 관측시각(DATE-OBS/TIME-OBS) 기준이
+  필요한 과거 프레임 재처리는 fw_time=dateobs.
 - gplot은 구형 파일(2018판 `%d:%H:%M:%S`)도 시각 토큰의 콜론 수(5 vs 3)로
   자동 판별해 그린다 (old/fw181022.dat 시험 데이터 호환).
 

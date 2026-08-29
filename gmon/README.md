@@ -276,7 +276,7 @@ tools/make_synthetic.py -o OUT.fits [--fwhm-px 3.5] [--nstars 40] [--truth J.jso
 
   | 열 | 값                        | 비고                                       |
   |----|---------------------------|--------------------------------------------|
-  | 1  | `YY:MM:DD:HH:MM:SS`       | 관측시각 로컬 기준 (DATE-OBS/TIME-OBS 우선, 없으면 처리 시각) |
+  | 1  | `YY:MM:DD:HH:MM:SS`       | **도착·처리 시각** 로컬 기준 (기본 `fw_time=arrival` — 항상 오늘 밤 파일에 누적·자동 생성). 과거 프레임 재처리는 `fw_time=dateobs`(관측시각 헤더) |
   | 2–5| fwN fwE fwW fwS (arcsec)  | 소수 2자리, 실패 칩은 0.00                 |
   | 6  | FOCUS                     | 헤더에서, 결측("___")이면 직전 줄 값 계승  |
   | 7  | TEMP                      | 헤더에서, 결측이면 직전 줄 값 계승 (초점 보정 T 입력) |

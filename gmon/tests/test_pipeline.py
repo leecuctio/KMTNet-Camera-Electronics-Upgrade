@@ -127,8 +127,8 @@ def run_test(tmp):
     assert abs(mean4 - buggy) > 0.005, "합성 칩들이 평균 버그를 구분하지 못함"
 
     # ---- fw 파일 (DESIGN §5.2) ----
-    obstime = datetime.datetime(2026, 8, 29, 12, 0, 0)
-    fwfile = gcommon.fw_path(cfg, when=obstime)
+    # fw_time=arrival(기본): 도착·처리 시각으로 오늘 밤 파일에 기록·자동 생성
+    fwfile = gcommon.fw_path(cfg)               # when=now → 오늘 밤 파일
     assert os.path.exists(fwfile), fwfile
     with open(fwfile) as fp:
         lines = fp.read().splitlines()
@@ -136,7 +136,13 @@ def run_test(tmp):
     # 운용판 시각형식 YY:MM:DD:HH:MM:SS (DESIGN §5.2)
     m = re.match(r"^(\d{2}(?::\d{2}){5})((?: [-+]?\d+\.\d+){7})$", lines[0])
     assert m, "fw 형식 불일치: %r" % lines[0]
-    assert m.group(1) == "26:08:29:12:00:00", m.group(1)
+    rec_ts = datetime.datetime.strptime(m.group(1), "%y:%m:%d:%H:%M:%S")
+    dt = abs((datetime.datetime.now() - rec_ts).total_seconds())
+    assert dt < 300, "fw 시각이 처리 시각과 다름 (%.0fs 차이)" % dt
+    # 관측시각 파싱 자체는 dateobs 모드용으로 계속 유효해야 함
+    import gpsf as _gpsf
+    assert (_gpsf._parse_obstime("2026-08-29", "12:00:00")
+            == datetime.datetime(2026, 8, 29, 12, 0, 0))
     nums = [float(v) for v in m.group(2).split()]
     for i, chip in enumerate(("n", "e", "w", "s")):  # fwN fwE fwW fwS
         assert abs(nums[i] - result["chips"][chip]["fwhm_as"]) < 0.006, (chip, nums[i])

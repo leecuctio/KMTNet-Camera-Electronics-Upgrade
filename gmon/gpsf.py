@@ -278,7 +278,13 @@ def main(argv=None):
         return c["sd"] if c else 0.0
 
     # (a) fw 데이터 파일 append — DESIGN §5.2 (운용판 시각형식·결측 계승)
-    ts = _parse_obstime(hv["DATE-OBS"], hv["TIME-OBS"]) or datetime.datetime.now()
+    # 시각 기준([pipeline] fw_time): arrival(기본)=도착·처리 시각 → 항상 오늘
+    # 밤 fw파일에 누적되어 라이브 그래프에 바로 나타남 (레거시 실시간 처리와
+    # 같은 의미). dateobs=관측시각(DATE-OBS/TIME-OBS) — 과거 프레임 재처리용.
+    if cfg.get("pipeline", "fw_time", fallback="arrival") == "dateobs":
+        ts = _parse_obstime(hv["DATE-OBS"], hv["TIME-OBS"]) or datetime.datetime.now()
+    else:
+        ts = datetime.datetime.now()
     fwfile = gcommon.fw_path(cfg, when=ts)
     focus_v, temp_v = _num(hv["FAFOCUS"]), _num(hv["ENS3"])
     if hv["FAFOCUS"] == "___" or hv["ENS3"] == "___":
