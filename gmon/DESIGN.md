@@ -226,7 +226,9 @@ gwatch.py  [--once] [--foreground]           → 감시 루프 (pidfile 단일 �
 gmon.py                                       → GUI (내부에서 gwatch/gplot 기동·정지)
 tools/make_synthetic.py -o OUT.fits [--fwhm-px 3.5] [--nstars 40] [--truth J.json]
                         [--fwhm-scatter 0.1] [--base RAW.fits] [--extra-noise ADU]
-                        ; base=실프레임 별 주입, fwhm-scatter=별별 FWHM 산포 비율
+                        [--sat-frac 0.02] [--faint-frac 0.03] [--elong-max 0.3]
+                        ; base=실프레임 별 주입, fwhm-scatter=별별 FWHM 산포,
+                        ; sat/faint=포화·미광성 비율, elong-max=별별 타원율 상한
 ```
 
 - 종료코드: 성공 0, 부분 실패(일부 칩) 2, 완전 실패 1.

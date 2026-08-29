@@ -116,10 +116,16 @@ for chip, img in imgs.items():
     assert dm < 3.0, "칩 %s 접합부 단차 %.2f ADU" % (chip, dm)
 
 # ---- 6. 실제 샘플 7장: 예외 없이 분할 완료 ----
-real = sorted(glob.glob(os.path.join(ROOT, "raw", "modtm*.fits"))) + \
-       sorted(glob.glob(os.path.join(ROOT, "raw", "temp_4224x1033_*.fits")))
-real = [f for f in real if ".sim" not in os.path.basename(f)]  # 별 주입 산출물 제외
-assert len(real) == 7, real
+# 실측 원본 7장 화이트리스트 — raw/에 계속 생기는 합성(.sim/.mock 등)과 무관
+REAL_NAMES = (
+    "modtm.20260527.195724.fits", "modtm.20260527.195925.fits",
+    "modtm.20260527.214204.fits", "modtm.20260527.214420.fits",
+    "temp_4224x1033_27.fits", "temp_4224x1033_51.fits",
+    "temp_4224x1033_66.fits",
+)
+real = [os.path.join(ROOT, "raw", n) for n in REAL_NAMES]
+missing = [f for f in real if not os.path.exists(f)]
+assert not missing, "실샘플 없음: %s" % missing
 realdir = os.path.join(tmpdir, "real")
 for f in real:
     paths = gsplit.split_file(f, cfg, outdir=realdir)

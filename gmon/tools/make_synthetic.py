@@ -19,8 +19,19 @@ gmon.conf [geometry]에 맞춰 4224×1033 uint16 프레임을 만든다:
                       [--extra-noise ADU] [-c gmon.conf]
 
 --fwhm-scatter 0.1 이면 별마다 FWHM을 N(fwhm_px, 0.1·fwhm_px)로 산포
-(±50% 절단). truth JSON: {"fwhm_px", "fwhm_scatter",
-"stars": [{"chip","x","y","flux","fwhm_px"}]} (x, y는 분할 후 칩 좌표계, 0-기준.)
+(±50% 절단).
+
+현실감 옵션 (목업 야전 시험용):
+  --sat-frac 0.02    포화별 비율 — 피크가 포화(65535)의 1.2~4배가 되는 플럭스
+                     로 넣어 클리핑된 평정(flat-top) 별을 만든다
+  --faint-frac 0.03  미광성 비율 — 피크가 읽기잡음의 3~8배(15~40 ADU)인 별
+  --elong-max 0.3    별별 elongation(장/단축비−1)을 [0, 값]에서 균등 추출,
+                     방향각 무작위 — PSF가 완벽한 원형이 아니게 됨
+  일반 별의 플럭스는 로그균등 [0.25, 1]×flux 로 산포된다.
+
+truth JSON: {"fwhm_px", "fwhm_scatter",
+"stars": [{"chip","x","y","flux","fwhm_px","kind","elong","pa"}]}
+(x, y는 분할 후 칩 좌표계 0-기준; kind = normal|sat|faint, pa = 라디안)
 """
 import argparse
 import datetime
@@ -92,12 +103,14 @@ def _load_base(path, geo):
 
 
 def generate(cfg, fwhm_px=3.5, nstars=40, flux=60000.0, seed=42,
-             base=None, extra_noise=None, fwhm_scatter=0.0):
+             base=None, extra_noise=None, fwhm_scatter=0.0,
+             sat_frac=0.0, faint_frac=0.0, elong_max=0.0):
     """합성 원시 프레임 생성. (uint16 ndarray, Header, truth dict) 반환.
 
     base가 주어지면 그 실제 프레임 위에 별을 주입한다 (페데스탈 합성 생략).
     fwhm_scatter > 0 이면 별마다 FWHM을 정규분포 N(fwhm_px, scatter·fwhm_px)로
     산포시킨다 (±50%에서 절단; truth JSON에 별별 fwhm_px 기록).
+    sat_frac/faint_frac/elong_max는 모듈 docstring의 현실감 옵션 참조.
     """
     geo = _read_geometry(cfg)
     rng = np.random.default_rng(seed)
@@ -137,24 +150,54 @@ def generate(cfg, fwhm_px=3.5, nstars=40, flux=60000.0, seed=42,
                 raise RuntimeError("별 배치 실패: nstars가 너무 많음")
 
     # ---- 별별 FWHM 산포 (fwhm_scatter, ±50% 절단) ----
-    fwhms = np.full(len(stars), float(fwhm_px))
+    n = len(stars)
+    fwhms = np.full(n, float(fwhm_px))
     if fwhm_scatter > 0:
-        fac = 1.0 + float(fwhm_scatter) * rng.standard_normal(len(stars))
+        fac = 1.0 + float(fwhm_scatter) * rng.standard_normal(n)
         fwhms *= np.clip(fac, 0.5, 1.5)
 
-    # ---- 별 신호 (기대값) → 포아송 표본 ----
+    # ---- 별 종류(normal/sat/faint)·elongation·방향각 ----
+    kinds = ["normal"] * n
+    order_idx = rng.permutation(n)
+    nsat = int(round(float(sat_frac) * n))
+    nfaint = int(round(float(faint_frac) * n))
+    for j in order_idx[:nsat]:
+        kinds[j] = "sat"
+    for j in order_idx[nsat:nsat + nfaint]:
+        kinds[j] = "faint"
+    elongs = np.ones(n)
+    if elong_max > 0:
+        elongs += rng.uniform(0.0, float(elong_max), n)
+    pas = rng.uniform(0.0, np.pi, n)      # 장축 방향각 (라디안)
+
+    # ---- 별 신호 (기대값, 타원 가우시안) → 포아송 표본 ----
     sig = np.zeros((ny, nx), dtype=np.float64)
+    fluxes = np.empty(n)
     for i, (k, x, y) in enumerate(stars):
-        sig_i = fwhms[i] / 2.3548
-        r_i = int(np.ceil(4.0 * sig_i)) + 1
-        peak = float(flux) / (2.0 * np.pi * sig_i * sig_i)
+        sig_g = fwhms[i] / 2.3548
+        root_e = np.sqrt(elongs[i])
+        sa, sb = sig_g * root_e, sig_g / root_e   # 기하평균 FWHM 보존
+        area = 2.0 * np.pi * sa * sb
+        if kinds[i] == "sat":       # 피크가 포화 위로 — 클리핑된 평정 별
+            fluxes[i] = rng.uniform(1.2, 4.0) * 65535.0 * area
+        elif kinds[i] == "faint":   # 피크 ≈ 읽기잡음의 3~8배
+            fluxes[i] = rng.uniform(3.0, 8.0) * READ_NOISE * area
+        else:                       # 로그균등 [0.25, 1]×flux
+            fluxes[i] = float(flux) * 10.0 ** rng.uniform(-0.6, 0.0)
+        peak = fluxes[i] / area
+        ct, st = np.cos(pas[i]), np.sin(pas[i])
+        qa = ct * ct / (2 * sa * sa) + st * st / (2 * sb * sb)
+        qb = st * ct * (1.0 / (2 * sa * sa) - 1.0 / (2 * sb * sb))
+        qc = st * st / (2 * sa * sa) + ct * ct / (2 * sb * sb)
+        r_i = int(np.ceil(4.0 * sa)) + 1
         rx, ry = _chip_to_raw(geo, k, x, y)
         ix, iy = int(round(rx)), int(round(ry))
         x0, x1 = max(0, ix - r_i), min(nx, ix + r_i + 1)
         y0, y1 = max(0, iy - r_i), min(ny, iy + r_i + 1)
         yy, xx = np.mgrid[y0:y1, x0:x1]
+        dx, dy = xx - rx, yy - ry
         sig[y0:y1, x0:x1] += peak * np.exp(
-            -((xx - rx) ** 2 + (yy - ry) ** 2) / (2.0 * sig_i * sig_i))
+            -(qa * dx * dx + 2.0 * qb * dx * dy + qc * dy * dy))
     photons = rng.poisson(sig).astype(np.float64)
 
     now = datetime.datetime.now()
@@ -192,8 +235,15 @@ def generate(cfg, fwhm_px=3.5, nstars=40, flux=60000.0, seed=42,
     truth = {
         "fwhm_px": float(fwhm_px),
         "fwhm_scatter": float(fwhm_scatter),
+        "sat_frac": float(sat_frac),
+        "faint_frac": float(faint_frac),
+        "elong_max": float(elong_max),
         "stars": [{"chip": order[k], "x": round(x, 3), "y": round(y, 3),
-                   "flux": float(flux), "fwhm_px": round(float(fwhms[i]), 3)}
+                   "flux": round(float(fluxes[i]), 1),
+                   "fwhm_px": round(float(fwhms[i]), 3),
+                   "kind": kinds[i],
+                   "elong": round(float(elongs[i]), 3),
+                   "pa": round(float(pas[i]), 3)}
                   for i, (k, x, y) in enumerate(stars)],
     }
     return data, hdr, truth
@@ -208,6 +258,12 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--fwhm-scatter", type=float, default=0.0,
                     help="별별 FWHM 산포 비율 (예: 0.1 = 10%%)")
+    ap.add_argument("--sat-frac", type=float, default=0.0,
+                    help="포화별 비율 (예: 0.02 = 2%%)")
+    ap.add_argument("--faint-frac", type=float, default=0.0,
+                    help="미광성 비율 (예: 0.03 = 3%%)")
+    ap.add_argument("--elong-max", type=float, default=0.0,
+                    help="별별 elongation 최대치 (장/단축비−1, 예: 0.3)")
     ap.add_argument("--truth", default=None, help="truth JSON 출력 경로")
     ap.add_argument("--base", default=None,
                     help="실제 원시 프레임 — 이 위에 별을 주입 (페데스탈 합성 생략)")
@@ -220,7 +276,10 @@ def main(argv=None):
     data, hdr, truth = generate(cfg, fwhm_px=args.fwhm_px, nstars=args.nstars,
                                 flux=args.flux, seed=args.seed,
                                 base=args.base, extra_noise=args.extra_noise,
-                                fwhm_scatter=args.fwhm_scatter)
+                                fwhm_scatter=args.fwhm_scatter,
+                                sat_frac=args.sat_frac,
+                                faint_frac=args.faint_frac,
+                                elong_max=args.elong_max)
     outdir = os.path.dirname(os.path.abspath(args.out))
     os.makedirs(outdir, exist_ok=True)
     fits.PrimaryHDU(data=data, header=hdr).writeto(args.out, overwrite=True)
