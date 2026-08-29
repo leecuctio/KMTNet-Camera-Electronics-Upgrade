@@ -10,6 +10,12 @@ workdir(기본 run/work)에서 <prefix><p>.<STEM>.fits 4장(p = [chips] order)�
   - workdir/result.<STEM>.json : gsnap 전달용 사이드카 (DESIGN.md §5.4)
 stdout 마지막 줄에 result json 경로를 출력한다.
 
+헤더 항목(SECZ, FAFOCUS, FATILT*, FAPOS*, ENS1..3, ALT, AZ)은 칩 FITS 헤더에서
+읽되, **없으면 TCS 서버(auxstatus+tcsstatus)에서 직접 보충**한다
+([pipeline] header_source=auto — 신규 ICS가 FITS 키워드를 채우기 전까지의
+경로이며, 키워드가 들어오면 FITS 값이 자동으로 우선한다. fits로 설정하면
+보충 없이 기존 동작). 보충값은 스냅샷 중앙 패널과 fw파일에 반영된다.
+
 사용법:
   gpsf.py STEM [-c gmon.conf] [--workdir D]
   gpsf.py --raw RAW.fits [-c gmon.conf] [--workdir D]   (STEM은 gcommon.stem_from_raw)
@@ -29,12 +35,39 @@ from astropy.io import fits
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gcommon
+import gtcs
 
 SUBPROC_TIMEOUT = 120  # sex/psfex 개별 타임아웃(초)
 
 # 레거시 do-sex.psfex가 gethead로 읽던 헤더 키 (없으면 "___")
 HDR_KEYS = ("SECZ", "FAFOCUS", "FATILTEW", "FATILTNS", "FAPOSE", "FAPOSS",
             "FAPOSW", "ENS1", "ENS2", "ENS3", "ALT", "AZ", "DATE-OBS", "TIME-OBS")
+
+# FITS에 없을 때 TCS 서버(auxstatus+tcsstatus)에서 보충 가능한 키
+# ([pipeline] header_source=auto — 신규 ICS가 헤더 키워드를 채우기 전까지의 경로.
+#  키워드가 들어오기 시작하면 FITS 값이 항상 우선이므로 설정 변경 불필요.)
+TCS_FILL_KEYS = tuple(k for k in HDR_KEYS if k not in ("DATE-OBS", "TIME-OBS"))
+
+
+def fill_header_from_tcs(cfg, log, hv):
+    """hv의 결측("___") 키를 TCS 질의값으로 보충. 보충한 키 수를 반환."""
+    if cfg.get("pipeline", "header_source", fallback="auto") != "auto":
+        return 0
+    missing = [k for k in TCS_FILL_KEYS if hv.get(k) in (None, "___")]
+    if not missing:
+        return 0
+    tv = gtcs.TcsClient(cfg, log=log).header_values()
+    filled = 0
+    for k in missing:
+        if k in tv:
+            hv[k] = tv[k]
+            filled += 1
+    if filled:
+        log.info("FITS 헤더 결측 %d개를 TCS에서 보충: %s", filled,
+                 " ".join("%s=%s" % (k, hv[k]) for k in missing if k in tv))
+    elif tv == {}:
+        log.info("FITS 헤더 결측 %d개 — TCS 무응답이라 '___' 유지", len(missing))
+    return filled
 
 
 def _run(argv, cwd, log, tag):
@@ -228,6 +261,9 @@ def main(argv=None):
                            "psf_file": None, "snap_file": None, "ok": False}
 
     hv = read_chip_header(cfg, workdir, order, stem)
+    # 신규 ICS가 헤더 키워드를 채우기 전까지: 결측분을 TCS 서버에서 직접 읽어
+    # 스냅샷 중앙 패널·fw파일에 반영 (DESIGN §5.4a, header_source=auto)
+    fill_header_from_tcs(cfg, log, hv)
 
     # fwAVG = 유효한 칩들의 산술평균 (레거시 W 2회/S 누락 버그 수정 — DESIGN §5.5)
     ok_as = [c["fwhm_as"] for c in chips.values() if c["ok"]]

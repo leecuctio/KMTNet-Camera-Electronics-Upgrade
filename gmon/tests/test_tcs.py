@@ -35,8 +35,16 @@ AUXREPLY = (
     " ENSTAT=Connected ENFAN=ON ENS1=4.2 ENS2=5.6 ENS3=6.6 ENS4=7.0"
     " ENS5=7.1 ENS6=7.2 ENS7=7.3"
 )
+# TCSAgent cmd_tcsstatus 응답 형식 재현 (TCS_UP)
+TCSREPLY = (
+    "TC>ABC DONE: TCSSTATUS TCSQDATE=2026-08-29T01:00:00.000 TIMESYS=UTC"
+    " TCSLINK=Up TCSARC=Enabled TCSUDATE=2026-08-29T01:00:00"
+    " RA=17:45:40.0 DEC=-29:00:28 EQUINOX=2000.0 HA=+01:23:45 ST=19:09:25"
+    " SECZ=1.27 ALT=51.7 AZ=-66.7 TELMOVE=Idle"
+)
 REPLIES = {
     "auxstatus": AUXREPLY,
+    "tcsstatus": TCSREPLY,
     "fttgoto": "TC>ABC DONE: FTTGOTO",
     "dtilt": "TC>ABC DONE: DTILT",
 }
@@ -109,6 +117,18 @@ def main():
     assert kv["FAPOSS"] == -5.167 and kv["TELID"] == "KMTS"
     # 레거시 do-Monitoring `awk $15` 파리티: 15번째 토큰이 SHUTTER=...
     assert AUXREPLY.split()[14].startswith("SHUTTER="), AUXREPLY.split()[14]
+
+    # tcsstatus: 포인팅 파싱 (RA/DEC는 콜론 포함 → 문자열 유지)
+    tv = cli.tcsstatus()
+    assert srv.requests[-1] == "abc>tc tcsstatus", srv.requests[-1]
+    assert tv["SECZ"] == 1.27 and tv["ALT"] == 51.7 and tv["AZ"] == -66.7
+    assert tv["RA"] == "17:45:40.0" and tv["DEC"] == "-29:00:28"
+
+    # header_values: aux+tcs 통합 → FITS 헤더 보충용 문자열 dict
+    hvv = cli.header_values()
+    assert hvv["SECZ"] == "1.27" and hvv["ALT"] == "51.7" and hvv["AZ"] == "-66.7"
+    assert hvv["FAFOCUS"] == "-6.798" and hvv["ENS3"] == "6.6"
+    assert hvv["FAPOSS"] == "-5.167" and hvv["FATILTEW"] == "-370.1"
 
     # ---------- 2. dry_run=yes → 이동 명령 미전송 ----------
     n0 = len(srv.requests)
@@ -202,6 +222,24 @@ def main():
         # simset(시뮬레이터 전용) → 셔터 상태 강제
         cli7.command("simset SHUTTER=CLOSE")
         assert cli7.shutter() == "CLOSE"
+        # tcsstatus: SECZ가 ALT(51.7°)에서 계산 → 1/sin(51.7°)=1.27
+        tv7 = cli7.tcsstatus()
+        assert tv7["ALT"] == 51.7 and tv7["SECZ"] == 1.27, (tv7["ALT"], tv7["SECZ"])
+        # gpsf 헤더 보충 (§5.4a): 결측 "___"가 시뮬레이터 값으로 채워진다
+        import gpsf
+        hv = dict((k, "___") for k in gpsf.HDR_KEYS)
+        hv["ENS3"] = "9.9"                       # FITS에 있는 키는 보존돼야 함
+        import gcommon as _gc
+        n = gpsf.fill_header_from_tcs(cfg7, _gc.setup_logger(cfg7, "gpsf"), hv)
+        assert n >= 10, n
+        assert hv["SECZ"] == "1.27" and hv["ALT"] == "51.7" and hv["AZ"] == "-66.7"
+        assert hv["FAFOCUS"] == "-6.123"          # 위 fttgoto 반영값
+        assert hv["ENS3"] == "9.9"                # FITS 우선 (보충 안 함)
+        assert hv["DATE-OBS"] == "___"            # 시각은 보충 대상 아님
+        # simset으로 고도 변경 → SECZ 재계산 확인 (ALT=30° → 2.00)
+        cli7.command("simset ALT=30.0")
+        tv7 = cli7.tcsstatus()
+        assert tv7["ALT"] == 30.0 and tv7["SECZ"] == 2.0, (tv7["ALT"], tv7["SECZ"])
     finally:
         proc.terminate()
         proc.wait(timeout=5)

@@ -9,11 +9,13 @@ fttgoto/dtilt가 FAFOCUS·FATILT를 움직이고, 온도(ENS1..7)는 설정한
 따라가는 것을 로컬에서 관찰할 수 있다.
 
 지원 명령:
-  auxstatus | auxstat | astatus   전체 상태 (KEY=VALUE)
+  auxstatus | auxstat | astatus   AUX 상태 (온도·초점·틸트·셔터 KEY=VALUE)
+  tcsstatus | tstat               포인팅 상태 (RA/DEC/HA/ST, SECZ, ALT, AZ —
+                                  SECZ는 ALT에서 1/sin(ALT)로 자동 계산)
   fttgoto <foc> [<tns> <tew>]     절대 초점(/틸트) 이동 → 상태 갱신
   dtilt <dns> <dew>               상대 틸트 이동 → 상태 갱신
   simset KEY=VALUE [...]          (시뮬레이터 전용) 임의 상태 강제
-                                  예: simset SHUTTER=CLOSE ENS3=12.5
+                                  예: simset SHUTTER=CLOSE ENS3=12.5 ALT=35.0
 
 사용법:
   tcs_sim.py [-c gmon.conf] [--port N] [--temp 6.6] [--drift 1.5]
@@ -54,6 +56,10 @@ class TcsSim:
             "SHUTTER": args.shutter, "FILTER": "I", "FILNUM": 1,
             "DSALT": 45.0, "DSTEL": 44.9, "MCPOS": 100,
             "CHSET": -15.0, "CHPROC": -14.8,
+            # 포인팅 (tcsstatus) — 기준 캡처 psf.snap.20181003 값과 동일
+            "RA": "17:45:40.0", "DEC": "-29:00:28", "EQUINOX": "2000.0",
+            "HA": "+01:23:45", "ST": "19:09:25",
+            "ALT": 51.7, "AZ": -66.7, "TELMOVE": "Idle",
         }
         self.override = {}            # simset 강제값 (온도 포함 최우선)
 
@@ -95,6 +101,24 @@ class TcsSim:
             r += " ENS%d=%.1f" % (i, s["ENS%d" % i])
         return r
 
+    def tcsstatus(self):
+        """포인팅 상태 — TCSAgent cmd_tcsstatus 필드 순서 재현.
+
+        SECZ는 ALT로부터 1/sin(ALT) 계산 (simset SECZ=...로 강제 가능).
+        """
+        d, t = self._utc()
+        s = dict(self.state)
+        s.update(self.override)
+        alt = float(s["ALT"])
+        secz = s.get("SECZ")
+        if not isinstance(secz, float):
+            secz = 1.0 / max(1e-6, math.sin(math.radians(max(1.0, alt))))
+        return ("TCSSTATUS TCSQDATE=%sT%s TIMESYS=UTC TCSLINK=Up"
+                " TCSARC=Enabled TCSUDATE=%sT%s RA=%s DEC=%s EQUINOX=%s"
+                " HA=%s ST=%s SECZ=%.2f ALT=%.1f AZ=%.1f TELMOVE=%s"
+                % (d, t, d, t, s["RA"], s["DEC"], s["EQUINOX"], s["HA"],
+                   s["ST"], secz, alt, float(s["AZ"]), s["TELMOVE"]))
+
     # ---- 명령 처리 ----
     def handle(self, cmd):
         """명령 본문 → 응답 본문 ("DONE:"/"ERROR:" 뒤에 붙을 문자열)."""
@@ -102,6 +126,8 @@ class TcsSim:
         op = toks[0].lower() if toks else ""
         if op in ("auxstatus", "auxstat", "astatus"):
             return "DONE: " + self.auxstatus()
+        if op in ("tcsstatus", "tstat"):
+            return "DONE: " + self.tcsstatus()
         if op == "fttgoto":
             try:
                 foc = float(toks[1])

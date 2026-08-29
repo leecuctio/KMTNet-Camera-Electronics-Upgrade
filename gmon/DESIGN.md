@@ -104,6 +104,7 @@ prefix = KMTNg              ; 분할 산출물 접두 (레거시 호환)
 pixel_scale   = 0.52        ; arcsec/px (레거시 가이더 값, 커미셔닝 때 재확인)
 min_fwhm_px   = 1.0         ; 이 미만이면 실패 처리(0.0 포함)
 stat_region   = 10,500,70,970  ; 배경 stddev 측정 x1,x2,y1,y2 (1-기준, 레거시 동일)
+header_source = auto        ; auto=FITS 우선·결측은 TCS 보충 | fits=보충 없음 (§5.4a)
 
 [display]
 backend      = auto         ; auto|ds9|mpl  (auto: xpaset 있으면 ds9)
@@ -178,6 +179,16 @@ status_sec   = 10
 gpsf → gsnap 전달용. 키: `stem, chips{n|s|e|w: {fwhm_px, fwhm_as, sd, psf_file,
 snap_file, ok}}, fwavg_as, header{SECZ,FOCUS,TILTEW,TILTNS,ESW,T123,ALT,AZ,
 DATEOBS,TIMEOBS}, raw_file` (헤더 키 없으면 값 `"___"`).
+
+#### 5.4a 헤더 값의 출처 우선순위 ([pipeline] header_source)
+신규 ICS가 가이드 FITS에 망원경 키워드(SECZ, FAFOCUS, FATILT*, FAPOS*,
+ENS1..3, ALT, AZ)를 아직 넣지 않으므로, `auto`(기본)에서는 **FITS에 있으면
+FITS 값, 없으면 gpsf가 TCS 서버를 직접 질의**(gtcs.header_values:
+auxstatus에서 FAFOCUS·FATILT*·FAPOS*·ENS*, tcsstatus에서 SECZ·ALT·AZ)해
+채운다 → 스냅샷 중앙 패널·fw파일(FOCUS/TEMP/SECZ)에 반영. 추후 ICS가
+키워드를 채우기 시작하면 FITS 값이 자동으로 우선하므로 설정 변경이 필요
+없다. `fits`로 두면 보충 없이 결측은 `"___"`(레거시 동작). 서버 무응답
+시에도 `"___"` 유지.
 
 ### 5.5 fwAVG = **유효한 칩들의 산술평균** (레거시 버그: W 2회/S 누락 — 수정).
 

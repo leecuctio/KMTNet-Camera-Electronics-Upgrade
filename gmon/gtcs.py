@@ -9,6 +9,11 @@ IMPv2 형식 "<to>><FROM> DONE: <KEY=VALUE ...>" 한 줄이다
 질의 (읽기 — dry_run과 무관, 서버 무응답이면 timeout 후 None):
   auxstatus  : 온도 ENS1..7, 초점 FAFOCUS, 틸트 FATILTNS/EW, 셔터 SHUTTER,
                액추에이터 FAPOSS/E/W, 돔 DSALT/DSTEL 등 KEY=VALUE dict
+  tcsstatus  : 포인팅 — RA/DEC/HA/ST, SECZ, ALT, AZ, TELMOVE 등
+               (TCSAgent commands.c cmd_tcsstatus 형식)
+  header_values() : 위 둘을 합쳐 가이드 FITS 헤더 키워드(SECZ, FAFOCUS,
+               FATILT*, FAPOS*, ENS1..3, ALT, AZ)를 문자열로 반환 —
+               FITS에 키워드가 없을 때 gpsf가 보충용으로 사용
 이동 (쓰기 — [ics] dry_run=yes면 로그만 남기고 전송하지 않음):
   fttgoto <foc> [<tns> <tew>] : 절대 초점(/틸트) 이동 (레거시 gmon runcmd)
   dtilt <dns> <dew>           : 상대 틸트 이동 (레거시 tcon)
@@ -104,6 +109,48 @@ class TcsClient:
         kv["_raw"] = reply
         return kv
 
+    def tcsstatus(self):
+        """tcsstatus KEY=VALUE dict (SECZ/ALT/AZ/RA/DEC 등). 무응답이면 None."""
+        reply = self.query("tcsstatus")
+        if reply is None:
+            return None
+        kv = parse_kv(reply)
+        kv["_raw"] = reply
+        return kv
+
+    #: header_values()가 채우는 키 → (출처, 원본 키, 포맷)
+    HDR_MAP = (
+        ("SECZ",     "tcs", "SECZ",     "%.2f"),
+        ("ALT",      "tcs", "ALT",      "%.1f"),
+        ("AZ",       "tcs", "AZ",       "%.1f"),
+        ("FAFOCUS",  "aux", "FAFOCUS",  "%.3f"),
+        ("FATILTNS", "aux", "FATILTNS", "%.1f"),
+        ("FATILTEW", "aux", "FATILTEW", "%.1f"),
+        ("FAPOSE",   "aux", "FAPOSE",   "%.3f"),
+        ("FAPOSS",   "aux", "FAPOSS",   "%.3f"),
+        ("FAPOSW",   "aux", "FAPOSW",   "%.3f"),
+        ("ENS1",     "aux", "ENS1",     "%.1f"),
+        ("ENS2",     "aux", "ENS2",     "%.1f"),
+        ("ENS3",     "aux", "ENS3",     "%.1f"),
+    )
+
+    def header_values(self):
+        """auxstatus+tcsstatus를 합쳐 FITS 헤더 키워드 값(문자열) dict로.
+
+        가이드 FITS에 아직 키워드가 없을 때 gpsf의 보충 출처
+        ([pipeline] header_source=auto). 서버가 응답한 키만 담기며,
+        전부 무응답이면 빈 dict.
+        """
+        aux = self.auxstatus() or {}
+        tcs = self.tcsstatus() or {}
+        src = {"aux": aux, "tcs": tcs}
+        out = {}
+        for name, where, key, fmt in self.HDR_MAP:
+            val = src[where].get(key)
+            if isinstance(val, float):
+                out[name] = fmt % val
+        return out
+
     def temperature(self, status=None, sensor=None):
         """ENS<n> 온도 (기본 [focus] temp_sensor=3 — fw 파일 TEMP와 동일 센서)."""
         if sensor is None:
@@ -152,6 +199,8 @@ def main(argv=None):
     ap.add_argument("-c", "--config", default=None)
     sub = ap.add_subparsers(dest="op", required=True)
     sub.add_parser("auxstatus")
+    sub.add_parser("tcsstatus")
+    sub.add_parser("header")     # header_values() — gpsf 보충값 미리보기
     p = sub.add_parser("fttgoto")
     p.add_argument("foc", type=float)
     p.add_argument("tns", type=float, nargs="?")
@@ -165,9 +214,10 @@ def main(argv=None):
 
     cfg = gcommon.load_config(args.config)
     cli = TcsClient(cfg)
-    if args.op == "auxstatus":
-        kv = cli.auxstatus()
-        if kv is None:
+    if args.op in ("auxstatus", "tcsstatus", "header"):
+        kv = {"auxstatus": cli.auxstatus, "tcsstatus": cli.tcsstatus,
+              "header": cli.header_values}[args.op]()
+        if not kv:
             print("no reply from %s:%d" % (cli.host, cli.port))
             return 1
         for key in sorted(k for k in kv if k != "_raw"):

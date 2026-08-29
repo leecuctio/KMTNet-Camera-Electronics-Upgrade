@@ -228,7 +228,8 @@ gsplit.py  RAW.fits [-o OUTDIR] [--json]     → 4파일 생성, stdout에 경�
 gpsf.py    STEM 또는 --raw RAW.fits [--workdir D]  → sex+psfex+기록, result JSON 출력
 gsnap.py   result.<stem>.json [--backend auto|ds9|mpl]  → PNG 생성
 gplot.py   [--oneshot] [--term qt|x11|png] [--out FILE] [--datafile F]  → 그래프
-gtcs.py    auxstatus | fttgoto FOC [TNS TEW] | dtilt DNS DEW | raw CMD  → TCS 질의/이동
+gtcs.py    auxstatus | tcsstatus | header | fttgoto FOC [TNS TEW] | dtilt DNS DEW
+           | raw CMD  → TCS 질의/이동 (header = gpsf가 보충에 쓸 값 미리보기)
 tools/tcs_sim.py [--temp 6.6] [--drift 1.5] [--period 3600] [--focus -6.5]
            → TCS auxstatus 시뮬레이터 (로컬 UDP 서버; fttgoto/dtilt로 상태 이동,
              온도 사인 드리프트, simset KEY=VALUE로 임의 상태 강제)
@@ -307,6 +308,11 @@ raw_file
 ### 7.4 기타
 
 - 상세 로그 `run/log/logfile.txt`: 레거시 형식 유지 + fwAVG 필드 추가 (DESIGN §5.3).
+- **헤더 값 출처 (DESIGN §5.4a)**: 스냅샷 중앙 패널·fw파일의 SECZ, Focus,
+  TiltEW/NS, ESW(FAPOS*), T123(ENS1..3), ALT/AZ는 칩 FITS 헤더에서 읽되,
+  신규 ICS가 아직 키워드를 넣지 않으므로 **결측이면 TCS 서버를 직접 질의**
+  (auxstatus + tcsstatus)해 채운다 (`[pipeline] header_source=auto`).
+  FITS에 키워드가 들어오기 시작하면 FITS 값이 자동으로 우선한다.
 - 스냅샷 `run/snap/psf.snap.<stem>.png`: **기준 화면
   `old/psf.snap.20181003T011100.0001.fits.png`과 동일 구성** — 3×3 나침반
   배치(중앙=정보 패널, 상=N, 좌=E, 우=W, 하=S, 각 ~200px, 전체 ~600×649),
