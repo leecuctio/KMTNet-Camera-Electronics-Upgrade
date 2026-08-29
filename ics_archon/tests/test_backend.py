@@ -116,8 +116,12 @@ async def _drive(cfg, acfg, nt_port, script, settle=0.8):  # noqa: ANN001
         await app.stop()
 
 
-def drive(tmp_path, fakes, script):  # noqa: ANN001
+def drive(tmp_path, fakes, script, full_flush=False):  # noqa: ANN001
+    #: `full_flush` -- ERASE 를 전체 독출 flush 로 할지.  ⭐ **기본값이
+    #: 2026-08-29 에 `false` 로 바뀌었다**(clock 개선으로 실기는 별도 erase 를
+    #: 하지 않는다).  그 경로를 보는 시험만 켠다.
     cfg, acfg, nt_port = make_cfgs(tmp_path, fakes.mk, fakes.nt)
+    acfg.full_flush_on_erase = bool(full_flush)
     return asyncio.run(_drive(cfg, acfg, nt_port, script))
 
 
@@ -369,8 +373,10 @@ def test_acf_is_applied_once_not_per_frame(tmp_path, fakes):  # noqa: ANN001
           ['OBS>ICS dark begin', 'OBS>ICS exp 1', 'OBS>ICS go 2'])
     assert fakes.mk.seen.count('APPLYALL') == 1
     assert fakes.mk.seen.count('POWERON') == 1
-    # LOADPARAMS 는 프레임마다: flush 1 + 노출 1 = 프레임당 2, 2프레임 = 4
-    assert fakes.mk.seen.count('LOADPARAMS') == 4
+    # LOADPARAMS 는 프레임마다 노출 1회.  ⭐ **flush 는 안 센다** --
+    # `full_flush_on_erase` 기본값이 2026-08-29 에 `false` 로 바뀌었다
+    # (clock 개선으로 실기는 별도 erase 를 하지 않는다).  켜면 프레임당 2다.
+    assert fakes.mk.seen.count('LOADPARAMS') == 2
 
 
 def test_erase_flushes_both_controllers_not_just_the_master(tmp_path, fakes):  # noqa: ANN001
@@ -378,9 +384,14 @@ def test_erase_flushes_both_controllers_not_just_the_master(tmp_path, fakes):  #
 
     NT 를 안 비우면 그쪽 chip 에 앞 프레임의 잔상이 남는다 -- master 만
     flushing 한 것은 레거시 IC 구조의 관례이고 실기의 사실이 아니다.
+
+    ⚠️ **flush 를 명시적으로 켠다** -- 기본값이 2026-08-29 에 `false` 로 바뀌었다
+    (clock 개선으로 실기는 별도 erase 를 하지 않는다).  그래도 **켠 배치에서는
+    두 대 다 비워야 한다**는 규칙이 유효하므로 시험은 남긴다.
     """
     drive(tmp_path, fakes,
-          ['OBS>ICS dark begin', 'OBS>ICS exp 1', 'OBS>ICS go'])
+          ['OBS>ICS dark begin', 'OBS>ICS exp 1', 'OBS>ICS go'],
+          full_flush=True)
     assert fakes.nt.seen.count('LOADPARAMS') == 2     # flush + 노출
     assert fakes.nt.seen.count('POWERON') == 1
 
@@ -485,6 +496,9 @@ def test_pipelined_frames_do_not_steal_each_others_state(tmp_path):  # noqa: ANN
     two = TwoFakes(nbuf=3)
     try:
         cfg, acfg, nt_port = make_cfgs(tmp_path, two.mk, two.nt)
+        # ⚠️ **flush 를 켜서 노출당 프레임을 2개로** 만든다 -- 겹침을 재현하는
+        # 조건이다.  기본값은 2026-08-29 부터 `false` 다.
+        acfg.full_flush_on_erase = True
         cfg.timing.write_delay = 50.0        # 축척 0.02 -> 1초
         sent, _ = asyncio.run(_drive(
             cfg, acfg, nt_port,
@@ -531,15 +545,20 @@ def test_a_recycled_buffer_is_refused_instead_of_writing_wrong_pixels(tmp_path):
     그래서 fetch 앞에서 버퍼의 프레임 번호를 대조하고, 어긋나면 **저장하지
     않는다.**  파일 한 장을 잃는 것이 틀린 파일을 남기는 것보다 낫다.
 
-    ⚠️ 실기에서는 프레임이 ~40초, `write_delay` 가 3.4초라 이 경합이 나지
-    않는다 -- 여기서는 `write_delay` 를 프레임 간격보다 크게 잡아 강제한다.
-    독출 시간 실측 뒤에 여유를 다시 재는 것이 검토사항이다.
+    ⭐ **실측(2026-08-29)으로 여유가 확인됐다** -- FETCH 는 `IDLE`+3.4~8.4초에
+    끝나는데 그 버퍼를 다시 쓰는 것은 ~14.7초다 (**여유 ~6초**).  종전 주석의
+    "프레임 ~40초" 는 가정이었고 실제 주기는 훨씬 짧다(readout 11.3초).
+    여기서는 `write_delay` 를 프레임 간격보다 크게 잡아 경합을 강제한다.
+
+    ⚠️ **flush 를 명시적으로 켠다** -- "노출 1회 = 프레임 2개" 가 이 시험의
+    전제인데 기본값이 2026-08-29 에 `false`(프레임 1개)로 바뀌었다.
     """
     from astropy.io import fits
 
     two = TwoFakes(nbuf=2)                 # BIGBUF=1 구성
     try:
         cfg, acfg, nt_port = make_cfgs(tmp_path, two.mk, two.nt)
+        acfg.full_flush_on_erase = True    # 노출당 프레임 2개 (이 시험의 전제)
         # **저장을 프레임 3개 뒤로 밀어** 버퍼가 반드시 재활용되게 한다.
         # (DARK 의 적분 시간이 컨트롤러로 가게 된 뒤로는 exp 1 이 프레임 하나를
         #  1초 늦추므로, 종전 값(50)으로는 경합이 재현되지 않았다.)

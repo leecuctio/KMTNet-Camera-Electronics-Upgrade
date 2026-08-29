@@ -336,26 +336,33 @@ class ArchonLink:
 
         head = ('<%02X:' % ref).encode('ascii')
         err = ('?%02X' % ref).encode('ascii')
-        out = bytearray()
+        # **크기를 미리 잡는다.**  1024B 씩 35만 번 `+=` 로 키우면 재할당이
+        # 되풀이돼 **피크가 실제 크기를 넘는다** -- 실측(2026-08-29) 344 MiB
+        # 한 장에 367.8 -> 344.2 MiB, 1.06 -> 0.81초.  컨트롤러 둘이 동시에
+        # 받으므로 **-47 MiB · -0.5초**다.
+        out = bytearray(nbytes)
+        #: 실제로 채운 바이트.  ⚠️ **`len(out)` 을 진행 표시로 쓸 수 없다** --
+        #: 미리 잡았으므로 처음부터 `nbytes` 다.  예외 경로도 이 값을 읽는다.
+        filled = [0]
         # **중간에 어떤 이유로든 빠져나가면 남은 블록이 소켓으로 흐른다.**
         # 그 상태의 링크로 다음 명령을 보내면 이진 자료를 텍스트로 읽는다.
         try:
             return self._fetch_blocks(ref, base_addr, nbytes, blocks, head,
-                                      err, deadline, on_block, out)
+                                      err, deadline, on_block, out, filled)
         except ArchonError as exc:
             # **거부(`?xx`)는 예외다** -- 컨트롤러가 명령 자체를 안 받았으니
             # 버스트가 흐르지 않는다.  링크는 멀쩡하다.
             if not exc.reply_error:
                 self.mark_broken('FETCH 가 중간에 끊겼다 (%d/%d 블록)'
-                                 % (len(out) // self.burst_len, blocks))
+                                 % (filled[0] // self.burst_len, blocks))
             raise
         except BaseException:
             self.mark_broken('FETCH 가 중간에 끊겼다 (%d/%d 블록)'
-                             % (len(out) // self.burst_len, blocks))
+                             % (filled[0] // self.burst_len, blocks))
             raise
 
     def _fetch_blocks(self, ref, base_addr, nbytes, blocks, head,  # noqa: ANN001
-                      err, deadline, on_block, out):
+                      err, deadline, on_block, out, filled):
         for i in range(blocks):
             # **머리 4바이트를 먼저 본다.**  블록 하나(1028B)가 다 모이기를
             # 기다린 뒤에 판정하면, `?NN\n`(4B)으로 거부된 경우 시한까지
@@ -378,9 +385,20 @@ class ArchonLink:
                     % (i + 1, blocks, head, bytes(self._buf[:4])), cmd='FETCH')
             del self._buf[:4]
             self._fill(self.burst_len, deadline, 'FETCH')
-            take = min(self.burst_len, nbytes - len(out))
-            out += self._buf[:take]
+            take = min(self.burst_len, nbytes - filled[0])
+            out[filled[0]:filled[0] + take] = self._buf[:take]
+            filled[0] += take
             del self._buf[:self.burst_len]
             if on_block is not None:
-                on_block(len(out), nbytes)
+                on_block(filled[0], nbytes)
+        # ⚠️ **다 채웠는지 반드시 본다.**  미리 잡은 버퍼는 덜 채워도 길이가
+        # 맞으므로, 빠진 자리가 **0(=물리값 32768)으로 조용히 메워진** 채
+        # 저장까지 간다 -- 길이 대조(`write_frame`)도 통과한다.  종전에는
+        # 짧은 버퍼가 그 자체로 신호였는데 미리 잡으면서 그 신호가 사라졌다.
+        if filled[0] != nbytes:
+            raise ArchonError(
+                'FETCH 가 %d/%d B 만 채웠다 (%d/%d 블록) -- 나머지는 0 으로 '
+                '남아 있으므로 이 프레임을 쓰지 않는다'
+                % (filled[0], nbytes, filled[0] // self.burst_len, blocks),
+                cmd='FETCH')
         return out

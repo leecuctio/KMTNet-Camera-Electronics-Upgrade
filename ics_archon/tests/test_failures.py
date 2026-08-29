@@ -603,11 +603,15 @@ def test_unknown_command_does_not_hang_forever(tmp_path):  # noqa: ANN001
 def test_a_stuck_flush_also_errors_instead_of_hanging(tmp_path):  # noqa: ANN001
     """`ERASE` 의 flush 도 프레임을 기다린다 -- 거기서 멈춰도 오류로 나가야 한다.
 
-    `full_flush_on_erase=true`(기본값)면 독출보다 **먼저** 여기서 걸린다 --
-    노출 시간을 버리기 전에 알게 되므로 오히려 이른 발견이다.  통보의 국면은
+    `full_flush_on_erase=true` 면 독출보다 **먼저** 여기서 걸린다 -- 노출 시간을
+    버리기 전에 알게 되므로 오히려 이른 발견이다.  통보의 국면은
     `EXPSTATUS=ERASE` 로 드러난다.
+
+    ⚠️ **명시적으로 켠다** -- 기본값이 2026-08-29 에 `false` 로 바뀌었다(clock
+    개선으로 실기는 erase 를 하지 않는다).  그래도 이 경로는 **켠 배치에서
+    유효**하므로 시험은 남긴다.
     """
-    cfg, acfg = cfgs(tmp_path, frame_timeout=0.3)
+    cfg, acfg = cfgs(tmp_path, frame_timeout=0.3, full_flush_on_erase=True)
     mk, nt = FakeArchon(width=NX, height=NY), FakeArchon(width=NX, height=NY)
     for srv in (mk, nt):
         srv._expose = lambda: None        # noqa: SLF001
