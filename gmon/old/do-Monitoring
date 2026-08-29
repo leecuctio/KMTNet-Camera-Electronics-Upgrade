@@ -1,0 +1,40 @@
+#!/usr/bin/perl -W
+
+#
+# KMTNet Guider exposer
+# leecu@kasi.re.kr (2018-02-20)
+# 
+# 2018-02-20 shutter check routine every 1 sec
+# 2018-05-14 add process checking to prevent double execution
+# 
+
+$dochkshutter  = 1;
+
+$pid = `ps -al | grep do-Monitoring | wc | awk \'{print \$1}\'`;
+chop $pid;
+
+if ($pid gt 1) {
+  print "already running -- $pid\n";
+
+}else{
+#  system "/run/do-plotFWHM &";
+
+  if($dochkshutter ge 1){
+    $exp =  "echo \"abc>g.ic guideexp 10\" | nc -w 1 -u 192.168.13.109 6660 | awk \'{print \$0}\'";
+    system $exp;
+
+      for($i=1;$i<50000;$i++){
+        my $shutter = `echo \"abc>tc auxstatus\" | nc -w 1 -u 192.168.13.109 6660 | awk \'{print \$15}\'`;
+        chop $shutter;
+
+        if($shutter eq "SHUTTER=OPEN"){
+           system "rm -rf *.fits";
+           $go  = "echo \"abc>icg go\" | nc -w 1 -u 192.168.13.109 6660 | awk \'{print \$0}\'";
+           system $go;
+           sleep 30;
+           system "mv /data/KMTNg*.fits /run/.";
+           system "./do-sex.psfex";
+        }
+      }
+   }
+}

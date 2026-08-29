@@ -1,6 +1,6 @@
 # KMTNet-CEU SSO 적용 전 진행상태 점검 펀치리스트 (Punch List)
 
-최종 갱신일: 2026-08-13
+최종 갱신일: 2026-08-29
 
 연계 문서: `schedule/SITE_UPGRADE_MILESTONES.md`, `planning/ACTION_REGISTER.md`, `planning/BACKLOG.md`, `governance/GATE_REVIEW_PLAN.md`, `governance/RISK_REGISTER.md`, `logistics/EQUIPMENT_TRACKER.md`, `operations/COMMUNICATION_PLAN.md`
 
@@ -65,6 +65,11 @@ SSO(호주) 현장 적용일(2026-10-19) 전까지 **2주 단위**로 프로젝�
 - □ CEU repository baseline·freeze 절차 확정 (ACT-004)
 - □ Software Freeze(2026-09-15) 적용 및 freeze 이후 변경 통제 확인
 - □ Calibration/orientation/crosstalk/telemetry 백로그(KMT-001~004) 진행 상태
+- ☑ 가이드 카메라 시상 모니터 gmon v2 구현·시험 완료 — 2026-08-29, `gmon/`
+  (commit f97117f), 합성·실프레임 별 주입 검증 통과 (KMT-D007)
+- □ gmon 커미셔닝(KMT-013, `gmon/DESIGN.md` §10) — Full Rehearsal(M8) 범위에
+  가이더 체인(분할→FWHM→스냅샷) 포함 여부 결정, 실기 지오메트리·칩↔방위·
+  신규 ICS 파일 규약 확인은 현장에서 확정 후 `dry_run` 해제
 
 ### 4.4 Logistics
 - □ Master equipment list 분리·확정 (ACT-003)

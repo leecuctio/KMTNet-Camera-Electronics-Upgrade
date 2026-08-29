@@ -1,6 +1,6 @@
 # KMTNet-CEU Site Upgrade Milestones
 
-최종 갱신일: 2026-08-13
+최종 갱신일: 2026-08-28
 
 기준 문서: `documents/source_documents/KMTNet_CEU_PMP_Final_v1.0.pdf`, `KMTNet_CEU_PMP_Final_v1.0.docx`
 
@@ -31,9 +31,9 @@ KMTNet CEU는 세 사이트를 한 번에 병렬 전환하지 않고, SSO를 pro
 | M3 | OSU Software Review Complete | 2026-07 | 차상목, 홍성욱 | Rick review 포함 |
 | M4 | Production Wallboard Delivery | 2026-08 | STA, 차상목 | Critical |
 | M5 | Software Demonstration | 2026-08 | 차상목, 홍성욱 | Gate 1 |
-| M6 | Sea Freight Shipment | 2026-08 초 | 이용석, 이동주 | 클린부스, PCC, 대형품 |
+| M6 | Sea Freight Shipment | 2026-08 초 | 이용석, 이동주 | 클린부스, PCC, 대형품 — **2026-08-23 본원 → 배송업체 인계 완료**, 출항·현지 도착 추적 중 (`logistics/EQUIPMENT_TRACKER.md`) |
 | M7 | Air Freight Shipment | 2026-09 초 | 이용석, 이동주 | Wallboard, Controller, Computer |
-| M8 | Full Rehearsal | 2026-09 | 전체 | Gate 2 |
+| M8 | Full Rehearsal | 2026-09 | 전체 | Gate 2 — 카메라 현지 재설치 리허설 수정·준비사항 검토 종합 회의 **2026-09-01** (ACT-012) |
 | M9 | Science Verification | 2026-09 | 김재우 | 실험실 데이터 검증 |
 | M10 | Go/No-Go Review | 2026-09 말 | 이충욱 | SSO 출국 승인 |
 | M11 | SSO Upgrade | 2026-10-19 to 2026-11-01 | 전체 | Prototype Site |

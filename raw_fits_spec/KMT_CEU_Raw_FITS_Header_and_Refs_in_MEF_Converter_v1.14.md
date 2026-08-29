@@ -3,9 +3,9 @@
 **v1.14** · 개정 2026-08-23 · **판정 준거를 본문에 편입(0장 신설)** — 폐기 문서 의존 제거
 > **제자리 보강 (2026-08-25)** — 7장 `Cn_*` 행의 지시 "이 순서를 raw FITS spec 에 명세로 수록"이 이행됐다. 정본은 **raw spec 5.6.1절**(v1.5)이고, 이 행은 이제 그리로 가리킨다. 판정 내용에는 변화가 없다.
 >
-> **제자리 보강 (2026-08-26) — raw spec v1.6 반영.** ⑬ **`ORIGNAME` 폐지 · `EXPID` 신설** — 값이 `<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **컨트롤러 태그가 없어 pair 양쪽에서 같다.** 5.9절 "반드시 상이" 가 **7장 → 6장**이 되고, 짝을 잇는 **단일 키**가 카드 추가 없이 생긴다(폐지된 `PAIRFILE` 의 역할). 충돌 판별은 `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값과 비교하는 것으로 바뀐다. ⚠️ **converter 에서 `ORIGNAME` 을 읽던 자리는 `EXPID` 로 옮겨야 한다** (C-항목). ⑭ **`FILENAME` comment** `'Filename assigned by ICS'` → `'FITS file name as written to storage'` — 종전 문구가 `ORIGNAME` 과 똑같이 "ICS 가 배정" 계열이라 둘의 차이가 드러나지 않았다. ⑮ 견본 노출 번호 `012345`/`012340` → `123456`/`123450` 이고 **견본 파일 이름도 함께 옮겼다**.
+> **제자리 보강 (2026-08-26) — raw spec v1.6 반영.** ⑬ **`ORIGNAME` 폐지 · `EXPID` 신설** — 값이 `<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **`DETID` 필드가 없어 pair 양쪽에서 같다.** 5.9절 "반드시 상이" 가 **7장 → 6장**이 되고, 짝을 잇는 **단일 키**가 카드 추가 없이 생긴다(폐지된 `PAIRFILE` 의 역할). 충돌 판별은 `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값과 비교하는 것으로 바뀐다. ⚠️ **converter 에서 `ORIGNAME` 을 읽던 자리는 `EXPID` 로 옮겨야 한다** (C-항목). ⑭ **`FILENAME` comment** `'Filename assigned by ICS'` → `'FITS file name as written to storage'` — 종전 문구가 `ORIGNAME` 과 똑같이 "ICS 가 배정" 계열이라 둘의 차이가 드러나지 않았다. ⑮ 견본 노출 번호 `012345`/`012340` → `123456`/`123450` 이고 **견본 파일 이름도 함께 옮겼다**.
 
-> **제자리 보강 (2026-08-26) — raw spec v1.7 반영.** ⑭ 충돌 판별을 서술하는 낱말이 정해졌다 — 파일명 넷째 필드가 `<DETID>` 로 명명되면서(규격 2.2절) 이 문서의 "꼬리" 5곳을 **`DETID` 필드**로 옮겼다. 판정 내용에는 변화가 없다.
+> **제자리 보강 (2026-08-26) — raw spec v1.7 반영.** ⑭ 충돌 판별을 서술하는 낱말이 정해졌다 — 파일명 넷째 필드가 `<DETID>` 로 명명되면서(규격 2.2절) 이 문서의 "꼬리" 5곳을 **`DETID` 필드**로 옮겼다. "컨트롤러 태그가 없어"(`EXPID` 설명) 2곳도 같은 이유로 **"`DETID` 필드가 없어"** 로 옮겼다 — 필드에 이름이 생겼으므로 없는 것을 옛 관용어로 부를 이유가 없다. 판정 내용에는 변화가 없다.
 >
 > **v1.14 에서 바뀐 것 — 판정 근거가 문서 안으로 들어왔다.**
 >
@@ -572,7 +572,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `MIDOSCT` | **X** | 중앙 overscan 중 TOP half에서 나온 row 수 | 〃 |
 | `NAMPRAW` | O | **이 파일에 담긴 amplifier 수** (chip 2 × amp 16) |  |
 | `NXTILE` | **X** | X 방향 amp tile 수 (chip 2 × strip 8) | **`NAXIS1 / AMPNAX1` 로 파생 — 카드 불요** (v1.7) |
-| ~~`ORIGNAME`~~ → **`EXPID`** | **O** | **카운터가 이 노출에 처음 배정한 식별자** `<SITE>.<YYYYMMDD>.<NNNNNN>` — 모든 파일에 항상 기록.<br>**컨트롤러 태그가 없어 pair 양쪽 동일** → 짝을 잇는 단일 키.<br>충돌 신호 = `FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID` | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절, **D-016 등재**).<br>**v1.6 에서 `ORIGNAME` → `EXPID` 개명·재정의** (운영자 확정 2026-08-26).<br>상세: 통합 문서 v0.5 Part 2 |
+| ~~`ORIGNAME`~~ → **`EXPID`** | **O** | **카운터가 이 노출에 처음 배정한 식별자** `<SITE>.<YYYYMMDD>.<NNNNNN>` — 모든 파일에 항상 기록.<br>**`DETID` 필드가 없어 pair 양쪽 동일** → 짝을 잇는 단일 키.<br>충돌 신호 = `FILENAME` 의 `DETID` 필드를 뗀 값 ≠ `EXPID` | `UNIQNAME`·`NAMECLSH`·`clash/` 격리를 대체(8.2절, **D-016 등재**).<br>**v1.6 에서 `ORIGNAME` → `EXPID` 개명·재정의** (운영자 확정 2026-08-26).<br>상세: 통합 문서 v0.5 Part 2 |
 | `OSCNPATT` | **X** | strip 1–8의 overscan 위치 (R=오른쪽, L=왼쪽).<br>**근거는 converter의 `is_bias_right()`** —<br>`strip_id(amp)=((amp-1)%8)+1`,<br>`is_bias_right(amp)= 1≤amp≤4 or 9≤amp≤12` | converter 가 이 카드를 읽지 않아 **선언과 하드코딩이<br>갈라져도 변환 쪽에서 못 잡는다**(C-5/C-13). 취득 SW 쪽 방어는<br>`test_geometry_vs_converter.py`. **v1.9 미도입 — 헤더가<br>복잡해지므로 세부내용은 raw FITS spec 에 수록**(포장 규범 조항 이관 전제) |
 | `OVRSCNX` | **O** | amp 당 X overscan 열 수 = `48` (side varies) | 폐지된 `OVERSCNX`(레거시 32)와 **이름 분리** — 8.1절의 미정 해소 |
 | `OVRSCNY` | **O** | amp 당 Y overscan 행 수 = `84` (frame-center side) | 폐지된 `OVERSCNY` 와 **이름 분리**. 84/84 분배는 OI-4 |

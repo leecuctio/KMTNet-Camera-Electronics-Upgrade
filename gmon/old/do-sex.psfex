@@ -1,0 +1,316 @@
+#!/usr/bin/perl -W
+
+#
+# KMTNet Guider 
+# leecu@kasi.re.kr (2018-02-01)
+# 
+# 2018-02-02: orientation is confirmed and applied
+# 2018-02-03: guide orientation has been re-checked
+# 2018-02-09: prevent redundant execution 
+# 2018-02-10: enable the XPA function 
+# 2018-02-25: data format (%d:%H:%M:%S)
+# 2018-04-17: locating null.fits 
+# 2018-04-29: error handling if there is no fits
+#
+
+   $region = `ls -tr KMTNg*.fits | tail -n 1 | awk \'{print substr(\$1,8,30)}\'`;
+   chop $region;
+   print $region;
+   $chkpsf = "psf.snap.".$region.".png";
+   if(length($region) ne 25){
+      exit;
+   }
+   if(-e $chkpsf){
+      exit;
+   }   
+
+#
+$doclean       = 0;
+$doafocus      = 0;
+$dosex         = 1;
+$dopsfex       = 1;
+$dosnap        = 1;
+$doplot        = 1;
+$doxpa         = 1;
+
+sleep 2;
+
+if($doclean ge 1){
+   system "rm -rf *KMTNg*";
+}
+
+if($doafocus ge 1){
+   $pid = `ps -al | grep afocus | awk \'{print \$4}\'`;
+   chop $pid;
+   if ($pid) {
+   }else{
+       $cmd = "xterm -e \"cd /run; ./afocus; bash\"";
+       system "$cmd &";
+       sleep 2;
+   }
+}
+
+
+if($dosex ge 1){
+   system "ls KMTNg*$region > list";
+
+   open FN, "list" or die "Error opening list for reading : $!";
+
+   foreach $dataline (<FN>){
+      chop $dataline;
+      $id   = $dataline;
+      $cmd  = sprintf("sex %s -c default.sex -PARAMETERS_NAME default.param.psfex -CATALOG_NAME %s.psfex.cat", $id, $id);
+      system $cmd;
+   }
+}
+
+if($dopsfex ge 1){
+   system "ls KMTNg*$region.psfex.cat > list.in";
+
+   open FN, "list.in" or die "Error opening list.in for reading : $!";
+
+   foreach $dataline (<FN>){
+      chop $dataline;
+      system "psfex $dataline -c default.psfex";
+   }
+}
+
+if($dosnap ge 1){
+
+   $tmpfwn = `gethead KMTNgn.$region.psfex.psf psf_fwhm`;
+   $tmpfwe = `gethead KMTNge.$region.psfex.psf psf_fwhm`;
+   $tmpfww = `gethead KMTNgw.$region.psfex.psf psf_fwhm`;
+   $tmpfws = `gethead KMTNgs.$region.psfex.psf psf_fwhm`;
+
+   chop $tmpfwn;
+   chop $tmpfwe;
+   chop $tmpfww;
+   chop $tmpfws;
+
+   $fwn = sprintf("'fwN=%.2f'", $tmpfwn * 0.52);
+   $fwe = sprintf("'fwE=%.2f'", $tmpfwe * 0.52);
+   $fww = sprintf("'fwW=%.2f'", $tmpfww * 0.52);
+   $fws = sprintf("'fwS=%.2f'", $tmpfws * 0.52);
+
+   if (($tmpfwn * $tmpfwe * $tmpfww * $tmpfws) gt 0){
+       $tmpfwavg = ($tmpfwn + $tmpfwe + $tmpfww + $tmpfww) / 4.0;
+       $fwavg = sprintf("'fwAVG=%.2f'", $tmpfwavg * 0.52);
+   }
+
+   $tmpsecz   = `gethead KMTNgn.$region SECZ`;
+   $tmpfocus  = `gethead KMTNgn.$region FAFOCUS`;
+   $tmptiltew = `gethead KMTNgn.$region FATILTEW`;
+   $tmptiltns = `gethead KMTNgn.$region FATILTNS`;
+   $tmppose   = `gethead KMTNgn.$region FAPOSE`;
+   $tmpposs   = `gethead KMTNgn.$region FAPOSS`;
+   $tmpposw   = `gethead KMTNgn.$region FAPOSW`;
+   $tmpens1   = `gethead KMTNgn.$region ENS1`;
+   $tmpens2   = `gethead KMTNgn.$region ENS2`;
+   $tmpens3   = `gethead KMTNgn.$region ENS3`;
+   $tmpalt    = `gethead KMTNgn.$region ALT`;
+   $tmpaz     = `gethead KMTNgn.$region AZ`;
+
+   chop $tmpsecz;
+   chop $tmpfocus;
+   chop $tmptiltew;
+   chop $tmptiltns;
+   chop $tmppose;
+   chop $tmpposs;
+   chop $tmpposw;
+   chop $tmpens1;
+   chop $tmpens2;
+   chop $tmpens3;
+   chop $tmpalt;
+   chop $tmpaz;
+
+   $id        = sprintf("'%s'", $region);          
+   $secz      = sprintf("'SecZ=%s'", $tmpsecz);
+   $focus     = sprintf("'Focus=%s'", $tmpfocus);
+   $tiltew    = sprintf("'TiltEW=%s'", $tmptiltew);
+   $tiltns    = sprintf("'TiltNS=%s'", $tmptiltns);
+   $posesw    = sprintf("'ESW=%s %s %s'", $tmppose, $tmpposs, $tmpposw);
+   $temp123   = sprintf("'T123=%s %s %s'", $tmpens1, $tmpens2, $tmpens3);
+   $altaz = sprintf("'ALT/AZ=%s %s'", $tmpalt, $tmpaz);
+
+   $tmpsdn = `/iraf/iraf/bin.linux64/x_images.e 'imstatistics images=KMTNgn.$region\[10:500,70:970] fields=stddev lower=INDEF upper=INDEF nclip=0 lsigma=3.0 usigma=3.0 binwidth=0.1 format=no cache=no'`;
+   $tmpsde = `/iraf/iraf/bin.linux64/x_images.e 'imstatistics images=KMTNge.$region\[10:500,70:970] fields=stddev lower=INDEF upper=INDEF nclip=0 lsigma=3.0 usigma=3.0 binwidth=0.1 format=no cache=no'`;
+   $tmpsdw = `/iraf/iraf/bin.linux64/x_images.e 'imstatistics images=KMTNgw.$region\[10:500,70:970] fields=stddev lower=INDEF upper=INDEF nclip=0 lsigma=3.0 usigma=3.0 binwidth=0.1 format=no cache=no'`;
+   $tmpsds = `/iraf/iraf/bin.linux64/x_images.e 'imstatistics images=KMTNgs.$region\[10:500,70:970] fields=stddev lower=INDEF upper=INDEF nclip=0 lsigma=3.0 usigma=3.0 binwidth=0.1 format=no cache=no'`;
+
+   $sdn = sprintf("'sdN=%.1f'", $tmpsdn);
+   $sde = sprintf("'sdE=%.1f'", $tmpsde);
+   $sdw = sprintf("'sdW=%.1f'", $tmpsdw);
+   $sds = sprintf("'sdS=%.1f'", $tmpsds);
+
+#
+   $logfile = "/run/Log/logfile.txt";
+   open(OF, ">>$logfile");
+        printf OF "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n", $id, $secz, $fwn, $fwe, $fww, $fws, $sdn, $sde, $sdw, $sds, $focus, $tiltew, $tiltns, $posesw, $temp123, $altaz;
+   close(OF);
+#
+   $fwhmfile = `date --date='-8 hours' +"/run/fw%y%m%d.dat"`;
+   chop $fwhmfile;
+   open(FF, ">>$fwhmfile");
+         if($tmpfocus eq "___"){
+            $tmpfocus = 0.0;
+         }
+         if($tmpens3 eq "___"){
+            $tmpens3 = 0.0;
+         }
+         if($tmpsecz eq "___"){
+            $tmpsecz = 0.0;
+         }
+#        printf FF "%s:%s:%s %s %s %s %s %s %s\n", substr($id,10,2), substr($id,12,2), substr($id,14,2), substr($fwn,5,4), substr($fwe,5,4), substr($fww,5,4), substr($fws,5,4), substr($focus,7,6), substr($temp123,6,4);
+        printf FF "%s:%s:%s:%s %s %s %s %s %s %s %s\n", substr($id,7,2), substr($id,10,2), substr($id,12,2), substr($id,14,2), substr($fwn,5,4), substr($fwe,5,4), substr($fww,5,4), substr($fws,5,4), $tmpfocus, $tmpens3, $tmpsecz;
+   close(FF);
+}
+
+if($doplot ge 1){
+   $pid = `ps -al | grep do-plotFWHM | awk \'{print \$4}\'`;
+   chop $pid;
+   if ($pid) {
+       print "already running\n";
+   }else{
+       system "/run/do-plotFWHM &";
+       sleep 2;
+   }
+}
+
+if($doxpa ge 1){
+   $pid = `ps -al | grep ds9 | awk \'{print \$4}\'`;
+   chop $pid;
+   if ($pid) {
+   }else{
+       system "/run/ds9 &";
+       sleep 5;
+   }
+
+#######################################
+# orientation & rotation (2018-02-03)
+# E : -orient none -rotate 180
+# N : -orient none -rotate 90
+# W : -orient none -rotate 0
+# S : -orient none -rotate 270
+# re-check and confirm (2018-02-03)
+#######################################
+
+   system "xpaset -p ds9 background black";
+   system "xpaset -p ds9 view info no";
+   system "xpaset -p ds9 view panner no";
+   system "xpaset -p ds9 view magnifier no";
+   system "xpaset -p ds9 view buttons no";
+   system "xpaset -p ds9 width 600";
+   system "xpaset -p ds9 height 600";
+   system "xpaset -p ds9 tile grid layout 3 3";
+   system "xpaset -p ds9 tile yes";
+   system "xpaset -p ds9 scale mode minmax";
+# 1
+   system "xpaset -p ds9 frame 1";
+   system "xpaset -p ds9 fits /run/Script/null.fits";
+# 2
+   system "xpaset -p ds9 frame 2";
+   system "xpaset -p ds9 fits snap_KMTNgn.$region.psfex.fits";
+   system "xpaset -p ds9 scale mode minmax";
+   system "xpaset -p ds9 zoom to 16 16";
+   system "xpaset -p ds9 orient none";
+   system "xpaset -p ds9 rotate to 90";
+   system "xpaset -p ds9 contour mode minmax";
+   system "xpaset -p ds9 contour nlevels 5";
+   system "xpaset -p ds9 contour smooth 1";
+   system "xpaset -p ds9 contour yes";
+   system "echo \"image; text 8 13 # text=$fwn color=red textangle=270\" | xpaset ds9 regions";
+   system "echo \"image; text 18 13 # text=$sdn color=red textangle=270\" | xpaset ds9 regions";
+# 3
+   system "xpaset -p ds9 frame 3";
+   system "xpaset -p ds9 fits /run/Script/null.fits";
+# 4
+   system "xpaset -p ds9 frame 4";
+   system "xpaset -p ds9 fits snap_KMTNge.$region.psfex.fits";
+   system "xpaset -p ds9 scale mode minmax";
+   system "xpaset -p ds9 zoom to 16 16";
+   system "xpaset -p ds9 orient none";
+   system "xpaset -p ds9 rotate to 180";
+   system "xpaset -p ds9 contour mode minmax";
+   system "xpaset -p ds9 contour nlevels 5";
+   system "xpaset -p ds9 contour smooth 1";
+   system "xpaset -p ds9 contour yes";
+   system "echo \"image; text 13 18 # text=$fwe color=red textangle=180\" | xpaset ds9 regions";
+   system "echo \"image; text 13 8 # text=$sde color=red textangle=180\" | xpaset ds9 regions";
+# 5
+   system "xpaset -p ds9 frame 5";
+   system "xpaset -p ds9 fits /run/Script/null.fits";
+   system "xpaset -p ds9 zoom to 16 16";
+   system "xpaset -p ds9 orient none";
+   system "xpaset -p ds9 rotate to 0";
+   system "echo \"image; text 13 18 # text=$id color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 16 # text=$secz color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 15 # text=$focus color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 14 # text=$tiltew color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 13 # text=$tiltns color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 12 # text=$posesw color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 11 # text=$temp123 color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 10 # text=$altaz color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 8 # text=$fwavg color=green textangle=0\" | xpaset ds9 regions";
+# 6
+   system "xpaset -p ds9 frame 6";
+   system "xpaset -p ds9 fits snap_KMTNgw.$region.psfex.fits";
+   system "xpaset -p ds9 scale mode minmax";
+   system "xpaset -p ds9 zoom to 16 16";
+   system "xpaset -p ds9 orient none";
+   system "xpaset -p ds9 rotate to 0";
+   system "xpaset -p ds9 contour mode minmax";
+   system "xpaset -p ds9 contour nlevels 5";
+   system "xpaset -p ds9 contour smooth 1";
+   system "xpaset -p ds9 contour yes";
+   system "echo \"image; text 13 8 # text=$fww color=red textangle=0\" | xpaset ds9 regions";
+   system "echo \"image; text 13 18 # text=$sdw color=red textangle=0\" | xpaset ds9 regions";
+# 7
+   system "xpaset -p ds9 frame 7";
+   system "xpaset -p ds9 fits /run/Script/null.fits";
+# 8
+   system "xpaset -p ds9 frame 8";
+   system "xpaset -p ds9 fits snap_KMTNgs.$region.psfex.fits";
+   system "xpaset -p ds9 scale mode minmax";
+   system "xpaset -p ds9 zoom to 16 16";
+   system "xpaset -p ds9 orient none";
+   system "xpaset -p ds9 rotate to 270";
+   system "xpaset -p ds9 contour mode minmax";
+   system "xpaset -p ds9 contour nlevels 5";
+   system "xpaset -p ds9 contour smooth 1";
+   system "xpaset -p ds9 contour yes";
+   system "xpaset -p ds9 contour close";
+   system "echo \"image; text 18 13 # text=$fws color=red textangle=90\" | xpaset ds9 regions";
+   system "echo \"image; text 8 13 # text=$sds color=red textangle=90\" | xpaset ds9 regions";
+# 9
+   system "xpaset -p ds9 frame 9";
+   system "xpaset -p ds9 fits /run/Script/null.fits";
+   system "xpaset -p ds9 saveimage png psf.snap.$region.png";
+   system "rm -rf *KMTNg*.$region*";
+
+}else{
+
+# commandline mode
+
+   $cmd = "ds9 -view layout vertical -zoom to 16 16 -width 600 -height 600 -tile grid layout 3 3 ";
+# first three   
+   $cmd = $cmd."null.fits -orient none -rotate to 0 ";
+   $cmd = $cmd."snap_KMTNgn.$region.psfex.fits -orient none -rotate to 90 -contour yes -contour smooth 0 -regions command \"text 8 13 $fwn \# color=red textangle=270\" -regions command \"text 18 13 $sdn \# color=red textangle=270\" ";
+   $cmd = $cmd."null.fits -orient none -rotate to 0 ";
+# second three
+   $cmd = $cmd."snap_KMTNge.$region.psfex.fits -orient none -rotate to 180 -contour yes -contour smooth 0 -regions command \"text 13 18 $fwe \# color=red textangle=180\" -regions command \"text 13 8 $sde \# color=red textangle=180\" ";
+   $cmd = $cmd."null.fits -orient none -rotate to 0 -regions command \"text 13 18 $id \# color=red\" -regions command \"text 13 16 $secz \# color=red\" -regions command \"text 13 15 $focus \# color=red\" -regions command \"text 13 14 $tiltew \# color=red\" -regions command \"text 13 13 $tiltns \# color=red\" -regions command \"text 13 12 $posesw \# color=red\" -regions command \"text 13 11 $temp123 \# color=red\" -regions command \"text 13 10 $altaz \# color=red\" -regions command \"text 13 8 $fwavg \# color=green\" ";
+   $cmd = $cmd."snap_KMTNgw.$region.psfex.fits -orient none -rotate to 0 -contour yes -contour smooth 0 -regions command \"text 13 8 $fww \# color=red\" -regions command \"text 13 18 $sdw \# color=red\" ";
+# last three
+   $cmd = $cmd."null.fits -orient none -rotate to 0 ";
+   $cmd = $cmd."snap_KMTNgs.$region.psfex.fits -orient none -rotate to 270 -contour yes -contour smooth 0 -regions command \"text 18 13 $fws \# color=red textangle=90\" -regions command \"text 8 13 $sds \# color=red textangle=90\" ";
+   $cmd = $cmd."null.fits -orient none -rotate to 0 -saveimage png psf.snap.$region.png -quit";
+
+   system $cmd;
+   $pid = `ps -al | grep eog | awk \'{print \$4}\'`;
+   chop $pid;
+   if ($pid) {
+       system "kill -9 $pid";
+   }
+   system "eog psf.snap.$region.png&";
+}
+

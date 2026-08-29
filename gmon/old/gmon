@@ -1,0 +1,196 @@
+#!/usr/bin/wish
+
+#
+# Seeing monitoring GUI gmon for SA
+# leecu@kasi.re.kr
+#
+# 2018-05-01 ver 1
+# 2018-05-02 safe operation limits (-8.0 to -3.0)
+# 2018-05-03 prevent big shift of focus
+#
+
+global slope
+global base
+global ref
+global dref
+global dfocus
+global ii
+
+set dfocus 0.0
+set slope -0.067
+set base 4.7
+set dref 0
+
+set fp [open "gmon.cfg" r]
+set dfocus [read $fp]
+close $fp
+
+label .l1 -width 12 -text do-Monitoring -foreground Black -background Red
+label .l2 -width 12 -text do-AutoAdjust
+label .l3 -width 12 -text $dfocus -foreground Yellow -background Blue
+label .l4 -width 12
+label .l5 -width 12
+label .l6 -width 12
+
+button .b1 -width 12 -text "ON" -command "domon"
+button .b2 -width 12 -text "OFF" -command "killmon"
+button .b3 -width 12 -text "AUTO" -command "doauto"
+button .b4 -width 12 -text "MAN" -command "doman"
+button .b5 -width 12 -text "+" -command "incr"
+button .b6 -width 12 -text "-" -command "decr"
+
+proc getref {} {
+  global dfocus
+  global slope
+  global base
+  global ref
+
+  set fw  [exec date -d "-8 hours" +/run/fw%y%m%d.dat]
+  set fexist [file exist $fw]
+#  set tt  [exec echo {abc>tc auxstat} | nc -w 1 -u 192.168.13.109 6660 | awk {{print substr($40,6,5)}}]
+  if {$fexist} {
+    set tt  [exec tail -n 1 $fw | awk {{printf "%s", $7}}]
+    set sz  [exec tail -n 1 $fw | awk {{printf "%s", $8}}]
+    set ca  [expr {$slope * $tt}]
+    set cb  [expr {$base + $dfocus}]
+    set ref [format {%0.3f} [expr {$ca - $cb}]]
+  } else {
+    .l4 configure -text "NO fwdat" -foreground Yellow -background Red
+  }
+}
+
+proc incr {} {
+  global dfocus
+  global slope
+  global base
+  global ref
+
+  set dfocus [format {%0.3f} [expr {$dfocus + 0.001}]]
+  .l3 configure -text $dfocus
+  getref
+  .l4 configure -text $ref -foreground Black -background Green
+
+  set filename "gmon.cfg"
+  set fileId [open $filename "w"]
+  puts -nonewline $fileId $dfocus
+  close $fileId
+#  puts $ref
+}
+
+proc decr {} {
+  global dfocus
+  global slope
+  global base
+  global ref
+  set dfocus [format {%0.3f} [expr {$dfocus - 0.001}]]
+  .l3 configure -text $dfocus
+  getref
+  .l4 configure -text $ref -foreground Black -background Green
+
+  set filename "gmon.cfg"
+  set fileId [open $filename "w"]
+  puts -nonewline $fileId $dfocus
+  close $fileId
+#  puts $ref
+}
+
+proc domon {} {
+  .l5 configure -text MON
+  .l1 configure -foreground Black -background Green
+  .b1 configure -state disabled
+  .b2 configure -state active
+  #puts "exec ./do-Monitoring &"
+  exec ./do-Monitoring &
+  set fw  [exec date -d "-8 hours" +/run/fw%y%m%d.dat]
+  set fexist [file exist $fw]
+  if {$fexist} {
+    .l4 configure -text $fw -foreground Black -background Green
+  } else {
+    .l4 configure -text "NO fwdat" -foreground Yellow -background Red
+  }
+}
+
+proc runcmd {} {
+  global ii
+  global dfocus
+  global slope
+  global base
+  global ref
+  global dref
+  getref
+  .l4 configure -text $ref -foreground Black -background Green
+
+  if {$ref > -8.0 && $ref < -3.0} {
+    if {$ii > 1000000} {
+      #puts "manual mode"
+      set cmd "echo abc>tc fttgoto "
+      append cmd $ref
+      append cmd " | nc -w 1 -u 192.168.13.109 6660"
+      eval exec $cmd
+      #puts $cmd
+    } else {
+      #puts "auto mode"
+
+      set tmpa [expr { $dref - $ref }]
+      set tmpb [expr { $tmpa * $tmpa }]
+      set chk [expr { sqrt($tmpb) }]
+
+      set cmd "echo abc>tc fttgoto "
+      append cmd $ref
+      append cmd " | nc -w 1 -u 192.168.13.109 6660"
+      if {$chk < 0.1} {
+        eval exec $cmd
+      }
+      #puts $cmd
+      after $ii runcmd
+    }
+  }
+  set dref $ref
+}
+
+proc doauto {} {
+  global ref
+  global ii
+  set ii 120000
+  .l2 configure -foreground Black -background Green
+  .l6 configure -text AUTO
+  .b3 configure -state disabled
+  .b4 configure -state active
+  runcmd
+  #puts "runcmd (1000)"
+}
+
+proc killmon {} {
+  .l5 configure -text OFF
+  .l1 configure -foreground Black -background Red
+  .b1 configure -state active
+  .b2 configure -state disabled
+  exec ./do-killPlot &
+  exit
+  #puts "exec ./do-killPlot &"
+}
+
+proc doman {} {
+  global ref
+  global ii
+  set ii 1000000000000
+  .l2 configure -foreground Black -background Yellow
+  .l6 configure -text MAN
+  .b3 configure -state active
+  #.b4 configure -state disabled
+  runcmd
+  #puts "MANUAL"
+}
+
+grid .l1 -row 0 -column 0
+grid .b1 -row 0 -column 1
+grid .b2 -row 0 -column 2
+grid .l2 -row 1 -column 0
+grid .b3 -row 1 -column 1
+grid .b4 -row 1 -column 2
+grid .l3 -row 2 -column 0
+grid .b5 -row 2 -column 1
+grid .b6 -row 2 -column 2
+grid .l4 -row 3 -column 0
+grid .l5 -row 3 -column 1
+grid .l6 -row 3 -column 2

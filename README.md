@@ -27,6 +27,7 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 | [`cam_char/`](cam_char/) | 카메라 특성 측정 — 실험실 계획, 분석 코드, Archon 제어 스크립트, 산출물 스키마 | [README](cam_char/README.md) |
 | [`ics_sim/`](ics_sim/) | **신규 카메라 통합제어(ICS) 프로그램** — 레거시 호환 시뮬레이터. 시퀀서·명령 처리부·메시지 규약·헤더 층의 정본 | [README](ics_sim/README.md) · [DevNote](ics_sim/DevNote.md) |
 | [`ics_archon/`](ics_archon/) | **실기 ICS** — `ics_sim` + STA Archon 컨트롤러 제어 (`v0.0.0`, 실기 왕복 미검증). 실험실 취득 스크립트도 여기 있다 | [README](ics_archon/README.md) · [인수인계](ics_archon/SMC_CLAUDE.md) |
+| [`gmon/`](gmon/) | **가이드 카메라 시상 모니터 v2** — Archon 단일 FITS(CCD47-20 4칩×2채널, 4224×1033) 분할 → SExtractor/PSFEx FWHM 측정 → 방위별 PSF 스냅샷·gnuplot 그래프·온도 기반 초점 보정 GUI(3창). 레거시(2018~2026 운용판) 파리티 + 합성/실프레임 별 주입 시험기 포함 | [README](gmon/README.md) · [DESIGN](gmon/DESIGN.md) |
 | [`ics_legacy/`](ics_legacy/) · [`OBSAgent/`](OBSAgent/) · [`TCSAgent/`](TCSAgent/) | 레거시 관측 소프트웨어 분석 자료와 기술 보고서 (ICS·XIS / 관측자 콘솔 / 망원경 제어) | [ics_legacy](ics_legacy/SMC_CLAUDE.md) |
 | [`project_management/`](project_management/) | 일정·governance·사이트·물류·형상관리 등 프로젝트 관리 보드 | [README](project_management/README.md) |
 | `KMTNet_CEU_PMP_Final_v1.0.docx` | 프로젝트 관리 계획서(PMP) 원본 | — |
@@ -40,6 +41,7 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 - **L0→L1 전처리 파이프라인** → [mef_pipeline/README.md](mef_pipeline/README.md)
 - **카메라 특성 측정 (실험실 캠페인)** → [cam_char/README.md](cam_char/README.md)
 - **신규 ICS 개발 (시뮬레이터 → 실기 구동)** → [ics_sim/DevNote.md](ics_sim/DevNote.md)
+- **가이드 카메라 시상 모니터 (gmon v2)** → [gmon/README.md](gmon/README.md) · 설계 계약 [gmon/DESIGN.md](gmon/DESIGN.md)
 - **레거시 관측 소프트웨어 분석** → [ics_legacy/SMC_CLAUDE.md](ics_legacy/SMC_CLAUDE.md)
 
 ## 현재 기준선
@@ -53,6 +55,7 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 | 기준 ICD | `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (v4.1, docx 동본) |
 | Plate scale | 0.395 arcsec/px (Gaia DR3 실측 0.3952±0.00001; CR-002) |
 | 카메라 구성 | science CCD 4개 (M, K, N, T), amplifier 64개, STA Archon controller 2대 |
+| 가이드 카메라 | CCD47-20 4개 (N/S/E/W) × 2채널, Archon 1대 — 시상 모니터 `gmon/` v2 (합성·실프레임 주입 시험 통과; 커미셔닝 확정 항목은 [gmon/DESIGN.md](gmon/DESIGN.md) §10) |
 
 > 변환기·L0 제품 구조·L1 전처리 체인은 mock 야간(40노출)으로 확정·검증되었고, `GAIN`/`RDNOISE`/`READDIR`/crosstalk/telemetry 등은 commissioning 이후 실측값으로 채웁니다. 남은 작업은 [planning/BACKLOG.md](project_management/planning/BACKLOG.md)에서 추적합니다.
 

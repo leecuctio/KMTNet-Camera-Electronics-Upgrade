@@ -1,0 +1,10 @@
+killall do-Monitoring
+killall do-Monitoring
+killall ds9
+killall ds9
+killall do-plotFWHM
+killall do-plotFWHM
+killall gnuplot_x1146
+killall gnuplot_x1146
+killall gnuplot46
+killall gnuplot46

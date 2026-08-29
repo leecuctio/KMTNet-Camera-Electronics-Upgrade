@@ -248,7 +248,7 @@ python3 tools/xis_probe.py --my-id KCMD --my-port 6655 --xis-host 192.168.15.109
 
 ## 조사 도구
 
-레거시 로그가 있는 컴퓨터에서 실행한다. 로그 자체는 저장소에 없다(`*.log` / `__localonly_*` 비커밋).
+레거시 로그가 있는 컴퓨터에서 실행한다. 로그 자체는 저장소에 없다(`*.log` 는 gitignore, 아카이브는 **저장소 바깥**).
 
 ```bash
 # 커맨드워드 슬롯 분류 -- 메시지 오염의 직접 증거
@@ -275,7 +275,7 @@ python tools/extract_golden.py <logfile> --around 'Image 1 of 5 complete' -o out
 7z x "<이미지>/IC2.img" -o<대상> -y -r 'FREEBASI\KMTX\*' 'FREEBASI\SHARE\*'
 ```
 
-읽을 것은 `KMTX\PAP7KX.{BAS,CMD,CCD}`(ICS 본체)와 `SHARE\PAP7{.INC,COM.INC,.CMD}`(공용·통신). 이미지는 `__localonly_*` 라 비커밋이며, 절차와 근거는 [DevNote 2.2](DevNote.md).
+읽을 것은 `KMTX\PAP7KX.{BAS,CMD,CCD}`(ICS 본체)와 `SHARE\PAP7{.INC,COM.INC,.CMD}`(공용·통신). 이미지는 **저장소 바깥**(`CEU/__osu_legacy/`)이라 비커밋이며, 절차와 근거는 [DevNote 2.2](DevNote.md).
 
 ---
 

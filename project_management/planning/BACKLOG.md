@@ -1,6 +1,6 @@
 # KMTNet-CEU Backlog
 
-최종 갱신일: 2026-07-03
+최종 갱신일: 2026-08-29
 
 상태 값: `Todo`, `In Progress`, `Blocked`, `Done`
 
@@ -22,6 +22,7 @@
 | KMT-007 | Tests | P1 | Todo | header parsing, section calculation, pair finding 단위 테스트 추가 | raw 대용 small fixture 또는 synthetic FITS로 주요 함수 테스트 가능 |
 | KMT-008 | Documentation | P1 | Todo | ICD, keyword 정리, README 간 version/value mismatch 점검 | 세 문서의 product/version/geometry/HDU 정책이 서로 일치 |
 | KMT-009 | Data policy | P1 | Todo | 대용량 raw/generated FITS 보관 위치와 배포 제외 기준 정리 | release ZIP에는 코드/문서/checksum만 포함되고 대용량 데이터는 별도 보관 정책을 따름 |
+| KMT-013 | Guider | P1 | Todo | gmon v2 커미셔닝(`gmon/DESIGN.md` §10): 원시 지오메트리(추가 9행·채널당 16컬럼 성격)·칩↔방위 매핑·표시 회전각·픽셀스케일(0.52″/px 가정) 실측, 신규 ICS 파일 저장 규약·TCS `fttgoto` 규약 확인 후 `dry_run` 해제 | §10 체크리스트 7항목이 실측값으로 `gmon.conf`에 반영되고 사이트에서 야간 무인 동작(감시→분할→FWHM→스냅샷→그래프→초점 보정) 확인 |
 
 ## Later
 
@@ -41,4 +42,5 @@
 | KMT-D004 | Release | 2026-06-22 | v2.1.1 release ZIP 및 checksum 생성 |
 | KMT-D005 | L1 pipeline | 2026-07-02 | L0→L1 전처리 파이프라인 v1.0 구현 (`mef_pipeline/`), electrons/단일 MEF/근사 WCS 확정 (D-006~D-008), mock 야간(40노출) 검증 |
 | KMT-D006 | Astrometry | 2026-07-03 | Gaia DR3 절대 astrometry (TAN–SIP3, 칩별 템플릿 초기값, plate scale 0.3952″/px 실측→CR-002), 야간 105/112칩 해결(rms 중앙값 0.31″), 로컬 Gaia 스토어(`gaia-ingest`/`--gaia-local`)로 사이트 오프라인 지원 |
+| KMT-D007 | Guider | 2026-08-29 | 가이드 카메라 시상 모니터 v2 구현 (`gmon/`) — Archon 단일 FITS(4224×1033, 실측 지오메트리) 4칩 분할, SExtractor/PSFEx FWHM, 운용판(2026-03 SAAO) 형식 파리티, 3창 GUI(제어부/PSF 스냅샷/그래프), 별 주입 시험기·테스트 5종. 합성(FWHM 3.5px 오차 ≤1.9%)·실프레임 주입(500성, 산포 10%) 검증 통과 |
 

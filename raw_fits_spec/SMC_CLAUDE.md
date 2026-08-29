@@ -85,7 +85,7 @@
 ### ✅ v1.6 발행 — 노출 정체성 카드 개정 (2026-08-26)
 
 **`ORIGNAME` 을 폐지하고 `EXPID` 를 세웠다** (운영자 확정).  값이
-`<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **컨트롤러 태그가 없어 pair 양쪽에서 같다.**
+`<SITE>.<YYYYMMDD>.<NNNNNN>` 으로 **`DETID` 필드가 없어 pair 양쪽에서 같다.**
 
 | 무엇 | 전 → 후 |
 |---|---|
@@ -339,7 +339,7 @@ active Y = AMPNAX2 - OVERSCNY - PRESCANY = 4700 - 84 - 0 = 4616
 
 ## 조사로 확정된 사실 (문서에 아직 안 들어감)
 
-**레거시 `READOUT = 'ARLBRL'` 의 정체** — OSU IC 펌웨어(`../../__localonly_osu_legacy/IC2_*/IC2.img`)에 FreeBASIC 원본이 통째로 들어 있고, `SUB SetReadout()` 이 이렇게 하드코딩한다:
+**레거시 `READOUT = 'ARLBRL'` 의 정체** — OSU IC 펌웨어(`../../__osu_legacy/IC2_*/IC2.img`)에 FreeBASIC 원본이 통째로 들어 있고, `SUB SetReadout()` 이 이렇게 하드코딩한다:
 
 ```basic
 '-- Four amp readout only

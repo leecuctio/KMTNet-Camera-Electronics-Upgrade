@@ -1,0 +1,7 @@
+run/
+*.pyc
+__pycache__/
+tests/tmp_*/
+
+# 레거시 참고용 ds9 바이너리(24MB)는 Git에 담지 않음 — SAO 배포본으로 대체 가능
+old/ds9

@@ -1377,22 +1377,19 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
    푸시가 안 되고, 우회 URL 로 밀면 **살아 있는 자격증명이 원격에 박힌다.**
    그래서 **보관함의 `.py` 는 "받은 바이트 그대로" 가 아니다** — 그 규칙
    (`.gitattributes` 의 `-text`)은 **`.acf` 에만** 걸린다.
-2. **`.gitattributes` 에 `**/__ref_archon_control/**/*.acf -text` 가 걸려
+2. **`__` 접두어는 "참고용" 표지이지 "로컬 전용" 표지가 아니다.**  로컬 전용은
+   **저장소 바깥**(`CEU/` 직속)이라는 위치가 정한다 -- `__isislogs/` ·
+   `__osu_legacy/` · `__tcs_simulator/`.  ⚠️ 구 `__localonly_` 접두어는
+   **2026-08-29 에 폐지**됐고 문서 정리도 끝났다(main `c81c1f8`, 이 브랜치는
+   `2f039fc` 합류분에 포함).  옛 경로를 다시 쓰지 말 것.
+3. **`.gitattributes` 에 `**/__ref_archon_control/**/*.acf -text` 가 걸려
    있다** (2026-08-28 신설).  그 폴더의 ACF 는 **받은 바이트 그대로**(CRLF 인
    것은 CRLF 로) 보관한다 — 정본 `acf/` 는 여전히 LF 다.  ⚠️ **둘을 같은
    규칙으로 되돌리지 말 것**: 정본이 CRLF 가 되면 파서에 `\r` 이 섞여 들어가고,
    보관본이 LF 가 되면 원본을 남긴 뜻이 사라진다.
-3. **ACF 를 파일명으로 고르지 말 것.**  개명이 시험을 한 번 깼다
+4. **ACF 를 파일명으로 고르지 말 것.**  개명이 시험을 한 번 깼다
    (`kmtnet_guide_*.acf` 글롭이 빈 목록).  `tests/test_monitor.py` 의
    `_repo_acfs()` 가 **내용(`BIGBUF`)으로** 가른다 — 새 시험도 그것을 쓴다.
-4. ⚠️ **이 브랜치의 `ics_sim/`·`ics_legacy/` 문서는 아직 옛 폴더 이름을 가리킨다.**
-   운영자가 2026-08-29 에 `__localonly_` 접두어를 뗐고(`__isislogs/` ·
-   `__osu_legacy/` · `__tcs_simulator/`) **정리는 `main` 에만 들어갔다**
-   (`c81c1f8`).  이 브랜치는 **다음에 main 을 들여올 때 같이 받기로 했다**
-   (목 2026-08-29).  그때까지 여기 문서의 `__localonly_…` 경로는 **없는
-   폴더**다 -- 특히 [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md)
-   항목 2(Telcom/AUX 시뮬레이터 설치)가 그 경로를 가리키는데 **살아 있는 다음
-   단계 지시**라 실제로 걸린다.  `__tcs_simulator/` 로 읽을 것.
 5. **`test_shutdown_waits_for_frames_that_are_still_being_saved` 는 부하에서
    간헐 실패한다.**  저장 창을 잡는 시험이라 그렇고, 그 시험 자신의 주석에
    이력이 있다.  단독으로 다시 돌려 보고 통과하면 그것이 답이다 —

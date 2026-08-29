@@ -3,7 +3,7 @@
 """Extract golden fixtures from XIS runtime logs.
 
 시뮬 출력을 실측 레거시 시퀀스와 대조하려면 로그 발췌가 필요한데, 원본 로그는
-`*.log` 로 gitignore 되어 있고 전량 아카이브는 `__localonly_*` 규약상 커밋하지
+`*.log` 로 gitignore 되어 있고 전량 아카이브는 **저장소 바깥**이라 커밋하지
 않는다.  그래서 **발췌본을 픽스처로 커밋**해 다른 컴퓨터에서도 테스트가 돌게
 한다 (DevNote 8장).
 
@@ -115,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
     with out:
         out.write('# Golden fixture extracted from an XIS runtime log.\n'
                   '# 생성: tools/extract_golden.py\n'
-                  '# 원본 로그는 비커밋(*.log / __localonly_*), 이 발췌만 커밋한다.\n'
+                  '# 원본 로그는 비커밋(*.log 는 gitignore, 아카이브는 저장소 바깥),\n'
+                  '# 이 발췌만 커밋한다.\n'
                   '# 타임스탬프와 [iface] 태그는 제거하고 메시지 본문만 남긴다.\n')
         for body in picked:
             out.write(body + '\n')

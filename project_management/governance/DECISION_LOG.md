@@ -705,7 +705,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 결정:
 
 1. **`ORIGNAME` 을 폐지하고 `EXPID` 를 신설한다.** 값은 **`<SITE>.<YYYYMMDD>.<NNNNNN>`** — 카운터가 이 노출에 **처음 배정한** 식별자이고, 모든 파일에 항상 기록한다.
-2. **`EXPID` 에는 컨트롤러 태그(`.MK`/`.NT`)가 없다.** 따라서 **pair 양쪽에서 값이 같다** — 구 `ORIGNAME` 은 `DETID` 필드를 달아 상이였다.
+2. **`EXPID` 에는 `DETID` 필드(`.MK`/`.NT`)가 없다.** 따라서 **pair 양쪽에서 값이 같다** — 구 `ORIGNAME` 은 `DETID` 필드를 달아 상이였다.
 3. **5.9절 "반드시 상이" 가 7장에서 6장으로 준다** — `DETID` · `CHMAP_LT/LB/RT/RB` · `FILENAME`. `EXPID` 는 "반드시 동일" 쪽이다.
 4. **충돌 신호 = `FILENAME` 의 `DETID` 필드(`.MK`/`.NT`)를 뗀 값 ≠ `EXPID`** (값 비교 — 카드 존재가 아니다). `EXPID` 결측은 충돌이 아니라 헤더 결함으로 분류한다. `DETID` 필드 제거는 이미 D-016 항목 5(짝 이름 유도)가 규정한 연산이다.
 5. **`FILENAME` 의 comment 를 `'FITS file name as written to storage'` 로 바꾼다.** 종전 `'Filename assigned by ICS'` 는 `ORIGNAME` 의 `'Original filename assigned by ICS counter'` 와 똑같이 "ICS 가 배정" 계열이라 **둘의 차이가 comment 에서 드러나지 않았다.**
