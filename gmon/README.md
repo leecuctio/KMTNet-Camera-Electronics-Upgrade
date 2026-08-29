@@ -192,7 +192,10 @@ GUI는 **독립 창 3개**로 구성된다:
 - **FWHM 그래프** (별도 창) — `refresh_sec` 주기로 gplot을 PNG 렌더해 표시
 
 서브 창은 닫아도 숨김일 뿐이며 제어부의 **SNAP**/**PLOT** 버튼으로 다시 연다.
-제어부 창을 닫으면 GUI 전체가 종료된다(데몬은 유지). GUI가 떠 있는 동안
+그래프 창은 **시작 시 `[plot] size`(기본 800×380)로 고정**되고, 이후 크기를
+바꾸면 다음 렌더부터 그 크기로 꽉 차게 그려진다. 제어부 창을 닫으면 GUI
+전체가 종료되며, 이때 **세 창의 위치를 `run/gui_geometry.json`에 저장**해
+다음 실행 때 같은 배치(위치)로 시작한다(데몬은 유지). GUI가 떠 있는 동안
 gwatch는 외부 gnuplot 라이브 창을 띄우지 않으며(그래프는 전용 창으로 표시),
 GUI는 중복 실행되지 않는다(`run/pid/gmon.pid`). GUI 없이 headless로 돌리면
 기존처럼 외부 gnuplot 라이브 창이 뜬다.
@@ -229,7 +232,8 @@ GUI는 중복 실행되지 않는다(`run/pid/gmon.pid`). GUI 없이 headless로
 gsplit.py  RAW.fits [-o OUTDIR] [--json]     → 4파일 생성, stdout에 경로/JSON
 gpsf.py    STEM 또는 --raw RAW.fits [--workdir D]  → sex+psfex+기록, result JSON 출력
 gsnap.py   result.<stem>.json [--backend auto|ds9|mpl]  → PNG 생성
-gplot.py   [--oneshot] [--term qt|x11|png] [--out FILE] [--datafile F]  → 그래프
+gplot.py   [--oneshot] [--term qt|x11|png] [--out FILE] [--datafile F]
+           [--size WxH]  → 그래프 (size: GUI 창 크기 추종 렌더)
 gtcs.py    auxstatus | tcsstatus | header | fttgoto FOC [TNS TEW] | dtilt DNS DEW
            | raw CMD  → TCS 질의/이동 (header = gpsf가 보충에 쓸 값 미리보기)
 tools/tcs_sim.py [--temp 6.6] [--drift 1.5] [--period 3600] [--focus -6.5]
@@ -239,7 +243,9 @@ gwatch.py  [--once] [--foreground]           → 감시 루프 (pidfile 단일 �
 gmon.py                                       → GUI (내부에서 gwatch/gplot 기동·정지)
 tools/make_synthetic.py -o OUT.fits [--fwhm-px 3.5] [--nstars 40] [--truth J.json]
                         [--fwhm-scatter 0.1] [--base RAW.fits] [--extra-noise ADU]
-                        (base=실프레임 별 주입, fwhm-scatter=별별 FWHM 산포 비율)
+                        [--sat-frac 0.02] [--faint-frac 0.03] [--elong-max 0.3]
+                        (base=실프레임 별 주입 / sat·faint=포화·미광성 비율 /
+                         elong-max=별별 타원율 상한 — 일반 별 플럭스는 로그균등 산포)
 ```
 
 - 종료코드: 성공 0, 부분 실패(일부 칩) 2, 완전 실패 1.
@@ -322,10 +328,11 @@ raw_file
   아래 `fwX=` 빨간 라벨 + 초록 등고선, 중앙 패널에 노출 id·SecZ·Focus·
   TiltEW/NS·ESW·T123·ALT/AZ(빨강)와 fwAVG(초록), 하단에 그레이 컬러바
   스트립(눈금 수치). 이 파일이 존재하면 해당 노출은 재처리하지 않는다.
-- 그래프(gplot): 기준 화면 `old/kmtnet_saao_fw.png` 표기 파리티 — 좌상단
-  파란 UTC 타임스탬프, `<사이트> FFT (FWHM-FOCUS-TEMP) Monitoring` 제목,
+- 그래프(gplot): 기준 화면 `old/kmtnet_saao_fw.png` 표기 파리티 — **상단
+  왼쪽** 파란 UTC 타임스탬프, **상단 오른쪽** 파란 `g=… F=…`(예측·현재
+  초점, 매 렌더 갱신), `<사이트> FFT (FWHM-FOCUS-TEMP) Monitoring` 제목,
   범례 dT/North/East/West/South/Airmass/Estimate/Focus, y2 Focus(mm)
-  −8.0~−5.0 (0.5 간격), 마지막 점의 파란 `g=… F=…` 라벨.
+  −8.0~−5.0 (0.5 간격). X축은 fw 기록 시각과 같은 **Local Time**.
 
 ## 8. 커미셔닝 체크리스트 (DESIGN §10 확장)
 

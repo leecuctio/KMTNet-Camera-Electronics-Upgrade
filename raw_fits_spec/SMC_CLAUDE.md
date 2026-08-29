@@ -6,11 +6,100 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec v1.7 (2026-08-26)
+## ✅ 현행 규격 — raw spec v1.8 (2026-08-29)
 
-**[`KMT_CEU_Raw_FITS_Specification_v1.7.md`](KMT_CEU_Raw_FITS_Specification_v1.7.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → **v1.5 = 5장 검토 개시분**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 · v1.4).
+**[`KMT_CEU_Raw_FITS_Specification_v1.8.md`](KMT_CEU_Raw_FITS_Specification_v1.8.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → v1.5·v1.6 = 5장 검토분 → v1.7 = 파일명 넷째 필드 `<DETID>` 명명 → **v1.8 = `OI-9` 폐기 + `CTRLnCFG` 예시 정합**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 ~ v1.7).
 
-- **5장 검토가 열려 있다 (v1.5~v1.6, 2026-08-25~)** — 들어온 것: `Cn_*` 자리 순서 명세(**5.6.1절 신설**, 운영자 제시) · 견본 헤더 comment 오타 2건 정정 · **노출 정체성 카드 개정**(v1.6 — `ORIGNAME` → **`EXPID`**, `FILENAME` comment). 이 라운드의 나머지 결정도 **v1.5 에 누적**한 뒤 한 번에 발행·태그한다 (같은 판 이름으로 내용이 갈리는 인용 불안정을 막는다 — 원장 v1.12 판 분리의 교훈).
+- ✅ **5장 검토 라운드는 닫혔다** (v1.5~v1.7, 2026-08-25~26).  들어간 것: `Cn_*` 자리 순서 명세(**5.6.1절 신설**) · 견본 헤더 comment 오타 2건 · **노출 정체성 카드 개정**(v1.6 — `ORIGNAME` → **`EXPID`**) · **파일명 `<DETID>` 필드 명명**(v1.7).  **태그 `raw-spec-v1.7` 이 `182b7f3` 에 붙었고 origin 에도 있다.**
+- ⏭️ **다음 판은 v1.8 이다** — 대기 4건: `CCDTEMP` comment 의 chip 귀속(`M`) 제거 · `OI-18` 폐기 · `CAMVER` 범프 규범 명시 · **바이어스 측정값의 헤더 카드 배치**(D3).  상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "작업 C".
+- ✅ **v1.8 발행분 (2026-08-29)** — 세 문서를 함께 판올림했다:
+  **규격 v1.7 → v1.8** · **원장 v1.14 → v1.15** · **통합문서 v0.6 → v0.7** (구판 `archive/`).
+  - **`OI-9` 폐기** — *"실측하여 raw spec 과 mef spec 에 다 정리해놓았고, 이들 문서를
+    통해 통제하므로"* (운영자 2026-08-29).  종결이 아니라 **폐기**다: 배선은 이제
+    4.5절 amp 전수 표·`CHMAP_*` 와 MEF `AMPINFO` 가 통제한다.  자리 여섯 전부 정리
+    (규격 OI 표·본문 · 원장 셋 · 통합문서 · README open item 열거).
+    원장의 경고 문구 셋은 **참조 안내로 바꿨다**(운영자 2026-08-29) — *"세부 내용,
+    앰프별 배치 및 방향은 raw spec 4.5절(Amp 전수 표)을 참조한다"*.  경고로 둘 일이
+    아니라 **그 문서가 관리하는 값**이라는 뜻이다.  기계 정본은
+    `Detector_Ch_to_AmpID_Map_v1.1.txt` 다.  ⚠️ `C-11`(converter 가 `CHMAP_*` 를
+    읽도록 개정) 자체는 **converter 쪽 개정 항목으로 남아 있다** — 그건 LEECU 몫이다.
+  - **`CTRLxCFG` 예시 값** — 규격 5장·원장 세 곳을 실제 ACF 이름 규칙으로 옮기고,
+    **폴더 경로와 확장자(`.acf`/`.cfg`)를 뗀 이름**임을 규격에 명시했다.
+  ⏳ **코드 쪽은 `ics_archon` 브랜치 몫이다** — ini 값에서 확장자를 떼는 파생 구현과
+  코드 주석의 문서 경로 인용(18곳).  [[project-ctrlcfg-from-acf-path]] 메모리 참조.
+
+### ⏳ `CTRLnCFG` 를 **실제 ACF 파일명**으로 맞춘다 (운영자 지시 2026-08-29)
+
+**값 = 적용된 ACF 파일명, 단 `.acf` 확장자는 뺀다.**  종전 견본 값
+(`'KMTA_SCI_101_R2609.1'`)은 실제 ACF 이름 규칙과 모양이 달랐다 -- **시리얼과
+검출기조가 빠져 있었다**.  규칙은 [`../ics_archon/acf/README.md`](../ics_archon/acf/README.md)
+"판 표기" 절: `<SITE>_<역할>_<유닛번호>_<시리얼>_<ACF판>[_<검출기조>]`.
+
+**운영자가 시안을 `…MK.fits.header.v1.0_REFTEXT.txt` 에 넣어 두었다** (2026-08-29):
+
+    CTRL1CFG= 'KMTA_SCI_101_STA0288_R2608_MK' / Controller 1 Configuration file
+    CTRL2CFG= 'KMTA_SCI_102_STA0289_R2608_NT' / Controller 2 Configuration file
+
+⏳ **아직 그 한 파일뿐이다.**  다음 작업 때 나머지에 전파한다:
+
+| 갈래 | 자리 | 상태 |
+|---|---|---|
+| 견본 pair | `…MK….v1.0_REFTEXT.txt` | ✅ 운영자 시안 |
+| 〃 | `…MK….v1.0.txt` · `…NT….v1.0.txt` · `…NT….v1.0_REFTEXT.txt` | ⏳ **셋 남았다** |
+| 규격 본문 | v1.7 5장 `CTRL1CFG` 행의 예시 값 | ⏳ |
+| 기계 사본 | `ics_sim/rawcards.py` · `_vendor`(sync) · labtest 내장 5 | ⏳ `ics-archon-v1.0-build` |
+
+**확인해 둔 것** (2026-08-29):
+
+- ✅ **카드 폭은 문제없다.**  새 값이 29자라 카드가 `8+2 + 31 + 3 = 44` 를 쓰고
+  **comment 여유가 36자**다 -- `Controller 1 Configuration file`(30자)이 들어간다.
+  운영자 시안도 **80자를 지키고 있다**(전 줄 80자 확인).
+- ⚠️ **`CTRLnCFG` 는 pair 두 파일에 같은 값이어야 한다** -- 규격 5장이 "두 대분을
+  양쪽 파일에 모두 싣는다(converter 가 MK 만 읽으므로)" 이므로, `NT` 파일의
+  `CTRL1CFG` 도 `…_101_STA0288_R2608_MK` 여야 한다.  **MK/NT 로 갈리는 것은
+  `DETID` 뿐**이다(2.2절 v1.7).
+- ⚠️ **`main` 에는 견본 바이트 대사 시험이 없다.**  `ics_sim/tests/test_raw_draft.py`
+  는 **`ics-archon-v1.0-build` 에만** 있다(main 327 vs 그 브랜치 330).  지금처럼
+  견본 넷이 갈린 상태를 **main 의 시험은 못 잡는다** -- 전파한 뒤 그 브랜치에서
+  돌려 확인할 것.
+
+✅ **견본 판은 올리지 않는다 -- `v1.0` 제자리 수정** (운영자 확정 2026-08-29).
+*"변경사항이 마이너한 부분이므로 승격 안함"*.  `CTRLnCFG` 도 `CCDTEMP` 의 `M`
+제거도 카드 하나씩의 값·comment 변경이라 판을 가를 만한 구조 변경이 아니다.
+⚠️ [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속" 에는
+아직 *"전자(`v1.1` 승격)가 규범에 맞아 보인다"* 로 적혀 있다 -- **그 브랜치에서
+작업할 때 이 확정으로 고칠 것.**
+
+⭐ **부수 이득 하나** -- 파일명이 그대로라 `ics_sim/tests/test_raw_draft.py` 의
+글롭(`*.fits.header.v1.0.txt`)이 계속 맞는다.  2026-08-22 에 견본을 개명했다가
+**바이트 대사 6개가 통째로 skip 된 사고**가 있었고(초록으로 지나가 아무도 몰랐다),
+그 시험이 지금은 "못 찾으면 skip 이 아니라 실패" 로 고쳐져 있지만 **개명 자체를
+안 하는 것이 더 안전하다.**
+
+⚠️ 다만 **판을 안 올리므로 "언제 무엇이 바뀌었나" 를 파일명이 말해 주지 않는다**
+-- 그 이력은 규격 10장 Revision History 와 git 이력이 맡는다.  견본을 고치는
+커밋에 **무슨 카드가 왜 바뀌었는지**를 반드시 적을 것.
+
+### ⭐ guide raw FITS — **별도 장으로 신설한다** (운영자 확정 2026-08-29)
+
+**같은 문서 안에 장 한둘로 넣되, science 내용과 섞지 않는다.**  guide raw FITS 를 그 장에서 따로 정리하고, **science 와 같은 점·다른 점을 간단히 서술하는 절**을 둔다.
+
+그동안 열려 있던 `OI-19`("guide 8자리 자리 표")가 이 결정으로 **장 신설 안건**이 됐다 — 자리 표 한 줄을 science 표에 끼워 넣는 것이 아니다.
+
+**재료는 이미 모여 있다** (2026-08-28~29 실측·전수, 다시 캐지 말 것 — 근거는 [`../ics_archon/acf/README.md`](../ics_archon/acf/README.md) 와 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md)):
+
+| 항목 | guide | science | 비고 |
+|---|---|---|---|
+| `Cn_TEMP` 자리 | 백플레인 + MOD3·4·5·6·7·9·10 = **8자리** | 백플레인 + MOD1·2·3·4·5·8·9·10·11 = **10자리** | 근거 둘 일치(ACF `[SYSTEM]` · `modtm_gui_*.py`) |
+| 프레임 | **4224 × 1033** (8탭 × `PIXELCOUNT` 528) | 19200 × 9400 (16탭 × 1200, 2줄) | ⚠️ 타이밍 `Pixels` 가 아니라 `PIXELCOUNT` 가 정본 |
+| 모듈 형 | 2(AD) · 11(HeaterX) · 8(HVXBias) · 1(Driver) | 17(ADM) · 18/8(HVYBias/HVXBias) · 9·10·1 | |
+| 바이어스 채널 | **18** | 16 | ⚠️ **guide 라벨 넷에 `/` 가 있다** — 5.6.1절 "슬래시 금지" 에 걸린다 |
+| `BIGBUF` | 0 (512 MB × 3) | 1 (768 MB × 2) | |
+| 검출기조 접미사 | 없음 (유닛당 1개) | `_MK`/`_NT` | 파일명 규칙 |
+
+⚠️ **소비자가 이미 있다** — `main` 의 [`../gmon/`](../gmon/) v2 가 guide raw 를 읽어 칩별로 쪼갠다.  `gmon/gmon.conf` `[geometry]` 가 전제를 선언해 두었고(`seg_width 528` · `left_active 16,528` · `right_active 0,512` · `y_trim_bottom 9`), **규격이 그것과 어긋나면 `gsplit` 이 깨진다.**  `gmon/DESIGN.md` 10절 5번은 반대로 **우리에게 파일명·저장 경로 규약을 요구**하고 있다 — 두 문서가 서로를 기다린다.
+
+⏳ **아직 실측이 안 끝난 것 하나** — 저장되는 528 이 시퀀서가 읽는 600 중 **어느 구간인가**(채널당 16컬럼의 성격: 프리스캔인가 다크 기준열인가).  `gmon` 도 같은 것을 커미셔닝 확인 항목으로 올려 두었다.  **그 답이 나와야 guide 장의 X overscan 규범을 쓸 수 있다.**
 
 - **절 구성이 구판과 다르다** — 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 현행 기준으로 재확인. ⚠️ **v1.4 에서 2.5절(Wrote 통보)이 삭제돼 절 번호가 또 바뀌었다**(2장은 2.1~2.4). `ics_sim` 쪽 참조 정리는 **완료**(2026-08-22, v1.3 정렬과 함께 — 아래 "다음 사람이 할 일" 3). ICD v4.1 §12 의 위임 대상 갱신은 LEECU 몫으로 남아 있다.
 - 헤더 5장의 바이트 단위 정본은 **초안 헤더 v1.0 pair**(`KMTA...MK/NT.fits.header.v1.0.txt`)다.
@@ -19,9 +108,9 @@
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Specification_v1.7.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기) — v1.14 에서 구 검토 문서 폐기분을 본문으로 편입했다. converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
-| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` | **통합 문서** — Part 1: LEECU 전달용 C-항목·이름 대응·MEF/converter 쪽 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.4/v0.2/v0.5 는 `archive/` |
+| `KMT_CEU_Raw_FITS_Specification_v1.8.md` | ✅ **현행 raw spec** — 최종 정의·규격. 배경은 아래 원장·통합 문서로 링크 |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.15.md` | **이 폴더에서 지금 가장 쓸모 있는 문서.** **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기) — v1.14 에서 구 검토 문서 폐기분을 본문으로 편입했다. converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
+| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.7.md` | **통합 문서** — Part 1: LEECU 전달용 C-항목·이름 대응·MEF/converter 쪽 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.4/v0.2/v0.5 는 `archive/` |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
 ## 개정 워크플로 — `__review/` 는 임시 왕복함 (운영자 확정 2026-08-22)
@@ -80,7 +169,7 @@
 - **본체** — 2.2절 문법 개정 + `<DETID>` 필드 설명 신설(값 = `DETID` 카드, 파일명에서 이 필드만 pair 상이)
 - **딸림 17곳** — 2.3절 충돌 판별·5항 짝 이름 유도 · 5.9절 pair 규칙 · **DECISION_LOG D-019 항목 4·"잃는 것"** · **통합 문서**(LEECU 전달분) · README · 원장 v1.14. **규칙은 그대로고 부르는 이름만 정해졌다.**
 - **`__reference/Detector_Ch_to_AmpID_Map_v1.0.txt` 삭제**(운영자) — 4자 채널 표기 이전 판 + `B-BOT` 오기라 혼동만 준다. v1.6 ⑪ 의 "v1.0 은 원본 기록으로 남는다" 를 **같은 판에서 철회**했다(없는 파일을 가리키는 문장이 남지 않게). 원본은 git 이력 `44ab878`~ 에 있다.
-- ⏳ **코드 약 25곳은 아직 구 낱말이다** — `ics-archon-v1.0-build` 브랜치 소관(`rawhdr`·`rawpair`·`emitter`·`rawcards`·시험 6·labtest·양쪽 SMC_CLAUDE). 그 브랜치가 main 을 머지로 받을 때 따라간다. **규격이 먼저 서고 코드가 뒤따르는 순서다.**
+- ✅ **코드 따라가기 완료** — `ics-archon-v1.0-build` 의 `34cb177`("코드의 '꼬리' 를 DETID 필드로") · `dd57bbb`("'태그' 표기도 DETID 필드로") 두 커밋이 약 25곳을 옮겼다(`rawhdr`·`rawpair`·`emitter`·`rawcards`·시험 6·labtest·양쪽 SMC_CLAUDE). 2026-08-29 전수 확인 — 남은 `꼬리` 는 전부 **다른 뜻**이다(소켓 꼬리 바이트 · FITS 블록 꼬리 · GUI 가 남기는 빈 `TAPLINE`). **규격이 먼저 서고 코드가 뒤따르는 순서다.**
 
 ### ✅ v1.6 발행 — 노출 정체성 카드 개정 (2026-08-26)
 
@@ -216,7 +305,7 @@ labtest 내장본 · 시험 3종 · `_vendor`.  **여기서 고치면 그 브랜
   4. **실측·확인 항목**: OI-15(4:4 vs 5:3 — 검증 표본으로 즉시 가능) · OI-16(Tapaculo 포맷) · OI-17(**부분 종결** — 데이터시트 확보·부록 A 신설, 잔여 = IMGSEC `B` 표기 해명·채널↔OS 대응·K/N 회전 장착 확인) · OI-18(NT CCDTEMP).
   5. ✅ **견본 헤더의 날짜 불일치 — 해결 (2026-08-22, 운영자 지시)** ⚠️ *번호는 v1.6 에서 `123456` 으로 옮겨졌다 — 파일명·카드 정합 규칙 자체는 그대로다*: 견본 파일명을 **`KMTA.20260821.012345.{MK,NT}.fits.header.v1.0.txt`** 로 바꾸고 raw spec 2.3절 예시도 맞췄다(카드가 규격상 옳았다). 이제 파일명 == `FILENAME` 카드다. ✅ `ics_sim`/`ics_archon` 쪽 대응은 **그 세션이 처리 완료** — `test_raw_draft.py` 는 경로 하드코딩을 **glob 탐색**으로 바꿔 다음 개명에도 안 깨지게 했다(위 항목 참조). `archive/` 에 있던 옛 이름 백업 사본 2장은 **삭제된 상태로 커밋에 포함**됐다(운영자 archive 정리 — 루트에 현행 견본이 있어 중복이었고, 옛 이름 판은 git 이력에 남는다). 아래는 발견 당시 기록:
   ~~⚠️ **견본 헤더의 날짜 불일치 (2026-08-22 발견, 목 판단 필요)**~~ — 견본 두 장의 `FILENAME`/`ORIGNAME` 이 `KMTA.**20260821**.012345.{MK,NT}` 인데, **견본 파일 이름과 raw spec 2.3절 4항의 예시 블록은 `20260818`** 이다. 같은 값이 세 곳에서 두 날짜로 갈렸다. 규격으로 판정하면 **카드가 맞다** — 견본 `DATE-OBS='2026-08-21T12:34:56.789'` 에 SSO 보정 −1:30(2.2절)을 적용하면 관측일이 `20260821` 이므로, 틀린 것은 **견본 파일 이름과 2.3절 예시**다. 2.3절 4항이 `FILENAME` 을 "실제 저장명"이자 "아카이브·DTS·색인의 유일 키"로 규정한 만큼 그 규칙의 유일한 바이트 기준물이 스스로 규칙을 깨고 있는 셈이고, 받아 구현하는 쪽(LEECU)이 "파일명과 `FILENAME` 이 달라도 된다"로 읽거나 반대로 불일치를 충돌 신호로 오독할 여지가 있다(실제 충돌 신호는 `FILENAME ≠ ORIGNAME` 이고 `012345` vs `012340` 으로 정상 표현돼 있다). **어느 쪽으로 맞출지는 정본 소관이라 손대지 않았다** — 견본 파일명을 `20260821` 로 바꾸고 2.3절 예시를 맞추거나, 카드·`DATE-OBS` 를 `20260818` 기준으로 되돌리거나 **셋이 같아야 한다**. `ics_sim/tests/test_raw_draft.py` 는 견본 값을 되먹여 바이트 대조하므로 이 불일치를 구조적으로 못 잡는다.
-- **데이터시트 확보 (2026-08-22, 운영자)** — `__reference/CCD290-99 datasheet (V2 - Aug 2016).pdf`. raw spec **부록 A** 로 대응 정리: `IMGSEC` 의 `A`/`D` = e2v image section(아래/위 half) 확인, **레거시 `PRESCANX=27` 의 원전**(레지스터 1152 active + 27 prescan) 확인, 독출 방향은 ACF 소관(OI-3 유지). **시사점**: K·N 조의 `A-TOP` 은 die 180° 회전 장착을 시사 — 레거시 AMPSEC M/T vs K/N 패턴(OI-15)과 같은 짝, 실기에서 함께 확인할 것.
+- **데이터시트 확보 (2026-08-22, 운영자)** — `__reference/CCD290-99 datasheet (V2 - Aug 2016).pdf`. raw spec **부록 A** 로 대응 정리: `IMGSEC` 의 `A`/`D` = e2v image section(아래/위 half) 확인, **레거시 `PRESCANX=27` 의 원전**(레지스터 1152 active + 27 prescan) 확인, 독출 방향은 ACF 소관(OI-3 유지). **시사점**: K·N 조의 `A-TOP` 은 die 180° 회전 장착을 시사한다.  ⚠️ 종전에는 이것을 레거시 `AMPSEC` 의 M/T vs K/N 패턴과 "같은 짝" 으로 묶어 함께 확인하려 했는데, **그 패턴은 레거시 계통의 것이라 신규에 적용되지 않는다**(`OI-15` 종결 2026-08-22).  짝을 풀고 나면 남는 것은 **`OI-17` 잔여 ③**(K·N 조가 M·T 조와 `IMGSEC` 체계가 다른 이유) 하나이고, 그것은 데이터시트·장착 도면으로 볼 일이지 레거시 자료로 볼 일이 아니다.
 
 ### 2026-08-22 확정분 · 최신 (확인 요망 6~11 전량 종결 + D-016 등재 = v1.13)
 
@@ -349,9 +438,15 @@ TopDelaceCode = 8 : BotDelaceCode = 10  '-- swap to register quadrants correctly
 
 `XAmp=2, YAmp=2` 사분면 전제 + de-interlace 순서가 얽힌 부호이고, 레거시 표본 3건 — 2017 raw(SSO) · 2021 raw(CTIO) · MEF primary — 이 **전부 같은 값**이다(불변 상수). **D-013 의 폐지 판정이 옳았음을 뒷받침한다.**
 
-**레거시 IC 에 ROI 가 있었다** — 같은 펌웨어의 `READOUTSETVAR` 에 `OSCANX`/`OSCANY` 와 경고문이 있다: *"Region-of-interest has been modified to maintain symmetry around CCD centerline."* ICS 명령 테이블에는 없어 운영에서 쓰이지 않았다. v1.6 10장(subframe)의 근거가 된다.
+**레거시 IC 에 ROI 가 있었다** — 같은 펌웨어의 `READOUTSETVAR` 에 `OSCANX`/`OSCANY` 와 경고문이 있다: *"Region-of-interest has been modified to maintain symmetry around CCD centerline."* ICS 명령 테이블에는 없어 **운영에서 쓰이지 않았다.**
 
-**레거시 `AMPSEC` 이 독출 방향을 담고 있었다** — 레거시 MEF 실측 32장을 보면 `AMPSEC` 이 `CCDSEC` 과 같은 범위인데 **순서가 뒤집힌 것이 있다**(`K01`: `CCDSEC='[8065:9216,...]'` vs `AMPSEC='[9216:8065,...]'`). IRAF 관례대로 **구간의 오름/내림차순이 곧 독출 방향**이다. 전량 패턴은 `M/T = 5:3`, `K/N = 3:5` 인데 **우리 신규는 4:4 를 전제**한다 — 같은 e2v CCD290-99 인데 분할이 다르므로 한쪽이 틀렸다. flat 이나 STA 문서로 확인이 필요하다.
+⚠️ 종전에는 이것을 **원장 10장(subframe)의 근거**로 세워 두었는데, **부분 독출이 불채택되면서**(운영자 2026-08-29) 규격 쪽 용처가 없어졌다.  레거시가 기능을 갖고도 안 썼다는 **사실 기록으로만** 남긴다 — 원장 10장 자체는 검토 기록이므로 그대로 두는 것이 기본이고, 덜어내려면 v1.8 에서 판단할 일이다.
+
+**레거시 `AMPSEC` 이 독출 방향을 담고 있었다** — 레거시 MEF 실측 32장을 보면 `AMPSEC` 이 `CCDSEC` 과 같은 범위인데 **순서가 뒤집힌 것이 있다**(`K01`: `CCDSEC='[8065:9216,...]'` vs `AMPSEC='[9216:8065,...]'`). IRAF 관례대로 **구간의 오름/내림차순이 곧 독출 방향**이다. 전량 패턴은 `M/T = 5:3`, `K/N = 3:5` 인데 **우리 신규는 4:4 다.**
+
+⚠️ **이 상충은 이미 닫혔다 — 틀린 쪽은 레거시다** (운영자 확정 2026-08-22, 재확인 2026-08-29).  `OI-15` 가 그때 **종결**됐고 규격 v1.4~v1.8 8장 OI 표와 `Raw_Rev_MEF_Impacts_and_Identity_v0.7.md` 82행이 같은 판정을 싣고 있다: 실제 획득 자료 육안 확인으로 **`RRRRLLLL`(4:4) 확정**이고, 레거시 `AMPSEC` 의 5:3 / 3:5 는 **레거시 계통의 관찰이라 신규에 적용하지 않는다.**  ~~flat 이나 STA 문서로 확인이 필요하다~~ 는 **철회**한다.
+
+남는 일은 확인이 아니라 **전파**다 — `Raw_Rev_MEF_Impacts` 가 적어 둔 대로 "ICD·정의서가 레거시 패턴을 전제하고 있으면 갱신 대상" 이다(LEECU 몫).
 
 ## 미결 항목
 
@@ -362,19 +457,17 @@ TopDelaceCode = 8 : BotDelaceCode = 10  '-- swap to register quadrants correctly
 | **OI-3** | `ROWORDR`/`RDDIRT`/`RDDIRB` 확정 | 실기 flat/star 필요. ICD §12 도 `READDIR` 을 placeholder 라 밝힌다 |
 | **OI-4** | 중앙 overscan 의 TOP/BOT 분배 | 실측 필요. `OVERSCNY=84` 는 균등 가정 |
 | **OI-5** | binning | 1×1 전용. binned 관측 계획이 서야 |
-| **OI-9** | amp ↔ 배선 맵 실측 | `XTALKCAL=True` 의 전제조건. `AMPCHA`/`AMPCHB` 가 **CCD 출력단**을 담고, **Archon module/channel 은 그 다음 단**이라 아직 미확정 |
-| — | **부분 독출(subframe·ROI·window)** | **규격에도 미결 목록에도 없다.** v1.6 10장이 제기만 해 둔 상태. 쓸 계획이 있는지부터 정하고 OI 로 세워야 한다 |
-| — | Archon AD 모듈당 채널 수 · TAPLINE 표기 | 저장소 증거는 `MOD5`~`MOD8`(AD 4장)뿐. STA 문서나 Tom O'Brien 협의 필요 |
+| ~~—~~ | ~~**부분 독출(subframe·ROI·window)**~~ | **불채택 (운영자 확정 2026-08-29)** — *"현재는 쓸 계획 없으므로 관련내용 없어도 되"*.  **OI 로 세우지 않고 규격에도 넣지 않는다.**  ⚠️ 되살아나면 필요한 것은 크기가 아니라 **원점**(`DETSEC`)이고, `CCDSUM`(OI-5 binning)이 거의 항상 함께 온다 — 검토는 **원장 10장**에 남아 있다 |
 
 ## 브랜치 상태
 
-작업은 **`raw-fits-spec-v1-review`** 브랜치에 쌓고 있고, **`main` 위에 얹힌 채 아직 원격에 올리지 않았다.** 몇 개가 쌓였는지는 여기 적지 않는다 — 커밋할 때마다 이 문장이 낡기 때문이다. 직접 본다:
+✅ **`raw-fits-spec-v1-review` 는 `e1cb82f` 로 `main` 에 합류했다** (거품 머지, `--no-ff`).  `origin/main` 의 조상이므로 남은 커밋은 없다 — 확인은 이렇게 한다:
 
 ```bash
-git log --oneline --decorate main..raw-fits-spec-v1-review
+git log --oneline --decorate origin/main..raw-fits-spec-v1-review   # 비어 있어야 한다
 ```
 
-`main` 은 `origin/main` 과 같은 자리라 **fast-forward 로 들어간다** — `git merge --ff-only raw-fits-spec-v1-review`.
+⚠️ **브랜치는 로컬 전용이고 원격에 안 올렸다.  합류 뒤에도 지우지 않는다**(목 선호) — 다음 라운드도 같은 브랜치에서 이어간다.
 
 이 브랜치가 갈라져 나온 자리는 **`6b19ad6`** 이다(v0.7 검토판 + 규격에 ((재작성중)) 표시를 붙인 커밋). 이 해시는 뒤에 뭘 더 쌓아도 안 바뀐다.
 

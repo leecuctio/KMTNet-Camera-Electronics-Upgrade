@@ -302,7 +302,7 @@ python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fit
 
 ## v1.1 에서 바뀐 것 (raw spec 적용, 2026-08-22)
 
-정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md`](../../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md)
+정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md`](../../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md)
 
 1. **파일명** — `AC13A.<날짜>.<번호>.fits` → **`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits`**
    (D-011). 실험실은 `SITE_CODE='KMTK'`(KASI), 날짜는 UT(KMTK 보정 0,

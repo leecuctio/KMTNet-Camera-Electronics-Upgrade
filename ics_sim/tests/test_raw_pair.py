@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Raw FITS pair — 이름·번호·충돌 처리 (D-010/D-011/D-012/**D-016**/**D-019**).
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md` 2장,
+규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md` 2장,
 `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` 2.1·3절.
 
 **한 노출이 만드는 것**

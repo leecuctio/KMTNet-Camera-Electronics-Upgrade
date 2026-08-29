@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """raw spec 5장 헤더 내용을 지킨다 (D-013 · D-016 · D-019 · 판정 원장).
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md` 4·5장.
+규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md` 4·5장.
 견본과의 바이트 대사는 `test_raw_draft.py`, 이름·번호·충돌은
 `test_raw_pair.py` -- 이 파일은 **실제 노출 사이클이 만든 헤더의 내용**을
 지킨다.  나눈 이유는 실패한 테스트 이름이 원인을 가리켜야 하기 때문이다.

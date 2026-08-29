@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """raw spec 5장 헤더의 **값 공급** — instrument·detector·노출·컨트롤러·HK.
 
-근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md`] 4·5장이고
+근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md`] 4·5장이고
 결정 기록은 D-013(레거시 판정) · D-016(충돌·정체성).  카드의 **순서·comment·
 패딩(틀)**은 `rawcards.py` 템플릿이 갖고, 이 모듈은 그 틀에 부을 **값**을
 출처별 블록 함수로 만든다.  경위는 DevNote 11.14(구판 구현) · 11.19(v1.3 정렬).

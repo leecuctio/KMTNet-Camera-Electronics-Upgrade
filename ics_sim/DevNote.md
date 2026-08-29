@@ -1844,7 +1844,7 @@ if( strcasecmp(client.isisHost,"192.168.15.109") ) {  // SSO 가 아니면
 
 11.14 에서 레거시 방향(레거시 → 신규)은 판정했다. 남은 방향이 **신규 raw → MEF** 다. `rawhdr.py` 가 만드는 카드 이름을 취득 SW 쪽에서 정해 두었을 뿐, converter 와 맞대어 본 적이 없었다. 그래서 양쪽 전량을 한 표에 놓고 대조했다 (289행).
 
-**대조 결과의 정본은 판정 원장 [`../raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.14.md) 다** (2026-08-23 정리). 대응 관계는 각 장의 `Use in MEF` 열로, 판정 준거는 그 문서 **0장**으로, MEF/converter 쪽 미결 4건은 [`../raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md`](../raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.6.md) §6 으로 들어갔다. 별도 검토 문서로 두었던 대응표는 흡수 완료로 폐기했다(운영자 재가).
+**대조 결과의 정본은 판정 원장 [`../raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.15.md`](../raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.15.md) 다** (2026-08-23 정리). 대응 관계는 각 장의 `Use in MEF` 열로, 판정 준거는 그 문서 **0장**으로, MEF/converter 쪽 미결 4건은 [`../raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.7.md`](../raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.7.md) §6 으로 들어갔다. 별도 검토 문서로 두었던 대응표는 흡수 완료로 폐기했다(운영자 재가).
 
 > ⚠️ **`ics_sim` 의 현재 헤더 출력은 raw 쪽 사실의 근거가 아니다 — 근거가 순환한다.** 판정 원장 0장이 이것을 순위표에서 명시적으로 제외한다. raw 쪽 기준선은 **레거시 raw 실측 헤더**(`__reference/Legacy raw fits header samples/KMTNk.20170209.044131.Rawheader.txt`, keyword **123개**)이고, `rawhdr.py`·`rawcards.py`·`telemetry.py` 는 그 기준선과 규격을 따라가는 **구현**이다.
 >

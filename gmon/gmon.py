@@ -35,7 +35,9 @@ dfocus는 run/dfocus.txt에 영속(gcommon.read_dfocus/write_dfocus).
 """
 import argparse
 import glob
+import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -49,6 +51,38 @@ GMON_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SNAP_TICK_MS = 3000     # 스냅샷 새 파일 검사 주기
 SNAP_SETTLE_SEC = 1.0   # 쓰다 만 PNG 방지: mtime이 이만큼 지난 파일만 로드
+
+
+def load_geometry(cfg):
+    """저장된 창 배치 dict {"control"|"snap"|"plot": "WxH+X+Y"}. 없으면 {}."""
+    try:
+        with open(os.path.join(cfg.runroot, "gui_geometry.json")) as fp:
+            d = json.load(fp)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_geometry(cfg, geoms):
+    """창 배치를 기존 저장분과 병합해 저장 (숨김 창은 이전 값 유지)."""
+    cur = load_geometry(cfg)
+    cur.update((k, v) for k, v in geoms.items() if v)
+    try:
+        os.makedirs(cfg.runroot, exist_ok=True)
+        with open(os.path.join(cfg.runroot, "gui_geometry.json"), "w") as fp:
+            json.dump(cur, fp, indent=1)
+    except OSError:
+        pass
+    return cur
+
+
+def _pos_only(geom):
+    """Tk geometry "WxH+X+Y" → 위치 부분 "+X+Y" (파싱 실패 시 None).
+
+    macOS Tk는 음수 좌표를 "+-38+270"처럼 이중 부호로 반환하기도 한다.
+    """
+    m = re.search(r"[+-]-?\d+[+-]-?\d+$", geom or "")
+    return m.group(0) if m else None
 
 
 def latest_snapshot(cfg):
@@ -321,10 +355,21 @@ class GmonApp:
                                    text="FWHM 그래프 대기 중 (fw 데이터 필요)",
                                    bg="white", fg="gray40",
                                    width=80, height=10)
-        self.plot_panel.pack(padx=4, pady=4)
+        # fill/expand: 창 크기를 바꾸면 다음 렌더가 그 크기로 꽉 차게 그려짐
+        self.plot_panel.pack(padx=4, pady=4, fill="both", expand=True)
         self.plot_win.protocol("WM_DELETE_WINDOW", self.plot_win.withdraw)
+        # 시작 크기는 [plot] size(기본 800×380)로 고정 — 이후 사용자가
+        # 바꾸면 렌더가 그 크기를 따라간다 (재시작 시 위치만 복원)
+        try:
+            pw, ph = cfg.getpair("plot", "size")
+        except Exception:
+            pw, ph = 800, 380
+        self.plot_win.geometry("%dx%d" % (int(pw), int(ph)))
 
-        # 초기 배치: 제어부 우측에 스냅샷, 제어부 아래에 그래프
+        # 창 배치: 저장분(run/gui_geometry.json) 복원, 없으면 기본 배치.
+        # 제어부 창 닫기 = 종료 시점에 세 창의 배치를 저장한다.
+        self._geoms = load_geometry(cfg)
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
         root.after(200, self._place_windows)
 
         # 그래프는 이 패널에 내장 표시 — headless 시절 남은 외부 gplot 창이
@@ -339,12 +384,35 @@ class GmonApp:
     def _place_windows(self):
         try:
             self.root.update_idletasks()
+            g = self._geoms
+            if g:  # 저장된 배치 복원 — 위치만 (그래프 시작 크기는 800×380 고정)
+                if _pos_only(g.get("control")):
+                    self.root.geometry(_pos_only(g["control"]))
+                if _pos_only(g.get("snap")):
+                    self.snap_win.geometry(_pos_only(g["snap"]))
+                if _pos_only(g.get("plot")):
+                    self.plot_win.geometry(_pos_only(g["plot"]))
+                return
+            # 기본 배치: 제어부 우측에 스냅샷, 제어부 아래에 그래프
             rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
             rw, rh = self.root.winfo_width(), self.root.winfo_height()
             self.snap_win.geometry("+%d+%d" % (rx + rw + 24, ry))
             self.plot_win.geometry("+%d+%d" % (rx, ry + rh + 56))
         except Exception:
             pass  # 창이 이미 닫혔거나 미매핑 — 배치는 편의 기능일 뿐
+
+    def _on_close(self):
+        """제어부 창 닫기 = GUI 종료: 세 창의 배치 저장 후 종료."""
+        geoms = {}
+        for key, win in (("control", self.root), ("snap", self.snap_win),
+                         ("plot", self.plot_win)):
+            try:
+                if win.state() == "normal":
+                    geoms[key] = win.geometry()
+            except Exception:
+                pass
+        save_geometry(self.cfg, geoms)
+        self.root.destroy()
 
     def _show_win(self, win):
         win.deiconify()
@@ -498,11 +566,21 @@ class GmonApp:
         """렌더 시작 → _plot_poll이 완료를 감시. 중복 렌더는 시작하지 않는다."""
         if self._plot_proc is None:
             if os.path.exists(gcommon.fw_path(self.cfg)):
+                # 그래프 창의 현재 크기에 맞춰 렌더 — 창을 키우면 다음
+                # 렌더부터 꽉 차게 그려진다
+                size_arg = []
+                try:
+                    w = self.plot_win.winfo_width() - 10
+                    h = self.plot_win.winfo_height() - 10
+                    if w > 200 and h > 150:
+                        size_arg = ["--size", "%dx%d" % (w, h)]
+                except Exception:
+                    pass
                 try:
                     self._plot_proc = subprocess.Popen(
                         [self.python, os.path.join(GMON_DIR, "gplot.py"),
                          "-c", self.cfg.path, "--oneshot", "--term", "png",
-                         "--out", self._plot_out],
+                         "--out", self._plot_out] + size_arg,
                         cwd=GMON_DIR, stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL, start_new_session=True)
                     self.root.after(300, self._plot_poll)
@@ -530,8 +608,9 @@ class GmonApp:
                 self.log.warning("plot load failed: %s", exc)
                 return
             self._plot_img = img
-            self.plot_panel.config(image=img, text="", width=img.width(),
-                                   height=img.height())
+            # width/height 미지정: 사용자가 바꾼 창 크기를 라벨이 따라가고,
+            # 다음 렌더가 그 크기로 채운다
+            self.plot_panel.config(image=img, text="")
         else:
             self.log.warning("gplot oneshot rc=%s", proc.returncode)
 

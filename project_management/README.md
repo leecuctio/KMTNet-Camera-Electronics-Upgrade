@@ -67,6 +67,7 @@ MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행
 | `configuration/` | configuration baseline, software freeze, 변경 통제 |
 | `science/` | science verification, calibration 추적 |
 | `operations/` | recovery/rollback, 회의/커뮤니케이션 운영 |
+| `meetings/` | 개별 회의 아젠다·회의록 (예: 2026-09-01 월보드 교체 종합 검토) |
 | `release/` | converter/release package 점검 |
 | `documents/` | 외부 유입 원본문서와 문서 인벤토리 |
 | `templates/` | 주간보고, site log, gate review template |

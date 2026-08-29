@@ -19,7 +19,7 @@
 #   **같은 ICSBUILD 로 찍혀** 나중에 헤더만 보고 구분할 수 없다.
 #   파일명도 함께 옮겼다 (구 archon_kmtnet_labtest_v1.1.bigbuf.py).
 #
-# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.7.md)
+# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md)
 #   ※ 최초 작성은 v1.3 기준. v1.4 는 1~4장 표현만 바뀌어 구현 영향이 없었고
 #     (2.5절 삭제 = 취득 SW 소관 이관 · 4.1 RRRRLLLL 확정 · 4.2/4.4 표기),
 #     **v1.5 (2026-08-26 반영)는 값이 바뀌어 아래 다섯 자리를 고쳤다.**
@@ -536,10 +536,10 @@ RAWCARDS = (
     ('DATASRC', 'S', 24, 'Pixel data source type'),
     ('CTRL1ID', 'S', 24, 'Controller 1 identifier'),
     ('CTRL1SN', 'S', 24, 'Controller 1 serial number'),
-    ('CTRL1CFG', 'S', 24, 'Controller 1 Configuration file'),
+    ('CTRL1CFG', 'S', 29, 'Controller 1 Configuration'),
     ('CTRL2ID', 'S', 24, 'Controller 2 identifier'),
     ('CTRL2SN', 'S', 24, 'Controller 2 serial number'),
-    ('CTRL2CFG', 'S', 24, 'Controller 2 Configuration file'),
+    ('CTRL2CFG', 'S', 29, 'Controller 2 Configuration'),
     ('ICSBUILD', 'S', 24, 'ICS/ICG software version and build Info'),
     ('RDMODE', 'S', 24, 'Readout mode setting'),
     ('COMMENT', '', 0, '  Camera System House Keeping Data'),

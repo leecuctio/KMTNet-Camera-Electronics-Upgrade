@@ -204,6 +204,21 @@ def main():
     p, m = gmon_mod.latest_snapshot(cfg7)
     assert p == pb and m == 2000.0, (p, m)
 
+    # ---------- 8. 창 배치 저장/복원 (gui_geometry.json) ----------
+    cfg8 = make_cfg(tmp, "geom")
+    assert gmon_mod.load_geometry(cfg8) == {}
+    gmon_mod.save_geometry(cfg8, {"control": "300x200+50+60",
+                                  "plot": "900x420+50+700"})
+    # 숨김 창(None/미포함)은 이전 값 유지 병합
+    gmon_mod.save_geometry(cfg8, {"snap": "600x680+980+60", "plot": None})
+    g8 = gmon_mod.load_geometry(cfg8)
+    assert g8["control"] == "300x200+50+60"
+    assert g8["plot"] == "900x420+50+700"      # None으로 덮이지 않음
+    assert g8["snap"] == "600x680+980+60"
+    assert gmon_mod._pos_only("900x420+50+700") == "+50+700"
+    assert gmon_mod._pos_only("600x680+-10-20") == "+-10-20"
+    assert gmon_mod._pos_only(None) is None
+
     shutil.rmtree(tmp, ignore_errors=True)
     print("OK test_focus")
 

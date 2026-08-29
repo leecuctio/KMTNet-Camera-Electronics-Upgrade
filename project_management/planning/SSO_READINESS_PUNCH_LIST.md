@@ -48,14 +48,14 @@ SSO(호주) 현장 적용일(2026-10-19) 전까지 **2주 단위**로 프로젝�
 매 체크포인트에서 아래 항목을 점검한다. 완료 시 `☑`와 완료일/근거를 기록한다.
 
 ### 4.1 Project Management / Schedule
-- □ 마일스톤(M1–M10) 일정 대비 진행 상태가 schedule 문서와 일치
+- ☑ 마일스톤(M1–M10) 일정 대비 진행 상태가 schedule 문서와 일치
 - □ `planning/ACTION_REGISTER.md`의 open action에 지연 항목 없음
 - □ Gate 1/2 entry/exit 기준 충족 여부 갱신
 - □ 주간 CEU 회의 결정사항이 DECISION_LOG에 반영됨
 
 ### 4.2 Hardware (HE Box / Wallboard / PCC)
-- □ HE Box Archon 3대 장착 구조 확정 및 개조 완료 (ACT-002)
-- □ Production Wallboard 납품·acceptance 완료 (M4)
+- ☑ HE Box Archon 3대 장착 구조 확정 및 개조 완료 (ACT-002)
+- ☑ Production Wallboard 납품·acceptance 완료 (M4)
 - □ PCC 운용/교체 판단 및 spare parts inventory 확인
 - □ 카메라 탈거·장착 절차(SOP)와 공구·치구 준비
 
@@ -73,7 +73,7 @@ SSO(호주) 현장 적용일(2026-10-19) 전까지 **2주 단위**로 프로젝�
 
 ### 4.4 Logistics
 - □ Master equipment list 분리·확정 (ACT-003)
-- □ 해운 출고(M6, 2026-08 초) — 클린부스/PCC/대형품
+- ☑ 해운 출고(M6, 2026-08 초) — 클린부스/PCC/대형품
 - □ 항공 출고(M7, 2026-09 초) — Wallboard/Controller/Computer
 - □ 통관 및 SSO 현지 화물 도착 확인 (`logistics/EQUIPMENT_TRACKER.md`)
 
@@ -94,22 +94,7 @@ SSO(호주) 현장 적용일(2026-10-19) 전까지 **2주 단위**로 프로젝�
 - □ Wallboard 납품 지연 / SW migration 지연 / shipping 지연 영향 점검
 - □ 신규 리스크 등록 및 완화 조치 책임자 지정
 
-## 5. 점검 기록 (체크포인트별)
-
-각 체크포인트 점검 후 결과를 한 줄로 남긴다.
-
-| CP | 점검일 | 종합 상태 | 지연/이슈 (⚠) | 신규 Action | 점검자 |
-| --- | --- | --- | --- | --- | --- |
-| CP-01 | 2026-06-30 | | | | |
-| CP-02 | 2026-07-14 | | | | |
-| CP-03 | 2026-07-28 | | | | |
-| CP-04 | 2026-08-11 | | | | |
-| CP-05 | 2026-08-25 | | | | |
-| CP-06 | 2026-09-08 | | | | |
-| CP-07 | 2026-09-22 | | | | |
-| CP-08 | 2026-10-06 | | | | |
-
-## 6. 운영 규칙
+## 5. 운영 규칙
 
 - 점검은 Weekly CEU Meeting과 별개로, 2주마다 본 펀치리스트 전체를 검토하는 자리에서 수행한다.
 - open 항목 중 due가 Gate와 연결된 것은 `governance/GATE_REVIEW_PLAN.md`에도 반영한다.

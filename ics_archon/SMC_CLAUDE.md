@@ -1276,7 +1276,7 @@ CCD 채널이 −30 아래로 내려가도 값이 유지되는지(종전 설정�
 | **생성물** (`tools/sync_vendor.py` 재실행) | `ics_archon/_vendor/ics_sim/rawcards.py` · `rawhdr.py` |
 | **labtest 내장 사본 5** | `ics_archon/scr_labtest/…v1.3.{bigbuf,smallbuf}.py` (+ KMTC-102 · KMTC-113 · KMTS-101) |
 | ⭐ **견본 pair 바이트 정본 4** | `raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0{,_REFTEXT}.txt` |
-| **규격·원장 문서 4** | 규격 v1.7(5.6절 표 + 8장 OI 표) · 원장 v1.14(2곳) · `Raw_Rev_MEF_Impacts_and_Identity_v0.6.md` · `raw_fits_spec/SMC_CLAUDE.md` |
+| **규격·원장 문서 4** | 규격 v1.8(5.6절 표 + 8장 OI 표) · 원장 v1.15(2곳) · `Raw_Rev_MEF_Impacts_and_Identity_v0.7.md` · `raw_fits_spec/SMC_CLAUDE.md` |
 | **OI-18 언급 (문자열과 별개)** | `ics_sim/ics_sim/hardware/base.py:181` · `rawhdr.py:568` · `sequencer.py:480` (+ `_vendor` 3, 생성물) · `raw_fits_spec/README.md:121` · `raw_fits_spec/SMC_CLAUDE.md:216` |
 | **기계 검증** | `ics_sim/tests/test_raw_draft.py`(견본 바이트) · `ics_archon/tests/test_fitswrite.py`(카드 이미지) · `ics_archon/tests/test_labtest_spec_copy.py`(사본 표류) |
 

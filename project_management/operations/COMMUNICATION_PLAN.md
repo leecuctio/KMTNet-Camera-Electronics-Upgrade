@@ -1,10 +1,11 @@
 # KMTNet-CEU Communication Plan
 
-최종 갱신일: 2026-06-22
+최종 갱신일: 2026-08-28
 
 | Meeting | Frequency | Participants | Purpose | Output |
 | --- | --- | --- | --- | --- |
 | Weekly CEU Meeting | Weekly | 이충욱 및 각 team lead | 일정, 리스크, 이슈 점검 | action register update |
+| 월보드 교체 종합 검토 회의 | 1회 (2026-09-01, 4h) | 전 연구원 | 리허설 결과 발표, 출장 전 미해결 항목 확정 (ACT-012) — 아젠다 `../meetings/AGENDA_2026-09-01_COMPREHENSIVE_REVIEW.md` | 미해결 항목 목록(ACT 등재), 항공 출고 품목 확정, Gate 2 입력 |
 | Software Review Meeting | Biweekly or as needed | 차상목, 홍성욱, 김동진, 이상민, Rick | Software migration 진행 점검 | software issue/action |
 | Logistics Review | Weekly July-September | 이용석, 이동주, 이충욱 | 배송 및 통관 점검 | equipment tracker update |
 | Gate Review | At each gate | PM, relevant leads | 다음 단계 진행 승인 | gate decision |
