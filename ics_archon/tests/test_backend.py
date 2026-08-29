@@ -534,6 +534,53 @@ def test_pipelined_frames_do_not_steal_each_others_state(tmp_path):  # noqa: ANN
         % base)
 
 
+def test_fetch_buffer_ring_is_bounded_reused_and_returned():
+    """**호스트 수신 버퍼는 링이다** (`[archon] fetch_buffers`, 2026-08-29).
+
+    종전에는 프레임마다 344 MiB 를 새로 잡았고 저장 태스크 수에 제한이 없어서,
+    저장이 밀리면 **메모리가 조용히 늘었다.**  링으로 두면 셋이 생긴다:
+
+    1. **상한** -- `N x 344 MiB` 를 넘지 않는다
+    2. **재사용** -- 할당 비용(344 MiB 에 0.81초)이 사라진다
+    3. ⭐ **역압** -- 다 차면 기다리고, **기다린 사실이 세어진다.**  그 수가
+       `fetch_buffers` 가 충분한지를 **추정이 아니라 실기로** 답하게 한다.
+    """
+    from ics_archon.archon.controller import ArchonController
+    acfg = acfg_mod.ArchonCfg()
+    acfg.fetch_buffers = 2
+    ctrl = ArchonController('MK', acfg)
+    assert ctrl._bufpool.qsize() == 2                      # noqa: SLF001
+
+    async def go():
+        a = await ctrl._take_buffer(100)                   # noqa: SLF001
+        b = await ctrl._take_buffer(100)                   # noqa: SLF001
+        assert a is not b and len(a) == len(b) == 100
+        assert ctrl._bufpool.qsize() == 0                  # noqa: SLF001
+
+        # ⭐ 링이 비면 **기다린다** -- 그냥 새로 만들면 상한이 없어진다
+        pending = asyncio.ensure_future(ctrl._take_buffer(100))  # noqa: SLF001
+        await asyncio.sleep(0.05)
+        assert not pending.done(), '버퍼가 없는데 그냥 내줬다 -- 상한이 없다'
+
+        ctrl.release_buffer(a)
+        got = await pending
+        assert got is a, '반납한 버퍼를 재사용하지 않았다'
+        assert ctrl.buf_waits == 1 and ctrl.buf_wait_s > 0, (
+            '기다린 사실이 안 세어졌다 -- fetch_buffers 가 충분한지 실기가 '
+            '답할 수 없게 된다')
+
+        # 다 돌려주면 처음 크기로 돌아온다 (새지 않는다)
+        ctrl.release_buffer(b)
+        ctrl.release_buffer(got)
+        assert ctrl._bufpool.qsize() == 2                  # noqa: SLF001
+
+        # 기하가 바뀌면 새로 잡는다 -- 재사용이 목적이지 강제가 아니다
+        big = await ctrl._take_buffer(200)                 # noqa: SLF001
+        assert len(big) == 200
+
+    asyncio.run(go())
+
+
 def test_a_recycled_buffer_is_refused_instead_of_writing_wrong_pixels(tmp_path):  # noqa: ANN001
     """**BIGBUF 는 버퍼가 둘뿐이다** -- 저장이 늦으면 앞 프레임이 덮인다.
 

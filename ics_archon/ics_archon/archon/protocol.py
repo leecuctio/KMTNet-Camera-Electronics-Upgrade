@@ -313,7 +313,7 @@ class ArchonLink:
 
     def fetch(self, base_addr: int, nbytes: int,
               timeout: float | None = None,
-              on_block=None) -> bytearray:  # noqa: ANN001
+              on_block=None, out=None) -> bytearray:  # noqa: ANN001
         """`FETCH` 로 백플레인 RAM 에서 `nbytes` 를 읽어 온다.
 
         블록 하나가 `burst_len`(1024) 바이트이고 **응답 하나마다 참조번호가
@@ -340,7 +340,11 @@ class ArchonLink:
         # 되풀이돼 **피크가 실제 크기를 넘는다** -- 실측(2026-08-29) 344 MiB
         # 한 장에 367.8 -> 344.2 MiB, 1.06 -> 0.81초.  컨트롤러 둘이 동시에
         # 받으므로 **-47 MiB · -0.5초**다.
-        out = bytearray(nbytes)
+        #
+        # ⭐ `out` 을 받으면 **그것을 재사용한다** -- 호출측(`ArchonController`)
+        # 이 버퍼 링을 돌리므로 할당 자체가 사라지고 상주 메모리에 상한이 선다.
+        if out is None or len(out) != nbytes:
+            out = bytearray(nbytes)
         #: 실제로 채운 바이트.  ⚠️ **`len(out)` 을 진행 표시로 쓸 수 없다** --
         #: 미리 잡았으므로 처음부터 `nbytes` 다.  예외 경로도 이 값을 읽는다.
         filled = [0]

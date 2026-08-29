@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import configparser
 import logging
+import math
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -256,6 +257,26 @@ class ArchonCfg:
     #: 알려주지 않는다.  실측(`tools/probe_archon.py` 3단계의 MiB/s)이 나오면
     #: 여기에 실측 기반 값을 적는다 -- 그게 미해결 F5 가 기다리는 것이다.
     fetch_timeout: float = 0.0
+    #: **호스트 수신·저장 버퍼 수 (컨트롤러당).**  FETCH 가 여기서 하나를 빌려
+    #: 채우고, 저장이 끝나면 돌려준다.
+    #:
+    #: **왜 상한을 두나** -- 종전에는 프레임마다 344 MiB 를 새로 잡았고 저장
+    #: 태스크 수에 제한이 없어서, 저장이 밀리면 **메모리가 조용히 늘었다.**
+    #: 링으로 두면 상한이 `N x 344 MiB` 로 고정되고, 다 차면 FETCH 가 기다려
+    #: **그 사실이 로그에 드러난다**(조용한 증가 대신 신호).
+    #:
+    #: ⚠️ **`wrote_window` 와 짝이다** -- 창이 넓을수록 더 많은 프레임이
+    #: 동시에 살아 있다.  `N >= ceil((창 - write_delay) / 주기)` 여야 하고,
+    #: `_cross_checks()` 가 기동에서 본다.  실측(2026-08-29) 기준 25초 창에는
+    #: **2개**면 충분하다 -- 그때 "창이 터진 뒤에도 자료가 남는" 구간이 2.4초다.
+    fetch_buffers: int = 2
+    #: OBSAgent 의 `force_fitssaved` 창 [s] -- **우리 쪽 선언값**이다
+    #: (`IDLE` 진입 -> 4번째 `Wrote`, DevNote 3.2).  넘기면 OBSAgent 가
+    #: `FitsSaved` 를 강제하고 `ExpStatus=ERROR` 를 낸다.
+    #:
+    #: 여기 적는 이유는 **`fetch_buffers` 와 함께 움직이는 값**이기 때문이다 --
+    #: 한쪽만 바꾸면 짝이 조용히 끊긴다.
+    wrote_window: float = 25.0
     #: 종료할 때 **저장 중인 프레임**을 기다리는 상한 [s].  0 이면 안 기다린다.
     #:
     #: 저장은 `write_delay` 뒤에 백그라운드로 도는 일이라, 그 사이에 종료가
@@ -534,6 +555,8 @@ def load(path: str) -> ArchonCfg:
     cfg.shutdown_drain = _num(s, 'shutdown_drain', cfg.shutdown_drain,
                               float)
     cfg.fetch_timeout = _num(s, 'fetch_timeout', cfg.fetch_timeout, float)
+    cfg.fetch_buffers = max(1, _num(s, 'fetch_buffers', cfg.fetch_buffers, int))
+    cfg.wrote_window = _num(s, 'wrote_window', cfg.wrote_window, float)
     cfg.progress_step = _num(s, 'progress_step', cfg.progress_step, int)
 
     # **컨트롤러 대수** -- 1 또는 2 만 받는다 (운영자 지시 2026-08-24).
@@ -684,6 +707,16 @@ def _ascii_checks(sim_cfg) -> list[str]:  # noqa: ANN001
     return notes
 
 
+#: 노출 0초를 연속으로 찍을 때의 **최소 프레임 주기** [s].
+#:
+#: 실측 2026-08-29 (운영자 labtest 자료 76장): 순수 readout **11.3초** + 앞뒤
+#: 짜투리.  `fetch_buffers` 가 `wrote_window` 에 견주어 충분한지 보는 데만
+#: 쓴다 -- 값이 조금 틀려도 경고 문턱이 움직일 뿐이다.
+#:
+#: ⚠️ **ACF(독출 속도)가 바뀌면 이 값도 바뀐다.**  guide 유닛은 프레임이
+#: 훨씬 작아 주기도 짧다 -- 그때는 이 상수로 판단하지 말 것.
+MIN_FRAME_PERIOD = 12.0
+
 #: 저장 자리 여유를 볼 때의 기준 -- **pair 몇 장분**인가.
 #:
 #: 절대값(GB)으로 두면 기하가 바뀔 때 뜻이 달라진다.  10장은 "밤새 돌릴 양" 이
@@ -782,6 +815,28 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
                 'ACF 경로에서 자동으로 채워진다'
                 % (n, typed, tag.lower(), derived, n, typed,
                    os.path.basename(cfg.acf.get(tag, ''))))
+
+    # ⚠️ **호스트 버퍼 수와 `Wrote` 창은 짝이다.**
+    #
+    # 저장이 밀리면 두 가지가 순서대로 일어난다 -- ① 창을 넘겨 OBSAgent 가
+    # `ExpStatus=ERROR` 를 낸다(**경고**) ② 호스트 버퍼가 고갈돼 FETCH 가
+    # 밀리고, 그러면 컨트롤러 버퍼가 덮여 **프레임을 잃는다.**
+    #
+    # ①이 ②보다 **먼저** 와야 한다 -- 그래야 "경고는 떴지만 자료는 남았다" 는
+    # 구간이 생긴다.  그 조건이 `N x 주기 >= 창 - write_delay` 다.
+    # 한쪽만 바꾸면 이 짝이 조용히 끊기므로 기동에서 본다.
+    write_delay = float(getattr(sim_cfg.timing, 'write_delay', 0.0))
+    need = int(math.ceil(
+        max(0.0, cfg.wrote_window - write_delay) / MIN_FRAME_PERIOD))
+    if cfg.fetch_buffers < need:
+        notes.append(
+            '[archon] fetch_buffers=%d 인데 wrote_window=%.1f초다 -- 창이 %.1f초를 '
+            '넘으면 **버퍼가 창보다 먼저 무너져** 프레임을 잃는다(경고만 뜨고 '
+            '자료는 남는 구간이 없어진다).  **%d 이상**이 필요하다 '
+            '(N x %.1f초 >= 창 - write_delay %.1f초)'
+            % (cfg.fetch_buffers, cfg.wrote_window,
+               cfg.fetch_buffers * MIN_FRAME_PERIOD + write_delay,
+               need, MIN_FRAME_PERIOD, write_delay))
 
     # ⚠️ **`RDMODE` 유도가 현행 ACF 이름 규칙에서는 걸리지 않는다.**
     #

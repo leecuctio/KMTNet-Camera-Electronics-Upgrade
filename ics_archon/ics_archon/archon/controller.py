@@ -123,6 +123,24 @@ class ArchonController:
         #: 연결이 따로라 다른 대의 왕복은 막지 않는다.
         self._lock = asyncio.Lock()
 
+        #: **수신·저장 버퍼 링** (`[archon] fetch_buffers`, 기본 2).
+        #:
+        #: FETCH 가 하나를 빌려 채우고 **저장이 끝난 뒤** 돌려준다
+        #: (`release_buffer`).  종전에는 프레임마다 344 MiB 를 새로 잡았고
+        #: 저장 태스크 수에 제한이 없어서, 저장이 밀리면 **메모리가 조용히
+        #: 늘었다.**  링으로 두면 상한이 `N x 344 MiB` 로 고정된다.
+        #:
+        #: 큐에는 처음에 `None` 슬롯만 넣는다 -- **실제 버퍼는 처음 쓸 때
+        #: 만든다.**  상한은 슬롯 수가 보장하고, 기동은 가벼운 채로 둔다.
+        self._bufpool: asyncio.Queue = asyncio.Queue()
+        for _ in range(max(1, int(getattr(cfg, 'fetch_buffers', 2)))):
+            self._bufpool.put_nowait(None)
+        #: 버퍼가 없어 기다린 횟수·시간.  ⭐ **`fetch_buffers` 가 충분한지를
+        #: 추정이 아니라 실기가 답하게 하는 자리다** -- 0 이면 충분한 것이고,
+        #: 쌓이면 올려야 한다.
+        self.buf_waits = 0
+        self.buf_wait_s = 0.0
+
         #: ACF 설정 줄 -> 내용, 그리고 키 -> 줄 번호.  `WCONFIG` 는 줄 번호로
         #: 쓰므로 이 대응이 없으면 파라미터를 못 바꾼다.
         self.config: dict[str, str] = {}
@@ -967,10 +985,22 @@ class ArchonController:
             timeout = float(getattr(self.cfg, 'fetch_timeout', 0.0) or 0.0)
             if timeout <= 0:
                 timeout = max(60.0, expect_bytes / (1 << 20) * 1.0)
+            # **버퍼는 `LOCK` 을 잡은 뒤에 기다린다.**  순서가 중요하다 --
+            # 잠그지 않은 채 기다리면 그동안 컨트롤러가 이 프레임을 덮어
+            # **프레임을 잃는다.**  잠근 채 기다리면 컨트롤러는 다른 버퍼를
+            # 쓰므로 한 프레임은 더 갈 수 있고, 우리 프레임은 지켜진다.
+            buf = await self._take_buffer(expect_bytes)
             started = time.monotonic()
-            async with self._lock:
-                data = await asyncio.to_thread(
-                    self.link.fetch, fs.base, expect_bytes, timeout)
+            try:
+                async with self._lock:
+                    data = await asyncio.to_thread(
+                        self.link.fetch, fs.base, expect_bytes, timeout,
+                        None, buf)
+            except BaseException:
+                # 실패하면 곧바로 돌려준다 -- 안 그러면 링이 한 칸씩 줄어
+                # **몇 번의 실패 뒤에 영구히 막힌다.**
+                self.release_buffer(buf)
+                raise
         finally:
             if lock:
                 try:
@@ -983,6 +1013,42 @@ class ArchonController:
                  self.tag, expect_bytes / (1 << 20),
                  time.monotonic() - started, fs.frame, buf_n, fs.base)
         return data
+
+    async def _take_buffer(self, nbytes: int) -> bytearray:
+        """링에서 버퍼 하나를 빌린다.  비어 있으면 **기다린다**(역압).
+
+        기다렸다는 사실을 세어 두는 것이 요점이다 -- `fetch_buffers` 가
+        충분한지를 **실기가 답하게** 한다.  기다림이 길어지면 그동안 컨트롤러
+        버퍼가 덮여 프레임을 잃으므로, 조용히 넘어가면 안 되는 신호다.
+        """
+        try:
+            buf = self._bufpool.get_nowait()
+        except asyncio.QueueEmpty:
+            t0 = time.monotonic()
+            buf = await self._bufpool.get()
+            waited = time.monotonic() - t0
+            self.buf_waits += 1
+            self.buf_wait_s += waited
+            log.warning('%s: 수신 버퍼가 없어 %.2f초 기다렸다 (누적 %d회 · '
+                        '%.1f초) -- 저장이 밀리고 있다.  길어지면 컨트롤러 '
+                        '버퍼가 덮여 프레임을 잃는다.  [archon] fetch_buffers '
+                        '를 올릴 것', self.tag, waited,
+                        self.buf_waits, self.buf_wait_s)
+        # 크기가 다르면(기하 변경) 새로 잡는다 -- 재사용이 목적이지 강제가 아니다.
+        if buf is None or len(buf) != nbytes:
+            buf = bytearray(nbytes)
+        return buf
+
+    def release_buffer(self, buf) -> None:  # noqa: ANN001
+        """버퍼를 링에 돌려준다.  **저장이 끝난 뒤** 부른다.
+
+        ⚠️ fetch 성공 뒤에 이것을 안 부르면 링이 한 칸 줄고, 몇 프레임 뒤에
+        **영구히 막힌다** -- `write_frame` 의 `finally` 가 그 자리다.
+        """
+        try:
+            self._bufpool.put_nowait(buf)
+        except asyncio.QueueFull:      # 있을 수 없지만 막지는 않는다
+            log.debug('%s: 버퍼 링이 가득 차 하나를 버린다', self.tag)
 
     # -- 준비 -------------------------------------------------------------
 

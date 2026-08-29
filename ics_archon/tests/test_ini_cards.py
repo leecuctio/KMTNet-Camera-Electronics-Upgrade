@@ -418,6 +418,40 @@ def test_rdmode_mismatch_with_the_acf_name_is_reported(tmp_path):  # noqa: ANN00
     assert not notes('KMTNet_Sci_fast_med_U13.acf', 'FAST')
 
 
+def test_fetch_buffers_are_checked_against_the_wrote_window(tmp_path):  # noqa: ANN001
+    """⭐ **버퍼 수와 `Wrote` 창은 짝이다** -- 한쪽만 바꾸면 기동에서 알린다.
+
+    저장이 밀리면 둘이 순서대로 일어난다: ① 창을 넘겨 OBSAgent 가
+    `ExpStatus=ERROR`(**경고**) ② 호스트 버퍼 고갈 -> FETCH 지연 -> 컨트롤러
+    버퍼가 덮여 **프레임 손실**.  ①이 먼저여야 *"경고는 떴지만 자료는 남았다"*
+    구간이 생긴다 -- 조건이 `N x 주기 >= 창 - write_delay` 다.
+
+    ⚠️ 이 짝이 조용히 끊기는 것이 오늘 하루 잡은 결함들과 같은 부류다
+    (`RDMODE` 유도가 ACF 이름 규칙 바뀌며 끊긴 것 등).  그래서 t=0 에 본다.
+    """
+    acf = tmp_path / 'KMTC_SCI_101_STA0284_R2608_MK.acf'
+    acf.write_text(ACF_TEXT, encoding='ascii')
+
+    def notes(buffers, window):  # noqa: ANN001
+        over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
+        ini = write_ini(tmp_path, over, str(acf))
+        cfg, acfg = simcfg.load(ini), acfg_mod.load(ini)
+        acfg.fetch_buffers, acfg.wrote_window = buffers, window
+        return [n for n in acfg_mod.validate(
+            acfg, tuple(cfg.node.ccds), cfg) if 'fetch_buffers' in n]
+
+    # 25초 창 -- 2개면 충분하다 (N x 12 >= 25 - 3.4)
+    assert not notes(2, 25.0)
+    # ⚠️ 창을 30초로 늘리면 2개로는 부족해진다 -- 3개가 필요하다
+    warned = notes(2, 30.0)
+    assert warned, '창을 넓혔는데 버퍼가 그대로인 것을 아무도 안 알린다'
+    assert '3 이상' in warned[0], warned
+    # 3개로 올리면 조용하다
+    assert not notes(3, 30.0)
+    # 1개는 25초 창에서도 모자란다
+    assert notes(1, 25.0)
+
+
 def test_d016_collision_check_is_on_even_when_write_fits_is_false(tmp_path):  # noqa: ANN001
     """**`[paths] write_fits` 가 D-016 선검사를 잠그면 안 된다.**
 

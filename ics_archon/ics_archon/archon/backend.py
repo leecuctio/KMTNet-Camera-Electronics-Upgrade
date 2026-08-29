@@ -464,8 +464,12 @@ class ArchonBackend:
             raise BackendError('No pending frame for %s' % tag, ccd=ccd)
         fs = await ctrl.await_frame(ticket)
         raw = await ctrl.fetch(fs, self.acfg.frame_bytes)
-        arr = np.frombuffer(bytes(raw), dtype='<u2').reshape(
-            self.acfg.naxis2, self.acfg.naxis1)
+        try:
+            # `bytes(raw)` 가 사본을 뜨므로 여기서 곧바로 돌려줘도 안전하다.
+            arr = np.frombuffer(bytes(raw), dtype='<u2').reshape(
+                self.acfg.naxis2, self.acfg.naxis1)
+        finally:
+            ctrl.release_buffer(raw)
         chips = dict(rawpair.CONTROLLERS)[tag]
         half = self.acfg.naxis1 // 2
         lo = chips.index(ccd.upper()) == 0
@@ -527,6 +531,9 @@ class ArchonBackend:
                 ccd=chips[0] if chips else '') from exc
 
         try:
+            # ⚠️ **저장이 끝나면 버퍼를 링에 돌려준다** (`finally`).  안 돌려주면
+            # 링이 한 칸씩 줄어 **몇 프레임 뒤에 영구히 막힌다.**
+            #
             # **스레드로 내보낸다.**  344 MiB 의 엔디언 변환과 디스크 쓰기는
             # 둘 다 블로킹이고, 그 몇 초 동안 UDP 수신과 다른 컨트롤러의
             # 발신이 멈추면 DevNote 3.3 의 시간 창을 넘긴다 (시뮬이 이미 같은
@@ -546,6 +553,8 @@ class ArchonBackend:
             raise BackendError(
                 'Failed to write FITS for %s' % controller,
                 ccd=chips[0] if chips else '') from exc
+        finally:
+            ctrl.release_buffer(raw)
         log.info('%s: %s 저장 (%d KB/sec)', controller, os.path.basename(path),
                  rate)
         return rate

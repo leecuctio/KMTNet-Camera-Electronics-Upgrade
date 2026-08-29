@@ -336,6 +336,9 @@ monitor      = true                 # 텔레메트리 주기 감시·기록 (위
                                     #   기동에서 붙는다.  이 스위치는 CSV 기록과
                                     #   주기 폴링만 끈다
 monitor_log  = ~/AIC/log            # ⚠️ data_dir 밑에 두지 말 것
+fetch_buffers = 2                   # 호스트 수신·저장 버퍼 (컨트롤러당)
+wrote_window  = 25.0                # OBSAgent force_fitssaved 창 [s] -- 선언값
+full_flush_on_erase = false         # clock 개선으로 별도 erase 를 하지 않는다
 
 [controllers]
 ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
@@ -345,6 +348,17 @@ ctrl1_cfg    =                      # 비우면 [archon] acf_mk 에서 파생 (�
 [logging]
 file         = ~/AIC/Logs/ics_archon.log
 ```
+
+> ⭐ **호스트 수신 버퍼는 링이다** (2026-08-29). `[archon] fetch_buffers`(기본 **2**)
+> 만큼만 잡아 **재사용**하고, 다 차면 FETCH 가 **기다리며 그 횟수를 센다**
+> (`buf_waits`). 종전에는 프레임마다 344 MiB 를 새로 잡아 저장이 밀리면 메모리가
+> 조용히 늘었다. ⚠️ **`wrote_window` 와 짝이다** — `N = ceil((창 − write_delay) /
+> 주기)`. 25초 창엔 2개, **30초로 넓히면 3개**가 필요하고 기동에서 검사한다.
+> 2개 = 1.4 GB · 3개 = 2.2 GB (벤치 RAM 32 GB).
+
+> ⛔ **`full_flush_on_erase` 기본값은 `false` 다** (운영자 확정 2026-08-29) —
+> *"clock 을 개선해서 별도 erase 를 하지 않고 바로 노출을 시작한다"*. ⚠️ 켜면
+> 노출마다 **독출 1회분(11.3초)** 이 더 붙어 주기가 12.4 → 23.7초가 된다.
 
 > **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29, 규격 v1.8 5.5절).
 > `[controllers] ctrlN_cfg` 를 **비워 두면** `[archon] acf_mk`/`acf_nt` 에서
