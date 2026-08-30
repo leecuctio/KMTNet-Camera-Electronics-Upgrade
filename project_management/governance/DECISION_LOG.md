@@ -747,7 +747,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 날짜: 2026-08-24
 관련: **D-015**(대체 대상) · D-011(사이트 코드 prefix) · D-014(관측일) · **D-017**(사이트 코드 넷) · `operations/ICS_DEPLOYMENT_CHECKLIST.md` · ACT-008 · ACT-009
-상태: **Accepted** — `ics_sim`/`ics_archon` 구현 완료(`siteid.py` 삭제), raw spec 2.2절 반영 완료(2026-08-29 제자리 정정).
+상태: **Accepted** — ⚠️ **구현은 `ics-archon-v1.0-build` 에 있고 `main` 은 합류 대기다** (`main` 트리에는 `siteid.py` 가 아직 있다). 그 브랜치에서 `ics_sim`/`ics_archon` 구현 완료(`siteid.py` 삭제) + raw spec 2.2절 제자리 정정(2026-08-29).
 
 결정:
 
@@ -766,8 +766,8 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 영향:
 
-- `ics_sim` — **`siteid.py` · `tests/test_site_id.py` 삭제**(시험 28개 제거, 사이트 시험 11개 신설). `NodeCfg.observatory` 신설 + `site`/`telid` 유도, `rawpair.site_of_observatory()`/`SITE_OF_OBSERVATORY`, `config` 의 낡은 키 경고(`site`·`telid`·`site_from_ip`). ⚠️ `rawpair.normalize_site()` 는 **남아 있으나 `<SITE>` 결정 경로가 아니다** — 관측일 경계 계산의 내부 안전망과 TC `TELID` 대조용이다.
+- `ics_sim` — **`siteid.py` · `tests/test_site_id.py` 삭제**(시험 28개 제거, 사이트 시험 11개 신설). ⚠️ **`ics-archon-v1.0-build` 에서다** — `main` 트리에는 아직 남아 있다. `NodeCfg.observatory` 신설 + `site`/`telid` 유도, `rawpair.site_of_observatory()`/`SITE_OF_OBSERVATORY`, `config` 의 낡은 키 경고(`site`·`telid`·`site_from_ip`). ⚠️ `rawpair.normalize_site()` 는 **남아 있으나 `<SITE>` 결정 경로가 아니다** — 관측일 경계 계산의 내부 안전망과 TC `TELID` 대조용이다.
 - **`operations/ICS_DEPLOYMENT_CHECKLIST.md` 가 유일한 방어가 된다** — 판정이 대신 잡아 주지 않으므로 기동 배너 확인을 건너뛰면 안 된다.
 - **ACT-009 의 성격이 바뀐다** — "대역이 바뀌면 실자료가 KMTK 로 저장된다" 는 위험이 사라졌다. 남는 필요는 **배선·방화벽·노드 주소**를 확정하는 망 문서 자체다.
-- **raw spec 2.2절** — `<SITE>` 필드 설명의 *"실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015)"* 와 *"넷 밖은 `KMTK` 로 정규화"* 를 이 결정으로 고쳤다 (v1.8 제자리 정정, 2026-08-29). ⚠️ **그 문장은 v1.3~v1.8 여섯 판을 그대로 통과했다** — 판올림이 "이번에 바꿀 것" 만 보고 본문 나머지는 복사되기 때문이다.
-- 상세 경위는 `ics_sim/DevNote.md` **11.27**, 문서 정합 경위는 `ics_archon/DevNote.md` **6장**.
+- **raw spec 2.2절** — `<SITE>` 필드 설명의 *"실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015)"* 와 *"넷 밖은 `KMTK` 로 정규화"* 를 이 결정으로 고쳤다 (v1.8 제자리 정정, 2026-08-29). ⚠️ 그 정정도 **`ics-archon-v1.0-build` 에 있다** — `main` 의 규격은 아직 구 문장이다. ⚠️ **그 문장은 v1.3~v1.8 여섯 판을 그대로 통과했다** — 판올림이 "이번에 바꿀 것" 만 보고 본문 나머지는 복사되기 때문이다.
+- 상세 경위는 `ics_sim/DevNote.md` **11.27**, 문서 정합 경위는 `ics_archon/DevNote.md` **6장** (⚠️ 그 노트는 `ics-archon-v1.0-build` 에만 있다 — `main` 에 `ics_archon/` 이 아직 없다).
