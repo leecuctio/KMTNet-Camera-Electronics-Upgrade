@@ -69,7 +69,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 
 ## ⚠️ 백엔드 계약 `sensors()` 가 바뀌었다 (2026-08-27) -- 키 아홉
 
-**`ics_archon` 세션에서 이 폴더의 계약을 고쳤다.**  경위는 [DevNote 11.32](DevNote.md), 일감 지시는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "▶ 다음 세션 작업 지시".
+**`ics_archon` 세션에서 이 폴더의 계약을 고쳤다.**  경위는 [`../ics_archon/DevNote.md`](../ics_archon/DevNote.md) **2장**, 일감 지시는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "▶ 다음 세션 작업 지시".
 
 - **`ccdtemp1`/`ccdtemp2` → `ccdtemp` 하나.**  운영자 확정(2026-08-27) -- CCD1/CCD2 를 구분하지 않고 **듀어의 CCD 대표 온도 하나**만 읽는다.  chip 귀속은 **정보가 없으므로 규정하지 않는다.**
   - ⚠️ **종전 계약이 `ccdtemp` 를 "백엔드가 따로 줘도 무시하는" 키로 명시**했고 `tests/test_raw_header.py` 가 그것을 못박고 있었다.  규칙의 존재 이유("센서가 둘이니 두 번째 사실을 만들지 않기")가 사라져 **규칙을 지웠다.**  `ccdtemp1`/`ccdtemp2` 를 **아직 읽으면 실패**하는 회귀가 들어 있다.
@@ -83,7 +83,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 ## ✅ `CTRLnCFG` 파생 -- **패키지는 무개정, `ics_sim.ini` 주석만** (2026-08-29)
 
 `ics_archon` 이 `[archon] acf_mk`/`acf_nt` 경로에서 **폴더와 확장자를 떼어**
-`CTRL1CFG`/`CTRL2CFG` 를 채우기 시작했다 (규격 v1.8 5.5절, [`../ics_archon/DevNote.md`](../ics_archon/DevNote.md) 1장).
+`CTRL1CFG`/`CTRL2CFG` 를 채우기 시작했다 (규격 v1.8 5.5절, [`../ics_archon/DevNote.md`](../ics_archon/DevNote.md) **5장**).
 
 **`ics_sim/` 패키지는 한 줄도 안 고쳤다** -- 그래서 `tools/sync_vendor.py` 를
 돌릴 일도 없었고 `_vendor/MANIFEST.sha256` 도 그대로다.  파생은
@@ -110,7 +110,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 
 옮긴 것은 하나뿐이고 전부 `ics_archon` 쪽이다: **`POWERON` 뒤 `POWER=4` 확인**
 (`archon/controller.py`).  경위·미채택 근거·부산물(guide 자리 표 = `OI-19` 의 답)은
-[DevNote 11.34](DevNote.md)와
+[`../ics_archon/DevNote.md`](../ics_archon/DevNote.md) **4장**과
 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "참고 자료 재검토".
 
 ⚠️ **이 폴더에 걸리는 것 하나** -- guide 자리 표가 **8자리**(백플레인 +

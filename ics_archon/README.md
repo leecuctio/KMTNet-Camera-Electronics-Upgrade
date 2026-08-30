@@ -587,7 +587,7 @@ direct-reply 로 전 경로가 돈다.
 | 문서 | 위치 |
 |---|---|
 | **경위·판단 (왜 그렇게 정했나)** | ⭐ [`DevNote.md`](DevNote.md) — **이 폴더의 개발 노트** |
-| 〃 (2026-08-29 이전 · `ics_sim` 층) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.34 |
+| 〃 (`ics_sim` 층 · 2026-08-26 이전 실기분) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.30 |
 | 산출 규격 (raw FITS pair) | [`../raw_fits_spec/`](../raw_fits_spec/README.md) |
 | 헤더 카드 템플릿 (공유 원천) | `../ics_sim/ics_sim/rawcards.py` |
 | 백엔드 계약 | `../ics_sim/ics_sim/hardware/base.py` (D-012) |

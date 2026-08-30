@@ -28,7 +28,7 @@
 | [README.md](README.md) "실기 첫 실행 절차" | ⭐ **실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
 | [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
 | ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다 |
-| [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.34 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
+| [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.30 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
 | [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) | 물려받은 층의 상태·규약 |
 | [`../raw_fits_spec/`](../raw_fits_spec/README.md) | 산출 규격(raw FITS pair). 헤더 5장의 바이트 정본은 견본 pair |
 
@@ -1383,7 +1383,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 `[archon] acf_mk`/`acf_nt` 경로에서 **폴더와 확장자(`.acf`/`.cfg`)를 떼어**
 `CTRL1CFG`/`CTRL2CFG` 를 채운다.  **비어 있을 때만** 채우고, 손으로 적어 둔 값이
-파생값과 다르면 **기동에서 경고**한다.  판단 근거는 [DevNote 1장](DevNote.md).
+파생값과 다르면 **기동에서 경고**한다.  판단 근거는 [DevNote 5장](DevNote.md).
 
 | 자리 | 무엇 |
 |---|---|
@@ -1398,7 +1398,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 ### ✅ 전수 검토 — 세 저장소 (2026-08-29, 목 지시)
 
 작업 E 뒤에 `raw_fits_spec` · `ics_sim` · `ics_archon` (+ 걸린 PM 문서)를 훑었다.
-경위·교훈은 [DevNote 2장](DevNote.md).  고친 것:
+경위·교훈은 [DevNote 6장](DevNote.md).  고친 것:
 
 | # | 무엇 | 성격 |
 |---|---|---|
@@ -1423,7 +1423,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 `'NORMAL'` 은 **실제로 쓰이는 값**이라 "정말 NORMAL" 과 "못 알아본 NORMAL" 이
 헤더에서 갈리지 않았다.  ⚠️ 문자열 sentinel `'NC'` 와 **뜻이 다르다** — `NC` 는
 "그 자리가 없다", `UNKNOWN` 은 "있는데 모른다" 다.  ⏳ **규격 등재는 v1.9 대기**
-(5.5절이 아직 `'NORMAL' 등` 이라 적는다).  경위는 [DevNote 2장](DevNote.md).
+(5.5절이 아직 `'NORMAL' 등` 이라 적는다).  경위는 [DevNote 6장](DevNote.md).
 
 ### ⏳ ▶ **`main` 으로 넘어가서 할 일** (목 지시 2026-08-29)
 
@@ -1571,13 +1571,13 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
 이 세션은 **작업 A(층 1·2 감시·기록)를 구현**하고, labtest v1.3.4 가 얻은 것을
 본편에 옮겼다.  반영 내역·판단 근거는 위
 [층 1·2 감시·기록 구현](#-층-12-감시기록-구현-2026-08-28--작업-a-완료) 절과
-[`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.33.
+[`DevNote.md`](DevNote.md) **3장**.
 
 그 뒤 **참고 자료(`__ref_archon_control/`) 전수 재검토**를 했다 (목 지시
 2026-08-28) — 옮긴 것 하나(`POWERON` 뒤 `POWER=4` 확인) · 안 옮긴 것 셋 ·
 새로 확정한 사실 셋.  위
 [참고 자료 재검토](#-참고-자료-재검토--__ref_archon_control-전수-2026-08-28-목-지시) 절과
-DevNote 11.34.  **guide ACF 정본도 하나로 줄고 개명됐다**
+[DevNote 4장](DevNote.md).  **guide ACF 정본도 하나로 줄고 개명됐다**
 (`KMTK_GUI_162_STA0201_R2608.acf`, 운영자 2026-08-28).
 
 ### ✅ 작업 A — 층 1·2 구현 **완료 (2026-08-28)**
@@ -1643,7 +1643,7 @@ DevNote 11.34.  **guide ACF 정본도 하나로 줄고 개명됐다**
   참조한다"** 로 바뀌었다.
 - **`CTRLnCFG` 예시를 실제 ACF 이름 규칙으로** + 규격 5장에 **"폴더 경로와
   확장자(`.acf`/`.cfg`)를 뗀 이름"** 명시.  ✅ **그 파생은 코드로 들어갔다**
-  (작업 E, `3dabe21` — [DevNote 1장](DevNote.md)).
+  (작업 E, `3dabe21` — [DevNote 5장](DevNote.md)).
 
 ⚠️ **아래 1~5 는 여전히 v1.9 이후 대기다** (4·5 는 실측·설계가 더 필요하다).
 
@@ -1670,7 +1670,7 @@ DevNote 11.34.  **guide ACF 정본도 하나로 줄고 개명됐다**
 ### ✅ 작업 E — `CTRLnCFG` 를 ACF 경로에서 파생 **완료 (2026-08-29)**
 
 **규격이 먼저 섰고(v1.8) 코드가 뒤따랐다.**  구현 자리와 판단은 위
-[작업 E 완료](#-작업-e--ctrlncfg-파생-완료-2026-08-29) 절과 [DevNote 1장](DevNote.md) 이다.
+[작업 E 완료](#-작업-e--ctrlncfg-파생-완료-2026-08-29) 절과 [DevNote 5장](DevNote.md) 이다.
 아래는 착수 시점의 지시이고, **딸림 넷은 다 처리했다** — ① 문서 파일명 인용
 (줄바꿈에 걸려 grep 이 놓친 `test_ini_cards.py` 한 자리 포함) ② `ics_sim.ini`
 예시 주석 ③ `test_raw_header.py` 픽스처 — ⚠️ **깨지지 않았다**: 이 브랜치의
