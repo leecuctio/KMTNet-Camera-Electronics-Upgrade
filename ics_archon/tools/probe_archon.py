@@ -406,11 +406,18 @@ async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN0
                 % (fs.data_bytes, acfg.frame_bytes))
             return
 
+        # **어느 쪽으로 돌았는지 먼저 찍는다** -- 두 실행의 로그를 나중에
+        # 비교할 때 이 줄이 없으면 어느 것이 어느 쪽인지 알 수 없다.
+        say(OK, 'lock_buffer = %s%s'
+            % (acfg.lock_buffer,
+               '  (--lock/--no-lock 로 지정)' if args.lock_buffer is not None
+               else '  (ini 값)'))
         t0 = time.monotonic()
         raw = await ctrl.fetch(fs, acfg.frame_bytes)
         dt = max(time.monotonic() - t0, 1e-6)
-        say(OK, 'FETCH %.1f MiB, %.2f초 (%.1f MiB/s)'
-            % (len(raw) / (1 << 20), dt, len(raw) / (1 << 20) / dt))
+        say(OK, 'FETCH %.1f MiB, %.2f초 (%.1f MiB/s)  [lock=%s]'
+            % (len(raw) / (1 << 20), dt, len(raw) / (1 << 20) / dt,
+               acfg.lock_buffer))
 
         if not args.write:
             say(WARN, 'FITS 는 쓰지 않았다 (--write 를 주면 쓴다)')
@@ -509,6 +516,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--out', default='./probe', help='FITS 저장 폴더')
     p.add_argument('--poll', type=float, default=0.2,
                    help='FRAME 폴링 간격 [s] (기본 0.2 -- 진행률을 촘촘히 본다)')
+    # ⭐ **A/B 실험용 스위치** (2026-08-30).  labtest 는 2026-05-28 에 `LOCK` 을
+    # 뺐는데 근거가 "remove to fetch debug" 한 줄뿐이라, **켜서 되는지**를
+    # 실기에서 갈라야 한다.  ini 를 고쳐 가며 두 번 돌리는 대신 이 플래그로
+    # 바꾼다 -- 두 실행의 차이가 이 한 곳뿐이어야 비교가 성립한다.
+    p.add_argument('--lock', dest='lock_buffer', action='store_true',
+                   default=None,
+                   help='3단계 -- fetch 중 LOCKn 으로 버퍼를 잠근다 '
+                        '(기본: ini 의 [archon] lock_buffer)')
+    p.add_argument('--no-lock', dest='lock_buffer', action='store_false',
+                   help='3단계 -- 잠그지 않는다 (labtest 와 같은 거동)')
     p.add_argument('--poweron-wait', type=float, default=12.0,
                    help='POWERON 뒤 flush 대기 [s]')
     p.set_defaults(apply_acf=True)
@@ -521,6 +538,8 @@ async def amain(args) -> int:  # noqa: ANN001
     acfg.port = args.port
     acfg.frame_poll = args.poll
     acfg.progress_step = 1               # 촘촘히 본다 (거동 확인이 목적)
+    if args.lock_buffer is not None:     # --lock / --no-lock 이 ini 를 이긴다
+        acfg.lock_buffer = args.lock_buffer
     if args.acf:
         # **`--acf` 가 ini 를 이긴다.**  이렇게 해 두면 1단계의 바이어스 채널
         # 표(층 2)도 그 ACF 의 이름표를 쓴다 -- 안 넘기면 `--acf` 를 주고도
