@@ -23,7 +23,7 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 | [`mef_converter/`](mef_converter/) | Archon MK/NT raw → L0 64-amplifier MEF 변환기와 참고 문서 | [README](mef_converter/README.md) |
 | [`mef_pipeline/`](mef_pipeline/) | L0 64-amp MEF → L1 CCD-level calibrated MEF 전처리 파이프라인 (overscan~조립, AMPMATCH, Gaia TAN–SIP astrometry, 로컬 Gaia 스토어, QA) | [README](mef_pipeline/README.md) |
 | [`mef_fits_spec/`](mef_fits_spec/) | MEF FITS 데이터 산출물 규격 (keyword 정의 + ICD) | [README](mef_fits_spec/README.md) |
-| [`raw_fits_spec/`](raw_fits_spec/) | Archon raw FITS pair (MK/NT) 규격 — L0 MEF의 **입력** 데이터 정의 | [README](raw_fits_spec/README.md) |
+| [`raw_fits_spec/`](raw_fits_spec/) | Archon raw FITS 규격 — science pair (MK/NT, L0 MEF 의 **입력**) + **guide (G — v1.9 신설, 소비자 gmon)** | [README](raw_fits_spec/README.md) |
 | [`cam_char/`](cam_char/) | 카메라 특성 측정 — 실험실 계획, 분석 코드, Archon 제어 스크립트, 산출물 스키마 | [README](cam_char/README.md) |
 | [`ics_sim/`](ics_sim/) | **신규 카메라 통합제어(ICS) 프로그램** — 레거시 호환 시뮬레이터. 다음 단계에서 하드웨어 계층을 붙여 실제 CCD 구동으로 전환 | [README](ics_sim/README.md) · [DevNote](ics_sim/DevNote.md) |
 | [`gmon/`](gmon/) | **가이드 카메라 시상 모니터 v2** — Archon 단일 FITS(CCD47-20 4칩×2채널, 4224×1033) 분할 → SExtractor/PSFEx FWHM 측정 → 방위별 PSF 스냅샷·gnuplot 그래프·온도 기반 초점 보정 GUI(3창). 레거시(2018~2026 운용판) 파리티 + 합성/실프레임 별 주입 시험기 포함 | [README](gmon/README.md) · [DESIGN](gmon/DESIGN.md) |
@@ -35,7 +35,7 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 
 - **프로젝트 관리 · 일정 · 역할 · 리스크** → [project_management/README.md](project_management/README.md)
 - **카메라 출력 데이터 형식 · FITS keyword · ICD** → [mef_fits_spec/README.md](mef_fits_spec/README.md)
-- **Archon raw FITS pair 형식 · raw 헤더 keyword** → [raw_fits_spec/README.md](raw_fits_spec/README.md)
+- **Archon raw FITS 형식(science pair + guide) · raw 헤더 keyword** → [raw_fits_spec/README.md](raw_fits_spec/README.md)
 - **L0 변환기 사용 · 실행 방법** → [mef_converter/README.md](mef_converter/README.md)
 - **L0→L1 전처리 파이프라인** → [mef_pipeline/README.md](mef_pipeline/README.md)
 - **카메라 특성 측정 (실험실 캠페인)** → [cam_char/README.md](cam_char/README.md)
