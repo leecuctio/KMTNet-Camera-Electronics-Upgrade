@@ -1910,7 +1910,7 @@ converter 가 raw 에서 읽으려 하는데 `ics_sim` 이 그 카드를 만들�
 - **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** -- 종전 "두 chip 온도의 평균"(11.14, 2026-08-13)을 폐기했다. 온도센서 구성이 바뀐 결과다. 대표는 백엔드 `ccdtemp1`(초안 comment "CCD temperature M")이고, 대표가 죽으면 이웃 값으로 **대체하지 않고** sentinel `-999.0` + 경고다 -- 대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다. `CCDTEMP1`/`CCDTEMP2` 카드는 도입 후보에서 제외 확정.
 - **`DEWPRES` 는 문자열 카드** `x.xxe-x` [torr], 측정불가는 전부 `'9.99e-9'` -- 값 없음 · 0(게이지의 `0.00e-0` 포함) · 음수 · 비수치 · 유한하지 않음 · 인정 범위 [1e-8, 1e+3] 밖. 문자열인 이유: astropy 가 실수 카드의 표기를 크기 보고 정하므로 지수 표기를 규격으로 고정하려면 문자열이어야 한다. ⚠️ sentinel 이 정상값과 안 겹치는 성질은 **인정 하한(1e-8) > sentinel(9.99e-9)** 에 걸려 있다 -- 게이지 실측 하한이 이보다 낮으면 sentinel 을 바꿔야 한다(`DEWPRES_MIN` docstring).
 - **신설 3장** `DMPTEMP` / `WALLBRD` / `HEBOX` -- `DEWAR_CARDS` 와 sim 백엔드에 추가. `WALLBRD` 는 wallboard 의 모음 탈락 축약(8자 절단형 `WALLBOAR` 를 대체 -- 절단형은 "wall boar" 로 읽히고 확장 여유가 없다).
-- 공급 계통이 셋으로 갈렸다 -- ICG RTD(Archon 쪽) / standalone RTD readout unit(AIR·GLYC) / Tapaculo sensor(HEBOX). 시뮬에서는 전부 `sensors()` 한 창구로 온다.
+- 공급 계통이 셋으로 갈렸다 -- ICG RTD(Archon 쪽) / standalone RTD readout unit(AIR·GLYC) / Tapaculo sensor(HEBOX — **2026-08-30 `Radionode` 로 개명**, raw spec v1.9). 시뮬에서는 전부 `sensors()` 한 창구로 온다.
 
 **남은 일 (13장 백로그).** 초안 v0.3.5 의 노출·컨트롤러 블록 재편은 아직 코드에 안 갔다 -- `DARKTIME`/`TSHOPEN`/`TSHSHUT`/`NPHLINES`/`HEMODE`/`READMODE`/`CTR_CFG` 제거, `CTRL1CFG`/`CTRL2CFG`/`TCSTIME` 신설, `DATASRC` 값 체계(`ARCHON_SCIENCE`/`ARCHON_GUIDE`/`SIM`). 카드 comment 지원(`fitsout._apply_header()`)이 선행돼야 초안의 comment 까지 재현된다. 근거 문서: `raw_fits_spec/KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.8.md` (확인 요망 9건 포함). **→ 11.19 에서 전량 완료 (2026-08-22).**
 

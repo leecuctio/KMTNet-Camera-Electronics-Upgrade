@@ -165,13 +165,13 @@ class DetectorBackend(Protocol):
         """
 
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        """chip 온도 + 듀어·환경 센서 (raw spec 5.6절 + 5.8절 Tapaculo 2장).
+        """chip 온도 + 듀어·환경 센서 (raw spec 5.6절 + 5.8절 Radionode 2장).
 
         키는 소문자 **아홉**뿐이다: `ccdtemp` `dewpres` `dmptemp` `pt30n1`
         `pt30n2` `charcoal` `wallbrd`(ICG RTD) · `hebox` `fsatemp` `fsahum`
-        (Tapaculo).  공급 계통은 raw spec 5.6절 표 참조.  읽지 못한 항목은
-        **넣지 않는다** -- 호출측이 sentinel(`'-999.99'`, `dewpres` 만
-        `'9.99e-9'`)로 채운다.
+        (Radionode -- 구칭 `Tapaculo`, v1.9 개명).  공급 계통은 raw spec
+        5.6절 표 참조.  읽지 못한 항목은 **넣지 않는다** -- 호출측이
+        sentinel(`'-999.99'`, `dewpres` 만 `'9.99e-9'`)로 채운다.
 
         ⚠️ **`air_in`/`air_out`/`glyc_in`/`glyc_out` 은 없앴다** (2026-08-27).
         standalone RTD 계통의 그 카드 4장이 **v1.5 에서 폐지**됐고

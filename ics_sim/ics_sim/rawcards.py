@@ -104,7 +104,7 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('RDMODE', 'S', 24, 'Readout mode setting'),
     ('COMMENT', '', 0, '  Camera System House Keeping Data'),
     ('DEWPRES', 'S', 18, 'Dewar pressure [torr]'),
-    ('CCDTEMP', 'S', 18, 'CCD temperature M [deg C]'),
+    ('CCDTEMP', 'S', 18, 'CCD temperature [deg C]'),
     ('DMPTEMP', 'S', 18, 'DMP temperature [deg C]'),
     ('PT30N1', 'S', 18, 'PT-30 #1 cold-end temperature [deg C]'),
     ('PT30N2', 'S', 18, 'PT-30 #2 cold-end temperature [deg C]'),
@@ -210,7 +210,7 @@ for _key, _kind, _width, _comment in CARDS:
 del _sec, _key, _kind, _width, _comment
 
 #: TC 중계(TCS/AUX 블록) 카드 -- `telemetry.fits_header_dict()` 가 채울 몫.
-#: `FSATEMP`/`FSAHUM` 만 예외다 -- 블록은 AUX 지만 출처가 Tapaculo(백엔드)라
+#: `FSATEMP`/`FSAHUM` 만 예외다 -- 블록은 AUX 지만 출처가 Radionode(백엔드)라
 #: `rawhdr.thermal_header()` 가 준다 (raw spec 5.8절).
 RELAY_CARDS = tuple(
     k for k, s in SECTION.items()

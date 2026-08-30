@@ -169,7 +169,7 @@ class ArchonBackend:
         #       ICG RTD: ccdtemp(= FITS CCDTEMP 실측 대표 -- **chip 귀속
         #         정보는 없다**, 운영자 2026-08-27)/
         #         dewpres/dmptemp/pt30n1/pt30n2/charcoal/wallbrd,
-        #       Tapaculo: hebox/fsatemp/fsahum.
+        #       Radionode: hebox/fsatemp/fsahum.
         #       (standalone RTD 계통 air_*/glyc_* 는 카드가 v1.5 에서 폐지됐다
         #        -- 계약에서도 빠졌다, 2026-08-27)
         log.warning('sensors: %s', _NOT_YET)

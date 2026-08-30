@@ -352,7 +352,7 @@ class TelemetryRelay:
         """**FITS 헤더용** 값 딕셔너리 -- raw spec 5.7·5.8절 몫.
 
         카드 목록의 정본은 `rawcards.RELAY_CARDS`(TCS 27 + AUX 33 에서
-        Tapaculo 2장 제외)다.  와이어에서 받은 값은 그대로 두고, 없는 카드만
+        Radionode 2장 제외)다.  와이어에서 받은 값은 그대로 두고, 없는 카드만
         sentinel `'NC'` 로 채운다 -- **TC 중계 카드는 전부 문자열**이다
         (raw spec 5.7절 "TCS 중계값은 문자열로 싣는다", 레거시 계승).  구판의
         수치 sentinel(`-1`/`-999.0`)은 카드가 문자열 형으로 통일되면서 문자열

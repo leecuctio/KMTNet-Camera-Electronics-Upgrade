@@ -258,7 +258,7 @@ class SimBackend:
             'wallbrd': 16.78, 'hebox': 33.21,
             # `air_*`/`glyc_*` 는 내지 않는다 -- 카드 4장이 v1.5 에서 폐지돼
             # 호출측이 값을 버린다 (2026-08-27 계약 정리).
-            'fsatemp': 23.4, 'fsahum': 12.3,       # Tapaculo (raw spec 5.8절)
+            'fsatemp': 23.4, 'fsahum': 12.3,       # Radionode (raw spec 5.8절)
             # `dewpres` 는 넣지 않는다 -- 레거시도 `'N/A'` 였다.  호출측이
             # sentinel 을 채우는 경로를 실제로 밟게 하려는 것이다.
         }

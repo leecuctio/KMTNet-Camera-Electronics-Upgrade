@@ -18,13 +18,13 @@
 `ICS code`       취득 SW 가 스스로 아는 것.  이 모듈의 상수 · 노출 상태
 `Archon`         컨트롤러만 아는 것.  백엔드가 준다 (`controller_info()`,
                  `controller_telemetry()`)
-HK 3계통         `ICG RTD` / `standalone RTD` / `Tapaculo` -- 백엔드
-                 `sensors()` 가 모아 준다
+HK 3계통         `ICG RTD` / `standalone RTD` / `Radionode`(구칭
+                 `Tapaculo`, v1.9 개명) -- 백엔드 `sensors()` 가 모아 준다
 =============== ========================================================
 
 `TCS relay`/`AUX relay` 출처는 `telemetry.py` 몫이라 여기 없다
 (`rawcards.RELAY_CARDS`).  예외는 `FSATEMP`/`FSAHUM` -- 블록은 AUX 지만
-출처가 Tapaculo(백엔드)라 이 모듈이 준다 (raw spec 5.8절).
+출처가 Radionode(백엔드)라 이 모듈이 준다 (raw spec 5.8절).
 """
 
 from __future__ import annotations
@@ -452,11 +452,11 @@ def controller_header(info: dict, *, backend_name: str, ics_build: str,
 
 
 # ---------------------------------------------------------------------------
-# 5.6 Camera System House Keeping (18장) + 5.8 의 Tapaculo 2장
+# 5.6 Camera System House Keeping (18장) + 5.8 의 Radionode 2장
 # ---------------------------------------------------------------------------
 
 #: 듀어·HK 센서 카드 -- 견본 v1.0 의 수록 순서.  출처 3계통은 백엔드
-#: `sensors()` docstring 참조 (ICG RTD / standalone RTD / Tapaculo).
+#: `sensors()` docstring 참조 (ICG RTD / standalone RTD / Radionode).
 #:
 #: ⚠️ **`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` 4장은 폐지됐다** (운영자 확정
 #: 2026-08-25, raw spec v1.5 -- 5.6절이 18장에서 14장으로 줄었고 5.10절 폐지
@@ -556,7 +556,7 @@ def format_temp(value: object) -> str:
 def format_ens(value: object) -> str:
     """`FSATEMP`/`FSAHUM` 의 ENS식 표기 -- 부호 없는 소수 1자리 (`'23.4'`).
 
-    **잠정이다** (raw spec 5.8절, OI-16) -- Tapaculo 원값 포맷을 확인한 뒤
+    **잠정이다** (raw spec 5.8절, OI-16) -- Radionode 원값 포맷을 확인한 뒤
     "원값 그대로 싣기"로 최종 확정한다.  측정 불가 sentinel 은 HK 온도·습도
     공통의 `TEMP_NC`(`'-999.99'`) -- 5.0절이 FSA 2장을 그 규약에 명시했다.
     """
@@ -574,7 +574,7 @@ def format_ens(value: object) -> str:
 
 
 def thermal_header(sensors: dict | None) -> dict[str, object]:
-    """5.6절 HK 12장 + 5.8절 Tapaculo 2장 (`FSATEMP`/`FSAHUM`).
+    """5.6절 HK 12장 + 5.8절 Radionode 2장 (`FSATEMP`/`FSAHUM`).
 
     **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** (운영자 확정 2026-08-21).
     대표 센서는 백엔드 `ccdtemp` 이고, **죽었을 때 다른 값으로 대체하지
@@ -584,9 +584,9 @@ def thermal_header(sensors: dict | None) -> dict[str, object]:
 
     ⚠️ **chip 으로 규정하지 않는다** (운영자 2026-08-27) -- 듀어의 CCD 대표
     온도 하나이고 chip 귀속 정보는 없다.  종전 `ccdtemp1`/`ccdtemp2` 는
-    `ccdtemp` 하나로 합쳤다.  **카드 comment 의 `M` 을 없애는 것은 raw spec
-    v1.8 작업**이다(견본 pair 바이트가 정본이라 규격과 함께 움직인다) --
-    그때까지 comment 는 종전 문안 그대로다.
+    `ccdtemp` 하나로 합쳤다.  카드 comment 의 `M` 은 **운영자 지시로
+    없앴다** (2026-08-30, 견본 3장 제자리 반영 -- `rawcards.py` 의 기계
+    사본도 함께 움직였다).
 
     ⚠️ **대체 후보가 눈에 보인다는 것이 함정이다** -- `DMPTEMP` 나 `Cn_TEMP`
     의 모듈 온도로 메우고 싶어지는데, 그러면 파일만으로 검산할 수 없는 값이
@@ -607,7 +607,7 @@ def thermal_header(sensors: dict | None) -> dict[str, object]:
     }
     for card in DEWAR_CARDS:
         out[card] = format_temp(s.get(card.lower()))
-    # 5.8절의 Tapaculo 2장 -- 블록은 AUX 지만 출처가 백엔드라 여기서 준다.
+    # 5.8절의 Radionode 2장 -- 블록은 AUX 지만 출처가 백엔드라 여기서 준다.
     out['FSATEMP'] = format_ens(s.get('fsatemp'))
     out['FSAHUM'] = format_ens(s.get('fsahum'))
     return out
@@ -637,9 +637,10 @@ VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V')
 #: 구성이 바뀌면 `CAMVER`(HW) · `CTRLnCFG`(설정) 범프로 드러나야 한다 (4.3절).
 #:
 #: ⚠️ **guide 컨트롤러는 8자리로 다르다** (Backplane · Mod3 · Mod4 · Mod5 ·
-#: Mod6 · Mod7 · Mod9 · Mod10) -- 원장 7장 기재분이고 **실기 대조 전**이다
-#: (**OI-19**).  guide raw 규격을 세울 때 실측으로 확정한다.  전원 레일 7자리는
-#: science 와 같다.
+#: Mod6 · Mod7 · Mod9 · Mod10) -- **규격 10.4절이 정본이다** (v1.9 에서
+#: **OI-19 종결** -- guide ACF `[SYSTEM]` 과 `modtm_gui_*` 두 근거 일치,
+#: 첫 guide 구동 때 STATUS 재확인만 남는다).  전원 레일도 guide 는
+#: **8자리**다 -- 7레일 뒤에 guide 전용 `HEATER`(+28 V)가 붙는다 (10.4절).
 #:
 #: ⚠️ 종전 구현은 `BACKPLANE_TEMP` + `MOD5~MOD8` **5자리**였다 (AD 모듈이
 #: 중앙 4슬롯이라는 매뉴얼 p.20 근거의 잠정안).  v1.5 5.6.1절이 정본을 세우면서

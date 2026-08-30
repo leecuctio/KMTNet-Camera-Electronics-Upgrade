@@ -157,7 +157,8 @@ v0.7….py`)의 `UNIT_ACF` 가 **구 파일명을 가리키므로 작업본에�
 science 쪽은 `rawhdr.TEMP_MODS` 와 정확히 같고, `__ref_archon_control/
 modtm_sci_*.py`(실사용본)가 `STATUS` 에서 읽는 자리와도 같다 — 규격과 무관하게
 쓰인 스크립트가 같은 표에 닿았다는 것이 **자리 표의 독립 확인**이다.
-guide 8자리는 미해결 `OI-19` 의 답이고 아직 규격에 안 실렸다 (`../SMC_CLAUDE.md`).
+guide 8자리는 **raw spec 10.4절이 정본**이다 — v1.9 에서 `OI-19` 종결, 이 ACF
+`[SYSTEM]` 과 `modtm_gui_*` 두 근거 일치 (첫 guide 구동 때 STATUS 재확인만 남는다).
 형 번호는 science 가 `17`(ADM)·`18`(HVYBias), guide 가 `2`(AD)·`11`(HeaterX)·
 `8`(HVXBias) 다.
 

@@ -1,8 +1,8 @@
 SIMPLE  =                    T /                                                
 BITPIX  =                   16 /                                                
 NAXIS   =                    2 /                                                
-NAXIS1  =                19200 /                                                
-NAXIS2  =                 9400 /                                                
+NAXIS1  =                 4224 /                                                
+NAXIS2  =                 1033 /                                                
 BSCALE  =                    1 / PHYSICAL=INTEGER*BSCALE+BZERO                  
 BZERO   =                32768 /                                                
 BUNIT   = 'ADU               ' / units of physical values                       
@@ -10,27 +10,25 @@ COMMENT   Instrument and Detector Information ________________________________
 INSTRUME= 'KMTA 18k CCD      ' / Instrument Name                                
 CAMVER  = 'CEU-v2.1          ' / Camera electronics version                     
 FPAID   = 'FPA#1             ' / FPA ID                                         
-DETECTOR= 'e2v CCD290-99     ' / Detector device model                          
-DETID   = 'NT                ' / Detector pair in this raw FITS file            
-PIXSIZE =                 10.0 / Unbinned pixel size [microns]                  
-PIXSCALE=                0.395 / Unbinned pixel scale [arcsec per pixel]        
+DETECTOR= 'e2v CCD47-20      ' / Detector device model                          
+DETID   = 'G                 ' / Detector ID in this raw FITS file              
+PIXSIZE =                 13.0 / Unbinned pixel size [microns]                  
+PIXSCALE=                 0.49 / Unbinned pixel scale [arcsec per pixel]        
 CCDXBIN =                    1 / CCD X-axis Binning Factor                      
 CCDYBIN =                    1 / CCD Y-axis Binning Factor                      
-NAMPDET =                   16 / Number of amplifiers in the detector           
-NAMPRAW =                   32 / Number of amplifiers in the raw FITS file      
-AMPNAX1 =                 1200 / Columns per amplifier (prescan+image+overscan) 
-AMPNAX2 =                 4700 / Rows per amplifier (prescan+image+overscan)    
-IMAGEX  =                 1152 / Image columns per amplifier                    
-IMAGEY  =                 4616 / Image rows per amplifier                       
+NAMPDET =                    2 / Number of amplifiers in the detector           
+NAMPRAW =                    8 / Number of amplifiers in the raw FITS file      
+AMPNAX1 =                  528 / Columns per amplifier (prescan+image+overscan) 
+AMPNAX2 =                 1033 / Rows per amplifier (prescan+image+overscan)    
+IMAGEX  =                  512 / Image columns per amplifier                    
+IMAGEY  =                 1024 / Image rows per amplifier                       
 PRESCNX =                    0 / Prescan columns per amplifier (side varies)    
 PRESCNY =                    0 / Prescan rows per amplifier (frame-edge side)   
-OVRSCNX =                   48 / Overscan columns per amplifier (side varies)   
-OVRSCNY =                   84 / Overscan rows per amplifier (frame-center side)
+OVRSCNX =                   16 / Overscan columns per amplifier (side varies)   
+OVRSCNY =                    9 / Overscan rows per amplifier (frame-center side)
 COMMENT   Map of CCD output channels, raw X ascending within each card          
-CHMAP_LT= 'NA08,NA07,NA06,NA05,NA04,NA03,NA02,NA01' / CCD out ch, left-half TOP 
-CHMAP_LB= 'ND09,ND10,ND11,ND12,ND13,ND14,ND15,ND16' / CCD out ch, left-half BOT 
-CHMAP_RT= 'TD16,TD15,TD14,TD13,TD12,TD11,TD10,TD09' / CCD out ch, right-half TOP
-CHMAP_RB= 'TA01,TA02,TA03,TA04,TA05,TA06,TA07,TA08' / CCD out ch, right-half BOT
+CHMAP   = 'NRL,ERL,SRL,WRL   ' / CCD and output channel layout [TBC]            
+IMGROT  = '270,180,90,0      ' / Image rotation [deg, CW] for each CCD (N,E,S,W)
 COMMENT   Observatory Information ____________________________________________  
 ORIGIN  = 'SSO               ' / Location where the data was generated          
 OBSERVAT= 'SSO               ' / Observatory Site                               
@@ -46,20 +44,17 @@ OBJECT  = 'bias              ' / Name of object
 OBSTYPE = 'BIAS              ' / Type of observation                            
 EXPTIME =                    0 / Exposure time [seconds]                        
 LEDFLASH=                    0 / Time to flash projector LEDs [milliseconds]    
-TIMESYS = 'UTC               ' / ICS Time System                                
+TIMESYS = 'UTC               ' / ICG Time System                                
 DATE-OBS= '2026-08-21T12:34:56.789' / UTC Date and Time at start of obs         
-FILENAME= 'KMTA.20260821.123456.NT' / FITS file name as written to storage      
-EXPID   = 'KMTA.20260821.123450' / Exposure identifier assigned by ICS counter  
+FILENAME= 'KMTA.20260821.123456.G ' / FITS file name as written to storage      
+EXPID   = 'KMTA.20260821.123450' / Exposure identifier assigned by ICG counter  
 COMMENT   Controller and ICS Information _____________________________________  
-DATASRC = 'ARCHON_SCIENCE          ' / Pixel data source type                   
-CTRL1ID = 'KMTA-SCI-101            ' / Controller 1 identifier                  
-CTRL1SN = 'STA-0288                ' / Controller 1 serial number               
-CTRL1CFG= 'KMTA_SCI_101_STA0288_R2608_MK' / Controller 1 Configuration          
-CTRL2ID = 'KMTA-SCI-102            ' / Controller 2 identifier                  
-CTRL2SN = 'STA-0289                ' / Controller 2 serial number               
-CTRL2CFG= 'KMTA_SCI_102_STA0289_R2608_NT' / Controller 2 Configuration          
-ICSBUILD= 'v0.1.2:2026-08-21T18:09Z' / ICS/ICG software version and build Info  
-RDMODE  = 'NORMAL                  ' / Readout mode setting                     
+DATASRC = 'ARCHON_GUIDE              ' / Pixel data source type                 
+CTRL1ID = 'KMTA-GUI-161              ' / Controller 1 identifier                
+CTRL1SN = 'STA-0292                  ' / Controller 1 serial number             
+CTRL1CFG= 'KMTA_GUI_161_STA0292_R2608' / Controller 1 Configuration             
+ICGBUILD= 'v0.1.2:2026-08-21T18:09Z  ' / ICG software version and build Info    
+RDMODE  = 'NORMAL                    ' / Readout mode setting                   
 COMMENT   Camera System House Keeping Data                                      
 DEWPRES = '1.23e-4           ' / Dewar pressure [torr]                          
 CCDTEMP = '-101.23           ' / CCD temperature [deg C]                        
@@ -69,12 +64,9 @@ PT30N2  = '-154.56           ' / PT-30 #2 cold-end temperature [deg C]
 CHARCOAL= '-215.67           ' / Charcoal canister temperature [deg C]          
 WALLBRD = '+16.78            ' / Wallboard temperature [deg C]                  
 HEBOX   = '+33.21            ' / HE box internal temperature [deg C]            
-C1_TEMP = '40.1|41.2|42.3|43.4|44.5|45.6|46.7|47.8|48.9|49.0  ' / Ctrl-1 T[C]   
-C1_VOLT = '2.512|5.023|5.834|-5.945|16.956|-17.067|35.089     ' / Ctrl-1 V[V]   
-C1_CURR = '4.698|4.487|2.176|0.465|0.454|0.443|0.032          ' / Ctrl-1 I[A]   
-C2_TEMP = '40.9|49.8|48.7|47.6|46.5|45.4|44.3|43.2|42.1|41.0  ' / Ctrl-2 T[C]   
-C2_VOLT = '2.498|5.087|5.876|-5.965|16.954|-17.043|35.032     ' / Ctrl-2 V[V]   
-C2_CURR = '4.712|4.423|2.134|0.445|0.456|0.467|0.078          ' / Ctrl-2 I[A]   
+C1_TEMP = '40.1|41.2|42.3|43.4|44.5|45.6|46.7|47.8          ' / Ctrl-1 T[C]     
+C1_VOLT = '2.51|5.02|5.83|-5.94|16.95|-17.06|35.08|28.09    ' / Ctrl-1 V[V]     
+C1_CURR = '4.698|4.487|2.176|0.465|0.454|0.443|0.032|0.421  ' / Ctrl-1 I[A]     
 COMMENT   TCS Information and Status _________________________________________  
 TCSLINK = 'Up                ' / TCS Communications Link Status                 
 TCSARC  = 'Enabled           ' / TCS Link Auto Recovery Mode Status             
@@ -138,6 +130,14 @@ ENS7    = '0.0               ' / Environment Sensor 7 in deg C or percent RH
 FSATEMP = '23.4              ' / FSA internal temperature in degree C           
 FSAHUM  = '12.3              ' / FSA internal humidity in percent RH            
 END                                                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
                                                                                 
                                                                                 
                                                                                 

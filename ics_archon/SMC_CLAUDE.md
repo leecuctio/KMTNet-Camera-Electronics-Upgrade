@@ -222,8 +222,9 @@ imgacq/powon).  `powon` 판은 `imgacq` 판에서 `Exposure()` 호출만 주석 
    `acf/KMTK_GUI_162_STA0201_R2608.acf` 의 `MODn_TYPE` 과
    `modtm_gui_imgacq_v0.3….py` 가 훑는 슬롯이 **정확히 같다.**
    형 번호는 3·4 = `1`(Driver), 5·6 = `2`(AD), 7·10 = `11`(HeaterX),
-   9 = `8`(HVXBias).  ⚠️ **규격에는 아직 안 실렸다** — guide raw 규격을 세울 때
-   자리 표를 유닛 종류로 가르는 것이 남은 일이다.
+   9 = `8`(HVXBias).  ✅ **규격 수록 완료** — raw spec **v1.9 가 10.4절에
+   수록하며 OI-19 를 종결**했다 (2026-08-30, 첫 guide 구동 때 STATUS
+   재확인만 남는다).
 2. ⭐ **science 자리 표가 독립으로 확인됐다.**  `rawhdr.TEMP_MODS`(백플레인 +
    MOD1·2·3·4·5·8·9·10·11)와 실기 science ACF 다섯의 장착 슬롯, 그리고
    `modtm_sci_*.py`(2026-05, 규격과 무관하게 쓰인 실사용본)가 `STATUS` 에서
@@ -1043,8 +1044,8 @@ science ACF 5종에는 `SENSORxTYPE`/`SENSORxLABEL` 키가 **하나도 없고**
 
 **덤으로 자리 수가 규격과 맞는 것이 확인됐다** — science 장착 모듈은
 1·2·3·4·5·8·9·10·11 = **10자리**(`rawhdr.TEMP_MODS` 와 일치), guide 는
-3·4·5·6·7·9·10 = **8자리**(규격 5.6.1 의 guide 8자리, **OI-19**). 실기 STATUS
-대조는 여전히 남아 있지만 근거가 하나 늘었다.
+3·4·5·6·7·9·10 = **8자리**(규격 **10.4절** — v1.9 에서 **OI-19 종결**). 실기
+STATUS 대조는 여전히 남아 있지만 근거가 하나 늘었다.
 
 ### 층 3 (`icg_archon` 소관) — 가이드 유닛 HeaterX 가 `ICG RTD` 계통이다
 
@@ -1060,11 +1061,11 @@ science ACF 5종에는 `SENSORxTYPE`/`SENSORxLABEL` 키가 **하나도 없고**
 | `MOD10/TEMPB` | `RTD8_CCD` | **`CCDTEMP`** | 정상 (⚠️ 하한 문제) |
 | `MOD10/TEMPC` | `RTD5_WB` | `WALLBRD` | 정상 |
 | `MOD10/VCPU_OUTREG0~9` | (MKS 356 게이지) | **`DEWPRES`** | 정상 |
-| — | — | `HEBOX` | Tapaculo (별개 계통) |
+| — | — | `HEBOX` | Radionode (별개 계통) |
 
 **`sensors()` 가 채울 키는 7개로 확정됐다** (`ccdtemp` `dmptemp` `pt30n1`
 `pt30n2` `charcoal` `wallbrd` `dewpres`). `air_*`/`glyc_*` 4장은 v1.5 에서
-폐지, `hebox`/`fsatemp`/`fsahum` 은 Tapaculo. 즉 **가이드 HeaterX 6채널 + 진공이
+폐지, `hebox`/`fsatemp`/`fsahum` 은 Radionode. 즉 **가이드 HeaterX 6채널 + 진공이
 규격이 요구하는 `ICG RTD` 전량**이고, 층 3 은 부분 구현이 아니라 **완결**이다.
 (단 미연결 2채널 때문에 실값은 5장으로 시작한다.)
 
@@ -1596,7 +1597,7 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
 | `POWERON` 확인 | ✅ 구현 완료.  **실기에서 램프 시간(P-j)을 재는 것이 남았다** |
 | **fetch 경로 방어** (덮임·되감김) | ✅ 구현 완료 (2026-08-30) — fetch 앞 대조 · `LOCKn` · **fetch 뒤 재대조** · 되감김/재시작 재동기.  ⚠️ **`LOCKn` 이 실기에서 먹는지는 미확인** (A/B 실험) |
 | **`BUFnFRAME` 폭** | ⚠️ **미상** — 매뉴얼에 없다(전수 검색).  코드는 폭에 안 기댄다.  ⭐ 실기 관측 하나로 16비트 배제 가능 |
-| guide 자리 표 (`OI-19`) | ✅ **답은 나왔다**(8자리).  **규격 수록이 남았다** |
+| guide 자리 표 (`OI-19`) | ✅ **종결** — raw spec v1.9 **10.4절 수록** (첫 guide 구동 때 STATUS 재확인만 남는다) |
 | 실기 왕복 전체 | ⏳ **아무것도 안 해봤다** — 작업 B 가 그 목록 |
 
 ### 새 세션이 밟을 순서
@@ -1853,16 +1854,14 @@ sentinel 이다.  **해독 규칙은 실측으로 다 확정해 뒀다** -- 위 
   `__build_date__` 만 올렸다**(`ICSBUILD` 는 일시로 갈린다).  목 판단 사항.
 - 진공 응답 **10번째 글자**가 무해한지 STATUS 원문으로 확인 (실측 658행에서는
   무해했다 -- 응답이 항상 `x.xxe-04` 8자).
-- guide 8자리 자리 표(**OI-19**) -- ⭐ **답도 나왔고 수록 방식도 정해졌다.**
-  **guide raw FITS 는 규격 안에 별도 장으로 신설한다** (운영자 확정 2026-08-29) —
-  science 내용과 섞지 않고, 같은 점·다른 점을 서술하는 절을 둔다.  재료 대비표는
-  [`../raw_fits_spec/SMC_CLAUDE.md`](../raw_fits_spec/SMC_CLAUDE.md) 의 그 절에
-  모아 뒀다.  ⏳ **막힌 것 하나** — 저장되는 528 이 시퀀서가 읽는 601 중 **어느
-  구간인가**(P-k).  그 답이 나와야 guide 장의 X overscan 규범을 쓸 수 있다.
-  아래는 자리 표 자체의 근거다 (2026-08-28):
-  `BACKPLANE_TEMP` + MOD3·4·5·6·7·9·10.  근거 둘(guide ACF `[SYSTEM]` ·
-  `modtm_gui_*.py`)이 일치하고 시험이 못박고 있다.  **남은 것은 규격 수록**이라
-  guide raw 규격을 세울 때 처리한다.
+- ~~guide 8자리 자리 표(**OI-19**)~~ -- ✅ **종결 (2026-08-30)**: raw spec
+  **v1.9 가 guide 장(9·10장)을 신설**하며 자리 표를 **10.4절**에 수록했다
+  (운영자 확정 2026-08-29 방침대로 science 와 분리).  자리 표의 근거는
+  `BACKPLANE_TEMP` + MOD3·4·5·6·7·9·10 — 근거 둘(guide ACF `[SYSTEM]` ·
+  `modtm_gui_*.py`)이 일치하고 시험이 못박고 있다.  첫 guide 구동 때 STATUS
+  재확인만 남는다.  ⏳ **X overscan 쪽은 따로 남았다** — 저장되는 528 이
+  시퀀서가 읽는 601 중 **어느 구간인가**(P-k)는 이제 **guide OI-21**(규격
+  10.6절)로 등재돼 실측 대기다.
 - `field_order_problems()` 는 science 10자리 기준이라 **guide 유닛에 probe 를
   돌리면 어긋남으로 보고된다** -- guide 규격이 나오면 자리 표를 유닛 종류로 가를 것.
   같은 이유로 **감시 열 이름(`T1..T10`)도 guide 에서는 달라야 한다** --
@@ -2044,13 +2043,14 @@ README 로 나눈다.
 ## 아직 없는 것 (v0.0) — README 에서 옮겨 왔다 (2026-08-30)
 
 - **듀어·환경 HK** (`sensors()`) — 공급 3계통(ICG RTD · standalone RTD ·
-  Tapaculo)을 읽는 경로가 없다.  labtest 도 안 읽으므로 **옮겨올 원형이 없다.**
+  Radionode)을 읽는 경로가 없다.  labtest 도 안 읽으므로 **옮겨올 원형이 없다.**
   `CCDTEMP` 를 비롯한 5.6절 카드가 sentinel 로 실린다.
 - **LED 프로젝터** (`flash_led`) — 실기 배선이 미확정이라 값만 기억하고
   하드웨어를 만지지 않는다.
-- **guide 계통** — guide raw 규격이 아직 없다.  착수 시 `DATASRC='ARCHON_GUIDE'`
-  + `CTRL1xx` 한 벌 규약 (raw spec 5.5절) + 기하를 guide 크기로 + `Cn_TEMP`
-  8자리(OI-19).  **참고 코드**: `scr_labtest/…v1.3.smallbuf.py` 는 구버전
+- **guide 계통** — guide raw 규격이 **v1.9 에서 생겼다** (9·10장 신설,
+  2026-08-30).  착수 시 `DATASRC='ARCHON_GUIDE'` + `CTRL1xx` 한 벌 규약
+  (raw spec 5.5절) + 기하를 guide 크기(4224×1033)로 + `C1_TEMP`/`C1_VOLT`/
+  `C1_CURR` 8자리(10.4절).  **참고 코드**: `scr_labtest/…v1.3.smallbuf.py` 는 구버전
   science 유닛을 구동하던 코드로, smallbuf로 구성되는 guide 유닛 제어용 코드
   작성 시 참고한다.  다만 **bigbuf 스크립트의 코드로도 smallbuf 구성 유닛의
   동작이 가능할 수도 있으니** 그쪽도 참조할 것 — FETCH 주소를 `BUFnBASE` 에서
@@ -2407,10 +2407,10 @@ labtest 는 저장이 **순차**라 다음 노출이 겹칠 일이 없었다.  *
 ### C. 원천이 아예 없는 것
 
 - **듀어·환경 HK** (`sensors()`) — 공급 3계통(ICG RTD · standalone RTD readout
-  unit · Tapaculo). labtest 도 안 읽으므로 옮겨올 원형이 없다. 붙일 때의 계약은
+  unit · Radionode). labtest 도 안 읽으므로 옮겨올 원형이 없다. 붙일 때의 계약은
   `ics_sim/hardware/base.py` 의 `sensors()` docstring 에 다 있다(키 이름 · 대표
   센서 `ccdtemp` · 못 읽은 항목은 넣지 않기).
-- **guide 계통** — guide raw 규격 미정.
+- **guide 계통** — guide raw 규격은 v1.9 9·10장으로 신설됐다 (구현은 미착수).
 - **binning** (`BIN`) — `ics_sim` 쪽도 스텁이다.
 
 ## 설치 루트 = `~/AIC` (운영자 확정 2026-08-24)

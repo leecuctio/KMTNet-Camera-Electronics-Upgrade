@@ -640,7 +640,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 영향:
 
-- 구 규격 v1.2 의 2.3.1절 전면 대체 · 5.2절(`UNIQNAME`·`NAMECLSH` 폐지, `ORIGNAME` 신설) · 5.11절(pair 규칙) — 재작성판(V1)이 흡수한다. 상세: `raw_fits_spec/archive/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` **Part 2** (현행 통합문서는 `_v0.7.md` 이나, Part 2 의 절 번호는 v0.5 기준이라 그 판을 가리킨다).
+- 구 규격 v1.2 의 2.3.1절 전면 대체 · 5.2절(`UNIQNAME`·`NAMECLSH` 폐지, `ORIGNAME` 신설) · 5.11절(pair 규칙) — 재작성판(V1)이 흡수한다. 상세: `raw_fits_spec/archive/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` **Part 2** (현행 통합문서는 `_v0.8.md` 이나, Part 2 의 절 번호는 v0.5 기준이라 그 판을 가리킨다).
 - **D-010 · D-012 의 "아카이브 근거 삼총사 `UNIQNAME`/`FILENAME`/`CTRLTAG`" 문구를 `FILENAME`(+`ORIGNAME`) 로 개정한다** — `CTRLTAG` 는 v1.9 미도입 확정, pair 식별은 `FILENAME` `DETID` 필드가 담당.
 - `ics_sim` — `rawpair.py`(선검사 루프·되감음·상한, clash 격리 제거, `UNIQNAME` 제거, `ORIGNAME` 항상 기록) · `state.py`(카운터 동기화·순환) · `sequencer._store()`(확정 이름만 수령) · `tests/test_raw_header.py`(RETIRED 에 `UNIQNAME`·`NAMECLSH` 추가, 충돌·되감음·상한 시험 신설).
 - converter — C-항목 신설: MEF `UNIQNAME` 공급원 변경 또는 동반 폐지 (LEECU 판단, 통합 문서 Part 1 §1).
@@ -776,5 +776,5 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 - `ics_sim` — **`siteid.py` · `tests/test_site_id.py` 삭제**(시험 28개 제거, 사이트 시험 11개 신설). ⚠️ **`ics-archon-v1.0-build` 에서다** — `main` 트리에는 아직 남아 있다. `NodeCfg.observatory` 신설 + `site`/`telid` 유도, `rawpair.site_of_observatory()`/`SITE_OF_OBSERVATORY`, `config` 의 낡은 키 경고(`site`·`telid`·`site_from_ip`). ⚠️ `rawpair.normalize_site()` 는 **남아 있으나 `<SITE>` 결정 경로가 아니다** — 관측일 경계 계산의 내부 안전망과 TC `TELID` 대조용이다.
 - **`operations/ICS_DEPLOYMENT_CHECKLIST.md` 가 유일한 방어가 된다** — 판정이 대신 잡아 주지 않으므로 기동 배너 확인을 건너뛰면 안 된다.
 - **ACT-009 의 성격이 바뀐다** — "대역이 바뀌면 실자료가 KMTK 로 저장된다" 는 위험이 사라졌다. 남는 필요는 **배선·방화벽·노드 주소**를 확정하는 망 문서 자체다.
-- **raw spec 2.2절** — `<SITE>` 필드 설명의 *"실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015)"* 와 *"넷 밖은 `KMTK` 로 정규화"* 를 이 결정으로 고쳤다 (v1.8 제자리 정정, 2026-08-29). ⚠️ 그 정정도 **`ics-archon-v1.0-build` 에 있다** — `main` 의 규격은 아직 구 문장이다. ⚠️ **그 문장은 v1.3~v1.8 여섯 판을 그대로 통과했다** — 판올림이 "이번에 바꿀 것" 만 보고 본문 나머지는 복사되기 때문이다.
+- **raw spec 2.2절** — `<SITE>` 필드 설명의 *"실효 사이트는 호스트 IP 로 판정하며 판정이 설정을 이긴다 (D-015)"* 와 *"넷 밖은 `KMTK` 로 정규화"* 를 이 결정으로 고쳤다 (v1.8 제자리 정정, 2026-08-29). ✅ 그 정정은 `41845da`(2026-08-30) 로 **`main` 에 합류**했고 현행 규격 v1.9 의 2.2절에 반영돼 있다. ⚠️ **그 문장은 v1.3~v1.8 여섯 판을 그대로 통과했다** — 판올림이 "이번에 바꿀 것" 만 보고 본문 나머지는 복사되기 때문이다.
 - 상세 경위는 `ics_sim/DevNote.md` **11.27**, 문서 정합 경위는 `ics_archon/DevNote.md` **6장** (⚠️ 그 노트는 `ics-archon-v1.0-build` 에만 있다 — `main` 에 `ics_archon/` 이 아직 없다).

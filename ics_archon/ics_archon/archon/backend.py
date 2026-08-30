@@ -609,7 +609,7 @@ class ArchonBackend:
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
         """5.6절 듀어·환경 HK.  **아직 원천이 없다 -- 빈 dict.**
 
-        공급 3계통(ICG RTD · standalone RTD readout unit · Tapaculo)은 Archon
+        공급 3계통(ICG RTD · standalone RTD readout unit · Radionode)은 Archon
         이 아니라 별도 계통이고, labtest 는 그 어느 것도 읽지 않는다 -- 즉
         **옮겨올 원형이 없다.**  호출측이 sentinel 로 채우고 그 사실이 헤더에
         남는다 (raw spec 5.0절) -- `CCDTEMP='-999.99'` 가 그 표시다.

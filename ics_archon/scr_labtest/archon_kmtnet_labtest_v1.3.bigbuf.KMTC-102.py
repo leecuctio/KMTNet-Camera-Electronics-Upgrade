@@ -1,4 +1,4 @@
-﻿# archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py
+# archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py
 # revised on 2026-08-26 by SMC
 #
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
@@ -546,7 +546,7 @@ RAWCARDS = (
     ('RDMODE', 'S', 24, 'Readout mode setting'),
     ('COMMENT', '', 0, '  Camera System House Keeping Data'),
     ('DEWPRES', 'S', 18, 'Dewar pressure [torr]'),
-    ('CCDTEMP', 'S', 18, 'CCD temperature M [deg C]'),
+    ('CCDTEMP', 'S', 18, 'CCD temperature [deg C]'),
     ('DMPTEMP', 'S', 18, 'DMP temperature [deg C]'),
     ('PT30N1', 'S', 18, 'PT-30 #1 cold-end temperature [deg C]'),
     ('PT30N2', 'S', 18, 'PT-30 #2 cold-end temperature [deg C]'),
