@@ -53,6 +53,75 @@ def test_newest_ignores_an_incomplete_newer_frame():
     assert fs.progress == 25
 
 
+def _frame_fields(*bufs, rbuf=0, wbuf=0):
+    """`(프레임번호, 완료)` 셋으로 `FRAME` 응답 딕셔너리를 만든다."""
+    fields = {'RBUF': str(rbuf), 'WBUF': str(wbuf)}
+    for n, (frame, complete) in enumerate(bufs, start=1):
+        fields.update({
+            'BUF%dFRAME' % n: str(frame), 'BUF%dCOMPLETE' % n: str(complete),
+            'BUF%dWIDTH' % n: '19200', 'BUF%dHEIGHT' % n: '9400',
+            'BUF%dSAMPLE' % n: '0', 'BUF%dBASE' % n: str(0x1000 * n),
+            'BUF%dLINES' % n: '9400',
+        })
+    return fields
+
+
+def test_wrapped_counter_is_invisible_to_next_frame():
+    """**되감김이 나면 `next_frame()` 은 영원히 `None` 이다** -- 결함의 본체다.
+
+    `frame > prev` 로 찾으므로 카운터가 한 바퀴 돌아 0 부터 다시 세면 어떤
+    버퍼도 조건을 못 만족한다.  부르는 쪽은 `frame_timeout` 까지 기다리다
+    노출을 잃는다.  ⭐ **틀린 자료가 나오는 게 아니라 크게 우는** 쪽이라
+    fail-closed 다 -- 그 성질을 못박아 둔다.
+    """
+    fields = _frame_fields((65535, 1), (0, 1), (-1, 0))
+    assert parse.next_frame(fields, 65535) is None
+
+
+def test_restarted_frame_catches_wrap_and_reboot_by_change_not_by_size():
+    """되감김·재시작은 **기준선 대비 변화**로 잡는다 (크기로 잡지 않는다).
+
+    폭을 모르므로 "`prev` 보다 훨씬 작으면 되감김" 은 쓸 수 없다.  대신 노출
+    직전에 찍어 둔 기준선과 견주어 **새로 바뀐 자리**만 본다.
+    """
+    before = (65535, 65534, -1)
+    fields = _frame_fields((65535, 1), (0, 1), (-1, 0))
+    got = parse.restarted_frame(fields, 65535, before)
+    assert got is not None
+    assert (got.frame, got.buf) == (0, 1)
+
+
+def test_old_buffers_are_not_mistaken_for_a_wrap():
+    """⚠️ **평소 상태를 되감김으로 오해하지 않는다** -- 이게 핵심 위험이다.
+
+    정상 취득 중에도 옛 프레임을 담은 버퍼가 `prev` 보다 작은 번호를 들고
+    있다.  크기 휴리스틱이었다면 매 프레임 오탐이 났을 자리다.  기준선이
+    그대로면 아무것도 잡지 않아야 한다.
+    """
+    before = (100, 99, 98)
+    fields = _frame_fields((100, 1), (99, 1), (98, 1))
+    assert parse.restarted_frame(fields, 100, before) is None
+
+
+def test_restarted_frame_refuses_to_guess_without_a_baseline():
+    """기준선이 없으면 **판단하지 않는다** -- 추측이 오탐보다 낫지 않다."""
+    fields = _frame_fields((65535, 1), (0, 1), (-1, 0))
+    assert parse.restarted_frame(fields, 65535, ()) is None
+    assert parse.restarted_frame(fields, -1, (65535, 65534, -1)) is None
+
+
+def test_restarted_frame_ignores_a_buffer_still_being_written():
+    """바뀌었어도 **완료 전이면 집지 않는다** -- 반쯤 쓰인 프레임이다."""
+    before = (65535, 65534, -1)
+    fields = _frame_fields((65535, 1), (0, 0), (-1, 0))
+    assert parse.restarted_frame(fields, 65535, before) is None
+
+
+def test_buffer_frames_marks_absent_slots_as_minus_one():
+    """빈 자리는 `-1` 이다 -- **0 은 실재하는 프레임 번호**라 sentinel 로 못 쓴다."""
+    assert parse.buffer_frames({'BUF1FRAME': '7'}) == (7, -1, -1)
+
+
 def test_progress_never_reports_100_before_completion():
     """진행률은 99 에서 멈춘다 -- 100 은 완료가 확정된 뒤에만 낸다.
 

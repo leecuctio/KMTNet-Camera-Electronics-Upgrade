@@ -294,7 +294,12 @@ class FakeArchon(threading.Thread):
         return ' '.join('%s=%s' % kv for kv in fields.items())
 
     def _frame_fields(self) -> dict:
-        f = {'RBUF': str(self.rbuf), 'WBUF': str(self.wbuf)}
+        # ⚠️ **잠금 중에는 `RBUF` 가 잠긴 버퍼를 가리킨다** (매뉴얼 p.50 --
+        # "Current buffer number locked for reading").  ⚠️ 이것은 **매뉴얼대로
+        # 모사한 것이고 실기가 그런지는 미확인**이다 -- 그것을 재는 것이 A-5
+        # 판단 ②의 실험이다 (DevNote 8.7: 매뉴얼은 판정 근거가 아니다).
+        # 잠금이 없을 때는 종전대로 "마지막 완료 버퍼" 를 준다.
+        f = {'RBUF': str(self.locked or self.rbuf), 'WBUF': str(self.wbuf)}
         for n in (1, 2, 3):
             b = self.bufs[n - 1]
             live = n <= self.nbuf

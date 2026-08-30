@@ -581,6 +581,226 @@ def test_fetch_buffer_ring_is_bounded_reused_and_returned():
     asyncio.run(go())
 
 
+def _fs(frame, buf=0, base=0x1000, nx=4, ny=4):
+    """시험용 `FrameStatus` 하나."""
+    from ics_archon.archon import parse
+    return parse.FrameStatus(frame=frame, buf=buf, width=nx, height=ny,
+                             samplemode=0, base=base, lines=ny,
+                             wbuf=0, write_lines=0, write_height=0)
+
+
+def _stub_fetch(ctrl, before_frame, after_frame, nbytes, rbuf=1, wbuf=(0, 0)):
+    """`fetch()` 의 왕복을 가짜로 채운다 -- fetch **전후**의 `FRAME` 을 정한다.
+
+    `rbuf`/`wbuf` 로 잠금 상태도 정한다 (`RBUF`/`WBUF`, 매뉴얼 p.50).
+    """
+    seen = {'queries': 0, 'cmds': []}
+
+    async def query(cmd, timeout=None):        # noqa: ANN001, ARG001
+        seen['queries'] += 1
+        first = seen['queries'] == 1
+        frame = before_frame if first else after_frame
+        return {'BUF1FRAME': str(frame), 'BUF1COMPLETE': '1',
+                'RBUF': str(rbuf), 'WBUF': str(wbuf[0] if first else wbuf[1])}
+
+    async def cmd(name, timeout=None):         # noqa: ANN001, ARG001
+        seen['cmds'].append(name)
+        return b''
+
+    def link_fetch(base, n, timeout, on_block, out):   # noqa: ANN001, ARG001
+        out[:] = bytes(n)
+        return out
+
+    ctrl.query = query
+    ctrl.cmd = cmd
+    ctrl.link.fetch = link_fetch
+    return seen
+
+
+def test_a_frame_overwritten_during_fetch_is_caught_after_the_fetch():
+    """**fetch 뒤 재대조** (`[archon] recheck_after_fetch`, 2026-08-30).
+
+    fetch 앞의 대조는 **직전 한 순간**만 본다.  fetch 자체가 수 초 걸리므로
+    (실측 약 5초) 그 사이에 덮이는 창은 앞 대조가 못 본다 -- `lock_buffer`
+    가 켜져 있으면 `LOCKn` 이 그 창을 막지만, **끄면 막는 것이 없다.**
+
+    ⭐ 여기서 보는 것은 "**받아 온 뒤에라도 버린다**" 는 성질이다.  5초를
+    버리는 셈이지만 대안은 두 노출이 섞인 raw 한 장을 **경고 없이** 쓰는
+    것이다(헤더는 이 프레임의 것이라 나중에 봐도 못 가른다).
+    """
+    from ics_archon.archon.controller import ArchonController
+    from ics_archon.archon.protocol import ArchonError
+
+    acfg = acfg_mod.ArchonCfg()
+    acfg.lock_buffer = False               # LOCK 을 끈 쪽이 이 방어의 대상이다
+    acfg.recheck_after_fetch = True
+    ctrl = ArchonController('MK', acfg)
+    seen = _stub_fetch(ctrl, before_frame=7, after_frame=9, nbytes=32)
+
+    with pytest.raises(ArchonError) as err:
+        asyncio.run(ctrl.fetch(_fs(7), 32))
+    assert '덮였다' in str(err.value)
+    assert seen['queries'] == 2, 'fetch 뒤에 다시 안 물어봤다'
+    assert not seen['cmds'], 'lock_buffer=false 인데 LOCK 을 보냈다'
+    # ⚠️ 버려도 **버퍼는 링에 돌려준다** -- 안 그러면 몇 번의 실패 뒤에
+    # 링이 비어 영구히 막힌다.
+    assert ctrl._bufpool.qsize() == acfg.fetch_buffers      # noqa: SLF001
+
+
+def test_the_recheck_can_be_turned_off_and_then_nothing_watches_the_gap():
+    """끄면 왕복이 안 는다 -- 그리고 **그 창을 보는 것이 없어진다.**
+
+    성질을 못박아 두는 시험이다: 껐을 때 조용해지는 것이 의도된 동작이고,
+    그래서 `lock_buffer` 와 **둘 다 끄면** 기동 교차검사가 알린다.
+    """
+    from ics_archon.archon.controller import ArchonController
+
+    acfg = acfg_mod.ArchonCfg()
+    acfg.lock_buffer = False
+    acfg.recheck_after_fetch = False
+    ctrl = ArchonController('MK', acfg)
+    seen = _stub_fetch(ctrl, before_frame=7, after_frame=9, nbytes=32)
+
+    data = asyncio.run(ctrl.fetch(_fs(7), 32))
+    assert len(data) == 32
+    assert seen['queries'] == 1, '껐는데도 fetch 뒤에 물어봤다'
+
+
+def test_the_recheck_never_fires_while_the_buffer_is_locked():
+    """`lock_buffer=true` 면 재대조는 **절대 안 걸린다** -- 값이 안 든다는 근거다.
+
+    잠긴 버퍼는 안 바뀌므로 기본을 `true` 로 둬도 정상 취득에는 영향이 없다.
+    """
+    from ics_archon.archon.controller import ArchonController
+
+    acfg = acfg_mod.ArchonCfg()
+    acfg.lock_buffer = True
+    acfg.recheck_after_fetch = True
+    ctrl = ArchonController('MK', acfg)
+    seen = _stub_fetch(ctrl, before_frame=7, after_frame=7, nbytes=32)
+
+    data = asyncio.run(ctrl.fetch(_fs(7), 32))
+    assert len(data) == 32
+    assert seen['cmds'] == ['LOCK1', 'LOCK0'], seen['cmds']
+
+
+def test_wait_frame_recovers_when_the_frame_counter_wraps():
+    """**되감김에서 노출을 잃지 않는다** (2026-08-30 수정).
+
+    종전에는 `next_frame()` 이 `frame > prev` 로만 찾아, 카운터가 한 바퀴 돌면
+    **어떤 버퍼도 조건을 못 만족해** `frame_timeout`(300초)까지 기다리다
+    노출을 잃었다.  ⭐ fail-closed 이긴 하지만(틀린 자료가 아니라 실패),
+    **guide 유닛은 16비트면 하룻밤 안에 도달**한다(1초 주기 18시간).
+
+    ⚠️ 폭을 모르므로 크기로 판별하지 않는다 -- 노출 직전의 기준선
+    (`FrameTicket.prev_frames`) 대비 **변화**로 판별한다.
+    """
+    from ics_archon.archon.controller import ArchonController, FrameTicket
+
+    acfg = acfg_mod.ArchonCfg()
+    acfg.frame_poll = 0.0
+    ctrl = ArchonController('MK', acfg)
+    calls = {'n': 0}
+
+    async def query(cmd, timeout=None):        # noqa: ANN001, ARG001
+        calls['n'] += 1
+        # 첫 폴에서는 아직 옛 프레임뿐이고, 그 다음에 되감긴 0 이 들어온다.
+        new = '0' if calls['n'] > 1 else '65534'
+        return {'RBUF': '1', 'WBUF': '0',
+                'BUF1FRAME': '65535', 'BUF1COMPLETE': '1',
+                'BUF2FRAME': new, 'BUF2COMPLETE': '1',
+                'BUF2WIDTH': '4', 'BUF2HEIGHT': '4', 'BUF2SAMPLE': '0',
+                'BUF2BASE': '4096', 'BUF2LINES': '4'}
+    ctrl.query = query
+
+    ticket = FrameTicket(suffix='20260830.000001', prev_frame=65535,
+                         prev_frames=(65535, 65534, -1))
+
+    async def go():
+        async for _pct in ctrl.wait_frame(ticket):
+            pass
+    asyncio.run(go())
+
+    assert ticket.ready is not None, '되감김에서 프레임을 못 찾았다'
+    assert ticket.ready.frame == 0, ticket.ready
+
+
+def test_lock_is_verified_against_rbuf_without_extra_round_trips():
+    """⭐ **`LOCKn` 이 이 FW 에서 실제로 먹는지를 실기가 답하게 한다** (A-5 판단 ②).
+
+    매뉴얼 p.50 의 `RBUF`(*"Current buffer number locked for reading"*)를 fetch
+    앞의 덮임 대조가 **이미 읽는 `FRAME` 응답**에서 뽑는다 -- **왕복이 안 는다.**
+    `WBUF` 는 fetch 전후를 재는데, 옮겨 갔으면 상태 플래그가 아니라 **엔진이
+    실제로 다른 버퍼를 썼다**는 거동 증거다.
+
+    ⚠️ **한 방향으로만 결정적이다** -- 안 맞는다고 "LOCK 무효" 는 아니다
+    (`RBUF` 쪽이 미구현일 수 있다).  ⚠️ 그리고 이 시험이 재는 것은 **우리 코드가
+    관측값을 제대로 담아 오는가**이지, 실기가 그렇게 답하는가가 아니다
+    (DevNote 8.7 -- 매뉴얼도 가짜 컨트롤러도 판정 근거가 아니다).
+    """
+    from ics_archon.archon.controller import ArchonController
+
+    acfg = acfg_mod.ArchonCfg()
+    acfg.lock_buffer = True
+    ctrl = ArchonController('MK', acfg)
+    seen = _stub_fetch(ctrl, 7, 7, 32, rbuf=1, wbuf=(1, 2))
+
+    asyncio.run(ctrl.fetch(_fs(7), 32))
+    assert seen['cmds'] == ['LOCK1', 'LOCK0'], seen['cmds']
+    assert seen['queries'] == 2, '왕복이 늘었다 -- 이미 읽는 응답에서 뽑아야 한다'
+    assert ctrl.lock_rbuf == 1, 'RBUF 를 안 담아 왔다'
+    assert (ctrl.lock_wbuf, ctrl.lock_wbuf_after) == (1, 2), (
+        'WBUF 이동을 안 담아 왔다 -- 엔진이 버퍼를 옮겼다는 거동 증거다')
+
+
+def test_a_lock_that_does_not_take_is_reported_not_swallowed(caplog):  # noqa: ANN001
+    """⚠️ **`LOCK` 을 보냈는데 `RBUF` 가 안 따라오면 크게 알린다.**
+
+    그 조합이면 **`LOCK` 에 기대면 안 된다** -- `recheck_after_fetch` 가 유일한
+    방어가 된다.  조용히 넘기면 *"두 겹으로 막고 있다"* 고 믿으면서 실제로는 한
+    겹도 없는 상태가 된다.
+    """
+    import logging
+    from ics_archon.archon.controller import ArchonController
+
+    acfg = acfg_mod.ArchonCfg()
+    acfg.lock_buffer = True
+    ctrl = ArchonController('MK', acfg)
+    _stub_fetch(ctrl, 7, 7, 32, rbuf=0)        # 잠갔는데 RBUF 가 0 이다
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(ctrl.fetch(_fs(7), 32))
+    assert any('RBUF' in r.getMessage() for r in caplog.records), caplog.text
+    assert ctrl.lock_rbuf == 0
+
+
+def test_power_on_drops_save_tickets_left_over_from_the_previous_session():
+    """**`POWERON` 은 새 프레임 번호 세션의 시작이다** (2026-08-30 배선).
+
+    전원이 내려간 사이의 프레임은 버퍼에 없고 다시 못 받는다.  그런데 표를
+    남겨 두면 다음 프레임의 저장이 **그 낡은 표**를 FIFO 로 집어, 파일마다 한
+    노출 뒤진 픽셀이 담기고 헤더는 새 프레임의 것이라 **경고가 한 줄도 안
+    뜬다** (`FrameTicket` 설명의 그 blocker).
+
+    ⭐ **크게 잃는 것이 조용히 틀린 것보다 낫다** -- 표를 버리면 그 프레임은
+    저장되지 않고, 그 사실이 경고로 남는다.
+    """
+    from ics_archon.archon.controller import ArchonController, FrameTicket
+
+    acfg = acfg_mod.ArchonCfg()
+    acfg.poweron_wait = 0.0
+    ctrl = ArchonController('MK', acfg)
+    ctrl._queue.extend([FrameTicket(suffix='20260830.000001', prev_frame=1),  # noqa: SLF001
+                        FrameTicket(suffix='20260830.000002', prev_frame=2)])
+
+    async def cmd(name, timeout=None):     # noqa: ANN001, ARG001
+        return b''
+    ctrl.cmd = cmd
+
+    asyncio.run(ctrl.power_on())
+    assert ctrl._queue == [], '전원을 다시 켰는데 낡은 표가 남았다'   # noqa: SLF001
+
+
 def test_a_recycled_buffer_is_refused_instead_of_writing_wrong_pixels(tmp_path):  # noqa: ANN001
     """**BIGBUF 는 버퍼가 둘뿐이다** -- 저장이 늦으면 앞 프레임이 덮인다.
 

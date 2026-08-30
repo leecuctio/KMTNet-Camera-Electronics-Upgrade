@@ -220,10 +220,41 @@ class ArchonCfg:
     #: **BIGBUF 는 버퍼가 둘뿐이고 노출 1회가 프레임 2개**(flush + 취득)를
     #: 만들므로 다음 노출이 이 프레임의 버퍼를 덮는다 -- 저장은 `write_delay`
     #: 뒤에 백그라운드로 도는 일이라 그 경합이 실재한다.
+    #: 매뉴얼 p.71 은 `LOCK` 을 **통상 경로**로 적어 두었다.  ⚠️ **그것은 판정이
+    #: 아니라 가설의 강도다** -- 매뉴얼(2021-02-23)은 현행 FW 와 **양방향으로
+    #: 어긋날 수 있고**(문서에 있는데 FW 에 없거나 그 반대), 이 저장소 안에 이미
+    #: 반례가 둘 있다(`MODn_TYPE` 16+ · AD 모듈 슬롯).  **판단 근거는 실측**이다
+    #: (운영자 2026-08-30, DevNote 8.7).
+    #:
+    #: ⭐ **기본이 `true` 인 진짜 이유는 더 안전한 쪽이기 때문**이다 -- 켜서
+    #: 문제가 나면 크게 드러나고(주기 지연·실패), 꺼서 문제가 나면 조용하다
+    #: (두 노출이 섞인 누더기).  ⚠️ 실기에서 지연·정지가 확인되면 즉시 끈다.
+    #:
     #: ⚠️ labtest 는 2026-05-28 에 `LOCK` 을 뺐다("remove to fetch debug") --
     #: 되돌린 것이므로 실기 확인 항목이다.  끄면 labtest 와 같아지고, 그래도
     #: fetch 앞의 프레임 번호 대조는 남는다(조용히 틀린 파일은 안 나온다).
+    #: ⚠️ **science 는 버퍼가 둘뿐**이라 하나를 잠그면 엔진에 하나만 남는다
+    #: (guide 는 셋) -- 남는 버퍼가 없을 때의 거동은 **매뉴얼에도 없다**(H3).
     lock_buffer: bool = True
+    #: fetch **뒤에** 버퍼가 덮이지 않았는지 한 번 더 대조할지.
+    #:
+    #: fetch 앞의 대조는 **직전 한 순간**만 본다.  fetch 자체가 수 초 걸리므로
+    #: (실측 약 5초) **그 사이에 덮이는 창**은 앞 대조가 못 본다.
+    #: ⭐ **`lock_buffer = false` 인 경우 필요할 수 있다** -- `LOCKn` 을 끄면
+    #: 그 창을 막는 것이 아무것도 없어서, 덮여도 조용히 두 노출이 섞인 raw 가
+    #: 나온다(헤더는 이 프레임의 것이라 나중에 봐도 못 가른다).  이 재대조가
+    #: 그 짝이다.
+    #:
+    #: 기본을 `true` 로 둔 근거는 **값이 거의 안 든다**는 것이다 -- 5초짜리
+    #: fetch 뒤에 `FRAME` 왕복 하나(밀리초)를 더 하는 것뿐이고, `lock_buffer`
+    #: 가 켜져 있으면 절대 걸리지 않는다(잠긴 버퍼는 안 바뀐다).  그리고
+    #: **LOCKn A/B 실험을 뜻있게 만든다**: `lock_buffer=false` 로 돌리는 쪽이
+    #: 조용히 틀린 파일을 쓰는 대신 **덮였다고 크게 운다** -- 실험이 재기 위한
+    #: 바로 그 사실이다.
+    #: ⚠️ 반대 논거도 적어 둔다 -- 걸리면 이미 받아 온 자료를 버리므로 fetch
+    #: 시간(약 5초)이 헛일이 된다.  그래도 대안은 **두 노출이 섞인 한 장을
+    #: 경고 없이 쓰는 것**이라 버리는 쪽이 맞다.
+    recheck_after_fetch: bool = True
     #: FRAME 폴링 간격 [s].  labtest 는 0.5/0.65 를 썼다.
     frame_poll: float = 0.5
     #: 프레임 대기 중 **진단 덤프**를 몇 초마다 찍을지.  `0` 이면 끈다(기본).
@@ -549,6 +580,8 @@ def load(path: str) -> ArchonCfg:
     cfg.full_flush_on_erase = _bool(s, 'full_flush_on_erase',
                                     cfg.full_flush_on_erase)
     cfg.lock_buffer = _bool(s, 'lock_buffer', cfg.lock_buffer)
+    cfg.recheck_after_fetch = _bool(s, 'recheck_after_fetch',
+                                    cfg.recheck_after_fetch)
     cfg.frame_poll = _num(s, 'frame_poll', cfg.frame_poll, float)
     cfg.frame_dump = _num(s, 'frame_dump', cfg.frame_dump, float)
     cfg.frame_timeout = _num(s, 'frame_timeout', cfg.frame_timeout, float)
@@ -837,6 +870,20 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
             % (cfg.fetch_buffers, cfg.wrote_window,
                cfg.fetch_buffers * MIN_FRAME_PERIOD + write_delay,
                need, MIN_FRAME_PERIOD, write_delay))
+
+    # ⚠️ **`lock_buffer` 와 `recheck_after_fetch` 는 짝이다.**
+    #
+    # fetch 하는 동안(실측 약 5초) 버퍼가 덮이는 창을 막는 것은 둘 중 하나다 --
+    # `LOCKn`(막는다) 또는 fetch 뒤 재대조(막지는 못하고 **잡아서 버린다**).
+    # **둘 다 끄면 그 창을 보는 것이 아무것도 없고**, 덮이면 두 노출이 섞인 raw
+    # 한 장이 **아무 경고 없이** 나온다 -- 헤더는 이 프레임의 것이라 나중에
+    # 자료를 봐도 못 가른다.  가장 나쁜 실패라 기동에서 알린다.
+    if not cfg.lock_buffer and not cfg.recheck_after_fetch:
+        notes.append(
+            '[archon] lock_buffer=false 인데 recheck_after_fetch 도 false 다 -- '
+            'fetch 하는 동안(약 5초) 버퍼가 덮여도 **아무도 못 본다**.  두 '
+            '노출이 섞인 raw 가 경고 없이 나온다.  둘 중 하나는 켜라 '
+            '(LOCKn 을 못 쓰는 상황이면 recheck_after_fetch = true)')
 
     # ⚠️ **`RDMODE` 유도가 현행 ACF 이름 규칙에서는 걸리지 않는다.**
     #

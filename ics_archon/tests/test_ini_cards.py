@@ -452,6 +452,34 @@ def test_fetch_buffers_are_checked_against_the_wrote_window(tmp_path):  # noqa: 
     assert notes(1, 25.0)
 
 
+def test_turning_off_both_fetch_guards_is_flagged_at_startup(tmp_path):  # noqa: ANN001
+    """⚠️ **`lock_buffer` 와 `recheck_after_fetch` 는 짝이다** (2026-08-30).
+
+    fetch 하는 동안(실측 약 5초) 버퍼가 덮이는 창을 보는 것은 둘 중 하나다 --
+    `LOCKn`(**막는다**) 또는 fetch 뒤 재대조(막지는 못하고 **잡아서 버린다**).
+    둘 다 끄면 그 창을 보는 것이 아무것도 없고, 덮이면 두 노출이 섞인 raw 가
+    **아무 경고 없이** 나온다.  자료를 나중에 봐도 못 가르는 실패라 t=0 에서
+    알린다.
+    """
+    acf = tmp_path / 'KMTC_SCI_101_STA0284_R2608_MK.acf'
+    acf.write_text(ACF_TEXT, encoding='ascii')
+
+    def notes(lock, recheck):  # noqa: ANN001
+        over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
+        ini = write_ini(tmp_path, over, str(acf))
+        cfg, acfg = simcfg.load(ini), acfg_mod.load(ini)
+        acfg.lock_buffer, acfg.recheck_after_fetch = lock, recheck
+        return [n for n in acfg_mod.validate(
+            acfg, tuple(cfg.node.ccds), cfg) if 'recheck_after_fetch' in n]
+
+    assert not notes(True, True)          # 기본 -- 이중이라 조용하다
+    assert not notes(True, False)         # LOCK 이 막는다
+    assert not notes(False, True)         # 재대조가 잡는다 (LOCK A/B 실험 쪽)
+    warned = notes(False, False)          # ⚠️ 아무도 안 본다
+    assert warned, '둘 다 껐는데 아무도 안 알린다'
+    assert '아무도 못 본다' in warned[0], warned
+
+
 def test_d016_collision_check_is_on_even_when_write_fits_is_false(tmp_path):  # noqa: ANN001
     """**`[paths] write_fits` 가 D-016 선검사를 잠그면 안 된다.**
 

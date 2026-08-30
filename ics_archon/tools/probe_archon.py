@@ -412,12 +412,42 @@ async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN0
             % (acfg.lock_buffer,
                '  (--lock/--no-lock 로 지정)' if args.lock_buffer is not None
                else '  (ini 값)'))
+        # ⭐ 재대조 여부도 같이 찍는다 -- `--no-lock` 쪽에서 **덮였다** 오류가
+        # 몇 번 나오는지가 이 실험의 주된 계측값인데, 이 값이 꺼져 있으면 그
+        # 오류가 아예 안 나온다.  나중에 로그만 보고 "안 덮였다" 로 잘못 읽는
+        # 것을 막는다.
+        say(OK if acfg.recheck_after_fetch else WARN,
+            'recheck_after_fetch = %s%s'
+            % (acfg.recheck_after_fetch,
+               '' if acfg.recheck_after_fetch
+               else '  ⚠️ 꺼져 있다 -- fetch 중에 덮여도 안 알린다'))
         t0 = time.monotonic()
         raw = await ctrl.fetch(fs, acfg.frame_bytes)
         dt = max(time.monotonic() - t0, 1e-6)
         say(OK, 'FETCH %.1f MiB, %.2f초 (%.1f MiB/s)  [lock=%s]'
             % (len(raw) / (1 << 20), dt, len(raw) / (1 << 20) / dt,
                acfg.lock_buffer))
+
+        # ⭐ **`LOCKn` 이 이 FW 에서 실제로 먹었나** (A-5 판단 ②, 2026-08-30).
+        # 왕복은 안 늘었다 -- fetch 가 덮임 대조로 이미 읽은 `FRAME` 에서 뽑은
+        # 값이다.  ⚠️ **한 방향으로만 결정적**이다: 맞으면 반영된 것이지만,
+        # 안 맞는다고 "LOCK 무효" 는 아니다(`RBUF` 쪽 미구현일 수 있다).
+        buf_n = fs.buf + 1
+        if acfg.lock_buffer:
+            hit = ctrl.lock_rbuf == buf_n
+            say(OK if hit else WARN,
+                'LOCK%d 뒤 RBUF=%d (기대 %d) -- %s'
+                % (buf_n, ctrl.lock_rbuf, buf_n,
+                   '이 FW 는 LOCKn 을 반영한다' if hit else
+                   '반영 안 됨 또는 RBUF 미구현.  LOCK 에 기대지 말 것'))
+        else:
+            say(OK, 'LOCK 을 안 보냈다 -- RBUF=%d (참고값)' % ctrl.lock_rbuf)
+        # ⭐ `WBUF` 의 이동은 상태 플래그가 아니라 **거동**이라 더 강한 증거다.
+        say(OK, 'WBUF %d -> %s  (%s)'
+            % (ctrl.lock_wbuf,
+               ctrl.lock_wbuf_after if ctrl.lock_wbuf_after >= 0 else '미관측',
+               'fetch 동안 엔진이 버퍼를 옮겼다면 여기서 보인다.  단발 노출'
+               '에서는 대개 0 -> 0 이다 (쓰는 중인 프레임이 없다)'))
 
         if not args.write:
             say(WARN, 'FITS 는 쓰지 않았다 (--write 를 주면 쓴다)')

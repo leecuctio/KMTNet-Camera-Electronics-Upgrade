@@ -32,8 +32,8 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |
 | [`tests/verify_labtest_v13.py`](tests/verify_labtest_v13.py) | **labtest 전용 검증** (32항목, 실패 0이어야 한다) — `python tests/verify_labtest_v13.py`.  읽기전용 자리 1건은 POSIX 에서만 돌고 윈도우에서는 `SKIP` |
 | ⭐ [`DevNote.md`](DevNote.md) | **개발 노트** — 과정·판단 근거·시사점. "왜 이렇게 됐나" 는 여기 |
-| [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
-| `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
+| [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼이 말하는 것(**확인 상태 표시**) |
+| `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30).  ⚠️ **매뉴얼은 판정 근거가 아니다** — 현행 FW 와 양방향으로 어긋날 수 있다(DevNote 8.7) |
 
 `__` 접두 폴더는 읽기 전용이다 — 편집이 필요하면 이 루트로 사본을 떠서
 작업한다(운영자 규칙 2026-08-22). `scr_labtest/` 의 **v1.1~v1.3.4 계보가 바로 그
@@ -340,6 +340,8 @@ monitor_log  = ~/AIC/log            # ⚠️ data_dir 밑에 두지 말 것
 fetch_buffers = 2                   # 호스트 수신·저장 버퍼 (컨트롤러당)
 wrote_window  = 25.0                # OBSAgent force_fitssaved 창 [s] -- 선언값
 full_flush_on_erase = false         # clock 개선으로 별도 erase 를 하지 않는다
+lock_buffer   = true                # fetch 중 프레임 버퍼를 LOCKn 으로 잠근다
+recheck_after_fetch = true          # fetch 뒤에 덮이지 않았는지 한 번 더 대조
 
 [controllers]
 ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
@@ -356,6 +358,29 @@ file         = ~/AIC/Logs/ics_archon.log
 > 조용히 늘었다. ⚠️ **`wrote_window` 와 짝이다** — `N = ceil((창 − write_delay) /
 > 주기)`. 25초 창엔 2개, **30초로 넓히면 3개**가 필요하고 기동에서 검사한다.
 > 2개 = 1.4 GB · 3개 = 2.2 GB (벤치 RAM 32 GB).
+
+> ⚠️ **매뉴얼은 판정 근거가 아니다** (운영자 2026-08-30). 개정판이 2021-02-23 이라
+> **현행 FW 가 매뉴얼을 다 반영하지 않은 부분도, 반대로 매뉴얼에 있는데 FW 에 없는
+> 경우도 있었다.** ⭐ **판단 근거는 실측**이고, 매뉴얼은 *무엇을 재야 하는지* 알려
+> 주는 가설 생성기다. `lock_buffer` 기본값이 `true` 인 것도 *"매뉴얼이 그렇다"* 가
+> 아니라 **더 안전한 쪽이라서**다 — 켜서 문제가 나면 크게 드러나고(지연·실패), 꺼서
+> 문제가 나면 조용하다(누더기). 자세한 것은 `DevNote.md` 8.7.
+
+> ⭐ **`FETCH` 로그 줄이 잠금 관측값을 싣는다** — `[lock=True RBUF=1 WBUF=0->2]`.
+> `LOCK1` 을 보냈는데 `RBUF` 가 1 이 아니면 **이 FW 가 잠금을 반영하지 않는
+> 것**이라 경고가 뜬다(그때는 `recheck_after_fetch` 가 유일한 방어다). ⚠️ 한
+> 방향으로만 결정적 — 안 맞는다고 `LOCK` 무효는 아니다(`RBUF` 미구현일 수 있다).
+> 왕복은 안 늘었다(덮임 대조가 이미 읽는 `FRAME` 에서 뽑는다).
+
+> ⭐ **fetch 중에 버퍼가 덮이는 것을 두 겹으로 막는다** (2026-08-30).
+> `lock_buffer`(기본 `true`)가 `LOCKn` 으로 **막고**, `recheck_after_fetch`
+> (기본 `true`)가 fetch 뒤에 한 번 더 대조해 **덮였으면 그 자료를 버린다**.
+> fetch 앞의 대조는 직전 한 순간만 보는데 fetch 자체가 약 5초라, 그 사이에 덮이면
+> **앞뒤가 다른 누더기 파일**이 길이·헤더 정상으로 나온다 — 로그에도 안 남는다.
+> ⭐ **`lock_buffer = false` 로 둘 때 `recheck_after_fetch` 가 필요하다.**
+> ⚠️ **둘 다 끄지 말 것** — 그러면 그 창을 보는 것이 아무것도 없고, 기동
+> 교차검사가 그 조합을 알린다. 잠겨 있으면 재대조는 절대 안 걸리므로 켜 두는
+> 값이 사실상 없다(왕복 하나).
 
 > ⛔ **`full_flush_on_erase` 기본값은 `false` 다** (운영자 확정 2026-08-29) —
 > *"clock 을 개선해서 별도 erase 를 하지 않고 바로 노출을 시작한다"*. ⚠️ 켜면

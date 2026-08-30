@@ -180,6 +180,61 @@ def _status_of(fields: dict[str, str], buf: int, frame: int) -> FrameStatus:
     )
 
 
+def buffer_frames(fields: dict[str, str]) -> tuple[int, ...]:
+    """세 버퍼의 프레임 번호 (0-기준 순서).  없는 자리는 `-1`.
+
+    **되감김·재시작 판별의 기준선**이다 -- 노출을 걸기 직전에 한 벌 찍어 두고
+    (`FrameTicket.prev_frames`), 기다리는 동안 **어느 자리가 새로 바뀌었나**를
+    본다.  번호의 크기만으로는 못 가른다: 평소에도 옛 프레임을 담은 버퍼가
+    `prev` 보다 작은 번호를 들고 있다 -- **바뀌었다는 사실**이 판별점이다.
+    """
+    return tuple(_int(fields, 'BUF%dFRAME' % (i + 1), -1) for i in range(3))
+
+
+def restarted_frame(fields: dict[str, str], prev: int,
+                    before: tuple[int, ...]) -> FrameStatus | None:
+    """번호가 **새로 바뀐** 완료 버퍼 중 `prev` 보다 크지 않은 것.  없으면 `None`.
+
+    두 가지가 여기 걸린다 -- ① **되감김**(카운터가 한 바퀴 돌아 0 부터 다시)
+    ② **컨트롤러 재시작**(전원·`REBOOT`·`WARMBOOT` 로 카운터가 0 복귀).  둘 다
+    "내 다음 프레임" 을 `frame > prev` 로 찾는 `next_frame()` 에는 **영원히
+    안 잡힌다** -- 부르는 쪽이 `frame_timeout` 까지 기다리다 노출을 잃는다.
+
+    ⚠️ **번호 폭을 모르기 때문에 크기 비교로는 못 만든다.**  매뉴얼 p.50 은
+    `BUFnFRAME=d ; Buffer n frame number` 라고만 적었다 -- 같은 표에서
+    `TIMER=x ; ... 64-bit`, `BUFnTIMESTAMP=x ; ... 64-bit` 처럼 **폭을 아는
+    자리에는 폭을 적어 두었으므로** 이 자리는 정말로 미상이다 (2026-08-30
+    전수 검색: 매뉴얼에 `wrap`/`rollover`/`overflow` 라는 낱말 자체가 없다).
+    그래서 "`prev` 보다 훨씬 작으면 되감김" 같은 휴리스틱을 쓰지 않는다 --
+    평소 상태와 구별되지 않아 **정상을 되감김으로 오해**한다.
+
+    대신 **변화**를 본다.  옛 프레임을 담은 버퍼의 번호는 가만히 있고, 엔진이
+    새 프레임을 쓸 때만 바뀐다 (매뉴얼 p.71 -- 엔진은 새 프레임을 시작할 때
+    "다음 잠기지 않은 버퍼" 를 잡고 그 버퍼의 정보(시각·번호)를 갱신한다).
+    그러니 **기다리는 동안 새로 바뀌었는데 `prev` 보다 크지 않다**면 카운터가
+    앞으로 안 간 것이고, 그것이 되감김 아니면 재시작이다.
+
+    Args:
+        before: 노출을 걸기 직전의 `buffer_frames()` -- 기준선.  비어 있으면
+            판별할 수 없으므로 `None` 을 준다 (**추측하지 않는다**).
+    """
+    if not before or prev < 0:
+        return None
+    best: tuple[int, int] | None = None
+    for i in range(3):
+        n = i + 1
+        frame = _int(fields, 'BUF%dFRAME' % n, -1)
+        if frame < 0 or frame > prev:
+            continue                       # 미상이거나 정상 경로(next_frame)
+        if i >= len(before) or frame == before[i]:
+            continue                       # 안 바뀌었다 -- 옛 프레임 그대로다
+        if _int(fields, 'BUF%dCOMPLETE' % n) != 1:
+            continue                       # 아직 쓰는 중이다
+        if best is None or frame < best[1]:
+            best = (i, frame)              # 되감긴 뒤에도 "가장 이른 것"
+    return _status_of(fields, best[0], best[1]) if best else None
+
+
 def next_frame(fields: dict[str, str], prev: int) -> FrameStatus | None:
     """`prev` **이후의 가장 이른** 완료 프레임.  아직 없으면 `None`.
 
@@ -187,6 +242,15 @@ def next_frame(fields: dict[str, str], prev: int) -> FrameStatus | None:
     사이 프레임이 더 나와 있고, 최신 것을 집으면 그 파일이 **남의 노출 픽셀**을
     담는다(헤더는 이 프레임의 것이라 아무 경고도 없다).  "내 다음 프레임" 을
     집고, 그것이 `prev + 1` 이 아니면 부르는 쪽이 "지나쳤다" 로 판정한다.
+
+    ⚠️ **카운터가 뒤로 가면 여기서는 영원히 `None` 이다** -- 되감김이나 컨트롤러
+    재시작이 그렇다.  그 경우는 `restarted_frame()` 이 따로 본다: 여기 크기
+    비교에 되감김 처리를 섞으면 **정상 상태를 되감김으로 오해**한다(평소에도
+    옛 프레임을 담은 버퍼가 `prev` 보다 작다).  매뉴얼 p.71 도 *"이미 받아
+    간 것보다 프레임 번호가 **큰** 완료 버퍼"* 라고만 적어 두었다 -- 되감김은
+    매뉴얼에도 없는 자리다.  ⚠️ 다만 **매뉴얼이 안 다룬다는 것이 "안 일어난다"
+    는 뜻은 아니다** -- 매뉴얼(2021-02-23)은 현행 FW 와 양방향으로 어긋날 수
+    있어서 **판정 근거가 아니다**(운영자 2026-08-30, DevNote 8.7).
 
     **`prev < 0` 인 경우가 첫 실행이다.**  전원을 켜고 아무 프레임도 없으면
     `newest()` 가 `-1` 을 준다.  그때 `prev + 1 = 0` 을 기다리면 컨트롤러가 첫
@@ -272,6 +336,29 @@ def buffer_frame(fields: dict[str, str], buf_n: int) -> int:
     노출 픽셀**을 담고 헤더는 이 프레임의 것이라 아무 경고도 없다.
     """
     return _int(fields, 'BUF%dFRAME' % buf_n, -1)
+
+
+def lock_state(fields: dict[str, str]) -> tuple[int, int]:
+    """`(RBUF, WBUF)` -- **읽기용으로 잠긴** 버퍼와 **쓰는 중인** 버퍼 (1-기준, 0=없음).
+
+    매뉴얼 p.50: *`RBUF=d ; Current buffer number locked for reading`* ·
+    *`WBUF=d ; Current buffer number locked for writing`*.
+
+    ⭐ **`LOCKn` 이 이 FW 에서 실제로 먹는지 확인하는 자리다** (2026-08-30 신설).
+    `LOCK1` 을 보낸 뒤 `RBUF` 가 1 이면 **FW 가 잠금을 반영한 것**이고, 그러면
+    A-5 판단 ②(`lock_buffer`)의 절반이 실기 관측으로 닫힌다.  이 값은 fetch
+    앞의 덮임 대조에서 **이미 읽는 `FRAME` 응답 안에 들어 있다** -- 왕복이 늘지
+    않는다.
+
+    ⚠️ **한 방향으로만 결정적이다.**  `RBUF` 가 안 바뀌었다고 *"`LOCK` 이 무효"*
+    는 아니다 -- `RBUF` 쪽이 미구현일 수도 있다.  `RBUF` 자체도 매뉴얼의
+    주장이고, **매뉴얼은 판정 근거가 아니다**(DevNote 8.7).
+
+    ⭐ `WBUF` 는 **거동**이라 더 강한 증거다 -- fetch 하는 동안 `WBUF` 가 우리가
+    잠근 버퍼를 피해 옮겨 갔다면, 그것은 상태 플래그가 아니라 **엔진이 실제로
+    다른 버퍼를 쓴 것**이다 (매뉴얼 p.71 의 *"다음 잠기지 않은 버퍼"*).
+    """
+    return _int(fields, 'RBUF', 0), _int(fields, 'WBUF', 0)
 
 
 def power_good(status: dict[str, str] | None) -> bool:

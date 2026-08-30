@@ -79,6 +79,15 @@ class FrameTicket:
     suffix: str
     #: 노출 지시 **직전**의 프레임 번호.  이 값이 바뀌면 내 프레임이다.
     prev_frame: int
+    #: 노출 지시 **직전**의 세 버퍼 번호 -- 되감김·재시작 판별의 기준선.
+    #:
+    #: 번호 하나(`prev_frame`)만으로는 **카운터가 뒤로 간 경우**를 못 가른다:
+    #: 평소에도 옛 프레임을 담은 버퍼가 그보다 작은 번호를 들고 있다.  "어느
+    #: 자리가 **새로 바뀌었나**" 를 보려면 기준선이 있어야 한다
+    #: (`parse.restarted_frame`).  ⭐ 이것도 **표가 들고 간다** -- 컨트롤러
+    #: 필드에 두면 파이프라인이 겹칠 때 뒤 프레임이 앞 프레임의 기준선을
+    #: 덮는다 (이 클래스가 있는 이유 그대로다).
+    prev_frames: tuple[int, ...] = ()
     #: 적분 종료 예상 시각 (monotonic).  `None` 이면 즉시 독출(`IntMS=0`).
     int_until: float | None = None
     #: 완료가 확인된 프레임.  `wait_frame()` 이 채운다.
@@ -140,6 +149,19 @@ class ArchonController:
         #: 쌓이면 올려야 한다.
         self.buf_waits = 0
         self.buf_wait_s = 0.0
+
+        #: 마지막 fetch 에서 관측한 **잠금 상태** (진단용, 1-기준.  -1 = 미관측).
+        #:
+        #: ⭐ **`LOCKn` 이 이 FW 에서 실제로 먹는지**를 실기가 답하게 하는
+        #: 자리다 (A-5 판단 ②).  fetch 앞의 덮임 대조에서 **이미 읽는 `FRAME`
+        #: 응답**에서 뽑으므로 왕복이 늘지 않는다.
+        #: - `lock_rbuf` -- `LOCKn` 뒤의 `RBUF`.  `buf_n` 과 같으면 반영된 것
+        #: - `lock_wbuf` / `lock_wbuf_after` -- fetch **전후**의 `WBUF`.
+        #:   ⭐ 옮겨 갔으면 **엔진이 실제로 다른 버퍼를 썼다**는 거동 증거다
+        #:   (매뉴얼 p.71 의 *"다음 잠기지 않은 버퍼"*).
+        self.lock_rbuf = -1
+        self.lock_wbuf = -1
+        self.lock_wbuf_after = -1
 
         #: ACF 설정 줄 -> 내용, 그리고 키 -> 줄 번호.  `WCONFIG` 는 줄 번호로
         #: 쓰므로 이 대응이 없으면 파라미터를 못 바꾼다.
@@ -401,6 +423,13 @@ class ArchonController:
         대기 시간(`poweron_wait`)은 그대로다: 그 시간은 전원 램프가 아니라
         **CCD flush** 를 기다리는 것이라 일찍 빠져나오면 안 된다.
         """
+        # **여기서 낡은 저장 표를 버린다** (2026-08-30 배선).  `POWERON` 은
+        # **새 프레임 번호 세션의 시작**이다 -- 전원이 내려간 사이의 프레임은
+        # 버퍼에 없고 다시 못 받는다.  표를 남겨 두면 다음 프레임의 저장이
+        # **그 낡은 표**를 집어 파일마다 한 노출 뒤진 픽셀이 담기고, 헤더는 새
+        # 프레임의 것이라 경고가 한 줄도 안 뜬다 (`FrameTicket` 설명의 그
+        # blocker 다).  **크게 잃는 것이 조용히 틀린 것보다 낫다.**
+        self.drop_tickets('POWERON -- 전원이 내려간 사이의 프레임은 못 받는다')
         self.power_attempted = True
         await self.cmd('POWERON', timeout=T_POWER)
         self.powered = True
@@ -711,7 +740,11 @@ class ArchonController:
             suffix: 이 프레임의 이름 (`<YYYYMMDD>.<NNNNNN>`).  저장 쪽이 **자기
                 프레임의 표를 골라 집는** 근거다.
         """
-        prev = (await self.frame()).frame
+        # **한 번의 `FRAME` 으로 둘을 뽑는다** -- 프레임 번호(기준값)와 세
+        # 버퍼의 번호(기준선).  왕복은 종전과 같다.
+        _fields = await self.query('FRAME', timeout=T_FAST)
+        prev = parse.newest(_fields).frame
+        before = parse.buffer_frames(_fields)
         await self.set_config(self.cfg.param_intms_slot,
                               '%s=%d' % (self.cfg.param_intms_name,
                                          max(int(exptime_ms), 0)))
@@ -721,6 +754,7 @@ class ArchonController:
         ticket = FrameTicket(
             suffix=suffix,
             prev_frame=prev,
+            prev_frames=before,
             int_until=(time.monotonic() + exptime_ms / 1000.0
                        if exptime_ms > 0 else None))
         self._current = ticket
@@ -894,6 +928,24 @@ class ArchonController:
             # **남의 노출 픽셀**을 담는다(헤더는 이 프레임의 것이라 아무 경고도
             # 없다).
             mine = parse.next_frame(fields, prev)
+            if mine is None:
+                # **카운터가 뒤로 갔나** -- 되감김(한 바퀴) 또는 컨트롤러
+                # 재시작.  `next_frame()` 은 `frame > prev` 로 찾으므로 이
+                # 경우 **영원히 `None`** 이고, 그대로 두면 `frame_timeout`
+                # 까지 기다리다 노출을 잃는다 (2026-08-30 발견).
+                #
+                # ⚠️ 폭을 모르므로 크기로 판별하지 않는다 -- **기준선 대비
+                # 변화**로 판별한다 (`parse.restarted_frame` 의 설명).
+                mine = parse.restarted_frame(fields, prev, ticket.prev_frames)
+                if mine is not None:
+                    log.error(
+                        '%s: 프레임 번호가 뒤로 갔다 -- %d 다음을 기다렸는데 '
+                        '버퍼 %d 에 %d 이 새로 들어왔다.  카운터 되감김이거나 '
+                        '컨트롤러가 재시작했다.  **이 프레임은 받는다** (기준을 '
+                        '%d 로 재동기).  자주 보이면 BUFnFRAME 폭을 실측해 '
+                        '두라 -- 매뉴얼 p.50 에 폭이 안 적혀 있다',
+                        self.tag, prev, mine.buf + 1, mine.frame, mine.frame)
+                    prev = mine.frame - 1        # 아래 연속성 검사를 통과시킨다
             if mine is not None:
                 # **첫 실행(prev < 0)에는 번호를 못박지 않는다** -- 프레임이
                 # 하나도 없으면 `newest()` 가 -1 을 주고, 컨트롤러의 첫 프레임
@@ -958,18 +1010,43 @@ class ArchonController:
         # 도는 일이라 그 경합이 실재한다 -- 덮인 뒤에 fetch 하면 raw 한 장이
         # **남의 노출 픽셀**을 담고, 헤더는 이 프레임의 것이라 아무 경고도 없다.
         #
+        # 매뉴얼 p.71 은 `LOCK` 을 **통상 경로**로 적어 두었다("새 프레임이
+        # 있으면 호스트는 LOCK 을 내려 그 버퍼가 덮이는 것을 막고 FETCH 한다").
+        # ⚠️ **그러나 그것은 판정이 아니라 가설의 강도다** -- 매뉴얼은
+        # 2021-02-23 판이고 **현행 FW 와 양방향으로 어긋날 수 있다**(운영자
+        # 2026-08-30).  이 저장소 안에 이미 반례가 둘 있다(`MODn_TYPE` 16+ ·
+        # AD 모듈 슬롯).  **판단 근거는 실측**이다 -- DevNote 8.7.
+        #
         # ⚠️ labtest 는 2026-05-28 에 `LOCK` 을 뺐다("remove to fetch debug").
         # 되돌린 것이므로 **실기 확인 항목**이다 -- 문제가 보이면
         # `[archon] lock_buffer = false` 로 끄면 labtest 와 같아진다.  끄더라도
-        # 아래 대조는 남으므로 조용히 틀린 파일이 나오지는 않는다.
+        # 아래 대조는 남고, `recheck_after_fetch` 가 fetch 중의 창까지 본다.
+        # ⚠️ **science 는 버퍼가 둘뿐**이라 하나를 잠그면 엔진에 하나만 남는다
+        # (guide 는 셋이라 둘이 남는다) -- 남는 버퍼가 없을 때의 거동은
+        # **매뉴얼에도 없다**.  labtest 가 뺀 이유일 수 있다(가설 H3).
         buf_n = fs.buf + 1
         lock = getattr(self.cfg, 'lock_buffer', True)
+        # **관측값을 먼저 지운다** -- `LOCK` 이 실패하면 지난 프레임의 값이
+        # 남아 실험 로그가 거짓말을 한다.
+        self.lock_rbuf = self.lock_wbuf = self.lock_wbuf_after = -1
         if lock:
             await self.cmd('LOCK%d' % buf_n, timeout=T_FAST)
         try:
             # **잠근 뒤에 다시 확인한다.**  잠그기 직전에 이미 덮였을 수 있다.
-            live = parse.buffer_frame(
-                await self.query('FRAME', timeout=T_FAST), buf_n)
+            live_fields = await self.query('FRAME', timeout=T_FAST)
+            live = parse.buffer_frame(live_fields, buf_n)
+            # ⭐ **같은 응답에서 잠금 상태도 뽑는다** (왕복 0, 2026-08-30).
+            # `LOCKn` 이 이 FW 에서 실제로 먹는지가 A-5 판단 ②의 절반이다.
+            self.lock_rbuf, self.lock_wbuf = parse.lock_state(live_fields)
+            if lock and self.lock_rbuf != buf_n:
+                # ⚠️ **한 방향으로만 결정적이다** -- `RBUF` 쪽이 미구현일 수도
+                # 있다.  그래도 이 줄이 뜨면 `LOCK` 에 기대지 말아야 한다는
+                # 신호이고, `recheck_after_fetch` 가 유일한 방어가 된다.
+                log.warning(
+                    '%s: LOCK%d 을 보냈는데 RBUF=%d 다 (기대 %d) -- 이 FW 가 '
+                    '잠금을 반영하지 않거나 RBUF 가 미구현이다.  LOCK 에 '
+                    '기대지 말고 recheck_after_fetch 를 켜 두라 (매뉴얼 p.50)',
+                    self.tag, buf_n, self.lock_rbuf, buf_n)
             if live != fs.frame:
                 raise ArchonError(
                     '%s: 버퍼 %d 가 프레임 %d 로 덮였다 (내 프레임은 %d) -- '
@@ -1001,6 +1078,33 @@ class ArchonController:
                 # **몇 번의 실패 뒤에 영구히 막힌다.**
                 self.release_buffer(buf)
                 raise
+
+            # **fetch 뒤 재대조** (`[archon] recheck_after_fetch`, 2026-08-30).
+            #
+            # 앞의 대조는 fetch **직전 한 순간**만 본다.  fetch 자체가 수 초
+            # 걸리므로(실측 약 5초) **그 사이에 덮이는 창**은 아무도 안 본다 --
+            # `lock_buffer=true` 면 그 창을 `LOCKn` 이 막지만, **끄면 막는 것이
+            # 아무것도 없다.**  그래서 이 재대조가 `lock_buffer=false` 의 짝이다.
+            #
+            # 덮였으면 **받아 온 자료를 버린다.**  5초를 버리는 셈이지만, 그
+            # 대안은 남의 노출 픽셀을 담은 raw 한 장을 **아무 경고 없이** 쓰는
+            # 것이다 (헤더는 이 프레임의 것이라 나중에 봐도 못 가른다).
+            if getattr(self.cfg, 'recheck_after_fetch', True):
+                after_fields = await self.query('FRAME', timeout=T_FAST)
+                after = parse.buffer_frame(after_fields, buf_n)
+                # ⭐ **`WBUF` 의 이동이 `RBUF` 보다 강한 증거다** -- 상태 플래그가
+                # 아니라 **엔진이 실제로 다른 버퍼를 썼다**는 거동이다.
+                self.lock_wbuf_after = parse.lock_state(after_fields)[1]
+                if after != fs.frame:
+                    self.release_buffer(buf)
+                    raise ArchonError(
+                        '%s: fetch 하는 동안 버퍼 %d 가 프레임 %d 로 덮였다 '
+                        '(내 프레임은 %d) -- 받아 온 %.1f MiB 를 버린다.  이 '
+                        '자료는 두 노출이 섞여 있다.  lock_buffer=%s 이니 '
+                        'true 로 두거나, write_delay·독출 시간과 버퍼 수를 '
+                        '보라'
+                        % (self.tag, buf_n, after, fs.frame,
+                           expect_bytes / (1 << 20), lock), cmd='FETCH')
         finally:
             if lock:
                 try:
@@ -1009,9 +1113,15 @@ class ArchonController:
                     # **풀지 못하면 다음 노출이 버퍼를 못 쓴다** -- 크게 알린다.
                     log.error('%s: LOCK0(잠금 해제)에 실패했다 (%s) -- 다음 '
                               '프레임이 버퍼를 못 쓸 수 있다', self.tag, exc)
-        log.info('%s: FETCH %.1f MiB, %.1f초 (프레임 %d, buf %d, base 0x%08X)',
+        # ⭐ 잠금 관측값을 **이미 있는 줄에 얹는다** -- 정상 취득에 새 줄을
+        # 늘리지 않으면서 A/B 실험에 필요한 것이 매 프레임 남는다.
+        log.info('%s: FETCH %.1f MiB, %.1f초 (프레임 %d, buf %d, base 0x%08X) '
+                 '[lock=%s RBUF=%d WBUF=%d%s]',
                  self.tag, expect_bytes / (1 << 20),
-                 time.monotonic() - started, fs.frame, buf_n, fs.base)
+                 time.monotonic() - started, fs.frame, buf_n, fs.base,
+                 lock, self.lock_rbuf, self.lock_wbuf,
+                 '' if self.lock_wbuf_after < 0
+                 else '->%d' % self.lock_wbuf_after)
         return data
 
     async def _take_buffer(self, nbytes: int) -> bytearray:
