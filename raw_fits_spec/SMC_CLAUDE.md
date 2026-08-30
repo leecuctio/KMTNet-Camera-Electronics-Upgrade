@@ -27,7 +27,7 @@
     **폴더 경로와 확장자(`.acf`/`.cfg`)를 뗀 이름**임을 규격에 명시했다.
   ✅ **코드 쪽도 끝났다** (2026-08-29, `ics-archon-v1.0-build` `3dabe21`) — `ics_archon` 이
   `[archon] acf_mk`/`acf_nt` 경로에서 폴더·확장자를 떼어 `CTRL1CFG`/`CTRL2CFG` 를 채운다.
-  문서 경로 인용도 전수 정합했다.  경위·판단은 `ics_sim/DevNote.md` **11.35**.
+  문서 경로 인용도 전수 정합했다.  경위·판단은 [`../ics_archon/DevNote.md`](../ics_archon/DevNote.md) **1장**.
 
 ### ✅ `CTRLnCFG` 를 **실제 ACF 파일명**으로 맞췄다 (운영자 지시 2026-08-29, 완료)
 
@@ -47,7 +47,7 @@
 | 규격 본문 | 5장 `CTRL1CFG` 행 + "경로·확장자를 뗀 이름" 명시 | ✅ **v1.8** |
 | 원장 3곳 | 3.3절 표 · 대응표 두 행 | ✅ **v1.15** |
 | 기계 사본 3 | `ics_sim/rawcards.py` · `_vendor`(sync) · labtest 내장 5 | ✅ `ics-archon-v1.0-build` `b45fb31` |
-| 코드 (파생) | `ics_archon` 이 ACF 경로에서 유도 | ✅ `3dabe21` (DevNote 11.35) |
+| 코드 (파생) | `ics_archon` 이 ACF 경로에서 유도 | ✅ `3dabe21` (`ics_archon/DevNote.md` 1장) |
 
 **확인해 둔 것** (2026-08-29):
 

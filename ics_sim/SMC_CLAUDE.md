@@ -19,6 +19,7 @@
 | 문서 | 언제 |
 |---|---|
 | [DevNote.md](DevNote.md) | 설계를 이해하거나 바꿀 때. 15개 장 |
+| [`../ics_archon/DevNote.md`](../ics_archon/DevNote.md) | ⭐ **실기(`ics_archon`) 개발 노트** — Archon 제어층·실기 운용은 2026-08-29 작업분부터 저쪽이다 |
 | [README.md](README.md) | 그냥 돌려보고 싶을 때 |
 | [xis/xis.md](xis/xis.md) | 붙을 상대(레거시 허브)의 소스·설정·기동 방식이 궁금할 때 |
 | [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) | 레거시 원본 동작이 궁금할 때 |
@@ -82,7 +83,7 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 ## ✅ `CTRLnCFG` 파생 -- **패키지는 무개정, `ics_sim.ini` 주석만** (2026-08-29)
 
 `ics_archon` 이 `[archon] acf_mk`/`acf_nt` 경로에서 **폴더와 확장자를 떼어**
-`CTRL1CFG`/`CTRL2CFG` 를 채우기 시작했다 (규격 v1.8 5.5절, DevNote 11.35).
+`CTRL1CFG`/`CTRL2CFG` 를 채우기 시작했다 (규격 v1.8 5.5절, [`../ics_archon/DevNote.md`](../ics_archon/DevNote.md) 1장).
 
 **`ics_sim/` 패키지는 한 줄도 안 고쳤다** -- 그래서 `tools/sync_vendor.py` 를
 돌릴 일도 없었고 `_vendor/MANIFEST.sha256` 도 그대로다.  파생은

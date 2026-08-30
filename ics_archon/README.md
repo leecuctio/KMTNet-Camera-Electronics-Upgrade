@@ -22,7 +22,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
 | [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다 |
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**217항목**, 약 4분). 배치본은 `-m "not repo_only"` (**181항목**).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**221항목**, 약 4분). 배치본은 `-m "not repo_only"` (**185항목**).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
@@ -31,6 +31,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.3.4`, science 유닛).  유닛별 사본 셋(`KMTC-102`·`KMTC-113`·`KMTS-101`)이 나란히 있고 `tests/test_labtest_spec_copy.py` 가 표류를 막는다 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |
 | [`tests/verify_labtest_v13.py`](tests/verify_labtest_v13.py) | **labtest 전용 검증** (32항목, 실패 0이어야 한다) — `python tests/verify_labtest_v13.py`.  읽기전용 자리 1건은 POSIX 에서만 돌고 윈도우에서는 `SKIP` |
+| ⭐ [`DevNote.md`](DevNote.md) | **개발 노트** — 과정·판단 근거·시사점. "왜 이렇게 됐나" 는 여기 |
 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼 확정 사실 |
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30) |
 
@@ -574,31 +575,19 @@ direct-reply 로 전 경로가 돈다.
 
 ## 아직 없는 것 (v0.0)
 
-- **듀어·환경 HK** (`sensors()`) — 공급 3계통(ICG RTD · standalone RTD ·
-  Tapaculo)을 읽는 경로가 없다.  labtest 도 안 읽으므로 **옮겨올 원형이 없다.**
-  `CCDTEMP` 를 비롯한 5.6절 카드가 sentinel 로 실린다.
-- **LED 프로젝터** (`flash_led`) — 실기 배선이 미확정이라 값만 기억하고
-  하드웨어를 만지지 않는다.
-- **guide 계통** — guide raw 규격이 아직 없다.  착수 시 `DATASRC='ARCHON_GUIDE'`
-  + `CTRL1xx` 한 벌 규약 (raw spec 5.5절) + 기하를 guide 크기로 + `Cn_TEMP`
-  8자리(OI-19).  **참고 코드**: `scr_labtest/…v1.3.smallbuf.py` 는 구버전
-  science 유닛을 구동하던 코드로, smallbuf로 구성되는 guide 유닛 제어용 코드
-  작성 시 참고한다.  다만 **bigbuf 스크립트의 코드로도 smallbuf 구성 유닛의
-  동작이 가능할 수도 있으니** 그쪽도 참조할 것 — FETCH 주소를 `BUFnBASE` 에서
-  읽어 설계상 구성 무관이다(실기 검증은 첫 guide 구동 때).
-- **binning** (`BIN` 명령) — `ics_sim` 쪽도 스텁이다.
-- **바이어스 측정값의 헤더 수록** (층 2) — 지금은 **로그만**이다.  헤더에 넣는
-  것은 규격 개정 사안이고(32개 값이 카드 하나에 안 들어간다 — 8채널이 한 카드의
-  한계), 갈래 둘과 계산이 `SMC_CLAUDE.md` "층 2" 절에 있다.
-- **`FETCHLOG` 드레인** — 안 쓰기로 확정했다.  `LOG=n` 한 열만 남긴다.  승격
-  기준(항목이 모듈·채널 수준의 정체를 담는가)은 `probe_archon` 1단계로 한 번
-  보고 판단한다.
+**요약** — 듀어·환경 HK(`sensors()`, 5.6절 카드가 sentinel) · LED 프로젝터
+배선 · guide 계통 · binning · 바이어스 측정값의 헤더 수록(로그만 있다).
+
+⚠️ **각 항목의 근거와 착수 조건은 [SMC_CLAUDE.md](SMC_CLAUDE.md) 에 있다** —
+여기 두면 "쓰는 법" 과 "남은 일" 이 섞인다.
+
 
 ## 관련 문서
 
 | 문서 | 위치 |
 |---|---|
-| 경위·판단 (왜 그렇게 정했나) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.33 |
+| **경위·판단 (왜 그렇게 정했나)** | ⭐ [`DevNote.md`](DevNote.md) — **이 폴더의 개발 노트** |
+| 〃 (2026-08-29 이전 · `ics_sim` 층) | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.34 |
 | 산출 규격 (raw FITS pair) | [`../raw_fits_spec/`](../raw_fits_spec/README.md) |
 | 헤더 카드 템플릿 (공유 원천) | `../ics_sim/ics_sim/rawcards.py` |
 | 백엔드 계약 | `../ics_sim/ics_sim/hardware/base.py` (D-012) |

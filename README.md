@@ -26,7 +26,7 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 | [`raw_fits_spec/`](raw_fits_spec/) | Archon raw FITS pair (MK/NT) 규격 — L0 MEF의 **입력** 데이터 정의 | [README](raw_fits_spec/README.md) |
 | [`cam_char/`](cam_char/) | 카메라 특성 측정 — 실험실 계획, 분석 코드, Archon 제어 스크립트, 산출물 스키마 | [README](cam_char/README.md) |
 | [`ics_sim/`](ics_sim/) | **신규 카메라 통합제어(ICS) 프로그램** — 레거시 호환 시뮬레이터. 시퀀서·명령 처리부·메시지 규약·헤더 층의 정본 | [README](ics_sim/README.md) · [DevNote](ics_sim/DevNote.md) |
-| [`ics_archon/`](ics_archon/) | **실기 ICS** — `ics_sim` + STA Archon 컨트롤러 제어 (`v0.0.0`, 실기 왕복 미검증). 실험실 취득 스크립트도 여기 있다 | [README](ics_archon/README.md) · [인수인계](ics_archon/SMC_CLAUDE.md) |
+| [`ics_archon/`](ics_archon/) | **실기 ICS** — `ics_sim` + STA Archon 컨트롤러 제어 (`v0.0.0`, 실기 왕복 미검증). 실험실 취득 스크립트도 여기 있다 | [README](ics_archon/README.md) · [DevNote](ics_archon/DevNote.md) · [인수인계](ics_archon/SMC_CLAUDE.md) |
 | [`gmon/`](gmon/) | **가이드 카메라 시상 모니터 v2** — Archon 단일 FITS(CCD47-20 4칩×2채널, 4224×1033) 분할 → SExtractor/PSFEx FWHM 측정 → 방위별 PSF 스냅샷·gnuplot 그래프·온도 기반 초점 보정 GUI(3창). 레거시(2018~2026 운용판) 파리티 + 합성/실프레임 별 주입 시험기 포함 | [README](gmon/README.md) · [DESIGN](gmon/DESIGN.md) |
 | [`ics_legacy/`](ics_legacy/) · [`OBSAgent/`](OBSAgent/) · [`TCSAgent/`](TCSAgent/) | 레거시 관측 소프트웨어 분석 자료와 기술 보고서 (ICS·XIS / 관측자 콘솔 / 망원경 제어) | [ics_legacy](ics_legacy/SMC_CLAUDE.md) |
 | [`project_management/`](project_management/) | 일정·governance·사이트·물류·형상관리 등 프로젝트 관리 보드 | [README](project_management/README.md) |
@@ -40,7 +40,8 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 - **L0 변환기 사용 · 실행 방법** → [mef_converter/README.md](mef_converter/README.md)
 - **L0→L1 전처리 파이프라인** → [mef_pipeline/README.md](mef_pipeline/README.md)
 - **카메라 특성 측정 (실험실 캠페인)** → [cam_char/README.md](cam_char/README.md)
-- **신규 ICS 개발 (시뮬레이터 → 실기 구동)** → [ics_sim/DevNote.md](ics_sim/DevNote.md)
+- **신규 ICS 개발 (시뮬레이터)** → [ics_sim/DevNote.md](ics_sim/DevNote.md)
+- **실기 구동 (Archon 제어·실기 운용)** → [ics_archon/DevNote.md](ics_archon/DevNote.md)
 - **가이드 카메라 시상 모니터 (gmon v2)** → [gmon/README.md](gmon/README.md) · 설계 계약 [gmon/DESIGN.md](gmon/DESIGN.md)
 - **레거시 관측 소프트웨어 분석** → [ics_legacy/SMC_CLAUDE.md](ics_legacy/SMC_CLAUDE.md)
 

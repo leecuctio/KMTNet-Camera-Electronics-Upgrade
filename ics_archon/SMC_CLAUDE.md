@@ -27,7 +27,8 @@
 | `ics_archon/archon/backend.py` 머리말 | 계약과 실기의 어긋남 3건 · 동기 접근자가 스냅샷을 읽는 이유 |
 | [README.md](README.md) "실기 첫 실행 절차" | ⭐ **실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
 | [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
-| [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.19~11.25 | 왜 그렇게 정했나 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
+| ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다 |
+| [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.34 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
 | [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) | 물려받은 층의 상태·규약 |
 | [`../raw_fits_spec/`](../raw_fits_spec/README.md) | 산출 규격(raw FITS pair). 헤더 5장의 바이트 정본은 견본 pair |
 
@@ -453,7 +454,7 @@ labtest 는 v1.1.3 에서 같은 이유로 이 검사를 `POWERON` 앞으로 올
 
 ### 시험
 
-`ics_archon` **217 통과** · 배치본 `-m "not repo_only"` **181**.
+`ics_archon` **221 통과** · 배치본 `-m "not repo_only"` **185**.
 (작업 A 에서 36 신설, 참고 자료 재검토에서 7 더 신설 — `POWERON` 확인 5 ·
 자리 표 2 — 작업 E 에서 3 더 — `CTRLnCFG` 파생.)
 ⚠️ **`ics_sim` 스위트와 동시에 돌리지 말 것** — 부하로
@@ -1382,7 +1383,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 `[archon] acf_mk`/`acf_nt` 경로에서 **폴더와 확장자(`.acf`/`.cfg`)를 떼어**
 `CTRL1CFG`/`CTRL2CFG` 를 채운다.  **비어 있을 때만** 채우고, 손으로 적어 둔 값이
-파생값과 다르면 **기동에서 경고**한다.  판단 근거는 DevNote 11.35.
+파생값과 다르면 **기동에서 경고**한다.  판단 근거는 [DevNote 1장](DevNote.md).
 
 | 자리 | 무엇 |
 |---|---|
@@ -1397,7 +1398,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 ### ✅ 전수 검토 — 세 저장소 (2026-08-29, 목 지시)
 
 작업 E 뒤에 `raw_fits_spec` · `ics_sim` · `ics_archon` (+ 걸린 PM 문서)를 훑었다.
-경위·교훈은 [DevNote 11.36](../ics_sim/DevNote.md).  고친 것:
+경위·교훈은 [DevNote 2장](DevNote.md).  고친 것:
 
 | # | 무엇 | 성격 |
 |---|---|---|
@@ -1422,7 +1423,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 `'NORMAL'` 은 **실제로 쓰이는 값**이라 "정말 NORMAL" 과 "못 알아본 NORMAL" 이
 헤더에서 갈리지 않았다.  ⚠️ 문자열 sentinel `'NC'` 와 **뜻이 다르다** — `NC` 는
 "그 자리가 없다", `UNKNOWN` 은 "있는데 모른다" 다.  ⏳ **규격 등재는 v1.9 대기**
-(5.5절이 아직 `'NORMAL' 등` 이라 적는다).  경위는 DevNote **11.36**.
+(5.5절이 아직 `'NORMAL' 등` 이라 적는다).  경위는 [DevNote 2장](DevNote.md).
 
 ### ⏳ ▶ **`main` 으로 넘어가서 할 일** (목 지시 2026-08-29)
 
@@ -1642,7 +1643,7 @@ DevNote 11.34.  **guide ACF 정본도 하나로 줄고 개명됐다**
   참조한다"** 로 바뀌었다.
 - **`CTRLnCFG` 예시를 실제 ACF 이름 규칙으로** + 규격 5장에 **"폴더 경로와
   확장자(`.acf`/`.cfg`)를 뗀 이름"** 명시.  ✅ **그 파생은 코드로 들어갔다**
-  (작업 E, `3dabe21` — DevNote 11.35).
+  (작업 E, `3dabe21` — [DevNote 1장](DevNote.md)).
 
 ⚠️ **아래 1~5 는 여전히 v1.9 이후 대기다** (4·5 는 실측·설계가 더 필요하다).
 
@@ -1669,7 +1670,7 @@ DevNote 11.34.  **guide ACF 정본도 하나로 줄고 개명됐다**
 ### ✅ 작업 E — `CTRLnCFG` 를 ACF 경로에서 파생 **완료 (2026-08-29)**
 
 **규격이 먼저 섰고(v1.8) 코드가 뒤따랐다.**  구현 자리와 판단은 위
-[작업 E 완료](#-작업-e--ctrlncfg-파생-완료-2026-08-29) 절과 DevNote 11.35 다.
+[작업 E 완료](#-작업-e--ctrlncfg-파생-완료-2026-08-29) 절과 [DevNote 1장](DevNote.md) 이다.
 아래는 착수 시점의 지시이고, **딸림 넷은 다 처리했다** — ① 문서 파일명 인용
 (줄바꿈에 걸려 grep 이 놓친 `test_ini_cards.py` 한 자리 포함) ② `ics_sim.ini`
 예시 주석 ③ `test_raw_header.py` 픽스처 — ⚠️ **깨지지 않았다**: 이 브랜치의
@@ -1942,6 +1943,28 @@ README 로 나눈다.
 | 14-1 | **이미 있는 파일은 덮지 않는다** (`fitswrite.write_frame`) — **목 승인 2026-08-23** | D-016 선검사와 쓰기 사이에 `write_delay`+저장시간만큼 틈이 있고, 그 틈에 누가 그 경로에 파일을 두면 `os.replace` 가 말없이 지운다. 둘 중 하나를 잃어야 하면 **새 프레임을 버리는 쪽**이 맞다 — 옛 프레임은 이미 아카이브에 들어갔을 수 있고 되돌릴 수 없는데, 새 프레임은 다시 찍을 수 있고 오류가 크게 뜬다. **이름은 여전히 시퀀서가 정한다** (백엔드는 "덮지 않겠다" 고만 한다) | — |
 | 15 | fetch 중 **`LOCKn` 으로 버퍼를 잠근다**(`lock_buffer=true`) + fetch 앞 프레임 번호 대조 | ⭐ **실측 여유가 ~6초다** (2026-08-29) — FETCH 는 `IDLE`+3.4~8.4초에 끝나고 그 버퍼 재사용은 ~14.7초다. `BIAS` 연속이 가장 얇다. labtest 가 뺐던 명령을 되돌린 것이라 **실기 확인 항목** | `lock_buffer=false` 로 끄면 labtest 와 같아진다(대조는 남는다) |
 | 16 | **호스트 수신·저장 버퍼를 링으로** (`[archon] fetch_buffers`, 기본 **2**) + `wrote_window` 선언과 **기동 교차검사** | 종전에는 프레임마다 344 MiB 를 새로 잡고 `_store` 태스크 수에 제한이 없어 **저장이 밀리면 메모리가 조용히 늘었다.** 링은 ① 상한 `N×344 MiB` ② 재사용(할당 0.81초 절약) ③ **역압** — 다 차면 기다리고 그 횟수를 센다(`buf_waits`). ⭐ **`N = ceil((창 − write_delay) / 주기)`** 라 창과 짝이다: 25초 창엔 2개, **30초면 3개** | `fetch_buffers` 를 올리면 된다. 벤치 RAM 32 GB 이므로 3개(2.2 GB)도 여유가 크다 |
+
+## 아직 없는 것 (v0.0) — README 에서 옮겨 왔다 (2026-08-30)
+
+- **듀어·환경 HK** (`sensors()`) — 공급 3계통(ICG RTD · standalone RTD ·
+  Tapaculo)을 읽는 경로가 없다.  labtest 도 안 읽으므로 **옮겨올 원형이 없다.**
+  `CCDTEMP` 를 비롯한 5.6절 카드가 sentinel 로 실린다.
+- **LED 프로젝터** (`flash_led`) — 실기 배선이 미확정이라 값만 기억하고
+  하드웨어를 만지지 않는다.
+- **guide 계통** — guide raw 규격이 아직 없다.  착수 시 `DATASRC='ARCHON_GUIDE'`
+  + `CTRL1xx` 한 벌 규약 (raw spec 5.5절) + 기하를 guide 크기로 + `Cn_TEMP`
+  8자리(OI-19).  **참고 코드**: `scr_labtest/…v1.3.smallbuf.py` 는 구버전
+  science 유닛을 구동하던 코드로, smallbuf로 구성되는 guide 유닛 제어용 코드
+  작성 시 참고한다.  다만 **bigbuf 스크립트의 코드로도 smallbuf 구성 유닛의
+  동작이 가능할 수도 있으니** 그쪽도 참조할 것 — FETCH 주소를 `BUFnBASE` 에서
+  읽어 설계상 구성 무관이다(실기 검증은 첫 guide 구동 때).
+- **binning** (`BIN` 명령) — `ics_sim` 쪽도 스텁이다.
+- **바이어스 측정값의 헤더 수록** (층 2) — 지금은 **로그만**이다.  헤더에 넣는
+  것은 규격 개정 사안이고(32개 값이 카드 하나에 안 들어간다 — 8채널이 한 카드의
+  한계), 갈래 둘과 계산이 `SMC_CLAUDE.md` "층 2" 절에 있다.
+- **`FETCHLOG` 드레인** — 안 쓰기로 확정했다.  `LOG=n` 한 열만 남긴다.  승격
+  기준(항목이 모듈·채널 수준의 정체를 담는가)은 `probe_archon` 1단계로 한 번
+  보고 판단한다.
 
 ## 검토사항
 
