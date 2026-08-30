@@ -1,6 +1,13 @@
 # KMTNet-CEU Decision Log
 
-최종 갱신일: 2026-08-29
+최종 갱신일: 2026-08-30
+
+> ⚠️ **`ics_archon` 은 `main` 에 아직 없다.**  실기 ICS 는
+> **`ics-archon-v1.0-build` 브랜치에서 진행 중**이고 **추후 `main` 합류
+> 예정**이다 (합류 시점은 v0 완성 또는 v1 즈음 — 운영자 판단).
+> 이 문서가 `ics_archon/…` 경로나 그 구현을 인용하는 곳은 **전부 그 브랜치**를
+> 가리킨다.  `main` 의 `ics_sim` 도 아직 구판이라(예: `siteid.py` 잔존)
+> **여기 적힌 "구현 완료" 는 그 브랜치 기준**이다.
 
 ## D-001: Primary raw archive product는 L0 64-amplifier MEF로 한다
 
@@ -610,7 +617,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 날짜: 2026-08-21 (운영자 등재 승인 2026-08-22)
 관련: D-010 · D-011 · D-012(일부 대체) · D-013 · D-014 · `raw_fits_spec` 확인 요망 종결분(Header_and_Refs v1.12)
-상태: **Accepted** — 규격 문서 반영 완료(`raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` Part 2), `ics_sim` 구현 예정.
+상태: **Accepted** — 규격 문서 반영 완료(`raw_fits_spec/archive/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` Part 2 — 그 판은 `archive/` 로 갔다), **구현 완료** (충돌 선검사·번호 증가 — `ics-archon-v1.0-build`, `main` 합류 대기).
 
 결정:
 
@@ -633,7 +640,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 영향:
 
-- 구 규격 v1.2 의 2.3.1절 전면 대체 · 5.2절(`UNIQNAME`·`NAMECLSH` 폐지, `ORIGNAME` 신설) · 5.11절(pair 규칙) — 재작성판(V1)이 흡수한다. 상세: `raw_fits_spec/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` **Part 2**.
+- 구 규격 v1.2 의 2.3.1절 전면 대체 · 5.2절(`UNIQNAME`·`NAMECLSH` 폐지, `ORIGNAME` 신설) · 5.11절(pair 규칙) — 재작성판(V1)이 흡수한다. 상세: `raw_fits_spec/archive/KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.5.md` **Part 2** (현행 통합문서는 `_v0.7.md` 이나, Part 2 의 절 번호는 v0.5 기준이라 그 판을 가리킨다).
 - **D-010 · D-012 의 "아카이브 근거 삼총사 `UNIQNAME`/`FILENAME`/`CTRLTAG`" 문구를 `FILENAME`(+`ORIGNAME`) 로 개정한다** — `CTRLTAG` 는 v1.9 미도입 확정, pair 식별은 `FILENAME` `DETID` 필드가 담당.
 - `ics_sim` — `rawpair.py`(선검사 루프·되감음·상한, clash 격리 제거, `UNIQNAME` 제거, `ORIGNAME` 항상 기록) · `state.py`(카운터 동기화·순환) · `sequencer._store()`(확정 이름만 수령) · `tests/test_raw_header.py`(RETIRED 에 `UNIQNAME`·`NAMECLSH` 추가, 충돌·되감음·상한 시험 신설).
 - converter — C-항목 신설: MEF `UNIQNAME` 공급원 변경 또는 동반 폐지 (LEECU 판단, 통합 문서 Part 1 §1).
@@ -643,7 +650,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 날짜: 2026-08-25
 관련: D-011(개정) · D-014 · D-015 · `raw_fits_spec` raw spec v1.5
-상태: **Accepted** — raw spec v1.5 반영 완료, `ics_sim` 구현 대기.
+상태: **Accepted** — raw spec v1.5 반영 완료, **구현 완료**(`rawpair.KASI_SITE` · `site_of_observatory()` — `ics-archon-v1.0-build` 브랜치, **`main` 합류 예정**).
 
 결정:
 
@@ -681,7 +688,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 날짜: 2026-08-25
 관련: D-016(항목 1·2 개정) · D-011 · D-014
-상태: **Accepted** — raw spec v1.5 반영 완료, `ics_sim` 구현 대기.
+상태: **Accepted** — raw spec v1.5 반영 완료, **구현 완료**(`rawpair.NUM_SPACE = 1_000_000`, 되감음·상한 — `ics-archon-v1.0-build` 브랜치, **`main` 합류 예정**).
 
 결정:
 
@@ -707,7 +714,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 날짜: 2026-08-26
 관련: D-016(항목 4·5 개정) · D-010 · D-012 · **D-013**(`EXPID` 를 폐지했던 결정 — 이 항목이 되살린다) · `raw_fits_spec` raw spec v1.6
-상태: **Accepted** — raw spec v1.6 반영 완료, `ics_sim`/`ics_archon` 구현 대기.
+상태: **Accepted** — raw spec v1.6 반영 완료, **구현 완료**(`EXPID` 카드 · 견본 pair 반영 — `ics-archon-v1.0-build` 브랜치, **`main` 합류 예정**).
 
 결정:
 

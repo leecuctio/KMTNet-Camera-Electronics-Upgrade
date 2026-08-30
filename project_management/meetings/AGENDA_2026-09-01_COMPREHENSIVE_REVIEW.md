@@ -56,6 +56,8 @@
 
 **발표 ① 신규 ICS(ics_sim → ics_archon)와 취득 체계** (차상목·홍성욱)
 
+> ⚠️ **`ics_archon`(실기 ICS)은 `ics-archon-v1.0-build` 브랜치에서 진행 중이고 추후 `main` 합류 예정이다.**  `main` 저장소에는 아직 그 폴더가 없으니, 아래 항목을 확인할 때는 그 브랜치를 볼 것.
+
 - ICS 시뮬레이터 상태: 테스트 통과 현황, 실물 XIS 연동 시험(live XIS test) 결과/잔여
 - ics_archon 실기 전환 준비: raw pair 저장(D-011 사이트 코드, D-012 백엔드 계약), Archon 실기 검증 상태 (실험실 취득 스크립트 v2.0 포함)
 - Gate 1 Software Demonstration(ACT-001) 결과 확인 — Bias/Dark/FITS/legacy SW control 성공 기준 충족 여부
