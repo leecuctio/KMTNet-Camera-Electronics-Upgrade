@@ -2,6 +2,11 @@
 
 `raw_fits_spec/` 폴더에서 작업을 이어갈 때 참고할 컨텍스트. 저장소 전체 개요는 [../README.md](../README.md), 이 폴더의 구성은 [README.md](README.md) 참고.
 
+> ⚠️ **`../ics_archon/` 은 `main` 에 아직 없다.**  실기 ICS 는
+> **`ics-archon-v1.0-build` 브랜치에서 진행 중**이고 **추후 `main` 합류 예정**
+> 이다.  이 문서가 `../ics_archon/…` 을 가리키는 링크는 `main` 에서 열리지
+> 않지만 **그 브랜치에서는 열린다** — 끊긴 것이 아니라 아직 안 온 것이다.
+
 ## 이 폴더가 뭔가
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
