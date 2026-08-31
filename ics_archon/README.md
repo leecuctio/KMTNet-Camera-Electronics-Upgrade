@@ -20,7 +20,10 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | 파일 | 정체 |
 |---|---|
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
-| [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다 |
+| [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다.  **`hk_latest`** 가 icg 의 HK 스냅샷 경로(5.6절 HK 카드의 원천)다 |
+| [`icg_archon/`](icg_archon/) | ✅ **실기 ICG** (`v0.0.0`, 2026-08-31 신설) — guide 유닛 취득(raw spec v1.9 **9·10장**: `<SITE>.<날짜>.<번호>.G.fits`, frame-transfer 의미론) + **HK 취득·로깅**(1분 — Ctrl·진공·RTD·Radionode·AUX).  `python -m icg_archon` / `--backend sim`.  경위·판단은 [DevNote 9장](DevNote.md) |
+| [`icg_archon.ini`](icg_archon.ini) | icg 설정 — `[icg]` 가 guide 컨트롤러 배선, `[hk]` 가 로깅, `[radionode]` 가 Tapaculo365 Open API 접속(콘솔의 "OPENAPI 매뉴얼" 값을 옮겨 적는다) |
+| [`tools/gen_guidecards.py`](tools/gen_guidecards.py) | guide 견본 헤더 → `icg_archon/guidecards.py` 생성기 — 견본이 개정되면(v1.1 승격) 다시 돌린다.  `--diff` 는 science 폭 대조만 |
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
 | [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**221항목**, 약 4분). 배치본은 `-m "not repo_only"` (**185항목**).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
@@ -386,7 +389,7 @@ file         = ~/AIC/Logs/ics_archon.log
 > *"clock 을 개선해서 별도 erase 를 하지 않고 바로 노출을 시작한다"*. ⚠️ 켜면
 > 노출마다 **독출 1회분(11.3초)** 이 더 붙어 주기가 12.4 → 23.7초가 된다.
 
-> **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29, 규격 v1.8 5.5절).
+> **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29 v1.8 확정, 현행 규격 v1.9 5.5절).
 > `[controllers] ctrlN_cfg` 를 **비워 두면** `[archon] acf_mk`/`acf_nt` 에서
 > **폴더와 확장자(`.acf`/`.cfg`)를 뗀 이름**이 실린다 —
 > `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf` →
@@ -600,8 +603,10 @@ direct-reply 로 전 경로가 돈다.
 
 ## 아직 없는 것 (v0.0)
 
-**요약** — 듀어·환경 HK(`sensors()`, 5.6절 카드가 sentinel) · LED 프로젝터
-배선 · guide 계통 · binning · 바이어스 측정값의 헤더 수록(로그만 있다).
+**요약** — LED 프로젝터 배선 · binning · 바이어스 측정값의 헤더 수록(로그만
+있다).  ~~듀어·환경 HK~~ 와 ~~guide 계통~~ 은 **2026-08-31 `icg_archon` 신설**로
+경로가 생겼다 — HK 는 `[archon] hk_latest` 로 icg 스냅샷을 읽고(icg 가 꺼져
+있으면 종전대로 sentinel), guide 취득은 `icg_archon/` 이 맡는다 (실기 미검증).
 
 ⚠️ **각 항목의 근거와 착수 조건은 [SMC_CLAUDE.md](SMC_CLAUDE.md) 에 있다** —
 여기 두면 "쓰는 법" 과 "남은 일" 이 섞인다.

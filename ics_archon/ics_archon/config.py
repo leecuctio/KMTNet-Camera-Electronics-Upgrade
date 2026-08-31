@@ -188,6 +188,14 @@ class ArchonCfg:
     #: 정책에 걸린다.  `~` 는 읽을 때 펼친다(안 펼치면 **cwd 아래 `~` 폴더**가
     #: 조용히 생기고 오류도 안 난다).
     monitor_log: str = '~/AIC/log'
+    #: **듀어·환경 HK 의 원천** -- `icg_archon` 이 남기는 원자적 최신 스냅샷
+    #: (`hk_latest.G.json`).  비우면 5.6절 HK 카드가 sentinel 로 실린다.
+    #: 물리 원천(guide 유닛 RTD·진공 · Radionode)은 접속자 규칙상 icg 만
+    #: 읽을 수 있어, science 는 이 파일을 통해 받는다 (운영자 확정 2026-08-31).
+    hk_latest: str = ''
+    #: 스냅샷 표본의 신선도 한도 [s] -- 이보다 낡은 키는 버린다 (icg 주기
+    #: 60s 의 5배.  낡은 값이 새 값처럼 실리는 것이 결측보다 나쁘다).
+    hk_stale_after: float = 300.0
     #: 전원 레일의 정상 범위 [V].  **`None` 이면 매뉴얼 p.41 기본값**
     #: (`archon.parse.RAIL_LIMITS`).
     #:
@@ -570,6 +578,9 @@ def load(path: str) -> ArchonCfg:
     # 쌓이는 것이 드러나지 않는다 (`ics_sim config.py` 의 2026-08-23 실측).
     raw_log = _text(s, 'monitor_log', cfg.monitor_log)
     cfg.monitor_log = os.path.expanduser(raw_log) if raw_log else ''
+    raw_hk = _text(s, 'hk_latest', cfg.hk_latest)
+    cfg.hk_latest = os.path.expanduser(raw_hk) if raw_hk else ''
+    cfg.hk_stale_after = _num(s, 'hk_stale_after', cfg.hk_stale_after, float)
     cfg.rail_limits = _rail_limits(cp)
 
     cfg.shutter_ctrl = _head(s, 'shutter_ctrl', cfg.shutter_ctrl).upper()

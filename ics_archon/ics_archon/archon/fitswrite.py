@@ -74,8 +74,15 @@ def structural_cards(naxis1: int, naxis2: int) -> list[tuple[str, object, str]]:
     return [(k, values[k], _COMMENT.get(k, '')) for k in _LEAD]
 
 
-def card_image(key: str, value: object, comment: str) -> str:
+def card_image(key: str, value: object, comment: str, *,
+               widths: dict[str, int] | None = None) -> str:
     """카드 이미지 80자 하나.  견본 v1.0 의 고정 형식을 그대로 재현한다.
+
+    `widths` 를 주면 그 표가 science 견본 폭(`_WIDTH`)을 **통째로 대신한다** --
+    guide raw(`icg_archon`)가 자기 견본 폭 표를 꽂는 자리다.  guide 견본은
+    science 와 공유하는 키 8장의 폭이 다르다(컨트롤러 블록 24/29 -> 26,
+    `C1_*` 51 -> 49) -- science 표로 패딩하면 guide 저장 바이트가 견본과
+    어긋난다.
 
     comment 없는 수치 카드에도 `' /'` 를 붙인다 -- 견본이 그렇다 (astropy 는
     생략하지만 정본은 견본이다).
@@ -113,14 +120,17 @@ def card_image(key: str, value: object, comment: str) -> str:
         # comment 로 새며 **경고가 한 줄도 안 뜬다.**  값의 출처가 관측자 입력
         # (`OBJECT`/`OBSERVER`/`PROJID`)과 ACF 파일명이라 실제로 들어올 수 있다.
         text = text.replace("'", "''")
-        width = _WIDTH.get(key, 0)
+        width = (_WIDTH if widths is None else widths).get(key, 0)
         # 값이 들어갈 최대 폭 = 80 - ("KEY     = '" + "'" + " / " + comment)
         room = 80 - (10 + 1 + 1 + (3 + len(comment) if comment else 2))
         room = max(room, width)      # 견본 폭은 항상 들어간다
         if len(text) > room:
-            # **comment 를 먼저 줄인다** (5.0절).  comment 를 다 지웠을 때의
-            # 최대 폭은 `' /'` 만 남기고 계산한다.
-            room_bare = max(80 - (10 + 1 + 1 + 2), width)
+            # **comment 를 먼저 줄인다** (5.0절).  값 절단의 문턱은 **값 단독
+            # 68자**다 -- `"KEY     = '" (11) + 값 + "'" (1) = 80`.  이때는
+            # `' /'` 꼬리도 포기한다(comment 는 선택 사항).  `fitsout.
+            # _fit_to_card` 의 `_VALUE_MAX = 68` 과 같은 문턱이어야 두 기록기의
+            # 규범 해석이 갈리지 않는다.
+            room_bare = max(80 - (11 + 1), width)
             if len(text) <= room_bare:
                 keep = 80 - (10 + 1 + 1 + 3) - len(text)
                 comment = comment[:max(keep, 0)].rstrip()
@@ -152,7 +162,13 @@ def card_image(key: str, value: object, comment: str) -> str:
             token = repr(float(value))
         base = '%-8s= %20s' % (key, token)
 
-    base += ' / %s' % comment if comment else ' /'
+    if comment:
+        base += ' / %s' % comment
+    elif len(base) + 2 <= CARD:
+        base += ' /'
+    # comment 를 잃고 값이 카드를 다 채운 경우(68자 값)는 꼬리 없이 그대로 --
+    # `' /'` 를 붙이면 [:CARD] 절단이 뒤를 자르므로 결과는 같지만 아래 경고가
+    # 오독을 만든다.
     if len(base) > CARD:
         # 값은 위에서 폭에 맞췄으니 넘치는 것은 comment 쪽이다.  자체로는
         # 파싱을 깨지 않지만(인용부호는 살아 있다) **조용한 절단**이라 알린다 --
@@ -164,13 +180,16 @@ def card_image(key: str, value: object, comment: str) -> str:
     return base.ljust(CARD)[:CARD]
 
 
-def header_bytes(cards, naxis1: int, naxis2: int) -> bytes:  # noqa: ANN001
+def header_bytes(cards, naxis1: int, naxis2: int, *,  # noqa: ANN001
+                 widths: dict[str, int] | None = None) -> bytes:
     """카드 목록 -> 2880B 정렬 헤더 바이트열.
 
     Args:
         cards: `rawcards.render()` 결과 -- `(keyword, value, comment)` 목록.
             구조 카드는 없어도 되고, 있으면 그것을 쓴다 (시험 편의).
         naxis1/naxis2: 구조 카드가 없을 때 선언할 기하.
+        widths: 문자열 패딩 폭 표 -- 기본은 science 견본(`_WIDTH`), guide 는
+            자기 표(`guidecards.WIDTHS`)를 준다 (`card_image` 참조).
 
     견본 pair 는 v1.5 에서 값 **131** + COMMENT 8 + END 1 = 140 레코드가 됐고
     (HK 4장 폐지), `END` 뒤를 **공백 레코드 4장**으로 채워 144 레코드 ·
@@ -183,10 +202,10 @@ def header_bytes(cards, naxis1: int, naxis2: int) -> bytes:  # noqa: ANN001
     have_structural = any(k in rawcards.STRUCTURAL for k, _v, _c in cards)
     out: list[str] = []
     if not have_structural:
-        out += [card_image(k, v, c)
+        out += [card_image(k, v, c, widths=widths)
                 for k, v, c in structural_cards(naxis1, naxis2)]
     for key, value, comment in cards:
-        out.append(card_image(key, value, comment))
+        out.append(card_image(key, value, comment, widths=widths))
     out.append('END'.ljust(CARD))
 
     head = ''.join(out)
@@ -223,7 +242,8 @@ def to_fits_data(raw_le: bytearray) -> memoryview:
 
 
 def write_frame(path: str, cards, raw_le: bytearray, *,  # noqa: ANN001
-                naxis1: int, naxis2: int) -> int:
+                naxis1: int, naxis2: int,
+                widths: dict[str, int] | None = None) -> int:
     """raw FITS 파일 하나를 쓰고 **전송률(KB/sec)** 을 돌려준다.
 
     `raw_le` 는 FETCH 가 준 리틀엔디언 `uint16` 바이트열이고, 길이가 선언 기하와
@@ -251,7 +271,7 @@ def write_frame(path: str, cards, raw_le: bytearray, *,  # noqa: ANN001
             '저장하지 않는다.  ACF 기하와 samplemode 를 확인하라.'
             % (len(raw_le), naxis1, naxis2, want))
 
-    head = header_bytes(cards, naxis1, naxis2)
+    head = header_bytes(cards, naxis1, naxis2, widths=widths)
     data = to_fits_data(raw_le)
     pad = (-want) % BLOCK
 

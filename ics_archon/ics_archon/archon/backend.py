@@ -49,6 +49,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -128,6 +129,7 @@ class ArchonBackend:
         self._prep_locks = {tag: asyncio.Lock() for tag in self.tags}
         self._led_ms = 0
         self._warned_sensors = False
+        self._warned_stale = False
         #: 태그 -> 이번 프레임의 이름.  `initialize()` 가 받아 두고 `trigger()`
         #: 와 `write_frame()` 이 저장 표를 맞추는 데 쓴다 (blocker B).
         self._suffix: dict[str, str] = {}
@@ -607,22 +609,63 @@ class ArchonBackend:
         return out
 
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        """5.6절 듀어·환경 HK.  **아직 원천이 없다 -- 빈 dict.**
+        """5.6절 듀어·환경 HK -- **원천은 `icg_archon` 의 HK 스냅샷이다**
+        (운영자 확정 2026-08-31).
 
-        공급 3계통(ICG RTD · standalone RTD readout unit · Radionode)은 Archon
-        이 아니라 별도 계통이고, labtest 는 그 어느 것도 읽지 않는다 -- 즉
-        **옮겨올 원형이 없다.**  호출측이 sentinel 로 채우고 그 사실이 헤더에
-        남는다 (raw spec 5.0절) -- `CCDTEMP='-999.99'` 가 그 표시다.
+        공급 3계통(ICG RTD · Radionode)의 물리 원천은 **guide 유닛과
+        Radionode 클라우드**이고, 접속자는 컨트롤러당 하나라 science 쪽이
+        직접 읽을 수 없다.  `icg_archon` 이 1분 주기로 남기는 원자적 스냅샷
+        (`hk_latest.G.json` -- 값 + 표본시각)을 읽는 것이 계약이다:
 
-        붙일 때의 계약은 `base.py` 의 이 메서드 docstring 에 다 적혀 있다
-        (키 이름 · 대표 센서 `ccdtemp` · 못 읽은 항목은 넣지 않기).
+        * `[archon] hk_latest` 가 그 파일 경로다.  비우면 종전대로 전 키
+          결측(sentinel)이고 경고 한 줄이 남는다.
+        * **신선도 판정은 읽는 쪽 몫이다** -- 표본이 `hk_stale_after` 보다
+          낡으면 그 키를 버린다 (낡은 값이 새 값처럼 실리는 것이
+          결측보다 나쁘다 -- 진공 Alive 규칙과 같은 정신).
+        * 파일이 없거나 깨져 있으면 결측 + 경고 (한 번씩만).
+
+        키 이름·형은 계약(`base.py`) 그대로 -- 스냅샷의 `values` 가 이미
+        그 키로 담겨 있다 (`icg_archon/hk.py`).
         """
-        if not self._warned_sensors:
-            self._warned_sensors = True
-            log.warning('듀어·환경 HK 를 읽는 경로가 아직 없다 -- CCDTEMP 를 '
-                        '비롯한 5.6절 카드가 sentinel 로 실린다.  공급 3계통 '
-                        '연동이 남은 일이다 (base.py sensors() 참조)')
-        return {}
+        path = getattr(self.acfg, 'hk_latest', '')
+        if not path:
+            if not self._warned_sensors:
+                self._warned_sensors = True
+                log.warning('듀어·환경 HK 원천이 설정에 없다 -- [archon] '
+                            'hk_latest 에 icg_archon 스냅샷 경로를 주면 '
+                            'CCDTEMP 등 5.6절 카드가 실값으로 실린다.  '
+                            '지금은 sentinel 이다')
+            return {}
+        try:
+            with open(os.path.expanduser(path), encoding='utf-8') as fh:
+                snap = json.load(fh)
+        except (OSError, ValueError) as exc:
+            if not self._warned_sensors:
+                self._warned_sensors = True
+                log.warning('icg HK 스냅샷(%s)을 읽지 못했다 -- %s.  5.6절 '
+                            '카드가 sentinel 로 실린다 (icg_archon 이 돌고 '
+                            '있는지 볼 것)', path, exc)
+            return {}
+        self._warned_sensors = False       # 회복하면 다음 결측 때 다시 경고
+        now = time.time()
+        horizon = float(getattr(self.acfg, 'hk_stale_after', 300.0))
+        values = snap.get('values') or {}
+        sampled = snap.get('sampled') or {}
+        out: dict = {}
+        stale: list[str] = []
+        for key, val in values.items():
+            age = now - float(sampled.get(key, snap.get('written', 0.0)))
+            if age <= horizon:
+                out[key] = val
+            else:
+                stale.append('%s(%.0fs)' % (key, age))
+        if stale and not self._warned_stale:
+            self._warned_stale = True
+            log.warning('icg HK 표본이 낡았다 -- %s (한도 %.0fs).  해당 '
+                        '카드는 sentinel 로 실린다', ', '.join(stale), horizon)
+        elif not stale:
+            self._warned_stale = False
+        return out
 
     def status(self, ccd: str) -> dict:
         """`STATUS` 명령 응답에 쓸 값들.
