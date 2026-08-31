@@ -867,12 +867,12 @@ class Sequencer:
             skew = max(cfg.timing.skew_of(c) for c in chips)
             await asyncio.sleep(cfg.scaled(cfg.timing.write_delay + skew))
 
-            # **실효 사이트는 `state.site_code` 다** -- IP 판정이 ini 를 이긴다
-            # (D-015, raw spec 2.2절).  구판은 여기서 `cfg.node.telid`(ini
-            # 원값)를 읽었는데, 그러면 판정이 ini 와 다를 때 관측일 경계는
-            # 판정값(`st.obs_date()`)을 쓰면서 파일명 `<SITE>` 와 `OBSERVAT` 는
-            # ini 값이 되어 **한 파일 안에서 사이트가 갈렸다** -- 기동 배너가
-            # 찍는 파일명 예시(`st.site_code` 기준)와도 어긋났다.
+            # **실효 사이트는 `state.site_code` 다** -- `[node] observatory`
+            # 한 줄에서 유도된 단일 권위 (D-020, raw spec 2.2절).  구판은
+            # 여기서 `cfg.node.telid`(ini 원값)를 따로 읽었는데, 그러면 값이
+            # 갈릴 때 관측일 경계는 `st.obs_date()` 를 쓰면서 파일명 `<SITE>`
+            # 와 `OBSERVAT` 는 딴 값이 되어 **한 파일 안에서 사이트가 갈렸다**
+            # -- 기동 배너가 찍는 파일명 예시(`st.site_code` 기준)와도 어긋났다.
             site = st.site_code
             path = rawpair.physical_path(cfg.paths.data_dir, site, suffix,
                                          ctrltag)

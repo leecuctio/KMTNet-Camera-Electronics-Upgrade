@@ -22,7 +22,10 @@
 #      - FETCH 주소가 small buffer 배치식 ((buf+1)|4)<<29 다
 #    나머지(헤더·규격 정합·데이터셋 구성·검사)는 bigbuf 와 **글자까지 같다**.
 #
-# v1.3 (2026-08-26): CEU 샘플영상 획득용 코드 추가
+# v1.3.5 (2026-08-31): raw spec v1.9 동반 -- 내장 RAWCARDS 의 CCDTEMP comment 에서
+#   'M' 제거 (견본 3장 제자리 개정, 운영자 지시 2026-08-30).  헤더 바이트가
+#   바뀌므로 판을 올린다 (v1.2.0 의 ICSBUILD 구분 원칙).
+## v1.3 (2026-08-26): CEU 샘플영상 획득용 코드 추가
 #   Target 데이터셋 신설 (DS_TARGET = 4 — 비어 있던 자리를 써서 기존 번호 안 건드림)
 #   TEST_DARK_NUMBER 도입 — dark 를 여러 장 찍을 수 있게. 다섯 데이터셋 전부 + _expected_dataset_bytes() 까지 일관 반영
 #   실기 유닛 정보 — STA-0284(CTIO 행 유닛), IP .101, ACF KMTC_SCI_101_STA0284_R2608_MK.acf, 관측자 SMC
@@ -37,7 +40,7 @@
 #   **같은 ICSBUILD 로 찍혀** 나중에 헤더만 보고 구분할 수 없다.
 #   파일명도 함께 옮겼다 (구 archon_kmtnet_labtest_v1.1.bigbuf.py).
 #
-# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md)
+# v1.1 (2026-08-22): raw spec 적용 (raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md)
 #   ※ 최초 작성은 v1.3 기준. v1.4 는 1~4장 표현만 바뀌어 구현 영향이 없었고
 #     (2.5절 삭제 = 취득 SW 소관 이관 · 4.1 RRRRLLLL 확정 · 4.2/4.4 표기),
 #     **v1.5 (2026-08-26 반영)는 값이 바뀌어 아래 다섯 자리를 고쳤다.**
@@ -145,8 +148,8 @@ FRAME_DUMP_STATUS = True    #  <---- POWER/POWERGOOD/TIMER 도 함께.
                             #        끄면 FRAME 질의 하나만 -- 왕복이
                             #        셋에서 하나로 준다
 
-SCRIPT_VERSION = '1.3.4'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
-SCRIPT_BUILD = '2026-08-26T20:11Z'  # 소스를 고치면 같이 올린다
+SCRIPT_VERSION = '1.3.5'            # FITS ICSBUILD = v<버전>:<빌드일시>Z
+SCRIPT_BUILD = '2026-08-31T09:00Z'  # 소스를 고치면 같이 올린다
 
 ## 위 손편집 항목(`<---- Set this`)을 **기동 시점에 한 번** 검증한다.
 ##

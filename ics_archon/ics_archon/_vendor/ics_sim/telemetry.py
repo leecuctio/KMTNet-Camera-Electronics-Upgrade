@@ -169,7 +169,8 @@ class TelemetryRelay:
         self.last_aux_ok = False
         self.last_tcs_ok = False
         #: 실효 사이트 코드.  TC 가 보낸 `TELID` 와 대조하는 기준이다.
-        #: `app` 이 사이트를 판정한 뒤 넣어 준다 (D-015).  비어 있으면 대조를
+        #: `app` 이 `[node] observatory` 에서 유도한 값을 넣어 준다 (D-020 --
+        #: TELID 교차검증은 D-015 에서 유지된 동작이다).  비어 있으면 대조를
         #: 건너뛴다 -- 단위 시험이 relay 를 홀로 만들 때가 그렇다.
         self.site_code = ''
         #: 이미 경고한 `TELID` 값.  **서로 다른 값마다 한 번씩** 경고한다 --
@@ -246,7 +247,7 @@ class TelemetryRelay:
             self.last_tcs_ok = False
 
     def check_telid(self, fields: list[tuple[str, str]]) -> None:
-        """TC 가 보낸 `TELID` 를 실효 사이트와 대조한다 (D-015).
+        """TC 가 보낸 `TELID` 를 실효 사이트와 대조한다 (D-020 이 유지한 검사).
 
         **경고만 한다.**  `TELID` 는 `pctcs.ini` 의 `FITS_TELID` 설정이고
         (`commands.c:1999` -> `aux.FitsTelID`, `loadconfig.c:512-514`) 기본값이
@@ -271,16 +272,16 @@ class TelemetryRelay:
         if telid == 'KMTN':
             log.warning(
                 'TC 가 TELID=KMTN 을 보냈다 -- pctcs 의 FITS_TELID 가 설정되지 '
-                '않은 기본값이다(pctcs.h:115). 우리 판정은 %s 이고 파일명은 '
-                '%s.… 로 나간다. pctcs.ini 의 FITS_TELID 를 채울 것 (D-015)',
+                '않은 기본값이다(pctcs.h:115). 우리 사이트는 %s 이고 파일명은 '
+                '%s.… 로 나간다. pctcs.ini 의 FITS_TELID 를 채울 것 (D-020)',
                 self.site_code, self.site_code)
             return
         log.warning(
-            'TC 의 TELID 가 우리 사이트 판정과 다르다.\n'
-            '  TC (pctcs.ini FITS_TELID) : %s\n'
-            '  우리 판정 (호스트 IP)      : %s\n'
+            'TC 의 TELID 가 우리 사이트와 다르다.\n'
+            '  TC (pctcs.ini FITS_TELID)      : %s\n'
+            '  우리 ([node] observatory 유도) : %s\n'
             '파일명은 %s.… 로 저장된다. 둘 중 하나가 잘못 배포된 것이니 자료를 '
-            '찍기 전에 확인할 것 (D-015)',
+            '찍기 전에 확인할 것 (D-020, raw spec 2.2절)',
             telid, self.site_code, self.site_code)
 
     def on_tc_reply(self, msg: Message) -> bool:
@@ -292,7 +293,7 @@ class TelemetryRelay:
         if key == 'AUXSTATUS':
             self.aux_fields = fields
             self.last_aux_ok = bool(fields)
-            # 사이트 정체 대조 (D-015).  서로 다른 값마다 한 번씩 경고한다.
+            # 사이트 정체 대조 (D-020 이 유지).  서로 다른 값마다 한 번씩 경고한다.
             self.check_telid(fields)
         else:
             self.tcs_fields = fields

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Raw FITS pair — 이름·번호·충돌 처리 (저장 단위와 통보 단위의 분리).
 
-근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md`] 2장과
+근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md`] 2장과
 [`mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`] 2.1·3절이다.
 결정 기록은 D-010(통보 분리) · D-011(사이트 코드) · D-012(계약 개정) ·
 **D-016(충돌 번호 증가) · D-019(`FILENAME`/`EXPID` 정체성)**.

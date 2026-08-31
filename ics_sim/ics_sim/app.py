@@ -49,8 +49,9 @@ class IcsSim:
         self.cfg = cfg
         self.router = NodeRouter(cfg.node)
         # `site_code` 는 파일명 `<YYYYMMDD>`(사이트별 관측일)와 헤더 정체성에
-        # 함께 쓰인다.  `normalize_site()` 를 지나므로 `KMTC`/`KMTS`/`KMTA` 밖은
-        # 모두 `KMTK` 로 떨어진다 (운영자 확정 2026-08-13, 코드는 D-017 개정).
+        # 함께 쓰인다.  `config.load()` 가 `[node] observatory` 를 검증해 유도한
+        # 값이다 -- 넷 밖의 값은 설정 단계에서 기동 거부라 조용한 강등이 없다
+        # (D-020 · D-017, raw spec 2.2절).
         site, self.site_why = self._resolve_site()
         self.state = IcsState(expnum_file=cfg.paths.expnum_file,
                               site_code=site)
@@ -63,7 +64,7 @@ class IcsSim:
         self.transport = UdpEndpoint(cfg, self._on_message)
         self.emit = Emitter(cfg, self.router, self.transport.send)
         self.telem = TelemetryRelay(cfg, self._send_query)
-        # TC 의 TELID 를 실효 사이트와 대조하게 한다 (D-015).
+        # TC 의 TELID 를 실효 사이트와 대조하게 한다 (D-020 이 유지한 검사).
         self.telem.site_code = site
         self.backend = make_backend(cfg)
         self.aux = AuxControlClient(cfg.auxcontrol)

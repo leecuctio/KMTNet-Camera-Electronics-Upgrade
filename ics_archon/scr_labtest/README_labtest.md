@@ -324,7 +324,7 @@ python -c "from astropy.io import fits; h=fits.open('KMTK.20260822.321100.MK.fit
 
 ## v1.1 에서 바뀐 것 (raw spec 적용, 2026-08-22)
 
-정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md`](../../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md)
+정본: [`../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md`](../../raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md)
 
 1. **파일명** — `AC13A.<날짜>.<번호>.fits` → **`<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits`**
    (D-011). 실험실은 `SITE_CODE='KMTK'`(KASI), 날짜는 UT(KMTK 보정 0,
@@ -498,3 +498,4 @@ v1.1 을 만든 뒤 스크립트를 원본과 대조 검토해 **6건을 고쳤�
 | v1.1.3 | **저장 자리 한 곳으로** (운영자 확정 2026-08-24) — 세 갈래(`_C`/`_A`/`_B`)를 `DATA_STORAGE = ~/AIC/data` 하나로 합치고, `~` 를 `GetDataset` 이 펼치게 했다(안 펼치면 **cwd 아래 `~` 폴더**가 생기고 오류도 안 난다 — `ics_sim config.py` 의 2026-08-23 실측과 같은 함정). 함께 **저장소 선검사**를 ACF 와 같은 자리(POWERON 앞)에 넣었다 — `createFolder` 가 OSError 를 삼켜서, 경로가 틀리면 POWERON 뒤 `os.listdir` 에서 터지고 그 자리가 노출 루프 `try/finally` 의 **바깥**이라 전원을 켠 채 끝났다. 용량을 세려고 `SetDatasetConfig` 호출을 POWERON 앞으로 올렸다(전역 대입과 `print` 뿐이라 컨트롤러와 무관) |
 | **v1.3.0** | **Target 데이터셋 신설** (2026-08-26, 운영자): `DS_TARGET = 4`(비어 있던 자리) · `TEST_DARK_NUMBER` 도입으로 dark 를 여러 장 찍는다(다섯 데이터셋 전부 + `_expected_dataset_bytes()` 동반) · 실기 유닛 정보(`STA-0284`, IP `.101`, ACF `KMTC_SCI_101_STA0284_R2608_MK.acf`, 관측자 `SMC`) · `DATA_STORAGE` 한 곳에 저장(DS 폴더 분리 해제).  **`CTRL1ID` = `KMTC-SCI-101`** — CTIO 로 갈 유닛을 실험실에서 시험하므로 **유닛 정체는 시리얼과 1:1**(원자료 `Archon_Unit_Info.txt`)로 두고, 자료를 딴 곳은 `SITE_CODE='KMTK'` 가 따로 말한다 |
 | **v1.2.0** | **raw spec v1.5/v1.6 반영 — 헤더 내용 변경** (2026-08-26): 값 카드 135 → **131**(HK 4장 폐지) · `CHMAP_*` **4자 토큰** · `ORIGNAME` → **`EXPID`** · `Cn_*` 구분자 공백 → **`\|`** · 결측 자리 sentinel **`NC`** · 카드 폭 초과 규범(comment 를 뒤에서 자른다) · D-017 사이트 코드 · D-018 번호 공간.  **판을 올린 이유**: `SCRIPT_VERSION`/`SCRIPT_BUILD` 가 그대로 `ICSBUILD` 카드에 실리므로, 1.1.3 에 머물면 헤더가 다른 두 종류 프레임이 같은 값으로 찍힌다.  파일명도 `…v1.2.bigbuf.py` 로 옮겼다 |
+| **v1.3.5** | **raw spec v1.9 동반 — `CCDTEMP` comment 의 `M` 제거** (2026-08-31, 5본 일괄): 견본 3장 제자리 개정(운영자 지시 2026-08-30)을 내장 `RAWCARDS` 에 반영.  헤더 바이트가 바뀌므로 v1.2.0 의 `ICSBUILD` 구분 원칙대로 판을 올렸다 |

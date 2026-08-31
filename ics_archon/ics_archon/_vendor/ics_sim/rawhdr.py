@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """raw spec 5장 헤더의 **값 공급** — instrument·detector·노출·컨트롤러·HK.
 
-근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.8.md`] 4·5장이고
+근거는 [`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md`] 4·5장이고
 결정 기록은 D-013(레거시 판정) · D-016(충돌·정체성).  카드의 **순서·comment·
 패딩(틀)**은 `rawcards.py` 템플릿이 갖고, 이 모듈은 그 틀에 부을 **값**을
 출처별 블록 함수로 만든다.  경위는 DevNote 11.14(구판 구현) · 11.19(v1.3 정렬).
@@ -95,7 +95,8 @@ CAMVER = 'CEU-v2.1'      # **HW·성능상 변경이 있을 때만 올린다** -
 #: 없다", `UNKNOWN` 은 "있는데 값을 모른다" 다.  독출 모드는 언제나 존재하므로
 #: `NC` 가 아니다.
 #:
-#: ⏳ **규격 등재는 v1.9 대기** -- 5.5절 `RDMODE` 행이 아직 `'NORMAL' 등` 이라
+#: ⏳ **규격 등재는 차기 판올림 대기** (이월 4건의 하나 -- v1.9 는 guide 장
+#: 신설·개명만 담고 나왔다).  5.5절 `RDMODE` 행이 아직 `'NORMAL' 등` 이라
 #: 적고 있다.  코드가 먼저 간 예외이고, 그 이유는 값이 `NORMAL` 로 실리면
 #: **거짓말이 조용히 아카이브에 들어가기** 때문이다.
 RDMODE = 'UNKNOWN'
@@ -452,7 +453,7 @@ def controller_header(info: dict, *, backend_name: str, ics_build: str,
 
 
 # ---------------------------------------------------------------------------
-# 5.6 Camera System House Keeping (18장) + 5.8 의 Radionode 2장
+# 5.6 Camera System House Keeping (14장) + 5.8 의 Radionode 2장
 # ---------------------------------------------------------------------------
 
 #: 듀어·HK 센서 카드 -- 견본 v1.0 의 수록 순서.  출처 3계통은 백엔드
@@ -574,7 +575,8 @@ def format_ens(value: object) -> str:
 
 
 def thermal_header(sensors: dict | None) -> dict[str, object]:
-    """5.6절 HK 12장 + 5.8절 Radionode 2장 (`FSATEMP`/`FSAHUM`).
+    """5.6절 HK 8장 (`DEWPRES`·`CCDTEMP` + 듀어 6장) + 5.8절 Radionode 2장
+    (`FSATEMP`/`FSAHUM`) -- 5.6절의 나머지 6장(`Cn_*`)은 `ctrl_telemetry_header()` 몫.
 
     **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** (운영자 확정 2026-08-21).
     대표 센서는 백엔드 `ccdtemp` 이고, **죽었을 때 다른 값으로 대체하지
