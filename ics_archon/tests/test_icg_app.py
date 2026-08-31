@@ -130,6 +130,44 @@ def test_messages_follow_the_wrote_and_idle_forms(run_go3):
     assert app.emit.violations == [] if hasattr(app.emit, 'violations') else True
 
 
+def test_readout_failure_reports_error_and_returns_to_idle(tmp_path):
+    """독출 실패가 시퀀서를 조용히 죽이면 안 된다 -- ERROR + IDLE 통보.
+
+    교차검토(2026-08-31)에서 잡힌 고착 경로의 회귀: wait_frame 예외가
+    무처리로 새면 expstatus 가 READOUT 에 고정되고 통보가 0이 된다.
+    """
+    from icg_archon.backend import GuideBackendError, SimGuideBackend
+
+    class FailingBackend(SimGuideBackend):
+        async def wait_frame(self, ticket):  # noqa: ANN001, ANN202
+            yield 50
+            raise GuideBackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.')
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide = FailingBackend(cfg, icfg)
+        app.seq.backend = app.guide
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG GUIDEEXP 1')
+            await asyncio.sleep(0.02)
+            app.transport.feed('abc>ICG go')
+            await asyncio.sleep(0.02)
+            await app.seq.wait()
+            await asyncio.sleep(0.05)
+        finally:
+            await app.stop()
+        return app, [str(s) for s in app.transport.sent_log]
+
+    app, sent = asyncio.run(run())
+    text = '\n'.join(sent)
+    assert 'ERROR: GO DMA WAIT TIMEOUT' in text
+    assert 'DONE: EXPSTATUS=IDLE' in text
+    assert app.state.expstatus == 'IDLE'
+    assert not app.state.exposing
+
+
 def test_collision_bumps_number_but_keeps_expid(tmp_path):
     """D-016 guide 판 -- 점유 시 번호가 밀리고 EXPID 는 최초 배정분."""
     async def run():  # noqa: ANN202

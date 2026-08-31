@@ -98,9 +98,21 @@ class GuideBackend:
             raise GuideBackendError(
                 'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
 
-    def wait_frame(self, ticket):  # noqa: ANN001, ANN201
-        """진행률 yield -- 컨트롤러 위임 (완료는 `ticket.ready`)."""
-        return self.ctrl.wait_frame(ticket)
+    async def wait_frame(self, ticket):  # noqa: ANN001, ANN201
+        """진행률 yield -- 컨트롤러 위임 (완료는 `ticket.ready`).
+
+        컨트롤러 예외(프레임 시한·건너뜀·연결 단절)를 `GuideBackendError`
+        로 감싼다 -- 이 표면만 무포장이면 독출 실패가 시퀀서 태스크를
+        무처리로 죽여 `EXPSTATUS=READOUT` 고착 + 통보 0 이 된다 (science
+        `_readout_stream` 의 안전망과 같은 자리다.  실기 실증 경로: Sync In
+        사고의 프레임 시한).
+        """
+        try:
+            async for pct in self.ctrl.wait_frame(ticket):
+                yield pct
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError(
+                'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
 
     async def write_frame(self, suffix: str, path: str, cards) -> int:  # noqa: ANN001
         """fetch + guide FITS 저장.  반환은 전송률 [KB/s].

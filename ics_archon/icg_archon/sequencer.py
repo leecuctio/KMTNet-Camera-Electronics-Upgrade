@@ -38,6 +38,7 @@ from ics_sim.state import ExpStatus, stamp_iso_ms, utcnow  # noqa: E402
 from . import guidecards, guidehdr, guidepair  # noqa: E402
 from .backend import GuideBackendError  # noqa: E402
 from .config import IcgCfg  # noqa: E402
+from .guidepair import NumberSpaceExhausted  # noqa: E402
 
 log = logging.getLogger('icg_archon.seq')
 
@@ -132,6 +133,7 @@ class GuideSequencer:
 
     async def _run(self, count: int, source: str) -> None:
         st = self.st
+        st.exposing = True     # STATUS `Mode=Acquiring` · EXPNUM 창의 근거
         try:
             exptime = float(st.exptime)
             if exptime < self.icfg.exptime_min:
@@ -172,6 +174,7 @@ class GuideSequencer:
 
             base = time.monotonic()
             t_prev = None            # 직전 독출 개시 (UTC) -- DATE-OBS 원천
+            prev_mono = None         # 실현 간격 계측용 (단조 시계)
             saved = 0
             for k in range(count + 1):
                 target = base + k * interval
@@ -186,6 +189,21 @@ class GuideSequencer:
 
                 orig_suffix = '' if k == 0 else st.next_suffix()
                 trig_utc = utcnow()
+                trig_mono = time.monotonic()
+                # **실현 간격 감시** (10.5절 6번 불변식의 취득 시점 판).
+                # pacing 이 밀리면(독출·fetch·락 경합) 다음 트리거가 즉시
+                # 나가 실제 독출 개시 간격이 EXPTIME 을 넘는데, 헤더에는
+                # 지시값이 실린다 -- 그 어긋남을 조용히 두지 않는다.
+                # 허용 편차는 PROVISIONAL (실기 실측 때 OI-23 과 함께 확정).
+                if prev_mono is not None:
+                    achieved = trig_mono - prev_mono
+                    if achieved > interval * 1.05 + 0.1:
+                        log.warning(
+                            '독출 개시 간격이 밀렸다 -- 실현 %.3fs, 지시 '
+                            '%.3fs (프레임 %d/%d).  헤더 EXPTIME 은 지시값'
+                            '이므로 이 프레임의 10.5절 6번 불변식이 깨진다',
+                            achieved, interval, k, count)
+                prev_mono = trig_mono
                 ticket = await self.backend.trigger_frame(
                     queue=k > 0, suffix=orig_suffix)
 
@@ -214,10 +232,32 @@ class GuideSequencer:
             self.emit.error(source, 'GO', _ascii(exc), st.expstatus)
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(source)
+        except NumberSpaceExhausted as exc:
+            # D-016 의 유일한 저장 실패 조건 -- 규격이 ERROR 를 명한다
+            # (2.3절 2항, 9.2절 준용).  문구는 ASCII 고정(원문은 한글).
+            log.error('%s', exc)
+            st.expstatus = ExpStatus.ERROR
+            self.emit.error(source, 'GO',
+                            'Exposure number space exhausted -- not saving '
+                            '(D-016)', st.expstatus)
+            st.expstatus = ExpStatus.IDLE
+            self.emit.idle_done(source)
         except asyncio.CancelledError:
             # ABORT -- 요청자에게 IDLE 종결을 알린다 (science 와 같은 규칙).
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(self._aborted_by or source)
+        except Exception:  # noqa: BLE001 -- 최후 안전망
+            # 여기 오면 우리 결함이다 -- 그래도 **조용히 죽지 않는다**:
+            # 통보 없이 태스크만 죽으면 expstatus 가 그 국면에 고착되고
+            # 가이딩 클라이언트가 영원히 기다린다.
+            log.exception('guide 사이클이 예상 밖 예외로 죽었다')
+            st.expstatus = ExpStatus.ERROR
+            self.emit.error(source, 'GO', 'Internal error in guide sequencer',
+                            st.expstatus)
+            st.expstatus = ExpStatus.IDLE
+            self.emit.idle_done(source)
+        finally:
+            st.exposing = False
 
     # -- 저장 ----------------------------------------------------------------
 
@@ -270,6 +310,9 @@ class GuideSequencer:
             expid=guidepair.exposure_id(site, orig_suffix))
         cards = guidecards.render(pool)
 
+        # 완료분을 걸러낸다 -- 밤새 연속 가이딩(수만 프레임)에서 Task 참조가
+        # 무한히 쌓이는 것을 막는다 (science `_writers` 정리와 같은 자리).
+        self._writers = [w for w in self._writers if not w.done()]
         self._writers.append(asyncio.get_running_loop().create_task(
             self._store(source, orig_suffix, path, cards, index, total)))
 
@@ -278,6 +321,12 @@ class GuideSequencer:
         try:
             rate = await self.backend.write_frame(suffix, path, cards)
         except GuideBackendError as exc:
+            if self._aborted_by:
+                # ABORT 의 `drop_pending` 과 이 태스크의 `take_ticket` 이
+                # 경합하면 'No pending' 이 나온다 -- 의도된 폐기이지 결함이
+                # 아니므로 IDLE 통보 뒤에 낙오 ERROR 를 흘리지 않는다.
+                log.info('ABORT 뒤 저장 포기 -- %s (%s)', path, exc)
+                return
             self.emit.error(source, 'GO', _ascii(exc), self.st.expstatus)
             return
         # 소비자(gmon·ABC)를 위한 저장 통보 -- 규약 자유 구역이지만
