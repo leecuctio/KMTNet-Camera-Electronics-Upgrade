@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import timedelta
 
 from ics_archon import _simpath
 
@@ -136,15 +137,19 @@ class GuideSequencer:
         st.exposing = True     # STATUS `Mode=Acquiring` · EXPNUM 창의 근거
         try:
             exptime = float(st.exptime)
-            if exptime < self.icfg.exptime_min:
+            # 하한은 **ACF 타이밍 계산**이 정본이다 (`acftiming`) -- ini 의
+            # `exptime_min` 은 ACF 를 못 읽었을 때의 대체값이다.  하드웨어가
+            # 못 만드는 주기를 받으면 EXPTIME 카드가 거짓말이 된다.
+            floor = max(self.backend.frame_floor(), self.icfg.exptime_min)
+            if exptime < floor:
                 # guide 에서 `EXPTIME=0` 은 실현 불가다 (독출 간격이 0 일 수
                 # 없다 -- raw_fits_spec/SMC_CLAUDE 대사 5항).  하한은
                 # PROVISIONAL (독출 실측 전).
                 self.emit.error(
                     source, 'GO',
-                    'Invalid guide EXPTIME=%g -- minimum %g sec '
+                    'Invalid guide EXPTIME=%g -- minimum %.3f sec '
                     '(readout-start interval, raw spec 10.1)' %
-                    (exptime, self.icfg.exptime_min), st.expstatus)
+                    (exptime, floor), st.expstatus)
                 st.expstatus = ExpStatus.IDLE
                 self.emit.idle_done(source)
                 return
@@ -173,9 +178,17 @@ class GuideSequencer:
             self.emit.exp_status(source, st.expstatus)
 
             base = time.monotonic()
-            t_prev = None            # 직전 독출 개시 (UTC) -- DATE-OBS 원천
+            t_prev = None            # 직전 트랜스퍼(=독출 개시) -- DATE-OBS
             prev_mono = None         # 실현 간격 계측용 (단조 시계)
             saved = 0
+            # **트리거 시각 != 독출 개시 시각이다.**  시퀀서는 트리거를 받고
+            # `IntUnit(IntMS=0)` + `NoIntUnit(NoIntMS)` 를 돌린 뒤에 프레임
+            # 트랜스퍼를 하고, 그 트랜스퍼가 곧 독출 개시다 (10.1-4·5).
+            # 그 상수 지연을 더하지 않으면 `DATE-OBS` 가 그만큼 이르고
+            # 10.5절 6번 불변식이 계통적으로 어긋난다.
+            # ⚠️ PROVISIONAL -- ACF 계산값이다 (`acftiming`), 첫 구동에서
+            # 실측과 대조할 것.
+            xfer_lag = timedelta(seconds=self.backend.trigger_to_transfer())
             for k in range(count + 1):
                 target = base + k * interval
                 while True:
@@ -188,7 +201,8 @@ class GuideSequencer:
                     break
 
                 orig_suffix = '' if k == 0 else st.next_suffix()
-                trig_utc = utcnow()
+                # 이 프레임의 **트랜스퍼 시각** = 트리거 + 상수 지연.
+                xfer_utc = utcnow() + xfer_lag
                 trig_mono = time.monotonic()
                 # **실현 간격 감시** (10.5절 6번 불변식의 취득 시점 판).
                 # pacing 이 밀리면(독출·fetch·락 경합) 다음 트리거가 즉시
@@ -220,7 +234,7 @@ class GuideSequencer:
                                          t_prev, exptime, k, count)
                     saved += 1
                     st.advance()
-                t_prev = trig_utc
+                t_prev = xfer_utc
                 if k < count:
                     st.expstatus = ExpStatus.INTEGRATING
 

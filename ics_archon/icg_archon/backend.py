@@ -40,7 +40,7 @@ from ics_archon.archon.controller import ArchonController, ArchonError  # noqa: 
 from ics_archon.config import cfg_name_from_acf, rdmode_from_acf  # noqa: E402
 from ics_sim import rawhdr  # noqa: E402
 
-from . import guidecards  # noqa: E402
+from . import acftiming, guidecards  # noqa: E402
 from .config import TAG, IcgCfg  # noqa: E402
 
 log = logging.getLogger('icg_archon.backend')
@@ -70,6 +70,55 @@ class GuideBackend:
         log.info('guide 백엔드 -- %s:%d, 선언 기하 %dx%d (%.2f MiB/프레임)',
                  icfg.host or '(미설정)', icfg.port, icfg.naxis1, icfg.naxis2,
                  icfg.frame_bytes / (1 << 20))
+        #: ACF 타이밍 스크립트에서 계산한 프레임 주기 (`acftiming`).
+        #: 왕복 없이 파일만 읽으므로 기동에서 바로 잡는다 -- 이 값이 있어야
+        #: `EXPTIME` 하한과 `DATE-OBS` 트랜스퍼 보정이 근거를 갖는다.
+        self.timing = self._read_timing()
+
+    def _read_timing(self) -> dict | None:
+        path = self.icfg.acf_path
+        if not path or not os.path.isfile(path):
+            log.warning('guide ACF 를 못 읽어 프레임 주기를 계산하지 못했다 '
+                        '(%s) -- EXPTIME 하한·DATE-OBS 보정이 ini 기본값을 '
+                        '쓴다', path or '(미설정)')
+            return None
+        if not acftiming.verify_tick_anchor():   # pragma: no cover
+            log.error('acftiming 셈법 검산 실패 -- NoIntUnit 이 1 ms 가 '
+                      '아니다.  타이밍 계산을 신뢰하지 않는다')
+            return None
+        try:
+            probe = ArchonController(TAG, self.icfg)
+            probe.parse_acf(path)                # 왕복 없음
+            params = acftiming.parameters(probe.config)
+            t = acftiming.frame_timing(
+                params,
+                lines=int(params.get('Lines', self.icfg.naxis2)),
+                pixels=int(params.get('Pixels', 0)) or 600)
+        except (ArchonError, OSError, ValueError) as exc:
+            log.warning('guide ACF 타이밍 계산 실패 -- %s', exc)
+            return None
+        log.info('guide 프레임 타이밍 (ACF 계산, PROVISIONAL) -- %s',
+                 acftiming.describe(t))
+        return t
+
+    # -- 노출 주기 (규격 10.1절) --------------------------------------------
+
+    def frame_floor(self) -> float:
+        """`EXPTIME` 의 하드웨어 하한 [s] -- 이보다 짧은 독출 개시 간격은
+        만들 수 없다 (`NoIntMS` + 트랜스퍼 + 독출)."""
+        if self.timing:
+            return self.timing['floor']
+        return self.icfg.exptime_min
+
+    def trigger_to_transfer(self) -> float:
+        """트리거 -> 프레임 트랜스퍼 지연 [s].
+
+        시퀀서는 트리거를 받고 `IntUnit(IntMS)`(우리는 0) + `NoIntUnit
+        (NoIntMS)` 를 돌린 **뒤에** 트랜스퍼한다.  `DATE-OBS` 는 그
+        트랜스퍼(=독출 개시) 시각이므로(10.1-4·5) 호스트 트리거 시각에
+        이 값을 더해야 한다.
+        """
+        return self.timing['trigger_to_transfer'] if self.timing else 0.0
 
     # -- 준비 ---------------------------------------------------------------
 
@@ -228,6 +277,15 @@ class SimGuideBackend:
         self.icfg = icfg
         self.ctrl = None
         self._n = 0
+        #: 대역은 하드웨어가 없다 -- 주기 제약도 없는 것으로 둔다(시험이
+        #: 짧은 EXPTIME 으로 돌 수 있어야 한다).
+        self.timing = None
+
+    def frame_floor(self) -> float:
+        return self.icfg.exptime_min
+
+    def trigger_to_transfer(self) -> float:
+        return 0.0
 
     async def prepare(self) -> None:
         return None
