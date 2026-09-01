@@ -56,8 +56,8 @@ SSO(호주) 현장 적용일(2026-10-19) 전까지 **2주 단위**로 프로젝�
 ### 4.2 Hardware (HE Box / Wallboard / PCC)
 - ☑ HE Box Archon 3대 장착 구조 확정 및 개조 완료 (ACT-002)
 - ☑ Production Wallboard 납품·acceptance 완료 (M4)
-- □ PCC 운용/교체 판단 및 spare parts inventory 확인
-- □ 카메라 탈거·장착 절차(SOP)와 공구·치구 준비
+- ◑ PCC 운용/교체 판단 및 spare parts inventory 확인
+- ◑ 카메라 탈거·장착 절차(SOP)와 공구·치구 준비
 
 ### 4.3 Software / Configuration
 - □ OSU Software Review 완료 (M3, Rick review 포함)
@@ -79,12 +79,12 @@ SSO(호주) 현장 적용일(2026-10-19) 전까지 **2주 단위**로 프로젝�
 
 ### 4.5 Integration / Science
 - □ Full Rehearsal(M8) End-to-End + burn-in 성공, Gate 2 통과
-- □ Science Verification(M9) Bias/Dark/Gain/Read Noise/Crosstalk pass/fail 기준 확정 (ACT-005)
+- ◑ Science Verification(M9) Bias/Dark/Gain/Read Noise/Crosstalk pass/fail 기준 확정 (ACT-005)
 - □ 시험관측(관측 프로그램) 절차 준비 — 이상민 주도
 
 ### 4.6 Site Readiness (SSO)
 - □ SSO pre-site checklist / Day 0 readiness 확정 (ACT-006)
-- ◑ 전문가 방문용역(Tom O'Brien) 계약 — 일정(10-18~11-01)·지원조건 제안 발송, 회신 대기 중 (ACT-007, 2026-08-13)
+- ☑ 전문가 방문용역(Tom O'Brien) 계약 — 일정(10-18~11-01)·지원조건 제안 발송, 미참가 결정 (ACT-007, 2026-08-31)
 - □ 클린부스·네트워크·전원·작업공간 준비 확인
 - □ Recovery/Rollback 및 spare 교체 절차 준비 (`operations/RECOVERY_ROLLBACK_PLAN.md`)
 - □ 선발대 구성 및 현장 안전/취급 기준 확인 (`operations/SAFETY_HANDLING_PLAN.md`)
