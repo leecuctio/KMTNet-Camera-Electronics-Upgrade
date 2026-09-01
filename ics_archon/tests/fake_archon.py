@@ -295,9 +295,9 @@ class FakeArchon(threading.Thread):
 
     def _frame_fields(self) -> dict:
         # ⚠️ **잠금 중에는 `RBUF` 가 잠긴 버퍼를 가리킨다** (매뉴얼 p.50 --
-        # "Current buffer number locked for reading").  ⚠️ 이것은 **매뉴얼대로
-        # 모사한 것이고 실기가 그런지는 미확인**이다 -- 그것을 재는 것이 A-5
-        # 판단 ②의 실험이다 (DevNote 8.7: 매뉴얼은 판정 근거가 아니다).
+        # "Current buffer number locked for reading").  ✅ **2026-09-01 실기 확인**
+        # -- 두 FW(1252·1261)에서 `LOCKn` 뒤 `RBUF` 가 잠근 버퍼를 가리켰다,
+        # 15/15 (`ics_archon` DevNote 10.4).  이 모사는 실기와 같다.
         # 잠금이 없을 때는 종전대로 "마지막 완료 버퍼" 를 준다.
         f = {'RBUF': str(self.locked or self.rbuf), 'WBUF': str(self.wbuf)}
         for n in (1, 2, 3):
@@ -351,7 +351,8 @@ class FakeArchon(threading.Thread):
 
         **버퍼를 순환해 쓰고 `LOCKn` 은 건너뛴다.**  BIGBUF 는 버퍼가 둘뿐이라
         두 프레임 뒤면 앞 프레임의 자료가 덮인다 -- 그것이 `LOCK` 이 있는
-        이유다 (매뉴얼 p.50).
+        이유다 (매뉴얼 p.50).  ✅ 실기도 그렇다 (2026-09-01): 잠긴 버퍼를
+        피하고, 남는 것이 없으면 **쓰던 버퍼를 재사용**한다 (DevNote 10.4).
         """
         for _ in range(max(self._exposures(), 1)):
             if self._stop:
