@@ -129,7 +129,10 @@ class ArchonBackend:
         self._prep_locks = {tag: asyncio.Lock() for tag in self.tags}
         self._led_ms = 0
         self._warned_sensors = False
-        self._warned_stale = False
+        #: 직전에 통보한 **낡은 키 집합** -- 불리언 래치면 새로 낡아지는
+        #: 센서를 놓친다 (2026-08-31 교차검토).
+        self._warned_stale: frozenset = frozenset()
+        self._warned_future = False
         #: 태그 -> 이번 프레임의 이름.  `initialize()` 가 받아 두고 `trigger()`
         #: 와 `write_frame()` 이 저장 표를 맞추는 데 쓴다 (blocker B).
         self._suffix: dict[str, str] = {}
@@ -653,18 +656,32 @@ class ArchonBackend:
         sampled = snap.get('sampled') or {}
         out: dict = {}
         stale: list[str] = []
+        future: list[str] = []
         for key, val in values.items():
             age = now - float(sampled.get(key, snap.get('written', 0.0)))
+            if age < -1.0:
+                # 표본시각이 미래다 -- 두 호스트의 시계가 어긋났다.  그대로
+                # 두면 age 가 음수라 **신선도 판정이 통째로 무력해진다**
+                # (아무리 낡아도 통과한다).  버리는 쪽이 안전하다.
+                future.append('%s(%+.0fs)' % (key, -age))
+                continue
             if age <= horizon:
                 out[key] = val
             else:
                 stale.append('%s(%.0fs)' % (key, age))
-        if stale and not self._warned_stale:
-            self._warned_stale = True
+        # **래치는 집합으로 든다** -- 불리언이면 한 센서가 영구히 죽었을 때
+        # 그 뒤에 새로 낡아지는 센서를 영영 안 알린다 (2026-08-31 교차검토).
+        now_stale = frozenset(s.split('(')[0] for s in stale)
+        if now_stale and now_stale != self._warned_stale:
             log.warning('icg HK 표본이 낡았다 -- %s (한도 %.0fs).  해당 '
                         '카드는 sentinel 로 실린다', ', '.join(stale), horizon)
-        elif not stale:
-            self._warned_stale = False
+        self._warned_stale = now_stale
+        if future and not self._warned_future:
+            self._warned_future = True
+            log.error('icg HK 스냅샷의 표본시각이 **미래**다 -- %s.  두 호스트의 '
+                      '시계를 확인하라(NTP).  그 키는 버린다', ', '.join(future))
+        elif not future:
+            self._warned_future = False
         return out
 
     def status(self, ccd: str) -> dict:

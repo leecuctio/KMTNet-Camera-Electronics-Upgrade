@@ -26,7 +26,7 @@ _simpath.ensure()
 
 from ics_sim.app import IcsSim  # noqa: E402
 
-from . import build_id  # noqa: E402
+from . import build_id, guidehdr  # noqa: E402
 from . import commands as icg_commands  # noqa: E402
 from .backend import GuideBackend, SimGuideBackend  # noqa: E402
 from .config import TAG, IcgCfg, validate  # noqa: E402
@@ -88,6 +88,15 @@ class IcgArchon(IcsSim):
                       '다시 시도한다', exc)
 
     async def stop(self) -> None:
+        # ⭐ **취득 사이클을 먼저 세운다** (2026-08-31 교차검토).  사이클
+        # 태스크는 `spawn()` 이 아니라 시퀀서가 직접 띄우므로 부모
+        # `IcsSim.stop()` 의 `_tasks` 취소에 안 걸린다 -- 안 세우면 아래
+        # `guide.shutdown()`(POWEROFF) 뒤에도 트리거가 나가고, 종료 통보는
+        # 이미 멈춘 transport 큐에 쌓여 ABC 가 사이클 끝을 못 듣는다.
+        if self.seq.busy:
+            log.info('종료 -- 진행 중인 guide 사이클을 세운다')
+            self.seq.cancel(save=False, requester='shutdown')
+            await self.seq.wait()
         await self.hk.stop()
         await self.radionode.stop()
         await self.seq.drain_writers(self.icfg.shutdown_drain)
@@ -114,7 +123,13 @@ class IcgArchon(IcsSim):
             'radionode    : %s (poll %.0fs, devices: %s)' % (
                 rn.backend, rn.poll_period,
                 ', '.join(d.alias for d in rn.devices) or '없음'),
-            'backend      : %s' % self.backend_name,
+            # ⚠️ 부모 배너는 `[hardware] backend`(우리가 'sim' 으로 못박은
+            # 값)를 찍으므로 여기서 **실제로 쓰는 것**을 다시 적는다 --
+            # 안 그러면 배너가 `DATASRC=SIM` 이라고 하는데 파일에는
+            # `ARCHON_GUIDE` 가 실린다 (2026-08-31 교차검토).
+            'backend      : %s -> DATASRC=%s' % (
+                getattr(self.guide, 'name', '?'),
+                guidehdr.datasrc_of(getattr(self.guide, 'name', ''))),
             '-' * 60,
         ]
         log.info('\n%s', '\n'.join(lines))

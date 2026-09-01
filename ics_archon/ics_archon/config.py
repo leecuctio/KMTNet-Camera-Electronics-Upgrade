@@ -26,6 +26,7 @@ import logging
 import math
 import os
 import shutil
+import time
 from dataclasses import dataclass, field
 
 from . import _simpath
@@ -833,6 +834,43 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
     notes: list[str] = []
     if sim_cfg is None:
         return notes
+
+    # ⚠️ **듀어·환경 HK 의 원천이 실제로 있나** (2026-08-31 신설).
+    #
+    # 이 경로가 비었거나 틀리면 5.6절 HK 카드 **전부**가 sentinel 로 실린다.
+    # 첫 프레임에 경고 한 줄이 나가긴 하지만 그 뒤로는 조용하므로, 자료를
+    # 찍기 전에 기동에서 알린다 -- `icg_archon` 이 안 떠 있는 배치가 흔하다.
+    hk_latest = getattr(cfg, 'hk_latest', '')
+    if not hk_latest:
+        notes.append(
+            '[archon] hk_latest 가 비어 있다 -- CCDTEMP·DEWPRES 등 5.6절 HK '
+            '카드가 전부 sentinel 로 실린다.  icg_archon 의 [hk] log_dir + '
+            'latest_name 이 가리키는 파일 경로를 적을 것')
+    else:
+        path = os.path.expanduser(hk_latest)
+        if not os.path.exists(path):
+            notes.append(
+                '[archon] hk_latest 파일이 없다 -- %r.  icg_archon 이 아직 안 '
+                '떴거나 두 ini 의 경로가 어긋났다(icg [hk] log_dir/'
+                'latest_name).  지금 상태로는 5.6절 HK 카드가 전부 sentinel '
+                '이다' % path)
+        else:
+            try:
+                import json as _json
+                with open(path, encoding='utf-8') as _fh:
+                    _age = time.time() - float(
+                        _json.load(_fh).get('written', 0.0))
+                if _age > max(cfg.hk_stale_after, 1.0):
+                    notes.append(
+                        '[archon] hk_latest 스냅샷이 %.0f초 묵었다 (한도 '
+                        '%.0f초) -- icg_archon 이 돌고 있는지 확인할 것'
+                        % (_age, cfg.hk_stale_after))
+            except (OSError, ValueError, TypeError):
+                notes.append('[archon] hk_latest 를 읽지 못했다 -- %r' % path)
+    if cfg.hk_stale_after <= 0:
+        raise ArchonConfigError(
+            '[archon] hk_stale_after 는 0 보다 커야 한다 -- 0 이하면 모든 '
+            'HK 표본이 낡은 것으로 버려진다')
 
     # ⚠️ **헤더가 주장하는 설정 파일과 실제로 올리는 파일이 갈릴 수 있다.**
     #

@@ -46,13 +46,47 @@ def extend_vocabulary() -> None:
 class IcgDispatcher(sim_commands.Dispatcher):
     """science 디스패처 + icg 전용 핸들러."""
 
+    def _image_type(self, msg: Message, imgtype: str) -> Reply:
+        """`BIAS`/`DARK`/… -- **guide 는 노출시간을 0 으로 만들지 않는다.**
+
+        부모는 `BIAS` 에서 `exptime = 0` 으로 두고 `EXP` 도 거부한다(레거시
+        실측 규약).  그런데 guide 에서 `EXPTIME` 은 셔터 노출이 아니라
+        **독출 개시 간격**이라(raw spec 10.1절) 0 이 실현 불가능한 값이고,
+        그 상태가 되면 `go` 가 거부되는데 `EXP` 로 되돌릴 수도 없어
+        **가이딩이 명령 하나로 잠긴다** (2026-08-31 교차검토).
+
+        그래서 국면 이름만 바꾸고 주기는 건드리지 않는다.  ⏳ guide 의
+        `IMAGETYP` 어휘 자체는 아직 미확정이다 (guide OI-24).
+        """
+        st = self.state
+        keep = st.exptime
+        reply = super()._image_type(msg, imgtype)
+        if st.exptime != keep:
+            log.info('guide 는 %s 에서도 주기를 유지한다 -- EXPTIME 은 독출 '
+                     '개시 간격이라 0 이 될 수 없다 (%g s 유지)',
+                     imgtype, keep)
+            st.exptime = keep
+        return reply
+
+    def cmd_exp(self, msg: Message, target: Target) -> Reply:
+        """EXP -- guide 는 `BIAS` 에서도 받는다 (위 `_image_type` 과 같은 이유)."""
+        st = self.state
+        arg = msg.body.strip()
+        if arg:
+            try:
+                st.exptime = float(arg)
+            except ValueError:
+                return Reply.error('EXP', 'Invalid exposure time: %s' % arg)
+        return Reply.done('EXP', 'ExpTime=%g seconds.' % st.exptime)
+
     def cmd_guideexp(self, msg: Message, target: Target) -> Reply:
         """GUIDEEXP <초> -- 가이드 노출시간(독출 개시 간격) 설정.
 
         레거시 응답 문구를 계승한다 -- `DONE: GUIDEEXP GuideExp=<n> seconds.`
         (icg_legacy_report 5.2절 실측).  값 의미는 신규 규격으로 넘어와
         `EXPTIME` = 독출 개시 간격이다 (raw spec 10.1절) -- `EXP` 와 같은
-        상태 필드를 채우므로 어느 쪽으로 설정해도 같다.
+        상태 필드를 채우므로 어느 쪽으로 설정해도 같다 (guide 는 `EXP` 의
+        `BIAS` 가드도 풀어 뒀다 -- `cmd_exp`).
         """
         arg = msg.body.strip()
         if not arg:
@@ -92,6 +126,10 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if sub == 'STATUS':
             return Reply.done('RADIONODE', rn.status_text())
         if sub == 'RECONNECT':
+            if rn.cfg.backend != 'openapi':
+                return Reply.error('RADIONODE',
+                                   'Backend is %s -- nothing to poll'
+                                   % rn.cfg.backend)
             # 즉시 한 바퀴 -- 결과는 다음 STATUS 로 본다 (질의는 블로킹이라
             # 백그라운드로 던진다).
             self.app.spawn(rn.poll_now())
@@ -100,6 +138,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
             if len(args) < 2:
                 return Reply.error('RADIONODE', 'Usage: RADIONODE %s <alias>'
                                    % sub)
+            if rn.cfg.backend != 'openapi':
+                # 폴러가 없는데 "껐다/켰다" 고 답하면 운영자가 상태를 잘못
+                # 믿는다 -- 실제로 바뀌는 것이 없다.
+                return Reply.error('RADIONODE',
+                                   'Backend is %s -- nothing to enable or '
+                                   'disable' % rn.cfg.backend)
             alias = args[1]
             on = sub in ('ENABLE', 'CONNECT')
             if not rn.set_enabled(alias, on):

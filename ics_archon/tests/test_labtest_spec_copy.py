@@ -238,6 +238,35 @@ def test_labtest_card_width_rule_matches_spec_5_0():
 
 
 @pytest.mark.repo_only
+def test_the_three_writers_share_one_truncation_threshold():
+    """⭐ **구현 세 자리의 값-절단 문턱이 같아야 한다** (규격 5.0절).
+
+    저장소가 "기계 사본 셋" 이라고 못박아 둔 규범은 카드 표만이 아니라
+    **동작**에도 걸린다.  상수만 대조하던 종전 시험은 문턱 차이를 못 봤고,
+    실제로 2026-08-31 에 `fitswrite` 만 66 -> 68 로 옮겨져 세 자리가
+    갈렸다 (교차검토에서 발견).
+
+    문턱은 **값 단독 68자** -- `"KEY     = '"`(11) + 값 + `"'"`(1) = 80.
+    67·68자는 통째로 들어가야 하고 69자부터 잘린다.
+    """
+    from ics_archon.archon import fitswrite
+    from ics_sim import fitsout
+
+    g = _funcs('fits_card')
+    for n, keep in ((67, True), (68, True), (69, False)):
+        val = 'x' * n
+        lab = g['fits_card']('OBJECT', 'S', 18, 'Name of object', val)
+        raw = fitswrite.card_image('OBJECT', val, 'Name of object')
+        api_val, _api_com = fitsout._fit_to_card('OBJECT', val,
+                                                 'Name of object')
+        assert len(lab) == 80 and len(raw) == 80
+        assert lab.count("'") == 2 and raw.count("'") == 2
+        assert (val in lab) is keep, 'labtest 문턱이 다르다 (%d자)' % n
+        assert (val in raw) is keep, 'fitswrite 문턱이 다르다 (%d자)' % n
+        assert (api_val == val) is keep, 'fitsout 문턱이 다르다 (%d자)' % n
+
+
+@pytest.mark.repo_only
 def test_labtest_quotes_inside_a_value_are_doubled():
     """값 안의 `'` 는 겹쳐 쓴다 (FITS 표준 4.2.1) -- 본편과 같은 방어다.
 

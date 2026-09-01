@@ -96,8 +96,9 @@ class RadionodeCfg:
     KEY/SECRET 을 만들고 그 매뉴얼의 표를 ini 에 옮기면 코드는 안 바뀐다.
     """
 
-    #: `sim`(고정값 -- 시험·벤치) · `openapi`(Tapaculo365) · `off`.
-    backend: str = 'sim'
+    #: `off`(기본 -- 결측 sentinel) · `openapi`(Tapaculo365) · `sim`(고정값,
+    #: **헤더 경로로는 안 나간다** -- 배선 확인용).
+    backend: str = 'off'
     poll_period: float = 60.0
     timeout: float = 10.0
     base_url: str = ''
@@ -302,6 +303,14 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
         if not r.devices:
             warn.append('[radionode.*] 장치 절이 없다 -- HEBOX/FSATEMP/FSAHUM '
                         '이 전부 sentinel 로 실린다')
+    if r.backend == 'sim' and backend == 'icg_archon':
+        # 실기 취득인데 환경센서만 시뮬 -- 상수가 헤더에 실물처럼 남으면
+        # 아카이브에서 잰 값과 못 가른다.  값 경로는 `values_with_time()`
+        # 이 이미 막지만, 조합 자체를 알린다 (science `_warn_if_real_frames…`
+        # 와 같은 부류의 방어다).
+        warn.append('[radionode] backend=sim 인데 실기 취득이다 -- 고정 '
+                    '상수는 헤더로 안 나가고 HEBOX/FSATEMP/FSAHUM 이 '
+                    'sentinel 로 실린다.  실값이 필요하면 openapi 로 둘 것')
     if cfg.hk.interval < 1.0:
         warn.append('[hk] interval=%.1fs 는 너무 촘촘하다 -- STATUS 질의가 '
                     '취득 경로와 락을 다툰다' % cfg.hk.interval)

@@ -120,7 +120,8 @@ def card_image(key: str, value: object, comment: str, *,
         # comment 로 새며 **경고가 한 줄도 안 뜬다.**  값의 출처가 관측자 입력
         # (`OBJECT`/`OBSERVER`/`PROJID`)과 ACF 파일명이라 실제로 들어올 수 있다.
         text = text.replace("'", "''")
-        width = (_WIDTH if widths is None else widths).get(key, 0)
+        table = _WIDTH if widths is None else widths
+        width = table.get(key, 0)
         # 값이 들어갈 최대 폭 = 80 - ("KEY     = '" + "'" + " / " + comment)
         room = 80 - (10 + 1 + 1 + (3 + len(comment) if comment else 2))
         room = max(room, width)      # 견본 폭은 항상 들어간다
@@ -173,10 +174,14 @@ def card_image(key: str, value: object, comment: str, *,
         # 값은 위에서 폭에 맞췄으니 넘치는 것은 comment 쪽이다.  자체로는
         # 파싱을 깨지 않지만(인용부호는 살아 있다) **조용한 절단**이라 알린다 --
         # 견본 폭 + comment 가 80자를 넘는 조합은 템플릿 개정에서만 나온다.
+        # ⚠️ 폭은 **이 호출이 쓴 표**로 찍는다 -- science 표를 찍으면 guide
+        # 저장에서 엉뚱한 숫자가 나온다 (공유 키는 science 폭, guide 전용
+        # 키는 0).  2026-08-31 교차검토.
         log.warning('FITS 카드 %s 가 %d자다 -- comment 가 %d자 잘린다.  견본 '
                     '폭(%d)과 comment 길이(%d)의 합이 80자를 넘는다',
                     key.strip(), len(base), len(base) - CARD,
-                    _WIDTH.get(key, 0), len(comment))
+                    (_WIDTH if widths is None else widths).get(key, 0),
+                    len(comment))
     return base.ljust(CARD)[:CARD]
 
 

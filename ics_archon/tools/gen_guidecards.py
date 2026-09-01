@@ -35,6 +35,12 @@ _INT = re.compile(r'^[+-]?\d+$')
 
 def records(path: str) -> list[str]:
     """80자 레코드 목록.  블록 정렬이 깨져 있으면 그 자리에서 멈춘다."""
+    if not os.path.exists(path):
+        raise SystemExit(
+            '견본을 찾을 수 없다 -- %s\n'
+            '  견본이 v1.1 로 승격됐으면 이 도구의 SAMPLE 을 갱신할 것 '
+            '(판 번호를 박아 두는 것이 의도다 -- 어느 판의 사본인지가 곧 '
+            '이력이다).' % path)
     with open(path, 'rb') as fh:
         blob = fh.read()
     if len(blob) % 2880:
@@ -110,24 +116,48 @@ def emit(cards) -> str:  # noqa: ANN001
     return '\n'.join(out)
 
 
+#: 승인된 폭 특례 -- guide 견본이 science 와 **의도적으로 다른** 자리다
+#: (DevNote 9.3).  `--diff` 는 이 밖의 갈림만 실패로 낸다 -- 전부를 실패로
+#: 내면 통상 점검에 못 쓴다(항상 종료코드 1이었다, 2026-08-31 교차검토).
+#: ⏳ 이 8장이 견본 v1.1 승격에서 통일되면 이 표를 비우고 특례를 걷어낸다.
+KNOWN_WIDTH_DIFF = {
+    'DATASRC': (26, 24), 'CTRL1ID': (26, 24), 'CTRL1SN': (26, 24),
+    'CTRL1CFG': (26, 29), 'RDMODE': (26, 24),
+    'C1_TEMP': (49, 51), 'C1_VOLT': (49, 51), 'C1_CURR': (49, 51),
+}
+
+
 def diff_against_science(cards) -> int:  # noqa: ANN001
     """공유 키의 폭·형이 science 템플릿과 갈리면 알린다 (fitswrite `_WIDTH`
-    가 science 표라, 공유 키의 guide 폭이 더 좁으면 저장 바이트가 어긋난다)."""
+    가 science 표라, 공유 키의 guide 폭이 더 좁으면 저장 바이트가 어긋난다).
+
+    Returns:
+        **승인 밖** 갈림의 개수 (0 이면 통상 상태).
+    """
     sys.path.insert(0, ROOT)
     import ics_archon  # noqa: F401  -- _simpath 가 ics_sim 을 배선한다
     from ics_sim import rawcards
     sci = {k: (t, w) for k, t, w, _c in rawcards.CARDS if k != 'COMMENT'}
-    bad = 0
+    known = unknown = 0
     for key, kind, width, _comment in cards:
         if key == 'COMMENT' or key not in sci:
             continue
         st, sw = sci[key]
-        if (st, sw) != (kind, width):
-            print('  갈림: %-8s guide (%s,%d) vs science (%s,%d)'
-                  % (key, kind, width, st, sw))
-            bad += 1
-    print('공유 키 대조 끝 -- 갈림 %d건' % bad)
-    return bad
+        if (st, sw) == (kind, width):
+            continue
+        if KNOWN_WIDTH_DIFF.get(key) == (width, sw):
+            known += 1
+            continue
+        print('  ⚠️ 새 갈림: %-8s guide (%s,%d) vs science (%s,%d)'
+              % (key, kind, width, st, sw))
+        unknown += 1
+    print('공유 키 대조 끝 -- 승인된 특례 %d건 · **새 갈림 %d건**'
+          % (known, unknown))
+    if known != len(KNOWN_WIDTH_DIFF):
+        print('  (특례 표가 %d건인데 %d건만 잡혔다 -- 견본이 바뀌었으면 '
+              'KNOWN_WIDTH_DIFF 도 갱신할 것)'
+              % (len(KNOWN_WIDTH_DIFF), known))
+    return unknown
 
 
 def main(argv=None) -> int:  # noqa: ANN001

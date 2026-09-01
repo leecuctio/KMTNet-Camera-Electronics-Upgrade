@@ -10,9 +10,12 @@ LoRa 게이트웨이를 거쳐 Tapaculo365 클라우드로만 간다).  그래�
 
 백엔드 셋:
 
-* `sim`     -- ini 의 고정값을 낸다 (시험·벤치.  기본).
+* `off`     -- 아무것도 안 한다 (전 키 결측 -> 헤더 sentinel).  **기본값**.
 * `openapi` -- Tapaculo365 를 `poll_period` 마다 폴링한다.
-* `off`     -- 아무것도 안 한다 (전 키 결측 -> 헤더 sentinel).
+* `sim`     -- **코드 상수** 고정값 (ini 로 못 바꾼다).  ⚠️ 그 값은
+  `sim_values()` 로만 나가고 **헤더 경로로는 안 나간다** -- 상수가 실측처럼
+  아카이브에 남으면 나중에 파일만 보고 가릴 수 없다 (규격 5.6·5.8 은 이
+  3장을 실측 계통으로 규정한다).  배선 확인용이다.
 
 **신선도가 값의 일부다.**  마지막 표본이 `stale_after` 보다 낡으면
 `values()` 가 그 키를 **내지 않는다** -- 호출측(`rawhdr.thermal_header`)이
@@ -51,21 +54,50 @@ class RadionodeClient:
         #: 장치 별칭 -> 마지막 성공/실패 기록 (RADIONODE STATUS 가 보여 준다).
         self.last_ok: dict[str, float] = {}
         self.last_err: dict[str, str] = {}
+        #: 별칭 -> 마지막 **시도**의 결과 (`'ok'`/`'err'`) -- 성공 이력이
+        #: 실패를 가리지 않게 하려는 자리다.
+        self._last_try: dict[str, str] = {}
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
+        #: 주기 루프와 `RECONNECT` 가 같은 API 를 이중으로 치지 않게.
+        self._poll_lock = asyncio.Lock()
 
     # -- 소비 --------------------------------------------------------------
 
-    def values(self) -> dict[str, object]:
-        """신선한 키만 -- 낡은 표본은 내지 않는다 (호출측이 sentinel)."""
-        if self.cfg.backend == 'sim':
-            return dict(self.cfg.sim_values)
-        now = time.monotonic()
-        out: dict[str, object] = {}
+    def values_with_time(self) -> dict[str, tuple[object, float]]:
+        """`key -> (값, 표본시각 epoch)` -- 신선한 것만.
+
+        ⭐ **표본시각을 값과 함께 낸다.**  호출측이 `now` 로 다시 도장을
+        찍으면 "낡은 값이 갓 잰 값" 이 되어 `hk_stale_after` 같은 하류
+        판정이 통째로 무력해진다 (DevNote 9.6 이 막겠다고 한 그 경로다).
+        `monotonic` 은 프로세스 밖에서 못 읽으므로 epoch 로 환산해 낸다.
+
+        ⚠️ **`sim` 백엔드는 아무것도 내지 않는다.**  고정 상수를 실측처럼
+        헤더에 실으면 아카이브에 들어간 뒤 파일만 보고 잰 값인지 가릴 수
+        없다 -- 규격 5.6·5.8 은 이 3장의 출처를 실측 계통(`Radionode`)으로
+        규정하고, 결측은 5.0절 sentinel 이 이미 규정해 둔 정직한 상태다.
+        시뮬 값이 필요하면 `sim_values()` 를 명시적으로 부를 것.
+        """
+        if self.cfg.backend != 'openapi':
+            return {}
+        now_m, now_e = time.monotonic(), time.time()
+        out: dict[str, tuple[object, float]] = {}
         for key, (val, when) in self._latest.items():
-            if now - when <= self.cfg.stale_after:
-                out[key] = val
+            age = now_m - when
+            if age <= self.cfg.stale_after:
+                out[key] = (val, now_e - age)
         return out
+
+    def values(self) -> dict[str, object]:
+        """신선한 키만 (값만) -- 표본시각이 필요하면 `values_with_time()`."""
+        return {k: v for k, (v, _t) in self.values_with_time().items()}
+
+    def sim_values(self) -> dict[str, object]:
+        """`sim` 백엔드의 고정값 -- **헤더 경로로 내보내지 않는다.**
+
+        시험·벤치에서 배선을 확인할 때만 쓴다 (`HK` 명령 등).
+        """
+        return dict(self.cfg.sim_values) if self.cfg.backend == 'sim' else {}
 
     def status_text(self) -> str:
         """`RADIONODE STATUS` 응답 본문 (ASCII 한 줄)."""
@@ -76,10 +108,20 @@ class RadionodeClient:
         for dev in self.cfg.devices:
             if not self.enabled.get(dev.alias, False):
                 state = 'disabled'
-            elif dev.alias in self.last_ok:
-                state = 'ok %.0fs ago' % (now - self.last_ok[dev.alias])
             else:
-                state = self.last_err.get(dev.alias, 'no sample yet')
+                # ⚠️ **마지막 시도 기준으로 보인다** -- 성공 이력만 보이면
+                # API 키가 만료돼도 화면에는 계속 'ok …' 만 뜬다
+                # (2026-08-31 교차검토).
+                ok = self.last_ok.get(dev.alias)
+                err = self.last_err.get(dev.alias)
+                if ok is None and err is None:
+                    state = 'no sample yet'
+                elif err and (ok is None or self._last_try.get(dev.alias)
+                              == 'err'):
+                    state = ('err: %s' % err if ok is None else
+                             'ok %.0fs ago / err: %s' % (now - ok, err))
+                else:
+                    state = 'ok %.0fs ago' % (now - ok)
             parts.append('%s=%s' % (dev.alias, state))
         return 'Backend=openapi ' + ' '.join(parts)
 
@@ -132,19 +174,30 @@ class RadionodeClient:
                 pass
 
     async def _poll_all(self) -> None:
-        for dev in self.cfg.devices:
-            if not self.enabled.get(dev.alias, False):
-                continue
-            try:
-                sample = await asyncio.to_thread(self._fetch_latest, dev.mac)
-            except Exception as exc:  # noqa: BLE001 -- 폴링 실패가 취득을 못 죽인다
-                self.last_err[dev.alias] = ('%s: %s' % (type(exc).__name__,
-                                                        exc))[:120]
-                log.warning('radionode %s 폴링 실패 -- %s (헤더는 sentinel 로 '
-                            '간다)', dev.alias, exc)
-                continue
-            self._store(dev, sample)
-            self.last_ok[dev.alias] = time.monotonic()
+        if self.cfg.backend != 'openapi':
+            return                      # 폴러가 없는 백엔드 -- 칠 곳이 없다
+        if self._poll_lock.locked():
+            # 주기 루프가 도는 중에 `RECONNECT` 가 겹쳤다 -- 같은 API 를
+            # 두 번 치지 않는다 (쿼터가 분 단위다).
+            log.info('radionode 폴링이 이미 진행 중이라 건너뛴다')
+            return
+        async with self._poll_lock:
+            for dev in self.cfg.devices:
+                if not self.enabled.get(dev.alias, False):
+                    continue
+                try:
+                    sample = await asyncio.to_thread(self._fetch_latest,
+                                                     dev.mac)
+                except Exception as exc:  # noqa: BLE001 -- 폴링 실패가 취득을 못 죽인다
+                    self.last_err[dev.alias] = (
+                        '%s: %s' % (type(exc).__name__, exc))[:120]
+                    self._last_try[dev.alias] = 'err'
+                    log.warning('radionode %s 폴링 실패 -- %s (헤더는 sentinel '
+                                '로 간다)', dev.alias, exc)
+                    continue
+                self._store(dev, sample)
+                self.last_ok[dev.alias] = time.monotonic()
+                self._last_try[dev.alias] = 'ok'
 
     # -- HTTP --------------------------------------------------------------
 

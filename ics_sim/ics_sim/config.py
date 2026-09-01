@@ -461,9 +461,10 @@ class SimConfig:
     node: NodeCfg = field(default_factory=NodeCfg)
     transport: TransportCfg = field(default_factory=TransportCfg)
     paths: PathsCfg = field(default_factory=PathsCfg)
-    #: `[site.<이름>]` 섹션들을 **사이트 코드로 키잉**해 담는다.  실효 사이트가
-    #: 기동 시점에 정해지므로(IP 판정) 설정 읽기 단계에서 하나를 고를 수 없다 --
-    #: 전부 읽어 두고 `site_for()` 로 꺼낸다.
+    #: `[site.<이름>]` 섹션들을 **사이트 코드로 키잉**해 담는다.  하나만 골라
+    #: 담지 않는 이유는 `[node] observatory` 한 줄만 고쳐 다른 사이트로
+    #: 재배포해도 좌표가 따라오게 하려는 것이다 (D-020) -- 전부 읽어 두고
+    #: `site_for()` 가 실효 사이트의 절을 꺼낸다.
     site_table: dict[str, SiteCfg] = field(default_factory=dict)
     #: `[site]` 섹션.  선택된 사이트 값을 **덮어쓴다** -- 현장이 정본이다.
     site_override: SiteCfg = field(default_factory=SiteCfg)

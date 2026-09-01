@@ -119,22 +119,47 @@ def instrument_header(site_code: str,
     return out
 
 
+#: guide 백엔드 이름 -> `DATASRC` (raw spec 5.5절 어휘).
+#: **모르는 이름은 `SIM`** -- science `rawhdr._DATASRC` 와 같은 방침이다
+#: (실물이라고 잘못 적는 쪽이 훨씬 나쁘다).
+_DATASRC_GUIDE = {
+    'archon_guide': rawhdr.DATASRC_GUIDE,
+    'sim_guide': rawhdr.DATASRC_SIM,
+}
+
+
+def datasrc_of(backend_name: str) -> str:
+    """백엔드 이름 -> `DATASRC`.
+
+    ⚠️ **상수로 박으면 안 된다** -- `DATASRC` 는 규격 5.5절이 "시뮬 프레임
+    오인을 막는" 카드로 규정한 자리다.  대역(`SimGuideBackend`)이 쓴
+    0-프레임이 `ARCHON_GUIDE` 를 달면 그 방어가 통째로 무의미해진다.
+    """
+    src = _DATASRC_GUIDE.get((backend_name or '').lower())
+    if src is None:
+        log.warning('guide 백엔드 %r 를 모르므로 DATASRC=%s 로 적는다 -- '
+                    '실물이라고 잘못 적는 것보다 낫다 (raw spec 5.5절)',
+                    backend_name, rawhdr.DATASRC_SIM)
+        return rawhdr.DATASRC_SIM
+    return src
+
+
 def controller_header(info: dict | None, *, cfg_ctrl: dict | None,
-                      rdmode: str) -> dict[str, object]:
+                      rdmode: str, backend_name: str) -> dict[str, object]:
     """Controller·ICS 블록 (10.3절) -- `CTRL1*` 한 벌 + `ICGBUILD`.
 
     science `rawhdr.controller_header()` 를 그대로 부르고 두 가지만 고친다:
     `ICSBUILD` -> **`ICGBUILD`** (키 개명 -- 값 규약은 같다), `CTRL2*` 는
     guide 템플릿에 없어 `render()` 가 버린다 (10.2절 "미수록").
     """
-    # `backend_name='sim'` 을 주는 이유: `datasrc_of()` 는 science 어휘만
-    # 알아서 guide 이름을 주면 "모르는 백엔드" 경고를 낸다 -- 어차피 아래서
-    # `DATASRC` 를 guide 상수로 덮으므로 조용한 값을 넣어 둔다.
+    # 부모에는 `'sim'` 을 준다 -- science 어휘만 아는 `datasrc_of()` 가 guide
+    # 이름에 경고를 내기 때문이고, `DATASRC` 는 바로 아래서 guide 판정으로
+    # 덮는다 (`datasrc_of` -- 백엔드에서 유도한다).
     pool = rawhdr.controller_header(info or {}, backend_name='sim',
                                     ics_build=build_id(),
                                     cfg_ctrl=cfg_ctrl, rdmode=rdmode)
     pool['ICGBUILD'] = pool.pop('ICSBUILD')
-    pool['DATASRC'] = rawhdr.DATASRC_GUIDE
+    pool['DATASRC'] = datasrc_of(backend_name)
     return pool
 
 
@@ -159,7 +184,7 @@ def ctrl_telemetry_header(unit: dict | None) -> dict[str, object]:
 def build_pool(*, site_code: str, ctrl_info: dict | None,
                ctrl_telem: dict | None, sensors: dict | None,
                cfg_site: dict | None, cfg_camera: dict | None,
-               cfg_ctrl: dict | None, rdmode: str,
+               cfg_ctrl: dict | None, rdmode: str, backend_name: str,
                telem_cards: dict[str, object],
                date_obs: str | None, exptime: float, ledflash_ms: int,
                imgtype: str, objname: str, projid: str, observer: str,
@@ -179,7 +204,8 @@ def build_pool(*, site_code: str, ctrl_info: dict | None,
                                        date_obs=date_obs,
                                        filename=filename, expid=expid))
     pool.update(controller_header(ctrl_info, cfg_ctrl=cfg_ctrl,
-                                  rdmode=rdmode))
+                                  rdmode=rdmode,
+                                  backend_name=backend_name))
     pool.update(rawhdr.thermal_header(sensors))
     pool.update(ctrl_telemetry_header(ctrl_telem))
     # `TIMESYS`/`EXPID` comment 의 ICS -> ICG 는 **템플릿**(guidecards)이

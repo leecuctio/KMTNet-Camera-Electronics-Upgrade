@@ -1,4 +1,4 @@
-# archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py
+﻿# archon_kmtnet_labtest_v1.3.bigbuf.KMTC-102.py
 # revised on 2026-08-26 by SMC
 #
 # Prev.version: __ref_archon_control/archon_kmtnet_labtest_v1.0.bigbuf.py (2025-04-18/SMC)
@@ -760,7 +760,10 @@ def fits_card(key, kind, width, comment, value):
         if len(text) > room:
             ## **comment 를 먼저 줄인다** (5.0절).  comment 를 다 지웠을 때의
             ## 최대 폭은 ' /' 만 남기고 계산한다.
-            room_bare = max(80 - (10 + 1 + 1 + 2), width)
+            ## 문턱은 **값 단독 68자**이다 (5.0절) -- ' /' 꼬리도 포기한다.
+            ## fitswrite.card_image · fitsout._fit_to_card 와 같은 문턱이어야
+            ## 구현 세 자리의 규범이 갈라지지 않는다 (2026-08-31 교차검토).
+            room_bare = max(80 - (11 + 1), width)
             if len(text) <= room_bare:
                 keep = 80 - (10 + 1 + 1 + 3) - len(text)
                 comment = comment[:max(keep, 0)].rstrip()
@@ -792,7 +795,11 @@ def fits_card(key, kind, width, comment, value):
         else:
             token = repr(float(value))
         base = '%-8s= %20s' % (key, token)
-    base += ' / %s' % comment if comment else ' /'
+    if comment:
+        base += ' / %s' % comment
+    elif len(base) + 2 <= 80:
+        base += ' /'
+    ## comment 가 없고 값이 카드를 다 채운 경우(68자)는 꼬리 없이 그대로.
     if len(base) > 80:
         ## 값은 위에서 폭에 맞췄으니 넘치는 것은 comment 쪽이다.  자체로는
         ## 파싱을 깨지 않지만(인용부호는 살아 있다) **조용한 절단**이라 알린다

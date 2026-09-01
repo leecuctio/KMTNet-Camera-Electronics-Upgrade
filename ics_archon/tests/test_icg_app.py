@@ -109,7 +109,11 @@ def test_guide_header_semantics(run_go3):
         # EXPID = FILENAME 에서 DETID 필드를 뗀 값 (평시 -- 충돌 없음).
         expid = stem.rsplit('.', 1)[0]
         assert cards['EXPID'].startswith("'" + expid)
-        assert cards['DATASRC'].startswith("'ARCHON_GUIDE")
+        # ⭐ **대역으로 찍은 프레임은 `SIM` 이다** -- 규격 5.5절이 이 카드를
+        # "시뮬 프레임 오인을 막는" 자리로 규정한다.  종전에는 상수로 박아
+        # 둬서 0-프레임이 실측 자료로 표시됐고 이 시험이 그것을 못박고
+        # 있었다 (2026-08-31 교차검토).  실기 값은 아래 별도 시험.
+        assert cards['DATASRC'].startswith("'SIM")
         assert 'ICGBUILD' in cards and 'ICSBUILD' not in cards
         assert cards['EXPTIME'].split('/')[0].strip() == '2'
         assert cards['NAXIS1'].split('/')[0].strip() == '4224'

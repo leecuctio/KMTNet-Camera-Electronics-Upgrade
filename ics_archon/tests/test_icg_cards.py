@@ -116,6 +116,17 @@ def test_render_drops_unknown_keys_and_none_values():
     assert guidecards.value_of(cards, 'OBJECT').rstrip() == 'x'
 
 
+def test_datasrc_follows_the_backend_not_a_constant():
+    """규격 5.5절 -- `DATASRC` 는 시뮬 오인을 막는 카드다 (백엔드 유도)."""
+    from icg_archon import guidehdr
+
+    assert guidehdr.datasrc_of('archon_guide') == 'ARCHON_GUIDE'
+    assert guidehdr.datasrc_of('sim_guide') == 'SIM'
+    # 모르는 이름은 실물이라고 적지 않는다 (science 와 같은 방침).
+    assert guidehdr.datasrc_of('nosuch') == 'SIM'
+    assert guidehdr.datasrc_of('') == 'SIM'
+
+
 def test_guide_naming_and_identity():
     """9.2절 -- `.G` 단일 파일, `EXPID` 는 `DETID` 필드 없음 (D-019)."""
     assert guidepair.guide_stem('KMTA', '20260821.123456') == \

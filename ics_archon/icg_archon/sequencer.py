@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from datetime import timedelta
 
@@ -70,6 +71,15 @@ class GuideSequencer:
         self._writers: list[asyncio.Task] = []
         self._stop_evt = asyncio.Event()
         self._aborted_by = ''
+        #: **저장을 한 줄로 세운다** (2026-08-31 교차검토).  guide 는
+        #: 컨트롤러가 **한 대**라 저장 둘이 겹치면 같은 링크에서 `LOCKn` 이
+        #: 교차한다 -- 앞 프레임의 `LOCK0`(전체 해제)이 뒤 프레임의 잠금을
+        #: 풀어, 덮임 방어와 재대조가 둘 다 무의미해지고 **두 노출이 섞인
+        #: 픽셀**이 정상 길이·정상 헤더로 나온다.  science 는 저장이 태그별
+        #: 다른 컨트롤러라 이 자리가 없다.
+        #: ⚠️ 대기가 생기면 그것이 곧 "주기가 저장보다 짧다" 는 신호다 --
+        #: 경고로 남겨 `exptime_min` 실측(DevNote 9.2)의 자료로 쓴다.
+        self._store_gate = asyncio.Semaphore(1)
 
     # -- Dispatcher 표면 ------------------------------------------------------
 
@@ -314,6 +324,7 @@ class GuideSequencer:
             cfg_camera=cfg.camera.as_dict(),
             cfg_ctrl=cfg.controllers.overrides(),
             rdmode=self.backend.rdmode(),
+            backend_name=getattr(self.backend, 'name', ''),
             telem_cards=self.telem.fits_header_dict(date_obs or ''),
             date_obs=date_obs,
             exptime=exptime,
@@ -332,6 +343,16 @@ class GuideSequencer:
 
     async def _store(self, source: str, suffix: str, path: str,  # noqa: ANN001
                      cards, index: int, total: int) -> None:  # noqa: ANN001
+        # 컨트롤러 한 대에 fetch 하나만 -- `_store_gate` 주석 참조.
+        if self._store_gate.locked():
+            log.warning('저장이 겹친다 -- 앞 프레임의 fetch·기록이 트리거 '
+                        '주기를 넘겼다 (%s 대기).  EXPTIME 을 늘리거나 저장 '
+                        '경로를 봐야 한다', os.path.basename(path))
+        async with self._store_gate:
+            await self._store_locked(source, suffix, path, cards, index, total)
+
+    async def _store_locked(self, source: str, suffix: str, path: str,  # noqa: ANN001
+                            cards, index: int, total: int) -> None:  # noqa: ANN001
         try:
             rate = await self.backend.write_frame(suffix, path, cards)
         except GuideBackendError as exc:

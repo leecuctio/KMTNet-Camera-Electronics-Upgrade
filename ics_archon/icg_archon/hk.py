@@ -59,12 +59,28 @@ RTD_FIELDS = (
     ('MOD10/TEMPC', 'wallbrd'),
 )
 
-#: RTD 채널별 ACF 한계 키 -- `MOD<m>/TEMP<c>` -> `MOD<m>\SENSOR<c>...LIMIT`.
 def _limit_keys(field: str) -> tuple[str, str]:
+    """`MOD<m>/TEMP<c>` -> ACF 한계 키 쌍 (하한, 상한).
+
+    ⚠️ **구분자는 `/` 다.**  ACF 원문은 `MOD7\\SENSORALOWERLIMIT` 처럼
+    역슬래시인데 `controller.parse_acf()` 가 읽으면서 `/` 로 정규화한다
+    (`controller.py` -- `key.upper().replace('\\', '/')`).  역슬래시로
+    조회하면 **한 채널도 안 맞아 한계 판정이 통째로 죽고**, 미연결 채널의
+    그럴듯한 값(-196.9 등)이 그대로 헤더에 실린다.  값 판정이 아니라 이
+    한계 판정이 결측 판별의 전부라 조용히 틀린 값이 된다 (층 3 규칙).
+    """
     mod, tail = field.split('/')          # 'MOD7', 'TEMPA'
     ch = tail[-1]                          # 'A'|'B'|'C'
-    return ('%s\\SENSOR%sLOWERLIMIT' % (mod, ch),
-            '%s\\SENSOR%sUPPERLIMIT' % (mod, ch))
+    return ('%s/SENSOR%sLOWERLIMIT' % (mod, ch),
+            '%s/SENSOR%sUPPERLIMIT' % (mod, ch))
+
+
+def _limit_of(acf_config: dict, key: str):  # noqa: ANN201
+    """한계 값 조회 -- 정규화 전 원문(역슬래시)도 받아 준다."""
+    got = acf_config.get(key)
+    if got is None:
+        got = acf_config.get(key.replace('/', '\\'))
+    return got
 
 
 def decode_rtd(status: dict, acf_config: dict) -> dict[str, float]:
@@ -79,7 +95,7 @@ def decode_rtd(status: dict, acf_config: dict) -> dict[str, float]:
         except (TypeError, ValueError):
             continue
         lo_k, hi_k = _limit_keys(field)
-        lo, hi = acf_config.get(lo_k), acf_config.get(hi_k)
+        lo, hi = _limit_of(acf_config, lo_k), _limit_of(acf_config, hi_k)
         if lo is not None and hi is not None:
             try:
                 if not (float(lo) <= val <= float(hi)):
@@ -229,8 +245,10 @@ class HkMonitor:
         """센서 계약 키 9개 중 **지금 신선한 것만** (원값).
 
         guide FITS 헤더가 이걸 그대로 받는다 -- `rawhdr.thermal_header()` 가
-        포맷·sentinel 을 맡는다.  Radionode 몫은 폴러의 신선도 규칙을,
-        컨트롤러 몫은 "마지막 바퀴에서 읽혔나" 를 따른다.
+        포맷·sentinel 을 맡는다.  **판정 기준은 표본시각 하나**다 --
+        Radionode 몫도 `_sample` 에 자기 표본시각으로 들어와 있으므로
+        (`_tick`) 여기서 따로 덧붙이지 않는다.  덧붙이면 폴러가 이미
+        접은 값이 이 창을 타고 되살아난다.
         """
         now = time.time()
         out: dict[str, object] = {}
@@ -238,8 +256,6 @@ class HkMonitor:
         for key, (val, when) in self._sample.items():
             if now - when <= horizon:
                 out[key] = val
-        if self.radionode is not None:
-            out.update(self.radionode.values())
         return out
 
     def ctrl_telemetry(self) -> dict:
@@ -314,18 +330,29 @@ class HkMonitor:
             self._sample['dewpres'] = (dew, now)
             row['dewpres'] = dew
 
-        # Radionode -- 폴러의 신선한 값만.
+        # Radionode -- 폴러의 신선한 값만.  ⚠️ **표본시각은 폴러 것을 그대로
+        # 쓴다** (`now` 로 덮으면 낡은 값이 갓 잰 값이 되고, 그 나이를 보고
+        # 거르라고 둔 `hk_stale_after` 가 영영 안 걸린다 -- DevNote 9.6).
         if self.radionode is not None:
-            for key, val in self.radionode.values().items():
-                self._sample[key] = (val, now)
+            for key, (val, when) in self.radionode.values_with_time().items():
+                self._sample[key] = (val, when)
                 row[key] = val
 
-        # AUX ENS1~7 -- 로그용 주기 질의 (헤더 몫은 노출 사이클이 따로 질의).
+        # AUX ENS1~7 -- **읽기만 한다.  질의는 취득 경로가 한다.**
+        #
+        # ⚠️ 여기서 `telem.query('AUXSTATUS')` 를 부르면 안 된다 (2026-08-31
+        # 교차검토).  `TelemetryRelay` 는 커맨드워드당 대기표가 **하나**라,
+        # 취득 사이클의 질의와 겹치면 진 쪽이 시한 처리되고 `_apply_timeout`
+        # 이 **TC 가 방금 준 `aux_fields` 를 지운다**(passthrough 기본값).
+        # 헤더는 프레임마다 `fits_header_dict()` 를 live 로 읽으므로, 그
+        # 뒤의 모든 guide FITS 가 AUX 27장을 sentinel 로 달고 나간다 --
+        # TC 는 멀쩡히 답하고 있는데도.  로그 한 줄 얻자고 취득 헤더를
+        # 망치는 거래는 성립하지 않는다.
+        #
+        # 그래서 마지막 응답을 **그냥 읽는다**.  취득이 도는 동안은 사이클
+        # 개시 질의가 갱신해 주고, 노출이 없는 동안은 값이 낡는데 그것은
+        # `AUXQDATE` 가 헤더에 남기는 사실이라 조용한 오염이 아니다.
         if self.cfg.hk.query_aux and self.telem is not None:
-            try:
-                await self.telem.query('AUXSTATUS')
-            except Exception as exc:  # noqa: BLE001
-                log.debug('HK: AUXSTATUS 질의 실패 -- %s', exc)
             for k, v in getattr(self.telem, 'aux_fields', ()) or ():
                 if k.upper().startswith('ENS'):
                     row[k.lower()] = v
@@ -372,16 +399,18 @@ class HkMonitor:
 
         tmp + `os.replace` 라 읽는 쪽이 반쪽 파일을 볼 수 없다.  값마다
         표본시각(epoch)을 함께 실어 **신선도 판정을 읽는 쪽에 넘긴다.**
+
+        ⚠️ **`sampled` 에 기록 시각을 찍지 않는다.**  `_sample` 이 이미
+        키마다 진짜 표본시각을 들고 있고(RTD·진공은 그 바퀴의 측정 시각,
+        Radionode 는 폴러의 시각), 여기서 `now` 로 덮으면 읽는 쪽의
+        `hk_stale_after` 가 영원히 안 걸린다 (DevNote 9.6 · ics_archon.ini
+        의 "이보다 낡은 표본은 버린다" 가 그 셋에만 거짓말이 됐다).
         """
         snap = {'written': now, 'utc': stamp_iso_ms(utcnow()),
                 'values': {}, 'sampled': {}}
         for key, (val, when) in sorted(self._sample.items()):
             snap['values'][key] = val
             snap['sampled'][key] = when
-        if self.radionode is not None:
-            for key, val in self.radionode.values().items():
-                snap['values'][key] = val
-                snap['sampled'][key] = now
         path = os.path.join(self._log_dir(), self.cfg.hk.latest_name)
         tmp = path + '.tmp'
         try:
