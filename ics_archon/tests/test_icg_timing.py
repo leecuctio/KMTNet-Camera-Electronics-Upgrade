@@ -84,3 +84,36 @@ def test_backend_uses_the_acf_floor_not_the_ini_fallback():
     assert be.timing is not None, 'ACF 타이밍을 못 읽었다'
     assert be.frame_floor() > 1.5, 'ini 대체값이 이기면 안 된다'
     assert be.trigger_to_transfer() > 0.4
+
+    # ⭐ **ini 값이 계산값을 밀어 올리면 안 된다** -- ACF 를 고쳐 주기를
+    # 줄여도(NoIntMS -> 0) 낡은 ini 하한이 정상 요청을 거부하던 자리다.
+    icfg.exptime_min = 99.0
+    be2 = GuideBackend(simcfg.load(ini), icfg)
+    assert be2.frame_floor() < 3.0, 'ini 가 계산값을 이기면 안 된다'
+
+
+@pytest.mark.repo_only
+def test_floor_follows_the_acf_when_noint_is_removed(tmp_path):
+    """`NoIntMS` 를 0 으로 바꾸면 하한이 그만큼 내려가야 한다.
+
+    운영자가 ACF 를 고칠 예정인 자리라(2026-08-31), 코드가 그 값을 **읽어**
+    따라가는지 못박는다 -- 어딘가에 1.87 을 하드코딩해 두면 여기서 걸린다.
+    """
+    from ics_archon.archon.controller import ArchonController
+    from icg_archon.config import IcgCfg
+
+    icfg = IcgCfg()
+    icfg.acf = {'G': GUIDE_ACF}
+    ctrl = ArchonController('G', icfg)
+    ctrl.parse_acf(GUIDE_ACF)
+    p = acftiming.parameters(ctrl.config)
+
+    with_noint = acftiming.frame_timing(p, lines=p['Lines'],
+                                        pixels=p['Pixels'])
+    p0 = dict(p, NoIntMS=0)
+    without = acftiming.frame_timing(p0, lines=p0['Lines'],
+                                     pixels=p0['Pixels'])
+    # 정확히 NoIntMS 만큼 줄어든다 (500 ms).
+    assert abs((with_noint['floor'] - without['floor']) - 0.5) < 0.01
+    # 트리거->트랜스퍼 보정도 트랜스퍼 시간만 남는다.
+    assert without['trigger_to_transfer'] < 0.02

@@ -148,9 +148,14 @@ class GuideSequencer:
         try:
             exptime = float(st.exptime)
             # 하한은 **ACF 타이밍 계산**이 정본이다 (`acftiming`) -- ini 의
-            # `exptime_min` 은 ACF 를 못 읽었을 때의 대체값이다.  하드웨어가
+            # `exptime_min` 은 ACF 를 못 읽었을 때의 **대체값**이다.  하드웨어가
             # 못 만드는 주기를 받으면 EXPTIME 카드가 거짓말이 된다.
-            floor = max(self.backend.frame_floor(), self.icfg.exptime_min)
+            #
+            # ⚠️ **`max()` 로 섞지 않는다.**  섞으면 ini 값이 계산값을 밀어
+            # 올려, ACF 를 고쳐 주기를 줄여도(예: `NoIntMS` 를 0 으로) 낡은
+            # ini 하한이 정상 요청을 거부한다 -- "대체값" 이라는 문서와
+            # 어긋나고 원인이 화면에 안 보인다.
+            floor = self.backend.frame_floor()
             if exptime < floor:
                 # guide 에서 `EXPTIME=0` 은 실현 불가다 (독출 간격이 0 일 수
                 # 없다 -- raw_fits_spec/SMC_CLAUDE 대사 5항).  하한은
