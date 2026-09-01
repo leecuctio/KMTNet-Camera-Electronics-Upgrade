@@ -2114,7 +2114,7 @@ SEND INTERVAL 결정(1분 vs 배터리 -- 2~5분 절충 권장).
 | `HEATER` 레일의 STATUS 필드 이름 | 후보 3개 순회 (`guidehdr.HEATER_FIELD_CANDIDATES`) | 첫 guide 구동 STATUS 원문 |
 | ~~`exptime_min` = 1.0 s~~ | ✅ **9.10 이 정본을 옮겼다** — ACF 계산 하한 **1.87 s**(`acftiming`), ini 값은 대체값(2.0)으로 강등.  계산이지 실측은 아니다 | 첫 구동에서 주기 실측 대조 |
 | ~~호스트 pacing 이 적분을 끊나~~ | ✅ **9.10 이 닫았다** — `IMAGE*` 가 store 클럭이라 유휴·독출 중에도 image 는 적분한다 (ACF 채널 라벨 실측) | — |
-| 호스트 pacing vs 시퀀서 pacing | 정밀도 대 단순성 — 9.10 (6) 비교표 | **운영자 판단** + 실기 지터 실측 |
+| ~~호스트 pacing vs 시퀀서 pacing~~ | ✅ **시퀀서 pacing 확정** (운영자 2026-08-31) — 9.12 | 실현 주기·FETCH 겹침은 첫 구동 실측 |
 | `DATE-OBS` 트랜스퍼 보정 507 ms | ACF 계산값을 트리거 시각에 더한다 (9.10 (5)) | 첫 구동에서 실측 대조 |
 | `C1_TEMP` 8자리 자리 표 | 규격 10.4절 (OI-19 종결분) | 첫 구동 STATUS 재확인 |
 | `CHMAP`/`IMGROT` 값 | [TBC] 코드 상수 | 커미셔닝 (OI-21) |
@@ -2329,3 +2329,70 @@ v0 는 호스트 pacing 으로 두고 **밀림을 경고**하게 해 뒀다(9.5)
 - `[camera] pixscale` 오버라이드가 죽은 코드다(`CameraCfg` 에 필드가 없다).
   ⏳ `PIXSCALE` 이 OI-22 로 열려 있어 ini 로 바꿀 값인지 자체가 미정이다.
 
+
+### 9.12 ⭐ 주기를 시퀀서에 넘겼다 -- `Exposures=n+1` + `IntMS` 환산 (2026-08-31)
+
+**운영자 확정**: guide 프레임 주기는 **시퀀서가 만든다**.  9.10 이 확인한
+노출 모델 위에서 pacing 주체를 호스트에서 시퀀서로 옮긴 것이고, 함께
+`NoIntMS` 를 0 으로 내리기로 했다 (ACF 쪽 작업).
+
+#### (1) 무엇이 바뀌나
+
+종전(호스트 pacing)은 프레임마다 `Exposures=1` 을 걸고 호스트가 절대
+시각에 맞춰 트리거를 냈다.  이제 **`Exposures = n+1` 을 한 번만** 걸고
+`IntMS = EXPTIME − 하한` 으로 둔다 -- 타이밍 스크립트가 `GOTO Start` 뒤
+`Exposures` 가 남아 있으면 곧바로 `Exposure:` 로 되돌아가므로 **유휴 없이**
+n+1 장이 나온다.  호스트는 주기를 만들지 않고 프레임 완료만 따라간다
+(`arm_sequence()` -> `next_ticket()` 사슬, `LOADPARAMS` 는 사이클당 1회).
+
+    주기 = IntMS + NoIntMS + 트랜스퍼 + 독출 = IntMS + 하한
+
+| `NoIntMS` | 하한 | `DATE-OBS` 보정 |
+|---|---:|---:|
+| 500 (현행 ACF) | 1.875 s | 507 ms |
+| **0** (예정) | **1.375 s** | **6.8 ms** |
+
+#### (2) 하한 아래는 **눌러 담는다** (거부 아님)
+
+운영자 지시: *"ExpTime 을 더 작게 설정해도 Minimum ExpTime 으로"*.
+`intms_for()` 가 음수를 0 으로 자르므로 자동으로 그렇게 되고, 종전의
+"ERROR + 사이클 종료" 는 없앴다.
+
+⚠️ **그때 헤더 `EXPTIME` 은 요청값이 아니라 실현값이다.**  10.1-1 이 이
+카드를 "연속 두 독출 개시의 간격" 으로 정의하므로, 못 만든 주기를 그대로
+적으면 카드가 거짓말이 된다.  `effective_exptime()` 이 `IntMS` 의 ms 반올림
+까지 반영해 그 값을 만들고, 클램프가 걸리면 `st.exptime` 도 그 값으로
+바꾼다 -- `EXP`/`GUIDEEXP` 질의가 실제와 같은 값을 답하게.
+
+#### (3) 남은 위험 -- FETCH 가 주기를 늘린다
+
+시퀀서 pacing 의 장점은 "간격이 하드웨어로 정해진다" 인데, **그것이 성립
+하려면 FETCH 가 방해하지 않아야 한다.**  DevNote **8.9**(실기 관측, FW
+1261)는 **FETCH 중 다음 프레임의 readout 이 멈춘다**고 한다.  guide 프레임
+8.32 MiB 를 science 실측 전송률(~72 MB/s)로 옮기면 **≈0.12 s** 이고, 그만큼
+주기가 늘어난다 -- **시퀀서는 그것을 모르고 호스트도 못 막는다.**
+
+- 그래서 **실효 하한 ≈ 하한 + FETCH** 로 본다 (`NoIntMS=0` 이면 ≈1.50 s).
+- 호스트가 프레임마다 실현 간격을 재서 지시값을 넘으면 **경고**한다 --
+  시퀀서가 모르는 것을 유일하게 아는 자리다.
+- ⏳ 첫 구동에서 잴 것: 실현 주기 · FETCH 겹침 폭 · `IntMS` 환산의 오차.
+  8.16 의 `tools/ics_archon_buftest.py` 가 그 자리와 이어진다.
+
+#### (4) 손댄 곳
+
+- `ArchonController` -- `trigger(exposures=)` 인자(기본 1, **science 무영향**)
+  · `expect_next()`(왕복 하나로 표만 잇는다) · `set_exposures()`(STOP).
+  ⚠️ `expect_next` 의 기준선은 **직전 표의 완료 프레임 번호**다 -- 지금
+  `FRAME` 의 최신 번호를 쓰면 우리 루프보다 독출이 빠를 때 **그 프레임을
+  통째로 건너뛴다.**
+- `GuideBackend` -- `intms_for()`/`effective_exptime()`/`arm_sequence()`/
+  `next_ticket()`/`stop_sequence()`, `trigger_to_transfer(intms)`.
+- `tests/fake_archon.py` -- **`Exposures` 카운터를 모사한다.**  종전에는
+  `LOADPARAMS` 하나당 프레임 하나였는데, 이제 설계가 "n 을 걸면 n 장" 에
+  기대므로 가짜가 그걸 모르면 **실기에서만 나는 결함을 시험이 못 잡는다**
+  (그 파일 머리말의 원칙).  대역 `SimGuideBackend` 도 `time_scale` 로 줄인
+  주기만큼 쉬게 했다 -- 즉시 끝내면 `DATE-OBS` 가 같은 밀리초에 몰리고
+  저장이 겹쳐, 실기에 없는 모양을 시험이 정상으로 배운다.
+- 회귀: `LOADPARAMS` 가 사이클당 1회인지 · 프레임 번호가 끊김 없이 이어
+  지는지 · 하한 클램프와 `IntMS` 환산 · `NoIntMS=0` 을 코드가 읽어 따라
+  가는지 (1.87 을 어디 박아 두면 걸린다).

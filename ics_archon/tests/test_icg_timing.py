@@ -117,3 +117,78 @@ def test_floor_follows_the_acf_when_noint_is_removed(tmp_path):
     assert abs((with_noint['floor'] - without['floor']) - 0.5) < 0.01
     # 트리거->트랜스퍼 보정도 트랜스퍼 시간만 남는다.
     assert without['trigger_to_transfer'] < 0.02
+
+
+# ---------------------------------------------------------------------------
+# 시퀀서 pacing -- IntMS 환산과 하한 클램프 (운영자 확정 2026-08-31)
+# ---------------------------------------------------------------------------
+
+def _sim_backend(floor: float):  # noqa: ANN202
+    """`frame_floor()` 만 고정한 대역 -- 환산 규칙만 본다."""
+    from ics_sim import config as simcfg
+
+    from icg_archon.backend import SimGuideBackend
+    from icg_archon.config import IcgCfg
+
+    icfg = IcgCfg()
+    icfg.exptime_min = floor
+    return SimGuideBackend(simcfg.SimConfig(), icfg)
+
+
+def test_intms_is_exptime_minus_floor():
+    """주기 = IntMS + 하한 이므로 `IntMS = EXPTIME - 하한` 이다."""
+    be = _sim_backend(1.375)
+    assert be.intms_for(1.375) == 0
+    assert be.intms_for(2.0) == 625
+    assert be.intms_for(10.0) == 8625
+    # ms 반올림 -- 실현값은 그 반올림까지 반영한다.
+    assert be.intms_for(2.0004) == 625
+    assert abs(be.effective_exptime(2.0) - 2.0) < 1e-9
+
+
+def test_short_exptime_is_clamped_not_rejected():
+    """⭐ 하한보다 짧게 요청해도 **거부하지 않는다** -- 하한이 된다.
+
+    운영자 확정(2026-08-31): "ExpTime 을 더 작게 설정해도 Minimum ExpTime
+    으로".  헤더에는 요청값이 아니라 **실현값**이 실려야 한다 (10.1-1 이
+    EXPTIME 을 실제 독출 개시 간격으로 정의한다).
+    """
+    be = _sim_backend(1.375)
+    for req in (0.0, 0.5, 1.0, 1.3749):
+        assert be.intms_for(req) == 0, '%g -> IntMS 는 0 이어야 한다' % req
+        assert abs(be.effective_exptime(req) - 1.375) < 1e-9
+    # 음수·이상값도 같은 규칙 (거부가 아니라 하한).
+    assert be.intms_for(-5.0) == 0
+
+
+def test_transfer_lag_includes_intms():
+    """`DATE-OBS` 보정 = IntMS + NoIntMS + 트랜스퍼.
+
+    시퀀서 pacing 에서는 적분이 프레임 안에 있으므로 `IntMS` 도 지연에
+    들어간다 -- 안 넣으면 `DATE-OBS` 가 그만큼 이르다.
+    """
+    be = _sim_backend(1.0)
+    assert abs(be.trigger_to_transfer(0) - 0.0) < 1e-9
+    assert abs(be.trigger_to_transfer(2500) - 2.5) < 1e-9
+
+
+@pytest.mark.repo_only
+def test_real_backend_clamp_uses_the_acf_floor():
+    """실기 백엔드는 ACF 계산 하한으로 클램프한다 (ini 대체값이 아니라)."""
+    import os
+
+    from ics_sim import config as simcfg
+
+    from icg_archon.backend import GuideBackend
+    from icg_archon.config import load
+
+    ini = os.path.join(ROOT, 'icg_archon.ini')
+    icfg = load(ini)
+    icfg.acf = {'G': GUIDE_ACF}
+    icfg.exptime_min = 0.1              # 대체값은 무시돼야 한다
+    be = GuideBackend(simcfg.load(ini), icfg)
+    floor = be.frame_floor()
+    assert 1.7 < floor < 2.1            # NoIntMS=500 인 현행 ACF 기준
+    assert be.intms_for(0.5) == 0
+    assert abs(be.effective_exptime(0.5) - floor) < 1e-6
+    assert be.intms_for(floor + 3.0) == 3000

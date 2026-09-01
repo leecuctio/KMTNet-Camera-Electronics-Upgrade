@@ -326,13 +326,39 @@ class FakeArchon(threading.Thread):
                     return 0
         return 0
 
+    def _exposures(self) -> int:
+        """`Exposures=n` -- **한 번의 `LOADPARAMS` 가 만드는 프레임 수**.
+
+        ⭐ 타이밍 스크립트가 `GOTO Start` 뒤 `Exposures` 가 남아 있으면 곧바로
+        `Exposure:` 로 되돌아가므로, n 을 걸면 **유휴 없이 n 장**이 나온다.
+        guide(`icg_archon`)의 시퀀서 pacing 이 이 거동에 기대므로 가짜도
+        그대로 모사한다 -- **가짜가 실기와 다르면 실기에서만 나는 결함을
+        시험이 못 잡는다** (이 파일 머리말의 원칙).
+        """
+        for text in self.config.values():
+            if 'Exposures=' in text:
+                try:
+                    return max(int(text.split('Exposures=')[1].split()[0]), 0)
+                except (IndexError, ValueError):
+                    return 1
+        return 1
+
     def _expose(self) -> None:
-        """`LOADPARAMS` -> 적분 -> 독출(라인 진행) -> 프레임 완료.
+        """`LOADPARAMS` -> `Exposures` 장을 **연달아** 찍는다.
+
+        프레임 하나 = 적분(`IntMS`) -> 독출(라인 진행) -> 완료.
+        `Exposures=n` 이면 그 사이에 유휴가 없다 (`_exposures()` 참조).
 
         **버퍼를 순환해 쓰고 `LOCKn` 은 건너뛴다.**  BIGBUF 는 버퍼가 둘뿐이라
         두 프레임 뒤면 앞 프레임의 자료가 덮인다 -- 그것이 `LOCK` 이 있는
         이유다 (매뉴얼 p.50).
         """
+        for _ in range(max(self._exposures(), 1)):
+            if self._stop:
+                break
+            self._one_frame()
+
+    def _one_frame(self) -> None:
         time.sleep(min(self._int_ms() / 1000.0, 2.0))
         # 잠긴 버퍼는 피한다.  전부 잠겼으면 풀릴 때까지 기다린다.
         for _ in range(2000):

@@ -8,9 +8,11 @@ guide 의 노출 의미론은 그 틀에 없다:
 
 * 셔터가 없다 -- 노출 경계는 **독출 개시**다.
 * `go n` = **n+1 독출 · 첫 독출 폐기 · n장 저장** (10.1-2·3).
-* `EXPTIME` = 연속 두 독출 개시의 간격 -- **호스트가 절대 시각으로 주기를
-  만든다** (`IntMS=0` 트리거, 근거는 `backend.py` 머리말).
-* `DATE-OBS` = **직전 독출 개시 시각** (10.1-4) -- 폐기 프레임의 트리거
+* `EXPTIME` = 연속 두 독출 개시의 간격 -- **시퀀서가 주기를 만든다**
+  (`Exposures=n+1` 을 한 번 걸고 `IntMS = EXPTIME - 하한`, 운영자 확정
+  2026-08-31.  근거·계산은 `backend.py` 머리말과 `acftiming`).
+  하한보다 짧게 요청하면 **하한으로 눌러 담고** 헤더에는 실현값을 싣는다.
+* `DATE-OBS` = **직전 독출 개시 시각** (10.1-4) -- 폐기 프레임의 트랜스퍼
   시각이 첫 저장 프레임의 `DATE-OBS` 가 된다.
 * 프레임마다 파일 1개 + 노출 번호 증가 (10.1-6).
 
@@ -146,28 +148,23 @@ class GuideSequencer:
         st = self.st
         st.exposing = True     # STATUS `Mode=Acquiring` · EXPNUM 창의 근거
         try:
-            exptime = float(st.exptime)
-            # 하한은 **ACF 타이밍 계산**이 정본이다 (`acftiming`) -- ini 의
-            # `exptime_min` 은 ACF 를 못 읽었을 때의 **대체값**이다.  하드웨어가
-            # 못 만드는 주기를 받으면 EXPTIME 카드가 거짓말이 된다.
+            requested = float(st.exptime)
+            # **하한 아래는 눌러 담는다 -- 거부하지 않는다** (운영자 확정
+            # 2026-08-31).  하한은 하드웨어가 만들 수 있는 가장 짧은 독출
+            # 개시 간격이고(`acftiming`: NoIntMS + 트랜스퍼 + 독출), 그보다
+            # 짧게 요청하면 그냥 그 값이 된다.
             #
-            # ⚠️ **`max()` 로 섞지 않는다.**  섞으면 ini 값이 계산값을 밀어
-            # 올려, ACF 를 고쳐 주기를 줄여도(예: `NoIntMS` 를 0 으로) 낡은
-            # ini 하한이 정상 요청을 거부한다 -- "대체값" 이라는 문서와
-            # 어긋나고 원인이 화면에 안 보인다.
+            # ⚠️ 그때 헤더 `EXPTIME` 은 **요청값이 아니라 실현값**이다 --
+            # 10.1-1 이 이 카드를 "연속 두 독출 개시의 간격" 으로 정의하므로
+            # 못 만든 주기를 적으면 카드가 거짓말이 된다.
             floor = self.backend.frame_floor()
-            if exptime < floor:
-                # guide 에서 `EXPTIME=0` 은 실현 불가다 (독출 간격이 0 일 수
-                # 없다 -- raw_fits_spec/SMC_CLAUDE 대사 5항).  하한은
-                # PROVISIONAL (독출 실측 전).
-                self.emit.error(
-                    source, 'GO',
-                    'Invalid guide EXPTIME=%g -- minimum %.3f sec '
-                    '(readout-start interval, raw spec 10.1)' %
-                    (exptime, floor), st.expstatus)
-                st.expstatus = ExpStatus.IDLE
-                self.emit.idle_done(source)
-                return
+            intms = self.backend.intms_for(requested)
+            exptime = self.backend.effective_exptime(requested)
+            if exptime > requested + 1e-6:
+                log.info('EXPTIME %g s 는 하한 %.3f s 보다 짧다 -- 하한으로 '
+                         '담는다 (헤더에는 실현값 %.3f s 를 싣는다)',
+                         requested, floor, exptime)
+                st.exptime = exptime
 
             # TC 스냅샷 -- 사이클 개시 전 1회 (OI-23 초안).  실패해도 노출은
             # 계속한다 (telemetry 가 sentinel 을 만든다).
@@ -188,53 +185,59 @@ class GuideSequencer:
                 return
             await asyncio.gather(aux_q, tcs_q, return_exceptions=True)
 
-            interval = self.cfg.scaled(exptime)
             st.expstatus = ExpStatus.INTEGRATING
             self.emit.exp_status(source, st.expstatus)
 
-            base = time.monotonic()
             t_prev = None            # 직전 트랜스퍼(=독출 개시) -- DATE-OBS
             prev_mono = None         # 실현 간격 계측용 (단조 시계)
             saved = 0
-            # **트리거 시각 != 독출 개시 시각이다.**  시퀀서는 트리거를 받고
-            # `IntUnit(IntMS=0)` + `NoIntUnit(NoIntMS)` 를 돌린 뒤에 프레임
-            # 트랜스퍼를 하고, 그 트랜스퍼가 곧 독출 개시다 (10.1-4·5).
-            # 그 상수 지연을 더하지 않으면 `DATE-OBS` 가 그만큼 이르고
-            # 10.5절 6번 불변식이 계통적으로 어긋난다.
-            # ⚠️ PROVISIONAL -- ACF 계산값이다 (`acftiming`), 첫 구동에서
-            # 실측과 대조할 것.
-            xfer_lag = timedelta(seconds=self.backend.trigger_to_transfer())
+            armed = False
+            ticket = None
+            # **노출 개시 시각 != 트랜스퍼 시각이다.**  시퀀서는 프레임마다
+            # `IntUnit(IntMS)` + `NoIntUnit(NoIntMS)` 를 돌린 **뒤에**
+            # 트랜스퍼하고, 그 트랜스퍼가 곧 독출 개시다 (10.1-4·5).  그
+            # 지연을 안 더하면 `DATE-OBS` 가 그만큼 이르고 10.5절 6번
+            # 불변식이 계통적으로 어긋난다.
+            # ⚠️ PROVISIONAL -- ACF 계산값이다, 첫 구동에서 실측과 대조할 것.
+            xfer_lag = timedelta(
+                seconds=self.backend.trigger_to_transfer(intms))
+
             for k in range(count + 1):
-                target = base + k * interval
-                while True:
-                    left = target - time.monotonic()
-                    if left <= 0 or self._stop_evt.is_set():
-                        break
-                    await asyncio.sleep(min(left, 0.2))
                 if self._stop_evt.is_set():
                     log.info('STOP -- %d/%d 장 저장 후 멈춘다', saved, count)
                     break
 
                 orig_suffix = '' if k == 0 else st.next_suffix()
-                # 이 프레임의 **트랜스퍼 시각** = 트리거 + 상수 지연.
+                if not armed:
+                    # ⭐ **한 번만 건다** -- `Exposures = n+1` 이면 시퀀서가
+                    # 유휴 없이 연달아 찍는다 (타이밍 스크립트 `GOTO Start`
+                    # 뒤 `Exposures` 가 남아 있으면 곧바로 `Exposure:`).
+                    # 첫 프레임은 폐기분이라 저장 대기열에 넣지 않는다.
+                    ticket = await self.backend.arm_sequence(
+                        count + 1, intms, suffix=orig_suffix, queue=False)
+                    armed = True
+                else:
+                    # 이후 프레임은 **표만** 잇는다 (`LOADPARAMS` 없음).
+                    ticket = await self.backend.next_ticket(
+                        ticket, intms, suffix=orig_suffix, queue=True)
+
+                # 이 프레임의 트랜스퍼 시각 = 지금(적분 개시) + 지연.
                 xfer_utc = utcnow() + xfer_lag
-                trig_mono = time.monotonic()
+                now_mono = time.monotonic()
                 # **실현 간격 감시** (10.5절 6번 불변식의 취득 시점 판).
-                # pacing 이 밀리면(독출·fetch·락 경합) 다음 트리거가 즉시
-                # 나가 실제 독출 개시 간격이 EXPTIME 을 넘는데, 헤더에는
-                # 지시값이 실린다 -- 그 어긋남을 조용히 두지 않는다.
-                # 허용 편차는 PROVISIONAL (실기 실측 때 OI-23 과 함께 확정).
+                # 시퀀서가 주기를 만들어도 FETCH 가 다음 독출을 멈추면
+                # (DevNote 8.9) 간격이 늘어난다 -- 시퀀서는 그것을 모르므로
+                # 호스트가 재서 알린다.  허용 편차는 PROVISIONAL.
                 if prev_mono is not None:
-                    achieved = trig_mono - prev_mono
-                    if achieved > interval * 1.05 + 0.1:
+                    achieved = now_mono - prev_mono
+                    if achieved > exptime * 1.05 + 0.1:
                         log.warning(
                             '독출 개시 간격이 밀렸다 -- 실현 %.3fs, 지시 '
-                            '%.3fs (프레임 %d/%d).  헤더 EXPTIME 은 지시값'
-                            '이므로 이 프레임의 10.5절 6번 불변식이 깨진다',
-                            achieved, interval, k, count)
-                prev_mono = trig_mono
-                ticket = await self.backend.trigger_frame(
-                    queue=k > 0, suffix=orig_suffix)
+                            '%.3fs (프레임 %d/%d).  FETCH 가 다음 독출과 '
+                            '겹쳤을 수 있다 (DevNote 8.9) -- 헤더 EXPTIME 은 '
+                            '지시값이므로 이 프레임의 10.5절 6번 불변식이 '
+                            '깨진다', achieved, exptime, k, count)
+                prev_mono = now_mono
 
                 st.expstatus = ExpStatus.READOUT
                 async for pct in self.backend.wait_frame(ticket):
@@ -243,7 +246,8 @@ class GuideSequencer:
 
                 if k == 0:
                     # 첫 프레임 폐기 (10.1-2) -- fetch 없이 완료만 확인.
-                    await self.backend.discard_frame(ticket)
+                    # ⚠️ **표는 그대로 들고 간다** -- 다음 표의 기준선이다.
+                    await self.backend.discard_frame(ticket, release=False)
                 else:
                     self._dispatch_store(source, orig_suffix,
                                          t_prev, exptime, k, count)
@@ -252,6 +256,11 @@ class GuideSequencer:
                 t_prev = xfer_utc
                 if k < count:
                     st.expstatus = ExpStatus.INTEGRATING
+
+            if self._stop_evt.is_set() and armed:
+                # 남은 연속 노출을 끊는다 -- 안 끊으면 시퀀서가 계속 찍고
+                # 그 프레임들을 아무도 안 가져간다 (버퍼만 돈다).
+                await self.backend.stop_sequence()
 
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(source)

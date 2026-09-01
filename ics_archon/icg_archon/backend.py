@@ -8,21 +8,31 @@ science 의 `ArchonBackend` 와 달리 `ics_sim` 의 `DetectorBackend` 계약을
 대신 `GuideSequencer` 가 부르는 좁은 표면을 낸다:
 
 * `prepare()`            -- 접속·ACF·전원 (멱등, `ArchonController.prepare`)
-* `trigger_frame()`      -- 독출 1회 지시 (`IntMS=0` -- **호스트가 주기를
-                            만든다**, 아래 "왜 IntMS=0 인가")
+* `arm_sequence()`/`next_ticket()` -- **연속 노출** (시퀀서 pacing, 아래)
 * `wait_frame()`         -- 진행률 yield (컨트롤러 위임)
 * `write_frame()`        -- fetch + guide FITS 저장 (`guidecards.WIDTHS`)
 * `sensors()`/`ctrl_telemetry()`/`controller_info()` -- 헤더용 사실
 
-## 왜 `IntMS=0` 인가 (PROVISIONAL -- guide OI-23 인접)
+## 주기는 **시퀀서**가 만든다 (운영자 확정 2026-08-31)
 
-frame-transfer 에서 노출은 "직전 트랜스퍼(=독출 개시)부터 이번 트랜스퍼
-까지" 다 (raw spec 10.1절).  `IntMS=<노출>` 로 걸면 실제 독출 개시 간격은
-`IntMS + 독출 시간`이 되어 헤더 `EXPTIME`(= 독출 개시 간격, 10.1-1)이
-조용히 어긋난다.  그래서 **적분 대기는 호스트가 재고**(시퀀서의 절대 시각
-pacing) 컨트롤러에는 `IntMS=0` 으로 "지금 읽어라" 만 시킨다.  트리거
-지연·독출 시간의 실측은 첫 구동 몫이고, 그때 `ContinuousExposures`(ACF
-PARAMETER0) 경로와 비교해 확정한다.
+`Exposures = n+1` 을 한 번만 걸면 타이밍 스크립트가 `GOTO Start` 뒤
+`Exposures` 가 남아 있는 동안 **유휴 없이** 다음 프레임으로 간다.  그래서
+독출 개시 간격이 Archon 타이밍 코어(100 MHz)로 정해진다:
+
+    주기 = IntMS + NoIntMS + 트랜스퍼 + 독출
+         = IntMS + 하한(`acftiming.frame_timing()['floor']`)
+
+호스트는 `IntMS = EXPTIME - 하한` 만 계산해 넣고 프레임 완료를 따라간다
+(`intms_for()`).  **하한보다 짧게 요청하면 하한으로 눌러 담는다** --
+거부하지 않는다 (운영자 지시).  그때 헤더 `EXPTIME` 은 요청값이 아니라
+**실현값**이다 (`effective_exptime()`).
+
+⚠️ **주기가 하드웨어로 고정되는 것은 FETCH 가 방해하지 않을 때뿐이다** --
+실기 관측(DevNote 8.9, FW 1261)에서 **FETCH 중 다음 프레임의 readout 이
+멈춘다**.  그래서 `EXPTIME` 이 하한에 가까우면 FETCH(8.3 MiB ≈ 0.12 s)가
+다음 독출과 겹쳐 주기가 늘어난다 -- 시퀀서는 그것을 모르고 호스트도 못
+막는다.  실효 하한은 `하한 + FETCH` 로 보는 것이 안전하고, 실측은 첫
+구동 몫이다 (DevNote 9.12).
 """
 
 from __future__ import annotations
@@ -110,15 +120,69 @@ class GuideBackend:
             return self.timing['floor']
         return self.icfg.exptime_min
 
-    def trigger_to_transfer(self) -> float:
-        """트리거 -> 프레임 트랜스퍼 지연 [s].
+    def intms_for(self, exptime_s: float) -> int:
+        """요청 `EXPTIME` -> 시퀀서에 걸 `IntMS` [ms].
 
-        시퀀서는 트리거를 받고 `IntUnit(IntMS)`(우리는 0) + `NoIntUnit
-        (NoIntMS)` 를 돌린 **뒤에** 트랜스퍼한다.  `DATE-OBS` 는 그
-        트랜스퍼(=독출 개시) 시각이므로(10.1-4·5) 호스트 트리거 시각에
-        이 값을 더해야 한다.
+        주기 = `IntMS` + 하한(`NoIntMS` + 트랜스퍼 + 독출) 이므로
+        `IntMS = EXPTIME - 하한` 이다.  **하한보다 짧게 요청하면 0** --
+        하드웨어가 만들 수 있는 가장 짧은 주기가 된다 (운영자 확정
+        2026-08-31: "더 작게 설정해도 최소 노출시간으로").
         """
-        return self.timing['trigger_to_transfer'] if self.timing else 0.0
+        return max(0, int(round((exptime_s - self.frame_floor()) * 1000.0)))
+
+    def effective_exptime(self, exptime_s: float) -> float:
+        """**실제로 실현되는** 독출 개시 간격 [s] -- 헤더 `EXPTIME` 은 이 값.
+
+        요청값이 아니라 실현값을 싣는다 -- 규격 10.1-1 이 `EXPTIME` 을
+        "연속 두 프레임 독출 개시 시각의 간격" 으로 정의하므로, 하한에
+        걸려 못 만든 주기를 그대로 적으면 카드가 거짓말이 된다.
+        `IntMS` 가 ms 단위로 반올림되는 것까지 반영한다.
+        """
+        return self.frame_floor() + self.intms_for(exptime_s) / 1000.0
+
+    def trigger_to_transfer(self, intms: int = 0) -> float:
+        """노출 개시 -> 프레임 트랜스퍼 지연 [s].
+
+        시퀀서는 `IntUnit(IntMS)` + `NoIntUnit(NoIntMS)` 를 돌린 **뒤에**
+        트랜스퍼한다.  `DATE-OBS` 는 그 트랜스퍼(=독출 개시) 시각이므로
+        (10.1-4·5) 이 값을 더해야 한다.
+        """
+        base = self.timing['trigger_to_transfer'] if self.timing else 0.0
+        return base + max(intms, 0) / 1000.0
+
+    # -- 연속 노출 (시퀀서 pacing) -------------------------------------------
+
+    async def arm_sequence(self, frames: int, intms: int, *,
+                           suffix: str = '', queue: bool = False):  # noqa: ANN201
+        """`Exposures=frames` 를 **한 번에** 걸고 첫 표를 돌려준다.
+
+        이후 프레임은 `next_ticket()` 이 표만 잇는다 -- 시퀀서가 유휴 없이
+        연달아 찍으므로 호스트는 주기를 만들지 않는다 (DevNote 9.12).
+        """
+        try:
+            return await self.ctrl.trigger(intms, queue=queue, suffix=suffix,
+                                           exposures=frames)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError(
+                'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
+
+    async def next_ticket(self, after, intms: int, *, suffix: str = '',
+                          queue: bool = True):  # noqa: ANN001, ANN201
+        """이미 걸린 연속 노출의 다음 표 (`LOADPARAMS` 없음)."""
+        try:
+            return await self.ctrl.expect_next(after, suffix=suffix,
+                                               exptime_ms=intms, queue=queue)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError(
+                'Failed to track the next guide frame') from exc
+
+    async def stop_sequence(self) -> None:
+        """남은 연속 노출을 끊는다 (현재 프레임은 끝난다)."""
+        try:
+            await self.ctrl.set_exposures(0)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            log.warning('Exposures=0 을 못 걸었다 -- %s (남은 프레임이 더 '
+                        '나올 수 있다)', exc)
 
     # -- 준비 ---------------------------------------------------------------
 
@@ -197,12 +261,19 @@ class GuideBackend:
         log.info('%s 저장 (%d KB/sec)', os.path.basename(path), rate)
         return rate
 
-    async def discard_frame(self, ticket) -> None:  # noqa: ANN001
+    async def discard_frame(self, ticket, *, release: bool = True) -> None:  # noqa: ANN001
         """폐기 프레임 -- 완료만 확인하고 fetch 하지 않는다 (10.1-2).
 
-        완료 확인을 생략하면 다음 트리거가 독출 중에 겹칠 수 있다 --
-        회전(버퍼가 실제로 돌았나)은 다음 프레임의 `wait_frame` 이 프레임
-        번호 증가로 함께 확인한다.
+        완료 확인을 생략하면 다음 프레임의 기준선을 못 잡는다 -- 회전(버퍼가
+        실제로 돌았나)은 다음 프레임의 `wait_frame` 이 번호 증가로 함께
+        확인한다.
+
+        Args:
+            release: 연속 노출에서는 **`False`** 다.  `release_current()` 는
+                "이번 프레임이 끝났다" 표시인데, 시퀀서 pacing 에서는 다음
+                프레임이 이미 시퀀서 안에서 돌고 있어 그 표시가 뜻을 잃는다.
+                ⚠️ 어느 쪽이든 `ticket.ready` 는 남는다 -- 다음 표의
+                기준선이라 지우면 안 된다.
         """
         try:
             await self.ctrl.await_frame(ticket)
@@ -210,7 +281,8 @@ class GuideBackend:
             raise GuideBackendError(
                 'Discard frame did not complete') from exc
         finally:
-            self.ctrl.release_current()
+            if release:
+                self.ctrl.release_current()
 
     def drop_pending(self, why: str) -> int:
         """대기 중 저장 표를 버린다 (ABORT)."""
@@ -280,12 +352,14 @@ class SimGuideBackend:
         #: 대역은 하드웨어가 없다 -- 주기 제약도 없는 것으로 둔다(시험이
         #: 짧은 EXPTIME 으로 돌 수 있어야 한다).
         self.timing = None
+        #: 마지막으로 건 `IntMS` -- 대역이 주기를 흉내내는 근거.
+        self._intms = 0
 
     def frame_floor(self) -> float:
         return self.icfg.exptime_min
 
-    def trigger_to_transfer(self) -> float:
-        return 0.0
+    def trigger_to_transfer(self, intms: int = 0) -> float:
+        return max(intms, 0) / 1000.0
 
     async def prepare(self) -> None:
         return None
@@ -295,15 +369,46 @@ class SimGuideBackend:
         return _SimTicket(self._n)
 
     async def wait_frame(self, ticket):  # noqa: ANN001, ANN201
+        """**주기를 흉내낸다** -- `time_scale` 로 줄인 프레임 주기만큼 쉰다.
+
+        즉시 끝내면 프레임들이 같은 밀리초에 몰려 `DATE-OBS` 가 겹치고,
+        저장이 서로 겹쳐 실기에서는 안 나는 경고가 뜬다 -- 대역이 실기와
+        다른 모양으로 도는 것을 시험이 정상으로 배우면 안 된다.
+        """
+        period = self.cfg.scaled(
+            self.frame_floor() + max(self._intms, 0) / 1000.0)
         for pct in (50, 100):
-            await asyncio.sleep(0)
+            await asyncio.sleep(max(period, 0.0) / 2.0)
             yield pct
 
-    async def discard_frame(self, ticket) -> None:  # noqa: ANN001
+    async def discard_frame(self, ticket, *, release: bool = True) -> None:  # noqa: ANN001, ARG002
         return None
 
     def drop_pending(self, why: str) -> int:  # noqa: ARG002
         return 0
+
+    # -- 연속 노출 대역 (실기와 같은 표면) ----------------------------------
+
+    def intms_for(self, exptime_s: float) -> int:
+        return max(0, int(round((exptime_s - self.frame_floor()) * 1000.0)))
+
+    def effective_exptime(self, exptime_s: float) -> float:
+        return self.frame_floor() + self.intms_for(exptime_s) / 1000.0
+
+    async def arm_sequence(self, frames: int, intms: int, *,  # noqa: ARG002
+                           suffix: str = '', queue: bool = False):  # noqa: ANN201, ARG002
+        self._intms = intms
+        self._n += 1
+        return _SimTicket(self._n)
+
+    async def next_ticket(self, after, intms: int, *,  # noqa: ANN001, ARG002
+                          suffix: str = '', queue: bool = True):  # noqa: ANN201, ARG002
+        self._intms = intms
+        self._n += 1
+        return _SimTicket(self._n)
+
+    async def stop_sequence(self) -> None:
+        return None
 
     async def write_frame(self, suffix: str, path: str, cards) -> int:  # noqa: ANN001, ARG002
         if not self.cfg.paths.write_fits:

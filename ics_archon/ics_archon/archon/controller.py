@@ -727,11 +727,11 @@ class ArchonController:
     # **프레임의 것은 프레임이 정하고, 나중에 다시 읽지 않는다.**
 
     async def trigger(self, exptime_ms: int, *, queue: bool = True,
-                      suffix: str = '') -> FrameTicket:
-        """노출 1회를 걸고 곧바로 돌아온다 (적분·독출은 컨트롤러가 몬다).
+                      suffix: str = '', exposures: int = 1) -> FrameTicket:
+        """노출을 걸고 곧바로 돌아온다 (적분·독출은 컨트롤러가 몬다).
 
         순서는 labtest 그대로다 -- **프레임 번호를 먼저 읽고** `IntMS`,
-        `Exposures=1`, `LOADPARAMS`.  번호를 먼저 읽는 이유는 그 값이 "새
+        `Exposures`, `LOADPARAMS`.  번호를 먼저 읽는 이유는 그 값이 "새
         프레임이 나왔나" 의 기준이기 때문이다.
 
         Args:
@@ -739,6 +739,12 @@ class ArchonController:
                 `False` 다 -- 넣으면 저장 쪽이 그것을 자기 프레임으로 집어 온다.
             suffix: 이 프레임의 이름 (`<YYYYMMDD>.<NNNNNN>`).  저장 쪽이 **자기
                 프레임의 표를 골라 집는** 근거다.
+            exposures: `Exposures` 파라미터.  **science 는 1** (프레임마다
+                다시 건다).  guide 는 **n+1 을 한 번에** 걸어 시퀀서가 유휴
+                없이 연달아 찍게 한다 -- 그때 둘째 프레임부터는 `expect_next()`
+                로 표만 잇는다(왕복에 `LOADPARAMS` 가 없다).  타이밍
+                스크립트가 `GOTO Start` 뒤 `Exposures` 가 남아 있으면 곧바로
+                `Exposure:` 로 되돌아가는 것이 근거다.
         """
         # **한 번의 `FRAME` 으로 둘을 뽑는다** -- 프레임 번호(기준값)와 세
         # 버퍼의 번호(기준선).  왕복은 종전과 같다.
@@ -749,7 +755,8 @@ class ArchonController:
                               '%s=%d' % (self.cfg.param_intms_name,
                                          max(int(exptime_ms), 0)))
         await self.set_config(self.cfg.param_exposures_slot,
-                              '%s=1' % self.cfg.param_exposures_name)
+                              '%s=%d' % (self.cfg.param_exposures_name,
+                                         max(int(exposures), 1)))
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         ticket = FrameTicket(
             suffix=suffix,
@@ -760,9 +767,54 @@ class ArchonController:
         self._current = ticket
         if queue:
             self._queue.append(ticket)
-        log.info('%s: 노출 지시 -- IntMS=%d (프레임 %d 다음%s)',
-                 self.tag, int(exptime_ms), prev, '' if queue else ', 버림')
+        log.info('%s: 노출 지시 -- IntMS=%d Exposures=%d (프레임 %d 다음%s)',
+                 self.tag, int(exptime_ms), max(int(exposures), 1), prev,
+                 '' if queue else ', 버림')
         return ticket
+
+    async def expect_next(self, after: FrameTicket, *, suffix: str = '',
+                          exptime_ms: int = 0,
+                          queue: bool = True) -> FrameTicket:
+        """**이미 걸려 있는** 연속 노출의 다음 표를 만든다 (`LOADPARAMS` 없음).
+
+        `trigger(exposures=n)` 로 n 장을 한 번에 걸어 두면 시퀀서가 유휴 없이
+        연달아 찍는다 -- 호스트는 프레임마다 노출을 다시 걸지 않고 **표만**
+        이어 두면 된다.
+
+        ⚠️ 기준선은 **직전 표의 완료 프레임 번호**다.  지금 `FRAME` 의 최신
+        번호를 쓰면 안 된다 -- 우리 루프보다 독출이 빠르면 다음 프레임이 이미
+        나와 있고, 그것을 기준으로 잡으면 **그 프레임을 통째로 건너뛴다**.
+
+        Args:
+            after: 직전 프레임의 표 (`ready` 가 채워져 있어야 한다).
+            exptime_ms: 이 프레임의 `IntMS` -- 시한 계산(`int_until`)에만 쓴다.
+        """
+        if after.ready is None:            # pragma: no cover -- 호출 규약 위반
+            raise ArchonError('%s: 직전 프레임이 아직 안 끝났다 -- expect_next '
+                              '는 완료된 표 뒤에만 부른다' % self.tag)
+        fields = await self.query('FRAME', timeout=T_FAST)
+        ticket = FrameTicket(
+            suffix=suffix,
+            prev_frame=after.ready.frame,
+            prev_frames=parse.buffer_frames(fields),
+            int_until=(time.monotonic() + exptime_ms / 1000.0
+                       if exptime_ms > 0 else None))
+        self._current = ticket
+        if queue:
+            self._queue.append(ticket)
+        return ticket
+
+    async def set_exposures(self, n: int) -> None:
+        """남은 연속 노출 수를 바꾼다 (`0` 이면 현재 프레임까지만).
+
+        STOP 경로가 쓴다 -- 시퀀서는 `Exposures` 가 0 이 되면 현재 프레임을
+        마치고 유휴 루프로 돌아간다 (타이밍 스크립트 `Start:`).
+        """
+        await self.set_config(self.cfg.param_exposures_slot,
+                              '%s=%d' % (self.cfg.param_exposures_name,
+                                         max(int(n), 0)))
+        await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
+        log.info('%s: Exposures=%d 로 갱신', self.tag, max(int(n), 0))
 
     @property
     def triggered(self) -> bool:

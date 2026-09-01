@@ -110,3 +110,50 @@ def test_acquire_discard_then_save(tmp_path):
         assert glob.glob(os.path.join(cfg.paths.data_dir, '*.fits')) == [path]
     finally:
         fake.shutdown()
+
+
+def test_sequencer_pacing_arms_once_and_chains_tickets(tmp_path):
+    """⭐ `go n` 은 `LOADPARAMS` 를 **한 번만** 낸다 (시퀀서 pacing).
+
+    프레임마다 다시 걸면 시퀀서가 매번 유휴 루프로 돌아갔다 오므로 주기가
+    호스트 지터를 탄다 -- 이 방식의 요점이 그것을 없애는 것이다.
+    표는 `expect_next()` 가 왕복 하나(`FRAME`)로 이어 간다.
+    """
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.01,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        cfg, icfg = make_cfgs(tmp_path, fake)
+        be = GuideBackend(cfg, icfg)
+
+        async def run():  # noqa: ANN202
+            await be.prepare()
+            seen = []
+            t = await be.arm_sequence(3, 250, suffix='', queue=False)
+            async for _p in be.wait_frame(t):
+                pass
+            await be.discard_frame(t, release=False)
+            seen.append(t.ready.frame)
+            for i in (1, 2):
+                t = await be.next_ticket(t, 250,
+                                         suffix='20260831.00000%d' % i)
+                async for _p in be.wait_frame(t):
+                    pass
+                seen.append(t.ready.frame)
+            await be.stop_sequence()
+            return seen
+
+        frames = asyncio.run(run())
+        # 프레임 번호가 끊김 없이 이어져야 한다 (건너뛰면 wait_frame 이 던진다).
+        assert frames == [frames[0], frames[0] + 1, frames[0] + 2]
+
+        # `LOADPARAMS` 는 arm 1회 + stop_sequence 1회뿐이다.
+        loads = [c for c in fake.seen if c.upper().startswith('LOADPARAMS')]
+        assert len(loads) == 2, 'LOADPARAMS 가 %d회 -- 프레임마다 걸고 있다' % len(loads)
+
+        # 저장 대기열에는 이름 붙은 표 둘만 (폐기분은 queue=False).
+        assert be.ctrl.take_ticket('20260831.000001') is not None
+        assert be.ctrl.take_ticket('20260831.000002') is not None
+        assert be.ctrl.take_ticket('') is None
+    finally:
+        fake.shutdown()
