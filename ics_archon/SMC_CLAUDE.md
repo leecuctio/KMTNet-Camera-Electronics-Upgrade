@@ -39,12 +39,13 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
 | 이 문서 **"참고 자료 재검토"** | ⭐ `__ref_archon_control/` 을 열기 전에. **옮기지 않은 것 셋의 근거**가 거기 있다 — 없으면 같은 것을 "빠졌다" 로 읽는다 |
 | 이 문서 **"미해결 목록"** | F1~F12 · P1. 작업 2 의 일감이고, **앞 세션 워크플로 결과를 근거로 쓰지 말라는 경고**가 붙어 있다 |
 | [README.md](README.md) | 폴더 구성 · 실행법 · 모듈 표 · 계약 어긋남 3건 · v0.0 에 없는 것 |
+| ⭐ [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) | **실기 시험 보고서** — `LOCK`/`FETCH`/버퍼 운영 결론과 실측값, 재현 명령 (2026-09-01~02) |
 | [INSTALL.md](INSTALL.md) | ⭐ **벤치에 설치할 때** — `~/AIC` 한 벌 세우기 · 기존 설치 이전 · 이상할 때 |
 | `ics_archon/archon/controller.py` 머리말 | **"노출을 누가 재나"** — 이 층의 가장 중요한 판단 |
 | `ics_archon/archon/backend.py` 머리말 | 계약과 실기의 어긋남 3건 · 동기 접근자가 스냅샷을 읽는 이유 |
 | [README.md](README.md) "실기 첫 실행 절차" | ⭐ **실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
 | [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
-| ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다 |
+| ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다.  ⭐ **10장 = 실기 시험 결론**(`LOCK`/`FETCH`/버퍼, 2026-09-01~02) |
 | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.30 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
 | [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) | 물려받은 층의 상태·규약 |
 | [`../raw_fits_spec/`](../raw_fits_spec/README.md) | 산출 규격(raw FITS pair). 헤더 5장의 바이트 정본은 견본 pair |
@@ -1377,9 +1378,39 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
   (위 매뉴얼 사실). 종전에 "12레일이므로 늘려야 한다" 고 적었던 검토는 **철회**
   한다.
 
-## ▶ 인수인계 (2026-08-30 마감 — ⭐ 새 세션이면 **여기부터**)
+## ▶ 인수인계 (2026-09-02 마감 — ⭐ 새 세션이면 **여기부터**)
 
-### ⭐⭐ 한 줄 요약 — **실기 없이 이 브랜치에서 할 코드 작업은 없다**
+### ✅ 2026-09-01~02 — **실기 시험 완료.  `LOCK`/`FETCH`/버퍼 운영 종결** (⭐ 최신)
+
+벤치 두 대(**KMTC-101** 1261/REV 7 · **KMTK-113** 1252/REV 5)에서 `tools/ics_archon_buftest.py`
+2x2 + `probe_archon` 3단계 + 운영자 `ArchonGUI` 재관측·`WARMBOOT`·`REBOOT`.  경위·판단은
+**[DevNote 10장](DevNote.md)**, 결과·실행법은 **[`archon_lock_fetch_report.md`](archon_lock_fetch_report.md)**.
+
+| 물음 | 답 |
+|---|---|
+| FETCH 중 readout 이 멈추나 (DevNote 8.9) | ❌ **안 멈춘다** — 두 유닛 넷 다 **368.0 행/초**.  8.9 는 **GUI 표시 착시**였다 (폴이 버려져 화면만 얼었다; 재개 시 10→1500 점프) |
+| `LOCK` 이 반영되나 · 대가가 있나 | ✅ **15/15 반영, 대가 0** |
+| `LOCK` 이 지킬 구간이 있나 | ✅ **있다** — `nolock` 으로 fetch 하다 경계를 넘은 2회 모두 엔진이 **읽는 중인 버퍼로** 옮겨왔다 |
+| **`lock_buffer`** (A-5 판단 ②) | ✅ **`true` 유지.  종결** |
+| 버퍼 둘에서 하나 잠그면 (H3) | 엔진이 잠긴 것을 피하고 **쓰던 버퍼를 재사용**, 감속 0 (`--hold 20`) |
+| 독출·주기·FETCH 실측 | **368 행/초 · 4700행 12.77초 · 주기 13.27초(`NoIntMS` 0.5 포함) · FETCH 3.2~3.5초 / 99~107 MiB/s** |
+| `BUFnFRAME` 리셋 | **`REBOOT` 만** (첫 프레임 = 1).  CCD 전원·`WARMBOOT` 는 이어진다 |
+| `POWERON` 전제 | **`APPLYALL` 필수** (매뉴얼 p.51) — 그 세션에서 안 했으면 `?xx` 거부 |
+
+**⏳ 남은 것 — 전부 코드·문서다, 실기 아님** (DevNote 10.9):
+
+| 자리 | 무엇 |
+|---|---|
+| ⚠️ `parse.progress` | **`PCTREAD` 가 50% 를 못 넘는다** — `FRAMEMODE=2`(split) 라 `BUFnHEIGHT = 2 x LINECOUNT`.  분모를 `LINECOUNT` 로 |
+| `config.MIN_FRAME_PERIOD` | 12.0 → **13.27** (실측) |
+| `[archon] fetch_timeout` | 30 → 주기 아래(예 10).  **잠금 > 주기면 다음 장이 덮인다** |
+| `controller.py` | `LOCK%d` 가 `try` 밖 (8.14, 유효) |
+| `buftest` · `probe` | `RCONFIG` 선검사를 `POWERON` 앞 · 1단계 `STATUS` · `Exposures=N` · "ACF 적용 전" 문구 |
+
+⚠️ **아래 "🔬 `LOCKn` A/B 실험 절차" 절은 종결됐다** — 계측값(덮였나)이 죽고 도구가 바뀌었다.
+역사로 남겨 두되 **따르지 말 것.**
+
+### (2026-08-30 시점) 한 줄 요약 — **실기 없이 이 브랜치에서 할 코드 작업은 없다**
 
 브랜치 `ics-archon-v1.0-build` = `7e63db1`, **origin 동기**, 워킹트리 깨끗.
 시험 `ics_archon` **235** · `ics_sim` **330**.  `main` = `41845da`, PM 문서 넷과
@@ -1429,10 +1460,10 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 | # | 무엇 | 비용 | 무엇이 결정되나 |
 |---|---|---|---|
-| 1 | `FRAME` 한 번 읽어 **`BUFnFRAME` 이 65535 를 넘었나** | **0** (probe 1단계가 이미 원문을 찍는다) | 넘었으면 **16비트가 아니다** = 되감김 최악이 배제된다.  ⚠️ 한 방향으로만 결정적 |
-| 2 | `probe_archon --lock` / `--no-lock` 단발 비교 | 5분 | ⭐ **`LOCK1` 뒤 `RBUF`=1 이면 이 FW 가 잠금을 반영한다** — A-5 판단 ②의 절반이 닫힌다.  H1/H3 최악 형태도 여기서 죽는다 |
-| 3 | 전원 재투입 직후 `BUFnFRAME` 이 **0 인가** | 0 (전원 절차에 얹는다) | 재시작 경로(카운터 리셋)가 실측으로 확인된다 |
-| 4 | **BIAS 연속 10장 × 2** (`lock_buffer` 만 바꿔) | 얹어서 | 누더기·주기 지연·버퍼 고갈.  ⚠️ **`recheck_after_fetch` 를 켠 채로** 둘 것 — 끄면 덮여도 안 알린다 |
+| 1 | `FRAME` 한 번 읽어 **`BUFnFRAME` 이 65535 를 넘었나** | **0** | ⏳ **미결** — 두 유닛 다 `REBOOT` 직후라 카운터가 작다 (2026-09-02) |
+| 2 | ~~`probe_archon --lock` / `--no-lock` 단발 비교~~ | — | ✅ **닫힘 (2026-09-01)** — `LOCK1` 뒤 `RBUF=1`, 두 FW 다 15/15 반영.  DevNote 10.4 |
+| 3 | ~~전원 재투입 직후 `BUFnFRAME` 이 0 인가~~ | — | ✅ **닫힘 (2026-09-02)** — CCD 전원·`WARMBOOT` 는 **이어지고**, `REBOOT` 만 **1 부터**.  DevNote 10.7 |
+| 4 | ~~BIAS 연속 10장 × 2~~ | — | ✅ **닫힘 (2026-09-01)** — `buftest` 2x2 로 대체.  넷이 같다.  DevNote 10.4 |
 | 5 | 작업 B 나머지 | 실기 일정 | 아래 "작업 B" 목록 |
 
 절차와 판정 기준은 아래 **"🔬 `LOCKn` A/B 실험 절차"** 에 있다 (판정을 **실험
@@ -2239,7 +2270,13 @@ soft processor / Rev H 는 64비트 ARM, p.15)은 32비트를 가리키고 그�
    **덮였다고 크게 운다.**
    ⚠️ **둘 다 끄면 기동 교차검사가 알린다** -- 그 조합은 그 창을 보는 것이 없다.
 
-### 🔬 `LOCKn` A/B 실험 절차 (구 A-5 판단 ②, 2026-08-30 설계)
+### 🔬 `LOCKn` A/B 실험 절차 (구 A-5 판단 ②, 2026-08-30 설계) — ⚠️ **종결 (2026-09-01~02)**
+
+> ⚠️⚠️ **이 절차는 실기로 종결됐다 — 따르지 말 것.**  계측값(*"덮였나"*)이 죽고
+> `tools/ics_archon_buftest.py` 2x2 로 바뀌었으며, 그 결과 **`lock_buffer = true` 종결**이다.
+> 판정과 경위는 [DevNote 10장](DevNote.md), 결과는 [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md).
+> 아래는 **설계 이력**으로만 남긴다 — 미리 못박은 판정 기준이 어떻게 값을 했는지(10.10)의 근거다.
+
 
 **가르려는 것은 둘이다** (운영자 2026-08-30): *"뭐가 잘 안 돼서 뺀 건가, 넣으나
 빼나 영향이 없어서 뺀 건가."*
@@ -2415,11 +2452,11 @@ labtest 는 저장이 **순차**라 다음 노출이 겹칠 일이 없었다.  *
 
 | 미검증 자리 | 실기에서 확정될 값 | 코드 표시 |
 |---|---|---|
-| **`LOCKn` 을 켜도 되나** (구 A-5 판단 ②) | labtest 가 2026-05-28 에 뺀 근거가 *"remove to fetch debug"* 한 줄뿐이다 -- 켠 채로 정상 취득이 도는지. ⚠️ **매뉴얼 p.71 은 판정 근거가 아니다**(가설의 강도일 뿐) | `[archon] lock_buffer` · 결정 15 |
-| ⭐ **`BUFnFRAME` 폭** (2026-08-30 신설) | **관측 한 번으로 최악을 배제한다** -- `FRAME` 을 읽어 `BUFnFRAME` 이 **65535 를 넘었으면 16비트가 아니다**(비용 0, `probe_archon` 1단계). ⚠️ 한 방향으로만 결정적. 그 다음 ② **전원 재투입 직후 0 인가**(재시작 경로 확인) ③ guide 로 밤새 돌려 되감김을 직접 본다 | `parse.restarted_frame` · DevNote 8.1 |
-| **엔진이 잠긴 버퍼를 실제로 건너뛰나** (가설 H3) | 매뉴얼 p.71 은 *"다음 잠기지 않은 버퍼"* 라 적었으나 **남는 버퍼가 없을 때의 거동은 매뉴얼에도 없다.** science 는 버퍼가 둘이라 하나를 잠그면 하나만 남는다 | `[archon] lock_buffer` · A/B 2단계 |
+| ~~**`LOCKn` 을 켜도 되나**~~ (구 A-5 판단 ②) | ✅ **종결 (2026-09-01)** — 두 FW 에서 15/15 반영, 대가 0, 지킬 구간 실재(`nolock` 덮임 2/2). **`true` 유지.**  DevNote 10.6 | `[archon] lock_buffer` · 결정 15 |
+| ⭐ **`BUFnFRAME` 폭** (2026-08-30 신설) | ① 65535 초과 여부 — ⏳ **미결**(카운터가 작다) · ② ~~전원 재투입 직후 0 인가~~ ✅ **닫힘 (2026-09-02)**: 리셋은 **`REBOOT` 만**(첫 프레임 1), CCD 전원·`WARMBOOT` 는 이어진다 · ③ 밤새 되감김 — 미결 | `parse.restarted_frame` · DevNote 8.1 갱신 · 10.7 |
+| ~~**엔진이 잠긴 버퍼를 실제로 건너뛰나**~~ (가설 H3) | ✅ **닫힘 (2026-09-01)** — 건너뛴다.  남는 버퍼가 없으면 **쓰던 버퍼를 재사용**하며 만속 유지 (`--hold 20`, 잠금 > 주기).  ⚠️ 대가: 잠금이 주기(13.27초)를 넘으면 **다음 장이 덮인다** → `fetch_timeout` 을 주기 아래로.  DevNote 10.4·10.6 | `[archon] lock_buffer` |
 | STATUS 필드·모듈 나열 순서 | `TEMP_MODS`(BACKPLANE + MOD5~8)가 실물과 맞는지. **정본 명세는 규격 수록 예정** | `parse.TEMP_MODS` |
-| 독출 시간·진행률 거동 | `BUFnLINES` 가 선형인지, 독출 개시 전 0 구간이 있는지. **FETCH+저장이 `Wrote` 25초 창에 들어가는지** | `controller.wait_frame` · `backend.readout` |
+| ~~독출 시간·진행률 거동~~ | ✅ **실측 (2026-09-01)** — **368 행/초**, 4700행 12.77초, 선형.  FETCH 3.2~3.5초 + 저장 1.2초 → 25초 창에 넉넉히 든다.  ⚠️ **`PCTREAD` 가 49% 에서 완료로 넘어간다** — `FRAMEMODE=2` 라 `BUFnHEIGHT=9400`, `BUFnLINES` 는 4700 에서 멈춘다.  `parse.progress` 분모 수정 필요 (DevNote 10.3) | `controller.wait_frame` · `backend.readout` · ⏳ `parse.progress` |
 | 픽셀 좌우 배치 | Archon 이 주는 X 순서가 raw spec 4.1절(`chips[0]` = X 낮은 쪽)과 같은지 | `backend.write_frame` |
 | 산출물 실물 | 기하(19200×9400) · `DETID` · `DATE-OBS` · converter 투입 | `fitswrite.write_frame` |
 | STOP 이 적분을 자를 수 있나 | `FASTLOADPARAM IntMS 0`(p.52)이 즉시 반영되는지 | `backend.close_shutter` |

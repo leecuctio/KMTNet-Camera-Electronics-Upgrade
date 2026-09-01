@@ -27,6 +27,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
 | [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**264항목**, 약 4분). 배치본은 `-m "not repo_only"` (**223항목**).  ⚠️ 숫자를 손으로 유지하지 말 것 -- `python -m pytest --collect-only -q` 꼬리가 정본이다.  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
+| [`tools/ics_archon_buftest.py`](tools/ics_archon_buftest.py) | **`LOCK`/`FETCH` 2x2 회귀 시험** — 엔진 라인 속도를 `idle`·`lock`·`fetch`·`nolock` 넷으로 견준다 (본편 무수정). 2026-09-01 실기 결론은 [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
 | [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 6개 = science 5 + guide 1, `archive/` 구판 2개) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
