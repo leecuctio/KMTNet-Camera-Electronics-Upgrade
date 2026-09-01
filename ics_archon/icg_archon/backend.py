@@ -141,11 +141,15 @@ class GuideBackend:
         return self.frame_floor() + self.intms_for(exptime_s) / 1000.0
 
     def trigger_to_transfer(self, intms: int = 0) -> float:
-        """노출 개시 -> 프레임 트랜스퍼 지연 [s].
+        """루프 재개(직전 독출 종료) -> 이번 트랜스퍼 지연 [s].
 
-        시퀀서는 `IntUnit(IntMS)` + `NoIntUnit(NoIntMS)` 를 돌린 **뒤에**
-        트랜스퍼한다.  `DATE-OBS` 는 그 트랜스퍼(=독출 개시) 시각이므로
-        (10.1-4·5) 이 값을 더해야 한다.
+        ⚠️ **"노출 개시"가 아니다.**  frame-transfer 라 image 구간은 독출
+        중에도 계속 적분한다 -- 이 프레임의 노출은 *직전* 트랜스펴(=직전
+        독출 개시)에 이미 시작됐다 (10.1-5).  여기서 재는 것은 호스트가
+        표를 잇는 시각부터 **이번** 트랜스퍼까지의 지연이다: 시퀀서가
+        `IntUnit(IntMS)` + `NoIntUnit(NoIntMS)` 를 돌린 **뒤에**
+        트랜스퍼하기 때문이다.  `DATE-OBS` 는 그 트랜스퍼(=독출 개시)
+        시각이므로 (10.1-4) 이 값을 더해야 한다.
         """
         base = self.timing['trigger_to_transfer'] if self.timing else 0.0
         return base + max(intms, 0) / 1000.0

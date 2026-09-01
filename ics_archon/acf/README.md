@@ -16,7 +16,7 @@
 | `KMTS_SCI_101_STA0286_R2608_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
 | `KMTK_SCI_113_STA0200_R2608_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
 | `KMTK_SCI_113_STA0200_R2608_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
-| `KMTK_GUI_162_STA0201_R2608.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
+| `KMTK_GUI_162_STA0201_R2609.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -86,6 +86,27 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
+
+## R2609 -- `NoIntMS` 를 0 으로 (2026-08-31, 운영자)
+
+    KMTK_GUI_162_STA0201_R2608.acf  ->  ..._R2609.acf   (구판은 archive/)
+    PARAMETER3="NoIntMS=500"        ->  "NoIntMS=0"     **차이는 이 한 줄뿐**
+
+`NoIntMS` 는 적분(`IntUnit`) 뒤 **프레임 트랜스퍼 전**에 시퀀서가 무조건
+도는 대기다 (타이밍 스크립트 `NOINT; CALL NoIntUnit(NoIntMS)`).  guide 는
+셔터가 없어 그 대기가 할 일이 없고, 그만큼이 **최소 프레임 주기에 그대로
+얹힌다** -- 1.875 s 에서 **1.375 s** 로 줄었다 (계산: `icg_archon/
+acftiming.py`, 경위는 DevNote 9.10·9.12).  `DATE-OBS` 의 트랜스퍼 보정도
+507 ms -> **6.8 ms** 가 된다.
+
+⭐ **이름을 함께 올린 이유**: `CTRL1CFG` 카드가 이 파일 이름을 싣는다.
+같은 이름으로 타이밍이 다른 두 판이 돌면 **헤더만 보고 못 가린다** --
+raw spec 4.3 의 "구성 변경은 `CAMVER`/`CTRLnCFG` 범프로 드러나야 한다" 와
+같은 자리다.
+
+⚠️ **STA 확인 대기**: `NoIntMS=500` 이 왜 있었는지 (클록 정착? 의도적
+dead time?) 는 저장소에 근거가 없다.  첫 구동에서 이상이 보이면 이 값을
+먼저 되돌려 볼 것.
 
 ## guide 정본을 하나로 줄였다 (2026-08-28, 운영자)
 

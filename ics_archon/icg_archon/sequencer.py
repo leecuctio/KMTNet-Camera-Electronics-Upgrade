@@ -193,11 +193,14 @@ class GuideSequencer:
             saved = 0
             armed = False
             ticket = None
-            # **노출 개시 시각 != 트랜스퍼 시각이다.**  시퀀서는 프레임마다
+            # **트리거 시각 != 트랜스퍼 시각이다.**  시퀀서는 프레임마다
             # `IntUnit(IntMS)` + `NoIntUnit(NoIntMS)` 를 돌린 **뒤에**
             # 트랜스퍼하고, 그 트랜스퍼가 곧 독출 개시다 (10.1-4·5).  그
             # 지연을 안 더하면 `DATE-OBS` 가 그만큼 이르고 10.5절 6번
             # 불변식이 계통적으로 어긋난다.
+            # ⚠️ 독출과 노출은 별개로 흐른다 -- frame-transfer 라 독출
+            # 중에도 image 는 적분하고, 저장 프레임의 노출 개시는 *직전*
+            # 트랜스퍼다.  그래서 아래가 t_prev 를 `DATE-OBS` 로 쓴다.
             # ⚠️ PROVISIONAL -- ACF 계산값이다, 첫 구동에서 실측과 대조할 것.
             xfer_lag = timedelta(
                 seconds=self.backend.trigger_to_transfer(intms))

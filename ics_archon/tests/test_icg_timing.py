@@ -18,7 +18,7 @@ import ics_archon  # noqa: F401
 from icg_archon import acftiming  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2608.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2609.acf')
 
 
 def test_tick_anchor_holds():
@@ -55,17 +55,21 @@ def test_guide_acf_frame_period():
     ctrl.parse_acf(GUIDE_ACF)          # 왕복 없음
 
     p = acftiming.parameters(ctrl.config)
-    assert p['NoIntMS'] == 500 and p['Lines'] == 1033 and p['Pixels'] == 600
+    assert p['NoIntMS'] == 0 and p['Lines'] == 1033 and p['Pixels'] == 600
 
     t = acftiming.frame_timing(p, lines=p['Lines'], pixels=p['Pixels'])
     # 트랜스퍼는 밀리초 오더 (1033행 x 6상 x AT) -- 스미어가 짧다는 근거.
     assert 0.004 < t['transfer'] < 0.010
     # 독출은 1초 오더.
     assert 1.0 < t['readout'] < 2.0
-    # 최소 주기 = NoIntMS + 트랜스퍼 + 독출 ≈ 1.9 s.
-    assert 1.7 < t['floor'] < 2.1
-    # 트리거 -> 트랜스퍼 지연 ≈ NoIntMS + 트랜스퍼 ≈ 0.5 s (DATE-OBS 보정분).
-    assert 0.45 < t['trigger_to_transfer'] < 0.60
+    # 최소 주기 = NoIntMS + 트랜스퍼 + 독출 ≈ 1.37 s (R2609 는 NoIntMS=0).
+    # ⚠️ 독출이 주기에 드는 것은 독출이 노출을 **막아서가 아니다** --
+    # frame-transfer 라 image 는 독출 중에도 적분한다 (10.1-5).  다음
+    # 트랜스퍼가 store 가 빌 때까지 못 오기 때문에 주기의 바닥이 된다.
+    assert 1.2 < t['floor'] < 1.6
+    # 트리거 -> 트랜스퍼 지연 = NoIntMS + 트랜스퍼 (DATE-OBS 보정분).
+    # NoIntMS=0 이라 트랜스퍼만 남는다.
+    assert t['trigger_to_transfer'] < 0.02
 
 
 @pytest.mark.repo_only
@@ -82,11 +86,12 @@ def test_backend_uses_the_acf_floor_not_the_ini_fallback():
     icfg.exptime_min = 0.1              # 대체값을 일부러 낮춰 둔다
     be = GuideBackend(simcfg.load(ini), icfg)
     assert be.timing is not None, 'ACF 타이밍을 못 읽었다'
-    assert be.frame_floor() > 1.5, 'ini 대체값이 이기면 안 된다'
-    assert be.trigger_to_transfer() > 0.4
+    assert be.frame_floor() > 1.0, 'ini 대체값이 이기면 안 된다'
+    assert 0.004 < be.trigger_to_transfer() < 0.010
 
-    # ⭐ **ini 값이 계산값을 밀어 올리면 안 된다** -- ACF 를 고쳐 주기를
-    # 줄여도(NoIntMS -> 0) 낡은 ini 하한이 정상 요청을 거부하던 자리다.
+    # ⭐ **ini 값이 계산값을 밀어 올리면 안 된다** -- R2608->R2609 에서
+    # 실제로 NoIntMS 를 0 으로 내렸고(주기 1.87 -> 1.37 s), 낡은 ini
+    # 하한이 남아 있으면 정상 요청을 거부하게 되는 자리다.
     icfg.exptime_min = 99.0
     be2 = GuideBackend(simcfg.load(ini), icfg)
     assert be2.frame_floor() < 3.0, 'ini 가 계산값을 이기면 안 된다'
@@ -94,10 +99,11 @@ def test_backend_uses_the_acf_floor_not_the_ini_fallback():
 
 @pytest.mark.repo_only
 def test_floor_follows_the_acf_when_noint_is_removed(tmp_path):
-    """`NoIntMS` 를 0 으로 바꾸면 하한이 그만큼 내려가야 한다.
+    """하한이 ACF 의 `NoIntMS` 를 그대로 따라가는가.
 
-    운영자가 ACF 를 고칠 예정인 자리라(2026-08-31), 코드가 그 값을 **읽어**
-    따라가는지 못박는다 -- 어딘가에 1.87 을 하드코딩해 두면 여기서 걸린다.
+    운영자가 R2609 에서 `NoIntMS` 를 0 으로 내렸다(2026-08-31).  코드가 그
+    값을 **읽어** 따라가는지 못박는다 -- 어딘가에 1.87 이나 1.37 을
+    하드코딩해 두면 여기서 걸린다.
     """
     from ics_archon.archon.controller import ArchonController
     from icg_archon.config import IcgCfg
@@ -108,14 +114,15 @@ def test_floor_follows_the_acf_when_noint_is_removed(tmp_path):
     ctrl.parse_acf(GUIDE_ACF)
     p = acftiming.parameters(ctrl.config)
 
-    with_noint = acftiming.frame_timing(p, lines=p['Lines'],
-                                        pixels=p['Pixels'])
-    p0 = dict(p, NoIntMS=0)
-    without = acftiming.frame_timing(p0, lines=p0['Lines'],
-                                     pixels=p0['Pixels'])
-    # 정확히 NoIntMS 만큼 줄어든다 (500 ms).
+    assert p['NoIntMS'] == 0, 'R2609 는 NoIntMS=0 이다'
+    without = acftiming.frame_timing(p, lines=p['Lines'],
+                                     pixels=p['Pixels'])
+    p5 = dict(p, NoIntMS=500)               # 구판(R2608) 값을 되살려 본다
+    with_noint = acftiming.frame_timing(p5, lines=p5['Lines'],
+                                        pixels=p5['Pixels'])
+    # 정확히 NoIntMS 만큼 차이난다 (500 ms).
     assert abs((with_noint['floor'] - without['floor']) - 0.5) < 0.01
-    # 트리거->트랜스퍼 보정도 트랜스퍼 시간만 남는다.
+    # 트리거->트랜스퍼 보정도 현행에서는 트랜스퍼 시간만 남는다.
     assert without['trigger_to_transfer'] < 0.02
 
 
@@ -188,7 +195,7 @@ def test_real_backend_clamp_uses_the_acf_floor():
     icfg.exptime_min = 0.1              # 대체값은 무시돼야 한다
     be = GuideBackend(simcfg.load(ini), icfg)
     floor = be.frame_floor()
-    assert 1.7 < floor < 2.1            # NoIntMS=500 인 현행 ACF 기준
+    assert 1.2 < floor < 1.6            # NoIntMS=0 인 현행 ACF(R2609) 기준
     assert be.intms_for(0.5) == 0
     assert abs(be.effective_exptime(0.5) - floor) < 1e-6
     assert be.intms_for(floor + 3.0) == 3000

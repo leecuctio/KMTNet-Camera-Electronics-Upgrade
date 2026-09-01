@@ -17,6 +17,15 @@ PROVISIONAL 목록은 **[DevNote 9장](DevNote.md)**, 시험은
 `tests/test_icg_*.py` 19개.  ⚠️ **실기 왕복 미검증** — `HEATER` 레일 필드명·
 노출 pacing·Radionode Open API endpoint 가 첫 구동/콘솔 확인 대기다.
 
+**노출 주기는 시퀀서가 만든다** (DevNote 9.12) — `Exposures=n+1` 을 한 번
+걸고 `IntMS = EXPTIME − 하한` 으로 환산한다.  하한의 정본은 ini 가 아니라
+**ACF 계산값**이다 (`icg_archon/acftiming.py`) — 현행 R2609(`NoIntMS=0`)에서
+**1.375 s** 이고, 더 짧게 요청하면 거부가 아니라 하한으로 클램프한다.
+⭐ **독출과 노출은 별개로 흐른다** — frame-transfer 라 image 는 독출 중에도
+적분하고, 저장 프레임의 노출 개시는 *직전* 트랜스퍼다(규격 10.1-4·5).
+독출 1.368 s 가 하한에 드는 것은 노출을 막아서가 아니라 **다음 트랜스퍼가
+store 가 빌 때까지 못 와서**다 (DevNote 9.13).
+
 제어 코드의 원형은 같은 폴더의 실험실 취득 스크립트
 (`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`, 1년 실사용으로 검증된 v1.0 계보)다.
 그 스크립트는 **계속 남는다** — 실험실 단독 취득에 쓰는 별개 도구다.
@@ -227,7 +236,7 @@ imgacq/powon).  `powon` 판은 `imgacq` 판에서 `Exposure()` 호출만 주석 
 
 1. ⭐ **guide 자리 표 = `BACKPLANE_TEMP` + MOD3·4·5·6·7·9·10 = 8자리.**
    미해결 **`OI-19`("guide 8자리 자리 표")의 답이 실물로 나왔다** —
-   `acf/KMTK_GUI_162_STA0201_R2608.acf` 의 `MODn_TYPE` 과
+   `acf/KMTK_GUI_162_STA0201_R2609.acf` 의 `MODn_TYPE` 과
    `modtm_gui_imgacq_v0.3….py` 가 훑는 슬롯이 **정확히 같다.**
    형 번호는 3·4 = `1`(Driver), 5·6 = `2`(AD), 7·10 = `11`(HeaterX),
    9 = `8`(HVXBias).  ✅ **규격 수록 완료** — raw spec **v1.9 가 10.4절에
@@ -1222,7 +1231,7 @@ C←RTD5_WB) **그때 limit 설정을 안 옮겼다.**  그래서 CCD 채널이 
 **판을 올렸다** — `R2601` → `R0827` (운영자 지시 2026-08-27), 그리고
 **2026-08-28 에 guide 정본을 하나로 줄이며 `R2608` 로 다시 표기했다**:
 
-    acf/KMTK_GUI_162_STA0201_R2608.acf                       ⭐ 현행 유일본
+    acf/KMTK_GUI_162_STA0201_R2609.acf                       ⭐ 현행 유일본
       = 구 kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf (바이트 동일)
     __ref_archon_control/acf/…                               (원본 보관 — 넷 다)
     acf/archive/…_R2601_…_rtd9cal.acf  × 2                   (정정 **전** 판)
@@ -1688,7 +1697,7 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
 새로 확정한 사실 셋.  위
 [참고 자료 재검토](#-참고-자료-재검토--__ref_archon_control-전수-2026-08-28-목-지시) 절과
 [DevNote 4장](DevNote.md).  **guide ACF 정본도 하나로 줄고 개명됐다**
-(`KMTK_GUI_162_STA0201_R2608.acf`, 운영자 2026-08-28).
+(`KMTK_GUI_162_STA0201_R2608.acf`, 운영자 2026-08-28.  ⭐ **현행은 `…_R2609.acf`** -- 2026-08-31 에 `NoIntMS` 를 0 으로 내리며 판을 올렸다, `acf/README.md`).
 
 ### ✅ 작업 A — 층 1·2 구현 **완료 (2026-08-28)**
 
@@ -1735,7 +1744,7 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
 1. `age_ms`·`lag_ms` 가 어떤 값인가 — **FETCH 중에 얼마나 밀리나**가
    `monitor_interval` 기본값(20초)이 맞는지의 근거다.
 2. `fresh` 열이 0 으로 오래 머무는가 — `COUNT` 가 실제로 오르는지.
-3. `CCD` 채널이 −30 아래를 읽는가 (`KMTK_GUI_162_STA0201_R2608.acf` 를 올린 뒤 -- 구 `R0827` 판과 내용이 같다).
+3. `CCD` 채널이 −30 아래를 읽는가 (`KMTK_GUI_162_STA0201_R2609.acf` 를 올린 뒤 -- limit 정정은 구 `R0827`=`R2608` 판과 같고, R2609 는 `NoIntMS=0` 만 다르다).
 
 ### 작업 C — raw spec **v1.8** (`main` 에서, 판올림)
 
@@ -1844,7 +1853,7 @@ sentinel 이다.  **해독 규칙은 실측으로 다 확정해 뒀다** -- 위 
 
 ### 운영자 몫 (실기)
 
-1. **`KMTK_GUI_162_STA0201_R2608.acf` 를 guide 유닛에 올린다** (`APPLYALL`)
+1. **`KMTK_GUI_162_STA0201_R2609.acf` 를 guide 유닛에 올린다** (`APPLYALL`)
    -- 저장소만 고친 상태다.  ⚠️ 구 `R0827_for1259_rtd9cal` 과 **내용은 같다**
    (이름만 규칙에 맞췄다) -- 이미 올렸다면 다시 올릴 필요 없다.
 2. 실험실 스크립트들의 `UNIT_ACF` 를 **새 파일명으로** 고친다 --
