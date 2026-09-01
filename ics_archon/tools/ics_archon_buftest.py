@@ -396,13 +396,31 @@ def run_condition(u: Unit, cond: str, args, ctx: dict) -> Sample | None:  # noqa
     _, wbuf1 = parse.lock_state(f1)
     mib = (fs.data_bytes / (1 << 20) * max(1, args.fetch_repeat)) \
         if data is not None else 0.0
-    s = Sample(cond=cond, elapsed=elapsed, dlines=pos1 - pos0,
-               rate=(pos1 - pos0) / elapsed if elapsed > 0 else 0.0,
+    # ⭐⭐ **사강 보정** (2026-09-01 실측으로 필요해졌다).
+    #
+    # 프레임과 프레임 사이에는 엔진이 **라인을 안 쓰는 구간**이 있다 -- 타이밍
+    # 스크립트의 `NOINT; CALL NoIntUnit(NoIntMS)` 다.  창이 경계를 넘으면 그만큼
+    # 희석되어 **조건이 아니라 운(경계를 몇 번 넘었나)이 속도를 가른다**:
+    # `--hold 20` 에서 경계 1회는 358.7, 2회는 349.5 로 나왔는데 **둘 다 실제로는
+    # 368.0** 이었다.  경계 횟수만큼 빼면 그 흔들림이 사라진다.
+    #
+    # ⚠️ **사강 = `NoIntMS` 는 모형이다** -- 실측(0.50·1.00초)과 ACF 값(500 ms)이
+    # 1% 안에서 맞았지만 `HorizontalSWShift`·`CLAMP` 같은 잔여가 남아 있다.
+    # 그래서 원값(`rate_raw`)을 CSV 에 함께 남기고, 요약이 조건마다 **최소~최대**
+    # 를 같이 찍는다 -- 보정이 맞으면 그 폭이 좁아진다.
+    nframes = max(wframe1 - wframe0, 0)
+    active = elapsed - nframes * float(ctx.get('dead_s', 0.0))
+    if active <= 0:
+        print('  ⚠️ 사강이 창(%.2f초)보다 크다 -- 표본을 버린다' % elapsed)
+        return None
+    s = Sample(cond=cond, elapsed=elapsed, active=active, dlines=pos1 - pos0,
+               rate=(pos1 - pos0) / active,
+               rate_raw=(pos1 - pos0) / elapsed if elapsed > 0 else 0.0,
                buf=buf_n, rbuf=rbuf_locked, wbuf0=wbuf0, wbuf1=wbuf1,
                frame=(fs.frame if fs is not None else -1),
                wframe=wframe0, wlines=wlines0, mib=mib,
-               # ⭐ 프레임 경계를 넘은 표본인가 -- stride 가 맞는지의 증거다.
-               crossed=int(wframe1 != wframe0),
+               # ⭐ 경계를 몇 번 넘었나 -- 보정의 근거이자 stride 의 증인이다.
+               nframes=nframes,
                # ⭐ fetch 속도가 곧 **정지 길이**다 -- 같이 재 둔다.
                mibps=(mib / elapsed) if (mib and elapsed > 0) else 0.0)
 
@@ -485,8 +503,21 @@ def stage_stall(u: Unit, args, config: dict[str, str],
         '둘이 다르면 FRAMEMODE=2(split) 다 -- 라인클록 하나가 두 행을 채운다'
         if height and height != stride else '')
 
+    # ⭐ 프레임 사이 사강 -- 타이밍 스크립트의 `NoIntUnit(NoIntMS)` 다.
+    dead_ms = 0
+    if 'NoIntMS' in slots:
+        try:
+            dead_ms = int(config[slots['NoIntMS']].split('=')[1])
+        except (IndexError, ValueError):
+            dead_ms = 0
+    say(OK if dead_ms else WARN, '사강 = NoIntMS %d ms x 경계 횟수' % dead_ms,
+        '경계를 넘은 창은 그만큼 빼고 잰다 -- 안 빼면 조건이 아니라 운이 '
+        '속도를 가른다' if dead_ms
+        else 'ACF 에서 NoIntMS 를 못 읽었다 -- 보정 없이 잰다')
+
     samples: list[Sample] = []
-    ctx: dict = {'stall_rows': {}, 'saved': 0, 'stride': stride}
+    ctx: dict = {'stall_rows': {}, 'saved': 0, 'stride': stride,
+                 'dead_s': dead_ms / 1000.0}
     powered = False
     try:
         u.power_on(args.poweron_wait)
@@ -537,7 +568,7 @@ def stage_stall(u: Unit, args, config: dict[str, str],
                 print('  %-7s %6.2f초  %6d행  %7.1f 행/초%s   '
                       'RBUF=%s WBUF=%d->%d%s%s'
                       % (cond, s['elapsed'], s['dlines'], s['rate'],
-                         ' *' if s['crossed'] else '  ',
+                         ('*%d' % s['nframes']) if s['nframes'] else '  ',
                          ('-' if s['rbuf'] < 0 else
                           ('%d' % s['rbuf'] if s['rbuf'] == s['buf']
                            else '%d(기대%d)' % (s['rbuf'], s['buf']))),
@@ -575,7 +606,8 @@ def summarise(samples: list[Sample]) -> None:
         return
 
     med: dict[str, float] = {}
-    print('  %-8s %5s %10s %10s' % ('조건', '표본', '중앙값[행/초]', '기준선 대비'))
+    print('  %-8s %5s %10s %17s %10s'
+          % ('조건', '표본', '중앙값[행/초]', '최소~최대', '기준선 대비'))
     base = None
     for cond in CONDITIONS:
         rates = [s['rate'] for s in samples if s['cond'] == cond]
@@ -588,9 +620,9 @@ def summarise(samples: list[Sample]) -> None:
         if cond not in med:
             continue
         ratio = (med[cond] / base * 100.0) if base else float('nan')
-        print('  %-8s %5d %10.1f %9.0f%%'
-              % (cond, sum(1 for s in samples if s['cond'] == cond),
-                 med[cond], ratio))
+        rs = [x['rate'] for x in samples if x['cond'] == cond]
+        print('  %-8s %5d %10.1f %8.1f~%-8.1f %9.0f%%'
+              % (cond, len(rs), med[cond], min(rs), max(rs), ratio))
 
     if base is None or base <= 0:
         say(BAD, '기준선(idle)을 못 잡았다 -- 엔진이 안 돌았을 수 있다')
@@ -620,9 +652,9 @@ def summarise(samples: list[Sample]) -> None:
 
 
 def write_csv(path: str, samples: list[Sample]) -> None:
-    cols = ('round', 'cond', 'elapsed', 'dlines', 'rate', 'crossed', 'buf',
-            'rbuf', 'wbuf0', 'wbuf1', 'frame', 'wframe', 'wlines', 'mib',
-            'mibps', 'fits')
+    cols = ('round', 'cond', 'elapsed', 'active', 'dlines', 'rate',
+            'rate_raw', 'nframes', 'buf', 'rbuf', 'wbuf0', 'wbuf1', 'frame',
+            'wframe', 'wlines', 'mib', 'mibps', 'fits')
     with open(path, 'w', newline='', encoding='utf-8') as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction='ignore')
         w.writeheader()
