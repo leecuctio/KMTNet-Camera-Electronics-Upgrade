@@ -150,20 +150,36 @@ def _i(fields: dict[str, str], key: str, default: int = -1) -> int:
         return default
 
 
-def write_pos(fields: dict[str, str]) -> tuple[int, int, int] | None:
+def write_pos(fields: dict[str, str],
+              stride: int) -> tuple[int, int, int] | None:
     """`(누적 라인, 쓰는 중 프레임 번호, 그 버퍼의 라인)`.  쓰는 중이 아니면 `None`.
 
-    누적 라인 = `프레임번호 x 높이 + 라인` -- 프레임 경계를 넘어도 단조 증가한다.
+    누적 라인 = `프레임번호 x stride + 라인` -- 프레임 경계를 넘어도 단조 증가한다.
+
+    ⚠️⚠️ **`stride` 는 `BUFnHEIGHT` 가 아니라 ACF 의 `LINECOUNT` 다**
+    (2026-09-01 실기에서 드러났다).  `FRAMEMODE=2`(split, 매뉴얼 p.56·70)면
+    앞쪽 절반 탭이 버퍼 위쪽, 뒤쪽 절반이 아래쪽에 쓰여 **라인클록 하나가 두
+    행을 채운다** -- `BUFnHEIGHT=9400` 인데 `BUFnLINES` 는 `LINECOUNT=4700`
+    에서 멈춘다.  높이를 stride 로 쓰면 프레임 경계를 넘은 표본마다 **유령
+    4700 행**이 더해져 속도가 3배로 부풀고, 그 표본이 기준선에 섞이면
+    **판정이 뒤집힌다** (첫 실측에서 실제로 그럴 뻔했다).
+
+    ⚠️ 같은 잘못된 전제가 `archon/parse.py` 의 `progress` 에도 있다
+    (`PCTREAD` 가 50%% 를 못 넘는다) -- 한쪽만 고치지 말 것.
     """
     wbuf = _i(fields, 'WBUF', 0)
     if wbuf <= 0:
         return None
     frame = _i(fields, 'BUF%dFRAME' % wbuf)
     lines = _i(fields, 'BUF%dLINES' % wbuf)
-    height = _i(fields, 'BUF%dHEIGHT' % wbuf)
-    if frame < 0 or lines < 0 or height <= 0:
+    if frame < 0 or lines < 0 or stride <= 0:
         return None
-    return frame * height + lines, frame, lines
+    if lines > stride:
+        # 전제가 깨졌다 -- 조용히 틀린 속도를 내느니 표본을 버린다.
+        print('  ⚠️ BUF%dLINES=%d 가 LINECOUNT=%d 를 넘었다 -- stride 전제가 '
+              '깨졌다.  표본을 버린다' % (wbuf, lines, stride))
+        return None
+    return frame * stride + lines, frame, lines
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +337,7 @@ def run_condition(u: Unit, cond: str, args, ctx: dict) -> Sample | None:  # noqa
     """조건 하나를 재고 표본 하나를 돌려준다.  잴 수 없으면 `None`."""
     stall_rows: dict[int, int] = ctx['stall_rows']
     f0 = u.frame()
-    p0 = write_pos(f0)
+    p0 = write_pos(f0, ctx['stride'])
     if p0 is None:
         return None                     # 엔진이 쉬는 중 -- 잴 것이 없다
     pos0, wframe0, wlines0 = p0
@@ -337,16 +353,22 @@ def run_condition(u: Unit, cond: str, args, ctx: dict) -> Sample | None:  # noqa
 
     buf_n = (fs.buf + 1) if fs is not None else 0
     data = None
+    # ⭐ **`LOCK` 을 보낸 *뒤에* 관측한 `RBUF`** (-1 = 안 잠근 조건).
+    # ⚠️ 첫 판은 이것을 `f0`(LOCK 을 보내기 **전**)에서 뽑아, 잠긴 순간을 한
+    # 번도 보지 못한 채 늘 0 을 기록했다 (2026-09-01 실기에서 드러났다).
+    rbuf_locked = -1
     t0 = time.monotonic()
     try:
         if cond == 'idle':
             time.sleep(args.hold)
         elif cond == 'lock':
             u.cmd('LOCK%d' % buf_n)
+            rbuf_locked = parse.lock_state(u.frame())[0]
             time.sleep(args.hold)
         else:
             if cond == 'fetch':
                 u.cmd('LOCK%d' % buf_n)
+                rbuf_locked = parse.lock_state(u.frame())[0]
             # ⚠️ 크기에서 유도한 상한(344 MiB -> 344초)은 실측의 69배라 링크가
             # 죽으면 그만큼 매달린다 (DevNote 7장 F5).  기본을 조여 둔다.
             for _ in range(max(1, args.fetch_repeat)):
@@ -360,25 +382,27 @@ def run_condition(u: Unit, cond: str, args, ctx: dict) -> Sample | None:  # noqa
     elapsed = time.monotonic() - t0
 
     f1 = u.frame()
-    p1 = write_pos(f1)
+    p1 = write_pos(f1, ctx['stride'])
     if p1 is None:
         return None
-    pos1 = p1[0]
+    pos1, wframe1, _ = p1
 
     if pos1 < pos0:
         # ⚠️ 되감김·재시작.  거짓 0 을 보고하느니 표본을 버린다.
         print('  ⚠️ 진행량이 뒤로 갔다 (%d -> %d) -- 표본을 버린다' % (pos0, pos1))
         return None
 
-    rbuf, wbuf0 = parse.lock_state(f0)
+    _, wbuf0 = parse.lock_state(f0)
     _, wbuf1 = parse.lock_state(f1)
     mib = (fs.data_bytes / (1 << 20) * max(1, args.fetch_repeat)) \
         if data is not None else 0.0
     s = Sample(cond=cond, elapsed=elapsed, dlines=pos1 - pos0,
                rate=(pos1 - pos0) / elapsed if elapsed > 0 else 0.0,
-               buf=buf_n, rbuf=rbuf, wbuf0=wbuf0, wbuf1=wbuf1,
+               buf=buf_n, rbuf=rbuf_locked, wbuf0=wbuf0, wbuf1=wbuf1,
                frame=(fs.frame if fs is not None else -1),
                wframe=wframe0, wlines=wlines0, mib=mib,
+               # ⭐ 프레임 경계를 넘은 표본인가 -- stride 가 맞는지의 증거다.
+               crossed=int(wframe1 != wframe0),
                # ⭐ fetch 속도가 곧 **정지 길이**다 -- 같이 재 둔다.
                mibps=(mib / elapsed) if (mib and elapsed > 0) else 0.0)
 
@@ -386,7 +410,7 @@ def run_condition(u: Unit, cond: str, args, ctx: dict) -> Sample | None:  # noqa
     if data is not None and args.save_fits:
         if ctx['saved'] < args.save_max:
             s['fits'] = save_fits(args.save_fits, u.tag, cond, fs, data,
-                                  stall_rows.get(fs.frame))
+                                  stall_rows.get(fs.frame), ctx['saved'] + 1)
             ctx['saved'] += 1
         elif not ctx.get('save_warned'):
             print('  ⚠️ FITS 를 %d장까지만 남긴다 (--save-max)' % args.save_max)
@@ -395,7 +419,7 @@ def run_condition(u: Unit, cond: str, args, ctx: dict) -> Sample | None:  # noqa
 
 
 def save_fits(save_dir: str, tag: str, cond: str, fs: parse.FrameStatus,
-              data: bytearray, stall_row: int | None) -> str:
+              data: bytearray, stall_row: int | None, seq: int) -> str:
     """받아 온 프레임을 FITS 로 떨군다.  ⚠️ **과학 산출물이 아니다.**
 
     기하는 컨트롤러가 보고한 **탭 배열 그대로**(width x height)다 -- raw spec 의
@@ -423,7 +447,11 @@ def save_fits(save_dir: str, tag: str, cond: str, fs: parse.FrameStatus,
     else:
         h['STALLROW'] = (-1, 'no stall recorded for this frame')
     h['DATE'] = (datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S'), 'UTC')
-    path = os.path.join(save_dir, '%s.%s.f%06d.fits' % (tag, cond, fs.frame))
+    # ⚠️ **일련번호를 앞에 둔다.**  첫 판은 이름이 `<tag>.<cond>.f<프레임>`
+    # 뿐이라, 라운드가 달라도 프레임 번호가 같으면 `overwrite=True` 로 **조용히
+    # 덮였다** (2026-09-01: 4장 세었는데 파일은 셋이었다).
+    path = os.path.join(save_dir, '%s.%02d.%s.f%06d.fits'
+                        % (tag, seq, cond, fs.frame))
     hdu.writeto(path, overwrite=True)
     return path
 
@@ -447,8 +475,18 @@ def stage_stall(u: Unit, args, config: dict[str, str],
     say(OK, 'ACF 원래 값 -- %s'
         % ' · '.join('%s' % v for v in original.values()))
 
+    # ⭐ **진행량의 stride 는 `LINECOUNT` 다** (`BUFnHEIGHT` 가 아니다).
+    # 근거와 그렇게 안 했을 때 무슨 일이 나는지는 `write_pos()` 머리말에.
+    stride = _i(config, 'LINECOUNT', 0)
+    if stride <= 0:
+        raise ArchonError('ACF 에 LINECOUNT 가 없다 -- 진행량을 못 잰다')
+    height = _i(u.frame(), 'BUF1HEIGHT', 0)
+    say(OK, 'stride = LINECOUNT %d  (BUF1HEIGHT %d)' % (stride, height),
+        '둘이 다르면 FRAMEMODE=2(split) 다 -- 라인클록 하나가 두 행을 채운다'
+        if height and height != stride else '')
+
     samples: list[Sample] = []
-    ctx: dict = {'stall_rows': {}, 'saved': 0}
+    ctx: dict = {'stall_rows': {}, 'saved': 0, 'stride': stride}
     powered = False
     try:
         u.power_on(args.poweron_wait)
@@ -464,10 +502,18 @@ def stage_stall(u: Unit, args, config: dict[str, str],
         say(OK, '연속 노출 시작 -- IntMS=%d' % args.exp_ms)
 
         # 엔진이 실제로 돌기 시작할 때까지 기다린다.
+        # ⚠️ **`WBUF > 0` 만으로는 "도는 중" 이 아니다** -- 프레임이 완료된
+        # 뒤에도 `WBUF` 가 그 버퍼를 가리킨 채 남는다(2026-09-01 실측:
+        # `WBUF=1` · `BUF1COMPLETE=1` · 엔진 정지).  그 상태로 빠져나가면
+        # 첫 라운드 `idle` 이 **0 행/초**로 잡혀 기준선을 오염시킨다.
+        # 그래서 **진행량이 실제로 늘어나는 것**을 확인하고 나간다.
         deadline = time.monotonic() + 60.0
+        prev = None
         while time.monotonic() < deadline:
-            if write_pos(u.frame()) is not None:
+            now = write_pos(u.frame(), stride)
+            if prev is not None and now is not None and now[0] > prev:
                 break
+            prev = now[0] if now is not None else None
             time.sleep(1.0)
         else:
             raise ArchonError('60초 안에 엔진이 쓰기 시작하지 않았다 -- '
@@ -488,10 +534,14 @@ def stage_stall(u: Unit, args, config: dict[str, str],
                     continue
                 s['round'] = r + 1
                 samples.append(s)
-                print('  %-7s %6.2f초  %6d행  %7.1f 행/초   '
-                      'RBUF=%d WBUF=%d->%d%s%s'
+                print('  %-7s %6.2f초  %6d행  %7.1f 행/초%s   '
+                      'RBUF=%s WBUF=%d->%d%s%s'
                       % (cond, s['elapsed'], s['dlines'], s['rate'],
-                         s['rbuf'], s['wbuf0'], s['wbuf1'],
+                         ' *' if s['crossed'] else '  ',
+                         ('-' if s['rbuf'] < 0 else
+                          ('%d' % s['rbuf'] if s['rbuf'] == s['buf']
+                           else '%d(기대%d)' % (s['rbuf'], s['buf']))),
+                         s['wbuf0'], s['wbuf1'],
                          ('  %.0f MiB/s' % s['mibps']) if s['mibps'] else '',
                          ('  ' + os.path.basename(s['fits'])) if 'fits' in s else ''))
     finally:
@@ -570,9 +620,9 @@ def summarise(samples: list[Sample]) -> None:
 
 
 def write_csv(path: str, samples: list[Sample]) -> None:
-    cols = ('round', 'cond', 'elapsed', 'dlines', 'rate', 'buf', 'rbuf',
-            'wbuf0', 'wbuf1', 'frame', 'wframe', 'wlines', 'mib', 'mibps',
-            'fits')
+    cols = ('round', 'cond', 'elapsed', 'dlines', 'rate', 'crossed', 'buf',
+            'rbuf', 'wbuf0', 'wbuf1', 'frame', 'wframe', 'wlines', 'mib',
+            'mibps', 'fits')
     with open(path, 'w', newline='', encoding='utf-8') as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction='ignore')
         w.writeheader()
