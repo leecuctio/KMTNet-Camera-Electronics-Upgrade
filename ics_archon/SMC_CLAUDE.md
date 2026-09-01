@@ -2059,7 +2059,7 @@ initialize one or more ICs` 로 나가는 것을 결함으로 적어 뒀는데, 
 | **probe 1단계** (읽기 전용) | **규격 5.6.1절 자리 표의 실물 정합** (10자리 · 자리별 이름표를 찍어 눈으로 대조한다) · AD 슬롯 5~8 가정 · `POWER`/`OVERHEAT`/`POWERGOOD` 실제 보고 여부(F2 의 PROVISIONAL) |
 | **probe 2단계** (ACF 대조) | `param_intms_slot`/`param_exposures_slot` · 결정 12(`RDMODE` 유도) |
 | **probe 3단계** (프레임 1장) | ✅ **독출 시간·FETCH 는 운영자 자료로 확정됐다** (2026-08-29 — readout 11.3초 · FETCH ~5초 · `fetch_timeout=30`).  남은 것: **두 컨트롤러 시차** -> `acq_per_frame`/`acq_skew_warn` 기본값 · 픽셀 좌우 배치 · ⚠️ **2대 동시 FETCH 의 실제 속도**(GbE 를 나눠 쓰면 느려진다 — 7.5초를 넘으면 `fetch_buffers` 를 3으로) |
-| **4단계** (본편, 1유닛) | 결정 5(`erase` 두 대) · 6(`close_shutter`) · 15(`LOCKn`) · 검토 A5(버퍼 수 대 저장 여유) |
+| **4단계** (본편, 1유닛) | 결정 5(`erase` 두 대) · 6(`close_shutter`) · ~~15(`LOCKn`)~~ ✅ · ~~검토 A5~~ ✅ (2026-09-01 실기 종결 — DevNote 10장) |
 | **5단계** (2대 + OBSAgent) | `acq_per_frame` **최종 판단** · 1.8초/0.9초/25초 창 3종 |
 | **STOP 시험** | **P2** — `FASTLOADPARAM IntMS 0`(p.52)이 즉시 반영되면 `EXPTIME` 문제 자체가 사라진다.  안 되면 ①그대로/②헤더 카드(= raw spec 개정) 중 선택 |
 | **ABORT 시험** | **P1** — 같은 프로세스 재사용 vs 재시작 건너뜀, 어느 쪽이 규범인지 |
@@ -2663,9 +2663,9 @@ Notes(2014-10-30), 쪽수는 매뉴얼 기준.
 
 | 상태 | 항목 |
 |---|---|
-| ✅ **실기 동작으로 확인** | 프로토콜 프레이밍(p.45) · `FETCH` 블록 규약(p.51) · `FRAME`/`SYSTEM`/`STATUS` 필드 이름 · `LOADPARAMS` · 셔터 `TRIGOUTFORCE` · 기하(`PIXELCOUNT`/`LINECOUNT`) |
-| ⚠️ **미확인 — 매뉴얼뿐** | ⭐ **`LOCKn` 의 효과**(A/B 실험 본체) · 엔진의 *"다음 잠기지 않은 버퍼"* 정책(H3) · 남는 버퍼가 없을 때의 거동(**매뉴얼에도 없다**) · `BUFnTIMESTAMP` 의 시점 의미 · 바이어스 자가검사(p.29·31) · Rev F 단일 접속(p.15) · power good 범위(p.41, **전원 보드 저항으로 정해진다니 판마다 다를 수 있다**) |
-| ⚠️ **매뉴얼에 없음** | `BUFnFRAME` 폭 · 남는 버퍼 없을 때 거동 |
+| ✅ **실기 동작으로 확인** | 프로토콜 프레이밍(p.45) · `FETCH` 블록 규약(p.51) · `FRAME`/`SYSTEM`/`STATUS` 필드 이름 · `LOADPARAMS` · 셔터 `TRIGOUTFORCE` · 기하(`PIXELCOUNT`/`LINECOUNT`) · ⭐ **2026-09-01 추가**: `LOCKn` 효과(`RBUF` 15/15, 두 FW) · 엔진의 *"다음 잠기지 않은 버퍼"* 정책(H3) · **`POWERON` 은 `APPLYALL` 뒤**(p.51) · 버퍼 정보는 **첫 프레임에** 채워진다(p.70) · `FRAMEMODE=2` split(p.56·70) · `REBOOT`/`WARMBOOT` 의 차이(p.51) |
+| ⚠️ **미확인 — 매뉴얼뿐** | `BUFnTIMESTAMP` 의 시점 의미 · 바이어스 자가검사(p.29·31) · Rev F 단일 접속(p.15) · power good 범위(p.41, **전원 보드 저항으로 정해진다니 판마다 다를 수 있다**) · 쓰는 중인 버퍼의 **부분 fetch**(p.70) |
+| ⚠️ **매뉴얼에 없음** | `BUFnFRAME` 폭 (⏳ 미결) · ~~남는 버퍼 없을 때 거동~~ → ✅ **실측**: 쓰던 버퍼를 재사용, 감속 0 (DevNote 10.4) · `LOCKT`·`AUTOFETCH` 의 뜻 |
 | ❌ **매뉴얼이 현행과 다름(실증)** | `MODn_TYPE` 16+ · AD 모듈 슬롯 배치 |
 
 - ✅ **실측 확인** (근거 셋 일치 -- ACF · GUI · `gmon` v2 실측 7장).
