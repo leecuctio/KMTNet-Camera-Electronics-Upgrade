@@ -17,7 +17,10 @@ import ics_archon  # noqa: F401
 
 from ics_sim import config as simcfg  # noqa: E402
 
+from ics_archon.archon.controller import ArchonController  # noqa: E402
+
 from icg_archon import guidecards  # noqa: E402
+from icg_archon.app import IcgArchon  # noqa: E402
 from icg_archon.backend import GuideBackend  # noqa: E402
 from icg_archon.config import IcgCfg  # noqa: E402
 
@@ -155,5 +158,409 @@ def test_sequencer_pacing_arms_once_and_chains_tickets(tmp_path):
         assert be.ctrl.take_ticket('20260831.000001') is not None
         assert be.ctrl.take_ticket('20260831.000002') is not None
         assert be.ctrl.take_ticket('') is None
+    finally:
+        fake.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# ABORT 가 연속 시퀀스를 세운다 (DevNote 9.15-(9), 2026-09-02)
+# ---------------------------------------------------------------------------
+
+def test_fake_exposures_is_a_live_counter_that_loadparams_rewrites():
+    """가짜 충실도 -- `Exposures=0` 은 0장, 도는 중의 `Exposures=0` 은 현재 프레임까지.
+
+    실기 시퀀서는 `LOADPARAMS` 로 파라미터가 즉시 바뀐다 (`Start:` 의 `IF Exposures`).
+    종전 가짜는 루프 시작 때 한 번 읽고 0 도 한 장을 찍어 아래 시퀀서 시험이 결함을
+    못 봤을 것이다.
+    """
+    import socket
+    import time as _time
+
+    fk = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.05,
+                    system=GUIDE_SYSTEM, nbuf=3)
+    fk.start()
+    try:
+        def cmd(c):  # noqa: ANN001, ANN202
+            with socket.create_connection(('127.0.0.1', fk.port), timeout=2) as s:
+                s.sendall(('>01%s\n' % c).encode('ascii'))
+                return s.recv(64)
+
+        # Exposures=0 -> LOADPARAMS 는 한 장도 안 찍는다.
+        assert cmd('WCONFIG0001Exposures=0').startswith(b'<01')
+        assert cmd('LOADPARAMS').startswith(b'<01')
+        _time.sleep(0.3)
+        assert fk.frame_no == 0, '실기는 Exposures=0 에 한 장도 안 찍는다'
+
+        # Exposures=8 로 돌리다 Exposures=0 -- 현재 프레임까지만.
+        cmd('WCONFIG0001Exposures=8')
+        cmd('LOADPARAMS')
+        _time.sleep(0.15)                        # 한두 장 뒤
+        cmd('WCONFIG0001Exposures=0')
+        cmd('LOADPARAMS')
+        _time.sleep(0.3)
+        n = fk.frame_no
+        assert 0 < n < 8, '멈추지 않았다 (%d)' % n
+        _time.sleep(0.3)
+        assert fk.frame_no == n, '멈춘 뒤에 더 찍었다'
+    finally:
+        fk.shutdown()
+
+
+def test_abort_disarms_the_running_sequence(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ ABORT 가 `Exposures=0` 을 건다 -- 컨트롤러가 `n+1` 장을 계속 찍지 않는다.
+
+    종전에는 `cancel()` 이 대기 표만 버리고 태스크를 취소해, 컨트롤러는 걸린
+    `n+1` 을 끝까지 찍었다(아무도 안 받는 프레임이 버퍼를 돈다).  다음 `go` 의
+    `LOADPARAMS` 는 그 위에 덧써졌고, `app.stop()` 도 같은 길이라 **종료 뒤에도
+    컨트롤러가 찍었다.**  이제 `_run()` 의 `finally` 가 `armed and not clean` 이면
+    `_disarm()` 을 부른다 (DevNote 9.15-(9)).
+    """
+    import time as _time
+
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.05,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        cfg, icfg = make_cfgs(tmp_path, fake)
+        cfg.transport.bind_port = 0
+        cfg.transport.send_gap_ms = 0
+        cfg.paths.write_fits = True
+        cfg.paths.expnum_file = str(tmp_path / 'icg.expnum')
+        icfg.hk.interval = 3600.0
+        icfg.hk.query_aux = False
+        # 축소 기하(8x4) 시험 -- validate() 의 고정 기하 불변식(4224x1033)은 실기
+        # 배선 전용이라 여기서는 건너뛴다 (이 파일의 다른 시험이 validate 를 안
+        # 부르는 것과 같은 이유).  app.py 는 이름으로 들여온다.
+        import icg_archon.app as app_mod
+        monkeypatch.setattr(app_mod, 'validate', lambda cfg, backend: [])
+        app = IcgArchon(cfg, icfg, backend='icg_archon')
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            try:
+                app.transport.feed('abc>ICG GUIDEEXP 2')      # 하한(2.0)과 같다 -> IntMS=0
+                await asyncio.sleep(0.02)
+                app.transport.feed('abc>ICG go 20')           # 21 독출 · 20 저장
+                for _ in range(400):
+                    if any('Wrote' in str(m) for m in app.transport.sent_log):
+                        break
+                    await asyncio.sleep(0.02)
+                else:                                          # pragma: no cover
+                    raise AssertionError('첫 저장이 안 나왔다 -- %r / %r'
+                                         % ([str(m) for m in app.transport.sent_log][-6:],
+                                            fake.seen[-12:]))
+                assert app.seq.cancel(save=False, requester='abc'), 'busy 가 아니다'
+                await app.seq.wait()
+                await asyncio.sleep(0.05)
+                return fake.frame_no
+            finally:
+                await app.stop()
+
+        at_abort = asyncio.run(run())
+        # ① 컨트롤러에 Exposures=0 이 걸렸다 -- LOADPARAMS 는 arm 1 + disarm 1.
+        loads = [c for c in fake.seen if c.upper().startswith('LOADPARAMS')]
+        assert len(loads) == 2, loads
+        assert fake._exposures() == 0                # 슬롯 글자
+        with fake._lock:
+            remaining = fake._remaining
+        assert remaining == 0, '슬롯은 0 인데 LOADPARAMS 가 안 먹었다 (%d)' % remaining
+        # ② 실제로 멈췄다 -- 21 장을 다 찍지 않았다.  `Exposures=0` 은 **현재
+        #    프레임까지** 찍고 멈추는 것이라(실기 `Start:` 의 `IF Exposures`,
+        #    가짜도 같다) 취소 시점 뒤 **최대 한 장**은 더 나올 수 있다 -- 그
+        #    뒤로는 늘지 않아야 한다.
+        assert at_abort < 21, '취소했는데 n+1 을 다 찍었다'
+        # ⭐ `seq.wait()` 가 돌아온 시점(=IDLE)에는 꼬리까지 소화돼 있다 -- 그 뒤로
+        #    한 장도 늘지 않아야 한다 (안 그러면 다음 GO 의 기준선이 오염된다).
+        _time.sleep(0.4)
+        assert fake.frame_no == at_abort, ('IDLE 뒤에 컨트롤러가 더 찍었다 -- 꼬리를 안 '
+                                           '소화했다 (%d -> %d)' % (at_abort, fake.frame_no))
+        # ③ IDLE 종결은 통보됐다 (ABORT 요청자 abc 에게).
+        sent = [str(m) for m in app.transport.sent_log]
+        assert any('abc' in m and 'IDLE' in m for m in sent), sent[-5:]
+    finally:
+        fake.shutdown()
+
+
+def test_cancelled_command_keeps_the_link_lock_until_the_thread_finishes(tmp_path):
+    """⭐ 취소된 `cmd()` 가 락을 **스레드가 끝날 때까지** 쥔다 (2026-09-02, 반증자 재현).
+
+    종전에는 `CancelledError` 에 `async with self._lock` 을 빠져나오며 락이 풀렸는데
+    스레드는 소켓 왕복 중이었다 -- 다음 명령이 끼어들어 응답 번호가 어긋나고 링크가
+    다시 세워졌다(`STATUS` 0.2초 지연으로 20회 중 14회).  ABORT 뒤 `Exposures=0`
+    이 바로 그 "다음 명령" 이라 고침이 실기에서 안 먹을 수 있었다.
+    """
+    import time as _time
+
+    fake = FakeArchon(width=NX, height=NY, system=GUIDE_SYSTEM, nbuf=3,
+                      status_delay=0.3)
+    fake.start()
+    try:
+        cfg, icfg = make_cfgs(tmp_path, fake)
+        ctrl = ArchonController('G', icfg)
+
+        async def run():  # noqa: ANN202
+            await ctrl.connect()
+            ctrl.parse_acf(icfg.acf['G'])       # set_config 의 줄 번호표 (왕복 없음)
+            t0 = _time.monotonic()
+            task = asyncio.ensure_future(ctrl.cmd('STATUS'))
+            await asyncio.sleep(0.05)             # 스레드가 소켓 왕복에 들어간 뒤
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            waited = _time.monotonic() - t0
+            # 취소가 돌아왔을 때는 이미 스레드가 끝나 락이 풀려 있다 -- 즉 0.3초
+            # 지연을 **기다렸다**.
+            assert waited >= 0.25, '취소가 스레드를 안 기다렸다 (%.2fs)' % waited
+            assert not ctrl._lock.locked()      # noqa: SLF001
+            # 곧바로 다음 명령 -- 끼어들지 않았으므로 재접속 없이 통과한다.
+            await ctrl.set_exposures(0)
+            await ctrl.close()
+
+        asyncio.run(run())
+        assert fake.accepts == 1, '링크가 다시 세워졌다 -- 왕복이 끼어들었다 (%d회 접속)' % fake.accepts
+        assert any(c.upper().startswith('LOADPARAMS') for c in fake.seen), fake.seen
+    finally:
+        fake.shutdown()
+
+
+def test_abort_then_shutdown_loads_exposures_zero_before_poweroff(tmp_path, monkeypatch):  # noqa: ANN001
+    """ABORT 위에 종료가 겹쳐도 `Exposures=0` 이 **POWEROFF 앞에** 들어간다.
+
+    `_disarm()` 의 shield 미래를 `wait()` 가 기다리므로 `app.stop()` 의 POWEROFF·링크
+    종료가 그 왕복을 앞지르지 않는다 (9.15-(9), 반증자 지적).
+    """
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.05,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        cfg, icfg = make_cfgs(tmp_path, fake)
+        cfg.transport.bind_port = 0
+        cfg.transport.send_gap_ms = 0
+        cfg.paths.write_fits = True
+        cfg.paths.expnum_file = str(tmp_path / 'icg.expnum')
+        icfg.hk.interval = 3600.0
+        icfg.hk.query_aux = False
+        import icg_archon.app as app_mod
+        monkeypatch.setattr(app_mod, 'validate', lambda cfg, backend: [])
+        app = IcgArchon(cfg, icfg, backend='icg_archon')
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            app.transport.feed('abc>ICG GUIDEEXP 2')
+            await asyncio.sleep(0.02)
+            app.transport.feed('abc>ICG go 20')
+            for _ in range(400):
+                if any('Wrote' in str(m) for m in app.transport.sent_log):
+                    break
+                await asyncio.sleep(0.02)
+            assert app.seq.cancel(save=False, requester='abc')
+            # 곧바로 종료 -- 두 번째 취소(shutdown)가 ABORT 처리 위에 겹친다.
+            await app.stop()
+
+        asyncio.run(run())
+        seen = [c.upper() for c in fake.seen]
+        loads = [i for i, c in enumerate(seen) if c.startswith('LOADPARAMS')]
+        offs = [i for i, c in enumerate(seen) if c.startswith('POWEROFF')]
+        assert len(loads) == 2, seen
+        assert offs and loads[-1] < offs[0], '해제 LOADPARAMS 가 POWEROFF 뒤다: %r' % seen
+        with fake._lock:
+            assert fake._remaining == 0
+    finally:
+        fake.shutdown()
+
+
+def test_second_cancel_during_the_lock_wait_is_absorbed(tmp_path):
+    """⭐ 두 번째 취소(ABORT 위에 종료)가 락 대기를 끊지 못한다 (2차 반증, 6회 중 3회 재현).
+
+    `_locked_thread` 가 첫 취소를 받고 스레드를 기다리는 동안 두 번째 취소가 오면,
+    종전엔 `asyncio.wait` 가 끊겨 락이 풀리고 다음 명령이 소켓에 끼어들었다.  이제
+    스레드가 끝날 때까지 취소를 흡수한다.
+    """
+    import time as _time
+
+    fake = FakeArchon(width=NX, height=NY, system=GUIDE_SYSTEM, nbuf=3,
+                      status_delay=0.3)
+    fake.start()
+    try:
+        cfg, icfg = make_cfgs(tmp_path, fake)
+        ctrl = ArchonController('G', icfg)
+
+        async def run():  # noqa: ANN202
+            await ctrl.connect()
+            ctrl.parse_acf(icfg.acf['G'])
+            t0 = _time.monotonic()
+            task = asyncio.ensure_future(ctrl.cmd('STATUS'))
+            await asyncio.sleep(0.05)
+            task.cancel()
+            await asyncio.sleep(0.05)
+            task.cancel()                          # 두 번째 -- 대기 중에
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            assert _time.monotonic() - t0 >= 0.25, '두 번째 취소가 대기를 끊었다'
+            assert not ctrl._lock.locked()      # noqa: SLF001
+            await ctrl.set_exposures(0)
+            await ctrl.close()
+
+        asyncio.run(run())
+        assert fake.accepts == 1, '링크가 다시 세워졌다 (%d회 접속)' % fake.accepts
+        assert any(c.upper().startswith('LOADPARAMS') for c in fake.seen), fake.seen
+    finally:
+        fake.shutdown()
+
+
+def _go_app(tmp_path, fake, monkeypatch):  # noqa: ANN001, ANN202
+    cfg, icfg = make_cfgs(tmp_path, fake)
+    cfg.transport.bind_port = 0
+    cfg.transport.send_gap_ms = 0
+    cfg.paths.write_fits = True
+    cfg.paths.expnum_file = str(tmp_path / 'icg.expnum')
+    icfg.hk.interval = 3600.0
+    icfg.hk.query_aux = False
+    import icg_archon.app as app_mod
+    monkeypatch.setattr(app_mod, 'validate', lambda cfg, backend: [])
+    return IcgArchon(cfg, icfg, backend='icg_archon')
+
+
+async def _first_wrote(app) -> None:  # noqa: ANN001
+    for _ in range(400):
+        if any('Wrote' in str(m) for m in app.transport.sent_log):
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError('첫 저장이 안 나왔다')  # pragma: no cover
+
+
+def test_go_right_after_abort_starts_on_a_clean_baseline(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ ABORT 직후의 GO 가 꼬리 프레임을 제 것으로 알지 않는다 (9.15-(9)).
+
+    꼬리를 소화하지 않으면 새 GO 의 폐기(k=0) 표가 이미 끝난 꼬리에 만족돼 진짜
+    첫 프레임이 저장 프레임으로 올라간다 -- 그러면 `go 2` 가 프레임을 **2장**만
+    더 만들고도 파일 2장을 쓴다.  깨끗한 기준선이면 3장(폐기 1 + 저장 2)이다.
+    """
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.05,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        app = _go_app(tmp_path, fake, monkeypatch)
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            try:
+                app.transport.feed('abc>ICG GUIDEEXP 2')
+                await asyncio.sleep(0.02)
+                app.transport.feed('abc>ICG go 20')
+                await _first_wrote(app)
+                assert app.seq.cancel(save=False, requester='abc')
+                await app.seq.wait()
+                files0 = len(glob.glob(os.path.join(app.cfg.paths.data_dir, '*.G.fits')))
+                frames0 = fake.frame_no
+                app.transport.feed('abc>ICG go 2')          # 곧바로 -- 꼬리가 남았다면 여기서 오염
+                await asyncio.sleep(0.05)
+                await app.seq.wait()
+                await asyncio.sleep(0.1)
+                files1 = len(glob.glob(os.path.join(app.cfg.paths.data_dir, '*.G.fits')))
+                return files1 - files0, fake.frame_no - frames0
+            finally:
+                await app.stop()
+
+        saved, produced = asyncio.run(run())
+        assert saved == 2, 'go 2 가 %d 장을 저장했다' % saved
+        assert produced == 3, 'go 2 가 프레임을 %d 장 만들었다 -- 3 이어야(폐기 1 + 저장 2)' % produced
+    finally:
+        fake.shutdown()
+
+
+def test_stop_disarms_and_drains_before_idle(tmp_path, monkeypatch):  # noqa: ANN001
+    """STOP 경로 -- `Exposures=0` 한 번, 꼬리 소화 뒤 IDLE, 그 뒤로는 안 찍는다."""
+    import time as _time
+
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.05,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        app = _go_app(tmp_path, fake, monkeypatch)
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            try:
+                app.transport.feed('abc>ICG GUIDEEXP 2')
+                await asyncio.sleep(0.02)
+                app.transport.feed('abc>ICG go 20')
+                await _first_wrote(app)
+                assert app.seq.stop_integration('abc')
+                await app.seq.wait()
+                return fake.frame_no
+            finally:
+                await app.stop()
+
+        at_idle = asyncio.run(run())
+        loads = [c for c in fake.seen if c.upper().startswith('LOADPARAMS')]
+        assert len(loads) == 2, loads
+        assert at_idle < 21
+        _time.sleep(0.4)
+        assert fake.frame_no == at_idle, 'STOP 의 IDLE 뒤에 컨트롤러가 더 찍었다'
+        sent = [str(m) for m in app.transport.sent_log]
+        assert any('IDLE' in m for m in sent) and not any('ERROR' in m for m in sent), sent[-6:]
+    finally:
+        fake.shutdown()
+
+
+def test_two_frame_tail_is_drained_when_disarm_lands_late(tmp_path, monkeypatch, caplog):  # noqa: ANN001
+    """⭐ 해제가 닿기 전에 프레임 k 가 끝나 있었으면 k+1 이 꼬리다 -- 두 홉 (3차 반증 시험 공백).
+
+    `stop_sequence()` 를 한 주기 넘게 늦춰 그 상황을 결정적으로 만든다.  소화가
+    끝난 뒤(IDLE)에는 프레임이 더 늘지 않고, 곧 이어진 `go 2` 는 깨끗한 기준선에서
+    프레임 3장을 만든다.
+    """
+    import logging
+    import time as _time
+
+    from icg_archon import backend as be_mod
+
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.05,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        app = _go_app(tmp_path, fake, monkeypatch)
+        orig = be_mod.GuideBackend.stop_sequence
+
+        async def late_stop(self):  # noqa: ANN001, ANN202
+            await asyncio.sleep(0.15)                 # 한 주기(0.1 s) 넘게 -- k 가 끝난다
+            return await orig(self)
+
+        monkeypatch.setattr(be_mod.GuideBackend, 'stop_sequence', late_stop)
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            try:
+                app.transport.feed('abc>ICG GUIDEEXP 2')
+                await asyncio.sleep(0.02)
+                app.transport.feed('abc>ICG go 20')
+                await _first_wrote(app)
+                assert app.seq.cancel(save=False, requester='abc')
+                with caplog.at_level(logging.INFO, logger='icg_archon.seq'):   # 로거 이름은 seq 다
+                    await app.seq.wait()
+                at_idle = fake.frame_no
+                await asyncio.sleep(0.4)
+                assert fake.frame_no == at_idle, 'IDLE 뒤에 더 찍었다 -- 꼬리를 덜 소화했다'
+                frames0 = fake.frame_no
+                files0 = len(glob.glob(os.path.join(app.cfg.paths.data_dir, '*.G.fits')))
+                app.transport.feed('abc>ICG go 2')
+                await asyncio.sleep(0.05)
+                await app.seq.wait()
+                await asyncio.sleep(0.1)
+                files1 = len(glob.glob(os.path.join(app.cfg.paths.data_dir, '*.G.fits')))
+                return fake.frame_no - frames0, files1 - files0
+            finally:
+                await app.stop()
+
+        produced, saved = asyncio.run(run())
+        assert any('꼬리가 둘' in r.getMessage() for r in caplog.records), \
+            '두 홉 경로를 안 탔다 -- 시험 전제(늦은 해제)가 안 성립'
+        assert (produced, saved) == (3, 2), (produced, saved)
+        del _time
     finally:
         fake.shutdown()

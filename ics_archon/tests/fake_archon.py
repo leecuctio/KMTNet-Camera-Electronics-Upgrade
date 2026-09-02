@@ -189,6 +189,14 @@ class FakeArchon(threading.Thread):
         self.locked = 0
         self._next = 0
         self._stop = False
+        #: 남은 연속 노출 수 -- **`LOADPARAMS` 마다 `Exposures` 로 덧쓴다**.
+        #: 실기 시퀀서는 `Exposures--` 로 세고 `LOADPARAMS` 가 파라미터를 즉시
+        #: 바꾸므로, 도는 중에 `Exposures=0` 을 걸면 **현재 프레임까지만** 찍고
+        #: 유휴로 간다 (타이밍 스크립트 `Start:` 의 `IF Exposures`).  종전 가짜는
+        #: 루프 시작 때 한 번 읽고 `Exposures=0` 도 `max(…,1)` 로 한 장을 찍어
+        #: **ABORT 가 시퀀스를 안 세우는 결함을 못 보였다** (DevNote 9.15-(9)).
+        self._remaining = 0
+        self._exposing = False
 
     # -- 서버 -------------------------------------------------------------
 
@@ -296,6 +304,7 @@ class FakeArchon(threading.Thread):
                 for b in self.bufs:
                     b.update(frame=0, complete=0, lines=0)
                 self.rbuf = self.wbuf = self.locked = 0
+                self._remaining = 0          # 타이밍 엔진 정지의 근사 -- 진행 중 한 장만 끝난다
             self._reply(conn, ref)
         elif cmd == 'POWERON' and not self.applied:
             # p.51 "An APPLYALL is required before this operation" -- 실기는
@@ -318,8 +327,16 @@ class FakeArchon(threading.Thread):
                 self.status['POWER'] = '2'      # Off (p.47)
             self._reply(conn, ref)
         elif cmd == 'LOADPARAMS':
+            # 응답 **전에** 파라미터를 반영한다 -- 실기는 ack 가 돌아오면 이미
+            # 적용돼 있다.  스레드 기동은 응답 뒤여도 된다.
+            with self._lock:
+                self._remaining = self._exposures()
+                start = not self._exposing and self._remaining > 0
+                if start:
+                    self._exposing = True
             self._reply(conn, ref)
-            threading.Thread(target=self._expose, daemon=True).start()
+            if start:
+                threading.Thread(target=self._expose, daemon=True).start()
         elif cmd.startswith('FETCH'):
             self._fetch(conn, ref, cmd)
         else:
@@ -393,10 +410,21 @@ class FakeArchon(threading.Thread):
         이유다 (매뉴얼 p.50).  ✅ 실기도 그렇다 (2026-09-01): 잠긴 버퍼를
         피하고, 남는 것이 없으면 **쓰던 버퍼를 재사용**한다 (DevNote 10.4).
         """
-        for _ in range(max(self._exposures(), 1)):
-            if self._stop:
-                break
-            self._one_frame()
+        try:
+            while not self._stop:
+                with self._lock:
+                    if self._remaining <= 0:
+                        # ⚠️ 나가기로 정한 **같은 잠긴 구역**에서 표시를 내린다 --
+                        # 락을 풀고 finally 까지 가는 틈에 LOADPARAMS 가 오면
+                        # `_exposing` 이 아직 True 라 스레드를 안 띄우고, 그 값은
+                        # 아무도 찍지 않는다 (반증자 지적, 2026-09-02).
+                        self._exposing = False
+                        break
+                    self._remaining -= 1
+                self._one_frame()
+        finally:
+            with self._lock:
+                self._exposing = False
 
     def _one_frame(self) -> None:
         time.sleep(min(self._int_ms() / 1000.0, 2.0))

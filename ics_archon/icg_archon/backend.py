@@ -224,6 +224,24 @@ class GuideBackend:
             raise GuideBackendError(
                 'Failed to track the next guide frame') from exc
 
+    async def tail_ticket(self):  # noqa: ANN201
+        """표 없이 도는 프레임(꼬리)의 표 -- 지금 `FRAME` 을 기준선으로 (9.15-(9))."""
+        try:
+            return await self.ctrl.expect_from_now(suffix='', queue=False)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError('Failed to baseline the tail frame') from exc
+
+    def loadparams_sent(self) -> bool:
+        """이번 arm 의 `LOADPARAMS` 가 나갔나 -- 표 없이 취소됐을 때 꼬리 유무의 근거."""
+        return bool(getattr(self.ctrl, 'loadparams_sent', False))
+
+    async def newest_frame(self):  # noqa: ANN201
+        """지금 완료돼 있는 가장 새 프레임 번호 (-1 = 없음) -- 꼬리가 둘인지 가른다."""
+        try:
+            return await self.ctrl.newest_frame()
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError('Failed to read the newest frame') from exc
+
     async def stop_sequence(self) -> None:
         """남은 연속 노출을 끊는다 (현재 프레임은 끝난다)."""
         try:
@@ -457,6 +475,15 @@ class SimGuideBackend:
 
     async def stop_sequence(self) -> None:
         return None
+
+    async def tail_ticket(self):  # noqa: ANN201
+        return None                          # 대역은 꼬리가 없다 -- 소화 생략
+
+    async def newest_frame(self):  # noqa: ANN201
+        return None
+
+    def loadparams_sent(self) -> bool:
+        return False
 
     async def write_frame(self, suffix: str, path: str, cards) -> int:  # noqa: ANN001, ARG002
         if not self.cfg.paths.write_fits:

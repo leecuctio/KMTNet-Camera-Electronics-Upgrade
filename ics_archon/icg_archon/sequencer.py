@@ -73,6 +73,15 @@ class GuideSequencer:
         self._writers: list[asyncio.Task] = []
         self._stop_evt = asyncio.Event()
         self._aborted_by = ''
+        #: `_disarm()` 이 띄운 `Exposures=0` 왕복 -- 두 번째 취소(ABORT 위에
+        #: 종료)가 겹치면 `wait()` 가 이것을 기다려야 POWEROFF·링크 종료가 그
+        #: 앞을 지나가지 않는다 (9.15-(9)).
+        self._disarm_fut: asyncio.Future | None = None
+        #: 꼬리 소화 태스크 -- `wait()` 가 기다린다 (고아 방지).
+        self._drain_fut: asyncio.Future | None = None
+        #: 뒷정리(해제·꼬리 소화) 중 -- 이때의 두 번째 ABORT 는 무시한다
+        #: (종료의 `cancel()` 만 통과).  같은 사이클을 두 번 끊을 일은 없다.
+        self._settling = False
         #: **저장을 한 줄로 세운다** (2026-08-31 교차검토).  guide 는
         #: 컨트롤러가 **한 대**라 저장 둘이 겹치면 같은 링크에서 `LOCKn` 이
         #: 교차한다 -- 앞 프레임의 `LOCK0`(전체 해제)이 뒤 프레임의 잠금을
@@ -97,6 +106,9 @@ class GuideSequencer:
     def start(self, count: int, source: str) -> None:
         self._stop_evt.clear()
         self._aborted_by = ''
+        self._disarm_fut = None
+        self._drain_fut = None
+        self._settling = False
         self._task = asyncio.get_running_loop().create_task(
             self._run(max(int(count), 1), source))
 
@@ -113,19 +125,45 @@ class GuideSequencer:
         (되돌릴 수 없는 프레임을 버리는 쪽보다 낫다 -- 대기 표만 버린다)."""
         if not self.busy:
             return False
+        if self._settling and requester != 'shutdown':
+            # ⭐ 이미 세우는 중이다 -- 두 번째 ABORT 로 뒷정리(해제·꼬리 소화)를
+            # 끊으면 꼬리가 고아로 남아 다음 GO 의 기준선을 오염시킨다 (2차
+            # 반증).  받아 준 것으로 답하고 그대로 둔다.  종료(shutdown)만 통과.
+            # 다만 IDLE 통보는 **마지막 요청자**에게 간다 -- 그래야 `DONE: ABORT`
+            # 가 약속한 `EXPSTATUS=IDLE` 을 그 클라이언트가 받는다 (3차 반증).
+            log.info('ABORT by %s -- 이미 세우는 중이라 그대로 둔다', requester)
+            self._aborted_by = requester
+            return True
         self._aborted_by = requester
         self.backend.drop_pending('ABORT by %s' % requester)
         self._task.cancel()
         return True
 
-    async def wait(self) -> None:
-        """시험 하네스용 -- 사이클과 저장이 다 끝날 때까지."""
+    async def wait(self, *, drain: bool = True) -> None:
+        """사이클 · 해제 왕복(· 저장)이 다 끝날 때까지 (`app.stop()` · 시험 하네스).
+
+        `drain=False` 면 저장 태스크는 기다리지 않는다 -- `app.stop()` 이 그렇게
+        불러 **상한 있는** `drain_writers(shutdown_drain)` 을 따로 밟는다 (3차
+        반증: 무조건 `wait()` 가 무한 `drain_writers(None)` 을 타면 `[icg]
+        shutdown_drain` 이 아무것도 묶지 못했다).
+
+        ⚠️ `_task` 자체의 대기에는 상한이 없다 -- 종료가 `prepare()` 의 ACF 적용
+        중에 오면 `_locked_thread` 가 스레드를 끝까지 기다리므로 최악 `T_APPLY`
+        (60 s)까지 걸릴 수 있다.  취소-안전 락의 대가이고, 링크 시한이 상한이다.
+        """
         if self._task is not None:
             try:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        await self.drain_writers(None)
+        for fut in (self._disarm_fut, self._drain_fut):
+            if fut is not None and not fut.done():
+                # ABORT 위에 종료(두 번째 취소)가 겹쳤을 때 -- `Exposures=0`
+                # 왕복(과 소화 태스크)이 끝나기를 여기서 기다려야 `app.stop()`
+                # 의 POWEROFF·링크 종료가 그 앞을 지나가지 않는다.
+                await asyncio.wait({fut}, timeout=10.0)
+        if drain:
+            await self.drain_writers(None)
 
     async def drain_writers(self, timeout: float | None) -> None:
         """저장 태스크를 곱게 기다린다 (종료 경로 -- `app.stop`)."""
@@ -147,6 +185,14 @@ class GuideSequencer:
     async def _run(self, count: int, source: str) -> None:
         st = self.st
         st.exposing = True     # STATUS `Mode=Acquiring` · EXPNUM 창의 근거
+        # ⭐ 컨트롤러에 `Exposures=n+1` 이 걸렸나 / 사이클이 곱게 끝났나.
+        # `try` **밖**에서 만든다 -- `prepare()` 중 ABORT 가 와도 `finally` 가
+        # 이름을 찾아야 한다.  `clean` 이 아니면서 `armed` 면 컨트롤러가 아직
+        # 돌고 있다는 뜻이라 `finally` 가 `Exposures=0` 을 건다 (9.15-(9)).
+        armed = False
+        clean = False
+        ticket = None          # 마지막으로 기다린 표 -- 꼬리 프레임 소화의 기준선
+        intms = 0
         try:
             requested = float(st.exptime)
             # **하한 아래는 눌러 담는다 -- 거부하지 않는다** (운영자 확정
@@ -191,8 +237,6 @@ class GuideSequencer:
             t_prev = None            # 직전 트랜스퍼(=독출 개시) -- DATE-OBS
             prev_mono = None         # 실현 간격 계측용 (단조 시계)
             saved = 0
-            armed = False
-            ticket = None
             # **트리거 시각 != 트랜스퍼 시각이다.**  시퀀서는 프레임마다
             # `IntUnit(IntMS)` + `NoIntUnit(NoIntMS)` 를 돌린 **뒤에**
             # 트랜스퍼하고, 그 트랜스퍼가 곧 독출 개시다 (10.1-4·5).  그
@@ -205,9 +249,11 @@ class GuideSequencer:
             xfer_lag = timedelta(
                 seconds=self.backend.trigger_to_transfer(intms))
 
+            stopped = False
             for k in range(count + 1):
                 if self._stop_evt.is_set():
                     log.info('STOP -- %d/%d 장 저장 후 멈춘다', saved, count)
+                    stopped = True
                     break
 
                 orig_suffix = '' if k == 0 else st.next_suffix()
@@ -216,9 +262,13 @@ class GuideSequencer:
                     # 유휴 없이 연달아 찍는다 (타이밍 스크립트 `GOTO Start`
                     # 뒤 `Exposures` 가 남아 있으면 곧바로 `Exposure:`).
                     # 첫 프레임은 폐기분이라 저장 대기열에 넣지 않는다.
+                    # ⚠️ 걸기 **전에** 표시한다 -- `LOADPARAMS` 가 나간 직후
+                    # ABORT 가 들어오면 컨트롤러는 이미 돌고 있는데 표시가
+                    # 없으면 아무도 안 세운다.  아직 안 나갔을 때의 `Exposures=0`
+                    # 은 유휴 컨트롤러에 무해하다.
+                    armed = True
                     ticket = await self.backend.arm_sequence(
                         count + 1, intms, suffix=orig_suffix, queue=False)
-                    armed = True
                 else:
                     # 이후 프레임은 **표만** 잇는다 (`LOADPARAMS` 없음).
                     ticket = await self.backend.next_ticket(
@@ -260,15 +310,27 @@ class GuideSequencer:
                 if k < count:
                     st.expstatus = ExpStatus.INTEGRATING
 
-            if self._stop_evt.is_set() and armed:
+            if stopped and armed:
                 # 남은 연속 노출을 끊는다 -- 안 끊으면 시퀀서가 계속 찍고
-                # 그 프레임들을 아무도 안 가져간다 (버퍼만 돈다).
+                # 그 프레임들을 아무도 안 가져간다 (버퍼만 돈다).  ⚠️ 이벤트가
+                # 아니라 `stopped` 로 가른다 -- 마지막 프레임 중에 STOP 이 와서
+                # 루프가 자연히 끝났으면 컨트롤러는 이미 멈췄고 꼬리도 없다
+                # (2차 반증: 그때 소화를 기다리면 IDLE 이 3초 넘게 늦었다).
+                self._settling = True
                 await self.backend.stop_sequence()
+                # `Exposures=0` 은 **현재 프레임까지** 찍는다 -- 그 꼬리가 끝날
+                # 때까지 busy 를 유지한다 (안 그러면 다음 GO 가 그 꼬리를 제
+                # 첫 프레임으로 안다, 9.15-(9)).
+                await self._drain_tail(ticket, intms)
+            clean = True          # 자연 종료(Exposures 소진) 또는 STOP 해제 완료
 
             st.expstatus = ExpStatus.IDLE
-            self.emit.idle_done(source)
+            # STOP 뒷정리 중에 ABORT 가 왔으면 IDLE 은 그 요청자에게 (3차 반증).
+            self.emit.idle_done(self._aborted_by or source)
         except GuideBackendError as exc:
             log.error('guide 사이클 실패 -- %s', exc)
+            clean = await self._settle(armed, clean, ticket, intms,
+                                       '사이클 실패', drain=True)
             st.expstatus = ExpStatus.ERROR
             self.emit.error(source, 'GO', _ascii(exc), st.expstatus)
             st.expstatus = ExpStatus.IDLE
@@ -277,6 +339,8 @@ class GuideSequencer:
             # D-016 의 유일한 저장 실패 조건 -- 규격이 ERROR 를 명한다
             # (2.3절 2항, 9.2절 준용).  문구는 ASCII 고정(원문은 한글).
             log.error('%s', exc)
+            clean = await self._settle(armed, clean, ticket, intms,
+                                       '번호 고갈', drain=True)
             st.expstatus = ExpStatus.ERROR
             self.emit.error(source, 'GO',
                             'Exposure number space exhausted -- not saving '
@@ -284,21 +348,149 @@ class GuideSequencer:
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(source)
         except asyncio.CancelledError:
-            # ABORT -- 요청자에게 IDLE 종결을 알린다 (science 와 같은 규칙).
+            # ABORT -- **먼저 컨트롤러를 세우고**(꼬리 한 장 소화), 그 다음 IDLE
+            # 을 알린다.  순서를 바꾸면 IDLE 을 들은 GO 가 busy 에 막히거나 꼬리
+            # 프레임을 제 것으로 안다 (9.15-(9)).  종료(shutdown)면 꼬리는 안
+            # 기다린다 -- POWEROFF 가 뒤따른다.
+            clean = await self._settle(armed, clean, ticket, intms,
+                                       'ABORT by %s' % (self._aborted_by or source),
+                                       drain=(self._aborted_by != 'shutdown'))
+            # 뒷정리 **뒤에** 정한다 -- 그 사이 다른 클라이언트의 ABORT 가 요청자를
+            # 바꿨을 수 있다 (3차 반증).
+            who = self._aborted_by or source
             st.expstatus = ExpStatus.IDLE
-            self.emit.idle_done(self._aborted_by or source)
+            self.emit.idle_done(who)
         except Exception:  # noqa: BLE001 -- 최후 안전망
             # 여기 오면 우리 결함이다 -- 그래도 **조용히 죽지 않는다**:
             # 통보 없이 태스크만 죽으면 expstatus 가 그 국면에 고착되고
             # 가이딩 클라이언트가 영원히 기다린다.
             log.exception('guide 사이클이 예상 밖 예외로 죽었다')
+            clean = await self._settle(armed, clean, ticket, intms,
+                                       '내부 오류', drain=True)
             st.expstatus = ExpStatus.ERROR
             self.emit.error(source, 'GO', 'Internal error in guide sequencer',
                             st.expstatus)
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(source)
         finally:
+            if armed and not clean:
+                # ⭐ 안전망 -- 핸들러 안에서 또 예외가 났을 때만 여기 온다.
+                # 어느 길로 나가든 컨트롤러에 걸린 `Exposures=n+1` 은 **그대로
+                # 돈다** (2026-09-02 확인, DevNote 9.15-(9)).  안 세우면 아무도 안
+                # 받는 프레임이 버퍼를 돌고, 다음 `go` 의 `LOADPARAMS` 가 도는
+                # 시퀀스 위에 덧써진다.  `app.stop()` 도 같은 `cancel()` 을 타므로
+                # 종료 뒤 컨트롤러가 계속 찍는 것도 이 줄이 막는다.
+                await self._disarm(self._aborted_by or source)
             st.exposing = False
+
+    async def _settle(self, armed: bool, clean: bool, ticket, intms: int,  # noqa: ANN001
+                      why: str, *, drain: bool) -> bool:
+        """비정상 종료의 공통 뒷정리 -- 해제(`Exposures=0`) + 꼬리 한 장 소화.
+
+        `clean` 을 돌려준다 -- `finally` 의 안전망이 두 번 해제하지 않도록.
+        """
+        if not armed or clean:
+            return clean
+        self._settling = True
+        await self._disarm(why)
+        # ⚠️ 해제 도중 종료가 겹쳤으면(`_aborted_by` 가 shutdown 으로 바뀜) 꼬리는
+        # 안 기다린다 -- 판정을 **여기서** 다시 한다 (핸들러 진입 때의 값은 낡았다).
+        if drain and self._aborted_by != 'shutdown':
+            if ticket is not None or self.backend.loadparams_sent():
+                await self._drain_tail(ticket, intms)
+            else:
+                # arm 의 `LOADPARAMS` 가 나가기 **전에** 취소됐다 -- 컨트롤러는
+                # 유휴라 꼬리가 없다.  기다리면 한 주기를 헛되이 쓴다 (3차 반증).
+                log.info('LOADPARAMS 가 나가기 전에 취소됐다 -- 꼬리 없음')
+        return True
+
+    async def _disarm(self, why: str) -> None:
+        """남은 연속 노출을 끊는다 (`Exposures=0`) -- 취소·예외 경로용.
+
+        `asyncio.shield` 로 감싼다: ABORT 로 취소된 태스크 안에서 부르므로
+        종료(`stop()`)가 겹쳐 **두 번째 취소**가 와도 `LOADPARAMS` 왕복은
+        끊기지 않는다 -- 그 미래를 `_disarm_fut` 에 두고 `wait()` 가 기다린다
+        (안 그러면 고아가 되어 POWEROFF·링크 종료가 앞질러 갈 수 있다).
+        실패는 `stop_sequence()` 가 경고로 남긴다 (링크가 죽었으면 어차피
+        컨트롤러도 못 세운다).  ⚠️ 왕복 자체가 취소에 안전한 것은
+        `ArchonController._locked_thread` 덕이다 -- 취소된 명령의 스레드가
+        소켓을 놓기 전에 이 `LOADPARAMS` 가 끼어들면 응답 번호가 어긋난다.
+        """
+        log.info('연속 노출을 끊는다 (%s) -- Exposures=0', why)
+        fut = asyncio.ensure_future(self.backend.stop_sequence())
+        self._disarm_fut = fut
+        # 고아가 돼도(아무도 안 기다려도) 실패를 삼키지 않는다.
+        fut.add_done_callback(
+            lambda f: None if f.cancelled() or f.exception() is None else
+            log.warning('연속 노출 해제 왕복이 뒤늦게 실패했다 -- %s', f.exception()))
+        try:
+            await asyncio.shield(fut)
+        except asyncio.CancelledError:
+            # 두 번째 취소 -- 왕복은 계속 간다; `wait()` 가 미래를 기다린다.
+            pass
+        except Exception as exc:  # noqa: BLE001
+            log.warning('연속 노출을 끊지 못했다 -- %s (남은 프레임이 더 나올 '
+                        '수 있다)', exc)
+
+    async def _drain_tail(self, ticket, intms: int) -> None:  # noqa: ANN001
+        """`Exposures=0` 은 **현재 프레임까지** 찍고 멈춘다 -- 그 꼬리가 끝날
+        때까지 `busy` 를 유지한다 (9.15-(9), 반증자 지적).
+
+        안 기다리면 IDLE 직후 들어온 GO 가 그 꼬리를 제 첫(폐기) 프레임으로
+        알아 기준선이 한 장 어긋난다 -- 새 시퀀스의 진짜 첫 프레임이 저장
+        프레임으로 올라가고 `DATE-OBS` 가 한 주기 틀린다.
+
+        **꼬리는 관측으로 정한다** (2차 반증): 해제 직후 `FRAME` 의 최신 완료
+        번호를 읽어 두고, 기다린 꼬리가 그 번호 이하면 -- 즉 해제가 닿기 전에
+        이미 끝난 프레임이면 -- 엔진은 그 다음 프레임을 시작한 것이라 **한 장
+        더** 기다린다.  표가 없으면(`arm_sequence` 도중 취소) 지금 `FRAME` 을
+        기준선으로 표를 만든다.  대기는 **한 주기 + 2 s** 로 묶는다 -- 첫 홉이
+        기다렸으면 그것이 꼬리고(≤ 한 주기), 첫 홉이 즉시 끝났으면(해제 전
+        완료분) 둘째 홉이 ≤ 한 주기다.  그 이상은 꼬리가 없는 경우라 상한까지
+        기다리는 헛수고다 (3차 반증 -- 종전 2주기는 그 헛수고를 두 배로 했다).
+        대역(sim)은 꼬리가 없어 건너뛴다.
+        """
+        period = self.backend.frame_floor() + intms / 1000.0
+        limit = period + 2.0
+
+        async def _wait() -> None:
+            newest = await self.backend.newest_frame()
+            if getattr(ticket, 'ready', None) is not None:
+                tail = await self.backend.next_ticket(ticket, intms, suffix='',
+                                                      queue=False)
+            elif ticket is not None:
+                tail = ticket                        # 기다리던 그 표가 곧 꼬리
+            else:
+                tail = await self.backend.tail_ticket()
+                if tail is None:                     # 대역 -- 꼬리 없음
+                    return
+            for hop in range(2):
+                async for _pct in self.backend.wait_frame(tail):
+                    pass
+                await self.backend.discard_frame(tail, release=True)
+                done = getattr(getattr(tail, 'ready', None), 'frame', None)
+                if newest is None or done is None or done > newest or hop == 1:
+                    return                           # 해제 뒤에 끝난 장 -- 이것이 꼬리
+                # 해제 전에 이미 끝나 있던 장이었다 -- 엔진은 다음 장을 시작했다.
+                # (마지막 홉에서는 헛 `next_ticket` 을 만들지 않는다 -- 3차 반증.)
+                log.info('꼬리가 둘 -- 프레임 %d 는 해제 전 완료분, 한 장 더 기다린다',
+                         done)
+                tail = await self.backend.next_ticket(tail, intms, suffix='',
+                                                      queue=False)
+
+        task = asyncio.ensure_future(asyncio.wait_for(_wait(), limit))
+        self._drain_fut = task
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # 종료의 두 번째 취소 -- 소화를 **포기**한다 (고아로 두지 않는다).
+            task.cancel()
+            task.add_done_callback(lambda f: f.cancelled() or f.exception())
+        except asyncio.TimeoutError:
+            log.info('꼬리 프레임이 %.1fs 안에 안 끝났다 -- 이미 멈춰 있었을 것이다',
+                     limit)
+        except Exception as exc:  # noqa: BLE001
+            log.info('꼬리 프레임 소화 생략 -- %s', exc)
 
     # -- 저장 ----------------------------------------------------------------
 

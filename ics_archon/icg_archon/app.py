@@ -100,7 +100,11 @@ class IcgArchon(IcsSim):
         if self.seq.busy:
             log.info('종료 -- 진행 중인 guide 사이클을 세운다')
             self.seq.cancel(save=False, requester='shutdown')
-            await self.seq.wait()
+        # busy 가 아니어도 기다린다 -- 방금 끝난 ABORT 의 `Exposures=0` 왕복·꼬리
+        # 소화가 아직 날아가는 중일 수 있다 (고아 미래 회수, 9.15-(9)).  비어
+        # 있으면 즉시 돌아온다.  ⚠️ 저장은 여기서 기다리지 않는다 -- 아래
+        # `drain_writers(shutdown_drain)` 이 **상한을 두고** 기다린다.
+        await self.seq.wait(drain=False)
         await self.hk.stop()
         await self.radionode.stop()
         await self.seq.drain_writers(self.icfg.shutdown_drain)

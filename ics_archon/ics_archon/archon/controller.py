@@ -174,6 +174,9 @@ class ArchonController:
         #: ACF `LINECOUNT` -- 진행률(`PCTREAD`)의 분모.  `BUFnHEIGHT` 는 split
         #: 에서 두 배라 못 쓴다 (DevNote 10.3).  0 이면 HEIGHT 로 물러난다.
         self.lines_total: int = 0
+        #: 이번 `trigger()` 의 `LOADPARAMS` 가 실제로 나갔나 -- 취소가 그 앞에서
+        #: 왔으면 컨트롤러는 유휴라 꼬리가 없다 (guide `_settle`, DevNote 9.15-(9)).
+        self.loadparams_sent: bool = False
         #: 마지막으로 적용(또는 파싱)한 ACF 경로 -- FITS `CTRLnCFG`/`RDMODE`
         #: 의 근거다.  컨트롤러는 적용된 ACF 이름을 보고하지 않는다 (p.54).
         self.acf_path: str = ''
@@ -232,6 +235,36 @@ class ArchonController:
 
     # -- 왕복 -------------------------------------------------------------
 
+    async def _locked_thread(self, fn, *args):  # noqa: ANN001, ANN201
+        """`_lock` 을 쥔 채 블로킹 링크 왕복을 스레드로 돌린다.
+
+        ⭐ **취소돼도 스레드가 끝날 때까지 락을 놓지 않는다** (2026-09-02,
+        DevNote 9.15-(9)).  종전 `async with self._lock: await
+        asyncio.to_thread(...)` 는 `CancelledError` 에 `async with` 를 빠져
+        나오며 락을 풀었는데, 스레드는 취소되지 않아 **소켓 왕복이 아직 진행
+        중**이었다 -- 다음 명령(예: ABORT 뒤의 `Exposures=0`)이 같은 소켓에
+        끼어들어 응답 번호가 어긋나고 링크가 깨졌다 (가짜에서 10회 중 1회,
+        `STATUS` 지연 0.2초로는 20회 중 14회 재현).  `asyncio.to_thread` 는
+        어차피 끊을 수 없으니 **끝나기를 기다리는 것**이 유일한 정답이다 --
+        링크 시한(`timeout`)이 그 대기를 묶는다.
+        """
+        async with self._lock:
+            fut = asyncio.ensure_future(asyncio.to_thread(fn, *args))
+            try:
+                return await asyncio.shield(fut)
+            except asyncio.CancelledError as first:
+                # 스레드가 소켓을 놓을 때까지 락을 쥔다.  ⭐ **두 번째 취소도
+                # 흡수한다** -- ABORT 위에 종료가 겹치는 것이 정상 운용이고
+                # (2차 반증: 6회 중 3회 재현), 대기는 링크 시한이 묶는다.
+                while not fut.done():
+                    try:
+                        await asyncio.wait({fut})
+                    except asyncio.CancelledError:
+                        pass
+                if not fut.cancelled():
+                    fut.exception()          # "never retrieved" 경고 방지
+                raise first
+
     async def cmd(self, command: str, timeout: float = T_FAST) -> bytes:
         """텍스트 명령 하나.  실패하면 `ArchonError`.
 
@@ -239,24 +272,23 @@ class ArchonController:
         두어(`protocol.py` 3번) 늦은 응답이 다음 명령에 먹히지는 않지만,
         부분 수신분이 소켓에 남는 문제는 그대로다.
         """
-        async with self._lock:
-            def _run() -> bytes:
-                try:
-                    return self.link.command(command, timeout=timeout)
-                except TimeoutError as exc:
-                    self.link.resync('%s 응답 시한 초과' % command)
-                    raise ArchonError(str(exc), cmd=command) from None
-                except ArchonError as exc:
-                    # **거부(`?xx`)는 연결 문제가 아니다** -- 내 명령이 틀린
-                    # 것이므로 링크를 버리지 않는다.  그 밖의 실패(프레이밍
-                    # 어긋남 · 상대가 끊음)는 스트림 위치를 잃은 것이라
-                    # **반드시 재수립해야 한다** -- 안 하면 이후 모든 명령이
-                    # 같은 어긋남을 되풀이하고 그 컨트롤러는 재기동까지 죽는다
-                    # (2026-08-24 검토에서 확정).
-                    if not exc.reply_error:
-                        self.link.resync('%s 왕복이 깨졌다' % command)
-                    raise
-            return await asyncio.to_thread(_run)
+        def _run() -> bytes:
+            try:
+                return self.link.command(command, timeout=timeout)
+            except TimeoutError as exc:
+                self.link.resync('%s 응답 시한 초과' % command)
+                raise ArchonError(str(exc), cmd=command) from None
+            except ArchonError as exc:
+                # **거부(`?xx`)는 연결 문제가 아니다** -- 내 명령이 틀린
+                # 것이므로 링크를 버리지 않는다.  그 밖의 실패(프레이밍
+                # 어긋남 · 상대가 끊음)는 스트림 위치를 잃은 것이라
+                # **반드시 재수립해야 한다** -- 안 하면 이후 모든 명령이
+                # 같은 어긋남을 되풀이하고 그 컨트롤러는 재기동까지 죽는다
+                # (2026-08-24 검토에서 확정).
+                if not exc.reply_error:
+                    self.link.resync('%s 왕복이 깨졌다' % command)
+                raise
+        return await self._locked_thread(_run)
 
     async def query(self, command: str, timeout: float = T_FAST
                     ) -> dict[str, str]:
@@ -269,12 +301,10 @@ class ArchonController:
         if not self.cfg.hosts.get(self.tag):
             raise ArchonError('%s: [archon] ctrl_%s_host 가 비어 있다'
                               % (self.tag, self.tag.lower()))
-        async with self._lock:
-            await asyncio.to_thread(self.link.connect, self.cfg.connect_retry)
+        await self._locked_thread(self.link.connect, self.cfg.connect_retry)
 
     async def close(self) -> None:
-        async with self._lock:
-            await asyncio.to_thread(self.link.close)
+        await self._locked_thread(self.link.close)
 
     # -- ACF --------------------------------------------------------------
 
@@ -344,11 +374,10 @@ class ArchonController:
         last: Exception | None = None
         for attempt in range(max(self.cfg.acf_retry, 1)):
             try:
-                async with self._lock:
-                    def _push() -> None:
-                        self.link.command('CLEARCONFIG', timeout=T_APPLY)
-                        self.link.pipeline(cmds, timeout=T_APPLY)
-                    await asyncio.to_thread(_push)
+                def _push() -> None:
+                    self.link.command('CLEARCONFIG', timeout=T_APPLY)
+                    self.link.pipeline(cmds, timeout=T_APPLY)
+                await self._locked_thread(_push)
                 await self.cmd('APPLYALL', timeout=T_APPLY)
             except (ArchonError, TimeoutError, OSError) as exc:
                 if isinstance(exc, ArchonError) and exc.reply_error:
@@ -363,8 +392,7 @@ class ArchonController:
                 log.warning('%s: ACF 적용 실패 %d/%d (%s) -- 연결을 다시 '
                             '세우고 재시도한다', self.tag, attempt + 1,
                             max(self.cfg.acf_retry, 1), exc)
-                async with self._lock:
-                    await asyncio.to_thread(self.link.resync, 'ACF 적용 실패')
+                await self._locked_thread(self.link.resync, 'ACF 적용 실패')
                 await asyncio.sleep(1.0)
                 continue
             self.acf_applied = True
@@ -782,6 +810,7 @@ class ArchonController:
         """
         # **한 번의 `FRAME` 으로 둘을 뽑는다** -- 프레임 번호(기준값)와 세
         # 버퍼의 번호(기준선).  왕복은 종전과 같다.
+        self.loadparams_sent = False
         _fields = await self.query('FRAME', timeout=T_FAST)
         prev = parse.newest(_fields).frame
         before = parse.buffer_frames(_fields)
@@ -791,6 +820,9 @@ class ArchonController:
         await self.set_config(self.cfg.param_exposures_slot,
                               '%s=%d' % (self.cfg.param_exposures_name,
                                          max(int(exposures), 1)))
+        # 취소가 여기서 걸리면 `_locked_thread` 가 스레드를 끝까지 기다리므로
+        # 표시가 True 인 순간 ack 는 이미 (또는 곧) 받은 것이다.
+        self.loadparams_sent = True
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         ticket = FrameTicket(
             suffix=suffix,
@@ -837,6 +869,29 @@ class ArchonController:
         if queue:
             self._queue.append(ticket)
         return ticket
+
+    async def expect_from_now(self, *, suffix: str = '',
+                              queue: bool = False) -> FrameTicket:
+        """**지금**을 기준선으로 한 표 -- `LOADPARAMS` 없이, 이미 도는 프레임을
+        기다리는 데 쓴다 (꼬리 소화, DevNote 9.15-(9)).
+
+        `arm_sequence()` 의 `LOADPARAMS` 도중 ABORT 가 오면 컨트롤러는 돌기
+        시작했는데 표가 없다 -- 그때 `FRAME` 한 번으로 기준선을 잡는다.
+        """
+        fields = await self.query('FRAME', timeout=T_FAST)
+        ticket = FrameTicket(
+            suffix=suffix,
+            prev_frame=parse.newest(fields).frame,
+            prev_frames=parse.buffer_frames(fields),
+            int_until=None)
+        self._current = ticket
+        if queue:
+            self._queue.append(ticket)
+        return ticket
+
+    async def newest_frame(self) -> int:
+        """`FRAME` 한 번 -- 지금 완료돼 있는 가장 새 프레임 번호 (-1 = 없음)."""
+        return parse.newest(await self.query('FRAME', timeout=T_FAST)).frame
 
     async def set_exposures(self, n: int) -> None:
         """남은 연속 노출 수를 바꾼다 (`0` 이면 현재 프레임까지만).
@@ -1174,10 +1229,8 @@ class ArchonController:
             buf = await self._take_buffer(expect_bytes)
             started = time.monotonic()
             try:
-                async with self._lock:
-                    data = await asyncio.to_thread(
-                        self.link.fetch, fs.base, expect_bytes, timeout,
-                        None, buf)
+                data = await self._locked_thread(
+                    self.link.fetch, fs.base, expect_bytes, timeout, None, buf)
             except BaseException:
                 # 실패하면 곧바로 돌려준다 -- 안 그러면 링이 한 칸씩 줄어
                 # **몇 번의 실패 뒤에 영구히 막힌다.**

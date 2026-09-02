@@ -28,6 +28,11 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
 **잠금은 주기보다 짧아야 한다** — `[icg] fetch_timeout = 1.0`(하한 1.375 s 아래, 8.3 MiB
 ≈ 0.08 s), 기동 검사가 어긋나면 알린다 (DevNote 10.6 · 9.15).  FETCH 가 독출을 멈춘다는
 8.9 전제는 2026-09-02 실측으로 폐기 — **실효 하한 = 하한**.
+⭐ **ABORT/STOP 은 컨트롤러를 세운다** — `_run()` 의 핸들러가 `_settle()`(`Exposures=0` → 꼬리
+한 장 소화 → IDLE) 을 먼저 부른다 (DevNote 9.15-(9)).  ⚠️ **컨트롤러 왕복은 취소-안전**이어야
+한다 — `_lock` 아래 블로킹 왕복은 `ArchonController._locked_thread()` 로만 (취소돼도 스레드가
+소켓을 놓을 때까지 락을 쥔다).  `async with self._lock: await asyncio.to_thread(...)` 를 직접
+쓰지 말 것 — 취소 순간 락이 풀려 다음 명령이 같은 소켓에 끼어든다 (science 도 같은 코드).
 
 제어 코드의 원형은 같은 폴더의 실험실 취득 스크립트
 (`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`, 1년 실사용으로 검증된 v1.0 계보)다.
