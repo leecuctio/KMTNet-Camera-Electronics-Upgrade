@@ -737,15 +737,31 @@ def module_types(system: dict[str, str] | None) -> dict[int, int]:
 #:                    (18채널 · 18bit · 12.5 MHz) -- 형 번호만 빠져 있었다
 #:     18 = HVYBias   science `MOD9` (KMTC/KMTS).  KMTK 벤치기는 아직 8(HVXBias)
 #:
-#: ⚠️ **16 은 아직 모른다** -- 매뉴얼 목차에 `DriverX` 장이 따로 있으니(p.28)
-#: 그것이거나 다른 신형일 수 있다.  **추측해서 넣지 말 것** -- 이름표가 틀리면
-#: 기동 배너가 사람을 잘못 안심시킨다.  모르는 형은 `?16` 처럼 번호가 찍힌다.
+#: ⭐ **6 과 16 이 닫혔다** (2026-09-03) -- 근거는 **벤더 클라이언트 소스**다.
+#: STA 가 준 `ArchonGUI` 의 `src/archon.h` 가 형 번호 **0~19 전량**을 열거하고
+#: 있고(`MOD_TYPE_*` 매크로), 거기에 `MOD_TYPE_ATLAS 6` · `MOD_TYPE_DRIVERX 16`
+#: 이 있다.  매뉴얼(2021-02-23)보다 **현행 FW 와 함께 배포되는 코드**이므로
+#: 근거 등급이 높다 (분석: `ArchonGUI/ARCHONGUI_ANALYSIS.md` §7.1, 브랜치
+#: `archongui-study`).  둘의 뒷받침은 서로 다르다:
+#:
+#:     16 = DriverX   매뉴얼에 **모듈 장이 통째로 있다**(p.28, 클럭 12채널) --
+#:                    형 번호만 "16+: Unknown" 뒤에 가려져 있었다.  앞선 주석의
+#:                    추측("DriverX 일 수 있다")이 그대로 맞았다
+#:      6 = Atlas     매뉴얼에는 **언급이 한 건도 없다.**  다만 GUI 에
+#:                    `Archon::atlasMove()` 가 있고 FW 이미지 명령 디스패치
+#:                    표에도 `ATLASMOVE` 가 있다(1252 · 1271 양쪽) -- 실재하는
+#:                    모듈이 맞다.  KMTNet 구성에는 안 쓰인다
+#:
+#: ⚠️ **이름표를 늘리는 것과 판정을 늘리는 것은 다르다.**  둘 다 `AD_TYPES` 에
+#: 넣지 않았다 -- 비디오 모듈이 아니다.  자리 표 판정도 그대로다.
 MODULE_TYPES = {0: 'None', 1: 'Driver', 2: 'AD', 3: 'LVBias', 4: 'HVBias',
                 5: 'Heater', 7: 'HS', 8: 'HVXBias', 9: 'LVXBias',
                 10: 'LVDS', 11: 'HeaterX', 12: 'XVBias',
                 13: 'ADF', 14: 'ADX', 15: 'ADLN',
                 # 매뉴얼 밖 -- 실기 ACF 실측 + 규격 5.6.1 라벨표 (2026-08-27)
-                17: 'ADM', 18: 'HVYBias'}
+                17: 'ADM', 18: 'HVYBias',
+                # 매뉴얼 밖 -- ArchonGUI `src/archon.h` 전량 열거 (2026-09-03)
+                6: 'Atlas', 16: 'DriverX'}
 
 #: **비디오(AD) 계열 전부.**  `2` 하나만 보면 ADF/ADX/ADLN 이 꽂힌 백플레인에서
 #: "AD 모듈을 못 찾았다" 가 되어, 슬롯 가정을 확인하라고 만든 1단계 탐침이

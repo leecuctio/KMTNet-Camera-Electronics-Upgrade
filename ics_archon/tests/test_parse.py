@@ -273,8 +273,25 @@ def test_module_types_name_the_post_manual_modules_17_and_18():
     """
     assert parse.MODULE_TYPES[17] == 'ADM'
     assert parse.MODULE_TYPES[18] == 'HVYBias'
-    # 16 은 아직 모른다 -- 추측해서 채우지 않았는지 못박는다.
-    assert 16 not in parse.MODULE_TYPES
+
+
+def test_module_types_fill_the_gaps_the_manual_left_at_6_and_16():
+    """매뉴얼 p.46 은 **6 을 건너뛰고** 15 까지 세다 "16+: Unknown" 으로 끝난다.
+
+    그 둘을 **벤더 클라이언트 소스**가 닫았다 (2026-09-03) -- STA `ArchonGUI` 의
+    `src/archon.h` 가 `MOD_TYPE_*` 로 형 번호 0~19 전량을 열거하고 거기에
+    `MOD_TYPE_ATLAS 6` · `MOD_TYPE_DRIVERX 16` 이 있다.  매뉴얼(2021)보다
+    **현행 FW 와 함께 배포되는 코드**라 근거 등급이 높다.
+
+    ⚠️ **이름표를 늘린 것이지 판정을 늘린 것이 아니다** -- 둘 다 비디오 모듈이
+    아니므로 `AD_TYPES` 에는 들어가지 않는다.  여기서 그것을 못박는다.
+    """
+    assert parse.MODULE_TYPES[6] == 'Atlas'
+    assert parse.MODULE_TYPES[16] == 'DriverX'
+    assert 6 not in parse.AD_TYPES
+    assert 16 not in parse.AD_TYPES
+    # 매뉴얼이 정의한 0~15 에 이제 구멍이 없다 (6 이 마지막 구멍이었다).
+    assert all(code in parse.MODULE_TYPES for code in range(0, 16))
 
 
 def test_ad_types_include_adm_so_the_real_backplane_is_not_a_false_alarm():

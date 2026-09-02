@@ -205,7 +205,7 @@ limit 이 라벨과 맞다), 같은 사건이 TVM 스크립트 **v0.8 → v0.9**
 
 | # | 무엇 | 자리 |
 |---|---|---|
-| **G1** | `MODULE_TYPES` 에 형 **17(ADM)·18(HVYBias)** 이 없었다 -- 매뉴얼(2021)이 15까지만 정의하고 "16+: Unknown" 이다.  **16 은 추측해 채우지 않았다** | `archon/parse.py` |
+| **G1** | `MODULE_TYPES` 에 형 **17(ADM)·18(HVYBias)** 이 없었다 -- 매뉴얼(2021)이 15까지만 정의하고 "16+: Unknown" 이다.  **16 은 추측해 채우지 않았다**  → ⭐ **2026-09-03 종결**: 벤더 클라이언트 `ArchonGUI` 의 `src/archon.h` 가 형 번호 **0~19 전량**을 열거하고 있어 **6=Atlas · 16=DriverX** 를 넣었다.  매뉴얼은 **6 도 건너뛰고** 있었다(그 구멍을 우리가 그대로 옮겼던 것).  16 은 앞선 추측("DriverX 일 수 있다")이 맞았고, 6(Atlas)은 매뉴얼에 언급이 0건이지만 GUI `atlasMove()` 와 FW 명령표 `ATLASMOVE`(1252·1271 양쪽)가 뒷받침한다.  근거: [`ArchonGUI/ARCHONGUI_ANALYSIS.md`](../ArchonGUI/ARCHONGUI_ANALYSIS.md) §7.1 (브랜치 `archongui-study`) | `archon/parse.py` |
 | **G2** | `AD_TYPES` 에 17 이 빠져 실기 ACF 에서 `ad` 가 **빈 목록** -- F9 가 막으려던 오경보가 형 번호가 달라 재현됐다 | 〃 |
 | **G3** | 슬롯 판정이 `sorted(ad) != [5,6,7,8]`(매뉴얼 p.20 잠정안)이라 **실기 정상 구성에서 경고**가 났다.  판정을 "자리 표가 자리를 준 모듈 == 실제 장착 모듈" 로 바꿨다(`field_order_problems()`) -- 슬롯 번호를 못박지 않아 science 10자리·guide 8자리에 같은 검사가 쓰인다 | `parse.py` · `controller.py` · `tools/probe_archon.py`(사본 제거) |
 | **G4** | `VALID` 를 아무도 안 봤다 -- `VALID=0` 응답을 실측값으로 실을 수 있었다.  D4 로 승인, 구현은 작업 A | 〃 |
