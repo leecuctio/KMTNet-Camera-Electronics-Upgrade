@@ -168,6 +168,9 @@ class FakeArchon(threading.Thread):
         # 시험할 수 없고, 그건 raw 한 장이 남의 노출 픽셀을 담는 결함을
         # 조용히 통과시킨다.
         self.nbuf = max(min(int(nbuf), 3), 1)
+        # 주소는 유닛마다 다르다 (101: 0x20000000 / 113: 0xA0000000, BIGBUF 간격은
+        # 768 MiB -- DevNote 10.8).  본편은 계산하지 않고 `BUFnBASE` 를 읽으므로
+        # 여기 값은 시험에 무관하다 -- 실기 배치로 읽지 말 것.
         self.bufs = [{'frame': 0, 'complete': 0, 'lines': 0,
                       'base': 0xA0000000 + i * 0x10000000}
                      for i in range(3)]

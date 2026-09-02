@@ -30,7 +30,8 @@ science 컨트롤러는 `ics_archon` 이, guide 는 `icg_archon` 이 맡고 **�
 
 1. **락을 새로 만들지 않는다** -- `ArchonController._lock` 을 그대로 탄다
    (`refresh_status_live()` 가 `query()` 를 부르면 자동으로 직렬화된다).
-   ⚠️ **FETCH 가 락을 344 MiB 동안 쥔다**(최대 수 분) -- 그동안 감시 주기가
+   ⚠️ **FETCH 가 락을 344 MiB 동안 쥔다**(실측 3.2~3.5초, 상한은 `fetch_timeout`
+   10초 -- DevNote 10.4·10.6) -- 그동안 감시 주기가
    밀린다.  **"간격을 못 맞췄다" 를 오류로 보지 않는다**: 밀린 시간을
    `lag_ms` 열에 적고 넘어가며, **밀린 만큼 몰아서 뜨지 않는다.**
 2. **`telemetry_enabled` 래치를 되돌리지 않는다** -- 그것은 취득 경로의

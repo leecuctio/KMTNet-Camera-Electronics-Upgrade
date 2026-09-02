@@ -224,8 +224,8 @@ class ArchonCfg:
     #: 개선해서 별도 erase 를 하지 않고 바로 노출을 시작한다"*.  종전 기본값
     #: `True` 는 **clock 개선 전의 전제**였다.
     #:
-    #: ⚠️ **켜면 노출마다 독출 1회분(실측 11.3초)이 더 붙는다** -- 실기 ERASE 는
-    #: 전체 독출이기 때문이다.  labtest 도 1년 실사용을 `bFullFlush=False` 로
+    #: ⚠️ **켜면 노출마다 독출 1회분(실측 12.77초 -- 사강 `NoIntMS` 0.5 가 붙으면
+    #: 13.27초, DevNote 10.4)이 더 붙는다** -- 실기 ERASE 는 전체 독출이기 때문이다.  labtest 도 1년 실사용을 `bFullFlush=False` 로
     #: 했고(`GetDataset(..., False, False, ...)`), 그 자료가 근거다.
     full_flush_on_erase: bool = False
     #: fetch 하는 동안 프레임 버퍼를 `LOCKn` 으로 잠글지 (매뉴얼 p.50).

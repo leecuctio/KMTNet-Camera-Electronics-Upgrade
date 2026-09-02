@@ -27,8 +27,9 @@
         시퀀스(CLEARCONFIG/WCONFIG, APPLYALL, POWERON, LOADPARAMS, STATUS/FRAME
         폴링, 1 KiB 블록 FETCH)를 그대로 옮겨오면 된다 -- ⚠️ `APPLYALL` 이
         `POWERON` 앞이다 (매뉴얼 p.51, `ics_archon` DevNote 10.2).
-        ⚠️ **헤더·텔레메트리는 실기 미검증이다** -- STATUS 필드 이름 · 독출
-        시간 · 산출물 실물 3자리가 그렇다.  옮길 때 잠정 표시를 남긴다
+        ⚠️ **헤더 산출물 실물은 실기 미검증이다** -- STATUS 필드 이름과 독출
+        시간은 2026-09-01 실측으로 닫혔다(368 행/초 · 12.77초 · 주기 13.27초,
+        `ics_archon` DevNote 10.4).  옮길 때 잠정 표시를 남긴다
         (`ics_archon/SMC_CLAUDE.md` "ics_archon v0.0").  손볼 자리·경고의
         뜻은 `ics_archon/scr_labtest/README_labtest.md`.
         v1.0 원본과 Archon 매뉴얼 2부는
