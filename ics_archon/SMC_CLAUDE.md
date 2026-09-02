@@ -1403,6 +1403,8 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | `f0b3b8a` | **10장 반영** — 죽은 전제(FETCH 정지·`LOCK` 무가치·`HEIGHT`=라인·12초 주기) 전수 사냥(워크플로 사냥꾼 6·반증자 6·비평 1: 원시 400 → 확정 107).  ics: `parse.progress_of(LINECOUNT)`·`MIN_FRAME_PERIOD` 13.27·`fetch_timeout` 10 + **기동 검사**(잠금 ≥ 주기면 경고)·`LOCK%d` try 안·`POWERON ?xx` 진단.  icg: 잠금 < 하한(`fetch_timeout` 1.0)·`acftiming.script_matches()` 형태 가드·`exptime_min` 2.0.  가짜: `POWERON` 은 `APPLYALL` 전제·`REBOOT`·split 모사 | DevNote **9.15 (1)~(7)** |
 | `7348178` | 비평 7곳 후속 + **ERASE 비용 표기 통일**("독출 1회분 12.77 초 — 사강이 붙으면 13.27") | 9.15 **(8)** |
 | `df4d4fc` | **icg ABORT 가 연속 시퀀스를 안 세우던 결함** + ⭐⭐ **컨트롤러 취소 안전**(`_locked_thread`) + 가짜 `Exposures` 실시간 카운터.  반증 3라운드(렌즈 7) | 9.15 **(9)** |
+| `e7653cc` | 이 인수인계 절 | -- |
+| `febedd2` | **보관함 ACF 정리** -- 운영자 반입분 둘 등재(둘 다 기존 바이트의 사본, 새로 남는 것은 **이름의 대응**) · **CRLF→LF 정규화**(운영자 지시)와 `.gitattributes` 의 `-text` 예외 철회.  ⚠️ 그 예외가 보존하던 판별 단서(`R2601`=CRLF · `R0827`=LF)는 **`acf/README.md` 의 "보관함 목록과 줄 끝" 표가 유일한 기록**이 됐다 | `acf/README.md` |
 
 **지금 상태**: 워킹트리 깨끗 · origin 동기.  시험 `ics_archon` **295**(⚠️ 아래 flake 하나 제외) · `ics_sim` **330**.
 메모리(`~/.claude/projects/.../memory/project_ics_archon.md`)도 이 상태다.
@@ -1418,6 +1420,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | ERASE 비용 표기 | **"독출 1회분(실측 12.77초 — 사강 `NoIntMS` 0.5 가 붙으면 13.27초)"** 로 통일했다.  "프레임 하나 13.27" 로 단정하지 말 것 — 사강 동반 여부는 미확정 |
 | `acftiming` 은 **guide 스크립트 전용** | science ACF 를 대면 그럴싸한 13.65 s 가 나온다(형태 가드가 이제 막는다).  science 하한은 `MIN_FRAME_PERIOD` 상수 |
 | 반증자 제안을 그대로 받지 말 것 | "프레임 하나 = 13.27" 이 그 사례 — 반증자의 전제(ERASE 가 사강을 동반)가 따라 들어왔다.  9.15-(8) |
+| 보관함(`__ref_archon_control/`) 줄 끝 | 이제 **전 계통 LF** 다 (2026-09-02 정규화).  받은 그대로의 CRLF/LF 는 `acf/README.md` 표에만 남아 있다 -- 새 원본을 넣을 때 그 표에 "받은 줄 끝" 을 먼저 적을 것.  ⚠️ science 원본 다섯은 정규화 뒤 정본 `acf/` 와 바이트가 같다(보관 값은 "받은 이름" 뿐) |
 | `fetch_timeout=0` 의 뜻 | "크기에서 유도"(science 344 s · guide 60 s) — **잠금 상한이기도** 해서 기동 검사가 잡는다.  `ArchonCfg` 기본은 10, `IcgCfg` 기본은 1.0 |
 
 #### ⚠️ 알려진 flake (별건, 후속)
