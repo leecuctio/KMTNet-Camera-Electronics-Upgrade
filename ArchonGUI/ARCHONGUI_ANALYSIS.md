@@ -12,7 +12,7 @@
 | 매뉴얼 | `Archon_manual_20210223.pdf` | STA Archon Manual, Rev 1.0.1166, 2021-02-23, 103쪽 |
 | 노트 | `Archon_Readout_Notes_20141030.pdf` | D. Hale(Caltech), ZTF용 독출 노트, 15쪽 |
 | 펌웨어 | `ArchonFW/` | `.mcs` **4종** (2026-09-03 에 Rev H 1271 이 추가되고 폴더명이 `ArchonFW_20250825` → `ArchonFW` 로 바뀌었어) |
-| 실기 ACF | `__reference/acf/` | **12종** + 타이밍 스크립트 (science 4 · guide 8, 2026-09-03 확충). §5.7 |
+| 실기 ACF | `__reference/acf/` | **12종** + 타이밍 스크립트 **2종**(science·guide) — science 4 · guide 8, 2026-09-03 확충. §5.7 |
 
 줄번호는 별말 없으면 **SSO 트리 기준**이야. stock 은 두 곳 개조 때문에 뒤쪽 줄이 2씩 당겨져 있어(예: RAWSEL 저장은 SSO 2469 = stock 2467).
 
@@ -633,7 +633,7 @@ interfaceFlush → POLLOFF → CLEARCONFIG → WCONFIG×N → POLLON → APPLYxx
 
 ## 5.7 보유 ACF 전수 (2026-09-03 반입분 포함)
 
-`__reference/acf/` 에 실기 ACF **12개 + 타이밍 스크립트 1개**가 들어왔어. 전수로 훑은 결과야 [확정].
+`__reference/acf/` 에 실기 ACF **12개 + 타이밍 스크립트 2개**(science·guide)가 들어왔어. 전수로 훑은 결과야 [확정].
 
 | 구분 | 파일 | 탭 | 접두 | 비디오 슬롯 | 탭 번호 | `RAWSEL` | 기하 |
 |---|---|---:|---|---|---|---:|---|
@@ -679,9 +679,28 @@ MOD10\DIO_POWER=1   →   0
 
 `goff` = **게이지 off**. HeaterX(MOD10)의 DIO 전원을 내려 진공 게이지를 끄고 기동하는 판이야. `icg_archon` 이 게이지 전원 대기를 건너뛰는 경로를 가질 수 있다는 기존 관측과 정합해.
 
-### 5.7.3 `acf_timing_script.txt` — 타이밍 상태기계 원본
+### 5.7.3 타이밍 상태기계 원본 — science · guide 두 벌
 
-guide 타이밍 스크립트 전문이야. `Start` → `Exposure`/`Continuous` 분기와 `IntUnit(IntMS)` · `NoIntUnit(NoIntMS)` · `HorizontalSWShift(1200)` · `CLAMP`/`NOCLAMP` · `SkipLine`/`Line` 호출 구조가 보여. 다른 세션이 프레임 사이 사강 0.50초를 `NoIntMS=500` 으로 동정한 근거가 이 파일의 `NoIntUnit(NoIntMS)` 줄이야.
+타이밍 스크립트는 ACF 안에 **`LINE<n>=` 키로** 들어 있어. 값은 큰따옴표로 감싸여 있고, 라벨 줄(`Start:`)과 빈 줄은 따옴표 없이 들어가. 그걸 풀어 쓴 것이 `acf/` 의 두 텍스트 파일이야 [확정].
+
+| 파일 | 출처 ACF | 줄 수 |
+|---|---|---:|
+| `acf_timing_script_science.txt` | `KMTK_SCI_113_STA0200_R2608_MK.acf` 의 `LINE0~136` | 137 |
+| `acf_timing_script_guide.txt` | `KMTK_GUI_162_STA0201_R2608.acf` 의 `LINE0~112` | 113 |
+
+> ⚠️ **정정** — 처음 반입된 `acf_timing_script.txt` 를 guide 것으로 적었는데 **틀렸어. science 것이야.** 줄 단위로 대조하니 science ACF 와 **완전 일치**(137줄 전부, 끝 개행만 차이)했고 guide 와는 유사도 0.67 이었어. 그래서 파일을 `_science` 로 개명하고, guide 판을 ACF 에서 따로 뽑아 넣었어.
+
+**둘이 갈리는 자리** — 골격(`Start` → `Exposure`/`Continuous` 분기, `IntUnit(IntMS)`, `NoIntUnit(NoIntMS)`)은 같은데 독출부가 달라 [확정]:
+
+| | science | guide |
+|---|---|---|
+| 노출 앞단 | `#X; CALL Prep` · `#X; CALL Flush` (둘 다 `#` 로 꺼져 있어) | 없음 |
+| 수평 이송 | `X; CALL HorizontalSWShift(1200)` | `DGHIGH; CALL FrameShift(1033)` → `DGLOW; CALL HorizontalShift(600)` |
+| 라인 수 | `Line(Lines)` + `SkipLine(Pre/PostSkipLines)` + `Line(OverscanLines)` | 프레임 이송 1033 = `LINECOUNT` |
+
+⭐ guide 의 `FrameShift(1033)` 이 `LINECOUNT=1033` 과 같고, `HorizontalShift(600)` 은 `PIXELCOUNT=528` 보다 크다는 게 눈에 띄어 — guide 의 "Pixels=600 vs 528" 논의와 같은 자리야.
+
+다른 세션이 프레임 사이 사강 0.50초를 `NoIntMS=500` 으로 동정한 근거가 두 파일 공통의 `NOINT; CALL NoIntUnit(NoIntMS)` 줄이야.
 
 ---
 
@@ -1860,7 +1879,7 @@ TARGET   = release/archongui
 - 소스 3판 정독 결과 8건 (`scratchpad/wf2/read_*.md`) — 통신층 · GUI 골격 · 영상/플롯 · 모듈 계층 · 모듈 구현 · 보조 위젯 · 매뉴얼 프로토콜 · 매뉴얼 모듈
 - 통합 지침서 (`scratchpad/synthesis_brief.md`) — raw 채널 결론 정정, 다른 세션 결과, 실기 ACF 실측, 판별 차이
 - 빌드·펌웨어 절은 이 세션에서 **원문을 직접 확인**했어: `archongui.pro`, `readme.txt`, `.qmake.stash`, `Makefile`, `Makefile.Release`, `archongui.pro.user`, `ArchonFW/*.mcs` **4종** (크기·md5·Intel HEX 레코드 수·체크섬 전수 검증·1252↔1271 문자열 대조), `diff -r` 세 판 전수, `wc -l` 20개 파일, `grep` 검증 여러 건
-- 실기 ACF 12종 + `acf_timing_script.txt` (`__reference/acf/`) — 탭·`RAWSEL`·기하 전수 대조, `for1110`↔`for1259` 키 단위 대조 (§5.7)
+- 실기 ACF 12종 + `acf_timing_script_science.txt` · `acf_timing_script_guide.txt` (`__reference/acf/`) — 탭·`RAWSEL`·기하 전수 대조, `for1110`↔`for1259` 키 단위 대조, 타이밍 스크립트 ACF `LINE<n>` 역추출 검증 (§5.7)
 - 매뉴얼 전문 추출본 (`scratchpad/wf2/manual.txt`) 및 Readout Notes 추출본 (`scratchpad/wf2/notes.txt`)
 
 `__reference/` 는 **읽기만 했고 어떤 파일도 편집·생성하지 않았어.**
