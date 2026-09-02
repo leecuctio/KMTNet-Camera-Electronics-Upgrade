@@ -34,9 +34,12 @@ from ics_sim import config as simcfg
 #: X 로 반 나누므로 폭은 짝수여야 한다.
 NX, NY = 12, 4
 
+#: `LINECOUNT` 를 넣어 `ArchonController.lines_total` 경로(진행률 분모, DevNote 10.3)를
+#: 실제로 밟게 한다.  가짜는 FRAMEMODE=0 모사라 HEIGHT(NY)와 같은 값이다.
 ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
 TRIGOUTLEVEL=1
+LINECOUNT=4
 PARAMETER1="Exposures=1"
 PARAMETER2="IntMS=0"
 MOD5\\PREAMPGAIN=0
@@ -148,7 +151,10 @@ def test_obsagent_contract_holds_with_the_real_backend(tmp_path, fakes, kind):  
 
 
 def test_progress_comes_from_the_controller_not_the_ini(tmp_path, fakes):  # noqa: ANN001
-    """`PCTREAD=` 는 `FRAME` 의 `BUFnLINES`/`BUFnHEIGHT` 에서 온다.
+    """`PCTREAD=` 는 `FRAME` 의 `BUFnLINES` / ACF `LINECOUNT` 에서 온다.
+
+    (이 가짜는 `FRAMEMODE=0` 이고 시험 ACF 에 `LINECOUNT` 가 없어 분모가 HEIGHT
+    로 물러난다 -- 그래서 25 의 배수가 나온다.  split 판은 `test_ch10_reflection`.)
 
     시뮬은 `[readout] pctread_start/step` 대로 6/17/28/... 을 만들지만 실기는
     컨트롤러가 보고하는 값을 그대로 흘려보낸다 -- 그래서 6 이 아니라 25 의
@@ -163,7 +169,7 @@ def test_progress_comes_from_the_controller_not_the_ini(tmp_path, fakes):  # noq
            if 'PCTREAD=' in m and 'Acquisition Complete.' not in m]
     assert pct, '진행률이 하나도 안 나왔다'
     assert '6' not in pct[:1], 'ini 의 시뮬 모델(6부터)이 새어 나왔다'
-    # height=4 · 4틱이므로 라인 진행이 25/50/75/(99) 다.  99 는 완료 전
+    # 가짜는 FRAMEMODE=0(LINES 상한 = HEIGHT = 4)이고 4틱이므로 25/50/75/(99).  99 는 완료 전
     # 상한이고, 100 은 프레임이 확정된 뒤에만 나간다.
     assert all(int(x) in (25, 50, 75, 99) for x in pct), pct
     assert [int(x) for x in pct] == sorted(int(x) for x in pct), pct
@@ -340,7 +346,7 @@ def test_imagetyp_and_dateobs_are_real_values_not_sentinels(tmp_path, fakes):  #
 # ---------------------------------------------------------------------------
 
 def test_control_sequence_order_matches_the_verified_script(tmp_path, fakes):  # noqa: ANN001
-    """POWERON -> WCONFIG/APPLYALL -> LOADPARAMS -> FRAME 폴링 -> FETCH.
+    """CLEARCONFIG/WCONFIG -> APPLYALL -> POWERON -> LOADPARAMS -> FRAME 폴링 -> FETCH.
 
     **v1.0 계보의 순서를 바꾸지 않았다** 는 확인이다.  ACF 적용이 전원보다
     앞이고(설정 없이 전원을 올리지 않는다), FETCH 는 프레임 완료 뒤다.
@@ -621,10 +627,10 @@ def test_a_frame_overwritten_during_fetch_is_caught_after_the_fetch():
     """**fetch 뒤 재대조** (`[archon] recheck_after_fetch`, 2026-08-30).
 
     fetch 앞의 대조는 **직전 한 순간**만 본다.  fetch 자체가 수 초 걸리므로
-    (실측 약 5초) 그 사이에 덮이는 창은 앞 대조가 못 본다 -- `lock_buffer`
+    (실측 3.2~3.5초) 그 사이에 덮이는 창은 앞 대조가 못 본다 -- `lock_buffer`
     가 켜져 있으면 `LOCKn` 이 그 창을 막지만, **끄면 막는 것이 없다.**
 
-    ⭐ 여기서 보는 것은 "**받아 온 뒤에라도 버린다**" 는 성질이다.  5초를
+    ⭐ 여기서 보는 것은 "**받아 온 뒤에라도 버린다**" 는 성질이다.  3~4초를
     버리는 셈이지만 대안은 두 노출이 섞인 raw 한 장을 **경고 없이** 쓰는
     것이다(헤더는 이 프레임의 것이라 나중에 봐도 못 가른다).
     """
@@ -733,10 +739,10 @@ def test_lock_is_verified_against_rbuf_without_extra_round_trips():
     `WBUF` 는 fetch 전후를 재는데, 옮겨 갔으면 상태 플래그가 아니라 **엔진이
     실제로 다른 버퍼를 썼다**는 거동 증거다.
 
-    ⚠️ **한 방향으로만 결정적이다** -- 안 맞는다고 "LOCK 무효" 는 아니다
-    (`RBUF` 쪽이 미구현일 수 있다).  ⚠️ 그리고 이 시험이 재는 것은 **우리 코드가
-    관측값을 제대로 담아 오는가**이지, 실기가 그렇게 답하는가가 아니다
-    (DevNote 8.7 -- 매뉴얼도 가짜 컨트롤러도 판정 근거가 아니다).
+    ✅ 2026-09-01 실기: 두 FW 15/15 반영 (DevNote 10.4) -- A-5 판단 ② 종결.  이
+    시험은 관측값을 담아 오는 경로의 **회귀 감시**로 남는다.  ⚠️ 이 시험이 재는
+    것은 **우리 코드가 관측값을 제대로 담아 오는가**이지, 실기가 그렇게 답하는가가
+    아니다 (DevNote 8.7 -- 매뉴얼도 가짜 컨트롤러도 판정 근거가 아니다).
     """
     from ics_archon.archon.controller import ArchonController
 
@@ -775,9 +781,11 @@ def test_a_lock_that_does_not_take_is_reported_not_swallowed(caplog):  # noqa: A
 
 
 def test_power_on_drops_save_tickets_left_over_from_the_previous_session():
-    """**`POWERON` 은 새 프레임 번호 세션의 시작이다** (2026-08-30 배선).
+    """**`POWERON` 에서 낡은 저장 표를 버린다** (2026-08-30 배선).
 
-    전원이 내려간 사이의 프레임은 버퍼에 없고 다시 못 받는다.  그런데 표를
+    ⚠️ CCD `POWERON` 은 카운터를 리셋하지 않는다 (2026-09-02 실측, DevNote 10.7) --
+    버리는 이유는 번호가 아니라 "전원이 내려간 사이의 프레임은 자료가 아니다" 다.
+    그 프레임은 버퍼에 없고 다시 못 받는다.  그런데 표를
     남겨 두면 다음 프레임의 저장이 **그 낡은 표**를 FIFO 로 집어, 파일마다 한
     노출 뒤진 픽셀이 담기고 헤더는 새 프레임의 것이라 **경고가 한 줄도 안
     뜬다** (`FrameTicket` 설명의 그 blocker).
@@ -812,9 +820,10 @@ def test_a_recycled_buffer_is_refused_instead_of_writing_wrong_pixels(tmp_path):
     그래서 fetch 앞에서 버퍼의 프레임 번호를 대조하고, 어긋나면 **저장하지
     않는다.**  파일 한 장을 잃는 것이 틀린 파일을 남기는 것보다 낫다.
 
-    ⭐ **실측(2026-08-29)으로 여유가 확인됐다** -- FETCH 는 `IDLE`+3.4~8.4초에
-    끝나는데 그 버퍼를 다시 쓰는 것은 ~14.7초다 (**여유 ~6초**).  종전 주석의
-    "프레임 ~40초" 는 가정이었고 실제 주기는 훨씬 짧다(readout 11.3초).
+    ⭐ **실측(2026-09-01, DevNote 10.4)으로 여유가 확인됐다** -- FETCH 는
+    `IDLE`+3.4+3.2~3.5 ≈ 6.9초에 끝나는데 그 버퍼가 다시 쓰이는 것은 프레임 주기
+    13.27초 뒤다 (**여유 ~6초**).  종전 주석의 "프레임 ~40초" 는 가정이었고 실제
+    주기는 훨씬 짧다(독출 12.77 + 사강 0.5).
     여기서는 `write_delay` 를 프레임 간격보다 크게 잡아 경합을 강제한다.
 
     ⚠️ **flush 를 명시적으로 켠다** -- "노출 1회 = 프레임 2개" 가 이 시험의

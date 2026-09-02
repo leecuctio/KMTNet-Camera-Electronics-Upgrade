@@ -142,8 +142,12 @@ class ArchonCfg:
     #: 컨트롤러 태그 -> ACF 경로.  **상대경로면 작업 디렉터리 기준**이다
     #: (labtest 가 여기서 가장 많이 넘어졌다 -- 경로를 못 찾으면 멈춘다).
     acf: dict[str, str] = field(default_factory=dict)
-    #: 첫 노출 준비에서 ACF 를 적용할지.  false 면 이미 적용된 설정을 그대로
-    #: 쓴다 -- 컨트롤러가 설정을 들고 있으므로 재기동이 빠르다.
+    #: 첫 노출 준비에서 ACF 를 적용할지.  false 면 CLEARCONFIG/WCONFIG/APPLYALL
+    #: 을 건너뛰고 줄 번호만 파싱해 RCONFIG 로 대조한다 -- 컨트롤러가 설정 줄을
+    #: 들고 있어 **프로그램** 재기동이 빠르다.
+    #: ⚠️ "적용" 은 **그 세션의 APPLYALL** 이다 (매뉴얼 p.51).  컨트롤러를
+    #: REBOOT 했거나 백플레인 전원을 다시 넣었으면 RCONFIG 가 맞아도 POWERON 이
+    #: `?xx` 로 거부된다 (2026-09-01 실기, DevNote 10.2) -- 그때는 true 로.
     apply_acf: bool = True
     acf_retry: int = 4
     #: POWERON 뒤 CCD flush 를 기다리는 시간 [s] (labtest: 24 x 0.5).
@@ -235,9 +239,12 @@ class ArchonCfg:
     #: 반례가 둘 있다(`MODn_TYPE` 16+ · AD 모듈 슬롯).  **판단 근거는 실측**이다
     #: (운영자 2026-08-30, DevNote 8.7).
     #:
-    #: ⭐ **기본이 `true` 인 진짜 이유는 더 안전한 쪽이기 때문**이다 -- 켜서
-    #: 문제가 나면 크게 드러나고(주기 지연·실패), 꺼서 문제가 나면 조용하다
-    #: (두 노출이 섞인 누더기).  ⚠️ 실기에서 지연·정지가 확인되면 즉시 끈다.
+    #: ⭐ **기본이 `true` 인 이유는 값이 있어서**다 -- 주기 13.27초 · fetch 3.4초면
+    #: fetch 중 프레임 경계가 걸릴 확률 ≈26% 이고, 그때 잠금이 없으면 엔진이
+    #: 우리가 읽는 중인 버퍼를 집어 간다 (2026-09-01 `nolock` 2/2 관측).  켜는
+    #: 대가는 0 이다 (`lock` = `idle` = 368 행/초).  (종전 "더 안전한 쪽이라서 ·
+    #: 실기에서 지연·정지가 확인되면 즉시 끈다" 는 실기 전의 판단이었다 --
+    #: 지연·정지는 두 유닛에서 재현되지 않았다, DevNote 10.6.)
     #:
     #: ⚠️ labtest 는 2026-05-28 에 `LOCK` 을 뺐다("remove to fetch debug") --
     #: 되돌린 것이다.  ✅ **2026-09-01 실기 종결** -- 두 FW(1252·1261) 15/15
@@ -252,20 +259,21 @@ class ArchonCfg:
     #: fetch **뒤에** 버퍼가 덮이지 않았는지 한 번 더 대조할지.
     #:
     #: fetch 앞의 대조는 **직전 한 순간**만 본다.  fetch 자체가 수 초 걸리므로
-    #: (실측 약 5초) **그 사이에 덮이는 창**은 앞 대조가 못 본다.
+    #: (실측 3.2~3.5초, 2026-09-01) **그 사이에 덮이는 창**은 앞 대조가 못 본다
+    #: -- 주기 13.27초에 경계가 걸릴 확률 ≈26% 다 (DevNote 10.6).
     #: ⭐ **`lock_buffer = false` 인 경우 필요할 수 있다** -- `LOCKn` 을 끄면
     #: 그 창을 막는 것이 아무것도 없어서, 덮여도 조용히 두 노출이 섞인 raw 가
     #: 나온다(헤더는 이 프레임의 것이라 나중에 봐도 못 가른다).  이 재대조가
     #: 그 짝이다.
     #:
-    #: 기본을 `true` 로 둔 근거는 **값이 거의 안 든다**는 것이다 -- 5초짜리
+    #: 기본을 `true` 로 둔 근거는 **값이 거의 안 든다**는 것이다 -- 3~4초짜리
     #: fetch 뒤에 `FRAME` 왕복 하나(밀리초)를 더 하는 것뿐이고, `lock_buffer`
     #: 가 켜져 있으면 절대 걸리지 않는다(잠긴 버퍼는 안 바뀐다).  그리고
     #: **LOCKn A/B 실험(2026-09-01 종결)을 뜻있게 만들었다**: `lock_buffer=false` 쪽이
     #: 조용히 틀린 파일을 쓰는 대신 **덮였다고 크게 운다** -- 실험이 재기 위한
     #: 바로 그 사실이다.
     #: ⚠️ 반대 논거도 적어 둔다 -- 걸리면 이미 받아 온 자료를 버리므로 fetch
-    #: 시간(약 5초)이 헛일이 된다.  그래도 대안은 **두 노출이 섞인 한 장을
+    #: 시간(약 3.4초)이 헛일이 된다.  그래도 대안은 **두 노출이 섞인 한 장을
     #: 경고 없이 쓰는 것**이라 버리는 쪽이 맞다.
     recheck_after_fetch: bool = True
     #: FRAME 폴링 간격 [s].  labtest 는 0.5/0.65 를 썼다.
@@ -290,17 +298,24 @@ class ArchonCfg:
     #: 화면이 멈추고 `force_idle` 타임아웃으로 `opause` 에 빠진다.
     #: 상한을 넘기면 레거시와 같은 오류 경로를 탄다 -- `DMA WAIT TIMEOUT.
     #: EXPOSURES ABORTED.` (base.py `BackendError` docstring).
-    #: 기본 300초는 실측(독출 ~40초 예상) 대비 넉넉하게 잡은 값이고, 실측이
-    #: 나오면 조여야 한다.
+    #: 기본 300초는 실측 독출 12.77초 · 프레임 주기 13.27초(2026-09-01, DevNote
+    #: 10.4)의 20배가 넘는다 -- 조일 대상이다 (예 60초).  ⚠️ `fetch_timeout` 과는
+    #: 별개 상한이다.
     frame_timeout: float = 300.0
-    #: `FETCH` 한 프레임의 상한 [s].  **0 이면 크기에서 유도한다** (1 MiB/s
-    #: 가정 · 최소 60초) -- 344 MiB 면 344초다.
+    #: `FETCH` 한 프레임의 상한 [s].  ⚠️ **`lock_buffer=true` 에서는 잠금 상한이기도
+    #: 하다** -- 이 시간 동안 `LOCKn` 을 쥐고, 잠금 중 엔진은 버퍼 하나로 돌며
+    #: 프레임 주기(`MIN_FRAME_PERIOD` 13.27초)를 넘으면 다음 장이 앞 장을 덮는다
+    #: (2026-09-01 `--hold 20` 실측, DevNote 10.4·10.6).  그래서 **주기 아래**여야
+    #: 하고 `validate()` 가 본다.  실측 FETCH 는 99~107 MiB/s (344 MiB 에 3.2~3.5초,
+    #: 두 유닛) -- 기본 10초면 2.9배 여유다.
+    #:
+    #: **0 이면 크기에서 유도한다** (1 MiB/s 가정 · 최소 60초 -- 344 MiB 면 344초).
+    #: 종전 기본값이 0 이었는데, 그 유도값은 주기의 26배라 링크가 느려지면 잠금을
+    #: 쥔 채 26장을 잃게 한다 -- 기본을 10 으로 옮겼다 (2026-09-02).
     #:
     #: ⚠️ `frame_timeout` 과 **별개의 상한**이다.  독출(트리거→프레임 완료)을
-    #: 조여 놔도 전송은 이 값이 따로 잡으므로, 링크가 느려졌을 때 아무도
-    #: 알려주지 않는다.  실측(`tools/probe_archon.py` 3단계의 MiB/s)이 나오면
-    #: 여기에 실측 기반 값을 적는다 -- 그게 미해결 F5 가 기다리는 것이다.
-    fetch_timeout: float = 0.0
+    #: 조여 놔도 전송은 이 값이 따로 잡는다.
+    fetch_timeout: float = 10.0
     #: **호스트 수신·저장 버퍼 수 (컨트롤러당).**  FETCH 가 여기서 하나를 빌려
     #: 채우고, 저장이 끝나면 돌려준다.
     #:
@@ -311,8 +326,9 @@ class ArchonCfg:
     #:
     #: ⚠️ **`wrote_window` 와 짝이다** -- 창이 넓을수록 더 많은 프레임이
     #: 동시에 살아 있다.  `N >= ceil((창 - write_delay) / 주기)` 여야 하고,
-    #: `_cross_checks()` 가 기동에서 본다.  실측(2026-08-29) 기준 25초 창에는
-    #: **2개**면 충분하다 -- 그때 "창이 터진 뒤에도 자료가 남는" 구간이 2.4초다.
+    #: `_cross_checks()` 가 기동에서 본다.  실측(2026-09-01, 주기 13.27초) 기준
+    #: 25초 창에는 **2개**면 충분하다 -- 그때 "창이 터진 뒤에도 자료가 남는"
+    #: 구간이 약 4.9초다 (N x 13.27 - 25 + 3.4).
     fetch_buffers: int = 2
     #: OBSAgent 의 `force_fitssaved` 창 [s] -- **우리 쪽 선언값**이다
     #: (`IDLE` 진입 -> 4번째 `Wrote`, DevNote 3.2).  넘기면 OBSAgent 가
@@ -684,8 +700,20 @@ def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
         notes.append(
             '[archon] FETCH 상한(%.0f초)이 frame_timeout(%.0f초)보다 길다 -- '
             '둘은 다른 국면을 재므로 잘못은 아니지만, 링크가 느려지면 독출 '
-            '상한을 조여 놔도 전송에서 그만큼 매달린다.  실측 MiB/s 가 나오면 '
-            'fetch_timeout 에 적을 것 (F5)' % (fetch_cap, cfg.frame_timeout))
+            '상한을 조여 놔도 전송에서 그만큼 매달린다.  실측은 99~107 MiB/s '
+            '(344 MiB 에 3.2~3.5초, DevNote 10.4) -- fetch_timeout 을 그 기준으로 '
+            '적을 것' % (fetch_cap, cfg.frame_timeout))
+    # ⭐ **잠금은 주기보다 짧아야 한다** (DevNote 10.6, 2026-09-01 실측).  `LOCKn`
+    # 을 쥔 채 프레임 경계를 넘으면 엔진은 남는 버퍼가 없어 **쓰던 버퍼를
+    # 재사용**해 다음 장을 덮는다.  FETCH 상한이 곧 잠금 상한이므로 주기
+    # (`MIN_FRAME_PERIOD`) 아래여야 한다 -- 실측 FETCH 3.2~3.5초(99~107 MiB/s)
+    # 라 10초면 2.9배 여유다.  `fetch_timeout=0`(크기 유도, 344초)이면 걸린다.
+    if cfg.lock_buffer and fetch_cap >= MIN_FRAME_PERIOD:
+        notes.append(
+            '[archon] FETCH 상한(%.0f초)이 프레임 주기(%.2f초) 이상이다 -- '
+            'lock_buffer=true 에서 잠금이 주기를 넘으면 엔진이 쓰던 버퍼를 '
+            '재사용해 **다음 장이 덮인다** (DevNote 10.6).  fetch_timeout 을 '
+            '주기 아래(예 10)로 적을 것' % (fetch_cap, MIN_FRAME_PERIOD))
     notes += _cross_checks(cfg, sim_cfg)
     notes += _storage_checks(cfg, sim_cfg)
     notes += _ascii_checks(sim_cfg)
@@ -758,17 +786,21 @@ def _ascii_checks(sim_cfg) -> list[str]:  # noqa: ANN001
 
 #: 노출 0초를 연속으로 찍을 때의 **최소 프레임 주기** [s].
 #:
-#: 실측 2026-08-29 (운영자 labtest 자료 76장): 순수 readout **11.3초** + 앞뒤
-#: 짜투리.  `fetch_buffers` 가 `wrote_window` 에 견주어 충분한지 보는 데만
-#: 쓴다 -- 값이 조금 틀려도 경고 문턱이 움직일 뿐이다.
+#: ⭐ 실측 2026-09-01 (두 유닛 101·113, `tools/ics_archon_buftest.py`):
+#: **368 행/초** x 4700 행 = 독출 12.77초 + `NoIntMS` 0.5초 = **13.27초**
+#: (`IntMS=0`) -- DevNote 10.4.  종전 12.0 은 운영자 labtest 자료(2026-08-29)의
+#: "순수 readout 11.3초" 에서 왔다 (10.4 는 그 차이를 사강으로 본다).
+#: `fetch_buffers` 가 `wrote_window` 에 견주어 충분한지 보는 데만 쓴다 --
+#: 값이 조금 틀려도 경고 문턱이 움직일 뿐이다.
 #:
 #: ⚠️ **ACF(독출 속도)가 바뀌면 이 값도 바뀐다.**  guide 유닛은 프레임이
-#: 훨씬 작아 주기도 짧다 -- 그때는 이 상수로 판단하지 말 것.
+#: 훨씬 작아 주기도 짧다(1.375초, `icg_archon/acftiming.py` 가 ACF 에서
+#: 계산) -- 그때는 이 상수로 판단하지 말 것.
 #:
-#: ⏳ **2026-09-01 실측은 13.27초다** -- 368 행/초 x 4700 = 12.77 + `NoIntMS` 0.5
-#: (`IntMS=0`, 두 유닛 동일).  종전 11.3초는 사강을 뺀 값으로 보인다.  갱신 대기
-#: (DevNote 10.9) -- 올리면 `need` 가 줄어 지금 뜨는 경고가 사라질 수 있다.
-MIN_FRAME_PERIOD = 12.0
+#: ⭐ **잠금 상한의 기준**도 된다 -- `LOCKn` 을 쥔 채 프레임 경계를 넘으면 엔진이
+#: 쓰던 버퍼를 재사용해 다음 장을 덮으므로(DevNote 10.6) `fetch_timeout` 이
+#: 이보다 길면 기동 검사가 알린다.
+MIN_FRAME_PERIOD = 13.27
 
 #: 저장 자리 여유를 볼 때의 기준 -- **pair 몇 장분**인가.
 #:
@@ -930,7 +962,8 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
 
     # ⚠️ **`lock_buffer` 와 `recheck_after_fetch` 는 짝이다.**
     #
-    # fetch 하는 동안(실측 약 5초) 버퍼가 덮이는 창을 막는 것은 둘 중 하나다 --
+    # fetch 하는 동안(실측 3.2~3.5초, 경계가 걸릴 확률 ≈26% -- DevNote 10.6) 버퍼가
+    # 덮이는 창을 막는 것은 둘 중 하나다 --
     # `LOCKn`(막는다) 또는 fetch 뒤 재대조(막지는 못하고 **잡아서 버린다**).
     # **둘 다 끄면 그 창을 보는 것이 아무것도 없고**, 덮이면 두 노출이 섞인 raw
     # 한 장이 **아무 경고 없이** 나온다 -- 헤더는 이 프레임의 것이라 나중에
@@ -938,7 +971,7 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
     if not cfg.lock_buffer and not cfg.recheck_after_fetch:
         notes.append(
             '[archon] lock_buffer=false 인데 recheck_after_fetch 도 false 다 -- '
-            'fetch 하는 동안(약 5초) 버퍼가 덮여도 **아무도 못 본다**.  두 '
+            'fetch 하는 동안(약 3.4초) 버퍼가 덮여도 **아무도 못 본다**.  두 '
             '노출이 섞인 raw 가 경고 없이 나온다.  둘 중 하나는 켜라 '
             '(LOCKn 을 못 쓰는 상황이면 recheck_after_fetch = true)')
 
@@ -1027,7 +1060,7 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
         dead.append('[paths] write_fits(시뮬 전용)')
     if tuple(sim_cfg.paths.fits_shape) != (256, 256):
         dead.append('[paths] fits_shape(시뮬 전용)')
-    # **archon 은 진행률을 컨트롤러의 `FRAME`(BUFnLINES/BUFnHEIGHT)에서 얻는다**
+    # **archon 은 진행률을 컨트롤러의 `FRAME`(BUFnLINES / ACF LINECOUNT)에서 얻는다**
     # -- 시뮬의 계단 파라미터 셋은 아예 안 쓰인다 (`pctread_final` 만 쓴다).
     # 검토사항 A2 (2026-08-28 처리).
     readout = getattr(sim_cfg, 'readout', None)

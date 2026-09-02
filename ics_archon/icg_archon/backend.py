@@ -27,12 +27,21 @@ science 의 `ArchonBackend` 와 달리 `ics_sim` 의 `DetectorBackend` 계약을
 거부하지 않는다 (운영자 지시).  그때 헤더 `EXPTIME` 은 요청값이 아니라
 **실현값**이다 (`effective_exptime()`).
 
-⚠️ **주기가 하드웨어로 고정되는 것은 FETCH 가 방해하지 않을 때뿐이다** --
-실기 관측(DevNote 8.9, FW 1261)에서 **FETCH 중 다음 프레임의 readout 이
-멈춘다**.  그래서 `EXPTIME` 이 하한에 가까우면 FETCH(8.3 MiB ≈ 0.12 s)가
-다음 독출과 겹쳐 주기가 늘어난다 -- 시퀀서는 그것을 모르고 호스트도 못
-막는다.  실효 하한은 `하한 + FETCH` 로 보는 것이 안전하고, 실측은 첫
-구동 몫이다 (DevNote 9.12).
+**FETCH 는 readout 을 멈추지 않는다** -- 종전 8.9 의 "FETCH 중 정지" 는 GUI
+표시 착시였다 (2026-09-02 실측, science 두 유닛 + GUI 재관측 -- DevNote
+10.5).  그러니 **실효 하한 = 하한**이고 "+FETCH" 여백은 없다.  ⚠️ 다만
+science 실측을 guide 에 옮긴 것이라 첫 구동에서 실현 주기를 재는 항목은
+그대로다 (`sequencer` 의 실현 간격 감시).
+
+⚠️ **대신 잠금은 주기보다 짧아야 한다** (DevNote 10.6) -- `LOCKn` 을 쥔 채
+프레임 경계를 넘으면 엔진은 잠긴 버퍼를 피해 나머지로 돌고, 남는 버퍼가
+없으면 **쓰던 버퍼를 재사용**해 다음 장을 덮는다.  ⚠️ 10.6 의 `--hold 20`
+은 science **2버퍼**(BIGBUF=1) 실측이다 -- guide 는 버퍼 셋(`BIGBUF=0`)이라
+하나를 잠그면 둘이 남고, 3버퍼에서 못 받은 장이 언제 덮이는지는 ⏳ 첫 구동
+실측 항목이다 (FETCH 뒤 `lock_rbuf`/`lock_wbuf_after` 관측).  어느 쪽이든
+FETCH 상한(`[icg] fetch_timeout`)이 곧 잠금 상한이므로 하한(1.375 s) 아래에
+두는 것이 보수적 안전선이다 -- guide 는 8.3 MiB ≈ 0.08 s 라 1 s 면 넉넉하다.
+`__init__` 이 이를 검사한다 (0 이면 유도값 60 s 로 셈한다).
 """
 
 from __future__ import annotations
@@ -84,6 +93,22 @@ class GuideBackend:
         #: 왕복 없이 파일만 읽으므로 기동에서 바로 잡는다 -- 이 값이 있어야
         #: `EXPTIME` 하한과 `DATE-OBS` 트랜스퍼 보정이 근거를 갖는다.
         self.timing = self._read_timing()
+        # ⭐ 잠금은 주기보다 짧아야 한다 (DevNote 10.6, 2026-09-01 실측) -- FETCH
+        # 상한이 곧 잠금 상한이다.  guide FETCH 는 8.3 MiB ≈ 0.08 s (science
+        # 실측 99~107 MiB/s 기준) 라 1 s 면 12배 여유고 하한 1.375 s 아래다.
+        # ⚠️ PROVISIONAL -- guide 링크 속도는 첫 구동에서 FETCH 로그로 확인.
+        # ⚠️ 0 은 "크기에서 유도" 다 (`controller.fetch`: max(60, MiB) -- guide 는
+        # 60 s).  ini 원값이 아니라 **실제 상한**을 하한과 대본다 (science
+        # `config` 의 `fetch_cap` 과 같은 셈).
+        cap = (icfg.fetch_timeout if icfg.fetch_timeout > 0
+               else max(60.0, icfg.frame_bytes / (1 << 20)))
+        if icfg.lock_buffer and cap >= self.frame_floor():
+            log.warning('[icg] FETCH 상한 %.1fs (fetch_timeout=%g%s) 가 프레임 하한 '
+                        '%.3fs 이상이다 -- lock_buffer=true 에서 잠금이 주기를 넘으면 '
+                        '못 받은 장이 덮인다 (DevNote 10.6).  하한 아래(예 1.0)로 '
+                        '적을 것', cap, icfg.fetch_timeout,
+                        ' -> 크기 유도' if icfg.fetch_timeout <= 0 else '',
+                        self.frame_floor())
 
     def _read_timing(self) -> dict | None:
         path = self.icfg.acf_path
@@ -99,11 +124,30 @@ class GuideBackend:
         try:
             probe = ArchonController(TAG, self.icfg)
             probe.parse_acf(path)                # 왕복 없음
+            # ⚠️ 이 셈법은 **guide 타이밍 스크립트 형태** 전용이다 (FrameShift ·
+            # HorizontalShift(600) · PixelFirst · CLAMP).  science ACF 는 루틴
+            # 배치가 달라(`IntUnit` 이 LINE11, `HorizontalSWShift(1200)`,
+            # AT=2000) 억지로 셈하면 그럴싸한 13.65 s 가 나온다 (DevNote 9.15)
+            # -- 형태가 다르면 셈하지 않는다.
+            bad = acftiming.script_matches(probe.config)
+            if bad:
+                log.warning('guide ACF 의 타이밍 스크립트가 acftiming 이 아는 '
+                            '형태가 아니다 (%s) -- 프레임 주기를 계산하지 않고 '
+                            'ini exptime_min 을 쓴다.  science ACF 를 가리키고 '
+                            '있지 않은지 볼 것', '; '.join(bad))
+                return None
             params = acftiming.parameters(probe.config)
+            # ⚠️ `Lines`/`Pixels` 는 **대체값 없이** ACF 에서 읽는다.  종전에는
+            # 없으면 600/naxis2 로 셈했는데, 그러면 그럴싸한 하한이 나와 틀린
+            # 것이 안 보인다 -- 못 읽으면 ini 대체값 경로로 크게 물러난다.
+            missing = [k for k in ('Lines', 'Pixels') if k not in params]
+            if missing:
+                log.warning('guide ACF 에 %s 파라미터가 없다 -- 프레임 주기를 '
+                            '계산하지 않고 ini exptime_min 을 쓴다',
+                            '/'.join(missing))
+                return None
             t = acftiming.frame_timing(
-                params,
-                lines=int(params.get('Lines', self.icfg.naxis2)),
-                pixels=int(params.get('Pixels', 0)) or 600)
+                params, lines=params['Lines'], pixels=params['Pixels'])
         except (ArchonError, OSError, ValueError) as exc:
             log.warning('guide ACF 타이밍 계산 실패 -- %s', exc)
             return None

@@ -29,7 +29,8 @@ def test_newest_prefers_a_higher_complete_frame_over_rbuf():
             'BUF%dFRAME' % n: str(frame), 'BUF%dCOMPLETE' % n: str(complete),
             'BUF%dWIDTH' % n: '19200', 'BUF%dHEIGHT' % n: '9400',
             'BUF%dSAMPLE' % n: '0', 'BUF%dBASE' % n: str(0x1000 * n),
-            'BUF%dLINES' % n: '9400',
+            # FRAMEMODE=2: 완료 LINES == LINECOUNT = HEIGHT 의 절반 (DevNote 10.3)
+            'BUF%dLINES' % n: '4700',
         })
     fs = parse.newest(fields)
     assert (fs.frame, fs.buf) == (9, 1)          # buf 는 0-기준
@@ -49,7 +50,8 @@ def test_newest_ignores_an_incomplete_newer_frame():
         })
     fs = parse.newest(fields)
     assert fs.frame == 7
-    # 진행률은 **쓰기 버퍼**(WBUF=2)에서 온다 -- 5/20 = 25%
+    # 진행률은 **쓰기 버퍼**(WBUF=2)에서 온다 -- 5/20 = 25%  (HEIGHT 분모의 구식
+    # 셈 -- FRAMEMODE=0 전제.  LINECOUNT 분모는 `progress_of`, test_ch10_reflection)
     assert fs.progress == 25
 
 
@@ -61,7 +63,7 @@ def _frame_fields(*bufs, rbuf=0, wbuf=0):
             'BUF%dFRAME' % n: str(frame), 'BUF%dCOMPLETE' % n: str(complete),
             'BUF%dWIDTH' % n: '19200', 'BUF%dHEIGHT' % n: '9400',
             'BUF%dSAMPLE' % n: '0', 'BUF%dBASE' % n: str(0x1000 * n),
-            'BUF%dLINES' % n: '9400',
+            'BUF%dLINES' % n: '4700',   # split: LINES 상한 = LINECOUNT = HEIGHT/2 (DevNote 10.3)
         })
     return fields
 
@@ -118,7 +120,8 @@ def test_restarted_frame_ignores_a_buffer_still_being_written():
 
 
 def test_buffer_frames_marks_absent_slots_as_minus_one():
-    """빈 자리는 `-1` 이다 -- **0 은 실재하는 프레임 번호**라 sentinel 로 못 쓴다."""
+    """빈 자리는 `-1` 이다 -- 필드 자체가 없는 것과 `BUFnFRAME=0`("아직 프레임 없음",
+    첫 프레임은 **1** -- DevNote 10.7)을 가른다."""
     assert parse.buffer_frames({'BUF1FRAME': '7'}) == (7, -1, -1)
 
 

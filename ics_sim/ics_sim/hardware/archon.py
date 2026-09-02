@@ -24,8 +24,9 @@
         실동작 스크립트 (science = bigbuf 구성.  small buffer 주소 지정은
         같은 폴더의 `…v1.3.smallbuf.py` 가 참고 코드다 -- 그 자체는 science
         스크립트이고, v1.0 원본은 `__ref_archon_control/` 에 있다).  명령
-        시퀀스(POWERON, WCONFIG/APPLYALL, LOADPARAMS, STATUS/FRAME 폴링,
-        1 KiB 블록 FETCH)를 그대로 옮겨오면 된다.
+        시퀀스(CLEARCONFIG/WCONFIG, APPLYALL, POWERON, LOADPARAMS, STATUS/FRAME
+        폴링, 1 KiB 블록 FETCH)를 그대로 옮겨오면 된다 -- ⚠️ `APPLYALL` 이
+        `POWERON` 앞이다 (매뉴얼 p.51, `ics_archon` DevNote 10.2).
         ⚠️ **헤더·텔레메트리는 실기 미검증이다** -- STATUS 필드 이름 · 독출
         시간 · 산출물 실물 3자리가 그렇다.  옮길 때 잠정 표시를 남긴다
         (`ics_archon/SMC_CLAUDE.md` "ics_archon v0.0").  손볼 자리·경고의

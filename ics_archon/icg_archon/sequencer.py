@@ -228,18 +228,18 @@ class GuideSequencer:
                 xfer_utc = utcnow() + xfer_lag
                 now_mono = time.monotonic()
                 # **실현 간격 감시** (10.5절 6번 불변식의 취득 시점 판).
-                # 시퀀서가 주기를 만들어도 FETCH 가 다음 독출을 멈추면
-                # (DevNote 8.9) 간격이 늘어난다 -- 시퀀서는 그것을 모르므로
-                # 호스트가 재서 알린다.  허용 편차는 PROVISIONAL.
+                # 시퀀서가 주기를 만들지만 호스트가 그것을 **재서 확인**한다 --
+                # 원인을 가정하지 않는 안전망이고, 첫 구동의 실현 주기 실측
+                # 자료다 (경위는 DevNote 9.12 갱신 · 9.15).  허용 편차는 PROVISIONAL.
                 if prev_mono is not None:
                     achieved = now_mono - prev_mono
                     if achieved > exptime * 1.05 + 0.1:
                         log.warning(
                             '독출 개시 간격이 밀렸다 -- 실현 %.3fs, 지시 '
-                            '%.3fs (프레임 %d/%d).  FETCH 가 다음 독출과 '
-                            '겹쳤을 수 있다 (DevNote 8.9) -- 헤더 EXPTIME 은 '
-                            '지시값이므로 이 프레임의 10.5절 6번 불변식이 '
-                            '깨진다', achieved, exptime, k, count)
+                            '%.3fs (프레임 %d/%d).  원인 미상 -- 첫 구동 실측 '
+                            '항목.  헤더 EXPTIME 은 지시값이므로 이 프레임의 '
+                            '10.5절 6번 불변식이 깨진다',
+                            achieved, exptime, k, count)
                 prev_mono = now_mono
 
                 st.expstatus = ExpStatus.READOUT

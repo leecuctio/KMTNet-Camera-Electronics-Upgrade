@@ -10,7 +10,14 @@
     **인식 못 한 명령은 무응답**
   * `SYSTEM` · `STATUS` · `FRAME` 의 필드 이름과 형
   * `WCONFIG`/`RCONFIG`/`CLEARCONFIG`/`APPLYALL`/`APPLYSYSTEM`
-  * `POWERON`/`POWEROFF`
+  * `POWERON`/`POWEROFF` -- ⭐ `POWERON` 은 **이 세션의 `APPLYALL`** 을 전제한다
+    (매뉴얼 p.51, 실기 `?02` 거부 2026-09-01 -- DevNote 10.2).  `applied=False`
+    로 만들거나 `REBOOT` 를 보내면 그 상태다
+  * `REBOOT` -- 프레임 카운터·버퍼·적용 상태를 지운다 (10.7: 카운터를 지우는 것은
+    `REBOOT`·백플레인 전원만이고 CCD `POWERON`/`WARMBOOT` 는 아니다)
+  * `framemode=2` -- split 모사: `BUFnHEIGHT` 는 그대로인데 `BUFnLINES` 는
+    `LINECOUNT`(= height/2)에서 멈춘다 (10.3 -- 이 차이를 모사하지 않아
+    `parse.progress` 의 50% 결함이 시험을 다 통과했다)
   * `LOADPARAMS` -> 적분(`IntMS`) -> 독출(라인 진행) -> 프레임 완료 -> `FETCH`
   * 픽셀은 **결정적 패턴**(`y*width + x`)이라 배치·엔디언을 값으로 확인할 수 있다
 
@@ -105,10 +112,22 @@ class FakeArchon(threading.Thread):
                  count_step: int = 1,
                  power_ramp: int = 0,
                  unknown: tuple[str, ...] = (),
-                 reject: tuple[str, ...] = ()) -> None:
+                 reject: tuple[str, ...] = (),
+                 applied: bool = True,
+                 framemode: int = 0,
+                 linecount: int | None = None) -> None:
         super().__init__()
         self.width = width
         self.height = height
+        #: `FRAMEMODE` -- 2 면 split: 앞 절반 탭이 버퍼 위쪽, 뒤 절반이 아래쪽에
+        #: 쓰여 라인클록 하나가 두 행을 채운다 (p.56·70).  `BUFnLINES` 의 상한이
+        #: `linecount` 다 (기본 = height, split 이면 height // 2).
+        self.framemode = int(framemode)
+        self.linecount = int(linecount) if linecount else (
+            height // 2 if self.framemode == 2 else height)
+        #: 이 세션에서 `APPLYALL` 이 있었나 -- `POWERON` 의 전제 (p.51).  기본은
+        #: "이미 적용된 컨트롤러" 라 종전 시험이 그대로 돈다.
+        self.applied = bool(applied)
         self.samplemode = samplemode
         self.readout_ticks = max(readout_ticks, 1)
         self.tick = tick
@@ -152,8 +171,9 @@ class FakeArchon(threading.Thread):
         self.bufs = [{'frame': 0, 'complete': 0, 'lines': 0,
                       'base': 0xA0000000 + i * 0x10000000}
                      for i in range(3)]
-        # `fresh=True` 는 **전원 투입 직후**다 -- 완료된 프레임이 하나도
-        # 없어서 `parse.newest()` 가 -1 을 준다.  실기 첫 실행의 상태이고,
+        # `fresh=True` 는 **`REBOOT`·백플레인 전원 투입 직후**다 -- 완료된
+        # 프레임이 하나도 없어서 `parse.newest()` 가 -1 을 준다 (CCD `POWERON`
+        # 은 버퍼를 지우지 않는다 -- DevNote 10.7).  실기 첫 실행의 상태이고,
         # 그 경로를 흉내내지 않으면 첫 노출이 버려지는 결함을 못 잡는다.
         if not fresh:
             self.bufs[0]['complete'] = 1
@@ -261,7 +281,23 @@ class FakeArchon(threading.Thread):
                 return
             self._reply(conn, ref)
         elif cmd in ('APPLYALL', 'APPLYSYSTEM', 'APPLYCDS', 'LOADTIMING'):
+            if cmd == 'APPLYALL':
+                self.applied = True          # p.51 -- POWERON 의 전제
             self._reply(conn, ref)
+        elif cmd == 'REBOOT':
+            # FPGA 재적재 -- 카운터·버퍼·적용 상태가 지워진다 (DevNote 10.7·10.2).
+            with self._lock:
+                self.applied = False
+                self.powered = False
+                self.frame_no = 0
+                for b in self.bufs:
+                    b.update(frame=0, complete=0, lines=0)
+                self.rbuf = self.wbuf = self.locked = 0
+            self._reply(conn, ref)
+        elif cmd == 'POWERON' and not self.applied:
+            # p.51 "An APPLYALL is required before this operation" -- 실기는
+            # `?02` 로 거부한다 (2026-09-01 첫 관문, DevNote 10.2).
+            conn.sendall(b'?' + ref + b'\n')
         elif cmd == 'POWERON':
             # **`POWER` 를 같이 움직인다.**  종전에는 `powered` 만 바뀌어서
             # `STATUS` 의 `POWER` 가 `POWERON` 과 무관하게 늘 `4` 였다 -- 그
@@ -375,7 +411,8 @@ class FakeArchon(threading.Thread):
         b['lines'] = 0
         self.wbuf = idx + 1
         for i in range(1, self.readout_ticks + 1):
-            b['lines'] = int(self.height * i / self.readout_ticks)
+            # ⚠️ 상한은 `linecount` 다 -- split 에서 HEIGHT 의 절반 (10.3).
+            b['lines'] = int(self.linecount * i / self.readout_ticks)
             time.sleep(self.tick)
         self.wbuf = 0
         self.frame_no += 1

@@ -286,10 +286,13 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
              fs.data_bytes / (1 << 20)))
 
     if fs.frame < 0:
-        say(WARN, '완료된 프레임이 아직 없다 (첫 전원 투입 뒤 정상)',
-            'prev < 0 경로를 타므로 첫 프레임 번호가 1 이어도 받는다')
+        say(WARN, '완료된 프레임이 아직 없다 (REBOOT·백플레인 전원 투입 뒤 정상 -- '
+                  'CCD POWERON 은 버퍼를 지우지 않는다, DevNote 10.7)',
+            'prev < 0 경로를 타므로 첫 프레임 번호 1 을 받는다')
     if fs.width == 0:
-        say(WARN, '기하를 보고하지 않았다 -- ACF 적용 전이면 정상이다')
+        say(WARN, '기하를 보고하지 않았다 -- 첫 프레임 전이면 정상이다',
+            '엔진은 새 프레임을 시작할 때 버퍼 정보를 갱신한다 (매뉴얼 p.70) -- '
+            'ACF 적용 여부와는 무관하다 (DevNote 10.2)')
     elif fs.data_bytes == acfg.frame_bytes:
         say(OK, '기하가 선언과 일치 (%d x %d)' % (acfg.naxis1, acfg.naxis2))
     else:
@@ -350,7 +353,9 @@ async def stage_acf(ctrl: ArchonController, acf: str, acfg) -> None:  # noqa: AN
                 '3단계(APPLYALL)를 거치면 맞는다.  --no-apply-acf 로 돌릴 '
                 '생각이면 먼저 같은 ACF 를 올려 둘 것')
         elif got.upper().startswith(key + '='):
-            say(OK, '설정 줄 %04X 대조 통과 -- %r' % (line, got[:40]))
+            say(OK, '설정 줄 %04X 대조 통과 -- %r' % (line, got[:40]),
+                '⚠️ 줄이 있어도 이 세션에서 APPLYALL 을 안 했으면 POWERON 이 ?xx 로 '
+                '거부된다 (매뉴얼 p.51, DevNote 10.2) -- --no-apply-acf 는 그 뒤에만')
         else:
             say(BAD, '설정 줄 %04X 가 %s 가 아니다 -- 받은 것 %r'
                 % (line, key, got[:40]),
@@ -373,7 +378,10 @@ async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN0
     elif args.acf:
         ctrl.parse_acf(args.acf)
         ctrl.acf_applied = True
-        say(WARN, 'ACF 적용을 건너뛴다 (--no-apply-acf) -- 이미 적용된 설정을 쓴다')
+        say(WARN, 'ACF 적용을 건너뛴다 (--no-apply-acf) -- 이 세션에서 이미 APPLYALL '
+                  '된 설정을 쓴다',
+            'POWERON 이 ?xx 로 거부되면 이 세션에 APPLYALL 이 없었던 것이다 (p.51, '
+            'DevNote 10.2) -- GUI Apply All 뒤 다시, 또는 --no-apply-acf 를 뺄 것')
 
     try:
         t0 = time.monotonic()
@@ -412,10 +420,10 @@ async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN0
             % (acfg.lock_buffer,
                '  (--lock/--no-lock 로 지정)' if args.lock_buffer is not None
                else '  (ini 값)'))
-        # ⭐ 재대조 여부도 같이 찍는다 -- `--no-lock` 쪽에서 **덮였다** 오류가
-        # 몇 번 나오는지가 이 실험의 주된 계측값인데, 이 값이 꺼져 있으면 그
-        # 오류가 아예 안 나온다.  나중에 로그만 보고 "안 덮였다" 로 잘못 읽는
-        # 것을 막는다.
+        # ⭐ 재대조 여부도 같이 찍는다 -- 꺼져 있으면 fetch 중 덮임이 로그에 안
+        # 남아 "안 덮였다" 로 잘못 읽는다.  (2026-08-30 A/B 실험 설계에서는
+        # `--no-lock` 쪽 덮임 횟수가 주된 계측값이었다 -- 실험은 2026-09-01
+        # 종결, DevNote 10.6.  `lock_buffer=false` 로 돌릴 때 이것이 유일한 방어다.)
         say(OK if acfg.recheck_after_fetch else WARN,
             'recheck_after_fetch = %s%s'
             % (acfg.recheck_after_fetch,
@@ -428,10 +436,10 @@ async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN0
             % (len(raw) / (1 << 20), dt, len(raw) / (1 << 20) / dt,
                acfg.lock_buffer))
 
-        # ⭐ **`LOCKn` 이 이 FW 에서 실제로 먹었나** (A-5 판단 ②, 2026-08-30).
-        # 왕복은 안 늘었다 -- fetch 가 덮임 대조로 이미 읽은 `FRAME` 에서 뽑은
-        # 값이다.  ⚠️ **한 방향으로만 결정적**이다: 맞으면 반영된 것이지만,
-        # 안 맞는다고 "LOCK 무효" 는 아니다(`RBUF` 쪽 미구현일 수 있다).
+        # ⭐ **`LOCKn` 이 이 FW 에서 실제로 먹었나** -- ✅ 두 FW(1252·1261) 15/15
+        # 반영 (2026-09-01, DevNote 10.4), A-5 판단 ② 종결.  이제 이 줄은 FW
+        # 회귀 확인이다.  왕복은 안 늘었다 -- fetch 가 덮임 대조로 이미 읽은
+        # `FRAME` 에서 뽑은 값이다.
         buf_n = fs.buf + 1
         if acfg.lock_buffer:
             hit = ctrl.lock_rbuf == buf_n
@@ -439,7 +447,8 @@ async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN0
                 'LOCK%d 뒤 RBUF=%d (기대 %d) -- %s'
                 % (buf_n, ctrl.lock_rbuf, buf_n,
                    '이 FW 는 LOCKn 을 반영한다' if hit else
-                   '반영 안 됨 또는 RBUF 미구현.  LOCK 에 기대지 말 것'))
+                   '반영 안 됨 -- 2026-09-01 두 FW 15/15 와 다르다.  FW 가 '
+                   '바뀌었나 (DevNote 10.4)'))
         else:
             say(OK, 'LOCK 을 안 보냈다 -- RBUF=%d (참고값)' % ctrl.lock_rbuf)
         # ⭐ `WBUF` 의 이동은 상태 플래그가 아니라 **거동**이라 더 강한 증거다.
@@ -546,10 +555,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--out', default='./probe', help='FITS 저장 폴더')
     p.add_argument('--poll', type=float, default=0.2,
                    help='FRAME 폴링 간격 [s] (기본 0.2 -- 진행률을 촘촘히 본다)')
-    # ⭐ **A/B 실험용 스위치** (2026-08-30).  labtest 는 2026-05-28 에 `LOCK` 을
-    # 뺐는데 근거가 "remove to fetch debug" 한 줄뿐이라, **켜서 되는지**를
-    # 실기에서 갈라야 한다.  ini 를 고쳐 가며 두 번 돌리는 대신 이 플래그로
-    # 바꾼다 -- 두 실행의 차이가 이 한 곳뿐이어야 비교가 성립한다.
+    # ⭐ **진단·회귀용 스위치.**  (2026-08-30 A/B 실험용으로 붙였고 실험은
+    # 2026-09-01 종결 -- `lock_buffer=true` 확정, DevNote 10.6.)  ini 를 고치지
+    # 않고 한 번만 잠금 없이 돌려 볼 때 쓴다 -- 두 실행의 차이가 이 한 곳뿐이어야
+    # 비교가 성립한다.
     p.add_argument('--lock', dest='lock_buffer', action='store_true',
                    default=None,
                    help='3단계 -- fetch 중 LOCKn 으로 버퍼를 잠근다 '

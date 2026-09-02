@@ -230,7 +230,8 @@ def test_stage3_powers_off_even_when_the_frame_fails(fake, tmp_path):  # noqa: A
 
 
 def test_stage3_survives_a_controller_with_no_frames_yet(tmp_path):  # noqa: ANN001
-    """**첫 전원 투입 -- 완료된 프레임이 하나도 없는 컨트롤러.**
+    """**`REBOOT` 직후 -- 완료된 프레임이 하나도 없는 컨트롤러** (CCD `POWERON` 은
+    버퍼를 지우지 않는다, DevNote 10.7).
 
     그때 `newest()` 는 `-1` 을 준다.  `prev + 1 = 0` 을 기다리면 컨트롤러가 첫
     프레임에 1 을 붙이는 순간 "0 을 지나쳤다" 가 되어 **첫 노출이 통째로

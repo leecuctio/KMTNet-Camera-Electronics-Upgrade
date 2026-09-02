@@ -440,7 +440,9 @@ def test_fetch_buffers_are_checked_against_the_wrote_window(tmp_path):  # noqa: 
         return [n for n in acfg_mod.validate(
             acfg, tuple(cfg.node.ccds), cfg) if 'fetch_buffers' in n]
 
-    # 25초 창 -- 2개면 충분하다 (N x 12 >= 25 - 3.4)
+    # 25초 창 -- 2개면 충분하다 (N x 13.27 >= 25 - 3.4).  ⚠️ 아래 30초 창의 3개
+    # 판정은 ceil(26.6 / 13.27) = ceil(2.0045) 로 문턱에 걸쳐 있다 -- write_delay
+    # 가 3.46 을 넘으면 2 가 된다.
     assert not notes(2, 25.0)
     # ⚠️ 창을 30초로 늘리면 2개로는 부족해진다 -- 3개가 필요하다
     warned = notes(2, 30.0)
@@ -455,7 +457,7 @@ def test_fetch_buffers_are_checked_against_the_wrote_window(tmp_path):  # noqa: 
 def test_turning_off_both_fetch_guards_is_flagged_at_startup(tmp_path):  # noqa: ANN001
     """⚠️ **`lock_buffer` 와 `recheck_after_fetch` 는 짝이다** (2026-08-30).
 
-    fetch 하는 동안(실측 약 5초) 버퍼가 덮이는 창을 보는 것은 둘 중 하나다 --
+    fetch 하는 동안(실측 3.2~3.5초) 버퍼가 덮이는 창을 보는 것은 둘 중 하나다 --
     `LOCKn`(**막는다**) 또는 fetch 뒤 재대조(막지는 못하고 **잡아서 버린다**).
     둘 다 끄면 그 창을 보는 것이 아무것도 없고, 덮이면 두 노출이 섞인 raw 가
     **아무 경고 없이** 나온다.  자료를 나중에 봐도 못 가르는 실패라 t=0 에서
@@ -474,7 +476,7 @@ def test_turning_off_both_fetch_guards_is_flagged_at_startup(tmp_path):  # noqa:
 
     assert not notes(True, True)          # 기본 -- 이중이라 조용하다
     assert not notes(True, False)         # LOCK 이 막는다
-    assert not notes(False, True)         # 재대조가 잡는다 (LOCK A/B 실험 쪽)
+    assert not notes(False, True)         # 재대조가 잡는다 (lock_buffer=false 로 되돌릴 때의 유일한 방어, DevNote 10.6)
     warned = notes(False, False)          # ⚠️ 아무도 안 본다
     assert warned, '둘 다 껐는데 아무도 안 알린다'
     assert '아무도 못 본다' in warned[0], warned

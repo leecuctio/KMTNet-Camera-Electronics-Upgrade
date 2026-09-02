@@ -364,9 +364,11 @@ class ArchonBackend:
         DARK/BIAS 는 시퀀서가 노출을 걸어 달라고 하지 않으므로(위 3번) 여기서
         건다 -- 적분은 `erase` 이후의 축적이고, `IntMS=0` 으로 곧바로 읽어낸다.
 
-        PROVISIONAL: 진행률은 `FRAME` 의 `BUFnLINES`/`BUFnHEIGHT` 다 (매뉴얼
-        p.50).  필드는 매뉴얼로 확인했지만 **실기 값의 거동**(선형인지, 독출
-        시작 전에 0 으로 머무는 구간이 있는지)은 미검증이다.
+        진행률은 `FRAME` 의 `BUFnLINES` / ACF `LINECOUNT` 다 (p.50 · DevNote
+        10.3).  ✅ 실기 거동 확인 (2026-09-01, 두 유닛): 선형, 368 행/초, 4700행
+        12.77초 -- 적분 중에는 `WBUF=0` 이라 `None`, 독출 시작 뒤 0 에 머무는
+        구간은 없다.  ⚠️ `BUFnHEIGHT` 를 분모로 쓰면 `FRAMEMODE=2` 에서 50% 에
+        묶인다 (`parse.progress_of`).
         """
         master = self.ctrls[self._tag_of(ccd)]
         pending = [c for c in self._active() if not c.triggered]

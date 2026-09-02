@@ -83,9 +83,13 @@ class IcgArchon(IcsSim):
             await self.guide.prepare()
             log.info('guide 컨트롤러 준비 완료 (%s)', self.icfg.host)
         except Exception as exc:  # noqa: BLE001
-            log.error('guide 컨트롤러 기동 접속 실패 -- %s.  HK 감시가 '
-                      '주기적으로 다시 시도하고, 첫 GO 의 prepare() 가 '
-                      '다시 시도한다', exc)
+            # `?xx` 거부(이 세션의 APPLYALL 미실시)는 power_on() 이 진단 문구를
+            # 붙여 올린다 (DevNote 10.2) -- 여기서 따로 가르지 않는다.  ⚠️ HK
+            # 감시는 재접속하지 않는다 (`refresh_status_live` 는 소켓이 없으면
+            # 그냥 실패해 결측으로 남긴다) -- 종전 문구가 그렇게 주장했었다.
+            log.error('guide 컨트롤러 기동 접속 실패 -- %s.  첫 GO 의 prepare() 가 '
+                      '다시 시도한다 (HK 감시는 재접속하지 않고 STATUS 결측으로 '
+                      '기록한다)', exc)
 
     async def stop(self) -> None:
         # ⭐ **취득 사이클을 먼저 세운다** (2026-08-31 교차검토).  사이클

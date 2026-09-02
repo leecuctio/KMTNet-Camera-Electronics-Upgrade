@@ -199,3 +199,109 @@ def test_real_backend_clamp_uses_the_acf_floor():
     assert be.intms_for(0.5) == 0
     assert abs(be.effective_exptime(0.5) - floor) < 1e-6
     assert be.intms_for(floor + 3.0) == 3000
+
+
+# ---------------------------------------------------------------------------
+# `Pixels=600` 의 73개 -- 데이터시트 셈법과 트림 안전선 (DevNote 9.14, 2026-09-01)
+# ---------------------------------------------------------------------------
+
+def _guide_params():  # noqa: ANN202
+    from ics_archon.archon.controller import ArchonController
+    from icg_archon.config import IcgCfg
+
+    icfg = IcgCfg()
+    icfg.acf = {'G': GUIDE_ACF}
+    ctrl = ArchonController('G', icfg)
+    ctrl.parse_acf(GUIDE_ACF)
+    return ctrl.config, acftiming.parameters(ctrl.config)
+
+
+@pytest.mark.repo_only
+def test_guide_acf_matches_the_ccd47_20_register_accounting():
+    """⭐ 데이터시트 셈법이 ACF 와 여유 0 으로 맞는가 (규격 9.4절 · 9.14).
+
+        8 BLANK | 15 DARK REF | 1 transition | 512 active  = 536 (절반)
+        PreSkipPixels=8            PIXELCOUNT=528
+
+    그리고 **디지타이즈 >= 저장** 이어야 한다 -- `Pixels` 를 트림하다 527 아래로
+    내리면 실컬럼이 잘린다.  R2610 에서 529 로 줄여도 530 >= 528 로 통과한다.
+    """
+    cfg, p = _guide_params()
+    assert p['PreSkipPixels'] == 8, '데이터시트 BLANK 8 과 어긋난다'
+    assert int(cfg['PIXELCOUNT']) == 15 + 1 + 512 == 528
+    assert int(cfg['LINECOUNT']) == p['Lines'] == 1033, \
+        'guide 는 FRAMEMODE=0 -- Lines 가 곧 프레임 높이다'
+    # 10.3·10.6 이 무게를 실은 두 전제를 ACF 에서 직접 읽어 못박는다.
+    assert cfg.get('FRAMEMODE', '0') == '0', \
+        'guide 가 split 이면 HEIGHT 대체 경로(progress_of(0))가 50% 에 묶인다 (DevNote 10.3)'
+    assert cfg.get('BIGBUF', '0') == '0', \
+        'guide 는 버퍼 셋 전제다 -- 잠금 뒤 둘이 남는다 (fetch_timeout 안전선의 근거)'
+    digitised = p['Pixels'] + 1          # LINE47 의 인자 없는 CALL PixelFirst
+    assert digitised >= int(cfg['PIXELCOUNT']), \
+        '디지타이즈(%d) < 저장(%s) -- 실컬럼이 잘린다' % (digitised, cfg['PIXELCOUNT'])
+    # 현행은 73개 초과다.  트림하면 이 수가 1~2 로 내려온다 -- 정보용 단정.
+    surplus = digitised - int(cfg['PIXELCOUNT'])
+    assert surplus in (73, 1, 2), '예상 밖 여유 %d -- README 의 P-k 절을 볼 것' % surplus
+
+
+@pytest.mark.repo_only
+def test_frame_flush_literal_is_independent_of_the_pixels_parameter():
+    """`HorizontalShift(600)` 은 스크립트 리터럴이다 -- `Pixels` 트림과 무관.
+
+    9.14 가 지적한 혼동 지점: 600 이 두 뜻으로 쓰인다.  트랜스퍼 시간은
+    `Pixels` 를 바꿔도 **그대로**여야 하고, ACF 의 LINE12/LINE53 이 600 을
+    적고 있어야 `acftiming._FRAME_HSHIFT` 가 그것을 비추는 게 맞다.
+    """
+    cfg, p = _guide_params()
+    assert 'HorizontalShift(600)' in cfg['LINE12']
+    assert 'HorizontalShift(600)' in cfg['LINE53']
+    assert acftiming._FRAME_HSHIFT == 600  # noqa: SLF001
+    t600 = acftiming.frame_timing(p, lines=p['Lines'], pixels=600)
+    t529 = acftiming.frame_timing(p, lines=p['Lines'], pixels=529)
+    assert t600['transfer'] == t529['transfer']
+    assert t600['trigger_to_transfer'] == t529['trigger_to_transfer']
+    # 움직이는 것은 독출(그래서 하한)뿐이다.
+    assert t600['readout'] > t529['readout']
+
+
+@pytest.mark.repo_only
+def test_trimming_pixels_to_529_moves_only_the_floor_by_the_expected_amount():
+    """9.14 의 수치를 코드가 재현하는가 -- 71 픽셀 x 1033 행 ≈ 146.7 ms."""
+    _, p = _guide_params()
+    t600 = acftiming.frame_timing(p, lines=p['Lines'], pixels=600)
+    t529 = acftiming.frame_timing(p, lines=p['Lines'], pixels=529)
+    saved = t600['floor'] - t529['floor']
+    assert abs(saved - 0.1467) < 0.002, '절약 %.4f s' % saved
+    assert t600['pixels'] == 600 and t529['pixels'] == 529
+    assert 'Pixels 529' in acftiming.describe(t529)
+
+
+@pytest.mark.repo_only
+def test_read_timing_refuses_an_acf_without_pixels_instead_of_guessing(tmp_path):
+    """`Pixels` 가 없으면 600 으로 셈하지 말고 **ini 대체값으로 물러나야** 한다.
+
+    종전 `or 600` 대체값은 그럴싸한 하한을 내놓아 틀린 것이 안 보였다.
+    """
+    import re
+
+    from ics_sim import config as simcfg
+
+    from icg_archon.backend import GuideBackend
+    from icg_archon.config import load
+
+    with open(GUIDE_ACF, encoding='utf-8', errors='replace') as fh:
+        src = fh.read()
+    stripped = re.sub(r'^PARAMETER\d+="Pixels=\d+"\r?\n', '', src, flags=re.M)
+    assert stripped != src, 'Pixels 줄을 못 지웠다'
+    acf = tmp_path / 'no_pixels.acf'
+    acf.write_text(stripped, encoding='utf-8', newline='')
+
+    ini = os.path.join(ROOT, 'icg_archon.ini')
+    icfg = load(ini)
+    icfg.acf = {'G': str(acf)}
+    icfg.exptime_min = 7.5                  # 눈에 띄는 대체값
+    be = GuideBackend(simcfg.load(ini), icfg)
+    assert be.timing is None, 'Pixels 없이 타이밍을 셈했다 -- 무엇으로?'
+    assert be.frame_floor() == 7.5
+    assert be.intms_for(7.5) == 0 and be.intms_for(10.0) == 2500
+

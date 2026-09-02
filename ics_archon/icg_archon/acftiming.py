@@ -72,6 +72,28 @@ def parameters(config: dict) -> dict[str, int]:
     return out
 
 
+#: 이 모듈이 셈하는 **guide 타이밍 스크립트의 형태** -- 줄 번호와 그 줄에 있어야
+#: 하는 호출.  science ACF 는 배치가 달라(`LINE11` 이 `IntUnit`,
+#: `HorizontalSWShift(1200)`, `AT=2000`) 이 셈법을 씌우면 뜻 없는 수가 나온다
+#: (DevNote 9.15).
+_SHAPE = {
+    'LINE11': 'CALL FrameShift(',
+    'LINE12': 'CALL HorizontalShift(',
+    'LINE47': 'CALL PixelFirst',
+    'LINE48': 'CLAMP; X(',
+}
+
+
+def script_matches(config: dict) -> list[str]:
+    """ACF 설정 줄 표가 이 모듈이 아는 형태인가 -- 어긋난 줄 목록 (비면 맞다)."""
+    bad: list[str] = []
+    for key, needle in _SHAPE.items():
+        got = str((config or {}).get(key, ''))
+        if needle not in got:
+            bad.append('%s=%r' % (key, got))
+    return bad
+
+
 def verify_tick_anchor() -> bool:
     """`NoIntUnit` 셈이 정확히 1 ms 인가 -- 틱 가정·셈법의 자체 검산.
 
@@ -88,6 +110,12 @@ _PIXEL_FIRST = (1 + 20) + 1 + 1 + 1 + 3 * (1 + 10) + (1 + 64) + (1 + 10) \
     + (1 + 64) + 1                                           # 199
 _PIXEL = _PIXEL_FIRST + 1
 _CLAMP_HOLD = 1 + 10000
+
+#: `LINE12 DGLOW; CALL HorizontalShift(600)` -- 트랜스퍼 직후 직렬 레지스터를
+#: **쓸어내는** 횟수.  ⚠️ 스크립트 **리터럴**이라 `Pixels` 파라미터와 무관하다:
+#: 레지스터 절반(536 소자)을 넘기게 잡은 flush 수이고, `Pixels` 를 528/529 로
+#: 트림해도(P-k, `acf/README.md`) 이 값은 그대로다.  `LINE53`(유휴 flush)도 같다.
+_FRAME_HSHIFT = 600
 
 
 def _shift(n_phase: int, hold: int) -> int:
@@ -130,7 +158,7 @@ def frame_timing(params: dict[str, int], *,
             + 1 + _PIXEL_FIRST
             + _CLAMP_HOLD + 1)
 
-    transfer = 1 + fshift * lines + 1 + hshift * 600 + _CLAMP_HOLD
+    transfer = 1 + fshift * lines + 1 + hshift * _FRAME_HSHIFT + _CLAMP_HOLD
     readout = line * lines
     noint = noint_ms * UNIT_TICKS
 
@@ -139,6 +167,9 @@ def frame_timing(params: dict[str, int], *,
         'readout': readout * TICK,
         'noint': noint * TICK,
         'line': line * TICK,
+        # 무엇을 셈했는지 같이 돌려준다 -- 로그에서 ACF 가 바뀐 것이 보이도록.
+        'lines': float(lines),
+        'pixels': float(pixels),
     }
     t['floor'] = t['noint'] + t['transfer'] + t['readout']
     # `IntMS` 는 호출측이 더한다 -- 상수분만 돌려준다.
@@ -147,7 +178,8 @@ def frame_timing(params: dict[str, int], *,
 
 
 def describe(t: dict[str, float]) -> str:
-    return ('트랜스퍼 %.1f ms · 독출 %.0f ms · NoInt %.0f ms -> 최소 주기 '
-            '%.2f s (트리거->트랜스퍼 %.0f ms)'
-            % (t['transfer'] * 1e3, t['readout'] * 1e3, t['noint'] * 1e3,
+    return ('Pixels %d x Lines %d -- 트랜스퍼 %.1f ms · 독출 %.0f ms · '
+            'NoInt %.0f ms -> 최소 주기 %.3f s (트리거->트랜스퍼 %.0f ms)'
+            % (t.get('pixels', 0), t.get('lines', 0),
+               t['transfer'] * 1e3, t['readout'] * 1e3, t['noint'] * 1e3,
                t['floor'], t['trigger_to_transfer'] * 1e3))

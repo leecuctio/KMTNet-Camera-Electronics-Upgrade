@@ -99,7 +99,7 @@ class FrameStatus:
     lines: int              #: 그 버퍼의 라인 진행
     wbuf: int               #: 쓰기 중 버퍼 (1-기준, 0 = 없음)
     write_lines: int        #: 쓰기 중 버퍼의 라인 진행
-    write_height: int       #: 쓰기 중 버퍼의 전체 라인 수
+    write_height: int       #: 쓰기 중 버퍼의 행 수(`BUFnHEIGHT`).  ⚠️ `FRAMEMODE=2` 면 라인 수의 2배 -- 진행률 분모가 아니다 (DevNote 10.3)
 
     @property
     def data_bytes(self) -> int:
@@ -114,16 +114,36 @@ class FrameStatus:
 
     @property
     def progress(self) -> int | None:
+        """쓰기 중 프레임의 진행률 [%] -- 분모가 `BUFnHEIGHT` 인 **구식 셈**.
+
+        ⚠️ `FRAMEMODE=2`(split) 에서는 `BUFnHEIGHT = 2 x LINECOUNT` 인데
+        `BUFnLINES` 는 `LINECOUNT` 에서 멈춘다 -- 이 셈은 **50% 를 못 넘는다**
+        (DevNote 10.3, 2026-09-01 실측: probe 3단계가 49% 에서 완료로 넘어갔다).
+        컨트롤러는 ACF 의 `LINECOUNT` 를 아는 `progress_of()` 를 쓴다.  이
+        프로퍼티는 `LINECOUNT` 를 모르는 자리(시험·도구)의 대체값이고,
+        `FRAMEMODE=0`(guide) 에서만 정확하다.
+        """
+        return self.progress_of(0)
+
+    def progress_of(self, lines_total: int) -> int | None:
         """쓰기 중 프레임의 진행률 [%].  쓰는 중이 아니면 `None`.
 
-        `BUFnLINES`(라인 진행) / `BUFnHEIGHT` 다 (매뉴얼 p.50).  레거시 IC 가
-        6/17/28/... 로 듬성듬성 보고한 것은 그쪽 구현 사정이고, 촘촘히 보내도
-        OBSAgent 는 문제없다 (DevNote 3.2 -- `PCTREAD=` 는 2회 이상이면
-        `READ_3` 에 도달한다).
+        `BUFnLINES`(라인 진행) / **`LINECOUNT`**(프레임의 라인 수) 다.
+        `BUFnHEIGHT` 가 아니다 -- split 에서는 버퍼 높이가 라인 수의 두 배라
+        라인클록 하나가 두 행을 채운다 (매뉴얼 p.56·70, DevNote 10.3).
+        `lines_total` 이 0 이면 `BUFnHEIGHT` 로 물러난다 (`FRAMEMODE=0` 에서는
+        같은 값이다).
+
+        레거시 IC 가 6/17/28/... 로 듬성듬성 보고한 것은 그쪽 구현 사정이고,
+        촘촘히 보내도 OBSAgent 는 문제없다 (DevNote 3.2 -- `PCTREAD=` 는 2회
+        이상이면 `READ_3` 에 도달한다).
         """
-        if self.wbuf <= 0 or self.write_height <= 0:
+        if self.wbuf <= 0:
             return None
-        pct = int(100 * self.write_lines / self.write_height)
+        total = lines_total if lines_total > 0 else self.write_height
+        if total <= 0:
+            return None
+        pct = int(100 * self.write_lines / total)
         return max(0, min(pct, 99))     # 100 은 완료가 확정된 뒤에만 낸다
 
 
@@ -255,10 +275,12 @@ def next_frame(fields: dict[str, str], prev: int) -> FrameStatus | None:
     는 뜻은 아니다** -- 매뉴얼(2021-02-23)은 현행 FW 와 양방향으로 어긋날 수
     있어서 **판정 근거가 아니다**(운영자 2026-08-30, DevNote 8.7).
 
-    **`prev < 0` 인 경우가 첫 실행이다.**  전원을 켜고 아무 프레임도 없으면
-    `newest()` 가 `-1` 을 준다.  그때 `prev + 1 = 0` 을 기다리면 컨트롤러가 첫
-    프레임에 1 을 붙이는 순간 "0 을 지나쳤다" 가 되어 **첫 노출이 통째로
-    버려진다** -- 그래서 번호를 못박지 않고 "이후 가장 이른 것" 으로 찾는다.
+    **`prev < 0` 인 경우가 첫 실행이다.**  `REBOOT`(또는 백플레인 전원 재투입)
+    직후처럼 완료 프레임이 하나도 없으면 `newest()` 가 `-1` 을 준다 (CCD
+    `POWERON`·`WARMBOOT` 는 카운터·버퍼를 지우지 않는다 -- DevNote 10.7).  그때
+    `prev + 1 = 0` 을 기다리면 컨트롤러가 첫 프레임에 **1** 을 붙이는 순간 "0 을
+    지나쳤다" 가 되어 **첫 노출이 통째로 버려진다** -- 그래서 번호를 못박지 않고
+    "이후 가장 이른 것" 으로 찾는다.
     """
     best: tuple[int, int] | None = None
     for i in range(3):
@@ -348,14 +370,16 @@ def lock_state(fields: dict[str, str]) -> tuple[int, int]:
     *`WBUF=d ; Current buffer number locked for writing`*.
 
     ⭐ **`LOCKn` 이 이 FW 에서 실제로 먹는지 확인하는 자리다** (2026-08-30 신설).
-    `LOCK1` 을 보낸 뒤 `RBUF` 가 1 이면 **FW 가 잠금을 반영한 것**이고, 그러면
-    A-5 판단 ②(`lock_buffer`)의 절반이 실기 관측으로 닫힌다.  이 값은 fetch
-    앞의 덮임 대조에서 **이미 읽는 `FRAME` 응답 안에 들어 있다** -- 왕복이 늘지
-    않는다.
+    `LOCK1` 을 보낸 뒤 `RBUF` 가 1 이면 **FW 가 잠금을 반영한 것**이다.  이 값은
+    fetch 앞의 덮임 대조에서 **이미 읽는 `FRAME` 응답 안에 들어 있다** -- 왕복이
+    늘지 않는다.
 
-    ⚠️ **한 방향으로만 결정적이다.**  `RBUF` 가 안 바뀌었다고 *"`LOCK` 이 무효"*
-    는 아니다 -- `RBUF` 쪽이 미구현일 수도 있다.  `RBUF` 자체도 매뉴얼의
-    주장이고, **매뉴얼은 판정 근거가 아니다**(DevNote 8.7).
+    ✅ **2026-09-01 실기**: 두 FW(1252·1261)에서 `LOCKn` 뒤 `RBUF == n` 15/15,
+    `WBUF` 는 늘 다른 버퍼 (DevNote 10.4) -- A-5 판단 ② 종결.  `RBUF` 는 FW
+    1252 이미지의 `FRAME` 포맷 문자열에 있고(8.11) 두 FW 가 다 냈으니 종전의
+    *"`RBUF` 미구현일 수도"* 도피구는 닫혔다.  이제 `RBUF != n` 은 **FW 회귀
+    신호**다.  (2026-08-30 시점에는 "한 방향으로만 결정적" 이라 적어 두었고,
+    그 판단은 매뉴얼만 있을 때 맞는 태도였다 -- DevNote 8.7.)
 
     ⭐ `WBUF` 는 **거동**이라 더 강한 증거다 -- fetch 하는 동안 `WBUF` 가 우리가
     잠근 버퍼를 피해 옮겨 갔다면, 그것은 상태 플래그가 아니라 **엔진이 실제로

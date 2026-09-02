@@ -157,7 +157,9 @@ class IcgCfg:
     progress_step: int = 5
     burst_len: int = 1024
     fetch_buffers: int = 2
-    fetch_timeout: float = 30.0
+    #: FETCH 상한 [s] = **잠금 상한** -- 하한(1.375 s) 아래여야 한다 (DevNote
+    #: 10.6).  8.3 MiB ≈ 0.08 s 라 1 s 면 12배 여유.  `GuideBackend` 가 검사한다.
+    fetch_timeout: float = 1.0
     frame_dump: float = 0.0
     frame_timeout: float = 60.0
     lock_buffer: bool = True
@@ -167,9 +169,12 @@ class IcgCfg:
     #: 선언 기하 -- 모듈 상수의 사본 (fetch 대조·저장이 이 값을 쓴다).
     naxis1: int = NAXIS1
     naxis2: int = NAXIS2
-    #: `EXPTIME` 하한 [s].  PROVISIONAL -- 독출 실측 시간(모르는 값)보다
-    #: 짧은 간격은 만들 수 없다.  실기에서 재고 올릴 것 (guide OI-23 인접).
-    exptime_min: float = 1.0
+    #: `EXPTIME` 하한 [s] -- **ACF 를 못 읽을 때의 대체값**이다.  정본은 `acftiming`
+    #: 이 타이밍 스크립트에서 계산한 하한(R2609: 1.375 s -- `NoIntMS` 항은 10.3 실측
+    #: 1% 적중, 트랜스퍼·독출 항은 ⏳ 첫 guide 구동 실측).  하한 아래 값을 두면
+    #: 클램프가 무력해지므로 ini(2.0)와 같이 하한 위로 둔다 (종전 1.0 은 근거 없는
+    #: 잠정값이었다 -- DevNote 9.10·9.15).
+    exptime_min: float = 2.0
     #: 저장 태스크 드레인 상한 [s] (종료 시).
     shutdown_drain: float = 15.0
 
@@ -282,11 +287,28 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
         if not cfg.host:
             raise IcgConfigError('[icg] ctrl_host 가 없다 -- guide 컨트롤러 '
                                  'IP 를 적을 것 (시뮬 회귀는 --backend sim)')
-        if cfg.apply_acf and not cfg.acf_path:
-            raise IcgConfigError('[icg] acf 가 없다 -- guide ACF 경로를 '
-                                 '적거나 apply_acf=false 로 둘 것')
-        if cfg.acf_path and not os.path.exists(cfg.acf_path):
+        # ⚠️ ACF 경로는 apply_acf 와 무관하게 필수다 -- 적용을 건너뛰어도
+        # 파라미터 줄 번호(`IntMS`·`Exposures`)를 알려면 파싱은 해야 한다.
+        # `prepare()` 는 경로가 비면 ACF 블록을 통째로 건너뛰어 첫 트리거의
+        # `set_config` 가 "설정 줄을 모른다" 로 죽는다 (DevNote 9.15-(7)).
+        if not cfg.acf_path:
+            raise IcgConfigError('[icg] acf 가 없다 -- guide ACF 경로를 적을 것 '
+                                 '(apply_acf=false 여도 파라미터 줄 번호를 알기 '
+                                 '위해 파싱은 한다)')
+        if not os.path.exists(cfg.acf_path):
             raise IcgConfigError('[icg] acf=%s 가 없다' % cfg.acf_path)
+        if not cfg.apply_acf:
+            # 10.2: POWERON 은 **이 세션의 APPLYALL** 을 전제한다 (p.51).
+            warn.append('[icg] apply_acf=false -- 이 프로그램은 APPLYALL 을 하지 '
+                        '않는다.  REBOOT/설정 재업로드 뒤에는 GUI(또는 '
+                        'probe_archon --expose 0)로 Apply All 을 먼저 할 것 -- '
+                        '안 하면 POWERON 이 ?xx 로 거부된다 (DevNote 10.2)')
+        if not cfg.lock_buffer and not cfg.recheck_after_fetch:
+            # science `_cross_checks` 와 같은 짝 검사 (DevNote 10.6·8.4).
+            warn.append('[icg] lock_buffer=false 인데 recheck_after_fetch 도 false 다 '
+                        '-- fetch 중 버퍼가 덮이는 창을 보는 것이 없다 (두 노출이 '
+                        '섞인 프레임이 경고 없이 저장된다).  lock_buffer=true 가 '
+                        '정본이다 (DevNote 10.6·8.4)')
     r = cfg.radionode
     if r.backend not in ('sim', 'openapi', 'off'):
         raise IcgConfigError('[radionode] backend=%r -- sim | openapi | off '

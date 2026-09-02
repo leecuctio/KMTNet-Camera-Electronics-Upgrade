@@ -3,8 +3,11 @@
 """컨트롤러 한 대의 제어 시퀀스 -- ACF 적용 · 전원 · 노출 · 독출 · FETCH.
 
 원형은 실험실 취득 스크립트의 `GetDataset()`/`Exposure()` 다.  **제어 시퀀스
-자체(POWERON -> WCONFIG/APPLYALL -> LOADPARAMS -> FRAME 폴링 -> FETCH)는 v1.0
-계보로 1년 실사용 검증된 것**이므로 순서와 명령을 바꾸지 않았다.  바꾼 것은
+자체(CLEARCONFIG/WCONFIG -> APPLYALL -> POWERON -> LOADPARAMS -> FRAME 폴링 ->
+FETCH)는 v1.0 계보로 1년 실사용 검증된 것**이므로 순서와 명령을 바꾸지 않았다
+(⚠️ `APPLYALL` 이 `POWERON` 앞이다 -- 매뉴얼 p.51 *"An APPLYALL is required
+before this operation"*, 실기 `?02` 거부로 확인 2026-09-01, DevNote 10.2).
+바꾼 것은
 바깥 껍데기다:
 
 * **전역 상태 -> 객체.**  labtest 는 컨트롤러 한 대를 전제로 전역 변수
@@ -152,9 +155,10 @@ class ArchonController:
 
         #: 마지막 fetch 에서 관측한 **잠금 상태** (진단용, 1-기준.  -1 = 미관측).
         #:
-        #: ⭐ **`LOCKn` 이 이 FW 에서 실제로 먹는지**를 실기가 답하게 하는
-        #: 자리다 (A-5 판단 ②).  fetch 앞의 덮임 대조에서 **이미 읽는 `FRAME`
-        #: 응답**에서 뽑으므로 왕복이 늘지 않는다.
+        #: ⭐ `LOCKn` 이 FW 에 반영되는지의 관측값.  ✅ **2026-09-01 두 FW
+        #: (1252·1261) 15/15 반영** (DevNote 10.4, A-5 판단 ② 종결) -- 이제는
+        #: FW 가 바뀌었을 때의 **회귀 감시**다.  fetch 앞의 덮임 대조에서
+        #: **이미 읽는 `FRAME` 응답**에서 뽑으므로 왕복이 늘지 않는다.
         #: - `lock_rbuf` -- `LOCKn` 뒤의 `RBUF`.  `buf_n` 과 같으면 반영된 것
         #: - `lock_wbuf` / `lock_wbuf_after` -- fetch **전후**의 `WBUF`.
         #:   ⭐ 옮겨 갔으면 **엔진이 실제로 다른 버퍼를 썼다**는 거동 증거다
@@ -167,6 +171,9 @@ class ArchonController:
         #: 쓰므로 이 대응이 없으면 파라미터를 못 바꾼다.
         self.config: dict[str, str] = {}
         self.configline: dict[str, int] = {}
+        #: ACF `LINECOUNT` -- 진행률(`PCTREAD`)의 분모.  `BUFnHEIGHT` 는 split
+        #: 에서 두 배라 못 쓴다 (DevNote 10.3).  0 이면 HEIGHT 로 물러난다.
+        self.lines_total: int = 0
         #: 마지막으로 적용(또는 파싱)한 ACF 경로 -- FITS `CTRLnCFG`/`RDMODE`
         #: 의 근거다.  컨트롤러는 적용된 ACF 이름을 보고하지 않는다 (p.54).
         self.acf_path: str = ''
@@ -316,6 +323,10 @@ class ArchonController:
             self.config[k] = value.replace('"', '')
             self.configline[k] = i
         self.acf_path = path
+        try:
+            self.lines_total = int(self.config.get('LINECOUNT', '0') or 0)
+        except ValueError:
+            self.lines_total = 0
         log.info('%s: ACF 파싱 %d줄 -- %s', self.tag, len(self.config), path)
 
     async def apply_acf(self, path: str) -> None:
@@ -380,9 +391,15 @@ class ArchonController:
     async def verify_config_lines(self, keys) -> list[str]:  # noqa: ANN001
         """`RCONFIG` 로 줄 번호 대응이 맞는지 확인한다.  어긋난 키 목록을 돌려준다.
 
-        **`apply_acf=false` 의 안전장치다.**  파일에서 얻은 줄 번호가 컨트롤러
-        메모리의 실제 배치와 다르면, `set_config('PARAMETER2', 'IntMS=…')` 가
-        **엉뚱한 줄을 고친다** -- 그러면 노출 시간이 안 바뀌는데 오류도 안 난다.
+        **`apply_acf=false` 의 안전장치 가운데 하나다.**  파일에서 얻은 줄 번호가
+        컨트롤러 메모리의 실제 배치와 다르면, `set_config('PARAMETER2',
+        'IntMS=…')` 가 **엉뚱한 줄을 고친다** -- 그러면 노출 시간이 안 바뀌는데
+        오류도 안 난다.
+
+        ⚠️ **줄이 맞아도 그 세션의 `APPLYALL` 여부는 못 가른다** -- 설정 메모리에
+        줄이 남아 있어도 이 세션에서 `APPLYALL` 이 없었으면 `POWERON` 이 `?xx`
+        로 거부된다 (매뉴얼 p.51, DevNote 10.2).  그 경우는 `power_on()` 이
+        진단 문구를 붙인다.
         기동에서 한 번 대조해 두면 그 침묵을 없앨 수 있다.
         """
         bad = []
@@ -423,15 +440,32 @@ class ArchonController:
         대기 시간(`poweron_wait`)은 그대로다: 그 시간은 전원 램프가 아니라
         **CCD flush** 를 기다리는 것이라 일찍 빠져나오면 안 된다.
         """
-        # **여기서 낡은 저장 표를 버린다** (2026-08-30 배선).  `POWERON` 은
-        # **새 프레임 번호 세션의 시작**이다 -- 전원이 내려간 사이의 프레임은
-        # 버퍼에 없고 다시 못 받는다.  표를 남겨 두면 다음 프레임의 저장이
+        # **여기서 낡은 저장 표를 버린다** (2026-08-30 배선).  ⚠️ CCD `POWERON`
+        # 은 `BUFnFRAME` 을 리셋하지 **않는다** (2026-09-02 실측 -- 리셋은
+        # `REBOOT`·백플레인 전원만, DevNote 10.7).  그래도 버리는 것이 맞다:
+        # 전원이 내려간 사이의 프레임은 어차피 자료가 아니고, 표를 남겨 두면
+        # 다음 프레임의 저장이
         # **그 낡은 표**를 집어 파일마다 한 노출 뒤진 픽셀이 담기고, 헤더는 새
         # 프레임의 것이라 경고가 한 줄도 안 뜬다 (`FrameTicket` 설명의 그
         # blocker 다).  **크게 잃는 것이 조용히 틀린 것보다 낫다.**
         self.drop_tickets('POWERON -- 전원이 내려간 사이의 프레임은 못 받는다')
         self.power_attempted = True
-        await self.cmd('POWERON', timeout=T_POWER)
+        try:
+            await self.cmd('POWERON', timeout=T_POWER)
+        except ArchonError as exc:
+            if exc.reply_error:
+                # ⭐ 첫 관문에서 한 시간을 먹은 한 줄이다 (DevNote 10.2·10.10-6).
+                # 매뉴얼 p.51: *"An APPLYALL is required before this operation."*
+                # 설정 메모리에 줄이 있어도 **이 세션에서** APPLYALL 이 없었으면
+                # 거부한다 -- REBOOT·백플레인 전원 뒤, 또는 apply_acf=false 로
+                # 새 세션을 열었을 때가 그 경우다.
+                raise ArchonError(
+                    '%s: POWERON 을 컨트롤러가 거부했다 (%s) -- 이 세션에서 '
+                    'APPLYALL 이 없었을 가능성이 크다 (매뉴얼 p.51).  REBOOT 나 '
+                    '전원 재투입 뒤라면 apply_acf=true 로 두거나 GUI Apply All '
+                    '을 먼저 할 것 (DevNote 10.2)' % (self.tag, exc),
+                    cmd='POWERON', reply_error=True) from exc
+            raise
         self.powered = True
         delay = self.cfg.poweron_wait if wait is None else wait
         if delay <= 0:
@@ -914,7 +948,9 @@ class ArchonController:
                          poll: float | None = None):  # noqa: ANN201
         """그 프레임이 완료될 때까지 기다리며 **진행률을 yield** 한다.
 
-        진행률은 `FRAME` 의 `BUFnLINES`/`BUFnHEIGHT` 다 (매뉴얼 p.50).  적분
+        진행률은 `FRAME` 의 `BUFnLINES` / ACF `LINECOUNT` 다 (p.50 · DevNote
+        10.3).  ⚠️ `BUFnHEIGHT` 는 분모가 아니다 -- `FRAMEMODE=2` 면 그 2배라
+        `PCTREAD` 가 50% 에 묶인다 (`parse.progress_of`).  적분
         중에는 쓰기 버퍼가 없어 `None` 이 나오므로 아무것도 내지 않는다 --
         `PCTREAD=` 는 독출 진행이라야 뜻이 있다.
 
@@ -1010,7 +1046,7 @@ class ArchonController:
                         % (self.tag, prev + 1, mine.frame), cmd='FRAME')
                 ticket.ready = mine
                 return
-            pct = parse.newest(fields).progress
+            pct = parse.newest(fields).progress_of(self.lines_total)
             if pct is not None and pct >= reported + step:
                 reported = pct
                 yield pct
@@ -1070,34 +1106,44 @@ class ArchonController:
         # AD 모듈 슬롯).  **판단 근거는 실측**이다 -- DevNote 8.7.
         #
         # ⚠️ labtest 는 2026-05-28 에 `LOCK` 을 뺐다("remove to fetch debug").
-        # 되돌린 것이므로 **실기 확인 항목**이다 -- 문제가 보이면
-        # `[archon] lock_buffer = false` 로 끄면 labtest 와 같아진다.  끄더라도
+        # 되돌렸고 ✅ **실기 확인은 종결됐다** (2026-09-01, 두 유닛 -- DevNote
+        # 10.4·10.6): `LOCK` 은 매번 반영되고(RBUF 15/15) 대가가 없으며(`lock`
+        # = `idle` = 368 행/초), **지킬 구간이 실재한다** -- 잠그지 않은 채
+        # fetch 중 프레임 경계가 걸리면 엔진이 우리가 읽는 버퍼로 옮겨온다
+        # (2/2 관측).  `[archon] lock_buffer = true` 가 정본이다.  끄더라도
         # 아래 대조는 남고, `recheck_after_fetch` 가 fetch 중의 창까지 본다.
         # ⚠️ **science 는 버퍼가 둘뿐**이라 하나를 잠그면 엔진에 하나만 남는다
-        # (guide 는 셋이라 둘이 남는다) -- 남는 버퍼가 없을 때의 거동은
-        # **매뉴얼에도 없다**.  labtest 가 뺀 이유일 수 있다(가설 H3).
+        # (guide 는 셋이라 둘이 남는다).  남는 버퍼가 없으면 엔진은 **쓰던
+        # 버퍼를 재사용**해 다음 프레임을 덮는다 (H3 닫힘, `--hold 20` 실측)
+        # -- 그래서 잠금은 프레임 주기보다 짧아야 하고, 그 상한이
+        # `fetch_timeout` 이다 (config 기동 검사가 본다).
         buf_n = fs.buf + 1
         lock = getattr(self.cfg, 'lock_buffer', True)
         # **관측값을 먼저 지운다** -- `LOCK` 이 실패하면 지난 프레임의 값이
         # 남아 실험 로그가 거짓말을 한다.
         self.lock_rbuf = self.lock_wbuf = self.lock_wbuf_after = -1
-        if lock:
-            await self.cmd('LOCK%d' % buf_n, timeout=T_FAST)
         try:
+            # ⭐ 잠금도 `try` 안이다 (DevNote 10.9) -- `LOCK%d` 의 응답이
+            # 타임아웃으로 죽어도 컨트롤러 쪽은 이미 잠겼을 수 있으니
+            # `finally` 의 `LOCK0` 을 타야 한다.  잠기지 않은 채 `LOCK0` 을
+            # 보내는 것은 무해하다.
+            if lock:
+                await self.cmd('LOCK%d' % buf_n, timeout=T_FAST)
             # **잠근 뒤에 다시 확인한다.**  잠그기 직전에 이미 덮였을 수 있다.
             live_fields = await self.query('FRAME', timeout=T_FAST)
             live = parse.buffer_frame(live_fields, buf_n)
             # ⭐ **같은 응답에서 잠금 상태도 뽑는다** (왕복 0, 2026-08-30).
-            # `LOCKn` 이 이 FW 에서 실제로 먹는지가 A-5 판단 ②의 절반이다.
+            # `LOCKn` 이 FW 에 먹는지 -- A-5 판단 ② 는 2026-09-01 종결 (두 FW
+            # 15/15, DevNote 10.4).  이 관측은 이제 FW 회귀 감시다.
             self.lock_rbuf, self.lock_wbuf = parse.lock_state(live_fields)
             if lock and self.lock_rbuf != buf_n:
-                # ⚠️ **한 방향으로만 결정적이다** -- `RBUF` 쪽이 미구현일 수도
-                # 있다.  그래도 이 줄이 뜨면 `LOCK` 에 기대지 말아야 한다는
-                # 신호이고, `recheck_after_fetch` 가 유일한 방어가 된다.
+                # ✅ 두 FW(1252·1261) 가 15/15 반영했고 `RBUF` 는 FW 가 낸다
+                # (8.11) -- "미구현" 도피구는 닫혔다.  여기가 뜨면 **FW 회귀
+                # 신호**다.  그래도 `recheck_after_fetch` 가 마지막 방어다.
                 log.warning(
-                    '%s: LOCK%d 을 보냈는데 RBUF=%d 다 (기대 %d) -- 이 FW 가 '
-                    '잠금을 반영하지 않거나 RBUF 가 미구현이다.  LOCK 에 '
-                    '기대지 말고 recheck_after_fetch 를 켜 두라 (매뉴얼 p.50)',
+                    '%s: LOCK%d 을 보냈는데 RBUF=%d 다 (기대 %d) -- 2026-09-01 '
+                    '두 FW 15/15 반영과 다르다.  FW 가 바뀌었나 (DevNote 10.4).  '
+                    'recheck_after_fetch 를 켜 두라 (매뉴얼 p.50)',
                     self.tag, buf_n, self.lock_rbuf, buf_n)
             if live != fs.frame:
                 raise ArchonError(
@@ -1107,8 +1153,10 @@ class ArchonController:
                     % (self.tag, buf_n, live, fs.frame, lock), cmd='FETCH')
 
             # 상한은 크기에서 뽑는다 -- 1 GB/s 를 밑도는 어떤 링크라도 넉넉하고,
-            # 그러면서 "영구히 멈춤" 은 막는다.  실측 MiB/s 가 나오면
-            # `[archon] fetch_timeout` 으로 조인다 (F5) -- 이 유도값은
+            # 그러면서 "영구히 멈춤" 은 막는다.  이 유도값은 `[archon]
+            # fetch_timeout` 이 0 일 때만 쓰인다 -- 실측(99~107 MiB/s, DevNote
+            # 10.4)으로 ini 는 10초다.  ⚠️ 잠금 상한이기도 하다: 주기(13.27초)
+            # 를 넘으면 다음 장이 덮인다(10.6) -- `config` 기동 검사가 알린다.
             # `frame_timeout` 과 **별개의 상한**이라 한쪽만 조여도 다른 쪽은
             # 그대로다.
             timeout = float(getattr(self.cfg, 'fetch_timeout', 0.0) or 0.0)
@@ -1117,7 +1165,12 @@ class ArchonController:
             # **버퍼는 `LOCK` 을 잡은 뒤에 기다린다.**  순서가 중요하다 --
             # 잠그지 않은 채 기다리면 그동안 컨트롤러가 이 프레임을 덮어
             # **프레임을 잃는다.**  잠근 채 기다리면 컨트롤러는 다른 버퍼를
-            # 쓰므로 한 프레임은 더 갈 수 있고, 우리 프레임은 지켜진다.
+            # 쓰므로 **한 프레임만** 더 간다 -- 그 다음 경계부터는 엔진이 쓰던
+            # 버퍼를 재사용해 **앞 장을 덮는다** (DevNote 10.4, `--hold 20`).
+            # 우리 프레임은 지켜지지만, 이 대기가 프레임 주기(13.27초)를 넘으면
+            # 다음 장을 잃는다.  ⏳ 이 대기에는 상한이 없다 -- `fetch_timeout`
+            # 은 전송만 잰다.  호스트 버퍼 고갈은 `buf_waits` 경고로 드러나고,
+            # 상한을 둘지는 첫 운용 실측 뒤 판단 (DevNote 9.15).
             buf = await self._take_buffer(expect_bytes)
             started = time.monotonic()
             try:
@@ -1134,11 +1187,12 @@ class ArchonController:
             # **fetch 뒤 재대조** (`[archon] recheck_after_fetch`, 2026-08-30).
             #
             # 앞의 대조는 fetch **직전 한 순간**만 본다.  fetch 자체가 수 초
-            # 걸리므로(실측 약 5초) **그 사이에 덮이는 창**은 아무도 안 본다 --
+            # 걸리므로(실측 3.2~3.5초, DevNote 10.4) **그 사이에 덮이는 창**은
+            # 아무도 안 본다 -- 주기 13.27초에 경계가 걸릴 확률 ≈26% 다 (10.6) --
             # `lock_buffer=true` 면 그 창을 `LOCKn` 이 막지만, **끄면 막는 것이
             # 아무것도 없다.**  그래서 이 재대조가 `lock_buffer=false` 의 짝이다.
             #
-            # 덮였으면 **받아 온 자료를 버린다.**  5초를 버리는 셈이지만, 그
+            # 덮였으면 **받아 온 자료를 버린다.**  3~4초를 버리는 셈이지만, 그
             # 대안은 남의 노출 픽셀을 담은 raw 한 장을 **아무 경고 없이** 쓰는
             # 것이다 (헤더는 이 프레임의 것이라 나중에 봐도 못 가른다).
             if getattr(self.cfg, 'recheck_after_fetch', True):
@@ -1162,11 +1216,16 @@ class ArchonController:
                 try:
                     await self.cmd('LOCK0', timeout=T_FAST)
                 except (ArchonError, TimeoutError, OSError) as exc:
-                    # **풀지 못하면 다음 노출이 버퍼를 못 쓴다** -- 크게 알린다.
-                    log.error('%s: LOCK0(잠금 해제)에 실패했다 (%s) -- 다음 '
-                              '프레임이 버퍼를 못 쓸 수 있다', self.tag, exc)
+                    # **풀지 못하면 엔진은 버퍼 하나로 돈다** -- 다음 장이 앞 장을
+                    # 덮는다 (DevNote 10.6).  크게 알린다.
+                    log.error('%s: LOCK0(잠금 해제)에 실패했다 (%s) -- 잠금이 '
+                              '남으면 엔진은 남은 버퍼 하나로 돌아 다음 장이 앞 '
+                              '장을 덮는다 (DevNote 10.6).  다음 fetch 의 LOCKn 이 '
+                              '잠금을 옮길 때까지 프레임을 잃을 수 있다',
+                              self.tag, exc)
         # ⭐ 잠금 관측값을 **이미 있는 줄에 얹는다** -- 정상 취득에 새 줄을
-        # 늘리지 않으면서 A/B 실험에 필요한 것이 매 프레임 남는다.
+        # 늘리지 않으면서 회귀 감시(FW 가 바뀌면 RBUF/WBUF 가 달라진다)에 필요한
+        # 것이 매 프레임 남는다.  A/B 실험은 2026-09-01 종결 (DevNote 10.6).
         log.info('%s: FETCH %.1f MiB, %.1f초 (프레임 %d, buf %d, base 0x%08X) '
                  '[lock=%s RBUF=%d WBUF=%d%s]',
                  self.tag, expect_bytes / (1 << 20),
@@ -1231,6 +1290,10 @@ class ArchonController:
                 # 적용은 건너뛰지만 **파싱은 한다** -- 줄 번호가 없으면
                 # 파라미터를 못 바꾼다.  그리고 그 줄 번호가 컨트롤러 메모리와
                 # 맞는지 대조한다(어긋나면 노출 시간이 조용히 안 바뀐다).
+                # ⚠️ 이 대조는 **줄 대응**만 본다 -- 그 세션에서 APPLYALL 이
+                # 됐는지는 못 가른다 (p.51, DevNote 10.2).  REBOOT 뒤라면 줄이
+                # 맞아도 아래 `power_on()` 이 `?xx` 로 거부되고, 그 진단 문구가
+                # 이 갈래를 가리킨다.
                 self.parse_acf(acf)
                 self.acf_applied = True
                 bad = await self.verify_config_lines(

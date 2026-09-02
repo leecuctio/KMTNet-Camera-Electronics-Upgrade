@@ -300,7 +300,8 @@ class IcsArchon(IcsSim):
             '-' * width,
             ' 미검증(잠정) 3자리 -- ics_archon/SMC_CLAUDE.md',
             '   1. STATUS 필드 이름·모듈 나열 순서 (Cn_TEMP 의 자리)',
-            '   2. 독출 진행률·독출 시간 (BUFnLINES 의 거동, Wrote 25초 창)',
+            '   2. 두 컨트롤러 시차·픽셀 좌우 배치 (독출 368 행/초·12.77초 · '
+            'FETCH 3.2~3.5초는 2026-09-01 실측 완료)',
             '   3. 산출물 실물 (기하·픽셀 좌우 배치·DETID·DATE-OBS)',
             ' 원천 없음 -- 듀어·환경 HK(sensors) 는 sentinel 로 실린다',
             '=' * width,
