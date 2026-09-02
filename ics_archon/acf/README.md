@@ -183,8 +183,58 @@ for1110` · `R2601_for1259`) — 은 지운 것이 아니라
 [`../__ref_archon_control/acf/`](../__ref_archon_control/acf/) 로 옮겼다.  그
 폴더가 **벤더·실기에서 받은 원본 보관용**이다(운영자 2026-08-28) — 개명 전
 `R0827_for1259_rtd9cal` 원본과 현행 science 다섯의 원본, 그리고 다른 guide
-유닛(`STA0291`)의 ACF 둘도 함께 있다.  ⚠️ 그 사본들은 **줄 끝이 CRLF(원본
-그대로)** 이고 저장소 정본은 LF 다 — 내용은 같다.
+유닛(`STA0291`)의 ACF 둘도 함께 있다.
+
+### 보관함 목록과 줄 끝 (2026-09-02 실측 -- ⭐ **이 표가 유일한 기록이다**)
+
+⚠️ **종전 서술 "그 사본들은 줄 끝이 CRLF(원본 그대로)" 는 뭉뚱그린 것이었다** --
+실제로는 **판마다 갈렸다**(`R2601` 계열 = CRLF, GUI 내보내기 / `R0827` 계열 = LF).
+⭐ **운영자 지시(2026-09-02)로 보관함도 전부 LF 로 정규화했고**
+`.gitattributes` 의 `-text` 예외를 걷었다 -- 그래서 **받은 그대로의 줄 끝은 이제
+바이트에 없다.**  아래 "받은 줄 끝" 열이 그 기록이다.
+
+| 보관함 파일 (`__ref_archon_control/acf/`) | 받은 줄 끝 | 받은 바이트 | 지금(LF) |
+|---|---|---:|---:|
+| `KMTC_SCI_101_STA0284_R2608_MK.acf` | CRLF | 29,541 | 28,525 |
+| `KMTK_SCI_113_STA0200_R2608_MK.acf` | CRLF | 29,528 | 28,513 |
+| `KMTK_SCI_113_STA0200_R2608_NT.acf` | CRLF | 29,540 | 28,524 |
+| `kmtnet_guide_STA0201_162_R2601_for1110.acf` | CRLF | 29,500 | 28,436 |
+| `kmtnet_guide_STA0201_162_R2601_for1259.acf` | CRLF | 29,549 | 28,482 |
+| `kmtnet_guide_STA0291_103_R2601_for1259.acf` | CRLF | 29,551 | 28,484 |
+| `kmtnet_guide_STA0291_103_goff_R2601_for1259.acf` | CRLF | 29,551 | 28,484 |
+| `acf_timing_script.txt` (2026-09-02 반입) | CRLF | 2,273 | 2,137 |
+| `KMTC_SCI_102_STA0285_R2608_NT.acf` | LF | 28,525 | 28,525 |
+| `KMTS_SCI_101_STA0286_R2608_MK.acf` | LF | 28,525 | 28,525 |
+| `kmtnet_guide_STA0201_162_R0827_for1110_rtd9cal.acf` | LF | 28,427 | 28,427 |
+| `kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf` | LF | 28,475 | 28,475 |
+| `KMTK_GUI_162_STA0201_R2608.acf` (2026-09-02 반입) | LF | 28,475 | 28,475 |
+
+⚠️ **정규화 뒤에는 science 원본 다섯이 전부 정본 `acf/` 사본과 바이트가 같다** --
+보관본의 값이 "받은 이름" 하나로 줄었다는 뜻이다(내용으로는 아무것도 안 남긴다).
+guide 쪽 넷(`R2601` 계열 둘 · `STA0291` 둘)은 정본에 없는 판이라 그대로 값이 있다.
+
+### ⭐ 2026-09-02 반입분 둘 -- 둘 다 **이미 있는 바이트의 사본**이다
+
+운영자가 보관함에 둘을 더 넣었다.  **새 내용은 없고**, 새로 남는 것은 *이름의
+대응*이다 -- 지우기 전에 아래를 볼 것.
+
+    KMTK_GUI_162_STA0201_R2608.acf   = kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf  (같은 폴더)
+                                     = ../../acf/archive/KMTK_GUI_162_STA0201_R2608.acf
+                                       sha256 d710ffae26e6...  28,475 B  LF
+
+⭐ **개명 대응이 보관함 안에서 자립한다** -- 종전에는 "원본은 `R0827_for1259...`,
+정본은 `KMTK_GUI_162...`" 라는 대응이 **이 README 에만** 있었고 보관함만 보면 알 수
+없었다.  이제 같은 바이트가 두 이름으로 나란히 있어 폴더 자체가 그 대응을 증언한다.
+
+    acf_timing_script.txt            = ../../acf/acf_timing_script.txt   2,137 B (정규화 뒤)
+
+⚠️ **바이트가 같은 묶음** (한쪽을 "중복" 으로 지우면 대응이 끊긴다):
+
+| 같은 바이트를 가진 자리 |
+|---|
+| `acf/archive/KMTK_GUI_162_STA0201_R2608.acf` · 보관함 `KMTK_GUI_162_STA0201_R2608.acf` · 보관함 `kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf` (sha256 `d710ffae26e6`) |
+| `acf/<이름>.acf` ↔ 보관함 `<같은 이름>.acf` -- **science 다섯 전부** (정규화 뒤) |
+| `acf/acf_timing_script.txt` ↔ 보관함 `acf_timing_script.txt` |
 
 ⚠️ **`archive/` 는 여전히 필요하다** — 거기 있는 `R2601_…_rtd9cal` 둘은
 **limit 정정 전** 판이고, 그 내용은 `__ref_archon_control/acf/` 에 없다.  둘을

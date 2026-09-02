@@ -1,0 +1,137 @@
+Start:
+RESET; IF ContinuousExposures GOTO Continuous
+X; IF Exposures GOTO Exposure
+X; CALL SkipLine
+X; GOTO Start
+
+Exposure:
+X; Exposures--
+Continuous:
+#X; CALL Prep
+#X; CALL Flush
+X; CALL IntUnit(IntMS)
+NOINT; CALL NoIntUnit(NoIntMS)
+X; CALL HorizontalSWShift(1200)
+CLAMP; X(10000)
+NOCLAMP; CALL SkipLine(PreSkipLines)
+FCLK; CALL Line(Lines)
+X; CALL SkipLine(PostSkipLines)
+X; CALL Line(OverscanLines)
+X; GOTO Start
+
+Prep:
+RESET; CALL NoIntUnit(PrepPreMS)
+ACTPREP; CALL NoIntUnit(PrepActMS)
+RESET; CALL NoIntUnit(PrepPostMS)
+X; RETURN Prep
+
+Flush:
+NOCLAMP; CALL SkipLine(FlushLines)
+RESET; CALL NoIntUnit(FlushPostMS)
+X; RETURN Flush
+
+IntUnit:
+INT; CALL SmallIntUnit(502)
+X; X(99)
+X; RETURN IntUnit
+
+NoIntUnit:
+NOINT; CALL SmallIntUnit(502)
+X; X(99)
+X; RETURN NoIntUnit
+
+SmallIntUnit:
+RGHIGH; X(9)
+RGLOW; X(9)
+S1LOW; X(24)
+S3HIGH; X(24)
+S2LOW; X(24)
+S1HIGH; X(24)
+S3LOW; X(24)
+S2HIGH; X(24)
+SWLOW; X(13)
+SWHIGH; X(13)
+SWHIGH; RETURN SmallIntUnit
+
+Line:
+X; CALL VerticalShift(VerticalBinning)
+LCLK; CALL SkipPixelFirst(PreSkipPixels)
+RGHIGH; CALL PixelFirst(Pixels)
+RGHIGH; CALL SkipPixelFirst(PostSkipPixels)
+RGHIGH; CALL PixelFirst(OverscanPixels)
+RGHIGH; CALL PixelFirst
+CLAMP; X(10000)
+NOCLAMP; RETURN Line
+
+SkipLine:
+RGHIGH; CALL VerticalShift
+X; CALL HorizontalSWShift(1200)
+CLAMP; X(10000)
+NOCLAMP; RETURN SkipLine
+
+Pixel:
+RGHIGH
+PixelFirst:
+RGHIGH; X(19)
+RGLOW
+X; CALL HorizontalShift(HorizontalBinning)
+PCLK
+NOPCLK
+S1LOW; X(10)
+S3HIGH; X(10)
+S2LOW; X(10)
+S1HIGH; X(63)
+SWLOW
+S3LOW; X(10)
+SWHIGH
+S2HIGH; X(63)
+RGHIGH; RETURN Pixel
+
+SkipPixel:
+RGHIGH
+SkipPixelFirst:
+RGHIGH; X(19)
+RGLOW
+X
+X
+X
+S1LOW; X(10)
+S3HIGH; X(10)
+S2LOW; X(10)
+S1HIGH; X(63)
+SWLOW
+S3LOW; X(10)
+SWHIGH
+S2HIGH; X(63)
+RGHIGH; RETURN SkipPixel
+
+HorizontalShift:
+S1LOW; X(ST)
+S3HIGH; X(ST)
+S2LOW; X(ST)
+S1HIGH; X(ST)
+S3LOW; X(ST)
+S2HIGH; X(ST)
+X; RETURN HorizontalShift
+
+HorizontalSWShift:
+S1LOW; X(ST)
+S3HIGH; X(ST)
+S2LOW; X(ST)
+S1HIGH; X(ST)
+SWLOW
+S3LOW; X(ST)
+SWHIGH
+S2HIGH; X(ST)
+X; RETURN HorizontalSWShift
+
+VerticalShift:
+IMAGE1; X(AT)
+IMAGE2; X(AT)
+IMAGE3; X(AT)
+IMAGE4; X(AT)
+IMAGE5; X(AT)
+IMAGE6; X(AT)
+IMAGE7; X(AT)
+IMAGE8; X(AT)
+X; RETURN VerticalShift

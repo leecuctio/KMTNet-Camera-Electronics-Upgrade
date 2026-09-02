@@ -1666,7 +1666,10 @@ DRAM 중재나 DMA 경로 공유라면 버퍼와 무관하게 막힐 것이고 �
 
 ### 8.13 타이밍 스크립트가 답한 것 -- `FCLK` 는 직접, `CLAMP` 는 다른 이유로
 
-운영자가 `__reference/acf/acf_timing_script.txt` 와 ACF 여섯을 반입했다.  스크립트는
+운영자가 `__ref_archon_control/acf/acf_timing_script.txt` 와 ACF 여섯을 반입했다
+(⚠️ 2026-09-02 경로 정정 -- 이 하위레포의 보관함 이름은 `__ref_archon_control/`
+이고 `__reference/` 는 `raw_fits_spec` 쪽 이름이다.  그 뒤 운영자가 실제로 그
+경로에 스크립트를 넣어 두었다).  스크립트는
 Archon 타이밍 코어의 상태 기계이고, 노출 한 회의 몸통이 이렇다:
 
     Continuous:
