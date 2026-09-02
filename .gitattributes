@@ -20,3 +20,8 @@
 *.fts.gz binary
 *.zip binary
 
+
+# Vendor reference archive (ArchonGUI/__reference/): keep bytes verbatim.
+# ARCHONGUI_ANALYSIS.md cites md5 sums and asserts byte-identical source trees,
+# so line-ending translation must not touch anything under it.
+ArchonGUI/__reference/** -text
