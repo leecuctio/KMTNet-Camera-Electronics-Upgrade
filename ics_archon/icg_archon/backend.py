@@ -39,7 +39,8 @@ science 실측을 guide 에 옮긴 것이라 첫 구동에서 실현 주기를 �
 은 science **2버퍼**(BIGBUF=1) 실측이다 -- guide 는 버퍼 셋(`BIGBUF=0`)이라
 하나를 잠그면 둘이 남고, 3버퍼에서 못 받은 장이 언제 덮이는지는 ⏳ 첫 구동
 실측 항목이다 (FETCH 뒤 `lock_rbuf`/`lock_wbuf_after` 관측).  어느 쪽이든
-FETCH 상한(`[icg] fetch_timeout`)이 곧 잠금 상한이므로 하한(1.375 s) 아래에
+FETCH 상한(`[icg] fetch_timeout`)이 곧 잠금 상한이므로 **하한 미만**으로 (하한은
+`acftiming` 이 ACF 에서 셈한다 -- R2610 기준 1.251 s)
 두는 것이 보수적 안전선이다 -- guide 는 8.3 MiB ≈ 0.08 s 라 1 s 면 넉넉하다.
 `__init__` 이 이를 검사한다 (0 이면 유도값 60 s 로 셈한다).
 """
@@ -95,7 +96,7 @@ class GuideBackend:
         self.timing = self._read_timing()
         # ⭐ 잠금은 주기보다 짧아야 한다 (DevNote 10.6, 2026-09-01 실측) -- FETCH
         # 상한이 곧 잠금 상한이다.  guide FETCH 는 8.3 MiB ≈ 0.08 s (science
-        # 실측 99~107 MiB/s 기준) 라 1 s 면 12배 여유고 하한 1.375 s 아래다.
+        # 실측 99~107 MiB/s 기준) 라 1 s 면 12배 여유고 하한(1.251 s) 아래다.
         # ⚠️ PROVISIONAL -- guide 링크 속도는 첫 구동에서 FETCH 로그로 확인.
         # ⚠️ 0 은 "크기에서 유도" 다 (`controller.fetch`: max(60, MiB) -- guide 는
         # 60 s).  ini 원값이 아니라 **실제 상한**을 하한과 대본다 (science

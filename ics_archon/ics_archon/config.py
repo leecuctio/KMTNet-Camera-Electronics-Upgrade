@@ -794,7 +794,7 @@ def _ascii_checks(sim_cfg) -> list[str]:  # noqa: ANN001
 #: 값이 조금 틀려도 경고 문턱이 움직일 뿐이다.
 #:
 #: ⚠️ **ACF(독출 속도)가 바뀌면 이 값도 바뀐다.**  guide 유닛은 프레임이
-#: 훨씬 작아 주기도 짧다(1.375초, `icg_archon/acftiming.py` 가 ACF 에서
+#: 훨씬 작아 주기도 짧다(R2610 기준 1.251초, `icg_archon/acftiming.py` 가 ACF 에서
 #: 계산) -- 그때는 이 상수로 판단하지 말 것.
 #:
 #: ⭐ **잠금 상한의 기준**도 된다 -- `LOCKn` 을 쥔 채 프레임 경계를 넘으면 엔진이

@@ -18,7 +18,7 @@ import ics_archon  # noqa: F401
 from icg_archon import acftiming  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2609.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2610.acf')
 
 
 def test_tick_anchor_holds():
@@ -55,14 +55,14 @@ def test_guide_acf_frame_period():
     ctrl.parse_acf(GUIDE_ACF)          # 왕복 없음
 
     p = acftiming.parameters(ctrl.config)
-    assert p['NoIntMS'] == 0 and p['Lines'] == 1033 and p['Pixels'] == 600
+    assert p['NoIntMS'] == 0 and p['Lines'] == 1033 and p['Pixels'] == 540
 
     t = acftiming.frame_timing(p, lines=p['Lines'], pixels=p['Pixels'])
     # 트랜스퍼는 밀리초 오더 (1033행 x 6상 x AT) -- 스미어가 짧다는 근거.
     assert 0.004 < t['transfer'] < 0.010
     # 독출은 1초 오더.
     assert 1.0 < t['readout'] < 2.0
-    # 최소 주기 = NoIntMS + 트랜스퍼 + 독출 ≈ 1.37 s (R2609 는 NoIntMS=0).
+    # 최소 주기 = NoIntMS + 트랜스퍼 + 독출 ≈ 1.25 s (R2610: NoIntMS=0 · Pixels=540).
     # ⚠️ 독출이 주기에 드는 것은 독출이 노출을 **막아서가 아니다** --
     # frame-transfer 라 image 는 독출 중에도 적분한다 (10.1-5).  다음
     # 트랜스퍼가 store 가 빌 때까지 못 오기 때문에 주기의 바닥이 된다.
@@ -224,7 +224,7 @@ def test_guide_acf_matches_the_ccd47_20_register_accounting():
         PreSkipPixels=8            PIXELCOUNT=528
 
     그리고 **디지타이즈 >= 저장** 이어야 한다 -- `Pixels` 를 트림하다 527 아래로
-    내리면 실컬럼이 잘린다.  R2610 에서 529 로 줄여도 530 >= 528 로 통과한다.
+    내리면 실컬럼이 잘린다.  R2610 은 `Pixels=540`(디지타이즈 541)이다.
     """
     cfg, p = _guide_params()
     assert p['PreSkipPixels'] == 8, '데이터시트 BLANK 8 과 어긋난다'
@@ -236,12 +236,29 @@ def test_guide_acf_matches_the_ccd47_20_register_accounting():
         'guide 가 split 이면 HEIGHT 대체 경로(progress_of(0))가 50% 에 묶인다 (DevNote 10.3)'
     assert cfg.get('BIGBUF', '0') == '0', \
         'guide 는 버퍼 셋 전제다 -- 잠금 뒤 둘이 남는다 (fetch_timeout 안전선의 근거)'
-    digitised = p['Pixels'] + 1          # LINE47 의 인자 없는 CALL PixelFirst
+    # LINE44 Pixels + LINE46 OverscanPixels + LINE47 인자 없는 CALL PixelFirst
+    digitised = p['Pixels'] + p['OverscanPixels'] + 1
     assert digitised >= int(cfg['PIXELCOUNT']), \
         '디지타이즈(%d) < 저장(%s) -- 실컬럼이 잘린다' % (digitised, cfg['PIXELCOUNT'])
-    # 현행은 73개 초과다.  트림하면 이 수가 1~2 로 내려온다 -- 정보용 단정.
+    # ⭐ 마법 숫자 대신 **물리 불변식**을 못박는다 (2026-09-03).
+    #
+    #     레지스터 절반 536 = BLANK 8 + 다크기준 15 + 전이 1 + active 512
+    #     총 클록 = PreSkip + Pixels + PostSkip + Overscan + 1(LINE47)
+    #
+    # ⚠️ 총 클록이 536 아래로 내려가면 512번째 active 가 아직 출력단에
+    # 도달하지 않는다 -- **절대 금지선**이다.
+    clocks = (p['PreSkipPixels'] + p['Pixels']
+              + p['PostSkipPixels'] + p['OverscanPixels'] + 1)
+    assert clocks >= 536,         '총 클록 %d < 536 -- 레지스터를 다 못 쓴다 (실컬럼이 잘린다)' % clocks
+    # ⭐ "버리는 수" == "레지스터 초과 클록" 이어야 한다.  ⚠️ 이 항등은
+    # `Pixels` 를 제약하지 않는다 -- 대수적으로 소거된다.  제약하는 것은
+    # **`PIXELCOUNT` == 536 - PreSkip - PostSkip** 이다(= 528).  즉 저장 창이
+    # 실컬럼에 딱 맞는지, overscan 을 저장하기 시작했는지를 잡는다.
     surplus = digitised - int(cfg['PIXELCOUNT'])
-    assert surplus in (73, 1, 2), '예상 밖 여유 %d -- README 의 P-k 절을 볼 것' % surplus
+    assert surplus == clocks - 536,         '버림 %d != 레지스터 초과 %d -- 저장 창이 실컬럼(528)을 벗어났나'         % (surplus, clocks - 536)
+    # ⭐ 여분 자체의 제약 (문헌 권고 8~16, 직렬 트랩 시정수의 12~36배).
+    # R2610 은 13 이다.  이쪽이 `Pixels` 를 실제로 못박는다.
+    assert 1 <= surplus <= 32,         '여유 %d -- README "Pixels 여분은 몇이어야 하나" 절을 볼 것' % surplus
 
 
 @pytest.mark.repo_only

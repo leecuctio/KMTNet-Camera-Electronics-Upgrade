@@ -157,7 +157,7 @@ class IcgCfg:
     progress_step: int = 5
     burst_len: int = 1024
     fetch_buffers: int = 2
-    #: FETCH 상한 [s] = **잠금 상한** -- 하한(1.375 s) 아래여야 한다 (DevNote
+    #: FETCH 상한 [s] = **잠금 상한** -- 하한(1.251 s) 아래여야 한다 (DevNote
     #: 10.6).  8.3 MiB ≈ 0.08 s 라 1 s 면 12배 여유.  `GuideBackend` 가 검사한다.
     fetch_timeout: float = 1.0
     frame_dump: float = 0.0
@@ -170,7 +170,7 @@ class IcgCfg:
     naxis1: int = NAXIS1
     naxis2: int = NAXIS2
     #: `EXPTIME` 하한 [s] -- **ACF 를 못 읽을 때의 대체값**이다.  정본은 `acftiming`
-    #: 이 타이밍 스크립트에서 계산한 하한(R2609: 1.375 s -- `NoIntMS` 항은 10.3 실측
+    #: 이 타이밍 스크립트에서 계산한 하한(R2610: 1.251 s -- `NoIntMS` 항은 10.3 실측
     #: 1% 적중, 트랜스퍼·독출 항은 ⏳ 첫 guide 구동 실측).  하한 아래 값을 두면
     #: 클램프가 무력해지므로 ini(2.0)와 같이 하한 위로 둔다 (종전 1.0 은 근거 없는
     #: 잠정값이었다 -- DevNote 9.10·9.15).

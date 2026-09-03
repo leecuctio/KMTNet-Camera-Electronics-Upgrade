@@ -19,13 +19,13 @@ PROVISIONAL 목록은 **[DevNote 9장](DevNote.md)**, 시험은
 
 **노출 주기는 시퀀서가 만든다** (DevNote 9.12) — `Exposures=n+1` 을 한 번
 걸고 `IntMS = EXPTIME − 하한` 으로 환산한다.  하한의 정본은 ini 가 아니라
-**ACF 계산값**이다 (`icg_archon/acftiming.py`) — 현행 R2609(`NoIntMS=0`)에서
-**1.375 s** 이고, 더 짧게 요청하면 거부가 아니라 하한으로 클램프한다.
+**ACF 계산값**이다 (`icg_archon/acftiming.py`) — 현행 R2610(`NoIntMS=0` ·
+`Pixels=540`)에서 **1.251 s** 이고, 더 짧게 요청하면 거부가 아니라 하한으로 클램프한다.
 ⭐ **독출과 노출은 별개로 흐른다** — frame-transfer 라 image 는 독출 중에도
 적분하고, 저장 프레임의 노출 개시는 *직전* 트랜스퍼다(규격 10.1-4·5).
-독출 1.368 s 가 하한에 드는 것은 노출을 막아서가 아니라 **다음 트랜스퍼가
+독출 1.244 s 가 하한에 드는 것은 노출을 막아서가 아니라 **다음 트랜스퍼가
 store 가 빌 때까지 못 와서**다 (DevNote 9.13).
-**잠금은 주기보다 짧아야 한다** — `[icg] fetch_timeout = 1.0`(하한 1.375 s 아래, 8.3 MiB
+**잠금은 주기보다 짧아야 한다** — `[icg] fetch_timeout = 1.0`(하한 1.251 s 아래, 8.3 MiB
 ≈ 0.08 s), 기동 검사가 어긋나면 알린다 (DevNote 10.6 · 9.15).  FETCH 가 독출을 멈춘다는
 8.9 전제는 2026-09-02 실측으로 폐기 — **실효 하한 = 하한**.
 ⭐ **ABORT/STOP 은 컨트롤러를 세운다** — `_run()` 의 핸들러가 `_settle()`(`Exposures=0` → 꼬리
@@ -245,7 +245,7 @@ imgacq/powon).  `powon` 판은 `imgacq` 판에서 `Exposure()` 호출만 주석 
 
 1. ⭐ **guide 자리 표 = `BACKPLANE_TEMP` + MOD3·4·5·6·7·9·10 = 8자리.**
    미해결 **`OI-19`("guide 8자리 자리 표")의 답이 실물로 나왔다** —
-   `acf/KMTK_GUI_162_STA0201_R2609.acf` 의 `MODn_TYPE` 과
+   `acf/KMTK_GUI_162_STA0201_R2610.acf` 의 `MODn_TYPE` 과
    `modtm_gui_imgacq_v0.3….py` 가 훑는 슬롯이 **정확히 같다.**
    형 번호는 3·4 = `1`(Driver), 5·6 = `2`(AD), 7·10 = `11`(HeaterX),
    9 = `8`(HVXBias).  ✅ **규격 수록 완료** — raw spec **v1.9 가 10.4절에
@@ -1244,10 +1244,16 @@ C←RTD5_WB) **그때 limit 설정을 안 옮겼다.**  그래서 CCD 채널이 
 **판을 올렸다** — `R2601` → `R0827` (운영자 지시 2026-08-27), 그리고
 **2026-08-28 에 guide 정본을 하나로 줄이며 `R2608` 로 다시 표기했다**:
 
-    acf/KMTK_GUI_162_STA0201_R2609.acf                       ⭐ 현행 유일본
+    acf/KMTK_GUI_162_STA0201_R2610.acf                       ⭐ 현행 유일본
+      ⚠️ R2608/R2609 와 **바이트가 다르다** -- Pixels=540 (2026-09-03)
+    acf/archive/KMTK_GUI_162_STA0201_R2609.acf               NoIntMS=0 판
+      = R2608 + PARAMETER3 한 줄
+    acf/archive/KMTK_GUI_162_STA0201_R2608.acf               개명 기준판
       = 구 kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf (바이트 동일)
     __ref_archon_control/acf/…                               (원본 보관 — 넷 다)
     acf/archive/…_R2601_…_rtd9cal.acf  × 2                   (정정 **전** 판)
+    acf/acf_timing_script_{guide,science}.txt                ACF 에서 뽑은 발췌
+    __ref…/acf_timing_script_{guide_R210930,science_R250826}.txt   freeze 사본
 
 ⭐ **`R0827` 예외 조항이 없어졌다** — `MMDD` 라 `YYMM` 규칙에 어긋났고 숫자로
 정렬하면 구판보다 앞에 왔는데(0827 < 2601), `R2608` 이 되면서 해소됐다.
@@ -1390,7 +1396,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
   (위 매뉴얼 사실). 종전에 "12레일이므로 늘려야 한다" 고 적었던 검토는 **철회**
   한다.
 
-## ▶ 인수인계 (2026-09-02 마감 — ⭐ 새 세션이면 **여기부터**)
+## ▶ 인수인계 (2026-09-03 마감 — ⭐ 새 세션이면 **여기부터**)
 
 ### ✅ 2026-09-02 후반 — **10장 반영 · guide `Pixels` 73개 · icg ABORT 결함 + 컨트롤러 취소 안전** (⭐ 최신)
 
@@ -1404,15 +1410,45 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | `7348178` | 비평 7곳 후속 + **ERASE 비용 표기 통일**("독출 1회분 12.77 초 — 사강이 붙으면 13.27") | 9.15 **(8)** |
 | `df4d4fc` | **icg ABORT 가 연속 시퀀스를 안 세우던 결함** + ⭐⭐ **컨트롤러 취소 안전**(`_locked_thread`) + 가짜 `Exposures` 실시간 카운터.  반증 3라운드(렌즈 7) | 9.15 **(9)** |
 | `e7653cc` | 이 인수인계 절 | -- |
-| `febedd2` | **보관함 ACF 정리** -- 운영자 반입분 둘 등재(둘 다 기존 바이트의 사본, 새로 남는 것은 **이름의 대응**) · **CRLF→LF 정규화**(운영자 지시)와 `.gitattributes` 의 `-text` 예외 철회.  ⚠️ 그 예외가 보존하던 판별 단서(`R2601`=CRLF · `R0827`=LF)는 **`acf/README.md` 의 "보관함 목록과 줄 끝" 표가 유일한 기록**이 됐다 | `acf/README.md` |
+| `febedd2` | **보관함 ACF 정리** -- 운영자 반입분 둘 등재(둘 다 기존 바이트의 사본, 새로 남는 것은 **이름의 대응**) · **CRLF→LF 정규화**(운영자 지시)와 `.gitattributes` 의 `-text` 예외 철회.  ⚠️ 그 예외가 보존하던 판별 단서(`R2601`=CRLF · `R0827`=LF)는 **`acf/README.md` 의 "보관함 목록과 줄 끝" 표**가 기록한다.  ⭐ 바이트 자체는 이 커밋 **직전** `e7653cc` 에서 일곱 개 전부 복구된다 | `acf/README.md` |
 
-**지금 상태**: 워킹트리 깨끗 · origin 동기.  시험 `ics_archon` **295**(⚠️ 아래 flake 하나 제외) · `ics_sim` **330**.
+**지금 상태**(2026-09-03): 워킹트리 깨끗 · `origin` 동기.  시험 `ics_archon`
+**300**(배치본 244 + `repo_only` 56) · `ics_sim` **330**.
+⚠️ **알려진 flake 둘** -- 전체 부하에서만 간헐 실패하고 개별로는 통과한다:
+`test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved` ·
+`test_icg_backend.py::test_two_frame_tail_is_drained_when_disarm_lands_late`
+(둘째는 2026-09-03 신규 관측).
+
+#### 2026-09-03 — 타이밍 스크립트 두 판 + 추출 도구
+
+- `acf/acf_timing_script.txt` → `_science.txt` 개명, `_guide.txt` 신설.  ⭐ **둘 다
+  벤더 반입본이 아니라 ACF 추출본이다**(운영자 확인).  보관함 사본은 freeze 로
+  `*_R<YYMMDD>.txt`(스크립트 자체의 최종 수정일, 운영자 기록).
+- **`tools/extract_timing_script.py` 신설 — 뽑는 절차의 정본.**
+  `tests/test_timing_script_extract.py` 가 정본 `acf/*.acf` 여섯에 대해 대조한다.
+- `acf/README.md`: "왜 600 인가" 를 **운영자 기록으로 종결** — `Pixels=600` 은
+  serial overscan 72 를 담던 값이고, overscan 폐지 때 `PIXELCOUNT` 만 528 로
+  내려 73 이 잔재로 남았다.  ✅ **CTE 지연전하 문헌 조사 완료** -- 여분 8~16 권고.
+- ⭐ **`Pixels` 600 -> 540 확정** (운영자 2026-09-03, N=13).  문헌 조사 결론은
+  여분 8~16 (직렬 트랩 τ=0.5~1.5 µs 의 12~36배).  `PIXELCOUNT`(528)·`PreSkipPixels`(8)·
+  `HorizontalShift(600)` 은 그대로.  ✅ **저장소 반영 완료 -- `R2610` 신설 · R2609 를
+  `archive/` 로 · `icg_archon.ini`·시험 참조 갱신 · 하한 인용 1.375->1.251 s.**
+  ⏳ 실기 `APPLYALL` 은 운영자 몫 (아래 "P-k 실행 절차").
+- ⏳ **STA 문의 항목 추가**: `DGHIGH; CALL FrameShift(1033)` 의 덤프가 **첫 이송에서
+  취소된다** (`MOD4\LABEL6=DG` 인데 `FRAME6`·`IMAGE6` 상태가 그 채널을 `A_LOW` 로
+  몬다).  의도인지 결함인지 파일로는 못 가른다 -- 그쪽 초안 ACF 이므로 물어보는 것이
+  가장 싸다 (`NoIntMS=500` 질문과 같은 창구).  ⚠️ **`Pixels` 개정에 묶지 말 것.**
+- ⏳ **남은 것**: `acftiming` 의 `FrameShift` 리터럴 결함(아래 함정) · DevNote
+  8.13·8.16 의 죽은 수(11.3초·416 행/초 → 실측 12.77초·368.0) · raw spec OI-20 의
+  `600→528` 이 여기 권고와 갈림(그쪽 판올림 대기).
 메모리(`~/.claude/projects/.../memory/project_ics_archon.md`)도 이 상태다.
 
 #### ⚠️ 밟기 쉬운 함정 (이 세션이 새로 만든 규칙·전제)
 
 | 함정 | 규칙 |
 |---|---|
+| **`acf/*.acf` 의 `LINE<n>=` 을 고쳤다** | `python tools/extract_timing_script.py acf/*.acf --out acf/` 로 txt 를 **다시 뽑는다.** 안 하면 `tests/test_timing_script_extract.py` 가 빨개진다 — 고칠 것은 코드가 아니라 txt 다 |
+| **`acftiming` 이 `FrameShift(1033)` 을 파라미터로 셈한다** | 스크립트는 리터럴인데 `frame_timing()` 이 `fshift * lines` 로 `Lines` 를 따라간다. 오늘은 `Lines=1033` 이라 수가 맞지만 달라지면 조용히 틀린다. 쌍둥이 `HorizontalShift(600)` 은 `_FRAME_HSHIFT` 로 굳어 있고 시험도 있다 — ⏳ **미수정** |
 | `ArchonController` 에서 `_lock` 아래 블로킹 왕복 | **`_locked_thread(fn, *args)` 로만.**  `async with self._lock: await asyncio.to_thread(...)` 를 직접 쓰면 취소 순간 락이 풀려 소켓 왕복 중인 스레드와 다음 명령이 끼어든다 (science 도 같은 코드, 20회 중 14회 재현).  9.15-(9) |
 | guide 는 **3버퍼**(`BIGBUF=0`) | 10.6 의 `--hold 20`(재사용·다음 장 덮임)은 science **2버퍼** 실측이다.  guide 에 그대로 옮겨 적지 말 것 — 3버퍼 거동은 ⏳ 첫 구동 실측.  제약(`fetch_timeout` < 하한)만 보수적 안전선으로 유지 |
 | `Exposures=0` 은 **현재 프레임까지** 찍는다 | ABORT/STOP 뒤 꼬리 한두 장이 더 끝난다 — 시퀀서 `_drain_tail` 이 관측으로 소화한다(해제 직후 최신 완료 번호 기준, 최대 2홉).  `busy` 가 그 동안 True 인 것이 **의도**다 |
@@ -1420,7 +1456,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | ERASE 비용 표기 | **"독출 1회분(실측 12.77초 — 사강 `NoIntMS` 0.5 가 붙으면 13.27초)"** 로 통일했다.  "프레임 하나 13.27" 로 단정하지 말 것 — 사강 동반 여부는 미확정 |
 | `acftiming` 은 **guide 스크립트 전용** | science ACF 를 대면 그럴싸한 13.65 s 가 나온다(형태 가드가 이제 막는다).  science 하한은 `MIN_FRAME_PERIOD` 상수 |
 | 반증자 제안을 그대로 받지 말 것 | "프레임 하나 = 13.27" 이 그 사례 — 반증자의 전제(ERASE 가 사강을 동반)가 따라 들어왔다.  9.15-(8) |
-| 보관함(`__ref_archon_control/`) 줄 끝 | 이제 **전 계통 LF** 다 (2026-09-02 정규화).  받은 그대로의 CRLF/LF 는 `acf/README.md` 표에만 남아 있다 -- 새 원본을 넣을 때 그 표에 "받은 줄 끝" 을 먼저 적을 것.  ⚠️ science 원본 다섯은 정규화 뒤 정본 `acf/` 와 바이트가 같다(보관 값은 "받은 이름" 뿐) |
+| 보관함(`__ref_archon_control/`) 줄 끝 | 이제 **전 계통 LF** 다 (2026-09-02 정규화).  받은 그대로의 CRLF/LF 는 `acf/README.md` 표가 기록한다 -- 새 원본을 넣을 때 그 표에 "받은 줄 끝" 을 먼저 적을 것.  ⭐ **바이트 자체는 정규화 직전 커밋 `e7653cc`(=`febedd2^`)에서 일곱 개 전부 복구된다.**  ⚠️ science 원본 다섯은 정규화 뒤 정본 `acf/` 와 바이트가 같다(보관 값은 "받은 이름" 뿐) |
 | `fetch_timeout=0` 의 뜻 | "크기에서 유도"(science 344 s · guide 60 s) — **잠금 상한이기도** 해서 기동 검사가 잡는다.  `ArchonCfg` 기본은 10, `IcgCfg` 기본은 1.0 |
 
 #### ⚠️ 알려진 flake (별건, 후속)
@@ -1438,7 +1474,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
    한 장으로.  적을 것: 실현 주기(`EXPTIME` 2·5·10 s, 감시 경고) · `DATE-OBS` 보정(6.8 ms) · **STOP/ABORT 뒤
    `FRAME` 증가 수**(꼬리 1장인지 2장인지 → `Exposures=0` 이 읽히는 시점) · 3버퍼 잠금 거동(FETCH 로그
    `RBUF`/`WBUF`) · guide FETCH 초(`fetch_timeout` 1.0 검증) · STATUS 원문(`HEATER` 필드명 · `C1_TEMP` 8자리 순서)
-   · `Pixels` 600 vs 529 바이트 비교(P-k).
+   · `Pixels` 600 vs 540 바이트 비교(P-k).
 2. ⭐ **`probe_archon` 의 guide 대응** — `field_order_problems()` 가 science 10자리 전제라 guide(8자리)에서
    **거짓 어긋남**을 보고한다(이 문서 "참고 자료 재검토" 절 끝).  probe 는 실기에 붙이는 첫 도구다.
 3. 그 뒤 **벤치** — 1 의 체크리스트대로.  실측이 나오면 9.8 표·9.15 의 ⏳ 를 닫고 `PROVISIONAL` 표시를 뗀다.
@@ -1446,7 +1482,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
    실측 뒤) · 가짜 기본 상태 "프레임 0 완료"→1(48개 시험 전제 이동).
 5. **그쪽(다른 세션) 몫**: `tools/ics_archon_buftest.py` 17곳 + 10.9 도구 넷 (목록 DevNote 9.15-(6)).
 6. **`main` 몫** (v1.10 승격 라운드): 규격 519·651·719 행의 R2608→R2609 · 견본 `EXPTIME` 대체값 ≥2 · OI-20
-   검증 경로 600→**529** · G 견본 `C1_VOLT` 절사 · `OVRSCNY` comment.  DevNote 9.11-(5)·9.13-(5).
+   검증 경로 600→**540** · G 견본 `C1_VOLT` 절사 · `OVRSCNY` comment.  DevNote 9.11-(5)·9.13-(5).
 7. **운영자 액션**: Radionode(계정 등급·KEY/SECRET·endpoint·게이트웨이·SEND INTERVAL — 없으면
    HEBOX/FSATEMP/FSAHUM 은 sentinel) · STA 질의 둘(`NoIntMS=500` 이 왜 있었나 · `Pixels=600` 이 왜).
 
@@ -1473,7 +1509,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 |---|---|
 | ✅ `parse.progress` | **`PCTREAD` 가 50% 를 못 넘었다** — `FRAMEMODE=2`(split) 라 `BUFnHEIGHT = 2 x LINECOUNT`.  → `progress_of(lines_total)` + `ArchonController.lines_total`(ACF `LINECOUNT`) (2026-09-02, DevNote 9.15) |
 | ✅ `config.MIN_FRAME_PERIOD` | 12.0 → **13.27** (실측) — 2026-09-02 |
-| ✅ `[archon] fetch_timeout` | 30 → **10**.  **잠금 > 주기면 다음 장이 덮인다** → 기동 검사 신설 (`lock_buffer=true` · FETCH 상한 >= 주기면 경고).  guide 는 **1.0**(하한 1.375 아래) — 2026-09-02 |
+| ✅ `[archon] fetch_timeout` | 30 → **10**.  **잠금 > 주기면 다음 장이 덮인다** → 기동 검사 신설 (`lock_buffer=true` · FETCH 상한 >= 주기면 경고).  guide 는 **1.0**(하한 미만 -- R2610 기준 1.251 s) — 2026-09-02 |
 | ✅ `controller.py` | `LOCK%d` 를 `try` 안으로 — 잠금 명령이 죽어도 `LOCK0` 을 탄다 (2026-09-02) |
 | `buftest` · `probe` | `RCONFIG` 선검사를 `POWERON` 앞 · 1단계 `STATUS` · `Exposures=N` · "ACF 적용 전" 문구 |
 
@@ -1753,11 +1789,14 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
    `__osu_legacy/` · `__tcs_simulator/`.  ⚠️ 구 `__localonly_` 접두어는
    **2026-08-29 에 폐지**됐고 문서 정리도 끝났다(main `c81c1f8`, 이 브랜치는
    `2f039fc` 합류분에 포함).  옛 경로를 다시 쓰지 말 것.
-3. **`.gitattributes` 에 `**/__ref_archon_control/**/*.acf -text` 가 걸려
-   있다** (2026-08-28 신설).  그 폴더의 ACF 는 **받은 바이트 그대로**(CRLF 인
-   것은 CRLF 로) 보관한다 — 정본 `acf/` 는 여전히 LF 다.  ⚠️ **둘을 같은
-   규칙으로 되돌리지 말 것**: 정본이 CRLF 가 되면 파서에 `\r` 이 섞여 들어가고,
-   보관본이 LF 가 되면 원본을 남긴 뜻이 사라진다.
+3. ⭐ **그 `-text` 예외는 철회됐다** (2026-09-02 `febedd2`, 운영자 지시
+   *"CRLF 로 되어 있는 것들 LF 로 바꿔도 되"*).  ⚠️ **종전에 여기 적혀 있던
+   "둘을 같은 규칙으로 되돌리지 말 것" 은 이미 뒤집힌 지시다** — 그대로 두면
+   다음 세션이 되돌리려 든다 (2026-09-03 정정).  지금은 보관함도 정본과 같이
+   `*.acf`/`*.txt text eol=lf` 를 따른다(예외 없음).  받은 줄 끝의 기록은
+   `acf/README.md` 의 "보관함 목록과 줄 끝" 표에 남겼다 — 다만 `R2601` 계열
+   guide ACF 넷의 CRLF 원본 바이트는 `archongui-study` 브랜치의
+   `ArchonGUI/__reference/acf/` 에 아직 살아 있다(거기엔 `-text` 가 걸려 있다).
 4. **ACF 를 파일명으로 고르지 말 것.**  개명이 시험을 한 번 깼다
    (`kmtnet_guide_*.acf` 글롭이 빈 목록).  `tests/test_monitor.py` 의
    `_repo_acfs()` 가 **내용(`BIGBUF`)으로** 가른다 — 새 시험도 그것을 쓴다.
@@ -1800,7 +1839,7 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
 새로 확정한 사실 셋.  위
 [참고 자료 재검토](#-참고-자료-재검토--__ref_archon_control-전수-2026-08-28-목-지시) 절과
 [DevNote 4장](DevNote.md).  **guide ACF 정본도 하나로 줄고 개명됐다**
-(`KMTK_GUI_162_STA0201_R2608.acf`, 운영자 2026-08-28.  ⭐ **현행은 `…_R2609.acf`** -- 2026-08-31 에 `NoIntMS` 를 0 으로 내리며 판을 올렸다, `acf/README.md`).
+(`KMTK_GUI_162_STA0201_R2608.acf`, 운영자 2026-08-28.  ⭐ **현행은 `…_R2610.acf`** -- 2026-08-31 `NoIntMS`=0(R2609) · 2026-09-03 `Pixels`=540(R2610), `acf/README.md`).
 
 ### ✅ 작업 A — 층 1·2 구현 **완료 (2026-08-28)**
 
@@ -1840,14 +1879,51 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
 | **P-h** | **바이어스 16채널이 STATUS 에 다 오나** (신설) | 층 2 의 열이 통째로 `NC` 가 되는지 | ✅ 채널 표가 찍는다 |
 | **P-i** | **레일이 p.41 정상 범위 안인가** (신설) | `rail_flag` 열의 기준.  유닛이 다르면 `[archon.rails]` | ✅ 판정을 찍는다 |
 | **P-j** | **`POWERON` 뒤 `POWER` 가 몇 초에 4 가 되나** (신설 2026-08-28) | `poweron_wait` 12초가 램프에 충분한지.  램프 중 `3` 을 실제로 보고하는지도 함께 | ✅ 기동 로그에 `POWER=4 (On) 확인 -- N초` 로 찍힌다 |
-| **P-k** | **guide `Pixels` 를 줄여도 영상이 같은가** (신설 2026-08-29 · 갱신 2026-09-01, 운영자 예정) | 지금은 탭당 601 을 디지타이즈해 **528 만 저장**한다 -- 73개가 버려지고 픽셀 클록의 약 12%, **148.8 ms/프레임**이다.  ⭐ 데이터시트 대응(규격 9.4절: `8 BLANK\|15 DARK\|1 trans\|512 active` = 536)을 맞춰 보면 **73개는 레지스터 물리적 끝을 지난 자리**라 무손실이 거의 확정 -- 바이트 비교는 확인 절차다 | 손으로 -- 같은 조건 두 값으로 프레임 찍어 **바이트 비교**.  ⭐ **권고값은 528 이 아니라 `Pixels=529`**(디지타이즈 530 · 저장 528 = science 와 같은 여유 2; 528 이면 여유 1).  ⚠️ `LINE47` 의 인자 없는 `CALL PixelFirst`(+1)는 남길 것.  ⚠️ 실익은 **하한 1.375→1.228 s** 하나 -- 시퀀서 pacing 이라 `EXPTIME` 고정이면 주기는 그대로다 |
+| **P-k** | **guide `Pixels` 를 줄여도 영상이 같은가** (신설 2026-08-29 · ⭐ **ACF 준비 완료 2026-09-03**) | 구 R2609 는 탭당 601 을 디지타이즈해 **528 만 저장**했다 -- 73개가 레지스터(536) 물리적 끝을 지난 자리라 무손실이 거의 확정이고, 바이트 비교는 **확인 절차**다.  문헌 조사(2026-09-03)가 여분 8~16 을 권고해 **13** 으로 잡았다 | ⭐ **두 ACF 가 저장소에 다 있다** -- 아래 "P-k 실행 절차" |
+
+#### P-k 실행 절차 (2026-09-03 준비 -- ACF 둘 다 저장소에 있다)
+
+    구 판: acf/archive/KMTK_GUI_162_STA0201_R2609.acf   Pixels=600  (클록 609)
+    신 판: acf/KMTK_GUI_162_STA0201_R2610.acf           Pixels=540  (클록 549)
+           ** 두 파일의 차이는 PARAMETER5 한 줄뿐이다 **
+
+1. **같은 조건**으로 두 판에서 각각 프레임을 찍는다 (guide 유닛 `10.0.0.162`).
+   조명·온도·`IntMS` 를 고정하고, 판마다 최소 몇 장씩 -- 잡음으로 갈리지
+   않게.
+
+       python tools/probe_archon.py --host 10.0.0.162            --acf acf/archive/KMTK_GUI_162_STA0201_R2609.acf --expose 0 --write
+       python tools/probe_archon.py --host 10.0.0.162            --acf acf/KMTK_GUI_162_STA0201_R2610.acf --expose 0 --write
+
+2. **판정** -- 저장된 4224x1033 의 **바이트가 같으면** 저장 창이 앞 528 임이
+   확정되고 트림이 무손실이다.  ⚠️ 잡음이 있으므로 "같다" 는 **통계로** 본다
+   (평균·표준편차·컬럼 프로파일).  구조적 이동(한 컬럼 밀림)이 있으면 즉시 보인다.
+3. **부수 확인**: 프레임 주기가 1.375 -> **1.251 s** 로 실측되는가.
+   `age_ms`/`lag_ms` · `fetch_timeout`(1.0) 이 새 하한 아래로 유지되는가.
+4. ⚠️ **바이어스·다크 재취득** -- 라인 끝 클록 이력이 바뀌어 준위가 미세하게
+   움직일 수 있다 (LSST 사례: 비디오 오프셋 드리프트).
+5. 결과는 **규격 OI-20** 도 함께 닫는다 (`OVRSCNX=16` 귀속의 실측 뒷받침).
+
+#### P-l -- 직렬 지연전하 꼬리 측정 (신설 2026-09-03, 문헌 조사 후속)
+
+**타이밍을 한 틱도 안 건드리고 `PIXELCOUNT` 만 601 로 올린다.**  그러면
+디지타이즈 601 이 전부 파일에 남는다 (1~15 다크기준 · 16 전이 ·
+17~528 active · **529~601 = 레지스터를 지난 꼬리**).
+
+- 고신호 플랫으로 529열부터의 **지수 감쇠**를 적합 -> **CCD47-20 자신의 직렬 τ**.
+  ⭐ 이 값은 **공개 실측이 0건**이다 (문헌의 τ=0.5~1.5 µs 는 LSST ITL 값).
+- 바이어스 프레임으로 baseline 이 몇 열에서 안정되는지.
+- `CTI = S_O / (S_LP x N_T)`, `N_T = 536` (EPER).  데이터시트 전형값 7e-6 과 대조.
+- τ 가 나오면 **여분 N 이 계산으로 확정**된다 -- 지금 13 은 문헌 권고값이다.
+
+⚠️ P-k 와 **따로** 돌린다 -- 한 번에 한 변수만 바꿔야 판정이 선다.
+
 
 **그리고 첫 감시 로그로 볼 것** (운영자 몫과 겹친다):
 
 1. `age_ms`·`lag_ms` 가 어떤 값인가 — **FETCH 중에 얼마나 밀리나**가
    `monitor_interval` 기본값(20초)이 맞는지의 근거다.
 2. `fresh` 열이 0 으로 오래 머무는가 — `COUNT` 가 실제로 오르는지.
-3. `CCD` 채널이 −30 아래를 읽는가 (`KMTK_GUI_162_STA0201_R2609.acf` 를 올린 뒤 -- limit 정정은 구 `R0827`=`R2608` 판과 같고, R2609 는 `NoIntMS=0` 만 다르다).
+3. `CCD` 채널이 −30 아래를 읽는가 (`KMTK_GUI_162_STA0201_R2610.acf` 를 올린 뒤 -- limit 정정은 구 `R0827`=`R2608` 판과 같다.  R2609 는 `NoIntMS=0`, R2610 은 거기에 `Pixels=540` 이 더해진 판이다).
 
 ### 작업 C — raw spec **v1.8** (`main` 에서, 판올림)
 
@@ -1956,9 +2032,11 @@ sentinel 이다.  **해독 규칙은 실측으로 다 확정해 뒀다** -- 위 
 
 ### 운영자 몫 (실기)
 
-1. **`KMTK_GUI_162_STA0201_R2609.acf` 를 guide 유닛에 올린다** (`APPLYALL`)
-   -- 저장소만 고친 상태다.  ⚠️ 구 `R0827_for1259_rtd9cal` 과 **내용은 같다**
-   (이름만 규칙에 맞췄다) -- 이미 올렸다면 다시 올릴 필요 없다.
+1. **`KMTK_GUI_162_STA0201_R2610.acf` 를 guide 유닛에 올린다** (`APPLYALL`)
+   -- 저장소만 고친 상태다.  ⚠️⚠️ **R2609 를 이미 올렸어도 반드시 다시 올려야
+   한다** -- R2610 은 `Pixels` 가 600 -> **540** 이라 **내용이 다르다**
+   (2026-09-03).  ⚠️ 올린 뒤 **바이어스·다크를 재취득**하고, 프레임 주기가
+   1.375 -> **1.251 s** 로 바뀌었는지 확인한다.
 2. 실험실 스크립트들의 `UNIT_ACF` 를 **새 파일명으로** 고친다 --
    `archon_kmtnet_guide_tvm_v0.9….py` · `modtm_*.py` · `tvm_gui_goff_v0.7….py`.
    (`__ref_archon_control/` 은 참고 원본 보관용이라 여기서 고치지 않았다.)
@@ -2288,7 +2366,7 @@ README 로 나눈다.
 
 | 폭 | science (주기 12초 — 실측 13.27초로는 약 1.1배) | **guide** (짧은 노출 연속) |
 |---|---|---|
-| 16비트 (65,536) | 약 **9일** 연속 (13.27초면 약 10일) | 1초 주기 **18시간** · 0.5초 **9시간** (⚠️ 가정법 — guide 하한은 1.375초다, DevNote 9.13) |
+| 16비트 (65,536) | 약 **9일** 연속 (13.27초면 약 10일) | 1초 주기 **18시간** · 0.5초 **9시간** (⚠️ 가정법 — guide 하한은 R2610 에서 1.251초다, DevNote 9.13) |
 | 32비트 | 사실상 무한 | 사실상 무한 |
 
 science 도 9일이면 **한 관측 기간 안에 들어온다.**  재기동하면 리셋되겠지만

@@ -337,7 +337,7 @@ def test_cfg_name_from_acf_only_strips_acf_and_cfg():
     assert f('acf/KMTA_SCI_101_R2609.1') == 'KMTA_SCI_101_R2609.1'
     # `.cfg` 도 뗀다.  대소문자는 무시하되 **뗀 뒤의 이름은 원문 그대로**다
     assert f('acf/KMTA_SCI_101_R2609.1.cfg') == 'KMTA_SCI_101_R2609.1'
-    assert f('acf/KMTK_GUI_162_STA0201_R2609.ACF') == 'KMTK_GUI_162_STA0201_R2609'
+    assert f('acf/KMTK_GUI_162_STA0201_R2610.ACF') == 'KMTK_GUI_162_STA0201_R2610'
     # 모르는 접미는 남긴다 -- 임의로 떼면 값이 소리 없이 달라진다
     assert f('acf/KMTA_SCI_101_R2609.1.txt') == 'KMTA_SCI_101_R2609.1.txt'
     # 유도 실패는 빈 문자열 (부르는 쪽이 손편집 값·백엔드 값에 맡긴다)

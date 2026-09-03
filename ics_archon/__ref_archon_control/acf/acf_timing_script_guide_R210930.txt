@@ -1,0 +1,113 @@
+Start:
+RESET; IF ContinuousExposures GOTO Continuous
+X; IF Exposures GOTO Exposure
+X; CALL SkipLine
+X; GOTO Start
+
+Exposure:
+X; Exposures--
+Continuous:
+X; CALL IntUnit(IntMS)
+NOINT; CALL NoIntUnit(NoIntMS)
+DGHIGH; CALL FrameShift(1033)
+DGLOW; CALL HorizontalShift(600)
+CLAMP; X(10000)
+NOCLAMP; CALL SkipLine(PreSkipLines)
+FCLK; CALL Line(Lines)
+X; CALL SkipLine(PostSkipLines)
+X; CALL Line(OverscanLines)
+X; GOTO Start
+
+IntUnit:
+INT; CALL SmallIntUnit(502)
+X; X(99)
+X; RETURN IntUnit
+
+NoIntUnit:
+NOINT; CALL SmallIntUnit(502)
+X; X(99)
+X; RETURN NoIntUnit
+
+SmallIntUnit:
+RGHIGH; X(11)
+RGLOW; X(11)
+S1LOW; X(28)
+S3HIGH; X(28)
+S2LOW; X(28)
+S1HIGH; X(28)
+S3LOW; X(28)
+S2HIGH; X(28)
+X; RETURN SmallIntUnit
+
+Line:
+X; CALL VerticalShift(VerticalBinning)
+LCLK; CALL SkipPixelFirst(PreSkipPixels)
+RGHIGH; CALL PixelFirst(Pixels)
+RGHIGH; CALL SkipPixelFirst(PostSkipPixels)
+RGHIGH; CALL PixelFirst(OverscanPixels)
+RGHIGH; CALL PixelFirst
+CLAMP; X(10000)
+NOCLAMP; RETURN Line
+
+SkipLine:
+RGHIGH; CALL VerticalShift
+X; CALL HorizontalShift(600)
+CLAMP; X(10000)
+NOCLAMP; RETURN SkipLine
+
+Pixel:
+RGHIGH
+PixelFirst:
+RGHIGH; X(20)
+RGLOW
+PCLK
+NOPCLK
+S1LOW; X(10)
+S3HIGH; X(10)
+S2LOW; X(10)
+S1HIGH; X(64)
+S3LOW; X(10)
+S2HIGH; X(64)
+RGHIGH; RETURN Pixel
+
+SkipPixel:
+RGHIGH
+SkipPixelFirst:
+RGHIGH; X(20)
+RGLOW
+X
+X
+S1LOW; X(10)
+S3HIGH; X(10)
+S2LOW; X(10)
+S1HIGH; X(64)
+S3LOW; X(10)
+S2HIGH; X(64)
+RGHIGH; RETURN SkipPixel
+
+HorizontalShift:
+S1LOW; X(ST)
+S3HIGH; X(ST)
+S2LOW; X(ST)
+S1HIGH; X(ST)
+S3LOW; X(ST)
+S2HIGH; X(ST)
+X; RETURN HorizontalShift
+
+VerticalShift:
+IMAGE1; X(AT)
+IMAGE2; X(AT)
+IMAGE3; X(AT)
+IMAGE4; X(AT)
+IMAGE5; X(AT)
+IMAGE6; X(AT)
+X; RETURN VerticalShift
+
+FrameShift:
+FRAME1; X(AT)
+FRAME2; X(AT)
+FRAME3; X(AT)
+FRAME4; X(AT)
+FRAME5; X(AT)
+FRAME6; X(AT)
+X; RETURN FrameShift

@@ -25,12 +25,13 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`icg_archon.ini`](icg_archon.ini) | icg 설정 — `[icg]` 가 guide 컨트롤러 배선, `[hk]` 가 로깅, `[radionode]` 가 Tapaculo365 Open API 접속(콘솔의 "OPENAPI 매뉴얼" 값을 옮겨 적는다) |
 | [`tools/gen_guidecards.py`](tools/gen_guidecards.py) | guide 견본 헤더 → `icg_archon/guidecards.py` 생성기 — 견본이 개정되면(v1.1 승격) 다시 돌린다.  `--diff` 는 science 폭 대조만 |
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**264항목**, 약 4분). 배치본은 `-m "not repo_only"` (**223항목**).  ⚠️ 숫자를 손으로 유지하지 말 것 -- `python -m pytest --collect-only -q` 꼬리가 정본이다.  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**300항목**, 약 4분). 배치본은 `-m "not repo_only"` (**244항목**).  ⚠️ 숫자를 손으로 유지하지 말 것 -- `python -m pytest --collect-only -q` 꼬리가 정본이다.  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/ics_archon_buftest.py`](tools/ics_archon_buftest.py) | **`LOCK`/`FETCH` 2x2 회귀 시험** — 엔진 라인 속도를 `idle`·`lock`·`fetch`·`nolock` 넷으로 견준다 (본편 무수정). 2026-09-01 실기 결론은 [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) |
+| [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}.txt` 의 절차 정본. `--check` 로 대조, `--out` 으로 재추출.  ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
-| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 6개 = science 5 + guide 1, `archive/` 구판 2개) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
+| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 6개 = science 5 + guide 1, `archive/` 구판 4개, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
 | [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.3.4`, science 유닛).  유닛별 사본 셋(`KMTC-102`·`KMTC-113`·`KMTS-101`)이 나란히 있고 `tests/test_labtest_spec_copy.py` 가 표류를 막는다 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |
@@ -483,7 +484,7 @@ python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
 되는 시험" 이 아니라 "배치본에는 대조할 원천이 없다" 다.  저장소에서 빼면
 **벤더 표류와 견본 어긋남을 놓친다** — 그 둘이 raw spec 5장 개정이 왔을 때
 울리는 알람이다.  **2026-08-26 의 v1.5 반영이 그 알람으로 시작됐다.**
-저장소에서는 표식 없이 전부 돌린다 (**264항목** = 배치본 223 + `repo_only` 41).
+저장소에서는 표식 없이 전부 돌린다 (**300항목** = 배치본 244 + `repo_only` 56).
 
 - **야간에는 갱신하지 않는다.** 돌고 있는 코드가 바뀐다.
 - `~/AIC/Config/` 의 ini 는 배포본 밖이라 **덮이지 않는다.** 새 키가 생겼는지는
