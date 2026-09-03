@@ -42,6 +42,12 @@ WANT = ('RAWCARDS', 'SITE_INFO', 'HDR_NAXIS1', 'HDR_NAXIS2', 'TEMP_NC',
         'fits_card', 'build_header', 'resolve_pair_number',
         '_check_identity_setup',
         '_expected_dataset_bytes', '_check_data_storage')
+# ⚠️ **아래 값은 `exec` 환경에 넣는 임의 주입값이고 실기와 무관하다** -- 스크립트
+#    파일에서 읽은 기대값이 아니므로, 스크립트의 실값(`UNIT_CTRL_ID`
+#    `KMTC-SCI-101` · `UNIT_CTRL_SN` `STA-0284` 등)과 달라도 이 검증은 안 깨진다.
+#    ⭐ 2026-09-03 부터 `STA-0287` 은 **저장소 안의 실재 유닛**(SAAO science 2,
+#    `acf/KMTS_SCI_102_STA0287_R2608_NT.acf`)과 이름이 겹친다 -- 여기 값을 실기
+#    귀속으로 읽지 말 것 (값 자체는 견본이라 고치지 않는다, DevNote 11.10).
 G = {'os': os, 'socket': socket, 'time': time, 'select': __import__('select'),
      'shutil': __import__('shutil'),
      # _expected_dataset_bytes 가 읽는 데이터셋 설정 (xTalk 기본값)

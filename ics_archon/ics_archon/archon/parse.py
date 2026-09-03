@@ -561,7 +561,8 @@ RAIL_LIMITS: dict[str, tuple[float, float]] = {
 
 
 def rail_problems(status: dict[str, str] | None,
-                  limits: dict[str, tuple[float, float]] | None = None
+                  limits: dict[str, tuple[float, float]] | None = None,
+                  rails: tuple[str, ...] | None = None
                   ) -> list[str]:
     """정상 범위를 벗어난 레일 (없으면 빈 목록).  기록의 `rail_flag` 열.
 
@@ -571,12 +572,18 @@ def rail_problems(status: dict[str, str] | None,
 
     ⚠️ **`POWER=4` 가 아니면 바이어스가 ~0 V 다**(p.77).  그건 CCD 바이어스지
     시스템 레일이 아니라 여기에는 영향이 없다 -- 두 층을 섞지 말 것.
+
+    `rails` 를 주면 그 목록을 돈다 -- guide 8자리(`guidehdr.VOLT_RAILS`)에는
+    science 에 없는 `HEATER`(+28 V)가 있다.  ⚠️ **그 레일에는 정상 범위가
+    없다** (매뉴얼 p.41 표는 7레일이고 `HEATER` 는 guide 전용이다) -- 표에
+    없으면 세지 않는 F2 규칙대로 조용히 넘어간다.  판정을 넣으려면 `[archon.
+    rails]` 처럼 설정으로 주는 것이 먼저다 (추정값을 상수로 굳히지 말 것).
     """
     table = RAIL_LIMITS if limits is None else limits
     if not status:
         return []
     bad: list[str] = []
-    for rail in VOLT_RAILS:
+    for rail in (VOLT_RAILS if rails is None else rails):
         span = table.get(rail)
         if span is None:
             continue
@@ -779,10 +786,14 @@ MODULE_TYPES = {0: 'None', 1: 'Driver', 2: 'AD', 3: 'LVBias', 4: 'HVBias',
 AD_TYPES = frozenset({2, 13, 14, 15, 17})
 
 
-def temp_mod_slots() -> frozenset:
-    """`TEMP_MODS` 가 자리를 준 슬롯 번호 (`BACKPLANE_TEMP` 는 슬롯이 없다)."""
+def temp_mod_slots(fields: tuple[str, ...] | None = None) -> frozenset:
+    """자리 표가 자리를 준 슬롯 번호 (`BACKPLANE_TEMP` 는 슬롯이 없다).
+
+    `fields` 를 주면 그 표로 센다 -- guide 8자리(`guidehdr.TEMP_MODS`)를
+    대는 자리다.  안 주면 science 10자리(모듈 상수)다.
+    """
     out = set()
-    for field in TEMP_MODS:
+    for field in (TEMP_MODS if fields is None else fields):
         if field.startswith('MOD') and '/' in field:
             try:
                 out.add(int(field[3:field.index('/')]))
@@ -791,8 +802,9 @@ def temp_mod_slots() -> frozenset:
     return frozenset(out)
 
 
-def field_order_problems(system: dict[str, str] | None) -> list[str]:
-    """`SYSTEM` 의 장착 모듈이 **규격 5.6.1절 자리 표와 맞나** (없으면 빈 목록).
+def field_order_problems(system: dict[str, str] | None,
+                         fields: tuple[str, ...] | None = None) -> list[str]:
+    """`SYSTEM` 의 장착 모듈이 **자리 표와 맞나** (없으면 빈 목록).
 
     ⚠️ **종전 판정은 "AD 모듈이 슬롯 5~8 인가" 였고 그것이 틀렸다**
     (2026-08-27).  매뉴얼 p.20 의 "AD 는 중앙 4슬롯" 을 옮긴 잠정안이었는데,
@@ -806,13 +818,18 @@ def field_order_problems(system: dict[str, str] | None) -> list[str]:
     **다른 모듈의 온도를 그 모듈 값으로 읽는다.**
 
     슬롯 번호를 못박지 않으므로 science 10자리와 guide 8자리에 **같은 검사가
-    그대로** 쓰인다.
+    그대로** 쓰인다.  ⚠️ 다만 **대는 표는 골라 줘야 한다** -- 기본값은
+    science(`TEMP_MODS` = 규격 5.6.1절)이고, guide 유닛에는
+    `fields=guidehdr.TEMP_MODS`(규격 10.4절, 8자리)를 준다.  안 골라 주면
+    guide 실기 정상 구성(장착 3·4·5·6·7·9·10)에서 **`extra [6, 7]` +
+    `missing [1, 2, 8, 11]` 이 거짓으로** 뜬다 -- 2026-08-27 에 고친 오경보와
+    같은 부류이고, 첫 화면의 오경보가 진짜 문제를 덮는다.
     """
     mods = module_types(system)
     if not mods:
         return []
     present = frozenset(s for s, t in mods.items() if t)
-    expected = temp_mod_slots()
+    expected = temp_mod_slots(fields)
     bad: list[str] = []
     extra = sorted(present - expected)
     missing = sorted(expected - present)

@@ -29,6 +29,13 @@
 3단계는 `--expose` 를 준 경우에만 돈다.  끝나면 **무슨 일이 있어도 POWEROFF** 를
 보낸다 (전원을 켠 채로 끝나는 것은 검출기 쪽 위험이다).
 
+⭐ **guide 유닛에는 `--unit guide` 를 준다** (2026-09-03).  자리 표·카드 표·설정
+파일이 science pair 와 다르다 -- 안 주면 1단계가 자리 표 어긋남을 **거짓으로**
+보고한다 (`extra [6, 7]` + `missing [1, 2, 8, 11]`).
+
+    python tools/probe_archon.py --unit guide --host 10.0.0.162 \
+        --acf acf/KMTK_GUI_162_STA0201_R2610.acf
+
 ⚠️ 이 도구는 파일 이름을 `probe.<...>.fits` 로 쓴다 -- 관측 번호 공간(D-016)을
 건드리지 않으려는 것이다.  아카이브에 넣을 자료를 만드는 도구가 아니다.
 """
@@ -40,6 +47,8 @@ import asyncio
 import os
 import sys
 import time
+from dataclasses import dataclass
+from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -47,6 +56,7 @@ from ics_archon import config as acfg_mod                 # noqa: E402
 from ics_archon.archon import fitswrite, parse            # noqa: E402
 from ics_archon.archon.controller import ArchonController  # noqa: E402
 from ics_archon.archon.protocol import ArchonError        # noqa: E402
+from ics_archon.config import cfg_name_from_acf           # noqa: E402
 from ics_sim import rawcards, rawhdr                      # noqa: E402
 
 OK, WARN, BAD = '  OK  ', ' 확인 ', ' 문제 '
@@ -77,11 +87,144 @@ def dump(fields: dict, per_line: int = 3) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 유닛 프로파일 -- science pair 와 guide 는 자리 표·카드 표가 다르다
+# ---------------------------------------------------------------------------
+#
+# ⭐ **왜 갈라야 하나** (2026-09-03 신설).  guide 유닛의 자리 표는 규격 10.4절
+# **8자리**이고 실기 장착은 3·4·5·6·7·9·10 이다 (guide ACF `[SYSTEM]` 실측).
+# science 10자리(5.6.1절)로 재면 `parse.field_order_problems()` 가
+# `extra [6, 7]` + `missing [1, 2, 8, 11]` 을 **거짓으로** 보고한다 --
+# 2026-08-27 에 고친 오경보(`AD 는 슬롯 5~8`)와 같은 부류이고, 실기 첫 화면의
+# 오경보 하나가 진짜 문제를 덮는다.
+#
+# ⚠️ **표를 여기 베끼지 않는다.**  science 는 `ics_sim.rawhdr`/`rawcards`,
+# guide 는 `icg_archon.guidehdr`/`guidecards` 를 **그대로 가리킨다** -- 규격이
+# 개정될 때 한쪽만 고쳐지는 것을 막는 저장소 규칙이다 (기계 사본을 늘리지
+# 않는다).  guide 쪽은 **부를 때 import** 한다: science 실행이 icg 층의
+# import 실패에 걸리지 않게.
+
+
+@dataclass(frozen=True)
+class UnitProfile:
+    """`--unit` 이 고르는 한 벌 -- 자리 표 · 카드 표 · 설정 · 태그."""
+
+    name: str
+    #: 기본 태그 (science `MK`/`NT` · guide `G`).  헤더 색인 자리를 정한다.
+    tag: str
+    tags: tuple[str, ...]
+    #: 기본 ini.  guide 는 `[icg]` 절을 읽는 별개 파일이다.
+    ini: str
+    load_cfg: Callable[[str], object]
+    temp_mods: tuple[str, ...]
+    volt_rails: tuple[str, ...]
+    temp_labels: tuple[str, ...]
+    #: 레일 -> STATUS 필드 **후보** (이름이 아직 미확정인 자리).  guide
+    #: `HEATER`(+28 V)가 그렇다 -- 규격에도 tvm 실측 로그에도 없어서 후보
+    #: 셋을 순회한다 (DevNote 9.8 PROVISIONAL).  결측으로 세지 않는다.
+    rail_candidates: dict
+    #: `STATUS` -> `{'temp': [...], 'volt': [...], 'curr': [...]}`
+    telemetry_of: Callable[[dict], dict]
+    #: 위 결과 -> `C1_TEMP`/`C1_VOLT`/`C1_CURR`
+    telemetry_cards: Callable[[dict], dict]
+    #: 카드 키 -> comment (폭 판정에 쓴다)
+    card_comments: Callable[[], dict]
+    #: TC 중계 카드 키 (probe 는 TCS·AUX 에 안 붙으므로 전부 `NC`)
+    relay_cards: Callable[[], tuple]
+    #: 헤더 카드 전량
+    make_cards: Callable[..., list]
+    #: 자리 표가 실린 절 -- 화면 문구
+    section: str
+
+
+def _unit_of(ctrl: ArchonController) -> dict:
+    """`CTRLnID/SN/CFG` 원자료 -- 본편 `controller_info()` 와 같은 유도.
+
+    ⚠️ `CFG` 는 `cfg_name_from_acf()` 로 뗀다 -- `splitext` 는 **판 번호에
+    점이 들어가면 값을 자른다** (DevNote 6 에서 labtest 사본 다섯이 같은
+    함정에 걸려 있었다).  probe 사본만 남아 있던 것을 여기서 맞췄다.
+    """
+    ident = parse.unit_identity(ctrl.system)
+    cfg = cfg_name_from_acf(ctrl.acf_path) if ctrl.acf_path else ''
+    return {**ident, **({'cfg': cfg} if cfg else {})}
+
+
+def _science_cards(*, ctrl, telem_cards, date_obs, exptime,  # noqa: ANN001
+                   imgtype, objname, stem, site_code) -> list:
+    return rawhdr.spec_cards(
+        ctrltag=ctrl.tag, site_code=site_code,
+        backend_name='archon', ics_build=_build_id(),
+        ctrl_info={'units': (_unit_of(ctrl), {})},
+        ctrl_telem=[parse.telemetry_of(ctrl.status), {}],
+        sensors={},                      # 원천이 없다 -- sentinel 경로 확인용
+        cfg_site=None, cfg_camera=None, cfg_ctrl=None, rdmode='',
+        telem_cards=telem_cards, date_obs=date_obs, exptime=exptime,
+        ledflash_ms=0, imgtype=imgtype, objname=objname,
+        projid='ENG', observer='probe', filename=stem, expid=stem)
+
+
+def _guide_cards(*, ctrl, telem_cards, date_obs, exptime,  # noqa: ANN001
+                 imgtype, objname, stem, site_code) -> list:
+    """guide 판 -- `guidehdr.build_pool()` + `guidecards.render()`.
+
+    science `rawhdr.spec_cards()` 가 그 둘을 합친 것이고 guide 에는 그 합본이
+    없다 (본편 시퀀서도 둘을 따로 부른다) -- 여기서도 같은 두 걸음으로 간다.
+    `backend_name` 은 **`'archon_guide'`** 여야 한다: `datasrc_of()` 가 모르는
+    이름을 `SIM` 으로 적기 때문이다 (규격 5.5절 방어).
+    """
+    from icg_archon import guidecards, guidehdr, hk
+    pool = guidehdr.build_pool(
+        site_code=site_code,
+        ctrl_info={'units': [_unit_of(ctrl)]},
+        ctrl_telem=hk.ctrl_unit(ctrl.status or {}),
+        sensors={},
+        cfg_site=None, cfg_camera=None, cfg_ctrl=None, rdmode='',
+        backend_name='archon_guide',
+        telem_cards=telem_cards, date_obs=date_obs, exptime=exptime,
+        ledflash_ms=0, imgtype=imgtype, objname=objname,
+        projid='ENG', observer='probe', filename=stem, expid=stem)
+    return guidecards.render(pool)
+
+
+def science_profile() -> UnitProfile:
+    return UnitProfile(
+        name='science', tag='MK', tags=('MK', 'NT'), ini='ics_archon.ini',
+        load_cfg=lambda path: acfg_mod.load(path),
+        temp_mods=rawhdr.TEMP_MODS, volt_rails=rawhdr.VOLT_RAILS,
+        temp_labels=rawhdr.TEMP_MOD_LABELS, rail_candidates={},
+        telemetry_of=parse.telemetry_of,
+        telemetry_cards=lambda unit: rawhdr.ctrl_telemetry_header([unit, {}]),
+        card_comments=lambda: {k: c for k, _t, _w, c in rawcards.CARDS},
+        relay_cards=lambda: rawcards.RELAY_CARDS,
+        make_cards=_science_cards, section='규격 5.6.1절')
+
+
+def guide_profile() -> UnitProfile:
+    from icg_archon import config as icfg_mod
+    from icg_archon import guidecards, guidehdr, hk
+    return UnitProfile(
+        name='guide', tag=icfg_mod.TAG, tags=(icfg_mod.TAG,),
+        ini='icg_archon.ini',
+        load_cfg=lambda path: icfg_mod.load(path),
+        temp_mods=guidehdr.TEMP_MODS, volt_rails=guidehdr.VOLT_RAILS,
+        temp_labels=guidehdr.TEMP_MOD_LABELS,
+        rail_candidates={'HEATER': guidehdr.HEATER_FIELD_CANDIDATES},
+        telemetry_of=hk.ctrl_unit,
+        telemetry_cards=guidehdr.ctrl_telemetry_header,
+        card_comments=lambda: {k: c for k, _t, _w, c in guidecards.CARDS},
+        relay_cards=lambda: guidecards.RELAY_CARDS,
+        make_cards=_guide_cards, section='규격 10.4절')
+
+
+PROFILES = {'science': science_profile, 'guide': guide_profile}
+
+
+# ---------------------------------------------------------------------------
 # 1단계 -- 읽기 전용
 # ---------------------------------------------------------------------------
 
-async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
-    block('1단계  읽기 전용 -- SYSTEM · STATUS · FRAME')
+async def stage_read_only(ctrl: ArchonController, acfg,  # noqa: ANN001
+                          prof: UnitProfile) -> dict:
+    block('1단계  읽기 전용 -- SYSTEM · STATUS · FRAME  [%s]' % prof.name)
 
     started = time.monotonic()
     await ctrl.connect()
@@ -112,15 +255,16 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     # ⚠️ 종전에는 'AD 가 슬롯 5~8 인가' 로 판정했고 그것이 틀렸다 (2026-08-27).
     #    실기 science 는 AD 계열이 5·8 둘뿐이라 **정상 구성에서 BAD 가 났다.**
     #    판정은 자리 표(규격 5.6.1절) 대 실제 장착 모듈 비교로 바꿨다.
-    problems = parse.field_order_problems(system)
-    slots = sorted(parse.temp_mod_slots())
+    problems = parse.field_order_problems(system, prof.temp_mods)
+    slots = sorted(parse.temp_mod_slots(prof.temp_mods))
     if not problems:
-        say(OK, '장착 모듈이 규격 5.6.1절 자리 표와 정합한다 (%d자리: %s)'
-                % (len(parse.TEMP_MODS), slots))
+        say(OK, '장착 모듈이 %s 자리 표와 정합한다 (%d자리: %s)'
+                % (prof.section, len(prof.temp_mods), slots))
     else:
         for note in problems:
-            say(BAD, note, '지금 자리 표(%d자리): %s'
-                           % (len(parse.TEMP_MODS), ' '.join(parse.TEMP_MODS)))
+            say(BAD, note, '지금 자리 표(%s · %d자리): %s'
+                           % (prof.section, len(prof.temp_mods),
+                              ' '.join(prof.temp_mods)))
     if not ad:
         say(WARN, '비디오(AD 계열) 모듈을 못 찾았다 (형 %s) -- 형 번호가 '
                   '매뉴얼·표에 없는 신형일 수 있다'
@@ -132,21 +276,37 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     print('\n>> STATUS (%d 필드)' % len(status))
     dump(status)
 
-    missing = [k for k in parse.TEMP_MODS if k not in status]
+    missing = [k for k in prof.temp_mods if k not in status]
     if missing:
         say(BAD, '온도 슬롯 %d/%d 결측: %s'
-            % (len(missing), len(parse.TEMP_MODS), ' '.join(missing)),
+            % (len(missing), len(prof.temp_mods), ' '.join(missing)),
             '그 자리는 %s 로 실린다 (자리=항목이라 건너뛰지 않는다)'
             % parse.FIELD_NC)
     else:
-        say(OK, '온도 슬롯 %d개 전부 있다' % len(parse.TEMP_MODS))
+        say(OK, '온도 슬롯 %d개 전부 있다' % len(prof.temp_mods))
 
-    rails = [r for r in parse.VOLT_RAILS
-             if r + '_V' not in status or r + '_I' not in status]
+    # guide `HEATER` 는 STATUS 필드 이름이 **미확정**이다 (후보 셋) -- 없는
+    # 이름으로 결측을 세면 첫 구동이 통째로 `문제` 로 뜬다.  ⏳ 첫 구동
+    # STATUS 원문에서 이름을 확정하면 후보 목록이 한 줄로 줄고 이 갈래도
+    # 없어진다 (DevNote 9.8).
+    rails = []
+    for rail in prof.volt_rails:
+        cand = prof.rail_candidates.get(rail)
+        if cand:
+            found = next((c for c in cand if c in status), '')
+            say(OK if found else WARN,
+                '%s 레일 필드 = %s' % (rail, found or '(후보 다 없다)'),
+                'PROVISIONAL -- 후보 %s.  ⭐ 첫 구동에서 STATUS 원문을 보고 '
+                '후보 목록을 한 줄로 줄일 것 (DevNote 9.8)' % ' / '.join(cand))
+            continue
+        if rail + '_V' not in status or rail + '_I' not in status:
+            rails.append(rail)
     if rails:
         say(BAD, '전원 레일 결측: %s' % ' '.join(rails))
     else:
-        say(OK, '전원 레일 %d개의 _V/_I 쌍이 전부 있다' % len(parse.VOLT_RAILS))
+        say(OK, '전원 레일 %d개의 _V/_I 쌍이 전부 있다'
+            % len([r for r in prof.volt_rails
+                   if r not in prof.rail_candidates]))
 
     say(OK if parse.power_good(status) else BAD,
         'POWERGOOD = %s' % status.get('POWERGOOD', '(없음)'))
@@ -164,10 +324,11 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
         say(BAD if parse.overheating(status) else OK,
             'OVERHEAT = %s' % status['OVERHEAT'])
 
-    # 이 컨트롤러가 색인 1(MK) 자리라고 보고 카드를 만들어 본다.
-    cards = rawhdr.ctrl_telemetry_header([parse.telemetry_of(status), {}])
+    # 이 컨트롤러가 색인 1 자리라고 보고 카드를 만들어 본다 (guide 는 한 대뿐
+    # 이라 언제나 색인 1 이다).
+    cards = prof.telemetry_cards(prof.telemetry_of(status))
     print('\n   헤더에 이렇게 실린다:')
-    comments = {k: c for k, _t, _w, c in rawcards.CARDS}
+    comments = prof.card_comments()
     for key in ('C1_TEMP', 'C1_VOLT', 'C1_CURR'):
         value = str(cards[key])
         print('     %-8s= %r' % (key, value))
@@ -190,18 +351,18 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
     # 이름표가 없고(자리 = 항목, 규격 5.6.1절) 값만 나열되므로, 실기 첫 실행에서
     # "이 자리가 정말 그 모듈인가" 를 확인할 수 있는 자리는 여기뿐이다.
     # 순서가 하나만 밀려도 값은 그럴듯하고 아무 경고도 안 뜬다.
-    print('\n   자리 표 (규격 5.6.1절) -- 값이 그 모듈의 것인지 대조할 것:')
+    print('\n   자리 표 (%s) -- 값이 그 모듈의 것인지 대조할 것:' % prof.section)
     # 구분자는 파이프다 (규격 5.6.1절, v1.6) -- 공백으로 쪼개면 열 자리가
     # 통째로 1번 자리에 들어간다.
     temps = str(cards['C1_TEMP']).strip().split('|')
-    for i, label in enumerate(rawhdr.TEMP_MOD_LABELS):
+    for i, label in enumerate(prof.temp_labels):
         got = temps[i] if i < len(temps) else '(없음)'
         print('     %2d  %-14s %s' % (i + 1, label, got))
-    if len(temps) != len(rawhdr.TEMP_MOD_LABELS):
-        say(BAD, 'C1_TEMP 가 %d자리다 -- 규격 5.6.1절은 %d자리다'
-            % (len(temps), len(rawhdr.TEMP_MOD_LABELS)),
+    if len(temps) != len(prof.temp_labels):
+        say(BAD, 'C1_TEMP 가 %d자리다 -- %s 은 %d자리다'
+            % (len(temps), prof.section, len(prof.temp_labels)),
             '자리 수 자체가 모듈 구성을 뜻한다 -- 규격부터 확인할 것')
-    print('     레일  %s' % ' · '.join(parse.VOLT_RAILS))
+    print('     레일  %s' % ' · '.join(prof.volt_rails))
 
     # -- 응답 자체의 건강 필드 (P-g) --------------------------------------
     # `VALID`/`COUNT`/`LOG` 는 **실기 보고 여부가 미확인**이었다 (PROVISIONAL).
@@ -229,14 +390,21 @@ async def stage_read_only(ctrl: ArchonController, acfg) -> dict:  # noqa: ANN001
             'P-a/P-b/P-c/P-d: 드레인 승격은 사람이 한 번 보고 판단한다')
 
     # -- 전원 레일 정상 범위 (매뉴얼 p.41) --------------------------------
-    rail_bad = parse.rail_problems(status, acfg.rail_limits)
+    # ⚠️ 정상 범위 표에 없는 레일은 세지 않는다 (F2) -- guide `HEATER`(+28 V)가
+    #    그렇다.  매뉴얼 p.41 표는 7레일뿐이라 **추정값을 상수로 굳히지 않는다.**
+    limits = getattr(acfg, 'rail_limits', None)   # IcgCfg 에는 이 절이 없다
+    rail_bad = parse.rail_problems(status, limits, prof.volt_rails)
+    graded = [r for r in prof.volt_rails
+              if (limits or parse.RAIL_LIMITS).get(r) is not None]
     if rail_bad:
         say(BAD, '전원 레일이 정상 범위 밖이다 -- %s' % ' / '.join(rail_bad),
             '기본값은 매뉴얼 p.41 이고 전원 보드 저항으로 정해진다(p.42) -- '
             '유닛이 다르면 [archon.rails] 로 덮을 것')
     else:
-        say(OK, '전원 레일 %d개가 정상 범위 안이다 (매뉴얼 p.41)'
-            % len(parse.VOLT_RAILS))
+        say(OK, '전원 레일 %d개가 정상 범위 안이다 (매뉴얼 p.41)' % len(graded),
+            '' if len(graded) == len(prof.volt_rails) else
+            '범위 표가 없는 레일 %s 는 판정하지 않는다'
+            % ' '.join(r for r in prof.volt_rails if r not in graded))
 
     # -- 층 2 -- 바이어스 채널 (ACF 이름표 x STATUS 실측) ------------------
     # ⚠️ 이름표는 **ACF**, 값은 **STATUS** 다.  두 dict 의 키 문자열이 같아서
@@ -368,7 +536,8 @@ async def stage_acf(ctrl: ArchonController, acf: str, acfg) -> None:  # noqa: AN
 # 3단계 -- 프레임 1장 (전원 ON)
 # ---------------------------------------------------------------------------
 
-async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN001
+async def stage_frame(ctrl: ArchonController, acfg, args,  # noqa: ANN001
+                      prof: UnitProfile) -> None:
     block('3단계  프레임 1장  ⚠️ 전원을 켜고 CCD 를 읽어낸다')
 
     if args.acf and args.apply_acf:
@@ -461,42 +630,32 @@ async def stage_frame(ctrl: ArchonController, acfg, args) -> None:  # noqa: ANN0
         if not args.write:
             say(WARN, 'FITS 는 쓰지 않았다 (--write 를 주면 쓴다)')
             return
-        _write_probe_fits(raw, fs, ctrl, acfg, args)
+        _write_probe_fits(raw, fs, ctrl, acfg, args, prof)
     finally:
         await ctrl.power_off()
         say(OK, 'POWEROFF')
 
 
-def _write_probe_fits(raw, fs, ctrl, acfg, args) -> None:  # noqa: ANN001
-    """규격 5장 헤더를 **본편과 같은 경로로** 만들어 파일 1장을 쓴다.
+def _write_probe_fits(raw, fs, ctrl, acfg, args,  # noqa: ANN001
+                      prof: UnitProfile) -> None:
+    """규격 헤더(science 5장 / guide 10장)를 **본편과 같은 경로로** 만들어
+    파일 1장을 쓴다.
 
     TC 중계 카드는 전부 `'NC'` 다 (이 도구는 TCS·AUX 에 붙지 않는다).  즉
     확인할 수 있는 것은 **기하 · 구조 카드 · 컨트롤러 유래 카드 · 정렬**이고,
     관측 카드의 실값은 본편에서 본다.
     """
-    from ics_sim import rawcards
-
-    telem = {k: 'NC' for k in rawcards.RELAY_CARDS}
+    telem = {k: 'NC' for k in prof.relay_cards()}
     stem = 'probe.%s.%s' % (time.strftime('%Y%m%dT%H%M%S', time.gmtime()),
                             ctrl.tag)
-    cards = rawhdr.spec_cards(
-        ctrltag=ctrl.tag, site_code='KMTK',
-        backend_name='archon', ics_build=_build_id(),
-        ctrl_info={'units': (
-            {**parse.unit_identity(ctrl.system),
-             **({'cfg': os.path.splitext(os.path.basename(ctrl.acf_path))[0]}
-                if ctrl.acf_path else {})}, {})},
-        ctrl_telem=[parse.telemetry_of(ctrl.status), {}],
-        sensors={},                      # 원천이 없다 -- sentinel 경로 확인용
-        cfg_site=None, cfg_camera=None, cfg_ctrl=None, rdmode='',
-        telem_cards=telem,
+    cards = prof.make_cards(
+        ctrl=ctrl, telem_cards=telem, site_code='KMTK',
         date_obs=time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime()) + '.000',
-        exptime=args.expose / 1000.0, ledflash_ms=0,
+        exptime=args.expose / 1000.0,
         imgtype='DARK' if args.expose else 'BIAS', objname='PROBE',
-        projid='ENG', observer='probe',
         # probe 는 카운터를 쓰지 않으므로 `EXPID` 도 같은 stem 이다
         # (충돌 판별이 성립하지 않는 진단 산출물이다).
-        filename=stem, expid=stem)
+        stem=stem)
 
     path = os.path.join(args.out, stem + '.fits')
     t0 = time.monotonic()
@@ -541,10 +700,16 @@ def build_parser() -> argparse.ArgumentParser:
         epilog='1단계는 전원을 켜지 않는다.  --expose 를 주면 3단계(전원 ON)가 돈다.')
     p.add_argument('--host', required=True, help='컨트롤러 IP (예 10.0.0.13)')
     p.add_argument('--port', type=int, default=4242)
-    p.add_argument('--tag', default='MK', choices=('MK', 'NT'),
-                   help='이 컨트롤러가 담당하는 pair (헤더 색인 자리)')
-    p.add_argument('-c', '--config', default='ics_archon.ini',
-                   help='[archon] 기본값을 읽을 ini (기본: ics_archon.ini)')
+    # ⭐ 유닛 종류가 자리 표·카드 표·설정 파일을 다 정한다 -- guide 에 science
+    #   프로파일을 쓰면 1단계가 거짓 어긋남을 낸다 (위 "유닛 프로파일" 주석).
+    p.add_argument('--unit', default='science', choices=tuple(PROFILES),
+                   help='유닛 종류 (기본: science pair.  guide 유닛은 guide)')
+    p.add_argument('--tag', default=None, choices=('MK', 'NT', 'G'),
+                   help='이 컨트롤러의 헤더 색인 자리 '
+                        '(기본: science MK · guide G)')
+    p.add_argument('-c', '--config', default=None,
+                   help='기본값을 읽을 ini '
+                        '(기본: science ics_archon.ini · guide icg_archon.ini)')
     p.add_argument('--acf', help='2단계 -- 대조할 ACF 경로')
     p.add_argument('--no-apply-acf', dest='apply_acf', action='store_false',
                    help='3단계에서 APPLYALL 을 건너뛴다')
@@ -572,8 +737,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 async def amain(args) -> int:  # noqa: ANN001
-    acfg = acfg_mod.load(args.config)
-    acfg.hosts[args.tag] = args.host
+    prof = PROFILES[args.unit]()
+    tag = args.tag or prof.tag
+    if tag not in prof.tags:
+        # 태그를 틀리면 **조용히 다른 자리의 카드**가 만들어진다 -- guide 는
+        # 컨트롤러가 한 대라 `MK`/`NT` 가 아예 없는 어휘다.
+        say(BAD, "--unit %s 에는 --tag %s 가 없다 -- %s 중 하나여야 한다"
+                 % (prof.name, tag, ' / '.join(prof.tags)))
+        return 1
+    acfg = prof.load_cfg(args.config or prof.ini)
+    acfg.hosts[tag] = args.host
     acfg.port = args.port
     acfg.frame_poll = args.poll
     acfg.progress_step = 1               # 촘촘히 본다 (거동 확인이 목적)
@@ -583,19 +756,19 @@ async def amain(args) -> int:  # noqa: ANN001
         # **`--acf` 가 ini 를 이긴다.**  이렇게 해 두면 1단계의 바이어스 채널
         # 표(층 2)도 그 ACF 의 이름표를 쓴다 -- 안 넘기면 `--acf` 를 주고도
         # 1단계가 "이름표를 못 찾았다" 를 낸다.
-        acfg.acf[args.tag] = args.acf
-    ctrl = ArchonController(args.tag, acfg)
+        acfg.acf[tag] = args.acf
+    ctrl = ArchonController(tag, acfg)
 
-    print('probe_archon -- %s (%s:%d), 선언 기하 %d x %d (%.1f MiB)'
-          % (args.tag, args.host, args.port, acfg.naxis1, acfg.naxis2,
+    print('probe_archon -- %s %s (%s:%d), 선언 기하 %d x %d (%.1f MiB)'
+          % (prof.name, tag, args.host, args.port, acfg.naxis1, acfg.naxis2,
              acfg.frame_bytes / (1 << 20)))
     try:
-        await stage_read_only(ctrl, acfg)
+        await stage_read_only(ctrl, acfg, prof)
         if args.acf:
             await stage_acf(ctrl, args.acf, acfg)
         if args.expose is not None:
             os.makedirs(args.out, exist_ok=True)
-            await stage_frame(ctrl, acfg, args)
+            await stage_frame(ctrl, acfg, args, prof)
         else:
             print('\n(--expose 를 주지 않았으므로 전원을 켜지 않았다)')
     except (ArchonError, TimeoutError, OSError) as exc:

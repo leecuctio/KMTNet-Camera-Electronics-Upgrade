@@ -703,7 +703,7 @@ def _repo_acfs():
 
 @pytest.mark.repo_only
 def test_every_science_acf_declares_the_same_16_bias_channels():
-    """**science 유닛 다섯이 같은 16채널을 선언한다** (2026-08-28 실측).
+    """**science 유닛 여섯이 같은 16채널을 선언한다** (2026-08-28 실측 + 09-03 반입분).
 
     이것이 깨지면 감시 CSV 의 **열 구성이 유닛마다 달라진다** -- 두 유닛의
     기록을 나란히 놓고 못 읽고, 나중에 층 2 를 헤더에 실을 때(D3) **자리 =
@@ -711,9 +711,14 @@ def test_every_science_acf_declares_the_same_16_bias_channels():
     범프로 드러나야 하는 것이므로(규격 4.3절), 여기서 조용히 갈리면 안 된다.
 
     ⚠️ **guide 는 18채널이고 라벨도 다르다** -- 아래 시험이 그 사실을 못박는다.
+
+    ⭐ **2026-09-03**: `KMTS_SCI_102_STA0287_R2608_NT.acf`(SAAO NT) 반입으로
+    다섯 -> **여섯**이 됐다.  ⚠️ 이 수는 **자산 개수**이지 규범이 아니다 --
+    유닛이 늘면 여기를 올리고, 그때 **16채널 목록이 그대로인지**가 진짜 검사다
+    (반입분도 정확히 같았다).
     """
     science, _guide = _repo_acfs()
-    assert len(science) == 5, science           # 실기 5종 (CTIO 2 · SAAO 1 · KASI 2)
+    assert len(science) == 6, science           # 실기 6종 (CTIO 2 · SAAO 2 · KASI 2)
 
     seen = {}
     for path, cfg, _system in science:
@@ -762,9 +767,15 @@ def test_the_guide_unit_has_a_different_slot_table_which_is_still_open():
 
     ⚠️ **이 시험은 그 사실을 못박을 뿐 규격을 바꾸지 않는다.**  `TEMP_MODS`
     (science 10자리)를 guide 에 그대로 쓰면 `field_order_problems()` 가
-    어긋남을 보고하고 감시 열 이름(`T1..T10`)도 틀린다 -- guide raw 규격을
-    세울 때 유닛 종류로 자리 표를 가르는 것이 남은 일이다.
+    어긋남을 보고하고 감시 열 이름(`T1..T10`)도 틀린다.
+
+    ✅ **자리 표는 규격 10.4절로 수록됐고**(v1.9) `icg_archon.guidehdr` 이
+    그것을 들고 있다.  그래서 이 시험은 이제 **양쪽을 다 못박는다** --
+    guide 표로 재면 조용하고, science 표로 재면 어긋난다.  후자가
+    `tools/probe_archon.py --unit guide` 가 있어야 하는 이유다 (2026-09-03).
     """
+    from icg_archon import guidehdr
+
     _science, guides = _repo_acfs()
     assert guides, 'guide ACF 가 없다'
     for path, _cfg, system in guides:
@@ -772,6 +783,11 @@ def test_the_guide_unit_has_a_different_slot_table_which_is_still_open():
         assert mounted == {3, 4, 5, 6, 7, 9, 10}, os.path.basename(path)
         # 자리 수는 백플레인을 더해 여덟이다 (science 는 열).
         assert len(mounted) + 1 == 8
+        assert len(guidehdr.TEMP_MODS) == 8
+        assert set(parse.temp_mod_slots(guidehdr.TEMP_MODS)) == mounted
+        # guide 표로 재면 조용하다 -- probe --unit guide 가 이 경로를 탄다.
+        assert not parse.field_order_problems(system, guidehdr.TEMP_MODS), \
+            os.path.basename(path)
         # science 와 같은 표를 쓰면 어긋남으로 잡힌다 -- 그것이 정상이다.
         assert parse.field_order_problems(system), (
             'guide 구성인데 science 자리 표가 조용하다 -- 판정이 헐거워졌다')

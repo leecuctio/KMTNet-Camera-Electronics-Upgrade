@@ -44,7 +44,7 @@ CTRLTAGS = tuple(tag for tag, _ in rawpair.CONTROLLERS)
 #: ACF 이름에 들어 있는 독출 모드 토큰 -> FITS `RDMODE`.  labtest 의 유도
 #: 규칙 그대로다 (`KMTNet_Sci_fast_med_U13.acf` -> `FAST`).
 #:
-#: ⚠️ **현행 ACF 이름 규칙에는 이 토큰이 없다** (`acf/README.md` — 여섯 전부
+#: ⚠️ **현행 ACF 이름 규칙에는 이 토큰이 없다** (`acf/README.md` — 일곱 전부
 #: `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`).  그래서 실기에서 이 유도는
 #: 늘 빈손이고, `RDMODE` 는 **ini 에 적은 값**이 정본이다 (현행 전부 `NORMAL`,
 #: 운영자 확정 2026-08-29).  규칙을 남겨 둔 것은 속도별 ACF 가 다시 올 때를
@@ -979,7 +979,7 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
     #
     # `rdmode_from_acf()` 는 이름에서 `fast`/`comp`/`slow` 토큰을 찾는데,
     # 그 규칙은 labtest 시절 이름(`KMTNet_Sci_fast_med_U13.acf`)에서 왔다.
-    # **현행 정본 여섯은 전부 `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`
+    # **현행 정본 일곱은 전부 `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`
     # 이라 속도 토큰이 없다** (`acf/README.md`) -- 그래서 ini 를 비워 두면
     # 유도가 늘 실패하고 코드 기본값 `NORMAL` 이 조용히 실린다.
     #
@@ -995,7 +995,7 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
             '(fast/comp/slow)이 없다 -- 유도가 실패해 코드 기본값 '
             "'NORMAL' 이 실린다.  현행 ACF 이름 규칙에는 그 토큰이 아예 "
             '없으므로(acf/README.md) 실제 독출 모드를 ini 에 **직접 적을 것** '
-            "(현행 여섯은 전부 'NORMAL' -- 운영자 확정 2026-08-29)"
+            "(2026-08-29 확정분 여섯은 전부 'NORMAL'.  09-03 반입분은 확인 대기)"
             % ' · '.join(os.path.basename(cfg.acf[t]) for t in tagged))
 
     # ⚠️ **반대 방향** -- ini 에 적어 둔 값이 ACF 이름과 어긋나는 경우.

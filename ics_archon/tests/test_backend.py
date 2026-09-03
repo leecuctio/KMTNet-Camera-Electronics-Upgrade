@@ -317,8 +317,8 @@ def test_header_carries_the_facts_only_the_controller_knows(tmp_path, fakes):  #
     assert mk['CCDTEMP'].strip() == '-999.99'
     assert mk['DEWPRES'].strip() == '9.99e-9'
     # ⭐ `RDMODE` 는 **더 이상 이 무리가 아니다** (2026-08-29) -- 저장소 ini 가
-    # `NORMAL` 을 적어 두므로 원천이 있다(현행 ACF 여섯의 실제 모드, 운영자
-    # 확정).  ACF 이름에 속도 토큰이 없어 유도는 빈손이고, 그때의 코드 기본값이
+    # `NORMAL` 을 적어 두므로 원천이 있다(운영자 확정 2026-08-29 -- 그때의
+    # 정본 여섯이 대상이고, 2026-09-03 반입분 `KMTS_SCI_102` 는 ⏳ 확인 대기).  ACF 이름에 속도 토큰이 없어 유도는 빈손이고, 그때의 코드 기본값이
     # **`UNKNOWN`** 인 것은 `test_ini_cards.py` 와 `ics_sim` 쪽 시험이 지킨다 --
     # 여기서 보는 것은 **ini 값이 실제로 카드까지 닿는가** 다.
     assert mk['RDMODE'].strip() == 'NORMAL'

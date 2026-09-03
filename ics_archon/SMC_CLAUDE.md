@@ -47,11 +47,13 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
 | 이 문서 **"참고 자료 재검토"** | ⭐ `__ref_archon_control/` 을 열기 전에. **옮기지 않은 것 셋의 근거**가 거기 있다 — 없으면 같은 것을 "빠졌다" 로 읽는다 |
 | 이 문서 **"미해결 목록"** | F1~F12 · P1. 작업 2 의 일감이고, **앞 세션 워크플로 결과를 근거로 쓰지 말라는 경고**가 붙어 있다 |
 | [README.md](README.md) | 폴더 구성 · 실행법 · 모듈 표 · 계약 어긋남 3건 · v0.0 에 없는 것 |
+| ⭐ [`recovered_session_20260903.md`](recovered_session_20260903.md) | **되감기로 사라진 대화의 복원본** (2026-09-04) -- 가공 안 한 전문 + 운영자 발화 색인.  ⚠️ 판정 근거가 아니다(정정 전 발언도 그대로 있다).  결정만 보려면 DevNote 11.12~11.14 |
 | ⭐ [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) | **실기 시험 보고서** — `LOCK`/`FETCH`/버퍼 운영 결론과 실측값, 재현 명령 (2026-09-01~02) |
 | [INSTALL.md](INSTALL.md) | ⭐ **벤치에 설치할 때** — `~/AIC` 한 벌 세우기 · 기존 설치 이전 · 이상할 때 |
 | `ics_archon/archon/controller.py` 머리말 | **"노출을 누가 재나"** — 이 층의 가장 중요한 판단 |
 | `ics_archon/archon/backend.py` 머리말 | 계약과 실기의 어긋남 3건 · 동기 접근자가 스냅샷을 읽는 이유 |
-| [README.md](README.md) "실기 첫 실행 절차" | ⭐ **실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
+| [README.md](README.md) "실기 첫 실행 절차" | ⭐ **science 실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
+| ⭐ [`icg_first_run.md`](icg_first_run.md) | ⭐ **guide 실기를 붙일 때 이것부터** (2026-09-03 신설) — 0~6단계 · 기록표 · 멈출 조건.  PROVISIONAL 6건이 여기서 닫힌다.  ⚠️ probe 는 **`--unit guide`** 로 부른다 |
 | [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
 | ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다.  ⭐ **10장 = 실기 시험 결론**(`LOCK`/`FETCH`/버퍼, 2026-09-01~02) |
 | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.30 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
@@ -1046,7 +1048,8 @@ setpoint`) 드레인을 넣을 값이 있다 ② `config applied` · `frame comp
 - ⚠️ **자리 = 항목 규범을 따르면 채널 구성이 규격에 박힌다** (5.6.1절).  ACF 를
   바꿔 라벨 붙은 채널이 늘거나 줄면 자리 수가 달라지고, 그것은 `CAMVER`(HW) ·
   `CTRLnCFG`(설정) 범프로 드러나야 한다(4.3절 포장 규범).
-- ✅ **science ACF 다섯이 같은 16채널·같은 라벨을 선언한다** (2026-08-28 실측 --
+- ✅ **science ACF 여섯이 같은 16채널·같은 라벨을 선언한다** (2026-08-28 실측 다섯 +
+  2026-09-03 반입분 하나 --
   CTIO 2 · SAAO 1 · KASI 2).  종전에 "16채널은 `KMTK_SCI_113` 기준" 이라고만
   적어 뒀던 것을 전수로 확인했다 — **유닛마다 열이 갈리지 않는다.**
   `tests/test_monitor.py::test_every_science_acf_declares_the_same_16_bias_channels`
@@ -1068,7 +1071,7 @@ setpoint`) 드레인을 넣을 값이 있다 ② `config applied` · `frame comp
 | **science** | 10 LVDS | 1 Drv | 1 Drv | 9 LVXBias | **17 ADM** | 0 | 0 | **17 ADM** | 8 또는 **18** | 1 Drv | 1 Drv |
 | **guide** | 0 | 0 | 1 Drv | 1 Drv | 2 AD | 2 AD | **11 HeaterX** | 0 | 8 HVXBias | **11 HeaterX** | 0 |
 
-science ACF 5종에는 `SENSORxTYPE`/`SENSORxLABEL` 키가 **하나도 없고**
+science ACF 6종에는 `SENSORxTYPE`/`SENSORxLABEL` 키가 **하나도 없고**
 `VCPU_LINES=1`(빈 프로그램)이다. HeaterX 가 없으므로 `MODm/TEMPA/B/C` 도
 `VCPU_OUTREGn` 도 나오지 않는다(p.48 "Heater(X) only" · "Modules with DIO").
 
@@ -1398,7 +1401,111 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ## ▶ 인수인계 (2026-09-03 마감 — ⭐ 새 세션이면 **여기부터**)
 
-### ✅ 2026-09-02 후반 — **10장 반영 · guide `Pixels` 73개 · icg ABORT 결함 + 컨트롤러 취소 안전** (⭐ 최신)
+### ⏳ 2026-09-03 후반 — **실기 시험 준비: probe 의 guide 대응 · icg 첫 구동 체크리스트** (⭐ 최신, **커밋 전**)
+
+브랜치 `ics-archon-v1.0-build` = `d0dad54` 에서 이어감.  ⚠️ **아직 커밋하지
+않았다** — 워킹트리에 있는 것:
+
+| 자리 | 무엇 |
+|---|---|
+| `icg_archon.ini` | ⛔ **`[icg] ctrl_host` 192.168.1.162 → `10.0.0.162`** (운영자 확정).  정본은 **ACF 안의 `IP=` 키**라고 주석에 적어 뒀다 — 나머지 근거(`acf/README.md` `.162` 열 · P-k 절차 · 벤치기 `.101`/`.113`)가 다 10.0.0.x 였고 저장소에서 `192.168` 은 그 한 줄뿐이었다.  DevNote **11.6** |
+| `icg_archon/guidehdr.py` | **`TEMP_MOD_LABELS` 신설** (규격 10.4절 표의 항목 이름 8개) + `check_geometry()` 에 자리 수 불변식.  카드에 이름표가 없으니(자리=항목) 실기에서 자리를 눈으로 대조할 수 있는 자리가 이 표뿐이다.  **11.2** |
+| `ics_archon/archon/parse.py` | `temp_mod_slots(fields=)` · `field_order_problems(system, fields=)` · `rail_problems(status, limits=, rails=)` — **자리 표를 인자로** 받게 열었다.  기본값은 종전 그대로(science)라 부르는 쪽은 안 바뀐다.  **11.2** |
+| `tools/probe_archon.py` | ⭐ **`--unit science\|guide`** + `UnitProfile` 한 벌.  `HEATER` 는 후보 순회로 `확인` 처리(결측 아님) · 범위 표 없는 레일은 판정 안 함 · `--unit guide --tag MK` 거부 · guide 헤더는 `build_pool`+`render` · **`splitext` → `cfg_name_from_acf`**(6장에서 놓친 사본).  **11.1~11.5** |
+| `tests/test_probe.py` · `tests/test_monitor.py` | guide 갈래 **다섯** 신설 + 자리 표 시험을 양방향으로.  **11.8** |
+| `icg_first_run.md` (신규) | **guide 첫 구동 체크리스트** 0~6단계 · 기록표(빈칸) · 멈출 조건.  README·이 문서에서 링크.  **11.7** |
+| `icg_archon.ini` · `icg_archon/app.py` · `INSTALL.md` · `tests/test_icg_app.py` | ⭐ **포트 배정 — ICS 6600 · ICG `6601`** (운영자 지시).  종전 icg ini 는 `bind_port` 가 주석이라 `ics_sim` 기본값 6600 으로 떨어져 **ICS 와 같았다.**  기동 검사 + 배포 ini 둘을 읽는 시험으로 못박았다.  `INSTALL.md` 에 배정표 신설.  **11.11** |
+| `acf/` · `__ref_archon_control/acf/` · 문서·시험 21곳 | **새 ACF 반입 등재**(운영자 지시) + 개수를 세는 자리 전수 정정.  **11.10** |
+| `DevNote.md` | **11장** 신설 (11.1~11.11) |
+
+**왜 이것부터 했나** — probe 가 guide 유닛에서 `extra [6, 7]` +
+`missing [1, 2, 8, 11]` 을 **거짓으로** 보고했다 (guide 장착은
+`{3,4,5,6,7,9,10}`, science 표는 10자리).  probe 는 실기에 붙이는 첫 도구라
+그 오경보 하나가 진짜 문제를 덮는다 — 2026-08-27 에 고친 오경보와 같은
+부류다.
+
+#### ⚠️ 밟기 쉬운 함정 (이 세션이 새로 만든 규칙)
+
+| 함정 | 규칙 |
+|---|---|
+| guide 유닛에 probe 를 돌린다 | **`--unit guide` 필수.**  안 주면 거짓 어긋남이 뜬다.  `tests/test_probe.py::test_science_profile_on_a_guide_unit_is_the_false_alarm` 이 그 사실을 못박고 있으니 **플래그를 지우면 빨개진다** |
+| `parse` 세 함수의 기본값 | **science 다.**  guide 를 대려면 `guidehdr.TEMP_MODS`/`VOLT_RAILS` 를 넘긴다 — 검사는 일반적이지만 **표는 골라 줘야 한다**(종전 docstring 이 이 한 걸음을 안 적어 결함이 났다) |
+| 프로파일에 표를 베낀다 | ⛔ **가리키기만 한다** (`rawhdr`/`rawcards` · `guidehdr`/`guidecards`).  기계 사본을 늘리지 않는다 |
+| guide `HEATER` 레일 | 이름이 **미확정**이라 결측으로 세지 않는다(후보 순회 `확인`), 정상 범위도 p.41 표에 없어 **판정하지 않는다**.  추정값을 상수로 굳히지 말 것 — 넣으려면 `[archon.rails]` 처럼 설정으로 |
+| `[icg] ctrl_host` 를 다시 고친다 | **정본은 ACF 의 `IP=`** 다.  ini 값만 보고 판단하지 말 것 |
+| ⭐ **포트를 6600 으로 되돌린다** | **ICS 6600 · ICG 6601** 이 배정이다 (배정표 `INSTALL.md`).  `ics_sim` 기본값이 6600 이라 icg ini 에서 `bind_port` 를 **빼면 같은 값으로 떨어져** 한 호스트에서 둘 다 못 뜬다.  기동 검사가 경고하고 `test_icg_app.py::test_the_two_programs_do_not_share_a_port` 가 못박는다.  ⚠️ 레거시는 IC 계열·ICG 가 다 6600 이고 **호스트로** 갈랐다 — 호스트를 갈랐다면 6600 도 정당하니 검사는 **막지 않고 알리기만** 한다 |
+| 허브 배치를 안 고친다 | ICG 포트를 바꿨으면 XIS `isis.ini` 의 `UDPPort <ip> 6600` **preset 도** 고쳐야 기동 핑이 닿는다 (동적 등록은 우리 PING 으로 되니 치명적이지는 않다).  ⛔ 저장소의 `ics_sim/xis/install/config/*` 는 **레거시 보관본**이라 고치지 말 것 |
+
+#### ⏳ 이 세션이 남긴 것 (운영자 확인 대기)
+
+1. ✅ **새 ACF 반입 등재 — 끝났다** (운영자 지시 2026-09-03).
+   `acf/KMTS_SCI_102_STA0287_R2608_NT.acf`(SAAO NT · Rev H/1261 · LF · 959키 ·
+   `BACKPLANE_ID=000000001EE27A29`).  ⭐ **내용이 정합하다** — 바이어스 16채널이
+   기대 목록과 순서까지 같고, 장착 슬롯이 10자리 표와 같고,
+   `field_order_problems()` 가 조용하고, `BACKPLANE_ID` 가 고유하고, 내장 타이밍
+   스크립트가 `acf_timing_script_science.txt` 와 **바이트 동일**이다.
+   - 보관함(`__ref_archon_control/acf/`)에 **사본도 넣었다** (바이트 동일).
+   - `tests/test_monitor.py` `assert len(science) == 6` (CTIO 2 · SAAO 2 · KASI 2).
+   - `acf/README.md` **목록 표**에 행 하나 + **보관함 목록과 줄 끝 표**에
+     "받은 줄 끝 **LF**" 행 하나.  ⚠️ 두 표를 헷갈리지 말 것 — `받은 줄 끝` 열은
+     **보관함 표**에만 있다.
+   - ⭐ **영향 전수 사냥**(워크플로 4갈래 + 비평)으로 **21곳**을 함께 고쳤다 —
+     장수를 세는 자리(정본 6→7 · 트리 전수 22→24 · science 5→6 · guide 판 11→12),
+     `TAPLINE`/`VCPU_LINE` 실측 수치, `STA0284/0285/0286` 목록, RDMODE 셈.
+     경위는 DevNote **11.10**.
+   - ⏳ **남은 확인 하나**: RDMODE.  운영자 확정(2026-08-29)이 **여섯까지만**
+     덮으므로 반입분의 실제 독출 모드는 확인 대기다 (기하·`RAWSEL=3`·`FRAMEMODE=2`·
+     타이밍 스크립트가 기존 science 와 같아 실질은 `NORMAL` 이 거의 확실).
+     그 문구를 쓰는 자리 넷(`ics_archon.ini` · `config.py` 경고 · `test_backend.py` ·
+     `ics_sim.ini`)에 **범위를 명시**해 뒀다.
+2. ⛔ **펌웨어 1271 — 이 캠페인 중에는 올리지 않는다** (판단 근거는 DevNote
+   **11.9**).  guide 는 Rev F 라 대상 아님 · 모듈 1175 는 현행과 같음 ·
+   **1261 이미지가 없어 되돌릴 수 없음** · 10장 실측이 그 판에 묶여 있음.
+   순서는 *현행 FW 로 본편 시험 → 별개 라운드로 101 한 대만 1271 + 보고서
+   4절 회귀* 이고, 착수 전에 **1261 이미지**와 **1271 릴리스 노트**가 필요
+
+#### ⭐⭐ 2026-09-04 -- 대화가 되감기로 사라졌고 세션 기록에서 복원했다
+
+⚠️ **되감기(rewind)로 2026-09-03 22:21~04:35(KST) 대화가 사라졌다.**  ⭐ **그 구간에
+저장소 파일 변경은 0건**이었으므로(도구 호출 전수 확인) **잃은 것은 합의한 설계
+문면뿐**이고, 세션 기록(`~/.claude/projects/C--DATA-CLOC-CEU/*.jsonl`)에서 전량
+복원해 **DevNote 11.12~11.14** 에 적었다.
+
+| 되찾은 것 | 어디 |
+|---|---|
+| HK 를 파일에서 와이어로 옮기는 설계의 **결함 F1~F10** + 안 짚었던 각도 다섯 | DevNote **11.12** |
+| 히터 검토 **F1~F7** (PID 게인 0 · FORCELEVEL · TARGET 세 겹 · `set_config` 캐시 · APPLYMOD) | DevNote **11.13** |
+| ⭐ **운영자 확정 문면** -- `HKDATA` · `EXPENABLE` · 히터 명령 다섯 | DevNote **11.14** |
+| ⭐ **대화 전문** (가공 안 한 복원본, 발화 126개 · 운영자 발화 색인 33줄) | [`recovered_session_20260903.md`](recovered_session_20260903.md) |
+
+⚠️ **복원할 때 밟은 함정** -- 운영자 발화가 **두 모양**으로 들어온다: 보통 발화와
+**작업 중 끼어든 것**(`<!-- attach -->` 로 시작하고 내 문장을 `>` 로 인용한 뒤 지시가
+붙는다).  ⭐ **처음에 후자를 필터로 걸러 결정의 절반을 놓쳤다** -- 03:52~04:33 구간의
+확정 아홉 개가 전부 그 모양이었다.  다음에 기록을 복원할 때 **`<!-- attach -->` 를
+반드시 포함**할 것.
+
+⭐ **복원에서 배운 것**: 확정된 설계를 대화에만 두면 되감기 한 번에 사라진다 --
+**정해지는 대로 DevNote 에 적을 것.**  ⚠️ 그리고 복원 중 내가 **틀린 서술을 하나
+적었다가 정정**했다(`HEATERBSENSOR=1` 을 "잔재" 로 썼는데 운영자 확인 결과 **의도**
+였다) -- 사라진 대화를 복원할 때는 **결론만 옮기지 말고 정정 이력까지** 따라가야 한다.
+
+#### ▶ 다음 세션이 할 것
+
+0. ⏳ **내가 답을 못 한 채 끊긴 운영자 지시 넷** (DevNote 11.14-(6)) -- **이것부터**:
+   ① ⭐⭐ **ICG·ICS 헤더에 `HTREN`·`HTROUT` 카드 추가** -- ⚠️ FITS 카드 신설이라
+   **규격 개정**(5.6절 + 견본 pair 바이트)이고 `main` 소관이다.  카드 이름이
+   `HTROUT` 인지 `HTRAOUT` 인지 확인 필요 ② **`HTRSET` 구현**(온도 1인자)
+   ③ **Radionode 자격증명 4개를 README 에 정리** ④ **`VACGAUGE`** 를 하나로 둘지
+   ("전원 On/Off" vs "이온게이지 점등") 둘로 나눌지.
+1. ⭐ **벤치.**  guide 는 [`icg_first_run.md`](icg_first_run.md) 0~6단계,
+   science 는 README **"실기 첫 실행 절차"** 4·5단계(본편은 아직 실기 미검증 —
+   09-01~02 시험은 `probe`·`buftest` 만 돌렸다).
+2. 실측이 오면 9.8 PROVISIONAL 표를 닫고 `HEATER` 후보 목록을 한 줄로 줄인다.
+3. 위 "운영자 확인 대기" 둘.
+4. 종전 목록(그쪽 몫 `buftest` 17곳 · `main` 몫 v1.10 승격 라운드 · Radionode·
+   STA 질의)은 아래 2026-09-02 블록 그대로.
+
+### ✅ 2026-09-02 후반 — **10장 반영 · guide `Pixels` 73개 · icg ABORT 결함 + 컨트롤러 취소 안전**
 
 같은 머신, 브랜치 `ics-archon-v1.0-build`.  이 세션의 커밋(전부 origin 동기):
 
@@ -1427,7 +1534,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
   벤더 반입본이 아니라 ACF 추출본이다**(운영자 확인).  보관함 사본은 freeze 로
   `*_R<YYMMDD>.txt`(스크립트 자체의 최종 수정일, 운영자 기록).
 - **`tools/extract_timing_script.py` 신설 — 뽑는 절차의 정본.**
-  `tests/test_timing_script_extract.py` 가 정본 `acf/*.acf` 여섯에 대해 대조한다.
+  `tests/test_timing_script_extract.py` 가 정본 `acf/*.acf` 일곱에 대해 대조한다.
 - `acf/README.md`: "왜 600 인가" 를 **운영자 기록으로 종결** — `Pixels=600` 은
   serial overscan 72 를 담던 값이고, overscan 폐지 때 `PIXELCOUNT` 만 528 로
   내려 73 이 잔재로 남았다.  ✅ **CTE 지연전하 문헌 조사 완료** -- 여분 8~16 권고.
@@ -1458,7 +1565,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | ERASE 비용 표기 | **"독출 1회분(실측 12.77초 — 사강 `NoIntMS` 0.5 가 붙으면 13.27초)"** 로 통일했다.  "프레임 하나 13.27" 로 단정하지 말 것 — 사강 동반 여부는 미확정 |
 | `acftiming` 은 **guide 스크립트 전용** | science ACF 를 대면 그럴싸한 13.65 s 가 나온다(형태 가드가 이제 막는다).  science 하한은 `MIN_FRAME_PERIOD` 상수 |
 | 반증자 제안을 그대로 받지 말 것 | "프레임 하나 = 13.27" 이 그 사례 — 반증자의 전제(ERASE 가 사강을 동반)가 따라 들어왔다.  9.15-(8) |
-| 보관함(`__ref_archon_control/`) 줄 끝 | 이제 **전 계통 LF** 다 (2026-09-02 정규화).  받은 그대로의 CRLF/LF 는 `acf/README.md` 표가 기록한다 -- 새 원본을 넣을 때 그 표에 "받은 줄 끝" 을 먼저 적을 것.  ⭐ **바이트 자체는 정규화 직전 커밋 `e7653cc`(=`febedd2^`)에서 일곱 개 전부 복구된다.**  ⚠️ science 원본 다섯은 정규화 뒤 정본 `acf/` 와 바이트가 같다(보관 값은 "받은 이름" 뿐) |
+| 보관함(`__ref_archon_control/`) 줄 끝 | 이제 **전 계통 LF** 다 (2026-09-02 정규화).  받은 그대로의 CRLF/LF 는 `acf/README.md` 표가 기록한다 -- 새 원본을 넣을 때 그 표에 "받은 줄 끝" 을 먼저 적을 것.  ⭐ **바이트 자체는 정규화 직전 커밋 `e7653cc`(=`febedd2^`)에서 일곱 개 전부 복구된다.**  ⚠️ science 원본 여섯은 정규화 뒤 정본 `acf/` 와 바이트가 같다(보관 값은 "받은 이름" 뿐) |
 | `fetch_timeout=0` 의 뜻 | "크기에서 유도"(science 344 s · guide 60 s) — **잠금 상한이기도** 해서 기동 검사가 잡는다.  `ArchonCfg` 기본은 10, `IcgCfg` 기본은 1.0 |
 
 #### ⚠️ 알려진 flake (별건, 후속)
@@ -1893,8 +2000,12 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
    조명·온도·`IntMS` 를 고정하고, 판마다 최소 몇 장씩 -- 잡음으로 갈리지
    않게.
 
-       python tools/probe_archon.py --host 10.0.0.162            --acf acf/archive/KMTK_GUI_162_STA0201_R2609.acf --expose 0 --write
-       python tools/probe_archon.py --host 10.0.0.162            --acf acf/KMTK_GUI_162_STA0201_R2610.acf --expose 0 --write
+       python tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/archive/KMTK_GUI_162_STA0201_R2609.acf --expose 0 --write
+       python tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2610.acf --expose 0 --write
+
+   ⚠️ **`--unit guide` 를 빠뜨리지 말 것** (2026-09-03) -- science 자리 표로
+   재면 거짓 어긋남이 뜬다.  단계별 절차·기록표는
+   [`icg_first_run.md`](icg_first_run.md) 6단계.
 
 2. **판정** -- 저장된 4224x1033 의 **바이트가 같으면** 저장 창이 앞 528 임이
    확정되고 트림이 무손실이다.  ⚠️ 잡음이 있으므로 "같다" 는 **통계로** 본다
@@ -2070,10 +2181,14 @@ sentinel 이다.  **해독 규칙은 실측으로 다 확정해 뒀다** -- 위 
   10.6절)로 등재돼 실측 대기다 (⚠️ 2026-09-01 정정 -- 종전 이 줄이 적은
   `OI-21` 은 "추가 9행·칩 방위" 항목이라 다른 물음이다).  ⭐ 데이터시트
   대응으로 **앞 528** 이 거의 확정됐다 -- `acf/README.md`.
-- `field_order_problems()` 는 science 10자리 기준이라 **guide 유닛에 probe 를
-  돌리면 어긋남으로 보고된다** -- guide 규격이 나오면 자리 표를 유닛 종류로 가를 것.
-  같은 이유로 **감시 열 이름(`T1..T10`)도 guide 에서는 달라야 한다** --
-  `rawhdr.TEMP_MOD_LABELS` 가 science 표이기 때문이다.
+- ~~`field_order_problems()` 는 science 10자리 기준이라 **guide 유닛에 probe 를
+  돌리면 어긋남으로 보고된다**~~ -- ✅ **닫혔다 (2026-09-03)**: 세 함수가 자리
+  표를 인자로 받고 probe 에 **`--unit guide`** 가 생겼다 (DevNote 11.1~11.2).
+  guide 이름표는 `guidehdr.TEMP_MOD_LABELS`(규격 10.4절)다.
+  ⏳ 남은 것은 **감시 기록(`monitor.py`)의 열 이름** -- 그쪽은 아직
+  `parse.TEMP_MODS`(science) 를 쓴다.  icg 는 자기 HK CSV(`hk.G.*.csv`)를
+  `guidehdr` 표로 쓰므로 실사용 경로에는 안 걸리지만, science 감시기를 guide 에
+  대면 열 이름이 틀린다.
 
 ## ▶ 다음 세션이 먼저 알아야 할 것 (2026-08-26 마감 시점)
 
@@ -2975,7 +3090,7 @@ Notes(2014-10-30), 쪽수는 매뉴얼 기준.
   | 유닛 | REV | 동시 접속 |
   |---|---|---|
   | KMTK_SCI_113 (KASI 벤치) · guide STA0201 | 5 = **Rev F** | **1개** |
-  | KMTC/KMTS (관측소, STA0284/0285/0286) | 7 = Rev H | 4개 |
+  | KMTC/KMTS (관측소, STA0284/0285/0286/**0287**) | 7 = Rev H | 4개 |
 
   → **벤치에서는 별개 감시 프로세스가 `ics_archon` 과 공존할 수 없다.**
   감시를 `ics_archon` 안에 두는 것은 취향이 아니라 하드웨어가 정한 결론이다.

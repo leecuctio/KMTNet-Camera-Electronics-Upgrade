@@ -14,6 +14,7 @@
 | `KMTC_SCI_101_STA0284_R2608_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
 | `KMTC_SCI_102_STA0285_R2608_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` |
 | `KMTS_SCI_101_STA0286_R2608_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
+| `KMTS_SCI_102_STA0287_R2608_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
 | `KMTK_SCI_113_STA0200_R2608_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
 | `KMTK_SCI_113_STA0200_R2608_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
 | `KMTK_GUI_162_STA0201_R2610.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
@@ -312,7 +313,7 @@ dead time?) 는 저장소에 근거가 없다.  첫 구동에서 이상이 보�
 for1110` · `R2601_for1259`) — 은 지운 것이 아니라
 [`../__ref_archon_control/acf/`](../__ref_archon_control/acf/) 로 옮겼다.  그
 폴더가 **벤더·실기에서 받은 원본 보관용**이다(운영자 2026-08-28) — 개명 전
-`R0827_for1259_rtd9cal` 원본과 현행 science 다섯의 원본, 그리고 다른 guide
+`R0827_for1259_rtd9cal` 원본과 현행 science 여섯의 원본, 그리고 다른 guide
 유닛(`STA0291`)의 ACF 둘도 함께 있다.
 
 ⭐ **ACF 말고 하나가 더 산다 -- 타이밍 스크립트 freeze 사본 둘**(2026-09-03).
@@ -348,8 +349,9 @@ for1110` · `R2601_for1259`) — 은 지운 것이 아니라
 | `kmtnet_guide_STA0201_162_R0827_for1110_rtd9cal.acf` | LF | 28,427 | 28,427 |
 | `kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf` | LF | 28,475 | 28,475 |
 | `KMTK_GUI_162_STA0201_R2608.acf` (2026-09-02 반입) | LF | 28,475 | 28,475 |
+| `KMTS_SCI_102_STA0287_R2608_NT.acf` (2026-09-03 반입) | **LF** | 28,525 | 28,525 |
 
-⚠️ **정규화 뒤에는 science 원본 다섯이 전부 정본 `acf/` 사본과 바이트가 같다** --
+⚠️ **정규화 뒤에는 science 원본 여섯이 전부 정본 `acf/` 사본과 바이트가 같다** --
 보관본의 값이 "받은 이름" 하나로 줄었다는 뜻이다(내용으로는 아무것도 안 남긴다).
 guide 쪽 넷(`R2601` 계열 둘 · `STA0291` 둘)은 정본에 없는 판이라 그대로 값이 있다.
 
@@ -373,7 +375,7 @@ guide 쪽 넷(`R2601` 계열 둘 · `STA0291` 둘)은 정본에 없는 판이라
     python tools/extract_timing_script.py acf/*.acf --check acf/    # 대조
     python tools/extract_timing_script.py acf/*.acf --out acf/      # 다시 뽑기
 
-`tests/test_timing_script_extract.py` 가 정본 `acf/*.acf` 여섯에 대해 같은 대조를
+`tests/test_timing_script_extract.py` 가 정본 `acf/*.acf` 일곱에 대해 같은 대조를
 건다 (`archive/`·보관함은 역사적 판이라 범위 밖이다).  ⚠️ 함정 셋은 그 도구의
 주석에 있다 -- `^LINE\d+=` 앵커(guide ACF 에 `MOD10\VCPU_LINE*` 109개가 따로 있다) ·
 바깥 큰따옴표 한 쌍만 벗김 · **끝 개행 없음**(그래서 `wc -l` 은 112/136 을 내놓고
@@ -399,7 +401,7 @@ guide 쪽 넷(`R2601` 계열 둘 · `STA0291` 둘)은 정본에 없는 판이라
 | 같은 바이트를 가진 자리 |
 |---|
 | `acf/archive/KMTK_GUI_162_STA0201_R2608.acf` · 보관함 `KMTK_GUI_162_STA0201_R2608.acf` · 보관함 `kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf` (sha256 `d710ffae26e6`) |
-| `acf/<이름>.acf` ↔ 보관함 `<같은 이름>.acf` -- **science 다섯 전부** (정규화 뒤) |
+| `acf/<이름>.acf` ↔ 보관함 `<같은 이름>.acf` -- **science 여섯 전부** (정규화 뒤) |
 | `acf/acf_timing_script_guide.txt` ↔ 보관함 `acf_timing_script_guide_R210930.txt` (1,765 B) |
 | `acf/acf_timing_script_science.txt` ↔ 보관함 `acf_timing_script_science_R250826.txt` (2,137 B) |
 
@@ -451,7 +453,7 @@ v0.7….py`)의 `UNIT_ACF` 가 **구 파일명을 가리키므로 작업본에�
 
 | | 장착 슬롯 | 자리 수 (백플레인 포함) |
 |---|---|---:|
-| science 다섯 | 1·2·3·4·5·8·9·10·11 | **10** |
+| science 여섯 | 1·2·3·4·5·8·9·10·11 | **10** |
 | guide | 3·4·5·6·7·9·10 | **8** |
 
 science 쪽은 `rawhdr.TEMP_MODS` 와 정확히 같고, `__ref_archon_control/
@@ -516,5 +518,5 @@ guide 8자리는 **raw spec 10.4절이 정본**이다 — v1.9 에서 `OI-19` �
 보관함의 `acf_timing_script_{guide,science}_R<YYMMDD>.txt` 에 붙는 여섯 자리는
 **ACF 개정 번호가 아니라 타이밍 스크립트 자체의 최종 수정일**이다 (운영자 기록).
 `R210930` 을 `YYMM` 으로 읽어 "2021-09" 로 오해하지 말 것 -- `YYMMDD` 다.
-같은 스크립트가 여러 ACF 판에 그대로 실리므로(guide 열한 장이 전부 동일) 스크립트
+같은 스크립트가 여러 ACF 판에 그대로 실리므로(guide 열두 장이 전부 동일) 스크립트
 날짜와 ACF 판 번호는 애초에 따로 움직인다.

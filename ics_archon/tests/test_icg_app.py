@@ -205,3 +205,46 @@ def test_collision_bumps_number_but_keeps_expid(tmp_path):
     assert stem == '%s.%s.%06d.G' % (site, date, nxt + 1)
     # EXPID 는 최초 배정분 -- FILENAME 과의 불일치가 충돌 신호 (D-019).
     assert cards['EXPID'].startswith("'%s.%s.%06d" % (site, date, nxt))
+
+
+# ---------------------------------------------------------------------------
+# 포트 배정 (2026-09-03)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.repo_only
+def test_the_two_programs_do_not_share_a_port():
+    """⭐ **ICS 6600 · ICG 6601** -- 배포 ini 둘이 같은 포트를 쓰지 않는다.
+
+    ⚠️ `ics_sim` 기본값이 6600 이라 icg ini 에서 `bind_port` 를 **빼면 같은
+    값으로 떨어진다** -- 한 호스트에 둘을 올리는 배치에서 뒤에 뜨는 쪽이 bind
+    에 실패하고, 그 오류는 "왜 안 뜨나" 로만 보인다.  주석으로 막을 수 없는
+    자리라 시험으로 못박는다 (배정표는 `INSTALL.md`).
+    """
+    ics_ini = os.path.join(ROOT, 'ics_archon.ini')
+    ics = simcfg.load(ics_ini)
+    icg = simcfg.load(INI)
+    assert ics.transport.bind_port == 6600, ics.transport.bind_port
+    assert icg.transport.bind_port == 6601, icg.transport.bind_port
+    assert ics.transport.bind_port != icg.transport.bind_port
+    # 레거시가 쓰던 나머지 자리와도 안 겹친다 (TC 6606 · OBS 6650 · XIS 6660).
+    assert icg.transport.bind_port not in (6606, 6650, 6660)
+    # 허브를 가리키는 값은 둘이 **같아야** 한다 -- 같은 허브에 붙는다.
+    assert ics.transport.xis_port == icg.transport.xis_port == 6660
+
+
+def test_icg_warns_when_it_is_given_the_ics_port(tmp_path, caplog):  # noqa: ANN001
+    """ICS 몫 포트를 받으면 기동에서 알린다 -- 오타 방어.
+
+    ⚠️ 막지는 않는다 -- 호스트를 갈라 둔 배치에서는 6600 이 정당하다.
+    """
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        cfg.transport.bind_port = IcgArchon.ICS_BIND_PORT
+        app = IcgArchon(cfg, icfg, backend='sim')
+        await app.start()
+        await app.stop()
+
+    caplog.set_level('WARNING')
+    asyncio.run(run())
+    said = [r.getMessage() for r in caplog.records]
+    assert any('ICS 몫' in m for m in said), said

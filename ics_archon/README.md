@@ -31,11 +31,12 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}.txt` 의 절차 정본. `--check` 로 대조, `--out` 으로 재추출.  ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
-| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 6개 = science 5 + guide 1, `archive/` 구판 4개, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
+| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 7개 = science 6 + guide 1, `archive/` 구판 4개, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
 | [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.3.4`, science 유닛).  유닛별 사본 셋(`KMTC-102`·`KMTC-113`·`KMTS-101`)이 나란히 있고 `tests/test_labtest_spec_copy.py` 가 표류를 막는다 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |
 | [`tests/verify_labtest_v13.py`](tests/verify_labtest_v13.py) | **labtest 전용 검증** (32항목, 실패 0이어야 한다) — `python tests/verify_labtest_v13.py`.  읽기전용 자리 1건은 POSIX 에서만 돌고 윈도우에서는 `SKIP` |
+| ⭐ [`icg_first_run.md`](icg_first_run.md) | ⭐ **guide 첫 구동 체크리스트** — 0~6단계 · 무엇을 적나 · 무엇이 나오면 멈추나. science 의 "실기 첫 실행 절차" 짝이고, `icg_archon` 을 실기에 붙일 때 여기부터 |
 | ⭐ [`DevNote.md`](DevNote.md) | **개발 노트** — 과정·판단 근거·시사점. "왜 이렇게 됐나" 는 여기 |
 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) | **인수인계** — 상태 · 브랜치 · 절대 깨뜨리면 안 되는 것 · Archon 매뉴얼이 말하는 것(**확인 상태 표시**) |
 | `__ref_archon_control/` | **읽기 전용 참조** — v1.0 원본 2부 + STA Archon 매뉴얼(2021-02-23) + ZTF Readout Notes(2014-10-30).  ⚠️ **매뉴얼은 판정 근거가 아니다** — 현행 FW 와 양방향으로 어긋날 수 있다(DevNote 8.7) |
@@ -173,6 +174,11 @@ monitor_log      = ~/AIC/log
 실기에서 **프레임이 한 장도 안 나오던 증상**의 원인은 `Sync In` 이 물려 상대
 컨트롤러가 클록을 잡고 있던 것이었다 (labtest 2026-08-27 종결).  그때 관측된
 조합이 이것이다:
+
+⭐ **배선까지 좁혀졌다 (운영자 실기 확인 2026-09-04)** -- **master 의 `Sync Out`
+이 이 유닛의 `Sync In` 에 연결되어 있으면 노출이 진행되지 않는다.**  발견해서
+해결했다.  ⚠️ 그러니 유닛을 **한 대만** 돌릴 때(실험실 1유닛 · guide 첫 구동)는
+**`Sync In` 을 비워 둘 것** -- 2대 구성의 배선을 그대로 남겨 두면 이 증상이 난다.
 
 ```
 POWER=4  POWERGOOD=1  FRAME=0/0/0  (영구)
@@ -495,6 +501,11 @@ python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
   "이 자료를 만든 코드" 를 되짚을 수 있다.
 
 ## 실기 첫 실행 절차
+
+> ⚠️ **이 절은 science pair 다.** guide 유닛(`icg_archon`)은
+> **[`icg_first_run.md`](icg_first_run.md)** 를 따른다 — 자리 표·카드 표·
+> 설정 파일이 다르고, probe 도 **`--unit guide`** 로 불러야 한다 (안 주면
+> 자리 표 어긋남을 거짓으로 보고한다).
 
 **본편을 그냥 돌리지 말 것.** 미검증 3자리가 한꺼번에 걸리면 원인을 가릴 수
 없다. `tools/probe_archon.py` 가 위험이 낮은 것부터 하나씩 확인한다 — 본편과

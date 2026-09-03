@@ -289,3 +289,195 @@ def test_stage1_reads_the_health_fields_and_the_bias_table(tmp_path):  # noqa: A
     assert '전원 레일 7개가 정상 범위 안이다' in text
     assert '바이어스 16채널의 V/I 를 전부 읽었다' in text
     assert probe_archon.BAD not in marks(), text
+
+
+# ---------------------------------------------------------------------------
+# guide 유닛 (`--unit guide`) -- 자리 표·카드 표가 science 와 다르다
+# ---------------------------------------------------------------------------
+#
+# ⭐ **왜 이 갈래가 필요한가** (2026-09-03).  guide 유닛은 자리 표가 규격 10.4절
+# 8자리이고 장착이 3·4·5·6·7·9·10 이다.  science 10자리로 재면 1단계가
+# `extra [6, 7]` + `missing [1, 2, 8, 11]` 을 **거짓으로** 보고한다 -- probe 는
+# 실기에 붙이는 첫 도구라 그 오경보 하나가 진짜 문제를 덮는다.  아래 둘째 시험이
+# **그 거짓 보고 자체**를 못박는다 (플래그를 지우면 빨개진다).
+
+#: guide ACF `[SYSTEM]` 실측 (`acf/KMTK_GUI_162_STA0201_R2610.acf`) --
+#: Driver 둘 · AD 둘 · HeaterX 둘 · HVXBias 하나, 1·2·8·11·12 는 빈 슬롯.
+GUIDE_SYSTEM = {
+    'BACKPLANE_TYPE': '1', 'BACKPLANE_REV': '5',
+    'BACKPLANE_VERSION': '1.0.1252',
+    'BACKPLANE_ID': '000000001A99369B',
+    'MOD_PRESENT': '037C',
+    'MOD1_TYPE': '0', 'MOD2_TYPE': '0', 'MOD3_TYPE': '1', 'MOD4_TYPE': '1',
+    'MOD5_TYPE': '2', 'MOD6_TYPE': '2', 'MOD7_TYPE': '11', 'MOD8_TYPE': '0',
+    'MOD9_TYPE': '8', 'MOD10_TYPE': '11', 'MOD11_TYPE': '0',
+    'MOD12_TYPE': '0',
+}
+
+#: guide `STATUS` -- **8자리 온도 + 7레일 + `HEATER`**.  science 표에 있는
+#: `MOD1/TEMP` 같은 자리는 **일부러 안 낸다**: 프로파일이 안 갈리면 그 자리를
+#: 결측으로 세어 `문제` 가 나는 것이 아래 둘째 시험에서 드러난다.
+GUIDE_STATUS = {
+    'POWERGOOD': '1', 'VALID': '1', 'COUNT': '100', 'LOG': '0',
+    'POWER': '4', 'OVERHEAT': '0',
+    'BACKPLANE_TEMP': '30.9',
+    'MOD3/TEMP': '31.1', 'MOD4/TEMP': '31.2', 'MOD5/TEMP': '32.3',
+    'MOD6/TEMP': '32.4', 'MOD7/TEMP': '33.5', 'MOD9/TEMP': '34.6',
+    'MOD10/TEMP': '34.7',
+    'P2V5_V': '2.512', 'P2V5_I': '4.698',
+    'P5V_V': '5.023', 'P5V_I': '4.487',
+    'P6V_V': '5.834', 'P6V_I': '2.176',
+    'N6V_V': '-5.945', 'N6V_I': '0.465',
+    'P17V_V': '16.956', 'P17V_I': '0.454',
+    'N17V_V': '-17.067', 'N17V_I': '0.443',
+    'P35V_V': '35.089', 'P35V_I': '0.032',
+    # PROVISIONAL -- 후보 셋 중 첫째.  실기 이름은 첫 구동에서 확정한다.
+    'HEATER_V': '27.9', 'HEATER_I': '0.512',
+}
+
+# 층 2 -- guide 바이어스 **18채널**.  이름표는 ACF(`MOD9/HVxC_n`)에서, 값은
+# STATUS(`MOD9/HVxC_Vn`/`_In`)에서 온다 (매뉴얼 p.48).  아래 `run_guide` 가
+# `icg_archon.ini` 의 정본 ACF 를 그대로 쓰므로 이 자리가 비면 1단계가
+# `문제` 를 낸다 -- 채워 두고 guide 층 2 경로를 함께 밟는다.
+GUIDE_BIAS = {}
+for _n in range(1, 7):                       # HVHC 여섯 (ABG·OG·TP24·…)
+    GUIDE_BIAS['MOD9/HVHC_V%d' % _n] = '%.2f' % (24.0 + _n)
+    GUIDE_BIAS['MOD9/HVHC_I%d' % _n] = '0.100'
+for _n in range(1, 13):                      # HVLC 열둘 (VRD·OD 계열)
+    GUIDE_BIAS['MOD9/HVLC_V%d' % _n] = '%.2f' % (10.0 + _n)
+    GUIDE_BIAS['MOD9/HVLC_I%d' % _n] = '0.050'
+GUIDE_STATUS.update(GUIDE_BIAS)
+
+_ROOT = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), os.pardir))
+GUIDE_INI = os.path.join(_ROOT, 'icg_archon.ini')
+
+
+@pytest.fixture()
+def guide_fake():  # noqa: ANN201
+    srv = FakeArchon(width=NX, height=NY, system=GUIDE_SYSTEM,
+                     status=GUIDE_STATUS)
+    srv.start()
+    yield srv
+    srv.shutdown()
+
+
+def run_guide(args, tmp_path):  # noqa: ANN001
+    """`--unit guide` 로 돌린다 -- 기하만 시험 크기로 줄인다."""
+    from icg_archon import config as icfg_mod
+    real_load = icfg_mod.load
+
+    def small(path):  # noqa: ANN001
+        cfg = real_load(path)
+        cfg.naxis1, cfg.naxis2 = NX, NY
+        # ini 의 ACF 경로는 상대경로다 -- **실행 디렉터리에 기대지 않는다.**
+        # 정본을 그대로 쓰되(층 2 이름표가 실물이어야 한다) 저장소 기준으로
+        # 푼다.
+        if cfg.acf.get('G') and not os.path.isabs(cfg.acf['G']):
+            cfg.acf['G'] = os.path.normpath(
+                os.path.join(_ROOT, cfg.acf['G']))
+        return cfg
+
+    icfg_mod.load = small
+    try:
+        return probe_archon.main(args + ['--unit', 'guide',
+                                         '-c', GUIDE_INI,
+                                         '--out', str(tmp_path)])
+    finally:
+        icfg_mod.load = real_load
+
+
+def test_guide_profile_is_quiet_on_a_guide_unit(guide_fake, tmp_path):  # noqa: ANN001
+    """guide 유닛 + `--unit guide` = **문제 0건.**"""
+    rc = run_guide(['--host', '127.0.0.1', '--port', str(guide_fake.port)],
+                   tmp_path)
+    assert rc == 0, labels()
+    assert probe_archon.BAD not in marks(), labels()
+
+    text = labels()
+    assert '규격 10.4절 자리 표와 정합한다' in text
+    assert '8자리' in text
+    assert '온도 슬롯 8개' in text
+    # `HEATER` 는 결측이 아니라 PROVISIONAL 로 다룬다.
+    assert 'HEATER 레일 필드 = HEATER_V' in text
+    # 층 2 -- guide 는 18채널이다 (science 16 과 다르다)
+    assert '바이어스 18채널의 V/I 를 전부 읽었다' in text
+    # 1단계는 전원을 켜지 않는다 -- guide 도 같다.
+    assert 'POWERON' not in guide_fake.seen and not guide_fake.powered
+
+
+def test_science_profile_on_a_guide_unit_is_the_false_alarm(guide_fake, tmp_path):  # noqa: ANN001
+    """⚠️ **`--unit` 을 안 주면 거짓 어긋남이 나온다** -- 그 사실을 못박는다.
+
+    이 시험이 빨개지면 둘 중 하나다: 프로파일 갈래가 없어졌거나(플래그를
+    지웠다), science 자리 표가 guide 와 같아졌거나.  둘 다 사람이 봐야 한다 --
+    조용히 통과하면 실기 첫 화면의 오경보가 되살아난다.
+    """
+    rc = run(['--host', '127.0.0.1', '--port', str(guide_fake.port)], tmp_path)
+    assert rc == 1
+    text = labels()
+    assert '자리 표에 없다' in text          # 장착 6·7 이 science 표 밖
+    assert '자리 표의 슬롯' in text          # 1·2·8·11 이 무보고
+    assert '온도 슬롯' in text and 'MOD1/TEMP' in text
+
+
+def test_guide_stage3_writes_a_guide_header(guide_fake, tmp_path):  # noqa: ANN001
+    """3단계 -- guide 카드 표로 파일 한 장.  `ICGBUILD` · 8자리 · `CTRL2*` 없음."""
+    acf = tmp_path / 'guide.acf'
+    acf.write_text(ACF_TEXT, encoding='ascii')
+    rc = run_guide(['--host', '127.0.0.1', '--port', str(guide_fake.port),
+                    '--acf', str(acf), '--expose', '0', '--write',
+                    '--poll', '0.01', '--poweron-wait', '0'], tmp_path)
+    assert rc == 0, labels()
+    assert guide_fake.seen[-1] == 'POWEROFF', guide_fake.seen[-6:]
+
+    made = glob.glob(str(tmp_path / 'probe.*.G.fits'))
+    assert len(made) == 1, made
+    from astropy.io import fits
+    with fits.open(made[0]) as hdul:
+        h = hdul[0].header
+        assert (h['NAXIS1'], h['NAXIS2']) == (NX, NY)
+        # 규격 10.4절 -- 온도 여덟 · 레일 여덟 (science 는 열·일곱이다)
+        assert len(h['C1_TEMP'].strip().split('|')) == 8
+        assert len(h['C1_VOLT'].strip().split('|')) == 8
+        assert len(h['C1_CURR'].strip().split('|')) == 8
+        # 키 개명 -- guide 는 `ICGBUILD` 다 (10.3절)
+        assert 'ICGBUILD' in h and 'ICSBUILD' not in h
+        # 컨트롤러가 한 대라 `CTRL2*` 는 템플릿에 없다
+        assert 'CTRL1ID' in h and 'CTRL2ID' not in h
+        assert h['CTRL1SN'].strip() == '000000001A99369B'
+        # 실물 백엔드로 적는다 -- 시뮬로 오인되면 규격 5.5절 방어가 무의미해진다
+        assert h['DATASRC'].strip() == 'ARCHON_GUIDE'
+
+
+def test_guide_rejects_a_science_tag(guide_fake, tmp_path):  # noqa: ANN001
+    """`--unit guide --tag MK` 는 거부한다 -- guide 에 없는 어휘다.
+
+    받아 주면 **조용히 다른 자리의 카드**가 만들어진다 (색인이 태그를 정한다).
+    """
+    rc = run_guide(['--host', '127.0.0.1', '--port', str(guide_fake.port),
+                    '--tag', 'MK'], tmp_path)
+    assert rc == 1
+    assert '--tag MK 가 없다' in labels()
+
+
+def test_guide_heater_field_absence_is_not_a_defect(tmp_path):  # noqa: ANN001
+    """`HEATER` 이름이 후보에 없어도 **`문제` 가 아니다** (PROVISIONAL).
+
+    실기 이름을 아직 모르는 자리를 결측으로 세면 첫 구동이 통째로 빨개진다 --
+    그러면 같은 화면에 있는 진짜 결측을 못 읽는다 (F2 원칙).
+    """
+    status = {k: v for k, v in GUIDE_STATUS.items()
+              if not k.startswith('HEATER')}
+    srv = FakeArchon(width=NX, height=NY, system=GUIDE_SYSTEM, status=status)
+    srv.start()
+    try:
+        rc = run_guide(['--host', '127.0.0.1', '--port', str(srv.port)],
+                       tmp_path)
+    finally:
+        srv.shutdown()
+    assert rc == 0, labels()
+    text = labels()
+    assert 'HEATER 레일 필드 = (후보 다 없다)' in text
+    # 범위 판정도 일곱만 센다 -- p.41 표에 `HEATER`(+28 V)가 없다.
+    assert '전원 레일 7개가 정상 범위 안이다' in text

@@ -63,6 +63,10 @@ def check_geometry() -> None:
     assert AMPNAX2 == NAXIS2, '프레임 높이 = amp 높이 (9.4절)'
     assert len(CHMAP.split(',')) == 4 and len(IMGROT.split(',')) == 4, \
         'CHMAP/IMGROT 는 칩 4 자리다 (10.3절)'
+    # 이름표는 자리마다 하나여야 한다 -- 한쪽만 늘면 probe 의 대조 표가
+    # 자리를 밀어 찍고, 그 화면이 실기에서 자리 표를 확인하는 유일한 수단이다.
+    assert len(TEMP_MOD_LABELS) == len(TEMP_MODS), \
+        'TEMP_MOD_LABELS 는 TEMP_MODS 와 같은 자리 수다 (10.4절)'
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +78,16 @@ def check_geometry() -> None:
 #: 재확인만 남는다 (10.4절).
 TEMP_MODS = ('BACKPLANE_TEMP', 'MOD3/TEMP', 'MOD4/TEMP', 'MOD5/TEMP',
              'MOD6/TEMP', 'MOD7/TEMP', 'MOD9/TEMP', 'MOD10/TEMP')
+
+#: 자리마다 **무엇인지** -- 규격 10.4절 표의 항목 이름 (science
+#: `rawhdr.TEMP_MOD_LABELS` 의 guide 판, 표기·순서를 그대로 따른다).
+#:
+#: 카드에는 이름표가 없고 값만 나열되므로(자리 = 항목), 실기에서 "이 자리가
+#: 정말 그 모듈인가" 를 눈으로 대조할 수 있는 자리가 이 표뿐이다 --
+#: `tools/probe_archon.py --unit guide` 가 1단계에서 이것을 찍는다.
+TEMP_MOD_LABELS = ('Backplane', 'Mod3:Driver', 'Mod4:Driver', 'Mod5:AD',
+                   'Mod6:AD', 'Mod7:HeaterX', 'Mod9:HVXBias',
+                   'Mod10:HeaterX')
 
 #: 전원 레일 8자리 -- 7레일 + guide 전용 `HEATER`(+28 V) (10.4절).
 VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V', 'HEATER')

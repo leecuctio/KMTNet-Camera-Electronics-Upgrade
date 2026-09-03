@@ -66,9 +66,21 @@ class IcgArchon(IcsSim):
 
     # -- 수명 ---------------------------------------------------------------
 
+    #: ICS 몫 포트 (`ics_archon.ini` · `ics_sim` 기본값).  ⭐ **이 값과 같으면
+    #: 한 호스트에서 둘 다 못 뜬다** -- 뒤에 뜨는 쪽이 bind 에서 죽는데, 그
+    #: 오류가 "왜 안 뜨나" 로만 보여서 원인을 찾는 데 시간이 든다.  ICG 몫은
+    #: **6601** 이고 배정표는 `INSTALL.md` 다 (2026-09-03).
+    ICS_BIND_PORT = 6600
+
     async def start(self) -> None:
         for line in validate(self.icfg, self.backend_name):
             log.warning('%s', line)
+        port = int(getattr(self.cfg.transport, 'bind_port', 0))
+        if port == self.ICS_BIND_PORT:
+            log.warning('[transport] bind_port=%d 는 **ICS 몫**이다 -- ICG 는 '
+                        '6601 이다 (INSTALL.md 배정표).  같은 호스트에서 ICS 와 '
+                        '함께 돌리면 뒤에 뜨는 쪽이 bind 에 실패한다.  호스트를 '
+                        '갈랐다면 이 경고는 무시해도 된다', port)
         await super().start()
         self._log_icg_banner()
         if self.backend_name == 'icg_archon':

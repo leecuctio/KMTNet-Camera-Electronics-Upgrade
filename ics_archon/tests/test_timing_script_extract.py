@@ -17,7 +17,7 @@ freeze 사본").  저장소 밖에 진실의 원천이 없으므로 **원본 ACF
 `__ref_archon_control/acf/` 는 **역사적 판**이라, 스크립트가 정당하게 개정되면
 현행 txt 와 안 맞는 것이 맞는 상태다 -- 거기까지 걸면 정상 동작을 결함이라고
 우기는 시험이 된다.  보관함의 `*_R<YYMMDD>.txt` 도 같은 이유로 뺀다(freeze
-사본이라 갈리는 것이 제 일이다).  ⭐ 2026-09-03 현재는 22장이 전부 두 판 중
+사본이라 갈리는 것이 제 일이다).  ⭐ 2026-09-03 현재는 24장이 전부 두 판 중
 하나와 같지만 그것은 **관찰이지 규약이 아니다**.
 """
 
@@ -51,7 +51,7 @@ def _current_acfs() -> list[str]:
 
 @pytest.mark.repo_only
 def test_the_two_txt_are_faithful_extracts_of_the_current_acfs():
-    """정본 ACF 여섯의 내장 스크립트가 두 txt 와 **바이트 동일**한가.
+    """정본 ACF 일곱의 내장 스크립트가 두 txt 와 **바이트 동일**한가.
 
     ⭐ 판은 `BIGBUF` 로 가른다 (science 1 / guide 0) -- 파일명으로 가르면
     개명이 시험을 깬다(`../SMC_CLAUDE.md` 함정 4).
@@ -139,5 +139,5 @@ def test_unquote_strips_only_the_wrapping_pair():
     assert ets._unquote('X') == 'X'                    # 단일 토큰  # noqa: SLF001
     assert ets._unquote('PCLK') == 'PCLK'              # 무조건 v[1:-1] 이면 'CL'  # noqa: SLF001
     assert ets._unquote('""') == ''  # noqa: SLF001
-    # 값 **안쪽** 따옴표는 살려야 한다 (21장에는 아직 0건이지만 규칙은 이것이다).
+    # 값 **안쪽** 따옴표는 살려야 한다 (24장에도 0건이지만 규칙은 이것이다).
     assert ets._unquote('"A; CALL F("x")"') == 'A; CALL F("x")'  # noqa: SLF001
