@@ -1409,6 +1409,8 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | `f0b3b8a` | **10장 반영** — 죽은 전제(FETCH 정지·`LOCK` 무가치·`HEIGHT`=라인·12초 주기) 전수 사냥(워크플로 사냥꾼 6·반증자 6·비평 1: 원시 400 → 확정 107).  ics: `parse.progress_of(LINECOUNT)`·`MIN_FRAME_PERIOD` 13.27·`fetch_timeout` 10 + **기동 검사**(잠금 ≥ 주기면 경고)·`LOCK%d` try 안·`POWERON ?xx` 진단.  icg: 잠금 < 하한(`fetch_timeout` 1.0)·`acftiming.script_matches()` 형태 가드·`exptime_min` 2.0.  가짜: `POWERON` 은 `APPLYALL` 전제·`REBOOT`·split 모사 | DevNote **9.15 (1)~(7)** |
 | `7348178` | 비평 7곳 후속 + **ERASE 비용 표기 통일**("독출 1회분 12.77 초 — 사강이 붙으면 13.27") | 9.15 **(8)** |
 | `df4d4fc` | **icg ABORT 가 연속 시퀀스를 안 세우던 결함** + ⭐⭐ **컨트롤러 취소 안전**(`_locked_thread`) + 가짜 `Exposures` 실시간 카운터.  반증 3라운드(렌즈 7) | 9.15 **(9)** |
+| `6117ea3` | `MODULE_TYPES` 에 형 **6(Atlas)·16(DriverX)** -- 근거는 벤더 클라이언트 `ArchonGUI/src/archon.h` (다른 세션 커밋분, 이 세션이 푸시) | `ARCHONGUI_ANALYSIS.md` §7.1 |
+| `78b0e73` | **타이밍 스크립트 두 판 + 추출 도구 + guide ACF R2610** -- txt 둘은 벤더 반입본이 아니라 **ACF 추출본**(출처 정정) · `tools/extract_timing_script.py` 가 절차 정본 · `Pixels` 600→**540**(여분 13, 문헌 권고 8~16) · 하한 1.3746→**1.2506 s** | DevNote **9.14-(7)** |
 | `e7653cc` | 이 인수인계 절 | -- |
 | `febedd2` | **보관함 ACF 정리** -- 운영자 반입분 둘 등재(둘 다 기존 바이트의 사본, 새로 남는 것은 **이름의 대응**) · **CRLF→LF 정규화**(운영자 지시)와 `.gitattributes` 의 `-text` 예외 철회.  ⚠️ 그 예외가 보존하던 판별 단서(`R2601`=CRLF · `R0827`=LF)는 **`acf/README.md` 의 "보관함 목록과 줄 끝" 표**가 기록한다.  ⭐ 바이트 자체는 이 커밋 **직전** `e7653cc` 에서 일곱 개 전부 복구된다 | `acf/README.md` |
 
