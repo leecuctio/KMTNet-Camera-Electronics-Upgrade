@@ -217,8 +217,7 @@ class ArchonCfg:
     #: 셔터 트리거(TRIGOUTFORCE)를 내는 컨트롤러.  `both` 면 둘 다.
     #: 실기 배선이 확인되면 한쪽으로 좁힌다 (검토사항).
     shutter_ctrl: str = 'BOTH'
-    #: `ERASE` 를 전체 독출 flush 로 처리할지 (labtest `bFullFlush`).
-    #: ERASE 를 **전체 독출 flush** 로 할지.
+    #: `ERASE` 를 **전체 독출 flush** 로 처리할지 (labtest `bFullFlush`).
     #:
     #: ⛔ **기본값이 `False` 다** (운영자 확정 2026-08-29) -- *"이제는 clock 을
     #: 개선해서 별도 erase 를 하지 않고 바로 노출을 시작한다"*.  종전 기본값
@@ -408,7 +407,7 @@ class ArchonCfg:
 
 
 def _head(sec, key: str, default: str) -> str:
-    """값의 첫 토큰.  `10.0.0.13 (AC13A)` 처럼 뒤에 붙은 설명을 떼어낸다.
+    """값의 첫 토큰.  `10.0.0.113 (KMTK-SCI-113)` 처럼 뒤에 붙은 설명을 떼어낸다.
 
     `ics_sim` 의 `[auxcontrol]` 과 같은 관례다 -- 현장 ini 를 그대로 복사해
     넣어도 되게 한다.

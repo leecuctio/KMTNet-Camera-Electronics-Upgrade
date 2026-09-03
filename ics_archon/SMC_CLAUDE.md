@@ -722,7 +722,8 @@ filter name" 경고와 함께 skip 된다 (`loadconfig.c:1377`).
     bed73e7  설치 루트 AICS -> AIC 개명 + 경로가 재빌드에 묶여 있던 것 해소
     6cfc3c0  ics_archon: 두 컨트롤러 병렬 독출 + v0 미해결 F1~F12
 
-별도 브랜치 **`archongui-analysis`**(`2239583`, `main` 기반) — `ArchonGUI/
+별도 브랜치 **`archongui-analysis`**(`2239583`, `main` 기반 — ⚠️ **개명됐다:
+현행 이름은 `archongui-study`**) — `ArchonGUI/
 QT_INSTALL.md` 뿐이다.  STA 가 준 GUI 의 Qt5 빌드 절차이고 `ics_archon` 과
 무관해 따로 관리한다 (작성=목).
 
@@ -1435,6 +1436,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | `[icg] ctrl_host` 를 다시 고친다 | **정본은 ACF 의 `IP=`** 다.  ini 값만 보고 판단하지 말 것 |
 | ⭐ **포트를 6600 으로 되돌린다** | **ICS 6600 · ICG 6601** 이 배정이다 (배정표 `INSTALL.md`).  `ics_sim` 기본값이 6600 이라 icg ini 에서 `bind_port` 를 **빼면 같은 값으로 떨어져** 한 호스트에서 둘 다 못 뜬다.  기동 검사가 경고하고 `test_icg_app.py::test_the_two_programs_do_not_share_a_port` 가 못박는다.  ⚠️ 레거시는 IC 계열·ICG 가 다 6600 이고 **호스트로** 갈랐다 — 호스트를 갈랐다면 6600 도 정당하니 검사는 **막지 않고 알리기만** 한다 |
 | 허브 배치를 안 고친다 | ICG 포트를 바꿨으면 XIS `isis.ini` 의 `UDPPort <ip> 6600` **preset 도** 고쳐야 기동 핑이 닿는다 (동적 등록은 우리 PING 으로 되니 치명적이지는 않다).  ⛔ 저장소의 `ics_sim/xis/install/config/*` 는 **레거시 보관본**이라 고치지 말 것 |
+| ⭐ **파생값을 원천 없이 적는다** | ⛔ *"독립인 두 경로가 같은 값을 냈다"* 를 논거로 쓰기 전에 **원천까지 따라가라.**  8장에서 `≈416 행/초` 가 스크립트 계산인 줄 알고 buftest 의 416.7 과 일치한다며 서로를 보강했는데, **둘 다 같은 원천(죽은 11.3초)에서 나왔고 정작 맞았던 스크립트 계산(367 ≈ 실측 368.0)은 버려졌다** (DevNote **11.16**).  ⭐ 파생값에는 **무엇에서 나왔는지를 함께 적을 것** |
 
 #### ⏳ 이 세션이 남긴 것 (운영자 확인 대기)
 
@@ -1476,7 +1478,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | HK 를 파일에서 와이어로 옮기는 설계의 **결함 F1~F10** + 안 짚었던 각도 다섯 | DevNote **11.12** |
 | 히터 검토 **F1~F7** (PID 게인 0 · FORCELEVEL · TARGET 세 겹 · `set_config` 캐시 · APPLYMOD) | DevNote **11.13** |
 | ⭐ **운영자 확정 문면** -- `HKDATA` · `EXPENABLE` · 히터 명령 다섯 | DevNote **11.14** |
-| ⭐ **대화 전문** (가공 안 한 복원본, 발화 126개 · 운영자 발화 색인 33줄) | [`recovered_session_20260903.md`](recovered_session_20260903.md) |
+| ⭐ **대화 전문** (가공 안 한 복원본 -- **세션 다섯 · 발화 734** · 세션마다 운영자 발화 색인) | [`recovered_session_20260903.md`](recovered_session_20260903.md) |
+| 복원 2차에서 더 찾은 **누락 26건** (⭐ `VACGAUGE` 명령이 통째로 빠져 있었다) | DevNote **11.15** |
+| ⭐ 8장의 **거짓 확증** -- "독립인 두 경로" 가 순환이었다 | DevNote **11.16** |
 
 ⚠️ **복원할 때 밟은 함정** -- 운영자 발화가 **두 모양**으로 들어온다: 보통 발화와
 **작업 중 끼어든 것**(`<!-- attach -->` 로 시작하고 내 문장을 `>` 로 인용한 뒤 지시가
