@@ -15,15 +15,18 @@ the Micro-Ion gauge to operate**. A process relay or switch can be used …
 To turn OFF the Micro-Ion gauge, the process relay will **open** the switch."*
 ⭐ **그 스위치가 바로 ACF 의 `MOD10\\DIO_LABEL3=IONEN` 이다.**
 
-| 갈래 | 무엇을 쓰나 | 범위 | 근거 |
+| 갈래 | 무엇을 쓰나 | 범위 | 상태 |
 |---|---|---|---|
-| **`ionen`** (기본) | `MOD10\\DIO_SOURCE3` 1→0 | IONEN **한 라인**만 HIGH→LOW | Archon p.62 `DIO_SOURCEi` 0=low·1=high·2=timing·3=VCPU |
-| `diopower` | `MOD10\\DIO_POWER` 1→0 | **8라인 전부**의 버퍼 전원 | ⭐ 참고 보관함의 `…_goff_….acf` 가 **정확히 이 한 줄만** 다르다 -- 선임이 실제로 쓴 길 |
+| **`diopower`** (기본) | `MOD10\\DIO_POWER` 1→0 | **8라인 전부**의 버퍼 전원 | ✅ **실측 확인** (운영자 2026-09-04).  선임이 쓰던 길과 같다 (`…_goff_….acf` 가 정확히 이 한 줄만 다르다) |
+| `ionen` | `MOD10\\DIO_SOURCE3` 1→0 | IONEN **한 라인**만 HIGH→LOW | ⏳ **미검증**.  Archon p.62 `DIO_SOURCEi` 0=low·1=high·2=timing·3=VCPU |
 
-⚠️ `diopower` 는 시리얼 3선(`ION_DE`/`ION_DI`/`ION_RO`)의 버퍼 전원도 끊으므로
-**압력 읽기까지 죽는다**.  `ionen` 은 읽기를 살린 채 필라멘트만 끈다.  ⏳ 둘 다
-**첫 구동 실측 대기**라 ini(`[icg] gauge_off_method`)로 고를 수 있게 두었다 --
-벤치에서 `ionen` 이 안 통하면 검증된 `diopower` 로 한 줄만 바꾼다.
+⭐ **실측이 갈래를 정했다** -- 운영자가 `MOD10\\DIO_POWER=1/0` 으로 On/Off 가
+되는 것을 확인했다.  ⚠️ 그 대신 `diopower` 는 시리얼 3선(`ION_DE`/`ION_DI`/
+`ION_RO`)의 버퍼 전원도 끊으므로 **압력 읽기까지 죽는다** -- 끈 동안에는 값이
+아예 안 온다.  ⭐ 그것이 오히려 아래 Conductron 함정을 **비껴간다**(올 값이
+없으니 틀린 값도 없다).  그래도 sentinel 규칙은 그대로 둔다: `ionen` 으로
+바꾸면 함정이 되살아나고, *"끈 동안 DEWPRES 는 sentinel"* 은 갈래와 무관한
+운영자 확정이다.
 
 ⛔⛔ **끈 동안 `DEWPRES` 를 실으면 안 된다** (이 모듈이 존재하는 진짜 이유)
 ------------------------------------------------------------------------
@@ -56,8 +59,8 @@ DIOPOWER = 'diopower'
 
 #: 갈래 → (설정 키, 켤 때 값, 끌 때 값).  ⭐ 값을 코드 곳곳에 흩지 않는다.
 METHODS = {
-    IONEN: ('MOD10\\DIO_SOURCE3', '1', '0'),
-    DIOPOWER: ('MOD10\\DIO_POWER', '1', '0'),
+    DIOPOWER: ('MOD10\\DIO_POWER', '1', '0'),      # ✅ 실측 확인 (기본)
+    IONEN: ('MOD10\\DIO_SOURCE3', '1', '0'),       # ⏳ 미검증
 }
 
 #: 응답에 붙일 주석 -- 끄고 켜는 것 **둘 다** VCPU 재시작을 부른다
@@ -79,7 +82,7 @@ class GaugeState:
     치면 평상 운영에서 진공값이 조용히 사라진다.
     """
 
-    def __init__(self, method: str = IONEN) -> None:
+    def __init__(self, method: str = DIOPOWER) -> None:
         if method not in METHODS:
             raise ValueError('gauge_off_method 는 %s 가운데 하나여야 한다 -- %r'
                              % ('|'.join(sorted(METHODS)), method))

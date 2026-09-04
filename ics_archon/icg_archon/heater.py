@@ -2,18 +2,23 @@
 # -*- coding: utf-8 -*-
 """guide 듀어 히터 -- `MOD10`(HeaterX 모듈) 의 히터 채널을 조작한다.
 
-명령 **다섯**의 살림집이다 -- 켜기/끄기(`HTREN`) · 목표온도(`HTRSET`) ·
-강제 출력(`HTRFORCE`) · 램프(`HTRRAMP`) · PID 게인(`HTRPID`).  ⭐ 이름은
+명령 **넷**의 살림집이다 -- `HTRSET`(Enable+목표온도) · `HTRFORCE`(강제 출력) ·
+`HTRRAMP`(램프) · `HTRPID`(PID 게인).  ⭐ 이름은
 **`HTR` 접두로 통일**했다 (운영자 2026-09-04: *"HEATERSET 으로 했었는데
 줄여서 HTRSET 같이 바꾸려고 해"*) -- 채널 구분자 `A` 도 없다(채널 B 는 안
 쓴다, 11.14-(4)).  `commands.py` 는 인자 해석과 응답 문구만 맡고, ACF 키
 조립·한계 조회·클램프·범위 검사·적용 순서는 여기 모아 둔다 (`expenable.py`
 와 같은 구조).
 
-⭐ **파라미터 여섯이 명령 다섯에 나뉜 경위**: 원 지시는 *"3개의 명령어를
-만들고 arg 를 2개씩"* 이었는데, 그 뒤 **`HTRSET` 은 온도 하나만** 받기로
-바뀌었다 (*"`HTREN` 이 별도로 있으니 온도만 넣으면 되고"*).  그래서
-(ENABLE, TARGET) 이 둘로 갈라져 다섯이 됐고, `HTRPID` 가 뒤에 더해졌다.
+⭐ **`HTREN` 은 없다 -- `HTRSET` 하나로 되돌렸다** (운영자 정정 2026-09-04:
+*"커멘드는 분리하지 않고 원안대로 HTRSET 하나로"*).  경위: 원 지시가
+*"3개의 명령어를 만들고 arg 를 2개씩"* 이었고, 중간에 *"`HTREN` 이 별도로 있으니
+온도만"* 으로 갈렸다가 **원안으로 확정**됐다.  ⚠️ 그래서 명령은 `(ENABLE,
+TARGET)` 를 **한 번에** 받는다.
+
+⭐ **헤더는 다르다** -- FITS 카드로는 `HTREN`·`HTRSET`·`HTROUT`·`HTRFORCE` **넷을
+따로** 싣는다(운영자 확정).  `HTRPID`·`HTRRAMP`·`FORCELEVEL` 은 **안 싣는다**.
+⛔ 카드 신설은 **규격 개정이라 `main` 소관**이다 -- 이 폴더는 값을 만들 뿐이다.
 
 ⭐ **한계를 코드에 박지 않는다.**  목표온도의 상·하한은 컨트롤러를 **두 걸음**
 읽어 얻는다:
@@ -140,27 +145,29 @@ async def _write_and_apply(ctrl, *pairs) -> None:  # noqa: ANN001
     await ctrl.apply_module(SLOT)
 
 
-async def set_enable(ctrl, on: bool, ch: str = CH) -> str:  # noqa: ANN001
-    """히터 Enable 을 쓴다 (`HEATER?ENABLE`).  응답 주석 문구를 돌려준다."""
-    await _write_and_apply(ctrl, (heater_key('ENABLE', ch), '1' if on else '0'))
-    log.info('히터 %s Enable=%d -- ⚠️ %s', ch, on, VCPU_NOTE)
-    return VCPU_NOTE
+async def set_target(ctrl, on: bool, celsius: float,  # noqa: ANN001
+                     ch: str = CH) -> tuple[float, str]:
+    """`HTRSET` -- Enable 과 목표온도를 **한 번에** 쓴다.
 
+    `(HEATER?ENABLE, HEATER?TARGET)` 둘을 쓰고 적용은 **한 번**이다 -- 적용마다
+    MOD10 의 VCPU 가 재시작해 `DEWPRES` 결측 창이 생기므로(11.18), 그리고
+    *"Enable 은 켜졌는데 목표는 옛 값"* 인 창을 만들지 않기 위해서다.
 
-async def set_target(ctrl, celsius: float,
-                     ch: str = CH) -> tuple[float, str]:  # noqa: ANN001
-    """목표온도를 쓴다 (`HEATER?TARGET`).  **앉은 값**과 주석 문구를 돌려준다.
+    한계 조회 → 클램프 → `WCONFIG` 둘 → `APPLYMOD09` 순이다.  ⚠️ 한계를 못
+    읽으면 **쓰지 않고 올린다** -- 클램프 없는 쓰기는 하지 않는다.
 
-    한계 조회 → 클램프 → `WCONFIG` → `APPLYMOD09` 순이다.  ⚠️ 한계를 못 읽으면
-    쓰지 않고 올린다 -- 클램프 없는 쓰기는 하지 않는다.
+    **앉은 목표값**과 주석 문구를 돌려준다.
     """
     lim = await read_limits(ctrl, ch)
     value, note = clamp(celsius, lim)
     if note:
         log.warning('HTRSET %.2f 는 %s 의 한계 [%.2f, %.2f] 밖이다 -- %.2f 로 '
                     '접어 넣는다', celsius, lim.source, lim.lo, lim.hi, value)
-    await _write_and_apply(ctrl, (heater_key('TARGET', ch), '%g' % value))
-    log.info('히터 %s Target=%.2f -- ⚠️ %s', ch, value, VCPU_NOTE)
+    await _write_and_apply(ctrl,
+                           (heater_key('ENABLE', ch), '1' if on else '0'),
+                           (heater_key('TARGET', ch), '%g' % value))
+    log.info('히터 %s Enable=%d Target=%.2f -- ⚠️ %s', ch, int(on), value,
+             VCPU_NOTE)
     return value, ' '.join(x for x in (note, '(%s)' % VCPU_NOTE) if x)
 
 
@@ -312,8 +319,7 @@ async def set_pid(ctrl, p: float, i: float, d: float,  # noqa: ANN001
 #: 명령어 → 조회가 되읽을 (이름표, ACF 키 꼬리) 짝.  ⭐ **응답의 이름표를 한
 #: 곳에 모은다** -- 설정 응답과 조회 응답이 같은 낱말을 쓰게 하기 위해서다.
 GROUPS = {
-    'HTREN':    (('Enable', 'ENABLE'),),
-    'HTRSET':   (('Target', 'TARGET'),),
+    'HTRSET':   (('Enable', 'ENABLE'), ('Target', 'TARGET')),
     'HTRFORCE': (('Force', 'FORCE'), ('Level', 'FORCELEVEL')),
     'HTRRAMP':  (('Ramp', 'RAMP'), ('RampRate', 'RAMPRATE')),
     'HTRPID':   (('P', 'P'), ('I', 'I'), ('D', 'D')),

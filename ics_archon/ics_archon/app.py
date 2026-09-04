@@ -28,6 +28,8 @@ import asyncio
 import logging
 import os
 
+from datetime import timedelta
+
 from . import _simpath, build_id, config as acfg_mod
 
 _simpath.ensure()
@@ -38,6 +40,12 @@ from ics_sim.hardware import register_backend             # noqa: E402
 from .archon.backend import ArchonBackend                 # noqa: E402
 from .archon.monitor import TelemetryMonitor              # noqa: E402
 from .archon.protocol import ArchonError                  # noqa: E402
+from .gaugectl import CMD as GAUGE_CMD, GaugeControl      # noqa: E402
+from .guideexp import CMD as GUIEXP_CMD, GuideExpControl  # noqa: E402
+from .tcsclock import ClockWatch, watch_tc_queries
+from .xischeck import XIS_ID, XisGate         # noqa: E402
+from ics_sim.commands import Dispatcher, ReplyKind         # noqa: E402
+from ics_sim.state import utcnow                           # noqa: E402
 
 log = logging.getLogger('ics_archon.app')
 
@@ -90,6 +98,39 @@ def fill_controller_cfg_names(cfg, acfg) -> None:  # noqa: ANN001
                      n, derived, acfg.acf.get(tag, ''))
 
 
+class IcsDispatcher(Dispatcher):
+    """ICS 명령 처리부 -- `GO` 앞에서 진공게이지를 끈다 (운영자 2026-09-04).
+
+    ⭐ **스크립트 관측이든 콘솔에서 직접 친 `GO` 든 여기를 지난다** -- 그래서
+    한 곳에서 끈다.  `ics_sim` 은 한 줄도 안 고친다.
+    """
+
+    def cmd_go(self, msg, target):  # noqa: ANN001, ANN201
+        gauge = getattr(self.app, 'gauge', None)
+        if gauge is not None:
+            # ⭐ **super() 앞에서** 끈다 -- 뒤에 두면 첫 프레임의 앞부분을
+            # 필라멘트가 켜진 채로 찍는다.
+            gauge.before_exposure()
+        reply = super().cmd_go(msg, target)
+        busy = bool(getattr(getattr(self.app, 'seq', None), 'busy', False))
+        if (gauge is not None and reply is not None
+                and reply.kind is ReplyKind.ERROR and not busy):
+            # ⛔ **GO 가 거절됐다** -- 취득이 시작되지 않았으므로 "끝났다" 도
+            # 안 온다.  자가 치유로 되켜기 타이머를 건다.  안 그러면 게이지가
+            # 다음 취득이 끝날 때까지(또는 영영) 꺼진 채로 남는다.
+            #
+            # ⛔⛔ **취득 중의 거절은 예외다** (운영자 지시 2026-09-04).
+            # 취득 중에 들어온 `GO` 는 *"Data acquisition already in
+            # progress!"* 로 거절되는데 그것도 `ERROR` 라, 여기서 타이머를
+            # 걸면 **돌고 있는 취득 중에** 10분이 시작된다 -- 남은 노출이
+            # 10분을 넘으면 **노출 도중에 게이지가 켜진다**.  ⭐ `seq.busy` 로
+            # 그 갈래를 가른다: 취득 중이면 아무것도 안 하고, 타이머는 진짜
+            # 독출이 끝날 때 `_watch_acquisition` 이 건다 (10분의 기준은
+            # **독출 완료**다).
+            gauge.after_acquisition()
+        return reply
+
+
 class IcsArchon(IcsSim):
     """실기 ICS -- `ics_sim` 본체 + Archon 백엔드."""
 
@@ -107,6 +148,54 @@ class IcsArchon(IcsSim):
 
         # `ICSBUILD` -- 이 프로그램의 것으로.
         self.state.ics_build = build_id()
+
+        # -- 진공게이지 (운영자 지시 2026-09-04) -------------------------
+        #: 노출 앞뒤로 ICG 에 `VACGAUGE` 를 보낸다.
+        self.gauge = GaugeControl(
+            acfg.icg_node, acfg.gauge_reenable_after, self.spawn,
+            self.emit.emit_req, acfg.gauge_reply_timeout,
+            enabled=acfg.gauge_off_on_exposure,
+            # ⚠️ **`time_scale` 로 접는다** -- 이 대기는 저장소의 다른 타이밍
+            # 값(`write_delay` 등)과 같은 성격이라 시뮬·시험에서 함께 줄어야
+            # 한다.  안 접으면 `time_scale = 0.02` 짜리 시험에서 5초가 그대로
+            # 흘러 **프레임보다 대기가 길어진다** (실제로 시험 하나가 그것으로
+            # 깨졌다).  실기는 `time_scale = 1.0` 이라 값 그대로다.
+            settle_after=cfg.scaled(acfg.gauge_settle_after),
+            # ⛔ **취득 중이면 무조건 안 켠다** (운영자 지시 2026-09-04) --
+            # 만료 시점에 이것을 다시 본다.  상태 확인만으로는 못 막는 길이
+            # 있었다 (취득 중 `GO` 거절이 타이머를 걸던 자리).
+            is_busy=lambda: bool(getattr(self.seq, 'busy', False)))
+        # ⭐ **백엔드가 그 안정화 대기를 볼 수 있게 건네준다** -- 프레임의 첫
+        # 백엔드 호출(`initialize()`)에서 기다려야 `ccdflush` 의 `Prep`+`Flush`
+        # 가 게이지가 꺼진 뒤에 돈다 (운영자 지시 2026-09-04).  ⚠️ 명령 처리부
+        # 에서는 못 기다린다 -- `cmd_go` 는 `Reply` 를 돌려주는 동기 메서드다.
+        backend = getattr(self, 'backend', None)
+        if backend is not None:
+            backend.gauge = self.gauge
+        #: science 독출 앞뒤로 guide 노출을 막고 푼다 (`GUIEXPCTRL`).
+        self.guideexp = GuideExpControl(
+            acfg.icg_node, acfg.guiexp_lead, self.spawn,
+            self.emit.emit_req, acfg.gauge_reply_timeout,
+            enabled=acfg.guiexpctrl)
+        #: `GO` 를 가로채는 명령 처리부로 갈아 끼운다.
+        self.dispatch = IcsDispatcher(self)
+        #: 취득 종료를 지켜보는 태스크 (`start()` 가 띄운다).
+        self._gauge_task = None
+
+        # -- TCS 시각 비교 (운영자 지시 2026-09-04) ----------------------
+        #: TC 시계와 우리 시계의 어긋남.  `TCSQDATE` 하나로 잰다.
+        #: ⭐ `ics_sim` 은 **0줄**이다 -- relay 인스턴스의 `query()` 만 감싼다.
+        self.tcs_clock = ClockWatch('TCS', acfg.tcs_clock_warn)
+        if acfg.tcs_clock_warn > 0:
+            watch_tc_queries(self.telem, self.tcs_clock)
+
+        # -- XIS 허브 확인 (운영자 지시 2026-09-04) --------------------
+        #: ⭐ **허브가 없으면 기동을 멈춘다** -- ICG 와 주고받는 명령이
+        #: 조용히 사라지는 것을 자료 찍기 전에 막는다 (`xischeck.py`).
+        self.xis_gate = XisGate(
+            cfg.node.ics_id, timeout=acfg.xis_ping_timeout,
+            tries=acfg.xis_ping_tries, required=acfg.require_xis,
+            xis_host=cfg.transport.xis_host)
 
         #: 돌고 있는 텔레메트리 감시 (`start()` 가 띄우고 `stop()` 이 세운다).
         self._monitors: list[TelemetryMonitor] = []
@@ -129,22 +218,101 @@ class IcsArchon(IcsSim):
                     break
 
     async def start(self) -> None:
+        # ⭐ 게이지 감시는 **백엔드와 무관하게** 띄운다 -- 상대는 ICG 이고
+        #    우리 컨트롤러가 아니다.  `--backend sim` 에서도 배선을 볼 수 있다.
+        if self.acfg.gauge_off_on_exposure or self.acfg.guiexpctrl:
+            self._gauge_task = self.spawn(self._watch_acquisition())
         # **archon 백엔드가 아니면 컨트롤러 배선을 검사하지도, 배너를 찍지도
         # 않는다.**  `--backend sim` 은 메시지 층만 돌려 보는 모드이므로 그
         # 경고가 다 무의미하고, 무의미한 경고는 사람이 경고를 무시하도록
         # 학습시킨다.
         if self.cfg.hardware.backend != 'archon':
             await super().start()
+            await self._require_xis()
             return
         for note in acfg_mod.validate(self.acfg, tuple(self.cfg.node.ccds),
                                       self.cfg):
             log.warning('[archon]: %s', note)
         await super().start()
+        # ⭐ **허브를 확인하고, 안 되면 여기서 멈춘다** (운영자 지시
+        # 2026-09-04).  ⚠️ `super().start()` **뒤**여야 한다 -- 전송이 열려야
+        # PING 을 보내고 PONG 을 받는다.  컨트롤러 접속보다는 **앞**이다:
+        # 허브가 없으면 어차피 못 돌 구성이라, 전원을 켜기 전에 멈추는 것이 싸다.
+        await self._require_xis()
         self._log_archon_banner()
         # **접속을 먼저 연다 -- 감시는 그 뒤에 시작한다** (운영자 2026-08-28).
         # 한 컨트롤러의 접속자는 이 프로세스 하나다.
         await self._connect_controllers()
         self._start_monitors()
+
+    async def _require_xis(self) -> None:
+        """XIS 허브가 `PING` 에 답하는지 보고, 아니면 기동을 멈춘다.
+
+        ⛔ **자동 우회는 없다** -- 허브가 없으면 직결로 넘어가지 않고 멈춘다
+        (DevNote 11.15 확정).  ICS 와 ICG 는 허브를 통해서만 통신하기로
+        확정됐으므로(운영자 2026-09-04), 허브 없이 뜨면 `VACGAUGE`·
+        `EXPENABLE`·`HKDATA` 가 조용히 사라진 채로 자료가 쌓인다.
+        """
+        gate = getattr(self, 'xis_gate', None)
+        if gate is None:
+            return
+        await gate.check(lambda: self.emit.ping(XIS_ID))
+
+    async def _watch_acquisition(self) -> None:
+        """취득이 끝나는 순간을 지켜본다 -- 그때 되켜기 타이머를 건다.
+
+        ⭐ **`busy` 를 1초마다 본다.**  시퀀서에 완료 훅이 없고 `ics_sim` 을
+        고치지 않기로 했으므로 이것이 가장 얕은 길이다 -- 10분 타이머 앞에서
+        1초 해상도는 넉넉하다.
+
+        ⚠️ 셔터 닫힘이 아니라 **취득 종료**를 쓴다: `GO n` 은 셔터가 n 번
+        닫히므로 첫 닫힘에 타이머를 걸면 **다음 프레임 도중에 켜진다**
+        (`gaugectl` 머리말).
+        """
+        was = False
+        while True:
+            await asyncio.sleep(max(0.05, self.acfg.phase_poll))
+            # ⭐ guide 노출 잠금은 **국면**을 본다 (독출 앞뒤), 게이지는
+            #    **취득 전체**를 본다 (끝나면 되켜기 타이머).  한 틱에서 둘 다.
+            self.guideexp.on_phase(self.state.expstatus,
+                                   self._seconds_to_readout())
+            now = bool(self.seq.busy)
+            if was and not now:
+                self.gauge.after_acquisition()
+            was = now
+
+    def _seconds_to_readout(self) -> float:
+        """독출 시작까지 남은 초.  모르면 `inf`, 이미 독출 중이면 `0`.
+
+        ⚠️ **적분 국면에서만 앞을 내다본다** -- `exp_start` 와 실효 노출시간이
+        있어야 계산이 되고, BIAS/DARK 처럼 적분 국면이 없거나 짧은 갈래는
+        `READOUT` 국면 자체가 신호다 (`guideexp.on_phase`).
+        """
+        st = self.state
+        phase = (st.expstatus or '').upper()
+        if phase == 'READOUT':
+            return 0.0
+        if phase != 'INTEGRATING' or st.exp_start is None:
+            return float('inf')
+        end = st.exp_start + timedelta(seconds=st.effective_exptime)
+        return (end - utcnow()).total_seconds()
+
+    def _on_message(self, msg, addr) -> None:  # noqa: ANN001
+        """⚠️ `VACGAUGE` 응답을 **엿듣는다** -- 명령 처리부는 그것을 안 쓴다.
+
+        ICG 의 `DONE:`/`ERROR:` 는 우리 앞으로 오지만 처리기가 없어 조용히
+        버려진다.  데드맨이 *"보냈는데 답이 없다"* 를 알려면 여기서 봐야 한다.
+        """
+        gate = getattr(self, 'xis_gate', None)
+        if gate is not None:
+            gate.note_message(msg)
+        raw = (msg.raw or '').upper()
+        for ctl, word in ((getattr(self, 'gauge', None), GAUGE_CMD),
+                          (getattr(self, 'guideexp', None), GUIEXP_CMD)):
+            if (ctl is not None and ctl.enabled
+                    and msg.src.upper() == ctl.node.upper() and word in raw):
+                ctl.note_reply(msg.raw)
+        super()._on_message(msg, addr)
 
     async def stop(self) -> None:
         """종료 -- **백엔드를 먼저 내린다.**
@@ -156,6 +324,10 @@ class IcsArchon(IcsSim):
         """
         # **감시를 가장 먼저 세운다** -- 아래 `_stop_monitors()` 참조.
         await self._stop_monitors()
+        # 게이지 타이머·데드맨 -- ⚠️ 게이지를 켜지는 않는다 (gaugectl.close).
+        await self.gauge.close()
+        # guide 노출 잠금 -- ⚠️ **풀지 않는다** (독출 중에 죽었을 수 있다).
+        await self.guideexp.close()
         # **저장 중인 프레임을 먼저 지킨다.**  `super().stop()` 이 태스크를
         # 취소하고 `backend.shutdown()` 이 링크를 닫으므로, 그 전에 기다리지
         # 않으면 독출을 마친 프레임이 파일 없이 사라진다 -- 전원을 끄는 것보다

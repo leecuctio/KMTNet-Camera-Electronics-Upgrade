@@ -121,6 +121,9 @@ async def _drive(ini, tmp_path, nt_port, script, settle=0.8):  # noqa: ANN001
     cfg.paths.data_dir = str(tmp_path / 'rawdata')
     cfg.paths.expnum_file = str(tmp_path / 'expnum')
     acfg = acfg_mod.load(ini)
+    # ⛔ 허브 없이 도는 하네스 -- 기동의 XIS PING/PONG 검사를 끈다
+    # (운영자 지시 2026-09-04로 신설).
+    acfg.require_xis = False
     app = IcsArchon(cfg, acfg)
     app.backend.ctrls['NT'].link.port = nt_port
     await app.start()

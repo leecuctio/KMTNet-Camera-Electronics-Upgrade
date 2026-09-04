@@ -200,6 +200,18 @@ class ArchonBackend:
         (D-016 선검사를 이미 거친 값이 `write_frame(path=…)` 로 온다).  여기서는
         "이 프레임은 이미 준비했다" 는 표시로만 쓴다.
         """
+        # ⭐ **방금 끈 진공게이지가 실제로 꺼질 때까지 기다린다** (운영자 지시
+        # 2026-09-04).  ⛔ `ccdflush = true` 면 `Prep`+`Flush` 가 **적분 직전**
+        # 에 돌므로, 게이지가 아직 살아 있으면 **필라멘트가 켜진 채로 flush**
+        # 한다.  여기가 프레임의 첫 백엔드 호출이라(`sequencer._frame` 의
+        # `initialize()` gather) 노출 시퀀스 전체가 그만큼 늦춰진다.
+        #
+        # ⚠️ 락 **밖**이다 -- 두 컨트롤러가 같은 마감을 함께 기다린다(대기는
+        # 마감 시각 기준이라 멱등이다).  안 그러면 한 대가 자는 동안 다른 대의
+        # 준비가 막힌다.  ⭐ 게이지가 이미 꺼져 있던 프레임에서는 **0초**다.
+        gauge = getattr(self, 'gauge', None)
+        if gauge is not None:
+            await gauge.settle()
         tag = self._tag_of(ccd)
         ctrl = self.ctrls[tag]
         async with self._prep_locks[tag]:
@@ -352,9 +364,10 @@ class ArchonBackend:
 
         `('progress', pct)` 는 master 의 진행률이고, `('frame', ctrltag)` 는
         **그 컨트롤러의 프레임이 완료됐다**는 뜻이다 -- 완료 순서 그대로
-        나온다.  시퀀서가 `[readout] acq_per_frame` 을 보고 프레임별로
-        `Acquisition Complete.` 를 낼지 정한다 (기본은 꺼짐 = 종전대로 4개를
-        같은 틱에).
+        나온다.  시퀀서가 그 사건마다 그 컨트롤러 몫의 `Acquisition
+        Complete.` 를 낸다 -- ⚠️ **스위치는 없다** (운영자 확정 2026-09-04,
+        `[readout] acq_per_frame` 제거).  그래서 4개의 산포가 곧 두 컨트롤러의
+        실제 시차이고, `acq_skew_warn` 이 1.8초 창보다 앞서 짖는다.
         """
         return self._readout_stream(ccd)
 
@@ -416,15 +429,41 @@ class ArchonBackend:
                   if c is not master and c.current_ticket is not None]
         waits = {asyncio.ensure_future(c.await_frame(c.current_ticket)): c.tag
                  for c in others}
+        # ⭐ **한 대가 죽어도 성한 대는 저장한다** (운영자 지시 2026-09-04).
+        #
+        # 종전에는 상대가 실패하면 곧바로 `raise` 했다.  그러면 시퀀서가
+        # `_store` 태스크를 **만들기 전에** 중단되어(`sequencer._frame` 은
+        # `_readout()` 이 정상 반환한 뒤에야 저장을 띄운다) **멀쩡히 읽어 낸
+        # 프레임까지 함께 잃었다** -- 경고 한 줄과 파일 0개.  이제는 실패를
+        # 모아 두고 **하나라도 성했으면 정상 반환**한다: 시퀀서가 컨트롤러마다
+        # `_store` 를 띄우고 죽은 쪽은 그 안에서 `write_frame()` 이 `None` 표를
+        # 만나 `BackendError` 로 끝나는데, `_store` 가 그것을 **컨트롤러별로**
+        # 잡으므로(`sequencer.py` 의 `except BackendError: … return`) 성한 쪽
+        # 파일은 그대로 남는다.  ⭐ `ics_sim` 은 **0줄**이다.
+        failed: dict[str, BaseException] = {}
+        # 표는 **미리** 잡아 둔다 -- `finally` 의 `release_current()` 가 돌면
+        # `current_ticket` 이 비어 어느 표를 버려야 할지 알 수 없다.
+        tickets = {c.tag: c.current_ticket for c in self._active()}
+        engaged = {t for t, k in tickets.items() if k is not None}
+        t_master: float | None = None
         try:
             t0 = time.monotonic()
-            async for pct in master.wait_frame(ticket):
-                if pct < final:
-                    yield 'progress', pct
-            t_master = time.monotonic()
-            yield 'frame', master.tag
+            try:
+                async for pct in master.wait_frame(ticket):
+                    if pct < final:
+                        yield 'progress', pct
+            except (ArchonError, TimeoutError, OSError) as exc:
+                # ⚠️ **master 가 죽어도 나머지를 계속 기다린다** -- 여기서
+                # 빠져나가면 성한 대의 표가 확인되지 않은 채 남고, 그 프레임도
+                # 함께 잃는다 (이 변경이 막으려는 바로 그 상태).
+                failed[master.tag] = exc
+                log.error('%s(master): 프레임을 확인하지 못했다 -- %s',
+                          master.tag, exc)
+            else:
+                t_master = time.monotonic()
+                yield 'frame', master.tag
             # **완료 순서 그대로 낸다.**  누가 먼저 끝나는지가 곧 시차이고,
-            # 그 값이 `acq_per_frame` 기본값을 정할 근거다.
+            # 그 값이 `acq_skew_warn` 을 맞출 근거다.
             while waits:
                 done, _ = await asyncio.wait(
                     waits, return_when=asyncio.FIRST_COMPLETED)
@@ -432,15 +471,25 @@ class ArchonBackend:
                     tag = waits.pop(task)
                     exc = task.exception()
                     if exc is not None:
+                        failed[tag] = exc
                         log.error('%s: 프레임을 확인하지 못했다 -- %s', tag, exc)
-                        raise exc
-                    log.info('%s: 프레임 완료 (master %s 뒤 %.2f초)',
-                             tag, master.tag, time.monotonic() - t_master)
+                        continue
+                    if t_master is None:
+                        log.info('%s: 프레임 완료 (master %s 는 실패했다)',
+                                 tag, master.tag)
+                    else:
+                        log.info('%s: 프레임 완료 (master %s 뒤 %.2f초)',
+                                 tag, master.tag,
+                                 time.monotonic() - t_master)
                     yield 'frame', tag
-            log.info('독출 완료 -- master %s %.1f초', master.tag,
-                     t_master - t0)
+            if t_master is not None:
+                log.info('독출 완료 -- master %s %.1f초', master.tag,
+                         t_master - t0)
+            if failed:
+                self._after_frame_loss(failed, engaged, tickets, ccd)
         except (ArchonError, TimeoutError, OSError) as exc:
-            # 레거시가 이 상황에 낸 문구를 그대로 쓴다 (base.py docstring):
+            # 위 두 갈래가 못 잡은 것만 여기 온다.  레거시가 이 상황에 낸
+            # 문구를 그대로 쓴다 (base.py docstring):
             #   G.IC>ABC ERROR: GO  DMA WAIT TIMEOUT. EXPOSURES ABORTED.
             raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.',
                                ccd=ccd) from exc
@@ -456,6 +505,36 @@ class ArchonBackend:
             # 대기열은 그대로 남아 각 컨트롤러의 `write_frame()` 이 가져간다.
             for c in self._active():
                 c.release_current()
+
+    def _after_frame_loss(self, failed: dict, engaged: set,  # noqa: ANN001
+                          tickets: dict, ccd: str) -> None:
+        """프레임을 잃은 컨트롤러 뒷정리 -- **성한 쪽은 살린다**.
+
+        전부 잃었으면 종전대로 노출을 중단시키고, 일부만 잃었으면 **경고만
+        내고 정상 반환**한다 (운영자 지시 2026-09-04).
+
+        ⛔ **잃은 대의 표는 버린다.**  남겨 두면 시퀀서가 띄운 `_store` 가
+        `write_frame()` 에서 같은 표를 **또** 기다려 `frame_timeout`(기본
+        300초)을 통째로 한 번 더 쓴다 -- 성한 쪽 저장은 이미 끝났는데 관측자만
+        5분을 더 기다린다.  버리면 `take_ticket()` 이 곧바로 `None` 이라 그
+        컨트롤러만 빠르게 `ERROR: No pending frame for …` 로 끝난다.
+
+        ⚠️ **pair 한 짝만 남는다** -- converter 는 그 노출을 못 읽는다 (raw
+        spec 5.9절).  그래도 파일을 남기는 편이 낫다: 픽셀은 되찾을 수 없고,
+        한 짝만 있어도 원인 규명·수동 복구의 재료는 된다.  ⭐ 그래서 경고를
+        **크게** 남긴다 -- 조용히 반쪽 pair 를 쌓는 것이 최악이다.
+        """
+        for tag in sorted(failed):
+            self.ctrls[tag].discard_ticket(tickets.get(tag))
+        alive = sorted(engaged - set(failed))
+        if not alive:
+            raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.',
+                               ccd=ccd) from next(iter(failed.values()))
+        log.error('⛔ 컨트롤러 %s 의 프레임을 잃었다 -- 성한 %s 는 그대로 '
+                  '저장한다.  ⚠️ pair 한 짝만 나가므로 converter 는 이 노출을 '
+                  '못 읽는다 (raw spec 5.9절) -- 원인을 먼저 볼 것: %s',
+                  ', '.join(sorted(failed)), ', '.join(alive),
+                  '; '.join('%s=%s' % (t, failed[t]) for t in sorted(failed)))
 
     async def fetch_image(self, ccd: str):  # noqa: ANN201
         """chip 하나분 픽셀 (진단·도구용).  시퀀서는 부르지 않는다.

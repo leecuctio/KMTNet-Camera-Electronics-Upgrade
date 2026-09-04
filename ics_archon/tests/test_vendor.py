@@ -251,6 +251,9 @@ DRIVER = textwrap.dedent('''
     cfg.hardware.backend = 'archon'
 
     acfg = acfg_mod.load(ini)
+    # ⛔ 허브 없이 도는 하네스 -- 기동의 XIS PING/PONG 검사를 끈다
+    # (운영자 지시 2026-09-04로 신설).
+    acfg.require_xis = False
     acfg.naxis1, acfg.naxis2 = NX, NY
     acfg.poweron_wait = 0.0; acfg.frame_poll = 0.01
 

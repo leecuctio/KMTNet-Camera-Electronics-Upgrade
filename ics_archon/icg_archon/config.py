@@ -50,11 +50,32 @@ def _text(sec, key: str, default: str) -> str:  # noqa: ANN001
     return (sec.get(key, default) or '').strip()
 
 
+#: ini 의 참/거짓 낱말.  ⭐ **`true`/`on`/`1` 과 `false`/`off`/`0` 을 같게**
+#: 받는다 (운영자 확정 2026-09-04) -- 대소문자는 안 가린다.  `yes`/`no` 는
+#: 종전부터 받던 것이라 남긴다.
+_TRUE_WORDS = ('1', 'true', 'yes', 'on')
+_FALSE_WORDS = ('0', 'false', 'no', 'off')
+
+
 def _bool(sec, key: str, default: bool) -> bool:  # noqa: ANN001
-    raw = _text(sec, key, '')
+    """⛔ **모르는 값을 조용히 거짓으로 떨어뜨리지 않는다.**
+
+    ⚠️ 종전 구현은 어휘 밖을 전부 `False` 로 읽었다 -- `ture` 같은 오타 하나가
+    기능을 **조용히 꺼 버린다**.  ICS 쪽 `_bool` 은 처음부터 거부했고, 같은
+    저장소에서 규칙이 둘인 것이 더 나빴다 (`EXPENABLE FLASE` 를 거부하는 규칙과
+    같은 정신 -- DevNote 11.14-(2)).
+    """
+    raw = _text(sec, key, '').strip().lower()
     if not raw:
         return default
-    return raw.lower() in ('1', 'true', 'yes', 'on')
+    if raw in _TRUE_WORDS:
+        return True
+    if raw in _FALSE_WORDS:
+        return False
+    raise IcgConfigError(
+        '%s=%r 를 참/거짓으로 읽을 수 없다 -- %s 가운데 하나여야 한다 '
+        '(대소문자는 안 가린다)'
+        % (key, raw, ' | '.join(_TRUE_WORDS + _FALSE_WORDS)))
 
 
 def _float(sec, key: str, default: float) -> float:  # noqa: ANN001
@@ -81,11 +102,16 @@ class RadionodeDevice:
     """Radionode RN320-BTH 한 대 -- `[radionode.<별칭>]` 절."""
 
     alias: str = ''
-    #: Radionode365 장치 목록에 보이는 MAC/시리얼.
+    #: Radionode365 장치 목록에 보이는 MAC/시리얼.  ⭐ `openapi` 경로가 쓴다.
     mac: str = ''
     #: 이 장치가 채우는 HK 키 (센서 계약 `base.py` 의 소문자 키).
     #: HE box 장치는 `('hebox',)` -- 온도만 카드가 있다 (습도는 로그에만).
     keys: tuple[str, ...] = ()
+    #: ⭐ **LoRaWAN DevEUI** -- `local_lns` 경로가 uplink 를 이 장치에 붙이는
+    #: 열쇠다 (게이트웨이 내장 NS 의 장치 목록에 있다).  ⛔ 안 적으면 그
+    #: 장치의 uplink 는 **버려진다**(`STATUS` 가 그 수를 센다).  구분자
+    #: (`-`·`:`)는 있어도 되고, base64 로 오는 판도 정규화해 맞춘다.
+    deveui: str = ''
 
 
 @dataclass
@@ -98,8 +124,15 @@ class RadionodeCfg:
     KEY/SECRET 을 만들고 그 매뉴얼의 표를 ini 에 옮기면 코드는 안 바뀐다.
     """
 
-    #: `off`(기본 -- 결측 sentinel) · `openapi`(Tapaculo365) · `sim`(고정값,
-    #: **헤더 경로로는 안 나간다** -- 배선 확인용).
+    #: `off`(기본 -- 결측 sentinel) · `openapi`(Tapaculo365 클라우드) ·
+    #: `sim`(고정값, **헤더 경로로는 안 나간다** -- 배선 확인용) ·
+    #: ⏳ `local_lns`(사설 LoRaWAN 서버 -- **자리만 있고 구현은 없다**).
+    #:
+    #: ⛔ **`openapi` 는 인터넷이 있어야 한다** -- 끊기면 세 카드
+    #: (`HEBOX`/`FSATEMP`/`FSAHUM`)가 그동안 sentinel 이다.  운영자 확정
+    #: 2026-09-04: **그 결측은 받아들일 수 없다** -- 그래서 `local_lns` 가
+    #: 대비책이고, 그것은 게이트웨이를 우리 안쪽 LNS(ChirpStack)로 돌려
+    #: **클라우드 없이** 받는 길이다 (DevNote 9.7 경로 2 · 11.22).
     backend: str = 'off'
     poll_period: float = 60.0
     timeout: float = 10.0
@@ -114,6 +147,16 @@ class RadionodeCfg:
     #: 신선도 경보 문턱 [s] -- 장치 SEND INTERVAL 의 3배쯤.  이보다 낡은
     #: 표본은 헤더에 싣지 않는다 (호출측이 sentinel 을 채운다).
     stale_after: float = 600.0
+    #: ⭐ `local_lns` -- 게이트웨이 내장 NS 가 uplink 를 **밀어 줄** 우리 주소.
+    #: `호스트:포트` (`0.0.0.0:8088`).  ⚠️ 게이트웨이 integration 에 적은 것과
+    #: **같아야** 한다.  비우면 임의 포트라 시험용 말고는 쓸 수 없다.
+    lns_bind: str = ''
+    #: 수신 경로 -- integration 의 URL 뒤쪽.  다르면 404 로 버린다.
+    lns_path: str = '/uplink'
+    #: 선택 -- integration 에 `X-Auth-Token` 헤더를 붙였으면 그 값.  비우면
+    #: 검사하지 않는다 (LAN 전용 전제).  ⚠️ 틀린 값이 헤더로 들어가는 길이라
+    #: 여러 계통이 같은 망에 있으면 채울 것.
+    lns_token: str = ''
     #: sim 백엔드가 내는 고정값.
     sim_values: dict = field(default_factory=lambda: {
         'hebox': 33.21, 'fsatemp': 23.4, 'fsahum': 12.3})
@@ -186,13 +229,16 @@ class IcgCfg:
     #: 시험) **지속시키지 않는다.**
     expenable_file: str = ''
 
-    #: ⭐ **이온게이지를 끄는 갈래** -- `ionen` | `diopower` (`gauge.METHODS`).
-    #: `ionen` 은 `MOD10\\DIO_SOURCE3`(IONEN 한 라인)만 내리고, `diopower` 는
-    #: `MOD10\\DIO_POWER`(8라인 전부의 버퍼 전원)를 내린다.  기본은 `ionen`
-    #: -- 읽기를 살린 채 필라멘트만 끄는 쪽이다.  ⏳ 둘 다 첫 구동 실측
-    #: 대기이고, `ionen` 이 안 통하면 **선임이 실제로 쓴** `diopower` 로
-    #: 이 한 줄만 바꾼다 (`…_goff_….acf` 선례 -- DevNote 11.19).
-    gauge_off_method: str = 'ionen'
+    #: ⭐ **이온게이지를 끄는 갈래** -- `diopower` | `ionen` (`gauge.METHODS`).
+    #: `diopower` 는 `MOD10\\DIO_POWER`(8라인 전부의 버퍼 전원)를 내리고,
+    #: `ionen` 은 `MOD10\\DIO_SOURCE3`(IONEN 한 라인)만 내린다.
+    #:
+    #: ✅ **기본은 `diopower` -- 실측으로 확인됐다** (운영자 2026-09-04:
+    #: *"MOD10\\DIO_POWER=1/0 으로 On/Off 제어 잘되는 것 확인했어"*).  선임이
+    #: 쓰던 길과도 같다 (`…_goff_….acf` 가 정확히 그 한 줄만 다르다).
+    #: ⏳ `ionen` 은 **여전히 미검증**이다 -- 읽기를 살린 채 필라멘트만 끄는
+    #: 쪽이라 이론상 낫지만 실기로 확인되지 않았다 (DevNote 11.19·11.24).
+    gauge_off_method: str = 'diopower'
 
     hk: HkCfg = field(default_factory=HkCfg)
     radionode: RadionodeCfg = field(default_factory=RadionodeCfg)
@@ -298,6 +344,9 @@ def load(path: str) -> IcgCfg:
         r.key_header = _text(s, 'key_header', r.key_header)
         r.secret_header = _text(s, 'secret_header', r.secret_header)
         r.stale_after = _float(s, 'stale_after', r.stale_after)
+        r.lns_bind = _text(s, 'lns_bind', r.lns_bind)
+        r.lns_path = _text(s, 'lns_path', r.lns_path)
+        r.lns_token = _text(s, 'lns_token', r.lns_token)
 
     devices = []
     for name in cp.sections():
@@ -308,7 +357,8 @@ def load(path: str) -> IcgCfg:
         keys = tuple(k.strip().lower()
                      for k in _text(s, 'keys', '').split(',') if k.strip())
         devices.append(RadionodeDevice(alias=alias,
-                                       mac=_head(s, 'mac', ''), keys=keys))
+                                       mac=_head(s, 'mac', ''), keys=keys,
+                                       deveui=_head(s, 'deveui', '')))
     if devices:
         cfg.radionode.devices = tuple(devices)
     return cfg
@@ -352,15 +402,34 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
                              '가운데 하나여야 한다 (DevNote 11.19)'
                              % (cfg.gauge_off_method,
                                 ' | '.join(sorted(gauge.METHODS))))
-    if cfg.gauge_off_method == gauge.DIOPOWER:
-        warn.append('[icg] gauge_off_method=diopower -- MOD10 의 DIO 8라인 '
-                    '**전부**의 버퍼 전원을 내린다.  필라멘트는 꺼지지만 '
-                    '게이지 시리얼 3선(ION_DE/ION_DI/ION_RO)도 같이 죽어 '
-                    'DEWPRES 를 켤 때까지 못 읽는다 (DevNote 11.19)')
+    if cfg.gauge_off_method == gauge.IONEN:
+        # ⏳ **미검증 갈래다.**  실측으로 확인된 것은 diopower 이므로, 이 값을
+        # 골랐다는 것은 "아직 안 해 본 길을 쓰겠다" 는 뜻이다 -- 조용히 두면
+        # 첫 관측에서 *"껐는데 필라멘트가 안 꺼진"* 상태를 못 알아챈다.
+        warn.append('[icg] gauge_off_method=ionen -- ⏳ **실기 미검증**이다.  '
+                    '실측으로 확인된 것은 diopower 다 (운영자 2026-09-04).  '
+                    'ionen 을 쓰려면 벤치에서 필라멘트가 실제로 꺼지는지 먼저 '
+                    '확인할 것 (INSTALL/icg_first_run 게이지 부록)')
     r = cfg.radionode
-    if r.backend not in ('sim', 'openapi', 'off'):
-        raise IcgConfigError('[radionode] backend=%r -- sim | openapi | off '
-                             '중 하나여야 한다' % r.backend)
+    if r.backend not in ('sim', 'openapi', 'off', 'local_lns'):
+        raise IcgConfigError('[radionode] backend=%r -- sim | openapi | off | '
+                             'local_lns 중 하나여야 한다' % r.backend)
+    if r.backend == 'local_lns':
+        # ⭐ 여기서 막는 것은 **조용히 아무것도 안 받는 상태**다.  주소가 없으면
+        # 임의 포트에 뜨고(게이트웨이가 못 찾는다), DevEUI 가 없으면 uplink 가
+        # 와도 어느 장치인지 못 붙여 전부 버려진다 -- 둘 다 로그만 보면
+        # "잘 떠 있는" 것처럼 보이는 자리다.
+        if not r.lns_bind:
+            warn.append('[radionode] backend=local_lns 인데 lns_bind 가 비었다 '
+                        '-- 임의 포트에 떠서 게이트웨이가 못 찾는다.  '
+                        '`0.0.0.0:8088` 처럼 적고 게이트웨이 integration 의 '
+                        'URL 과 맞출 것 (INSTALL 7.5)')
+        no_eui = [d.alias for d in r.devices if not d.deveui]
+        if no_eui:
+            warn.append('[radionode] deveui 가 없는 장치: %s -- 그 장치의 '
+                        'uplink 는 **전부 버려진다**.  게이트웨이 내장 NS 의 '
+                        '장치 목록에서 DevEUI 를 옮겨 적을 것 (INSTALL 7.4)'
+                        % ', '.join(no_eui))
     if r.backend == 'openapi':
         missing = [k for k, v in (('base_url', r.base_url),
                                   ('latest_path', r.latest_path),

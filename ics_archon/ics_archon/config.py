@@ -150,6 +150,87 @@ class ArchonCfg:
     #: `?xx` 로 거부된다 (2026-09-01 실기, DevNote 10.2) -- 그때는 true 로.
     apply_acf: bool = True
     acf_retry: int = 4
+    #: ⭐ **노출 전 CCD flush** (`Prep`+`Flush`)를 실행할지 (운영자 2026-09-04).
+    #: 타이밍 스크립트의 `LINE9`/`LINE10` 앞에 붙은 `#` 를 빼는 일이고, 그 둘은
+    #: 적분 직전에 있으므로 켜면 **매 프레임** 돈다.  ⚠️ `Flush` 가
+    #: `SkipLine(FlushLines)` 라 **프레임 주기가 늘어난다** -- `MIN_FRAME_PERIOD`
+    #: 와 10장 실측(13.27 s)은 **flush 를 끈 상태의 값**이다.
+    #: ⛔ **science 전용이다** -- guide ACF 에는 그 줄이 없고(같은 번호가 적분
+    #: 호출이다) `IcgCfg` 에는 이 설정 자체를 두지 않는다 (운영자 확정
+    #: 2026-09-04).  컨트롤러 층은 이 속성이 **없으면 아예 건너뛴다**.
+    #: ⭐ **기본은 꺼짐**이다 (운영자 정정 2026-09-04: *"보통은 `ccdflush=false`
+    #: 로 해놓을 건데 아주 가끔 `true`"*).  `true`/`on`/`1` 과
+    #: `false`/`off`/`0` 을 같게 받는다.
+    #: ⭐ 그래서 10장 실측(독출 12.77 s · 주기 13.27 s)과 `MIN_FRAME_PERIOD` 는
+    #: **기본 구성의 값이 맞다** -- 켤 때만 그보다 길어진다.
+    ccdflush: bool = False
+
+    # -- TCS 시각 비교 (운영자 지시 2026-09-04) ---------------------------
+    #: `TCSQDATE` 로 TC 시계와 우리 시계를 견주는 문턱 [s].  **0 이면 끈다.**
+    #:
+    #: ⭐ **목적은 어느 한쪽 OS 시계가 틀어진 것을 잡는 것**이다 (운영자
+    #: 2026-09-04) -- ICS 가 자기 시계로 잰 왕복 가운데와 TC 가 찍은
+    #: `TCSQDATE` 를 견준다.  NTP 가 죽으면 어긋남은 보통 **초~분** 단위라
+    #: 0.5 초면 넉넉히 걸린다.
+    #:
+    #: ⚠️ 실제 문턱은 이 값과 **왕복 불확실도**(`(t1-t0)/2`) 중 큰 쪽이지만,
+    #: ⛔ **그 두 번째 항은 출하 설정에서 한 번도 안 뽑힌다** -- 성공한 질의의
+    #: 왕복은 `[timing] tc_query_timeout`(0.5 초)을 못 넘고(더 느리면 시한
+    #: 초과로 표본이 통째로 버려진다) 그러면 불확실도는 0.25 초 이하다.
+    #: **그대로 두는 것은 `tc_query_timeout` 을 키울 때를 위한 보험**이고,
+    #: 지금 거동을 정하는 것은 이 값 하나다 (2026-09-04 정정).
+    #:
+    #: ⛔ 알리기만 한다 -- 값을 보정하지 않는다 (어느 것이 실측인지 못 가르게
+    #: 된다).  시계를 맞추는 것은 NTP 의 몫이다.
+    tcs_clock_warn: float = 0.5
+
+    # -- 진공게이지 (운영자 지시 2026-09-04) -------------------------------
+    #: ⭐ **노출 앞에 진공게이지를 끈다** -- 필라멘트가 science 영상을
+    #: 오염시킨다.  게이지는 guide 듀어의 `MOD10` 에 달려 있어 **ICG 만**
+    #: 만질 수 있으므로 ICS 는 명령을 보낸다 (`ICS>ICG VACGAUGE OFF`).
+    gauge_off_on_exposure: bool = True
+    #: ⭐ **ICG 의 노드 이름** -- 게이지(`VACGAUGE`)와 guide 노출 잠금
+    #: (`EXPENABLE`)이 **같은 상대**에게 간다.  ⚠️ `guide_ic_id`(`G.IC`)가
+    #: 아니다 -- ICG 는 `ICG` 라는 이름으로 발신하고 허브도 그 이름으로 안다.
+    icg_node: str = 'ICG'
+    #: 취득이 끝나고 다시 켜기까지 [s] (운영자 확정 **10분**).
+    gauge_reenable_after: float = 600.0
+    #: 응답을 이만큼 못 보면 경고한다 [s].  ⚠️ `DONE: VACGAUGE …` 는 ICS 의
+    #: 명령 처리부가 쓰지 않는 메시지라 조용히 버려진다 -- 이 데드맨이 없으면
+    #: "안 꺼진 채 찍는" 상태가 소리 없이 지나간다.
+    gauge_reply_timeout: float = 10.0
+    #: ⭐ **켜져 있어서 껐을 때** 노출을 시작하기까지 기다리는 시간 [s]
+    #: (운영자 지시 2026-09-04).  ⛔ `VACGAUGE OFF` 는 즉시가 아니다 --
+    #: `APPLYDIO09` 가 MOD10 VCPU 를 재시작하므로, `ccdflush = true` 면 그
+    #: 사이에 `Prep`+`Flush` 가 **필라멘트가 켜진 채로** 돈다.
+    #: ⭐ 연속 촬영은 노출이 1~2분이라 둘째 장부터 게이지가 이미 꺼져 있고,
+    #: 그때는 명령도 이 대기도 **없다**.  0 이면 안 기다린다.
+    gauge_settle_after: float = 5.0
+
+    # -- XIS 허브 확인 (운영자 지시 2026-09-04) ----------------------------
+    #: ⭐ **기동에서 허브를 확인하고, 안 되면 멈춘다.**  ICS 와 ICG 는 XIS 를
+    #: 통해서만 통신하기로 확정됐으므로(운영자 2026-09-04), 허브가 없으면
+    #: `VACGAUGE`·`EXPENABLE`·`HKDATA` 가 **한 줄도 안 나가고 그 실패가
+    #: 조용하다** -- 자료를 찍기 전에 막는다 (`xischeck.py`).
+    #: ⚠️ 시험 하네스처럼 허브 없이 도는 자리는 `false` 로 명시한다.
+    require_xis: bool = True
+    #: `PING` 한 통을 기다리는 시간 [s].
+    xis_ping_timeout: float = 2.0
+    #: 몇 번까지 다시 물어볼지 (UDP 는 유실 보상이 없다).
+    xis_ping_tries: int = 3
+
+    # -- guide 노출 잠금 (`GUIEXPCTRL`, 운영자 지시 2026-09-04) -------------
+    #: ⭐ **science 독출 구간에 guide 노출을 자동으로 막는다.**  독출 시작
+    #: `guiexp_lead` 초 전에 `EXPENABLE 0`, 독출이 끝나면 `EXPENABLE 1`.
+    #: ⚠️ `EXPENABLE` 은 **ICS 노출 전/후가 아니라 독출 앞뒤**다 (운영자 정정).
+    #: `false` 면 ICS 가 보내지 않는다 -- 콘솔에서 사람이 치는 길은 그대로다.
+    guiexpctrl: bool = True
+    #: 독출 시작 **몇 초 전**에 막을지.  ⭐ guide 가 이미 시작한 프레임을 마칠
+    #: 시간을 준다 -- 독출 시작 순간에 보내면 그 프레임이 독출에 걸친다.
+    guiexp_lead: float = 2.0
+    #: 국면 감시 간격 [s].  ⚠️ `guiexp_lead` 보다 **충분히 작아야** 한다 --
+    #: 틱이 성기면 "2초 전" 을 지나쳐 독출이 시작된 뒤에 막는다.
+    phase_poll: float = 0.25
     #: POWERON 뒤 CCD flush 를 기다리는 시간 [s] (labtest: 24 x 0.5).
     poweron_wait: float = 12.0
 
@@ -578,6 +659,24 @@ def load(path: str) -> ArchonCfg:
 
     cfg.apply_acf = _bool(s, 'apply_acf', cfg.apply_acf)
     cfg.acf_retry = _num(s, 'acf_retry', cfg.acf_retry, int)
+    cfg.ccdflush = _bool(s, 'ccdflush', cfg.ccdflush)
+    cfg.tcs_clock_warn = _num(s, 'tcs_clock_warn', cfg.tcs_clock_warn, float)
+    cfg.gauge_off_on_exposure = _bool(s, 'gauge_off_on_exposure',
+                                      cfg.gauge_off_on_exposure)
+    cfg.icg_node = (s.get('icg_node', '').strip() or cfg.icg_node)
+    cfg.guiexpctrl = _bool(s, 'guiexpctrl', cfg.guiexpctrl)
+    cfg.guiexp_lead = _num(s, 'guiexp_lead', cfg.guiexp_lead, float)
+    cfg.phase_poll = _num(s, 'phase_poll', cfg.phase_poll, float)
+    cfg.gauge_reenable_after = _num(s, 'gauge_reenable_after',
+                                    cfg.gauge_reenable_after, float)
+    cfg.gauge_reply_timeout = _num(s, 'gauge_reply_timeout',
+                                   cfg.gauge_reply_timeout, float)
+    cfg.gauge_settle_after = _num(s, 'gauge_settle_after',
+                                  cfg.gauge_settle_after, float)
+    cfg.require_xis = _bool(s, 'require_xis', cfg.require_xis)
+    cfg.xis_ping_timeout = _num(s, 'xis_ping_timeout',
+                                cfg.xis_ping_timeout, float)
+    cfg.xis_ping_tries = _num(s, 'xis_ping_tries', cfg.xis_ping_tries, int)
     cfg.poweron_wait = _num(s, 'poweron_wait', cfg.poweron_wait, float)
 
     cfg.param_intms_slot = _head(s, 'param_intms_slot', cfg.param_intms_slot)

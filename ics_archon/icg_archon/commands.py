@@ -22,8 +22,7 @@ icg_legacy_report 8.1절) `OBJECT`/`DARK`/`EXP`/`GO`/`STOP`/`ABORT` 등은
 
 추가 (운영자 확정 2026-09-04):
 
-* `HTREN ON|OFF|1|0`       -- 듀어 히터 Enable        (`MOD10\\HEATERAENABLE`)
-* `HTRSET <섭씨>`          -- 히터 목표온도 **인자 하나**  (`MOD10\\HEATERATARGET`)
+* `HTRSET <0|1> <섭씨>`    -- 히터 Enable + 목표온도  (`…AENABLE`/`…ATARGET`)
 * `HTRFORCE <0|1> <V>`     -- ⛔ 강제 출력 (PID 우회)  (`…AFORCE`/`…AFORCELEVEL`)
 * `HTRRAMP <0|1> <mK>`     -- 목표온도 램프            (`…ARAMP`/`…ARAMPRATE`)
 * `HTRPID <P> <I> <D>`     -- PID 게인 셋              (`…AP`/`…AI`/`…AD`)
@@ -67,7 +66,7 @@ log = logging.getLogger('icg_archon.cmd')
 #: emitter 의 커맨드워드 어휘에 icg 몫을 더한다 -- `validate()` 가 이 표로
 #: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다.
 ICG_COMMANDS = frozenset({'GUIDEEXP', 'HK', 'RADIONODE', 'EXPENABLE',
-                          'HTREN', 'HTRSET', 'HTRFORCE', 'HTRRAMP',
+                          'HTRSET', 'HTRFORCE', 'HTRRAMP',
                           'HTRPID', 'VACGAUGE'})
 
 #: `ON|OFF` 를 받는 명령들의 어휘.  ⭐ `EXPENABLE` 과 **같은 낱말**을 쓴다 --
@@ -75,6 +74,12 @@ ICG_COMMANDS = frozenset({'GUIDEEXP', 'HK', 'RADIONODE', 'EXPENABLE',
 #: 한다.  ⛔ 어휘 밖은 기본값으로 떨어뜨리지 않고 **거부**한다.
 ONOFF = {'ON': True, 'TRUE': True, '1': True,
          'OFF': False, 'FALSE': False, '0': False}
+
+#: 어휘 밖 값에 붙이는 문구.  ⭐ **"모르는 값"이라고 말하고 받는 낱말을 댄다**
+#: (운영자 2026-09-04) -- "Invalid" 만으로는 무엇이 허용인지 알 수 없다.
+def _unknown(word: str) -> str:
+    return ('Unrecognized value: %s -- use %s'
+            % (word, '|'.join(sorted(ONOFF, key=str.lower))))
 
 
 def extend_vocabulary() -> None:
@@ -274,7 +279,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
         want = expen.parse(arg)
         if want is None:
             # ⛔ 기본값으로 떨어뜨리지 않는다 -- 상태를 그대로 둔다.
-            return Reply.error('EXPENABLE', 'Invalid value: %s' % arg)
+            return Reply.error('EXPENABLE', _unknown(arg))
 
         flag.set(want)                            # ① 플래그를 먼저
         aborted = 0
@@ -327,35 +332,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
             body = '%s (%s)' % (body, note)
         self.emit.done(dest, cmdword, body)
 
-    def cmd_htren(self, msg: Message, target: Target) -> Reply:
-        """HTREN [ON|TRUE|1|OFF|FALSE|0] -- 듀어 히터 Enable.  없으면 조회."""
-        ctrl, bad = self._ctrl('HTREN')
-        if bad is not None:
-            return bad
-        arg = msg.body.strip()
-        if not arg:
-            self.app.spawn(self._do_heater_query(msg.src, ctrl, 'HTREN'))
-            return Reply.noop()
-        want = ONOFF.get(arg.upper())
-        if want is None:
-            # ⛔ 기본값으로 떨어뜨리지 않는다 -- 히터를 잘못 켜는 자리다.
-            return Reply.error('HTREN', 'Invalid value: %s' % arg)
-        busy = self._busy_note('HTREN')
-        self.app.spawn(self._do_htren(msg.src, ctrl, want, busy))
-        return Reply.noop()
-
-    async def _do_htren(self, dest: str, ctrl, on: bool,  # noqa: ANN001
-                        busy: str) -> None:
-        try:
-            note = await heater.set_enable(ctrl, on)
-        except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'HTREN', 'Failed: %s' % exc)
-            return
-        self._finish(dest, 'HTREN', 'Enable=%d' % int(on),
-                     ' '.join(x for x in (busy, note) if x))
-
     def cmd_htrset(self, msg: Message, target: Target) -> Reply:
-        """HTRSET <섭씨> -- 히터 목표온도.  ⭐ **인자 하나**다 (운영자 확정).
+        """HTRSET <0|1> <섭씨> -- 히터 Enable + 목표온도.  인자 없으면 조회.
+
+        ⭐ **인자 둘이다** (운영자 확정 2026-09-04 -- 원안으로 되돌렸다).
+        `HTREN` 이라는 별도 명령은 **없다**.  ⚠️ 다만 **헤더 카드는 `HTREN` 과
+        `HTRSET` 으로 나뉘어** 실린다 -- 명령의 모양과 카드의 모양이 다른 것이
+        의도다 (카드는 각 값을 따로 읽을 수 있어야 한다).
 
         한계는 상수가 아니라 **ACF 를 두 걸음 타서** 얻고, 넘으면 거부가
         아니라 **한계로 접고 응답에 적는다** (`heater.clamp`).
@@ -367,27 +350,27 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if not arg:
             self.app.spawn(self._do_heater_query(msg.src, ctrl, 'HTRSET'))
             return Reply.noop()
-        try:
-            celsius = float(arg.split()[0])
-        except ValueError:
-            return Reply.error('HTRSET', 'Invalid temperature: %s' % arg)
-        if len(arg.split()) > 1:
-            # ⚠️ 2인자 안(`HEATERSET`)을 대체한 명령이라, 옛 문법으로 보내면
-            # 두 번째 값이 조용히 버려진다 -- 그것을 알린다.
-            return Reply.error('HTRSET', 'Usage: HTRSET <celsius> -- one '
-                                         'argument only (use HTREN to enable)')
+        parts, bad = self._split('HTRSET', arg, 2, 'HTRSET <0|1> <celsius>')
+        if bad is not None:
+            return bad
+        on = ONOFF.get(parts[0].upper())
+        if on is None:
+            return Reply.error('HTRSET', _unknown(parts[0]))
+        celsius, bad = self._number('HTRSET', parts[1], 'temperature')
+        if bad is not None:
+            return bad
         busy = self._busy_note('HTRSET')
-        self.app.spawn(self._do_htrset(msg.src, ctrl, celsius, busy))
+        self.app.spawn(self._do_htrset(msg.src, ctrl, on, celsius, busy))
         return Reply.noop()
 
-    async def _do_htrset(self, dest: str, ctrl, celsius: float,  # noqa: ANN001
-                         busy: str) -> None:
+    async def _do_htrset(self, dest: str, ctrl, on: bool,  # noqa: ANN001
+                         celsius: float, busy: str) -> None:
         try:
-            value, note = await heater.set_target(ctrl, celsius)
+            value, note = await heater.set_target(ctrl, on, celsius)
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, 'HTRSET', 'Failed: %s' % exc)
             return
-        self._finish(dest, 'HTRSET', 'Target=%.2f' % value,
+        self._finish(dest, 'HTRSET', 'Enable=%d Target=%.2f' % (int(on), value),
                      ' '.join(x for x in (busy, note) if x))
 
     async def _do_heater_query(self, dest: str, ctrl,  # noqa: ANN001
@@ -428,7 +411,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return bad
         want = ONOFF.get(arg.upper())
         if want is None:
-            return Reply.error('VACGAUGE', 'Invalid value: %s' % arg)
+            return Reply.error('VACGAUGE', _unknown(arg))
         busy = self._busy_note('VACGAUGE')
         self.app.spawn(self._do_vacgauge(msg.src, ctrl, state, want, busy))
         return Reply.noop()
@@ -488,7 +471,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return bad
         on = ONOFF.get(parts[0].upper())
         if on is None:
-            return Reply.error('HTRFORCE', 'Invalid value: %s' % parts[0])
+            return Reply.error('HTRFORCE', _unknown(parts[0]))
         level, bad = self._number('HTRFORCE', parts[1], 'level')
         if bad is not None:
             return bad
@@ -526,7 +509,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return bad
         on = ONOFF.get(parts[0].upper())
         if on is None:
-            return Reply.error('HTRRAMP', 'Invalid value: %s' % parts[0])
+            return Reply.error('HTRRAMP', _unknown(parts[0]))
         rate, bad = self._number('HTRRAMP', parts[1], 'rate', int)
         if bad is not None:
             return bad

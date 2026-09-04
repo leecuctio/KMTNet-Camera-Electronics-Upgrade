@@ -66,6 +66,10 @@ def make_cfgs(tmp_path, mk: FakeArchon, nt: FakeArchon):  # noqa: ANN001
     cfg.hardware.backend = 'archon'
 
     acfg = acfg_mod.load(INI)
+    # ⛔ **허브 없이 도는 하네스다** -- 기동의 XIS PING/PONG 검사를 끈다
+    # (운영자 지시 2026-09-04로 신설).  배포 ini 는 `require_xis = true` 이고,
+    # 그 값을 그대로 읽으면 여기서 `XisUnreachable` 로 못 뜬다.
+    acfg.require_xis = False
     acfg.hosts = {'MK': '127.0.0.1', 'NT': '127.0.0.1'}
     acfg.acf = {'MK': str(acf), 'NT': str(acf)}
     acfg.naxis1, acfg.naxis2 = NX, NY
@@ -186,7 +190,8 @@ def test_frame_events_name_each_controller_in_completion_order(tmp_path):  # noq
 
     `readout()` 은 진행률 정수만 흘려보내므로 "어느 컨트롤러가 끝났나" 를
     표현할 자리가 없었다.  NT 를 느리게 만들면 MK 가 먼저 나와야 한다 --
-    그 순서가 곧 실기의 시차이고, `acq_per_frame` 기본값을 정할 근거다.
+    그 순서가 곧 실기의 시차이고, `acq_skew_warn` 을 맞출 근거다
+    (스위치는 2026-09-04 에 없어졌다 -- 프레임별 발신이 유일한 거동이다).
     """
     mk = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.02)
     nt = FakeArchon(width=NX, height=NY, readout_ticks=8, tick=0.05)
@@ -221,15 +226,20 @@ def test_frame_events_name_each_controller_in_completion_order(tmp_path):  # noq
     assert all(v < 100 for k, v in events if k == 'progress'), events
 
 
-@pytest.mark.parametrize('per_frame', [False, True])
-def test_acq_per_frame_switch_keeps_the_four_messages(tmp_path, fakes, per_frame):  # noqa: ANN001
-    """스위치를 켜든 끄든 **`Acquisition Complete.` 는 4회**다.
+def test_the_four_messages_go_out_grouped_by_controller(tmp_path, fakes):  # noqa: ANN001
+    """**`Acquisition Complete.` 는 4회이고, 컨트롤러 묶음으로 나간다.**
 
-    바뀌는 것은 개수가 아니라 **언제 나가나** 뿐이다 -- 개수가 곧 규약이다
-    (DevNote 3장 2항).  꺼짐이 기본이고 그때가 종전 거동(같은 틱 4개)이다.
+    ⚠️ **스위치가 없어졌다** (운영자 확정 2026-09-04 -- *"스위치 없애고 무조건
+    켜짐과 같이 구동해줘"*).  종전에는 `[readout] acq_per_frame` 을 켜고 끄는
+    두 갈래를 함께 봤는데, 그 설정이 사라졌으므로 **한 갈래만 남는다.**
+
+    ⛔ 종전 시험을 그대로 두면 `cfg.readout.acq_per_frame = …` 이 **없는
+    필드에 값을 꽂아** 두 갈래가 똑같아진 채 초록으로 남았다 -- 스위치를
+    검증한다고 이름을 달고 아무것도 검증하지 않는 상태다.
+
+    ⭐ 개수(4)는 그대로 규약이다 (DevNote 3장 2항).
     """
     cfg, acfg, nt_port = make_cfgs(tmp_path, fakes.mk, fakes.nt)
-    cfg.readout.acq_per_frame = per_frame
     sent, _ = asyncio.run(_drive(cfg, acfg, nt_port,
                                  ['OBS>ICS dark begin', 'OBS>ICS exp 0',
                                   'OBS>ICS go']))
@@ -237,11 +247,53 @@ def test_acq_per_frame_switch_keeps_the_four_messages(tmp_path, fakes, per_frame
     assert len(acq) == 4, acq
     assert sum('Wrote' in m for m in sent) == 8
     assert sum('EXPSTATUS=IDLE' in m for m in sent) == 1
-    if per_frame:
-        # 컨트롤러 묶음으로 나간다 -- MK(M/K) 가 먼저, 그 다음 NT(N/T).
-        who = [m.split('.IC>')[0] for m in acq]
-        assert set(who[:2]) == {'M', 'K'}, who
-        assert set(who[2:]) == {'N', 'T'}, who
+    # 컨트롤러 묶음 -- MK(M/K) 가 먼저, 그 다음 NT(N/T).
+    who = [m.split('.IC>')[0] for m in acq]
+    assert set(who[:2]) == {'M', 'K'}, who
+    assert set(who[2:]) == {'N', 'T'}, who
+
+
+def test_the_switch_field_is_gone(tmp_path, fakes):  # noqa: ANN001,ARG001
+    """⛔ 없는 설정에 값을 꽂아도 초록이 되는 일을 막는다 (2026-09-04)."""
+    cfg, _acfg, _nt = make_cfgs(tmp_path, fakes.mk, fakes.nt)
+    assert not hasattr(cfg.readout, 'acq_per_frame')
+
+
+def test_a_lost_frame_on_one_controller_still_saves_the_other(tmp_path):  # noqa: ANN001
+    """**한 대의 프레임을 잃어도 성한 대는 저장한다** (운영자 지시 2026-09-04).
+
+    종전에는 상대가 시한을 넘기면 `_readout_stream` 이 곧바로 `raise` 했고,
+    시퀀서는 `_store` 태스크를 **만들기 전에** 중단되어 -- `_frame()` 은
+    `_readout()` 이 정상 반환한 뒤에야 저장을 띄운다 -- **멀쩡히 읽어 낸 MK
+    프레임까지 함께 잃었다** (경고 한 줄 · 파일 0개).
+
+    ⚠️ `test_failures.py` 의 `test_one_controller_down_does_not_silently_
+    produce_half_a_pair` 와 **다른 경로다.**  그쪽은 `initialize` 가 실패해
+    **찍은 픽셀이 아예 없는** 경우이고, 거기서 반쪽 pair 를 안 만드는 것은
+    그대로 옳다.  여기는 픽셀을 이미 받아 뒀고, 그것을 버리는 편이 나쁘다 --
+    픽셀은 되찾을 수 없다.
+
+    ⭐ 그리고 **빨리** 끝나야 한다: 잃은 대의 저장 표를 버리지 않으면
+    `write_frame()` 이 같은 표를 또 기다려 `frame_timeout` 을 한 번 더 쓴다.
+    """
+    mk = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.02)
+    nt = FakeArchon(width=NX, height=NY, readout_ticks=400, tick=0.05)
+    mk.start(); nt.start()
+    try:
+        cfg, acfg, nt_port = make_cfgs(tmp_path, mk, nt)
+        acfg.full_flush_on_erase = False
+        acfg.frame_poll = 0.05
+        acfg.frame_timeout = 0.6          # NT 는 이 안에 절대 못 끝낸다
+        sent, _ = asyncio.run(_drive(cfg, acfg, nt_port,
+                                     ['OBS>ICS dark begin', 'OBS>ICS exp 0',
+                                      'OBS>ICS go'], settle=2.0))
+    finally:
+        mk.shutdown(); nt.shutdown()
+    got = sorted(os.path.basename(p)
+                 for p in glob.glob(str(tmp_path / 'rawdata' / '*.fits')))
+    assert len(got) == 1 and got[0].endswith('.MK.fits'), (
+        '성한 컨트롤러의 프레임이 저장되지 않았다: %r' % got)
+    assert any('ERROR' in m for m in sent), '잃은 쪽이 통보되지 않았다'
 
 
 # ---------------------------------------------------------------------------

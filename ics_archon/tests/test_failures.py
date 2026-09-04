@@ -54,6 +54,10 @@ def cfgs(tmp_path, **over):  # noqa: ANN001
     cfg.hardware.backend = 'archon'
 
     acfg = acfg_mod.load(INI)
+    # ⛔ **허브 없이 도는 하네스다** -- 기동의 XIS PING/PONG 검사를 끈다
+    # (운영자 지시 2026-09-04로 신설).  배포 ini 는 `require_xis = true` 이고,
+    # 그 값을 그대로 읽으면 여기서 `XisUnreachable` 로 못 뜬다.
+    acfg.require_xis = False
     acfg.hosts = {'MK': '127.0.0.1', 'NT': '127.0.0.1'}
     acfg.acf = {'MK': str(acf), 'NT': str(acf)}
     acfg.naxis1, acfg.naxis2 = NX, NY
@@ -265,8 +269,13 @@ def test_a_frame_that_never_completes_times_out_instead_of_hanging(tmp_path):  #
     assert not glob.glob(str(tmp_path / 'rawdata' / '*.fits'))
 
 
-def test_acquisition_does_not_go_out_before_the_other_controller_finishes(tmp_path):  # noqa: ANN001
+def test_acquisition_does_not_go_out_before_the_other_controller_finishes(tmp_path, caplog):  # noqa: ANN001,E501
     """**NT 만 죽는다 -- 획득 완료가 먼저 나가면 안 된다** (F1, 목 지시 1-A).
+
+    ⭐ **2026-09-04 에 결론이 하나 바뀌었다** (운영자 지시): 그때는 여기서
+    프레임을 **통째로 버렸는데**, 이제 **성한 MK 는 저장한다**.  지키는 성질
+    (NT 의 결과를 안 뒤에 획득 완료가 나간다)은 그대로이고, 바뀐 것은 그
+    **뒤에 무엇을 하느냐**다.  아래 단언 주석에 경위가 있다.
 
     종전에는 `readout()` 이 master(MK) 티켓만 폴링하고 곧바로 `pctread_final`
     을 냈다.  그러면 시퀀서가 `Acquisition Complete.` 4개를 내보낸 **뒤에야**
@@ -280,6 +289,9 @@ def test_acquisition_does_not_go_out_before_the_other_controller_finishes(tmp_pa
     # ⚠️ **적분 시간을 0 으로 둔다.**  `exp 1` 이면 IntMS=1000 이라 프레임이
     # 1초 뒤에나 나오고, 그러면 `frame_timeout` 이 MK 에서 먼저 터져 **둘 다
     # 죽은 채로 시험이 통과한다** -- 이 시험이 무엇을 잡는지 모르게 된다.
+    import logging
+
+    caplog.set_level(logging.ERROR, logger='ics_archon.hw')
     cfg, acfg = cfgs(tmp_path, frame_timeout=0.5, full_flush_on_erase=False)
     mk = FakeArchon(width=NX, height=NY)
     nt = FakeArchon(width=NX, height=NY)
@@ -294,11 +306,27 @@ def test_acquisition_does_not_go_out_before_the_other_controller_finishes(tmp_pa
                                          settle=1.5))
     finally:
         mk.shutdown(); nt.shutdown()
-    acq = [m for m in sent if 'Acquisition Complete.' in m]
-    assert not acq, ('NT 가 프레임을 못 냈는데 획득 완료가 나갔다 -- '
-                     'master 만 기다린 것이다: %r' % acq)
-    errs = errors(sent)
-    assert any('DMA WAIT TIMEOUT' in m for m in errs), errs
+    # ⭐ **결정이 바뀌었다 (운영자 지시 2026-09-04) -- 성한 쪽은 저장한다.**
+    #
+    # 종전에는 여기서 `Acquisition Complete.` 가 **하나도** 안 나가는 것을
+    # 못박았다: 상대가 시한을 넘기면 `_readout_stream` 이 곧바로 `raise` 해서
+    # 시퀀서가 `_store` 를 만들기 전에 중단됐기 때문이다.  그러면 **멀쩡히
+    # 읽어 낸 MK 프레임까지 함께 잃는다** -- 픽셀은 되찾을 수 없다.
+    #
+    # ⭐ **원래 이 시험이 지키던 성질은 그대로다** -- 획득 완료는 NT 의 결과를
+    # **안 뒤에** 나간다(종전 결함은 master 만 기다린 것이었다).  아래 독출 층
+    # 경고가 그 순서를 못박는다: 그 문구는 두 대의 대기가 **다 끝난 뒤**에만
+    # 나온다.
+    assert any('프레임을 잃었다' in r.message for r in caplog.records), \
+        'NT 의 결과를 확인하기 전에 진행했다: %r' % [r.message
+                                                    for r in caplog.records]
+    got = sorted(os.path.basename(p)
+                 for p in glob.glob(str(tmp_path / 'rawdata' / '*.fits')))
+    assert len(got) == 1 and got[0].endswith('.MK.fits'), (
+        '성한 컨트롤러의 프레임이 저장되지 않았다: %r' % got)
+    # ⚠️ 대가: OBSAgent 는 `Acquisition Complete.` 4개를 받고 `Wrote` 는 2개만
+    # 받아 `FitsSaved` 시한에서 어긋남을 본다.  **알리는 쪽**이라 그것이 옳다.
+    assert errors(sent), '잃은 쪽이 통보되지 않았다'
     assert alive
 
 

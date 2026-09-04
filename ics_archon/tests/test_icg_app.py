@@ -309,7 +309,9 @@ def test_expenable_refuses_an_unknown_value_and_keeps_the_state(tmp_path):  # no
         'abc>ICG EXPENABLE',
     ])
     said = [s for s in sent if 'EXPENABLE' in s]
-    assert sum('Invalid value' in s for s in said) == 2, said
+    # ⭐ **"모르는 값"이라고 말하고 받는 낱말을 댄다** (운영자 2026-09-04).
+    assert sum('Unrecognized value' in s for s in said) == 2, said
+    assert any('0|1|FALSE|OFF|ON|TRUE' in s for s in said), said
     # 오타 둘을 겪고도 여전히 잠겨 있다
     assert not app.expenable.allowed
     assert said[-1].endswith('ExpEnable=OFF')
@@ -435,37 +437,42 @@ def test_the_heater_and_gauge_commands_refuse_without_a_controller(tmp_path):  #
     조용히 DONE 을 내면 *"명령은 먹었는데 아무것도 안 바뀜"* 이 된다.
     """
     _app, sent = _drive_lines(tmp_path, [
-        'abc>ICG HTREN ON', 'abc>ICG HTRSET -100', 'abc>ICG VACGAUGE OFF',
+        'abc>ICG HTRSET 1 -100', 'abc>ICG HTRPID 1 2 3',
+        'abc>ICG VACGAUGE OFF',
     ])
     said = [s for s in sent if 'ERROR' in s]
-    for word in ('HTREN', 'HTRSET', 'VACGAUGE'):
+    for word in ('HTRSET', 'HTRPID', 'VACGAUGE'):
         assert any(word in s for s in said), (word, said)
 
 
-def test_htrset_takes_one_argument_only(tmp_path):  # noqa: ANN001
-    """⭐ **인자 하나**다 (운영자 확정) -- 옛 2인자 문법은 조용히 버리지 않는다.
+def test_htrset_takes_exactly_two_arguments(tmp_path):  # noqa: ANN001
+    """⭐ **인자 둘**이다 (운영자 확정 2026-09-04 -- 원안으로 되돌렸다).
 
-    두 번째 값을 말없이 무시하면 *"Enable 도 같이 넣었다고 믿는"* 자리가 된다.
+    ⚠️ 모자란 것도 남는 것도 거부한다.  한때 1인자였던 명령이라 옛 문법이
+    돌아다닐 수 있는데, 말없이 받으면 *"Enable 을 안 넣었는데 넣었다고 믿는"*
+    자리가 된다.
     """
     _app, sent, ctrl = _with_ctrl(tmp_path, [
-        'abc>ICG HTRSET -100 1',       # 옛 문법
-        'abc>ICG HTRSET nope',         # 수치가 아니다
+        'abc>ICG HTRSET -100',         # 옛(1인자) 문법
+        'abc>ICG HTRSET 1 nope',       # 수치가 아니다
+        'abc>ICG HTRSET maybe -100',   # 어휘 밖
     ])
     said = [s for s in sent if 'HTRSET' in s]
-    assert sum('ERROR' in s for s in said) == 2, said
+    assert sum('ERROR' in s for s in said) == 3, said
     assert ctrl.writes() == [], '거부했는데 컨트롤러에 썼다'
 
 
 def test_the_onoff_words_are_the_same_as_expenable(tmp_path):  # noqa: ANN001
     """`ON|TRUE|1` · `OFF|FALSE|0` -- ⛔ 어휘 밖은 거부한다."""
     _app, sent, ctrl = _with_ctrl(tmp_path, [
-        'abc>ICG HTREN true',
+        'abc>ICG HTRSET true -100',
         'abc>ICG VACGAUGE 0',
-        'abc>ICG HTREN maybe',         # 어휘 밖
+        'abc>ICG HTRSET maybe -100',   # 어휘 밖
     ])
-    assert any('HTREN' in s and 'Enable=1' in s for s in sent), sent
+    assert any('HTRSET' in s and 'Enable=1' in s for s in sent), sent
     assert any('VACGAUGE' in s and 'Gauge=OFF' in s for s in sent), sent
-    assert any('HTREN' in s and 'Invalid value: maybe' in s for s in sent), sent
+    assert any('HTRSET' in s and 'Unrecognized value: maybe' in s
+               for s in sent), sent
 
 
 def test_a_heater_command_during_acquisition_is_accepted_with_a_warning(  # noqa: ANN001
@@ -485,7 +492,7 @@ def test_a_heater_command_during_acquisition_is_accepted_with_a_warning(  # noqa
     # `EXP 30` = 프레임당 0.6초라 도착 순서가 확실해진다 -- 줄이지 말 것.
     _app, sent, ctrl = _with_ctrl(tmp_path, [
         'abc>ICG EXP 30', 'abc>ICG GO 2',
-        'abc>ICG HTRSET -100',         # 취득 중에 들어온다
+        'abc>ICG HTRSET 1 -100',       # 취득 중에 들어온다
     ])
     said = [s for s in sent if 'HTRSET' in s]
     assert any('DONE' in s for s in said), said
@@ -503,7 +510,7 @@ def test_the_gauge_query_says_where_the_answer_came_from(tmp_path):  # noqa: ANN
     """
     _app, sent, _ctrl = _with_ctrl(tmp_path, ['abc>ICG VACGAUGE'])
     said = [s for s in sent if 'VACGAUGE' in s]
-    assert any('Origin=' in s and 'Method=ionen' in s for s in said), said
+    assert any('Origin=' in s and 'Method=diopower' in s for s in said), said
 
 
 def test_the_new_heater_commands_check_their_argument_count(tmp_path):  # noqa: ANN001
@@ -549,9 +556,11 @@ def test_the_ramp_response_carries_the_converted_rate(tmp_path):  # noqa: ANN001
 def test_a_heater_query_answers_from_the_controller(tmp_path):  # noqa: ANN001
     """인자 없이 보내면 조회 -- 답은 캐시가 아니라 `RCONFIG` 되읽기다."""
     _app, sent, ctrl = _with_ctrl(tmp_path, [
-        'abc>ICG HTRPID', 'abc>ICG HTRFORCE',
+        'abc>ICG HTRPID', 'abc>ICG HTRFORCE', 'abc>ICG HTRSET',
     ])
     assert any('HTRPID' in s and 'P=0 I=0 D=0' in s for s in sent), sent
+    # ⭐ `HTRSET` 조회는 **둘을 함께** 답한다 (헤더가 그 둘을 따로 싣는다).
+    assert any('HTRSET' in s and 'Enable=0 Target=0' in s for s in sent), sent
     assert any('HTRFORCE' in s and 'Force=0 Level=0' in s for s in sent), sent
     assert ctrl.writes() == [], '조회인데 컨트롤러에 썼다'
 

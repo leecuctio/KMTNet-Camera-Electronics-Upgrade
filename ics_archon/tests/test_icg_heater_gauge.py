@@ -105,11 +105,11 @@ def test_the_limits_follow_the_acf_when_the_loop_sensor_changes():
 def test_a_target_outside_the_limits_is_clamped_and_said_so():
     """⭐ **거부하지 않는다** -- 한계로 접고 접었다는 사실을 응답에 남긴다."""
     ctrl = RecordingCtrl()
-    hot, note = asyncio.run(heater.set_target(ctrl, 60.0))
+    hot, note = asyncio.run(heater.set_target(ctrl, True, 60.0))
     assert hot == 50.0
     assert 'Clamped=60.00->50.00' in note
     assert 'SENSORA' in note and 'RTD9_DMP' in note   # 출처가 보여야 한다
-    cold, note2 = asyncio.run(heater.set_target(ctrl, -200.0))
+    cold, note2 = asyncio.run(heater.set_target(ctrl, True, -200.0))
     assert cold == -150.0
     assert 'Clamped=-200.00->-150.00' in note2
     # 접힌 값이 **실제로 앉는다** -- 요청값이 아니라 클램프값을 쓴다.
@@ -118,7 +118,7 @@ def test_a_target_outside_the_limits_is_clamped_and_said_so():
 
 def test_a_target_inside_the_limits_is_written_untouched():
     ctrl = RecordingCtrl()
-    value, note = asyncio.run(heater.set_target(ctrl, -100.0))
+    value, note = asyncio.run(heater.set_target(ctrl, True, -100.0))
     assert value == -100.0
     assert 'Clamped' not in note
     assert 'VCPU restarted' in note      # 결측 창은 늘 알린다
@@ -130,7 +130,7 @@ def test_the_target_is_not_written_when_the_limits_cannot_be_read():
     ctrl = RecordingCtrl()
     del ctrl.configline['MOD10/HEATERASENSOR']
     with pytest.raises(ArchonError):
-        asyncio.run(heater.set_target(ctrl, -100.0))
+        asyncio.run(heater.set_target(ctrl, True, -100.0))
     assert ctrl.writes() == []
     assert ctrl.applies() == []
 
@@ -145,32 +145,56 @@ def test_the_heater_applies_only_its_own_module():
     모듈이 적용되고 그것은 조용히 틀린다.
     """
     ctrl = RecordingCtrl()
-    asyncio.run(heater.set_enable(ctrl, True))
+    asyncio.run(heater.set_target(ctrl, True, -100.0))
     assert ctrl.applies() == ['APPLYMOD09'], ctrl.applies()
+    # ⭐ `HTRSET` 은 **둘을 한 번에** 쓴다 (운영자 확정 2026-09-04) -- Enable 만
+    # 앉고 목표는 옛 값인 창을 만들지 않는다.
     assert any('MOD10/HEATERAENABLE=1' in c for c in ctrl.writes())
+    assert any('MOD10/HEATERATARGET=-100' in c for c in ctrl.writes())
 
 
 def test_the_gauge_applies_the_dio_configuration():
-    """게이지는 `APPLYDIO09` 다 -- DIO/VCPU 쪽 적용이다 (매뉴얼 p.53)."""
+    """게이지는 `APPLYDIO09` 다 -- DIO/VCPU 쪽 적용이다 (매뉴얼 p.53).
+
+    ✅ **기본 갈래는 `diopower`** 다 -- 운영자가 `MOD10\\DIO_POWER=1/0` 으로
+    On/Off 가 되는 것을 실측으로 확인했다 (2026-09-04).  보관함의
+    `…_goff_….acf` 가 형제 판과 정확히 그 한 줄만 다른 것과도 맞는다.
+    """
     ctrl = RecordingCtrl()
     state = gauge_mod.GaugeState()
     asyncio.run(state.set(ctrl, False))
     assert ctrl.applies() == ['APPLYDIO09'], ctrl.applies()
-    assert any('MOD10/DIO_SOURCE3=0' in c for c in ctrl.writes())
+    assert any('MOD10/DIO_POWER=0' in c for c in ctrl.writes()), ctrl.writes()
     assert state.word == 'OFF'
 
 
-def test_the_gauge_can_use_the_proven_diopower_key():
-    """⭐ 벤치에서 `ionen` 이 안 통하면 **선례가 있는** 갈래로 한 줄만 바꾼다.
+def test_the_unverified_ionen_key_is_still_reachable():
+    """⏳ `ionen` 은 **미검증이지만 지운 것이 아니다** -- ini 한 줄로 고른다.
 
-    보관함의 `…_goff_….acf` 가 형제 판과 **정확히 `MOD10\\DIO_POWER` 한 줄만**
-    다르다 -- 선임이 실제로 쓴 길이다 (DevNote 11.19).
+    읽기를 살린 채 필라멘트만 끄는 쪽이라 실기에서 확인되면 그쪽이 낫다.
+    ⚠️ 고르면 기동이 미검증이라고 경고한다 (`config.validate`).
     """
     ctrl = RecordingCtrl()
-    state = gauge_mod.GaugeState(gauge_mod.DIOPOWER)
+    state = gauge_mod.GaugeState(gauge_mod.IONEN)
     asyncio.run(state.set(ctrl, False))
-    assert any('MOD10/DIO_POWER=0' in c for c in ctrl.writes()), ctrl.writes()
-    assert not any('DIO_SOURCE3' in c for c in ctrl.writes())
+    assert any('MOD10/DIO_SOURCE3=0' in c for c in ctrl.writes()), ctrl.writes()
+    assert not any('DIO_POWER' in c for c in ctrl.writes())
+
+
+def test_the_default_method_is_the_measured_one():
+    """⚠️ 기본이 미검증 갈래로 되돌아가면 첫 관측에서 안 꺼질 수 있다."""
+    assert gauge_mod.GaugeState().method == gauge_mod.DIOPOWER
+    assert IcgCfg().gauge_off_method == gauge_mod.DIOPOWER
+
+
+def test_choosing_the_unverified_method_warns_at_startup():
+    """⏳ 미검증 갈래를 고른 것은 **조용하면 안 된다**."""
+    icfg = IcgCfg()
+    icfg.acf = {'G': GUIDE_ACF}
+    icfg.hosts = {'G': '10.0.0.162'}
+    icfg.gauge_off_method = gauge_mod.IONEN
+    said = '\n'.join(validate(icfg, 'icg_archon'))
+    assert 'ionen' in said and '미검증' in said, said
 
 
 # -- 상태: 거짓말하지 않는다 -----------------------------------------------
@@ -188,7 +212,7 @@ def test_the_gauge_state_is_read_back_from_the_controller_at_startup():
 def test_an_unreadable_gauge_state_stays_unknown_and_does_not_block_dewpres():
     """⚠️ 못 읽으면 **모름**이다 -- 추측으로 ON 을 적지 않고, 막지도 않는다."""
     ctrl = RecordingCtrl()
-    del ctrl.configline['MOD10/DIO_SOURCE3']
+    del ctrl.configline['MOD10/DIO_POWER']
     state = gauge_mod.GaugeState()
     asyncio.run(state.load(ctrl))
     assert state.on is None and state.word == 'UNKNOWN'
@@ -429,8 +453,7 @@ def test_pid_gains_outside_the_range_are_refused(gains):  # noqa: ANN001
 
 
 @pytest.mark.parametrize('cmdword, want', [
-    ('HTREN', 'Enable=0'),
-    ('HTRSET', 'Target=0'),          # 현행 ACF 의 출하값
+    ('HTRSET', 'Enable=0 Target=0'),   # 현행 ACF 의 출하값
     ('HTRFORCE', 'Force=0 Level=0'),
     ('HTRRAMP', 'Ramp=0 RampRate=1'),
     ('HTRPID', 'P=0 I=0 D=0'),

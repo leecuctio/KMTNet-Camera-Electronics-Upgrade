@@ -119,6 +119,38 @@ T_APPLY = 60.0
 T_MODULE = 10.0
 T_POWER = 30.0
 
+#: ⭐ **CCD flush 를 여닫는 타이밍 스크립트 두 줄** (`(설정 키, 확인 표시)`).
+#: science ACF 는 `LINE9="#X; CALL Prep"` · `LINE10="#X; CALL Flush"` 이고 앞의
+#: `#` 를 빼면 실행된다.  ⛔ **확인 표시가 있어야 손댄다** -- guide ACF 의 같은
+#: 번호는 `X; CALL IntUnit(IntMS)` 라 덮으면 적분이 사라진다.
+FLUSH_LINES = (('LINE9', 'CALL Prep'), ('LINE10', 'CALL Flush'))
+
+
+def _unquote(text: str) -> str:
+    """앞뒤 따옴표와 공백을 뗀 비교용 형태.
+
+    ⚠️ ACF 원문은 `"X; CALL Prep"` 처럼 따옴표를 포함하지만 `parse_acf` 가
+    그것을 떼고(labtest 관례) 와이어에도 없다.  되읽기 대조에서 그 차이로
+    거짓 어긋남을 내지 않도록 양쪽을 같은 형태로 접는다.
+    """
+    return text.strip().strip('"').strip()
+
+
+def flush_line(raw: str, on: bool) -> str:
+    """`"#X; CALL Prep"` <-> `"X; CALL Prep"` -- **따옴표는 보존한다**.
+
+    ACF 값은 따옴표를 포함한 원문이고, 컨트롤러에 다시 쓸 때도 같은 모양이어야
+    한다.  ⚠️ 따옴표를 잃으면 그 줄이 다른 뜻이 된다.
+    """
+    quote = raw[:1] if raw[:1] in '"\'' else ''
+    body = raw[1:-1] if quote and raw[-1:] == quote else raw
+    body = body.lstrip()
+    while body.startswith('#'):
+        body = body[1:]
+    if not on:
+        body = '#' + body
+    return '%s%s%s' % (quote, body, quote)
+
 #: `POWERON` 뒤 `POWER` 를 다시 물어보는 간격 [s].
 #:
 #: **`poweron_wait` 를 줄이지 않는다** -- 그 시간은 전원 램프가 아니라 **CCD
@@ -421,6 +453,115 @@ class ArchonController:
                 '(현재 ACF %r)' % (self.tag, key, self.acf_path or '없음'))
         self.config[k] = value
         await self.cmd('WCONFIG%04X%s=%s' % (line, k, value), timeout=T_FAST)
+
+    async def set_ccdflush(self, on: bool, *, required: bool = False) -> bool:
+        """노출 전 CCD flush(`Prep`+`Flush`)를 켜고 끈다.  바꿨으면 `True`.
+
+        ⭐ **타이밍 스크립트 두 줄의 주석 표시를 여닫는 일**이다 (운영자
+        2026-09-04).  science ACF 원문:
+
+            LINE9 ="#X; CALL Prep"
+            LINE10="#X; CALL Flush"
+
+        앞의 `#` 를 빼면 실행된다.  그 둘은 `Continuous:` 바로 아래, **적분
+        (`IntUnit`) 직전**에 있으므로 켜면 **매 프레임** Prep+Flush 가 돈다 --
+        `ERASE` 한 번이 아니다.  ⚠️ 그만큼 **프레임 주기가 늘어난다**
+        (`Flush` 가 `SkipLine(FlushLines)`).
+
+        ⛔⛔ **줄 번호로만 고치면 안 된다.**  guide ACF 의 같은 번호는
+        `X; CALL IntUnit(IntMS)` 라, 덮으면 **적분이 통째로 사라진다** -- 그래서
+        내용을 먼저 확인하고, 그 줄이 아니면 손대지 않는다.
+
+        ⚠️ **flush 줄이 없는 ACF 에서는 기동을 세우지 않는다.**  `required`
+        (=켜라고 한 경우)면 **크게 경고하고 flush 없이 간다** -- ⭐ flush 옵션
+        하나 때문에 **관측을 통째로 못 하는 것이 더 나쁘다**.  (처음에는 오류로
+        올렸는데, 그러면 그 줄이 없는 ACF 로는 프레임이 **한 장도** 안 나온다.)
+        `required=False`(guide 등)면 조용히 건너뛴다.
+        """
+        # ⭐ **두 걸음으로 가른다 -- 둘 다 확인한 뒤에 쓴다** (2026-09-04).
+        #
+        # ⛔ 종전에는 읽기와 쓰기를 한 루프에서 같이 했다.  `LINE9` 이 먼저라
+        # **그것을 이미 `WCONFIG` 로 쓴 뒤** `LINE10` 에서 걸리면 루프 안의
+        # `return False` 로 빠져나가, `LOADTIMING` 도 안 내고 되돌리지도 않고
+        # 호출자에게는 *"아무것도 안 바꿨다"* 로 보고했다 -- 컨트롤러 설정에는
+        # **`Flush` 없는 `Prep`** 이 남는다.  다음 프레임에 저절로 낫지도
+        # 않는다(`LINE9` 은 이미 want 라 `changed` 에 안 들어가고 `LINE10` 은
+        # 또 걸린다) -- **영원히 반쪽**이다.  그 상태에서 누가 벤더 GUI 나
+        # `APPLYALL` 로 스크립트를 태우면 그때 반쪽이 실제로 켜진다.
+        plan: list[tuple[str, str]] = []
+        for key, marker in FLUSH_LINES:
+            try:
+                raw = await self.read_config(key)
+            except ArchonError as exc:
+                if required:
+                    log.warning('⛔ %s: ccdflush 를 켜라고 했는데 %s 를 못 '
+                                '읽었다 (%s) -- **flush 없이 간다**.  이 ACF 에 '
+                                '그 줄이 있는지 확인할 것', self.tag, key, exc)
+                return False
+            if marker not in raw:
+                if required:
+                    log.warning('⛔ %s: ccdflush 를 켜라고 했는데 %s 가 flush '
+                                '줄이 아니다 (%r 를 기대했다, 받은 것 %r) -- '
+                                '**flush 없이 간다**.  이 ACF 는 ccdflush 대상이 '
+                                '아니다', self.tag, key, marker, raw[:40])
+                return False
+            want = flush_line(raw, on)
+            if want != raw:
+                plan.append((key, want))
+        # 여기까지 왔으면 **두 줄 다 확인됐다** -- 이제 쓴다.
+        changed = [key for key, _want in plan]
+        if not changed:
+            return False
+
+        # ⛔⛔ **①먼저 `Exposures=0` 을 눌러 둔다** (운영자 지시 2026-09-04,
+        # 순서까지 확정).  매뉴얼 p.51: *"LOADTIMING -- Parses and compiles the
+        # timing script **and parameters** … and applies them to the system.
+        # **This resets the timing cores.**"*  즉 ①파라미터를 **적용하고**
+        # ②코어를 리셋해 스크립트를 **첫 줄부터** 돌린다 -- 앞 프레임의
+        # `Exposures=1` 이 설정 메모리에 남아 있으면 **여기서 유령 독출이
+        # 시작된다** (운영자가 ArchonGUI 로 실측한 거동).
+        #
+        # ⭐ **왜 두 줄보다 먼저인가** -- 세 `WCONFIG` 는 다 "설정 메모리에
+        # 글자만 적는" 일이라(p.51) 서로의 순서가 거동을 바꾸지는 않는다.
+        # 그래도 **먼저 무장을 해제하는** 순서로 적어 두면, 나중에 누가 이
+        # 사이에 이른 `return` 이나 중간 적용을 끼워도 안전한 쪽으로 깨진다.
+        exp_slot = self.cfg.param_exposures_slot
+        exp_want = '%s=0' % self.cfg.param_exposures_name
+        await self.set_config(exp_slot, exp_want)
+        # ②그 다음 flush 두 줄.
+        for key, want in plan:
+            await self.set_config(key, want)
+
+        # ⭐ **③`RCONFIG` 로 되읽어 확인한다 -- `LOADTIMING` 앞이다**
+        # (운영자 지시 2026-09-04).
+        #
+        # ⛔ `set_config()` 는 **왕복이 실패해도 로컬 캐시를 먼저 갈아 끼운다**
+        # (11.13 F5) -- 그래서 *"보냈다"* 와 *"앉았다"* 가 다르다.  ⭐ 확인을
+        # **태우기 전에** 두는 것이 요점이다: 어긋나면 `LOADTIMING` 을 아예 안
+        # 내므로 **아무것도 적용되지 않고 코어도 안 리셋된다**.  뒤에 두면
+        # 어긋남을 알아도 이미 태운 뒤라 늦다.
+        # ⚠️ `Exposures` 도 함께 확인한다 -- 그 줄이 안 앉은 채 태우면 위에서
+        # 막으려던 유령 독출이 그대로 난다.
+        for key, want in [(exp_slot, exp_want)] + plan:
+            try:
+                got = await self.read_config(key)
+            except ArchonError as exc:
+                log.error('⛔ %s: ccdflush -- %s 를 되읽지 못했다 (%s).  '
+                          '**LOADTIMING 을 내지 않는다** (아무것도 적용되지 '
+                          '않은 상태로 남는다)', self.tag, key, exc)
+                return False
+            if _unquote(got) != _unquote(want):
+                log.error('⛔ %s: ccdflush -- %s 가 앉지 않았다 (보낸 것 %r, '
+                          '되읽은 것 %r).  **LOADTIMING 을 내지 않는다**',
+                          self.tag, key, want, got)
+                return False
+
+        if changed:
+            await self.cmd('LOADTIMING', timeout=T_APPLY)
+            log.info('%s: CCD flush %s -- %s 를 고치고 LOADTIMING (⚠️ 프레임 '
+                     '주기가 그만큼 늘어난다)', self.tag,
+                     '켬' if on else '끔', ', '.join(changed))
+        return bool(changed)
 
     async def read_config(self, key: str) -> str:
         """설정 줄 하나를 **컨트롤러에서 되읽는다** (`RCONFIG`).
@@ -1047,6 +1188,31 @@ class ArchonController:
             self._queue.clear()
         return n
 
+    def discard_ticket(self, ticket: FrameTicket | None) -> bool:
+        """표 **하나만** 대기열에서 집어 버린다 -- 그 프레임은 저장하지 않는다.
+
+        ⭐ **한 대의 프레임을 잃었을 때 쓴다** (운영자 지시 2026-09-04).  그
+        대의 표를 남겨 두면 시퀀서가 띄운 `_store` 가 `write_frame()` 에서
+        같은 표를 **다시** 기다려 `frame_timeout`(기본 300초)을 통째로 한 번
+        더 쓴다 -- 그 사이 성한 대의 저장은 이미 끝나 있고, 관측자는 이유
+        없이 5분을 더 기다린다.  버리면 `take_ticket()` 이 곧바로 `None` 을
+        돌려주어 그 컨트롤러만 빠르게 `ERROR` 로 끝난다.
+
+        ⚠️ **`drop_tickets()` 와 다르다** -- 그쪽은 대기열을 통째로 비우므로
+        `GO n` 파이프라인에서 아직 저장 중인 **앞 프레임의 표**까지 함께
+        날린다.  여기서는 준 객체 하나만 지운다 (동일성 비교 -- 같은 suffix 의
+        표가 둘일 수 있는 구성을 배제하지 않는다).
+        """
+        if ticket is None:
+            return False
+        for i, t in enumerate(self._queue):
+            if t is ticket:
+                del self._queue[i]
+                log.warning('%s: 프레임 %s 의 저장 표를 버린다 -- 그 프레임은 '
+                            '확인되지 않았다', self.tag, t.suffix or '?')
+                return True
+        return False
+
     async def flush(self, poll: float | None = None) -> None:
         """전체 독출 flush (labtest `bFullFlush`) -- 프레임 하나를 버린다.
 
@@ -1418,6 +1584,16 @@ class ArchonController:
                         '%s: apply_acf=false 인데 설정 줄 대응이 어긋났다 (%s) '
                         '-- 같은 ACF 를 쓰거나 apply_acf=true 로 두라'
                         % (self.tag, ', '.join(bad)))
+        # ⭐ CCD flush -- ACF 를 민 **뒤에** 두 줄만 고친다 (apply_acf=false
+        # 경로에서도 컨트롤러 메모리를 되읽어 판정하므로 앞 세션이 켜 둔 것을
+        # 되돌린다).
+        # ⛔ **science 전용이다** -- `IcgCfg` 에는 이 설정이 아예 없으므로
+        # guide 는 이 자리를 지나지도 않는다 (운영자 확정 2026-09-04).
+        # 종전에는 `getattr(..., False)` 로 guide 도 지나며 두 줄을 되읽었는데,
+        # 그것은 필요 없는 왕복이고 *"guide 도 대상"* 으로 읽히는 자리였다.
+        want_flush = getattr(self.cfg, 'ccdflush', None)
+        if want_flush is not None:
+            await self.set_ccdflush(bool(want_flush), required=bool(want_flush))
         if not self.powered:
             await self.power_on()
         if not self.system:

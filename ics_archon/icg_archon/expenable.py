@@ -6,7 +6,9 @@
 와 다르다: 그것들은 *진행 중인 것*을 세우는 일회성이고, 이것은 **다음 `GO` 를
 계속 거절하는 상태**다.
 
-* 받는 값은 `ON`/`TRUE`(허용) · `OFF`/`FALSE`(금지) 넷이고, 응답은 **정규형**
+* 받는 값은 `ON`/`TRUE`/`1`(허용) · `OFF`/`FALSE`/`0`(금지) 여섯이고 **대소문자를
+  안 가린다** (운영자 확정 2026-09-04 -- ini 와 명령이 같은 어휘를 쓴다).
+  응답은 **정규형**
   (`ON`/`OFF`)으로 되돌린다 -- 운영자가 `true` 를 쳐도 로그가 한 형태로만
   남아 나중에 grep 이 된다.
 * ⛔ **모르는 값은 기본값으로 떨어뜨리지 않는다** -- `EXPENABLE FLASE` 는
@@ -39,7 +41,8 @@ ON, OFF = 'ON', 'OFF'
 
 #: 받는 어휘 -> 정규형.  ⚠️ 여기 없는 값은 **거부**한다 (기본값으로 떨어뜨리지
 #: 않는다 -- 위 docstring).
-VOCAB = {'ON': True, 'TRUE': True, 'OFF': False, 'FALSE': False}
+VOCAB = {'ON': True, 'TRUE': True, '1': True,
+         'OFF': False, 'FALSE': False, '0': False}
 
 
 class ExpEnable:
