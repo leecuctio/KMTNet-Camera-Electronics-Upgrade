@@ -10,9 +10,11 @@ icg_legacy_report 8.1절) `OBJECT`/`DARK`/`EXP`/`GO`/`STOP`/`ABORT` 등은
 추가 (운영자 요구 2026-08-31):
 
 * `HK`                     -- 최신 HK 스냅샷 한 줄
-* `RADIONODE STATUS`       -- 장치별 연결 상태
-* `RADIONODE RECONNECT`    -- 즉시 재폴링
-* `RADIONODE ENABLE <별칭>` / `DISABLE <별칭>` -- 장치 폴링 켜기/끄기
+* `RADIONODE STATUS`       -- 백엔드·루프·자격증명·장치별 상태
+* `RADIONODE CONNECT` / `DISCONNECT` -- ⭐ **폴링 자체를 런타임에 켜고 끈다**
+* `RADIONODE RECONNECT`    -- 즉시 재폴링 (주기를 안 기다린다)
+* `RADIONODE ENABLE <별칭>` / `DISABLE <별칭>` -- **그 장치만** 켜기/끄기
+  (`CONNECT <별칭>`/`DISCONNECT <별칭>` 도 같은 뜻이다)
 
 추가 (운영자 확정 2026-09-03):
 
@@ -58,6 +60,7 @@ from ics_sim.nodes import Target  # noqa: E402
 
 from . import expenable as expen  # noqa: E402
 from . import heater  # noqa: E402
+from .radionode import RadionodeError  # noqa: E402
 
 log = logging.getLogger('icg_archon.cmd')
 
@@ -155,7 +158,14 @@ class IcgDispatcher(sim_commands.Dispatcher):
         return Reply.done('HK', body)
 
     def cmd_radionode(self, msg: Message, target: Target) -> Reply:
-        """RADIONODE STATUS | RECONNECT | ENABLE <별칭> | DISABLE <별칭>."""
+        """RADIONODE [STATUS | CONNECT | DISCONNECT | RECONNECT | EN/DISABLE].
+
+        ⭐ **`CONNECT`/`DISCONNECT` 는 인자 유무로 뜻이 갈린다** -- 인자가
+        없으면 **폴링 자체**를, 있으면 **그 장치 하나**를 켜고 끈다.  운영자
+        지시가 *"디바이스 2개 접속상태를 알려주고 connect/disconnect 명령"*
+        이라 둘 다 필요한데, 한 낱말이 두 뜻이라 **응답에 어느 뜻으로 했는지**
+        를 적는다 (`Polling=on …` 대 `hebox connected`).
+        """
         rn = getattr(self.app, 'radionode', None)
         if rn is None:
             return Reply.error('RADIONODE', 'Radionode poller is not running')
@@ -163,10 +173,23 @@ class IcgDispatcher(sim_commands.Dispatcher):
         sub = args[0].upper() if args else 'STATUS'
         if sub == 'STATUS':
             return Reply.done('RADIONODE', rn.status_text())
+        if sub in ('CONNECT', 'DISCONNECT') and len(args) < 2:
+            # ⭐ 인자 없는 갈래 -- 폴링 자체를 켜고 끈다.
+            if sub == 'CONNECT':
+                try:
+                    note = rn.connect()
+                except RadionodeError as exc:
+                    # ⛔ 켜지 못한 이유를 **그대로** 돌려준다 -- "무엇이
+                    # 없어서 못 켜는지" 가 이 명령의 값어치다.
+                    return Reply.error('RADIONODE', str(exc))
+                return Reply.done('RADIONODE', note)
+            self.app.spawn(self._do_rn_disconnect(msg.src, rn))
+            return Reply.noop()
         if sub == 'RECONNECT':
             if rn.cfg.backend != 'openapi':
                 return Reply.error('RADIONODE',
-                                   'Backend is %s -- nothing to poll'
+                                   'Backend is %s -- nothing to poll (use '
+                                   'RADIONODE CONNECT first)'
                                    % rn.cfg.backend)
             # 즉시 한 바퀴 -- 결과는 다음 STATUS 로 본다 (질의는 블로킹이라
             # 백그라운드로 던진다).
@@ -181,14 +204,26 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 # 믿는다 -- 실제로 바뀌는 것이 없다.
                 return Reply.error('RADIONODE',
                                    'Backend is %s -- nothing to enable or '
-                                   'disable' % rn.cfg.backend)
+                                   'disable (use RADIONODE CONNECT first)'
+                                   % rn.cfg.backend)
             alias = args[1]
             on = sub in ('ENABLE', 'CONNECT')
             if not rn.set_enabled(alias, on):
                 return Reply.error('RADIONODE', 'Unknown device: %s' % alias)
-            return Reply.done('RADIONODE', '%s %s' % (
+            # ⭐ **장치 하나**를 만졌다는 것이 문구에서 보여야 한다 -- 인자
+            # 없는 CONNECT(폴링 전체)와 헷갈리지 않게.
+            return Reply.done('RADIONODE', 'Device=%s %s' % (
                 alias, 'enabled' if on else 'disabled'))
         return Reply.error('RADIONODE', "Didn't understand %s ?" % sub)
+
+    async def _do_rn_disconnect(self, dest: str, rn) -> None:  # noqa: ANN001
+        """폴링 정지는 루프 태스크를 취소하므로 코루틴이다 -- 늦은 `DONE`."""
+        try:
+            note = await rn.disconnect()
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, 'RADIONODE', 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, 'RADIONODE', note)
 
     # -- 노출 잠금 (운영자 확정 2026-09-03) -------------------------------
 

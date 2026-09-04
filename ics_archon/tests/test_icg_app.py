@@ -554,3 +554,47 @@ def test_a_heater_query_answers_from_the_controller(tmp_path):  # noqa: ANN001
     assert any('HTRPID' in s and 'P=0 I=0 D=0' in s for s in sent), sent
     assert any('HTRFORCE' in s and 'Force=0 Level=0' in s for s in sent), sent
     assert ctrl.writes() == [], '조회인데 컨트롤러에 썼다'
+
+
+# ---------------------------------------------------------------------------
+# RADIONODE -- 런타임 CONNECT (운영자 지시 ④, 2026-09-04 구현)
+# ---------------------------------------------------------------------------
+
+def test_radionode_connect_names_what_is_missing(tmp_path):  # noqa: ANN001
+    """⛔ **자격증명이 없으면 켜지 않는다** -- 무엇이 없는지 이름을 댄다.
+
+    조용히 켜면 주기마다 실패 로그만 쌓이고 헤더는 sentinel 인데, 운영자는
+    *"연결했다"* 고 믿는다.  ⭐ 배포 ini 는 자격증명 넷이 다 주석이라 이것이
+    **첫 구동에서 실제로 만나는 갈래**다.
+    """
+    _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE CONNECT'])
+    said = [s for s in sent if 'RADIONODE' in s]
+    assert any('ERROR' in s for s in said), said
+    for key in ('base_url', 'api_key', 'api_secret'):
+        assert any(key in s for s in said), (key, said)
+
+
+def test_radionode_connect_with_an_alias_is_the_device_branch(tmp_path):  # noqa: ANN001
+    """⭐ **인자 유무로 뜻이 갈린다** -- 있으면 그 장치 하나다.
+
+    ⚠️ 한 낱말이 두 뜻이라 응답이 어느 쪽인지 말해야 한다.  ini 기본이
+    `backend=off` 라 장치 갈래는 *"먼저 CONNECT 하라"* 로 거절된다.
+    """
+    _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE CONNECT hebox'])
+    said = [s for s in sent if 'RADIONODE' in s]
+    assert any('ERROR' in s and 'CONNECT first' in s for s in said), said
+
+
+def test_radionode_status_says_why_nothing_is_coming_in(tmp_path):  # noqa: ANN001
+    """운영자가 묻는 것은 *"왜 자료가 안 들어오나"* 하나다."""
+    _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE'])
+    said = [s for s in sent if 'RADIONODE' in s]
+    assert any('Backend=off' in s and 'Polling=no' in s for s in said), said
+    assert any('missing' in s for s in said), said
+
+
+def test_radionode_reconnect_points_at_connect(tmp_path):  # noqa: ANN001
+    """`RECONNECT` 는 **주기를 안 기다리는 것**이지 켜는 것이 아니다."""
+    _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE RECONNECT'])
+    said = [s for s in sent if 'RADIONODE' in s]
+    assert any('ERROR' in s and 'RADIONODE CONNECT' in s for s in said), said

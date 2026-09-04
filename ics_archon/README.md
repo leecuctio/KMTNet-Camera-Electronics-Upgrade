@@ -169,6 +169,52 @@ monitor_log      = ~/AIC/log
 4. **`FETCHLOG` 는 쓰지 않는다** — `LOG=n` 한 열만 남긴다 (왕복 0).  드레인
    승격은 `probe_archon` 1단계로 한 번 보고 판단한다.
 
+## Radionode 자격증명 — Tapaculo365 Open API (운영자 지시 2026-09-03)
+
+`HEBOX`·`FSATEMP`·`FSAHUM` 세 카드의 원천이다.  ⚠️ **장치(RN320-BTH)는
+LoRaWAN 이라 LAN 폴링이 안 된다** — IP 스택이 없어 LoRa 게이트웨이를 거쳐
+클라우드로만 간다.  그래서 접근은 **Tapaculo365 Open API 폴링** 하나뿐이고,
+endpoint 상세가 콘솔 로그인 뒤의 문서에만 있어 **URL·경로·인증 헤더 이름까지
+ini 소관**이다 (코드에 박으면 계정이 바뀔 때 코드를 고쳐야 한다).
+
+### 옮겨 적을 값 넷 + 헤더 이름 둘
+
+| ini 키 | 무엇 | 콘솔에서 어디 |
+|---|---|---|
+| `api_key` | API KEY | 로그인 → **관리자 이름** → **고객사 정보 변경** |
+| `api_secret` | API SECRET | 같은 자리 |
+| `base_url` | API 서버 주소 | **"OPENAPI 매뉴얼"** 첫 장 |
+| `latest_path` | 최근 측정값 endpoint (`{mac}` 자리에 장치 MAC) | 같은 매뉴얼의 endpoint 표 |
+| `key_header` · `secret_header` | 인증 헤더 **이름** (기본 `X-API-KEY`/`X-API-SECRET`) | 같은 매뉴얼의 인증 절 |
+
+장치 둘의 MAC·별칭·계약 키는 `[radionode.hebox]` · `[radionode.fsa]` 에 있다
+(HE box 는 온도만, FSA 는 온도+습도).  주기는 `poll_period`(기본 60 s),
+신선도 문턱은 `stale_after`(기본 600 s = 장치 SEND INTERVAL 의 ~3배)다.
+
+### ⛔ 실제 값을 저장소에 담지 않는다
+
+`icg_archon.ini` 는 **저장소에 있는 배포본**이다.  KEY/SECRET 은 벤치의
+설치본(`~/AIC/etc/icg_archon.ini`)에만 적고, 저장소 쪽은 **주석인 채로 둔다.**
+⚠️ 한 번 커밋되면 이력 재작성 없이는 못 뺀다.
+
+### 확인 절차
+
+```
+RADIONODE STATUS      # Backend=off Polling=no Credentials=... missing
+RADIONODE CONNECT     # ⭐ 런타임에 폴링을 켠다 (자격증명이 모자라면 이름을 댄다)
+RADIONODE STATUS      # Backend=openapi Polling=yes hebox=ok 3s ago ...
+RADIONODE RECONNECT   # 주기를 안 기다리고 즉시 한 바퀴
+HK                    # HEBOX/FSATEMP/FSAHUM 이 실려 나오는지
+```
+
+⚠️ **`CONNECT` 는 ini 를 고치지 않는다** — 재기동하면 ini 값으로 돌아간다.
+상시로 쓰려면 `[radionode] backend = openapi` 를 적어야 하고, 그때는 기동에서
+바로 폴링이 돈다.  ⭐ `CONNECT` 는 *"값을 넣고 지금 되는지 보는"* 자리다.
+
+⚠️ **`sim` 은 배선 확인용**이라 그 값은 **헤더 경로로 안 나간다** (고정 상수가
+실측처럼 아카이브에 남으면 파일만 보고 못 가른다).  `sim` 에서는 `CONNECT` 를
+거부한다.
+
 ## 프레임이 안 나올 때 — `Sync In` 부터 본다
 
 실기에서 **프레임이 한 장도 안 나오던 증상**의 원인은 `Sync In` 이 물려 상대

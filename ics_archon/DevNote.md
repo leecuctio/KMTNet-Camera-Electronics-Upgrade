@@ -4354,3 +4354,97 @@ time_changes` 와 `test_the_limits_follow_the_acf_when_the_loop_sensor_changes` 
   `POWERGOOD` 가 4인지 보고, 아니면 노출을 막을지 판단.  ⏳ 첫 구동에서.
 - 히터가 실제로 붙은 채 `FORCE=1` 을 켜 보는 것은 **듀어가 차가울 때만** 뜻이
   있다 -- 첫 구동 절차에 넣을 것.
+
+### 11.21 Radionode 를 런타임에 붙였다 뗀다 -- `CONNECT`/`DISCONNECT` (2026-09-04)
+
+운영자 지시 ④ 가운데 **실제로 만들어야 했던 것**이다 (11.15-(6)이 짚은 자리).
+*"접속상태를 알려주고 connect/disconnect"* 는 `RADIONODE STATUS`·`ENABLE`/
+`DISABLE` 로 이미 있었는데, ⛔ **기본이 `backend=off` 라 그 상태에서 켜는 길이
+없었다** -- `start()` 가 기동에서 `backend` 를 한 번 보고 루프를 안 띄우면
+끝이라, `off` 로 뜬 프로세스는 **다시 띄우지 않고는 자료를 못 받는다.**
+
+#### (1) 켜기를 거절하는 갈래 둘 -- 이 명령의 값어치가 여기다
+
+| 갈래 | 왜 거절하나 |
+|---|---|
+| ⛔ **자격증명이 모자람** | 켜 놓고 실패를 반복하면 주기마다 경고만 쌓이고 헤더는 그대로 sentinel 인데 운영자는 *"연결했다"* 고 믿는다.  → **무엇이 없는지 이름을 대고** 거절한다 (`Missing ini values: base_url,api_key …`) |
+| ⛔ **`backend=sim`** | sim 값은 **헤더로 안 나가는 배선 확인용**이다.  런타임에 `sim`→`openapi` 로 올리면 ini 가 말하는 것과 실제가 갈린다 -- ini 를 고치고 다시 띄울 일이다 |
+
+⭐ 배포 ini 는 자격증명 넷이 다 주석이라 **첫 구동에서 실제로 만나는 갈래가
+앞의 것**이다.  그래서 그 문구가 곧 절차 안내여야 한다.
+
+#### (2) ⚠️ 지속시키지 않는다 -- `EXPENABLE` 과 반대 판단
+
+`CONNECT` 는 **ini 를 고치지 않는다.**  재기동하면 ini 값으로 돌아가고, 응답이
+그 사실을 말한다(`runtime only -- the ini still says backend=off`).
+
+⭐ `EXPENABLE` 은 파일로 지속시켰는데 여기는 안 시키는 것이 **의도**다:
+자격증명이 ini 에 있어야 켜지는데, 그 상태라면 `backend` 도 **거기 적는 것이
+정본**이다.  런타임 `CONNECT` 는 *"값을 넣고 지금 되는지 보는"* 자리다.
+
+#### (3) ⭐ 끄면 곧바로 sentinel -- 표본을 지워서가 아니다
+
+`disconnect()` 는 루프를 세우고 `backend` 를 `off` 로 되돌린다.  그러면
+`values_with_time()` 이 **백엔드로 먼저 거르므로** 헤더의 `HEBOX`/`FSATEMP`/
+`FSAHUM` 이 곧바로 sentinel 이 된다.  ⭐ 그것이 ini 가 규정한 `off` 의 뜻이고,
+*"끊었는데 `stale_after`(10분)간 옛 값이 나가는"* 상태보다 정직하다.
+
+⭐ 그런데 **캐시(`_latest`)는 남긴다** -- 되켜면 옛 표본이 곧바로 다시 보이는데,
+`values_with_time()` 이 **표본시각을 값과 함께** 내므로 하류(`HKSTALE`·헤더
+나이)가 낡은 것을 낡은 것으로 판정한다.  **갓 잰 값으로 둔갑하지 않는다**
+(`test_a_stale_sample_does_not_become_fresh_when_we_reconnect`).
+
+#### (4) ⚠️ 한 낱말이 두 뜻이다 -- 인자 유무로 갈린다
+
+| 문법 | 뜻 |
+|---|---|
+| `RADIONODE CONNECT` | **폴링 자체**를 켠다 (백엔드 + 루프) |
+| `RADIONODE CONNECT <별칭>` | **그 장치 하나**만 (= `ENABLE <별칭>`) |
+
+운영자 지시에 둘 다 있어서 이렇게 됐다.  ⭐ 그래서 **응답이 어느 뜻으로 했는지
+말한다** — `Polling=on Period=60s Devices=2 …` 대 `Device=hebox enabled`.
+⚠️ 장치 갈래는 백엔드가 `openapi` 가 아니면 *"먼저 `RADIONODE CONNECT`"* 로
+거절한다 — 폴러가 없는데 *"켰다"* 고 답하면 운영자가 상태를 잘못 믿는다.
+
+#### (5) `STATUS` 가 **왜 안 들어오는지**까지 말한다
+
+종전에는 `off` 이면 `Backend=off` 한 마디로 끝났다.  운영자가 묻는 것은
+*"지금 자료가 들어오고 있나, 아니면 왜 안 들어오나"* 하나인데 그 답이 안
+보였다.  이제 넷을 함께 낸다:
+
+```
+Backend=off Polling=no Credentials=base_url,latest_path,api_key,api_secret missing
+    hebox=last ok 300s ago, not published  fsa=no sample
+Backend=openapi Polling=yes hebox=ok 12s ago fsa=err: HTTPError: 401
+```
+
+⚠️ **백엔드와 루프를 따로 보인다** — `backend=openapi` 인데 루프가 죽어 있을
+수 있고(태스크 예외), 그때 백엔드만 보이면 *"켜져 있다"* 로 읽힌다.
+⚠️ 그리고 끊긴 뒤의 캐시는 **`not published`** 라고 적는다 — 안 적으면
+*"`STATUS` 에는 값이 보이는데 헤더는 sentinel"* 인 상태가 설명되지 않는다.
+
+#### (6) 자격증명 절차를 README 에 (운영자 지시 ③ -- 닫힘)
+
+`README.md` **"Radionode 자격증명"** 절 신설 — 옮겨 적을 값 넷 + 헤더 이름 둘,
+콘솔에서 각각 어디에 있는지, 확인 절차(`STATUS`→`CONNECT`→`STATUS`→`HK`).
+⛔ **실제 KEY/SECRET 을 저장소의 `icg_archon.ini` 에 적지 않는다** — 벤치
+설치본(`~/AIC/etc/`)에만.  한 번 커밋되면 이력 재작성 없이는 못 뺀다
+(`*.mcs` 40 MiB 에서 같은 대가를 이미 한 번 받아들였다, 11.14-(5)).
+
+#### (7) 시험 13개
+
+`tests/test_icg_radionode.py`(신규 9) + `test_icg_app.py`(+4).  ⚠️ 폴링 한
+바퀴가 `connect()` 직후 바로 도므로 **`_fetch_latest` 를 갈아 끼워 바깥으로
+안 나가게** 한다.  ⭐ 그때 **응답 모양을 실기 API 흉내로** 준다
+(`temperature`/`humidity`) — 우리 계약 키(`hebox` 등)를 그대로 주면 시험만
+통과하고 실기에서는 *"응답에서 온도/습도를 못 찾았다"* 가 된다.  ⚠️ **처음에
+그렇게 적었다가 시험이 잡아냈다.**
+
+#### (8) ⏳ 남은 것
+
+- 자격증명 실값 · 게이트웨이 · 장치 SEND INTERVAL 은 **운영자 몫**이다.
+  값이 들어오면 `_fetch_latest` 의 응답 모양 주석(PROVISIONAL)을 실기 응답으로
+  못박고, `stale_after` 를 SEND INTERVAL 의 3배로 다시 잡는다.
+- ⏳ 폴링 루프가 **예외로 죽었을 때 되살리는 것**은 아직 없다 — `STATUS` 가
+  `Polling=no` 로 보여 주고 `CONNECT` 로 다시 띄우면 되지만, 자동 복구는
+  없다.  첫 운용에서 실제로 죽는지 보고 판단.
