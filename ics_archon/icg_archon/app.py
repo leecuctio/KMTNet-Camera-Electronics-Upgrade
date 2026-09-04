@@ -30,6 +30,9 @@ from . import build_id, guidehdr  # noqa: E402
 from . import commands as icg_commands  # noqa: E402
 from .backend import GuideBackend, SimGuideBackend  # noqa: E402
 from .config import TAG, IcgCfg, validate  # noqa: E402
+from . import gauge as gauge_mod  # noqa: E402
+from .expenable import ExpEnable  # noqa: E402
+from .gauge import GaugeState  # noqa: E402
 from .hk import HkMonitor  # noqa: E402
 from .radionode import RadionodeClient  # noqa: E402
 from .sequencer import GuideSequencer  # noqa: E402
@@ -55,11 +58,20 @@ class IcgArchon(IcsSim):
             self.guide = GuideBackend(cfg, icfg)
         else:
             self.guide = SimGuideBackend(cfg, icfg)
+        #: 노출 잠금 -- 지속 플래그.  `IcgDispatcher.cmd_go` 가 이것을
+        #: 본다.  ⚠️ 경로가 비면 지속되지 않는다(단위 시험).
+        self.expenable = ExpEnable(icfg.expenable_path(cfg))
+        #: 이온게이지 켜짐 상태 -- `VACGAUGE` 가 움직이고 `HkMonitor` 가 본다.
+        #: ⭐ 꺼진 것을 아는 동안 `DEWPRES` 를 sentinel 로 내리기 위한 것이다
+        #: (게이지를 끄면 모듈이 Conductron 값을 계속 내보내는데 그것이
+        #: 정상값처럼 보인다 -- `gauge.py` 머리말).
+        self.gauge = GaugeState(icfg.gauge_off_method)
         self.radionode = RadionodeClient(icfg.radionode)
         self.hk = HkMonitor(self.guide.ctrl, icfg, telem=self.telem,
                             expstatus=lambda: self.state.expstatus,
                             spawn=self.spawn)
         self.hk.radionode = self.radionode
+        self.hk.gauge = self.gauge
         self.seq = GuideSequencer(cfg, icfg, self.state, self.emit,
                                   self.telem, self.guide, self.hk)
         self.dispatch = icg_commands.IcgDispatcher(self)
@@ -75,6 +87,11 @@ class IcgArchon(IcsSim):
     async def start(self) -> None:
         for line in validate(self.icfg, self.backend_name):
             log.warning('%s', line)
+        self.expenable.load()
+        if not self.expenable.allowed:
+            log.warning('⛔ 노출이 **잠겨** 있다 (EXPENABLE OFF, 출처 %s) -- '
+                        'GO 가 거절된다.  풀려면 EXPENABLE ON',
+                        self.expenable.origin)
         port = int(getattr(self.cfg.transport, 'bind_port', 0))
         if port == self.ICS_BIND_PORT:
             log.warning('[transport] bind_port=%d 는 **ICS 몫**이다 -- ICG 는 '
@@ -94,6 +111,11 @@ class IcgArchon(IcsSim):
         try:
             await self.guide.prepare()
             log.info('guide 컨트롤러 준비 완료 (%s)', self.icfg.host)
+            # ⭐ 이온게이지 상태는 **준비된 뒤에야** 되읽을 수 있다 (설정 줄
+            # 번호가 ACF 파싱에서 오고, RCONFIG 왕복이 필요하다).  실패하면
+            # "모름" 으로 남고 그때는 DEWPRES 를 막지 않는다 -- 추측으로 ON
+            # 을 적으면 헤더 판정의 근거가 거짓이 된다 (gauge.load 주석).
+            await self.gauge.load(self.guide.ctrl)
         except Exception as exc:  # noqa: BLE001
             # `?xx` 거부(이 세션의 APPLYALL 미실시)는 power_on() 이 진단 문구를
             # 붙여 올린다 (DevNote 10.2) -- 여기서 따로 가르지 않는다.  ⚠️ HK
@@ -140,6 +162,13 @@ class IcgArchon(IcsSim):
                 i.naxis1, i.naxis2, i.frame_bytes / (1 << 20), i.exptime_min),
             'hk           : every %.0fs -> %s (latest: %s)' % (
                 i.hk.interval, i.hk.log_dir, i.hk.latest_name),
+            # ⭐ 어느 키로 게이지를 끄는지 배너에 남긴다 -- 둘의 대가가 달라서
+            # (diopower 는 압력 읽기까지 죽는다) 나중 로그만 보고 판단할 수
+            # 있어야 한다.
+            'ion gauge    : off-method=%s (%s)  state=%s' % (
+                self.gauge.method,
+                gauge_mod.METHODS[self.gauge.method][0],
+                self.gauge.word),
             'radionode    : %s (poll %.0fs, devices: %s)' % (
                 rn.backend, rn.poll_period,
                 ', '.join(d.alias for d in rn.devices) or '없음'),

@@ -164,8 +164,10 @@ go 20
 
 ## 부록 -- 진공게이지 On/Off 실험 (`VACGAUGE` 명령의 근거)
 
-⭐ **`VACGAUGE` 명령을 짜기 전에 이 실험이 먼저다.**  "무엇을 내리면 이온게이지가
-꺼지는가" 가 아직 **추론**이고, 후보가 둘인데 성격이 전혀 다르다.
+⭐ **명령은 이미 있다** (`VACGAUGE ON|OFF`, 2026-09-04 구현) -- 이 실험이 정하는 것은
+**어느 갈래를 쓰느냐**다.  "무엇을 내리면 이온게이지가 꺼지는가" 가 아직 **추론**이고,
+후보가 둘인데 성격이 전혀 다르다.  ⭐ 판정이 나면 고칠 것은 코드가 아니라 ini 한 줄
+(`[icg] gauge_off_method = ionen | diopower`)이다.
 
 | 후보 | 무엇을 건드리나 | 매뉴얼 근거 |
 |---|---|---|
@@ -181,9 +183,12 @@ de-assert 가 된다 -- 그것은 배선 문제라 ACF·매뉴얼로는 못 가�
 
 ### 도구와 전제
 
-- ⛔ **`APPLYDIO` 는 `ArchonGUI` 만 낼 수 있다** -- 우리 코드에는 `WCONFIG`
-  (`set_config`)만 있고 `APPLYDIO` 가 없다.  GUI 의 `applyModuleDIO(10)` 이
-  **`APPLYDIO09`** 를 보낸다 (⚠️ **슬롯 인자는 0기점 2자리 16진** -- MOD10 → `09`),
+- ✅ **`APPLYDIO` 가 이제 우리 코드에도 있다** (`ArchonController.apply_module(10, dio=True)`,
+  2026-09-04 신설 -- 종전에는 `WCONFIG`(`set_config`)뿐이라 `ArchonGUI` 를 빌려야 했다).
+  ⭐ **그래서 실험 A/B 를 손으로 `WCONFIG` 하지 말고 `icg_archon` 을 띄운 채
+  `VACGAUGE OFF`/`ON` 으로 돌리는 편이 낫다** -- 복구 경로가 같은 코드라 되돌리기가
+  확실하고, 갈래는 ini `gauge_off_method` 로 고른다(A=`ionen` · B=`diopower`).
+  손으로 돌릴 때의 명령은 GUI 의 `applyModuleDIO(10)` 과 같은 **`APPLYDIO09`** 다 (⚠️ **슬롯 인자는 0기점 2자리 16진** -- MOD10 → `09`),
   시한 10 초, **DIO + VCPU 를 함께** 적용한다 (p.53).
 - ⚠️ **접속자는 컨트롤러당 하나** (Rev F) -- 이 실험 동안 `ics_archon`·`icg_archon`·
   `probe` 를 **다 내린다.**
@@ -235,7 +240,7 @@ de-assert 가 된다 -- 그것은 배선 문제라 ACF·매뉴얼로는 못 가�
   가 실재하므로, 명령이 **우리 층 플래그로 값을 막는 것**이 필수가 된다.
 - **`alive` 가 0 으로 되감기면** → `APPLYDIO` 가 VCPU 를 재시작한 것이고, 그것은
   **명령이 스스로 만드는 결측 창**이다.  응답에 그 사실을 적는다
-  (`DONE: VACGAUGE VacGauge=OFF (VCPU restarted)`).
+  (`DONE: VACGAUGE Gauge=OFF (… (VCPU restarted -- DEWPRES has a gap))`).
 
 ### 멈출 조건
 

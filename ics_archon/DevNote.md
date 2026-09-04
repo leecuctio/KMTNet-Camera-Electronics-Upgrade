@@ -3761,7 +3761,25 @@ ICG>ICS DONE: HKDATA HKQDATE=… HKUDATE=… HKSTALE=n VACGAUGE=… DEWPRES=… 
 
 ⭐ **채널 구분자 `A` 를 빼기로 했다** -- *"Heater B 는 안 쓰니까 A 구분자를 넣을
 필요가 없어"* (운영자).  ⭐ **`HTRATARG`(목표온도)는 싣지 않는다** -- 운영자가
-"뭔지 모르겠다" 로 빼기로 했고, 실제로 STATUS 에 없어 되읽을 수도 없다.
+"뭔지 모르겠다" 로 빼기로 했다.  ⚠️ **그때 내가 든 근거 하나는 틀렸다**
+(정정 2026-09-04, 다른 세션 검토): *"STATUS 에 없어 되읽을 수도 없다"* 는
+**절반만 맞다** -- `controller.verify_config_lines()` 가 이미 `RCONFIG<line>` 을
+던져 `KEY=VALUE` 를 받아 온다(지금은 접두만 보고 값을 버린다).
+**`read_config(key)` 헬퍼 하나면 설정 메모리에서 되읽을 수 있다.**
+
+⭐ **되읽기는 세 층이다** -- 신뢰도 순으로:
+
+| 층 | 무엇 | 믿을 수 있나 |
+|---|---|---|
+| 우리 캐시 (`ctrl.config`) | `set_config` 가 **왕복 실패에도 먼저** 갈아 끼운다 | ⛔ 못 믿는다 (11.13 F5) |
+| **`RCONFIG`** | **`WCONFIG` 가 실제로 앉은 값** | ✅ 왕복 한 번으로 확인 |
+| `STATUS` | 모듈이 **실제로 내는 값**(`HEATERAOUTPUT` 등) | ✅ 가장 강하다.  단 `ENABLE`·`TARGET` 은 여기 없다 |
+
+⚠️ **그래서 "되읽기 불가" 를 카드 판단 근거로 쓰면 안 된다.**  ⭐ 운영자가
+2026-09-04 에 **`HTRSET` 도 카드로 넣기로 확정**했고 위 표대로 `RCONFIG` 로
+되읽을 수 있으니 기술적 걸림돌이 없다 -- 카드는 셋(`HTREN`·`HTRSET`·`HTROUT`)이고
+카드 수는 **science 131->134 · guide 123->126** 이다.  ⛔ 다만 **카드 신설은
+규격 개정**(5.6절 + 견본 pair 바이트)이라 `main` 소관이다.
 
 ⚠️ **계약 키는 여전히 10개다** (RTD 6 + `dewpres` + Radionode 3).  위 상태
 필드(`VACGAUGE`·`HTREN`·`HTROUT`)는 **진단값이고 FITS 카드 원천이 아니므로**
@@ -3810,9 +3828,15 @@ ICG>ICS DONE: HKDATA HKQDATE=… HKUDATE=… HKSTALE=n VACGAUGE=… DEWPRES=… 
 |---|---:|---|
 | **`HTREN`** | 1 (`0\|1`) | `HEATERAENABLE` |
 | **`HTRSET`** | **1 (온도만)** ⭐ | `HEATERATARGET` |
-| `HEATERPID` | 3 (P·I·D) | `HEATERAP`/`AI`/`AD` |
-| `HEATERFORCE` | 2 | `HEATERAFORCE`/`AFORCELEVEL` |
-| `HEATERRAMP` | 2 | `HEATERARAMP`/`ARAMPRATE` |
+| **`HTRPID`** | 3 (P·I·D) | `HEATERAP`/`AI`/`AD` |
+| **`HTRFORCE`** | 2 | `HEATERAFORCE`/`AFORCELEVEL` |
+| **`HTRRAMP`** | 2 | `HEATERARAMP`/`ARAMPRATE` |
+
+⭐ **이름을 `HTR` 접두로 통일했다** (운영자 2026-09-04: *"명령어를 HEATERSET 으로
+했었는데 줄여서 HTRSET 과 같이 바꿀려고 해"*) -- 이 표가 처음에 `HEATERPID`·
+`HEATERFORCE`·`HEATERRAMP` 로 적혀 있었고 **앞 둘만 줄여 놓은 상태**였다.  ⚠️ 이런
+반쪽 개명은 나중에 *"어느 것이 정본인가"* 를 만든다 -- 이름을 줄이면 **한 계열을
+통째로** 줄일 것.
 
 ⭐ **`HTRSET` 은 온도 하나만 받는다** -- *"`HTREN` 이 별도로 있으니 온도만 넣으면
 되고"*(운영자).  종전 `HEATERSET`(Enable+Target 2인자) 안을 대체한다.
@@ -3836,7 +3860,13 @@ ICG>ICS DONE: HKDATA HKQDATE=… HKUDATE=… HKSTALE=n VACGAUGE=… DEWPRES=… 
   같은 값의 뜻이 바뀐다.  → 응답·`HKDATA` 에 **ACF 에서 읽은 환산값을 함께** 보인다
   (`RampRate=1 (1.0 mK/s = 3.6 K/h)`).  1000 을 코드에 박지 않는다.
 - ⚠️ `FORCELEVEL` 은 `LIMIT` 을 안 받는다(그 상한은 **PID 모드 전용**) -- `FORCE=1`
-  이면 25 V(~25 W)가 그냥 나간다.  ⏳ **별도 운영 상한(`heater_force_max`) 값 미정.**
+  이면 25 V(~25 W)가 그냥 나간다.  ✅ **별도 운영 상한을 두지 않는다** (운영자 확정
+  2026-09-04: *"HEATERAFORCELEVEL 로 출력전압을 조절할 수 있으니 FORCE 에 대한 상한은
+  두지 않아도 될 듯 해.  운영하는 쪽에서 그정도는 알아서 할거고"*).  ⚠️ **내 반대 논거는
+  남긴다** -- `HTRFORCE 1 25` 오타 하나가 냉각된 듀어에 25 W 를 넣고, PID 와 달리 온도가
+  올라가도 스스로 안 줄어든다.  그래서 막지는 않되 **모듈 범위(0~25 V) 밖은 거부**하고
+  `Force=1` 인 동안은 응답·로그에 *"HEATERALIMIT does not apply"* 를 **상시 표시**한다 --
+  운영 상한이 없는 만큼 **표시가 유일한 안전장치**다 (11.13 F3 의 *"다른 등급으로 다룬다"*).
 
 #### (4) ⭐ `HEATERBSENSOR=1` 은 잔재가 아니라 의도다 (정정)
 
@@ -3874,7 +3904,8 @@ ICG>ICS DONE: HKDATA HKQDATE=… HKUDATE=… HKSTALE=n VACGAUGE=… DEWPRES=… 
     다른 바이트**가 된다.  ⭐ 어느 쪽이든 **구울 파일이 벤더가 준 것과 달라진다.**
     ✅ `*.mcs binary`(= `-text -diff`)를 넣고 재담기했고, **커밋된 블롭의 sha256 이
     디스크와 넷 다 일치**함을 확인했다.
-  - ⚠️ **내가 이 자리에서 또 틀렸다** -- 처음에 `grep -c $'$'` 로 재고 "넷 다
+  - ⚠️ **내가 이 자리에서 또 틀렸다** -- 처음에 `grep -c $'
+$'` 로 재고 "넷 다
     CRLF" 라고 읽었다.  그 측정이 거짓이었고 파이썬 바이너리 읽기가 갈랐다.
     ⭐ **줄끝은 텍스트 도구로 세지 말 것** (10.10-1 의 또 한 사례).
 - **커밋은 정리가 어느 정도 된 뒤에** 한다 (운영자).
@@ -4053,3 +4084,273 @@ ICG>ICS DONE: HKDATA HKQDATE=… HKUDATE=… HKSTALE=n VACGAUGE=… DEWPRES=… 
 ⭐ **이 절이 남기는 규범** -- 확정된 설계를 대화에만 두면 되감기 한 번에 사라지고,
 **병행 세션이 여럿이면 한 세션만 복원해도 절반만 건진다.**  정해지는 대로 DevNote
 에 적고, 복원할 때는 **그 기간에 돌던 세션 전부**를 훑을 것.
+
+### 11.17 구현 전에 밟을 함정 넷 -- 코드로 확인 (2026-09-04, 다른 세션 검토)
+
+병행 세션이 구현 착수 전에 코드로 확인해 준 것이고, **내가 여기서 재확인했다.**
+⭐ 그중 ①은 **11.12 F1 의 처방을 정정한다.**
+
+| # | 함정 | 확인한 것 · 처방 |
+|---|---|---|
+| ① ⛔⛔ | **`HKDATA` 수신 필터를 `guide_ic_id` 로 짜면 영구히 0건이다** | `ics_archon.ini` 는 `guide_ic_id = G.IC` 인데, ICG 가 내는 답의 `src` 는 **`ICG`** 다 -- `nodes.emit_id()` 가 `Role.ICS` 에 `cfg.ics_id` 를 주고 `icg_archon.ini` 의 `ics_id = ICG` 이기 때문이다.  ⭐ 그러니 `src=='G.IC'` 로 걸면 **조용히 아무것도 안 걸린다.**  → ICS 에 **별도 키가 필요하다** (`icg_id`, 또는 11.15-(5) 의 `hk_peer` 를 그 용도로 겸하게).  ⚠️ 11.12 F1 이 `src==icg_id` 로 적었는데 **그런 키가 ICS 에 없다** -- 만들어야 한다 |
+| ② ✅ | 자기-에코 덫은 **안 문다** | `nodes.owns()` 가 `t.is_ours` 를 돌려주고 `Role.GUIDE` 는 거기서 빠지므로 `ICG`·`G.IC` 둘 다 `owns()` 는 False 다.  그래서 에코 버리기를 통과하고 `resolve(dst='ICS')` -> `is_ours` -> `mtype=='DONE'` 이라 `log.debug` 한 줄로 사라진다 -- **F1 의 진단이 그대로 맞았다** |
+| ③ | **`HKDATA` 를 ICS 어휘에도 등록해야 한다** | `emitter.validate()` 가 `KNOWN_COMMANDS` 밖 커맨드워드에 위생 경고를 낸다.  icg 에는 `extend_vocabulary()` 가 있는데 **ICS 쪽엔 없다** -- 질의를 내는 쪽이 ICS 이므로 거기에도 필요하다 |
+| ④ ⛔ | **히터·게이지가 쓸 `APPLY*` 가 코드에 아예 없다** | `set_config()` 는 **`WCONFIG` 만** 보낸다.  `APPLYMOD`·`APPLYDIO` 는 `controller.py`·`icg_archon/backend.py` 에 **0건**이고, `tests/fake_archon.py` 도 `APPLYALL`/`APPLYSYSTEM`/`APPLYCDS`/`LOADTIMING` 만 받는다.  ⭐ **문서엔 있고 코드엔 없는 상태**다(`icg_first_run.md` 부록 · 11.13 F7 의 시한 상수 없음).  → 컨트롤러에 `APPLYDIO`/`APPLYMOD`(0기점 2자리 16진 슬롯 · 시한 10초)와 **가짜 쪽 수용**을 함께 넣어야 한다 |
+
+⭐ **①이 값진 이유** -- 그 필터는 **틀려도 조용하다.**  기동도 되고 로그도
+깨끗한데 20초마다 질의만 나가고 답은 `log.debug` 로 사라져, 헤더 HK 10장이
+sentinel 로 실린 채 밤새 자료가 쌓인다.  11.12 F3(무응답 데드맨)이 그 상태를
+**낡음으로** 잡아 주기는 하지만, 원인은 "링크 장애" 로 오진된다.
+
+⚠️ **곁가지 정정 둘** (같은 검토가 잡았다):
+
+1. `icg_archon/hk.py` 의 `sensors()` docstring 이 *"센서 계약 키 **9개**"* 였다 --
+   실제는 **10개**(RTD 6 + `dewpres` + Radionode 3)이고, `HKDATA` 완전성 검사식
+   (`계약키 교집합 + HKSTALE = 10`)이 그 수에 걸려 있다.  ✅ 고쳤다.
+   ⭐ **11.10-(6) 이 경고한 "개수를 세는 서술이 낡는다" 의 새 사례**다.
+2. 11.14-(1) 의 *"`HTRATARG` 는 STATUS 에 없어 되읽을 수도 없다"* 가 절반만
+   맞았다 -- ✅ 그 절에 **되읽기 세 층 표**를 넣어 고쳤다.
+
+### 11.18 ⛔ 히터 명령이 진공 읽기를 끊는다 -- `APPLYMOD` 도 VCPU 를 재시작한다 (2026-09-04)
+
+운영자 지적: *"ArchonGUI 의 HeaterX 탭에 Apply 버튼이 따로 있는데, 이게 HeaterX
+RTD 및 Heater 파라미터만 설정하는 기능인 것 같다.  히터 명령에서는 이 기능을
+활용해야 한다."*  ⭐ **맞다.  그리고 그것을 확인하다 결함 하나가 드러났다.**
+
+#### (1) 두 apply 는 성격이 다르다 (매뉴얼)
+
+| 명령 | 무엇을 적용하나 | 출처 |
+|---|---|---|
+| **`APPLYMODxx`** | *"the configuration for **module xx**"* -- 모듈 파라미터(RTD 센서 · 히터 PID/TARGET/LIMIT …) | p.52 |
+| `APPLYDIOxx` | *"the **DIO and VCPU** configuration"* | p.53 |
+
+⭐ 그래서 **히터 명령은 `APPLYMOD09`**, **게이지(`IONEN`)는 `APPLYDIO09`** 다
+(⚠️ 슬롯 인자는 **0기점 2자리 16진** -- MOD10 → `09`).  GUI 의 HeaterX 탭 Apply 가
+앞쪽이고 `applyModuleDIO()` 가 뒤쪽이다.
+
+#### (2) ⛔ 그런데 `APPLYMOD` **도** VCPU 를 재시작한다
+
+> *"The VCPU input registers and program code are loaded when an `APPLYALL`,
+> **`APPLYMOD`**, or `APPLYDIO` command is given.  The VCPU is **held in reset**
+> while it's being configured, and then begins running from address 0 after the
+> apply command completes."* (매뉴얼 p.86)
+
+⛔ **진공 게이지를 읽는 VCPU 가 같은 모듈(MOD10)에 있다.**  그러므로:
+
+**`HTRSET -100` 한 번이 `DEWPRES` 결측 창을 만든다** -- `alive`(`VCPU_OUTREG15`)가
+0으로 되감기고 OUTREG 는 잔재가 된다.  ⚠️ 나는 이것을 **`VACGAUGE` 에만 있는
+문제로 적어 뒀는데**(11.15-(1)) 실은 **히터 명령 전부에 걸린다.**
+
+#### (3) 그래서 명령 문면에 더할 것 셋
+
+1. **응답에 명시한다** -- `DONE: HTRSET Target=-100.00 (VCPU restarted)`.
+   `VACGAUGE` 와 같은 규약이다 (11.15-(1)).
+2. ✅ **취득 중에도 거부하지 않는다** (운영자 확정 2026-09-04: *"받되 경고+응답에
+   표시 하면 되"*).  노출 중 `APPLYMOD` 는 **그 프레임의 `DEWPRES` 를 결측으로**
+   만드는데, ⭐ **그 결측을 받아들인다** -- 초점면·듀어 작업이 관측 일정에 묶이면
+   안 된다는 판단이다.  대신 `_busy_note()` 가 **로그에 경고**를 남기고 응답에
+   `DuringAcquisition=1` 을 붙인다.  ⚠️ 종전에 내가 "① 거부 / ② 경고" 로 열어
+   두었던 자리이고, 여기서 ②로 닫혔다.
+3. **HK 로그가 그 창을 "명령이 만든 것" 으로 적는다** -- 그냥 결측으로 남기면
+   나중에 게이지 고장과 구별되지 않는다 (11.15 의 *"원인 구분은 ICS 로그에"* 와
+   같은 정신).
+
+#### (4) ⏳ 코드에 없다 -- 넣어야 한다
+
+`APPLYMOD`·`APPLYDIO` 는 `controller.py`·`icg_archon/backend.py` 에 **0건**이고
+`tests/fake_archon.py` 도 받지 않는다 (11.17 ④).  넣을 것:
+
+- `ArchonController.apply_module(slot, dio=False)` -- 0기점 16진 변환 + **시한 10초**
+  (벤더 GUI 값.  현행 상수는 `T_FAST 5.0` · `T_SYSTEM 15.0` · `T_APPLY 60.0` 이라
+  맞는 것이 없다).
+- `read_config(key)` -- `RCONFIG` 로 **되읽기**(11.14-(1) 의 세 층 중 가운데).
+- 가짜 쪽 수용 + **VCPU 재시작 모사**(`alive` 를 0으로 되감고 OUTREG 를 잔재로) --
+  ⭐ 그 모사가 없으면 **결측 창을 시험으로 못 잡는다.**
+
+### 11.19 이온게이지를 끄는 명령 -- `VACGAUGE` 의 갈래와 ⛔ Conductron 함정 (2026-09-04)
+
+11.15-(1) 이 *"통째로 빠졌던 주제"* 로 되찾은 명령이고, 이 절이 그 **구현 결정**을
+적는다.  ⭐ 코드는 `icg_archon/gauge.py` 한 파일에 모여 있다.
+
+#### (1) 왜 끄나 -- 예외가 아니라 **평상 상태**다
+
+운영자 2026-09-04: *"진공게이지의 필라멘트가 science 영상 자료에 영향을 끼쳐."*
+⭐ 그러면 게이지 Off 는 정비 중의 예외가 아니라 **science 노출 중의 평상 상태**이고,
+끄는 명령은 **ICS 가 노출 전에 ICG 로 보낸다**(운영자).  그래서 이 명령은 콘솔
+전용이 아니라 **원격에서 들어오고 응답이 필요하다** -- `Reply.noop()` 뒤 왕복이
+끝나면 `emit.done` 이 늦은 `DONE` 을 보낸다(`ERASE`/`SHOPEN` 과 같은 선례).
+
+#### (2) 끄는 갈래 둘 -- 어느 쪽인지는 **첫 구동 실측**이 정한다
+
+정본은 MKS 매뉴얼 p.31 이다: *"Pin 1 must be grounded to pin 5 to enable the
+Micro-Ion gauge to operate. A process relay or switch can be used … To turn OFF
+the Micro-Ion gauge, the process relay will **open** the switch."*  ⭐ **그
+스위치가 ACF 의 `MOD10\DIO_LABEL3=IONEN`** 이다.
+
+| 갈래 | 무엇을 쓰나 | 범위 | 근거 |
+|---|---|---|---|
+| **`ionen`** (기본) | `MOD10\DIO_SOURCE3` 1→0 | IONEN **한 라인**만 HIGH→LOW | Archon p.62 (`DIO_SOURCEi` 0=low·1=high·2=timing·3=VCPU) |
+| `diopower` | `MOD10\DIO_POWER` 1→0 | **8라인 전부**의 버퍼 전원 | ⭐ 보관함의 `…_goff_….acf` 가 **정확히 이 한 줄만** 다르다 -- 선임이 실제로 쓴 길 |
+
+⚠️ `diopower` 는 게이지 시리얼 3선(`ION_DE`/`ION_DI`/`ION_RO`)의 버퍼 전원도
+끊어 **압력 읽기까지 죽는다**.  `ionen` 은 읽기를 살린 채 필라멘트만 끈다 -- 그래서
+기본이지만 ⏳ **실기 미검증**이다.  그래서 코드에 박지 않고 **`[icg]
+gauge_off_method`** 로 두었다: 벤치에서 `ionen` 이 안 통하면 **검증된 `diopower`
+로 한 줄만 바꾼다**(구조 변경 없음).  `validate()` 는 모르는 갈래를 **경고가 아니라
+거부**로 막는다 -- 모르는 갈래로 뜨면 `VACGAUGE OFF` 가 **아무것도 끄지 않은 채**
+상태만 OFF 로 적고, 그러면 `DEWPRES` 만 sentinel 로 내려가 *"껐다고 믿는데
+필라멘트는 켜져 있다"* 가 된다.  science 오염을 막으려는 명령이 조용히 무력해지는
+자리라 기동을 세우는 편이 맞다.
+
+#### (3) ⛔⛔ 이 모듈이 존재하는 진짜 이유 -- Conductron 이 **정상으로 보이는 틀린 값**을 낸다
+
+MKS 356 은 **이온게이지 + Conductron 열손실 센서** 복합이고, 이온게이지를 꺼도
+모듈은 **Conductron 값을 계속 내보낸다**(p.31).  그런데 Conductron 은 고진공에서
+바닥값을 내고, ⛔ **그 바닥값이 `rawhdr` 의 인정 범위 `[1e-8, 1e+3]` 를 그냥
+통과한다** -- 실제 압력이 `1e-6` 인데 헤더에는 `1.00e-4` 같은 값이 **경고 하나 없이**
+실린다.  ⭐ 그래서 **꺼진 것을 아는 동안 `DEWPRES` 는 sentinel `9.99e-9`** 다
+(운영자 확정, 11.14-(5)).
+
+⚠️ **직전 표본도 즉시 버린다** (`self._sample.pop('dewpres')`).  `sensors()` 의
+신선도 창이 `interval*3`(기본 180초)이라, 안 버리면 **껐는데도 3분간 옛 값이
+헤더로 나간다** -- 껐다는 사실만으로는 부족하고 캐시를 함께 비워야 닫힌다.
+
+⭐ 그러면서 **Conductron 값 자체는 HK CSV 에 `dewpres_conductron` 으로 남긴다**
+(`gauge` 열도 함께).  헤더로는 안 간다.  그냥 빈 `dewpres` 로 두면 나중에
+*"게이지를 껐던 것"* 과 *"게이지가 고장난 것"* 을 구별할 수 없다 -- 11.15 의
+*"원인 구분은 로그에"* 와 같은 정신이다.
+
+#### (4) 상태는 셋이다 -- `ON` · `OFF` · **`UNKNOWN`**
+
+⭐ **`UNKNOWN` 은 `DEWPRES` 를 막지 않는다.**  ACF 출하값이 `DIO_SOURCE3=1`(켬)
+이므로, 모름을 결측으로 치면 **평상 운영에서 진공값이 조용히 사라진다.**  막는 것은
+**꺼진 것을 아는 동안만**이다 (`blocks_dewpres` = `on is False`).
+
+기동에서 `RCONFIG` 로 되읽어 세우고(`origin='rconfig'`), 못 읽으면 `UNKNOWN` 으로
+남긴다 -- 추측으로 `ON` 을 적으면 헤더 판정의 근거가 거짓이 된다.  ⏳ **게이지
+자체에 물어보는 것이 아니다**: MKS 는 `IGS`(ON/OFF) · `RF`(필라멘트) · `RE`(방출전류)
+질의를 갖고 있지만 우리 경로인 MOD10 VCPU 프로그램은 `#05RD`(압력) 하나만 보낸다.
+`IGS` 를 더하면 **진짜 확인**이 되지만 그것도 VCPU 프로그램 개정 + `APPLYDIO` 가
+딸리는 ACF 작업이다 -- 지금은 `RCONFIG` 설정값이 최선의 증거이고, 조회 응답이
+`Origin=` 을 함께 실어 **그 차이를 운영자가 알게** 한다.
+
+⭐ **상태를 왕복보다 먼저 올린다** -- `WCONFIG`/`APPLYDIO` 왕복 동안 HK 주기가
+끼어들 수 있고 그때 `DEWPRES` 는 이미 Conductron 값일 수 있다 (`EXPENABLE OFF` 가
+플래그를 먼저 올리는 것과 같은 이유).  ⚠️ 그래서 **왕복이 실패하면 되돌린다** --
+성공한 것처럼 남겨 두면 반대 방향으로 거짓말한다.
+
+#### (5) 켜고 끄는 것 **둘 다** 진공 읽기를 끊는다
+
+`APPLYDIO09` 도 11.18-(2) 의 p.86 대상이다 -- `alive`(`VCPU_OUTREG15`)가 0으로
+되감기고 OUTREG 는 잔재가 된다.  그래서 응답에 붙인다:
+
+```
+DONE: VACGAUGE Gauge=OFF (gauge OFF -- any pressure now read is the Conductron
+      sensor, not the ion gauge; DEWPRES is held at sentinel (VCPU restarted --
+      DEWPRES has a gap))
+```
+
+⭐ **잔재를 실을 위험은 없다** -- `DewpresDecoder` 의 정상 판정이 *"Alive 가
+직전보다 증가"* 하나뿐이라 재시작 창은 **결측으로** 걸러진다 (그 경고 문구도 이제
+`APPLYMOD`/`APPLYDIO` 를 함께 적는다).
+
+#### (6) ⏳ 첫 구동에서 닫을 것
+
+| 무엇 | 어떻게 |
+|---|---|
+| `ionen` 이 실제로 필라멘트를 끄나 | 끄고 `#05RD` 가 계속 오는지(=Conductron) · 압력 판이 바뀌는지 |
+| `diopower` 로 갈아야 하나 | 위가 안 되면 ini 한 줄 |
+| `VACGAUGE` 를 **둘로 나눌지** ("전원" vs "이온게이지 점등") | 11.15-(1) 의 미결.  ⭐ 실측 전에는 **한 필드**다 |
+| warm-up 규격 | 매뉴얼에 없다 -- 켠 뒤 값이 안정되는 시간을 재서 적는다 |
+
+### 11.20 히터 나머지 셋 구현 -- `HTRFORCE`·`HTRRAMP`·`HTRPID` (2026-09-04)
+
+11.14-(3) 표의 다섯 가운데 `HTREN`·`HTRSET` 만 앉아 있던 것을 채웠다.  ⭐ 이로써
+운영자 지시 넷(11.14-(6)) 가운데 **②(`HTRSET` 구현)가 닫힌다** -- 실제로는
+파라미터 여섯이 다 열렸다.
+
+#### (1) 인자 수가 명령마다 다르다 -- 그 경위를 적어 둔다
+
+원 지시는 *"파라미터 6개 설정을 위해 3개의 명령어를 만들고 arg 를 2개씩 전달"*
+이었는데, 그 뒤 `HTRSET` 이 **온도 하나**로 갈라졌다(*"`HTREN` 이 별도로 있으니
+온도만 넣으면 되고"*).  그래서 **3×2 가 아니라 다섯**이 됐다:
+
+| 명령 | 인자 | ACF 키 |
+|---|---:|---|
+| `HTREN` | 1 | `HEATERAENABLE` |
+| `HTRSET` | 1 | `HEATERATARGET` |
+| `HTRFORCE` | 2 | `HEATERAFORCE` · `HEATERAFORCELEVEL` |
+| `HTRRAMP` | 2 | `HEATERARAMP` · `HEATERARAMPRATE` |
+| `HTRPID` | 3 | `HEATERAP` · `HEATERAI` · `HEATERAD` |
+
+⛔ **인자 수가 갈렸으므로 모자란 것도 남는 것도 거부한다.**  옛 문법으로 보낸
+값을 조용히 버리면 *"넣었다고 믿는데 안 들어간"* 상태가 되고, 그것이 `HTRSET`
+에서 이미 한 번 나온 자리다(2인자 거부).
+
+#### (2) ⭐ 적용은 **명령당 한 번**이다
+
+`_write_and_apply(ctrl, *pairs)` 가 `WCONFIG` 를 여러 줄 쓰고 `APPLYMOD09` 는
+**한 번만** 부른다.  이유 둘:
+
+1. **결측 창을 늘리지 않는다** -- 적용마다 MOD10 의 VCPU 가 재시작되므로
+   (11.18) 키마다 적용하면 `HTRPID` 한 번이 `DEWPRES` 결측 창을 **셋** 만든다.
+2. ⭐ **반쯤 앉은 상태로 한 주기가 돌지 않는다** -- `FORCE=1` 은 앉았는데
+   `FORCELEVEL` 은 아직 옛 값인 창이 있으면, **잊고 있던 전압**이 그 창 동안
+   나간다.  같은 이유로 `HTRFORCE` 는 **끌 때도 레벨을 함께 쓴다**.
+
+#### (3) ⛔ `FORCE` 는 다른 등급이다 -- 상한을 안 두는 대신 **상시 표시**
+
+운영자 확정: **별도 운영 상한을 두지 않는다** (11.14-(3) 에 문면과 내 반대 논거를
+함께 적었다).  그래서 막는 것은 **모듈 범위 `0…25 V`** 뿐이고, 그 안에서는 운영이
+정한다.  ⭐ 대신 `Force=1` 인 동안 응답과 로그가 *"`HEATERALIMIT` does not apply,
+output follows `FORCELEVEL` regardless of temperature"* 를 **늘** 말한다 --
+운영 상한이 없는 만큼 **표시가 유일한 안전장치**이고, `test_htrforce_says_that_
+the_pid_limit_does_not_apply` 가 그것을 못박는다.
+
+⚠️ **범위 밖은 클램프가 아니라 거부**다 -- `TARGET` 과 규약이 다른 것이 의도다.
+`TARGET` 은 *"어느 온도를 노리나"* 라 접어도 뜻이 남지만, 여기 셋은 **모듈이 받는
+값의 범위**여서 밖의 값은 접을 것이 아니라 오타다.  접어 넣으면 *"25 라고 쳤는데
+조용히 2.5 가 앉는"* 반대 방향 사고가 난다.
+
+#### (4) `RAMPRATE` 의 뜻은 **ACF 가 정한다** -- 상수 0개
+
+`RAMPRATE` 는 초당이 아니라 **update time 당**이라 `HEATERUPDATETIME` 이 바뀌면
+**같은 값의 뜻이 바뀐다**(11.14-(3)).  그래서 1000 을 코드에 박지 않고 `ACF` 에서
+읽어 환산해 응답에 함께 싣는다 -- `RampRate=1 (1 mK/s = 3.6 K/h at
+UPDATETIME=1000ms)`.  ⭐ *"1 이 얼마나 느린가"*(100 K 옮기는 데 하루 넘음)를 그
+자리에서 알게 하는 것이 목적이다.  ⚠️ 못 읽으면 **환산만 생략**하고 명령은
+수행한다 -- 틀린 환산을 보이느니 안 보이는 편이 낫고, 그 때문에 설정을 막을
+이유는 없다.
+
+#### (5) 조회는 표 하나가 정한다
+
+`heater.GROUPS` 가 *명령 → (이름표, 키 꼬리)* 를 들고 `read_group()` 이 그대로
+`RCONFIG` 되읽는다.  ⭐ 설정 응답과 조회 응답이 **같은 낱말**을 쓰게 하려는
+것이다(`Force=`/`Level=`/`RampRate=`).  ⚠️ 하나라도 못 읽으면 **부분 답을 내지
+않고 통째로 `ERROR`** 다 -- 일부만 답하면 나머지가 옛 값인지 못 읽은 것인지
+구별되지 않는다.
+
+⚠️ **되읽기는 캐시가 아니다** -- `ctrl.config` 는 `set_config()` 가 왕복 실패에도
+먼저 갈아 끼우므로 *"보냈다"* 는 뜻밖에 없다 (11.14-(1) 의 세 층).
+
+#### (6) 시험 16개 -- 실물 ACF 로 잰다
+
+`tests/test_icg_heater_gauge.py` 에 붙였고 **가짜 dict 를 안 쓴다**(실물
+`KMTK_GUI_162_STA0201_R2610.acf` 를 파싱한 `RecordingCtrl`).  ⭐ 그 덕에 *ACF 가
+바뀌면 시험이 먼저 운다* -- `test_the_conversion_follows_the_acf_when_the_update_
+time_changes` 와 `test_the_limits_follow_the_acf_when_the_loop_sensor_changes` 가
+**환산·한계에 상수가 없음**을 양방향으로 못박는다.
+
+⚠️ **시험을 쓰다 내 기대값이 틀렸다** -- `HTRSET` 조회의 기대를 `Target=-100` 으로
+적었는데 현행 ACF 출하값은 **0** 이다.  ⭐ 실물로 재는 하네스였기에 그 자리에서
+드러났다.  가짜 dict 였으면 **내가 적은 -100 이 그대로 통과**했을 것이다.
+
+#### (7) ⏳ 남은 것
+
+- `HTRPID` 로 게인을 넣어도 **실제로 데워지는지는 실기 확인**이다 (11.13 F1 의
+  *"게인 0 이라 출력 0 V"* 가 풀리는지).  ⚠️ `IL`(적분항 상한, 실물 1000)과
+  `HEATERUPDATETIME` 은 **ACF 소관**이라 명령이 안 만진다.
+- `APPLYMOD09` 뒤 **전원 상태 확인**이 아직 없다 (11.13 F7) -- `POWER`·
+  `POWERGOOD` 가 4인지 보고, 아니면 노출을 막을지 판단.  ⏳ 첫 구동에서.
+- 히터가 실제로 붙은 채 `FORCE=1` 을 켜 보는 것은 **듀어가 차가울 때만** 뜻이
+  있다 -- 첫 구동 절차에 넣을 것.

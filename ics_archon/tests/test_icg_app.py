@@ -248,3 +248,309 @@ def test_icg_warns_when_it_is_given_the_ics_port(tmp_path, caplog):  # noqa: ANN
     asyncio.run(run())
     said = [r.getMessage() for r in caplog.records]
     assert any('ICS 몫' in m for m in said), said
+
+
+# ---------------------------------------------------------------------------
+# EXPENABLE -- 노출 잠금 (운영자 확정 2026-09-03)
+# ---------------------------------------------------------------------------
+
+def _drive_lines(tmp_path, script, before=None):  # noqa: ANN001
+    """대본을 먹이고 (app, 발신로그) 를 돌려준다.  `before(app)` 로 상태 주입."""
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        app = IcgArchon(cfg, icfg, backend='sim')
+        await app.start()
+        if before:
+            before(app)
+        try:
+            for line in script:
+                app.transport.feed(line)
+                await asyncio.sleep(0.02)
+            await app.seq.wait()
+            await asyncio.sleep(0.05)
+        finally:
+            await app.stop()
+        return app, [str(s) for s in app.transport.sent_log]
+    return asyncio.run(run())
+
+
+def test_expenable_accepts_four_words_and_answers_in_normal_form(tmp_path):  # noqa: ANN001
+    """`ON`/`TRUE`/`OFF`/`FALSE` 를 받고 응답은 **정규형**으로 되돌린다.
+
+    ⭐ `true` 를 쳐도 `ExpEnable=ON` 이 나가야 로그가 한 형태로만 남아 grep 이
+    된다 (저장소 관례 -- `DONE: EXP ExpTime=...`).
+    """
+    _app, sent = _drive_lines(tmp_path, [
+        'abc>ICG EXPENABLE',            # 조회 -- 기본은 허용
+        'abc>ICG EXPENABLE false',      # 소문자 · 별칭
+        'abc>ICG EXPENABLE',
+        'abc>ICG EXPENABLE TRUE',
+        'abc>ICG EXPENABLE',
+    ])
+    said = [s for s in sent if 'EXPENABLE' in s]
+    assert any('ExpEnable=ON' in s for s in said), said
+    assert any('ExpEnable=OFF' in s for s in said), said
+    # 소문자·별칭을 그대로 되돌리지 않는다 (정규형만 나간다)
+    assert not any('false' in s or 'TRUE' in s.split('ExpEnable=')[-1]
+                   for s in said if 'ExpEnable=' in s), said
+
+
+def test_expenable_refuses_an_unknown_value_and_keeps_the_state(tmp_path):  # noqa: ANN001
+    """⛔ **모르는 값은 기본값으로 떨어뜨리지 않는다** -- 거부하고 상태 유지.
+
+    ⭐ 이 규칙이 **잘림 손상까지 막는다** -- 시리얼 구간에서 `OFF` 가 `O` 로
+    잘려 와도 거부되므로 잠금이 조용히 풀리지 않는다.
+    """
+    app, sent = _drive_lines(tmp_path, [
+        'abc>ICG EXPENABLE OFF',
+        'abc>ICG EXPENABLE FLASE',      # 오타
+        'abc>ICG EXPENABLE O',          # 잘림
+        'abc>ICG EXPENABLE',
+    ])
+    said = [s for s in sent if 'EXPENABLE' in s]
+    assert sum('Invalid value' in s for s in said) == 2, said
+    # 오타 둘을 겪고도 여전히 잠겨 있다
+    assert not app.expenable.allowed
+    assert said[-1].endswith('ExpEnable=OFF')
+
+
+def test_go_is_refused_while_locked(tmp_path):  # noqa: ANN001
+    """⛔ 잠겨 있으면 `GO` 가 시작하지 않는다 -- 파일도 안 생긴다."""
+    app, sent = _drive_lines(tmp_path, [
+        'abc>ICG EXPENABLE OFF',
+        'abc>ICG GUIDEEXP 2',
+        'abc>ICG go 3',
+    ])
+    assert any('Exposure is disabled (EXPENABLE OFF)' in s for s in sent), sent
+    assert not app.seq.busy
+    assert not glob.glob(str(tmp_path / 'data' / '*.fits'))
+
+
+def test_expenable_off_stops_a_running_acquisition(tmp_path):  # noqa: ANN001
+    """⭐ `OFF` 는 진행 중인 취득도 세운다 -- 그리고 **플래그가 먼저**다.
+
+    ⚠️ 순서를 뒤바꾸면 창이 열린다: abort 뒤 `EXPSTATUS=IDLE` 을 기다린 `go`
+    가 곧바로 들어오면 **막 세운 노출이 즉시 다시 시작된다.**  그래서 세우는
+    도중에 들어온 `go` 도 거절되는지 함께 본다.
+    """
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        app = IcgArchon(cfg, icfg, backend='sim')
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG GUIDEEXP 2')
+            await asyncio.sleep(0.02)
+            app.transport.feed('abc>ICG go 5')
+            await asyncio.sleep(0.05)
+            assert app.seq.busy, '취득이 안 돌고 있다 -- 시험 전제가 깨졌다'
+            app.transport.feed('abc>ICG EXPENABLE OFF')
+            await asyncio.sleep(0.05)
+            app.transport.feed('abc>ICG go 5')      # 세우는 도중에 들어온 GO
+            await asyncio.sleep(0.05)
+            await app.seq.wait()
+            await asyncio.sleep(0.05)
+        finally:
+            await app.stop()
+        return app, [str(s) for s in app.transport.sent_log]
+
+    app, sent = asyncio.run(run())
+    assert any('Aborted=1' in s for s in sent), sent
+    assert any('Exposure is disabled' in s for s in sent), sent
+    assert not app.expenable.allowed
+
+
+def test_the_lock_survives_a_restart(tmp_path):  # noqa: ANN001
+    """지속된다 -- 재기동해도 잠김이 유지된다 (`expnum` 과 같은 영속 규약)."""
+    path = str(tmp_path / 'icg.expenable')
+
+    async def once(script):  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = path
+        app = IcgArchon(cfg, icfg, backend='sim')
+        await app.start()
+        for line in script:
+            app.transport.feed(line)
+            await asyncio.sleep(0.02)
+        allowed, origin = app.expenable.allowed, app.expenable.origin
+        await app.stop()
+        return allowed, origin
+
+    assert asyncio.run(once(['abc>ICG EXPENABLE OFF']))[0] is False
+    allowed, origin = asyncio.run(once([]))       # 새 프로세스처럼 다시 뜬다
+    assert allowed is False, '재기동에서 잠금이 풀렸다'
+    assert origin == 'file'
+
+
+def test_a_garbled_lock_file_starts_locked(tmp_path):  # noqa: ANN001
+    """⚠️ **폴라리티가 expnum 과 반대다** -- 값을 못 믿으면 **잠근다.**
+
+    ⭐ 다만 "없음"(첫 구동)과 "못 읽음"(손상)은 가른다 -- 없으면 허용이다.
+    파일이 없을 때마다 잠기면 첫 구동 체크리스트가 한 걸음도 못 간다.
+    """
+    path = tmp_path / 'icg.expenable'
+
+    async def boot():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(path)
+        app = IcgArchon(cfg, icfg, backend='sim')
+        await app.start()
+        out = (app.expenable.allowed, app.expenable.origin)
+        await app.stop()
+        return out
+
+    assert asyncio.run(boot()) == (True, 'absent')        # 없음 -> 허용
+    path.write_text('YES PLEASE\n', encoding='utf-8')     # 어휘 밖
+    assert asyncio.run(boot()) == (False, 'garbled')      # 손상 -> 금지
+
+
+# -- 히터·이온게이지 명령 (운영자 확정 2026-09-04) -------------------------
+#
+# 여기는 **명령 층**만 본다 -- 키 조립·한계·클램프는 `test_icg_heater_gauge.py`
+# 가 실물 ACF 로 본다.
+
+
+def _with_ctrl(tmp_path, script):  # noqa: ANN001, ANN202
+    """`sim` 백엔드에 **가짜 컨트롤러를 꽂고** 대본을 먹인다.
+
+    `SimGuideBackend.ctrl` 은 `None` 이라 히터·게이지 명령이 정상적으로
+    거부된다 -- 그 거부까지 시험하려면 꽂아 줘야 한다.
+    """
+    from test_icg_heater_gauge import RecordingCtrl
+
+    ctrl = RecordingCtrl()
+
+    def before(app):  # noqa: ANN001, ANN202
+        app.guide.ctrl = ctrl
+        app.hk.ctrl = None            # HK 는 이 가짜로 STATUS 를 안 본다
+
+    app, sent = _drive_lines(tmp_path, script, before=before)
+    return app, sent, ctrl
+
+
+def test_the_heater_and_gauge_commands_refuse_without_a_controller(tmp_path):  # noqa: ANN001
+    """⛔ 컨트롤러가 없으면 **성공을 흉내내지 않는다.**
+
+    조용히 DONE 을 내면 *"명령은 먹었는데 아무것도 안 바뀜"* 이 된다.
+    """
+    _app, sent = _drive_lines(tmp_path, [
+        'abc>ICG HTREN ON', 'abc>ICG HTRSET -100', 'abc>ICG VACGAUGE OFF',
+    ])
+    said = [s for s in sent if 'ERROR' in s]
+    for word in ('HTREN', 'HTRSET', 'VACGAUGE'):
+        assert any(word in s for s in said), (word, said)
+
+
+def test_htrset_takes_one_argument_only(tmp_path):  # noqa: ANN001
+    """⭐ **인자 하나**다 (운영자 확정) -- 옛 2인자 문법은 조용히 버리지 않는다.
+
+    두 번째 값을 말없이 무시하면 *"Enable 도 같이 넣었다고 믿는"* 자리가 된다.
+    """
+    _app, sent, ctrl = _with_ctrl(tmp_path, [
+        'abc>ICG HTRSET -100 1',       # 옛 문법
+        'abc>ICG HTRSET nope',         # 수치가 아니다
+    ])
+    said = [s for s in sent if 'HTRSET' in s]
+    assert sum('ERROR' in s for s in said) == 2, said
+    assert ctrl.writes() == [], '거부했는데 컨트롤러에 썼다'
+
+
+def test_the_onoff_words_are_the_same_as_expenable(tmp_path):  # noqa: ANN001
+    """`ON|TRUE|1` · `OFF|FALSE|0` -- ⛔ 어휘 밖은 거부한다."""
+    _app, sent, ctrl = _with_ctrl(tmp_path, [
+        'abc>ICG HTREN true',
+        'abc>ICG VACGAUGE 0',
+        'abc>ICG HTREN maybe',         # 어휘 밖
+    ])
+    assert any('HTREN' in s and 'Enable=1' in s for s in sent), sent
+    assert any('VACGAUGE' in s and 'Gauge=OFF' in s for s in sent), sent
+    assert any('HTREN' in s and 'Invalid value: maybe' in s for s in sent), sent
+
+
+def test_a_heater_command_during_acquisition_is_accepted_with_a_warning(  # noqa: ANN001
+        tmp_path, caplog):
+    """⭐ **거부하지 않는다** (운영자 확정 2026-09-04).
+
+    `APPLYMOD09` 가 진공 VCPU 를 재시작해 그 프레임의 `DEWPRES` 가 결측이
+    되지만, 그 결측은 받아들인다 -- 대신 경고를 남기고 **응답에 표시**한다.
+    ⚠️ 이 시험이 뒤집히면(거부로 바뀌면) 운영자 확정과 어긋난다.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    # ⚠️ **노출을 길게 잡는 것이 의도다.**  `time_scale=0.02` 라 `EXP 1` 은
+    # 프레임당 0.02초이고, 대본 사이 간격도 0.02초여서 **부하가 걸리면 취득이
+    # 먼저 끝나** `busy` 가 False 로 읽힌다 (전체 스위트에서만 빨개졌다).
+    # `EXP 30` = 프레임당 0.6초라 도착 순서가 확실해진다 -- 줄이지 말 것.
+    _app, sent, ctrl = _with_ctrl(tmp_path, [
+        'abc>ICG EXP 30', 'abc>ICG GO 2',
+        'abc>ICG HTRSET -100',         # 취득 중에 들어온다
+    ])
+    said = [s for s in sent if 'HTRSET' in s]
+    assert any('DONE' in s for s in said), said
+    assert not any('ERROR' in s for s in said), said
+    assert any('DuringAcquisition=1' in s for s in said), said
+    assert any('취득 중에' in r.message for r in caplog.records), \
+        '경고가 없다 -- 결측이 조용히 생긴다'
+
+
+def test_the_gauge_query_says_where_the_answer_came_from(tmp_path):  # noqa: ANN001
+    """⚠️ 조회 답은 **게이지에 물어본 값이 아니다** -- 출처를 함께 적는다.
+
+    MKS 는 `IGS`(ON/OFF 상태)를 갖고 있지만 우리 VCPU 프로그램은 압력(`RD`)만
+    보낸다.  그래서 우리가 아는 것은 되읽은 **설정값**뿐이다.
+    """
+    _app, sent, _ctrl = _with_ctrl(tmp_path, ['abc>ICG VACGAUGE'])
+    said = [s for s in sent if 'VACGAUGE' in s]
+    assert any('Origin=' in s and 'Method=ionen' in s for s in said), said
+
+
+def test_the_new_heater_commands_check_their_argument_count(tmp_path):  # noqa: ANN001
+    """⛔ 모자란 것도 남는 것도 **거부한다** -- 조용히 버리지 않는다.
+
+    ⭐ 원 지시가 *"3개의 명령어를 만들고 arg 를 2개씩"* 이었다가 `HTRSET` 만
+    1인자로 갈라졌다.  그래서 **명령마다 인자 수가 다르고**, 옛 문법으로
+    보낸 값이 말없이 버려지면 *"넣었다고 믿는"* 자리가 생긴다.
+    """
+    _app, sent, ctrl = _with_ctrl(tmp_path, [
+        'abc>ICG HTRFORCE 1',            # 2인자인데 하나
+        'abc>ICG HTRRAMP 1 2 3',         # 2인자인데 셋
+        'abc>ICG HTRPID 1 2',            # 3인자인데 둘
+        'abc>ICG HTRPID 1 2 nope',       # 수치가 아니다
+    ])
+    said = [s for s in sent if 'ERROR' in s]
+    assert sum('Usage:' in s for s in said) == 3, said
+    assert any('Invalid D: nope' in s for s in said), said
+    assert ctrl.writes() == [], '거부했는데 컨트롤러에 썼다'
+
+
+def test_htrforce_says_that_the_pid_limit_does_not_apply(tmp_path):  # noqa: ANN001
+    """⛔ `FORCE=1` 은 **다른 등급**이다 -- 응답이 그 사실을 늘 말한다.
+
+    `HEATERALIMIT`(25.0)은 매뉴얼이 *"in PID mode"* 로 못박은 상한이라 force
+    중에는 안 걸린다.  ⭐ 별도 운영 상한을 두지 않기로 했으므로(운영자 확정)
+    **표시가 유일한 안전장치**다 -- 이 시험이 그것을 지킨다.
+    """
+    _app, sent, ctrl = _with_ctrl(tmp_path, ['abc>ICG HTRFORCE 1 3.5'])
+    said = [s for s in sent if 'HTRFORCE' in s]
+    assert any('DONE' in s and 'Force=1 Level=3.5' in s for s in said), said
+    assert any('HEATERALIMIT does not apply' in s for s in said), said
+    assert any('MOD10/HEATERAFORCELEVEL=3.5' in c for c in ctrl.writes())
+
+
+def test_the_ramp_response_carries_the_converted_rate(tmp_path):  # noqa: ANN001
+    """⭐ *"1 이 얼마나 느린가"* 를 그 자리에서 알게 한다 (1 mK/s = 3.6 K/h)."""
+    _app, sent, _ctrl = _with_ctrl(tmp_path, ['abc>ICG HTRRAMP 1 1'])
+    said = [s for s in sent if 'HTRRAMP' in s]
+    assert any('RampRate=1' in s and '3.6 K/h' in s for s in said), said
+
+
+def test_a_heater_query_answers_from_the_controller(tmp_path):  # noqa: ANN001
+    """인자 없이 보내면 조회 -- 답은 캐시가 아니라 `RCONFIG` 되읽기다."""
+    _app, sent, ctrl = _with_ctrl(tmp_path, [
+        'abc>ICG HTRPID', 'abc>ICG HTRFORCE',
+    ])
+    assert any('HTRPID' in s and 'P=0 I=0 D=0' in s for s in sent), sent
+    assert any('HTRFORCE' in s and 'Force=0 Level=0' in s for s in sent), sent
+    assert ctrl.writes() == [], '조회인데 컨트롤러에 썼다'

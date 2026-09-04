@@ -110,8 +110,11 @@ def decode_rtd(status: dict, acf_config: dict) -> dict[str, float]:
 class DewpresDecoder:
     """`MOD10/VCPU_OUTREG0~9` 10글자 + `OUTREG15`(Alive) -> 게이지 원문.
 
-    **정상 판정은 "Alive 가 직전보다 증가" 하나뿐이다.**  0/감소는 VCPU
-    재시작 신호(경고), 두 번 연속 불변은 게이지 이상 -- 둘 다 결측.
+    **정상 판정은 "Alive 가 직전보다 증가" 하나뿐이다.**  0/감소는 진공
+    게이지를 읽는 MOD10 VCPU 의 재시작 신호(경고 -- ⭐ **히터 명령·게이지
+    명령이 이것을 일으킨다**, DevNote 11.18), 두 번 연속 불변은 게이지
+    이상 -- 둘 다 결측.  ⭐ 그래서 재시작 창의 **잔재(OUTREG 에 남은 직전
+    응답 10글자)를 실을 위험은 없다** -- Alive 가 먼저 걸러낸다.
     """
 
     def __init__(self) -> None:
@@ -135,9 +138,13 @@ class DewpresDecoder:
         elif alive < prev or alive == 0:
             if not self._warned_restart:
                 self._warned_restart = True
-                log.warning('진공 VCPU Alive 가 되감겼다 (%s -> %s) -- VCPU '
-                            '재시작(APPLYALL) 신호다.  DEWPRES 는 결측으로 '
-                            '싣는다', prev, alive)
+                log.warning('진공 VCPU Alive 가 되감겼다 (%s -> %s) -- 진공 '
+                            '게이지를 읽는 MOD10 의 VCPU 가 재시작됐다는 '
+                            '신호다.  ⚠️ APPLYALL 뿐 아니라 **모듈 하나만 '
+                            '적용하는 APPLYMOD09 · APPLYDIO09 도** 그렇다 '
+                            '(매뉴얼 p.86) -- 히터 명령(HTREN/HTRSET)과 '
+                            '게이지 명령(VACGAUGE)이 이것을 일으킨다.  '
+                            'DEWPRES 는 결측으로 싣는다', prev, alive)
             return None
         else:
             self._flat += 1
@@ -209,7 +216,12 @@ _COLUMNS = (
     + [_temp_col(f) for f in guidehdr.TEMP_MODS]
     + ['v_%s' % r.lower() for r in guidehdr.VOLT_RAILS]
     + ['i_%s' % r.lower() for r in guidehdr.VOLT_RAILS]
-    + ['dewpres', 'ccdtemp', 'dmptemp', 'pt30n1', 'pt30n2', 'charcoal',
+    # ⭐ `gauge`/`dewpres_conductron` 는 **진공 결측의 원인을 로그에 남기려고**
+    # 있다 (DevNote 11.18-(3)) -- 그냥 빈 `dewpres` 로 두면 나중에 "게이지를
+    # 껐던 것" 과 "게이지가 고장난 것" 을 구별할 수 없다.  `dewpres_conductron`
+    # 은 게이지 Off 중 모듈이 내던 Conductron 값이고 **헤더로는 안 간다.**
+    + ['dewpres', 'gauge', 'dewpres_conductron',
+       'ccdtemp', 'dmptemp', 'pt30n1', 'pt30n2', 'charcoal',
        'wallbrd', 'hebox', 'fsatemp', 'fsahum']
     + ['ens%d' % n for n in range(1, 8)]
     + ['event'])
@@ -229,6 +241,9 @@ class HkMonitor:
         self.telem = telem
         self._expstatus = expstatus
         self.radionode = None              # app 이 붙인다
+        #: 이온게이지 상태 (`gauge.GaugeState`) -- app 이 붙인다.  ⭐ 꺼진 것을
+        #: 아는 동안 `dewpres` 를 **싣지 않기 위해** 본다 (`_tick` 주석).
+        self.gauge = None
         self._dew = DewpresDecoder()
         #: 마지막 표본 -- key -> (값, epoch).  `sensors()`/스냅샷의 원천.
         self._sample: dict[str, tuple[object, float]] = {}
@@ -242,7 +257,11 @@ class HkMonitor:
     # -- 소비 창구 -----------------------------------------------------------
 
     def sensors(self) -> dict[str, object]:
-        """센서 계약 키 9개 중 **지금 신선한 것만** (원값).
+        """센서 계약 키 **10개** 중 지금 신선한 것만 (원값).
+
+        ⚠️ **개수를 여기 적은 것이 낡았었다** (2026-09-04 정정: 9 -> 10) --
+        RTD 6 + `dewpres` + Radionode 3 이다.  `HKDATA` 의 완전성 검사가
+        `계약키 교집합 + HKSTALE = 10` 이라 **이 수에 걸려 있다.**
 
         guide FITS 헤더가 이걸 그대로 받는다 -- `rawhdr.thermal_header()` 가
         포맷·sentinel 을 맡는다.  **판정 기준은 표본시각 하나**다 --
@@ -326,6 +345,25 @@ class HkMonitor:
             self._sample[key] = (val, now)
             row[key] = val
         dew = self._dew.decode(status)
+        gauge = self.gauge
+        if gauge is not None and gauge.blocks_dewpres:
+            # ⛔⛔ **이온게이지를 끈 것을 아는 동안은 싣지 않는다.**  MKS 356 은
+            # 이온게이지를 끄면 **Conductron 열손실 센서 값을 계속 내보내고**
+            # (모듈 매뉴얼 p.31), 그 값은 고진공에서 바닥값인데 `rawhdr` 의
+            # 인정 범위 [1e-8, 1e+3] 를 **그냥 통과한다** -- 즉 실제 1e-6 인데
+            # 헤더에 `1.00e-4` 같은 **정상으로 보이는 틀린 값**이 실린다.
+            # ⭐ 운영자 확정: 게이지 Off 중 DEWPRES 는 sentinel `9.99e-9`.
+            # ⚠️ 직전 표본도 **즉시 버린다** -- `sensors()` 의 신선도 창이
+            # interval*3(기본 180초)이라, 안 버리면 껐는데도 3분간 옛 값이
+            # 헤더로 나간다.
+            self._sample.pop('dewpres', None)
+            row['gauge'] = 'OFF'
+            if dew is not None:
+                # 진단으로만 남긴다 -- CSV 에는 있고 헤더로는 안 간다.
+                row['dewpres_conductron'] = dew
+            dew = None
+        elif gauge is not None:
+            row['gauge'] = gauge.word
         if dew is not None:
             self._sample['dewpres'] = (dew, now)
             row['dewpres'] = dew

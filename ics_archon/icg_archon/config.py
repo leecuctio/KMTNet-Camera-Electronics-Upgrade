@@ -19,6 +19,8 @@ import logging
 import os
 from dataclasses import dataclass, field
 
+from . import gauge
+
 log = logging.getLogger('icg_archon.config')
 
 DEFAULT_INI = 'icg_archon.ini'
@@ -177,6 +179,20 @@ class IcgCfg:
     exptime_min: float = 2.0
     #: 저장 태스크 드레인 상한 [s] (종료 시).
     shutdown_drain: float = 15.0
+    #: 노출 잠금(`EXPENABLE`) 기록 파일.  비우면 **ini 옆**
+    #: `<ini이름>.expenable` 로 정한다 (`expnum` 과 같은 관례 --
+    #: `-c` 로 여러 구성을 나란히 돌려도 섞이지 않는다).
+    #: ⚠️ 빈 채로 두고 `source_path` 도 없으면(ini 없이 만든 경우 -- 단위
+    #: 시험) **지속시키지 않는다.**
+    expenable_file: str = ''
+
+    #: ⭐ **이온게이지를 끄는 갈래** -- `ionen` | `diopower` (`gauge.METHODS`).
+    #: `ionen` 은 `MOD10\\DIO_SOURCE3`(IONEN 한 라인)만 내리고, `diopower` 는
+    #: `MOD10\\DIO_POWER`(8라인 전부의 버퍼 전원)를 내린다.  기본은 `ionen`
+    #: -- 읽기를 살린 채 필라멘트만 끄는 쪽이다.  ⏳ 둘 다 첫 구동 실측
+    #: 대기이고, `ionen` 이 안 통하면 **선임이 실제로 쓴** `diopower` 로
+    #: 이 한 줄만 바꾼다 (`…_goff_….acf` 선례 -- DevNote 11.19).
+    gauge_off_method: str = 'ionen'
 
     hk: HkCfg = field(default_factory=HkCfg)
     radionode: RadionodeCfg = field(default_factory=RadionodeCfg)
@@ -185,6 +201,20 @@ class IcgCfg:
     @property
     def frame_bytes(self) -> int:
         return self.naxis1 * self.naxis2 * 2
+
+    def expenable_path(self, sim_cfg=None) -> str:  # noqa: ANN001
+        """노출 잠금 기록의 실제 경로.  비어 있으면 **ini 옆**으로 정한다.
+
+        `ics_sim.config.resolve_expnum_file()` 과 같은 관례다 --
+        `icg_archon.ini` -> `icg_archon.expenable`.  ⚠️ ini 없이 만든 경우
+        (`source_path` 가 빈 단위 시험)는 **빈 값으로 남겨 지속시키지 않는다**
+        -- 시험이 실행 순서에 따라 서로의 잠금을 물려받지 않게 한다.
+        """
+        if self.expenable_file:
+            return os.path.expanduser(self.expenable_file)
+        if self.source_path:
+            return os.path.splitext(self.source_path)[0] + '.expenable'
+        return ''
 
     @property
     def host(self) -> str:
@@ -243,6 +273,10 @@ def load(path: str) -> IcgCfg:
                                         cfg.recheck_after_fetch)
         cfg.exptime_min = _float(s, 'exptime_min', cfg.exptime_min)
         cfg.shutdown_drain = _float(s, 'shutdown_drain', cfg.shutdown_drain)
+        cfg.expenable_file = _path(s, 'expenable_file',
+                                   cfg.expenable_file)
+        cfg.gauge_off_method = (s.get('gauge_off_method', '').strip().lower()
+                                or cfg.gauge_off_method)
 
     if cp.has_section('hk'):
         s = cp['hk']
@@ -309,6 +343,20 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
                         '-- fetch 중 버퍼가 덮이는 창을 보는 것이 없다 (두 노출이 '
                         '섞인 프레임이 경고 없이 저장된다).  lock_buffer=true 가 '
                         '정본이다 (DevNote 10.6·8.4)')
+    if cfg.gauge_off_method not in gauge.METHODS:
+        # ⛔ 기동을 세운다.  모르는 갈래로 뜨면 `VACGAUGE OFF` 가 **아무것도
+        # 끄지 않은 채** 상태를 OFF 로 적고, 그러면 `DEWPRES` 만 sentinel 로
+        # 내려가 "껐다고 믿는데 필라멘트는 켜져 있다" 가 된다 -- science 영상
+        # 오염을 막으려는 명령이 조용히 무력해지는 자리다.
+        raise IcgConfigError('[icg] gauge_off_method=%r 은 모르는 갈래다 -- %s '
+                             '가운데 하나여야 한다 (DevNote 11.19)'
+                             % (cfg.gauge_off_method,
+                                ' | '.join(sorted(gauge.METHODS))))
+    if cfg.gauge_off_method == gauge.DIOPOWER:
+        warn.append('[icg] gauge_off_method=diopower -- MOD10 의 DIO 8라인 '
+                    '**전부**의 버퍼 전원을 내린다.  필라멘트는 꺼지지만 '
+                    '게이지 시리얼 3선(ION_DE/ION_DI/ION_RO)도 같이 죽어 '
+                    'DEWPRES 를 켤 때까지 못 읽는다 (DevNote 11.19)')
     r = cfg.radionode
     if r.backend not in ('sim', 'openapi', 'off'):
         raise IcgConfigError('[radionode] backend=%r -- sim | openapi | off '
