@@ -304,6 +304,191 @@ bind 실패).  `icg_archon` 기동 검사가 그 경우를 알린다.
 
 ---
 
+## 7. Radionode LoRa 게이트웨이 붙이기 (로컬 경로)
+
+⭐ **인터넷 없이 HK 3장을 받는 길**이다 (`HEBOX`·`FSATEMP`·`FSAHUM`).  클라우드
+경로(`backend=openapi`)와 무엇이 다른지·왜 필요한지는 **README "Radionode
+자격증명" 과 "인터넷이 안 되는 사이트"** 절에 있고, 여기는 **벤치에서 실제로
+붙이는 절차**다.
+
+**실험실 장비** (운영자 확인 2026-09-04): `RAK7268CV2`(WisGate Edge Lite 2) ·
+LoRa 모듈 `R-R-SrT-RAK2287` · **GWEUI `AC1F09FFFE1F535F`** · 랜선 연결됨 ·
+센서 2대 이상 가동 중.
+
+⭐ **이 게이트웨이는 안에 네트워크 서버가 들어 있다** — 별도 서버(ChirpStack)를
+세울 것 없이 그 NS 가 장치 uplink 를 받아 **우리에게 HTTP 로 밀어 준다.**
+그래서 우리 쪽은 **폴링이 아니라 수신**이고, 표준 라이브러리만 쓴다.
+
+### 7.1 게이트웨이 IP 찾기
+
+⭐ **GWEUI 에서 MAC 이 그대로 나온다** — `AC1F09` **FFFE** `1F535F` 는 MAC-48
+가운데 `FFFE` 를 끼워 만든 EUI-64 이므로, 빼면 **`AC:1F:09:1F:53:5F`** 다
+(`AC:1F:09` = RAKwireless OUI).  ⚠️ 판에 따라 U/L 비트가 뒤집혀 `AE:1F:09…`
+로 보일 수 있으니 둘 다 훑는다.
+
+```bash
+sudo arp-scan --localnet | grep -i 'ac:1f:09'
+```
+
+⚠️ **벤치(AIC-SSO)에는 `arp-scan` 이 없다** (2026-09-04 실측) -- 설치는 인터넷이
+필요하니 아래 순수 셸 경로가 **실제로 쓴 길**이다.  ⭐ 그리고 이 기계는 **망이
+둘**이다: `eno16795` = 사이트망 `100.51.1.22/24`(인터넷) · `eno17395np0` =
+장비망 `10.0.0.202/24`.  게이트웨이는 클라우드로 올리고 있었으므로 **인터넷이
+되는 쪽**을 먼저 쓴다:
+
+```bash
+ip -4 -br addr show
+```
+
+```bash
+for i in $(seq 1 254); do ping -c1 -W1 100.51.1.$i >/dev/null 2>&1 & done; wait
+ip neigh | grep -i 'ac:1f:09'
+```
+
+⭐ 찾는 것은 **딱 한 줄**이다 (나머지 백여 줄은 그 망의 다른 기계다):
+
+```
+100.51.1.245 dev eno16795 lladdr ac:1f:09:1f:53:5f STALE
+```
+
+⚠️ 비면 **그 MAC 이 표에 없다**는 뜻이다 -- 다른 망이거나 핑에 답을 안 한 것이다.
+⛔ **MAC 으로 찾는 것은 같은 링크에서만 된다** -- 라우터 너머(`192.168.82.x` 같은)
+면 ARP 표에 절대 안 잡히므로 **열린 웹 포트로** 좁힌다:
+
+```bash
+for i in $(seq 1 254); do (nc -z -w1 100.51.1.$i 443 || nc -z -w1 100.51.1.$i 80) >/dev/null 2>&1 && echo "100.51.1.$i web" & done; wait
+```
+
+### 7.2 무엇이 열려 있나
+
+```bash
+nc -zv 10.0.0.X 22 80 443 1883 8883
+curl -sk -L -o /dev/null -w '%{http_code}  %{url_effective}\n' http://10.0.0.X/
+```
+
+실측 (2026-09-04): `22`·`80`·`443`·`1883` **열림**, `8883` 거부(평문 MQTT 만).
+
+⛔⛔ **`1883` 이 열려 있다고 내장 네트워크 서버가 켜진 것이 아니다.**  WisGateOS 는
+**시스템 텔레메트리용 브로커를 항상 띄운다** -- `#` 로 전부 구독해도
+`system/lastfbinfo` · `sd_health_info` 같은 **게이트웨이 자신의 상태**만 온다.
+⚠️ 나는 이 자리에서 *"1883 열림 = 내장 NS 켜짐"* 으로 잘못 읽었다 (정정
+2026-09-04).
+
+⭐ **내장 NS 가 도는지 가르는 것은 토픽이다** -- 돌고 있으면
+**`gateway/<GWEUI>/event/stats`** 가 30초쯤마다 무조건 올라오고 장치 uplink 는
+`application/…/event/up` 으로 온다.  그 둘이 없으면 **Packet Forwarder 모드로
+바깥 LNS(Tapaculo365)에 올리고 있는 것**이다.
+
+판정 명령 (아무것도 안 깔아도 된다 -- 표준 라이브러리 MQTT 구독):
+`INSTALL` 옆 `tools/` 가 아니라 그때그때 붙여 쓰는 일회성이며, 절차는 7.3 의
+수신기 시험과 같은 정신이다.  `mosquitto_sub` 가 있으면 한 줄이다:
+
+```bash
+mosquitto_sub -h 100.51.1.245 -t '#' -v
+```
+
+### 7.3 ⭐ 게이트웨이가 **우리 쪽으로 닿는지** — 이것이 관문이다
+
+우리 IP 를 확인하고,
+
+```bash
+hostname -I
+```
+
+임시 수신기를 띄운 다음 게이트웨이 UI 의 integration 에
+`http://<우리IP>:8088/uplink` 를 넣고 테스트를 누른다.  ⭐ **이 스크립트가
+`icg_archon` 의 수신기와 같은 모양**이라, 여기에 uplink JSON 이 찍히면 본편도
+그대로 받는다:
+
+```bash
+python3 - <<'PY'
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        n = int(self.headers.get('Content-Length') or 0)
+        print('POST', self.path, self.rfile.read(n).decode('utf-8','replace'), flush=True)
+        self.send_response(200); self.send_header('Content-Length','2'); self.end_headers(); self.wfile.write(b'ok')
+    def do_GET(self):
+        self.send_response(200); self.send_header('Content-Length','2'); self.end_headers(); self.wfile.write(b'ok')
+print('listening on 0.0.0.0:8088', flush=True)
+ThreadingHTTPServer(('0.0.0.0', 8088), H).serve_forever()
+PY
+```
+
+안 닿으면 **우리 쪽 방화벽**부터 본다:
+
+```bash
+sudo ss -lntp | grep 8088
+sudo firewall-cmd --list-ports 2>/dev/null || sudo iptables -S | head
+```
+
+### 7.4 웹 UI 에서 확인할 것 넷 (명령으로는 못 본다)
+
+| 무엇 | 왜 |
+|---|---|
+| **Work Mode** — Built-in Network Server 인가, Packet Forwarder(외부 LNS)인가 | 지금 Tapaculo365 로 넘기고 있으면 후자다 |
+| 등록된 **장치 목록과 DevEUI** | ⛔ ini 에 적어야 uplink 를 장치에 붙인다 (`deveui`).  ⭐ 안 적힌 DevEUI 로 온 uplink 는 버려지고 `RADIONODE STATUS` 가 그 수를 센다 |
+| **코덱**(`rn320bth.js`)이 올라가 있나 | ⭐ **해석은 게이트웨이가 한다.**  없으면 base64 원문만 와서 우리가 못 푼다 — ⛔ 짐작으로 바이트를 자르지 않는다.  그때는 결측이고 로그가 이유를 적는다 |
+| **Integration** 에 HTTP 가 있나 | 있으면 표준 라이브러리로 끝난다.  ⏳ **MQTT 뿐이면** 최소 MQTT 클라이언트를 더 짜야 한다 (DevNote 11.23) |
+
+⚠️⚠️ **Work Mode 를 내장 NS 로 바꾸면 Tapaculo365 경로는 끊긴다** — LoRaWAN
+장치는 한 번에 **한 네트워크에만 조인**한다.  로컬로 가져오는 대신 클라우드 쪽
+이력·앱은 그 장치들에 대해 멈춘다.  ⭐ **바꾸기 전에 원래 설정을 적어 둘 것**
+(아래 기록표) — 되돌릴 목표를 모르는 채로 바꾸는 것이다.
+
+### 7.5 ini 에 적기
+
+```ini
+[radionode]
+backend      = local_lns
+lns_bind     = 0.0.0.0:8088    # 게이트웨이가 POST 할 우리 주소
+lns_path     = /uplink         # integration 에 적은 경로와 같아야 한다
+lns_token    =                 # 비우면 검사 안 함 (LAN 전용일 때)
+stale_after  = 600             # ⚠️ push 라 이 값은 장치 SEND INTERVAL 을 재는 자다
+
+[radionode.hebox]
+deveui       = ...             # ⭐ 게이트웨이 장치 목록의 DevEUI
+keys         = hebox
+
+[radionode.fsa]
+deveui       = ...
+keys         = fsatemp, fsahum
+```
+
+확인:
+
+```bash
+python -m icg_archon --backend sim        # 배너에 radionode 줄
+```
+
+돌고 있는 프로그램에서는 명령으로 본다 — `RADIONODE STATUS` ·
+`RADIONODE CONNECT`(수신기 기동) · `RADIONODE DISCONNECT` · `HK`.
+
+### 7.6 적어 올 값 (⭐ 빈칸을 먼저 채운다)
+
+| 항목 | 값 |
+|---|---|
+| 게이트웨이 IP | ✅ **`100.51.1.245`** (2026-09-04 실측) |
+| MAC (`AC:1F:09:…` 확인) | ✅ `ac:1f:09:1f:53:5f` — **GWEUI 에서 유도한 값과 일치** |
+| 어느 망인가 · 우리 주소 | ✅ 사이트망 `eno16795`(100.51.1.0/24).  ⭐ integration URL 에 적을 우리 주소는 **`100.51.1.22`** (장비망 `10.0.0.202` 는 게이트웨이에서 안 보인다) |
+| **Work Mode (바꾸기 전 원래 값)** | |
+| 내장 NS 웹 UI 주소·계정 | |
+| 장치 1 별칭 · **DevEUI** | |
+| 장치 2 별칭 · **DevEUI** | |
+| 센서가 더 있나 (몇 대) | |
+| 코덱 올라가 있나 | |
+| Integration 종류 (HTTP / MQTT) | |
+| **판정 (2026-09-04)** | ⛔ `#` 구독에 시스템 토픽만 왔다(`system/lastfbinfo`·`sd_health_info`) -- `gateway/…/event/stats` 도 `application/…` 도 **없음** → **내장 NS 꺼짐 · Packet Forwarder 로 클라우드에 올리는 중** |
+| 우리 수신 주소 (`lns_bind`) | |
+| 테스트 uplink JSON 한 건 (원문) | |
+| 장치 SEND INTERVAL | |
+
+⚠️ **마지막 줄이 중요하다** — uplink JSON 원문 한 건이 있으면 `object` 필드
+이름을 실물로 못박을 수 있다.  지금 코드는 `temperature`/`temp`/`ch1`/`value1`
+같은 후보를 훑는 **관대한 해석**이라 PROVISIONAL 이다.
+
+---
+
 ## 기존 설치 이전
 
 `~/AICS` 로 돌고 있던 기계를 `~/AIC` 로 옮길 때.  **폴더 이름만 바꾸면 안 된다** —

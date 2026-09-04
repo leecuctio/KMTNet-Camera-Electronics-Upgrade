@@ -215,6 +215,30 @@ HK                    # HEBOX/FSATEMP/FSAHUM 이 실려 나오는지
 실측처럼 아카이브에 남으면 파일만 보고 못 가른다).  `sim` 에서는 `CONNECT` 를
 거부한다.
 
+### ⛔ 인터넷이 안 되는 사이트 — `local_lns` (⏳ 자리만 있다)
+
+`openapi` 는 **클라우드 경로라 인터넷이 있어야 한다.**  끊기면 세 카드가 그동안
+sentinel 이고, ⛔ **운영자는 그 결측을 받아들이지 않는다** (2026-09-04 확정).
+
+⚠️ 그런데 **코드로는 못 막는다** — 자료가 들어오는 길이 클라우드 하나뿐이라
+끊기면 값이 물리적으로 안 온다.  `stale_after` 를 늘려 옛 값을 계속 싣는 것은
+결측을 없애는 것이 아니라 **틀릴 수 있는 값으로 덮는 것**이라 규격 5.0절
+sentinel 의 정신에 어긋난다.
+
+⭐ **실제로 막는 유일한 길**은 LoRa 게이트웨이를 **안쪽 LNS**(ChirpStack)로
+돌려 클라우드 없이 받는 것이다.  센서 자체는 LoRaWAN(KR920)이라 IP 스택이 없어
+LAN 으로 직접 못 받지만, **게이트웨이 아래로는 로컬로 받을 수 있다.**
+
+| 선행 조건 | 왜 |
+|---|---|
+| ① LoRa 게이트웨이 **기종과 관리 접근** | LNS 주소를 바꿀 수 있어야 한다 (지금은 Tapaculo365 를 본다) |
+| ② 장치 **가입 키** (DevEUI · JoinEUI · AppKey) | ⛔ 없으면 장치가 우리 서버에 **안 붙는다**.  Tapaculo365 에 프로비저닝돼 있으면 콘솔에서 꺼내거나 재등록해야 한다 |
+| ③ 페이로드 코덱 | ✅ 공식 `rn320bth.js` 가 공개돼 있다 |
+
+`[radionode] backend = local_lns` 를 적어 두면 *"이 사이트는 클라우드를 안
+쓴다"* 는 뜻이 ini 에 남고, 기동이 **무엇이 먼저인지** 크게 알린다.  ⏳ 수집
+구현은 위 ①②가 채워진 뒤다 (DevNote 11.22).
+
 ## 프레임이 안 나올 때 — `Sync In` 부터 본다
 
 실기에서 **프레임이 한 장도 안 나오던 증상**의 원인은 `Sync In` 이 물려 상대
@@ -618,6 +642,57 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 
 > 실측한 독출 시간을 `[timing]` 에 넣고, `write_delay + FETCH + 저장`이
 > **25초 창**(`[obsagent] force_fitssaved`)에 들어가는지 확인한다.
+
+#### ✅ `LOADTIMING` 이 노출을 시작한다 — 스크립트로 확정 (2026-09-04)
+
+⛔ **`ccdflush` 를 토글하면 프레임 한 장이 유령으로 돌 수 있다.**  근거가 셋이고
+서로 맞물린다:
+
+1. **매뉴얼 p.51** -- `LOADTIMING` 은 *"Parses and compiles the timing script
+   **and parameters** … and applies them to the system.  **This resets the
+   timing cores.**"*
+2. **매뉴얼 p.52** -- 코어 리셋은 *"starting all timing cores from the first
+   line of the timing script"* 이다 (`RESETTIMING` 항).
+3. ⭐ **실물 타이밍 스크립트의 첫 다섯 줄이 그 관문이다** (`acf/KMTC_SCI_101_
+   STA0284_R2608_MK.acf`):
+
+   ```
+   LINE0  Start:
+   LINE1  RESET; IF ContinuousExposures GOTO Continuous
+   LINE2  X; IF Exposures GOTO Exposure     <- 관문
+   LINE3  X; CALL SkipLine
+   LINE4  X; GOTO Start                     <- Exposures=0 이면 유휴 루프
+   LINE6  Exposure:
+   LINE7  X; Exposures--
+   LINE8  Continuous:                       <- 여기 오면 적분·독출 시작
+   ```
+
+   즉 코어 리셋 뒤 `Exposures != 0` 이면 **그 자리에서 노출이 돈다.**
+   운영자가 ArchonGUI 로 실측한 거동(`Exposures=1` + "Load Timing" -> 독출)이
+   이 경로이고, GUI 의 `CLEARCONFIG`+전량 재작성과는 **무관하다** -- 우리처럼
+   줄 하나만 `WCONFIG` 해도 같다.
+
+⚠️ **ACF 출하값은 `Exposures=0`·`ContinuousExposures=0`** 이라 **첫 노출 전
+한 번은 안전하다.**  ⛔ 그런데 `trigger()` 가 프레임마다 설정 메모리에
+`Exposures=1` 을 쓰고, `LINE7` 의 `Exposures--` 는 **타이밍 코어의 파라미터
+RAM** 에서만 줄어든다 -- **설정 메모리 텍스트는 `1` 로 남는다.**  그래서 **첫
+노출 뒤로는 계속 위험 구간**이다.
+
+⭐ **처방**: `set_ccdflush()` 가 `LOADTIMING` **앞에** `Exposures=0` 을 눌러
+두고, 되읽어 확인한 뒤에만 태운다 (`tests/test_ccdflush.py::
+test_exposures_is_pinned_to_zero_before_the_timing_is_reloaded`).  눌러 둔 값은
+남지 않는다 -- 프레임마다 `trigger()` 가 다시 쓰고 `LOADPARAMS`(코어 리셋
+없음)를 낸다.
+
+⏳ **첫 구동에서 확인만 하면 되는 것 하나** -- 위가 다 맞다면 `ccdflush` 를
+켠 첫 프레임에서 **유령 독출이 없어야** 한다(가드가 듣는다).  `probe` 3단계
+로그에서 프레임 수가 요청 수와 같은지 보면 된다.
+
+> 참고 — 매뉴얼이 가르는 셋 (p.51-52):
+> `WCONFIG` 는 **설정 메모리에 글자만 적는다**(파싱·컴파일 없음) ·
+> `LOADTIMING` 은 **컴파일해서 코어에 심고 리셋한다** ·
+> `RESETTIMING` 은 **컴파일 없이 첫 줄부터 다시 돌린다** ·
+> `LOADPARAMS` 는 **파라미터만 적용하고 코어를 리셋하지 않는다**.
 
 ### 4단계 — 본편, 실험실 1유닛
 
