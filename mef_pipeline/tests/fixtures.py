@@ -53,6 +53,18 @@ def make_synth_l0(path, imagetyp="OBJECT", amp_adu=None, exptime=100.0,
     ph["JD"] = 2461221.5
     ph["XTALKCAL"] = bool(xtalkcal)
     ph["MOCKDATA"] = True
+    # acquisition-time facts the L1 writer must carry over verbatim
+    ph["SECZ"] = (1.234, "secant of zenith distance")
+    ph["ALT"] = (54.1, "telescope altitude [deg]")
+    ph["LATITUDE"] = (-30.169, "site latitude [deg]")
+    # cards a real L0 carries that the L1 writer must NOT carry over
+    ph["DATAPROD"] = "L0_AMP"
+    ph["PRODVER"] = "v2.1.1"
+    ph["BUNIT"] = "ADU"
+    ph["FILENAME"] = Path(path).name
+    ph["RAWNAX1"] = 19200
+    ph["NAMPS"] = 64
+    ph.add_comment("synthetic miniature L0 for unit tests")
     hdus = [fits.PrimaryHDU(header=ph)]
 
     for extname, ampid, datasec, biassec, ccdsec in AMP_DEFS:

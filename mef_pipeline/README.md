@@ -16,8 +16,8 @@ CR 플래그, sky 모델, 근사 photometric ZP)를 추가했다.
 
 | 구분 | 값 |
 | --- | --- |
-| 파이프라인 | `kmt_ceu_preproc` **v1.7** (순수 Python + NumPy + astropy) |
-| L1 제품 | `PRODVER=v1.4`, 단일 MEF: PRIMARY + SCI×4 CCD + CALHIST (~1.36 GB/노출). 보정 수식은 primary COMMENT 기록 |
+| 파이프라인 | `kmt_ceu_preproc` **v1.8** (순수 Python + NumPy + astropy) |
+| L1 제품 | `PRODVER=v1.5`, 단일 MEF: PRIMARY + SCI×4 CCD + CALHIST (~1.36 GB/노출). 보정 수식은 primary COMMENT 기록. L0 primary keyword는 제외 목록(`CARRY_EXCLUDE`: 제품 정체성·`BUNIT`·`FILENAME`·amp-raw 패킹 기하·`NAMPS`) 외 **전부 승계** — `SECZ` 등 관측 보조값 보존 |
 | VAR plane | 기본 제외 (`VARINCL=F`; 재구성식 header 기록, `run --with-var`로 생성 가능) |
 | MASK plane | 기본 미생성; `run --mask-file` 시 별도 `*.l1ccd.mask.mef.fits` 생성 (`MASKFILE` 기록) |
 | Astrometry | Gaia 기준 **TAN–SIP(3)** 해 (칩별 대표 템플릿 초기값, scale 0.3952″/px); 성공 `WCSSOLVE=T`+`WCSRMS`(~0.25″), 실패 `WCSSOLVE=F`+`WCSFAIL` |

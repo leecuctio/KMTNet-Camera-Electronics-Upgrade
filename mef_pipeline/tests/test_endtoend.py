@@ -112,8 +112,19 @@ class TestEndToEnd(unittest.TestCase):
             names = [h.name for h in hdul]
             self.assertEqual(names, ["PRIMARY", "SCI_M", "CALHIST"])
             ph = hdul[0].header
+            # L1 identity cards win over the L0 values of the same keywords
             self.assertEqual(ph["DATAPROD"], "L1_CCD")
             self.assertEqual(ph["BUNIT"], "electron")
+            self.assertEqual(ph["PRODVER"], "v1.5")
+            # full header carry: acquisition-time facts survive verbatim
+            self.assertEqual(ph["SECZ"], 1.234)
+            self.assertEqual(ph.comments["SECZ"], "secant of zenith distance")
+            self.assertEqual(ph["ALT"], 54.1)
+            self.assertEqual(ph["LATITUDE"], -30.169)
+            # ... while L0 packing/identity cards must not
+            self.assertNotIn("FILENAME", ph)
+            self.assertNotIn("RAWNAX1", ph)
+            self.assertNotIn("NAMPS", ph)
             self.assertTrue(ph["GAINAPPL"])
             self.assertFalse(ph["XTALKAPL"])
             self.assertFalse(ph["VARINCL"])

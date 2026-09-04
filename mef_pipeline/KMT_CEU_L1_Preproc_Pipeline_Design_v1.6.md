@@ -48,6 +48,18 @@ L1 제품 구조: `PRIMARY` + CCD별 `SCI_x`(float32, electron) — x는 `CHIPLI
 COMMENT 카드("processing methods")로 제품 안에 기록된다. 파일명:
 `<prefix>.<YYYYMMDD>.<NNNNNN>.ceu.l1ccd.mef.fits` (prefix = kmtc/kmts/kmta).
 
+**L0 keyword 승계 (v1.8)**: L1 primary는 L0 primary keyword를 **제외 목록
+방식**으로 전부 승계한다(`io_l1.CARRY_EXCLUDE`). 제외는 ① FITS 구조 카드
+② L1이 자기 값을 쓰는 제품 정체성 카드(`DATAPROD`/`PRODVER`/`CREATOR`/
+`PIPEVER`/`DATE`/`BUNIT`/`FILENAME`) ③ 조립·트리밍 후 무의미해지는 amp-raw
+패킹 기하(`RAWNAX1/2`, `RAWXTILE`, `AMPDATA`, `OVERSCNX`, `PRESCANX`,
+`MIDOVSCY`, `TOPROWS`, `BOTROWS`, `AMPPACK`, `CHIPFLP`)와 SCI 확장의
+`NAMPS`(조립 amp 수)와 충돌하는 primary `NAMPS`뿐이다. 이로써 `SECZ`/`ALT`/
+`AZ`/`HA`/`ST`/`UT`, 사이트 좌표(`LATITUDE`/`LONGITUD`/`ELEVATIO`), 셔터
+시각(`TSHOPEN`/`TSHSHUT`), 전자부/버전, TCS·돔·포커스·열 텔레메트리가 모두
+L1에 보존된다 (v1.7까지는 25개 화이트리스트 `CARRY_KEYS`만 승계해 airmass
+등 관측 보조값이 유실됐다).
+
 **MASK (D-007 2차 개정)**: MASK plane은 본 MEF에서 제외하고 `--mask-file` 옵션 시
 별도 `*.l1ccd.mask.mef.fits`(PRIMARY+MASK×4, uint8)로 생성한다 — 기본은 미생성.
 주의: raw 기준 SATURATED/NONLINEAR 비트는 L1에서 재구성 불가하므로, 마스크가
@@ -198,3 +210,4 @@ mock 야간 처리에서 확인된 사항 — 실기기(CEU) 커미셔닝 시 �
 | v1.5 | 2026-07-03 | **로컬 Gaia 스토어**(`gaialocal`): dec 1°×RA 15° 구획 npy + 콘 조회(<0.5초) + 고유운동 전파. `gaia-ingest`(FITS refcat/ESA bulk CSV), `run --gaia-local`(지향 keyword로 성표 자동 해석, 네트워크 불필요). 야간 배치 병목이던 VizieR 조회(~65분/야간) 제거 — 결과는 VizieR 직접 조회와 동일 검증 |
 | v1.7 | 2026-07-23 | **Photometric ZP 기준성표 개정**: Gaia G 직접 사용 → **GSPC 합성 JKC V/I**(Gaia DR3 Synthetic Photometry, Montegriffo+23 A&A 674 A33; Landolt 표준화, 색항 불필요) 우선 + RUWE≤1.4 조정형 컷(혼잡 필드 자동 완화·기록) + Gaia G fallback(사유 기록). 수집 품질컷: GSPC 검증범위 flag + \|C*\|<3σ_C*(G)(Riello+21 Eq.18 블렌딩 제거). `fetch-gaia`가 VizieR I/355+I/360/syntphot을 Source로 조인, 로컬 Gaia 스토어 v2 스키마(+ruwe/vmag/imag, 40 B/행, v1 하위호환). `ZPREF` 키워드, `--zp-ruwe` 옵션, L1 PRODVER v1.4, 단위테스트 74개 |
 | v1.6 | 2026-07-23 | **대형 서베이 표준 전처리 5단계 추가** (Rubin/DES/HSC/ZTF/PS1 벤치마킹): ① fringe 감산(`calib-fringe`+스케일 fit; mock=실측 legacy I밴드에서 하늘의 ~0.7% 패턴 검출·제거) ② illumination 보정(`calib-illum` dark-sky flat) ③ CR flag-only 검출(Laplacian+ring+fine-structure, MASK bit 64) ④ 노출별 sky 모델(측정 기본/감산 옵션) ⑤ Gaia-G 근사 photometric ZP(`ZPMAG`/`ZPRMS`/`ZPNSTAR`). L1 `PRODVER v1.3`, CALHIST 17행, 단위테스트 64개. D-008의 'photometric ZP는 후단' 결정은 근사(QA) ZP에 한해 개정 — 절대 보정(색항)은 여전히 후단 |
+| v1.8 | 2026-09-04 | **L0 primary keyword 전량 승계로 전환**: 25-키 화이트리스트(`CARRY_KEYS`) → 제외 목록(`CARRY_EXCLUDE` — 구조 카드·제품 정체성·`BUNIT`·`FILENAME`·amp-raw 패킹 기하·`NAMPS`). `SECZ`/`ALT`/`AZ`/`HA`/`ST`/`UT`·사이트 좌표·셔터 시각·전자부 버전·TCS/돔/열 텔레메트리 보존 (실측 검증: mock64 L0 161키 중 148 승계·13 제외, 값·comment 원본 그대로). L1 `PRODVER v1.5`, 단위테스트 74개 |

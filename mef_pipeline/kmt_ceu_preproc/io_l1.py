@@ -18,7 +18,7 @@ from astropy.io import fits
 
 from . import MASK_BIT_DOC, PIPENAME, VERSION
 
-L1_PRODVER = "v1.4"
+L1_PRODVER = "v1.5"
 
 # processing methods and formulas, recorded verbatim in every L1 primary header
 PROCESSING_DOC = [
@@ -59,13 +59,23 @@ PROCESSING_DOC = [
     "  4=NONLINEAR 8=XTALK 16=AMP_SEAM 32=NO_OVERSCAN_FIT 64=COSMIC_RAY.",
 ]
 
-# Keywords carried from the L0 primary header into the L1 primary header.
-CARRY_KEYS = (
-    "ORIGIN", "OBSERVAT", "SITEID", "TELESCOP", "INSTRUME", "CAMNAME",
-    "OBJECT", "FIELDID", "PROJID", "IMAGETYP", "OBSTYPE", "EXPTIME",
-    "DARKTIME", "FILTER", "DATE-OBS", "JD", "MJD-OBS", "TIMESYS",
-    "RA", "DEC", "EQUINOX", "RADECSYS", "CCDTEMP", "CHIPLIST", "MOCKDATA",
-)
+# The L1 primary header carries the FULL L0 primary header — acquisition-time
+# facts (pointing aux SECZ/ALT/AZ/HA/ST/UT, site, shutter times, electronics
+# versions, TCS/dome/thermal telemetry) stay true for L1 — except the cards
+# below, which would be false or misleading on the L1 product.
+CARRY_EXCLUDE = frozenset((
+    # FITS structure / bookkeeping (astropy writes its own)
+    "SIMPLE", "BITPIX", "NAXIS", "EXTEND", "CHECKSUM", "DATASUM",
+    "COMMENT", "HISTORY", "",
+    # L1 product identity: build_primary_header writes the L1 values
+    "DATAPROD", "PRODVER", "CREATOR", "PIPEVER", "DATE", "BUNIT", "FILENAME",
+    # L0 amp-raw packing geometry: describes per-amp tiles with overscan
+    # attached, which no longer exist in the assembled, trimmed L1 planes
+    "RAWNAX1", "RAWNAX2", "RAWXTILE", "AMPDATA", "OVERSCNX", "PRESCANX",
+    "MIDOVSCY", "TOPROWS", "BOTROWS", "AMPPACK", "CHIPFLP",
+    # total amp count: would collide with the per-SCI NAMPS (amps assembled)
+    "NAMPS",
+))
 
 
 def utcnow_iso() -> str:
@@ -80,9 +90,10 @@ def build_primary_header(l0_primary, prov: dict) -> fits.Header:
     h["PIPEVER"] = (f"{PIPENAME}-{VERSION}", "preprocessing pipeline version")
     h["DATE"] = (utcnow_iso(), "date L1 file was generated")
     h["BUNIT"] = (prov.get("bunit", "electron"), "science pixel unit")
-    for k in CARRY_KEYS:
-        if k in l0_primary:
-            h[k] = (l0_primary[k], l0_primary.comments[k])
+    for card in l0_primary.cards:
+        if card.keyword in CARRY_EXCLUDE or card.keyword in h:
+            continue
+        h.append((card.keyword, card.value, card.comment))
     h["L0FILE"] = (prov.get("l0file", ""), "source L0 amp MEF")
     if prov.get("l0sha256"):
         # no comment: the 64-char digest plus any comment exceeds one card
