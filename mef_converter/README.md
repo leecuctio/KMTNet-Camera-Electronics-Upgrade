@@ -12,9 +12,9 @@
 
 | 구분 | 파일 | 버전 |
 | --- | --- | --- |
-| Converter (최종 실행 파일) | [`kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) | v2.3.0 |
+| Converter (최종 실행 파일) | [`kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) | v2.4.0 |
 | Geometry version (`GEOMVER`) | — | `CEU-L0AMP-v2.1` |
-| 기준 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (docx 동본) | v4.1 |
+| 기준 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md` (docx 동본) | v4.2 |
 
 ## 디렉토리 구조
 

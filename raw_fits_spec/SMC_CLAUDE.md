@@ -285,7 +285,7 @@ labtest 내장본 · 시험 3종 · `_vendor`.  **여기서 고치면 그 브랜
 
 ✅ **배선표 갈림 해소 (2026-08-25)** — `__reference/` 읽기 전용 규칙대로 v1.0 은 손대지 않고 사본을 sub레포 루트로 올려 **`Detector_Ch_to_AmpID_Map_v1.1.txt`** 로 고쳤다(4자 채널 토큰 + `IMGSEC` `D-BOT`). 규격 머리말·4.5절·`raw_fits_spec/README.md` 의 참조를 v1.1 로 옮겼다. 구 v1.0 은 원본 기록으로 `__reference/` 에 남겼다 — **그것을 읽는 외부 도구가 있으면 v1.1 로 옮겨야 한다.** ⚠️ **그 v1.0 은 v1.7 에서 삭제됐다**(구 표기·`B-BOT` 오기가 혼동만 준다 — 아래 v1.7 절). 원본은 git 이력 `44ab878`~ 에 있다.
 
-⚠️ **converter 정규식은 LEECU 소관이다** — `^(KMTC|KMTS|KMTA|KMTT)\.` 의 넷째 대안을 `KMTK` 로 바꾸지 않으면 KASI 자료가 짝 탐색에 걸리지 않는다. D-017 영향 절에 C-항목으로 적어 두었다. 번호 공간(D-018)은 정규식이 `\d{6}` 이라 영향 없다.
+✅ **converter 정규식 반영 완료 (2026-09-04)** — `^(KMTC|KMTS|KMTA|KMTK)\.` (converter v2.4.0) · `SITE_PREFIX`/`OBS_PREFIX` `KMTK`/`KASI` · ICD v4.2 §2.1 갱신. 번호 공간(D-018)은 정규식이 `\d{6}` 이라 영향 없다.
 
 **견본 오타 정정이 걸린 코드 사본 3곳** (종전 기재)
 

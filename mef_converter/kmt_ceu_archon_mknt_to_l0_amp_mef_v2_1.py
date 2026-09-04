@@ -5,7 +5,7 @@ KMT-CEU Archon MK/NT raw FITS to L0 64-amplifier MEF converter.
 Input raw files:
   <SITE>.YYYYMMDD.NNNNNN.MK.fits  -> M, K chips
   <SITE>.YYYYMMDD.NNNNNN.NT.fits  -> N, T chips
-  <SITE> in {KMTC=CTIO, KMTS=SAAO, KMTA=SSO, KMTT=testbed} (DECISION_LOG D-011)
+  <SITE> in {KMTC=CTIO, KMTS=SAAO, KMTA=SSO, KMTK=KASI} (DECISION_LOG D-011, D-017)
 
 Output L0 Raw MEF layout:
   PRIMARY
@@ -53,6 +53,14 @@ v2.3.0 changes:
     kmt_ceu_legacy32_to_l0amp_mef_v2. Follows the raw spec keyword layering
     rule (2026-08-22): gain/noise never ride in the Archon raw header - they
     enter the chain here, at raw -> L0.
+
+v2.4.0 changes (D-017):
+  - testbed site code retired: KMTT/TESTBED -> KMTK/KASI (DECISION_LOG
+    D-017, 2026-08-25; the testbed sits at KASI, and KMTT's T read like the
+    T chip). default_output_name() now accepts KMTK filenames and
+    cross-checks them against OBSERVAT=KASI; L0 MEF prefix kmtt -> kmtk.
+    KMTT-named files are no longer recognized - no data was ever produced
+    under that code.
 """
 from __future__ import annotations
 
@@ -69,15 +77,16 @@ from pathlib import Path
 import numpy as np
 
 BLOCK = 2880
-SOFTWARE_VERSION = "v2.3.0"
+SOFTWARE_VERSION = "v2.4.0"
 PRODUCT_VERSION = "v2.1.1"  # L0 MEF format unchanged by v2.1.2+ fixes (D-011 renames input only)
 GEOMETRY_VERSION = "CEU-L0AMP-v2.1"
 
 # D-011 (2026-08-10): raw filename site code <-> L0 MEF filename prefix.
 # The site code equals the TC telemetry TELID convention.
-SITE_PREFIX = {"KMTC": "kmtc", "KMTS": "kmts", "KMTA": "kmta", "KMTT": "kmtt"}
+# D-017 (2026-08-25): KMTT/TESTBED retired -> KMTK/KASI.
+SITE_PREFIX = {"KMTC": "kmtc", "KMTS": "kmts", "KMTA": "kmta", "KMTK": "kmtk"}
 # OBSERVAT header value -> L0 MEF filename prefix (used for cross-check/fallback).
-OBS_PREFIX = {"CTIO": "kmtc", "SAAO": "kmts", "SSO": "kmta", "TESTBED": "kmtt"}
+OBS_PREFIX = {"CTIO": "kmtc", "SAAO": "kmts", "SSO": "kmta", "KASI": "kmtk"}
 
 CCD_COLS = 9216
 CCD_ROWS = 9232
@@ -241,7 +250,7 @@ def find_pair(input_path: Path):
 
 
 def default_output_name(mk_path: Path, outdir: Path, mk_hdr: dict):
-    m = re.match(r"^(KMTC|KMTS|KMTA|KMTT)\.(\d{8})\.(\d{6})\.MK\.fits$", mk_path.name)
+    m = re.match(r"^(KMTC|KMTS|KMTA|KMTK)\.(\d{8})\.(\d{6})\.MK\.fits$", mk_path.name)
     obs = str(hval(mk_hdr, "OBSERVAT", "KMT")).upper()
     obs_prefix = OBS_PREFIX.get(obs)
     if m:
