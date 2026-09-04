@@ -50,6 +50,32 @@ class PlanCountsTest(unittest.TestCase):
         self.assertEqual(len(labtest.build_plan(labtest.IFLAT)), 116)
         self.assertEqual(len(labtest.build_plan(labtest.GXT)), 15)
 
+    def test_ptc_extension_frame_counts(self):
+        # 타입 6 ptcRamp: obj = bias 40 + 앵커 6 + 중 15 + 고 20 = 81,
+        # ref = 선두 1 + 14스텝 각 뒤 14 = 15
+        plan = labtest.build_plan(labtest.PTCRAMP)
+        kinds = [job.kind for job in plan]
+        self.assertEqual(kinds.count('obj'), 81)
+        self.assertEqual(kinds.count('ref'), 15)
+        self.assertEqual(len(plan), 96)
+        # 타입 7 ptcRepeat: bias 20 + 28k 20 = 40, ref 없음
+        self.assertEqual(len(labtest.build_plan(labtest.PTCREPEAT)), 40)
+        # 타입 8 satPersist: bias 5 + 포화 9 + persistence bias 20 = 34
+        plan8 = labtest.build_plan(labtest.SATPERSIST)
+        self.assertEqual(len(plan8), 34)
+        self.assertTrue(all(j.kind == 'obj' for j in plan8),
+                        'persistence 구간에 ref가 끼면 측정 오염')
+        # 마지막 20장은 연속 바이어스(IMAGETYP=BIAS)여야 한다
+        self.assertTrue(all(j.imagetyp == 'BIAS' for j in plan8[-20:]))
+        # 타입 9 shutSeq: bias 20 + 단노출 15 = 35
+        self.assertEqual(len(labtest.build_plan(labtest.SHUTSEQ)), 35)
+
+    def test_ptc_ramp_bias_are_bias_type(self):
+        plan = labtest.build_plan(labtest.PTCRAMP)
+        biases = [j for j in plan if j.exptime_ms == 0 and j.kind == 'obj']
+        self.assertEqual(len(biases), 40)
+        self.assertTrue(all(j.imagetyp == 'BIAS' for j in biases))
+
     def test_iflat_structure(self):
         plan = labtest.build_plan(labtest.IFLAT)
         self.assertEqual(plan[0].kind, 'ref')
@@ -60,7 +86,8 @@ class PlanCountsTest(unittest.TestCase):
 
     def test_intms_within_20bit_limit(self):
         for spec in labtest.DATASET_SPECS.values():
-            for exptime in spec.exptimes:
+            for step in spec.exptimes:
+                exptime = step[0] if isinstance(step, tuple) else step
                 self.assertLessEqual(exptime, labtest.INTMS_MAX)
 
 

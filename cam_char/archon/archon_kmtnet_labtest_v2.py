@@ -654,6 +654,8 @@ class DatasetSpec:
     name: str
     shutter_open: bool
     frames_per_step: int
+    # exptimes 항목은 int(ms) — frames_per_step 장 촬영 — 또는
+    # (ms, count) 튜플 — 해당 스텝만 count 장 촬영 (PTC 확장 세트용).
     exptimes: tuple
     ref_enable: bool = False
     ref_exptime: int = 0
@@ -694,18 +696,81 @@ IFLAT = DatasetSpec('iFlat', True, 3,
 
 GXT = DatasetSpec('GxT', False, 15, (0,))
 
+# ------------------------------------------------------------------------
+# PTC 확장 캠페인 세트 (2026-09 gain/PTC/flat 분석 논의 — 플랫/바이어스만으로
+# PTC·선형성·CMRR·포화/full-well·persistence·셔터 Δt·PRNU/master flat을
+# 한 저녁에 커버하는 4개 dataset; 타입 숫자 6~9).
+#
+# 노출시간은 목표 ADU를 램프 밝기 PTC_LAMP_ADU_PER_SEC로 환산해 정한다.
+# 취득 전에 시험 플랫 1~2장으로 실제 램프 레이트를 재고, 아래 상수를
+# 실측값으로 고치거나 램프 밝기를 맞춘 뒤 --dry-run으로 사다리를 확인할 것.
+# 목표 ADU는 overscan 차감 전 raw 레벨 기준이다.
+
+PTC_LAMP_ADU_PER_SEC = 2000.0   # 실측 램프 레이트로 수정해서 사용
+_SAT_ADU = 65535.0
+
+
+def _lvl(target_adu, count):
+    """목표 ADU → (노출시간 ms, 촬영 장수) 스텝."""
+    return (int(round(target_adu / PTC_LAMP_ADU_PER_SEC * 1000.0)), count)
+
+
+# 타입 6 — PTC 램프: 바이어스 10장 인터리브 + 저신호 앵커(0.5k/1k/2k pair)
+# + 중신호(5k/10k/20k ×5) + 고신호(40k~58k ×5). 기준노출(10k 상당)을 매 스텝
+# 뒤에 끼워 램프 드리프트 정규화(선형성 적합·pair 정규화 입력)에 쓴다.
+# 고정 램프 + 노출시간 가변이므로 같은 세트가 linearity 램프를 겸한다.
+PTCRAMP = DatasetSpec(
+    'ptcRamp', True, 2,
+    ((0, 10),
+     _lvl(500, 2), _lvl(1000, 2), _lvl(2000, 2),
+     (0, 10),
+     _lvl(5000, 5), _lvl(10000, 5), _lvl(20000, 5),
+     (0, 10),
+     _lvl(40000, 5), _lvl(50000, 5), _lvl(55000, 5), _lvl(58000, 5),
+     (0, 10)),
+    ref_enable=True, ref_exptime=_lvl(10000, 1)[0])
+
+# 타입 7 — master flat/PRNU/게인 안정성용 반복 플랫 (25~30k 권장 구간의 28k ×20)
+PTCREPEAT = DatasetSpec(
+    'ptcRepeat', True, 20,
+    ((0, 10), _lvl(28000, 20), (0, 10)))
+
+# 타입 8 — 포화·persistence: 포화 직전~포화×1.1 플랫 후 즉시 연속 바이어스
+# 20장(감쇠 곡선). ref를 끼우지 않는다 — 포화 후 어떤 조명도 persistence
+# 측정을 오염시키므로 ref_enable=False 유지가 필수.
+SATPERSIST = DatasetSpec(
+    'satPersist', True, 3,
+    ((0, 5), _lvl(62000, 3), _lvl(_SAT_ADU, 3), _lvl(_SAT_ADU * 1.1, 3),
+     (0, 20)))
+
+# 타입 9 — 셔터/트리거 타이밍: 0.1~2초 절대 노출시간(레벨 무관) 각 3장.
+# S = R(t+Δt) 적합으로 셔터 offset Δt와 shading map을 구한다.
+SHUTSEQ = DatasetSpec(
+    'shutSeq', True, 3,
+    ((0, 10), (100, 3), (200, 3), (500, 3), (1000, 3), (2000, 3), (0, 10)))
+
 # dataset type = DatasetId % 10 (same file-numbering convention as v1.0;
-# type digits 3 and 4 are both iFlat per the v1.0 numbering notes)
-DATASET_SPECS = {1: XTALK, 2: DARK, 3: IFLAT, 4: IFLAT, 5: GXT}
+# type digits 3 and 4 are both iFlat per the v1.0 numbering notes;
+# 6-9 are the 2026-09 PTC extension campaign)
+DATASET_SPECS = {1: XTALK, 2: DARK, 3: IFLAT, 4: IFLAT, 5: GXT,
+                 6: PTCRAMP, 7: PTCREPEAT, 8: SATPERSIST, 9: SHUTSEQ}
 
 
 def build_plan(spec):
-    """Frame sequence for a dataset -- same ordering as v1.0 GetDataset()."""
+    """Frame sequence for a dataset -- same ordering as v1.0 GetDataset().
+
+    exptimes 항목이 (ms, count) 튜플이면 그 스텝만 count 장, int면
+    frames_per_step 장을 촬영한다 (기존 dataset 정의는 변경 없음).
+    """
     plan = []
     if spec.ref_enable:
         plan.append(FrameJob('ref', spec.ref_exptime, spec.shutter_open))
-    for exptime in spec.exptimes:
-        for _ in range(spec.frames_per_step):
+    for step in spec.exptimes:
+        if isinstance(step, tuple):
+            exptime, count = step
+        else:
+            exptime, count = step, spec.frames_per_step
+        for _ in range(count):
             plan.append(FrameJob('obj', exptime, spec.shutter_open))
         if spec.dark_enable and exptime == 0:
             plan.append(FrameJob('dark', spec.dark_exptime, False))
