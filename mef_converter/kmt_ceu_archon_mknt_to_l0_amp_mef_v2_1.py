@@ -44,6 +44,15 @@ v2.2.0 changes (D-011):
     prefix from the filename site code and cross-checks it against the
     OBSERVAT header (mismatch is an error); find_pair() is prefix-agnostic
     and unchanged
+
+v2.3.0 changes:
+  - --ampchar CSV (cam_char/results schema, keyed by EXTNAME) stamps
+    measured GAIN/RDNOISE/SATURAT/LINMAX into the amp extension headers and
+    the AMPINFO table; values <= 0 or missing keep the placeholders, and an
+    AMPCHAR primary card records the table name. Same mechanism as
+    kmt_ceu_legacy32_to_l0amp_mef_v2. Follows the raw spec keyword layering
+    rule (2026-08-22): gain/noise never ride in the Archon raw header - they
+    enter the chain here, at raw -> L0.
 """
 from __future__ import annotations
 
@@ -60,7 +69,7 @@ from pathlib import Path
 import numpy as np
 
 BLOCK = 2880
-SOFTWARE_VERSION = "v2.2.0"
+SOFTWARE_VERSION = "v2.3.0"
 PRODUCT_VERSION = "v2.1.1"  # L0 MEF format unchanged by v2.1.2+ fixes (D-011 renames input only)
 GEOMETRY_VERSION = "CEU-L0AMP-v2.1"
 
@@ -506,8 +515,35 @@ def primary_cards(mk_hdr: dict, mk_path: Path, nt_path: Path, out_path: Path):
     return cards
 
 
-def amp_header(chip: str, amp: int, mk_hdr: dict, raw_file: str):
+def load_ampchar(path) -> dict:
+    """amp characterization CSV (cam_char/results schema) -> {EXTNAME: row}.
+    Values <= 0 or missing keep the default/placeholder."""
+    import csv
+    table = {}
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            key = str(row.get("EXTNAME", "")).strip()
+            if key:
+                table[key] = row
+    return table
+
+
+def _ac_val(ac: dict, key: str, default, cast=float):
+    try:
+        v = cast(float(ac.get(key, "")))
+    except (TypeError, ValueError):
+        return default
+    return v if v > 0 else default
+
+
+def amp_header(chip: str, amp: int, mk_hdr: dict, raw_file: str,
+               ampchar: dict | None = None):
     ext = extname_for(chip, amp)
+    ac = (ampchar or {}).get(ext, {})
+    gain = _ac_val(ac, "GAIN", 0.0)
+    rdnoise = _ac_val(ac, "RDNOISE", 0.0)
+    saturat = _ac_val(ac, "SATURAT", 62000, int)
+    linmax = _ac_val(ac, "LINMAX", 58000, int)
     raw_data, raw_bias, loc_data, loc_bias = raw_x_sections(chip, amp)
     ry1, ry2 = raw_y_section(amp)
     cx1, cx2, cy1, cy2 = ccdsec(amp)
@@ -564,10 +600,16 @@ def amp_header(chip: str, amp: int, mk_hdr: dict, raw_file: str):
         card("OVERSCNX", OVERSCAN_X, "X overscan columns per amp tile"),
         card("PRESCANX", PRESCAN_X, "X prescan columns per amp tile"),
         card("MIDOVSCY", MIDDLE_OVERSCAN_Y, "middle Y overscan rows ignored"),
-        card("GAIN", 0.0, "gain placeholder [e-/ADU]"),
-        card("RDNOISE", 0.0, "read noise placeholder [e-]"),
-        card("SATURAT", 62000, "saturation level placeholder [ADU]"),
-        card("LINMAX", 58000, "linearity maximum placeholder [ADU]"),
+        card("GAIN", gain, "amp gain [e-/ADU] (measured)" if gain > 0
+             else "gain placeholder [e-/ADU]"),
+        card("RDNOISE", rdnoise, "read noise [e-] (measured)" if rdnoise > 0
+             else "read noise placeholder [e-]"),
+        card("SATURAT", saturat, "saturation level [ADU] (measured)"
+             if _ac_val(ac, "SATURAT", 0, int) > 0
+             else "saturation level placeholder [ADU]"),
+        card("LINMAX", linmax, "linearity maximum [ADU] (measured)"
+             if _ac_val(ac, "LINMAX", 0, int) > 0
+             else "linearity maximum placeholder [ADU]"),
         card("FILTER", v("FILTER", ""), "filter name in beam"),
         card("PROJID", v("PROJID", ""), "project ID"),
         card("IMAGETYP", v("IMAGETYP", ""), "type of observation"),
@@ -642,12 +684,13 @@ def bintable_bytes(extname: str, columns, rows, extra_cards=None):
     return header_bytes(cards) + pad_data(bytes(data))
 
 
-def ampinfo_rows(mk_path: Path, nt_path: Path):
+def ampinfo_rows(mk_path: Path, nt_path: Path, ampchar: dict | None = None):
     rows = []
     rawfile_by_chip = {"M": mk_path.name, "K": mk_path.name, "N": nt_path.name, "T": nt_path.name}
     for chip in CHIP_ORDER:
         for amp in range(1, 17):
             ext = extname_for(chip, amp)
+            ac = (ampchar or {}).get(ext, {})
             raw_data, raw_bias, loc_data, loc_bias = raw_x_sections(chip, amp)
             ry1, ry2 = raw_y_section(amp)
             cx1, cx2, cy1, cy2 = ccdsec(amp)
@@ -676,10 +719,10 @@ def ampinfo_rows(mk_path: Path, nt_path: Path):
                 "TRIMSEC": fmtsec(loc_data[0], loc_data[1], 1, ACTIVE_HALF_ROWS),
                 "CHIPFLP": CHIPFLP,
                 "READDIR": "-Y" if amp <= 8 else "+Y",
-                "GAIN": 0.0,
-                "RDNOISE": 0.0,
-                "SATLEVEL": 62000,
-                "LINMAX": 58000,
+                "GAIN": _ac_val(ac, "GAIN", 0.0),
+                "RDNOISE": _ac_val(ac, "RDNOISE", 0.0),
+                "SATLEVEL": _ac_val(ac, "SATURAT", 62000, int),
+                "LINMAX": _ac_val(ac, "LINMAX", 58000, int),
                 "RAWX0": raw_data[0], "RAWX1": raw_data[1],
                 "RAWY0": ry1, "RAWY1": ry2,
                 "AMPX0": cx1, "AMPX1": cx2, "AMPY0": cy1, "AMPY1": cy2,
@@ -732,7 +775,8 @@ def telemetry_rows():
     ]
 
 
-def write_amp_hdu(fout, chip: str, amp: int, mk_hdr: dict, raw_data: np.ndarray, raw_file: str):
+def write_amp_hdu(fout, chip: str, amp: int, mk_hdr: dict, raw_data: np.ndarray, raw_file: str,
+                  ampchar: dict | None = None):
     raw_sec_data, raw_sec_bias, loc_data, loc_bias = raw_x_sections(chip, amp)
     ry1, ry2 = raw_y_section(amp)
     stripe = np.empty((ACTIVE_HALF_ROWS, RAW_XTILE), dtype=">i2")
@@ -740,11 +784,12 @@ def write_amp_hdu(fout, chip: str, amp: int, mk_hdr: dict, raw_data: np.ndarray,
     b = raw_data[ry1-1:ry2, raw_sec_bias[0]-1:raw_sec_bias[1]]
     stripe[:, loc_data[0]-1:loc_data[1]] = d
     stripe[:, loc_bias[0]-1:loc_bias[1]] = b
-    fout.write(header_bytes(amp_header(chip, amp, mk_hdr, raw_file)))
+    fout.write(header_bytes(amp_header(chip, amp, mk_hdr, raw_file, ampchar)))
     fout.write(pad_data(stripe.tobytes(order="C")))
 
 
-def convert(mk_path: Path, nt_path: Path, out_path: Path):
+def convert(mk_path: Path, nt_path: Path, out_path: Path,
+            ampchar: dict | None = None, ampchar_name: str = ""):
     mk_hdr, mk_data = memmap_raw(mk_path)
     nt_hdr, nt_data = memmap_raw(nt_path)
     if mk_data.shape != (RAW_NAXIS2, RAW_NAXIS1):
@@ -755,14 +800,20 @@ def convert(mk_path: Path, nt_path: Path, out_path: Path):
     tmp_path = out_path.with_name(f".{out_path.name}.tmp-{os.getpid()}")
     try:
         with tmp_path.open("wb") as fout:
-            fout.write(header_bytes(primary_cards(mk_hdr, mk_path, nt_path, out_path)))
+            pcards = primary_cards(mk_hdr, mk_path, nt_path, out_path)
+            if ampchar:
+                pcards.append(card(
+                    "AMPCHAR", ampchar_name[:40],
+                    "amp characterization table stamped into headers"))
+            fout.write(header_bytes(pcards))
             for chip in CHIP_ORDER:
                 data = mk_data if CHIP_TO_TAG[chip] == "MK" else nt_data
                 raw_file = mk_path.name if CHIP_TO_TAG[chip] == "MK" else nt_path.name
                 for amp in range(1, 17):
-                    write_amp_hdu(fout, chip, amp, mk_hdr, data, raw_file)
+                    write_amp_hdu(fout, chip, amp, mk_hdr, data, raw_file, ampchar)
             amp_cols, xtalk_cols, volt_cols, tel_cols = table_defs()
-            fout.write(bintable_bytes("AMPINFO", amp_cols, ampinfo_rows(mk_path, nt_path), [
+            fout.write(bintable_bytes("AMPINFO", amp_cols,
+                                      ampinfo_rows(mk_path, nt_path, ampchar), [
                 card("NAMP", 64, "number of amplifier rows"),
                 card("GEOMVER", GEOMETRY_VERSION, "geometry definition version"),
                 card("RAWGROUP", "MKNT", "raw grouping"),
@@ -867,8 +918,14 @@ def main():
     parser.add_argument("-d", "--outdir", default=".", help="output directory if --output is omitted")
     parser.add_argument("-f", "--force", action="store_true", help="overwrite existing output")
     parser.add_argument("--gzip", action="store_true", help="also create .gz compressed copy")
+    parser.add_argument("--ampchar", default=None,
+                        help="amp characterization CSV (cam_char/results schema): "
+                             "stamps measured GAIN/RDNOISE/SATURAT/LINMAX into the "
+                             "amp headers and AMPINFO instead of the placeholders")
     args = parser.parse_args()
 
+    ampchar = load_ampchar(args.ampchar) if args.ampchar else None
+    ampchar_name = Path(args.ampchar).name if args.ampchar else ""
     inp = Path(args.input).resolve()
     mk, nt = find_pair(inp)
     if not mk.exists():
@@ -879,7 +936,7 @@ def main():
     out = Path(args.output).resolve() if args.output else default_output_name(mk, Path(args.outdir).resolve(), mk_hdr)
     if out.exists() and not args.force:
         raise FileExistsError(f"Output exists: {out}; use -f to overwrite")
-    convert(mk, nt, out)
+    convert(mk, nt, out, ampchar=ampchar, ampchar_name=ampchar_name)
     summary = write_summary(out)
     print(out)
     print(summary)
