@@ -111,6 +111,12 @@ T_SYSTEM = 15.0
 #: `APPLYALL`·`LOADTIMING` -- 설정 전체를 모듈에 밀어 넣는다.  첫 프레임에서만
 #: 불리고 시간 창이 없는 구간이라 넉넉히 준다.
 T_APPLY = 60.0
+#: `APPLYMODxx`·`APPLYDIOxx` -- **모듈 하나**만 적용한다.  벤더 GUI 가
+#: `APPLYMOD`·`APPLYDIO` 에 **10초**, `APPLYALL` 에 30초를 준다
+#: (ARCHONGUI_ANALYSIS).  ⚠️ 종전에는 이 자리에 맞는 상수가 없어
+#: `T_FAST`(5초)나 `T_APPLY`(60초)를 빌려야 했다 -- 앞은 짧고 뒤는
+#: 노출 안에서 매달린다 (DevNote 11.18).
+T_MODULE = 10.0
 T_POWER = 30.0
 
 #: `POWERON` 뒤 `POWER` 를 다시 물어보는 간격 [s].
@@ -415,6 +421,62 @@ class ArchonController:
                 '(현재 ACF %r)' % (self.tag, key, self.acf_path or '없음'))
         self.config[k] = value
         await self.cmd('WCONFIG%04X%s=%s' % (line, k, value), timeout=T_FAST)
+
+    async def read_config(self, key: str) -> str:
+        """설정 줄 하나를 **컨트롤러에서 되읽는다** (`RCONFIG`).
+
+        ⭐ **되읽기는 세 층이고 이것이 가운데다** (DevNote 11.14-(1)):
+
+        * 우리 캐시(`self.config`) -- ⛔ `set_config` 가 **왕복 실패에도 먼저**
+          갈아 끼우므로 못 믿는다.
+        * **`RCONFIG`(이 함수)** -- `WCONFIG` 가 **실제로 앉은 값**.
+        * `STATUS` -- 모듈이 **실제로 내는 값**.  가장 강하지만 히터
+          `ENABLE`/`TARGET` 은 거기 없다.
+
+        값만 돌려준다(`KEY=` 접두를 뗀다).  줄 번호를 모르거나 응답이 다른
+        키면 `ArchonError` 다 -- **조용히 캐시로 물러나지 않는다**(그러면 이
+        함수의 존재 이유가 없어진다).
+        """
+        k = key.upper().replace('\\', '/')
+        line = self.configline.get(k)
+        if line is None:
+            raise ArchonError(
+                "%s: 설정 줄 '%s' 을 모른다 -- ACF 를 먼저 파싱해야 한다"
+                % (self.tag, key))
+        got = (await self.cmd('RCONFIG%04X' % line, timeout=T_FAST)
+               ).decode('ascii', 'replace').strip()
+        if not got.upper().startswith(k + '='):
+            raise ArchonError(
+                '%s: 설정 줄 %04X 가 %s 가 아니다 -- 받은 것 %r'
+                % (self.tag, line, k, got[:60]))
+        return got[len(k) + 1:]
+
+    async def apply_module(self, slot: int, *, dio: bool = False) -> None:
+        """모듈 하나의 설정을 적용한다 -- `APPLYMODxx` / `APPLYDIOxx`.
+
+        ⚠️ **슬롯 인자는 0기점 2자리 16진**이다 (매뉴얼 p.52 *"hex, 00 =
+        module 1"*).  즉 **MOD10 -> `09`** 다.  1기점으로 주면 옆 모듈을
+        적용한다 -- 조용히 틀리는 자리다.
+
+        | `dio` | 명령 | 적용 범위 (매뉴얼) |
+        |---|---|---|
+        | `False` | `APPLYMODxx` | *"the configuration for module xx"* -- 모듈 파라미터(RTD·히터 PID/TARGET/LIMIT) |
+        | `True` | `APPLYDIOxx` | *"the **DIO and VCPU** configuration"* |
+
+        ⛔⛔ **어느 쪽이든 그 모듈의 VCPU 가 재시작된다** (매뉴얼 p.86:
+        *"loaded when an APPLYALL, APPLYMOD, or APPLYDIO command is given.
+        The VCPU is held in reset while it's being configured"*).  guide 의
+        진공 게이지를 읽는 VCPU 가 **MOD10 에 있으므로 히터 명령 한 번이
+        `DEWPRES` 결측 창을 만든다** -- 부르는 쪽이 그 사실을 응답·로그에
+        적어야 한다 (DevNote 11.18).
+        """
+        if not 1 <= slot <= 12:
+            raise ArchonError('%s: 모듈 슬롯이 범위 밖이다 -- %r (1..12)'
+                              % (self.tag, slot))
+        word = 'APPLYDIO' if dio else 'APPLYMOD'
+        await self.cmd('%s%02X' % (word, slot - 1), timeout=T_MODULE)
+        log.info('%s: %s%02X (모듈 %d) 적용 -- ⚠️ 그 모듈의 VCPU 가 재시작됐다',
+                 self.tag, word, slot - 1, slot)
 
     async def verify_config_lines(self, keys) -> list[str]:  # noqa: ANN001
         """`RCONFIG` 로 줄 번호 대응이 맞는지 확인한다.  어긋난 키 목록을 돌려준다.

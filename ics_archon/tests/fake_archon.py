@@ -240,6 +240,19 @@ class FakeArchon(threading.Thread):
 
     # -- 명령 -------------------------------------------------------------
 
+    def _restart_vcpu(self) -> None:
+        """`APPLY*` 뒤의 VCPU 재시작을 모사한다 (매뉴얼 p.86).
+
+        `alive`(`VCPU_OUTREG15`)를 **0으로 되감고** 나머지 OUTREG 는 그대로
+        둔다 -- 실기에서 그것들이 **잔재**로 남는 것과 같다.  ⭐ 잔재를 지우면
+        "값이 없다" 가 되어 결측 판정이 쉬워지는데, 실기는 그렇게 친절하지
+        않다 (옛 값이 그럴싸하게 남는다).
+        """
+        with self._lock:
+            for key in list(self.status):
+                if key.endswith('/VCPU_OUTREG15'):
+                    self.status[key] = '0'
+
     def _reply(self, conn, ref: bytes, body: str = '') -> None:  # noqa: ANN001
         conn.sendall(b'<' + ref + body.encode('ascii') + b'\n')
 
@@ -294,6 +307,24 @@ class FakeArchon(threading.Thread):
         elif cmd in ('APPLYALL', 'APPLYSYSTEM', 'APPLYCDS', 'LOADTIMING'):
             if cmd == 'APPLYALL':
                 self.applied = True          # p.51 -- POWERON 의 전제
+                self._restart_vcpu()         # p.86 -- 아래 주석
+            self._reply(conn, ref)
+        elif cmd.startswith(('APPLYMOD', 'APPLYDIO')):
+            # 모듈 하나만 적용한다 (매뉴얼 p.52-53).  ⚠️ 슬롯 인자는 **0기점
+            # 2자리 16진**이라 MOD10 이 `09` 다 -- 1기점으로 보내면 옆 모듈이
+            # 적용되고 그것은 조용히 틀린다.
+            arg = cmd[8:]
+            try:
+                int(arg, 16)
+            except ValueError:
+                conn.sendall(b'?' + ref + b'\n')
+                return
+            # ⛔ **VCPU 가 재시작된다** -- APPLYALL·APPLYMOD·APPLYDIO 셋 다
+            # 그렇다(p.86: "held in reset while it's being configured").
+            # guide 는 진공 게이지를 MOD10 의 VCPU 가 읽으므로 **히터 명령
+            # 한 번이 DEWPRES 결측 창을 만든다** (DevNote 11.18).  그 창을
+            # 시험으로 잡으려면 가짜도 모사해야 한다.
+            self._restart_vcpu()
             self._reply(conn, ref)
         elif cmd == 'REBOOT':
             # FPGA 재적재 -- 카운터·버퍼·적용 상태가 지워진다 (DevNote 10.7·10.2).
