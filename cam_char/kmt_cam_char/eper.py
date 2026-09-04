@@ -15,17 +15,21 @@ from __future__ import annotations
 
 import numpy as np
 
-from .core import N_TRANSFER_SERIAL, OVSC_REAL
+from .core import N_TRANSFER_SERIAL, OVSC_REAL, unsigned_from_stored
 
 EPER_DEFER_COLS = 3          # overscan columns summed as deferred charge
 EPER_BASE_COLS = 10          # trailing real-overscan columns = baseline
-SAT_PLATEAU_MIN = 63000.0    # raw p99.9 above this: amp saturated in frame
+# raw p99.9 above this: amp saturated in frame. 물리 unsigned ADU 기준 —
+# core 스케일 정정(2026-09-05) 전의 이동 스케일 값 63000에서 32768을 뺀
+# 등가값으로, 레거시 재실행 동작을 정확히 보존한다 (레거시 CCD 포화
+# ~29.2-30.5k 물리 ADU). CEU 전 범위 포화 분석은 satshut 모듈을 쓸 것.
+SAT_PLATEAU_MIN = 63000.0 - 32768.0
 
 
 def eper_serial(exp, extname: str) -> dict:
     """Serial EPER from one bright (non-saturated) flat frame."""
     arr = np.asarray(exp.hdul[extname].section[:, 1100:1184], dtype=np.float64)
-    arr = np.where(arr < 0, arr + 65536.0, arr)
+    arr = unsigned_from_stored(arr, exp.hdul[extname].header)
     prof = arr.mean(axis=0)                       # cols 1100..1183
     data_last = float(prof[51])                   # col 1151 (last data col)
     ovsc = prof[52:52 + (OVSC_REAL.stop - OVSC_REAL.start)]   # 32 real cols
@@ -51,7 +55,7 @@ def saturation_level(exps: list, extname: str) -> dict:
     for e in exps:
         a = np.asarray(e.hdul[extname].section[500:4100, 100:1050],
                        dtype=np.float64)
-        a = np.where(a < 0, a + 65536.0, a)
+        a = unsigned_from_stored(a, e.hdul[extname].header)
         p999 = float(np.percentile(a, 99.9))
         p999s.append(p999)
         if p999 >= SAT_PLATEAU_MIN:

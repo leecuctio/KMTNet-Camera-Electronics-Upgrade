@@ -96,10 +96,12 @@ def main(qc_json: str, mock_dir: str, out_csv: str) -> int:
         flat_pairs += [(group[i], group[i + 1])
                        for i in range(0, len(group) - 1, 2)]
 
-    # brightest non-saturated flats for EPER (levels computed once)
+    # brightest non-saturated flats for EPER (levels computed once).
+    # 선별창은 물리 unsigned ADU 기준 — core 스케일 정정(2026-09-05) 전의
+    # 이동 스케일 창(40000~59000)에서 32768을 뺀 등가값 (레거시 동작 보존).
     flat_levels = {id(e): float(np.mean(roi_raw(e, extnames[0])[::8, ::8]))
                    for e in flats}
-    bright = [e for e in flats if 40000 < flat_levels[id(e)] < 59000]
+    bright = [e for e in flats if 7232 < flat_levels[id(e)] < 26232]
     eper_frame = max(bright, key=lambda e: flat_levels[id(e)]) if bright else None
 
     rows = []

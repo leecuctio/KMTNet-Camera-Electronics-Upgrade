@@ -5,7 +5,18 @@
 측정 캠페인의 최종 산출물은 아래 **기계가독 테이블**로 낸다. L0 헤더/AMPINFO
 반영은 이 파일들에서 기계적으로 수행한다(수기 전사 금지). 모든 값의 ADU는
 **raw ADU**(bias 포함) 기준임을 명시한다 — 파이프라인의 saturation/linearity
-플래그가 raw ADU에서 동작하기 때문이다.
+플래그가 raw ADU에서 동작하기 때문이다.[^scale]
+
+[^scale]: **스케일 정정 (2026-09-05)**: 기존 `LEGACY-*` 캠페인 CSV의 절대
+    raw ADU 값(BIAS_ADU, SATURAT, LINMAX, LIN_RANGE_LO/HI 등)은 구 판독
+    스케일로 기록되어 있다 — 저장 int16을 헤더 BZERO 없이 unsigned 캐스트한
+    값, 즉 **물리 ADU + 32768 (mod 65536)** (예: BIAS_ADU 34784 = 물리
+    2016 ADU). kmt_cam_char의 픽셀 판독(core.roi_raw 등)은 이후 헤더
+    BZERO/BSCALE을 적용한 **물리 unsigned ADU(0..65535)** 로 통일되어, 신규
+    캠페인 CSV의 절대값은 물리 스케일이다. 차분 통계(GAIN, GAIN_ERR,
+    RDNOISE, RN_ADU, OVSC_RMS_ADU, BIAS_DRIFT_ADU, PTC_CURV_A, PRNU_PCT,
+    GAIN_STAB_PCT, CTE_SERIAL 등)는 두 스케일에서 동일하므로 불변이다.
+    레거시-신규 간 절대 레벨을 비교할 때만 레거시 값에서 32768을 차감한다.
 
 ## 1. amp_characterization_<CAMPAIGN>.csv (64행)
 
