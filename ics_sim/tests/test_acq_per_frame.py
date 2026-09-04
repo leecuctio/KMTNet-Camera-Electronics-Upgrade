@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""`Acquisition Complete.` 를 컨트롤러 프레임별로 낼지 -- 스위치와 그 기본값.
+"""`Acquisition Complete.` 는 **컨트롤러 프레임별로** 나간다 (스위치 없음).
 
-**목 지시 2026-08-24.**  `readout()` 계약은 진행률 정수만 흘려보내므로 "어느
-컨트롤러가 끝났나" 를 표현할 자리가 없었다.  선택 훅
+**목 지시 2026-08-24 · 스위치 제거 2026-09-04.**  `readout()` 계약은 진행률
+정수만 흘려보내므로 "어느 컨트롤러가 끝났나" 를 표현할 자리가 없었다.  선택 훅
 `DetectorBackend.readout_events()` 가 그 경계를 만든다.
+
+⚠️ **`[readout] acq_per_frame` 스위치는 없어졌다** (운영자 확정 2026-09-04) --
+*"스위치 없애고 무조건 켜짐과 같이 구동해줘."*  ⛔ 그래서 4개의 산포가 이제
+**두 컨트롤러의 실제 시차**이고, 종전에 스위치를 꺼 둠으로써 얻던 *"같은 틱 =
+산포 0"* 이라는 1.8초 창의 **구조적 보장은 사라졌다** (DevNote 3.3).
+⏳ 남은 안전장치는 `acq_skew_warn` 하나이고, **첫 실기에서 시차를 재서 그 값을
+맞추는 것**이 남은 일이다.
 
 ⚠️ **`ics_sim` 쪽은 간단한 모사다** (목 지시).  시뮬은 CCD 4개가 다
 소프트웨어라 독출 경로에 컨트롤러라는 경계가 없고, 두 대를 진짜로 모사하려면
 `[readout]` 모델 자체를 나눠야 한다 -- 비용이 이득보다 크다는 판단이다.
 **병렬 독출의 실구현은 `ics_archon` 에 있다.**  여기서 지키는 것은 둘이다:
 
-1. 스위치가 꺼진 **기본값에서 거동이 종전과 같다** (4개를 같은 틱에).
-2. 켰을 때도 **개수가 4개**다 -- 개수가 곧 규약이다 (DevNote 3장 2항).
+1. **개수가 4개**다 -- 개수가 곧 규약이다 (DevNote 3장 2항).
+2. **컨트롤러 묶음으로** 나간다 (MK 몫 다음 NT 몫).
 """
 
 from __future__ import annotations
@@ -33,40 +40,28 @@ def senders(msgs: list[str]) -> list[str]:
     return [m.split('.IC>')[0] for m in msgs]
 
 
-def test_default_is_off_and_keeps_todays_behaviour():
-    """**기본은 꺼짐이다.**  4개가 같은 틱에 나가 산포가 사실상 0 이다.
+def test_there_is_no_switch_any_more():
+    """⛔ **`acq_per_frame` 설정은 없다** (운영자 확정 2026-09-04).
 
-    그 산포 0 이 DevNote 3.3 의 1.8초 창을 **구조적으로** 보장한다 -- 켜면
-    그 보장이 두 컨트롤러의 실제 시차에 좌우된다.  실기 시차 실측 전에는
-    이득 크기를 알 수 없으므로 기본값을 바꾸지 않는다.
+    ⚠️ 남겨 두면 *"꺼면 종전 거동"* 이라는 죽은 전제가 문서·시험에 계속 살아
+    있게 된다 -- 이 저장소가 여러 번 겪은 부류다.  키를 ini 에 적어도 조용히
+    무시되는 것이 아니라 **필드 자체가 없어야** 그 오해가 안 생긴다.
     """
     cfg = make_config()
-    assert cfg.readout.acq_per_frame is False
-    run = drive(DARK_SCRIPT, cfg)
-    msgs = acq_messages(run)
-    assert len(msgs) == 4, msgs
-    # 같은 틱이므로 첫 것과 마지막 것의 간격이 사실상 0 이다.
-    when = [t for t, m in run.timed if 'Acquisition Complete.' in m]
-    assert len(when) == 4
-    assert when[-1] - when[0] < 0.5, when
+    assert not hasattr(cfg.readout, 'acq_per_frame')
 
 
-@pytest.mark.parametrize('per_frame', [False, True])
-def test_the_count_is_four_either_way(per_frame):
-    """**개수가 곧 규약이다.**  스위치는 "언제" 만 바꾼다."""
-    cfg = make_config()
-    cfg.readout.acq_per_frame = per_frame
-    run = drive(DARK_SCRIPT, cfg)
+def test_the_count_is_still_four():
+    """**개수가 곧 규약이다** -- 프레임별로 갈라 내보내도 4개다."""
+    run = drive(DARK_SCRIPT, make_config())
     assert len(acq_messages(run)) == 4
     assert sum('Wrote' in m for m in run.sent) == 8      # CB 4 + ICS 중계 4
     assert sum('EXPSTATUS=IDLE' in m for m in run.sent) == 1
 
 
-def test_per_frame_groups_the_messages_by_controller():
-    """켜면 컨트롤러 묶음으로 나간다 -- MK(M/K) 다음 NT(N/T)."""
-    cfg = make_config()
-    cfg.readout.acq_per_frame = True
-    run = drive(DARK_SCRIPT, cfg)
+def test_the_messages_are_grouped_by_controller():
+    """컨트롤러 묶음으로 나간다 -- MK(M/K) 다음 NT(N/T).  **조건 없이.**"""
+    run = drive(DARK_SCRIPT, make_config())
     who = senders(acq_messages(run))
     groups = dict(rawpair.CONTROLLERS)
     assert set(who[:2]) == set(groups['MK']), who

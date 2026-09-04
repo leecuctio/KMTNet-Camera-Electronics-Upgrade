@@ -327,8 +327,15 @@ class Sequencer:
         self.emit.ic_go_ack(ics, master)
 
         # --- 5) 획득 완료 -------------------------------------------------
-        # 4개가 1.8초 안에 모여야 한다.  **기본은 같은 이벤트 루프 틱**에서
-        # 내보내므로 산포가 사실상 0 이고, 그 창이 구조적으로 보장된다.
+        # 4개가 1.8초 안에 모여야 한다 (DevNote 3.3).
+        #
+        # ⭐ **컨트롤러의 프레임이 끝나는 대로 그 몫을 내보낸다** (운영자 확정
+        # 2026-09-04 -- `[readout] acq_per_frame` 스위치를 없애고 **켜짐 하나로**
+        # 굳혔다).  ⛔ 그래서 4개의 산포가 **두 컨트롤러의 실제 시차**가 되고,
+        # 종전처럼 같은 틱에 몰아 내보내 창을 **구조적으로** 보장하던 성질은
+        # 없어졌다.  ⚠️ 그것이 의도다: 한 대가 늦거나 죽은 것을 관측자가 그
+        # 자리에서 알아야 한다.  대신 `acq_skew_warn` 이 1.8초 창보다 앞서
+        # 짖는다 -- **첫 실기에서 시차를 재서 그 값을 맞추는 것**이 남은 일이다.
         final = cfg.readout.pctread_final
         reporting = ccds
         if cfg.behavior.injecting('acq_short'):
@@ -340,14 +347,12 @@ class Sequencer:
         chips_of = dict(rawpair.CONTROLLERS)
         sent: list[str] = []
         first_at: list[float] = []
-        per_frame = cfg.readout.acq_per_frame
 
         async def _frame_done(ctrltag: str) -> None:
-            """컨트롤러 하나의 프레임이 완료됐다.
+            """컨트롤러 하나의 프레임이 완료됐다 -- **그 몫을 곧바로 낸다.**
 
-            **발신 여부와 무관하게 시차부터 잰다** -- 실기의 두 컨트롤러 시차는
-            아직 실측이 없고(`acq_per_frame` 기본값을 정할 근거가 그것이다),
-            창을 깨기 전에 알아야 한다.
+            시차부터 잰다 -- 실기의 두 컨트롤러 시차는 아직 실측이 없고,
+            1.8초 창을 깨기 전에 알아야 한다.
             """
             now = time.monotonic()
             if not first_at:
@@ -360,8 +365,6 @@ class Sequencer:
                                 '1.8초 안에 모여야 OBSAgent 가 opause 로 '
                                 '가지 않는다', skew, ctrltag,
                                 cfg.readout.acq_skew_warn)
-            if not per_frame:
-                return
             group = [c for c in reporting
                      if c in chips_of.get(ctrltag, ()) and c not in sent]
             for ccd in group:
@@ -372,8 +375,11 @@ class Sequencer:
 
         await self._readout(source, master, _frame_done)
 
-        # 프레임별로 이미 나간 것을 빼고 나머지를 낸다.  `acq_per_frame` 이
-        # 꺼져 있으면 여기서 4개가 한꺼번에 나가고, 그것이 종전 거동이다.
+        # ⭐ 남은 것을 낸다 -- **정상 경로에서는 비어 있다** (컨트롤러마다
+        # `_frame_done` 이 자기 몫을 이미 냈다).  ⚠️ 그래도 지운 게 아니다:
+        # 백엔드에 `readout_events()` 훅이 없거나(구판·다른 구현) 어떤 컨트롤러
+        # 완료가 사건으로 안 온 경우, 여기가 **개수 규약(4개)을 지키는 마지막
+        # 자리**다 -- 개수가 곧 규약이다 (DevNote 3장 2항).
         rest = [c for c in reporting if c not in sent]
         for ccd in rest:
             self.emit.ic_acq_complete_obs(source, ccd, final)

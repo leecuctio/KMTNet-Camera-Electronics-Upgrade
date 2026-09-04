@@ -288,8 +288,16 @@ class TimingCfg:
     countdown_tick_shop: float = 5.217
     shutter_to_readout: float = 6.00
     acq_to_idle: float = 0.40
-    write_delay: float = 3.40
-    ccd_skew: tuple[float, ...] = (0.0, 0.6, 0.7, 1.6)
+    #: 획득 완료 -> 저장 시작까지의 지연 [s].  ⭐ **기본은 0 이다**
+    #: (운영자 확정 2026-09-04) -- 실기(`ics_archon`)에는 이 지연을 둘 이유가
+    #: 없고, 오히려 버퍼가 덮이기 전 여유를 깎는다.  ⚠️ **`ics_sim` 은
+    #: ini 에 값을 적어 레거시 타이밍을 재현한다** -- 그게 시뮬의 존재 이유다.
+    write_delay: float = 0.0
+    #: CCD 별 저장 시차 [s], `ccd_skew_order` 순서.  ⭐ **기본은 0 이다**
+    #: (운영자 확정 2026-09-04) -- 레거시의 CCD 별 저장 시차를 흉내 낸 값이라
+    #: 실기에서는 뜻이 없고 두 컨트롤러의 겹침만 깎는다.  `ics_sim` 만 ini 로
+    #: 되살린다.
+    ccd_skew: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0)
     ccd_skew_order: tuple[str, ...] = ('N', 'T', 'M', 'K')
     tc_query_timeout: float = 0.50
     tc_timeout_mode: str = 'passthrough'
@@ -309,18 +317,16 @@ class ReadoutCfg:
     pctread_tick: float = 3.37
     pctread_final: int = 100
 
-    #: **`Acquisition Complete.` 를 컨트롤러 프레임별로 낼지** (기본 꺼짐).
-    #:
-    #: 꺼져 있으면 종전대로 4개를 **같은 이벤트 루프 틱**에 내보내므로 산포가
-    #: 사실상 0 이고, DevNote 3.3 의 1.8초 창이 **구조적으로** 보장된다.
-    #: 켜면 그 4개의 산포가 **두 컨트롤러의 실제 시차**가 되어 그 보장이
-    #: 없어진다 -- 얻는 것은 관측자가 "MK 는 끝났고 NT 가 아직" 을 화면에서
-    #: 보는 것뿐이고, OBSAgent 는 4개가 언제 왔는지를 창 검사 외에는 쓰지
-    #: 않는다.  **실기 시차 실측 전에는 이득 크기를 알 수 없어 기본이 꺼짐**
-    #: 이다 (`tools/probe_archon.py` 3단계).
-    acq_per_frame: bool = False
     #: 첫 프레임 완료 뒤 나머지가 이 시간 안에 안 오면 경고 [s].
     #: 1.8초 창보다 안쪽에 둔다 -- 창을 깨기 전에 알아야 한다.
+    #:
+    #: ⭐ **이 값이 이제 유일한 안전장치다** (운영자 확정 2026-09-04).  종전에는
+    #: `acq_per_frame` 스위치가 있어 **꺼 두면** `Acquisition Complete.` 4개가
+    #: 같은 이벤트 루프 틱에 나가 DevNote 3.3 의 1.8초 창이 **구조적으로**
+    #: 보장됐다.  ⛔ 그 스위치를 없애고 **프레임별 발신 하나로 굳혔으므로**,
+    #: 4개의 산포는 이제 **두 컨트롤러의 실제 시차**다.
+    #: ⏳ **첫 실기에서 그 시차를 재서 이 값을 맞추는 것이 남은 일이다**
+    #: (`tools/probe_archon.py` 3·5단계).
     acq_skew_warn: float = 1.0
 
     def steps(self) -> list[int]:
@@ -613,11 +619,42 @@ def _make_parser() -> configparser.ConfigParser:
     )
 
 
+#: ini 의 참/거짓 낱말.  ⭐ **`true`/`on`/`1` 과 `false`/`off`/`0` 을 같게**
+#: 받는다 (운영자 확정 2026-09-04) -- 대소문자는 안 가린다.  `yes`/`no` 는
+#: 종전부터 받던 것이라 남긴다.
+#:
+#: ⚠️ **`ics_archon`·`icg_archon` 의 `_bool` 과 같은 표여야 한다** -- 한
+#: 저장소에서 ini 규칙이 갈리면 운영자가 어느 파일이 무엇을 받는지 외워야
+#: 한다.  셋을 함께 고칠 것.
+_TRUE_WORDS = ('1', 'true', 'yes', 'on')
+_FALSE_WORDS = ('0', 'false', 'no', 'off')
+
+
 def _bool(sec: configparser.SectionProxy, key: str, default: bool) -> bool:
+    """⛔ **모르는 값을 조용히 거짓으로 떨어뜨리지 않는다** (운영자 2026-09-04).
+
+    ⚠️ 종전 구현은 `raw.lower() in (...)` 한 줄이라 **어휘 밖을 전부 `False`**
+    로 읽었다 -- `console = ture` 처럼 오타 한 글자가 기능을 **소리 없이**
+    꺼 버린다.  이 파서를 타는 불린 키가 11개라 그만큼의 자리가 있었다.
+
+    ⭐ **`ics_archon`·`icg_archon` 은 이미 거부하고 있었다** -- 같은 저장소에서
+    규칙이 둘인 것이 더 나빴다.  셋을 같은 표·같은 문구로 맞춘다.
+
+    ⚠️ 종전에만 있던 `'t'` 는 뺐다 -- 짝이 되는 `'f'` 가 없어 **한쪽만
+    받는** 비대칭이었고, 배포 ini 세 개에서 쓰이지 않는다(전수 확인).
+    """
     raw = sec.get(key, '').strip()
     if not raw:
         return default
-    return raw.lower() in ('1', 'true', 'yes', 'on', 't')
+    word = raw.lower()
+    if word in _TRUE_WORDS:
+        return True
+    if word in _FALSE_WORDS:
+        return False
+    raise ConfigError(
+        '%s=%r 를 참/거짓으로 읽을 수 없다 -- %s 가운데 하나여야 한다 '
+        '(대소문자는 안 가린다)'
+        % (key, raw, ' | '.join(_TRUE_WORDS + _FALSE_WORDS)))
 
 
 def _head(sec: configparser.SectionProxy, key: str, default: str) -> str:
@@ -857,7 +894,6 @@ def load(path: str | None = None) -> SimConfig:
         r.pctread_step = int(s.get('pctread_step', str(r.pctread_step)))
         r.pctread_tick = float(s.get('pctread_tick', str(r.pctread_tick)))
         r.pctread_final = int(s.get('pctread_final', str(r.pctread_final)))
-        r.acq_per_frame = _bool(s, 'acq_per_frame', r.acq_per_frame)
         r.acq_skew_warn = float(s.get('acq_skew_warn', str(r.acq_skew_warn)))
 
     if cp.has_section('obsagent'):

@@ -87,11 +87,14 @@ class DetectorBackend(Protocol):
         이고, 그래서 `Acquisition Complete.` 를 프레임별로 내려면 이 경계가
         계약에 있어야 한다 (목 지시 2026-08-24, DevNote 11.25/11.26).
 
-        ⚠️ **`('frame', …)` 이 곧 발신은 아니다.**  프레임별로 내보낼지는
-        `[readout] acq_per_frame` 이 정하고 기본은 꺼짐이다 -- 켜면 4개의
-        산포가 두 컨트롤러의 실제 시차가 되어 1.8초 창(DevNote 3.3)의 구조적
-        보장이 없어진다.  꺼져 있어도 시퀀서는 이 훅을 써서 **모든 컨트롤러의
-        완료를 기다린다** (master 만 기다리던 것이 F1 이었다).
+        ⭐ **사건마다 그 컨트롤러 몫이 곧바로 나간다** -- ⚠️ **스위치는 없다**
+        (운영자 확정 2026-09-04, `[readout] acq_per_frame` 제거).  그래서
+        `Acquisition Complete.` 4개의 산포가 **두 컨트롤러의 실제 시차**가 되고,
+        1.8초 창(DevNote 3.3)의 구조적 보장은 없어졌다 -- 남은 안전장치는
+        `acq_skew_warn` 하나다.
+
+        ⭐ 그리고 시퀀서는 이 훅으로 **모든 컨트롤러의 완료를 기다린다**
+        (master 만 기다리던 것이 F1 이었다).
         """
 
     async def fetch_image(self, ccd: str):

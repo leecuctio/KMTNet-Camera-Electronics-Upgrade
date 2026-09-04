@@ -49,23 +49,47 @@ def _sequencer(delay: float) -> Sequencer:
     ('AUXSTATUS', 'AUXQDATE', 'AUXUDATE'),
     ('TCSSTATUS', 'TCSQDATE', 'TCSUDATE'),
 ])
-def test_canned_fallback_never_stamps_udate_after_qdate(key, q, u):
-    """TC 무응답 폴백은 **ICS 가 두 시각을 직접 찍는 유일한 자리**다.
+def test_canned_fallback_never_invents_the_two_stamps(key, q, u):
+    """⛔⛔ **TC 무응답 폴백은 두 시각을 만들어 넣지 않는다** (운영자 지시
+    2026-09-04).
 
-    거꾸로 찍으면 raw 를 읽는 쪽이 전제해도 된다고 규격이 말한 부등식이
-    우리 산출물에서만 깨진다 -- 그리고 그 파일들은 "TC 가 죽어 있었다" 는
-    사실을 가장 확인하고 싶은 파일이다.
+    ⚠️ **이 시험은 앞 결정을 뒤집은 자리다.**  종전에는 폴백이 두 시각을
+    **우리 `stamp_iso_ms()` 로** 찍었고, 이 시험이 그 값들의 부등식
+    (`UDATE <= QDATE`, 규격 5.7.1절 (a))을 지켰다.
+
+    ⛔ 그런데 그러면 *"TC 가 찍은 시각"* 이라는 카드에 **우리 시계**가 실린다.
+    그 값을 우리 시계와 견주면 언제나 0 이라 **"시계가 맞다" 로 읽히고**,
+    헤더만 보는 하류(converter·아카이브)에는 그 사실이 어디에도 안 남는다 --
+    `ics_archon/tcsclock.py` 가 이 표본을 따로 걸러야 했던 이유가 그것이다.
+
+    ⭐ 이제 **원본을 보존한다**: 직전 실응답 값이 있으면 그대로 두고, 없으면
+    아예 안 싣는다.  카드 자체는 사라지지 않는다 -- `_SENTINEL_STR` 에 네
+    이름이 있어 `fits_header_dict()` 가 `'NC'` 로 채운다(규격 5.0절).
     """
     cfg = SimConfig()
     cfg.timing.tc_timeout_mode = 'canned'
     relay = telemetry.TelemetryRelay(cfg, lambda *a, **k: None)
+
+    # (1) 실응답을 본 적이 없다 -- 지어내지 않는다.
     relay._apply_timeout(key)
     fields = dict(relay.aux_fields if key == 'AUXSTATUS' else relay.tcs_fields)
-    assert fields.get(q), f'{q} 가 비었다 -- 폴백이 시각을 안 찍었다'
-    assert fields.get(u), f'{u} 가 비었다'
-    assert fields[u] <= fields[q], (
-        f'{u}({fields[u]}) 가 {q}({fields[q]}) 보다 뒤다 -- 5.7.1절 (a) 위반. '
-        'ISO 문자열은 사전순 비교가 곧 시각 비교다')
+    assert q not in fields, '%s 를 지어냈다 -- %r' % (q, fields.get(q))
+    assert u not in fields, '%s 를 지어냈다 -- %r' % (u, fields.get(u))
+    # ⭐ 그래도 카드는 남는다 -- sentinel 로.
+    cards = relay.fits_header_dict('2026-09-04T09:00:00.000')
+    assert cards[q] == 'NC' and cards[u] == 'NC', (cards[q], cards[u])
+
+    # (2) 직전 실응답이 있으면 **그 값을 보존한다** (우리 시계로 덮지 않는다).
+    real_q, real_u = '2026-09-04T09:11:02.417', '2026-09-04T09:11:01.998'
+    if key == 'AUXSTATUS':
+        relay.aux_fields = [(q, real_q), (u, real_u)]
+    else:
+        relay.tcs_fields = [(q, real_q), (u, real_u)]
+    relay._apply_timeout(key)
+    fields = dict(relay.aux_fields if key == 'AUXSTATUS' else relay.tcs_fields)
+    assert fields[q] == real_q and fields[u] == real_u, fields
+    # 보존한 값도 부등식을 지킨다 (TC 가 찍은 것이므로 구조적으로 그렇다).
+    assert fields[u] <= fields[q]
 
 
 # -- (c) 재질의 문턱 ---------------------------------------------------------

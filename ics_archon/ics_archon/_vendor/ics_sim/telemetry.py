@@ -220,22 +220,37 @@ class TelemetryRelay:
         canned       -- 내장 텔레메트리로 채운다.  TC 스텁 없이도 FITS 헤더가
                         그럴듯하게 나오길 원할 때.
         """
-        from .state import stamp_iso_ms  # 순환 import 회피
-
         if self.cfg.timing.tc_timeout_mode == 'canned':
-            now = stamp_iso_ms()
+            # ⛔⛔ **시각 카드를 만들어 넣지 않는다** (운영자 지시 2026-09-04).
+            #
+            # 종전에는 `AUXQDATE`/`AUXUDATE`/`TCSQDATE`/`TCSUDATE` 를 **우리
+            # `stamp_iso_ms()` 로** 채웠다.  ⛔ 그러면 *"TC 가 찍은 시각"* 이라는
+            # 카드에 **우리 시계**가 실린다 -- 그 값을 우리 시계와 견주면 언제나
+            # 0 이 나와 **"시계가 맞다" 로 읽힌다**(`ics_archon/tcsclock.py` 가
+            # 그 표본을 따로 거르는 이유였다).  헤더만 보는 하류(converter ·
+            # 아카이브)에는 그 사실이 어디에도 안 남는다.
+            #
+            # ⭐ **원본을 보존한다** -- 직전 실응답의 값이 있으면 그것을 그대로
+            # 두고, 없으면 **아예 안 싣는다**(하류가 규격 5.0절 sentinel `NC` 로
+            # 채운다).  ⚠️ 값이 낡았다는 사실은 그 시각 자체가 말한다.
+            prev = dict(self.aux_fields if key == 'AUXSTATUS'
+                        else self.tcs_fields)
             if key == 'AUXSTATUS':
                 vals = dict(CANNED_AUX_VALUES)
                 vals['TELID'] = self.cfg.node.telid
-                vals.setdefault('AUXQDATE', now)
-                vals.setdefault('AUXUDATE', now)
-                self.aux_fields = [(k, vals.get(k, '')) for k in CANNED_AUX]
+                for k in ('AUXQDATE', 'AUXUDATE'):
+                    if prev.get(k):
+                        vals[k] = prev[k]
+                self.aux_fields = [(k, vals[k]) for k in CANNED_AUX
+                                   if k in vals]
                 self.last_aux_ok = True
             else:
                 vals = dict(CANNED_TCS_VALUES)
-                vals.setdefault('TCSQDATE', now)
-                vals.setdefault('TCSUDATE', now)
-                self.tcs_fields = [(k, vals.get(k, '')) for k in CANNED_TCS]
+                for k in ('TCSQDATE', 'TCSUDATE'):
+                    if prev.get(k):
+                        vals[k] = prev[k]
+                self.tcs_fields = [(k, vals[k]) for k in CANNED_TCS
+                                   if k in vals]
                 self.last_tcs_ok = True
             return
 
