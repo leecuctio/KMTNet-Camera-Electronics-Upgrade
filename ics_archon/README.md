@@ -751,8 +751,18 @@ direct-reply 로 전 경로가 돈다.
 
 ## CCD 조작 명령 넷 (운영자 지시 2026-09-05)
 
-ICS(`ics_archon`)·ICG(`icg_archon`) 둘 다 받는다.  ICS 는 컨트롤러가 둘이라 `CCDFLUSH [MK|NT|ALL]` ·
-`ARCHON <MK|NT> <command>` 처럼 대상을 고른다(ICS 쪽 문법은 `ics_archon/app.py` 머리말).
+ICS(`ics_archon`)·ICG(`icg_archon`) 둘 다 받는다.  ICS 는 컨트롤러가 둘이라 대상을 고른다:
+
+| ICS 명령 | 하는 일 | 응답 |
+|---|---|---|
+| `CCDFLUSH [MK\|NT\|ALL]` | 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (science ACF R2609+, Prep+Flush). 프레임은 안 만든다. ⚠️ **첫 `GO` 뒤에만** 된다(ACF 줄 번호는 `prepare()` 가 파싱한다) — 그 전엔 `Failed: ACF not loaded … run GO once first` | `DONE: CCDFLUSH Flushed=MK,NT` |
+| `CCDPOWON [MK\|NT\|ALL]` | `POWERON` + flush 대기(`poweron_wait`, 기본 12 s) | `DONE: CCDPOWON Power=ON Controllers=MK,NT` |
+| `CCDPOWOFF [MK\|NT\|ALL]` | `POWEROFF`. 다음 `GO` 가 다시 켠다. 안 앉았으면 `Failed: POWEROFF not confirmed` | `DONE: CCDPOWOFF Power=OFF Controllers=MK,NT` |
+| `ARCHON <MK\|NT> <원문…>` | 바이패스 — 원문을 그대로 보내고 응답 원문을 돌려준다. ⛔ 위생 검사 없음(`RESETTIMING`·`WCONFIG` 도 나간다). 1800자 넘으면 잘리고 전문은 로그에 | `DONE: ARCHON MK <응답>` / 거부 `ERROR: ARCHON MK rejected: <원문>` / 빈 ack `<empty reply>` |
+
+ICS 에서도 운영자 명령이 도는 중의 `GO` 는 `ERROR: GO Operator command in progress (CCDPOWON) -- retry when it is DONE` 으로 거부된다.  `--backend sim` 이면 넷 다 `Controller is not available (no hardware backend)`.
+
+ICG 는 컨트롤러가 하나라 인자가 없다:
 
 ```
 CCDFLUSH              # 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 -> DONE: CCDFLUSH Flushed=1 (프레임 없음)

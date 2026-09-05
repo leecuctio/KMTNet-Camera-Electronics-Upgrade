@@ -44,10 +44,72 @@ from .gaugectl import CMD as GAUGE_CMD, GaugeControl      # noqa: E402
 from .guideexp import CMD as GUIEXP_CMD, GuideExpControl  # noqa: E402
 from .tcsclock import ClockWatch, watch_tc_queries
 from .xischeck import XIS_ID, XisGate         # noqa: E402
-from ics_sim.commands import Dispatcher, ReplyKind         # noqa: E402
+from ics_sim import emitter                                # noqa: E402
+from ics_sim.commands import Dispatcher, Reply, ReplyKind  # noqa: E402
+from ics_sim.hardware.base import BackendError             # noqa: E402
+from ics_sim.impv2 import Message                          # noqa: E402
+from ics_sim.nodes import Target                           # noqa: E402
 from ics_sim.state import utcnow                           # noqa: E402
 
 log = logging.getLogger('ics_archon.app')
+
+# ---------------------------------------------------------------------------
+# 운영자 명령 넷 -- `CCDFLUSH` · `CCDPOWON` · `CCDPOWOFF` · `ARCHON` (운영자 지시 2026-09-05)
+# ---------------------------------------------------------------------------
+
+#: emitter 의 커맨드워드 어휘에 더하는 ICS 운영자 명령.  `icg_archon/commands.py` 의
+#: `ICG_COMMANDS` 와 같은 패턴이다 -- `emitter.validate()` 가 이 표로 발신을 검사하므로
+#: 등록 없이 쓰면 응답마다 `unknown_cmdword` 위생 경고가 난다 (`emitter.py:170`).
+ICS_OPS_COMMANDS = frozenset({'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON'})
+
+#: `ARCHON` 바이패스 응답 본문의 상한 [문자].  한 메시지 상한 `impv2.MAX_LEN`(2048) 안에
+#: 머리(`src>dest DONE: ARCHON MK ` -- 노드 이름 8자씩이면 ~30) 와 잘림 꼬리(~40) 를
+#: 더해도 들어가게 잡았다.  `STATUS` 응답이 ~2 KB 라 이 자리가 실제로 쓰인다.
+ARCHON_REPLY_MAX = 1800
+
+#: 취득 중 거부 문구 -- 넷이 같은 낱말을 쓴다 (운영자 지시 2026-09-05).
+BUSY_TEXT = 'Exposure in progress -- ABORT first'
+
+
+def extend_vocabulary() -> None:
+    """모듈 상수(frozenset)를 합집합으로 갈아 끼운다 -- 한 번이면 된다."""
+    if not ICS_OPS_COMMANDS <= emitter.KNOWN_COMMANDS:
+        emitter.KNOWN_COMMANDS = frozenset(emitter.KNOWN_COMMANDS
+                                           | ICS_OPS_COMMANDS)
+
+
+def wire_text(text) -> str:  # noqa: ANN001
+    """와이어에 실을 수 있는 ASCII 한 줄로.
+
+    전송 계층이 `encode('ascii', errors='replace')` 를 하므로(`impv2.format`) 비ASCII
+    는 어차피 `?` 가 된다 -- 여기서 미리 바꿔 **길이를 셀 때 바이트 수와 문자 수가
+    같게** 한다 (잘림 판정이 그 길이로 한다).  개행·제어문자는 메시지를 깨므로
+    (`impv2.parse` 가 `\\r`/`\\n`/`\\0` 을 malformed 로 버린다) 공백으로 접는다.
+    """
+    out = []
+    for ch in str(text):
+        o = ord(ch)
+        if o < 32 or o == 127:
+            out.append(' ')
+        elif o > 126:
+            out.append('?')
+        else:
+            out.append(ch)
+    return ' '.join(''.join(out).split())
+
+
+def _fail_text(exc: BaseException) -> str:
+    """예외를 `Failed:` 뒤에 붙일 문구로.  ⚠️ 컨트롤러 층의 문구는 대개 한글이라
+    `?` 로 뭉개진다 -- 그때는 `(see log)` 를 붙여 원문이 로그에 있음을 알린다."""
+    raw = str(exc) or type(exc).__name__
+    text = wire_text(raw)
+    if any(ord(ch) > 126 for ch in raw):
+        text += ' (see log)'
+    return text
+
+
+class _OpError(Exception):
+    """운영자 명령이 **정해진 문구로** 실패했다 -- 본문은 이미 와이어용이다."""
 
 #: ACF 경로에서 헤더 값을 뽑는 규칙 둘은 **`config.py` 에 함께 있다** --
 #: `rdmode_from_acf()`(`RDMODE`) · `cfg_name_from_acf()`(`CTRLnCFG`).
@@ -103,9 +165,49 @@ class IcsDispatcher(Dispatcher):
 
     ⭐ **스크립트 관측이든 콘솔에서 직접 친 `GO` 든 여기를 지난다** -- 그래서
     한 곳에서 끈다.  `ics_sim` 은 한 줄도 안 고친다.
+
+    추가 (운영자 지시 2026-09-05) -- 컨트롤러를 **직접** 만지는 운영자 명령 넷:
+
+    * `CCDFLUSH [MK|NT|ALL]`   -- 유휴 CCD 를 FlushFrame 한 바퀴로 비운다
+    * `CCDPOWON [MK|NT|ALL]`   -- `POWERON` (+ `poweron_wait` 의 flush 대기)
+    * `CCDPOWOFF [MK|NT|ALL]`  -- `POWEROFF`
+    * `ARCHON <MK|NT> <원문…>` -- 바이패스: 명령 원문을 한 컨트롤러에, 응답 원문을 그대로
+
+    ⭐ 넷 다 **응답이 나중에 온다** (`Reply.noop()` -> 왕복 뒤 `emit.done/error`) --
+    핸들러는 동기 함수인데 왕복(특히 `POWERON` 의 flush 대기 수 초)이 필요하기
+    때문이고, `ics_sim` 의 `ERASE`/`SHOPEN` · icg 의 `HTRSET` 이 쓰는 **같은 선례**다.
+
+    ⛔ **취득 중(`seq.busy`)이면 넷 다 거부한다** (`BUSY_TEXT`).  진행 중 노출 위에
+    `LOADPARAMS`(flush) · `POWEROFF` · `RESETTIMING`(바이패스 원문) 이 들어가면
+    자료를 망친다.  ⭐ 반대 방향도 막는다 -- 넷 중 하나가 **돌고 있는 동안 `GO`** 는
+    거부한다 (`_op_inflight`).  `CCDPOWOFF` 의 `POWEROFF` 가 아직 안 나갔는데 `GO`
+    가 `prepare()` 를 지나면(`powered` 가 아직 True) 노출 도중에 전원이 내려간다.
+    같은 이유로 운영자 명령끼리도 한 번에 하나다.
     """
 
+    def __init__(self, app) -> None:  # noqa: ANN001
+        super().__init__(app)
+        #: 돌고 있는 운영자 명령의 커맨드워드 (없으면 '').  `GO` 와 서로 배타.
+        self._op_inflight = ''
+
+    def _inflight_reply(self, cmdword: str):  # noqa: ANN202
+        """다른 운영자 명령이 도는 중이면 거부 Reply, 아니면 None.
+
+        ⚠️ 커맨드워드를 **괄호 안에** 둔다 -- 본문 첫 토큰이 등록된 커맨드워드면
+        `emitter.validate()` 가 `stacked_cmdword` 로 운다 (`ERROR: GO CCDPOWON in
+        progress …` 는 안 된다).
+        """
+        if self._op_inflight:
+            return Reply.error(cmdword, 'Operator command in progress (%s) -- retry '
+                                        'when it is DONE' % self._op_inflight)
+        return None
+
     def cmd_go(self, msg, target):  # noqa: ANN001, ANN201
+        bad = self._inflight_reply('GO')
+        if bad is not None:
+            # ⛔ 게이지를 만지기 **전에** 거절한다 -- 아래 `before_exposure()` 를
+            # 지나면 되켜기 타이머까지 걸어야 한다.
+            return bad
         gauge = getattr(self.app, 'gauge', None)
         if gauge is not None:
             # ⭐ **super() 앞에서** 끈다 -- 뒤에 두면 첫 프레임의 앞부분을
@@ -130,11 +232,212 @@ class IcsDispatcher(Dispatcher):
             gauge.after_acquisition()
         return reply
 
+    # -- 운영자 명령 넷 (2026-09-05) -- 공통 -----------------------------------
+
+    def _archon_backend(self, cmdword: str):  # noqa: ANN202
+        """archon 백엔드와 **거부 Reply** 를 짝으로 돌려준다.
+
+        `--backend sim` 에는 원시 함수(`flush_ccd`/`power_ccd`/`raw_command`)가 없다 --
+        그때 조용히 `DONE` 을 내면 *"명령은 먹었는데 아무것도 안 바뀜"* 이 된다
+        (icg `_ctrl()` 과 같은 이유).
+        """
+        be = getattr(self.app, 'backend', None)
+        if be is None or not all(hasattr(be, n) for n in
+                                 ('flush_ccd', 'power_ccd', 'raw_command', 'tags')):
+            return None, Reply.error(cmdword, 'Controller is not available (no '
+                                              'hardware backend)')
+        return be, None
+
+    def _refuse_if_busy(self, cmdword: str):  # noqa: ANN202
+        """취득 중이거나 다른 운영자 명령이 도는 중이면 거부 Reply, 아니면 None."""
+        seq = getattr(self.app, 'seq', None)
+        if seq is not None and seq.busy:
+            return Reply.error(cmdword, BUSY_TEXT)
+        return self._inflight_reply(cmdword)
+
+    def _tags_arg(self, cmdword: str, body: str, be):  # noqa: ANN001, ANN202
+        """`[MK|NT|ALL]` 인자 -> (`'ALL'` 또는 태그, None) / (None, 거부 Reply).
+
+        ⭐ usage 의 태그 나열은 **이 배치에 살아 있는 컨트롤러**(`backend.tags`)다 --
+        벤치 1대 구성에서는 `[MK|ALL]` 로 읽힌다.
+        """
+        parts = body.split()
+        usage = 'usage: %s [%s|ALL]' % (cmdword, '|'.join(be.tags))
+        if len(parts) > 1:
+            return None, Reply.error(cmdword, usage)
+        if not parts:
+            return 'ALL', None
+        word = parts[0].upper()
+        if word == 'ALL' or word in be.tags:
+            return word, None
+        return None, Reply.error(cmdword, usage)
+
+    def _start_op(self, dest: str, cmdword: str, work) -> Reply:  # noqa: ANN001
+        """왕복을 백그라운드로 띄우고 `noop` -- 답은 `_finish_op` 이 낸다."""
+        self._op_inflight = cmdword
+        self.app.spawn(self._finish_op(dest, cmdword, work))
+        return Reply.noop()
+
+    async def _finish_op(self, dest: str, cmdword: str, work) -> None:  # noqa: ANN001
+        """`work` 가 돌려준 본문을 `DONE` 으로, 예외는 `ERROR: <cmd> Failed: …` 로.
+
+        ⚠️ `except Exception` 은 `CancelledError` 를 잡지 않는다(3.8+ BaseException) --
+        종료가 태스크를 취소하면 응답 없이 끝나고 `finally` 만 표시를 내린다.
+        """
+        try:
+            body = await work
+        except _OpError as exc:
+            self.emit.error(dest, cmdword, str(exc))
+            return
+        except (BackendError, ArchonError, TimeoutError, OSError) as exc:
+            log.error('%s 실패 -- %s', cmdword, exc)
+            self.emit.error(dest, cmdword, 'Failed: %s' % _fail_text(exc))
+            return
+        except Exception as exc:  # noqa: BLE001  하나의 명령이 프로세스를 죽이지 않는다
+            log.exception('%s 실패 -- 예상 밖 예외', cmdword)
+            self.emit.error(dest, cmdword, 'Failed: %s: %s'
+                            % (type(exc).__name__, _fail_text(exc)))
+            return
+        finally:
+            self._op_inflight = ''
+        self.emit.done(dest, cmdword, body)
+
+    # -- CCDFLUSH ----------------------------------------------------------------
+
+    def cmd_ccdflush(self, msg: Message, target: Target) -> Reply:
+        """CCDFLUSH [MK|NT|ALL] -- 유휴 CCD 를 FlushFrame 한 바퀴로 비운다.
+
+        `backend.flush_ccd()` -> `controller.flush_now(reset=False)`: `FirstFlush=1` ·
+        `Exposures=0` 을 `LOADPARAMS` 로 걸고(science ACF R2609+ 의 `FlushFrame` =
+        Prep + Flush) 설정 메모리의 `FirstFlush` 를 0 으로 되쓴다.  프레임은 안 만든다.
+
+        ⚠️ **ACF 줄 번호를 알아야 한다** -- `WCONFIG` 는 줄 번호로 쓰는데 그 번호는
+        `prepare()`(첫 `GO`)의 ACF 파싱에서 온다.  아직 파싱 전이면 `flush_now()` 가
+        *"ACF has no FirstFlush parameter"* 라고 하는데 그것은 **원인이 아니라 증상**
+        이다 -- 여기서 먼저 걸러 바른 문구를 낸다.
+        """
+        be, bad = self._archon_backend('CCDFLUSH')
+        if bad is not None:
+            return bad
+        tags, bad = self._tags_arg('CCDFLUSH', msg.body, be)
+        if bad is not None:
+            return bad
+        bad = self._refuse_if_busy('CCDFLUSH')
+        if bad is not None:
+            return bad
+        ctrls = getattr(be, 'ctrls', {})
+        picked = list(be.tags) if tags == 'ALL' else [tags]
+        cold = [t for t in picked if not getattr(ctrls.get(t), 'config', None)]
+        if cold:
+            return Reply.error('CCDFLUSH', 'Failed: ACF not loaded on %s in this '
+                               'session -- run GO once first' % ','.join(cold))
+        log.info('CCDFLUSH %s -- %s 가 시켰다', tags, msg.src)
+        return self._start_op(msg.src, 'CCDFLUSH', self._flush_work(be, tags))
+
+    async def _flush_work(self, be, tags) -> str:  # noqa: ANN001
+        done = await be.flush_ccd(tags)
+        return 'Flushed=%s' % ','.join(done)
+
+    # -- CCDPOWON / CCDPOWOFF ----------------------------------------------------
+
+    def cmd_ccdpowon(self, msg: Message, target: Target) -> Reply:
+        """CCDPOWON [MK|NT|ALL] -- `POWERON`.  ⚠️ `poweron_wait`(CCD flush 대기, 기본
+        12 s) 를 포함하므로 응답이 그만큼 늦다.
+
+        ⚠️ 실기는 **이 세션에서 `APPLYALL` 이 없었으면** `?xx` 로 거부한다 (매뉴얼
+        p.51, DevNote 10.2) -- REBOOT·전원 재투입 뒤라면 `GO` 한 번(`prepare()` 의
+        `APPLYALL`)이 먼저다.  그 진단 문구는 `controller.power_on()` 이 낸다.
+        """
+        return self._power(msg, True, 'CCDPOWON')
+
+    def cmd_ccdpowoff(self, msg: Message, target: Target) -> Reply:
+        """CCDPOWOFF [MK|NT|ALL] -- `POWEROFF`.  다음 `GO` 의 `prepare()` 가 다시 켠다."""
+        return self._power(msg, False, 'CCDPOWOFF')
+
+    def _power(self, msg: Message, on: bool, cmdword: str) -> Reply:
+        be, bad = self._archon_backend(cmdword)
+        if bad is not None:
+            return bad
+        tags, bad = self._tags_arg(cmdword, msg.body, be)
+        if bad is not None:
+            return bad
+        bad = self._refuse_if_busy(cmdword)
+        if bad is not None:
+            return bad
+        log.info('%s %s -- %s 가 시켰다', cmdword, tags, msg.src)
+        return self._start_op(msg.src, cmdword, self._power_work(be, on, tags))
+
+    async def _power_work(self, be, on: bool, tags) -> str:  # noqa: ANN001
+        """`power_ccd()` 뒤 **상태로 판정한다** -- `controller.power_off()` 는 실패를
+        올리지 않고 로그만 남기므로(`finally` 자리용), 그대로 `DONE` 을 내면 전원이
+        살아 있는데 *"OFF"* 라고 답하게 된다."""
+        done = await be.power_ccd(on, tags)
+        ctrls = getattr(be, 'ctrls', {})
+        wrong = [t for t in done
+                 if bool(getattr(ctrls.get(t), 'powered', on)) != on]
+        word = 'ON' if on else 'OFF'
+        if wrong:
+            raise _OpError('Failed: POWER%s not confirmed on %s (see log)'
+                           % (word, ','.join(wrong)))
+        return 'Power=%s Controllers=%s' % (word, ','.join(done))
+
+    # -- ARCHON 바이패스 ---------------------------------------------------------
+
+    def cmd_archon(self, msg: Message, target: Target) -> Reply:
+        """ARCHON <MK|NT> <명령 원문…> -- 한 컨트롤러에 원문을 보내고 응답 원문을 답한다.
+
+        ⚠️ **위생 검사 없음** -- 운영자 도구다 (2026-09-05 지시).  `RESETTIMING` ·
+        `WCONFIG…` 같은 원문도 그대로 나간다.  그래서 취득 중에는 거부한다 (`BUSY_TEXT`).
+
+        응답이 길면(`STATUS` ~2 KB) `ARCHON_REPLY_MAX` 에서 잘라 꼬리를 붙이고 **전문은
+        `log.info` 로** 남긴다 -- 한 메시지 상한 `MAX_LEN`(2048) 을 넘기면 받는 쪽이
+        통째로 버린다 (`impv2.parse`).
+        """
+        be, bad = self._archon_backend('ARCHON')
+        if bad is not None:
+            return bad
+        usage = 'usage: ARCHON <%s> <command>' % '|'.join(be.tags)
+        head, _, text = msg.body.strip().partition(' ')
+        tag, text = head.upper(), text.strip()
+        if tag not in be.tags or not text:
+            return Reply.error('ARCHON', usage)
+        bad = self._refuse_if_busy('ARCHON')
+        if bad is not None:
+            return bad
+        log.info('ARCHON %s %r -- %s 가 시켰다 (바이패스, 위생 검사 없음)',
+                 tag, text, msg.src)
+        return self._start_op(msg.src, 'ARCHON', self._archon_work(be, tag, text))
+
+    async def _archon_work(self, be, tag: str, text: str) -> str:  # noqa: ANN001
+        try:
+            reply = await be.raw_command(tag, text)
+        except ArchonError as exc:
+            if exc.reply_error:
+                # 컨트롤러가 `?xx` 로 거부했다 -- 내 명령이 틀린 것이라 `DONE` 이 아니다.
+                log.warning('ARCHON %s: 컨트롤러가 거부했다 -- %r (%s)', tag, text, exc)
+                raise _OpError('%s rejected: %s' % (tag, wire_text(text))) from exc
+            log.error('ARCHON %s %r 실패 -- %s', tag, text, exc)
+            raise _OpError('%s Failed: %s' % (tag, _fail_text(exc))) from exc
+        except (BackendError, TimeoutError, OSError) as exc:
+            log.error('ARCHON %s %r 실패 -- %s', tag, text, exc)
+            raise _OpError('%s Failed: %s' % (tag, _fail_text(exc))) from exc
+        body = wire_text(reply)
+        # ⭐ **전문은 여기에** -- 와이어는 잘려도 로그는 안 잘린다.
+        log.info('ARCHON %s %r -> %d bytes: %s', tag, text, len(body),
+                 body or '(empty reply)')
+        if len(body) > ARCHON_REPLY_MAX:
+            kept = body[:ARCHON_REPLY_MAX].rstrip()
+            body = '%s ...(+%d bytes truncated, see log)' % (kept, len(body) - len(kept))
+        return '%s %s' % (tag, body or '<empty reply>')
+
 
 class IcsArchon(IcsSim):
     """실기 ICS -- `ics_sim` 본체 + Archon 백엔드."""
 
     def __init__(self, cfg, acfg) -> None:  # noqa: ANN001
+        # 운영자 명령 넷의 커맨드워드를 emitter 어휘에 -- 첫 응답 전이면 어디든
+        # 되지만, icg 와 같은 자리(생성자 첫 줄)에 둔다.
+        extend_vocabulary()
         # **`super().__init__()` 앞에 등록한다** -- 그 안에서 `make_backend()`
         # 가 불리므로, 늦으면 이 폴더의 스텁이 만들어진다.
         register_backend('archon', lambda c: ArchonBackend(c, acfg))

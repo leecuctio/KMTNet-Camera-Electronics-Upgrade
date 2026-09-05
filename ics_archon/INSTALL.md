@@ -143,6 +143,8 @@ strings ~/AIC/bin/pctcs   | grep 'tmp/pctcs'                # 1줄
 
 ## 6. 기동
 
+> ⭐ 컨트롤러 왕복을 손으로 확인하려면 `ARCHON MK STATUS` — `DONE: ARCHON MK POWERGOOD=1 …` 가 오면 링크가 산 것이고, `ERROR: ARCHON Controller is not available` 이면 `--backend sim` 으로 떠 있는 것이다 (2026-09-05).
+
 창 네 개로 띄운다.
 
 ```bash
