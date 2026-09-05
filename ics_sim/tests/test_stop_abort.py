@@ -63,7 +63,7 @@ def test_stop_is_accepted_while_integrating():
 
 
 def test_stop_still_completes_readout_and_save():
-    """STOP 은 적분만 끊는다 -- readout 과 저장은 끝까지 간다."""
+    """STOP 을 받아도 **그 프레임은 저장까지 끝까지 간다** (운영자 확정)."""
     run = _stop_run()
     assert run.count('EXPSTATUS=READOUT') >= 1, 'readout 으로 넘어가지 않았다'
     assert run.count('Acquisition Complete.', node='OBS') == 4
@@ -71,11 +71,22 @@ def test_stop_still_completes_readout_and_save():
     assert run.count('EXPSTATUS=IDLE') >= 1
 
 
-def test_stop_shortens_the_countdown():
-    """중지했으니 끝까지 센 노출보다 카운트다운이 적어야 한다."""
+def test_stop_does_not_shorten_the_integration():
+    """⛔ **STOP 은 적분을 끊지 않는다** (운영자 확정 2026-09-04).
+
+    ⚠️ **앞 결정을 뒤집은 자리다.**  종전에는 레거시 `SoftStop=1`
+    (PAP7KX.CMD:279-290)을 그대로 옮겨 **카운트다운을 끊었다.**
+    ⛔ 그런데 짧아진 적분이 헤더 `EXPTIME` 에는 **요청값 그대로** 실려
+    (raw spec 5.4절) *"정상으로 보이는 오염 프레임"* 을 만든다.
+
+    ⭐ 이제 갈림은 이렇다: **ABORT** 는 적분을 끊고 **버린다** · **STOP** 은
+    적분을 그대로 두고 **저장까지 하고 다음을 안 건다**.  그래서 저장되는
+    프레임은 언제나 온전한 노출이다.
+    """
     stopped = _stop_run().count('Remaining=')
     full = drive(DARK_SCRIPT).count('Remaining=')
-    assert stopped < full, f'stopped={stopped} full={full}'
+    assert stopped == full, (
+        'STOP 이 카운트다운을 끊었다 -- stopped=%d full=%d' % (stopped, full))
 
 
 def test_stop_keeps_the_wire_clean():
@@ -127,43 +138,32 @@ def test_go_is_accepted_again_after_abort():
     assert run.count('EXPSTATUS=INITIALIZING') >= 2, run.find('EXPSTATUS=')
 
 
-# -- STOP 은 그 프레임의 적분에만 적용된다 -----------------------------------
+# -- STOP 은 "다음 프레임을 안 건다" 다 -------------------------------------
 
-def test_stop_does_not_shorten_the_following_frames():
-    """`GO n` 도중 STOP 이 오면 **그 프레임만** 짧아진다.
+def test_stop_ends_the_sequence_after_the_current_frame():
+    """⭐ `GO n` 도중 STOP -> **그 프레임까지만 저장하고 멈춘다**.
 
-    구판은 `_stop_evt` 를 `start()` 에서만 지워서, 이벤트가 세워진 채 다음
-    프레임으로 넘어가면 각 프레임의 첫 `_nap()` 이 즉시 깨어나 **남은 프레임
-    전부가 ~0초 노출**이 됐다.  그런데 헤더 `EXPTIME` 은 요청값을 그대로
-    실으므로(raw spec 5.4절) 정상 노출로 보이는 오염 프레임이 생산됐다 --
-    카운트다운 발신 수로 그걸 잡는다.
+    ⚠️ 종전 시험(`…does_not_shorten_the_following_frames`)은 *"뒤 프레임들이
+    정상 카운트다운을 낸다"* 를 봤다 -- STOP 이 적분을 끊던 시절, 표시가 다음
+    프레임으로 **새는** 것을 막는 시험이었다.  이제 뒤 프레임은 **아예 안
+    돈다**(그것이 STOP 의 뜻이다).
+
+    ⚠️ **`GO`(1장)에는 영향이 없다** -- 막을 "다음" 이 없다.
     """
     from conftest import drive_at, make_config
     cfg = make_config()
-    # 마커는 **적분 중임이 확실한** 첫 카운트다운으로 잡는다.
-    # `EXPSTATUS=INTEGRATING` 은 못 쓴다 -- DARK 경로에서 그 문자열을 담은
-    # AUXSTATUS **중계**가 상태 전이보다 먼저 나가서, 그 시점의 STOP 은
-    # `No integration in progress` 로 거부된다(=STOP 을 태우지 못한다).
+    # 마커는 **적분 중임이 확실한** 첫 카운트다운으로 잡는다 (구판 주석 유지).
     run = drive_at(['OBS>ICS projid eng', 'OBS>ICS dark stopped',
                     'OBS>ICS exp 30', 'OBS>ICS go 3'],
                    marker='Remaining=', inject='OBS>ICS stop',
                    cfg=cfg, settle=2.0, timeout=20.0)
-    # STOP 이 실제로 받아들여졌는지 먼저 확인한다 -- 거부됐으면 이 시험은
-    # 아무것도 검증하지 않는다 (구판에서 그렇게 헛통과했다).
     assert not run.find('Nothing to stop'), 'STOP 이 거부됐다 -- 마커가 이르다'
-    # 프레임 3개가 다 돌았나 (규약: 프레임마다 획득 완료 4회)
-    assert run.count('Acquisition Complete.') >= 4 * 3
-    # **STOP 을 맞은 프레임 뒤의 프레임들은 카운트다운을 정상적으로 낸다.**
-    # 이벤트가 프레임 사이에서 지워지지 않으면 그 프레임들의 첫 `_nap()` 이
-    # 즉시 깨어나 카운트다운이 0회가 된다.
-    bounds = [i for i, m in enumerate(run.sent)
-              if 'Image ' in m and 'complete.' in m]
-    assert len(bounds) >= 2, '프레임 경계 통보가 모자라다'
-    later = run.sent[bounds[0]:]
-    ticks = sum(1 for m in later if 'Remaining=' in m)
-    assert ticks >= 6, (
-        f'STOP 이후 프레임들의 카운트다운이 {ticks}회다 -- 이벤트가 프레임 '
-        '사이에서 지워지지 않아 남은 노출이 0초가 됐다')
+    # ⭐ 3장을 걸었지만 STOP 을 맞은 첫 프레임에서 멈춘다 -- 획득 완료 4회.
+    acq = run.count('Acquisition Complete.')
+    assert acq == 4, '3장이 다 돌았거나(%d) 프레임이 잘렸다' % acq
+    assert run.count('Wrote LASTFILE=', node='OBS') == 4
+    assert run.count('EXPSTATUS=IDLE') >= 1
+    assert run.violations == []
 
 
 def test_abort_does_not_destroy_a_previous_frames_pending_save(tmp_path):

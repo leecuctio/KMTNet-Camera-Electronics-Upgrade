@@ -46,6 +46,16 @@ from .guidepair import NumberSpaceExhausted  # noqa: E402
 
 log = logging.getLogger('icg_archon.seq')
 
+#: 꼬리 소화의 홉 상한.  ⭐ 종전 2 는 **모자랐다** -- 해제가 늦게 닿으면
+#: "해제 전 완료분" 이 두 번 나올 수 있고, 그때 둘째 홉에서 무조건 돌아가
+#: IDLE 뒤에 프레임이 한 장 더 나왔다 (격리 8회 중 1~2회 재현).  상한은
+#: 폭주 방지용이고, 실제 종료 판정은 `_tail_is_quiet()` 가 한다.
+_MAX_TAIL_HOPS = 3
+
+#: 로그 문구용 -- "꼬리가 둘/셋/넷".  ⚠️ 시험이 이 문구로 두 홉 경로를 확인한다
+#: (`test_two_frame_tail_is_drained_when_disarm_lands_late`) -- 지우지 말 것.
+_HOP_WORD = ('둘', '셋', '넷')
+
 
 def _ascii(text: object) -> str:
     """와이어로 나가는 문구는 ASCII 다 (science 백엔드와 같은 이유)."""
@@ -432,6 +442,31 @@ class GuideSequencer:
             log.warning('연속 노출을 끊지 못했다 -- %s (남은 프레임이 더 나올 '
                         '수 있다)', exc)
 
+    async def _tail_is_quiet(self, done: int, period: float) -> bool:
+        """프레임 번호가 **한 주기 동안 안 늘면** 엔진이 멈춘 것이다.
+
+        ⭐ `Exposures=0` 은 *"지금 물고 있는 장까지"* 찍고 멈추는데, **그 장이
+        완료되기 전에는 번호가 안 늘어** 밖에서 "멈췄다" 와 구별되지 않는다.
+        그래서 마지막 완료 뒤 한 주기를 **관찰**한다 -- 늘면 아직 도는 것이고,
+        안 늘면 꼬리가 끝난 것이다.
+
+        ⚠️ 값을 못 읽으면 **"조용하다" 로 본다** -- 링크가 이미 죽었으면 더
+        기다려도 얻을 것이 없고, 여기서 막히면 IDLE 이 영영 안 온다.
+        """
+        deadline = time.monotonic() + period * 1.2
+        while time.monotonic() < deadline:
+            await asyncio.sleep(min(period / 4.0, 0.25))
+            try:
+                now = await self.backend.newest_frame()
+            except Exception as exc:  # noqa: BLE001
+                log.info('꼬리 확인 중 FRAME 을 못 읽었다 -- %s (조용한 것으로 '
+                         '본다)', exc)
+                return True
+            if now is not None and now > done:
+                log.info('꼬리가 더 있다 -- 프레임 %d 가 더 나왔다', now)
+                return False
+        return True
+
     async def _drain_tail(self, ticket, intms: int) -> None:  # noqa: ANN001
         """`Exposures=0` 은 **현재 프레임까지** 찍고 멈춘다 -- 그 꼬리가 끝날
         때까지 `busy` 를 유지한다 (9.15-(9), 반증자 지적).
@@ -451,7 +486,8 @@ class GuideSequencer:
         대역(sim)은 꼬리가 없어 건너뛴다.
         """
         period = self.backend.frame_floor() + intms / 1000.0
-        limit = period + 2.0
+        # ⚠️ 조용함 확인이 홉마다 한 주기를 더 쓸 수 있으므로 상한도 함께 넓힌다.
+        limit = period * (_MAX_TAIL_HOPS + 1) + 2.0
 
         async def _wait() -> None:
             newest = await self.backend.newest_frame()
@@ -464,17 +500,35 @@ class GuideSequencer:
                 tail = await self.backend.tail_ticket()
                 if tail is None:                     # 대역 -- 꼬리 없음
                     return
-            for hop in range(2):
+            for hop in range(_MAX_TAIL_HOPS):
                 async for _pct in self.backend.wait_frame(tail):
                     pass
                 await self.backend.discard_frame(tail, release=True)
                 done = getattr(getattr(tail, 'ready', None), 'frame', None)
-                if newest is None or done is None or done > newest or hop == 1:
-                    return                           # 해제 뒤에 끝난 장 -- 이것이 꼬리
-                # 해제 전에 이미 끝나 있던 장이었다 -- 엔진은 다음 장을 시작했다.
-                # (마지막 홉에서는 헛 `next_ticket` 을 만들지 않는다 -- 3차 반증.)
-                log.info('꼬리가 둘 -- 프레임 %d 는 해제 전 완료분, 한 장 더 기다린다',
-                         done)
+                if done is None:
+                    return                           # 표가 안 익었다 -- 더 볼 것이 없다
+                if newest is None or done > newest:
+                    # 해제 뒤에 끝난 장이다 -- **꼬리로 보인다.**
+                    # ⛔ 그런데 "보인다" 로 끝내면 안 된다: 엔진이 이미 다음
+                    # 장을 물고 있으면 그 장은 아직 **완료가 아니라** 번호가
+                    # 안 늘어 있고, 여기서 돌아가면 IDLE **뒤에** 한 장이 더
+                    # 나온다 (실측 flake -- 8회 중 1~2회).
+                    # ⭐ 확실한 신호는 하나뿐이다: **한 주기 동안 번호가 안 는다.**
+                    # `WBUF`·`BUFnLINES` 는 못 쓴다 -- 적분 중에도 0/None 이라
+                    # "멈췄다" 와 "다음 장 적분 중" 을 못 가른다.
+                    if await self._tail_is_quiet(done, period):
+                        return
+                    newest = done                    # 아직 돌고 있다 -- 한 장 더
+                else:
+                    # 해제 전에 이미 끝나 있던 장이었다 -- 엔진은 다음 장을 시작했다.
+                    log.info('꼬리가 %s -- 프레임 %d 는 해제 전 완료분, 한 장 더 '
+                             '기다린다', _HOP_WORD[min(hop, len(_HOP_WORD) - 1)],
+                             done)
+                if hop == _MAX_TAIL_HOPS - 1:
+                    log.warning('꼬리를 %d홉 안에 못 닫았다 (마지막 완료 %s) -- '
+                                '다음 시퀀스의 기준선이 어긋날 수 있다',
+                                _MAX_TAIL_HOPS, done)
+                    return
                 tail = await self.backend.next_ticket(tail, intms, suffix='',
                                                       queue=False)
 

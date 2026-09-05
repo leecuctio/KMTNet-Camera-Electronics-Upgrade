@@ -145,20 +145,34 @@ class Sequencer:
         return len(late)
 
     def stop_integration(self, requester: str) -> bool:
-        """STOP -- 적분만 조기 종료한다.  readout 과 저장은 정상 진행.
+        """STOP -- **적분을 끊지 않는다.**  현재 프레임을 저장까지 마치고,
+        **다음 노출을 시작하지 않는다** (운영자 확정 2026-09-04).
 
-        레거시(PAP7KX.CMD:279-290)는 `SoftStop = 1` 을 세우고 `AbortHost` 에
-        요청자를 기록할 뿐, 노출 사이클 자체는 그대로 흘려보낸다.  여기서도
-        카운트다운만 끊는다 -- 셔터 닫힘 알림부터 `Wrote` 까지 전부 정상
-        경로를 탄다.  OBSAgent 입장에서는 그냥 짧은 노출로 보인다.
+        ⭐ ABORT 와의 차이가 여기다:
+
+            ABORT  적분을 끊고 **저장하지 않는다**       -> 지금 이 프레임을 버린다
+            STOP   적분을 그대로 두고 **저장까지 한다**  -> 다음 프레임을 안 건다
+
+        ⚠️ 그래서 **`GO`(1장)에는 사실상 영향이 없고 `GO n` 에서만 뜻이 있다**
+        -- 막을 "다음" 이 있어야 한다.
+
+        ⚠️ **종전 구현은 카운트다운을 끊었다** (레거시 `SoftStop=1`,
+        PAP7KX.CMD:279-290).  그것을 운영자 확정으로 뒤집었다: 짧아진 적분이
+        **헤더 `EXPTIME` 에는 요청값으로** 실려(raw spec 5.4절) *"정상으로
+        보이는 오염 프레임"* 을 만들기 때문이다.  이제 저장되는 프레임은
+        언제나 온전한 노출이다.
+
+        ⭐ 조건도 `integrating` 에서 **`busy`** 로 넓혔다 -- 독출·저장 중에
+        받은 STOP 도 "다음을 걸지 마라" 로 뜻이 통한다.
 
         Returns:
-            받아들였으면 True.  적분 중이 아니면 False (호출측이 레거시와
+            받아들였으면 True.  노출 중이 아니면 False (호출측이 레거시와
             같은 거부 문자열을 돌려준다).
         """
-        if not self.integrating:
+        if not self.busy:
             return False
-        log.info('STOP from %s -- ending integration early', requester)
+        log.info('STOP from %s -- 현재 프레임은 마치고 다음을 걸지 않는다',
+                 requester)
         self._stop_evt.set()
         return True
 
@@ -207,6 +221,12 @@ class Sequencer:
         try:
             for index in range(1, count + 1):
                 await self._frame(index, count, source)
+                # ⭐ **STOP 은 여기서 듣는다** -- 이 프레임은 저장까지 끝났고,
+                # 다음을 걸지 않는다 (운영자 확정 2026-09-04).
+                if self._stop_evt.is_set() and index < count:
+                    log.info('STOP -- %d/%d 장에서 멈춘다 (다음 프레임을 '
+                             '걸지 않는다)', index, count)
+                    break
         except BackendError as exc:
             log.error('exposure aborted: %s', exc)
             self.emit.error(source, '', str(exc), st.expstatus)
@@ -231,11 +251,11 @@ class Sequencer:
 
         # **STOP 은 그 프레임의 적분에만 적용된다** (`stop_integration()` 의
         # 계약: "적분만 조기 종료").  구판은 `start()` 에서만 이벤트를 지워서
-        # `GO n` 도중 STOP 이 오면 이벤트가 세워진 채 다음 프레임으로 넘어갔고,
-        # 각 프레임의 첫 `_nap()` 이 즉시 깨어나 **남은 프레임 전부가 ~0초
-        # 노출**이 됐다 -- 그런데 헤더 `EXPTIME` 은 요청값을 그대로 실으므로
-        # (raw spec 5.4절) 정상 노출로 보이는 오염 프레임이 생산됐다.
-        self._stop_evt.clear()
+        # ⛔ **여기서 STOP 표시를 지우지 않는다** (2026-09-04).  종전에는
+        # 프레임마다 지웠다 -- STOP 이 카운트다운을 끊던 시절에 그것이 다음
+        # 프레임으로 새어 **남은 프레임 전부를 ~0초 노출**로 만들었기
+        # 때문이다.  이제 STOP 은 적분을 안 끊고 **다음 프레임을 막는 표시**라,
+        # 지우면 그 요청이 사라진다.  `start()` 가 새 `GO` 마다 지운다.
         # 이 프레임이 띄운 저장 태스크만 담는다 -- ABORT 가 이전 프레임의
         # 저장을 취소하지 않게 하는 근거다 (`cancel()` 참고).
         self._frame_writers = []
@@ -688,18 +708,15 @@ class Sequencer:
         self.emit.shutter_closed_ics(source, ExpStatus.INTEGRATING)
 
     async def _nap(self, seconds: float) -> bool:
-        """seconds 만큼 재우되 STOP 이 오면 즉시 깬다.
+        """seconds 만큼 잔다.
 
-        Returns:
-            STOP 때문에 깼으면 True, 정상적으로 다 잤으면 False.
+        ⚠️ **종전에는 STOP 이 오면 즉시 깼다** -- 그것이 적분을 끊는 수단이었다.
+        운영자 확정(2026-09-04)으로 STOP 은 적분을 끊지 않으므로 여기서는
+        그냥 잔다.  ⭐ 반환값은 호출부 호환으로 남기고 **언제나 False** 다.
         """
-        if seconds <= 0:
-            return self._stop_evt.is_set()
-        try:
-            await asyncio.wait_for(self._stop_evt.wait(), timeout=seconds)
-        except asyncio.TimeoutError:
-            return False
-        return True
+        if seconds > 0:
+            await asyncio.sleep(seconds)
+        return False
 
     async def _countdown(self, exptime: float, tick: float):
         """노출 시간을 tick 간격으로 세며 남은 초를 yield 한다.
