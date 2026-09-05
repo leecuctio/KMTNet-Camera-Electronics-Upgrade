@@ -51,7 +51,7 @@ NOCLAMP; RETURN Line
 
 SkipLine:
 RGHIGH; CALL VerticalShift
-X; CALL HorizontalShift(600)
+DGHIGH; CALL HorizontalShift(600)
 CLAMP; X(10000)
 NOCLAMP; RETURN SkipLine
 

@@ -644,10 +644,10 @@ token 과 개인 휴대전화 번호**가 리터럴로 박혀 있었다.  블록
 일곱은 전부** `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]` 이라 **속도 토큰이
 아예 없다**:
 
-    KMTC_SCI_101_STA0284_R2608_MK    KMTK_SCI_113_STA0200_R2608_MK
-    KMTC_SCI_102_STA0285_R2608_NT    KMTK_SCI_113_STA0200_R2608_NT
-    KMTS_SCI_101_STA0286_R2608_MK    KMTK_GUI_162_STA0201_R2614
-    KMTS_SCI_102_STA0287_R2608_NT    (guide 는 R2614 가 현행 -- 2026-09-05)
+    KMTC_SCI_101_STA0284_R2609_MK    KMTK_SCI_113_STA0200_R2609_MK
+    KMTC_SCI_102_STA0285_R2609_NT    KMTK_SCI_113_STA0200_R2609_NT
+    KMTS_SCI_101_STA0286_R2609_MK    KMTK_GUI_162_STA0201_R2615
+    KMTS_SCI_102_STA0287_R2609_NT    (science R2609 · guide R2615 가 현행 -- 2026-09-05)
 
 그래서 ini 를 비워 두면 유도가 **늘 실패**하고 코드 기본값 `NORMAL` 이 실린다.
 ⚠️ **값이 틀렸다는 말이 아니다** -- labtest 가 그 파일을 담는 변수를

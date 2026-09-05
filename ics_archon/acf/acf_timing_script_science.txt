@@ -1,9 +1,9 @@
 Start:
-RESET; IF ContinuousExposures GOTO Continuous
+RESET; IF FirstFlush GOTO FlushFrame
+X; IF ContinuousExposures GOTO Continuous
 X; IF Exposures GOTO Exposure
 X; CALL SkipLine
 X; GOTO Start
-
 Exposure:
 X; Exposures--
 Continuous:
@@ -135,3 +135,8 @@ IMAGE6; X(AT)
 IMAGE7; X(AT)
 IMAGE8; X(AT)
 X; RETURN VerticalShift
+FlushFrame:
+X; FirstFlush--
+X; CALL Prep
+X; CALL Flush
+X; GOTO Start

@@ -87,8 +87,8 @@ def cfg_name_from_acf(path: str) -> str:
 
     규격 5.5절이 못박은 형태다 (raw spec v1.8):
 
-        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2608_MK.acf
-        ->               KMTC_SCI_101_STA0284_R2608_MK
+        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2609_MK.acf
+        ->               KMTC_SCI_101_STA0284_R2609_MK
 
     경로가 비었거나 이름이 통째로 확장자면 빈 문자열을 돌려준다 -- 그러면
     부르는 쪽이 "유도 실패" 를 알아보고 손편집 값이나 백엔드 보고값에

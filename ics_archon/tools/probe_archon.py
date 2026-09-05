@@ -19,7 +19,7 @@
         -> SYSTEM · STATUS · FRAME 원문 + 해석 + 가정 대조
 
     2단계  ACF 대조 (여전히 읽기 전용)
-        python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2608_MK.acf
+        python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2609_MK.acf
         -> 파라미터 슬롯이 컨트롤러 메모리와 맞는지 (RCONFIG 로 확인만)
 
     3단계  프레임 1장  ⚠️ **전원을 켜고 CCD 를 읽어낸다**
@@ -34,7 +34,7 @@
 보고한다 (`extra [6, 7]` + `missing [1, 2, 8, 11]`).
 
     python tools/probe_archon.py --unit guide --host 10.0.0.162 \
-        --acf acf/KMTK_GUI_162_STA0201_R2610.acf
+        --acf acf/KMTK_GUI_162_STA0201_R2615.acf
 
 ⚠️ 이 도구는 파일 이름을 `probe.<...>.fits` 로 쓴다 -- 관측 번호 공간(D-016)을
 건드리지 않으려는 것이다.  아카이브에 넣을 자료를 만드는 도구가 아니다.

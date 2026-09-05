@@ -169,7 +169,7 @@ def _check_identity_setup():
 #--------------------------------
 # ACF lists
 
-UNIT_ACF_SCI_NORMAL = '../Config/acf/KMTK_SCI_113_STA0200_R2608_MK.acf'
+UNIT_ACF_SCI_NORMAL = '../Config/acf/KMTK_SCI_113_STA0200_R2609_MK.acf'
 
 
 #--------------------------------

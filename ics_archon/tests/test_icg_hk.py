@@ -63,7 +63,7 @@ def test_rtd_limits_use_the_parsed_acf_key_form():
     from icg_archon.config import IcgCfg
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    acf = os.path.join(root, 'acf', 'KMTK_GUI_162_STA0201_R2614.acf')
+    acf = os.path.join(root, 'acf', 'KMTK_GUI_162_STA0201_R2615.acf')
     icfg = IcgCfg()
     icfg.acf = {'G': acf}
     ctrl = ArchonController('G', icfg)

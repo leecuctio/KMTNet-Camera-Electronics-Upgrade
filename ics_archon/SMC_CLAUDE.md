@@ -21,7 +21,7 @@ endpoint 가 첫 구동/콘솔 확인 대기다 (`HEATER` 레일 필드명은 `H
 **노출 주기는 시퀀서가 만든다** (DevNote 9.12) — `Exposures=n` + `FirstFlush=1`(R2613+,
 flush 1회 + 독출 n회 · n장 저장, 규격 10.1-2·3)을 한 LOADPARAMS 로 걸고 `IntMS = EXPTIME − 하한`
 으로 환산한다.  하한의 정본은 ini 가 아니라 **ACF 계산값**이다 (`icg_archon/acftiming.py`) —
-현행 **R2614**(`NoIntMS=0` · `Pixels=540` · `FlushLines=2448`)에서 **1.2506 s** 이고, 더 짧게
+현행 **R2615**(`NoIntMS=0` · `Pixels=540` · `FlushLines=2448`)에서 **1.2506 s** 이고, 더 짧게
 요청하면 거부가 아니라 하한으로 클램프하며 헤더 `EXPTIME` 은 **실현값을 ms 로 반올림**해 싣는다
 (10.1-1).  `DATE-OBS` 기준은 **FrameShift 개시** — 첫 저장 프레임은 arm 의 LOADPARAMS 왕복 중점
 (DevNote 11.31).
@@ -251,7 +251,7 @@ imgacq/powon).  `powon` 판은 `imgacq` 판에서 `Exposure()` 호출만 주석 
 
 1. ⭐ **guide 자리 표 = `BACKPLANE_TEMP` + MOD3·4·5·6·7·9·10 = 8자리.**
    미해결 **`OI-19`("guide 8자리 자리 표")의 답이 실물로 나왔다** —
-   `acf/KMTK_GUI_162_STA0201_R2614.acf` 의 `MODn_TYPE` 과
+   `acf/KMTK_GUI_162_STA0201_R2615.acf` 의 `MODn_TYPE` 과
    `modtm_gui_imgacq_v0.3….py` 가 훑는 슬롯이 **정확히 같다.**
    형 번호는 3·4 = `1`(Driver), 5·6 = `2`(AD), 7·10 = `11`(HeaterX),
    9 = `8`(HVXBias).  ✅ **규격 수록 완료** — raw spec **v1.9 가 10.4절에
@@ -1252,7 +1252,7 @@ C←RTD5_WB) **그때 limit 설정을 안 옮겼다.**  그래서 CCD 채널이 
 **판을 올렸다** — `R2601` → `R0827` (운영자 지시 2026-08-27), 그리고
 **2026-08-28 에 guide 정본을 하나로 줄이며 `R2608` 로 다시 표기했다**:
 
-    acf/KMTK_GUI_162_STA0201_R2614.acf                       ⭐ 현행 유일본
+    acf/KMTK_GUI_162_STA0201_R2615.acf                       ⭐ 현행 유일본
       ⚠️ R2608/R2609 와 **바이트가 다르다** -- Pixels=540 (2026-09-03)
     acf/archive/KMTK_GUI_162_STA0201_R2609.acf               NoIntMS=0 판
       = R2608 + PARAMETER3 한 줄
