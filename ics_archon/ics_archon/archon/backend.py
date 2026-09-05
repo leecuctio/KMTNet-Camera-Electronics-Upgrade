@@ -178,6 +178,47 @@ class ArchonBackend:
     def _active(self) -> list[ArchonController]:
         return [self.ctrls[t] for t in self.tags]
 
+    def _pick(self, tags) -> list[ArchonController]:  # noqa: ANN001
+        """운영자 명령의 대상 -- `None`/'ALL' 은 둘 다, 아니면 태그 하나."""
+        if not tags or str(tags).upper() == 'ALL':
+            return self._active()
+        tag = str(tags).upper()
+        if tag not in self.ctrls:
+            raise BackendError('unknown controller %r -- use %s or ALL'
+                               % (tags, '/'.join(self.tags)))
+        return [self.ctrls[tag]]
+
+    # -- 운영자 명령 (2026-09-05) ---------------------------------------------
+
+    async def flush_ccd(self, tags=None) -> list[str]:  # noqa: ANN001
+        """`CCDFLUSH` -- 유휴 상태의 CCD 를 한 바퀴 비운다 (science R2609+ FlushFrame =
+        Prep + Flush).  시험용이다 -- science 는 abort 뒤 flush 가 필요 없다(운영자).
+        돌린 컨트롤러 태그 목록을 돌려준다."""
+        done = []
+        for ctrl in self._pick(tags):
+            await ctrl.flush_now(reset=False)
+            done.append(ctrl.tag)
+        return done
+
+    async def power_ccd(self, on: bool, tags=None) -> list[str]:  # noqa: ANN001
+        """`CCDPOWON`/`CCDPOWOFF` -- 컨트롤러 `POWERON`/`POWEROFF`."""
+        done = []
+        for ctrl in self._pick(tags):
+            if on:
+                await ctrl.power_on()
+            else:
+                await ctrl.power_off()
+            done.append(ctrl.tag)
+        return done
+
+    async def raw_command(self, tag, text: str) -> str:  # noqa: ANN001
+        """바이패스 -- 한 컨트롤러에 명령 원문을 보내고 응답 원문을 돌려준다."""
+        ctrls = self._pick(tag)
+        if len(ctrls) != 1:
+            raise BackendError('raw command needs one controller (%s)'
+                               % '/'.join(self.tags))
+        return await ctrls[0].raw_command(text)
+
     async def _all(self, coro_factory, what: str) -> None:  # noqa: ANN001
         """살아 있는 컨트롤러 전부에 같은 일을 시키고 **첫 실패를 올린다.**
 

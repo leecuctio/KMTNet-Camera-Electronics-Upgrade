@@ -801,6 +801,66 @@ class ArchonController:
         self.powered = False
         self.power_attempted = False
 
+    async def reset_timing(self) -> None:
+        """`RESETTIMING` -- 타이밍 코어를 **스크립트 첫 줄(`Start:`)부터** 다시 돈다
+        (매뉴얼 p.52; RELEASETIMING 없이 곧바로 돈다).
+
+        진행 중이던 적분·독출은 그 자리에서 끊긴다 -- 쓰던 버퍼는 미완료로 남고
+        프레임 번호는 안 는다.  **자료를 쓸 생각이면 부르지 말 것** -- 이것은
+        `flush_now(reset=True)` 가 abort 직후 CCD 를 비우려고 쓰는 길이다
+        (운영자 2026-09-05: 노출 중 abort/EXPENABLE=0 이면 비디지타이징 flush 로
+        CCD 를 비운다).  끊긴 프레임을 기다리는 표가 있으면 함께 버린다.
+        """
+        await self.cmd('RESETTIMING', timeout=T_SYSTEM)
+        self.drop_tickets('RESETTIMING -- 진행 중이던 프레임은 완료되지 않는다')
+        log.info('%s: RESETTIMING -- 코어가 Start 로 돌아갔다', self.tag)
+
+    async def raw_command(self, text: str, timeout: float = T_SYSTEM) -> str:
+        """운영자 바이패스 -- 명령 문자열을 **그대로** 보내고 응답을 **그대로** 돌려준다.
+
+        참조 번호·프레이밍은 링크 층이 붙이고 떼므로 여기 들어오는 것은 `STATUS`
+        같은 명령 본문이고 나가는 것은 응답 본문이다.  거부(`?xx`)는 `ArchonError`
+        (reply_error) 로 온다 -- 부르는 쪽이 문구로 옮긴다.  ⚠️ 위생 검사 없음 --
+        운영자 도구다 (2026-09-05 지시).
+        """
+        text = ' '.join(text.split())
+        if not text:
+            raise ArchonError('%s: empty command' % self.tag, cmd='')
+        out = await self.cmd(text, timeout=timeout)
+        return out.decode('latin-1', 'replace').strip()
+
+    async def flush_now(self, *, reset: bool = False) -> None:
+        """CCD 를 한 바퀴 비운다 -- 타이밍 스크립트의 `FlushFrame` 을 한 번 돌린다.
+
+        `FirstFlush=1` · `Exposures=0` 을 LOADPARAMS 로 걸면 유휴 코어가 `Start:` 첫 줄
+        에서 `FlushFrame` 으로 뛴다(guide R2613+: FrameShift + SkipLine x FlushLines,
+        science R2609+: Prep + Flush).  프레임은 만들지 않는다.
+
+        `reset=True` 면 LOADPARAMS 뒤 **`RESETTIMING`** 으로 진행 중 사이클을 끊고 곧바로
+        flush 로 들어간다 -- abort/EXPENABLE=0 경로.  LOADPARAMS 가 파라미터 RAM 과 설정
+        메모리를 같은 값으로 맞춘 뒤라, RESETTIMING 이 RAM 을 그대로 쓰든 메모리를 다시
+        읽든 결과가 같다(⏳ 어느 쪽인지는 첫 구동 실측).
+
+        ⛔ 끝에 설정 메모리의 `FirstFlush` 를 **0 으로 되쓴다**(LOADPARAMS 없이) -- 안 그러면
+        이후 어떤 LOADPARAMS/LOADTIMING 도 유령 flush 를 되살린다 (DevNote 11.31).
+        ACF 에 슬롯이 없으면(R2612 이하 guide · R2608 이하 science) `ArchonError`.
+        """
+        fslot = getattr(self.cfg, 'param_flush_slot', None)
+        fname = getattr(self.cfg, 'param_flush_name', 'FirstFlush')
+        if not fslot or fslot not in self.config:
+            raise ArchonError('%s: ACF has no %s parameter (slot %s) -- load an ACF '
+                              'with FlushFrame (guide R2613+ / science R2609+)'
+                              % (self.tag, fname, fslot or '?'), cmd='WCONFIG')
+        await self.set_config(fslot, '%s=1' % fname)
+        await self.set_config(self.cfg.param_exposures_slot,
+                              '%s=0' % self.cfg.param_exposures_name)
+        await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
+        if reset:
+            await self.reset_timing()
+        await self.set_config(fslot, '%s=0' % fname)
+        log.info('%s: CCD flush %s', self.tag,
+                 'after RESETTIMING (abort)' if reset else 'from idle')
+
     # -- 스냅샷 -----------------------------------------------------------
 
     async def refresh_system(self) -> None:

@@ -243,6 +243,10 @@ class ArchonCfg:
     param_intms_slot: str = 'PARAMETER2'
     param_intms_name: str = 'IntMS'
     param_exposures_slot: str = 'PARAMETER1'
+    #: flush 플래그 슬롯 (science R2609+, `CCDFLUSH` 명령).  ⛔ Exposures 보다 **앞**
+    #: 슬롯이어야 한다 -- LOADPARAMS 가 슬롯 순서로 적용한다 (매뉴얼 p.52).
+    param_flush_slot: str = 'PARAMETER0'
+    param_flush_name: str = 'FirstFlush'
     param_exposures_name: str = 'Exposures'
 
     # -- 텔레메트리 ------------------------------------------------------
@@ -683,6 +687,8 @@ def load(path: str) -> ArchonCfg:
     cfg.param_intms_name = _head(s, 'param_intms_name', cfg.param_intms_name)
     cfg.param_exposures_slot = _head(s, 'param_exposures_slot',
                                      cfg.param_exposures_slot)
+    cfg.param_flush_slot = _head(s, 'param_flush_slot', cfg.param_flush_slot)
+    cfg.param_flush_name = _head(s, 'param_flush_name', cfg.param_flush_name)
     cfg.param_exposures_name = _head(s, 'param_exposures_name',
                                      cfg.param_exposures_name)
 

@@ -357,11 +357,33 @@ class FakeArchon(threading.Thread):
             if 'POWER' in self.status:
                 self.status['POWER'] = '2'      # Off (p.47)
             self._reply(conn, ref)
+        elif cmd in ('RESETTIMING', 'HOLDTIMING', 'RELEASETIMING'):
+            # RESETTIMING (p.52): 코어가 **스크립트 첫 줄부터** 다시 돈다 -- 진행 중
+            # 프레임은 그 자리에서 끊겨 버퍼가 미완료로 남고 frame_no 는 안 는다.
+            # 파라미터는 마지막 LOADPARAMS 의 RAM 값(`_ram_*`)으로 다시 판정한다.
+            if cmd == 'RESETTIMING':
+                with self._lock:
+                    self._abort_frame = True
+                    self._remaining = getattr(self, '_ram_exposures', 0)
+                    self._flush_pending = getattr(self, '_ram_flush', 0) == 1
+                    self.resets = getattr(self, 'resets', 0) + 1
+                    start = (not self._exposing
+                             and (self._remaining > 0 or self._flush_pending))
+                    if start:
+                        self._exposing = True
+                self._reply(conn, ref)
+                if start:
+                    threading.Thread(target=self._expose, daemon=True).start()
+            else:
+                self._reply(conn, ref)
         elif cmd == 'LOADPARAMS':
             # 응답 **전에** 파라미터를 반영한다 -- 실기는 ack 가 돌아오면 이미
             # 적용돼 있다.  스레드 기동은 응답 뒤여도 된다.
             with self._lock:
                 self._remaining = self._exposures()
+                # 파라미터 RAM -- RESETTIMING 이 다시 읽는 값 (LOADPARAMS 시점 스냅샷).
+                self._ram_exposures = self._remaining
+                self._ram_flush = self._flush()
                 # R2613+: 설정 메모리의 FirstFlush 를 LOADPARAMS 마다 읽는다 --
                 # 실기와 같이 **호스트가 0 으로 되쓰지 않으면 다음 LOADPARAMS 가
                 # flush 를 되살린다** (유령 flush 를 시험이 보게 하는 자리).
@@ -468,6 +490,7 @@ class FakeArchon(threading.Thread):
                     self.flushes = getattr(self, 'flushes', 0) + 1
                     continue
                 with self._lock:
+                    self._abort_frame = False
                     if self._remaining <= 0:
                         # ⚠️ 나가기로 정한 **같은 잠긴 구역**에서 표시를 내린다 --
                         # 락을 풀고 finally 까지 가는 틈에 LOADPARAMS 가 오면
@@ -482,7 +505,14 @@ class FakeArchon(threading.Thread):
                 self._exposing = False
 
     def _one_frame(self) -> None:
-        time.sleep(min(self._int_ms() / 1000.0, 2.0))
+        # 적분 -- RESETTIMING 이 끊을 수 있게 잘게 잔다.
+        left = min(self._int_ms() / 1000.0, 2.0)
+        while left > 0:
+            if getattr(self, '_abort_frame', False):
+                return                       # 끊겼다 -- 프레임 없음
+            step = min(left, self.tick)
+            time.sleep(step)
+            left -= step
         # 잠긴 버퍼는 피한다.  전부 잠겼으면 풀릴 때까지 기다린다.
         for _ in range(2000):
             idx = self._next % self.nbuf
@@ -497,6 +527,11 @@ class FakeArchon(threading.Thread):
         b['lines'] = 0
         self.wbuf = idx + 1
         for i in range(1, self.readout_ticks + 1):
+            if getattr(self, '_abort_frame', False):
+                # RESETTIMING 이 독출 중에 왔다 -- 버퍼는 미완료로 남고 번호는 안 는다.
+                b['complete'] = 0
+                self.wbuf = 0
+                return
             # ⚠️ 상한은 `linecount` 다 -- split 에서 HEIGHT 의 절반 (10.3).
             b['lines'] = int(self.linecount * i / self.readout_ticks)
             time.sleep(self.tick)

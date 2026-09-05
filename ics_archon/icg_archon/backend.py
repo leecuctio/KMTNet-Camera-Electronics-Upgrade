@@ -326,6 +326,41 @@ class GuideBackend:
             log.warning('Exposures=0 을 못 걸었다 -- %s (남은 프레임이 더 '
                         '나올 수 있다)', exc)
 
+    # -- flush · 전원 · 바이패스 (운영자 2026-09-05) ---------------------------
+
+    async def flush_ccd(self) -> None:
+        """`CCDFLUSH` -- 유휴 CCD 를 `FlushFrame` 한 바퀴로 비운다 (프레임 없음)."""
+        try:
+            await self.ctrl.flush_now(reset=False)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError('CCD flush failed: %s' % exc) from exc
+
+    async def abort_flush(self) -> None:
+        """abort/EXPENABLE=0 경로 -- **진행 중 사이클을 RESETTIMING 으로 끊고** 곧바로
+        flush 로 비운다 (운영자 2026-09-05: 적분을 마저 하지 않는다, 디지타이징도
+        않는다).  프레임이 나오지 않으므로 부르는 쪽은 꼬리를 기다리지 말고
+        `flush_duration()` 만큼 기다린 뒤 IDLE 로 간다."""
+        try:
+            await self.ctrl.flush_now(reset=True)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError('abort flush failed: %s' % exc) from exc
+
+    async def power_ccd(self, on: bool) -> None:
+        try:
+            if on:
+                await self.ctrl.power_on()
+            else:
+                await self.ctrl.power_off()
+        except (ArchonError, TimeoutError, OSError) as exc:
+            raise GuideBackendError('CCD power %s failed: %s'
+                                    % ('on' if on else 'off', exc)) from exc
+
+    async def raw_command(self, text: str) -> str:
+        try:
+            return await self.ctrl.raw_command(text)
+        except (TimeoutError, OSError) as exc:
+            raise GuideBackendError('raw command failed: %s' % exc) from exc
+
     # -- 준비 ---------------------------------------------------------------
 
     async def prepare(self) -> None:
@@ -571,6 +606,19 @@ class SimGuideBackend:
 
     async def stop_sequence(self) -> None:
         return None
+
+    async def flush_ccd(self) -> None:
+        await asyncio.sleep(self.cfg.scaled(self.flush_duration()))
+
+    async def abort_flush(self) -> None:
+        self._flush_pending = False
+        await asyncio.sleep(self.cfg.scaled(self.flush_duration()))
+
+    async def power_ccd(self, on: bool) -> None:  # noqa: ARG002
+        return None
+
+    async def raw_command(self, text: str) -> str:
+        return 'SIM (no controller): %s' % ' '.join(text.split())
 
     async def tail_ticket(self):  # noqa: ANN201
         return None                          # 대역은 꼬리가 없다 -- 소화 생략
