@@ -79,7 +79,7 @@ python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_G
 
 **통과 기준**: 요약에 `문제 0건`.
 
-## 2단계 — 파라미터 슬롯 대조 (여전히 읽기 전용)
+## 2단계 — 파라미터의 Config 슬롯 번호 대조 (여전히 읽기 전용)
 
 1단계 명령에 `--acf` 를 이미 줬으므로 같은 로그에 함께 찍힌다. `PARAMETER1`
 (`Exposures`) · `PARAMETER2`(`IntMS`) 가 그 ACF 에 있고 컨트롤러 메모리의

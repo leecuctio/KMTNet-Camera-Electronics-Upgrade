@@ -1406,9 +1406,19 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ## ▶ 인수인계 (2026-09-04 마감 — ⭐ 새 세션이면 **여기부터**)
 
-### ⭐ 2026-09-06 새벽 추가분 (DevNote 11.33~11.34) — 아래 것들보다 **이것이 최신**
+### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.35) — 아래 것들보다 **이것이 최신**
 
 ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved`).
+
+**한 것 (11.35, 2026-09-06)**
+- ⛔ **타이밍 스크립트를 줄 번호로 색인하지 않는다**(운영자) — `acftiming.blocks()`/`call_arg()` 로
+  `라벨:` 블록과 호출 이름을 본다.  `_SHAPE` 가 `(라벨, 정규식)` 이 됐다.  시험도 같이.
+- 덤: 알려진 미결 *"리터럴 `FrameShift(1033)` 을 `Lines` 로 셈한다"* 가 닫혔다 — 이제 스크립트에서
+  읽는다(`HorizontalShift` 횟수 세 자리도).  현행 ACF 에서는 값이 같고 그 동일성을 시험이 못박는다.
+- **science R2611 ×6** — guide 와 같은 관례(라벨 앞 빈 줄) + R2610 이 비워 둔 죽은 빈 줄 둘 제거.
+  ⭐ 빼고 넣은 수가 같아 `LINES=142` 도 `FlushFrame:`=`LINE137` 도 그대로다.
+- 용어: **Config 슬롯 번호**(`PARAMETERn` 의 n, LOADPARAMS 순서) vs **Config 줄 번호**(`WCONFIG`
+  4자리 16진).  ⚠️ 스크립트에 줄이 늘면 줄 번호만 밀린다.  `ContinuousExposures` 는 **그대로 둔다**(운영자).
 
 **한 것 (11.34, 2026-09-06)**
 - guide **R2617** — `Exposure:`·`FlushFrame:` 앞에 빈 줄 하나씩(운영자).  거동 불변, **번호만 밀린다**:
@@ -1430,9 +1440,11 @@ ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_wai
 - `icg_first_run.md` 부록 **DG 정적 덤프 실측** 프로시저(FRAME6 판단 근거) · 3.5/4/5단계 행 갱신.
 
 **밟기 쉬운 함정**
-- **줄 번호는 ACF 판에 매인다** — `_SHAPE`·시험·문서의 `LINEn` 은 R2617 기준이다.  ACF 를 손대면
-  `acftiming._SHAPE` 부터 확인할 것(형태 검사가 어긋나면 주기를 **셈하지 않고** ini 대체값으로 간다 —
-  조용히 틀리는 자리다).  `WCONFIG` 줄 번호는 파일 위치라 판을 갈면 다시 파싱해야 한다.
+- ⛔ **줄 번호로 색인하지 말 것** (11.35) — 코드·시험은 라벨과 호출 이름으로 간다.  문서의 `LINEn`
+  은 읽는 이를 돕는 표기일 뿐이고 **판마다 밀린다**.  형태 검사가 어긋나면 주기를 **셈하지 않고**
+  ini 대체값으로 가므로 조용히 틀린다 — ACF 를 손대면 `acftiming._SHAPE` 부터 확인할 것.
+- **Config 줄 번호는 파일 위치**라 판을 갈면 다시 파싱해야 한다.  **Config 슬롯 번호**(`PARAMETERn`
+  의 n)와 헷갈리지 말 것 — 스크립트에 줄이 늘면 줄 번호만 밀리고 슬롯은 그대로다.
 - guide ACF 의 `FirstFlush` 는 **1 이어야** GO 가 열린다(`_flush_capable`: 값을 본다, 존재가 아니다).  science 는 0 이
   기본 — `[archon] ccdflush` 옵션이 기동 때 쓴다.
 - `set_first_flush`/`flush_now` 는 **슬롯 이름**을 본다 — R2608 의 PARAMETER0 은 `ContinuousExposures` 라 번호만 믿으면 덮는다.
@@ -1442,7 +1454,7 @@ ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_wai
 
 **다음 세션이 할 것**
 1. 전수 정합 검토(14차원) — Fable 한도로 네 번 사망(2026-09-06 Opus 5 로 재시도).
-2. science 도 라벨 앞 빈 줄을 맞출지 + R2610 에서 비워 둔 `LINE9`/`LINE10` 제거 — **운영자 판단 대기**.
+2. 첫 구동 항목(11.32-(6) + 11.33-(6)) · DG 정적 덤프 실측(first_run 부록) → FRAME6 후속 판.
 2. 첫 구동 항목(11.32-(6) + 11.33-(6)): STOP 꼬리 flush 실측 · `ccdflush=true` science 한 장 주기.
 3. DG 정적 덤프 실측(부록) → FRAME6 후속 판(R2617) 여부.
 

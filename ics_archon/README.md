@@ -412,7 +412,7 @@ expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 [archon]
 n_controllers = 1                   # 유닛 한 대만 돌릴 때.  2대면 2
 ctrl_mk_host = 10.0.0.13
-acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2610_MK.acf
+acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2611_MK.acf
 monitor      = true                 # 텔레메트리 주기 감시·기록 (위 절)
                                     #   ⚠️ 접속은 이 값과 무관하다 -- 본편이
                                     #   기동에서 붙는다.  이 스위치는 CSV 기록과
@@ -473,8 +473,8 @@ file         = ~/AIC/Logs/ics_archon.log
 > **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29 v1.8 확정, 현행 규격 v1.9 5.5절).
 > `[controllers] ctrlN_cfg` 를 **비워 두면** `[archon] acf_mk`/`acf_nt` 에서
 > **폴더와 확장자(`.acf`/`.cfg`)를 뗀 이름**이 실린다 —
-> `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2610_MK.acf` →
-> `'KMTC_SCI_101_STA0284_R2610_MK'`.  적어 두면 **그 값이 이기고**, 파생값과
+> `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2611_MK.acf` →
+> `'KMTC_SCI_101_STA0284_R2611_MK'`.  적어 두면 **그 값이 이기고**, 파생값과
 > 다르면 기동에서 경고한다(헤더가 주장하는 설정 파일과 실제로 올리는 파일이
 > 갈린 자료는 나중에 봐도 드러나지 않는다).  `RDMODE` 와 같은 규칙이다.
 
@@ -614,7 +614,7 @@ python tools/probe_archon.py --host 10.0.0.13
 ### 2단계 — ACF 대조 (여전히 읽기 전용)
 
 ```bash
-python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2610_MK.acf
+python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2611_MK.acf
 ```
 
 `[archon] param_intms_slot`/`param_exposures_slot` 이 그 ACF 에 있는지, 컨트롤러
@@ -653,18 +653,21 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
    timing cores.**"*
 2. **매뉴얼 p.52** -- 코어 리셋은 *"starting all timing cores from the first
    line of the timing script"* 이다 (`RESETTIMING` 항).
-3. ⭐ **실물 타이밍 스크립트의 첫 다섯 줄이 그 관문이다** (`acf/KMTC_SCI_101_
-   STA0284_R2610_MK.acf` -- LINE1~LINE8 은 R2609 와 같다):
+3. ⭐ **실물 타이밍 스크립트의 `Start:` 블록이 그 관문이다**
+   (`acf/KMTC_SCI_101_STA0284_R2611_MK.acf`.  ⛔ 줄 번호로 적지 않는다 -- 판마다
+   밀린다, DevNote 11.35):
 
    ```
-   LINE0  Start:
-   LINE1  RESET; IF ContinuousExposures GOTO Continuous
-   LINE2  X; IF Exposures GOTO Exposure     <- 관문
-   LINE3  X; CALL SkipLine
-   LINE4  X; GOTO Start                     <- Exposures=0 이면 유휴 루프
-   LINE6  Exposure:
-   LINE7  X; Exposures--
-   LINE8  Continuous:                       <- 여기 오면 적분·독출 시작
+   Start:
+     RESET; IF FirstFlush GOTO FlushFrame
+     X; IF ContinuousExposures GOTO Continuous
+     X; IF Exposures GOTO Exposure          <- 관문
+     X; CALL SkipLine
+     X; GOTO Start                          <- Exposures=0 이면 유휴 루프
+
+   Exposure:
+     X; Exposures--
+   Continuous:                              <- 여기 오면 적분·독출 시작
    ```
 
    즉 코어 리셋 뒤 `Exposures != 0` 이면 **그 자리에서 노출이 돈다.**
@@ -710,7 +713,7 @@ ctrl1_id = KMTA-SCI-101    # **선언한 쪽이 그 한 대다** (색인 1 = MK)
 [archon]
 n_controllers = 1          # 1 또는 2.  그 밖은 기동 거부
 ctrl_mk_host = 10.0.0.13
-acf_mk       = acf/KMTC_SCI_101_STA0284_R2610_MK.acf
+acf_mk       = acf/KMTC_SCI_101_STA0284_R2611_MK.acf
 ```
 
 > `n_controllers = 1` 이면 `[controllers] ctrl1_id`(→`MK`) / `ctrl2_id`(→`NT`)

@@ -4,11 +4,10 @@ X; IF ContinuousExposures GOTO Continuous
 X; IF Exposures GOTO Exposure
 X; CALL SkipLine
 X; GOTO Start
+
 Exposure:
 X; Exposures--
 Continuous:
-
-
 X; CALL IntUnit(IntMS)
 NOINT; CALL NoIntUnit(NoIntMS)
 X; CALL HorizontalSWShift(1200)
@@ -135,6 +134,7 @@ IMAGE6; X(AT)
 IMAGE7; X(AT)
 IMAGE8; X(AT)
 X; RETURN VerticalShift
+
 FlushFrame:
 X; FirstFlush--
 X; CALL Prep

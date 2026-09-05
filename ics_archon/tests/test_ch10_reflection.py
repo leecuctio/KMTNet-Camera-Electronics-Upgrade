@@ -21,7 +21,7 @@ from ics_archon.archon import parse  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2617.acf')
-SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2610_MK.acf')
+SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2611_MK.acf')
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +157,9 @@ def test_acftiming_recognises_the_guide_script_and_rejects_science():
 
     assert acftiming.script_matches(cfg_of(GUIDE_ACF)) == []
     bad = acftiming.script_matches(cfg_of(SCI_ACF))
-    assert bad and any(b.startswith('LINE12=') for b in bad), bad   # R2617 의 FrameShift 앵커
+    # ⛔ 줄 번호가 아니라 **라벨·호출 이름**으로 거른다 (11.35) -- science 는
+    # 전면 독출이라 `FrameShift` 자체가 없다.
+    assert bad and any('FrameShift' in b for b in bad), bad
 
 
 @pytest.mark.repo_only

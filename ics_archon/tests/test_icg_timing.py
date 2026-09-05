@@ -265,17 +265,66 @@ def test_guide_acf_matches_the_ccd47_20_register_accounting():
 
 
 @pytest.mark.repo_only
+@pytest.mark.repo_only
+def test_the_script_is_indexed_by_label_not_by_line_number():
+    """⛔ **줄 번호 색인 금지** (운영자 2026-09-06, DevNote 11.35).
+
+    R2617 이 빈 줄 둘을 넣자 그 뒤 번호가 전부 밀렸다.  번호를 박아 둔 자리를
+    전수로 고쳐야 했고, 그때 **이미 틀어져 있던 주석 둘**이 나왔다.  그래서
+    형태 검사도 리터럴 읽기도 `라벨:` 블록과 호출 이름으로 간다.
+
+    이 시험이 지키는 것: ① 블록이 실제로 갈린다 ② 같은 호출이 여러 블록에
+    있어도 **블록마다 따로** 집힌다 ③ 인자 없는 호출과 인자 있는 호출이 갈린다.
+    """
+    cfg, _p = _guide_params()
+    blk = acftiming.blocks(cfg)
+    for label in ('Start', 'Exposure', 'Continuous', 'Line', 'SkipLine',
+                  'FrameShift', 'FlushFrame'):
+        assert label in blk, (label, sorted(blk))
+    # ② `FrameShift(1033)` 은 정상 경로와 flush 경로 **둘 다**에 있다.
+    assert acftiming.call_arg(cfg, 'Continuous', 'FrameShift') == 1033
+    assert acftiming.call_arg(cfg, 'FlushFrame', 'FrameShift') == 1033
+    # 그러나 `SkipLine:` 안에는 없다 -- 블록이 갈려 있다는 증거.
+    assert acftiming.call_arg(cfg, 'SkipLine', 'FrameShift') is None
+    # ③ 인자 있는 호출은 `call_arg` 가 읽고, 파라미터 인자는 None.
+    assert acftiming.call_arg(cfg, 'Continuous', 'Line') is None    # CALL Line(Lines)
+    # `Line:` 블록에는 인자 없는 `CALL PixelFirst` 가 정확히 하나 있다 (+1 클록).
+    argless = [t for t in blk['Line'] if t.rstrip().endswith('CALL PixelFirst')]
+    assert len(argless) == 1, blk['Line']
+
+
+@pytest.mark.repo_only
+def test_reading_the_literals_from_the_script_matches_the_fallback_constants():
+    """`config` 를 주든 안 주든 지금 ACF 에서는 **같은 수**가 나와야 한다.
+
+    ⭐ 이것이 대체값(`_FRAME_HSHIFT`·`lines`)이 현행 스크립트와 어긋나지 않았음의
+    증거다.  어긋나기 시작하면 이 시험이 먼저 운다 -- 그때 믿을 것은 스크립트다.
+    """
+    cfg, p = _guide_params()
+    plain = acftiming.frame_timing(p, lines=p['Lines'], pixels=p['Pixels'])
+    named = acftiming.frame_timing(p, lines=p['Lines'], pixels=p['Pixels'],
+                                   config=cfg)
+    for k in ('transfer', 'readout', 'floor', 'frameshift_to_done', 'flush'):
+        assert plain[k] == named[k], (k, plain[k], named[k])
+    assert (acftiming.flush_lines(p, lines=p['Lines'], pixels=p['Pixels'])
+            == acftiming.flush_lines(p, lines=p['Lines'], pixels=p['Pixels'],
+                                     config=cfg))
+
+
 def test_frame_flush_literal_is_independent_of_the_pixels_parameter():
     """`HorizontalShift(600)` 은 스크립트 리터럴이다 -- `Pixels` 트림과 무관.
 
     9.14 가 지적한 혼동 지점: 600 이 두 뜻으로 쓰인다.  트랜스퍼 시간은
-    `Pixels` 를 바꿔도 **그대로**여야 하고, ACF 의 LINE13/LINE54 가 600 을
-    적고 있어야 `acftiming._FRAME_HSHIFT` 가 그것을 비추는 게 맞다.
+    `Pixels` 를 바꿔도 **그대로**여야 하고, 스크립트의 세 자리가 600 을 적고
+    있어야 `acftiming._FRAME_HSHIFT`(대체값)가 그것을 비추는 게 맞다.
+
+    ⛔ **줄 번호로 집지 않는다** -- 라벨 블록에서 이름으로 읽는다 (11.35).
     """
     cfg, p = _guide_params()
-    assert 'HorizontalShift(600)' in cfg['LINE13']
-    assert 'HorizontalShift(600)' in cfg['LINE54']
-    assert acftiming._FRAME_HSHIFT == 600  # noqa: SLF001
+    assert acftiming.call_arg(cfg, 'Continuous', 'HorizontalShift') == 600
+    assert acftiming.call_arg(cfg, 'SkipLine', 'HorizontalShift') == 600
+    assert acftiming.call_arg(cfg, 'FlushFrame', 'HorizontalShift') == 600
+    assert acftiming._FRAME_HSHIFT == 600  # noqa: SLF001  -- 못 읽었을 때의 대체값
     t600 = acftiming.frame_timing(p, lines=p['Lines'], pixels=600)
     t529 = acftiming.frame_timing(p, lines=p['Lines'], pixels=529)
     assert t600['transfer'] == t529['transfer']

@@ -158,15 +158,20 @@ class GuideBackend:
                             '계산하지 않고 ini exptime_min 을 쓴다',
                             '/'.join(missing))
                 return None
+            # ⭐ `config` 를 함께 넘긴다 -- 트랜스퍼의 스크립트 리터럴
+            # (`FrameShift(1033)`·`HorizontalShift(600)`)을 **이름으로** 읽는다.
+            # 안 넘기면 `Lines` 파라미터와 상수 600 으로 물러난다 (11.35).
             t = acftiming.frame_timing(
-                params, lines=params['Lines'], pixels=params['Pixels'])
+                params, lines=params['Lines'], pixels=params['Pixels'],
+                config=probe.config)
             # ⛔ `FlushLines` 는 **파생값인데 상수로 실려 있다** (규격 10.1-2).
             #    낳는 넷(`Pixels`·`Lines`·`AT`·`ST`)과 같은 파일에 있고 자동
             #    으로 안 따라가므로, 누가 하나만 고치면 **오류 없이 첫 저장
             #    프레임의 실적분만 틀린다.**  기동 때 한 번 대사해 그 조용한
             #    어긋남을 소리 나게 만든다.
             drift = acftiming.check_flush_lines(
-                params, lines=params['Lines'], pixels=params['Pixels'])
+                params, lines=params['Lines'], pixels=params['Pixels'],
+                config=probe.config)
             if drift is not None:
                 log.error('guide ACF 의 FlushLines=%d 가 계산값 %d 와 다르다 '
                           '-- Pixels/Lines/AT/ST 를 고치고 FlushLines 를 안 '
@@ -179,7 +184,7 @@ class GuideBackend:
         except (ArchonError, OSError, ValueError) as exc:
             log.warning('guide ACF 타이밍 계산 실패 -- %s', exc)
             return None
-        # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 LINE1·LINE120)를
+        # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 `Start:` flush 분기·
         # 통과했고 `FirstFlush`·`FlushLines` 가 있어야 한다.  없으면 `arm_sequence` 가
         # GO 를 거부한다 -- `Exposures=n` 으로 걸면 첫 장이 flush 없이 저장되니까.
         log.info('guide 프레임 타이밍 (ACF 계산, PROVISIONAL) -- %s · flush %s',
@@ -270,7 +275,7 @@ class GuideBackend:
         return 0.0
 
     def flush_duration(self) -> float:
-        """flush 프레임 소요 [s] (R2617 LINE117~120) -- 규격 10.1-2 로 본 독출과 같다."""
+        """flush 프레임 소요 [s] (`FlushFrame:` 블록) -- 규격 10.1-2 로 본 독출과 같다."""
         f = self.timing.get('flush') if self.timing else None
         return f if f is not None else self.base_exptime()
 

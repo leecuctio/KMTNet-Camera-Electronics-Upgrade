@@ -433,9 +433,23 @@ class ArchonController:
     async def set_config(self, key: str, value: str) -> None:
         """설정 줄 하나를 다시 쓴다 (labtest `SetConfig`).
 
-        **줄 번호는 ACF 파싱에서 온다.**  파싱을 안 했으면 어느 줄을 고칠지
-        모른다 -- `apply_acf=false` 로 두고 이미 적용된 설정을 쓰는 경우에도
-        파일은 읽어 둔다 (`prepare()`).
+        **Config 줄 번호는 ACF 파싱에서 온다.**  파싱을 안 했으면 어느 줄을
+        고칠지 모른다 -- `apply_acf=false` 로 두고 이미 적용된 설정을 쓰는
+        경우에도 파일은 읽어 둔다 (`prepare()`).
+
+        ⭐ **번호가 둘이고 한 명령에 같이 실린다** (용어 정리, 운영자 2026-09-06):
+
+            WCONFIG026BPARAMETER0=FirstFlush=1
+                   ^^^^          ^
+                   |             +-- **Config 슬롯 번호** (`PARAMETERn` 의 n).
+                   |                 LOADPARAMS 적용 순서를 정한다.  ACF 키 이름 그대로.
+                   +---------------- **Config 줄 번호** (설정 절 안 순번, 0기점 4자리 16진).
+                                     `configline` 이 파싱에서 채운다.
+
+        ⚠️ **둘은 따로 논다.**  타이밍 스크립트에 줄이 늘면 **줄 번호만** 밀리고
+        (R2617 이 빈 줄 둘로 +2), 슬롯 번호는 그대로다.  반대로 R2613 은 슬롯만
+        옮겼다(`ContinuousExposures` 0 -> 16).  ⛔ 그래서 판을 갈면 **반드시 다시
+        파싱**해야 한다 -- 옛 줄 번호로 쓰면 다른 줄을 덮는다.
         """
         k = key.upper().replace('\\', '/')
         line = self.configline.get(k)
@@ -467,7 +481,8 @@ class ArchonController:
         """
         fslot = getattr(self.cfg, 'param_flush_slot', None)
         fname = getattr(self.cfg, 'param_flush_name', 'FirstFlush')
-        # ⛔ 슬롯 번호만 보면 안 된다 -- R2608 의 PARAMETER0 은 `ContinuousExposures` 다.
+        # ⛔ **Config 슬롯 번호(`PARAMETERn` 의 n)만 보면 안 된다** -- R2608 의
+        # `PARAMETER0` 은 `ContinuousExposures` 였다.
         # 그 자리에 FirstFlush 를 쓰면 다른 파라미터를 덮는다.
         cur = _unquote(str(self.config.get(fslot, ''))) if fslot else ''
         if not cur.startswith(fname + '='):
@@ -774,7 +789,7 @@ class ArchonController:
         fslot = getattr(self.cfg, 'param_flush_slot', None)
         fname = getattr(self.cfg, 'param_flush_name', 'FirstFlush')
         cur = _unquote(str(self.config.get(fslot, ''))) if fslot else ''
-        if not cur.startswith(fname + '='):        # 슬롯 번호만 믿지 않는다 (위 참조)
+        if not cur.startswith(fname + '='):        # Config 슬롯 번호만 믿지 않는다 (위 참조)
             raise ArchonError('%s: ACF has no %s parameter (slot %s) -- load an ACF '
                               'with FlushFrame (guide R2613+ / science R2609+)'
                               % (self.tag, fname, fslot or '?'), cmd='WCONFIG')

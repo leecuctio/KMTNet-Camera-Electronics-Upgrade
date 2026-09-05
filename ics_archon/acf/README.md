@@ -11,12 +11,12 @@
 
 | 파일 | 유닛 | `TAPLINES` | `BIGBUF` | **저장** 픽셀/탭 × 줄 | IP |
 |---|---|---:|---:|---|---|
-| `KMTC_SCI_101_STA0284_R2610_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
-| `KMTC_SCI_102_STA0285_R2610_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` |
-| `KMTS_SCI_101_STA0286_R2610_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
-| `KMTS_SCI_102_STA0287_R2610_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
-| `KMTK_SCI_113_STA0200_R2610_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
-| `KMTK_SCI_113_STA0200_R2610_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
+| `KMTC_SCI_101_STA0284_R2611_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
+| `KMTC_SCI_102_STA0285_R2611_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` |
+| `KMTS_SCI_101_STA0286_R2611_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
+| `KMTS_SCI_102_STA0287_R2611_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
+| `KMTK_SCI_113_STA0200_R2611_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
+| `KMTK_SCI_113_STA0200_R2611_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
 | `KMTK_GUI_162_STA0201_R2617.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
@@ -297,6 +297,14 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 | 이 문서의 `Line` 루틴 표 · 파생값 표 | `LINE43`~`47` · `LINE11`·`12`·`15`·`53` | `LINE44`~`48` · `LINE12`·`13`·`16`·`54` |
 | `../icg_first_run.md` 부록(DG 정적 덤프 실측) | `LINE12` | `LINE13` |
 
+### ⭐ 그 뒤 -- 코드가 아예 줄 번호를 안 쓰게 했다 (같은 날, 운영자)
+
+운영자: *"timing script 의 line 번호로 색인하지 말고, 이름(실제 스크립트 내용)을 검사하여
+색인해줘."*  **맞다** -- 위 표가 그 필요의 증거다.  `acftiming` 이 `라벨:` 블록과 호출 이름으로
+찾도록 바꿨고(`blocks()` · `call_arg()` · `_SHAPE` 를 `(라벨, 정규식)` 으로), 시험도 그렇게 바꿨다.
+**위 표의 새 번호들은 이제 이 문서의 설명용일 뿐 코드에는 없다** (DevNote 11.35).
+
+
 ⚠️ **`acftiming` 의 유휴 루프 주석이 R2613 부터 이미 틀려 있었다** -- `LINE3="X; X(100)"` 로
 적혀 있었는데 R2613 이 `LINE1` 에 `FirstFlush` 검사를 끼우며 그것은 `LINE4` 가 됐다.  이번에
 함께 고쳤다(R2617 에서도 `LINE4` -- 빈 줄이 `LINE6` 이라 앞쪽은 안 밀린다).
@@ -308,6 +316,36 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 ACF 를 갈아 끼우면 반드시 다시 파싱해야 한다(`controller.prepare()` 가 그렇게 한다).
 
 ⚠️ **아래 R2616 이하 절들의 줄 번호는 그 판 당시의 것**이다 -- 현행 번호로 읽지 말 것.
+⭐ 그리고 **어느 절이든 줄 번호는 읽는 이를 돕는 표기일 뿐**이다 -- 코드가 기대는 것은 라벨과
+호출 이름이다.
+
+## science R2611 -- 라벨 앞 빈 줄 · 죽은 빈 줄 둘 제거 (2026-09-06, 운영자)
+
+    KMT?_SCI_*_R2610_*.acf  ->  ..._R2611_*.acf   (6장, 구판은 archive/)
+    LINE6=                                  (신설 -- `Exposure:` 앞)
+    LINE9 · LINE10 삭제                     R2610 이 비워 둔 죽은 자리
+    LINE136=                                (신설 -- `FlushFrame:` 앞)
+    LINES=142                               **그대로**
+
+guide R2617 과 같은 관례를 science 에도 맞췄다(운영자 *"Science 의 timing script 도 같은
+관례로 편집해줘"*).  ⭐ 함께 **죽은 빈 줄 둘**을 뺐다 -- 옛 `#X; CALL Prep` / `#X; CALL Flush`
+자리인데, R2610 에서 `ccdflush` 가 `FirstFlush` 로 옮겨 가며 아무도 안 쓰게 됐고 `Continuous:`
+바로 아래 **구멍**으로 남아 있었다(빈 줄 = 블록 구분이라는 관례와도 어긋난다).
+
+⭐ **빼고 넣은 수가 같아 `LINES=142` 도, `FlushFrame:` 의 `LINE137` 도 그대로다.**  움직인 것:
+
+| 옛(R2610) | 새(R2611) | 무엇 |
+|---:|---:|---|
+| `LINE0`~`LINE5` | 그대로 | `Start:` 유휴 루프 |
+| `LINE6`~`LINE8` | **+1** | `Exposure:` · `Exposures--` · `Continuous:` |
+| `LINE9`·`LINE10` | **삭제** | 죽은 빈 줄 |
+| `LINE11`~`LINE136` | **−1** | `Continuous:` 본문 ~ `VerticalShift` 끝 |
+| `LINE137`~`LINE141` | 그대로 | `FlushFrame:` 블록 (앞에 빈 `LINE136`) |
+
+⛔ **명령의 순서는 한 글자도 안 바뀐다** -- 빈 줄 자리만 움직였다(만드는 스크립트가 그것을
+단언한다).  science 줄 번호를 참조하는 코드는 이제 없다(위 "그 뒤" 절) -- `LINE9`/`LINE10` 을
+보던 `set_ccdflush` 는 R2610 에서 이미 사라졌다.
+
 
 ## R2616 -- `FirstFlush=1` 을 ACF 상수로 (2026-09-05 밤, 운영자 "단순 명료하게")
 
@@ -458,7 +496,7 @@ guide R2612 는 유휴 루프의 `SkipLine` 을 뺐지만(science 독출 crossta
 SkipLine"` 으로 한 줄 밀렸을 뿐이고, 빈 `LINE5` 를 써서 `LINE6`(Exposure:) 이하 번호는 안 밀렸다 --
 `set_ccdflush()` 가 보는 `LINE9`/`LINE10` 이 그대로다 (⚠️ R2610 에서 그 두 줄은 지웠다 -- 위 절).
 
-### ⛔ 슬롯 0 · 설정 메모리 잔류
+### ⛔ Config 슬롯 번호 0 · 설정 메모리 잔류
 
 > ⚠️ 잔류 규칙은 **R2610 에서 닫혔다** -- `FirstFlush` 는 `ccdflush` 옵션이 기동 때 한 번 쓰는 값이고 호스트가 프레임마다 되쓰지 않는다 (위 "science R2610" 절).  슬롯 0 은 그대로다.
 
@@ -567,7 +605,7 @@ image/store 를 비워 어둠에서는 신호가 안 남는다).
 ⏳ 이것은 ACF 논리에서 온 추론이고 FW 실측이 아니다 -- 첫 구동에서 `go 1` 뒤 FRAME
 증가가 정확히 1 인지 확인한다.
 
-### ⛔ 슬롯 순서 -- 설계 검토가 잡은 blocker
+### ⛔ Config 슬롯 번호 순서 -- 설계 검토가 잡은 blocker
 
 `LOADPARAMS` 는 파라미터를 **첫 슬롯부터 순서대로 하나씩** 적용한다(매뉴얼 p.52).
 유휴 루프 한 바퀴가 105 틱(1.05 µs)이라, 플래그를 뒤 슬롯에 두면 `Exposures`(슬롯 1)가

@@ -196,8 +196,9 @@ class IcgCfg:
     param_intms_name: str = 'IntMS'
     param_exposures_slot: str = 'PARAMETER1'
     param_exposures_name: str = 'Exposures'
-    #: flush 플래그 (R2613+, 규격 10.1-2).  ⛔ **PARAMETER0 이어야 한다** --
-    #: `LOADPARAMS` 는 파라미터를 첫 슬롯부터 순서대로 적용하고(매뉴얼 p.52)
+    #: flush 플래그의 **Config 슬롯 번호**(`PARAMETERn` 의 n; R2613+, 규격 10.1-2).
+    #: ⛔ **`PARAMETER0` 이어야 한다** -- `LOADPARAMS` 는 파라미터를 첫 슬롯부터
+    #: 슬롯 번호 순서로 적용하고(매뉴얼 p.52)
     #: 유휴 루프가 1 µs 라, `Exposures`(PARAMETER1) 뒤에 앉으면 코어가 flush
     #: 없이 `Exposure:` 로 먼저 뛴다 (설계 검토 blocker, DevNote 11.31).
     param_flush_slot: str = 'PARAMETER0'

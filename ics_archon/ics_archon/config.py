@@ -87,8 +87,8 @@ def cfg_name_from_acf(path: str) -> str:
 
     규격 5.5절이 못박은 형태다 (raw spec v1.8):
 
-        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2610_MK.acf
-        ->               KMTC_SCI_101_STA0284_R2610_MK
+        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2611_MK.acf
+        ->               KMTC_SCI_101_STA0284_R2611_MK
 
     경로가 비었거나 이름이 통째로 확장자면 빈 문자열을 돌려준다 -- 그러면
     부르는 쪽이 "유도 실패" 를 알아보고 손편집 값이나 백엔드 보고값에
@@ -237,14 +237,18 @@ class ArchonCfg:
     # -- 노출 파라미터 슬롯 (ACF 마다 다르다) -----------------------------
     #
     # labtest 는 `SetConfig('PARAMETER2', 'IntMS=%d')` · `SetConfig(
-    # 'PARAMETER1', 'Exposures=1')` 로 썼다.  **슬롯 번호와 파라미터 이름은
-    # 둘 다 ACF 소관**이라 다른 ACF 를 쓰면 어긋난다 -- 리터럴로 박아 두면
-    # 그 어긋남이 "노출이 안 걸린다" 로만 보인다.
+    # 'PARAMETER1', 'Exposures=1')` 로 썼다.  **Config 슬롯 번호(`PARAMETERn` 의
+    # n)와 파라미터 이름은 둘 다 ACF 소관**이라 다른 ACF 를 쓰면 어긋난다 --
+    # 리터럴로 박아 두면 그 어긋남이 "노출이 안 걸린다" 로만 보인다.
     param_intms_slot: str = 'PARAMETER2'
     param_intms_name: str = 'IntMS'
     param_exposures_slot: str = 'PARAMETER1'
-    #: flush 플래그 슬롯 (science R2609+, `CCDFLUSH` 명령).  ⛔ Exposures 보다 **앞**
-    #: 슬롯이어야 한다 -- LOADPARAMS 가 슬롯 순서로 적용한다 (매뉴얼 p.52).
+    #: flush 플래그의 **Config 슬롯 번호**(`PARAMETERn` 의 n; science R2610+,
+    #: `CCDFLUSH` 명령).  ⛔ `Exposures` 보다 **앞 슬롯**이어야 한다 -- `LOADPARAMS`
+    #: 가 슬롯 번호 순서로 적용한다 (매뉴얼 p.52).
+    #: ⚠️ **Config 줄 번호**(`WCONFIG` 의 4자리 16진 주소)와 **다른 물건**이다 --
+    #: 그쪽은 ACF 파싱에서 오고 타이밍 스크립트에 줄이 늘면 함께 밀린다(R2617 이
+    #: 빈 줄 둘로 +2).  슬롯 번호는 그때 안 밀린다 (DevNote 11.35).
     param_flush_slot: str = 'PARAMETER0'
     param_flush_name: str = 'FirstFlush'
     param_exposures_name: str = 'Exposures'

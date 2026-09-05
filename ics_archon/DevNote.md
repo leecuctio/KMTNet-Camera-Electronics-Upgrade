@@ -5740,7 +5740,75 @@ R2613 이 `LINE113`~`119` 를 파일 **꼬리**(`LINECOUNT` 뒤)에 덧붙여 �
 
 #### (4) ⏳ 남은 것
 
-* science 도 같은 관례를 맞출지 -- `Exposure:`/`FlushFrame:` 앞 빈 줄 + R2610 에서 비워 둔 `LINE9`/
-  `LINE10`(옛 `#X; CALL Prep`/`Flush`, 이제 `ccdflush` 가 안 쓴다) 제거.  **운영자 판단 대기**
-  (하면 science 6장이 R2611 이 되고 `LINE137`~`141` 번호가 또 밀린다).
+* ~~science 도 같은 관례를 맞출지~~ → ✅ **했다 (11.35, science R2611)** -- 운영자 지시.
+  ⚠️ 예상과 달리 `LINE137`~`141` 은 **안 밀렸다**(죽은 빈 줄 둘을 빼고 둘을 넣어 상쇄).
 * 나머지는 11.33-(6) 그대로.
+
+### 11.35 줄 번호 색인을 걷어냈다 · science R2611 · Config 슬롯/줄 번호 (2026-09-06, 운영자)
+
+11.34 의 번호 밀림을 보고 운영자가 셋을 지시했다: (a) *"timing script 의 line 번호로 색인하지
+말고, 이름(실제 스크립트 내용)을 검사하여 색인해줘"* (b) *"Science 의 timing script 도 같은
+관례로 편집해줘"* (c) 슬롯 번호를 쓰되 *"앞에 구분할 수 있는 용어를 붙여줘 … 예를 들면 'Config
+슬롯번호(PARAMETER00)'"*.
+
+#### (1) 왜 옳은가 -- 번호는 판마다 밀리고, 라벨은 안 밀린다
+
+11.34 에서 빈 줄 둘 때문에 `_SHAPE`·시험·문서의 번호를 전수로 고쳐야 했고, 그 과정에서 **이미
+틀어져 있던 주석 둘**이 나왔다.  시험이 안 보는 자리라 아무도 몰랐다 -- **번호 색인은 조용히
+썩는다.**  라벨(`Continuous:`·`SkipLine:`·`FlushFrame:`)과 호출 이름은 그런 식으로 바뀌지 않고,
+바뀐다면 그것이야말로 셈법을 다시 봐야 하는 변경이다.
+
+#### (2) 무엇으로 바꿨나
+
+`acftiming` 에 셋을 넣었다:
+
+* `script(config)` -- `LINEn` 을 순서 목록으로 (읽기 편의용.  ⛔ 이 목록의 색인을 코드에 박지 말 것).
+* `blocks(config)` -- `라벨:` → 그 아래 줄들.  ⭐ **블록으로 가르는 것이 요점**이다: guide 는
+  `CALL FrameShift(1033)` 이 정상 경로와 flush 경로에 하나씩, `CALL HorizontalShift(600)` 은 그
+  둘과 `SkipLine:` 에 하나씩 있다.  블록을 안 가르면 어느 것을 집었는지 모른다.
+* `call_arg(config, 라벨, 루틴)` -- 그 블록의 `CALL <루틴>(<정수>)` 인자.
+
+`_SHAPE` 는 `{줄 번호: 문자열}` 에서 `((라벨, 정규식), …)` 로 바뀌었다.  ⭐ 인자 없는
+`CALL PixelFirst`(클록 +1 의 근거)는 `\s*$` 로 집는다 -- `PixelFirst(Pixels)` 와 갈라야 하는데
+번호로 집을 때는 그 구분이 **줄 번호에 숨어 있었다.**
+
+⭐ science 거르기는 오히려 더 튼튼해졌다 -- science 에는 `FrameShift:` 라벨이 **아예 없다**
+(전면 독출이라 프레임 트랜스퍼가 없다).  수평 이송도 `HorizontalSWShift(1200)` 이라 이름이 다르다.
+
+#### (3) 덤 -- 알려진 미결 하나가 닫혔다
+
+*"`acftiming` 이 리터럴 `FrameShift(1033)` 을 파라미터 `Lines` 로 셈한다"*(9.14 이후 ⏳)가
+`transfer_ticks()` 로 닫혔다 -- 이제 **스크립트에서 읽는다**.  `HorizontalShift` 횟수도 세 자리
+(정상 경로 · `SkipLine:` · flush 경로)를 **각각** 읽는다.  현행 ACF 에서는 셋 다 600 이고
+`Lines`=`FrameShift` 인자=1033 이라 **값은 안 바뀐다** -- 그 동일성을 시험이 못박는다
+(`test_reading_the_literals_from_the_script_matches_the_fallback_constants`).  `config` 를 안 주면
+종전대로 `Lines`·`_FRAME_HSHIFT` 로 물러난다(대역·최소 ACF 시험 때문).
+
+#### (4) science R2611
+
+guide R2617 과 같은 관례 + **죽은 빈 줄 둘 제거**(옛 `#X; CALL Prep`/`Flush` 자리, `Continuous:`
+바로 아래 구멍이었다).  빼고 넣은 수가 같아 **`LINES=142` 도 `FlushFrame:`=`LINE137` 도 그대로**다.
+명령 순서는 한 글자도 안 바뀐다(만드는 스크립트가 단언).
+
+#### (5) 용어 -- **Config 슬롯 번호** vs **Config 줄 번호**
+
+운영자가 헷갈린 자리를 못박았다.  한 명령에 둘이 같이 실린다:
+
+    WCONFIG026BPARAMETER0=FirstFlush=1
+           ^^^^          ^
+           |             +-- **Config 슬롯 번호** (`PARAMETERn` 의 n).  LOADPARAMS 적용 순서.
+           +---------------- **Config 줄 번호** (설정 절 안 순번, 0기점 4자리 16진).
+
+⚠️ **따로 논다.**  타이밍 스크립트에 줄이 늘면 **줄 번호만** 밀리고(R2617 이 +2) 슬롯 번호는
+그대로다.  반대로 R2613 은 **슬롯만** 옮겼다(`ContinuousExposures` 0 → 16).  ⛔ 그래서 판을
+갈면 반드시 다시 파싱해야 한다.  `config.py`·`*.ini`·`controller.set_config` 에 이 표기를 넣었다.
+
+⭐ 운영자 확인: `ContinuousExposures` 는 **파라미터도 `IF` 구문도 그대로 둔다** -- 지우자는
+제안을 거절했다(*"단순히 continu.. 파라미터 및 script 구문 없애지 말자"*).  슬롯 자리를 0 으로
+되돌리자는 뜻은 아니었다.
+
+#### (6) ⏳ 남은 것
+
+* 11.33-(6)·11.34-(4) 그대로.  전수 정합 검토는 이 판(R2617/R2611) 위에서 다시 돌린다.
+* `check_flush_lines` 는 아직 `Lines`/`Pixels` 를 **파라미터로** 받는다 -- 그것은 파라미터가 맞다
+  (`CALL Line(Lines)`).  스크립트 리터럴만 이름으로 읽는다.
