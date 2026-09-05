@@ -5328,8 +5328,10 @@ v1.10 초안에 *"취득 SW 는 하한 미만 지시를 **거절한다**"* 라�
 
 ⭐ **매뉴얼 자체 예시가 이 꼴이다** (p.79 `Start: Idle; X(100) / Clamp; X(2000) /
 Idle; IF !Count GOTO Start`).  벤더 참조 스크립트도 유휴 중 CCD 를 클록하지 않는다.
-STA 템플릿의 유휴 `CALL SkipLine` 은 선택이었다.  ⚠️ **science 템플릿에도 같은 줄이
-있다** -- 지시가 guide 만이라 그대로 두었다.
+STA 템플릿의 유휴 `CALL SkipLine` 은 선택이었다.  ⭐ **목적은 science 독출 시
+crosstalk 제거** (운영자 확정 2026-09-05) -- science 가 주이고 guide 는 노이즈를 좀
+허용한다.  ⛔ **science 템플릿의 유휴 `SkipLine` 은 그대로 둔다** -- science 는 계속
+비워 주는 것이 필요하다 (운영자 확정 2026-09-05).
 
 #### (2) 유휴 clamp 는 걱정 없다
 

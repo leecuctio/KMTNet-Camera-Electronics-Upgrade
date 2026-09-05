@@ -286,10 +286,13 @@ ADM clamp(MOD5·6·8)도 건드리지 않는다.  즉 유휴는 이제 **전기�
     Idle; IF !Count GOTO Start
 
 벤더 참조 스크립트도 유휴 중에 CCD 를 클록하지 않는다.  STA 템플릿의 `CALL
-SkipLine` 은 선택이었지 요구가 아니었다.  ⚠️ **science 템플릿에도 같은 유휴
-`SkipLine` 이 있다** (`acf_timing_script_science.txt` `Start:` 블록) -- 이번
-지시는 guide 만이라 science 는 그대로 두었다.  같은 이유가 science 에도 걸리는지는
-운영자 판단.
+SkipLine` 은 선택이었지 요구가 아니었다.
+
+⭐ **목적은 science 독출 시 crosstalk 제거다** (운영자 확정 2026-09-05).  science
+영상이 주(主)이고 guide 영상은 노이즈가 좀 있어도 된다 -- guide 클록이 science
+독출 구간에 간섭하지 않게 하는 것이 이 변경의 이유다.  ⛔ **science 템플릿의 유휴
+`SkipLine` 은 그대로 둔다** -- science 는 유휴 중에도 계속 비워 주는 것이 필요하다
+(운영자 확정 2026-09-05).  science 가 피해자 쪽이라 같은 논리가 걸리지 않는다.
 
 ### 왜 중요한가 -- `GUIEXPCTRL` 의 약속
 
