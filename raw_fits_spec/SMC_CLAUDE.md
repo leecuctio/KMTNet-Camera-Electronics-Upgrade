@@ -11,7 +11,12 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec v1.9 (2026-08-30 발행 · 푸시 · 태그 `raw-spec-v1.9` 완료)
+## ✅ 현행 규격 — raw spec **v1.10** (2026-09-04 개정 · ⏳ 푸시·태그 전)
+
+⭐ v1.10 = **HK 카드 5장 신설**(`HKUDATE` + 히터 넷) · **온도 부호 규약** · **게이지 Off 조항** · 견본 6장을 `header_samples/` 로 모으고 이름을 `v1.10`/`+LF` 로 통일.
+⛔ **science 견본이 4블록 → 5블록(14,400 B)** 이 됐다.  ⚠️ 브랜치의 바이트 대사 시험이 견본 경로·이름을 리터럴로 박고 있어 **같은 묶음으로** 고쳐야 한다.
+
+### (구) v1.9 (2026-08-30 발행 · 푸시 · 태그 `raw-spec-v1.9` 완료)
 
 **[`KMT_CEU_Raw_FITS_Specification_v1.9.md`](KMT_CEU_Raw_FITS_Specification_v1.9.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → v1.5·v1.6 = 5장 검토분 → v1.7 = 파일명 넷째 필드 `<DETID>` 명명 → v1.8 = `OI-9` 폐기 + `CTRLnCFG` 예시 정합 → **v1.9 = guide raw FITS 9·10장 신설 + `Tapaculo`→`Radionode` 개명**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 ~ v1.8).
 

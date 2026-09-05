@@ -56,6 +56,7 @@ CTRL1CFG= 'KMTA_GUI_161_STA0292_R2608' / Controller 1 Configuration
 ICGBUILD= 'v0.1.2:2026-08-21T18:09Z  ' / ICG software version and build Info    
 RDMODE  = 'NORMAL                    ' / Readout mode setting                   
 COMMENT   Camera System House Keeping Data                                      
+HKUDATE = '2026-08-21T12:34:50' / UTC Date and Time of HK sample                
 DEWPRES = '1.23e-4           ' / Dewar pressure [torr]                          
 CCDTEMP = '-101.23           ' / CCD temperature [deg C]                        
 DMPTEMP = '-122.34           ' / DMP temperature [deg C]                        
@@ -64,6 +65,10 @@ PT30N2  = '-154.56           ' / PT-30 #2 cold-end temperature [deg C]
 CHARCOAL= '-215.67           ' / Charcoal canister temperature [deg C]          
 WALLBRD = '+16.78            ' / Wallboard temperature [deg C]                  
 HEBOX   = '+33.21            ' / HE box internal temperature [deg C]            
+HTREN   = 'ON                ' / Dewar heater enable state                      
+HTRSET  = '-100.10           ' / Dewar heater target temperature [deg C]        
+HTROUT  = '3.512             ' / Dewar heater output voltage [V]                
+HTRFORCE= 'OFF               ' / Dewar heater forced-output mode                
 C1_TEMP = '40.1|41.2|42.3|43.4|44.5|45.6|46.7|47.8          ' / Ctrl-1 T[C]     
 C1_VOLT = '2.51|5.02|5.83|-5.94|16.95|-17.06|35.08|28.09    ' / Ctrl-1 V[V]     
 C1_CURR = '4.698|4.487|2.176|0.465|0.454|0.443|0.032|0.421  ' / Ctrl-1 I[A]     
@@ -127,14 +132,9 @@ ENS4    = '41.6              ' / Environment Sensor 4 in deg C or percent RH
 ENS5    = '22.8              ' / Environment Sensor 5 in deg C or percent RH    
 ENS6    = '23.6              ' / Environment Sensor 6 in deg C or percent RH    
 ENS7    = '0.0               ' / Environment Sensor 7 in deg C or percent RH    
-FSATEMP = '23.4              ' / FSA internal temperature in degree C           
+FSATEMP = '+23.4             ' / FSA internal temperature in degree C           
 FSAHUM  = '12.3              ' / FSA internal humidity in percent RH            
 END                                                                             
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
                                                                                 
                                                                                 
                                                                                 

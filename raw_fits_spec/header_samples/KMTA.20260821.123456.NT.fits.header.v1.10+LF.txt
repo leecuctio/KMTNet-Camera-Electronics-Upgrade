@@ -11,7 +11,7 @@ INSTRUME= 'KMTA 18k CCD      ' / Instrument Name
 CAMVER  = 'CEU-v2.1          ' / Camera electronics version                     
 FPAID   = 'FPA#1             ' / FPA ID                                         
 DETECTOR= 'e2v CCD290-99     ' / Detector device model                          
-DETID   = 'MK                ' / Detector pair in this raw FITS file            
+DETID   = 'NT                ' / Detector pair in this raw FITS file            
 PIXSIZE =                 10.0 / Unbinned pixel size [microns]                  
 PIXSCALE=                0.395 / Unbinned pixel scale [arcsec per pixel]        
 CCDXBIN =                    1 / CCD X-axis Binning Factor                      
@@ -27,10 +27,10 @@ PRESCNY =                    0 / Prescan rows per amplifier (frame-edge side)
 OVRSCNX =                   48 / Overscan columns per amplifier (side varies)   
 OVRSCNY =                   84 / Overscan rows per amplifier (frame-center side)
 COMMENT   Map of CCD output channels, raw X ascending within each card          
-CHMAP_LT= 'MD16,MD15,MD14,MD13,MD12,MD11,MD10,MD09' / CCD out ch, left-half TOP 
-CHMAP_LB= 'MA01,MA02,MA03,MA04,MA05,MA06,MA07,MA08' / CCD out ch, left-half BOT 
-CHMAP_RT= 'KA08,KA07,KA06,KA05,KA04,KA03,KA02,KA01' / CCD out ch, right-half TOP
-CHMAP_RB= 'KD09,KD10,KD11,KD12,KD13,KD14,KD15,KD16' / CCD out ch, right-half BOT
+CHMAP_LT= 'NA08,NA07,NA06,NA05,NA04,NA03,NA02,NA01' / CCD out ch, left-half TOP 
+CHMAP_LB= 'ND09,ND10,ND11,ND12,ND13,ND14,ND15,ND16' / CCD out ch, left-half BOT 
+CHMAP_RT= 'TD16,TD15,TD14,TD13,TD12,TD11,TD10,TD09' / CCD out ch, right-half TOP
+CHMAP_RB= 'TA01,TA02,TA03,TA04,TA05,TA06,TA07,TA08' / CCD out ch, right-half BOT
 COMMENT   Observatory Information ____________________________________________  
 ORIGIN  = 'SSO               ' / Location where the data was generated          
 OBSERVAT= 'SSO               ' / Observatory Site                               
@@ -48,7 +48,7 @@ EXPTIME =                    0 / Exposure time [seconds]
 LEDFLASH=                    0 / Time to flash projector LEDs [milliseconds]    
 TIMESYS = 'UTC               ' / ICS Time System                                
 DATE-OBS= '2026-08-21T12:34:56.789' / UTC Date and Time at start of obs         
-FILENAME= 'KMTA.20260821.123456.MK' / FITS file name as written to storage      
+FILENAME= 'KMTA.20260821.123456.NT' / FITS file name as written to storage      
 EXPID   = 'KMTA.20260821.123450' / Exposure identifier assigned by ICS counter  
 COMMENT   Controller and ICS Information _____________________________________  
 DATASRC = 'ARCHON_SCIENCE          ' / Pixel data source type                   
@@ -61,6 +61,7 @@ CTRL2CFG= 'KMTA_SCI_102_STA0289_R2608_NT' / Controller 2 Configuration
 ICSBUILD= 'v0.1.2:2026-08-21T18:09Z' / ICS/ICG software version and build Info  
 RDMODE  = 'NORMAL                  ' / Readout mode setting                     
 COMMENT   Camera System House Keeping Data                                      
+HKUDATE = '2026-08-21T12:34:50' / UTC Date and Time of HK sample                
 DEWPRES = '1.23e-4           ' / Dewar pressure [torr]                          
 CCDTEMP = '-101.23           ' / CCD temperature [deg C]                        
 DMPTEMP = '-122.34           ' / DMP temperature [deg C]                        
@@ -69,6 +70,10 @@ PT30N2  = '-154.56           ' / PT-30 #2 cold-end temperature [deg C]
 CHARCOAL= '-215.67           ' / Charcoal canister temperature [deg C]          
 WALLBRD = '+16.78            ' / Wallboard temperature [deg C]                  
 HEBOX   = '+33.21            ' / HE box internal temperature [deg C]            
+HTREN   = 'ON                ' / Dewar heater enable state                      
+HTRSET  = '-100.10           ' / Dewar heater target temperature [deg C]        
+HTROUT  = '3.512             ' / Dewar heater output voltage [V]                
+HTRFORCE= 'OFF               ' / Dewar heater forced-output mode                
 C1_TEMP = '40.1|41.2|42.3|43.4|44.5|45.6|46.7|47.8|48.9|49.0  ' / Ctrl-1 T[C]   
 C1_VOLT = '2.512|5.023|5.834|-5.945|16.956|-17.067|35.089     ' / Ctrl-1 V[V]   
 C1_CURR = '4.698|4.487|2.176|0.465|0.454|0.443|0.032          ' / Ctrl-1 I[A]   
@@ -135,9 +140,40 @@ ENS4    = '41.6              ' / Environment Sensor 4 in deg C or percent RH
 ENS5    = '22.8              ' / Environment Sensor 5 in deg C or percent RH    
 ENS6    = '23.6              ' / Environment Sensor 6 in deg C or percent RH    
 ENS7    = '0.0               ' / Environment Sensor 7 in deg C or percent RH    
-FSATEMP = '23.4              ' / FSA internal temperature in degree C           
+FSATEMP = '+23.4             ' / FSA internal temperature in degree C           
 FSAHUM  = '12.3              ' / FSA internal humidity in percent RH            
 END                                                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
                                                                                 
                                                                                 
                                                                                 
