@@ -189,6 +189,13 @@ class FakeArchon(threading.Thread):
         self.locked = 0
         self._next = 0
         self._stop = False
+        # R2613+/RESETTIMING 모사 상태 (지연 생성하지 않는다 -- 시험이 getattr 없이 읽는다).
+        self._flush_pending = False
+        self._abort_frame = False
+        self._ram_exposures = 0
+        self._ram_flush = 0
+        self.flushes = 0
+        self.resets = 0
         #: 남은 연속 노출 수 -- **`LOADPARAMS` 마다 `Exposures` 로 덧쓴다**.
         #: 실기 시퀀서는 `Exposures--` 로 세고 `LOADPARAMS` 가 파라미터를 즉시
         #: 바꾸므로, 도는 중에 `Exposures=0` 을 걸면 **현재 프레임까지만** 찍고
@@ -364,9 +371,9 @@ class FakeArchon(threading.Thread):
             if cmd == 'RESETTIMING':
                 with self._lock:
                     self._abort_frame = True
-                    self._remaining = getattr(self, '_ram_exposures', 0)
-                    self._flush_pending = getattr(self, '_ram_flush', 0) == 1
-                    self.resets = getattr(self, 'resets', 0) + 1
+                    self._remaining = self._ram_exposures
+                    self._flush_pending = self._ram_flush == 1
+                    self.resets += 1
                     start = (not self._exposing
                              and (self._remaining > 0 or self._flush_pending))
                     if start:
@@ -483,11 +490,26 @@ class FakeArchon(threading.Thread):
                 # flush 프레임 (R2613 LINE1 `IF FirstFlush GOTO FlushFrame`) -- 독출
                 # 소요만큼 걸리고 **프레임을 만들지 않는다** (frame_no 불변, WBUF 0).
                 with self._lock:
-                    do_flush = getattr(self, '_flush_pending', False)
+                    do_flush = self._flush_pending
                     self._flush_pending = False
+                    if do_flush:
+                        # RESETTIMING 의 끊기 표시는 끊긴 프레임이 이미 소비했다 -- flush 는
+                        # 새 RESETTIMING 이 또 오면 그때 끊긴다.
+                        self._abort_frame = False
                 if do_flush:
-                    time.sleep(self.readout_ticks * self.tick)
-                    self.flushes = getattr(self, 'flushes', 0) + 1
+                    # flush 도 RESETTIMING 에 끊긴다 -- 실기는 코어가 곧바로 Start 로 가서
+                    # (RAM 의 FirstFlush 로) flush 한 바퀴만 돈다.  잘게 자며 확인.
+                    left = self.readout_ticks * self.tick
+                    cut = False
+                    while left > 0:
+                        if self._abort_frame:
+                            cut = True
+                            break
+                        step = min(left, self.tick)
+                        time.sleep(step)
+                        left -= step
+                    if not cut:
+                        self.flushes += 1
                     continue
                 with self._lock:
                     self._abort_frame = False
@@ -508,7 +530,7 @@ class FakeArchon(threading.Thread):
         # 적분 -- RESETTIMING 이 끊을 수 있게 잘게 잔다.
         left = min(self._int_ms() / 1000.0, 2.0)
         while left > 0:
-            if getattr(self, '_abort_frame', False):
+            if self._abort_frame:
                 return                       # 끊겼다 -- 프레임 없음
             step = min(left, self.tick)
             time.sleep(step)
@@ -527,7 +549,7 @@ class FakeArchon(threading.Thread):
         b['lines'] = 0
         self.wbuf = idx + 1
         for i in range(1, self.readout_ticks + 1):
-            if getattr(self, '_abort_frame', False):
+            if self._abort_frame:
                 # RESETTIMING 이 독출 중에 왔다 -- 버퍼는 미완료로 남고 번호는 안 는다.
                 b['complete'] = 0
                 self.wbuf = 0

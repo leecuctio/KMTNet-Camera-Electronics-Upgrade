@@ -5542,3 +5542,90 @@ must_fix 로 잡힌 것과 반영:
   는 버릴 것 (icg_first_run 에 한 줄).
 * 대안 설계(`Param++` 로 코어가 스스로 '유휴에서 왔다' 를 기억 -- 슬롯 순서 경쟁·메모리
   잔존 둘이 원천 소멸)는 실기 검증 뒤 검토.
+
+
+### 11.32 abort 는 RESETTIMING + flush · 운영자 명령 넷 · 운영 하한 1.3 (2026-09-05 저녁, 운영자)
+
+운영자 질문 다섯(11.31-(3))에 이어 지시가 셋 더 왔다.  원시 함수를 먼저 깔고(6a04971) 네 갈래를
+파일이 겹치지 않게 병렬로 돌렸다 -- ACF(b0a8fc3) · ICG 명령(2e7c4a2) · ICS 명령(1d78fa8) · abort 흐름.
+
+#### (1) ABORT/EXPENABLE=0 = **RESETTIMING + FlushFrame** (guide)
+
+지금까지 둘은 같은 `cancel(save=False)` 였고 IntMS 는 안 건드렸다 -- 건드려도 `CALL IntUnit(IntMS)` 의
+횟수는 CALL 때 래치되니 진행 중 적분은 끝까지 갔고, 그 뒤 디지타이징 독출까지 다 한 프레임을 호스트가
+버렸다.  운영자: *"노출 중 EXPENABLE=False 나 abort 시에 리드아웃은 진행해서 CCD 를 비우되, 디지타이징
+없이 skipline 으로."*  스크립트 문법상 `IntUnit` 안의 코어를 끊을 길은 **`RESETTIMING`**(p.52: 코어가
+첫 줄부터 다시 돈다, RELEASE 없이) 하나다 -- `FirstFlush=1`·`Exposures=0` 을 LOADPARAMS 로 걸고 RESETTIMING
+하면 코어가 `Start:` 에서 `FlushFrame` 으로 뛰어 비디지타이징으로 비운 뒤 idle 로.  11.28 의 FlushFrame 이
+그대로 abort flush 다.  ⚠️ 내가 앞서 "RESETTIMING 은 CCD 가 반쯤 시프트된 채 남아 더 나쁘다" 고 한 것은
+**자료를 쓸 생각**에서였다 -- 비우는 게 목적이면 그것이 정답이다.
+
+    controller.flush_now(reset=True):  WCONFIG FirstFlush=1 · Exposures=0 → LOADPARAMS → RESETTIMING → WCONFIG FirstFlush=0
+    sequencer._settle → _disarm(flush=True) → backend.abort_flush() [shield] → _await_flush: 표 버리고 scaled(flush)+0.5 s → IDLE
+
+프레임이 안 나오니 **꼬리 배수는 하지 않는다**.  IDLE 까지 ≈ 1.25 + 0.5 s -- **EXPTIME 과 무관한 고정값**
+(종전 최악은 진행 중 프레임이 끝나는 한 주기 = EXPTIME 이었다; 규격 v1.10 발행 문면 "≈1.25 s" 는 하한에서만
+맞았다 → 10.1-7 정정).  `abort_flush` 가 실패하면 경고 뒤 종전 `stop_sequence`(Exposures=0) + 배수로 물러난다.
+arm 의 LOADPARAMS 가 나가기 전 취소면 flush 없이 `stop_sequence` 만.  종료가 겹치면 RESETTIMING 은 보내되
+flush 는 안 기다린다(POWEROFF 가 뒤따른다).  **STOP 은 종전 그대로**(현재 프레임 저장 → Exposures=0 → 배수).
+예외 경로(GuideBackendError·번호 고갈)도 abort_flush -- 남은 사이클은 어차피 저장하지 않고, 프레임 시한은
+호스트가 추적을 잃은 것이라 코어를 첫 줄로 되돌리는 쪽이 확실하다(반대 논거: 컨트롤러 이상이 원인이면
+flush 가 돌았는지 볼 프레임이 없다 -- 그래도 안 보내는 것보다 나쁘지 않고 다음 GO 의 FirstFlush 가 한 번 더 비운다).
+
+⚠️ 옛 시험 `test_two_frame_tail_is_drained_when_disarm_lands_late` 는 "ABORT 뒤 늦은 해제 → 꼬리 두 홉" 을
+전제했는데 이제 ABORT 엔 꼬리가 없다 -- 그 성질은 **STOP** 의 것이라 STOP 으로 걸도록 바꿨다(두 홉·(2,2) 그대로
+통과).  가짜는 RESETTIMING 을 모사한다(진행 중 프레임 끊김·버퍼 미완료·frame_no 불변·RAM 값으로 Start 재시작;
+flush 도 잘게 자며 새 RESETTIMING 에 끊긴다).  ⏳ RESETTIMING 뒤 파라미터 RAM 이 보존되는지는 첫 구동 실측 --
+LOADPARAMS 가 RAM 과 메모리를 같은 값으로 맞춘 뒤라 어느 쪽이든 결과는 같다.  science 는 abort flush 없음(운영자).
+
+#### (2) SkipLine 의 DG -- R2615
+
+운영자: *"FrameShift 가 문제가 아니고 SkipLine-HorizontalShift 가 문제야.  이 때 DGHIGH 로 되어 있어야 하는 거 아닌가?"*
+맞다.  `SkipLine` 은 `RGHIGH; CALL VerticalShift` 로 들어가고 그 안의 `IMAGE6` 가 DG 를 0 V 로 내리니 뒤따르는
+`X; CALL HorizontalShift(600)` 은 DG=LOW 로 돌아 한 행분 전하가 출력 노드로 갔다(RG 는 HIGH 라 리셋 드레인으로
+빠지긴 했다).  `LINE53="DGHIGH; CALL HorizontalShift(600)"` -- 덤프 게이트로 버린다(데이터시트 p.7 multiple-line
+dump).  IMAGE6 가 매 행 내린 것을 다시 올리니 flush 내내 거의 DG=HIGH.  한 줄, 번호 안 밀림, 틱 동일이라
+`FlushLines=2448` 그대로.  ⚠️ 11.31 에서 FRAME6 DG 수정 후보에 "R2615" 를 예약했었는데 이 건이 그 번호를 썼다 --
+FRAME6 건은 "후속 판 후보" 로.
+
+#### (3) science R2609 ×6 -- `CCDFLUSH` 의 대상
+
+운영자: *"science 는 abort 시 flush 불필요하지만 시험을 위해 flush 함수를 구현해 두자.  Timing script 와 ics 에."*
+science 엔 `Prep:`(LINE21)·`Flush:`(LINE27) 서브루틴이 이미 있다(ccdflush 옵션이 LINE9/10 주석을 풀어 쓰는
+STA 의 CCD 클리어 시퀀스).  guide R2613 과 같은 꼴로 Start 재배치(빈 LINE5, **유휴 SkipLine 은 유지** -- science
+는 계속 비워야 한다) + `FlushFrame: FirstFlush-- / CALL Prep / CALL Flush / GOTO Start`(LINE137~141, LINES 142) +
+`PARAMETER0="FirstFlush=0"`(⛔ 슬롯 0 -- LOADPARAMS 순서) · `ContinuousExposures` → 빈 21.  여섯 장의 LINE/PARAMETER
+줄이 동일(md5)함을 확인하고 같은 편집.  science GO 에는 flush 를 걸지 않는다(`trigger(flush=None)` 기본).
+
+#### (4) 운영자 명령 넷 (둘 다)
+
+| 명령 | ICS | ICG |
+|---|---|---|
+| `CCDFLUSH` | `[MK\|NT\|ALL]` -- 유휴 CCD 를 FlushFrame(Prep+Flush) 한 바퀴. ⚠️ 첫 GO 뒤에만(ACF 줄 번호는 `prepare()` 가 파싱) | 인자 없음 -- FlushFrame(FS+SkipLine×FlushLines). EXPENABLE 잠금은 막지 않고 `(ExpEnable=OFF)` 주석 |
+| `CCDPOWON`/`CCDPOWOFF` | `[MK\|NT\|ALL]` → `Power=ON Controllers=MK,NT` | → `Power=ON` |
+| `ARCHON` | `<MK\|NT> <원문>` → 응답 원문(1800자 자름, 전문 로그). `?xx` → `rejected` | `<원문>` -- 같음. Sim 은 `SIM (no controller): …` |
+
+넷 다 **취득 중 거부**(`Exposure in progress -- ABORT first` -- 진행 중 노출 위의 LOADPARAMS/POWEROFF/원문
+RESETTIMING 은 그 프레임을 망친다).  ⭐ 에이전트 둘이 독립적으로 같은 구멍을 잡았다 -- `controller.power_on()` 은
+POWERON ack 직후 `powered=True` 를 놓고 `poweron_wait`(12 s) 를 자는데, `prepare()` 는 `if not self.powered` 라 그
+사이 GO 가 **flush 안 끝난 CCD 를 arm** 한다 → 운영자 명령이 도는 중의 GO 도 거부(`Busy with <CMD>` / `Operator
+command in progress`).  `CCDPOWOFF` 는 `controller.power_off()` 가 실패를 삼키므로 `powered` 로 되확인해 ERROR.
+`ARCHON` 은 원문을 그대로(대소문자 유지) 보낸다 -- 컨트롤러는 모르는 이름에 무응답이라 소문자는 시한 초과로 끝난다.
+원시 함수: `controller.reset_timing()`·`raw_command()`·`flush_now(reset=)`, 백엔드 `flush_ccd`/`abort_flush`/`power_ccd`/`raw_command`.
+시험: ICS 21 · ICG 14 · abort 8.
+
+#### (5) 운영 하한 `exptime_min=1.3 s` -- 하드웨어 하한과 **다른 물건**
+
+운영자: *"EXPTIME 카드 해상도 1 ms 좋아.  실제 하한은 1.251 로 계산되지만 여유를 두어 설정상 하한은 1.3 으로."*
+⛔ 이걸 `frame_floor()` 에 넣으면 안 된다 -- `IntMS = EXPTIME − 하한` 의 하한은 **하드웨어**(계산값 1.2506)여야
+헤더가 참이다(1.3 으로 빼면 `guideexp 2` 의 실현 주기가 1.95 s 가 되어 카드가 거짓).  그래서 요청을 **운영 하한으로
+먼저 접고** IntMS 는 하드웨어 하한으로 셈한다(`intms_for`: `want = max(req, exptime_min)`).  `guideexp 1` → IntMS 49 →
+실현 1.2996 → 카드 `1.3`; `guideexp 2` → `2`.  운영 하한 < 하드웨어 하한이면 하드웨어가 이긴다.  ini `exptime_min`
+의 뜻이 "ACF 없을 때 대체값" 에서 "운영 하한" 으로 바뀌었다(대체값 노릇은 겸한다).  ⚠️ 시험 파일들은 2.0 전제로
+쓰였다(`GUIDEEXP 2` = IntMS 0 · 두 홉 창) -- `test_icg_backend.make_cfgs` 가 2.0 을 명시해 전제를 지킨다.
+
+#### (6) ⏳ 남은 것
+
+* 첫 구동: RESETTIMING 뒤 RAM 보존 · abort 뒤 FRAME 카운터 불변 · `go 1` FRAME +1 · OI-26 · OI-28 FORCE · STATUS 원문 파일.
+* 전수 정합 검토(14차원) -- 세 번 세션 한도에 죽어 **4개씩 순차** 스크립트로 재시도(scratchpad `audit_batched.js`).
+* FRAME6/IMAGE6 DG=A_LOW(후속 판) · 예측 폴링 · `BUFnTIMESTAMP` · OI-25 잔여(HTREN/HTRSET/HTRFORCE 표본).

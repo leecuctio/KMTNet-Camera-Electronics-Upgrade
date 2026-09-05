@@ -1422,10 +1422,17 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 - `FRAME6`/`IMAGE6` 가 DG 를 0 V 로 내려 프레임 시프트 중 덤프가 안 된다(STA 원본부터) — 실측 뒤 R2615 후보.  **상태표는 파싱해서 볼 것**(필드 순서 level,slew,keep — 매뉴얼 3312행).  문자열만 훑으면 안 보인다(내가 먼저 틀렸다).
 - DATE-OBS 의 폴링 편향(frame_poll 0.5 s → 평균 +0.25 s)은 **아직 남아 있다** — 예측 폴링은 후속.
 
+**저녁 추가분 (11.32)** -- guide ABORT/EXPENABLE=0 = **RESETTIMING + FlushFrame**(IDLE 까지 ≈1.75 s, EXPTIME 무관; STOP 은 종전) ·
+ACF **R2615**(SkipLine 수평시프트 DGHIGH, 운영자 지적) · **science R2609 ×6**(FirstFlush→Prep+Flush) · 운영자 명령 넷
+`CCDFLUSH`·`CCDPOWON`·`CCDPOWOFF`·`ARCHON <원문>`(둘 다; 취득 중 거부, 운영자 명령 중 GO 거부) · **운영 하한 `exptime_min`=1.3**
+(요청을 먼저 접고 IntMS 는 하드웨어 하한 1.2506 으로 -- 둘을 섞으면 헤더가 거짓).  실기엔 **R2615 / R2609** 를 굽는다.
+⚠️ 시험 파일들은 `exptime_min` 2.0 전제 -- `test_icg_backend.make_cfgs` 가 명시.  ⚠️ `ARCHON` 은 원문 그대로(대소문자) --
+소문자 이름은 무응답→시한 초과.
+
 **다음 세션이 할 것**
 1. 첫 구동(icg_first_run.md): `go 1` → FRAME +1 · 첫 프레임 완료 − LOADPARAMS ≈ 2.5 s · 첫 프레임 bias 레벨 · `MOD10/HEATERAOUTPUT` 토큰 · STATUS 원문 파일로 · OI-28 FORCE 실험.
-2. 예측 폴링(DATE-OBS 편향 제거) · `BUFnTIMESTAMP` 검증(OI 후보).
-3. ⏳ **두 브랜치 전수 정합 검토(14차원 워크플로)** — 운영자 요청, R2613 뒤로 미뤄 둔 것.  스크립트는 세션 디렉터리 `workflows/scripts/two-branch-consistency-audit-*.js`.
+2. 예측 폴링(DATE-OBS 편향 제거) · `BUFnTIMESTAMP` 검증(OI 후보) · RESETTIMING 뒤 파라미터 RAM 보존 실측(abort flush 의 전제).
+3. ⏳ **두 브랜치 전수 정합 검토(14차원)** — 운영자 요청. 14 병렬은 세션 한도에 세 번 죽었다 → **4개씩 순차** 스크립트(scratchpad `audit_batched.js`, 세션 디렉터리에도 사본)로 돌릴 것.
 4. HK 신설 5장 중 `HTREN`·`HTRSET`·`HTRFORCE` 되읽기를 `hk.py` 표본기에 얹기(OI-25 잔여 — `heater.read_settings()` 가 이미 있다).
 
 

@@ -619,8 +619,9 @@ class SimGuideBackend:
         await asyncio.sleep(self.cfg.scaled(self.flush_duration()))
 
     async def abort_flush(self) -> None:
+        # 실기의 abort_flush 는 WCONFIG ack 직후 돌아오고 **시퀀서**가 flush_duration 을
+        # 기다린다 -- 대역도 같은 모양이어야 한다 (여기서 자면 두 번 기다린다).
         self._flush_pending = False
-        await asyncio.sleep(self.cfg.scaled(self.flush_duration()))
 
     async def power_ccd(self, on: bool) -> None:  # noqa: ARG002
         return None

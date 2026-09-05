@@ -15,6 +15,12 @@ guide 의 노출 의미론은 그 틀에 없다:
 * `DATE-OBS` = **직전 `FrameShift` 개시 시각** (10.1-4) -- 첫 저장 프레임은 flush
   `FrameShift` 개시(≈ arm 의 LOADPARAMS 시각, 표의 `armed_utc`)다.
 * 프레임마다 파일 1개 + 노출 번호 증가 (10.1-6).
+* **ABORT / `EXPENABLE OFF` 는 사이클을 그 자리에서 끊고 CCD 를 비운다** (운영자
+  2026-09-05): `backend.abort_flush()` = `Exposures=0`·`FirstFlush=1` LOADPARAMS →
+  **`RESETTIMING`** → 코어가 `Start:` 에서 `FlushFrame` 으로.  적분을 마저 하지 않고
+  디지타이징도 하지 않으며 **프레임이 나오지 않는다** -- 꼬리 배수 대신 flush 한
+  바퀴(`flush_duration()` + 여유)를 기다린 뒤 IDLE 이다 (`_settle`).  **STOP 은
+  종전대로** 현재 프레임을 저장하고 `Exposures=0` + 꼬리 배수다 (`_drain_tail`).
 
 메시지 규약은 자유 재설계 영역이다 (OBSAgent 가 guide 발신을 무시한다 --
 icg_legacy_report 7.3절).  그래도 `ics_sim.emitter` 의 위생 규칙(커맨드워드
@@ -56,6 +62,13 @@ _MAX_TAIL_HOPS = 3
 #: (`test_two_frame_tail_is_drained_when_disarm_lands_late`) -- 지우지 말 것.
 _HOP_WORD = ('둘', '셋', '넷')
 
+#: abort flush 뒤 IDLE 까지의 여유 [s] -- `backend.flush_duration()`(ACF 계산값, 실기
+#: ≈1.25 s) 위에 더한다.  RESETTIMING 응답 → 코어 `Start:` → `FlushFrame` → `IF
+#: Exposures`(0) 로 유휴까지의 셈 오차를 덮는 값이고, 프레임이 안 나오므로 관측으로
+#: 닫을 수 없어 시간으로 잰다 (`_await_flush`).  ⚠️ `cfg.scaled` 를 **안 탄다** --
+#: 시뮬 축이 아니라 실기 허용 오차다 (가짜의 flush 도 실시간으로 돈다).
+_FLUSH_SETTLE_MARGIN = 0.5
+
 
 def _ascii(text: object) -> str:
     """와이어로 나가는 문구는 ASCII 다 (science 백엔드와 같은 이유)."""
@@ -83,13 +96,14 @@ class GuideSequencer:
         self._writers: list[asyncio.Task] = []
         self._stop_evt = asyncio.Event()
         self._aborted_by = ''
-        #: `_disarm()` 이 띄운 `Exposures=0` 왕복 -- 두 번째 취소(ABORT 위에
-        #: 종료)가 겹치면 `wait()` 가 이것을 기다려야 POWEROFF·링크 종료가 그
-        #: 앞을 지나가지 않는다 (9.15-(9)).
+        #: `_disarm()` 이 띄운 해제 왕복 -- abort flush(`RESETTIMING`) 또는
+        #: `Exposures=0`.  두 번째 취소(ABORT 위에 종료)가 겹치면 `wait()` 가
+        #: 이것을 기다려야 POWEROFF·링크 종료가 그 앞을 지나가지 않는다 (9.15-(9)).
         self._disarm_fut: asyncio.Future | None = None
-        #: 꼬리 소화 태스크 -- `wait()` 가 기다린다 (고아 방지).
+        #: 꼬리 소화 태스크(STOP · abort flush 실패 대체 경로) -- `wait()` 가
+        #: 기다린다 (고아 방지).
         self._drain_fut: asyncio.Future | None = None
-        #: 뒷정리(해제·꼬리 소화) 중 -- 이때의 두 번째 ABORT 는 무시한다
+        #: 뒷정리(해제·flush 대기·꼬리 소화) 중 -- 이때의 두 번째 ABORT 는 무시한다
         #: (종료의 `cancel()` 만 통과).  같은 사이클을 두 번 끊을 일은 없다.
         self._settling = False
         #: **저장을 한 줄로 세운다** (2026-08-31 교차검토).  guide 는
@@ -131,8 +145,13 @@ class GuideSequencer:
         return True
 
     def cancel(self, *, save: bool, requester: str) -> bool:
-        """ABORT -- 사이클을 끊는다.  **이미 fetch 를 마친 저장은 끝낸다**
-        (되돌릴 수 없는 프레임을 버리는 쪽보다 낫다 -- 대기 표만 버린다)."""
+        """ABORT(와 `EXPENABLE OFF`, 종료) -- 사이클을 **그 자리에서** 끊는다.
+
+        진행 중 프레임은 `RESETTIMING` 으로 끊기고 CCD 는 `FlushFrame` 으로 비워진다
+        (`_settle` -- 운영자 2026-09-05).  그 프레임은 나오지 않는다.  **이미
+        fetch 를 마친 저장은 끝낸다** (되돌릴 수 없는 프레임을 버리는 쪽보다 낫다
+        -- 대기 표만 버린다).
+        """
         if not self.busy:
             return False
         if self._settling and requester != 'shutdown':
@@ -206,9 +225,10 @@ class GuideSequencer:
         try:
             requested = float(st.exptime)
             # **하한 아래는 눌러 담는다 -- 거부하지 않는다** (운영자 확정
-            # 2026-08-31).  하한은 하드웨어가 만들 수 있는 가장 짧은 독출
-            # 개시 간격이고(`acftiming`: NoIntMS + 트랜스퍼 + 독출), 그보다
-            # 짧게 요청하면 그냥 그 값이 된다.
+            # 2026-08-31).  접는 기준은 **운영 하한** `exptime_min`(기본 1.3 s,
+            # 운영자 확정 2026-09-05 -- 하드웨어 하한 위 여유)이고, IntMS 의 뺄셈은
+            # 그대로 **하드웨어 하한**(`acftiming`: NoIntMS + 트랜스퍼 + 독출)이다
+            # -- `backend.intms_for/effective_exptime` 이 둘을 가른다.
             #
             # ⚠️ 그때 헤더 `EXPTIME` 은 **요청값이 아니라 실현값**이다 --
             # 10.1-1 이 이 카드를 "연속 두 독출 개시의 간격" 으로 정의하므로
@@ -296,7 +316,7 @@ class GuideSequencer:
                 done_mono = time.monotonic()
                 done_utc = utcnow()
 
-                # 가드는 **하드웨어 타이밍 모델이 있을 때만** 건다 -- 실기(R2614)는 늘
+                # 가드는 **하드웨어 타이밍 모델이 있을 때만** 건다 -- 실기(R2615)는 늘
                 # 있고, 스크립트 없는 시험 ACF 나 대역은 모델이 없어 기준이 없다
                 # (ini 하한 2.0 s 를 그대로 쓰면 ms 로 도는 가짜의 첫 장을 다 버린다).
                 if k == 0 and getattr(self.backend, 'timing', None) is not None:
@@ -379,10 +399,11 @@ class GuideSequencer:
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(source)
         except asyncio.CancelledError:
-            # ABORT -- **먼저 컨트롤러를 세우고**(꼬리 한 장 소화), 그 다음 IDLE
-            # 을 알린다.  순서를 바꾸면 IDLE 을 들은 GO 가 busy 에 막히거나 꼬리
-            # 프레임을 제 것으로 안다 (9.15-(9)).  종료(shutdown)면 꼬리는 안
-            # 기다린다 -- POWEROFF 가 뒤따른다.
+            # ABORT -- **먼저 컨트롤러를 세우고**(RESETTIMING + flush, 그 flush 가
+            # 끝나기를 기다림), 그 다음 IDLE 을 알린다.  순서를 바꾸면 IDLE 을 들은
+            # GO 가 busy 에 막히거나 아직 도는 flush 위에 LOADPARAMS 를 얹는다
+            # (9.15-(9) · 10.1-7).  종료(shutdown)면 flush 는 안 기다린다 --
+            # POWEROFF 가 뒤따른다.
             clean = await self._settle(armed, clean, ticket, intms,
                                        'ABORT by %s' % (self._aborted_by or source),
                                        drain=(self._aborted_by != 'shutdown'))
@@ -410,58 +431,163 @@ class GuideSequencer:
                 # 돈다** (2026-09-02 확인, DevNote 9.15-(9)).  안 세우면 아무도 안
                 # 받는 프레임이 버퍼를 돌고, 다음 `go` 의 `LOADPARAMS` 가 도는
                 # 시퀀스 위에 덧써진다.  `app.stop()` 도 같은 `cancel()` 을 타므로
-                # 종료 뒤 컨트롤러가 계속 찍는 것도 이 줄이 막는다.
-                await self._disarm(self._aborted_by or source)
+                # 종료 뒤 컨트롤러가 계속 찍는 것도 이 줄이 막는다.  여기서는
+                # flush 를 기다리지 않는다 -- 안전망이고, 실패한 핸들러가 무엇을
+                # 이미 보냈는지 모른다 (RESETTIMING 은 겹쳐 보내도 해가 없다).
+                await self._disarm(self._aborted_by or source,
+                                   flush=self._cycle_started(ticket))
             st.exposing = False
 
     async def _settle(self, armed: bool, clean: bool, ticket, intms: int,  # noqa: ANN001
                       why: str, *, drain: bool) -> bool:
-        """비정상 종료의 공통 뒷정리 -- 해제(`Exposures=0`) + 꼬리 한 장 소화.
+        """비정상 종료(ABORT · `EXPENABLE OFF` · 사이클 실패 · 번호 고갈 · 내부
+        오류)의 공통 뒷정리 -- **사이클을 끊고 CCD 를 비운 뒤** 조용해지길 기다린다.
+
+        운영자 2026-09-05: *"노출 중 EXPENABLE=False 나 abort 시에 리드아웃은
+        진행해서 CCD 를 비우는 것이 좋아 … 디지타이징 필요 없이 비우기만 하는
+        skipline"*.  그래서 `backend.abort_flush()` 다 -- `Exposures=0`·`FirstFlush=1`
+        LOADPARAMS → **`RESETTIMING`** → 설정 메모리 `FirstFlush=0` 되쓰기.  진행 중
+        적분·독출은 그 자리에서 끊기고(버퍼 미완료, 프레임 번호 불변) 코어는 `Start:`
+        에서 `FlushFrame` 으로 뛰어 CCD 를 비운 뒤 `IF Exposures`(0) 로 유휴가 된다.
+        **프레임이 나오지 않으므로 꼬리 배수가 없다** -- 대신 flush 한 바퀴를
+        시간으로 기다린다 (`_await_flush`).  그 뒤가 IDLE 이라야 10.1-7 의 "그 뒤는
+        조용하다" 가 선다.
+
+        `abort_flush` 를 못 보내면(링크·거부) 경고하고 종전 `Exposures=0`
+        (`stop_sequence`) 으로 물러난다 -- 그때는 진행 중 프레임이 끝까지 클록되므로
+        종전대로 꼬리를 배수한다 (`_drain_tail`).
+
+        **예외 경로도 같은 길이다** (판단 2026-09-05).  `GuideBackendError`(프레임
+        시한·건너뜀) · 번호 고갈 · 내부 오류 뒤에도 남은 사이클과 진행 중 프레임은
+        어차피 저장하지 않으므로, 컨트롤러가 살아 있으면 RESETTIMING 으로 끊고
+        비우는 것이 맞다 -- 특히 프레임 시한은 호스트가 프레임 추적을 잃은 것이라
+        `Exposures=0`(현재 장까지 찍고 멈춤)보다 코어를 첫 줄로 되돌리는 쪽이
+        확실하다.  링크가 죽어서 난 예외면 `abort_flush` 도 `stop_sequence` 도 못
+        보내고 경고만 남는다 -- 같은 실패, 같은 결과라 갈라 볼 이유가 없다.
+        반대 논거: 사이클 실패의 원인이 컨트롤러 쪽 이상이면 RESETTIMING 뒤 flush 가
+        실제로 돌았는지 호스트는 확인할 길이 없다(프레임이 없으니 관측이 없다).
+        그래도 안 보내는 것보다 나쁘지 않고, 다음 GO 의 `FirstFlush=1` 이 한 번 더
+        비운다.
+
+        **종료(shutdown)가 겹치면** 해제 왕복(RESETTIMING)은 shield 로 끝까지
+        보내되 flush 는 기다리지 않는다 -- POWEROFF 가 뒤따르고, 그 전에 진행 중
+        프레임을 끊어 둔 것으로 충분하다 (종전 "꼬리는 안 기다린다" 와 같은 규칙).
+        판정은 **여기서** 다시 한다 -- 해제 도중 `_aborted_by` 가 shutdown 으로
+        바뀌었을 수 있다 (핸들러 진입 때의 값은 낡았다).
+
+        arm 의 `LOADPARAMS` 가 나가기 **전에** 취소됐으면 컨트롤러는 유휴다 -- 끊을
+        사이클이 없으므로 flush 도 걸지 않고 `Exposures=0` 으로 설정 메모리만
+        되돌린다 (다음 GO 가 `FirstFlush=1` 로 어차피 비운다).  기다리면 flush 한
+        바퀴를 헛되이 쓴다 (3차 반증의 "꼬리 없음" 과 같은 자리).
 
         `clean` 을 돌려준다 -- `finally` 의 안전망이 두 번 해제하지 않도록.
         """
         if not armed or clean:
             return clean
         self._settling = True
-        await self._disarm(why)
-        # ⚠️ 해제 도중 종료가 겹쳤으면(`_aborted_by` 가 shutdown 으로 바뀜) 꼬리는
-        # 안 기다린다 -- 판정을 **여기서** 다시 한다 (핸들러 진입 때의 값은 낡았다).
-        if drain and self._aborted_by != 'shutdown':
-            if ticket is not None or self.backend.loadparams_sent():
-                await self._drain_tail(ticket, intms)
-            else:
-                # arm 의 `LOADPARAMS` 가 나가기 **전에** 취소됐다 -- 컨트롤러는
-                # 유휴라 꼬리가 없다.  기다리면 한 주기를 헛되이 쓴다 (3차 반증).
-                log.info('LOADPARAMS 가 나가기 전에 취소됐다 -- 꼬리 없음')
+        started = self._cycle_started(ticket)
+        flushed = await self._disarm(why, flush=started)
+        if not drain or self._aborted_by == 'shutdown':
+            return True
+        if flushed:
+            await self._await_flush()
+        elif started:
+            # abort flush 를 못 보내 `Exposures=0` 으로 물러났다 -- 진행 중 프레임이
+            # 끝까지 클록되므로 종전대로 꼬리를 배수한다.
+            await self._drain_tail(ticket, intms)
+        else:
+            log.info('LOADPARAMS 가 나가기 전에 취소됐다 -- 컨트롤러는 유휴, 끊을 '
+                     '사이클도 꼬리도 없다')
         return True
 
-    async def _disarm(self, why: str) -> None:
-        """남은 연속 노출을 끊는다 (`Exposures=0`) -- 취소·예외 경로용.
+    def _cycle_started(self, ticket) -> bool:  # noqa: ANN001
+        """arm 의 `LOADPARAMS` 가 컨트롤러에 닿았나 -- 끊을 사이클이 있는지의 근거.
+
+        표가 있으면 `trigger()` 가 돌아온 것이고, 표 없이 취소됐어도 `loadparams_sent`
+        가 참이면 ack 를 (곧) 받은 것이다 (`_locked_thread` 가 스레드를 끝까지
+        기다리므로).
+        """
+        return ticket is not None or bool(self.backend.loadparams_sent())
+
+    async def _abort_flush_or_stop(self) -> bool:
+        """`abort_flush()` -- 실패하면 경고 후 종전 `stop_sequence()` 로.  `True` 면
+        RESETTIMING 이 나갔다(프레임이 안 나온다), `False` 면 `Exposures=0` 경로다
+        (진행 중 프레임은 끝까지 클록된다)."""
+        try:
+            await self.backend.abort_flush()
+            return True
+        except GuideBackendError as exc:
+            log.warning('abort flush 를 못 보냈다 -- %s.  종전 Exposures=0 으로 '
+                        '물러난다 (진행 중 프레임은 끝까지 클록되고 꼬리를 배수한다)',
+                        exc)
+            await self.backend.stop_sequence()
+            return False
+
+    async def _disarm(self, why: str, *, flush: bool) -> bool:
+        """컨트롤러를 세운다 -- 취소·예외 경로용.  `True` 면 abort flush 가 나갔다.
+
+        `flush=True`: `backend.abort_flush()` -- 진행 중 사이클을 `RESETTIMING` 으로
+        끊고 `FlushFrame` 으로 CCD 를 비운다 (프레임 없음).  못 보내면 경고 후 종전
+        `Exposures=0`(`stop_sequence`) 으로 물러나고 `False` 다.
+        `flush=False`: `Exposures=0` 만 -- arm 의 `LOADPARAMS` 가 안 나간 경우다
+        (끊을 사이클이 없고, `trigger()` 가 WCONFIG 만 써 둔 `Exposures=n`·
+        `FirstFlush=1` 을 설정 메모리에서 되돌린다).
 
         `asyncio.shield` 로 감싼다: ABORT 로 취소된 태스크 안에서 부르므로
-        종료(`stop()`)가 겹쳐 **두 번째 취소**가 와도 `LOADPARAMS` 왕복은
-        끊기지 않는다 -- 그 미래를 `_disarm_fut` 에 두고 `wait()` 가 기다린다
-        (안 그러면 고아가 되어 POWEROFF·링크 종료가 앞질러 갈 수 있다).
-        실패는 `stop_sequence()` 가 경고로 남긴다 (링크가 죽었으면 어차피
+        종료(`stop()`)가 겹쳐 **두 번째 취소**가 와도 왕복은 끊기지 않는다 --
+        그 미래를 `_disarm_fut` 에 두고 `wait()` 가 기다린다 (안 그러면 고아가
+        되어 POWEROFF·링크 종료가 앞질러 갈 수 있다).  abort flush 는 왕복이
+        다섯(WCONFIG×2 · LOADPARAMS · RESETTIMING · WCONFIG)이라 더더욱 -- 중간에
+        끊기면 `FirstFlush=1` 이 설정 메모리에 남아 다음 LOADPARAMS 가 유령 flush
+        를 되살린다 (11.31).  실패는 경고로 남긴다 (링크가 죽었으면 어차피
         컨트롤러도 못 세운다).  ⚠️ 왕복 자체가 취소에 안전한 것은
         `ArchonController._locked_thread` 덕이다 -- 취소된 명령의 스레드가
-        소켓을 놓기 전에 이 `LOADPARAMS` 가 끼어들면 응답 번호가 어긋난다.
+        소켓을 놓기 전에 이 왕복이 끼어들면 응답 번호가 어긋난다.
         """
-        log.info('연속 노출을 끊는다 (%s) -- Exposures=0', why)
-        fut = asyncio.ensure_future(self.backend.stop_sequence())
+        if flush:
+            log.info('사이클을 끊고 CCD 를 비운다 (%s) -- RESETTIMING + FlushFrame', why)
+            fut = asyncio.ensure_future(self._abort_flush_or_stop())
+        else:
+            log.info('연속 노출을 끊는다 (%s) -- Exposures=0', why)
+            fut = asyncio.ensure_future(self.backend.stop_sequence())
         self._disarm_fut = fut
         # 고아가 돼도(아무도 안 기다려도) 실패를 삼키지 않는다.
         fut.add_done_callback(
             lambda f: None if f.cancelled() or f.exception() is None else
-            log.warning('연속 노출 해제 왕복이 뒤늦게 실패했다 -- %s', f.exception()))
+            log.warning('해제 왕복이 뒤늦게 실패했다 -- %s', f.exception()))
         try:
-            await asyncio.shield(fut)
+            return bool(await asyncio.shield(fut))
         except asyncio.CancelledError:
-            # 두 번째 취소 -- 왕복은 계속 간다; `wait()` 가 미래를 기다린다.
-            pass
+            # 두 번째 취소(종료) -- 왕복은 계속 간다; `wait()` 가 미래를 기다린다.
+            # 결과를 모르니 `False` -- 종료가 뒤따르므로 flush 대기는 어차피 없다.
+            return False
         except Exception as exc:  # noqa: BLE001
-            log.warning('연속 노출을 끊지 못했다 -- %s (남은 프레임이 더 나올 '
+            log.warning('컨트롤러를 세우지 못했다 -- %s (남은 프레임이 더 나올 '
                         '수 있다)', exc)
+            return False
+
+    async def _await_flush(self) -> None:
+        """abort flush 가 끝나기를 기다린다 -- 프레임이 안 나오므로 **시간으로** 잰다.
+
+        RESETTIMING 뒤 코어는 `Start:` → `FlushFrame`(≈ `flush_duration()`, ACF
+        계산값 실기 ≈1.25 s) → `IF Exposures`(0) 유휴다.  관측할 프레임이 없어
+        `_drain_tail` 의 번호 관찰을 쓸 수 없고, 호스트가 코어 위치를 물을 길도
+        없다 -- 계산값에 여유(`_FLUSH_SETTLE_MARGIN`)를 더해 잔다.  그 뒤가 IDLE
+        이라야 10.1-7 의 "그 뒤는 조용하다" 가 선다 (IDLE 을 들은 GO 의 LOADPARAMS
+        가 도는 flush 위에 얹히지 않는다).
+
+        종료(두 번째 취소)가 겹치면 대기를 접는다 -- POWEROFF 가 뒤따른다.
+        대기 표는 여기서 한 번 더 버린다 -- RESETTIMING 이 끊은 프레임을 기다리는
+        표가 있어도 그 프레임은 오지 않는다 (`cancel()` 과 `reset_timing()` 이 이미
+        버렸으니 보통은 0 이다).
+        """
+        hold = self.cfg.scaled(self.backend.flush_duration()) + _FLUSH_SETTLE_MARGIN
+        self.backend.drop_pending('abort flush -- 끊긴 프레임은 오지 않는다')
+        log.info('flush 가 끝나기를 %.2fs 기다린다 -- 그 뒤 IDLE', hold)
+        try:
+            await asyncio.sleep(hold)
+        except asyncio.CancelledError:
+            log.info('종료가 겹쳤다 -- flush 대기를 접는다 (POWEROFF 가 뒤따른다)')
 
     async def _tail_is_quiet(self, done: int, period: float) -> bool:
         """프레임 번호가 **한 주기 동안 안 늘면** 엔진이 멈춘 것이다.
@@ -491,6 +617,10 @@ class GuideSequencer:
     async def _drain_tail(self, ticket, intms: int) -> None:  # noqa: ANN001
         """`Exposures=0` 은 **현재 프레임까지** 찍고 멈춘다 -- 그 꼬리가 끝날
         때까지 `busy` 를 유지한다 (9.15-(9), 반증자 지적).
+
+        ⭐ 이 길을 타는 것은 **STOP** 과 abort flush 를 못 보낸 대체 경로뿐이다
+        (2026-09-05) -- ABORT/`EXPENABLE OFF` 는 `RESETTIMING` 으로 끊어 프레임이
+        안 나오므로 `_await_flush` 가 대신한다.
 
         안 기다리면 IDLE 직후 들어온 GO 가 그 꼬리를 제 **첫 저장** 프레임으로
         알아 **남의 픽셀이 정상 헤더로 저장된다** (R2613+: 폐기분이 없다 --

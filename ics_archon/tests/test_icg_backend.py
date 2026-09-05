@@ -64,6 +64,9 @@ def make_cfgs(tmp_path, fake: FakeArchon):  # noqa: ANN001, ANN201
     icfg.acf = {'G': str(acf)}
     icfg.poweron_wait = 0.0
     icfg.frame_poll = 0.01
+    # 이 파일의 시간 전제(GUIDEEXP 2 = IntMS 0 · 두 홉 창 …)는 운영 하한 2.0 으로 쓰였다 --
+    # 기본값이 1.3 으로 바뀐 뒤(2026-09-05)에도 그 전제를 유지한다.
+    icfg.exptime_min = 2.0
     icfg.progress_step = 0
     icfg.frame_timeout = 5.0
     # 시험 기하 -- validate() 의 고정 기하 검사는 실기 배선 전용이라 여기서는
@@ -239,7 +242,7 @@ def test_abort_disarms_the_running_sequence(tmp_path, monkeypatch):  # noqa: ANN
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')      # 하한(2.0)과 같다 -> IntMS=0
+                app.transport.feed('abc>ICG GUIDEEXP 2')      # IcgCfg 기본 exptime_min 은 1.3(운영 하한) -- 2.0 요청은 IntMS=700 이다 (2026-09-05)
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')           # 21 독출 · 20 저장
                 for _ in range(400):
@@ -542,7 +545,9 @@ def test_two_frame_tail_is_drained_when_disarm_lands_late(tmp_path, monkeypatch,
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await _first_wrote(app)
-                assert app.seq.cancel(save=False, requester='abc')
+                # R2613+ (2026-09-05): ABORT 는 RESETTIMING + flush 라 꼬리가 없다.  '늦은 해제 뒤
+                # 두 홉 소화' 는 이제 **STOP** 경로의 성질이다 -- 그래서 STOP 으로 건다.
+                assert app.seq.stop_integration('abc')
                 with caplog.at_level(logging.INFO, logger='icg_archon.seq'):   # 로거 이름은 seq 다
                     await app.seq.wait()
                 at_idle = fake.frame_no
