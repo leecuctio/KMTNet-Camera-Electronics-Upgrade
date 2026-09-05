@@ -832,6 +832,13 @@ def ctrl_telemetry_header(telem: list[dict] | None) -> dict[str, object]:
         units.append({})
     out: dict[str, object] = {}
     for n, unit in enumerate(units[:2], start=1):
+        # ⛔ **`Cn_TEMP` 에 부호를 붙이지 말 것** -- 온도 카드지만 5.0절 부호
+        #    규약의 **영구 예외**다 (운영자 확정 2026-09-05).  `format_temp()`
+        #    로 바꾸고 싶어지는 자리인데, 그러면 science 가 49 -> **59자**가
+        #    되어 인용 필드 51 을 8자 넘겨 **comment 가 잘린다.**  guide(8자리
+        #    47자, 폭 49)는 들어가지만 **한쪽만 주면 규약이 컨트롤러별로
+        #    갈린다.**  게다가 이 값은 자리로 해석하는 **기계 판독 나열**이라
+        #    부호가 읽는 쪽에 주는 것이 없다.
         out[f'C{n}_TEMP'] = _join_readings(unit.get('temp'), '.1f',
                                            len(TEMP_MODS))
         out[f'C{n}_VOLT'] = _join_readings(unit.get('volt'), '.3f',
