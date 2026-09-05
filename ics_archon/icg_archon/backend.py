@@ -202,8 +202,15 @@ class GuideBackend:
         `IntMS = EXPTIME - 하한` 이다.  **하한보다 짧게 요청하면 0** --
         하드웨어가 만들 수 있는 가장 짧은 주기가 된다 (운영자 확정
         2026-08-31: "더 작게 설정해도 최소 노출시간으로").
+
+        ⭐ 요청을 **운영 하한**(`exptime_min`, 기본 1.3 s)으로 먼저 접는다 (운영자
+        확정 2026-09-05: 하드웨어 하한 위에 여유).  뺄셈의 하한은 그대로 **하드웨어
+        하한**이다 -- 여기에 운영 하한을 넣으면 `guideexp 2` 의 실현 주기가 1.95 s
+        가 되어 헤더가 거짓이 된다.  운영 하한이 하드웨어 하한보다 작으면 하드웨어
+        하한이 이긴다 (`max(0, ...)`).
         """
-        return max(0, int(round((exptime_s - self.frame_floor()) * 1000.0)))
+        want = max(exptime_s, float(self.icfg.exptime_min))
+        return max(0, int(round((want - self.frame_floor()) * 1000.0)))
 
     def effective_exptime(self, exptime_s: float) -> float:
         """**실제로 실현되는** 독출 개시 간격 [s] -- 헤더 `EXPTIME` 은 이 값.
@@ -585,7 +592,8 @@ class SimGuideBackend:
     # -- 연속 노출 대역 (실기와 같은 표면) ----------------------------------
 
     def intms_for(self, exptime_s: float) -> int:
-        return max(0, int(round((exptime_s - self.frame_floor()) * 1000.0)))
+        want = max(exptime_s, float(self.icfg.exptime_min))
+        return max(0, int(round((want - self.frame_floor()) * 1000.0)))
 
     def effective_exptime(self, exptime_s: float) -> float:
         return round(self.frame_floor() + self.intms_for(exptime_s) / 1000.0, 3)

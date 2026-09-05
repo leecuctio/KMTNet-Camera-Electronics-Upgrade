@@ -325,3 +325,34 @@ def test_read_timing_refuses_an_acf_without_pixels_instead_of_guessing(tmp_path)
     assert be.frame_floor() == 7.5
     assert be.intms_for(7.5) == 0 and be.intms_for(10.0) == 2500
 
+
+def test_operational_floor_clamps_the_request_but_intms_uses_the_hardware_floor():
+    """운영 하한 `exptime_min`(1.3) 과 하드웨어 하한(ACF 계산 1.2506)은 다른 물건이다.
+
+    운영자 확정 2026-09-05: 카드 해상도 1 ms 를 받고, 설정상 하한은 여유를 두어 1.3.
+    ⛔ `IntMS` 의 뺄셈은 **하드웨어 하한**으로 -- 운영 하한으로 빼면 `guideexp 2`
+    의 실현 주기가 1.95 s 가 되어 헤더가 거짓이 된다.
+    """
+    import os
+
+    from ics_sim import config as simcfg
+
+    from icg_archon.backend import GuideBackend
+    from icg_archon.config import load
+
+    ini = os.path.join(ROOT, 'icg_archon.ini')
+    icfg = load(ini)
+    icfg.acf = {'G': GUIDE_ACF}
+    icfg.exptime_min = 1.3
+    be = GuideBackend(simcfg.load(ini), icfg)
+    hw = be.frame_floor()
+    assert 1.25 < hw < 1.26                       # 하드웨어 하한은 그대로 계산값
+    assert be.intms_for(1.0) == round((1.3 - hw) * 1000)   # 요청 1.0 -> 1.3 으로 접힘 (IntMS ~49)
+    assert be.effective_exptime(1.0) == 1.3      # 카드 '1.3'
+    assert be.effective_exptime(1.3) == 1.3
+    assert be.intms_for(2.0) == round((2.0 - hw) * 1000)   # 운영 하한 위는 그대로
+    assert be.effective_exptime(2.0) == 2.0      # 카드 '2'
+    # 운영 하한을 하드웨어 하한 아래로 두면 하드웨어 하한이 이긴다.
+    icfg.exptime_min = 0.5
+    assert be.intms_for(0.5) == 0
+    assert be.effective_exptime(0.5) == round(hw, 3)
