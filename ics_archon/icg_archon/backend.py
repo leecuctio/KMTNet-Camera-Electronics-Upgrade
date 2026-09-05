@@ -40,7 +40,7 @@ science 실측을 guide 에 옮긴 것이라 첫 구동에서 실현 주기를 �
 하나를 잠그면 둘이 남고, 3버퍼에서 못 받은 장이 언제 덮이는지는 ⏳ 첫 구동
 실측 항목이다 (FETCH 뒤 `lock_rbuf`/`lock_wbuf_after` 관측).  어느 쪽이든
 FETCH 상한(`[icg] fetch_timeout`)이 곧 잠금 상한이므로 **하한 미만**으로 (하한은
-`acftiming` 이 ACF 에서 셈한다 -- R2610~R2616 기준 1.251 s)
+`acftiming` 이 ACF 에서 셈한다 -- R2610~R2617 기준 1.251 s)
 두는 것이 보수적 안전선이다 -- guide 는 8.3 MiB ≈ 0.08 s 라 1 s 면 넉넉하다.
 `__init__` 이 이를 검사한다 (0 이면 유도값 60 s 로 셈한다).
 """
@@ -138,7 +138,7 @@ class GuideBackend:
                           os.path.basename(path))
             # ⚠️ 이 셈법은 **guide 타이밍 스크립트 형태** 전용이다 (FrameShift ·
             # HorizontalShift(600) · PixelFirst · CLAMP).  science ACF 는 루틴
-            # 배치가 달라(`IntUnit` 이 LINE11, `HorizontalSWShift(1200)`,
+            # 배치가 달라(guide 의 `FrameShift` 자리가 `IntUnit`, `HorizontalSWShift(1200)`,
             # AT=2000) 억지로 셈하면 그럴싸한 13.65 s 가 나온다 (DevNote 9.15)
             # -- 형태가 다르면 셈하지 않는다.
             bad = acftiming.script_matches(probe.config)
@@ -179,7 +179,7 @@ class GuideBackend:
         except (ArchonError, OSError, ValueError) as exc:
             log.warning('guide ACF 타이밍 계산 실패 -- %s', exc)
             return None
-        # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 LINE1·LINE118)를
+        # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 LINE1·LINE120)를
         # 통과했고 `FirstFlush`·`FlushLines` 가 있어야 한다.  없으면 `arm_sequence` 가
         # GO 를 거부한다 -- `Exposures=n` 으로 걸면 첫 장이 flush 없이 저장되니까.
         log.info('guide 프레임 타이밍 (ACF 계산, PROVISIONAL) -- %s · flush %s',
@@ -270,7 +270,7 @@ class GuideBackend:
         return 0.0
 
     def flush_duration(self) -> float:
-        """flush 프레임 소요 [s] (R2613 LINE115~118) -- 규격 10.1-2 로 본 독출과 같다."""
+        """flush 프레임 소요 [s] (R2617 LINE117~120) -- 규격 10.1-2 로 본 독출과 같다."""
         f = self.timing.get('flush') if self.timing else None
         return f if f is not None else self.base_exptime()
 

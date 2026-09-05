@@ -4,6 +4,7 @@ X; IF ContinuousExposures GOTO Continuous
 X; IF Exposures GOTO Exposure
 X; X(100)
 X; GOTO Start
+
 Exposure:
 X; Exposures--
 Continuous:
@@ -111,6 +112,7 @@ FRAME4; X(AT)
 FRAME5; X(AT)
 FRAME6; X(AT)
 X; RETURN FrameShift
+
 FlushFrame:
 X; FirstFlush--
 DGHIGH; CALL FrameShift(1033)

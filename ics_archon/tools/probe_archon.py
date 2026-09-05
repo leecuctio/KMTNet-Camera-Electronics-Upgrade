@@ -34,7 +34,7 @@
 보고한다 (`extra [6, 7]` + `missing [1, 2, 8, 11]`).
 
     python tools/probe_archon.py --unit guide --host 10.0.0.162 \
-        --acf acf/KMTK_GUI_162_STA0201_R2616.acf
+        --acf acf/KMTK_GUI_162_STA0201_R2617.acf
 
 ⚠️ 이 도구는 파일 이름을 `probe.<...>.fits` 로 쓴다 -- 관측 번호 공간(D-016)을
 건드리지 않으려는 것이다.  아카이브에 넣을 자료를 만드는 도구가 아니다.

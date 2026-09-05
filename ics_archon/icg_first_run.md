@@ -37,7 +37,7 @@
 | **링크가 서나** | `ping 10.0.0.162` | ✅ **해결법이 확정돼 있다** -- 광 스위치허브의 **포트별 auto-negotiation 을 해제하고 고정 1 G** 로 둔다 (운영자 2026-09-04).  Archon 은 1 Gbps 전용(매뉴얼 p.9)이고 SFP+ 는 자동협상을 하지 않는다.  ⚠️ **스위치를 교체·포트를 옮기면 그 설정이 안 따라온다** -- 링크가 안 서면 모듈·케이블보다 **포트 설정을 먼저** 본다.  자세히는 [INSTALL.md](INSTALL.md) "벤치 네트워크" |
 | ⭐ **`Sync In` 이 비었나** | 컨트롤러 뒤판 배선 | ⛔ **master 의 `Sync Out` 이 이 유닛 `Sync In` 에 물려 있으면 노출이 진행되지 않는다** (운영자 실기 확인 2026-09-04).  `POWER=4`·`POWERGOOD=1` 인데 `FRAME` 이 영구히 0 이면 이것부터 -- `POWERGOOD` 은 **자기 전원만** 보고하고 외부 클록 의존을 보지 않는다.  README "프레임이 안 나올 때" |
 | guide 컨트롤러 IP | `[icg] ctrl_host` | **`10.0.0.162`** — 정본은 ACF 안의 `IP=` 키다 (`APPLYALL` 이 심는 값).  호스트는 `10.0.0.201`(np0)/`10.0.0.202`(np1) |
-| ACF 경로 | `[icg] acf` | `acf/KMTK_GUI_162_STA0201_R2616.acf` (현행 유일본) |
+| ACF 경로 | `[icg] acf` | `acf/KMTK_GUI_162_STA0201_R2617.acf` (현행 유일본) |
 | 사이트 | `[node] observatory` | **`KASI`** — `TESTBED` 면 기동을 거부한다 (D-017) |
 | HK 스냅샷 짝 | `[hk] log_dir`+`latest_name` ↔ science `[archon] hk_latest` | **같은 파일**을 가리켜야 한다. 한쪽만 바꾸면 science 5.6절 HK 카드가 조용히 전부 sentinel 이 된다 |
 | 포트 | `[transport] bind_port` | **`6601`**(ICG 몫, 2026-09-03 배정).  ICS 는 6600 이고 `ics_sim` 기본값도 6600 이라 **비워 두면 같은 값으로 떨어져** 한 호스트에서 둘 다 못 뜬다 — 기동 검사가 알린다.  배정표는 [INSTALL.md](INSTALL.md).  ⭐ 레거시는 ICG 가 **Guide server**(`.108`, `TC`·`ABC` 와 같은 호스트)에서 돌고 ICS·XIS 는 **Science server**(`.109`)라 포트가 같아도 호스트가 달랐다 (icg_legacy_report 3절) |
@@ -52,7 +52,7 @@
 ## 1단계 — probe 읽기 전용 ⭐ **`STATUS` 원문을 확보하는 단계** (전원 안 켬)
 
 ```bash
-python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2616.acf | tee probe1_guide.log
+python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2617.acf | tee probe1_guide.log
 ```
 
 ⚠️ **`--unit guide` 를 빠뜨리지 말 것.** science 10자리 자리 표로 재면
@@ -167,7 +167,7 @@ go 20
 | `busy` | 꼬리를 소화하는 동안 True — **그것이 의도다** | |
 | 다음 `go` | 꼬리를 자기 **첫 저장** 프레임으로 오인하지 않는다 (기준선 오염) | |
 | `abort` 두 번 | 두 번째가 뒷정리를 끊지 않는다. IDLE 통보는 **마지막 요청자**에게 (`df4d4fc` 확인 항목) | |
-| ⭐ `stop` 뒤 꼬리 flush (R2616) | 마지막 저장 프레임 뒤 `FRAME` 은 **안 늘고** ≈ 1.25 s 클록이 한 번 더 돈다(`Exposures=0` 의 LOADPARAMS 가 ACF 상수 `FirstFlush=1` 을 다시 싣는다). 그 뒤 조용 | |
+| ⭐ `stop` 뒤 꼬리 flush (R2616+) | 마지막 저장 프레임 뒤 `FRAME` 은 **안 늘고** ≈ 1.25 s 클록이 한 번 더 돈다(`Exposures=0` 의 LOADPARAMS 가 ACF 상수 `FirstFlush=1` 을 다시 싣는다). 그 뒤 조용 | |
 
 **통과**: `DONE: ABORT` 뒤 `EXPSTATUS=IDLE` 하나, 그리고 다음 `go` 가 정상.
 
@@ -272,14 +272,14 @@ de-assert 가 된다 -- 그것은 배선 문제라 ACF·매뉴얼로는 못 가�
 ## 부록 -- DG 정적 덤프 실측 (`FRAME6`/`IMAGE6` DG=0 V 를 고칠지의 근거) — 2026-09-05 신설
 
 물음(운영자): *"DG 로 register 가 통째로 비워지는지 실측 시험이 필요하면 시험 프로시저 준비해줘."*
-현행 R2616 의 flush 는 `SkipLine` 에서 DG=HIGH 로 600 번 시프트하므로(R2615) 답이 무엇이든 **flush 는 안전**하다.
+현행 R2617 의 flush 는 `SkipLine` 에서 DG=HIGH 로 600 번 시프트하므로(R2615) 답이 무엇이든 **flush 는 안전**하다.
 이 실측이 정하는 것은 **FrameShift(1033 사이클) 동안 DG 를 올려 두면 레지스터에 도착하는 전하가 R 클록 없이도
 덤프되는가** — 그렇다면 `FRAME6`/`IMAGE6` 의 DG=A_LOW(0 V, STA 템플릿 슬립 — `acf/README.md` R2614 절)를 DG_HIGH
 로 고치는 후속 판(R2617)이 정당하다.
 
 ### 원리
 
-정상 프레임에서 레지스터 잔량은 `LINE12="DGLOW; CALL HorizontalShift(600)"` 이 독출 전에 쓸어 낸다.  그 줄을
+정상 프레임에서 레지스터 잔량은 `LINE13="DGLOW; CALL HorizontalShift(600)"`(R2617 번호) 이 독출 전에 쓸어 낸다.  그 줄을
 **시프트 없는 한 줄**로 바꾸면 잔량이 **첫 독출 행에 더해져** 나온다 — 그것이 측정량이다.  잔량의 주 원천은
 FrameShift 가 store 를 1033 행 밀어 레지스터로 떨어뜨리는 전하(store 는 직전 독출 ≈1.25 s 동안 쌓인다)이므로,
 **약한 균일광**(돔 플랫 램프 최저 — 정상 프레임 수준 수십 e⁻/픽셀) 아래에서 재면 신호가 뚜렷하다: 잔량 ≈ 1033 ×
@@ -288,18 +288,18 @@ image/store 를 비워 버려 신호가 남지 않는다 — 균일광이 맞다
 
 ### 전제
 * CCD 저온 안정 · 전원 ON · 균일광 세기는 **단계 B 의 첫 행이 포화하지 않도록** 먼저 맞춘다(정상 프레임 수준 ≤ 50 e⁻).
-* 시험 ACF 는 R2616 사본에서 표의 줄/상태만 바꾼다.  `Pixels`·`Lines`·`FlushLines` 는 손대지 않는다.  판 사이에는
+* 시험 ACF 는 R2617 사본에서 표의 줄/상태만 바꾼다.  `Pixels`·`Lines`·`FlushLines` 는 손대지 않는다.  판 사이에는
   `APPLYALL` 뒤 `POWERON` 이 다시 필요하다(매뉴얼 p.51).
 * `go 3` 으로 찍고 **2·3 번째 파일**을 쓴다(1 번째의 직전은 flush 라 store 축적 시간이 다르다).  `guideexp 1.3`.
 
 ### 절차
 | 단계 | 시험 ACF | 보는 것 |
 |---|---|---|
-| A 기준선 | R2616 그대로 | 첫 행 중앙값 − 2~10 행 중앙값 = Δ₀ (≈ 0 이어야 한다: 600 번 시프트가 레지스터를 비운다) |
-| B 시프트 생략 · DG 낮음 | `LINE12="DGLOW; X(1)"` | Δ_B — 잔량이 첫 행에 더해진다(양수, "잔량이 있다" 의 증거이자 척도) |
-| C 시프트 생략 · DG 높음(정적) | `LINE12="DGHIGH; X(10000)"` (100 µs, R 클록 없음) | Δ_C — **Δ_C ≈ Δ₀ 면 정적 DG 가 이미 찬 레지스터를 비운다**, Δ_C ≈ Δ_B 면 못 비운다 |
-| D FrameShift 중 DG 높음 (본 물음) | `FRAME6`/`IMAGE6` 의 DG 항을 `DG_HIGH,1,0` 으로 + `LINE12="DGLOW; X(1)"` | Δ_D — **Δ_D ≈ Δ₀ 면 도착하는 전하가 시프트 없이 덤프된다** → FRAME6 수정 정당 |
-| E (선택) 부작용 | D 의 상태표 + `LINE12` 원상 | 배경·첫 행·노이즈가 A 와 같은가 |
+| A 기준선 | R2617 그대로 | 첫 행 중앙값 − 2~10 행 중앙값 = Δ₀ (≈ 0 이어야 한다: 600 번 시프트가 레지스터를 비운다) |
+| B 시프트 생략 · DG 낮음 | `LINE13="DGLOW; X(1)"` | Δ_B — 잔량이 첫 행에 더해진다(양수, "잔량이 있다" 의 증거이자 척도) |
+| C 시프트 생략 · DG 높음(정적) | `LINE13="DGHIGH; X(10000)"` (100 µs, R 클록 없음) | Δ_C — **Δ_C ≈ Δ₀ 면 정적 DG 가 이미 찬 레지스터를 비운다**, Δ_C ≈ Δ_B 면 못 비운다 |
+| D FrameShift 중 DG 높음 (본 물음) | `FRAME6`/`IMAGE6` 의 DG 항을 `DG_HIGH,1,0` 으로 + `LINE13="DGLOW; X(1)"` | Δ_D — **Δ_D ≈ Δ₀ 면 도착하는 전하가 시프트 없이 덤프된다** → FRAME6 수정 정당 |
+| E (선택) 부작용 | D 의 상태표 + `LINE13` 원상 | 배경·첫 행·노이즈가 A 와 같은가 |
 
 각 단계 **3 회**, 첫 행/다음 9 행의 중앙값 차를 `GAIN` 으로 e⁻ 환산해 표에 적는다.
 

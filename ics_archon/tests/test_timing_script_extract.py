@@ -75,17 +75,18 @@ def test_the_two_txt_are_faithful_extracts_of_the_current_acfs():
 
 @pytest.mark.repo_only
 def test_declared_lines_matches_the_extracted_and_txt_line_counts():
-    """`LINES=` == 뽑은 줄 수 == txt 줄 수 (guide 120 · science 142).
+    """`LINES=` == 뽑은 줄 수 == txt 줄 수 (guide 122 · science 142).
 
-    guide 는 R2613 에서 113 -> 120 (FlushFrame LINE113~119 신설, 11.31).
+    guide 는 R2613 에서 113 -> 120 (FlushFrame 7줄 신설, 11.31), R2617 에서 120 -> 122
+    (`Exposure:`·`FlushFrame:` 앞 빈 줄, 운영자 2026-09-06 -- 11.34).
     science 는 R2609 에서 137 -> 142 (FlushFrame LINE137~141 신설, 2026-09-05).
 
     ⚠️ 두 txt 는 **끝 개행이 없다** (`'\\n'.join` 의 서명).  그래서 `wc -l` 은
-    112/136 을 내놓는다 -- 줄 수는 `count('\\n') + 1` 로 센다.  개행을 채우면
+    121/141 을 내놓는다 -- 줄 수는 `count('\\n') + 1` 로 센다.  개행을 채우면
     위 시험이 깨진다.
     """
     counts = {k: _txt(k).count('\n') + 1 for k in ('guide', 'science')}
-    assert counts == {'guide': 120, 'science': 142}   # guide: R2613 FlushFrame 7줄 (11.31) · science: R2609 FlushFrame 5줄
+    assert counts == {'guide': 122, 'science': 142}   # guide: +FlushFrame 7줄(R2613) +빈 줄 2(R2617) · science: +FlushFrame 5줄(R2609)
     for path in _current_acfs():
         text, declared, bigbuf = ets.extract(path)
         assert declared is not None, '%s 에 LINES= 가 없다' % path

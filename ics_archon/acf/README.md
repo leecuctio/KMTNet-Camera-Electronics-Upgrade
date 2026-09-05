@@ -17,7 +17,7 @@
 | `KMTS_SCI_102_STA0287_R2610_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
 | `KMTK_SCI_113_STA0200_R2610_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
 | `KMTK_SCI_113_STA0200_R2610_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
-| `KMTK_GUI_162_STA0201_R2616.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
+| `KMTK_GUI_162_STA0201_R2617.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -43,11 +43,12 @@ Tap"** 이 그 값이다 (운영자 확인 2026-08-29).
 있다(guide `LINE43`↔science `LINE57`, `44`↔`58`, `47`↔`61`).  판을 안 밝히면
 조용히 틀린 독해가 된다.
 
-    LINE43  LCLK;   CALL SkipPixelFirst(PreSkipPixels)    8   버리며 지나감(디지타이즈 안 함)
-    LINE44  RGHIGH; CALL PixelFirst(Pixels)             540   디지타이즈  (구 R2609: 600)
-    LINE45  RGHIGH; CALL SkipPixelFirst(PostSkipPixels)   0
-    LINE46  RGHIGH; CALL PixelFirst(OverscanPixels)       0
-    LINE47  RGHIGH; CALL PixelFirst                       1   ← 인자 없는 호출 = 1개 더
+    LINE44  LCLK;   CALL SkipPixelFirst(PreSkipPixels)    8   버리며 지나감(디지타이즈 안 함)
+    LINE45  RGHIGH; CALL PixelFirst(Pixels)             540   디지타이즈  (구 R2609: 600)
+    LINE46  RGHIGH; CALL SkipPixelFirst(PostSkipPixels)   0
+    LINE47  RGHIGH; CALL PixelFirst(OverscanPixels)       0
+    LINE48  RGHIGH; CALL PixelFirst                       1   ← 인자 없는 호출 = 1개 더
+                                                              (번호는 R2617 기준)
 
 **그래서 저장 영상은 채널(탭)당 528 컬럼**이고, guide 프레임 전체는
 **8탭 × 528 = `NAXIS1=4224`**, `NAXIS2=1033` 이다.  science 는 16탭 × 1200 =
@@ -106,7 +107,7 @@ ACF 와 자리마다 맞는다 -- **여유가 0 이다**:
 
 ⏳ **`Pixels` 트림은 실기 시험 항목이다** (P-k, 운영자 2026-08-29).
 판정법은 **같은 조건에서 두 값으로 프레임을 찍어 바이트 비교** -- 같으면 저장 창이
-앞 528 이고 무손실이다.  ⚠️ **줄이더라도 `LINE47` 의 인자 없는
+앞 528 이고 무손실이다.  ⚠️ **줄이더라도 `LINE48` 의 인자 없는
 `CALL PixelFirst`(+1)는 남길 것** -- 그것이 flush 여유다.
 
 ⚠️ **종전 권고 `Pixels=529`(여유 2, science 관례)는 2026-09-03 문헌 조사로
@@ -138,9 +139,9 @@ overscan 72 를 담기 위한 값이었다.**  overscan 을 폐지할 때 `PIXEL
 
 | 스크립트 | 성격 | 닮은 파라미터 | 바닥 |
 |---|---|---|---:|
-| `LINE11 FrameShift(1033)` | 리터럴 | `Lines=1033` | store 구간 행수 1033 |
-| `LINE12`·`LINE53 HorizontalShift(600)` | 리터럴 | `Pixels=600` | 레지스터 536 |
-| `LINE15 Line(Lines)` · `LINE44 PixelFirst(Pixels)` | 파라미터 | -- | -- |
+| `LINE12 FrameShift(1033)` | 리터럴 | `Lines=1033` | store 구간 행수 1033 |
+| `LINE13`·`LINE54 HorizontalShift(600)` | 리터럴 | `Pixels=600` | 레지스터 536 |
+| `LINE16 Line(Lines)` · `LINE45 PixelFirst(Pixels)` | 파라미터 | -- | -- |
 
 `HorizontalShift` 를 바닥(536)까지 깎아도 프레임당 **42.9 µs**(하한의 0.003%)라
 ACF 개정 비용을 못 갚는다.  ⚠️ `Pixels` 트림과 **묶어서 개정하지 말 것** --
@@ -257,6 +258,56 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
+
+## R2617 -- `Exposure:`·`FlushFrame:` 앞에 빈 줄 (2026-09-06, 운영자)
+
+    KMTK_GUI_162_STA0201_R2616.acf  ->  ..._R2617.acf   (구판은 archive/)
+    LINE6=                                  (신설 -- `Exposure:` 앞)
+    LINE114=                                (신설 -- `FlushFrame:` 앞)
+    LINES=120  ->  122
+
+운영자 지시: *"Exposure: 앞에 빈줄 하나, FlushFrame: 앞에 빈줄 하나 추가해줘."*  블록이 눈에
+들어오게 하는 것이고 **거동은 한 틱도 바뀌지 않는다**.
+
+⭐ **이 스크립트가 이미 쓰는 관례다.**  R2616 의 라벨 16개를 파싱해 앞 줄을 보면 -- 서브루틴
+진입 라벨 9개(`IntUnit:` `NoIntUnit:` `SmallIntUnit:` `Line:` `SkipLine:` `Pixel:` `SkipPixel:`
+`HorizontalShift:` `VerticalShift:` `FrameShift:`)는 **전부** 앞에 빈 줄이 있고, 없는 것은
+`Start:`(파일 첫 줄) · `Exposure:` · `FlushFrame:` · 그리고 **떨어져 내려오는 이어짐** 셋
+(`Continuous:`←`Exposures--` · `PixelFirst:`←`RGHIGH` · `SkipPixelFirst:`←`RGHIGH`)뿐이었다.
+운영자가 지목한 둘이 정확히 그 예외 중 **이어짐이 아닌 것들**이다.
+⚠️ **`Continuous:` 에는 넣지 않았다** -- 넣으면 `Exposure:` 에서 떨어져 내려오는 흐름이 끊긴
+것처럼 읽힌다.  `PixelFirst:`·`SkipPixelFirst:` 도 같은 이유로 그대로 둔다.
+
+### ⛔ 그러나 번호가 밀린다 -- 그것이 이 판의 실제 비용이다
+
+| 옛(R2616) | 새(R2617) | 무엇 |
+|---:|---:|---|
+| `LINE0`~`LINE5` | 그대로 | `Start:` 유휴 루프 |
+| `LINE6`~`LINE112` | **+1** | `Exposure:` ~ `VerticalShift` 끝 |
+| `LINE113`~`LINE119` | **+2** | `FlushFrame:` 블록 |
+
+밀린 자리를 참조하던 곳을 전수로 고쳤다:
+
+| 자리 | 옛 | 새 |
+|---|---|---|
+| `../icg_archon/acftiming.py` `_SHAPE` (형태 검사) | `LINE11`·`12`·`47`·`48`·`118` | `LINE12`·`13`·`48`·`49`·`120` (`LINE1` 은 그대로) |
+| `../tests/test_ch10_reflection.py` (science 거절 앵커) | `LINE11=` | `LINE12=` |
+| `../tests/test_icg_timing.py` (`HorizontalShift(600)` 리터럴) | `LINE12`·`LINE53` | `LINE13`·`LINE54` |
+| `../tests/test_timing_script_extract.py` (줄 수) | guide 120 | guide **122** |
+| 이 문서의 `Line` 루틴 표 · 파생값 표 | `LINE43`~`47` · `LINE11`·`12`·`15`·`53` | `LINE44`~`48` · `LINE12`·`13`·`16`·`54` |
+| `../icg_first_run.md` 부록(DG 정적 덤프 실측) | `LINE12` | `LINE13` |
+
+⚠️ **`acftiming` 의 유휴 루프 주석이 R2613 부터 이미 틀려 있었다** -- `LINE3="X; X(100)"` 로
+적혀 있었는데 R2613 이 `LINE1` 에 `FirstFlush` 검사를 끼우며 그것은 `LINE4` 가 됐다.  이번에
+함께 고쳤다(R2617 에서도 `LINE4` -- 빈 줄이 `LINE6` 이라 앞쪽은 안 밀린다).
+
+⭐ **덤으로 키 순서를 정상화했다** -- R2613 이 `LINE113`~`LINE119` 를 파일 **꼬리**
+(`LINECOUNT=1033` 뒤)에 덧붙여 놨었다.  번호를 미느라 LINE 블록을 다시 쓰면서 벤더 GUI 관례인
+**사전순**(`LINE0`·`LINE1`·`LINE10`·`LINE100`…·`LINE99`·`LINECOUNT`·`LINES`·`LINESCAN`)으로
+되돌렸다.  파싱은 dict 라 순서에 무관하지만 `WCONFIG` 의 줄 번호는 **파일 위치**에서 오므로,
+ACF 를 갈아 끼우면 반드시 다시 파싱해야 한다(`controller.prepare()` 가 그렇게 한다).
+
+⚠️ **아래 R2616 이하 절들의 줄 번호는 그 판 당시의 것**이다 -- 현행 번호로 읽지 말 것.
 
 ## R2616 -- `FirstFlush=1` 을 ACF 상수로 (2026-09-05 밤, 운영자 "단순 명료하게")
 
@@ -470,8 +521,11 @@ p.2 note 2 공식으로 5.4e-4~1.1e-3 e/px/s, 보수적 바닥값 0.01 을 두�
 ⏳ 고치려면 `STATE31\MOD4` ch6 을 `,1,1`(keep) 로 -- FrameShift 내내 DG 12 V 유지.
 **그러나 데이터시트 본문만으로는 DG 가 정적 레지스터를 통째로 덤프하는지(가로 인접
 덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 후속 판으로(R2615 는 위 `SkipLine` DGHIGH 건에 썼다): 암실·저온·유휴
-30 min 뒤 시험 ACF 에서 LINE12 를 `DGLOW; X(1)` 로 바꿔(HorizontalShift 생략) 레지스터
+시험 ACF 에서 `LINE12`(R2617 의 `LINE13`)를 `DGLOW; X(1)` 로 바꿔(HorizontalShift 생략) 레지스터
 잔량이 1 행에 더해져 나오게 하고 FRAME6 ch6 을 A_LOW/keep 두 판으로 찍어 비교.
+⭐ **정본 절차는 `../icg_first_run.md` 의 "부록 -- DG 정적 덤프 실측"** 이다 (2026-09-05 밤에
+단계·판정표·멈출 조건까지 적었다; 암실 30 min 대신 **약한 균일광** -- `go 1` 의 첫 flush 가
+image/store 를 비워 어둠에서는 신호가 안 남는다).
 
 ## R2613 -- flush 프레임이 스크립트 안에 들어갔다 (2026-09-05, 운영자)
 

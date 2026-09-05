@@ -18,7 +18,7 @@ import ics_archon  # noqa: F401
 from icg_archon import acftiming  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2616.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2617.acf')
 
 
 def test_tick_anchor_holds():
@@ -239,14 +239,14 @@ def test_guide_acf_matches_the_ccd47_20_register_accounting():
         'guide 가 split 이면 HEIGHT 대체 경로(progress_of(0))가 50% 에 묶인다 (DevNote 10.3)'
     assert cfg.get('BIGBUF', '0') == '0', \
         'guide 는 버퍼 셋 전제다 -- 잠금 뒤 둘이 남는다 (fetch_timeout 안전선의 근거)'
-    # LINE44 Pixels + LINE46 OverscanPixels + LINE47 인자 없는 CALL PixelFirst
+    # LINE45 Pixels + LINE47 OverscanPixels + LINE48 인자 없는 CALL PixelFirst
     digitised = p['Pixels'] + p['OverscanPixels'] + 1
     assert digitised >= int(cfg['PIXELCOUNT']), \
         '디지타이즈(%d) < 저장(%s) -- 실컬럼이 잘린다' % (digitised, cfg['PIXELCOUNT'])
     # ⭐ 마법 숫자 대신 **물리 불변식**을 못박는다 (2026-09-03).
     #
     #     레지스터 절반 536 = BLANK 8 + 다크기준 15 + 전이 1 + active 512
-    #     총 클록 = PreSkip + Pixels + PostSkip + Overscan + 1(LINE47)
+    #     총 클록 = PreSkip + Pixels + PostSkip + Overscan + 1(LINE48)
     #
     # ⚠️ 총 클록이 536 아래로 내려가면 512번째 active 가 아직 출력단에
     # 도달하지 않는다 -- **절대 금지선**이다.
@@ -269,12 +269,12 @@ def test_frame_flush_literal_is_independent_of_the_pixels_parameter():
     """`HorizontalShift(600)` 은 스크립트 리터럴이다 -- `Pixels` 트림과 무관.
 
     9.14 가 지적한 혼동 지점: 600 이 두 뜻으로 쓰인다.  트랜스퍼 시간은
-    `Pixels` 를 바꿔도 **그대로**여야 하고, ACF 의 LINE12/LINE53 이 600 을
+    `Pixels` 를 바꿔도 **그대로**여야 하고, ACF 의 LINE13/LINE54 가 600 을
     적고 있어야 `acftiming._FRAME_HSHIFT` 가 그것을 비추는 게 맞다.
     """
     cfg, p = _guide_params()
-    assert 'HorizontalShift(600)' in cfg['LINE12']
-    assert 'HorizontalShift(600)' in cfg['LINE53']
+    assert 'HorizontalShift(600)' in cfg['LINE13']
+    assert 'HorizontalShift(600)' in cfg['LINE54']
     assert acftiming._FRAME_HSHIFT == 600  # noqa: SLF001
     t600 = acftiming.frame_timing(p, lines=p['Lines'], pixels=600)
     t529 = acftiming.frame_timing(p, lines=p['Lines'], pixels=529)

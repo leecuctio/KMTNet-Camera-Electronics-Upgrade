@@ -20,7 +20,7 @@ from ics_archon import config as acfg_mod  # noqa: E402
 from ics_archon.archon import parse  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2616.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2617.acf')
 SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2610_MK.acf')
 
 
@@ -157,7 +157,7 @@ def test_acftiming_recognises_the_guide_script_and_rejects_science():
 
     assert acftiming.script_matches(cfg_of(GUIDE_ACF)) == []
     bad = acftiming.script_matches(cfg_of(SCI_ACF))
-    assert bad and any(b.startswith('LINE11=') for b in bad), bad
+    assert bad and any(b.startswith('LINE12=') for b in bad), bad   # R2617 의 FrameShift 앵커
 
 
 @pytest.mark.repo_only

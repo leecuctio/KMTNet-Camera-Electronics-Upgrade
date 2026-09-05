@@ -21,7 +21,8 @@
 
 * `IMAGE1..6` -> **S 상만** 구동 -- `Line`(독출)·`SkipLine`(flush)이 쓴다.
   즉 **독출·유휴 중에 image 영역은 손대지 않는다** = 계속 적분한다.
-  ⭐ R2612 부터 유휴 루프는 `SkipLine` 도 부르지 않는다(`LINE3="X; X(100)"`,
+  ⭐ R2612 부터 유휴 루프는 `SkipLine` 도 부르지 않는다(`LINE4="X; X(100)"` --
+  ⚠️ R2612 당시엔 `LINE3` 이었고 R2613 의 `FirstFlush` 검사가 한 칸 밀었다,
   운영자 2026-09-05) -- 유휴는 **클록 자체가 없는** 상태다.  `X` 는 모든
   채널 `keep` 이라 store 도 image 도 그대로 둔다.
 * `FRAME1..6` -> **S + I 를 함께** 구동 -- `FrameShift(1033)` 이 쓴다.
@@ -77,19 +78,21 @@ def parameters(config: dict) -> dict[str, int]:
 
 
 #: 이 모듈이 셈하는 **guide 타이밍 스크립트의 형태** -- 줄 번호와 그 줄에 있어야
-#: 하는 호출.  science ACF 는 배치가 달라(`LINE11` 이 `IntUnit`,
+#: 하는 호출.  science ACF 는 배치가 달라(guide 의 `FrameShift` 자리에 `IntUnit`,
 #: `HorizontalSWShift(1200)`, `AT=2000`) 이 셈법을 씌우면 뜻 없는 수가 나온다
 #: (DevNote 9.15).
+#: ⚠️ **줄 번호는 ACF 판에 매인다** -- R2617 이 `Exposure:`·`FlushFrame:` 앞에 빈 줄을
+#: 넣어 옛 6~112 가 +1, 옛 113~119 가 +2 로 밀렸다 (DevNote 11.34).
 _SHAPE = {
     # R2613+: 유휴 루프 첫 줄이 flush 검사, 끝에 FlushFrame 블록.  ⭐ 이 둘이
     # 없으면 '파라미터는 있는데 스크립트가 안 쓰는' R2611 같은 판이거나 구판이다
     # -- 호스트가 Exposures=n 으로 걸면 첫 장이 flush 없이 저장되므로 걸러야 한다.
     'LINE1': 'IF FirstFlush GOTO FlushFrame',
-    'LINE11': 'CALL FrameShift(',
-    'LINE12': 'CALL HorizontalShift(',
-    'LINE47': 'CALL PixelFirst',
-    'LINE48': 'CLAMP; X(',
-    'LINE118': 'CALL SkipLine(FlushLines)',
+    'LINE12': 'CALL FrameShift(',
+    'LINE13': 'CALL HorizontalShift(',
+    'LINE48': 'CALL PixelFirst',
+    'LINE49': 'CLAMP; X(',
+    'LINE120': 'CALL SkipLine(FlushLines)',
 }
 
 
@@ -120,10 +123,10 @@ _PIXEL_FIRST = (1 + 20) + 1 + 1 + 1 + 3 * (1 + 10) + (1 + 64) + (1 + 10) \
 _PIXEL = _PIXEL_FIRST + 1
 _CLAMP_HOLD = 1 + 10000
 
-#: `LINE12 DGLOW; CALL HorizontalShift(600)` -- 트랜스퍼 직후 직렬 레지스터를
+#: `LINE13 DGLOW; CALL HorizontalShift(600)` -- 트랜스퍼 직후 직렬 레지스터를
 #: **쓸어내는** 횟수.  ⚠️ 스크립트 **리터럴**이라 `Pixels` 파라미터와 무관하다:
 #: 레지스터 절반(536 소자)을 넘기게 잡은 flush 수이고, `Pixels` 를 528/529 로
-#: 트림해도(P-k, `acf/README.md`) 이 값은 그대로다.  `LINE53`(`SkipLine` 안)도 같다.
+#: 트림해도(P-k, `acf/README.md`) 이 값은 그대로다.  `LINE54`(`SkipLine` 안)도 같다.
 _FRAME_HSHIFT = 600
 
 
@@ -137,10 +140,10 @@ def skipline_ticks(params: dict[str, int]) -> int:
     (R2611 까지는 유휴 루프도 이것을 불렀다.  R2612 부터 유휴는 `X; X(100)`
     으로 가만히 있으므로, 이 비용은 **flush 경로에서만** 든다.)
 
-        LINE52  RGHIGH; CALL VerticalShift        1 + vshift
-        LINE53  X; CALL HorizontalShift(600)      1 + hshift x 600
-        LINE54  CLAMP; X(10000)                   _CLAMP_HOLD
-        LINE55  NOCLAMP; RETURN SkipLine          1
+        LINE53  RGHIGH; CALL VerticalShift        1 + vshift
+        LINE54  DGHIGH; CALL HorizontalShift(600)  1 + hshift x 600
+        LINE55  CLAMP; X(10000)                   _CLAMP_HOLD
+        LINE56  NOCLAMP; RETURN SkipLine          1
 
     ⚠️ 디지타이즈가 없다 -- `Pixel` 루틴을 안 타므로 `Pixels` 와 **무관**하고
     `AT`·`ST` 로만 결정된다.  본 독출과 배율이 다른 이유가 여기다.
@@ -249,12 +252,12 @@ def frame_timing(params: dict[str, int], *,
     # `IntMS` 는 호출측이 더한다 -- 상수분만 돌려준다.
     t['trigger_to_transfer'] = t['noint'] + t['transfer']
     # ⭐ 트리거 -> `FrameShift` **개시** (10.1-4 의 DATE-OBS 기준).  `IntUnit` 뒤
-    # `NoIntUnit` 만 거치고 곧바로 LINE11 이다 -- transfer 항이 없다.
+    # `NoIntUnit` 만 거치고 곧바로 LINE12(`FrameShift`)다 -- transfer 항이 없다.
     t['to_frameshift'] = t['noint']
     # FrameShift 개시 -> 프레임 완료 (transfer + 독출).  완료 관측 시각에서
     # 이것을 빼면 그 프레임의 FrameShift 개시 = 다음 프레임의 DATE-OBS.
     t['frameshift_to_done'] = t['transfer'] + t['readout']
-    # flush 프레임 (R2613 LINE115~118): FS + HS + CLAMP + SkipLine x FlushLines.
+    # flush 프레임 (R2617 LINE117~120): FS + HS + CLAMP + SkipLine x FlushLines.
     # 규격 10.1-2 -- 본 독출 소요와 같아야 첫 저장 프레임의 실적분이 맞다.
     fl = params.get('FlushLines')
     t['flush'] = (transfer + skipline_ticks(params) * int(fl)) * TICK if fl else None

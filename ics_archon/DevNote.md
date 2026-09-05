@@ -5694,3 +5694,53 @@ R2615 부터 flush 의 `SkipLine` 은 `DGHIGH; HorizontalShift(600)` 이라 레�
   science 한 장(매 노출 전 Prep+Flush 가 도는지 주기로 확인).
 * 전수 정합 검토(14차원) -- **네 번째로** 세션 한도에 죽었다(4개씩도).  2개씩 또는 새 한도 창에서.
 * DG 정적 덤프 실측(부록) → FRAME6 후속 판(R2617) 여부 · 예측 폴링 · OI-25 잔여 -- 그대로.
+
+### 11.34 타이밍 스크립트에 빈 줄 둘 -- guide R2617 (2026-09-06, 운영자)
+
+운영자: *"Exposure: 앞에 빈줄 하나, FlushFrame: 앞에 빈줄 하나 추가해줘."*  (앞선 물음 *"script_guide.txt
+도 acf 에서 뽑아낸 동일 버전이지?"* -> 그렇다.  `tools/extract_timing_script.py` 로 뽑고 `--check` 로
+대조까지 건다.)
+
+#### (1) 왜 이것이 옳은가 -- 스크립트 자신의 관례
+
+R2616 의 라벨 16개를 파싱해 앞 줄을 봤다.  **서브루틴 진입 라벨 10개는 전부** 앞에 빈 줄이
+있었고(`IntUnit:` `NoIntUnit:` `SmallIntUnit:` `Line:` `SkipLine:` `Pixel:` `SkipPixel:`
+`HorizontalShift:` `VerticalShift:` `FrameShift:`), 없는 것은 `Start:`(첫 줄) · `Exposure:` ·
+`FlushFrame:` · **떨어져 내려오는 이어짐** 셋(`Continuous:`←`Exposures--`, `PixelFirst:`←`RGHIGH`,
+`SkipPixelFirst:`←`RGHIGH`)뿐.  운영자가 지목한 둘이 정확히 "이어짐이 아닌데 빈 줄이 없던" 자리다.
+⛔ `Continuous:`·`PixelFirst:`·`SkipPixelFirst:` 에는 넣지 않았다 -- 넣으면 떨어져 내려오는 흐름이
+끊긴 것처럼 읽힌다.
+거동은 안 바뀐다: 빈 줄은 명령이 없어 틱을 쓰지 않고(라벨과 같다), 그 근거가 **템플릿에 이미 빈 줄이
+넷 있는데 타이밍 모델이 맞아 왔다**는 것이다(`verify_tick_anchor` -- NoIntUnit 이 정확히 1 ms).
+
+#### (2) 비용은 번호 밀림이다 -- 전수 반영
+
+옛 `LINE0`~`5` 그대로 · 옛 `6`~`112` +1 · 옛 `113`~`119` +2 · `LINES` 120 -> 122.  고친 자리:
+`acftiming._SHAPE`(`LINE11`·`12`·`47`·`48`·`118` -> `12`·`13`·`48`·`49`·`120`) · `_FRAME_HSHIFT` 주석
+(`LINE12`·`53` -> `13`·`54`) · `skipline_ticks` 표(`LINE52`~`55` -> `53`~`56`) · `to_frameshift`/`flush`
+주석 · `backend.py`(형태 검사 문구·flush 소요 주석) · `test_ch10_reflection`(science 거절 앵커
+`LINE11=` -> `LINE12=`) · `test_icg_timing`(`cfg['LINE12']`/`['LINE53']` -> `['LINE13']`/`['LINE54']`,
+`LINE44`/`46`/`47` 주석) · `test_timing_script_extract`(guide 120 -> 122) · `extract_timing_script`
+docstring(`wc -l` 119 -> 121) · `acf/README` 두 표 · `icg_first_run` DG 실측 부록 · ini·문서의 파일명.
+
+⭐ **곁가지로 두 가지가 드러났다.** ① `acftiming` 의 유휴 루프 주석이 **R2613 부터 이미 틀려**
+있었다 -- `LINE3="X; X(100)"` 로 적혀 있었는데 R2613 이 `LINE1` 에 flush 검사를 끼우며 `LINE4` 가
+됐다(R2617 에서도 `LINE4`).  ② `skipline_ticks` 표가 `LINE53 X; CALL HorizontalShift(600)` 로 남아
+있었다 -- **R2615 에서 `DGHIGH` 로 바꾼 그 줄**이다.  둘 다 셈에는 안 쓰이는 주석이라 시험이 못
+잡았고, 줄 번호를 손대며 전수로 읽어서 나왔다.
+
+#### (3) 키 순서 정상화 (덤)
+
+R2613 이 `LINE113`~`119` 를 파일 **꼬리**(`LINECOUNT` 뒤)에 덧붙여 놨었다.  번호를 미느라 LINE
+블록을 다시 쓰면서 벤더 GUI 관례인 **사전순**으로 되돌렸다(`LINE0`·`1`·`10`·`100`…·`99`·`LINECOUNT`·
+`LINES`·`LINESCAN`).  ⚠️ `WCONFIG` 의 줄 번호는 **파일 위치**에서 오므로 ACF 를 갈아 끼우면 반드시
+다시 파싱해야 한다(`prepare()` 가 그렇게 한다) -- 순서가 바뀐 판을 옛 줄 번호로 쓰면 **다른 줄을
+덮는다**.  `apply_acf=false` 로 옛 판이 올라간 컨트롤러에 새 파일을 물리면 `verify_config_lines`
+가 잡는다.
+
+#### (4) ⏳ 남은 것
+
+* science 도 같은 관례를 맞출지 -- `Exposure:`/`FlushFrame:` 앞 빈 줄 + R2610 에서 비워 둔 `LINE9`/
+  `LINE10`(옛 `#X; CALL Prep`/`Flush`, 이제 `ccdflush` 가 안 쓴다) 제거.  **운영자 판단 대기**
+  (하면 science 6장이 R2611 이 되고 `LINE137`~`141` 번호가 또 밀린다).
+* 나머지는 11.33-(6) 그대로.

@@ -1406,11 +1406,20 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ## ▶ 인수인계 (2026-09-04 마감 — ⭐ 새 세션이면 **여기부터**)
 
-### ⭐ 2026-09-05 밤 추가분 (DevNote 11.33) — 아래 것들보다 **이것이 최신**
+### ⭐ 2026-09-06 새벽 추가분 (DevNote 11.33~11.34) — 아래 것들보다 **이것이 최신**
 
 ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved`).
 
-**한 것**
+**한 것 (11.34, 2026-09-06)**
+- guide **R2617** — `Exposure:`·`FlushFrame:` 앞에 빈 줄 하나씩(운영자).  거동 불변, **번호만 밀린다**:
+  옛 `0`~`5` 그대로 · `6`~`112` +1 · `113`~`119` +2 · `LINES` 120→**122**.
+- 밀린 자리 전수 반영 — `acftiming._SHAPE`(`LINE12`·`13`·`48`·`49`·`120`) · 시험 셋 · `extract` docstring ·
+  `acf/README` 두 표 · `icg_first_run` DG 부록 · 파일명 전부.
+- 곁가지 둘: `acftiming` 유휴 루프 주석이 R2613 부터 `LINE3`→실제 `LINE4` 로 **이미 틀려** 있었고,
+  `skipline_ticks` 표가 R2615 의 `DGHIGH` 를 안 따라와 `X` 로 남아 있었다.
+- LINE 키 순서를 **사전순**으로 정상화(R2613 이 꼬리에 덧붙였던 `LINE113`~`119`).
+
+**한 것 (11.33, 2026-09-05 밤)**
 - **flush 를 ACF 상수 하나로** — guide **R2616**(`PARAMETER0="FirstFlush=1"` 상수, 스크립트 동일) · science **R2610 ×6**
   (`LINE9/LINE10` 삭제, `FirstFlush=0` 기본).  호스트의 `FirstFlush` 쓰기/되쓰기 전부 삭제(`trigger`·`set_exposures`).
   `set_ccdflush`(LINE9/10 + LOADTIMING) → `set_first_flush`(WCONFIG 한 줄 + RCONFIG 확인).  `flush_now` 는 옵션이 0 이면
@@ -1421,6 +1430,9 @@ ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_wai
 - `icg_first_run.md` 부록 **DG 정적 덤프 실측** 프로시저(FRAME6 판단 근거) · 3.5/4/5단계 행 갱신.
 
 **밟기 쉬운 함정**
+- **줄 번호는 ACF 판에 매인다** — `_SHAPE`·시험·문서의 `LINEn` 은 R2617 기준이다.  ACF 를 손대면
+  `acftiming._SHAPE` 부터 확인할 것(형태 검사가 어긋나면 주기를 **셈하지 않고** ini 대체값으로 간다 —
+  조용히 틀리는 자리다).  `WCONFIG` 줄 번호는 파일 위치라 판을 갈면 다시 파싱해야 한다.
 - guide ACF 의 `FirstFlush` 는 **1 이어야** GO 가 열린다(`_flush_capable`: 값을 본다, 존재가 아니다).  science 는 0 이
   기본 — `[archon] ccdflush` 옵션이 기동 때 쓴다.
 - `set_first_flush`/`flush_now` 는 **슬롯 이름**을 본다 — R2608 의 PARAMETER0 은 `ContinuousExposures` 라 번호만 믿으면 덮는다.
@@ -1429,7 +1441,8 @@ ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_wai
 - 아래 2026-09-05 추가분의 함정 "플래그는 설정 메모리에 남는다 … 되쓴다" 는 **닫혔다** — 상수 1 이 설계다.
 
 **다음 세션이 할 것**
-1. 전수 정합 검토(14차원) — 네 번째 한도 사망.  2개씩 또는 새 한도 창(03:20 이후).
+1. 전수 정합 검토(14차원) — Fable 한도로 네 번 사망(2026-09-06 Opus 5 로 재시도).
+2. science 도 라벨 앞 빈 줄을 맞출지 + R2610 에서 비워 둔 `LINE9`/`LINE10` 제거 — **운영자 판단 대기**.
 2. 첫 구동 항목(11.32-(6) + 11.33-(6)): STOP 꼬리 flush 실측 · `ccdflush=true` science 한 장 주기.
 3. DG 정적 덤프 실측(부록) → FRAME6 후속 판(R2617) 여부.
 
