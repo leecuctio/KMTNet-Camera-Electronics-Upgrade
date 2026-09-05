@@ -27,6 +27,9 @@ def _status_with_rtd(**vals):  # noqa: ANN003
     base = {
         'MOD7/TEMPA': '-273.2', 'MOD7/TEMPB': '-29.5', 'MOD7/TEMPC': '-196.9',
         'MOD10/TEMPA': '-31.8', 'MOD10/TEMPB': '-27.7', 'MOD10/TEMPC': '7.8',
+        # FW 1.0.1252 HeaterX 출력 형식 (%0.3f) -- 픽스처는 증거가 아니라 FW 형식을 따른다 (11.30)
+        'MOD10/HEATERAOUTPUT': '0.000', 'MOD10/HEATERBOUTPUT': '0.000',
+        'HEATER_V': '28.104', 'HEATER_I': '0.052',
     }
     base.update(vals)
     return base
@@ -293,3 +296,58 @@ def test_csv_columns_are_stable():
     for key in ('t_backplane', 't_mod9', 'v_heater', 'i_p2v5', 'dewpres',
                 'ccdtemp', 'hebox', 'fsahum', 'ens7', 'event'):
         assert key in cols
+
+
+def test_htrout_is_sampled_from_mod10_heateraoutput(tmp_path, caplog):
+    """`HTROUT` 의 원천 -- STATUS `MOD10/HEATERAOUTPUT` (DevNote 11.30).
+
+    FW 1.0.1252 가 HeaterX 슬롯에 이 키를 내는 것을 펌웨어 이미지로 확인했다
+    (매뉴얼 p.48 'Heater only' 는 오기).  키가 있으면 `_sample['htrout']` 로
+    들어가 스냅샷을 타고 `ics_archon.sensors()` 로 흘러가야 하고, STATUS 는
+    왔는데 키가 없으면 **한 번** 경고하고 카드는 sentinel 로 나가야 한다 --
+    조용히 넘어가면 아무도 모른다.
+    """
+    import logging
+
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+
+    class _Ctrl:
+        """STATUS 만 내는 컨트롤러 대역."""
+
+        def __init__(self, status):  # noqa: ANN001
+            self.status_live = status
+            self.config = {}
+
+        async def refresh_status_live(self):  # noqa: ANN202
+            return True
+
+    # ① 키가 있다 -- 값이 그대로 표본이 되고 스냅샷에 실린다.
+    mon = HkMonitor(_Ctrl(_status_with_rtd(**{'MOD10/HEATERAOUTPUT': '3.512'})), icfg)
+    asyncio.run(mon._tick(0.0))
+    assert mon._sample['htrout'][0] == 3.512
+    assert mon.sensors()['htrout'] == 3.512
+    snap = json.loads((tmp_path / icfg.hk.latest_name).read_text())
+    assert snap['values']['htrout'] == 3.512
+    assert 'htrout' in snap['sampled']
+    # 계약 키 셈에는 안 들어간다 -- 10개 밖 (hkwire 의 HKSTALE 규칙과 같다).
+    assert 'htrout' not in dict(hk_mod.RTD_FIELDS).values()
+
+    # ② STATUS 는 왔는데 키가 없다 -- 표본 없음 + 경고 한 번(래치).
+    status = _status_with_rtd()
+    status.pop('MOD10/HEATERAOUTPUT')
+    mon2 = HkMonitor(_Ctrl(status), icfg)
+    with caplog.at_level(logging.WARNING, logger='icg_archon.hk'):
+        asyncio.run(mon2._tick(0.0))
+        asyncio.run(mon2._tick(0.0))
+    assert 'htrout' not in mon2._sample
+    warns = [r for r in caplog.records if 'HEATERAOUTPUT' in r.getMessage()]
+    assert len(warns) == 1, '결측 경고는 한 번만 (래치)'
+
+    # ③ 컨트롤러가 없으면(sim) 경고도 없다 -- 결측이 정상이다.
+    mon3 = HkMonitor(None, icfg)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='icg_archon.hk'):
+        asyncio.run(mon3._tick(0.0))
+    assert not [r for r in caplog.records if 'HEATERAOUTPUT' in r.getMessage()]

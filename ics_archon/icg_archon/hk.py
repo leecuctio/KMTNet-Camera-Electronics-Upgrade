@@ -44,7 +44,7 @@ _simpath.ensure()
 
 from ics_sim.state import stamp_compact, stamp_iso_ms, utcnow  # noqa: E402
 
-from . import guidehdr  # noqa: E402
+from . import guidehdr, heater  # noqa: E402
 from .config import IcgCfg  # noqa: E402
 
 log = logging.getLogger('icg_archon.hk')
@@ -58,6 +58,30 @@ RTD_FIELDS = (
     ('MOD10/TEMPB', 'ccdtemp'),
     ('MOD10/TEMPC', 'wallbrd'),
 )
+
+#: 히터 채널 A 의 출력 -- FITS 카드 `HTROUT` 의 원천 (규격 5.6.2절).
+#:
+#: ⭐ **`MOD10/HEATERAOUTPUT`** -- 백플레인 FW 1.0.1252(guide 실기와 같은 판)
+#: 이미지 분석으로 HeaterX(type 11) STATUS 경로가 이 키를 출력함을 확인했다
+#: (DevNote 11.30).  매뉴얼 p.48 이 이 줄에 "Heater only" 라 적은 것은 FW 와
+#: 어긋난 오기다.  ⏳ 값이 출력단 **측정값**인지 PID/FORCE **명령값**인지는
+#: 실기 미확인(규격 OI-28) -- 첫 구동 FORCE 실험이 닫는다.
+#:
+#: 계약 키 10개 **밖**이다 -- `HKDATA` 완전성 셈(계약키 교집합 + HKSTALE)에
+#: 들어가지 않고, 스냅샷 `values` 로만 `ics_archon.sensors()` 에 흘러간다
+#: (`rawhdr.thermal_header()` 가 `htrout` 을 `format_htrout()` 로 싣는다).
+HEATER_OUTPUT_FIELD = 'MOD%d/HEATER%sOUTPUT' % (heater.SLOT, heater.CH)
+
+
+def _float_or_none(text: object) -> float | None:
+    """STATUS 토큰 -> float, 못 읽으면 None (결측·비수치 둘 다 None)."""
+    if text is None:
+        return None
+    try:
+        v = float(str(text).strip())
+    except (TypeError, ValueError):
+        return None
+    return None if v != v else v
 
 def _limit_keys(field: str) -> tuple[str, str]:
     """`MOD<m>/TEMP<c>` -> ACF 한계 키 쌍 (하한, 상한).
@@ -187,7 +211,8 @@ def ctrl_unit(status: dict) -> dict:
     curr: list[float | None] = []
     for rail in guidehdr.VOLT_RAILS:
         if rail == 'HEATER':
-            # PROVISIONAL -- 필드 이름 미확정 (guidehdr 후보 목록).
+            # `HEATER_V`/`HEATER_I` (매뉴얼 p.47 · FW 1.0.1252 -- DevNote 11.30).
+            # 후보 튜플은 한 줄이지만 순회 꼴은 그대로 둔다.
             v = i = None
             for cand in guidehdr.HEATER_FIELD_CANDIDATES:
                 if cand in status:
@@ -222,7 +247,10 @@ _COLUMNS = (
     # 은 게이지 Off 중 모듈이 내던 Conductron 값이고 **헤더로는 안 간다.**
     + ['dewpres', 'gauge', 'dewpres_conductron',
        'ccdtemp', 'dmptemp', 'pt30n1', 'pt30n2', 'charcoal',
-       'wallbrd', 'hebox', 'fsatemp', 'fsahum']
+       'wallbrd', 'hebox', 'fsatemp', 'fsahum',
+       # v1.10 -- `HTROUT` 원천 (`MOD10/HEATERAOUTPUT`, 11.30).  ⚠️ 열이 늘었다:
+       # 이전 판 CSV 에 이어 쓰면 헤더와 어긋나니 새 파일에서 시작할 것.
+       'htrout']
     + ['ens%d' % n for n in range(1, 8)]
     + ['event'])
 
@@ -237,6 +265,9 @@ class HkMonitor:
     def __init__(self, ctrl, cfg: IcgCfg, *, telem=None,  # noqa: ANN001
                  expstatus=lambda: '', spawn=None) -> None:  # noqa: ANN001
         self.ctrl = ctrl
+        #: `HEATER_OUTPUT_FIELD` 결측 경고 래치 -- STATUS 가 왔는데 그 키가 없을 때
+        #: 한 번만 (없으면 카드가 조용히 sentinel 로 나가서 아무도 모른다).
+        self._warned_htrout = False
         self.cfg = cfg
         self.telem = telem
         self._expstatus = expstatus
@@ -344,6 +375,19 @@ class HkMonitor:
         for key, val in rtd.items():
             self._sample[key] = (val, now)
             row[key] = val
+        # 히터 출력 -- `HTROUT` (11.30).  ⛔ 결측을 조용히 넘기지 않는다: STATUS 는
+        # 왔는데 키가 없으면 FW 판이 다르거나 슬롯이 어긋난 것이라 한 번 알린다.
+        htr = _float_or_none(status.get(HEATER_OUTPUT_FIELD))
+        if htr is not None:
+            self._sample['htrout'] = (htr, now)
+            row['htrout'] = htr
+            self._warned_htrout = False
+        elif status and not self._warned_htrout:
+            self._warned_htrout = True
+            log.warning('HK: STATUS 에 %s 가 없다 -- HTROUT 카드가 sentinel 로 '
+                        '나간다.  FW 1.0.1252 는 HeaterX 슬롯에 이 키를 내야 한다 '
+                        '(DevNote 11.30) -- BACKPLANE_VERSION 과 MOD%d_TYPE 을 볼 것',
+                        HEATER_OUTPUT_FIELD, heater.SLOT)
         dew = self._dew.decode(status)
         gauge = self.gauge
         if gauge is not None and gauge.blocks_dewpres:

@@ -177,7 +177,9 @@ async def read_settings(ctrl, ch: str = CH) -> dict:  # noqa: ANN001
     ⚠️ 캐시(`ctrl.config`)가 아니라 `RCONFIG` 다 -- `set_config()` 가 왕복
     실패에도 캐시를 먼저 갈아 끼우므로 캐시는 *"보냈다"* 는 뜻밖에 없다
     (DevNote 11.14-(1) 의 세 층).  `HTROUT` 은 여기 없다 -- 그것은 `STATUS`
-    의 `HEATER?OUTPUT` 실측이고 HK 경로가 읽는다.
+    의 `MOD%d/HEATER%sOUTPUT` %% (SLOT, CH) 이고(FW 1.0.1252 type-11 경로가 출력 — 매뉴얼 p.48 'Heater only' 는 오기,
+    DevNote 11.30) HK 경로(`hk.py`)가 읽는다.  ⏳ 그 값이 출력단 **측정값**
+    인지 PID/FORCE **명령값**인지는 실기 미확인 -- 규격 OI-28.
     """
     out: dict[str, object] = {}
     for name, key in (('htren', 'ENABLE'), ('htrset', 'TARGET')):

@@ -285,10 +285,9 @@ async def stage_read_only(ctrl: ArchonController, acfg,  # noqa: ANN001
     else:
         say(OK, '온도 슬롯 %d개 전부 있다' % len(prof.temp_mods))
 
-    # guide `HEATER` 는 STATUS 필드 이름이 **미확정**이다 (후보 셋) -- 없는
-    # 이름으로 결측을 세면 첫 구동이 통째로 `문제` 로 뜬다.  ⏳ 첫 구동
-    # STATUS 원문에서 이름을 확정하면 후보 목록이 한 줄로 줄고 이 갈래도
-    # 없어진다 (DevNote 9.8).
+    # guide `HEATER` 레일의 STATUS 필드는 `HEATER_V`/`HEATER_I` 다 (매뉴얼
+    # p.47 · FW 1.0.1252, 2026-09-05 -- 후보 튜플은 한 줄로 줄었다).  이 갈래는
+    # 값이 실기에서 채워지는지를 보는 자리로 남는다 (DevNote 11.30).
     rails = []
     for rail in prof.volt_rails:
         cand = prof.rail_candidates.get(rail)
@@ -296,8 +295,9 @@ async def stage_read_only(ctrl: ArchonController, acfg,  # noqa: ANN001
             found = next((c for c in cand if c in status), '')
             say(OK if found else WARN,
                 '%s 레일 필드 = %s' % (rail, found or '(후보 다 없다)'),
-                'PROVISIONAL -- 후보 %s.  ⭐ 첫 구동에서 STATUS 원문을 보고 '
-                '후보 목록을 한 줄로 줄일 것 (DevNote 9.8)' % ' / '.join(cand))
+                '필드 %s (매뉴얼 p.47 · FW 1.0.1252).  값이 27~36 V 인지 볼 것 '
+                '(공칭 28 · power-good 18~36 · ACF HEATERALIMIT 25 + 2 V 규칙)'
+                % ' / '.join(cand))
             continue
         if rail + '_V' not in status or rail + '_I' not in status:
             rails.append(rail)

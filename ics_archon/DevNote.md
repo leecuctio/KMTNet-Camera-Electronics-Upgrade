@@ -2273,7 +2273,8 @@ SEND INTERVAL 결정(1분 vs 배터리 -- 2~5분 절충 권장).
 
 | 자리 | 무엇 | 어디서 닫히나 |
 |---|---|---|
-| `HEATER` 레일의 STATUS 필드 이름 | 후보 3개 순회 (`guidehdr.HEATER_FIELD_CANDIDATES`) | 첫 guide 구동 STATUS 원문 |
+| ~~`HEATER` 레일의 STATUS 필드 이름~~ | ✅ **`HEATER_V`/`HEATER_I`** (매뉴얼 p.47 + FW 1.0.1252 문자열, 2026-09-05 -- 11.30). 값 채워짐만 실측 대기 | 첫 구동 |
+| `MOD10/HEATERAOUTPUT` 실기 존재 · 값의 의미 | FW 1.0.1252 로 키 확정(11.30). **측정값/명령값 미확정**(규격 OI-28) | 첫 구동 STATUS 원문 + FORCE 실험 |
 | ~~`exptime_min` = 1.0 s~~ | ✅ **9.10 이 정본을 옮겼다** — ACF 계산 하한 **1.375 s**(`acftiming`, R2609 — R2608 은 1.87 s), ini 값은 대체값(2.0)으로 강등.  계산이지 실측은 아니다 | 첫 구동에서 주기 실측 대조 (`NoIntMS` 항은 science 실측 1% 적중 — 10.3) |
 | ~~호스트 pacing 이 적분을 끊나~~ | ✅ **9.10 이 닫았다** — `IMAGE*` 가 store 클럭이라 유휴·독출 중에도 image 는 적분한다 (ACF 채널 라벨 실측) | — |
 | ~~호스트 pacing vs 시퀀서 pacing~~ | ✅ **시퀀서 pacing 확정** (운영자 2026-08-31) — 9.12 | 실현 주기는 첫 구동 실측 (FETCH 겹침 위험은 10.5 실측으로 폐기 — 9.15) |
@@ -3392,8 +3393,10 @@ guide 레일 여덟 중 `HEATER`(+28 V)는 **STATUS 필드 이름이 미확정**
 진짜 결측을 못 읽는다.**  그래서 프로파일에 `rail_candidates` 를 두고 후보를
 순회해 `확인` 한 줄로 찍는다 -- 찾으면 그 이름을, 못 찾으면 후보 목록을.
 
-정상 범위 판정도 같다: 매뉴얼 p.41 표는 **7레일뿐**이라 `HEATER` 는 판정하지
-않고, 화면에 "범위 표가 없는 레일 HEATER 는 판정하지 않는다" 를 남긴다.
+정상 범위 판정도 같다: `RAIL_LIMITS` 에 `HEATER` 행이 없어 판정하지 않고, 화면에
+"범위 표가 없는 레일 HEATER 는 판정하지 않는다" 를 남긴다.  ⛔ **종전 문면 "매뉴얼
+p.41 표는 7레일뿐" 은 사실과 어긋났다** (2026-09-05 정정, 11.30) -- p.41 에
+`Heater +18.0~+36.0 V` 행이 있다.  넣을 근거는 매뉴얼에 있고, 넣을지는 운영자 결정.
 ⚠️ **추정 범위를 상수로 굳히지 않았다** -- 넣으려면 `[archon.rails]` 처럼
 설정으로 주는 것이 먼저다.
 
@@ -3767,7 +3770,7 @@ ICG>ICS DONE: HKDATA HKQDATE=… HKUDATE=… HKSTALE=n VACGAUGE=… DEWPRES=…
 | `DEWPRES` | 진공 압력 (⭐ **`VACGAUGE` 바로 뒤**, 운영자 지시) | VCPU OUTREG 원문 |
 | `HTREN` | 히터 Enable (⭐ 종전 `HTRAENAB` 에서 개명) | **`RCONFIG`** 되읽기 (`HEATERAENABLE`) -- ⚠️ STATUS 에는 **없다** |
 | `HTRSET` | 히터 목표온도 [℃] (⭐ 2026-09-04 추가) | **`RCONFIG`** 되읽기 (`HEATERATARGET`) |
-| `HTROUT` | 히터 실제 출력 [V] (⭐ 종전 `HTRAOUT`) | ⭐ **STATUS 실측**(`HEATERAOUTPUT`) -- 명령이 먹었는지의 유일한 증거 |
+| `HTROUT` | 히터 출력 [V] (⭐ 종전 `HTRAOUT`) | **STATUS `MOD10/HEATERAOUTPUT`** -- FW 1.0.1252 type-11 경로가 출력 — 매뉴얼 p.48 'Heater only' 는 오기 (11.30). ⏳ 측정값/명령값 여부 OI-28 |
 | `HTRFORCE` | 강제 출력 모드 0\|1 (⭐ 2026-09-04 추가) | **`RCONFIG`** 되읽기 (`HEATERAFORCE`).  ⛔ `FORCELEVEL` 은 **안 싣는다** |
 
 ⭐ **채널 구분자 `A` 를 빼기로 했다** -- *"Heater B 는 안 쓰니까 A 구분자를 넣을
@@ -3785,7 +3788,7 @@ ICG>ICS DONE: HKDATA HKQDATE=… HKUDATE=… HKSTALE=n VACGAUGE=… DEWPRES=…
 |---|---|---|
 | 우리 캐시 (`ctrl.config`) | `set_config` 가 **왕복 실패에도 먼저** 갈아 끼운다 | ⛔ 못 믿는다 (11.13 F5) |
 | **`RCONFIG`** | **`WCONFIG` 가 실제로 앉은 값** | ✅ 왕복 한 번으로 확인 |
-| `STATUS` | 모듈이 **실제로 내는 값**(`HEATERAOUTPUT` 등) | ✅ 가장 강하다.  단 `ENABLE`·`TARGET` 은 여기 없다 |
+| `STATUS` | 모듈이 **보고하는 값**(`MOD10/HEATERAOUTPUT` 등 -- FW 1.0.1252 확인) | ✅ 가장 강하다.  단 `ENABLE`·`TARGET` 은 여기 없다.  ⏳ `HEATERAOUTPUT` 이 측정값인지 명령값인지는 OI-28 |
 
 ⚠️ **그래서 "되읽기 불가" 를 카드 판단 근거로 쓰면 안 된다.**  ⭐ 운영자가
 2026-09-04 에 **`HTRSET` 도 카드로 넣기로 확정**했고 위 표대로 `RCONFIG` 로
@@ -3903,8 +3906,9 @@ guide `C1_*`(ICS 는 자기 컨트롤러 것을 쓴다) · AUX/ENS(ICS 가 TC �
 ⏳ **확인 대기**: 운영자가 *"아래 참고해줘"* 라고 했는데 참고할 내용이 안 왔다 --
 범위에 더 있을 수 있다.
 
-⚠️ **계약 키는 여전히 10개다** (RTD 6 + `dewpres` + Radionode 3).  위 상태
-필드(`VACGAUGE`·`HTREN`·`HTROUT`)는 **진단값이고 FITS 카드 원천이 아니므로**
+⚠️ **계약 키는 여전히 10개다** (RTD 6 + `dewpres` + Radionode 3).  `VACGAUGE` 는
+진단값이고, `HTREN`·`HTROUT` 은 **v1.10 부터 FITS 카드**(규격 5.6.2절)지만 계약 키
+10개 **밖**이라(2026-09-05 정정 -- 이 문장은 v1.10 전의 잔재였다)
 `HKSTALE` 셈에 안 들어간다.  완전성 검사는 키 개수가 아니라 **계약키 화이트리스트
 교집합**으로: `계약키 교집합 + HKSTALE = 10`.  (`emit.done()` 이 본문 끝에
 ` EXPSTATUS=` 를 자동으로 붙이므로 개수 셈은 애초에 못 쓴다.)
@@ -4895,7 +4899,7 @@ converter 와 견본 대사가 통째로 어긋난다.
 |---|---|---|
 | `HTREN` | ✅ | `HEATERAENABLE` 되읽기 |
 | `HTRSET` | ✅ | `HEATERATARGET` 되읽기 |
-| `HTROUT` | ✅ | **`STATUS` 실측** (`HEATERAOUTPUT`) |
+| `HTROUT` | ✅ | `STATUS` **`MOD10/HEATERAOUTPUT`** (FW 1.0.1252 확인 · 측정/명령값 OI-28) |
 | `HTRFORCE` | ✅ | `HEATERAFORCE` 되읽기 |
 | `HTRPID` · `HTRRAMP` · `FORCELEVEL` | ⛔ **안 싣는다** | -- |
 
@@ -5222,7 +5226,7 @@ commands.c:114`).  ⚠️ **허브가 아닌 노드의 `PONG` 은 안 센다** -
 `icg_archon` HK 표본기가 이 키들을 안 담는다.  되읽기 함수는 있다
 (`heater.py` 가 `HTREN`·`HTRSET` 을 `RCONFIG` 로 읽는다) -- 빠진 것은
 **표본기가 그것을 주기적으로 담는 일**이고, `HTRFORCE` 되읽기와
-`HTROUT`(`STATUS` 실측)은 **아직 0줄**이다.
+`HTROUT`(`STATUS` `MOD10/HEATERAOUTPUT`)은 **아직 0줄**이다.
 
 ⭐ **`HKUDATE` 만 통과 경로가 섰다** -- `backend.sensors()` 가 스냅샷에서
 **가장 낡은 표본시각**을 싣는다.  카드는 하나인데 키마다 표본시각이 다르니
@@ -5363,3 +5367,81 @@ R2612 에서 처음으로 **한 주기 뒤는 정말 조용하다.**  규격 10.
 
 flush 프레임의 `CALL SkipLine(FlushLines)` 줄(11.28-(3))이 아직 없다.  R2612 는
 그 위에 유휴 변경만 얹은 것이다.
+
+
+### 11.30 `HTROUT` 의 원천 -- 펌웨어 이미지가 매뉴얼 오기를 판정했다 (2026-09-05)
+
+규격 5.6.2절과 이 문서 여러 곳이 `HTROUT` 을 *"STATUS 실측(`HEATERAOUTPUT`)"* 이라고
+적어 왔는데, 그 근거를 거슬러 가면 **`recovered_session:1663` 의 "매뉴얼 STATUS
+목록 확인" 한 줄**이었다.  그런데 그 매뉴얼 p.48 원문은 이렇다:
+
+    MODm/TEMPA=f          ; Heater(X) only
+    MODm/TEMPC=f          ; HeaterX only
+    MODm/HEATERAOUTPUT=f  ; **Heater only**     <- type 5.  우리 MOD10 은 type 11 (HeaterX)
+
+세 표기를 구분해 쓰는 표에서 `HEATERAOUTPUT` 만 "Heater only" 다.  문자 그대로면
+**HeaterX 에는 이 필드가 없다.**  운영자 가설(2026-09-05): *"매뉴얼의 오기일 수 있어.
+HeaterX 도 HEATEROUTPUT 동일할 거야."*
+
+#### (1) 판정 -- confirmed, 근거는 펌웨어 바이너리
+
+증거원 여섯(펌웨어 · 벤더 GUI 소스 · 실측 로그 · 매뉴얼 정밀독해 · 우리 주장 · 레일)을
+동시에 훑고 반증 셋을 거쳤다.  판정을 가른 것은 **`__ref_archon_control/ArchonFW/
+archonbackplanerevf_1_0_1252/*.mcs`** -- guide ACF `[SYSTEM] BACKPLANE_VERSION=1.0.1252`
+와 **같은 판**의 백플레인 펌웨어다.  MicroBlaze 디스어셈블:
+
+* STATUS 의 모듈 스위치(0x859558~)가 슬롯 타입으로 16칸 점프 테이블(0x867558)을 탄다.
+  [8]=type 11(HeaterX) → 0x80059818.  테이블 덤프가 매뉴얼 타입표·GUI case 묶음과 정합.
+* type-11 블록 안 0x859a08/0c 가 리터럴 `"MOD%d/HEATERAOUTPUT=%0.3f "`(0x8006504c)을
+  참조하고, 그 블록의 조건분기는 뒤쪽 루프 둘뿐이다 → **type 11 이면 무조건 출력**.
+  type-5 블록(0x85a664)도 **같은 주소**를 참조한다 -- 이미지에 문자열이 한 벌인 것은
+  컴파일러 리터럴 병합이지 "Heater 전용" 의 증거가 아니다.
+* 종합자가 리터럴 참조 4자리 · 점프 테이블 16칸 · 스위치 · 블록 내 분기 전량을
+  바이트 수준으로 재검증했다.
+
+⭐ **매뉴얼 p.48 히터 표는 오기가 세 종류다** -- OUTPUT 2줄 + PID 6줄의 "Heater only",
+그리고 `TEMPA/B` 의 "in K"(실측 ℃, tvm 로그 −273.2 = 미연결).  *"매뉴얼은 가설의
+출처"* 규칙이 또 맞았다.
+
+⛔ **다수결이 틀렸다.**  증거원 셋([gui]·[rail]·[ours])이 *"HEATERAOUTPUT 문자열이
+TEMPC 없는 Heater 묶음에만 1회 있다"* 고 같은 방향으로 말했는데, 셋이 **같은 .mcs 에
+같은 문자열 덤프**를 쓴 한 관측이었다.  xref 를 잡자 뒤집혔다.  **FW 문자열 인접성은
+귀속 근거로 쓰지 말 것** -- 참조(xref)만이 근거다.
+
+#### (2) 덤으로 확정된 것 -- `HEATER` 레일
+
+* STATUS 필드는 **`HEATER_V`/`HEATER_I`** (매뉴얼 p.47 + FW 1252 최상위 포맷 문자열
+  `HEATER_V=%0.3f ` -- 모듈 루프 밖 = 시스템 레일).  종전 `guidehdr.HEATER_FIELD_
+  CANDIDATES` 의 `P28V_V`·`HTR_V` 는 **어떤 출처에도 없는 발명 이름**이었다 --
+  `hkwire.py` 의 "이름을 발명하지 않는다" 원칙과 어긋나 있었다.  한 줄로 줄였다.
+* 8번째 자리가 `HEATER` 인 논거(문서에 없었다): HeaterX 가 요구하는 공급 레일이
+  P17V·N6V·HEATER(p.39)이고, guide 장착 모듈(Driver×2·AD×2·HVXBias·HeaterX×2)이 쓰는
+  레일의 합집합이 정확히 8개다.  `N35V`·`P100V`·`N100V`·`USER` 는 아무도 안 쓴다.
+* "+28 V" 는 실측이 아니라 **표준 PSU 공칭값**(p.43), power-good 범위는 +18~+36 V(p.41).
+* ⛔ `parse.py:576`·11.3 의 *"p.41 표는 7레일뿐"* 은 **사실과 어긋났다** -- p.41 에
+  `Heater +18.0~+36.0 V` 행이 있다.  `RAIL_LIMITS['HEATER']=(18,36)` 을 넣을 근거가
+  매뉴얼에 있다.  넣지 않았다 -- 실기에서 경고가 새로 뜨는 **동작 변경**이라 운영자 결정.
+
+#### (3) 닫지 못한 것 -- OI-28 신설
+
+`MOD10/HEATERAOUTPUT` 이 히터 출력단 **측정값**인지 PID/FORCE **명령값**(DAC 설정)인지.
+백플레인 FW 는 모듈 구조체 int32×1e-3 을 찍을 뿐이고, 그 자리를 채우는 쪽(모듈
+리드백 vs 백플레인 명령)은 백플레인 FW 만으로 못 추적한다(HeaterX 모듈 FW 는 보유
+이미지에 없다).  매뉴얼도 *"heater A output in V"* 라고만 한다.  그래서 카드 설명의
+"실제 출력" 은 확정 전까지 "출력" 으로 물렸다.
+
+**첫 구동 FORCE 실험으로 닫는다** (`icg_first_run.md` 4단계): `HEATERAENABLE=0` 인 채
+`FORCELEVEL` 1.000→2.000, `APPLYMOD09`, `STATUS`.  값이 정확히 설정값을 따르면
+**명령값**, 부하·단자 전압을 따라가면 **측정값**.  원복 뒤 `RCONFIG` 되읽기까지.
+
+#### (4) 부수로 나온 것
+
+* HeaterX 와 Heater 의 `TEMPA` 셈이 다르다 -- Heater (raw−273150)×1e-3, HeaterX raw×1e-6
+  무오프셋(℃).  HeaterX 온도는 `%0.6f` 6자리로 온다.
+* HeaterX PID 항은 `%lld`(64-bit), Heater 는 `%d` -- int32 파서면 넘칠 수 있다(현재 PID 0).
+* FW 1252 점프 테이블에서 type 13~17 이 default 로 간다 -- science ACF 의 MOD5/MOD8
+  (type 17)이 모듈별 STATUS 를 안 낼 가능성.  **science 쪽 별건 확인**.
+* guide `.162` 의 **STATUS 응답 실물이 저장소에 한 번도 없다** (레거시 tvm 스크립트가
+  `#print(recvbuf)` 로 막아 뒀다).  첫 구동에서 원문을 파일로 남긴다.
+* 병렬 서브에이전트가 공용 scratchpad 파일명을 공유하다 덧씌운 일이 있었다 --
+  에이전트별 하위 폴더를 쓸 것.

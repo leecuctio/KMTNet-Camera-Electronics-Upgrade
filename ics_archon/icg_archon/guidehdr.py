@@ -89,13 +89,17 @@ TEMP_MOD_LABELS = ('Backplane', 'Mod3:Driver', 'Mod4:Driver', 'Mod5:AD',
                    'Mod6:AD', 'Mod7:HeaterX', 'Mod9:HVXBias',
                    'Mod10:HeaterX')
 
-#: 전원 레일 8자리 -- 7레일 + guide 전용 `HEATER`(+28 V) (10.4절).
+#: 전원 레일 8자리 -- 7레일 + guide 전용 `HEATER` (10.4절).  HeaterX 가 요구하는
+#: 공급 레일(매뉴얼 p.39)이고 guide 장착 모듈이 쓰는 레일의 합집합이 이 8개다.
+#: 공칭 +28 V(표준 PSU p.43) · power-good +18~+36 V(p.41).
 VOLT_RAILS = ('P2V5', 'P5V', 'P6V', 'N6V', 'P17V', 'N17V', 'P35V', 'HEATER')
 
-#: PROVISIONAL -- `HEATER` 레일의 STATUS 필드 이름은 **실기 미확인**이다
-#: (규격에 없고 tvm 실측 로그에도 안 보인다).  첫 구동 때 STATUS 원문에서
-#: 확정하고 이 후보 목록을 한 줄로 줄일 것.
-HEATER_FIELD_CANDIDATES = ('HEATER_V', 'P28V_V', 'HTR_V')
+#: `HEATER` 레일의 STATUS 필드는 **`HEATER_V`/`HEATER_I`** 다 (매뉴얼 p.47 ·
+#: FW 1.0.1252 최상위 포맷 문자열, 2026-09-05 -- DevNote 11.30).  종전 후보
+#: `P28V_V`·`HTR_V` 는 어떤 출처에도 없는 **발명 이름**이었다(hkwire 의 "이름을
+#: 발명하지 않는다" 원칙과 어긋났다).  ⏳ 값이 실기에서 채워지는지만 첫 구동 대기.
+#: 튜플 꼴은 후보 순회 코드(hk.py · probe)가 그대로 돌게 두려는 것이다.
+HEATER_FIELD_CANDIDATES = ('HEATER_V',)
 
 
 # ---------------------------------------------------------------------------

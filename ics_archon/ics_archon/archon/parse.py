@@ -574,10 +574,12 @@ def rail_problems(status: dict[str, str] | None,
     시스템 레일이 아니라 여기에는 영향이 없다 -- 두 층을 섞지 말 것.
 
     `rails` 를 주면 그 목록을 돈다 -- guide 8자리(`guidehdr.VOLT_RAILS`)에는
-    science 에 없는 `HEATER`(+28 V)가 있다.  ⚠️ **그 레일에는 정상 범위가
-    없다** (매뉴얼 p.41 표는 7레일이고 `HEATER` 는 guide 전용이다) -- 표에
-    없으면 세지 않는 F2 규칙대로 조용히 넘어간다.  판정을 넣으려면 `[archon.
-    rails]` 처럼 설정으로 주는 것이 먼저다 (추정값을 상수로 굳히지 말 것).
+    science 에 없는 `HEATER`(공칭 +28 V)가 있다.  ⚠️ 이 표에는 `HEATER` 행이
+    없어 F2 규칙대로 조용히 넘어간다.  ⛔ 종전 주석의 *"매뉴얼 p.41 표는 7레일뿐"*
+    은 **사실과 어긋났다** (2026-09-05 정정) -- p.41 power-good 표에 `Heater
+    +18.0 ~ +36.0 V` 행(과 `User` 행)이 있다.  즉 `'HEATER': (18.0, 36.0)` 을
+    넣을 근거가 **매뉴얼에 있다**(추정값이 아니다).  넣지 않은 것은 실기에서
+    경고가 새로 뜨는 동작 변경이라 운영자 결정으로 남긴 것이다 (DevNote 11.30).
     """
     table = RAIL_LIMITS if limits is None else limits
     if not status:

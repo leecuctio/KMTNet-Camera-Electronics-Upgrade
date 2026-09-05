@@ -65,15 +65,16 @@ python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_G
 |---|---|---|
 | 자리 표 판정 | `장착 모듈이 규격 10.4절 자리 표와 정합한다 (8자리: [3, 4, 5, 6, 7, 9, 10])` | |
 | `C1_TEMP` 8자리 ↔ 이름표 | `Backplane · Mod3:Driver · Mod4:Driver · Mod5:AD · Mod6:AD · Mod7:HeaterX · Mod9:HVXBias · Mod10:HeaterX` | |
-| ⭐ **`HEATER` 레일 필드 이름** | `HEATER_V` / `P28V_V` / `HTR_V` 중 무엇인가 (`확인` 한 줄로 찍힌다) | |
+| `HEATER` 레일 | `HEATER_V`/`HEATER_I` 가 있고(매뉴얼 p.47 · FW 1.0.1252) 값이 **27~36 V** 인가 (공칭 28 · power-good 18~36 · ACF `HEATERALIMIT=25` + "출력 최대치보다 2 V 이상" 규칙) | |
+| ⭐ **`MOD10/HEATERAOUTPUT`** | 토큰이 **있고**(FW 1.0.1252 확인 — 매뉴얼 p.48 'Heater only' 는 오기) 현 ACF(`HEATERAENABLE=0`·`FORCE=0`)에서 `0.000` 인가. `MOD10/HEATERBOUTPUT`·`MOD7/HEATERAOUTPUT` 도 함께. ⭐ **STATUS 원문 전체를 파일로 남긴다** — guide `.162` 의 STATUS 실물이 저장소에 한 번도 없다 | |
+| `MOD10/HEATERAP` 자릿수 | HeaterX 는 FW 에서 `%lld`(64-bit) — 파서가 int32 면 넘칠 수 있다(현재 PID 0 이라 무해). 자릿수를 적어 둔다 | |
 | 바이어스 **18채널** V/I | 전부 읽힌다 (science 는 16이다) | |
 | `VALID`/`COUNT`/`LOG`/`POWER`/`OVERHEAT` | 보고 여부 (안 보고해도 이상이 아니다 — F2) | |
 | 진공 `VCPU_OUTREG*` 원문 | MOD10 VCPU 가 MKS 356 을 시리얼로 읽는다. **10번째 글자가 무해한지** 확인 (실측 658행에서는 응답이 항상 `x.xxe-04` 8자였다) | |
 | `FRAME` — 버퍼 **셋** | `BUF1~BUF3` 이 다 나오고 `BUFnBASE`·`BUFnLINES` 가 있다 | |
 | ⭐ **`BUFnFRAME` 값** | 되감김 폭(16비트?) 자연 표본의 **시작점**이다 — 반드시 적어 둔다 | |
 
-**통과 기준**: 요약에 `문제 0건`. `확인` 이 `HEATER` 한 줄이면 정상이다
-(이름이 아직 미확정인 자리를 결측으로 세지 않는다).
+**통과 기준**: 요약에 `문제 0건`.
 
 ## 2단계 — 파라미터 슬롯 대조 (여전히 읽기 전용)
 
