@@ -41,6 +41,25 @@ icg_legacy_report 8.1절) `OBJECT`/`DARK`/`EXP`/`GO`/`STOP`/`ABORT` 등은
 VCPU 가 재시작되고 `DEWPRES` 에 결측 창이 생긴다** (매뉴얼 p.86).  ⭐ 운영자
 확정(2026-09-04): **취득 중이어도 거부하지 않는다** -- 결측은 받아들이고
 경고와 응답 표시로만 알린다 (DevNote 11.18-(3)).
+
+추가 (운영자 지시 2026-09-05) -- **CCD 조작 넷**:
+
+* `CCDFLUSH`               -- 유휴 CCD 를 `FlushFrame` 한 바퀴로 비운다 (프레임 없음)
+* `CCDPOWON` / `CCDPOWOFF` -- CCD 전원 (`POWERON`/`POWEROFF`; ON 은 `poweron_wait` 초)
+* `ARCHON <명령 원문…>`     -- 컨트롤러 바이패스 (응답 원문을 `DONE` 으로 되돌린다)
+
+⛔ 넷 다 **취득 중이면 거부**한다 (`ERROR: … Exposure in progress -- ABORT
+first`) -- 히터·게이지와 반대다.  그쪽은 결측 창 하나가 대가지만, 이쪽은
+진행 중 노출 위에 `LOADPARAMS`/`RESETTIMING`/`POWEROFF` 가 들어가 **자료를
+망친다**.  ⭐ 그리고 **넷이 서로도, `GO` 도 막는다** (`_op_in_flight`) --
+`POWERON` 의 `poweron_wait` 동안 들어온 `GO` 는 `prepare()` 가 이미 `powered`
+라 그대로 arm 해 flush 가 안 끝난 CCD 를 찍는다.  ⚠️ `EXPENABLE` 잠금과는
+**무관하게 허용**한다 (flush·전원·바이패스는 노출이 아니다) -- 잠겨 있으면
+응답에 `ExpEnable=OFF` 를 덧붙여 알리기만 한다.
+
+⭐ 히터·게이지의 `_ctrl()` 이 아니라 **백엔드 표면**(`flush_ccd`/`power_ccd`/
+`raw_command`)을 부른다 -- 그래서 컨트롤러 없는 Sim 에서도 돈다 (Sim 의
+`raw_command` 는 `SIM (no controller): …` 를 돌려준다).
 """
 
 from __future__ import annotations
@@ -51,10 +70,11 @@ from ics_archon import _simpath
 
 _simpath.ensure()
 
+from ics_archon.archon.protocol import ArchonError  # noqa: E402
 from ics_sim import commands as sim_commands  # noqa: E402
 from ics_sim import emitter  # noqa: E402
 from ics_sim.commands import Reply  # noqa: E402
-from ics_sim.impv2 import Message  # noqa: E402
+from ics_sim.impv2 import MAX_LEN, Message  # noqa: E402
 from ics_sim.nodes import Target  # noqa: E402
 
 from . import expenable as expen  # noqa: E402
@@ -64,10 +84,23 @@ from .radionode import RadionodeError  # noqa: E402
 log = logging.getLogger('icg_archon.cmd')
 
 #: emitter 의 커맨드워드 어휘에 icg 몫을 더한다 -- `validate()` 가 이 표로
-#: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다.
+#: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다
+#: (`unknown_cmdword` -- `emit.violations` 에 쌓이고 경고 로그가 난다).
 ICG_COMMANDS = frozenset({'GUIDEEXP', 'HK', 'RADIONODE', 'EXPENABLE',
                           'HTRSET', 'HTRFORCE', 'HTRRAMP',
-                          'HTRPID', 'VACGAUGE'})
+                          'HTRPID', 'VACGAUGE',
+                          'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON'})
+
+#: `ARCHON` 응답 본문의 상한 [bytes].  한 메시지 상한은 `MAX_LEN`(2048) 이고
+#: 헤더(`ICG>abc DONE: ARCHON ` -- 노드 이름 8자씩이면 31)와 잘림 표시
+#: (` ...(+NNNNN bytes truncated, see log)` ≈ 40) · 잠금 주석(` (ExpEnable=OFF)`
+#: 16) 을 뺀 여유다.  `STATUS` 응답이 1~2 KB 라 실제로 걸리는 자리다 --
+#: 넘치면 여기서 자르고 **전문은 로그**에 남긴다.
+ARCHON_REPLY_MAX = 1800
+assert ARCHON_REPLY_MAX + 31 + 40 + 16 < MAX_LEN
+
+#: 넷의 공통 거부 문구 -- 취득 중.
+BUSY_REFUSAL = 'Exposure in progress -- ABORT first'
 
 #: `ON|OFF` 를 받는 명령들의 어휘.  ⭐ `EXPENABLE` 과 **같은 낱말**을 쓴다 --
 #: 명령마다 다른 어휘를 두면 운영자가 어느 명령이 `TRUE` 를 받는지 외워야
@@ -91,6 +124,13 @@ def extend_vocabulary() -> None:
 
 class IcgDispatcher(sim_commands.Dispatcher):
     """science 디스패처 + icg 전용 핸들러."""
+
+    def __init__(self, app) -> None:  # noqa: ANN001
+        super().__init__(app)
+        #: 지금 왕복 중인 CCD 조작 명령의 커맨드워드 (`CCDFLUSH`/`CCDPOWON`/
+        #: `CCDPOWOFF`/`ARCHON`), 없으면 빈 문자열.  `cmd_go` 와 넷이 서로를
+        #: 이것으로 막는다 -- 시퀀서 `busy` 는 취득만 알고 이 왕복은 모른다.
+        self._op_in_flight = ''
 
     def _image_type(self, msg: Message, imgtype: str) -> Reply:
         """`BIAS`/`DARK`/… -- **guide 는 노출시간을 0 으로 만들지 않는다.**
@@ -241,11 +281,20 @@ class IcgDispatcher(sim_commands.Dispatcher):
 
         ⚠️ 검사를 `super()` **앞에** 둔다.  뒤에 두면 시퀀서가 이미 국면을
         `INITIALIZING` 으로 옮기고 취득 태스크를 띄운 뒤라 되돌려야 한다.
+
+        ⭐ CCD 조작 넷(`CCDFLUSH`/`CCDPOWON`/`CCDPOWOFF`/`ARCHON`)이 왕복 중이면
+        **그것도 거부**한다 (2026-09-05).  `POWERON` 은 ack 직후 `powered=True`
+        가 되고 그 뒤 `poweron_wait` 를 CCD flush 로 보내는데, 그 사이의 `GO` 는
+        `prepare()` 가 전원을 건너뛰어 **flush 가 안 끝난 CCD 를 arm 한다**
+        (`controller.power_on` 주석).  시퀀서 `busy` 는 이 왕복을 모른다.
         """
         flag = self._expenable()
         if flag is not None and not flag.allowed:
             # 문구는 레거시 ERROR 꼴을 따른다 (두 칸 띄고 한 문장).
             return Reply.error('GO', 'Exposure is disabled (EXPENABLE OFF)!')
+        if self._op_in_flight:
+            return Reply.error('GO', 'Busy with %s -- wait for its DONE'
+                               % self._op_in_flight)
         return super().cmd_go(msg, target)
 
     def cmd_expenable(self, msg: Message, target: Target) -> Reply:
@@ -563,3 +612,229 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return
         self._finish(dest, 'HTRPID', 'P=%g I=%g D=%g' % tuple(gains),
                      ' '.join(x for x in (busy, note) if x))
+
+    # -- CCD flush · 전원 · 바이패스 (운영자 지시 2026-09-05) ------------------
+    #
+    # 넷은 히터·게이지와 **같은 늦은-DONE 규약**(`Reply.noop()` → 왕복 → `_finish`/
+    # `emit.error`)을 쓰되 두 가지가 다르다: ① 취득 중이면 **거부**한다 (결측
+    # 창이 아니라 자료 손상이 대가다) ② `_ctrl()` 이 아니라 **백엔드 표면**을
+    # 부른다 (Sim 에서도 돌아야 한다 -- 원시 함수는 실기·Sim 둘 다 있다).
+
+    def _guide(self, cmdword: str):  # noqa: ANN202
+        """guide 백엔드와 **거부 Reply** 를 짝으로 -- `_ctrl()` 의 백엔드 판.
+
+        `IcgArchon` 은 늘 `guide` 를 갖지만(`GuideBackend`/`SimGuideBackend`)
+        단위 하네스가 빼 둘 수 있다 -- 그때 조용히 `DONE` 을 내면 *"먹었는데
+        아무것도 안 바뀜"* 이다 (`_ctrl` 과 같은 이유).
+        """
+        be = getattr(self.app, 'guide', None)
+        if be is None:
+            return None, Reply.error(cmdword, 'Guide backend is not available')
+        return be, None
+
+    def _refuse_if_busy(self, cmdword: str):  # noqa: ANN202
+        """취득 중이거나 다른 CCD 조작이 왕복 중이면 거부 Reply, 아니면 `None`.
+
+        ⭐ `_busy_note()` 와 반대 방향이다 -- 그쪽은 받되 표시하고, 이쪽은
+        거부한다.  이유는 머리말: 진행 중 노출 위의 `LOADPARAMS`(flush) ·
+        `POWEROFF` · 원문 `RESETTIMING` 은 그 프레임을 망친다.
+        """
+        seq = getattr(self.app, 'seq', None)
+        if seq is not None and seq.busy:
+            return Reply.error(cmdword, BUSY_REFUSAL)
+        if self._op_in_flight:
+            return Reply.error(cmdword, 'Busy with %s -- wait for its DONE'
+                               % self._op_in_flight)
+        return None
+
+    def _lock_note(self) -> str:
+        """`EXPENABLE OFF` 면 응답에 붙일 주석 -- 막지는 않는다 (노출이 아니다)."""
+        flag = self._expenable()
+        if flag is not None and not flag.allowed:
+            return 'ExpEnable=OFF'
+        return ''
+
+    def _no_args(self, cmdword: str, msg: Message):  # noqa: ANN202
+        """인자를 받지 않는 명령 -- 남는 것을 조용히 버리지 않는다 (`_split` 규칙)."""
+        if msg.body.strip():
+            return Reply.error(cmdword, 'Usage: %s (no arguments)' % cmdword)
+        return None
+
+    def _begin_op(self, cmdword: str) -> None:
+        self._op_in_flight = cmdword
+
+    def _end_op(self, cmdword: str) -> None:
+        if self._op_in_flight == cmdword:
+            self._op_in_flight = ''
+
+    def cmd_ccdflush(self, msg: Message, target: Target) -> Reply:
+        """CCDFLUSH -- 유휴 CCD 를 `FlushFrame` 한 바퀴로 비운다 (프레임 없음).
+
+        백엔드 `flush_ccd()` = `FirstFlush=1`·`Exposures=0` 을 `LOADPARAMS` 로
+        걸고 설정 메모리의 `FirstFlush` 를 0 으로 되쓴다 (`controller.flush_now`,
+        guide ACF R2613+ -- 슬롯이 없으면 `GuideBackendError` 로 `ERROR`).
+        ⭐ `EXPENABLE OFF` 여도 허용한다 -- flush 는 노출이 아니다.  대신 응답에
+        `ExpEnable=OFF` 를 덧붙여 잠긴 상태에서 한 일임을 남긴다.
+        """
+        be, bad = self._guide('CCDFLUSH')
+        if bad is not None:
+            return bad
+        bad = self._no_args('CCDFLUSH', msg)
+        if bad is not None:
+            return bad
+        bad = self._refuse_if_busy('CCDFLUSH')
+        if bad is not None:
+            return bad
+        note = self._lock_note()
+        log.info('CCDFLUSH by %s -- 유휴 CCD 를 FlushFrame 한 바퀴로 비운다%s',
+                 msg.src, ' (EXPENABLE OFF 상태 -- flush 는 노출이 아니라 허용)'
+                 if note else '')
+        self._begin_op('CCDFLUSH')
+        self.app.spawn(self._do_ccdflush(msg.src, be, note))
+        return Reply.noop()
+
+    async def _do_ccdflush(self, dest: str, be, note: str) -> None:  # noqa: ANN001
+        try:
+            try:
+                await be.flush_ccd()
+            except Exception as exc:  # noqa: BLE001
+                log.error('CCDFLUSH 실패 -- %s', exc)
+                self.emit.error(dest, 'CCDFLUSH', 'Failed: %s' % exc)
+                return
+            self._finish(dest, 'CCDFLUSH', 'Flushed=1', note)
+        finally:
+            self._end_op('CCDFLUSH')
+
+    def cmd_ccdpowon(self, msg: Message, target: Target) -> Reply:
+        """CCDPOWON -- CCD 전원 ON (`POWERON` + `poweron_wait` 초의 flush 대기).
+
+        ⚠️ **`DONE` 이 수 초 뒤에 온다** (`[icg] poweron_wait`, 기본 12 s) -- 그
+        시간은 전원 램프가 아니라 CCD flush 대기라 줄이지 않는다
+        (`controller.power_on`).  그동안 `GO` 는 거부된다 (`cmd_go`).
+        ⭐ 접속·ACF 는 하지 않는다 -- 기동 접속(`_connect_controller`)이나 첫
+        `GO` 의 `prepare()` 가 그 몫이고, 접속 전이면 `ERROR … Failed` 다.
+        """
+        return self._ccdpower(msg, 'CCDPOWON', True)
+
+    def cmd_ccdpowoff(self, msg: Message, target: Target) -> Reply:
+        """CCDPOWOFF -- CCD 전원 OFF (`POWEROFF`).  다음 `GO` 가 다시 켠다.
+
+        ⚠️ `controller.power_off()` 는 **실패를 올리지 않는다** (`finally` 자리용
+        설계 -- 로그만 남긴다).  그래서 여기서는 왕복 뒤 `ctrl.powered` 가 아직
+        참이면 `ERROR` 로 옮긴다 -- 안 그러면 링크가 죽어 있어도 `Power=OFF`
+        라고 답해 운영자가 바이어스가 내려갔다고 믿는다.
+        """
+        return self._ccdpower(msg, 'CCDPOWOFF', False)
+
+    def _ccdpower(self, msg: Message, cmdword: str, on: bool) -> Reply:
+        be, bad = self._guide(cmdword)
+        if bad is not None:
+            return bad
+        bad = self._no_args(cmdword, msg)
+        if bad is not None:
+            return bad
+        bad = self._refuse_if_busy(cmdword)
+        if bad is not None:
+            return bad
+        note = self._lock_note()
+        log.info('%s by %s -- CCD 전원 %s%s', cmdword, msg.src,
+                 'ON (POWERON, poweron_wait 뒤 DONE)' if on else 'OFF (POWEROFF)',
+                 ' (EXPENABLE OFF 상태)' if note else '')
+        self._begin_op(cmdword)
+        self.app.spawn(self._do_ccdpower(msg.src, be, cmdword, on, note))
+        return Reply.noop()
+
+    async def _do_ccdpower(self, dest: str, be, cmdword: str,  # noqa: ANN001
+                           on: bool, note: str) -> None:
+        try:
+            try:
+                await be.power_ccd(on)
+            except Exception as exc:  # noqa: BLE001
+                log.error('%s 실패 -- %s', cmdword, exc)
+                self.emit.error(dest, cmdword, 'Failed: %s' % exc)
+                return
+            ctrl = getattr(be, 'ctrl', None)
+            if not on and ctrl is not None and getattr(ctrl, 'powered', False):
+                # `power_off()` 가 삼킨 실패 -- 확인된 상태(`powered`)가 안 바뀌었다.
+                log.error('%s -- POWEROFF 가 확인되지 않았다 (powered 가 그대로 참). '
+                          '유닛 전원 상태를 직접 확인할 것', cmdword)
+                self.emit.error(dest, cmdword,
+                                'Failed: POWEROFF was not acknowledged -- check '
+                                'the unit power (see log)')
+                return
+            self._finish(dest, cmdword, 'Power=%s' % ('ON' if on else 'OFF'), note)
+        finally:
+            self._end_op(cmdword)
+
+    def cmd_archon(self, msg: Message, target: Target) -> Reply:
+        """ARCHON <명령 원문…> -- 컨트롤러 바이패스.  guide 는 한 대라 태그가 없다.
+
+        원문을 **그대로** 보낸다 (공백만 접는다 -- `controller.raw_command`).
+        대소문자도 안 바꾼다: `WCONFIG` 본문(타이밍 스크립트 줄)은 대소문자가
+        뜻이다.  ⚠️ 그래서 **명령 이름은 대문자로 칠 것** -- 컨트롤러는 모르는
+        명령에 **무응답**이라(매뉴얼 p.45) 소문자 `status` 는 시한 초과 →
+        링크 재수립 → `ERROR … Failed` 가 된다.
+
+        응답 원문을 `DONE: ARCHON <원문>` 으로 되돌린다.  `ARCHON_REPLY_MAX`
+        를 넘으면 잘라 표시하고 **전문은 `log.info`** 로 남긴다.  `?xx` 거부는
+        `ERROR: ARCHON rejected: <보낸 원문>`.  ⚠️ 위생 검사 없음 -- 운영자
+        도구다.  ⛔ 취득 중이면 거부한다 -- 진행 중 노출 위의 `RESETTIMING`
+        같은 원문은 그 프레임을 망친다.
+        """
+        be, bad = self._guide('ARCHON')
+        if bad is not None:
+            return bad
+        text = ' '.join(msg.body.split())
+        if not text:
+            return Reply.error('ARCHON', 'Usage: ARCHON <command>')
+        bad = self._refuse_if_busy('ARCHON')
+        if bad is not None:
+            return bad
+        note = self._lock_note()
+        log.info('ARCHON by %s -- 원문 바이패스: %r%s', msg.src, text,
+                 ' (EXPENABLE OFF 상태)' if note else '')
+        self._begin_op('ARCHON')
+        self.app.spawn(self._do_archon(msg.src, be, text, note))
+        return Reply.noop()
+
+    async def _do_archon(self, dest: str, be, text: str,  # noqa: ANN001
+                         note: str) -> None:
+        try:
+            try:
+                reply = await be.raw_command(text)
+            except ArchonError as exc:
+                if exc.reply_error:
+                    # 컨트롤러가 `?xx` 로 거부했다 -- 내 명령이 틀린 것이고
+                    # 링크는 멀쩡하다 (`controller.cmd` 주석).
+                    log.warning('ARCHON %r -- 컨트롤러가 거부했다 (%s)', text, exc)
+                    self.emit.error(dest, 'ARCHON', 'rejected: %s' % text)
+                    return
+                log.error('ARCHON %r 실패 -- %s', text, exc)
+                self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
+                return
+            except Exception as exc:  # noqa: BLE001
+                log.error('ARCHON %r 실패 -- %s', text, exc)
+                self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
+                return
+            # ⭐ 전문은 로그에 -- 응답이 잘려도 여기서 다 볼 수 있다.
+            log.info('ARCHON %r -> %d bytes: %s', text, len(reply), reply)
+            self._finish(dest, 'ARCHON', self._clip_reply(reply), note)
+        finally:
+            self._end_op('ARCHON')
+
+    @staticmethod
+    def _clip_reply(reply: str) -> str:
+        """응답 원문 -> 메시지 본문.  ASCII 로 접고 상한을 넘으면 잘라 표시한다.
+
+        빈 응답(`WCONFIG`/`LOADPARAMS`/`APPLY*` 의 성공 ack)은 `DONE: ARCHON`
+        만 나가 *됐는지* 가 안 보이므로 그 사실을 적는다.
+        """
+        text = reply.encode('ascii', 'replace').decode('ascii')
+        # 한 줄 프로토콜이다 -- 종료문자·널이 섞이면 수신측이 malformed 로 버린다.
+        text = text.replace('\r', ' ').replace('\n', ' ').replace('\0', ' ').strip()
+        if not text:
+            return '(accepted, empty reply)'
+        if len(text) <= ARCHON_REPLY_MAX:
+            return text
+        return '%s ...(+%d bytes truncated, see log)' % (
+            text[:ARCHON_REPLY_MAX], len(text) - ARCHON_REPLY_MAX)
