@@ -18,7 +18,7 @@ import ics_archon  # noqa: F401
 from icg_archon import acftiming  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2611.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2612.acf')
 
 
 def test_tick_anchor_holds():

@@ -19,14 +19,18 @@
 `MOD3\\LABEL1..3 = S1,S2,S3`(store) · `LABEL5..7 = I1,I2,I3`(image) 이고,
 상태 정의가 이렇게 갈린다:
 
-* `IMAGE1..6` -> **S 상만** 구동 -- `Line`(독출)·`SkipLine`(유휴 플러시)이
-  쓴다.  즉 **독출·유휴 중에 image 영역은 손대지 않는다** = 계속 적분한다.
+* `IMAGE1..6` -> **S 상만** 구동 -- `Line`(독출)·`SkipLine`(flush)이 쓴다.
+  즉 **독출·유휴 중에 image 영역은 손대지 않는다** = 계속 적분한다.
+  ⭐ R2612 부터 유휴 루프는 `SkipLine` 도 부르지 않는다(`LINE3="X; X(100)"`,
+  운영자 2026-09-05) -- 유휴는 **클록 자체가 없는** 상태다.  `X` 는 모든
+  채널 `keep` 이라 store 도 image 도 그대로 둔다.
 * `FRAME1..6` -> **S + I 를 함께** 구동 -- `FrameShift(1033)` 이 쓴다.
   이것이 image -> store 전송, 곧 **노출 경계**다.
 
 ⭐ 그래서 호스트가 유휴 상태로 기다리는 동안에도 적분이 이어지고,
-**노출 = 직전 트랜스퍼 ~ 이번 트랜스퍼**가 된다 (10.1절 그대로).  유휴
-루프의 `SkipLine` 은 store 만 비운다.
+**노출 = 직전 트랜스퍼 ~ 이번 트랜스퍼**가 된다 (10.1절 그대로).  (구
+R2611 까지의 유휴 `SkipLine` 은 store 만 비웠다 -- image 와 무관했으므로
+그것을 뺀 R2612 에서도 이 결론은 그대로다.)
 
 ## 틱 가정
 
@@ -114,7 +118,7 @@ _CLAMP_HOLD = 1 + 10000
 #: `LINE12 DGLOW; CALL HorizontalShift(600)` -- 트랜스퍼 직후 직렬 레지스터를
 #: **쓸어내는** 횟수.  ⚠️ 스크립트 **리터럴**이라 `Pixels` 파라미터와 무관하다:
 #: 레지스터 절반(536 소자)을 넘기게 잡은 flush 수이고, `Pixels` 를 528/529 로
-#: 트림해도(P-k, `acf/README.md`) 이 값은 그대로다.  `LINE53`(유휴 flush)도 같다.
+#: 트림해도(P-k, `acf/README.md`) 이 값은 그대로다.  `LINE53`(`SkipLine` 안)도 같다.
 _FRAME_HSHIFT = 600
 
 
@@ -123,7 +127,10 @@ def _shift(n_phase: int, hold: int) -> int:
 
 
 def skipline_ticks(params: dict[str, int]) -> int:
-    """`SkipLine` 한 회의 틱 -- 유휴·flush 가 store 1행을 버리는 비용.
+    """`SkipLine` 한 회의 틱 -- flush 가 store 1행을 버리는 비용.
+
+    (R2611 까지는 유휴 루프도 이것을 불렀다.  R2612 부터 유휴는 `X; X(100)`
+    으로 가만히 있으므로, 이 비용은 **flush 경로에서만** 든다.)
 
         LINE52  RGHIGH; CALL VerticalShift        1 + vshift
         LINE53  X; CALL HorizontalShift(600)      1 + hshift x 600

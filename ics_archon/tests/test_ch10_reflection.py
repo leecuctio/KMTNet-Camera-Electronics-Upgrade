@@ -20,7 +20,7 @@ from ics_archon import config as acfg_mod  # noqa: E402
 from ics_archon.archon import parse  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2611.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2612.acf')
 SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2608_MK.acf')
 
 
