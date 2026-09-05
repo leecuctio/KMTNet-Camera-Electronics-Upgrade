@@ -117,6 +117,32 @@ python3 archon_simulator.py 4242   # 독립 시뮬레이터 (수동 시험용)
 5. **첫 프레임 육안 확인** — 기하·바이어스 레벨·오버스캔이 v1.0 산출물과
    일치하는지 기존 `kmt_cam_char/qc.py`로 교차 확인 권장.
 
+## 5b. PTC 확장 캠페인 데이터셋 (타입 6~9, 2026-09-04)
+
+플랫/바이어스 관측만으로 PTC·선형성·CMRR·포화/full-well·persistence·
+셔터 Δt·master flat/PRNU를 한 저녁에 커버하는 4개 dataset
+(근거: 2026-09-04 gain/PTC/flat 분석 논의 및 `cam_char` 갭 분석):
+
+| 타입 | 이름 | 구성 | 프레임 | 목적 |
+| --- | --- | --- | --- | --- |
+| 6 | ptcRamp | bias 10×4블록 인터리브 + 저신호 앵커(0.5k/1k/2k pair) + 중(5k/10k/20k ×5) + 고(40k/50k/55k/58k ×5), 기준노출(10k 상당) 매 스텝 인터리브 | 96 | PTC gain·curvature, apparent gain/overscan vs signal(CMRR), **선형성 램프 겸용**(고정 램프+노출시간 가변), 채널 상관잡음(바이어스), ADC 히스토그램 |
+| 7 | ptcRepeat | bias 10 + 28k ×20 + bias 10 | 40 | master flat, PRNU map, gain/level 안정성 |
+| 8 | satPersist | bias 5 + 62k/65.5k/72k(포화×1.1) ×3 + **연속 bias 20** | 34 | 포화 원인 분류·full well·blooming, persistence 감쇠. **ref 인터리브 금지**(포화 후 조명은 측정 오염) |
+| 9 | shutSeq | bias 10 + 0.1/0.2/0.5/1/2초 ×3 + bias 10 | 35 | 셔터/트리거 Δt (S=R(t+Δt) 적합), shading map |
+
+**노출시간 환산**: 목표 ADU를 `PTC_LAMP_ADU_PER_SEC`(기본 2000 ADU/s)로
+나눠 ms를 정한다. 취득 전 시험 플랫 1~2장으로 실제 램프 레이트를 재서
+**상수를 실측값으로 고치거나 램프 밝기를 맞춘 뒤** `--dry-run`으로
+사다리를 확인할 것. 목표 ADU는 overscan 차감 전 raw 레벨 기준.
+
+**실행 순서**: ptcRamp → ptcRepeat → shutSeq → **satPersist를 맨 마지막에**
+— 포화가 앞서면 이후 측정이 잔상에 오염된다 (`campaign_example.ini`의
+run 순서가 이 원칙을 따름). dark(타입 2) 세트는 별도로 유지.
+
+스텝별 장수가 다른 계획을 위해 `DatasetSpec.exptimes` 항목이 `(ms, count)`
+튜플을 허용하도록 확장했다 (int 항목은 기존처럼 `frames_per_step` 적용 —
+기존 dataset 1~5 정의·프레임 수 불변, 테스트로 고정).
+
 ## 6. 향후 과제
 
 - **장노출 분할**: IntMS 20비트 한계 초과 시 azcam처럼 `NoIntMS`+배수

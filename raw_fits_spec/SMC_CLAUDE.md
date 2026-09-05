@@ -11,7 +11,12 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec v1.9 (2026-08-30 발행 · 푸시 · 태그 `raw-spec-v1.9` 완료)
+## ✅ 현행 규격 — raw spec **v1.10** (2026-09-04 개정 · ⏳ 푸시·태그 전)
+
+⭐ v1.10 = **HK 카드 5장 신설**(`HKUDATE` + 히터 넷) · **온도 부호 규약** · **게이지 Off 조항** · 견본 6장을 `header_samples/` 로 모으고 이름을 `v1.10`/`+LF` 로 통일.
+⛔ **science 견본이 4블록 → 5블록(14,400 B)** 이 됐다.  ⚠️ 브랜치의 바이트 대사 시험이 견본 경로·이름을 리터럴로 박고 있어 **같은 묶음으로** 고쳐야 한다.
+
+### (구) v1.9 (2026-08-30 발행 · 푸시 · 태그 `raw-spec-v1.9` 완료)
 
 **[`KMT_CEU_Raw_FITS_Specification_v1.9.md`](KMT_CEU_Raw_FITS_Specification_v1.9.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → v1.5·v1.6 = 5장 검토분 → v1.7 = 파일명 넷째 필드 `<DETID>` 명명 → v1.8 = `OI-9` 폐기 + `CTRLnCFG` 예시 정합 → **v1.9 = guide raw FITS 9·10장 신설 + `Tapaculo`→`Radionode` 개명**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 ~ v1.8).
 
@@ -285,7 +290,7 @@ labtest 내장본 · 시험 3종 · `_vendor`.  **여기서 고치면 그 브랜
 
 ✅ **배선표 갈림 해소 (2026-08-25)** — `__reference/` 읽기 전용 규칙대로 v1.0 은 손대지 않고 사본을 sub레포 루트로 올려 **`Detector_Ch_to_AmpID_Map_v1.1.txt`** 로 고쳤다(4자 채널 토큰 + `IMGSEC` `D-BOT`). 규격 머리말·4.5절·`raw_fits_spec/README.md` 의 참조를 v1.1 로 옮겼다. 구 v1.0 은 원본 기록으로 `__reference/` 에 남겼다 — **그것을 읽는 외부 도구가 있으면 v1.1 로 옮겨야 한다.** ⚠️ **그 v1.0 은 v1.7 에서 삭제됐다**(구 표기·`B-BOT` 오기가 혼동만 준다 — 아래 v1.7 절). 원본은 git 이력 `44ab878`~ 에 있다.
 
-⚠️ **converter 정규식은 LEECU 소관이다** — `^(KMTC|KMTS|KMTA|KMTT)\.` 의 넷째 대안을 `KMTK` 로 바꾸지 않으면 KASI 자료가 짝 탐색에 걸리지 않는다. D-017 영향 절에 C-항목으로 적어 두었다. 번호 공간(D-018)은 정규식이 `\d{6}` 이라 영향 없다.
+✅ **converter 정규식 반영 완료 (2026-09-04)** — `^(KMTC|KMTS|KMTA|KMTK)\.` (converter v2.4.0) · `SITE_PREFIX`/`OBS_PREFIX` `KMTK`/`KASI` · ICD v4.2 §2.1 갱신. 번호 공간(D-018)은 정규식이 `\d{6}` 이라 영향 없다.
 
 **견본 오타 정정이 걸린 코드 사본 3곳** (종전 기재)
 

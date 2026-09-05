@@ -1,6 +1,6 @@
 # KMTNet-CEU MEF Converter
 
-최종 갱신일: 2026-07-03
+최종 갱신일: 2026-09-04
 
 ## 목적
 
@@ -12,9 +12,9 @@
 
 | 구분 | 파일 | 버전 |
 | --- | --- | --- |
-| Converter (최종 실행 파일) | [`kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) | v2.2.0 |
+| Converter (최종 실행 파일) | [`kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) | v2.4.0 |
 | Geometry version (`GEOMVER`) | — | `CEU-L0AMP-v2.1` |
-| 기준 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (docx 동본) | v4.1 |
+| 기준 ICD | `../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md` (docx 동본) | v4.2 |
 
 ## 디렉토리 구조
 
@@ -42,6 +42,20 @@ python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 
 ```bash
 bash mef_converter/run_kmt_ceu_l0amp_example.sh
+```
+
+### amp별 실측 GAIN/RDNOISE 주입 (`--ampchar`, v2.3.0)
+
+raw spec의 계층 규칙(2026-08-22 운영자 확정: gain/noise는 **raw 미기재 · L0 재량 · L1 필수**)에 따라,
+amp별 실측 `GAIN`/`RDNOISE`/`SATURAT`/`LINMAX`는 취득 SW가 아니라 **이 변환 단계**에서 들어간다.
+cam_char 캠페인 결과 CSV(`../cam_char/results/amp_characterization_*.csv` 스키마, `EXTNAME` 키)를 주면
+amp extension header와 `AMPINFO` 테이블 양쪽에 스탬핑하고(≤0/누락 값은 placeholder 유지),
+primary `AMPCHAR` 카드에 테이블 이름을 기록한다. legacy 목업 변환기의 `--ampchar`와 동일 메커니즘.
+
+```bash
+python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
+  raw/KMTA.20260116.000001.MK.fits -f \
+  --ampchar cam_char/results/amp_characterization_ARCHON-SSO-20260904.csv
 ```
 
 MK 또는 NT 중 하나만 지정하면 짝 파일을 자동으로 찾는다. 옵션(`-o`, `-d`, `-f`, `--gzip`)은 상세 README 참조. 대용량 raw/generated FITS는 `.gitignore`로 제외되며 로컬 `raw/` 디렉토리에서 다룬다.

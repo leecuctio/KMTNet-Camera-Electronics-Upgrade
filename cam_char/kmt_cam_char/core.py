@@ -2,8 +2,15 @@
 
 All pixel access goes through the preprocessing package's L0 reader
 (mock64 = future CEU format), with memmap ROI section reads so a
-measurement touches only the bytes it needs. Raw ADU convention: values
-are unsigned (BZERO 32768 applied), bias INCLUDED unless stated.
+measurement touches only the bytes it needs.
+
+Raw ADU convention: PHYSICAL unsigned ADU — the amp header's BZERO/BSCALE
+applied to the stored values (L0 files are BITPIX=16 int16 + BZERO=32768,
+so physical = stored + 32768, codes 0..65535), bias INCLUDED unless
+stated. This is the same axis as io_l0.read_amp and is monotonic over the
+full 16-bit range (no wrap at code 32768). Files without BZERO fall back
+to the two's-complement unsigned cast (a < 0 -> a + 65536). Convert any
+raw section read with ``unsigned_from_stored``.
 """
 from __future__ import annotations
 
@@ -30,19 +37,45 @@ def open_l0(path) -> L0Exposure:
     return L0Exposure(path)
 
 
+def _hdr_float(value, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def unsigned_from_stored(a, hdr) -> np.ndarray:
+    """Stored section values -> physical unsigned raw ADU (float64).
+
+    Applies the HDU header's BSCALE/BZERO manually (io_l0 opens with
+    do_not_scale_image_data, so ``hdu.section`` returns stored int16) —
+    same convention as io_l0.read_amp, but float64 and section-friendly.
+    Headers without BZERO fall back to the legacy two's-complement
+    unsigned cast (a < 0 -> a + 65536).
+    """
+    a = np.asarray(a, dtype=np.float64)
+    bzero = hdr.get("BZERO")
+    if bzero is None:
+        return np.where(a < 0, a + 65536.0, a)
+    bscale = _hdr_float(hdr.get("BSCALE", 1.0), 1.0)
+    if bscale != 1.0:
+        a = a * bscale
+    return a + _hdr_float(bzero, 0.0)
+
+
 def roi_raw(exp: L0Exposure, extname: str, roi=ROI) -> np.ndarray:
-    """ROI of the amp DATASEC in raw unsigned ADU (float64)."""
-    sec = exp.hdul[extname].section[roi[0], roi[1]]
-    a = np.asarray(sec, dtype=np.float64)
-    return np.where(a < 0, a + 65536.0, a)
+    """ROI of the amp DATASEC in physical unsigned raw ADU (float64,
+    BZERO/BSCALE applied; memmap section read of just the ROI bytes)."""
+    hdu = exp.hdul[extname]
+    return unsigned_from_stored(hdu.section[roi[0], roi[1]], hdu.header)
 
 
 def ovsc_raw(exp: L0Exposure, extname: str, rows=ROI[0]) -> np.ndarray:
     """Real overscan columns (first 32; trailing 16 mock cols are mirrored
-    duplicates and MUST NOT be used for noise statistics)."""
-    sec = exp.hdul[extname].section[rows, OVSC_REAL]
-    a = np.asarray(sec, dtype=np.float64)
-    return np.where(a < 0, a + 65536.0, a)
+    duplicates and MUST NOT be used for noise statistics) in physical
+    unsigned raw ADU (float64, BZERO/BSCALE applied)."""
+    hdu = exp.hdul[extname]
+    return unsigned_from_stored(hdu.section[rows, OVSC_REAL], hdu.header)
 
 
 def mad_std(a: np.ndarray) -> float:

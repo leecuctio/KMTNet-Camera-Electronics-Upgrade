@@ -680,7 +680,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 영향:
 
 - **raw spec v1.5** — 2.2절 `<SITE>` 표·정규화 규칙·관측일 보정, 5.3절 `OBSERVAT`·`ORIGIN` 행. 반영 완료.
-- **converter (LEECU 소관, C-항목 신설)** — 파일명 정규식 `^(KMTC|KMTS|KMTA|KMTT)\.` 의 넷째 대안을 `KMTK` 로 바꿔야 한다. **바꾸지 않으면 KASI 자료가 짝 탐색에 걸리지 않는다.** L0 MEF prefix `kmtt` → `kmtk` 도 함께.
+- **converter (LEECU 소관, C-항목 신설)** — 파일명 정규식 `^(KMTC|KMTS|KMTA|KMTT)\.` 의 넷째 대안을 `KMTK` 로 바꿔야 한다. **바꾸지 않으면 KASI 자료가 짝 탐색에 걸리지 않는다.** L0 MEF prefix `kmtt` → `kmtk` 도 함께. ✅ **반영 완료 (2026-09-04)** — converter v2.4.0(정규식·`SITE_PREFIX`/`OBS_PREFIX`) · ICD v4.2 판올림(§2.1, 구 v4.1 은 archive).
 - **`ics_sim` / `ics_archon`** — `rawpair.OBSERVAT`·`ORIGIN_OF`·`TESTBED_SITE`·`normalize_site()`·관측일 보정표, `config._SITE_TELID`, `state.site_code` 기본값, `ics_sim.ini` 주석. ⚠️ **사이트 판별이 `OBSERVATORY` 기준으로 개정된 `ics-archon-v1.0-build` 에서 함께 처리한다** — `main` 의 `ics_sim` 은 IP 판별 구판이라 여기서 고치면 머지가 충돌한다.
 - **D-011 의 `<SITE>` 표를 대체한다.** ⛔ D-015(호스트 IP 판정)는 그 뒤 **폐지**됐고(2026-08-24), 사이트 판별은 `[node] observatory` 한 줄이다.
 

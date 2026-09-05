@@ -68,6 +68,31 @@ python3 mef_converter/kmt_ceu_legacy32_to_l0amp_mef_v2.py legacy.fits \
 | 선형성 보정계수 (형식: results/README.md) | caldb | `steps/linearity.py` 보정식 활성화 |
 | bad/hot pixel 맵 | caldb (MASK bit 1=BAD 규약) | BPM 보강 |
 
+## 추가 진단 모듈 (2026-09-05 — PTC 확장 캠페인 분석)
+
+플랫/바이어스 관측만으로 신규 전자부를 검증하는 진단 5계열이 추가됐다
+(취득은 `archon/` 스크립트의 dataset 타입 6~9). 모든 모듈은 파일 글롭을
+받는 독립 CLI로, `-o OUTDIR --campaign NAME` 규약 아래 `<모듈>/` 서브
+디렉토리에 앰프별 진단 PNG(`amps/`) + 카메라 요약 PNG + 수치 CSV를 낸다.
+
+| 모듈 | 산출 | 커버 |
+| --- | --- | --- |
+| `diagnostics.py` | 앰프별 PTC 5패널(V–S fit, apparent gain·overscan vs signal=CMRR, pair ratio, 잔차) + 64앰프 요약 + pair별 CSV | 계획서 §6 확장, CMRR acceptance |
+| `biasdiag.py` | 행/열 프로파일·noise PSD(간섭 주파수)·FPN·차분영상·bias drift + 64×64 채널 상관행렬 | §5.3–5.4, §16 공유 |
+| `adccheck.py` | ADC 코드 히스토그램 — stuck bit·missing code·DNL | 신규 (평균 통계가 못 잡는 결함) |
+| `linearity.py` (확장) | REF 드리프트 정규화 램프 적합, 0.5%/1% LINMAX, **linearizer 계수 CSV**(파이프라인 `steps/linearity.py` 입력), DR_bit | §7, §9 |
+| `satshut.py` | 포화 원인 분류(ADC/analog/full-well)·full well e⁻·persistence τ·셔터 Δt·shading map | §8, §13 일부, §15 |
+
+시험 인프라: `testkit.py`(축소 기하 합성 L0 생성기 — 결함 주입 훅) +
+`tests/run_tests.sh` (전 모듈 정량 회수 시험; 주입 gain 0.35%·LINMAX
+±0.3%·Δt ±0.6ms·τ +3.3% 수준으로 회수 검증됨).
+
+> **ADU 스케일 정정 (2026-09-05)**: `core.roi_raw/ovsc_raw`가 저장 int16의
+> uint16 재해석(물리값+32768, 코드 32768에서 랩) 대신 헤더 BZERO/BSCALE을
+> 적용한 **물리 unsigned ADU**를 반환하도록 수정됐다 (`core.unsigned_from_stored`).
+> 차분 통계(GAIN/RDNOISE/PRNU/CTE)는 불변이고, 기존 LEGACY-* CSV의
+> BIAS_ADU/SATURAT 절대값만 구 스케일(+32768)이다 — `results/README.md` 각주 참조.
+
 ## 관련 자료
 
 - 전처리 파이프라인: [`../mef_pipeline/README.md`](../mef_pipeline/README.md)
