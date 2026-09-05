@@ -468,6 +468,20 @@ DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX')
 #: 측정 불가를 뜻하는 `DEWPRES` 값 (운영자 확정 2026-08-21).
 DEWPRES_NC = '9.99e-9'
 
+#: 듀어 히터 카드 넷 (raw spec **5.6.2절**, v1.10 신설).  **값의 층이 둘로
+#: 갈린다** -- `HTREN`·`HTRSET`·`HTRFORCE` 는 `RCONFIG` **되읽기**(명령이
+#: 아니라 컨트롤러가 받아들인 값)이고 `HTROUT` 은 `STATUS` **실측**이다.
+#:
+#: ⚠️ `HTROUT`(0~25 V)는 guide 헤더의 `HEATER` 레일(+28 V)과 **다른 것**이다.
+HEATER_CARDS = ('HTREN', 'HTRSET', 'HTROUT', 'HTRFORCE')
+
+#: 상태 낱말·전압·시각의 측정 불가 (raw spec 5.0절 sentinel, v1.10).
+#:
+#: ⛔ **모르는 것을 `'OFF'` 로 적지 않는다** -- `'OFF'` 는 "껐다"는 관측
+#: 사실이고 `'NC'` 는 "못 읽었다"는 다른 사실이다.  섞으면 아카이브에서
+#: 되돌릴 수 없다.
+WORD_NC = 'NC'
+
 #: 측정 불가를 뜻하는 HK 온도·습도 카드 값 (운영자 확정 2026-08-22, 단일값).
 #:
 #: 온도로는 어떤 냉각 램프도 닿지 않는 값이고 습도로는 음수라 물리적으로
@@ -554,12 +568,18 @@ def format_temp(value: object) -> str:
     return f'{t:+.2f}'
 
 
-def format_ens(value: object) -> str:
-    """`FSATEMP`/`FSAHUM` 의 ENS식 표기 -- 부호 없는 소수 1자리 (`'23.4'`).
+def format_ens(value: object, *, signed: bool = False) -> str:
+    """`FSATEMP`/`FSAHUM` 의 ENS식 표기 -- 소수 1자리 (`'23.4'`).
 
     **잠정이다** (raw spec 5.8절, OI-16) -- Radionode 원값 포맷을 확인한 뒤
     "원값 그대로 싣기"로 최종 확정한다.  측정 불가 sentinel 은 HK 온도·습도
     공통의 `TEMP_NC`(`'-999.99'`) -- 5.0절이 FSA 2장을 그 규약에 명시했다.
+
+    ⭐ **`signed=True` 는 온도 부호 규약이다** (raw spec 5.0절, v1.10) --
+    온도 카드는 양수에도 `+` 를 적는다.  `FSATEMP` 가 그 규약에 편입돼
+    `'23.4'` -> **`'+23.4'`** 가 됐다.  ⛔ `FSAHUM`(습도)은 대상이 아니고
+    **`ENS1`-`ENS7` 도 예외**다 -- 5.8절이 *"중계 그대로"* 로 규정하므로
+    우리가 표기를 만들지 않는다.
     """
     if value is None:
         return TEMP_NC
@@ -571,7 +591,66 @@ def format_ens(value: object) -> str:
         return TEMP_NC
     if t != t or t in (float('inf'), float('-inf')):
         return TEMP_NC
-    return f'{t:.1f}'
+    return f'{t:+.1f}' if signed else f'{t:.1f}'
+
+
+def format_word(value: object) -> str:
+    """`HTREN`/`HTRFORCE` 의 상태 낱말 -- `'ON'`/`'OFF'`, 모르면 `'NC'`.
+
+    ⛔ **기본값으로 떨어뜨리지 않는다** (raw spec 5.0절) -- 아는 낱말이
+    아니면 `'NC'` 다.  `'OFF'` 로 접으면 "껐다"가 되어 관측 사실이 조작된다.
+    """
+    if value is None:
+        return WORD_NC
+    if isinstance(value, bool):
+        return 'ON' if value else 'OFF'
+    word = str(value).strip().upper()
+    if word in ('ON', 'TRUE', '1'):
+        return 'ON'
+    if word in ('OFF', 'FALSE', '0'):
+        return 'OFF'
+    log.warning('히터 상태 낱말이 아는 값이 아니다(%r) -- %s 로 싣는다',
+                value, WORD_NC)
+    return WORD_NC
+
+
+def format_htrout(value: object) -> str:
+    """`HTROUT` -- 히터 실제 출력 전압 `'3.512'` [V], 부호 없음.
+
+    ⚠️ 측정 불가는 온도의 `'-999.99'` 가 아니라 **`'NC'`** 다 (전압에는
+    "물리적으로 불가능한 수" 가 없어 수 모양 sentinel 을 쓸 수 없다).
+    """
+    if value is None:
+        return WORD_NC
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        log.warning('HTROUT 이 수치가 아니다(%r) -- %s 로 싣는다',
+                    value, WORD_NC)
+        return WORD_NC
+    if v != v or v in (float('inf'), float('-inf')):
+        return WORD_NC
+    return f'{v:.3f}'
+
+
+def format_hkudate(value: object) -> str:
+    """`HKUDATE` -- HK 블록 값들의 취득 시각, **초 단위 19자**.
+
+    `'2026-08-21T12:34:50'` -- `Z` 를 붙이지 않는다 (시간계는 `TIMESYS` 가
+    선언한다, raw spec 5.4절과 같은 규약).  모르면 `'NC'`.
+
+    ⭐ **블록에 시각이 하나뿐인 이유** -- 값마다 표본시각이 다를 수 있지만
+    카드는 하나다.  그래서 공급측(`sensors()`)이 **가장 낡은 표본시각**을
+    준다: 그래야 이 카드가 실제보다 신선하다고 말하지 않는다.
+    """
+    if value is None:
+        return WORD_NC
+    text = str(value).strip()
+    if not text:
+        return WORD_NC
+    if len(text) > 19:          # 밀리초가 붙어 오면 초까지만
+        text = text[:19]
+    return text
 
 
 def thermal_header(sensors: dict | None) -> dict[str, object]:
@@ -604,13 +683,20 @@ def thermal_header(sensors: dict | None) -> dict[str, object]:
                     '(대표가 아닌 값을 대표라고 적으면 조용히 틀린 값이 된다)',
                     TEMP_NC)
     out: dict[str, object] = {
+        # v1.10: 블록 맨 앞이다 (raw spec 5.6절 -- 운영자 지정 자리).
+        'HKUDATE': format_hkudate(s.get('hkudate')),
         'DEWPRES': format_dewpres(s.get('dewpres')),
         'CCDTEMP': format_temp(t1),
     }
     for card in DEWAR_CARDS:
         out[card] = format_temp(s.get(card.lower()))
+    # v1.10: 듀어 히터 넷 -- `HEBOX` 뒤 (운영자 지정 자리, 5.6.2절).
+    out['HTREN'] = format_word(s.get('htren'))
+    out['HTRSET'] = format_temp(s.get('htrset'))
+    out['HTROUT'] = format_htrout(s.get('htrout'))
+    out['HTRFORCE'] = format_word(s.get('htrforce'))
     # 5.8절의 Radionode 2장 -- 블록은 AUX 지만 출처가 백엔드라 여기서 준다.
-    out['FSATEMP'] = format_ens(s.get('fsatemp'))
+    out['FSATEMP'] = format_ens(s.get('fsatemp'), signed=True)
     out['FSAHUM'] = format_ens(s.get('fsahum'))
     return out
 

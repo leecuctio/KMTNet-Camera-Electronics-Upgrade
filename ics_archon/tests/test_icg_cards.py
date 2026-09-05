@@ -3,7 +3,7 @@
 """guide 카드 템플릿·이름 규칙 검증.
 
 규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md` 9·10장.
-정본: guide 견본 헤더 v0.0 (값 123 + COMMENT 8 + END 1 + 공백 12 = 144
+정본: guide 견본 헤더 v1.10 (값 128 + COMMENT 8 + END 1 + 공백 7 = 144
 레코드 = 11,520 B) -- science 의 `test_raw_draft.py` 와 같은 정신으로
 **바이트 단위 재현**을 대사한다.
 """
@@ -35,7 +35,7 @@ def _samples() -> list[str]:
     (`test_raw_draft.py`, 2026-08-22 사고).
     """
     pats = os.path.join(REPO, 'raw_fits_spec',
-                        'KMT?.*.G.fits.header.v*.txt')
+                        'header_samples', 'KMT?.*.G.fits.header.v1.10.txt')
     found = [p for p in glob.glob(pats) if 'REFTEXT' not in p]
     assert found, 'guide 견본 헤더를 찾지 못했다 -- raw_fits_spec/ 확인'
     return sorted(found)
@@ -72,10 +72,10 @@ def test_sample_bytes_are_reproduced():
 
 
 def test_card_counts_match_the_spec():
-    """값 123 + COMMENT 8 (10.2절) -- 구성이 밀리면 여기서 먼저 걸린다."""
+    """값 128 + COMMENT 8 (10.2절) -- 구성이 밀리면 여기서 먼저 걸린다."""
     values = [k for k, *_ in guidecards.CARDS if k != 'COMMENT']
     comments = [k for k, *_ in guidecards.CARDS if k == 'COMMENT']
-    assert len(values) == 123
+    assert len(values) == 128
     assert len(comments) == 8
     # 미수록 규정 (10.2절) -- CTRL2*/C2_* 는 아예 없어야 한다.
     for key in ('CTRL2ID', 'CTRL2SN', 'CTRL2CFG',

@@ -16,6 +16,7 @@ import logging
 import os
 from typing import AsyncIterator
 
+from ..state import stamp_iso, utcnow
 from .base import BackendError
 
 log = logging.getLogger('ics_sim.hw.sim')
@@ -259,6 +260,13 @@ class SimBackend:
             # `air_*`/`glyc_*` 는 내지 않는다 -- 카드 4장이 v1.5 에서 폐지돼
             # 호출측이 값을 버린다 (2026-08-27 계약 정리).
             'fsatemp': 23.4, 'fsahum': 12.3,       # Radionode (raw spec 5.8절)
+            # v1.10 신설 5장 -- 시각과 듀어 히터 넷 (raw spec 5.6.2절).
+            # ⭐ 시뮬은 실값을 낸다.  실기 경로는 `icg_archon` HK 스냅샷이
+            #    원천인데 **아직 이 다섯 키를 담지 않는다**(raw spec OI-25)
+            #    -- 그동안 실기에서는 sentinel 로 실린다.
+            'hkudate': stamp_iso(utcnow()),
+            'htren': 'ON', 'htrset': -100.10,
+            'htrout': 3.512, 'htrforce': 'OFF',
             # `dewpres` 는 넣지 않는다 -- 레거시도 `'N/A'` 였다.  호출측이
             # sentinel 을 채우는 경로를 실제로 밟게 하려는 것이다.
         }

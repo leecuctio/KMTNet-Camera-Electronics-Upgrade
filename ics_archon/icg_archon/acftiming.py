@@ -122,6 +122,68 @@ def _shift(n_phase: int, hold: int) -> int:
     return n_phase * (1 + hold) + 1
 
 
+def skipline_ticks(params: dict[str, int]) -> int:
+    """`SkipLine` 한 회의 틱 -- 유휴·flush 가 store 1행을 버리는 비용.
+
+        LINE52  RGHIGH; CALL VerticalShift        1 + vshift
+        LINE53  X; CALL HorizontalShift(600)      1 + hshift x 600
+        LINE54  CLAMP; X(10000)                   _CLAMP_HOLD
+        LINE55  NOCLAMP; RETURN SkipLine          1
+
+    ⚠️ 디지타이즈가 없다 -- `Pixel` 루틴을 안 타므로 `Pixels` 와 **무관**하고
+    `AT`·`ST` 로만 결정된다.  본 독출과 배율이 다른 이유가 여기다.
+    """
+    at = int(params.get('AT', 100))
+    st = int(params.get('ST', 10))
+    return (1 + _shift(6, at)
+            + 1 + _shift(6, st) * _FRAME_HSHIFT
+            + _CLAMP_HOLD + 1)
+
+
+def flush_lines(params: dict[str, int], *, lines: int, pixels: int) -> int:
+    """flush 프레임의 `SkipLine` 횟수 -- **본 독출 소요와 같아지는 수**.
+
+    규격 10.1-2 (v1.10).  버릴 첫 프레임은 디지타이즈할 이유가 없어
+    `SkipLine` 으로 비우는데, 그것이 본 독출보다 **빨리 끝나면 첫 저장
+    프레임의 실적분이 `EXPTIME` 보다 짧아진다.**  그래서 횟수를 맞춘다.
+
+    ⛔ **`Pixels`·`Lines`·`AT`·`ST` 중 하나라도 바뀌면 값이 바뀐다** -- 그리고
+    민감도가 균등하지 않다 (현행 `Pixels=540 Lines=1033 AT=100 ST=10` 기준
+    2448):
+
+        Lines   정비례 (1:1)
+        Pixels  600 이면 2692            (+10 %)
+        AT      200 이면 2419            (-1 %)
+        ST       20 이면 1433            (**-41 %**)
+
+    `ST` 가 압도적인 것은 flush 쪽이 `SkipLine`(= AT·ST 만)인데 맞출 대상인
+    본 독출은 디지타이징 `Pixel` 루틴이 대부분이라 `ST` 비중이 작기 때문이다
+    -- 한쪽만 크게 움직인다.
+    """
+    return round(frame_timing(params, lines=lines, pixels=pixels)['readout']
+                 / (skipline_ticks(params) * TICK))
+
+
+def check_flush_lines(params: dict[str, int], *,
+                      lines: int, pixels: int) -> tuple[int, int] | None:
+    """ACF 의 `FlushLines` 가 계산값과 맞나 -- 어긋나면 `(ACF값, 계산값)`.
+
+    ⭐ **파생값을 상수로 두는 대가를 여기서 치른다** (운영자 확정 2026-09-05:
+    *"Pixels·Lines 를 바꾸는 것은 큰일이라 잘 없을 것"*).  `FlushLines` 와 그
+    것을 낳는 넷이 **같은 파일에** 있고 아무도 대사하지 않으므로, 누가
+    `Pixels` 만 고치면 **오류 없이 첫 저장 프레임의 실적분만 틀린다** -- 이
+    검산이 그 조용한 어긋남을 소리 나게 만든다.  `GO` 마다 쓰지 않으므로
+    (호스트가 계산해 넣는 안 대신) 기동 때 한 번만 본다.
+
+    `FlushLines` 가 아예 없으면 `None` -- 아직 도입 전인 ACF 다.
+    """
+    if 'FlushLines' not in params:
+        return None
+    want = flush_lines(params, lines=lines, pixels=pixels)
+    got = int(params['FlushLines'])
+    return None if got == want else (got, want)
+
+
 def frame_timing(params: dict[str, int], *,
                  lines: int, pixels: int) -> dict[str, float]:
     """프레임 한 장의 구간별 소요 [s].

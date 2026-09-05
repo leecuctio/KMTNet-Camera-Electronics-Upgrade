@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.8 5장).
 
-정본 견본은 `raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0.txt`
+정본 견본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v1.10.txt`
 (경로는 박지 않고 glob 으로 찾는다 -- `_find_draft`)
 -- **카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다 (5장 머리말).
 이 파일은 세 겹으로 대사한다:
@@ -49,7 +49,8 @@ def _find_draft(tag: str) -> pathlib.Path:
     그래서 ① 이름 대신 **패턴**으로 찾고 ② 못 찾으면 **skip 이 아니라
     실패**다.  견본은 정본이므로 없는 것 자체가 결함이다.
     """
-    found = sorted(SPEC_DIR.glob(f'KMT?.*.{tag}.fits.header.v1.0.txt'))
+    found = sorted(SPEC_DIR.glob(
+        f'header_samples/KMT?.*.{tag}.fits.header.v1.10.txt'))
     assert found, (
         f'{tag} 견본을 찾을 수 없다 ({SPEC_DIR}) -- 견본은 5장의 바이트 '
         '정본이고, 이 대사가 없으면 구현과 규격이 갈라져도 잡히지 않는다')
@@ -67,7 +68,7 @@ def _cards(path: pathlib.Path) -> list[str]:
 
     ⚠️ **v1.5 에서 견본의 꼬리가 바뀌었다.**  종전에는 `#EOF` 4바이트가 붙어
     11,524 바이트(2880 의 배수가 아니었다)였는데, v1.5 가 그것을 떼고 `END`
-    뒤를 **공백 레코드 4장**으로 채워 144 레코드 · 4x2880 = **11,520 바이트**로
+    뒤를 **공백 레코드**로 채워 2880 의 배수로 맞췄다.  v1.10 에서 5블록 ·
     맞췄다 (FITS 표준 패딩, raw spec 3장).  그래서 여기서는 `END` 까지만 카드로
     보고 뒤의 공백 레코드는 버린다 -- 값 카드로 세면 파서가 `= ` 를 못 찾는다.
     """
@@ -147,19 +148,21 @@ def test_template_matches_the_draft_structure():
 
 
 def test_draft_counts_match_the_spec():
-    """값 **131** + COMMENT 8 + END 1 + 공백 4 = 144 레코드 (v1.5 이후 불변).
+    """값 **136** + COMMENT 8 + END 1 + 공백 35 = 180 레코드 (v1.10).
 
     v1.5 가 HK 4장(`AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT`)을 폐지해 값 카드가
-    135 -> 131 이 됐고, `END` 뒤를 공백 레코드로 채워 11,520 바이트를 유지한다.
+    135 -> 131 이 됐다.  ⚠️ **v1.10 에서 4블록 -> 5블록이 됐다** -- HK 카드
+    5장(`HKUDATE` + 히터 넷) 신설로 값이 131 -> 136 이 되어 145 레코드가
+    144 를 넘겼다.  이제 180 레코드 · 5x2880 = 14,400 바이트다.
     """
     raw = DRAFTS['MK'].read_bytes()
-    assert len(raw) == 11520, (
-        f'견본이 4x2880 = 11,520 바이트가 아니다 ({len(raw)}) -- v1.5 에서 '
-        '`#EOF` 를 떼고 END 뒤 공백 4장으로 맞췄다')
+    assert len(raw) == 14400, (
+        f'견본이 5x2880 = 14,400 바이트가 아니다 ({len(raw)}) -- v1.10 에서 '
+        'HK 5장이 늘어 4블록을 넘겼다')
     cards = [_parse(c) for c in _cards(DRAFTS['MK'])
              if c[:8].rstrip() != 'END']
     values = [c for c in cards if c[0] != 'COMMENT']
-    assert len(values) == 131
+    assert len(values) == 136
     assert len(cards) - len(values) == 8
 
 
@@ -208,7 +211,13 @@ def _rebuild(tag: str) -> list[str]:
     sensors = {'dewpres': float(sample['DEWPRES']),
                'ccdtemp': float(sample['CCDTEMP']),
                'fsatemp': float(sample['FSATEMP']),
-               'fsahum': float(sample['FSAHUM'])}
+               'fsahum': float(sample['FSAHUM']),
+               # v1.10: HK 5장 신설 -- 시각과 듀어 히터 넷.
+               'hkudate': sample['HKUDATE'].strip(),
+               'htren': sample['HTREN'].strip(),
+               'htrset': float(sample['HTRSET']),
+               'htrout': float(sample['HTROUT']),
+               'htrforce': sample['HTRFORCE'].strip()}
     for card in rawhdr.DEWAR_CARDS:
         sensors[card.lower()] = float(sample[card])
     # v1.6: 나열 카드 구분자는 파이프다 (규격 5.6.1절).

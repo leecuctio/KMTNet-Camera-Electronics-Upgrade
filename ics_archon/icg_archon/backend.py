@@ -40,7 +40,7 @@ science 실측을 guide 에 옮긴 것이라 첫 구동에서 실현 주기를 �
 하나를 잠그면 둘이 남고, 3버퍼에서 못 받은 장이 언제 덮이는지는 ⏳ 첫 구동
 실측 항목이다 (FETCH 뒤 `lock_rbuf`/`lock_wbuf_after` 관측).  어느 쪽이든
 FETCH 상한(`[icg] fetch_timeout`)이 곧 잠금 상한이므로 **하한 미만**으로 (하한은
-`acftiming` 이 ACF 에서 셈한다 -- R2610 기준 1.251 s)
+`acftiming` 이 ACF 에서 셈한다 -- R2610/R2611 기준 1.251 s)
 두는 것이 보수적 안전선이다 -- guide 는 8.3 MiB ≈ 0.08 s 라 1 s 면 넉넉하다.
 `__init__` 이 이를 검사한다 (0 이면 유도값 60 s 로 셈한다).
 """
@@ -149,6 +149,22 @@ class GuideBackend:
                 return None
             t = acftiming.frame_timing(
                 params, lines=params['Lines'], pixels=params['Pixels'])
+            # ⛔ `FlushLines` 는 **파생값인데 상수로 실려 있다** (규격 10.1-2).
+            #    낳는 넷(`Pixels`·`Lines`·`AT`·`ST`)과 같은 파일에 있고 자동
+            #    으로 안 따라가므로, 누가 하나만 고치면 **오류 없이 첫 저장
+            #    프레임의 실적분만 틀린다.**  기동 때 한 번 대사해 그 조용한
+            #    어긋남을 소리 나게 만든다.
+            drift = acftiming.check_flush_lines(
+                params, lines=params['Lines'], pixels=params['Pixels'])
+            if drift is not None:
+                log.error('guide ACF 의 FlushLines=%d 가 계산값 %d 와 다르다 '
+                          '-- Pixels/Lines/AT/ST 를 고치고 FlushLines 를 안 '
+                          '고친 것으로 보인다.  그대로 두면 **첫 저장 프레임의 '
+                          '실적분이 EXPTIME 과 다르다** (규격 10.1-2). ACF 를 '
+                          '고칠 것 (acf/README.md 의 산수표)', *drift)
+            elif 'FlushLines' not in params:
+                log.info('guide ACF 에 FlushLines 가 없다 -- flush 프레임 '
+                         '길이 맞추기(규격 10.1-2)는 R2611 부터다')
         except (ArchonError, OSError, ValueError) as exc:
             log.warning('guide ACF 타이밍 계산 실패 -- %s', exc)
             return None

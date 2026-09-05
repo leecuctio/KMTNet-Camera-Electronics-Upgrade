@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """raw FITS 기록 -- **견본 v1.0 pair 와 바이트 단위 대사.**
 
-견본(`raw_fits_spec/KMT?.*.{MK,NT}.fits.header.v1.0.txt`)이 카드 순서·comment·
+견본(`raw_fits_spec/header_samples/KMT?.*.{MK,NT}.fits.header.v1.10.txt`)이 카드 순서·comment·
 문자열 패딩까지 바이트 단위 기준이다 (raw spec 5장 머리말).  여기서는 견본의
 카드 이미지를 되먹여 **같은 80바이트가 다시 나오는지** 본다 -- 렌더러가
 어긋나면 곧바로 걸린다.
@@ -27,7 +27,8 @@ _SPEC_DIR = os.path.normpath(os.path.join(
 
 
 def _find_draft(tag: str) -> str:
-    pattern = os.path.join(_SPEC_DIR, 'KMT?.*.%s.fits.header.v1.0.txt' % tag)
+    pattern = os.path.join(_SPEC_DIR, 'header_samples',
+                           'KMT?.*.%s.fits.header.v1.10.txt' % tag)
     hits = sorted(glob.glob(pattern))
     if not hits:
         raise AssertionError(
@@ -45,7 +46,9 @@ def _cards_of(path: str) -> list[str]:
 
     ⚠️ **v1.5 에서 꼬리가 바뀌었다.**  종전에는 `#EOF` 4바이트가 붙어 11,524
     자였는데(2880 의 배수가 아니었다), v1.5 가 그것을 떼고 `END` 뒤를 **공백
-    레코드 4장**으로 채워 144 레코드 · 4x2880 = **11,520 자**로 맞췄다 (FITS
+    레코드**로 채워 2880 의 배수로 맞췄다.  ⚠️ **v1.10 에서 4블록 → 5블록이
+    됐다** -- HK 카드 5장 신설로 값이 131 → 136 이 되어 145 레코드가 144 를
+    넘겼다.  이제 180 레코드 · 5x2880 = **14,400 자**다 (FITS
     표준 패딩, raw spec 3장).  공백 레코드도 카드로 돌려준다 -- `header_bytes()`
     가 만드는 패딩과 바이트로 대사해야 하기 때문이다.
     """
@@ -94,11 +97,11 @@ def _parse_card(card: str):  # noqa: ANN202
 @pytest.mark.repo_only
 @pytest.mark.parametrize('tag', ['MK', 'NT'])
 def test_card_images_reproduce_the_draft_byte_for_byte(tag):  # noqa: ANN001
-    """견본 144카드를 되먹이면 같은 바이트가 나와야 한다."""
+    """견본 180카드를 되먹이면 같은 바이트가 나와야 한다."""
     cards = _cards_of(_find_draft(tag))
-    assert len(cards) == 144, '견본은 144레코드 = 2880B x 4 다'
-    # v1.5: 값 131 + COMMENT 8 + END 1 + 공백 4 = 144.
-    assert sum(1 for c in cards if _parse_card(c)[0] == 'PAD') == 4
+    assert len(cards) == 180, '견본은 180레코드 = 2880B x 5 다'
+    # v1.10: 값 136 + COMMENT 8 + END 1 + 공백 35 = 180.
+    assert sum(1 for c in cards if _parse_card(c)[0] == 'PAD') == 35
     mismatch = []
     for i, card in enumerate(cards, start=1):
         key, value, comment = _parse_card(card)

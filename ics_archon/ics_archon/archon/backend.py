@@ -49,6 +49,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -60,6 +61,7 @@ _simpath.ensure()
 
 from ics_sim import rawpair                              # noqa: E402
 from ics_sim.hardware.base import BackendError           # noqa: E402
+from ics_sim.state import stamp_iso                      # noqa: E402
 
 from ..config import CTRLTAGS, cfg_name_from_acf         # noqa: E402
 from . import fitswrite, parse                           # noqa: E402
@@ -763,6 +765,20 @@ class ArchonBackend:
                       '시계를 확인하라(NTP).  그 키는 버린다', ', '.join(future))
         elif not future:
             self._warned_future = False
+        # ⭐ `HKUDATE` -- 이 블록 값들의 취득 시각 (raw spec 5.6절, v1.10).
+        #
+        # **가장 낡은 표본시각**을 준다.  카드는 하나인데 키마다 표본시각이
+        # 다르므로, 어느 하나를 고르면 나머지에 대해 거짓말이 된다 -- 가장
+        # 낡은 것을 실어야 이 카드가 **실제보다 신선하다고 말하지 않는다**
+        # (`hk_stale_after` 가 낡은 값을 버리는 것과 같은 정신).
+        #
+        # ⚠️ 살아남은 키가 없으면 싣지 않는다 -- 호출측이 sentinel `'NC'`
+        # 로 채운다.  빈 블록에 시각만 붙으면 "쟀는데 다 결측" 으로 읽힌다.
+        if out:
+            oldest = min(float(sampled.get(k, snap.get('written', 0.0)))
+                         for k in out)
+            out['hkudate'] = stamp_iso(
+                datetime.datetime.fromtimestamp(oldest, datetime.timezone.utc))
         return out
 
     def status(self, ccd: str) -> dict:

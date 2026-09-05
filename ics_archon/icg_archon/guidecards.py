@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """guide raw FITS 헤더 카드 템플릿 — guide 견본 헤더 v0.0 의 기계 사본.
 
-정본은 `raw_fits_spec/KMTA.20260821.123456.G.fits.header.v0.0.txt`
+정본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.G.fits.header.v1.10.txt`
 (raw spec v1.9 **10장** — 값 카드 **123** + COMMENT 8 + END 1 + 공백 12 =
 144 레코드 = 4x2880 = 11,520 B).  science 템플릿(`ics_sim/rawcards.py`)과
 다른 자리 (10.2절):
@@ -100,6 +100,7 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('ICGBUILD', 'S', 26, 'ICG software version and build Info'),
     ('RDMODE', 'S', 26, 'Readout mode setting'),
     ('COMMENT', '', 0, '  Camera System House Keeping Data'),
+    ('HKUDATE', 'S', 19, 'UTC Date and Time of HK sample'),
     ('DEWPRES', 'S', 18, 'Dewar pressure [torr]'),
     ('CCDTEMP', 'S', 18, 'CCD temperature [deg C]'),
     ('DMPTEMP', 'S', 18, 'DMP temperature [deg C]'),
@@ -108,6 +109,10 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('CHARCOAL', 'S', 18, 'Charcoal canister temperature [deg C]'),
     ('WALLBRD', 'S', 18, 'Wallboard temperature [deg C]'),
     ('HEBOX', 'S', 18, 'HE box internal temperature [deg C]'),
+    ('HTREN', 'S', 18, 'Dewar heater enable state'),
+    ('HTRSET', 'S', 18, 'Dewar heater target temperature [deg C]'),
+    ('HTROUT', 'S', 18, 'Dewar heater output voltage [V]'),
+    ('HTRFORCE', 'S', 18, 'Dewar heater forced-output mode'),
     ('C1_TEMP', 'S', 49, 'Ctrl-1 T[C]'),
     ('C1_VOLT', 'S', 49, 'Ctrl-1 V[V]'),
     ('C1_CURR', 'S', 49, 'Ctrl-1 I[A]'),
@@ -174,8 +179,6 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('FSATEMP', 'S', 18, 'FSA internal temperature in degree C'),
     ('FSAHUM', 'S', 18, 'FSA internal humidity in percent RH'),
 )
-
-
 # ---------------------------------------------------------------------------
 # 파생 표 — science `rawcards` 와 같은 유도 규칙
 # ---------------------------------------------------------------------------

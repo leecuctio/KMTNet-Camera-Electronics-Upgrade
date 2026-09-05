@@ -465,7 +465,7 @@ def SetConfig(key, cfg):
 # raw spec FITS header  (v1.1 이 구 SetHeader 12카드를 전면 교체했다)
 #
 # 카드 목록·순서·comment·문자열 패딩 폭의 정본은 초안 헤더 v1.0 pair
-# (raw_fits_spec/KMTA.20260821.123456.{MK,NT}.fits.header.v1.0.txt) 이고,
+# (raw_fits_spec/header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v1.10.txt) 이고,
 # 아래 RAWCARDS 는 그 기계 사본이다 (ics_sim/rawcards.py 와 같은 원천).
 # 값 131 + COMMENT 8 + END 1 = 140 레코드 -- 2880 의 배수가 아니므로
 # build_header() 가 END 뒤를 공백 레코드 4장으로 채워 144 레코드 ·
@@ -548,6 +548,7 @@ RAWCARDS = (
     ('ICSBUILD', 'S', 24, 'ICS/ICG software version and build Info'),
     ('RDMODE', 'S', 24, 'Readout mode setting'),
     ('COMMENT', '', 0, '  Camera System House Keeping Data'),
+    ('HKUDATE', 'S', 19, 'UTC Date and Time of HK sample'),
     ('DEWPRES', 'S', 18, 'Dewar pressure [torr]'),
     ('CCDTEMP', 'S', 18, 'CCD temperature [deg C]'),
     ('DMPTEMP', 'S', 18, 'DMP temperature [deg C]'),
@@ -556,6 +557,10 @@ RAWCARDS = (
     ('CHARCOAL', 'S', 18, 'Charcoal canister temperature [deg C]'),
     ('WALLBRD', 'S', 18, 'Wallboard temperature [deg C]'),
     ('HEBOX', 'S', 18, 'HE box internal temperature [deg C]'),
+    ('HTREN', 'S', 18, 'Dewar heater enable state'),
+    ('HTRSET', 'S', 18, 'Dewar heater target temperature [deg C]'),
+    ('HTROUT', 'S', 18, 'Dewar heater output voltage [V]'),
+    ('HTRFORCE', 'S', 18, 'Dewar heater forced-output mode'),
     ('C1_TEMP', 'S', 51, 'Ctrl-1 T[C]'),
     ('C1_VOLT', 'S', 51, 'Ctrl-1 V[V]'),
     ('C1_CURR', 'S', 51, 'Ctrl-1 I[A]'),

@@ -10,8 +10,8 @@
 개정될 때(v1.1 승격 등) 이 도구를 다시 돌려 `guidecards.CARDS` 를 갱신하고,
 `tests/test_icg_cards.py` 가 견본과의 표류를 지킨다.
 
-정본: `raw_fits_spec/KMTA.20260821.123456.G.fits.header.v0.0.txt`
-(raw spec v1.9 10장 -- 값 카드 123 + COMMENT 8 + END 1 + 공백 12 = 144 레코드).
+정본: `raw_fits_spec/header_samples/KMTA.20260821.123456.G.fits.header.v1.10.txt`
+(raw spec v1.10 10장 -- 값 카드 128 + COMMENT 8 + END 1 + 공백 7 = 144 레코드).
 """
 
 from __future__ import annotations
@@ -27,7 +27,8 @@ REPO = os.path.dirname(ROOT)
 
 #: 견본 정본 (glob 이 아니라 판 번호를 박아 둔다 -- 승격되면 여기부터 갱신).
 SAMPLE = os.path.join(REPO, 'raw_fits_spec',
-                      'KMTA.20260821.123456.G.fits.header.v0.0.txt')
+                      'header_samples',
+                      'KMTA.20260821.123456.G.fits.header.v1.10.txt')
 
 CARD = 80
 _INT = re.compile(r'^[+-]?\d+$')

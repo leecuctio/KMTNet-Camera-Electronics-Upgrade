@@ -15,7 +15,7 @@ Configuration`** 이 됐다(견본 pair 동반 개정).  v1.7 은 파일명 넷�
 고쳤으며, `Cn_*` 나열 카드의 구분자를 파이프로·결측 자리 sentinel 을 `NC` 로
 했다.
 
-정본은 [`raw_fits_spec/KMTA.20260821.123456.MK.fits.header.v1.0.txt`] (·NT) --
+정본은 [`raw_fits_spec/header_samples/KMTA.20260821.123456.MK.fits.header.v1.10.txt`] (·NT) --
 **카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다 (raw spec 5장
 머리말).  이 모듈의 `CARDS` 는 그 견본에서 기계 추출한 것이고, 추출 규칙은
 `tests/test_raw_draft.py` 가 견본 파일을 다시 파싱해 대사한다 -- 견본이
@@ -105,6 +105,7 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('ICSBUILD', 'S', 24, 'ICS/ICG software version and build Info'),
     ('RDMODE', 'S', 24, 'Readout mode setting'),
     ('COMMENT', '', 0, '  Camera System House Keeping Data'),
+    ('HKUDATE', 'S', 19, 'UTC Date and Time of HK sample'),
     ('DEWPRES', 'S', 18, 'Dewar pressure [torr]'),
     ('CCDTEMP', 'S', 18, 'CCD temperature [deg C]'),
     ('DMPTEMP', 'S', 18, 'DMP temperature [deg C]'),
@@ -113,6 +114,10 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('CHARCOAL', 'S', 18, 'Charcoal canister temperature [deg C]'),
     ('WALLBRD', 'S', 18, 'Wallboard temperature [deg C]'),
     ('HEBOX', 'S', 18, 'HE box internal temperature [deg C]'),
+    ('HTREN', 'S', 18, 'Dewar heater enable state'),
+    ('HTRSET', 'S', 18, 'Dewar heater target temperature [deg C]'),
+    ('HTROUT', 'S', 18, 'Dewar heater output voltage [V]'),
+    ('HTRFORCE', 'S', 18, 'Dewar heater forced-output mode'),
     ('C1_TEMP', 'S', 51, 'Ctrl-1 T[C]'),
     ('C1_VOLT', 'S', 51, 'Ctrl-1 V[V]'),
     ('C1_CURR', 'S', 51, 'Ctrl-1 I[A]'),

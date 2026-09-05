@@ -353,11 +353,17 @@ def test_dewpres_formatting_and_rejection_rules():
 
 def test_fsa_cards_use_the_ens_style_and_the_hk_sentinel():
     """`FSATEMP`/`FSAHUM` -- ENS식 소수 1자리 잠정 (OI-16), sentinel 은
-    HK 온도·습도 공통 `'-999.99'` (raw spec 5.0절이 FSA 2장을 명시)."""
+    HK 온도·습도 공통 `'-999.99'` (raw spec 5.0절이 FSA 2장을 명시).
+
+    ⭐ **v1.10: `FSATEMP` 가 온도 부호 규약에 편입됐다** (`'+23.4'`).
+    ⛔ `FSAHUM`(습도)은 대상이 아니다 -- 부호가 붙지 않는다."""
     assert rawhdr.format_ens(23.44) == '23.4'
+    assert rawhdr.format_ens(23.44, signed=True) == '+23.4'
+    assert rawhdr.format_ens(-23.44, signed=True) == '-23.4'
     assert rawhdr.format_ens(None) == '-999.99'
+    assert rawhdr.format_ens(None, signed=True) == '-999.99'
     h = rawhdr.thermal_header({'fsatemp': 23.4, 'fsahum': 12.3})
-    assert h['FSATEMP'] == '23.4' and h['FSAHUM'] == '12.3'
+    assert h['FSATEMP'] == '+23.4' and h['FSAHUM'] == '12.3'
     empty = rawhdr.thermal_header(None)
     assert empty['FSATEMP'] == '-999.99' and empty['FSAHUM'] == '-999.99'
 
