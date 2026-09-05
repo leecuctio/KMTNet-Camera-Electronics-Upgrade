@@ -40,7 +40,7 @@ science 실측을 guide 에 옮긴 것이라 첫 구동에서 실현 주기를 �
 하나를 잠그면 둘이 남고, 3버퍼에서 못 받은 장이 언제 덮이는지는 ⏳ 첫 구동
 실측 항목이다 (FETCH 뒤 `lock_rbuf`/`lock_wbuf_after` 관측).  어느 쪽이든
 FETCH 상한(`[icg] fetch_timeout`)이 곧 잠금 상한이므로 **하한 미만**으로 (하한은
-`acftiming` 이 ACF 에서 셈한다 -- R2610~R2615 기준 1.251 s)
+`acftiming` 이 ACF 에서 셈한다 -- R2610~R2616 기준 1.251 s)
 두는 것이 보수적 안전선이다 -- guide 는 8.3 MiB ≈ 0.08 s 라 1 s 면 넉넉하다.
 `__init__` 이 이를 검사한다 (0 이면 유도값 60 s 로 셈한다).
 """
@@ -103,13 +103,13 @@ class GuideBackend:
         # `config` 의 `fetch_cap` 과 같은 셈).
         cap = (icfg.fetch_timeout if icfg.fetch_timeout > 0
                else max(60.0, icfg.frame_bytes / (1 << 20)))
-        if icfg.lock_buffer and cap >= self.frame_floor():
+        if icfg.lock_buffer and cap >= self.base_exptime():
             log.warning('[icg] FETCH 상한 %.1fs (fetch_timeout=%g%s) 가 프레임 하한 '
                         '%.3fs 이상이다 -- lock_buffer=true 에서 잠금이 주기를 넘으면 '
                         '못 받은 장이 덮인다 (DevNote 10.6).  하한 아래(예 1.0)로 '
                         '적을 것', cap, icfg.fetch_timeout,
                         ' -> 크기 유도' if icfg.fetch_timeout <= 0 else '',
-                        self.frame_floor())
+                        self.base_exptime())
 
     def _read_timing(self) -> dict | None:
         path = self.icfg.acf_path
@@ -125,15 +125,16 @@ class GuideBackend:
         try:
             probe = ArchonController(TAG, self.icfg)
             probe.parse_acf(path)                # 왕복 없음
-            # R2613+: flush 를 걸 수 있는 판인가 -- 호스트가 쓰는 `FirstFlush` 슬롯이
-            # 있으면 된다.  타이밍 셈(아래 형태 검사)과 **무관하게** 여기서 정한다 --
-            # 시험의 최소 ACF 는 스크립트가 없어 셈은 못 해도 flush 는 걸어야 한다.
-            # 없으면 `arm_sequence` 가 GO 를 거부한다 (R2612 이하에 Exposures=n 을
-            # 걸면 첫 장이 flush 없이 저장된다 -- 11.31 must_fix).
-            self._flush_capable = 'FirstFlush' in acftiming.parameters(probe.config)
+            # R2616+: flush 는 ACF 가 싣는다 -- 설정 메모리의 `FirstFlush=1` 상수가 모든
+            # LOADPARAMS 에 실려 코어가 `FlushFrame` 한 번을 돌고 `FirstFlush--` 로
+            # 소비한다.  호스트는 이 슬롯을 쓰지 않는다 (DevNote 11.33).  타이밍 셈(아래
+            # 형태 검사)과 **무관하게** 여기서 판정한다 -- 시험의 최소 ACF 는 스크립트가
+            # 없어 셈은 못 해도 flush 는 있어야 한다.  1 이 아니면 `arm_sequence` 가 GO 를
+            # 거부한다 (그 판에 Exposures=n 을 걸면 첫 장이 flush 없이 저장된다 -- 11.31).
+            self._flush_capable = acftiming.parameters(probe.config).get('FirstFlush') == 1
             if not self._flush_capable:
-                log.error('guide ACF 에 FirstFlush 파라미터가 없다 (%s) -- R2612 이하다. '
-                          'GO 가 거부된다.  R2613+ 를 [icg] acf 에 걸 것 (규격 10.1-2)',
+                log.error('guide ACF 의 FirstFlush 가 1 이 아니다 (%s) -- R2615 이하다. '
+                          'GO 가 거부된다.  R2616+ 를 [icg] acf 에 걸 것 (규격 10.1-2)',
                           os.path.basename(path))
             # ⚠️ 이 셈법은 **guide 타이밍 스크립트 형태** 전용이다 (FrameShift ·
             # HorizontalShift(600) · PixelFirst · CLAMP).  science ACF 는 루틴
@@ -188,9 +189,13 @@ class GuideBackend:
 
     # -- 노출 주기 (규격 10.1절) --------------------------------------------
 
-    def frame_floor(self) -> float:
-        """`EXPTIME` 의 하드웨어 하한 [s] -- 이보다 짧은 독출 개시 간격은
-        만들 수 없다 (`NoIntMS` + 트랜스퍼 + 독출)."""
+    def base_exptime(self) -> float:
+        """**기본 노출시간** [s] -- `IntMS=0` 일 때의 주기 (`NoIntMS` + 트랜스퍼 + 독출).
+
+        `EXPTIME = 기본 노출시간 + IntMS` 이고, 이보다 짧은 트랜스퍼 개시 간격은 만들
+        수 없다 (규격 10.1-1).  구 이름 `frame_floor`/'하드웨어 하한' (운영자 개명
+        2026-09-05).  설정 가능한 최소 노출시간 `exptime_min` 과 다른 물건이다.
+        """
         if self.timing:
             return self.timing['floor']
         return self.icfg.exptime_min
@@ -198,35 +203,34 @@ class GuideBackend:
     def intms_for(self, exptime_s: float) -> int:
         """요청 `EXPTIME` -> 시퀀서에 걸 `IntMS` [ms].
 
-        주기 = `IntMS` + 하한(`NoIntMS` + 트랜스퍼 + 독출) 이므로
-        `IntMS = EXPTIME - 하한` 이다.  **하한보다 짧게 요청하면 0** --
-        하드웨어가 만들 수 있는 가장 짧은 주기가 된다 (운영자 확정
-        2026-08-31: "더 작게 설정해도 최소 노출시간으로").
+        `EXPTIME = 기본 노출시간 + IntMS` 이므로 `IntMS = EXPTIME - 기본 노출시간`
+        이다.  **기본 노출시간보다 짧게 요청하면 0** -- 하드웨어가 만들 수 있는 가장
+        짧은 주기가 된다 (운영자 확정 2026-08-31: "더 작게 설정해도 최소 노출시간으로").
 
-        ⭐ 요청을 **운영 하한**(`exptime_min`, 기본 1.3 s)으로 먼저 접는다 (운영자
-        확정 2026-09-05: 하드웨어 하한 위에 여유).  뺄셈의 하한은 그대로 **하드웨어
-        하한**이다 -- 여기에 운영 하한을 넣으면 `guideexp 2` 의 실현 주기가 1.95 s
-        가 되어 헤더가 거짓이 된다.  운영 하한이 하드웨어 하한보다 작으면 하드웨어
-        하한이 이긴다 (`max(0, ...)`).
+        ⭐ 요청을 먼저 **설정 가능한 최소 노출시간**(`exptime_min`, 기본 1.3 s)으로
+        접는다 (운영자 확정 2026-09-05: 기본 노출시간 위에 여유).  뺄셈의 기준은 그대로
+        **기본 노출시간**이다 -- 여기에 최소 노출시간을 넣으면 `guideexp 2` 의 실현
+        주기가 1.95 s 가 되어 헤더가 거짓이 된다.  최소 노출시간이 기본 노출시간보다
+        작으면 기본 노출시간이 이긴다 (`max(0, ...)`).
         """
         want = max(exptime_s, float(self.icfg.exptime_min))
-        return max(0, int(round((want - self.frame_floor()) * 1000.0)))
+        return max(0, int(round((want - self.base_exptime()) * 1000.0)))
 
     def effective_exptime(self, exptime_s: float) -> float:
         """**실제로 실현되는** 독출 개시 간격 [s] -- 헤더 `EXPTIME` 은 이 값.
 
         요청값이 아니라 실현값을 싣는다 -- 규격 10.1-1 이 `EXPTIME` 을
-        "연속 두 프레임 독출 개시 시각의 간격" 으로 정의하므로, 하한에
+        "연속 두 프레임 독출 개시 시각의 간격" 으로 정의하므로, 기본 노출시간에
         걸려 못 만든 주기를 그대로 적으면 카드가 거짓말이 된다.
         `IntMS` 가 ms 단위로 반올림되는 것까지 반영한다.
 
         ⭐ **카드 해상도는 1 ms** (규격 10.1-1, 2026-09-05) -- `IntMS` 의 분해능이자
-        `DATE-OBS` 의 분해능이다.  하한이 ms 경계에 없어서(1.2506283 s) 정수 요청은
+        `DATE-OBS` 의 분해능이다.  기본 노출시간이 ms 경계에 없어서(1.2506283 s) 정수 요청은
         어느 것도 정확히 실현되지 않는데, 1.9996283 을 그대로 실으면 5.4 조건부 형
         규칙으로 카드가 실수형이 된다.  ms 로 반올림하면 `guideexp 2` -> `2`,
-        하한 미만 -> `1.251`.
+        최소 노출시간 미만 -> `1.3` (IntMS 49 + 1.2506).
         """
-        return round(self.frame_floor() + self.intms_for(exptime_s) / 1000.0, 3)
+        return round(self.base_exptime() + self.intms_for(exptime_s) / 1000.0, 3)
 
     def trigger_to_transfer(self, intms: int = 0) -> float:
         """루프 재개(직전 독출 종료) -> 이번 트랜스퍼 지연 [s].
@@ -268,31 +272,31 @@ class GuideBackend:
     def flush_duration(self) -> float:
         """flush 프레임 소요 [s] (R2613 LINE115~118) -- 규격 10.1-2 로 본 독출과 같다."""
         f = self.timing.get('flush') if self.timing else None
-        return f if f is not None else self.frame_floor()
+        return f if f is not None else self.base_exptime()
 
     # -- 연속 노출 (시퀀서 pacing) -------------------------------------------
 
     async def arm_sequence(self, frames: int, intms: int, *,
-                           flush: bool = True,
                            suffix: str = '', queue: bool = True):  # noqa: ANN201
-        """`Exposures=frames` (+ `FirstFlush=1`) 를 **한 LOADPARAMS 로** 걸고 첫 표를 돌려준다.
+        """`Exposures=frames` 를 **한 LOADPARAMS 로** 걸고 첫 표를 돌려준다.
 
-        R2613+ (규격 10.1-2·3): `go n` = flush 1회 + 독출 n회 · n장 저장.  코어가
-        `FirstFlush` 를 보고 IntUnit 없이 곧바로 FrameShift 하므로 **그 순간이 첫 저장
-        프레임의 DATE-OBS** 다 -- 표의 `armed_utc` 가 그 근사값이다.  이후 프레임은
-        `next_ticket()` 이 표만 잇는다 (DevNote 9.12).
+        R2613+ (규격 10.1-2·3): `go n` = flush 1회 + 독출 n회 · n장 저장.  flush 는 ACF
+        가 싣는다 -- R2616+ 는 설정 메모리의 `FirstFlush=1` 상수가 LOADPARAMS 마다 RAM
+        에 실려 코어가 `FlushFrame` 한 번을 돌고 `FirstFlush--` 로 소비한다 (호스트가
+        쓰는 플래그가 없다, DevNote 11.33).  코어가 IntUnit 없이 곧바로 FrameShift
+        하므로 **그 순간이 첫 저장 프레임의 DATE-OBS** 다 -- 표의 `armed_utc` 가 그
+        근사값이다.  이후 프레임은 `next_ticket()` 이 표만 잇는다 (DevNote 9.12).
 
-        ⛔ ACF 가 R2612 이하(FirstFlush/FlushFrame 없음)면 **GO 를 거부한다** -- 그
-        판에 `Exposures=n` 을 걸면 첫 장이 flush 없이 저장된다 (11.31 must_fix).
+        ⛔ ACF 의 `FirstFlush` 가 1 이 아니면(R2615 이하) **GO 를 거부한다** -- 그 판에
+        `Exposures=n` 을 걸면 첫 장이 flush 없이 저장된다 (11.31 must_fix).
         """
-        if flush and not getattr(self, '_flush_capable', False):
+        if not getattr(self, '_flush_capable', False):
             raise GuideBackendError(
-                'guide ACF has no FirstFlush/FlushFrame (R2612 or older) -- '
-                'load R2613+ or fix [icg] acf (spec 10.1-2)')
+                'guide ACF does not carry FirstFlush=1 (R2615 or older) -- '
+                'load R2616+ or fix [icg] acf (spec 10.1-2)')
         try:
             return await self.ctrl.trigger(intms, queue=queue, suffix=suffix,
-                                           exposures=frames,
-                                           flush=1 if flush else None)
+                                           exposures=frames)
         except (ArchonError, TimeoutError, OSError) as exc:
             raise GuideBackendError(
                 'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
@@ -539,7 +543,7 @@ class SimGuideBackend:
         #: 마지막으로 건 `IntMS` -- 대역이 주기를 흉내내는 근거.
         self._intms = 0
 
-    def frame_floor(self) -> float:
+    def base_exptime(self) -> float:
         return self.icfg.exptime_min
 
     def trigger_to_transfer(self, intms: int = 0) -> float:
@@ -551,11 +555,11 @@ class SimGuideBackend:
     def frameshift_to_done(self) -> float:
         # 대역은 `wait_frame` 이 scaled 로 자므로 되짚는 폭도 같은 축이어야 DATE-OBS 가
         # 단조다 (비스케일 2 s 를 빼면 뒤로 간다 -- test_guide_header_semantics).
-        return self.cfg.scaled(self.frame_floor())
+        return self.cfg.scaled(self.base_exptime())
 
     def flush_duration(self) -> float:
-        """대역의 flush 소요 -- 실기와 같이 본 독출(하한)과 같은 길이로 흉내낸다."""
-        return self.frame_floor()
+        """대역의 flush 소요 -- 실기와 같이 본 독출(기본 노출시간)과 같은 길이로 흉내낸다."""
+        return self.base_exptime()
 
     async def prepare(self) -> None:
         return None
@@ -578,7 +582,7 @@ class SimGuideBackend:
             self._flush_pending = False
             await asyncio.sleep(self.cfg.scaled(self.flush_duration()))
         period = self.cfg.scaled(
-            self.frame_floor() + max(self._intms, 0) / 1000.0)
+            self.base_exptime() + max(self._intms, 0) / 1000.0)
         for pct in (50, 100):
             await asyncio.sleep(max(period, 0.0) / 2.0)
             yield pct
@@ -593,16 +597,15 @@ class SimGuideBackend:
 
     def intms_for(self, exptime_s: float) -> int:
         want = max(exptime_s, float(self.icfg.exptime_min))
-        return max(0, int(round((want - self.frame_floor()) * 1000.0)))
+        return max(0, int(round((want - self.base_exptime()) * 1000.0)))
 
     def effective_exptime(self, exptime_s: float) -> float:
-        return round(self.frame_floor() + self.intms_for(exptime_s) / 1000.0, 3)
+        return round(self.base_exptime() + self.intms_for(exptime_s) / 1000.0, 3)
 
     async def arm_sequence(self, frames: int, intms: int, *,  # noqa: ARG002
-                           flush: bool = True,
                            suffix: str = '', queue: bool = True):  # noqa: ANN201, ARG002
         self._intms = intms
-        self._flush_pending = bool(flush)
+        self._flush_pending = True
         self._n += 1
         return _SimTicket(self._n)
 

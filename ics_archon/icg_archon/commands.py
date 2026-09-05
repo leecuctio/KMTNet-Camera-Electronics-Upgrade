@@ -48,14 +48,19 @@ VCPU 가 재시작되고 `DEWPRES` 에 결측 창이 생긴다** (매뉴얼 p.86
 * `CCDPOWON` / `CCDPOWOFF` -- CCD 전원 (`POWERON`/`POWEROFF`; ON 은 `poweron_wait` 초)
 * `ARCHON <명령 원문…>`     -- 컨트롤러 바이패스 (응답 원문을 `DONE` 으로 되돌린다)
 
-⛔ 넷 다 **취득 중이면 거부**한다 (`ERROR: … Exposure in progress -- ABORT
+⛔ 앞의 셋은 **취득 중이면 거부**한다 (`ERROR: … Exposure in progress -- ABORT
 first`) -- 히터·게이지와 반대다.  그쪽은 결측 창 하나가 대가지만, 이쪽은
-진행 중 노출 위에 `LOADPARAMS`/`RESETTIMING`/`POWEROFF` 가 들어가 **자료를
-망친다**.  ⭐ 그리고 **넷이 서로도, `GO` 도 막는다** (`_op_in_flight`) --
+진행 중 노출 위에 `LOADPARAMS`/`POWEROFF` 가 들어가 **자료를 망친다**.  ⭐ 그리고
+**셋이 서로도, `GO` 도 막는다** (`_op_in_flight`) --
 `POWERON` 의 `poweron_wait` 동안 들어온 `GO` 는 `prepare()` 가 이미 `powered`
 라 그대로 arm 해 flush 가 안 끝난 CCD 를 찍는다.  ⚠️ `EXPENABLE` 잠금과는
 **무관하게 허용**한다 (flush·전원·바이패스는 노출이 아니다) -- 잠겨 있으면
 응답에 `ExpEnable=OFF` 를 덧붙여 알리기만 한다.
+
+⭐ `ARCHON` 은 **제한이 없다** (운영자 2026-09-05 *"제한 없이 모두 풀어줘"*) -- 취득
+중이든 다른 조작이 왕복 중이든 받고, 자기도 `GO` 를 막지 않는다(`_op_in_flight` 를
+잡지 않는다).  진행 중 노출 위의 `RESETTIMING` 같은 원문이 그 프레임을 망치는 것은
+운영자의 몫이다 -- 로그에는 남는다.
 
 ⭐ 히터·게이지의 `_ctrl()` 이 아니라 **백엔드 표면**(`flush_ccd`/`power_ccd`/
 `raw_command`)을 부른다 -- 그래서 컨트롤러 없는 Sim 에서도 돈다 (Sim 의
@@ -670,8 +675,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
     def cmd_ccdflush(self, msg: Message, target: Target) -> Reply:
         """CCDFLUSH -- 유휴 CCD 를 `FlushFrame` 한 바퀴로 비운다 (프레임 없음).
 
-        백엔드 `flush_ccd()` = `FirstFlush=1`·`Exposures=0` 을 `LOADPARAMS` 로
-        걸고 설정 메모리의 `FirstFlush` 를 0 으로 되쓴다 (`controller.flush_now`,
+        백엔드 `flush_ccd()` = `Exposures=0` 을 `LOADPARAMS` 로 걸어 코어가 `FlushFrame`
+        을 한 번 돌게 한다 -- flush 는 ACF 의 `FirstFlush=1` 상수가 싣는다 (`controller.flush_now`,
         guide ACF R2613+ -- 슬롯이 없으면 `GuideBackendError` 로 `ERROR`).
         ⭐ `EXPENABLE OFF` 여도 허용한다 -- flush 는 노출이 아니다.  대신 응답에
         `ExpEnable=OFF` 를 덧붙여 잠긴 상태에서 한 일임을 남긴다.
@@ -778,8 +783,9 @@ class IcgDispatcher(sim_commands.Dispatcher):
         응답 원문을 `DONE: ARCHON <원문>` 으로 되돌린다.  `ARCHON_REPLY_MAX`
         를 넘으면 잘라 표시하고 **전문은 `log.info`** 로 남긴다.  `?xx` 거부는
         `ERROR: ARCHON rejected: <보낸 원문>`.  ⚠️ 위생 검사 없음 -- 운영자
-        도구다.  ⛔ 취득 중이면 거부한다 -- 진행 중 노출 위의 `RESETTIMING`
-        같은 원문은 그 프레임을 망친다.
+        도구다.  ⭐ **제한 없음** (운영자 2026-09-05) -- 취득 중·다른 조작 중에도
+        받고 `GO` 도 막지 않는다; 진행 중 노출 위의 `RESETTIMING` 이 프레임을
+        망치는 것은 운영자의 몫이다.
         """
         be, bad = self._guide('ARCHON')
         if bad is not None:
@@ -787,40 +793,33 @@ class IcgDispatcher(sim_commands.Dispatcher):
         text = ' '.join(msg.body.split())
         if not text:
             return Reply.error('ARCHON', 'Usage: ARCHON <command>')
-        bad = self._refuse_if_busy('ARCHON')
-        if bad is not None:
-            return bad
         note = self._lock_note()
         log.info('ARCHON by %s -- 원문 바이패스: %r%s', msg.src, text,
                  ' (EXPENABLE OFF 상태)' if note else '')
-        self._begin_op('ARCHON')
         self.app.spawn(self._do_archon(msg.src, be, text, note))
         return Reply.noop()
 
     async def _do_archon(self, dest: str, be, text: str,  # noqa: ANN001
                          note: str) -> None:
         try:
-            try:
-                reply = await be.raw_command(text)
-            except ArchonError as exc:
-                if exc.reply_error:
-                    # 컨트롤러가 `?xx` 로 거부했다 -- 내 명령이 틀린 것이고
-                    # 링크는 멀쩡하다 (`controller.cmd` 주석).
-                    log.warning('ARCHON %r -- 컨트롤러가 거부했다 (%s)', text, exc)
-                    self.emit.error(dest, 'ARCHON', 'rejected: %s' % text)
-                    return
-                log.error('ARCHON %r 실패 -- %s', text, exc)
-                self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
+            reply = await be.raw_command(text)
+        except ArchonError as exc:
+            if exc.reply_error:
+                # 컨트롤러가 `?xx` 로 거부했다 -- 내 명령이 틀린 것이고
+                # 링크는 멀쩡하다 (`controller.cmd` 주석).
+                log.warning('ARCHON %r -- 컨트롤러가 거부했다 (%s)', text, exc)
+                self.emit.error(dest, 'ARCHON', 'rejected: %s' % text)
                 return
-            except Exception as exc:  # noqa: BLE001
-                log.error('ARCHON %r 실패 -- %s', text, exc)
-                self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
-                return
-            # ⭐ 전문은 로그에 -- 응답이 잘려도 여기서 다 볼 수 있다.
-            log.info('ARCHON %r -> %d bytes: %s', text, len(reply), reply)
-            self._finish(dest, 'ARCHON', self._clip_reply(reply), note)
-        finally:
-            self._end_op('ARCHON')
+            log.error('ARCHON %r 실패 -- %s', text, exc)
+            self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
+            return
+        except Exception as exc:  # noqa: BLE001
+            log.error('ARCHON %r 실패 -- %s', text, exc)
+            self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
+            return
+        # ⭐ 전문은 로그에 -- 응답이 잘려도 여기서 다 볼 수 있다.
+        log.info('ARCHON %r -> %d bytes: %s', text, len(reply), reply)
+        self._finish(dest, 'ARCHON', self._clip_reply(reply), note)
 
     @staticmethod
     def _clip_reply(reply: str) -> str:

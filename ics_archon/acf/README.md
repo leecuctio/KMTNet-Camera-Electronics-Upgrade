@@ -11,13 +11,13 @@
 
 | 파일 | 유닛 | `TAPLINES` | `BIGBUF` | **저장** 픽셀/탭 × 줄 | IP |
 |---|---|---:|---:|---|---|
-| `KMTC_SCI_101_STA0284_R2609_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
-| `KMTC_SCI_102_STA0285_R2609_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` |
-| `KMTS_SCI_101_STA0286_R2609_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
-| `KMTS_SCI_102_STA0287_R2609_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
-| `KMTK_SCI_113_STA0200_R2609_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
-| `KMTK_SCI_113_STA0200_R2609_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
-| `KMTK_GUI_162_STA0201_R2615.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
+| `KMTC_SCI_101_STA0284_R2610_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
+| `KMTC_SCI_102_STA0285_R2610_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` |
+| `KMTS_SCI_101_STA0286_R2610_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` |
+| `KMTS_SCI_102_STA0287_R2610_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
+| `KMTK_SCI_113_STA0200_R2610_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
+| `KMTK_SCI_113_STA0200_R2610_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
+| `KMTK_GUI_162_STA0201_R2616.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -258,6 +258,65 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
 
+## R2616 -- `FirstFlush=1` 을 ACF 상수로 (2026-09-05 밤, 운영자 "단순 명료하게")
+
+    KMTK_GUI_162_STA0201_R2615.acf  ->  ..._R2616.acf   (구판은 archive/)
+    PARAMETER0="FirstFlush=0"  ->  "FirstFlush=1"     **차이는 이 한 줄뿐** (타이밍 스크립트 동일)
+
+운영자 지시: *"timing script 와 parameter 구성 단순 명료하게 … 불필요한 코드 없도록 … 최대한
+간결하게 구현해줘."*  재검토에서 불필요한 것은 스크립트가 아니라 **호스트 쪽 `FirstFlush` 왕복**
+이었다 -- GO 마다 1 을 쓰고 LOADPARAMS 뒤 0 으로 되쓰고, `set_exposures(0)` 도 0 을 쓰고, 유령
+flush 를 걱정하고, 가짜에 재점화 모사를 넣었다(아래 R2613 절 "플래그가 설정 메모리에 남는다").
+
+### 무엇이 바뀌나
+
+설정 메모리의 `FirstFlush` 를 **늘 1** 로 둔다.  `LOADPARAMS` 마다 RAM 에 1 이 실리고 `FlushFrame`
+이 `FirstFlush--` 로 한 번 소비한다 -- **모든 LOADPARAMS 가 flush 한 번을 싣는 것이 설계**다:
+
+| 호스트 동작 | 왕복 | 코어 |
+|---|---|---|
+| `GO n` | `IntMS`·`Exposures=n` WCONFIG + LOADPARAMS | flush 1회 → n 장 (규격 10.1-3 그대로) |
+| ABORT / EXPENABLE=0 | `Exposures=0` WCONFIG + LOADPARAMS + **RESETTIMING** | 진행 중 사이클 끊김 → flush 1회 → 유휴 |
+| `CCDFLUSH` (유휴) | `Exposures=0` WCONFIG + LOADPARAMS | flush 1회 → 유휴 |
+| STOP | `Exposures=0` WCONFIG + LOADPARAMS | 현재 프레임 저장 → **꼬리 flush 1회** → 유휴 |
+
+호스트가 `FirstFlush` 를 쓰는 자리가 **없다** (`controller.trigger`/`set_exposures` 에서 지웠다).
+종전의 "유령 flush" 는 이제 설계다 -- STOP 뒤 1.25 s 클록이 한 번 더 도는 것이 유일한 부작용이고,
+마지막 프레임 뒤 CCD 를 비워 두는 효과라 받았다(규격 10.1-7 에 적었다).  ⚠️ flush 가 도는 중에 다음
+`GO` 의 LOADPARAMS 가 오면 RAM 이 다시 1 이 되어 **flush 가 두 번** 돈다(2.5 s) -- 옳고, 느릴 뿐이다.
+
+### 호스트 판정
+
+`icg_archon` 은 ACF 의 `FirstFlush` 가 **1 인지** 본다(`GuideBackend._flush_capable`) -- 슬롯이 있기만
+해서는 안 된다.  0 인 판(R2613~R2615)에 `Exposures=n` 을 걸면 첫 장이 flush 없이 저장되므로 GO 를
+거부한다.
+
+### 남긴 것 -- `ContinuousExposures`
+
+호스트가 안 쓰는 값이지만 **`tools/ics_archon_buftest.py` 가 연속 노출 모드에 쓴다**(슬롯을 이름으로
+찾는다).  빼면 그쪽 도구가 깨져 IF 한 줄·슬롯 하나는 남겼다.  그 밖의 STA 템플릿 일반성(`PreSkipLines`·
+`PostSkipLines`·`OverscanLines` 0 값, 각 1틱 CALL)은 줄 번호 재배치의 위험이 이득보다 커 손대지 않았다
+-- "간결" 은 우리가 더한 것에서 찾았다.
+
+## science R2610 -- flush 는 `FirstFlush` 하나로 · `LINE9/LINE10` 삭제 (2026-09-05 밤)
+
+    KMT?_SCI_*_R2609_*.acf  ->  ..._R2610_*.acf   (6장, 구판은 archive/)
+    LINE9 ="#X; CALL Prep"   ->  LINE9=      (빈 줄 -- 뒤 번호는 안 밀린다)
+    LINE10="#X; CALL Flush"  ->  LINE10=     (빈 줄)
+    PARAMETER0="FirstFlush=0"  그대로 -- `[archon] ccdflush` 옵션이 기동 때 1/0 을 쓴다
+
+`ccdflush=true` 의 **기제**가 바뀌었다(하는 일은 같다).  종전(R2609 까지)은 호스트가 `LINE9/LINE10`
+의 `#` 를 여닫고 `LOADTIMING` 을 내는 일이었다 -- 코어 리셋 · `Exposures=0` 고정 · 두 단계 되읽기가
+따랐고 유령 독출을 한 번 낳았다(DevNote 11.13~11.14).  science 는 **노출마다 LOADPARAMS 를 내므로**
+설정 메모리 `FirstFlush=1` 이면 코어가 매 노출 앞에 `FlushFrame`(Prep+Flush)을 돌고 `Exposure:` 로
+온다 -- 같은 결과(운영자 확인 2026-09-05: *"CCDFLUSH=True 일 때 매 노출 전에 prep+flush, False 면
+바로 적분"*)를 **WCONFIG 한 줄**(`controller.set_first_flush`)로 얻는다.  그래서 `LINE9/LINE10` 은 죽은
+줄이 되어 지웠다.  `CCDFLUSH` 명령은 옵션이 꺼져 있으면 잠시 1 로 올렸다가 되돌린다(`flush_now`).
+
+⚠️ guide 와 다르게 science 의 ACF 값은 **0** 이다 -- guide 는 flush 가 언제나 옳지만 science 는 운영
+옵션(평상 false)이기 때문이다.  ⛔ 호스트는 **슬롯 이름**을 본다 -- R2608 의 `PARAMETER0` 은
+`ContinuousExposures` 라 번호만 믿으면 그 파라미터를 덮는다.
+
 ## R2615 -- `SkipLine` 의 HorizontalShift 가 DG=LOW 로 돌았다 (2026-09-05, 운영자 지적)
 
     KMTK_GUI_162_STA0201_R2614.acf  ->  ..._R2615.acf   (구판은 archive/)
@@ -346,9 +405,11 @@ STA 가 준 `Prep`(ACTPREP 펄스)·`Flush`(`SkipLine` 4900 회) 시퀀스를 �
 guide R2612 는 유휴 루프의 `SkipLine` 을 뺐지만(science 독출 crosstalk 제거), science 는 **유휴
 중에도 계속 비워 주는 것이 필요하다**(운영자 확정 2026-09-05, R2612 절).  그래서 `LINE4="X; CALL
 SkipLine"` 으로 한 줄 밀렸을 뿐이고, 빈 `LINE5` 를 써서 `LINE6`(Exposure:) 이하 번호는 안 밀렸다 --
-`set_ccdflush()` 가 보는 `LINE9`/`LINE10` 이 그대로다.
+`set_ccdflush()` 가 보는 `LINE9`/`LINE10` 이 그대로다 (⚠️ R2610 에서 그 두 줄은 지웠다 -- 위 절).
 
 ### ⛔ 슬롯 0 · 설정 메모리 잔류
+
+> ⚠️ 잔류 규칙은 **R2610 에서 닫혔다** -- `FirstFlush` 는 `ccdflush` 옵션이 기동 때 한 번 쓰는 값이고 호스트가 프레임마다 되쓰지 않는다 (위 "science R2610" 절).  슬롯 0 은 그대로다.
 
 guide R2613 절의 두 ⛔ 가 그대로 적용된다.  `FirstFlush` 는 **PARAMETER0** 이어야 한다 --
 LOADPARAMS 가 슬롯 순서로 적용하고(매뉴얼 p.52) 유휴 루프가 µs 라, `Exposures`(슬롯 1) 뒤에
@@ -462,6 +523,8 @@ p.2 note 2 공식으로 5.4e-4~1.1e-3 e/px/s, 보수적 바닥값 0.01 을 두�
 갔다.  잔여 창은 두 LOAD 가 20 ns 안에 잇따르는 경우뿐 -- 실질 0.
 
 ### ⛔ 플래그가 설정 메모리에 남는다
+
+> ⚠️ **R2616 에서 닫혔다** -- 설정 메모리의 1 은 이제 상수고 "모든 LOADPARAMS 가 flush 한 번을 싣는다" 가 설계다.  호스트의 되쓰기는 없다 (위 R2616 절).  아래는 R2613~R2615 의 기록.
 
 `LOADPARAMS`/`LOADTIMING`/`APPLYALL` 은 설정 메모리의 파라미터를 **전부** 다시 태운다.
 코어는 `FirstFlush--` 로 자기 값을 깎지만 **설정 메모리는 1 그대로**라, 그 뒤 어떤

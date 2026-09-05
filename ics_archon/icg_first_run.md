@@ -37,7 +37,7 @@
 | **링크가 서나** | `ping 10.0.0.162` | ✅ **해결법이 확정돼 있다** -- 광 스위치허브의 **포트별 auto-negotiation 을 해제하고 고정 1 G** 로 둔다 (운영자 2026-09-04).  Archon 은 1 Gbps 전용(매뉴얼 p.9)이고 SFP+ 는 자동협상을 하지 않는다.  ⚠️ **스위치를 교체·포트를 옮기면 그 설정이 안 따라온다** -- 링크가 안 서면 모듈·케이블보다 **포트 설정을 먼저** 본다.  자세히는 [INSTALL.md](INSTALL.md) "벤치 네트워크" |
 | ⭐ **`Sync In` 이 비었나** | 컨트롤러 뒤판 배선 | ⛔ **master 의 `Sync Out` 이 이 유닛 `Sync In` 에 물려 있으면 노출이 진행되지 않는다** (운영자 실기 확인 2026-09-04).  `POWER=4`·`POWERGOOD=1` 인데 `FRAME` 이 영구히 0 이면 이것부터 -- `POWERGOOD` 은 **자기 전원만** 보고하고 외부 클록 의존을 보지 않는다.  README "프레임이 안 나올 때" |
 | guide 컨트롤러 IP | `[icg] ctrl_host` | **`10.0.0.162`** — 정본은 ACF 안의 `IP=` 키다 (`APPLYALL` 이 심는 값).  호스트는 `10.0.0.201`(np0)/`10.0.0.202`(np1) |
-| ACF 경로 | `[icg] acf` | `acf/KMTK_GUI_162_STA0201_R2615.acf` (현행 유일본) |
+| ACF 경로 | `[icg] acf` | `acf/KMTK_GUI_162_STA0201_R2616.acf` (현행 유일본) |
 | 사이트 | `[node] observatory` | **`KASI`** — `TESTBED` 면 기동을 거부한다 (D-017) |
 | HK 스냅샷 짝 | `[hk] log_dir`+`latest_name` ↔ science `[archon] hk_latest` | **같은 파일**을 가리켜야 한다. 한쪽만 바꾸면 science 5.6절 HK 카드가 조용히 전부 sentinel 이 된다 |
 | 포트 | `[transport] bind_port` | **`6601`**(ICG 몫, 2026-09-03 배정).  ICS 는 6600 이고 `ics_sim` 기본값도 6600 이라 **비워 두면 같은 값으로 떨어져** 한 호스트에서 둘 다 못 뜬다 — 기동 검사가 알린다.  배정표는 [INSTALL.md](INSTALL.md).  ⭐ 레거시는 ICG 가 **Guide server**(`.108`, `TC`·`ABC` 와 같은 호스트)에서 돌고 ICS·XIS 는 **Science server**(`.109`)라 포트가 같아도 호스트가 달랐다 (icg_legacy_report 3절) |
@@ -52,7 +52,7 @@
 ## 1단계 — probe 읽기 전용 ⭐ **`STATUS` 원문을 확보하는 단계** (전원 안 켬)
 
 ```bash
-python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2615.acf | tee probe1_guide.log
+python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2616.acf | tee probe1_guide.log
 ```
 
 ⚠️ **`--unit guide` 를 빠뜨리지 말 것.** science 10자리 자리 표로 재면
@@ -115,11 +115,11 @@ python3 -u -m icg_archon | tee icg_boot.log
 | 항목 | 기대 | 실측 |
 |---|---|---|
 | `CCDPOWON` | `DONE: CCDPOWON Power=ON` 이 **`poweron_wait`(12 s) 뒤**에 온다. 그 사이 `go` 는 `ERROR: GO Busy with CCDPOWON -- wait for its DONE` | |
-| `CCDFLUSH` | `DONE: CCDFLUSH Flushed=1`. `FRAME` 의 `BUFnFRAME` 이 **안 는다**(flush 는 프레임을 안 만든다, R2613+). `RCONFIG` 로 `FirstFlush=0` 이 되돌아왔나 | |
-| ⭐ flush 소요 | `DONE` 까지 ≈ 하드웨어 하한 1.2506 s — 4단계 주기 실측의 예고편 (규격 OI-26 ①) | |
+| `CCDFLUSH` | `DONE: CCDFLUSH Flushed=1`. `FRAME` 의 `BUFnFRAME` 이 **안 는다**(flush 는 프레임을 안 만든다, R2613+). `RCONFIG` 로 `FirstFlush=1` 이 **그대로**인가 (R2616 상수 — 호스트가 안 쓴다) | |
+| ⭐ flush 소요 | `DONE` 까지 ≈ 기본 노출시간 1.2506 s — 4단계 주기 실측의 예고편 (규격 OI-26 ①) | |
 | `ARCHON STATUS` | `DONE: ARCHON POWERGOOD=1 …` 원문. 1800 B 넘으면 `...(+N bytes truncated, see log)` 가 붙고 전문은 `icg_archon.cmd` 로그에. ⭐ **이 응답 원문을 파일로 남긴다** — guide `.162` 의 STATUS 실물이 저장소에 한 번도 없다(11.30) | |
 | `ARCHON` 거부 | 틀린 명령(예 `ARCHON WCONFIGZZZZ`)은 `ERROR: ARCHON rejected: …`. ⚠️ **컨트롤러는 모르는 이름에 무응답**이라 소문자 `archon status` 는 시한 초과 → 링크 재수립 → `Failed`. 명령 이름은 대문자로 | |
-| 취득 중 거부 | `go 5` 도는 동안 `ccdflush` → `ERROR: CCDFLUSH Exposure in progress -- ABORT first` (히터 명령과 달리 **거부**다) | |
+| 취득 중 거부 | `go 5` 도는 동안 `ccdflush` → `ERROR: CCDFLUSH Exposure in progress -- ABORT first` (히터 명령과 달리 **거부**다). ⭐ `archon STATUS` 는 취득 중에도 `DONE: ARCHON …` — 제한 없음(2026-09-05) | |
 | `CCDPOWOFF` | `DONE: CCDPOWOFF Power=OFF`. 다음 `go` 가 `prepare()` 로 다시 켠다 | |
 | 잠금과의 관계 | `expenable off` 뒤 `ccdflush` 는 되고 응답에 `(ExpEnable=OFF)` 가 붙는다 — flush 는 노출이 아니다 | |
 
@@ -137,7 +137,7 @@ go 20
 > `dark` 의 인자는 `OBJECT` 카드가 된다. guide 는 `bias`/`dark` 에서도
 > **주기를 0 으로 만들지 않는다** — `EXPTIME` 이 셔터 노출이 아니라 **독출
 > 개시 간격**이라 0 이 실현 불가능한 값이기 때문이다. `go n` 은 n장이고,
-> R2613+: 앞에 **flush 1회**가 붙는다 -- 프레임을 만들지 않는다 (`Exposures=n` + `FirstFlush=1` 을 한 LOADPARAMS 로).
+> R2613+: 앞에 **flush 1회**가 붙는다 -- 프레임을 만들지 않는다 (`Exposures=n` 을 한 LOADPARAMS 로 — flush 는 ACF 상수 `FirstFlush=1` 이 싣는다, R2616).
 
 | `EXPTIME` 지시 | 실현 주기 (중앙값) | `간격이 밀렸다` 경고 | FETCH 초 | 저장 파일 수 |
 |---|---|---|---|---|
@@ -149,7 +149,7 @@ go 20
 
 | 항목 | 기대 | 실측 |
 |---|---|---|
-| ⭐ **하한 클램프** | `guideexp 1` (하한 미만) → **거부가 아니라 하한으로 눌러 담는다.** 헤더 `EXPTIME` 은 요청값이 아니라 **실현값** | |
+| ⭐ **최소 노출시간 클램프** | `guideexp 1` (설정 가능한 최소 노출시간 1.3 s 미만) → **거부가 아니라 1.3 s 로 눌러 담는다** (`IntMS` 는 기본 노출시간 1.2506 기준 49 ms). 헤더 `EXPTIME` 은 요청값이 아니라 **실현값** | |
 | ⭐ **`DATE-OBS`** | 직전 트랜스퍼 시각 + **6.8 ms**. 연속 두 파일의 `DATE-OBS` 차 ≈ 실현 주기여야 한다 (규격 10.5절 6번 불변식) | |
 | ⭐ **3버퍼 잠금** | 로그의 `RBUF`/`WBUF` — `LOCK` 이 반영되나, 엔진이 잠긴 버퍼를 피하나. ⚠️ science `--hold 20` 실측은 **2버퍼** 결과다, 옮겨 적지 말 것 | |
 | guide FETCH | 8.3 MiB. science 실측 99~107 MiB/s 를 옮기면 ≈0.08 s — `fetch_timeout=1.0` 이 12배 여유인지 확인 | |
@@ -167,6 +167,7 @@ go 20
 | `busy` | 꼬리를 소화하는 동안 True — **그것이 의도다** | |
 | 다음 `go` | 꼬리를 자기 **첫 저장** 프레임으로 오인하지 않는다 (기준선 오염) | |
 | `abort` 두 번 | 두 번째가 뒷정리를 끊지 않는다. IDLE 통보는 **마지막 요청자**에게 (`df4d4fc` 확인 항목) | |
+| ⭐ `stop` 뒤 꼬리 flush (R2616) | 마지막 저장 프레임 뒤 `FRAME` 은 **안 늘고** ≈ 1.25 s 클록이 한 번 더 돈다(`Exposures=0` 의 LOADPARAMS 가 ACF 상수 `FirstFlush=1` 을 다시 싣는다). 그 뒤 조용 | |
 
 **통과**: `DONE: ABORT` 뒤 `EXPSTATUS=IDLE` 하나, 그리고 다음 `go` 가 정상.
 
@@ -268,12 +269,56 @@ de-assert 가 된다 -- 그것은 배선 문제라 ACF·매뉴얼로는 못 가�
   (warm-up 인지 고장인지는 시간이 가른다)
 - `RCONFIG` 값이 파일값과 다르다 → **시작하지 않는다**
 
+## 부록 -- DG 정적 덤프 실측 (`FRAME6`/`IMAGE6` DG=0 V 를 고칠지의 근거) — 2026-09-05 신설
+
+물음(운영자): *"DG 로 register 가 통째로 비워지는지 실측 시험이 필요하면 시험 프로시저 준비해줘."*
+현행 R2616 의 flush 는 `SkipLine` 에서 DG=HIGH 로 600 번 시프트하므로(R2615) 답이 무엇이든 **flush 는 안전**하다.
+이 실측이 정하는 것은 **FrameShift(1033 사이클) 동안 DG 를 올려 두면 레지스터에 도착하는 전하가 R 클록 없이도
+덤프되는가** — 그렇다면 `FRAME6`/`IMAGE6` 의 DG=A_LOW(0 V, STA 템플릿 슬립 — `acf/README.md` R2614 절)를 DG_HIGH
+로 고치는 후속 판(R2617)이 정당하다.
+
+### 원리
+
+정상 프레임에서 레지스터 잔량은 `LINE12="DGLOW; CALL HorizontalShift(600)"` 이 독출 전에 쓸어 낸다.  그 줄을
+**시프트 없는 한 줄**로 바꾸면 잔량이 **첫 독출 행에 더해져** 나온다 — 그것이 측정량이다.  잔량의 주 원천은
+FrameShift 가 store 를 1033 행 밀어 레지스터로 떨어뜨리는 전하(store 는 직전 독출 ≈1.25 s 동안 쌓인다)이므로,
+**약한 균일광**(돔 플랫 램프 최저 — 정상 프레임 수준 수십 e⁻/픽셀) 아래에서 재면 신호가 뚜렷하다: 잔량 ≈ 1033 ×
+(행당 store 전하) → 첫 행이 나머지 행의 수백~천 배.  ⚠️ 어둠에서 30 분 유휴로 재는 방법은 `go 1` 의 첫 flush 가
+image/store 를 비워 버려 신호가 남지 않는다 — 균일광이 맞다.
+
+### 전제
+* CCD 저온 안정 · 전원 ON · 균일광 세기는 **단계 B 의 첫 행이 포화하지 않도록** 먼저 맞춘다(정상 프레임 수준 ≤ 50 e⁻).
+* 시험 ACF 는 R2616 사본에서 표의 줄/상태만 바꾼다.  `Pixels`·`Lines`·`FlushLines` 는 손대지 않는다.  판 사이에는
+  `APPLYALL` 뒤 `POWERON` 이 다시 필요하다(매뉴얼 p.51).
+* `go 3` 으로 찍고 **2·3 번째 파일**을 쓴다(1 번째의 직전은 flush 라 store 축적 시간이 다르다).  `guideexp 1.3`.
+
+### 절차
+| 단계 | 시험 ACF | 보는 것 |
+|---|---|---|
+| A 기준선 | R2616 그대로 | 첫 행 중앙값 − 2~10 행 중앙값 = Δ₀ (≈ 0 이어야 한다: 600 번 시프트가 레지스터를 비운다) |
+| B 시프트 생략 · DG 낮음 | `LINE12="DGLOW; X(1)"` | Δ_B — 잔량이 첫 행에 더해진다(양수, "잔량이 있다" 의 증거이자 척도) |
+| C 시프트 생략 · DG 높음(정적) | `LINE12="DGHIGH; X(10000)"` (100 µs, R 클록 없음) | Δ_C — **Δ_C ≈ Δ₀ 면 정적 DG 가 이미 찬 레지스터를 비운다**, Δ_C ≈ Δ_B 면 못 비운다 |
+| D FrameShift 중 DG 높음 (본 물음) | `FRAME6`/`IMAGE6` 의 DG 항을 `DG_HIGH,1,0` 으로 + `LINE12="DGLOW; X(1)"` | Δ_D — **Δ_D ≈ Δ₀ 면 도착하는 전하가 시프트 없이 덤프된다** → FRAME6 수정 정당 |
+| E (선택) 부작용 | D 의 상태표 + `LINE12` 원상 | 배경·첫 행·노이즈가 A 와 같은가 |
+
+각 단계 **3 회**, 첫 행/다음 9 행의 중앙값 차를 `GAIN` 으로 e⁻ 환산해 표에 적는다.
+
+### 판정
+* Δ_D ≈ Δ₀ (Δ_B 의 10 % 이하): FrameShift 중 DG=HIGH 가 레지스터를 비운다 → `FRAME6`/`IMAGE6` DG_HIGH 후속 판(R2617) 정당.
+* Δ_D ≈ Δ_B: DG 는 시프트(R 클록) 중에만 덤프한다 → FRAME6 은 그대로, flush 는 현행(R2615 SkipLine DGHIGH)으로 충분하고 그것이 유일한 길.
+* Δ_C 와 Δ_D 가 갈리면(C 만 ≈ Δ₀): 정적 DG 는 비우지만 도착 중 전하는 못 잡는다 → FrameShift 뒤 `DGHIGH; X(n)` 한 줄을 넣는 R2617 대안.
+* Δ_B ≈ Δ₀ (잔량 자체가 없다): 광량이 너무 약하다 → 세기를 올려 다시.
+
+### 멈출 조건
+* 첫 행 포화/블루밍 — 결과 폐기, 광량을 낮춰 재시작.
+* 단계 B~D 에서 `ERROR`/`간격이 밀렸다` — 시험 ACF 가 주기를 바꿨다는 뜻이니 표의 줄 외에 바뀐 것이 없는지 대조.
+
 ## 무엇이 나오면 멈추나
 
 - 1단계 요약에 `문제` 가 하나라도 (자리 표·결측·기하)
 - 기하가 4224 x 1033 이 아니면 — 본편이 fetch 앞에서 거부한다 (바이트로 대조한다)
 - `POWER` 가 4 에 못 닿는데 바이어스 값이 그럴싸하면 — `POWER≠4` 에서는 전 채널 ~0 V 여야 한다 (p.77)
-- 실현 주기가 하한의 2배를 넘으면 — 원인(pacing / FETCH / 링크)을 가르기 전에 계속 찍지 않는다
+- 실현 주기가 기본 노출시간의 2배를 넘으면 — 원인(pacing / FETCH / 링크)을 가르기 전에 계속 찍지 않는다
 - `프레임 번호가 뒤로 갔다` ERROR — 되감김이다. **그 값이 곧 `BUFnFRAME` 의 폭**이므로 적어 두고 멈춘다
 
 ## 끝나고 할 것
@@ -282,6 +327,6 @@ de-assert 가 된다 -- 그것은 배선 문제라 ACF·매뉴얼로는 못 가�
    HEATER_FIELD_CANDIDATES` 를 확정된 한 줄로 줄인다.
 2. 실측값·경위는 DevNote 9장에, **결과와 실행법은 이 문서와 보고서**에
    (문서 층을 섞지 않는다).
-3. `[icg] exptime_min` 은 그대로 둔다 — **정본은 ACF 계산값**이고 ini 는
-   ACF 를 못 읽을 때의 대체값이다.
-4. 실현 주기가 확정되면 `[icg] fetch_timeout` 이 여전히 하한 아래인지 다시 본다.
+3. `[icg] exptime_min`(설정 가능한 최소 노출시간, 1.3) 은 그대로 둔다 — 기본 노출시간의
+   **정본은 ACF 계산값**이고 ini 값은 그 위의 정책이다(ACF 를 못 읽을 때는 대체값 노릇도 한다).
+4. 실현 주기가 확정되면 `[icg] fetch_timeout` 이 여전히 기본 노출시간 아래인지 다시 본다.

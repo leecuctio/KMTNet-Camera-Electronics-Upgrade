@@ -225,20 +225,20 @@ class GuideSequencer:
         try:
             requested = float(st.exptime)
             # **하한 아래는 눌러 담는다 -- 거부하지 않는다** (운영자 확정
-            # 2026-08-31).  접는 기준은 **운영 하한** `exptime_min`(기본 1.3 s,
-            # 운영자 확정 2026-09-05 -- 하드웨어 하한 위 여유)이고, IntMS 의 뺄셈은
-            # 그대로 **하드웨어 하한**(`acftiming`: NoIntMS + 트랜스퍼 + 독출)이다
-            # -- `backend.intms_for/effective_exptime` 이 둘을 가른다.
+            # 2026-08-31).  접는 기준은 **설정 가능한 최소 노출시간** `exptime_min`(기본
+            # 1.3 s, 운영자 확정 2026-09-05 -- 기본 노출시간 위 여유)이고, IntMS 의 뺄셈은
+            # 그대로 **기본 노출시간**(`acftiming`: NoIntMS + 트랜스퍼 + 독출 = IntMS=0 의
+            # 주기)이다 -- `backend.intms_for/effective_exptime` 이 둘을 가른다.
             #
             # ⚠️ 그때 헤더 `EXPTIME` 은 **요청값이 아니라 실현값**이다 --
             # 10.1-1 이 이 카드를 "연속 두 독출 개시의 간격" 으로 정의하므로
             # 못 만든 주기를 적으면 카드가 거짓말이 된다.
-            floor = self.backend.frame_floor()
+            floor = self.backend.base_exptime()
             intms = self.backend.intms_for(requested)
             exptime = self.backend.effective_exptime(requested)
             if exptime > requested + 1e-6:
-                log.info('EXPTIME %g s 는 하한 %.3f s 보다 짧다 -- 하한으로 '
-                         '담는다 (헤더에는 실현값 %.3f s 를 싣는다)',
+                log.info('EXPTIME %g s 는 최소 노출시간보다 짧다 -- 기본 노출시간 %.3f s '
+                         '위로 담는다 (헤더에는 실현값 %.3f s 를 싣는다)',
                          requested, floor, exptime)
                 st.exptime = exptime
 
@@ -278,7 +278,7 @@ class GuideSequencer:
             saved = 0
             fs_to_done = self.backend.frameshift_to_done()
             flush_dur = self.backend.flush_duration()
-            floor = self.backend.frame_floor()
+            floor = self.backend.base_exptime()
 
             stopped = False
             for k in range(count):
@@ -289,13 +289,14 @@ class GuideSequencer:
 
                 orig_suffix = st.next_suffix()
                 if not armed:
-                    # ⭐ **한 번만 건다** -- `Exposures=n` + `FirstFlush=1` 을 한 LOADPARAMS 로.
+                    # ⭐ **한 번만 건다** -- `Exposures=n` 을 한 LOADPARAMS 로 (flush 는 ACF 의
+                    # `FirstFlush=1` 상수가 싣는다, DevNote 11.33).
                     # 시퀀서가 flush 뒤 유휴 없이 n 장을 연달아 찍는다.  ⚠️ 걸기 **전에**
                     # 표시한다 -- LOADPARAMS 직후 ABORT 가 들어오면 컨트롤러는 이미 돌고
                     # 있는데 표시가 없으면 아무도 안 세운다.
                     armed = True
                     ticket = await self.backend.arm_sequence(
-                        count, intms, flush=True, suffix=orig_suffix, queue=True)
+                        count, intms, suffix=orig_suffix, queue=True)
                     t_arm_mono = getattr(ticket, 'armed_mono', None)
                     if t_arm_mono is None:
                         t_arm_mono = time.monotonic()
@@ -316,7 +317,7 @@ class GuideSequencer:
                 done_mono = time.monotonic()
                 done_utc = utcnow()
 
-                # 가드는 **하드웨어 타이밍 모델이 있을 때만** 건다 -- 실기(R2615)는 늘
+                # 가드는 **하드웨어 타이밍 모델이 있을 때만** 건다 -- 실기(R2616)는 늘
                 # 있고, 스크립트 없는 시험 ACF 나 대역은 모델이 없어 기준이 없다
                 # (ini 하한 2.0 s 를 그대로 쓰면 ms 로 도는 가짜의 첫 장을 다 버린다).
                 if k == 0 and getattr(self.backend, 'timing', None) is not None:
@@ -446,7 +447,7 @@ class GuideSequencer:
         운영자 2026-09-05: *"노출 중 EXPENABLE=False 나 abort 시에 리드아웃은
         진행해서 CCD 를 비우는 것이 좋아 … 디지타이징 필요 없이 비우기만 하는
         skipline"*.  그래서 `backend.abort_flush()` 다 -- `Exposures=0`·`FirstFlush=1`
-        LOADPARAMS → **`RESETTIMING`** → 설정 메모리 `FirstFlush=0` 되쓰기.  진행 중
+        LOADPARAMS → **`RESETTIMING`**.  진행 중
         적분·독출은 그 자리에서 끊기고(버퍼 미완료, 프레임 번호 불변) 코어는 `Start:`
         에서 `FlushFrame` 으로 뛰어 CCD 를 비운 뒤 `IF Exposures`(0) 로 유휴가 된다.
         **프레임이 나오지 않으므로 꼬리 배수가 없다** -- 대신 flush 한 바퀴를
@@ -636,7 +637,7 @@ class GuideSequencer:
         기다리는 헛수고다 (3차 반증 -- 종전 2주기는 그 헛수고를 두 배로 했다).
         대역(sim)은 꼬리가 없어 건너뛴다.
         """
-        period = self.backend.frame_floor() + intms / 1000.0
+        period = self.backend.base_exptime() + intms / 1000.0
         # ⚠️ 조용함 확인이 홉마다 한 주기를 더 쓸 수 있으므로 상한도 함께 넓힌다.
         limit = period * (_MAX_TAIL_HOPS + 1) + 2.0
         armed_mono = getattr(ticket, 'armed_mono', None)

@@ -191,7 +191,7 @@ class ArchonBackend:
     # -- 운영자 명령 (2026-09-05) ---------------------------------------------
 
     async def flush_ccd(self, tags=None) -> list[str]:  # noqa: ANN001
-        """`CCDFLUSH` -- 유휴 상태의 CCD 를 한 바퀴 비운다 (science R2609+ FlushFrame =
+        """`CCDFLUSH` -- 유휴 상태의 CCD 를 한 바퀴 비운다 (science R2610+ FlushFrame =
         Prep + Flush).  시험용이다 -- science 는 abort 뒤 flush 가 필요 없다(운영자).
         돌린 컨트롤러 태그 목록을 돌려준다."""
         done = []

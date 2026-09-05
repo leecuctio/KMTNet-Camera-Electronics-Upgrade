@@ -177,12 +177,14 @@ class IcsDispatcher(Dispatcher):
     핸들러는 동기 함수인데 왕복(특히 `POWERON` 의 flush 대기 수 초)이 필요하기
     때문이고, `ics_sim` 의 `ERASE`/`SHOPEN` · icg 의 `HTRSET` 이 쓰는 **같은 선례**다.
 
-    ⛔ **취득 중(`seq.busy`)이면 넷 다 거부한다** (`BUSY_TEXT`).  진행 중 노출 위에
-    `LOADPARAMS`(flush) · `POWEROFF` · `RESETTIMING`(바이패스 원문) 이 들어가면
-    자료를 망친다.  ⭐ 반대 방향도 막는다 -- 넷 중 하나가 **돌고 있는 동안 `GO`** 는
-    거부한다 (`_op_inflight`).  `CCDPOWOFF` 의 `POWEROFF` 가 아직 안 나갔는데 `GO`
-    가 `prepare()` 를 지나면(`powered` 가 아직 True) 노출 도중에 전원이 내려간다.
-    같은 이유로 운영자 명령끼리도 한 번에 하나다.
+    ⛔ **취득 중(`seq.busy`)이면 앞의 셋은 거부한다** (`BUSY_TEXT`).  진행 중 노출 위에
+    `LOADPARAMS`(flush) · `POWEROFF` 가 들어가면 자료를 망친다.  ⭐ 반대 방향도 막는다 --
+    셋 중 하나가 **돌고 있는 동안 `GO`** 는 거부한다 (`_op_inflight`).  `CCDPOWOFF` 의
+    `POWEROFF` 가 아직 안 나갔는데 `GO` 가 `prepare()` 를 지나면(`powered` 가 아직 True)
+    노출 도중에 전원이 내려간다.  같은 이유로 운영자 명령끼리도 한 번에 하나다.
+    ⭐ `ARCHON` 은 **제한이 없다** (운영자 2026-09-05 *"제한 없이 모두 풀어줘"*) -- 취득
+    중이든 다른 조작 중이든 받고, `_op_inflight` 도 잡지 않는다(`GO` 를 막지 않는다).
+    원문이 자료를 망치는 것은 운영자의 몫이다 -- 로그에는 남는다.
     """
 
     def __init__(self, app) -> None:  # noqa: ANN001
@@ -278,8 +280,12 @@ class IcsDispatcher(Dispatcher):
         self.app.spawn(self._finish_op(dest, cmdword, work))
         return Reply.noop()
 
-    async def _finish_op(self, dest: str, cmdword: str, work) -> None:  # noqa: ANN001
+    async def _finish_op(self, dest: str, cmdword: str, work, *,  # noqa: ANN001
+                         track: bool = True) -> None:
         """`work` 가 돌려준 본문을 `DONE` 으로, 예외는 `ERROR: <cmd> Failed: …` 로.
+
+        `track=False`(`ARCHON`)면 `_op_inflight` 를 건드리지 않는다 -- 잡지도 않았으니
+        내리지도 않는다 (다른 명령의 표시를 지우면 안 된다).
 
         ⚠️ `except Exception` 은 `CancelledError` 를 잡지 않는다(3.8+ BaseException) --
         종료가 태스크를 취소하면 응답 없이 끝나고 `finally` 만 표시를 내린다.
@@ -299,7 +305,8 @@ class IcsDispatcher(Dispatcher):
                             % (type(exc).__name__, _fail_text(exc)))
             return
         finally:
-            self._op_inflight = ''
+            if track:
+                self._op_inflight = ''
         self.emit.done(dest, cmdword, body)
 
     # -- CCDFLUSH ----------------------------------------------------------------
@@ -307,9 +314,10 @@ class IcsDispatcher(Dispatcher):
     def cmd_ccdflush(self, msg: Message, target: Target) -> Reply:
         """CCDFLUSH [MK|NT|ALL] -- 유휴 CCD 를 FlushFrame 한 바퀴로 비운다.
 
-        `backend.flush_ccd()` -> `controller.flush_now(reset=False)`: `FirstFlush=1` ·
-        `Exposures=0` 을 `LOADPARAMS` 로 걸고(science ACF R2609+ 의 `FlushFrame` =
-        Prep + Flush) 설정 메모리의 `FirstFlush` 를 0 으로 되쓴다.  프레임은 안 만든다.
+        `backend.flush_ccd()` -> `controller.flush_now(reset=False)`: `Exposures=0` 을
+        `LOADPARAMS` 로 걸어 코어가 `FlushFrame`(science ACF R2610+: Prep + Flush)을 한
+        번 돌게 한다 -- 설정 메모리의 `FirstFlush` 가 0 이면(`ccdflush=false`) 잠시 1 로
+        올렸다가 되돌린다 (DevNote 11.33).  프레임은 안 만든다.
 
         ⚠️ **ACF 줄 번호를 알아야 한다** -- `WCONFIG` 는 줄 번호로 쓰는데 그 번호는
         `prepare()`(첫 `GO`)의 ACF 파싱에서 온다.  아직 파싱 전이면 `flush_now()` 가
@@ -387,7 +395,8 @@ class IcsDispatcher(Dispatcher):
         """ARCHON <MK|NT> <명령 원문…> -- 한 컨트롤러에 원문을 보내고 응답 원문을 답한다.
 
         ⚠️ **위생 검사 없음** -- 운영자 도구다 (2026-09-05 지시).  `RESETTIMING` ·
-        `WCONFIG…` 같은 원문도 그대로 나간다.  그래서 취득 중에는 거부한다 (`BUSY_TEXT`).
+        `WCONFIG…` 같은 원문도 그대로 나간다.  ⭐ **제한 없음** (운영자 2026-09-05) --
+        취득 중·다른 조작 중에도 받고 `GO` 도 막지 않는다 (`_op_inflight` 를 잡지 않는다).
 
         응답이 길면(`STATUS` ~2 KB) `ARCHON_REPLY_MAX` 에서 잘라 꼬리를 붙이고 **전문은
         `log.info` 로** 남긴다 -- 한 메시지 상한 `MAX_LEN`(2048) 을 넘기면 받는 쪽이
@@ -401,12 +410,11 @@ class IcsDispatcher(Dispatcher):
         tag, text = head.upper(), text.strip()
         if tag not in be.tags or not text:
             return Reply.error('ARCHON', usage)
-        bad = self._refuse_if_busy('ARCHON')
-        if bad is not None:
-            return bad
-        log.info('ARCHON %s %r -- %s 가 시켰다 (바이패스, 위생 검사 없음)',
+        log.info('ARCHON %s %r -- %s 가 시켰다 (바이패스, 위생 검사 없음, 제한 없음)',
                  tag, text, msg.src)
-        return self._start_op(msg.src, 'ARCHON', self._archon_work(be, tag, text))
+        self.app.spawn(self._finish_op(msg.src, 'ARCHON',
+                                       self._archon_work(be, tag, text), track=False))
+        return Reply.noop()
 
     async def _archon_work(self, be, tag: str, text: str) -> str:  # noqa: ANN001
         try:

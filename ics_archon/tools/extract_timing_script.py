@@ -8,7 +8,7 @@
 두었다 -- **그래서 이 파일이 있다.**  산문으로 적힌 규칙은 다음 사람이 틀리게
 옮기기 쉽고, 아래 규칙에는 실제로 밟기 쉬운 함정이 셋 있다.
 
-    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2615.acf
+    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2616.acf
     python tools/extract_timing_script.py acf/*.acf --out acf/          # 다시 뽑기
     python tools/extract_timing_script.py acf/*.acf --check acf/        # 대조만
 

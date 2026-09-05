@@ -412,7 +412,7 @@ expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 [archon]
 n_controllers = 1                   # 유닛 한 대만 돌릴 때.  2대면 2
 ctrl_mk_host = 10.0.0.13
-acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2609_MK.acf
+acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2610_MK.acf
 monitor      = true                 # 텔레메트리 주기 감시·기록 (위 절)
                                     #   ⚠️ 접속은 이 값과 무관하다 -- 본편이
                                     #   기동에서 붙는다.  이 스위치는 CSV 기록과
@@ -473,8 +473,8 @@ file         = ~/AIC/Logs/ics_archon.log
 > **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29 v1.8 확정, 현행 규격 v1.9 5.5절).
 > `[controllers] ctrlN_cfg` 를 **비워 두면** `[archon] acf_mk`/`acf_nt` 에서
 > **폴더와 확장자(`.acf`/`.cfg`)를 뗀 이름**이 실린다 —
-> `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2609_MK.acf` →
-> `'KMTC_SCI_101_STA0284_R2609_MK'`.  적어 두면 **그 값이 이기고**, 파생값과
+> `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2610_MK.acf` →
+> `'KMTC_SCI_101_STA0284_R2610_MK'`.  적어 두면 **그 값이 이기고**, 파생값과
 > 다르면 기동에서 경고한다(헤더가 주장하는 설정 파일과 실제로 올리는 파일이
 > 갈린 자료는 나중에 봐도 드러나지 않는다).  `RDMODE` 와 같은 규칙이다.
 
@@ -614,7 +614,7 @@ python tools/probe_archon.py --host 10.0.0.13
 ### 2단계 — ACF 대조 (여전히 읽기 전용)
 
 ```bash
-python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2609_MK.acf
+python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2610_MK.acf
 ```
 
 `[archon] param_intms_slot`/`param_exposures_slot` 이 그 ACF 에 있는지, 컨트롤러
@@ -654,7 +654,7 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 2. **매뉴얼 p.52** -- 코어 리셋은 *"starting all timing cores from the first
    line of the timing script"* 이다 (`RESETTIMING` 항).
 3. ⭐ **실물 타이밍 스크립트의 첫 다섯 줄이 그 관문이다** (`acf/KMTC_SCI_101_
-   STA0284_R2609_MK.acf`):
+   STA0284_R2610_MK.acf` -- LINE1~LINE8 은 R2609 와 같다):
 
    ```
    LINE0  Start:
@@ -678,15 +678,15 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 RAM** 에서만 줄어든다 -- **설정 메모리 텍스트는 `1` 로 남는다.**  그래서 **첫
 노출 뒤로는 계속 위험 구간**이다.
 
-⭐ **처방**: `set_ccdflush()` 가 `LOADTIMING` **앞에** `Exposures=0` 을 눌러
-두고, 되읽어 확인한 뒤에만 태운다 (`tests/test_ccdflush.py::
-test_exposures_is_pinned_to_zero_before_the_timing_is_reloaded`).  눌러 둔 값은
-남지 않는다 -- 프레임마다 `trigger()` 가 다시 쓰고 `LOADPARAMS`(코어 리셋
-없음)를 낸다.
+⭐ **처방 (R2610, 2026-09-05)**: `ccdflush` 는 이제 **`LOADTIMING` 을 내지 않는다** --
+`set_first_flush()` 가 설정 메모리의 `FirstFlush` 한 줄만 쓰고(되읽어 확인), 다음 노출의
+`LOADPARAMS`(코어 리셋 없음)가 그것을 실어 간다.  그래서 이 유령 독출 경로는 **운영 중에
+열리지 않는다**.  남는 위험은 벤더 GUI 의 "Load Timing" 같은 수동 `LOADTIMING` 뿐이다 --
+그때는 먼저 `Exposures=0` 을 써 둘 것.  (종전 처방 -- `set_ccdflush()` 가 `LOADTIMING` 앞에
+`Exposures=0` 을 눌러 두고 되읽던 것 -- 은 기제와 함께 걷혔다, DevNote 11.33.)
 
-⏳ **첫 구동에서 확인만 하면 되는 것 하나** -- 위가 다 맞다면 `ccdflush` 를
-켠 첫 프레임에서 **유령 독출이 없어야** 한다(가드가 듣는다).  `probe` 3단계
-로그에서 프레임 수가 요청 수와 같은지 보면 된다.
+⏳ **첫 구동에서 확인만 하면 되는 것 하나** -- `ccdflush=true` 로 찍은 프레임 수가 요청 수와
+같아야 한다(flush 는 프레임을 만들지 않는다).  `probe` 3단계 로그의 프레임 수로 본다.
 
 > 참고 — 매뉴얼이 가르는 셋 (p.51-52):
 > `WCONFIG` 는 **설정 메모리에 글자만 적는다**(파싱·컴파일 없음) ·
@@ -710,7 +710,7 @@ ctrl1_id = KMTA-SCI-101    # **선언한 쪽이 그 한 대다** (색인 1 = MK)
 [archon]
 n_controllers = 1          # 1 또는 2.  그 밖은 기동 거부
 ctrl_mk_host = 10.0.0.13
-acf_mk       = acf/KMTC_SCI_101_STA0284_R2609_MK.acf
+acf_mk       = acf/KMTC_SCI_101_STA0284_R2610_MK.acf
 ```
 
 > `n_controllers = 1` 이면 `[controllers] ctrl1_id`(→`MK`) / `ctrl2_id`(→`NT`)
@@ -755,7 +755,7 @@ ICS(`ics_archon`)·ICG(`icg_archon`) 둘 다 받는다.  ICS 는 컨트롤러가
 
 | ICS 명령 | 하는 일 | 응답 |
 |---|---|---|
-| `CCDFLUSH [MK\|NT\|ALL]` | 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (science ACF R2609+, Prep+Flush). 프레임은 안 만든다. ⚠️ **첫 `GO` 뒤에만** 된다(ACF 줄 번호는 `prepare()` 가 파싱한다) — 그 전엔 `Failed: ACF not loaded … run GO once first` | `DONE: CCDFLUSH Flushed=MK,NT` |
+| `CCDFLUSH [MK\|NT\|ALL]` | 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (science ACF R2610+, Prep+Flush). 프레임은 안 만든다. ⚠️ **첫 `GO` 뒤에만** 된다(ACF 줄 번호는 `prepare()` 가 파싱한다) — 그 전엔 `Failed: ACF not loaded … run GO once first` | `DONE: CCDFLUSH Flushed=MK,NT` |
 | `CCDPOWON [MK\|NT\|ALL]` | `POWERON` + flush 대기(`poweron_wait`, 기본 12 s) | `DONE: CCDPOWON Power=ON Controllers=MK,NT` |
 | `CCDPOWOFF [MK\|NT\|ALL]` | `POWEROFF`. 다음 `GO` 가 다시 켠다. 안 앉았으면 `Failed: POWEROFF not confirmed` | `DONE: CCDPOWOFF Power=OFF Controllers=MK,NT` |
 | `ARCHON <MK\|NT> <원문…>` | 바이패스 — 원문을 그대로 보내고 응답 원문을 돌려준다. ⛔ 위생 검사 없음(`RESETTIMING`·`WCONFIG` 도 나간다). 1800자 넘으면 잘리고 전문은 로그에 | `DONE: ARCHON MK <응답>` / 거부 `ERROR: ARCHON MK rejected: <원문>` / 빈 ack `<empty reply>` |
@@ -770,15 +770,21 @@ CCDPOWON / CCDPOWOFF  # POWERON/POWEROFF -> Power=ON|OFF  (ON 은 poweron_wait �
 ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문>  (거부는 ERROR: ARCHON rejected: <원문>)
 ```
 
-* ⛔ 넷 다 **취득 중이면 거부**한다 (`Exposure in progress -- ABORT first`) — 진행 중 노출 위의
-  `LOADPARAMS`/`POWEROFF`/원문 `RESETTIMING` 은 그 프레임을 망친다.  넷은 서로도, `GO` 도 막는다
+* ⛔ 앞의 셋(`CCDFLUSH`·`CCDPOWON`·`CCDPOWOFF`)은 **취득 중이면 거부**한다 (`Exposure in progress -- ABORT
+  first`) — 진행 중 노출 위의 `LOADPARAMS`/`POWEROFF` 는 그 프레임을 망친다.  셋은 서로도, `GO` 도 막는다
   (`Busy with <CMD>`) — `POWERON` ack 뒤 `poweron_wait`(12 s) 동안 들어온 `GO` 가 flush 안 끝난 CCD 를
   arm 하는 구멍 때문이다.  `EXPENABLE OFF` 는 막지 않고 응답에 `(ExpEnable=OFF)` 를 붙인다.
+* ⭐ `ARCHON` 은 **제한이 없다** (운영자 2026-09-05 *"제한 없이 모두 풀어줘"*) — 취득 중이든 다른 조작이 도는
+  중이든 받고, `GO` 도 막지 않는다.  진행 중 노출 위의 `RESETTIMING` 이 프레임을 망치는 것은 운영자 몫이다
+  (로그에는 남는다).
 * ⚠️ `ARCHON` 은 원문을 **그대로**(대소문자 유지) 보낸다 — 컨트롤러는 모르는 명령에 무응답이라 소문자
   이름은 시한 초과로 끝난다.  위생 검사가 없는 운영자 도구다.  긴 응답(`STATUS`)은 1800 B 에서 잘리고
   전문은 `*.cmd` 로그에 남는다.  빈 ack(`WCONFIG`·`LOADPARAMS`·`APPLY*`)는 `(accepted, empty reply)`.
 * guide 의 flush 는 `FlushFrame`(R2613+: FrameShift + SkipLine×FlushLines, 프레임 없음), science 의 flush 는
   `Prep`+`Flush`(R2609+) 다.  ACF 가 구판이면 `Failed: … ACF has no FirstFlush …` 로 거부된다.
+  ⭐ **R2616(guide)/R2610(science) 부터 flush 는 ACF 설정 메모리의 `FirstFlush` 가 싣는다** — guide 는 상수 1(모든
+  `LOADPARAMS` 가 flush 한 번을 싣고, `STOP` 뒤에도 꼬리 flush 한 번), science 는 `[archon] ccdflush` 옵션이 기동
+  때 1/0 을 쓴다(1 이면 **매 노출 전** Prep+Flush).  호스트가 프레임마다 쓰는 플래그는 없다 (DevNote 11.33).
 * `sim` 백엔드에서는 `ARCHON` 이 `SIM (no controller): <원문>` 을 돌려준다 — 배선 확인용.
 
 ## 관련 문서

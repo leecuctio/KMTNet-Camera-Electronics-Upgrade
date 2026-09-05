@@ -20,8 +20,8 @@ from ics_archon import config as acfg_mod  # noqa: E402
 from ics_archon.archon import parse  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2615.acf')
-SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2609_MK.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2616.acf')
+SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2610_MK.acf')
 
 
 # ---------------------------------------------------------------------------
@@ -173,15 +173,15 @@ def test_guide_backend_refuses_timing_from_a_science_acf():
     icfg.exptime_min = 4.2
     be = GuideBackend(simcfg.load(ini), icfg)
     assert be.timing is None
-    assert be.frame_floor() == 4.2
+    assert be.base_exptime() == 4.2
 
 
 @pytest.mark.repo_only
-def test_guide_fetch_timeout_must_sit_under_the_frame_floor(caplog):
+def test_guide_fetch_timeout_must_sit_under_the_base_exptime(caplog):
     """⭐ guide 도 같은 제약이다 (10.6) -- 잠금 상한 = FETCH 상한 < 프레임 하한.
 
     ⚠️ 하한을 리터럴로 적지 않는다 -- ACF 판이 오르면 값이 바뀐다
-    (R2609 1.375 s -> R2610 1.251 s).  `frame_floor()` 가 ACF 에서 셈한
+    (R2609 1.375 s -> R2610 1.251 s).  `base_exptime()` 가 ACF 에서 셈한
     값과 대본다.
     """
     from ics_sim import config as simcfg
@@ -195,7 +195,7 @@ def test_guide_fetch_timeout_must_sit_under_the_frame_floor(caplog):
     icfg.acf = {'G': GUIDE_ACF}
     with caplog.at_level(logging.WARNING, logger='icg_archon.backend'):
         be = GuideBackend(simcfg.load(ini), icfg)
-    floor = be.frame_floor()
+    floor = be.base_exptime()
     assert icfg.fetch_timeout < floor,         'ini 의 fetch_timeout(%s) 이 하한(%.4f s) 위다' % (icfg.fetch_timeout, floor)
     assert not [r for r in caplog.records if 'fetch_timeout' in r.getMessage()]
 

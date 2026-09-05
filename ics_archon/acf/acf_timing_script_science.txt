@@ -7,8 +7,8 @@ X; GOTO Start
 Exposure:
 X; Exposures--
 Continuous:
-#X; CALL Prep
-#X; CALL Flush
+
+
 X; CALL IntUnit(IntMS)
 NOINT; CALL NoIntUnit(NoIntMS)
 X; CALL HorizontalSWShift(1200)

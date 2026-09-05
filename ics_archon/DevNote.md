@@ -5629,3 +5629,68 @@ command in progress`).  `CCDPOWOFF` 는 `controller.power_off()` 가 실패를 �
 * 첫 구동: RESETTIMING 뒤 RAM 보존 · abort 뒤 FRAME 카운터 불변 · `go 1` FRAME +1 · OI-26 · OI-28 FORCE · STATUS 원문 파일.
 * 전수 정합 검토(14차원) -- 세 번 세션 한도에 죽어 **4개씩 순차** 스크립트로 재시도(scratchpad `audit_batched.js`).
 * FRAME6/IMAGE6 DG=A_LOW(후속 판) · 예측 폴링 · `BUFnTIMESTAMP` · OI-25 잔여(HTREN/HTRSET/HTRFORCE 표본).
+
+### 11.33 flush 는 ACF 상수 하나로 -- R2616 · science R2610 · ARCHON 무제한 · 용어 개명 (2026-09-05 밤, 운영자)
+
+운영자가 셋을 더 지시했다: (a) *"timing script 와 parameter 구성 단순 명료하게 … 불필요한 코드 없도록 …
+최대한 간결하게 구현해줘"*, (b) `ARCHON` 바이패스 *"제한 없이 모두 풀어줘"*, (c) 용어 -- `IntMS = EXPTIME
+− 하한` 의 '하한' 은 **기본 노출시간**으로, '운영 하한' 은 **설정 가능한 최소 노출시간**으로.  확인 질문 둘 --
+science `ccdflush=True` 면 매 노출 전 Prep+Flush, False 면 바로 적분인가(맞다) · flush 시프트 동안 레지스터와
+출력 노드가 비워지나(맞다, (4)).  그리고 science 는 "지금처럼 Prep+Flush 한 세트" 로 확정.
+
+#### (1) 재검토 결론 -- 불필요한 것은 스크립트가 아니라 호스트의 `FirstFlush` 왕복이었다
+
+R2613 설계(11.31)는 "호스트가 GO 마다 `FirstFlush=1` 을 쓰고 LOADPARAMS 뒤 곧바로 0 으로 되쓴다" 였고, 그래서
+`set_exposures(0)` 도 0 을 쓰고, 유령 flush 를 걱정하고, 가짜에 재점화 모사를 넣었다.  뒤집으면 전부 사라진다:
+**설정 메모리의 `FirstFlush` 를 상수 1 로 두면**(guide R2616) LOADPARAMS 마다 RAM 에 1 이 실리고 `FlushFrame`
+이 `FirstFlush--` 로 한 번 소비한다.  GO → flush 1 + n 장, abort → `Exposures=0` LOADPARAMS + RESETTIMING →
+flush 1 → 유휴, `CCDFLUSH` → `Exposures=0` LOADPARAMS 한 번.  호스트가 이 슬롯을 쓰는 자리가 0 이 됐다
+(`trigger` 의 flush 인자·되쓰기, `set_exposures` 의 되쓰기 삭제).  부작용은 STOP 뒤 **꼬리 flush 한 번**(1.25 s,
+마지막 프레임 뒤 CCD 를 비운다) -- 규격 10.1-7 에 적었다.  flush 도는 중 다음 GO 가 오면 두 번 돈다(옳고 느릴
+뿐).  ⭐ 운영자 요점 1)·2)(즉시 중단+flush · 유휴 무클록)를 그대로 지키면서 코드가 가장 적은 길이다.
+`icg_archon` 의 판정도 "슬롯이 있나" 에서 "**값이 1 인가**" 로 바뀌었다(`_flush_capable`) -- 0 인 판에 GO 를
+걸면 첫 장이 flush 없이 나간다.
+
+`ContinuousExposures` 는 빼려다 남겼다 -- 호스트는 안 쓰지만 `tools/ics_archon_buftest.py`(그쪽 도구)가 연속
+노출 모드로 쓴다.  STA 템플릿의 0 값 파라미터·1틱 CALL 들도 줄 번호 재배치 위험이 커 손대지 않았다 -- "간결"
+은 우리가 더한 것에서 찾았다.
+
+#### (2) science 도 같은 기제 -- `set_ccdflush` 의 LINE9/LINE10 + LOADTIMING 춤이 사라졌다 (R2610)
+
+science 는 노출마다 LOADPARAMS 를 내므로 메모리 `FirstFlush=1` = 매 노출 전 Prep+Flush, 0 = 바로 적분 --
+운영자가 확인한 뜻 그대로다.  `ccdflush` 옵션은 이제 기동 때 `set_first_flush(on)` 이 **WCONFIG 한 줄**을 쓰고
+RCONFIG 로 되읽는 일이다.  LOADTIMING(코어 리셋) · `Exposures=0` 고정 · 두 단계 검증(11.13~11.14 의 유령 독출
+조사가 낳은 것들)이 전부 필요 없어졌다 -- `FLUSH_LINES`·`flush_line` 삭제, `test_ccdflush.py` 재작성.  ACF 의
+죽은 두 줄(`#X; CALL Prep/Flush`)은 R2610 에서 지웠다.  `CCDFLUSH` 명령은 옵션이 꺼져 있으면 `flush_now` 가
+잠시 1 로 올렸다가 되돌린다.  ⛔ 슬롯 번호만 믿지 않는다 -- R2608 의 `PARAMETER0` 은 `ContinuousExposures`
+라, 슬롯의 이름이 `FirstFlush` 가 아니면 쓰지 않는다(`set_first_flush`·`flush_now` 둘 다; 종전 코드는
+`fslot in config` 만 봤다 -- 잠재 결함이었다).
+
+#### (3) ARCHON 무제한
+
+`_refuse_if_busy`/`_op_in_flight` 에서 `ARCHON` 을 뺐다(양쪽).  ICS 는 `_finish_op(track=False)` 로 표시를
+잡지도 내리지도 않는다.  진행 중 노출 위의 `RESETTIMING` 이 프레임을 망치는 것은 운영자 몫 -- 로그에는 남는다.
+시험: 취득 중 셋은 거부·ARCHON 은 DONE, `CCDPOWON` 왕복 중 GO 거부(ICS 는 ARCHON 대신 `power_ccd` 지연으로
+다시 걸었다), ARCHON 왕복 중 GO 허용(신설).
+
+#### (4) DG/RG 물음 -- 답과 실측 프로시저
+
+R2615 부터 flush 의 `SkipLine` 은 `DGHIGH; HorizontalShift(600)` 이라 레지스터 전하는 덤프 게이트로 나가고,
+`SkipLine` 진입의 RGHIGH 로 출력 노드는 계속 리셋된다 -- 시프트 동안 출력 노드에 전하가 쌓이지 않는다.  남은
+불확실은 "DG 가 R 클록 없이 **정적** 레지스터를 통째로 비우나"(FRAME6/IMAGE6 DG=0 V 를 고칠지의 근거) --
+`icg_first_run.md` 부록에 실측 프로시저를 적었다(약한 균일광 · `LINE12` 를 `DGLOW; X(1)` / `DGHIGH; X(10000)` 로
+바꾼 시험 ACF · FRAME6 DG_HIGH 판 · 첫 행 잔량 비교).
+
+#### (5) 용어
+
+`GuideBackend.frame_floor()` → `base_exptime()` **기본 노출시간**(`IntMS=0` 일 때의 주기 = 트랜스퍼+독출, ACF
+계산값; `EXPTIME = 기본 노출시간 + IntMS`).  `exptime_min` = **설정 가능한 최소 노출시간**.  규격 10.1-1 ·
+코드 주석 · ini · README · first_run 을 같이 바꿨다.  대안으로 '최단 주기' 를 봤지만 EXPTIME 의 정의(트랜스퍼
+개시 간격)와 맞물리는 것은 '기본 노출시간' 이다.
+
+#### (6) ⏳ 남은 것
+
+* 첫 구동: 11.32-(6) 그대로 + **STOP 뒤 꼬리 flush 실측**(FRAME 불변 · ≈1.25 s 클록) · `ccdflush=true` 로
+  science 한 장(매 노출 전 Prep+Flush 가 도는지 주기로 확인).
+* 전수 정합 검토(14차원) -- **네 번째로** 세션 한도에 죽었다(4개씩도).  2개씩 또는 새 한도 창에서.
+* DG 정적 덤프 실측(부록) → FRAME6 후속 판(R2617) 여부 · 예측 폴링 · OI-25 잔여 -- 그대로.

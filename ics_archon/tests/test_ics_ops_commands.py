@@ -382,9 +382,11 @@ def test_archon_usage_errors(tmp_path, cmd):  # noqa: ANN001
 # (e) 취득 중이면 거부
 # ---------------------------------------------------------------------------
 
-def test_all_four_are_refused_while_acquiring(tmp_path):  # noqa: ANN001
-    """`seq.busy` 가 참이면 넷 다 `Exposure in progress -- ABORT first` -- 컨트롤러에는
-    아무것도 안 나간다 (진행 중 노출 위의 LOADPARAMS/POWEROFF/RESETTIMING 은 자료를 망친다)."""
+def test_three_are_refused_while_acquiring_and_archon_is_not(tmp_path):  # noqa: ANN001
+    """`seq.busy` 가 참이면 셋은 `Exposure in progress -- ABORT first` -- 컨트롤러에는
+    아무것도 안 나간다 (진행 중 노출 위의 LOADPARAMS/POWEROFF 는 자료를 망친다).
+    ⭐ `ARCHON` 은 제한이 없다 (운영자 2026-09-05 "제한 없이 모두 풀어줘") -- 취득 중에도
+    원문이 나가고 `DONE` 이 온다."""
     async def body():  # noqa: ANN202
         async with Session(tmp_path) as s:
             await s.warmup()
@@ -394,23 +396,65 @@ def test_all_four_are_refused_while_acquiring(tmp_path):  # noqa: ANN001
             try:
                 before = list(s.mk.seen), list(s.nt.seen)
                 for cmd, word in (('CCDFLUSH', 'CCDFLUSH'), ('CCDPOWON MK', 'CCDPOWON'),
-                                  ('CCDPOWOFF', 'CCDPOWOFF'),
-                                  ('ARCHON MK RESETTIMING', 'ARCHON')):
+                                  ('CCDPOWOFF', 'CCDPOWOFF')):
                     line = await s.reply('OBS>ICS ' + cmd, word)
                     assert line.endswith('ERROR: %s %s' % (word, BUSY_TEXT)), line
                 await asyncio.sleep(0.05)
                 assert (list(s.mk.seen), list(s.nt.seen)) == before
                 assert s.mk.powered
+                # ⭐ ARCHON 은 취득 중에도 나간다 -- 원문이 컨트롤러에 닿고 DONE 이 온다.
+                line = await s.reply('OBS>ICS ARCHON MK STATUS', 'ARCHON')
+                assert ' DONE: ARCHON MK ' in line, line
+                assert any(c.upper().startswith('STATUS') for c in s.mk.seen[len(before[0]):]), \
+                    s.mk.seen[len(before[0]):]
             finally:
                 seq_cls.busy = keep
             return s.app.emit.violations
     assert run(body()) == []
 
 
-def test_go_is_refused_while_an_operator_command_is_in_flight(tmp_path):  # noqa: ANN001
-    """⭐ 반대 방향 -- `ARCHON MK STATUS` 가 도는 동안(가짜가 STATUS 를 0.5 s 늦춘다) 들어온
-    `GO` 는 거부된다.  `CCDPOWOFF` 의 POWEROFF 가 아직 안 나갔는데 GO 가 `prepare()` 를
-    지나면 노출 도중에 전원이 내려가는 것을 막는 자리다."""
+def test_go_is_refused_while_an_operator_command_is_in_flight(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ 반대 방향 -- `CCDPOWON MK` 가 도는 동안(`power_ccd` 를 0.5 s 늦춘다) 들어온 `GO` 는
+    거부된다.  `CCDPOWOFF` 의 POWEROFF 가 아직 안 나갔는데 GO 가 `prepare()` 를 지나면
+    노출 도중에 전원이 내려가는 것을 막는 자리다.  (종전에는 `ARCHON MK STATUS` 로 걸었는데
+    `ARCHON` 은 2026-09-05 에 제한을 풀어 `GO` 를 막지 않는다 -- 아래 시험이 그것을 본다.)"""
+    async def body():  # noqa: ANN202
+        async with Session(tmp_path) as s:
+            be_cls = type(s.app.backend)
+            real = be_cls.power_ccd
+
+            async def slow(self, *a, **kw):  # noqa: ANN001, ANN002, ANN003, ANN202
+                await asyncio.sleep(0.5)
+                return await real(self, *a, **kw)
+
+            monkeypatch.setattr(be_cls, 'power_ccd', slow)
+            s.app.transport.feed('OBS>ICS dark begin')
+            s.app.transport.feed('OBS>ICS exp 1')
+            await asyncio.sleep(0.02)
+            start = len(s.app.transport.sent_log)
+            s.app.transport.feed('OBS>ICS CCDPOWON MK')
+            await asyncio.sleep(0.05)
+            line = await s.reply('OBS>ICS go', 'GO', timeout=0.3)
+            assert line.endswith('ERROR: GO Operator command in progress (CCDPOWON) -- '
+                                 'retry when it is DONE'), line
+            assert not s.app.seq.busy
+            # 전원 명령은 그 뒤 정상 완료된다
+            await until(lambda: any(' DONE: CCDPOWON ' in x
+                                    for x in s.app.transport.sent_log[start:]),
+                        timeout=3.0, what='CCDPOWON DONE')
+            # 그리고 이제 GO 는 받는다 (성공한 GO 는 `noop` -- 시퀀서가 곧바로 busy 다)
+            s.app.transport.feed('OBS>ICS go')
+            await until(lambda: s.app.seq.busy, timeout=1.0, what='seq.busy')
+            await s.app.seq.wait()
+            await asyncio.sleep(0.3)
+            assert any('Acquisition Complete.' in x for x in s.sent), s.sent[-5:]
+    run(body())
+
+
+def test_archon_in_flight_does_not_block_go(tmp_path):  # noqa: ANN001
+    """⭐ `ARCHON MK STATUS` 가 도는 동안(가짜가 STATUS 를 0.5 s 늦춘다) 들어온 `GO` 는
+    **받는다** -- `ARCHON` 은 `_op_inflight` 를 잡지 않는다 (운영자 2026-09-05 "제한 없이
+    모두 풀어줘").  바이패스도 그 뒤 정상 완료된다."""
     async def body():  # noqa: ANN202
         async with Session(tmp_path, status_delay=0.5) as s:
             s.app.transport.feed('OBS>ICS dark begin')
@@ -419,17 +463,13 @@ def test_go_is_refused_while_an_operator_command_is_in_flight(tmp_path):  # noqa
             start = len(s.app.transport.sent_log)
             s.app.transport.feed('OBS>ICS ARCHON MK STATUS')
             await asyncio.sleep(0.05)
-            line = await s.reply('OBS>ICS go', 'GO', timeout=0.3)
-            assert line.endswith('ERROR: GO Operator command in progress (ARCHON) -- '
-                                 'retry when it is DONE'), line
-            assert not s.app.seq.busy
-            # 바이패스는 그 뒤 정상 완료된다
+            s.app.transport.feed('OBS>ICS go')
+            await until(lambda: s.app.seq.busy, timeout=1.0, what='seq.busy')
+            assert not any('ERROR: GO' in x for x in s.app.transport.sent_log[start:]), \
+                s.app.transport.sent_log[start:]
             await until(lambda: any(' DONE: ARCHON MK ' in x
                                     for x in s.app.transport.sent_log[start:]),
                         timeout=3.0, what='ARCHON DONE')
-            # 그리고 이제 GO 는 받는다 (성공한 GO 는 `noop` -- 시퀀서가 곧바로 busy 다)
-            s.app.transport.feed('OBS>ICS go')
-            await until(lambda: s.app.seq.busy, timeout=1.0, what='seq.busy')
             await s.app.seq.wait()
             await asyncio.sleep(0.3)
             assert any('Acquisition Complete.' in x for x in s.sent), s.sent[-5:]

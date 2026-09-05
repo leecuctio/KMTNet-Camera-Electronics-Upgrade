@@ -117,11 +117,12 @@ def test_the_argumentless_commands_refuse_extra_arguments(tmp_path):  # noqa: AN
 # 거부 -- 취득 중 · 다른 조작 왕복 중
 # ---------------------------------------------------------------------------
 
-def test_all_four_are_refused_during_acquisition(tmp_path):  # noqa: ANN001
-    """(e) 취득 중이면 넷 다 `ERROR: … Exposure in progress -- ABORT first`.
+def test_three_are_refused_during_acquisition_and_archon_is_not(tmp_path):  # noqa: ANN001
+    """(e) 취득 중이면 셋은 `ERROR: … Exposure in progress -- ABORT first`, `ARCHON` 은 받는다.
 
     히터·게이지(`_busy_note`: 받되 표시)와 **반대**다 -- 진행 중 노출 위의
-    `LOADPARAMS`/`POWEROFF`/원문 `RESETTIMING` 은 그 프레임을 망친다.
+    `LOADPARAMS`/`POWEROFF` 는 그 프레임을 망친다.  ⭐ `ARCHON` 은 제한이 없다 (운영자
+    2026-09-05 "제한 없이 모두 풀어줘") -- 취득 중에도 원문이 나가고 `DONE` 이 온다.
     ⚠️ `EXP 30` 이 의도다 (`time_scale=0.02` → 프레임당 0.6 s) -- 짧게 잡으면
     부하에서 취득이 먼저 끝나 `busy` 가 거짓으로 읽힌다 (heater 시험과 같은 주석).
     """
@@ -146,18 +147,21 @@ def test_all_four_are_refused_during_acquisition(tmp_path):  # noqa: ANN001
         return app, [str(s) for s in app.transport.sent_log]
 
     app, sent = asyncio.run(run())
-    for word in WORDS:
+    for word in [w for w in WORDS if w != 'ARCHON']:
         said = _about(sent, word)
         assert any('ERROR' in s and icg_commands.BUSY_REFUSAL in s
                    for s in said), (word, said)
         assert not any('DONE' in s for s in said), (word, said)
+    said = _about(sent, 'ARCHON')
+    assert any(s.endswith('DONE: ARCHON SIM (no controller): STATUS') for s in said), said
+    assert not any(icg_commands.BUSY_REFUSAL in s for s in said), said
     # 거부가 취득을 건드리지 않았다 -- 2장이 그대로 저장됐다.
     assert '\n'.join(sent).count('Wrote LASTFILE=') == 2, sent
     assert app.emit.violations == [], app.emit.violations
 
 
 def test_go_and_the_other_ops_wait_for_a_power_on_in_flight(tmp_path, monkeypatch):  # noqa: ANN001
-    """⭐ `CCDPOWON` 이 왕복 중이면 `GO` 도, 다른 조작도 **거부**한다.
+    """⭐ `CCDPOWON` 이 왕복 중이면 `GO` 도, `CCDFLUSH` 도 **거부**한다 -- `ARCHON` 은 받는다.
 
     `POWERON` 은 ack 직후 `powered=True` 가 되고 그 뒤 `poweron_wait`(12 s) 동안
     CCD flush 를 기다리는데, 그 사이의 `GO` 는 `prepare()` 가 전원을 건너뛰어
@@ -174,7 +178,8 @@ def test_go_and_the_other_ops_wait_for_a_power_on_in_flight(tmp_path, monkeypatc
     text = '\n'.join(sent)
     assert 'ERROR: GO Busy with CCDPOWON' in text, sent
     assert 'ERROR: CCDFLUSH Busy with CCDPOWON' in text, sent
-    assert 'ERROR: ARCHON Busy with CCDPOWON' in text, sent
+    assert 'ERROR: ARCHON' not in text, sent          # 제한 없음 (2026-09-05)
+    assert any(s.endswith('DONE: ARCHON SIM (no controller): STATUS') for s in sent), sent
     assert any(s.endswith('DONE: CCDPOWON Power=ON') for s in sent), sent
     assert 'Wrote LASTFILE=' not in text, 'GO 가 전원 왕복 중에 시작됐다'
     assert app.emit.violations == [], app.emit.violations
@@ -314,9 +319,8 @@ def test_real_backend_path_flushes_once_powers_and_bypasses(tmp_path, monkeypatc
     """`GuideBackend` + `FakeArchon` -- 넷이 실제 왕복으로 무엇을 남기나.
 
     * `CCDFLUSH`: 가짜의 `flushes` 가 1 오르고 **프레임은 안 생기고**, 설정 메모리의
-      `FirstFlush` 가 0 으로 되돌아온다 (`ACF_TEXT` 의 `PARAMETER0="FirstFlush=0"`;
-      되쓰지 않으면 다음 LOADPARAMS 가 유령 flush 를 되살린다 -- DevNote 11.31).
-      LOADPARAMS 는 한 번이다.
+      `FirstFlush=1`(`ACF_TEXT` 의 `PARAMETER0`, R2616 상수)은 **그대로**다 -- 호스트가
+      쓰지 않는다 (DevNote 11.33).  LOADPARAMS 는 한 번이다.
     * `CCDPOWOFF`/`CCDPOWON`: 가짜의 `powered` 가 따라 움직인다.
     * `ARCHON STATUS`: 가짜의 STATUS 본문(`POWERGOOD=1 …`)이 그대로 온다.
     * `ARCHON FOO`(가짜가 `?xx` 로 거부): `rejected: FOO`.
@@ -362,7 +366,7 @@ def test_real_backend_path_flushes_once_powers_and_bypasses(tmp_path, monkeypatc
             try:
                 # 기동 접속(prepare: 접속·APPLYALL·POWERON)이 끝난 뒤에 시작한다.
                 await wait_for(lambda: app.guide.ctrl.powered, '기동 접속(POWERON)')
-                assert 'FirstFlush=0' in flush_slot_text(), flush_slot_text()
+                assert 'FirstFlush=1' in flush_slot_text(), flush_slot_text()
                 app.transport.feed('abc>ICG CCDFLUSH')
                 await wait_for(replied('CCDFLUSH'), 'CCDFLUSH 응답')
                 await wait_for(lambda: getattr(fake, 'flushes', 0) >= 1, '가짜의 flush')
@@ -384,11 +388,11 @@ def test_real_backend_path_flushes_once_powers_and_bypasses(tmp_path, monkeypatc
 
         off_seen, on_seen = asyncio.run(run())
         sent = [str(m) for m in app.transport.sent_log]
-        # ① flush 한 번 · 프레임 0 · FirstFlush=0 되쓰기 · LOADPARAMS 한 번
+        # ① flush 한 번 · 프레임 0 · FirstFlush=1 그대로 · LOADPARAMS 한 번
         assert any(s.endswith('DONE: CCDFLUSH Flushed=1') for s in sent), sent
         assert getattr(fake, 'flushes', 0) == 1, fake.__dict__.get('flushes')
         assert fake.frame_no == 0, 'flush 가 프레임을 만들었다 (%d)' % fake.frame_no
-        assert 'FirstFlush=0' in flush_slot_text(), flush_slot_text()
+        assert 'FirstFlush=1' in flush_slot_text(), flush_slot_text()
         loads = [c for c in fake.seen if c.upper().startswith('LOADPARAMS')]
         assert len(loads) == 1, loads
         # ② 전원이 실제로 움직였다

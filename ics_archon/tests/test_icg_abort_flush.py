@@ -5,7 +5,7 @@
 운영자 2026-09-05: *"guide CCD 는 금방 읽기 때문에 노출 중 EXPENABLE=False 나 abort
 시에 리드아웃은 진행해서 CCD 를 비우는 것이 좋아 … 디지타이징 필요 없이 비우기만
 하는 skipline"*.  시퀀서 `_settle` 이 `backend.abort_flush()` 를 부른다 --
-`Exposures=0`·`FirstFlush=1` LOADPARAMS → RESETTIMING → `FirstFlush=0` 되쓰기.
+`Exposures=0` LOADPARAMS → RESETTIMING (flush 는 ACF 의 `FirstFlush=1` 상수가 싣는다, 11.33).
 프레임이 안 나오므로 꼬리 배수 대신 flush 한 바퀴를 기다린 뒤 IDLE 이다.
 
 `test_icg_backend.py` 의 하네스(가짜 컨트롤러 + `IcgArchon`) 그대로.  가짜는
@@ -45,7 +45,7 @@ def _app(tmp_path, fake, monkeypatch):  # noqa: ANN001, ANN202
     icfg.expenable_file = str(tmp_path / 'icg.expenable')
     icfg.hk.interval = 3600.0
     icfg.hk.query_aux = False
-    # ⭐ 하한을 **명시**한다 -- 시험 ACF 는 타이밍 스크립트가 없어 `frame_floor()` 가
+    # ⭐ 하한을 **명시**한다 -- 시험 ACF 는 타이밍 스크립트가 없어 `base_exptime()` 가
     # `exptime_min` 으로 물러나는데, `make_cfgs` 는 `IcgCfg()` 기본값을 쓴다(ini 아님).
     # 기본값이 바뀌면 `GUIDEEXP 2` 의 IntMS 가 0 이 아니게 되어 "독출 중/적분 중" 전제가
     # 조용히 어긋난다 (실제로 기본 1.3 으로 IntMS=700 이 나와 (b) 의 전제가 깨졌다).
@@ -125,13 +125,13 @@ def test_abort_during_integration_resets_and_flushes_without_a_frame(tmp_path, m
         assert after.files == before.files, '끊은 프레임이 저장됐다'
         assert to_idle <= _flush_budget(app), 'IDLE 이 %.2fs -- 상한 %.2fs' % (
             to_idle, _flush_budget(app))
-        # LOADPARAMS 는 arm 1 + abort_flush 1 -- 그 뒤에 RESETTIMING, 설정 메모리는 되돌려졌다.
+        # LOADPARAMS 는 arm 1 + abort_flush 1 -- 그 뒤에 RESETTIMING, 설정 메모리의 상수 1 은 그대로다.
         seen = [c.upper() for c in fake.seen]
         assert len(_loads(fake)) == 2, _loads(fake)
         last_load = max(i for i, c in enumerate(seen) if c.startswith('LOADPARAMS'))
         assert 'RESETTIMING' in seen[last_load:], seen[last_load:]
         assert fake._exposures() == 0                   # noqa: SLF001
-        assert 'FirstFlush=0' in _flush_slot(fake), _flush_slot(fake)
+        assert 'FirstFlush=1' in _flush_slot(fake), _flush_slot(fake)
         sent = [str(m) for m in app.transport.sent_log]
         assert any('abc' in m and 'IDLE' in m for m in sent), sent[-5:]
         assert not any('ERROR' in m for m in sent), sent[-5:]
@@ -273,7 +273,9 @@ def test_stop_still_saves_the_current_frame_without_resettiming(tmp_path, monkey
         assert later == after.frame_no, 'IDLE 뒤에 더 찍었다 -- 꼬리를 안 소화했다'
         assert len(_loads(fake)) == 2, _loads(fake)
         assert fake._exposures() == 0                   # noqa: SLF001
-        assert after.flushes == before.flushes, 'STOP 이 flush 를 걸었다'
+        # R2616: STOP 의 Exposures=0 LOADPARAMS 도 ACF 상수 FirstFlush=1 을 실어 꼬리 flush 한 번
+        # (마지막 프레임 뒤 CCD 를 비운다, DevNote 11.33).  RESETTIMING 은 없다 -- 그 프레임은 살았다.
+        assert after.flushes == before.flushes + 1, 'STOP 의 꼬리 flush 가 없다'
         sent = [str(m) for m in app.transport.sent_log]
         assert any('IDLE' in m for m in sent) and not any('ERROR' in m for m in sent), sent[-6:]
     finally:
@@ -415,7 +417,7 @@ def test_abort_then_shutdown_sends_resettiming_before_poweroff(tmp_path, monkeyp
         offs = [i for i, c in enumerate(seen) if c.startswith('POWEROFF')]
         assert len(resets) == 1, seen
         assert offs and resets[0] < offs[0], 'RESETTIMING 이 POWEROFF 뒤다: %r' % seen
-        assert 'FirstFlush=0' in _flush_slot(fake), _flush_slot(fake)
+        assert 'FirstFlush=1' in _flush_slot(fake), _flush_slot(fake)
         # 종료는 flush 대기(0.54 s)를 접는다 -- 그보다 훨씬 짧게 끝나야 한다.
         assert stop_took < 0.45, 'app.stop() 이 flush 대기를 기다렸다 (%.2fs)' % stop_took
     finally:

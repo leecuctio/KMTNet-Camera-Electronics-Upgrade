@@ -18,7 +18,7 @@ import ics_archon  # noqa: F401
 from icg_archon import acftiming  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2615.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2616.acf')
 
 
 def test_tick_anchor_holds():
@@ -74,7 +74,7 @@ def test_guide_acf_frame_period():
 
 @pytest.mark.repo_only
 def test_backend_uses_the_acf_floor_not_the_ini_fallback():
-    """`frame_floor()` 가 ACF 계산값을 쓰는가 -- ini 대체값이 아니라."""
+    """`base_exptime()` 가 ACF 계산값을 쓰는가 -- ini 대체값이 아니라."""
     from ics_sim import config as simcfg
 
     from icg_archon.backend import GuideBackend
@@ -86,7 +86,7 @@ def test_backend_uses_the_acf_floor_not_the_ini_fallback():
     icfg.exptime_min = 0.1              # 대체값을 일부러 낮춰 둔다
     be = GuideBackend(simcfg.load(ini), icfg)
     assert be.timing is not None, 'ACF 타이밍을 못 읽었다'
-    assert be.frame_floor() > 1.0, 'ini 대체값이 이기면 안 된다'
+    assert be.base_exptime() > 1.0, 'ini 대체값이 이기면 안 된다'
     assert 0.004 < be.trigger_to_transfer() < 0.010
 
     # ⭐ **ini 값이 계산값을 밀어 올리면 안 된다** -- R2608->R2609 에서
@@ -94,7 +94,7 @@ def test_backend_uses_the_acf_floor_not_the_ini_fallback():
     # 하한이 남아 있으면 정상 요청을 거부하게 되는 자리다.
     icfg.exptime_min = 99.0
     be2 = GuideBackend(simcfg.load(ini), icfg)
-    assert be2.frame_floor() < 3.0, 'ini 가 계산값을 이기면 안 된다'
+    assert be2.base_exptime() < 3.0, 'ini 가 계산값을 이기면 안 된다'
 
 
 @pytest.mark.repo_only
@@ -131,7 +131,7 @@ def test_floor_follows_the_acf_when_noint_is_removed(tmp_path):
 # ---------------------------------------------------------------------------
 
 def _sim_backend(floor: float):  # noqa: ANN202
-    """`frame_floor()` 만 고정한 대역 -- 환산 규칙만 본다."""
+    """`base_exptime()` 만 고정한 대역 -- 환산 규칙만 본다."""
     from ics_sim import config as simcfg
 
     from icg_archon.backend import SimGuideBackend
@@ -194,7 +194,7 @@ def test_real_backend_clamp_uses_the_acf_floor():
     icfg.acf = {'G': GUIDE_ACF}
     icfg.exptime_min = 0.1              # 대체값은 무시돼야 한다
     be = GuideBackend(simcfg.load(ini), icfg)
-    floor = be.frame_floor()
+    floor = be.base_exptime()
     assert 1.2 < floor < 1.6            # NoIntMS=0 인 현행 ACF(R2609) 기준
     assert be.intms_for(0.5) == 0
     # ⭐ 카드 해상도 1 ms (규격 10.1-1, 2026-09-05) -- 실현값을 ms 로 반올림한다.
@@ -322,15 +322,15 @@ def test_read_timing_refuses_an_acf_without_pixels_instead_of_guessing(tmp_path)
     icfg.exptime_min = 7.5                  # 눈에 띄는 대체값
     be = GuideBackend(simcfg.load(ini), icfg)
     assert be.timing is None, 'Pixels 없이 타이밍을 셈했다 -- 무엇으로?'
-    assert be.frame_floor() == 7.5
+    assert be.base_exptime() == 7.5
     assert be.intms_for(7.5) == 0 and be.intms_for(10.0) == 2500
 
 
 def test_operational_floor_clamps_the_request_but_intms_uses_the_hardware_floor():
-    """운영 하한 `exptime_min`(1.3) 과 하드웨어 하한(ACF 계산 1.2506)은 다른 물건이다.
+    """설정 가능한 최소 노출시간 `exptime_min`(1.3) 과 기본 노출시간(ACF 계산 1.2506)은 다른 물건이다.
 
     운영자 확정 2026-09-05: 카드 해상도 1 ms 를 받고, 설정상 하한은 여유를 두어 1.3.
-    ⛔ `IntMS` 의 뺄셈은 **하드웨어 하한**으로 -- 운영 하한으로 빼면 `guideexp 2`
+    ⛔ `IntMS` 의 뺄셈은 **기본 노출시간**으로 -- 최소 노출시간으로 빼면 `guideexp 2`
     의 실현 주기가 1.95 s 가 되어 헤더가 거짓이 된다.
     """
     import os
@@ -345,14 +345,14 @@ def test_operational_floor_clamps_the_request_but_intms_uses_the_hardware_floor(
     icfg.acf = {'G': GUIDE_ACF}
     icfg.exptime_min = 1.3
     be = GuideBackend(simcfg.load(ini), icfg)
-    hw = be.frame_floor()
-    assert 1.25 < hw < 1.26                       # 하드웨어 하한은 그대로 계산값
+    hw = be.base_exptime()
+    assert 1.25 < hw < 1.26                       # 기본 노출시간은 그대로 계산값
     assert be.intms_for(1.0) == round((1.3 - hw) * 1000)   # 요청 1.0 -> 1.3 으로 접힘 (IntMS ~49)
     assert be.effective_exptime(1.0) == 1.3      # 카드 '1.3'
     assert be.effective_exptime(1.3) == 1.3
-    assert be.intms_for(2.0) == round((2.0 - hw) * 1000)   # 운영 하한 위는 그대로
+    assert be.intms_for(2.0) == round((2.0 - hw) * 1000)   # 최소 노출시간 위는 그대로
     assert be.effective_exptime(2.0) == 2.0      # 카드 '2'
-    # 운영 하한을 하드웨어 하한 아래로 두면 하드웨어 하한이 이긴다.
+    # 최소 노출시간을 기본 노출시간 아래로 두면 기본 노출시간이 이긴다.
     icfg.exptime_min = 0.5
     assert be.intms_for(0.5) == 0
     assert be.effective_exptime(0.5) == round(hw, 3)

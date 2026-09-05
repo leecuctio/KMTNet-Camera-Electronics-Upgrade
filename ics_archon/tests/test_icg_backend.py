@@ -31,7 +31,7 @@ NX, NY = 8, 4
 ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
 TRIGOUTLEVEL=1
-PARAMETER0="FirstFlush=0"
+PARAMETER0="FirstFlush=1"
 PARAMETER1="Exposures=1"
 PARAMETER2="IntMS=0"
 """
@@ -64,7 +64,7 @@ def make_cfgs(tmp_path, fake: FakeArchon):  # noqa: ANN001, ANN201
     icfg.acf = {'G': str(acf)}
     icfg.poweron_wait = 0.0
     icfg.frame_poll = 0.01
-    # 이 파일의 시간 전제(GUIDEEXP 2 = IntMS 0 · 두 홉 창 …)는 운영 하한 2.0 으로 쓰였다 --
+    # 이 파일의 시간 전제(GUIDEEXP 2 = IntMS 0 · 두 홉 창 …)는 설정 가능한 최소 노출시간 2.0 으로 쓰였다 --
     # 기본값이 1.3 으로 바뀐 뒤(2026-09-05)에도 그 전제를 유지한다.
     icfg.exptime_min = 2.0
     icfg.progress_step = 0
@@ -242,7 +242,7 @@ def test_abort_disarms_the_running_sequence(tmp_path, monkeypatch):  # noqa: ANN
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')      # IcgCfg 기본 exptime_min 은 1.3(운영 하한) -- 2.0 요청은 IntMS=700 이다 (2026-09-05)
+                app.transport.feed('abc>ICG GUIDEEXP 2')      # IcgCfg 기본 exptime_min 은 1.3(설정 가능한 최소 노출시간) -- 2.0 요청은 IntMS=700 이다 (2026-09-05)
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')           # 21 독출 · 20 저장
                 for _ in range(400):
@@ -591,7 +591,7 @@ def test_go_is_refused_when_the_acf_has_no_firstflush(tmp_path):
     try:
         cfg, icfg = make_cfgs(tmp_path, fake)
         old = tmp_path / 'old_r2612.acf'
-        old.write_text(ACF_TEXT.replace('PARAMETER0="FirstFlush=0"' + chr(10), ''),
+        old.write_text(ACF_TEXT.replace('PARAMETER0="FirstFlush=1"' + chr(10), ''),
                        encoding='utf-8')
         assert 'FirstFlush' not in old.read_text(encoding='utf-8')
         icfg.acf = {'G': str(old)}
@@ -601,7 +601,7 @@ def test_go_is_refused_when_the_acf_has_no_firstflush(tmp_path):
         async def run():  # noqa: ANN202
             await be.prepare()
             try:
-                await be.arm_sequence(2, 0, flush=True, suffix='20260905.000001')
+                await be.arm_sequence(2, 0, suffix='20260905.000001')
             finally:
                 await be.shutdown()
 
@@ -615,13 +615,13 @@ def test_go_is_refused_when_the_acf_has_no_firstflush(tmp_path):
         fake.shutdown()
 
 
-def test_arm_sets_firstflush_once_and_the_flush_makes_no_frame(tmp_path):
-    """arm 은 `FirstFlush=1` 을 LOADPARAMS 한 번에 실고 **곧바로 설정 메모리를 0 으로**
-    되쓴다; 가짜의 flush 는 독출 소요만큼 걸리고 **프레임을 만들지 않는다**.
+def test_arm_leaves_firstflush_alone_and_the_flush_makes_no_frame(tmp_path):
+    """arm 은 LOADPARAMS 한 번이고 설정 메모리의 `FirstFlush=1`(R2616 상수)은 **그대로**다;
+    가짜의 flush 는 독출 소요만큼 걸리고 **프레임을 만들지 않는다**.
 
-    설정 메모리에 1 이 남으면 뒤따르는 어떤 LOADPARAMS(STOP 의 Exposures=0 …)도
-    유령 flush 를 되살린다 -- 가짜가 LOADPARAMS 마다 설정 메모리를 재독하므로 이
-    시험이 그 재점화를 본다.
+    STOP 의 `Exposures=0` LOADPARAMS 도 그 상수를 다시 실어 **꼬리 flush 한 번**이 돈다 --
+    마지막 프레임 뒤 CCD 를 비우고 유휴로 간다 (DevNote 11.33; 종전의 '유령 flush' 는 이제
+    설계다).  가짜가 LOADPARAMS 마다 설정 메모리를 재독하므로 이 시험이 그것을 본다.
     """
     fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.01,
                       system=GUIDE_SYSTEM, nbuf=3)
@@ -635,9 +635,9 @@ def test_arm_sets_firstflush_once_and_the_flush_makes_no_frame(tmp_path):
 
         async def run():  # noqa: ANN202
             await be.prepare()
-            t1 = await be.arm_sequence(2, 0, flush=True, suffix='20260905.000001')
-            # ① 호스트가 LOADPARAMS 뒤 설정 메모리를 되썼다.
-            assert 'FirstFlush=0' in flush_slot_text(), flush_slot_text()
+            t1 = await be.arm_sequence(2, 0, suffix='20260905.000001')
+            # ① 호스트는 설정 메모리를 건드리지 않는다 -- 상수 1 그대로.
+            assert 'FirstFlush=1' in flush_slot_text(), flush_slot_text()
             assert t1.armed_utc is not None and t1.armed_mono is not None
             async for _pct in be.wait_frame(t1):
                 pass
@@ -647,12 +647,12 @@ def test_arm_sets_firstflush_once_and_the_flush_makes_no_frame(tmp_path):
             # ② flush 1회 · 프레임 정확히 2 (구판은 3).
             assert getattr(fake, 'flushes', 0) == 1, fake.__dict__.get('flushes')
             assert fake.frame_no == 2, fake.frame_no
-            # ③ STOP 경로도 FirstFlush=0 을 함께 쓴다 -- 유령 flush 가 없다.
+            # ③ STOP 경로의 LOADPARAMS 는 꼬리 flush 한 번을 싣는다 (설계, 11.33).
             flushes0 = fake.flushes
             await be.stop_sequence()
-            await asyncio.sleep(0.15)
-            assert fake.flushes == flushes0, 'STOP 의 LOADPARAMS 가 flush 를 되살렸다'
-            assert 'FirstFlush=0' in flush_slot_text()
+            await asyncio.sleep(0.2)
+            assert fake.flushes == flushes0 + 1, 'STOP 의 LOADPARAMS 가 꼬리 flush 를 싣지 않았다'
+            assert 'FirstFlush=1' in flush_slot_text()
             await be.shutdown()
 
         asyncio.run(run())

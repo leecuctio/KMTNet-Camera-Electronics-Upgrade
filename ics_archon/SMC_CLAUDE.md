@@ -1406,7 +1406,34 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ## ▶ 인수인계 (2026-09-04 마감 — ⭐ 새 세션이면 **여기부터**)
 
-### ⭐ 2026-09-05 추가분 — 이 아래 2026-09-04 마감분보다 **이것이 최신**
+### ⭐ 2026-09-05 밤 추가분 (DevNote 11.33) — 아래 것들보다 **이것이 최신**
+
+ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved`).
+
+**한 것**
+- **flush 를 ACF 상수 하나로** — guide **R2616**(`PARAMETER0="FirstFlush=1"` 상수, 스크립트 동일) · science **R2610 ×6**
+  (`LINE9/LINE10` 삭제, `FirstFlush=0` 기본).  호스트의 `FirstFlush` 쓰기/되쓰기 전부 삭제(`trigger`·`set_exposures`).
+  `set_ccdflush`(LINE9/10 + LOADTIMING) → `set_first_flush`(WCONFIG 한 줄 + RCONFIG 확인).  `flush_now` 는 옵션이 0 이면
+  잠시 1.  **STOP 뒤 꼬리 flush 한 번**은 설계(규격 10.1-7).  `test_ccdflush.py` 재작성.
+- **ARCHON 무제한**(양쪽) — 취득 중·조작 중에도 받고 GO 도 안 막음(ICS `_finish_op(track=False)`).
+- **용어** — `frame_floor()` → `base_exptime()` **기본 노출시간**, `exptime_min` = **설정 가능한 최소 노출시간**
+  (규격 10.1-1 · 코드 · ini · README · first_run).
+- `icg_first_run.md` 부록 **DG 정적 덤프 실측** 프로시저(FRAME6 판단 근거) · 3.5/4/5단계 행 갱신.
+
+**밟기 쉬운 함정**
+- guide ACF 의 `FirstFlush` 는 **1 이어야** GO 가 열린다(`_flush_capable`: 값을 본다, 존재가 아니다).  science 는 0 이
+  기본 — `[archon] ccdflush` 옵션이 기동 때 쓴다.
+- `set_first_flush`/`flush_now` 는 **슬롯 이름**을 본다 — R2608 의 PARAMETER0 은 `ContinuousExposures` 라 번호만 믿으면 덮는다.
+- flush 도는 중 다음 GO 의 LOADPARAMS 가 오면 flush 가 **두 번** 돈다(옳고 느릴 뿐).
+- `ContinuousExposures` 는 buftest(그쪽)가 써서 남겼다 — 빼지 말 것.
+- 아래 2026-09-05 추가분의 함정 "플래그는 설정 메모리에 남는다 … 되쓴다" 는 **닫혔다** — 상수 1 이 설계다.
+
+**다음 세션이 할 것**
+1. 전수 정합 검토(14차원) — 네 번째 한도 사망.  2개씩 또는 새 한도 창(03:20 이후).
+2. 첫 구동 항목(11.32-(6) + 11.33-(6)): STOP 꼬리 flush 실측 · `ccdflush=true` science 한 장 주기.
+3. DG 정적 덤프 실측(부록) → FRAME6 후속 판(R2617) 여부.
+
+### ⭐ 2026-09-05 추가분 — 이 아래 2026-09-04 마감분보다 최신 (⚠️ 위 "밤 추가분" 이 그보다 더 최신)
 
 브랜치 `ics-archon-v1.0-build` · `main` 둘 다 푸시됨.  ics_archon 475 통과(알려진 flake 1).
 
@@ -1418,7 +1445,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 **밟기 쉬운 함정 (새로 생긴 것)**
 - `FirstFlush` 는 **반드시 PARAMETER0** — LOADPARAMS 가 슬롯 순서로 적용, 유휴 루프 1 µs.  뒤 슬롯이면 첫 장이 flush 없이 나간다.
-- 플래그는 **설정 메모리에 남는다** — `trigger()` 가 LOADPARAMS 직후 WCONFIG 로 0 을 되쓴다(LOADPARAMS 없이).  이 되쓰기를 빼면 STOP 의 LOADPARAMS 가 유령 flush 를 되살린다.
+- ~~플래그는 설정 메모리에 남는다 — `trigger()` 가 LOADPARAMS 직후 WCONFIG 로 0 을 되쓴다~~ **닫힘(11.33, R2616)**: 설정 메모리 `FirstFlush=1` 이 상수고 호스트는 쓰지 않는다 — STOP 의 꼬리 flush 는 설계다.
 - `FRAME6`/`IMAGE6` 가 DG 를 0 V 로 내려 프레임 시프트 중 덤프가 안 된다(STA 원본부터) — 실측 뒤 R2615 후보.  **상태표는 파싱해서 볼 것**(필드 순서 level,slew,keep — 매뉴얼 3312행).  문자열만 훑으면 안 보인다(내가 먼저 틀렸다).
 - DATE-OBS 의 폴링 편향(frame_poll 0.5 s → 평균 +0.25 s)은 **아직 남아 있다** — 예측 폴링은 후속.
 
