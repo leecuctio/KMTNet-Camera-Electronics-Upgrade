@@ -749,6 +749,28 @@ direct-reply 로 전 경로가 돈다.
 여기 두면 "쓰는 법" 과 "남은 일" 이 섞인다.
 
 
+## CCD 조작 명령 넷 (운영자 지시 2026-09-05)
+
+ICS(`ics_archon`)·ICG(`icg_archon`) 둘 다 받는다.  ICS 는 컨트롤러가 둘이라 `CCDFLUSH [MK|NT|ALL]` ·
+`ARCHON <MK|NT> <command>` 처럼 대상을 고른다(ICS 쪽 문법은 `ics_archon/app.py` 머리말).
+
+```
+CCDFLUSH              # 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 -> DONE: CCDFLUSH Flushed=1 (프레임 없음)
+CCDPOWON / CCDPOWOFF  # POWERON/POWEROFF -> Power=ON|OFF  (ON 은 poweron_wait 초 뒤에 DONE)
+ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문>  (거부는 ERROR: ARCHON rejected: <원문>)
+```
+
+* ⛔ 넷 다 **취득 중이면 거부**한다 (`Exposure in progress -- ABORT first`) — 진행 중 노출 위의
+  `LOADPARAMS`/`POWEROFF`/원문 `RESETTIMING` 은 그 프레임을 망친다.  넷은 서로도, `GO` 도 막는다
+  (`Busy with <CMD>`) — `POWERON` ack 뒤 `poweron_wait`(12 s) 동안 들어온 `GO` 가 flush 안 끝난 CCD 를
+  arm 하는 구멍 때문이다.  `EXPENABLE OFF` 는 막지 않고 응답에 `(ExpEnable=OFF)` 를 붙인다.
+* ⚠️ `ARCHON` 은 원문을 **그대로**(대소문자 유지) 보낸다 — 컨트롤러는 모르는 명령에 무응답이라 소문자
+  이름은 시한 초과로 끝난다.  위생 검사가 없는 운영자 도구다.  긴 응답(`STATUS`)은 1800 B 에서 잘리고
+  전문은 `*.cmd` 로그에 남는다.  빈 ack(`WCONFIG`·`LOADPARAMS`·`APPLY*`)는 `(accepted, empty reply)`.
+* guide 의 flush 는 `FlushFrame`(R2613+: FrameShift + SkipLine×FlushLines, 프레임 없음), science 의 flush 는
+  `Prep`+`Flush`(R2609+) 다.  ACF 가 구판이면 `Failed: … ACF has no FirstFlush …` 로 거부된다.
+* `sim` 백엔드에서는 `ARCHON` 이 `SIM (no controller): <원문>` 을 돌려준다 — 배선 확인용.
+
 ## 관련 문서
 
 | 문서 | 위치 |

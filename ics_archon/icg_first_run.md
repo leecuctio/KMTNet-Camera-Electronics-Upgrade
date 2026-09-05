@@ -108,6 +108,21 @@ python3 -u -m icg_archon | tee icg_boot.log
 | 노드 등록 | `xis_host` 를 비웠으면 direct-reply 라 허브 왕복이 **없는 것이 정상**이다.  허브에 붙였다면 `ICG`·`G.IC`·`G.CB` 세 이름의 등록 PING 이 나가고, 허브가 `G.IC` 를 모르면 `ERROR: No Route to Destination Host G.IC` 가 온다 (레거시에도 있던 실패 사례) | |
 | ⭐ 허브가 아는 노드 | 허브에 붙였을 때만.  **`ICG>XIS HOSTS`** 를 보내면 `DONE: HOST numHosts=… host0=… ` 로 등록된 노드가 다 온다 — 거기 **`ICG`·`G.IC`·`G.CB` 셋이 보이는지**가 등록이 됐다는 직접 확인이다 (허브의 노드 표는 **순전히 동적**이라 노드가 뭘 보내기 전엔 모른다).  `HOST ICG` 는 `IdleTime` 까지 준다 — HK 보고가 끊겼을 때 *ICG 가 죽었나 / 링크가 죽었나* 를 가르는 값이다.  ⚠️ 읽기 전용이지만 같은 명령표의 **`REMOVE <ID>` 는 `EXEC:` 가드가 없다** — 실수로 보내면 그 노드가 허브 표에서 빠진다 | |
 
+## 3.5단계 — 운영자 명령 넷 (전원 · flush · 바이패스) — 2026-09-05 신설
+
+콘솔에서 `ccdpowon` → `ccdflush` → `archon STATUS` → `ccdpowoff` 순서로 (문법·응답은 README "CCD 조작 명령 넷").
+
+| 항목 | 기대 | 실측 |
+|---|---|---|
+| `CCDPOWON` | `DONE: CCDPOWON Power=ON` 이 **`poweron_wait`(12 s) 뒤**에 온다. 그 사이 `go` 는 `ERROR: GO Busy with CCDPOWON -- wait for its DONE` | |
+| `CCDFLUSH` | `DONE: CCDFLUSH Flushed=1`. `FRAME` 의 `BUFnFRAME` 이 **안 는다**(flush 는 프레임을 안 만든다, R2613+). `RCONFIG` 로 `FirstFlush=0` 이 되돌아왔나 | |
+| ⭐ flush 소요 | `DONE` 까지 ≈ 하드웨어 하한 1.2506 s — 4단계 주기 실측의 예고편 (규격 OI-26 ①) | |
+| `ARCHON STATUS` | `DONE: ARCHON POWERGOOD=1 …` 원문. 1800 B 넘으면 `...(+N bytes truncated, see log)` 가 붙고 전문은 `icg_archon.cmd` 로그에. ⭐ **이 응답 원문을 파일로 남긴다** — guide `.162` 의 STATUS 실물이 저장소에 한 번도 없다(11.30) | |
+| `ARCHON` 거부 | 틀린 명령(예 `ARCHON WCONFIGZZZZ`)은 `ERROR: ARCHON rejected: …`. ⚠️ **컨트롤러는 모르는 이름에 무응답**이라 소문자 `archon status` 는 시한 초과 → 링크 재수립 → `Failed`. 명령 이름은 대문자로 | |
+| 취득 중 거부 | `go 5` 도는 동안 `ccdflush` → `ERROR: CCDFLUSH Exposure in progress -- ABORT first` (히터 명령과 달리 **거부**다) | |
+| `CCDPOWOFF` | `DONE: CCDPOWOFF Power=OFF`. 다음 `go` 가 `prepare()` 로 다시 켠다 | |
+| 잠금과의 관계 | `expenable off` 뒤 `ccdflush` 는 되고 응답에 `(ExpEnable=OFF)` 가 붙는다 — flush 는 노출이 아니다 | |
+
 ## 4단계 — 첫 취득, 주기 실측 ⚠️ **전원 ON**
 
 콘솔에서:
