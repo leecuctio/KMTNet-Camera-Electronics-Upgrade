@@ -362,7 +362,12 @@ class FakeArchon(threading.Thread):
             # 적용돼 있다.  스레드 기동은 응답 뒤여도 된다.
             with self._lock:
                 self._remaining = self._exposures()
-                start = not self._exposing and self._remaining > 0
+                # R2613+: 설정 메모리의 FirstFlush 를 LOADPARAMS 마다 읽는다 --
+                # 실기와 같이 **호스트가 0 으로 되쓰지 않으면 다음 LOADPARAMS 가
+                # flush 를 되살린다** (유령 flush 를 시험이 보게 하는 자리).
+                self._flush_pending = self._flush() == 1
+                start = (not self._exposing
+                         and (self._remaining > 0 or self._flush_pending))
                 if start:
                     self._exposing = True
             self._reply(conn, ref)
@@ -413,6 +418,16 @@ class FakeArchon(threading.Thread):
                     return 0
         return 0
 
+    def _flush(self) -> int:
+        """`FirstFlush=n` -- R2613+ 의 flush 플래그 (0/1).  없으면 0."""
+        for text in self.config.values():
+            if 'FirstFlush=' in text:
+                try:
+                    return max(int(text.split('FirstFlush=')[1].split()[0]), 0)
+                except (IndexError, ValueError):
+                    return 0
+        return 0
+
     def _exposures(self) -> int:
         """`Exposures=n` -- **한 번의 `LOADPARAMS` 가 만드는 프레임 수**.
 
@@ -443,6 +458,15 @@ class FakeArchon(threading.Thread):
         """
         try:
             while not self._stop:
+                # flush 프레임 (R2613 LINE1 `IF FirstFlush GOTO FlushFrame`) -- 독출
+                # 소요만큼 걸리고 **프레임을 만들지 않는다** (frame_no 불변, WBUF 0).
+                with self._lock:
+                    do_flush = getattr(self, '_flush_pending', False)
+                    self._flush_pending = False
+                if do_flush:
+                    time.sleep(self.readout_ticks * self.tick)
+                    self.flushes = getattr(self, 'flushes', 0) + 1
+                    continue
                 with self._lock:
                     if self._remaining <= 0:
                         # ⚠️ 나가기로 정한 **같은 잠긴 구역**에서 표시를 내린다 --

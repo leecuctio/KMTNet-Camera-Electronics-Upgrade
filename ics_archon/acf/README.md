@@ -17,7 +17,7 @@
 | `KMTS_SCI_102_STA0287_R2608_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
 | `KMTK_SCI_113_STA0200_R2608_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
 | `KMTK_SCI_113_STA0200_R2608_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
-| `KMTK_GUI_162_STA0201_R2612.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
+| `KMTK_GUI_162_STA0201_R2614.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -258,6 +258,123 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
 
+## R2614 -- `DGLOW` 가 RG 도 올린다 (2026-09-05, 운영자 물음에서)
+
+    KMTK_GUI_162_STA0201_R2613.acf  ->  ..._R2614.acf   (구판은 archive/)
+    STATE13\MOD4 ch4(RGR/RGL):  ,1,1 (keep)  ->  RG_HIGH,1,0 (set)   **차이는 이 필드 하나뿐**
+
+운영자 물음(2026-09-05): *"HorizontalShift 만으로는 output node 가 비워지지 않아서(RG
+설정 부재) 글루/블루밍이 생길 수 있다는 거지?  HorizontalShift 중 output node 가
+계속 비워지게 할 수 있을 것 같은데."*  -- **맞다, 정상 경로 `LINE12` 에서.**
+
+`SmallIntUnit`(IntUnit/NoIntUnit 의 몸체)이 `RGHIGH;X(11) / RGLOW;X(11)` 로 시작해
+S 상으로 끝나므로 적분을 거치면 **RG=LOW** 로 나온다.  그 뒤 `DGHIGH`·`FRAME1~6`·
+`DGLOW`·`S1~S3` 상태가 모두 RG 를 keep 이라 `LINE11~13`(FrameShift 6.2 ms +
+HorizontalShift(600) 360 µs + CLAMP 100 µs) 내내 RG=LOW 다 -- 600 회 시프트가
+**리셋 없는 출력 노드**에 쌓인다.  (IntMS=0·NoIntMS=0 이면 RESET 의 RG_HIGH 가 남아
+반대로 도니 **IntMS 에 따라 달라지는 숨은 비일관성**까지 있었다.)
+
+R2614 는 `DGLOW` 상태가 "DG 내림 + **RG 올림**" 이 되게 한다.  그러면 `LINE12` 와
+R2613 의 `LINE116`(flush 경로)의 HorizontalShift(600) 이 노드 리셋을 켠 채 돌고 IntMS
+의존도 사라진다.  부작용은 못 찾았다 -- 몇백 µs 뒤 `SkipLine`/`Line` 이 어차피
+`RGHIGH` 를 걸고, RESET 이 유휴 내내 RG=12 V 를 유지하고 있어 DC HIGH 는 이미 상시
+상태다.  DG 는 그대로 내리므로 "Line 독출 전 DG LOW" 조건은 유지된다.
+
+⚠️ **왜 R2613 과 분리했나** -- 이것은 정상 프레임의 **클록 파형 변경**이다.  이 README
+의 규칙(클록 파형은 다른 변경과 함께 손대지 말 것)대로 flush 로직(R2613)과 갈라,
+벤치에서 R2614 에 문제가 보이면 R2613 으로 물러 어느 쪽인지 가를 수 있게 했다.
+
+### 함께 확인된 것 -- `FRAME6`/`IMAGE6` 가 DG 를 0 V 로 내린다 (⏳ R2615 후보)
+
+`DGHIGH; CALL FrameShift(1033)` 은 DG 를 12 V 로 올려 프레임 시프트 중 레지스터를
+덤프 드레인으로 비우려는 뜻인데, **`STATE31\MOD4`(FRAME6) 의 ch6(DG) 필드가 keep 이
+아니라 `A_LOW,1,0`(0 V 로 set)** 이다.  그래서 DG=12 V 인 구간은 **첫 행의 FRAME1~5
+(~4 µs)** 뿐이고 2~1033 행은 DG=0 V 로 밀려 **레지스터에 store 1033 행분이 그대로
+쌓인다.**  `IMAGE6` 도 같다.  STA 원본 R2601 부터 모든 판이 이렇다 -- 상태표 편집
+때 S3 열의 `A_LOW` 가 DG 열에 같이 들어간 STA 쪽 실수로 보인다(DG 용 상수 `DG_LOW`
+가 따로 있다).
+
+양은 실기 조건에서 무시할 수준이다: CCDTEMP 실측 −100.6 ℃(172.5 K)에서 데이터시트
+p.2 note 2 공식으로 5.4e-4~1.1e-3 e/px/s, 보수적 바닥값 0.01 을 두어도 1033 행 합이
+유휴 1 h 에 2k~4k(공식) / 37k(바닥값) e⁻ -- full well 80k~120k 아래.  넘치려면 바닥값으로
+3 h, 공식으론 20 h 이상 유휴가 필요하다.  진짜 큰 전하는 **돔 열린 유휴의 빛**(image
+포화 → ABD 없음(p.5 note 10) → store 까지 블루밍)인데, 그 프레임은 통째로 flush 로
+버리므로 자료 피해도 소자 손상 기제도 아니다.
+
+⏳ 고치려면 `STATE31\MOD4` ch6 을 `,1,1`(keep) 로 -- FrameShift 내내 DG 12 V 유지.
+**그러나 데이터시트 본문만으로는 DG 가 정적 레지스터를 통째로 덤프하는지(가로 인접
+덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 R2615 로: 암실·저온·유휴
+30 min 뒤 시험 ACF 에서 LINE12 를 `DGLOW; X(1)` 로 바꿔(HorizontalShift 생략) 레지스터
+잔량이 1 행에 더해져 나오게 하고 FRAME6 ch6 을 A_LOW/keep 두 판으로 찍어 비교.
+
+## R2613 -- flush 프레임이 스크립트 안에 들어갔다 (2026-09-05, 운영자)
+
+    KMTK_GUI_162_STA0201_R2612.acf  ->  ..._R2613.acf   (구판은 archive/)
+    LINE1="RESET; IF ContinuousExposures GOTO Continuous"  ->  "RESET; IF FirstFlush GOTO FlushFrame"
+    LINE2="X; IF Exposures GOTO Exposure"                  ->  "X; IF ContinuousExposures GOTO Continuous"
+    LINE3="X; X(100)"                                     ->  "X; IF Exposures GOTO Exposure"
+    LINE4="X; GOTO Start"                                 ->  "X; X(100)"
+    LINE5=(빈 줄)                                          ->  "X; GOTO Start"
+    LINE113=FlushFrame:                                   (신설)
+    LINE114="X; FirstFlush--"
+    LINE115="DGHIGH; CALL FrameShift(1033)"               ; t0 -- 첫 저장 프레임의 적분 개시 = DATE-OBS
+    LINE116="DGLOW; CALL HorizontalShift(600)"
+    LINE117="CLAMP; X(10000)"
+    LINE118="NOCLAMP; CALL SkipLine(FlushLines)"          ; store 를 행 단위로 버린다, 2448 회 ≈ Line(1033)
+    LINE119="X; GOTO Start"
+    LINES=113 -> 120
+    PARAMETER0="ContinuousExposures=0"  ->  "FirstFlush=0"      ⛔ 반드시 슬롯 0
+    PARAMETER16="ContinuousExposures=0" (신설) · PARAMETERS=16 -> 17
+
+빈 LINE5 를 써서 **LINE6 이하 번호는 밀리지 않았다** -- `acftiming` 형태 검사(`LINE11`·
+`12`·`47`·`48`)와 `skipline_ticks` 가 보는 `LINE52~55` 가 그대로다.  `_SHAPE` 에는
+`LINE1`·`LINE118` 이 추가돼 **R2612 이하 판을 R2613+ 호스트가 만나면 걸러낸다.**
+
+### 무엇을 하나 (규격 10.1-2 · 10.1-3)
+
+호스트가 GO 에 `Exposures=n` + `FirstFlush=1` (+ `IntMS`) 을 **한 LOADPARAMS** 로 건다.
+코어는 유휴 루프 첫 줄에서 `FirstFlush` 를 보고 `FlushFrame` 으로 뛴다: 플래그를 깎고,
+**`IntUnit` 없이 곧바로 `FrameShift`** (이 개시 순간이 첫 저장 프레임의 적분 개시 =
+`DATE-OBS`), 레지스터를 쓸고, `SkipLine` × `FlushLines` 로 store 를 행 단위로 버린 뒤
+`Start` 로 돌아간다.  이제 플래그는 0 이라 `Exposures` 로 정상 사이클이 `n` 번 돈다.
+
+    go n  =  flush 1회 + 독출 n회 · n장 저장     (v1.10 까지: 독출 n+1 · 첫째 폐기)
+    첫 저장 프레임 적분 = FS(flush)+HS+CLAMP+SkipLine(2448)+루프+IntMS+noint
+                       ≈ 정상 주기 = FS+HS+CLAMP+Line(1033)+루프+IntMS+noint   (차 −2.71 µs)
+
+⭐ **flush 는 프레임을 만들지 않는다** -- 버퍼에 아무것도 안 남고 컨트롤러 프레임
+카운터도 안 는다(SkipLine 에 ADC 샘플 상태가 없다).  호스트가 볼 자료가 없다.
+⏳ 이것은 ACF 논리에서 온 추론이고 FW 실측이 아니다 -- 첫 구동에서 `go 1` 뒤 FRAME
+증가가 정확히 1 인지 확인한다.
+
+### ⛔ 슬롯 순서 -- 설계 검토가 잡은 blocker
+
+`LOADPARAMS` 는 파라미터를 **첫 슬롯부터 순서대로 하나씩** 적용한다(매뉴얼 p.52).
+유휴 루프 한 바퀴가 105 틱(1.05 µs)이라, 플래그를 뒤 슬롯에 두면 `Exposures`(슬롯 1)가
+먼저 앉는 순간 코어가 `IF Exposures GOTO Exposure` 로 **flush 없이** 뛰고, flush 는 1·2
+번 프레임 **사이**에 끼어 2번 프레임의 실적분이 주기 + 1.25 s 가 된다.  그래서
+`FirstFlush` 가 슬롯 0 이고 `ContinuousExposures`(호스트가 어디서도 안 쓴다)가 16 으로
+갔다.  잔여 창은 두 LOAD 가 20 ns 안에 잇따르는 경우뿐 -- 실질 0.
+
+### ⛔ 플래그가 설정 메모리에 남는다
+
+`LOADPARAMS`/`LOADTIMING`/`APPLYALL` 은 설정 메모리의 파라미터를 **전부** 다시 태운다.
+코어는 `FirstFlush--` 로 자기 값을 깎지만 **설정 메모리는 1 그대로**라, 그 뒤 어떤
+LOADPARAMS 든(STOP 의 `Exposures=0` …) 1 을 되살려 **유령 flush**(1.25 s 클록, 프레임
+없음)가 돈다.  규칙: **arm 의 LOADPARAMS 한 번에만 실리고, 호스트가 곧바로 설정 메모리를
+`FirstFlush=0` 으로 되쓴다**(LOADPARAMS 없이 -- 코어 값은 그대로).  `set_exposures(0)`
+도 함께 0 을 쓴다.  가짜 컨트롤러가 이 재점화를 모사해 시험이 잡는다.
+
+### `FlushFrame` 은 서브루틴이 아니다
+
+GOTO 로 들어가 GOTO 로 나가는 코드 블록이다.  **RETURN 을 쓰면 스택이 어긋난다.**  이름이
+`…Frame:` 이라 나중에 누가 CALL 로 바꾸기 쉬워 여기 적어 둔다.
+
+### 무엇이 바뀌었나 -- R2611·R2612 의 "굽지 말 것" 이 닫혔다
+
+R2611 은 `FlushLines` 파라미터만, R2612 는 유휴 정지만 있어 flush 스크립트 줄이 없었다.
+R2613 이 그 줄이다.  ⏳ **실기에는 R2614 를 굽는다** (R2613 + DGLOW RG).
+
 ## R2612 -- 유휴 루프가 클록하지 않는다 (2026-09-05, 운영자)
 
     KMTK_GUI_162_STA0201_R2611.acf  ->  ..._R2612.acf   (구판은 archive/)
@@ -369,9 +486,7 @@ Shift(600)`(ST) 라 **AT·ST 로만** 결정되는데, 맞출 대상인 본 독�
 소리를 낸다**(`icg_archon/backend.py`).  상수로 두되 조용히 틀리지는 않게
 한 것이다.  산수 자체는 `acftiming.flush_lines()` 가 정본이다.
 
-⏳ **타이밍 스크립트 쪽은 아직이다** -- flush 경로가 `CALL SkipLine(FlushLines)`
-를 부르도록 하는 줄이 안 들어갔다.  파라미터만 먼저 자리를 잡은 상태이고,
-**그 줄이 들어갈 때까지 R2611 을 실기에 굽지 말 것.**
+~~⏳ 타이밍 스크립트 쪽은 아직이다~~ → ✅ **R2613 에서 `LINE118 NOCLAMP; CALL SkipLine(FlushLines)` 로 들어갔다.**
 
 ⏳ **실측 확인**: 2448 은 `acftiming` **계산값**이지 실측이 아니다 (규격
 OI-26).  첫 guide 구동에서 flush 소요와 본 독출 소요를 재어 어긋나면 고친다.

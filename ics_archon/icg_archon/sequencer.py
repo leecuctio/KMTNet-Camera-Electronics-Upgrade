@@ -7,13 +7,13 @@ INITIALIZING→ERASE→INTEGRATING(셔터/암)→READOUT→저장(pair) 상태�
 guide 의 노출 의미론은 그 틀에 없다:
 
 * 셔터가 없다 -- 노출 경계는 **독출 개시**다.
-* `go n` = **n+1 독출 · 첫 독출 폐기 · n장 저장** (10.1-2·3).
+* `go n` = **flush 1회 + 독출 n회 · n장 저장** (10.1-2·3, R2613+).
 * `EXPTIME` = 연속 두 독출 개시의 간격 -- **시퀀서가 주기를 만든다**
-  (`Exposures=n+1` 을 한 번 걸고 `IntMS = EXPTIME - 하한`, 운영자 확정
+  (`Exposures=n` 을 한 번 걸고 `IntMS = EXPTIME - 하한`, 운영자 확정
   2026-08-31.  근거·계산은 `backend.py` 머리말과 `acftiming`).
   하한보다 짧게 요청하면 **하한으로 눌러 담고** 헤더에는 실현값을 싣는다.
-* `DATE-OBS` = **직전 독출 개시 시각** (10.1-4) -- 폐기 프레임의 트랜스퍼
-  시각이 첫 저장 프레임의 `DATE-OBS` 가 된다.
+* `DATE-OBS` = **직전 `FrameShift` 개시 시각** (10.1-4) -- 첫 저장 프레임은 flush
+  `FrameShift` 개시(≈ arm 의 LOADPARAMS 시각, 표의 `armed_utc`)다.
 * 프레임마다 파일 1개 + 노출 번호 증가 (10.1-6).
 
 메시지 규약은 자유 재설계 영역이다 (OBSAgent 가 guide 발신을 무시한다 --
@@ -195,7 +195,7 @@ class GuideSequencer:
     async def _run(self, count: int, source: str) -> None:
         st = self.st
         st.exposing = True     # STATUS `Mode=Acquiring` · EXPNUM 창의 근거
-        # ⭐ 컨트롤러에 `Exposures=n+1` 이 걸렸나 / 사이클이 곱게 끝났나.
+        # ⭐ 컨트롤러에 `Exposures=n` 이 걸렸나 / 사이클이 곱게 끝났나.
         # `try` **밖**에서 만든다 -- `prepare()` 중 ABORT 가 와도 `finally` 가
         # 이름을 찾아야 한다.  `clean` 이 아니면서 `armed` 면 컨트롤러가 아직
         # 돌고 있다는 뜻이라 `finally` 가 `Exposures=0` 을 건다 (9.15-(9)).
@@ -244,80 +244,101 @@ class GuideSequencer:
             st.expstatus = ExpStatus.INTEGRATING
             self.emit.exp_status(source, st.expstatus)
 
-            t_prev = None            # 직전 트랜스퍼(=독출 개시) -- DATE-OBS
-            prev_mono = None         # 실현 간격 계측용 (단조 시계)
+            # ── R2613+: go n = flush 1회 + 독출 n회 · n장 저장 (규격 10.1-2·3).
+            # 코어가 `FirstFlush=1` 을 보고 IntUnit 없이 곧바로 FrameShift 하므로
+            # **그 개시 순간이 첫 저장 프레임의 적분 개시 = DATE-OBS** 다 (10.1-4).
+            # 호스트가 아는 가장 가까운 시각은 arm 의 LOADPARAMS 왕복 **중점**
+            # (표의 `armed_utc`, 링크 스레드 안에서 찍힘 -- 11.31).
+            # 이후 프레임의 DATE-OBS = 직전 프레임의 FrameShift 개시 = 직전 프레임의
+            # **완료 관측** − (transfer + 독출).  ⚠️ 완료 관측은 폴링 지연(frame_poll)
+            # 만큼 늦다 -- 그만큼 DATE-OBS 가 늦는 편향이 있다 (예측 폴링은 후속).
+            t_prev = None            # 직전 FrameShift **개시** -- 다음 프레임의 DATE-OBS
+            t_arm_mono = None
+            prev_done_mono = None    # 완료 관측 간격 (실현 주기 감시)
             saved = 0
-            # **트리거 시각 != 트랜스퍼 시각이다.**  시퀀서는 프레임마다
-            # `IntUnit(IntMS)` + `NoIntUnit(NoIntMS)` 를 돌린 **뒤에**
-            # 트랜스퍼하고, 그 트랜스퍼가 곧 독출 개시다 (10.1-4·5).  그
-            # 지연을 안 더하면 `DATE-OBS` 가 그만큼 이르고 10.5절 6번
-            # 불변식이 계통적으로 어긋난다.
-            # ⚠️ 독출과 노출은 별개로 흐른다 -- frame-transfer 라 독출
-            # 중에도 image 는 적분하고, 저장 프레임의 노출 개시는 *직전*
-            # 트랜스퍼다.  그래서 아래가 t_prev 를 `DATE-OBS` 로 쓴다.
-            # ⚠️ PROVISIONAL -- ACF 계산값이다, 첫 구동에서 실측과 대조할 것.
-            xfer_lag = timedelta(
-                seconds=self.backend.trigger_to_transfer(intms))
+            fs_to_done = self.backend.frameshift_to_done()
+            flush_dur = self.backend.flush_duration()
+            floor = self.backend.frame_floor()
 
             stopped = False
-            for k in range(count + 1):
+            for k in range(count):
                 if self._stop_evt.is_set():
                     log.info('STOP -- %d/%d 장 저장 후 멈춘다', saved, count)
                     stopped = True
                     break
 
-                orig_suffix = '' if k == 0 else st.next_suffix()
+                orig_suffix = st.next_suffix()
                 if not armed:
-                    # ⭐ **한 번만 건다** -- `Exposures = n+1` 이면 시퀀서가
-                    # 유휴 없이 연달아 찍는다 (타이밍 스크립트 `GOTO Start`
-                    # 뒤 `Exposures` 가 남아 있으면 곧바로 `Exposure:`).
-                    # 첫 프레임은 폐기분이라 저장 대기열에 넣지 않는다.
-                    # ⚠️ 걸기 **전에** 표시한다 -- `LOADPARAMS` 가 나간 직후
-                    # ABORT 가 들어오면 컨트롤러는 이미 돌고 있는데 표시가
-                    # 없으면 아무도 안 세운다.  아직 안 나갔을 때의 `Exposures=0`
-                    # 은 유휴 컨트롤러에 무해하다.
+                    # ⭐ **한 번만 건다** -- `Exposures=n` + `FirstFlush=1` 을 한 LOADPARAMS 로.
+                    # 시퀀서가 flush 뒤 유휴 없이 n 장을 연달아 찍는다.  ⚠️ 걸기 **전에**
+                    # 표시한다 -- LOADPARAMS 직후 ABORT 가 들어오면 컨트롤러는 이미 돌고
+                    # 있는데 표시가 없으면 아무도 안 세운다.
                     armed = True
                     ticket = await self.backend.arm_sequence(
-                        count + 1, intms, suffix=orig_suffix, queue=False)
+                        count, intms, flush=True, suffix=orig_suffix, queue=True)
+                    t_arm_mono = getattr(ticket, 'armed_mono', None)
+                    if t_arm_mono is None:
+                        t_arm_mono = time.monotonic()
+                    armed_utc = getattr(ticket, 'armed_utc', None)
+                    if armed_utc is not None:
+                        # epoch -> 우리 시계 (datetime import 없이): 지금에서 경과분을 뺀다.
+                        t_prev = utcnow() - timedelta(seconds=max(time.time() - armed_utc, 0.0))
+                    else:
+                        t_prev = utcnow()
                 else:
                     # 이후 프레임은 **표만** 잇는다 (`LOADPARAMS` 없음).
                     ticket = await self.backend.next_ticket(
                         ticket, intms, suffix=orig_suffix, queue=True)
 
-                # 이 프레임의 트랜스퍼 시각 = 지금(적분 개시) + 지연.
-                xfer_utc = utcnow() + xfer_lag
-                now_mono = time.monotonic()
-                # **실현 간격 감시** (10.5절 6번 불변식의 취득 시점 판).
-                # 시퀀서가 주기를 만들지만 호스트가 그것을 **재서 확인**한다 --
-                # 원인을 가정하지 않는 안전망이고, 첫 구동의 실현 주기 실측
-                # 자료다 (경위는 DevNote 9.12 갱신 · 9.15).  허용 편차는 PROVISIONAL.
-                if prev_mono is not None:
-                    achieved = now_mono - prev_mono
-                    if achieved > exptime * 1.05 + 0.1:
-                        log.warning(
-                            '독출 개시 간격이 밀렸다 -- 실현 %.3fs, 지시 '
-                            '%.3fs (프레임 %d/%d).  원인 미상 -- 첫 구동 실측 '
-                            '항목.  헤더 EXPTIME 은 지시값이므로 이 프레임의 '
-                            '10.5절 6번 불변식이 깨진다',
-                            achieved, exptime, k, count)
-                prev_mono = now_mono
-
                 st.expstatus = ExpStatus.READOUT
                 async for pct in self.backend.wait_frame(ticket):
-                    self.emit.status(source, 'PCTREAD=%d' % pct,
-                                     cmdword='GO')
+                    self.emit.status(source, 'PCTREAD=%d' % pct, cmdword='GO')
+                done_mono = time.monotonic()
+                done_utc = utcnow()
 
-                if k == 0:
-                    # 첫 프레임 폐기 (10.1-2) -- fetch 없이 완료만 확인.
-                    # ⚠️ **표는 그대로 들고 간다** -- 다음 표의 기준선이다.
-                    await self.backend.discard_frame(ticket, release=False)
-                else:
-                    self._dispatch_store(source, orig_suffix,
-                                         t_prev, exptime, k, count)
-                    saved += 1
-                    st.advance()
-                t_prev = xfer_utc
-                if k < count:
+                # 가드는 **하드웨어 타이밍 모델이 있을 때만** 건다 -- 실기(R2614)는 늘
+                # 있고, 스크립트 없는 시험 ACF 나 대역은 모델이 없어 기준이 없다
+                # (ini 하한 2.0 s 를 그대로 쓰면 ms 로 도는 가짜의 첫 장을 다 버린다).
+                if k == 0 and getattr(self.backend, 'timing', None) is not None:
+                    # ⛔ 낯선 꼬리 프레임 가드 (11.31): 엔진은 arm 뒤 flush + IntMS + 하한
+                    # 전에는 첫 프레임을 **못** 만든다.  그보다 일찍 온 것은 직전 블록의
+                    # 꼬리다 -- Exposures=n 이 된 뒤로는 그것이 폐기분이 아니라 **첫 저장
+                    # 프레임**이 되어 남의 픽셀이 정상 헤더로 저장되므로 여기서 버린다.
+                    earliest = flush_dur + intms / 1000.0 + floor - 0.2
+                    hops = 0
+                    while done_mono - t_arm_mono < earliest and hops < 2:
+                        log.error('첫 프레임이 arm 뒤 %.2fs 에 왔다 (최소 %.2fs) -- 직전 '
+                                  '블록의 꼬리로 보고 버린다', done_mono - t_arm_mono,
+                                  earliest)
+                        await self.backend.discard_frame(ticket, release=False)
+                        ticket = await self.backend.next_ticket(
+                            ticket, intms, suffix=orig_suffix, queue=True)
+                        async for pct in self.backend.wait_frame(ticket):
+                            self.emit.status(source, 'PCTREAD=%d' % pct, cmdword='GO')
+                        done_mono = time.monotonic()
+                        done_utc = utcnow()
+                        hops += 1
+
+                # **실현 주기 감시** -- 완료 관측 **간격**으로 (표 잇는 시각이 아니다,
+                # 11.31: 그러면 첫 간격이 flush 만큼 늘어 매 GO 거짓 경고가 났다).  첫
+                # 완료는 기준만 세운다.  원인을 가정하지 않는 안전망이고 첫 구동의 실현
+                # 주기 실측 자료다 (DevNote 9.12 · 9.15).  허용 편차는 PROVISIONAL.
+                if prev_done_mono is not None:
+                    achieved = done_mono - prev_done_mono
+                    if achieved > exptime * 1.05 + 0.1:
+                        log.warning(
+                            '독출 완료 간격이 밀렸다 -- 실현 %.3fs, 지시 %.3fs (프레임 '
+                            '%d/%d).  원인 미상 -- 첫 구동 실측 항목.  DATE-OBS 는 완료 '
+                            '관측에서 되짚으므로 이 프레임의 10.5절 6번은 그대로 성립',
+                            achieved, exptime, k + 1, count)
+                prev_done_mono = done_mono
+
+                self._dispatch_store(source, orig_suffix, t_prev, exptime, k + 1, count)
+                saved += 1
+                st.advance()
+                # 이 프레임의 FrameShift 개시 = 완료 관측 − (transfer + 독출) -> 다음 DATE-OBS.
+                t_prev = done_utc - timedelta(seconds=fs_to_done)
+                if k < count - 1:
                     st.expstatus = ExpStatus.INTEGRATING
 
             if stopped and armed:
@@ -385,7 +406,7 @@ class GuideSequencer:
         finally:
             if armed and not clean:
                 # ⭐ 안전망 -- 핸들러 안에서 또 예외가 났을 때만 여기 온다.
-                # 어느 길로 나가든 컨트롤러에 걸린 `Exposures=n+1` 은 **그대로
+                # 어느 길로 나가든 컨트롤러에 걸린 `Exposures=n` 은 **그대로
                 # 돈다** (2026-09-02 확인, DevNote 9.15-(9)).  안 세우면 아무도 안
                 # 받는 프레임이 버퍼를 돌고, 다음 `go` 의 `LOADPARAMS` 가 도는
                 # 시퀀스 위에 덧써진다.  `app.stop()` 도 같은 `cancel()` 을 타므로
@@ -471,9 +492,9 @@ class GuideSequencer:
         """`Exposures=0` 은 **현재 프레임까지** 찍고 멈춘다 -- 그 꼬리가 끝날
         때까지 `busy` 를 유지한다 (9.15-(9), 반증자 지적).
 
-        안 기다리면 IDLE 직후 들어온 GO 가 그 꼬리를 제 첫(폐기) 프레임으로
-        알아 기준선이 한 장 어긋난다 -- 새 시퀀스의 진짜 첫 프레임이 저장
-        프레임으로 올라가고 `DATE-OBS` 가 한 주기 틀린다.
+        안 기다리면 IDLE 직후 들어온 GO 가 그 꼬리를 제 **첫 저장** 프레임으로
+        알아 **남의 픽셀이 정상 헤더로 저장된다** (R2613+: 폐기분이 없다 --
+        `_run` 의 '너무 이른 첫 프레임' 시간 가드가 이중 안전장치다, 11.31).
 
         **꼬리는 관측으로 정한다** (2차 반증): 해제 직후 `FRAME` 의 최신 완료
         번호를 읽어 두고, 기다린 꼬리가 그 번호 이하면 -- 즉 해제가 닿기 전에
@@ -488,6 +509,15 @@ class GuideSequencer:
         period = self.backend.frame_floor() + intms / 1000.0
         # ⚠️ 조용함 확인이 홉마다 한 주기를 더 쓸 수 있으므로 상한도 함께 넓힌다.
         limit = period * (_MAX_TAIL_HOPS + 1) + 2.0
+        armed_mono = getattr(ticket, 'armed_mono', None)
+        if ticket is not None and getattr(ticket, 'ready', None) is None \
+                and armed_mono is not None:
+            # R2613+: arm 표가 아직 안 익었다 = 첫 프레임이 안 나왔다.  flush 중에
+            # Exposures=0 이 앉으면 flush 뒤 `IF Exposures` 가 0 이라 **프레임이 한
+            # 장도 안 나온다** -- 종전 상한(≈7 s)을 헛기다리면 10.1-7 의 '최악 한
+            # 주기' 가 깨진다.  엔진이 첫 프레임을 낼 수 있는 가장 늦은 시각까지만.
+            flush_total = self.backend.flush_duration() + intms / 1000.0
+            limit = max(0.0, armed_mono + flush_total - time.monotonic()) + period + 0.5
 
         async def _wait() -> None:
             newest = await self.backend.newest_frame()
@@ -574,7 +604,8 @@ class GuideSequencer:
             suffix = f'{date_part}.{final:06d}'
 
         path = guidepair.guide_path(data_dir, site, suffix)
-        # DATE-OBS = 직전 독출 개시 (10.1-4).  첫 저장 프레임은 폐기분의
+        # DATE-OBS = 직전 FrameShift 개시 (10.1-4).  첫 저장 프레임은 flush FrameShift 개시
+        # (arm 의 LOADPARAMS 시각, R2613+)이고 그 뒤는 직전 프레임 완료에서 되짚은 값 --
         # 트리거 시각이다 -- t_prev 가 그 값이다.
         date_obs = stamp_iso_ms(t_prev) if t_prev is not None else None
 

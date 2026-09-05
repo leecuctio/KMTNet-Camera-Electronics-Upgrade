@@ -18,7 +18,7 @@ import ics_archon  # noqa: F401
 from icg_archon import acftiming  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2612.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2614.acf')
 
 
 def test_tick_anchor_holds():
@@ -197,8 +197,11 @@ def test_real_backend_clamp_uses_the_acf_floor():
     floor = be.frame_floor()
     assert 1.2 < floor < 1.6            # NoIntMS=0 인 현행 ACF(R2609) 기준
     assert be.intms_for(0.5) == 0
-    assert abs(be.effective_exptime(0.5) - floor) < 1e-6
+    # ⭐ 카드 해상도 1 ms (규격 10.1-1, 2026-09-05) -- 실현값을 ms 로 반올림한다.
+    assert abs(be.effective_exptime(0.5) - round(floor, 3)) < 1e-9
+    assert be.effective_exptime(2.0) == 2.0        # guideexp 2 -> 카드 '2' (정수형)
     assert be.intms_for(floor + 3.0) == 3000
+    assert be.effective_exptime(floor + 3.0) == round(floor + 3.0, 3)
 
 
 # ---------------------------------------------------------------------------

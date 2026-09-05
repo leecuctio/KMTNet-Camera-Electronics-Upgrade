@@ -196,6 +196,12 @@ class IcgCfg:
     param_intms_name: str = 'IntMS'
     param_exposures_slot: str = 'PARAMETER1'
     param_exposures_name: str = 'Exposures'
+    #: flush 플래그 (R2613+, 규격 10.1-2).  ⛔ **PARAMETER0 이어야 한다** --
+    #: `LOADPARAMS` 는 파라미터를 첫 슬롯부터 순서대로 적용하고(매뉴얼 p.52)
+    #: 유휴 루프가 1 µs 라, `Exposures`(PARAMETER1) 뒤에 앉으면 코어가 flush
+    #: 없이 `Exposure:` 로 먼저 뛴다 (설계 검토 blocker, DevNote 11.31).
+    param_flush_slot: str = 'PARAMETER0'
+    param_flush_name: str = 'FirstFlush'
     telemetry: bool = True
     status_timeout: float = 2.0
     frame_poll: float = 0.5
@@ -215,7 +221,7 @@ class IcgCfg:
     naxis1: int = NAXIS1
     naxis2: int = NAXIS2
     #: `EXPTIME` 하한 [s] -- **ACF 를 못 읽을 때의 대체값**이다.  정본은 `acftiming`
-    #: 이 타이밍 스크립트에서 계산한 하한(R2610~R2612: 1.251 s -- `NoIntMS` 항은 10.3 실측
+    #: 이 타이밍 스크립트에서 계산한 하한(R2610~R2614: 1.251 s -- `NoIntMS` 항은 10.3 실측
     #: 1% 적중, 트랜스퍼·독출 항은 ⏳ 첫 guide 구동 실측).  하한 아래 값을 두면
     #: 클램프가 무력해지므로 ini(2.0)와 같이 하한 위로 둔다 (종전 1.0 은 근거 없는
     #: 잠정값이었다 -- DevNote 9.10·9.15).
@@ -298,6 +304,10 @@ def load(path: str) -> IcgCfg:
         cfg.apply_acf = _bool(s, 'apply_acf', cfg.apply_acf)
         cfg.acf_retry = _int(s, 'acf_retry', cfg.acf_retry)
         cfg.poweron_wait = _float(s, 'poweron_wait', cfg.poweron_wait)
+        cfg.param_flush_slot = _head(s, 'param_flush_slot',
+                                     cfg.param_flush_slot)
+        cfg.param_flush_name = _head(s, 'param_flush_name',
+                                     cfg.param_flush_name)
         cfg.param_intms_slot = _head(s, 'param_intms_slot',
                                      cfg.param_intms_slot)
         cfg.param_intms_name = _head(s, 'param_intms_name',

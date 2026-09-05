@@ -646,8 +646,8 @@ token 과 개인 휴대전화 번호**가 리터럴로 박혀 있었다.  블록
 
     KMTC_SCI_101_STA0284_R2608_MK    KMTK_SCI_113_STA0200_R2608_MK
     KMTC_SCI_102_STA0285_R2608_NT    KMTK_SCI_113_STA0200_R2608_NT
-    KMTS_SCI_101_STA0286_R2608_MK    KMTK_GUI_162_STA0201_R2612
-    KMTS_SCI_102_STA0287_R2608_NT    (guide 는 R2612 이 현행 -- 2026-09-05)
+    KMTS_SCI_101_STA0286_R2608_MK    KMTK_GUI_162_STA0201_R2614
+    KMTS_SCI_102_STA0287_R2608_NT    (guide 는 R2614 가 현행 -- 2026-09-05)
 
 그래서 ini 를 비워 두면 유도가 **늘 실패**하고 코드 기본값 `NORMAL` 이 실린다.
 ⚠️ **값이 틀렸다는 말이 아니다** -- labtest 가 그 파일을 담는 변수를
@@ -5363,7 +5363,7 @@ R2612 에서 처음으로 **한 주기 뒤는 정말 조용하다.**  규격 10.
 있는지.  1033 행분이 한 레지스터에 몰리면 용량을 넘겨 store 컬럼 위로 되밀릴 수
 있다 -- 냉각 + 돔 닫힘이면 무시할 양이지만 실측으로 닫는다.
 
-#### (5) ⏳ R2611·R2612 둘 다 아직 실기에 굽지 말 것
+#### (5) ~~⏳ R2611·R2612 둘 다 아직 실기에 굽지 말 것~~ → ✅ R2613 이 flush 줄을 넣었다 (11.31). 실기에는 R2614 를 굽는다
 
 flush 프레임의 `CALL SkipLine(FlushLines)` 줄(11.28-(3))이 아직 없다.  R2612 는
 그 위에 유휴 변경만 얹은 것이다.
@@ -5445,3 +5445,100 @@ TEMPC 없는 Heater 묶음에만 1회 있다"* 고 같은 방향으로 말했는
   `#print(recvbuf)` 로 막아 뒀다).  첫 구동에서 원문을 파일로 남긴다.
 * 병렬 서브에이전트가 공용 scratchpad 파일명을 공유하다 덧씌운 일이 있었다 --
   에이전트별 하위 폴더를 쓸 것.
+
+
+### 11.31 flush 프레임을 ACF 에 넣었다 -- R2613 · R2614 (2026-09-05, 운영자)
+
+운영자 지시: *"노출 시작 시 프레임 하나를 flush 하는 루틴이 ACF 에 들어있지 않던데 …
+나는 ACF 에 해당 루틴을 넣어서, ACF 자체를 개정했으면 하는데."*  11.28 에서
+`FlushLines=2448` 파라미터만 자리를 잡아 두었던 것(R2611)을 스크립트로 완성했다.
+
+#### (1) 설계 -- 네 관점 반증 검토를 거쳤다 (구현 전)
+
+스크립트 문법 · CCD 물리 · 호스트 통합 · 규격 정합 넷이 동시에 반증했다.  넷 다
+`go_with_changes`.  **blocker 하나가 설계를 바꿨다:**
+
+> `LOADPARAMS` 는 파라미터를 **첫 슬롯부터 순서대로 하나씩** 적용한다(매뉴얼 p.52).
+> 유휴 루프 한 바퀴가 105 틱(1.05 µs)이라, 플래그를 뒤 슬롯(16)에 두면 `Exposures`
+> (슬롯 1)가 먼저 앉는 순간 코어가 `IF Exposures GOTO Exposure` 로 **flush 없이** 뛰고,
+> flush 는 1·2 번 프레임 사이에 끼어 2번 프레임의 실적분이 주기 + 1.25 s 가 된다.
+
+그래서 **`FirstFlush` 가 PARAMETER0**, `ContinuousExposures`(호스트가 어디서도 안 쓴다)
+가 16 으로 갔다.  이름을 `Flush` 에서 `FirstFlush` 로 바꾼 것도 검토에서 -- science
+ccdflush 의 서브루틴 라벨 `Flush:` 와 사람이 읽을 때 두 뜻이 된다.
+
+must_fix 로 잡힌 것과 반영:
+
+| 지적 | 반영 |
+|---|---|
+| **플래그가 설정 메모리에 남는다** -- 코어는 `FirstFlush--` 로 깎지만 메모리는 1 그대로라 이후 어떤 LOADPARAMS/LOADTIMING 도 유령 flush(1.25 s 클록, 프레임 없음)를 되살린다 | `trigger()` 가 LOADPARAMS 직후 **WCONFIG `FirstFlush=0`**(LOADPARAMS 없이 -- 코어 값은 그대로) · `set_exposures(0)` 도 함께 0 · 가짜가 LOADPARAMS 마다 재독해 재점화를 시험이 본다 |
+| R2613 호스트 + R2612 ACF 면 첫 장이 flush 없이 **저장**된다 | `acftiming._SHAPE` 에 `LINE1`·`LINE118` · `backend._flush_capable`(파싱 직후 `FirstFlush` 유무) · 없으면 **GO 거부** (시험으로 못박음) |
+| `Exposures=n` 이 되면서 **낯선 꼬리 프레임이 폐기분 아닌 첫 저장 프레임**이 된다 -- 남의 픽셀이 정상 헤더로 | 엔진은 arm 뒤 flush+IntMS+하한 전엔 첫 프레임을 못 만든다 → 그보다 이른 첫 프레임은 버리고 한 장 더 (타이밍 모델 있을 때만 -- 스크립트 없는 시험 ACF 는 기준이 없다) |
+| 실현 간격 감시가 **매 GO 거짓 경고** (첫 간격에 flush 가 얹힘) | 표 잇는 시각이 아니라 **완료 관측 간격**으로, 첫 완료는 기준만 |
+| GO 뒤 ≤1.25 s 에 ABORT 면 프레임 0장인데 배수가 ~7 s 헛기다림 | arm 표가 안 익었으면 상한 = arm + flush + IntMS − now + 주기 + 0.5 |
+| **DATE-OBS 기준이 셋으로 갈려 있었다** -- 운영자 확정 'FrameShift 개시' / 규격 '독출 개시' / 코드는 **트랜스퍼 종료**(+6.8 ms) | 규격 10.1-5 에 "독출 개시 := FrameShift 개시" · 코드는 `to_frameshift`(noint) · 첫 저장 프레임 t0 = **LOADPARAMS 왕복 중점**(링크 스레드 안에서 찍음 -- `await` 앞뒤는 `_lock` 대기로 수십~수백 ms 틀린다) |
+| 현행 DATE-OBS 는 **폴링 지연이 그대로 오차** -- frame_poll 0.5 s 라 평균 +0.25 s 늦는 편향 (지금 코드도 그랬다) | 완료 관측 − (transfer+독출) 로 되짚는다.  편향은 남는다 -- ⏳ **예측 폴링**(예측 완료 −0.1 s 까지 자고 10 ms 로) 은 후속.  순수 모델 `t0+(k−1)·P` 는 계산 P 의 오차가 누적돼(0.1 % 면 1000장에 1.25 s) 밤샘 guiding 에 못 쓴다 |
+| 규격 10.1-3 의 **운영자 확정 문면**(n+1 독출)이 바뀐다 | 12장 ⑬에 '운영자 확정 문면 개정 1건, 재확인 요망' 으로 명시 |
+
+#### (2) 무엇이 들어갔나
+
+    R2613  LINE1~5 재배치(빈 LINE5 사용, 번호 안 밀림) · LINE113~119 FlushFrame · LINES 120
+           PARAMETER0="FirstFlush=0" · PARAMETER16="ContinuousExposures=0" · PARAMETERS 17
+    R2614  STATE13(DGLOW) MOD4 ch4(RG): keep -> RG_HIGH set     ← 운영자 Q5 의 답 (11.31-(3))
+
+호스트: `trigger(flush=)` · 표에 `armed_mono/armed_utc/arm_rtt`(`cmd()` 가 링크 스레드
+안에서 왕복 시각을 찍는다) · `set_exposures` 가 FirstFlush=0 도 · `verify_config_lines`
+에 슬롯 추가 · `acftiming` 에 `to_frameshift`·`frameshift_to_done`·`flush` · backend
+`trigger_to_frameshift`·`frameshift_to_done`·`flush_duration`·`_flush_capable` ·
+`effective_exptime` **ms 반올림**(규격 10.1-1 카드 해상도) · sequencer 루프 `range(count)`
++ 폐기 분기 제거 + 시간 가드 + 완료 간격 감시 + 배수 상한 · Sim 대역이 flush 시간을
+흉내낸다 · 가짜 `_flush()`.  시험: n+1 전제 셋 갱신 + 신설 둘(GO 거부 · 플래그 1회/되쓰기/
+프레임 미생성).
+
+⚠️ **Sim 의 `frameshift_to_done` 은 scaled** -- 대역이 scaled 로 자므로 되짚는 폭도 같은
+축이어야 DATE-OBS 가 단조다.  비스케일 2 s 를 빼면 뒤로 갔다(시험이 잡았다).  실기
+백엔드는 모델이 없으면(스크립트 없는 시험 ACF) 0 -- 완료 시각 그대로, 독출 한 번만큼
+늦지만 단조.
+
+#### (3) 운영자 질문 다섯의 답 (요약 -- 근거는 acf/README R2613·R2614 절)
+
+* **Q1 하한** -- 코드의 현행 하한은 **1.2506 s** (트랜스퍼 6.8 ms + 디지타이징 1243.9 ms).
+  1.2439 가 아닌 이유: 다음 트랜스퍼는 store 가 빌 때까지 못 오고 트랜스퍼 자체가
+  6.8 ms.  "1.25 로 단순화" 는 규격 상수로 받지 않았다 -- 하한을 거짓으로 적는 것이고
+  `FlushLines` 와 같은 파생값 상수화 함정.  대신 진짜 불편(정수 요청이 실현 안 돼
+  카드가 `1.9996283` 로 나가는 것)을 **카드 해상도 1 ms** 규정으로 풀었다 -- `guideexp 2`
+  → `2`, 하한 미만 → `1.251`.
+* **Q2 한 주기** -- 코어가 `Exposures` 를 보는 자리가 `Start:` 한 곳이라 진행 중 사이클
+  (적분+트랜스퍼+독출)은 끝까지 간다.  `RESETTIMING` 으로 끊으면 CCD 가 반쯤 시프트된
+  채 남아 더 나쁘다.
+* **Q3 science** -- 유휴 `SkipLine` 유지 (운영자 확정).  guide 정지의 목적은 science 독출
+  crosstalk 제거.
+* **Q4 flush in ACF** -- 이 절.
+* **Q5 DG/RG** -- 두 기제를 갈라야 한다.  ① 레지스터 1033 행 몰림은 DG 문제고 **실제로
+  일어난다**: `FRAME6`/`IMAGE6` 상태가 DG 채널을 `A_LOW`(0 V) 로 set 해서 `DGHIGH; FrameShift`
+  의 DG 12 V 는 첫 행 ~4 µs 뿐 (STA 원본 R2601 부터 전 판 동일 -- S3 열의 A_LOW 가 DG
+  열에 같이 들어간 STA 실수로 보인다).  양은 −100.6 ℃ 암전류로 1 h 유휴에 픽셀당
+  2k~4k(공식)/37k(바닥값) e⁻ 라 full well 아래 -- 진짜 큰 전하는 돔 열린 유휴의 빛이고
+  그 프레임은 flush 로 통째로 버린다.  ② **출력 노드 RG -- 운영자 가설이 맞다, 정상
+  경로 LINE12 에서**: `SmallIntUnit` 이 RGLOW 로 끝나고 DGHIGH·FRAME*·DGLOW·S* 가 RG 를
+  keep 하니 600 회 시프트가 리셋 없는 노드에 쌓인다(IntMS=0 이면 RESET 의 RG_HIGH 가
+  남아 반대 -- IntMS 의존까지).  flush 경로는 RESET→곧바로 FrameShift 라 이미 RG=HIGH.
+  **R2614: `STATE13(DGLOW)` ch4 → `RG_HIGH,1,0`** 한 필드.  FRAME6 의 DG 는 데이터시트로
+  "DG 가 정적 레지스터를 통째로 덤프하나" 를 못 가려 실측 뒤 R2615 후보.
+
+⛔ **내가 먼저 틀렸던 것** -- 11.29-(4) 에 "DG 가 프레임 시프트 중 레지스터를 덤프해서
+쌓이지 않는다" 고 운영자에게 말했다.  상태표 필드 순서(level,slew,keep)를 매뉴얼 3312행
+으로 확인하기 전의 추정이었다.  FRAME6 가 DG 를 내린다는 것은 상태표를 **파싱**해야
+보인다 -- 문자열만 훑어서는 안 보였다.
+
+#### (4) ⏳ 남은 것
+
+* 첫 구동: `go 1` → FRAME +1 인지(flush 가 프레임을 안 만든다는 추론의 실측) · 첫 저장
+  프레임 완료 − LOADPARAMS ≈ flush + 주기 · 첫 프레임 bias 레벨 = 2장째 (OI-26) ·
+  `FirstFlush` 적용 → `FlushFrame` 진입 지연 · LOADPARAMS RTT.
+* 예측 폴링 (DATE-OBS 폴링 편향 ~0.25 s 제거) · `BUFnTIMESTAMP`+TIMER↔UT 상관 검증(호스트
+  지터 0) -- 규격 OI 후보.
+* FRAME6 DG (R2615) · 포화 유휴 뒤 잔상(persistence)은 flush 대상 밖 -- 돔 개방 뒤 첫 GO
+  는 버릴 것 (icg_first_run 에 한 줄).
+* 대안 설계(`Param++` 로 코어가 스스로 '유휴에서 왔다' 를 기억 -- 슬롯 순서 경쟁·메모리
+  잔존 둘이 원천 소멸)는 실기 검증 뒤 검토.

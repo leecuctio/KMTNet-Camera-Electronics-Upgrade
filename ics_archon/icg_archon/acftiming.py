@@ -81,10 +81,15 @@ def parameters(config: dict) -> dict[str, int]:
 #: `HorizontalSWShift(1200)`, `AT=2000`) 이 셈법을 씌우면 뜻 없는 수가 나온다
 #: (DevNote 9.15).
 _SHAPE = {
+    # R2613+: 유휴 루프 첫 줄이 flush 검사, 끝에 FlushFrame 블록.  ⭐ 이 둘이
+    # 없으면 '파라미터는 있는데 스크립트가 안 쓰는' R2611 같은 판이거나 구판이다
+    # -- 호스트가 Exposures=n 으로 걸면 첫 장이 flush 없이 저장되므로 걸러야 한다.
+    'LINE1': 'IF FirstFlush GOTO FlushFrame',
     'LINE11': 'CALL FrameShift(',
     'LINE12': 'CALL HorizontalShift(',
     'LINE47': 'CALL PixelFirst',
     'LINE48': 'CLAMP; X(',
+    'LINE118': 'CALL SkipLine(FlushLines)',
 }
 
 
@@ -243,6 +248,16 @@ def frame_timing(params: dict[str, int], *,
     t['floor'] = t['noint'] + t['transfer'] + t['readout']
     # `IntMS` 는 호출측이 더한다 -- 상수분만 돌려준다.
     t['trigger_to_transfer'] = t['noint'] + t['transfer']
+    # ⭐ 트리거 -> `FrameShift` **개시** (10.1-4 의 DATE-OBS 기준).  `IntUnit` 뒤
+    # `NoIntUnit` 만 거치고 곧바로 LINE11 이다 -- transfer 항이 없다.
+    t['to_frameshift'] = t['noint']
+    # FrameShift 개시 -> 프레임 완료 (transfer + 독출).  완료 관측 시각에서
+    # 이것을 빼면 그 프레임의 FrameShift 개시 = 다음 프레임의 DATE-OBS.
+    t['frameshift_to_done'] = t['transfer'] + t['readout']
+    # flush 프레임 (R2613 LINE115~118): FS + HS + CLAMP + SkipLine x FlushLines.
+    # 규격 10.1-2 -- 본 독출 소요와 같아야 첫 저장 프레임의 실적분이 맞다.
+    fl = params.get('FlushLines')
+    t['flush'] = (transfer + skipline_ticks(params) * int(fl)) * TICK if fl else None
     return t
 
 

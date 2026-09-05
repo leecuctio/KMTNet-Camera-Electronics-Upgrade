@@ -9,7 +9,7 @@ Archon 계층(`archon/protocol·parse·controller·fitswrite`)을 **그대로 �
 * guide raw FITS (raw spec v1.9 **9·10장**) -- 파일 1개/프레임,
   `<SITE>.<YYYYMMDD>.<NNNNNN>.G.fits`, 4224x1033, 값 카드 123장
 * frame-transfer 노출 의미론 (10.1절) -- 셔터 없음, **첫 프레임 폐기**,
-  `go n` = n+1 독출 n 저장, `EXPTIME` = 독출 개시 간격,
+  `go n` = flush 1 + 독출 n · n 저장 (R2613+), `EXPTIME` = 독출 개시 간격,
   `DATE-OBS` = 직전 독출 개시
 * HK 취득·로깅 (1분 주기) -- Ctrl(`C1_*`) · DIO(`DEWPRES`) ·
   RTD(`CCDTEMP` 등 6장) · Radionode(`HEBOX`/`FSATEMP`/`FSAHUM`) ·

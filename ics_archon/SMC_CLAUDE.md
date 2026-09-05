@@ -14,13 +14,17 @@ guide 유닛 취득(raw spec v1.9 9·10장 — 견본 바이트 재현 검증) +
 로깅(1분 — Ctrl·진공·RTD·Radionode·AUX)이고, `ics_archon` 은 그 HK 스냅샷
 (`[archon] hk_latest`)을 읽어 5.6절 HK 카드를 실값으로 채운다.  구조·판단·
 PROVISIONAL 목록은 **[DevNote 9장](DevNote.md)**, 시험은
-`tests/test_icg_*.py` 19개.  ⚠️ **실기 왕복 미검증** — `HEATER` 레일 필드명·
-노출 pacing·Radionode Open API endpoint 가 첫 구동/콘솔 확인 대기다.
+`tests/test_icg_*.py` 19개.  ⚠️ **실기 왕복 미검증** — 노출 pacing·Radionode Open API
+endpoint 가 첫 구동/콘솔 확인 대기다 (`HEATER` 레일 필드명은 `HEATER_V`/`HEATER_I` 로
+확정 — 매뉴얼 p.47 + FW 1.0.1252, DevNote 11.30).
 
-**노출 주기는 시퀀서가 만든다** (DevNote 9.12) — `Exposures=n+1` 을 한 번
-걸고 `IntMS = EXPTIME − 하한` 으로 환산한다.  하한의 정본은 ini 가 아니라
-**ACF 계산값**이다 (`icg_archon/acftiming.py`) — 현행 R2610(`NoIntMS=0` ·
-`Pixels=540`)에서 **1.251 s** 이고, 더 짧게 요청하면 거부가 아니라 하한으로 클램프한다.
+**노출 주기는 시퀀서가 만든다** (DevNote 9.12) — `Exposures=n` + `FirstFlush=1`(R2613+,
+flush 1회 + 독출 n회 · n장 저장, 규격 10.1-2·3)을 한 LOADPARAMS 로 걸고 `IntMS = EXPTIME − 하한`
+으로 환산한다.  하한의 정본은 ini 가 아니라 **ACF 계산값**이다 (`icg_archon/acftiming.py`) —
+현행 **R2614**(`NoIntMS=0` · `Pixels=540` · `FlushLines=2448`)에서 **1.2506 s** 이고, 더 짧게
+요청하면 거부가 아니라 하한으로 클램프하며 헤더 `EXPTIME` 은 **실현값을 ms 로 반올림**해 싣는다
+(10.1-1).  `DATE-OBS` 기준은 **FrameShift 개시** — 첫 저장 프레임은 arm 의 LOADPARAMS 왕복 중점
+(DevNote 11.31).
 ⭐ **독출과 노출은 별개로 흐른다** — frame-transfer 라 image 는 독출 중에도
 적분하고, 저장 프레임의 노출 개시는 *직전* 트랜스퍼다(규격 10.1-4·5).
 독출 1.244 s 가 하한에 드는 것은 노출을 막아서가 아니라 **다음 트랜스퍼가
@@ -247,7 +251,7 @@ imgacq/powon).  `powon` 판은 `imgacq` 판에서 `Exposure()` 호출만 주석 
 
 1. ⭐ **guide 자리 표 = `BACKPLANE_TEMP` + MOD3·4·5·6·7·9·10 = 8자리.**
    미해결 **`OI-19`("guide 8자리 자리 표")의 답이 실물로 나왔다** —
-   `acf/KMTK_GUI_162_STA0201_R2612.acf` 의 `MODn_TYPE` 과
+   `acf/KMTK_GUI_162_STA0201_R2614.acf` 의 `MODn_TYPE` 과
    `modtm_gui_imgacq_v0.3….py` 가 훑는 슬롯이 **정확히 같다.**
    형 번호는 3·4 = `1`(Driver), 5·6 = `2`(AD), 7·10 = `11`(HeaterX),
    9 = `8`(HVXBias).  ✅ **규격 수록 완료** — raw spec **v1.9 가 10.4절에
@@ -1248,7 +1252,7 @@ C←RTD5_WB) **그때 limit 설정을 안 옮겼다.**  그래서 CCD 채널이 
 **판을 올렸다** — `R2601` → `R0827` (운영자 지시 2026-08-27), 그리고
 **2026-08-28 에 guide 정본을 하나로 줄이며 `R2608` 로 다시 표기했다**:
 
-    acf/KMTK_GUI_162_STA0201_R2612.acf                       ⭐ 현행 유일본
+    acf/KMTK_GUI_162_STA0201_R2614.acf                       ⭐ 현행 유일본
       ⚠️ R2608/R2609 와 **바이트가 다르다** -- Pixels=540 (2026-09-03)
     acf/archive/KMTK_GUI_162_STA0201_R2609.acf               NoIntMS=0 판
       = R2608 + PARAMETER3 한 줄
@@ -1401,6 +1405,29 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
   한다.
 
 ## ▶ 인수인계 (2026-09-04 마감 — ⭐ 새 세션이면 **여기부터**)
+
+### ⭐ 2026-09-05 추가분 — 이 아래 2026-09-04 마감분보다 **이것이 최신**
+
+브랜치 `ics-archon-v1.0-build` · `main` 둘 다 푸시됨.  ics_archon 475 통과(알려진 flake 1).
+
+**한 것**
+- **raw spec v1.10 잔여 전부**(main): 반쪽 pair · guide 하한/flush/GUIEXPCTRL · 사실 정정 · OI 정리 · 동반 문서 둘.  `main` 병합 → 브랜치의 견본 경로·카드 표 8벌·세기 단언 갱신.
+- **`HTROUT` 원천 확정** — `STATUS MOD10/HEATERAOUTPUT`.  백플레인 FW 1.0.1252 이미지 디스어셈블로 type-11 경로가 출력함을 확인(매뉴얼 p.48 "Heater only" 는 오기).  `hk.py` 가 읽어 `_sample['htrout']` 로 싣는다.  `HEATER` 레일 필드 = `HEATER_V`/`HEATER_I` 확정(발명 이름 `P28V_V`·`HTR_V` 제거).  값이 측정값/명령값인지는 규격 **OI-28**(첫 구동 FORCE 실험).  DevNote 11.30.
+- **ACF R2612** 유휴 루프 정지(`LINE3="X; X(100)"`, science 독출 crosstalk 제거) · **R2613** flush 프레임을 스크립트에(`FirstFlush` = PARAMETER0 ⛔ 슬롯 순서, `FlushFrame` LINE113~119, `LINES=120`) · **R2614** `DGLOW` 에 RG_HIGH(운영자 Q5 답).  **실기엔 R2614 를 굽는다.**  acf/README R2612~R2614 절 · DevNote 11.29·11.31.
+- **호스트 R2613 반영**: `go n` = flush 1 + 독출 n · n장 저장(`Exposures=n`+`FirstFlush=1`, 폐기 분기 삭제) · `DATE-OBS` = **FrameShift 개시**(첫 장 = arm LOADPARAMS 왕복 중점, 그 뒤 = 완료 관측 − (transfer+독출)) · `effective_exptime` **ms 반올림** · 낯선 첫 프레임 시간 가드 · 조기 ABORT 배수 상한 · `set_exposures` 가 `FirstFlush=0` 도 · R2612 이하 ACF 에 GO 거부.  규격 10.1 개정(⭐ 10.1-3 운영자 확정 문면 개정 — 재확인 요망).
+
+**밟기 쉬운 함정 (새로 생긴 것)**
+- `FirstFlush` 는 **반드시 PARAMETER0** — LOADPARAMS 가 슬롯 순서로 적용, 유휴 루프 1 µs.  뒤 슬롯이면 첫 장이 flush 없이 나간다.
+- 플래그는 **설정 메모리에 남는다** — `trigger()` 가 LOADPARAMS 직후 WCONFIG 로 0 을 되쓴다(LOADPARAMS 없이).  이 되쓰기를 빼면 STOP 의 LOADPARAMS 가 유령 flush 를 되살린다.
+- `FRAME6`/`IMAGE6` 가 DG 를 0 V 로 내려 프레임 시프트 중 덤프가 안 된다(STA 원본부터) — 실측 뒤 R2615 후보.  **상태표는 파싱해서 볼 것**(필드 순서 level,slew,keep — 매뉴얼 3312행).  문자열만 훑으면 안 보인다(내가 먼저 틀렸다).
+- DATE-OBS 의 폴링 편향(frame_poll 0.5 s → 평균 +0.25 s)은 **아직 남아 있다** — 예측 폴링은 후속.
+
+**다음 세션이 할 것**
+1. 첫 구동(icg_first_run.md): `go 1` → FRAME +1 · 첫 프레임 완료 − LOADPARAMS ≈ 2.5 s · 첫 프레임 bias 레벨 · `MOD10/HEATERAOUTPUT` 토큰 · STATUS 원문 파일로 · OI-28 FORCE 실험.
+2. 예측 폴링(DATE-OBS 편향 제거) · `BUFnTIMESTAMP` 검증(OI 후보).
+3. ⏳ **두 브랜치 전수 정합 검토(14차원 워크플로)** — 운영자 요청, R2613 뒤로 미뤄 둔 것.  스크립트는 세션 디렉터리 `workflows/scripts/two-branch-consistency-audit-*.js`.
+4. HK 신설 5장 중 `HTREN`·`HTRSET`·`HTRFORCE` 되읽기를 `hk.py` 표본기에 얹기(OI-25 잔여 — `heater.read_settings()` 가 이미 있다).
+
 
 ### ✅ 2026-09-04 후반 — **XIS 전용 통신 · 프레임별 발신 · LOADTIMING 의 정체** (⭐ 최신)
 

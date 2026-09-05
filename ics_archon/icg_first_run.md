@@ -37,7 +37,7 @@
 | **링크가 서나** | `ping 10.0.0.162` | ✅ **해결법이 확정돼 있다** -- 광 스위치허브의 **포트별 auto-negotiation 을 해제하고 고정 1 G** 로 둔다 (운영자 2026-09-04).  Archon 은 1 Gbps 전용(매뉴얼 p.9)이고 SFP+ 는 자동협상을 하지 않는다.  ⚠️ **스위치를 교체·포트를 옮기면 그 설정이 안 따라온다** -- 링크가 안 서면 모듈·케이블보다 **포트 설정을 먼저** 본다.  자세히는 [INSTALL.md](INSTALL.md) "벤치 네트워크" |
 | ⭐ **`Sync In` 이 비었나** | 컨트롤러 뒤판 배선 | ⛔ **master 의 `Sync Out` 이 이 유닛 `Sync In` 에 물려 있으면 노출이 진행되지 않는다** (운영자 실기 확인 2026-09-04).  `POWER=4`·`POWERGOOD=1` 인데 `FRAME` 이 영구히 0 이면 이것부터 -- `POWERGOOD` 은 **자기 전원만** 보고하고 외부 클록 의존을 보지 않는다.  README "프레임이 안 나올 때" |
 | guide 컨트롤러 IP | `[icg] ctrl_host` | **`10.0.0.162`** — 정본은 ACF 안의 `IP=` 키다 (`APPLYALL` 이 심는 값).  호스트는 `10.0.0.201`(np0)/`10.0.0.202`(np1) |
-| ACF 경로 | `[icg] acf` | `acf/KMTK_GUI_162_STA0201_R2612.acf` (현행 유일본) |
+| ACF 경로 | `[icg] acf` | `acf/KMTK_GUI_162_STA0201_R2614.acf` (현행 유일본) |
 | 사이트 | `[node] observatory` | **`KASI`** — `TESTBED` 면 기동을 거부한다 (D-017) |
 | HK 스냅샷 짝 | `[hk] log_dir`+`latest_name` ↔ science `[archon] hk_latest` | **같은 파일**을 가리켜야 한다. 한쪽만 바꾸면 science 5.6절 HK 카드가 조용히 전부 sentinel 이 된다 |
 | 포트 | `[transport] bind_port` | **`6601`**(ICG 몫, 2026-09-03 배정).  ICS 는 6600 이고 `ics_sim` 기본값도 6600 이라 **비워 두면 같은 값으로 떨어져** 한 호스트에서 둘 다 못 뜬다 — 기동 검사가 알린다.  배정표는 [INSTALL.md](INSTALL.md).  ⭐ 레거시는 ICG 가 **Guide server**(`.108`, `TC`·`ABC` 와 같은 호스트)에서 돌고 ICS·XIS 는 **Science server**(`.109`)라 포트가 같아도 호스트가 달랐다 (icg_legacy_report 3절) |
@@ -52,7 +52,7 @@
 ## 1단계 — probe 읽기 전용 ⭐ **`STATUS` 원문을 확보하는 단계** (전원 안 켬)
 
 ```bash
-python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2612.acf | tee probe1_guide.log
+python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2614.acf | tee probe1_guide.log
 ```
 
 ⚠️ **`--unit guide` 를 빠뜨리지 말 것.** science 10자리 자리 표로 재면
@@ -73,6 +73,9 @@ python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_G
 | 진공 `VCPU_OUTREG*` 원문 | MOD10 VCPU 가 MKS 356 을 시리얼로 읽는다. **10번째 글자가 무해한지** 확인 (실측 658행에서는 응답이 항상 `x.xxe-04` 8자였다) | |
 | `FRAME` — 버퍼 **셋** | `BUF1~BUF3` 이 다 나오고 `BUFnBASE`·`BUFnLINES` 가 있다 | |
 | ⭐ **`BUFnFRAME` 값** | 되감김 폭(16비트?) 자연 표본의 **시작점**이다 — 반드시 적어 둔다 | |
+| ⭐ **`go 1` 뒤 FRAME 증가분** | **정확히 1** (R2613+: flush 는 프레임을 만들지 않는다 — v1.10 발행 시점까지는 +2). 0 이면 flush 가 프레임을 만든 것(추론 틀림, 규격 OI-26 ③), flush 중 `WBUF=0` 인지도 | |
+| ⭐ **첫 저장 프레임 완료 − LOADPARAMS 시각** | ≈ flush(1.2506) + 주기 (OI-26 ①). `FirstFlush` 슬롯 적용→`FlushFrame` 진입 지연도 여기서 실측 | |
+| **첫 저장 프레임 bias/dark 레벨** | 2장째 이후와 통계적으로 같은가 (짧으면 어둡다 — `FlushLines` 검증, OI-26 ②) | |
 
 **통과 기준**: 요약에 `문제 0건`.
 
@@ -119,7 +122,7 @@ go 20
 > `dark` 의 인자는 `OBJECT` 카드가 된다. guide 는 `bias`/`dark` 에서도
 > **주기를 0 으로 만들지 않는다** — `EXPTIME` 이 셔터 노출이 아니라 **독출
 > 개시 간격**이라 0 이 실현 불가능한 값이기 때문이다. `go n` 은 n장이고,
-> 앞의 폐기 1장은 별도다 (`Exposures=n+1`).
+> R2613+: 앞에 **flush 1회**가 붙는다 -- 프레임을 만들지 않는다 (`Exposures=n` + `FirstFlush=1` 을 한 LOADPARAMS 로).
 
 | `EXPTIME` 지시 | 실현 주기 (중앙값) | `간격이 밀렸다` 경고 | FETCH 초 | 저장 파일 수 |
 |---|---|---|---|---|
@@ -147,7 +150,7 @@ go 20
 |---|---|---|
 | ⭐ 해제 직후 `FRAME` 증가 수 | **꼬리 한 장인가 두 장인가** = `Exposures=0` 이 읽히는 시점. 시퀀서는 최대 2홉까지 소화한다 | |
 | `busy` | 꼬리를 소화하는 동안 True — **그것이 의도다** | |
-| 다음 `go` | 꼬리를 자기 첫(폐기) 프레임으로 오인하지 않는다 (기준선 오염) | |
+| 다음 `go` | 꼬리를 자기 **첫 저장** 프레임으로 오인하지 않는다 (기준선 오염) | |
 | `abort` 두 번 | 두 번째가 뒷정리를 끊지 않는다. IDLE 통보는 **마지막 요청자**에게 (`df4d4fc` 확인 항목) | |
 
 **통과**: `DONE: ABORT` 뒤 `EXPSTATUS=IDLE` 하나, 그리고 다음 `go` 가 정상.

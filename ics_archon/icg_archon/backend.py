@@ -15,7 +15,7 @@ science 의 `ArchonBackend` 와 달리 `ics_sim` 의 `DetectorBackend` 계약을
 
 ## 주기는 **시퀀서**가 만든다 (운영자 확정 2026-08-31)
 
-`Exposures = n+1` 을 한 번만 걸면 타이밍 스크립트가 `GOTO Start` 뒤
+`Exposures = n` (+ `FirstFlush=1`, R2613+) 을 한 번만 걸면 타이밍 스크립트가 `GOTO Start` 뒤
 `Exposures` 가 남아 있는 동안 **유휴 없이** 다음 프레임으로 간다.  그래서
 독출 개시 간격이 Archon 타이밍 코어(100 MHz)로 정해진다:
 
@@ -40,7 +40,7 @@ science 실측을 guide 에 옮긴 것이라 첫 구동에서 실현 주기를 �
 하나를 잠그면 둘이 남고, 3버퍼에서 못 받은 장이 언제 덮이는지는 ⏳ 첫 구동
 실측 항목이다 (FETCH 뒤 `lock_rbuf`/`lock_wbuf_after` 관측).  어느 쪽이든
 FETCH 상한(`[icg] fetch_timeout`)이 곧 잠금 상한이므로 **하한 미만**으로 (하한은
-`acftiming` 이 ACF 에서 셈한다 -- R2610~R2612 기준 1.251 s)
+`acftiming` 이 ACF 에서 셈한다 -- R2610~R2614 기준 1.251 s)
 두는 것이 보수적 안전선이다 -- guide 는 8.3 MiB ≈ 0.08 s 라 1 s 면 넉넉하다.
 `__init__` 이 이를 검사한다 (0 이면 유도값 60 s 로 셈한다).
 """
@@ -125,6 +125,16 @@ class GuideBackend:
         try:
             probe = ArchonController(TAG, self.icfg)
             probe.parse_acf(path)                # 왕복 없음
+            # R2613+: flush 를 걸 수 있는 판인가 -- 호스트가 쓰는 `FirstFlush` 슬롯이
+            # 있으면 된다.  타이밍 셈(아래 형태 검사)과 **무관하게** 여기서 정한다 --
+            # 시험의 최소 ACF 는 스크립트가 없어 셈은 못 해도 flush 는 걸어야 한다.
+            # 없으면 `arm_sequence` 가 GO 를 거부한다 (R2612 이하에 Exposures=n 을
+            # 걸면 첫 장이 flush 없이 저장된다 -- 11.31 must_fix).
+            self._flush_capable = 'FirstFlush' in acftiming.parameters(probe.config)
+            if not self._flush_capable:
+                log.error('guide ACF 에 FirstFlush 파라미터가 없다 (%s) -- R2612 이하다. '
+                          'GO 가 거부된다.  R2613+ 를 [icg] acf 에 걸 것 (규격 10.1-2)',
+                          os.path.basename(path))
             # ⚠️ 이 셈법은 **guide 타이밍 스크립트 형태** 전용이다 (FrameShift ·
             # HorizontalShift(600) · PixelFirst · CLAMP).  science ACF 는 루틴
             # 배치가 달라(`IntUnit` 이 LINE11, `HorizontalSWShift(1200)`,
@@ -168,8 +178,12 @@ class GuideBackend:
         except (ArchonError, OSError, ValueError) as exc:
             log.warning('guide ACF 타이밍 계산 실패 -- %s', exc)
             return None
-        log.info('guide 프레임 타이밍 (ACF 계산, PROVISIONAL) -- %s',
-                 acftiming.describe(t))
+        # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 LINE1·LINE118)를
+        # 통과했고 `FirstFlush`·`FlushLines` 가 있어야 한다.  없으면 `arm_sequence` 가
+        # GO 를 거부한다 -- `Exposures=n` 으로 걸면 첫 장이 flush 없이 저장되니까.
+        log.info('guide 프레임 타이밍 (ACF 계산, PROVISIONAL) -- %s · flush %s',
+                 acftiming.describe(t),
+                 ('%.4f s' % t['flush']) if t.get('flush') else '(없음 -- R2612 이하)')
         return t
 
     # -- 노출 주기 (규격 10.1절) --------------------------------------------
@@ -198,8 +212,14 @@ class GuideBackend:
         "연속 두 프레임 독출 개시 시각의 간격" 으로 정의하므로, 하한에
         걸려 못 만든 주기를 그대로 적으면 카드가 거짓말이 된다.
         `IntMS` 가 ms 단위로 반올림되는 것까지 반영한다.
+
+        ⭐ **카드 해상도는 1 ms** (규격 10.1-1, 2026-09-05) -- `IntMS` 의 분해능이자
+        `DATE-OBS` 의 분해능이다.  하한이 ms 경계에 없어서(1.2506283 s) 정수 요청은
+        어느 것도 정확히 실현되지 않는데, 1.9996283 을 그대로 실으면 5.4 조건부 형
+        규칙으로 카드가 실수형이 된다.  ms 로 반올림하면 `guideexp 2` -> `2`,
+        하한 미만 -> `1.251`.
         """
-        return self.frame_floor() + self.intms_for(exptime_s) / 1000.0
+        return round(self.frame_floor() + self.intms_for(exptime_s) / 1000.0, 3)
 
     def trigger_to_transfer(self, intms: int = 0) -> float:
         """루프 재개(직전 독출 종료) -> 이번 트랜스퍼 지연 [s].
@@ -215,18 +235,57 @@ class GuideBackend:
         base = self.timing['trigger_to_transfer'] if self.timing else 0.0
         return base + max(intms, 0) / 1000.0
 
+    def trigger_to_frameshift(self, intms: int = 0) -> float:
+        """표 잇는 시각 -> 이번 `FrameShift` **개시** [s] -- 10.1-4 의 DATE-OBS 기준.
+
+        `trigger_to_transfer` 와 다르다: 그쪽은 트랜스퍼 **종료**(+HS+clamp ≈ Line
+        독출 개시)까지고, 규격은 개시를 기준으로 못박았다 (R2613 반영, 11.31).
+        """
+        base = self.timing['to_frameshift'] if self.timing else 0.0
+        return base + max(intms, 0) / 1000.0
+
+    def frameshift_to_done(self) -> float:
+        """`FrameShift` 개시 -> 프레임 완료 [s] (transfer + 독출).
+
+        완료 관측 시각에서 이것을 빼면 그 프레임의 FrameShift 개시 = **다음** 프레임의
+        DATE-OBS 다.  ⚠️ 완료 관측은 폴링 지연(frame_poll)만큼 늦다 -- 그만큼
+        DATE-OBS 가 늦는 편향이 있다 (11.31, 예측 폴링은 후속).
+        """
+        if self.timing:
+            return self.timing['frameshift_to_done']
+        # 모델이 없으면(스크립트 없는 시험 ACF) 완료 시각을 그대로 -- 독출 한 번만큼
+        # 늦지만 **단조**다.  ini 하한(비스케일 2 s)을 빼면 가짜/대역에서 DATE-OBS 가
+        # 뒤로 간다.
+        return 0.0
+
+    def flush_duration(self) -> float:
+        """flush 프레임 소요 [s] (R2613 LINE115~118) -- 규격 10.1-2 로 본 독출과 같다."""
+        f = self.timing.get('flush') if self.timing else None
+        return f if f is not None else self.frame_floor()
+
     # -- 연속 노출 (시퀀서 pacing) -------------------------------------------
 
     async def arm_sequence(self, frames: int, intms: int, *,
-                           suffix: str = '', queue: bool = False):  # noqa: ANN201
-        """`Exposures=frames` 를 **한 번에** 걸고 첫 표를 돌려준다.
+                           flush: bool = True,
+                           suffix: str = '', queue: bool = True):  # noqa: ANN201
+        """`Exposures=frames` (+ `FirstFlush=1`) 를 **한 LOADPARAMS 로** 걸고 첫 표를 돌려준다.
 
-        이후 프레임은 `next_ticket()` 이 표만 잇는다 -- 시퀀서가 유휴 없이
-        연달아 찍으므로 호스트는 주기를 만들지 않는다 (DevNote 9.12).
+        R2613+ (규격 10.1-2·3): `go n` = flush 1회 + 독출 n회 · n장 저장.  코어가
+        `FirstFlush` 를 보고 IntUnit 없이 곧바로 FrameShift 하므로 **그 순간이 첫 저장
+        프레임의 DATE-OBS** 다 -- 표의 `armed_utc` 가 그 근사값이다.  이후 프레임은
+        `next_ticket()` 이 표만 잇는다 (DevNote 9.12).
+
+        ⛔ ACF 가 R2612 이하(FirstFlush/FlushFrame 없음)면 **GO 를 거부한다** -- 그
+        판에 `Exposures=n` 을 걸면 첫 장이 flush 없이 저장된다 (11.31 must_fix).
         """
+        if flush and not getattr(self, '_flush_capable', False):
+            raise GuideBackendError(
+                'guide ACF has no FirstFlush/FlushFrame (R2612 or older) -- '
+                'load R2613+ or fix [icg] acf (spec 10.1-2)')
         try:
             return await self.ctrl.trigger(intms, queue=queue, suffix=suffix,
-                                           exposures=frames)
+                                           exposures=frames,
+                                           flush=1 if flush else None)
         except (ArchonError, TimeoutError, OSError) as exc:
             raise GuideBackendError(
                 'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
@@ -283,7 +342,7 @@ class GuideBackend:
     async def trigger_frame(self, *, queue: bool, suffix: str = ''):  # noqa: ANN201
         """독출 1회 지시 -- `FrameTicket` 을 돌려준다.
 
-        `queue=False` 는 **폐기 프레임**(첫 독출, 10.1-2)이다 -- 저장 대기열에
+        `queue=False` 는 **저장하지 않는 프레임**(꼬리 배수 · 시험용 단발 경로 -- R2613+ 사이클에는 폐기분이 없다)이다 -- 저장 대기열에
         넣지 않고, fetch 도 하지 않는다 (버퍼 회전만 확인).  폐기분의 트리거
         시각이 다음 저장 프레임의 `DATE-OBS` 가 되므로 메타(시각)는 시퀀서가
         든다.
@@ -345,7 +404,7 @@ class GuideBackend:
         return rate
 
     async def discard_frame(self, ticket, *, release: bool = True) -> None:  # noqa: ANN001
-        """폐기 프레임 -- 완료만 확인하고 fetch 하지 않는다 (10.1-2).
+        """저장하지 않는 프레임(꼬리 배수 · 낯선 첫 프레임 가드) -- 완료만 확인하고 fetch 하지 않는다 (10.1-2).
 
         완료 확인을 생략하면 다음 프레임의 기준선을 못 잡는다 -- 회전(버퍼가
         실제로 돌았나)은 다음 프레임의 `wait_frame` 이 번호 증가로 함께
@@ -444,6 +503,18 @@ class SimGuideBackend:
     def trigger_to_transfer(self, intms: int = 0) -> float:
         return max(intms, 0) / 1000.0
 
+    def trigger_to_frameshift(self, intms: int = 0) -> float:
+        return max(intms, 0) / 1000.0
+
+    def frameshift_to_done(self) -> float:
+        # 대역은 `wait_frame` 이 scaled 로 자므로 되짚는 폭도 같은 축이어야 DATE-OBS 가
+        # 단조다 (비스케일 2 s 를 빼면 뒤로 간다 -- test_guide_header_semantics).
+        return self.cfg.scaled(self.frame_floor())
+
+    def flush_duration(self) -> float:
+        """대역의 flush 소요 -- 실기와 같이 본 독출(하한)과 같은 길이로 흉내낸다."""
+        return self.frame_floor()
+
     async def prepare(self) -> None:
         return None
 
@@ -458,6 +529,12 @@ class SimGuideBackend:
         저장이 서로 겹쳐 실기에서는 안 나는 경고가 뜬다 -- 대역이 실기와
         다른 모양으로 도는 것을 시험이 정상으로 배우면 안 된다.
         """
+        if getattr(self, '_flush_pending', False):
+            # R2613+: 첫 프레임 앞의 flush -- 실기처럼 한 독출만큼 더 걸린다.  안 흉내내면
+            # 첫 프레임이 즉시 끝나 시퀀서의 '너무 이른 첫 프레임' 가드가 그것을 남의
+            # 것으로 버려 시험이 어긋난다 (11.31).
+            self._flush_pending = False
+            await asyncio.sleep(self.cfg.scaled(self.flush_duration()))
         period = self.cfg.scaled(
             self.frame_floor() + max(self._intms, 0) / 1000.0)
         for pct in (50, 100):
@@ -476,11 +553,13 @@ class SimGuideBackend:
         return max(0, int(round((exptime_s - self.frame_floor()) * 1000.0)))
 
     def effective_exptime(self, exptime_s: float) -> float:
-        return self.frame_floor() + self.intms_for(exptime_s) / 1000.0
+        return round(self.frame_floor() + self.intms_for(exptime_s) / 1000.0, 3)
 
     async def arm_sequence(self, frames: int, intms: int, *,  # noqa: ARG002
-                           suffix: str = '', queue: bool = False):  # noqa: ANN201, ARG002
+                           flush: bool = True,
+                           suffix: str = '', queue: bool = True):  # noqa: ANN201, ARG002
         self._intms = intms
+        self._flush_pending = bool(flush)
         self._n += 1
         return _SimTicket(self._n)
 

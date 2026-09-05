@@ -35,7 +35,7 @@ from icg_archon.config import IcgCfg, IcgConfigError, validate  # noqa: E402
 from icg_archon.hk import HkMonitor  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2612.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2614.acf')
 
 
 class RecordingCtrl(ArchonController):

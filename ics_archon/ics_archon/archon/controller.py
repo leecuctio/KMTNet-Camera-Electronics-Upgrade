@@ -95,6 +95,14 @@ class FrameTicket:
     int_until: float | None = None
     #: 완료가 확인된 프레임.  `wait_frame()` 이 채운다.
     ready: parse.FrameStatus | None = None
+    #: arm 의 `LOADPARAMS` 왕복 -- 송신 직전과 응답 직후의 **중점**(monotonic /
+    #: epoch UTC)과 RTT.  guide 의 flush 는 이 적용 순간 + <=1 us 에 `FrameShift`
+    #: 를 시작하므로 첫 저장 프레임의 `DATE-OBS`(10.1-4)가 이 값이다.  링크
+    #: 스레드 안에서 찍는다 -- `await` 앞뒤 시각은 `_lock` 대기·루프 지연이
+    #: 섞여 수십~수백 ms 틀릴 수 있다 (설계 검토, DevNote 11.31).
+    armed_mono: float | None = None
+    armed_utc: float | None = None
+    arm_rtt: float | None = None
 
 #: 명령별 응답 상한 [s].  근거는 "그 명령이 실제로 무엇을 하나" 다.
 #:
@@ -311,8 +319,15 @@ class ArchonController:
         부분 수신분이 소켓에 남는 문제는 그대로다.
         """
         def _run() -> bytes:
+            t_s = time.monotonic()
+            u_s = time.time()
             try:
-                return self.link.command(command, timeout=timeout)
+                out = self.link.command(command, timeout=timeout)
+                t_r = time.monotonic()
+                # 마지막 왕복의 (송신 monotonic, 수신 monotonic, 송신 epoch) --
+                # `trigger()` 가 LOADPARAMS 직후 읽어 표에 싣는다.
+                self.last_cmd_timing = (t_s, t_r, u_s)
+                return out
             except TimeoutError as exc:
                 self.link.resync('%s 응답 시한 초과' % command)
                 raise ArchonError(str(exc), cmd=command) from None
@@ -992,7 +1007,8 @@ class ArchonController:
     # **프레임의 것은 프레임이 정하고, 나중에 다시 읽지 않는다.**
 
     async def trigger(self, exptime_ms: int, *, queue: bool = True,
-                      suffix: str = '', exposures: int = 1) -> FrameTicket:
+                      suffix: str = '', exposures: int = 1,
+                      flush: int | None = None) -> FrameTicket:
         """노출을 걸고 곧바로 돌아온다 (적분·독출은 컨트롤러가 몬다).
 
         순서는 labtest 그대로다 -- **프레임 번호를 먼저 읽고** `IntMS`,
@@ -1005,8 +1021,8 @@ class ArchonController:
             suffix: 이 프레임의 이름 (`<YYYYMMDD>.<NNNNNN>`).  저장 쪽이 **자기
                 프레임의 표를 골라 집는** 근거다.
             exposures: `Exposures` 파라미터.  **science 는 1** (프레임마다
-                다시 건다).  guide 는 **n+1 을 한 번에** 걸어 시퀀서가 유휴
-                없이 연달아 찍게 한다 -- 그때 둘째 프레임부터는 `expect_next()`
+                다시 건다).  guide 는 **n 을 한 번에**(+ `flush=1`, R2613+) 걸어
+                시퀀서가 flush 뒤 유휴 없이 연달아 찍게 한다 -- 그때 둘째 프레임부터는 `expect_next()`
                 로 표만 잇는다(왕복에 `LOADPARAMS` 가 없다).  타이밍
                 스크립트가 `GOTO Start` 뒤 `Exposures` 가 남아 있으면 곧바로
                 `Exposure:` 로 되돌아가는 것이 근거다.
@@ -1023,16 +1039,38 @@ class ArchonController:
         await self.set_config(self.cfg.param_exposures_slot,
                               '%s=%d' % (self.cfg.param_exposures_name,
                                          max(int(exposures), 1)))
+        flush_slot = getattr(self.cfg, 'param_flush_slot', None)
+        flush_name = getattr(self.cfg, 'param_flush_name', 'FirstFlush')
+        if flush is not None and flush_slot:
+            # guide R2613+: 시퀀스 첫머리의 flush 프레임 (규격 10.1-2).  ⛔ 슬롯이
+            # Exposures 보다 **앞**이어야 한다 -- LOADPARAMS 가 슬롯 순서로 적용한다.
+            await self.set_config(flush_slot, '%s=%d' % (flush_name, max(int(flush), 0)))
         # 취소가 여기서 걸리면 `_locked_thread` 가 스레드를 끝까지 기다리므로
         # 표시가 True 인 순간 ack 는 이미 (또는 곧) 받은 것이다.
         self.loadparams_sent = True
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
+        timing = getattr(self, 'last_cmd_timing', None)
+        if flush and flush_slot:
+            # ⛔ **설정 메모리의 플래그를 곧바로 0 으로 되쓴다** (LOADPARAMS 없이 --
+            # 코어에 이미 들어간 값은 그대로다).  안 그러면 이후 어떤 LOADPARAMS/
+            # LOADTIMING(STOP 의 Exposures=0, ccdflush ...) 도 설정 메모리의 1 을 다시
+            # 태워 **유령 flush**(1.25 s 클록, 프레임 없음)가 돈다 (DevNote 11.31).
+            await self.set_config(flush_slot, '%s=0' % flush_name)
         ticket = FrameTicket(
             suffix=suffix,
             prev_frame=prev,
             prev_frames=before,
             int_until=(time.monotonic() + exptime_ms / 1000.0
                        if exptime_ms > 0 else None))
+        if timing is not None:
+            t_s, t_r, u_s = timing
+            ticket.armed_mono = (t_s + t_r) / 2.0
+            ticket.armed_utc = u_s + (t_r - t_s) / 2.0
+            ticket.arm_rtt = t_r - t_s
+            if ticket.arm_rtt > 0.020:
+                log.warning('%s: LOADPARAMS 왕복 %.1f ms -- 링크가 느리다.  첫 저장 '
+                            '프레임 DATE-OBS 의 불확도가 그 절반이다', self.tag,
+                            ticket.arm_rtt * 1e3)
         self._current = ticket
         if queue:
             self._queue.append(ticket)
@@ -1105,6 +1143,12 @@ class ArchonController:
         await self.set_config(self.cfg.param_exposures_slot,
                               '%s=%d' % (self.cfg.param_exposures_name,
                                          max(int(n), 0)))
+        flush_slot = getattr(self.cfg, 'param_flush_slot', None)
+        if flush_slot and flush_slot in self.config:
+            # trigger 가 WCONFIG 뒤 LOADPARAMS 전에 취소되면 설정 메모리에
+            # FirstFlush=1 이 남는다 -- 이 LOADPARAMS 가 그것을 태우지 않게 0 으로.
+            await self.set_config(flush_slot, '%s=0'
+                                  % getattr(self.cfg, 'param_flush_name', 'FirstFlush'))
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         log.info('%s: Exposures=%d 로 갱신', self.tag, max(int(n), 0))
 
@@ -1577,8 +1621,11 @@ class ArchonController:
                 # 이 갈래를 가리킨다.
                 self.parse_acf(acf)
                 self.acf_applied = True
-                bad = await self.verify_config_lines(
-                    (self.cfg.param_intms_slot, self.cfg.param_exposures_slot))
+                slots = [self.cfg.param_intms_slot, self.cfg.param_exposures_slot]
+                fslot = getattr(self.cfg, 'param_flush_slot', None)
+                if fslot and fslot in self.config:
+                    slots.append(fslot)
+                bad = await self.verify_config_lines(tuple(slots))
                 if bad:
                     raise ArchonError(
                         '%s: apply_acf=false 인데 설정 줄 대응이 어긋났다 (%s) '
