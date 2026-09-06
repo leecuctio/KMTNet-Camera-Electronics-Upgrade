@@ -132,7 +132,7 @@ raw 쪽 Detector/Amplifier 블록 확정(2026-08-21)으로 이름이 갈라진 �
 
 # Part 2 — raw 파일 번호 · 정체성 · 충돌 처리 (파급 요약)
 
-> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.9.md`](KMT_CEU_Raw_FITS_Specification_v1.9.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 **000000–999999**, 선검사, 상한 **1000000회** — **D-018**, 2026-08-25 로 구 `099999`·100000회를 대체) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
+> **정본 이동 완료**: 설계 전문은 **raw spec 2.3절**([`KMT_CEU_Raw_FITS_Specification_v1.12.md`](KMT_CEU_Raw_FITS_Specification_v1.12.md))과 DECISION_LOG **D-016**(Accepted, 2026-08-22)이다. 이 Part 는 MEF/구현 쪽 파급만 남긴다 — 골자: 충돌 시 노출 번호 증가(공간 **000000–999999**, 선검사, 상한 **1000000회** — **D-018**, 2026-08-25 로 구 `099999`·100000회를 대체) · `FILENAME`(유일 키) + `ORIGNAME`(불일치 = 충돌 신호) · `UNIQNAME`/`NAMECLSH`/`clash/`/`PAIRFILE`/`CTRLTAG` 폐지.
 
 ## 1. 하류 도구 요구사항
 
@@ -159,11 +159,11 @@ converter(v2.2.0)는 raw `UNIQNAME` 을 읽어 MEF `UNIQNAME` 으로 옮긴다(`
 
 | 문서 | 위치 |
 | --- | --- |
-| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.16.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.16.md) |
-| 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
+| raw 헤더 카드 판정 원장 | [`KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.18.md`](KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.18.md) |
+| 1위 준거 ICD | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md) |
 | MEF keyword 정의서 | [`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`](../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) (v2.2.0) |
-| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.9.md`](KMT_CEU_Raw_FITS_Specification_v1.9.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
+| **raw spec (현행)** | [`KMT_CEU_Raw_FITS_Specification_v1.12.md`](KMT_CEU_Raw_FITS_Specification_v1.12.md) — 구판(v1.2 구명 Pair_Spec · v1.3)은 `archive/` |
 | 전신 문서 | `archive/KMT_CEU_Raw_Header_Review_MEF_Impacts_v0.4.md` · `archive/KMT_CEU_Raw_Numbering_and_Identity_v0.2.md` |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |
 | 검토 진행 상태 | [`SMC_CLAUDE.md`](SMC_CLAUDE.md) |
