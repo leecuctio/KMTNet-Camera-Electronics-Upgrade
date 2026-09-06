@@ -1406,9 +1406,18 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ## ▶ 인수인계 (2026-09-04 마감 — ⭐ 새 세션이면 **여기부터**)
 
-### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.35) — 아래 것들보다 **이것이 최신**
+### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.36) — 아래 것들보다 **이것이 최신**
 
 ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved`).
+
+**한 것 (11.36, 2026-09-06 — 미결 전수 점검)**
+- ⛔ **guide 헤더의 `HKUDATE` 가 늘 sentinel 이었다** — `icg_archon/hk.py` 의 `sensors()` 가 가장 낡은
+  표본시각을 안 실었다(science 쪽 `ics_archon/archon/backend.py` 는 하고 있었다).  고치고 시험 신설.
+  ⭐ **두 창구가 같은 규칙을 따라야 하는데 규칙이 한 곳에만 있던** 부류다 — sentinel 이 정답인 경우와
+  구별이 안 돼서 기존 시험이 다 통과했다.
+- 규격 정정 셋(main): `HTROUT` 원천 "구현 대기" 해제(OI-25 를 `HTREN`·`HTRSET`·`HTRFORCE` 셋으로 좁힘) ·
+  통합 문서 현행 표기 v0.8→**v0.9** · OI-26 의 `R2613 LINE118` 인용을 라벨 기준으로.
+- ⏳ 운영자 판단: **`raw-spec-v1.10` 태그 미부여**(최신 `raw-spec-v1.9`) · 판올림 이월 대기 4건.
 
 **한 것 (11.35, 2026-09-06)**
 - ⛔ **타이밍 스크립트를 줄 번호로 색인하지 않는다**(운영자) — `acftiming.blocks()`/`call_arg()` 로

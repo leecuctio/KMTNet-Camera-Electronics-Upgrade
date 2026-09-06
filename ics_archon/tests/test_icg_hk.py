@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import datetime
 import json
 import os
 import time
 
 import ics_archon  # noqa: F401
+
+from ics_sim import rawhdr  # noqa: E402
 
 from icg_archon import hk as hk_mod  # noqa: E402
 from icg_archon.config import IcgCfg  # noqa: E402
@@ -296,6 +299,45 @@ def test_csv_columns_are_stable():
     for key in ('t_backplane', 't_mod9', 'v_heater', 'i_p2v5', 'dewpres',
                 'ccdtemp', 'hebox', 'fsahum', 'ens7', 'event'):
         assert key in cols
+
+
+def test_sensors_carries_hkudate_as_the_oldest_sample_time(tmp_path):
+    """⛔ **guide 헤더의 `HKUDATE` 가 늘 `NC` 였다** (2026-09-06 발견).
+
+    science 는 `ArchonBackend.sensors()` 가 가장 낡은 표본시각을 실었는데 guide
+    쪽 `HkMonitor.sensors()` 는 그것을 안 해서, `rawhdr.thermal_header()` 가
+    `s.get('hkudate')` 를 못 찾아 sentinel 로 나갔다.  규격 OI-25 의 *"`HKUDATE`
+    는 통과 경로가 섰다"* 는 science 에만 해당했던 것이다 (DevNote 11.36).
+
+    지키는 것 셋: ① 실린다 ② **가장 낡은** 표본시각이다(어느 하나를 고르면
+    나머지에 대해 거짓말이 된다) ③ 신선한 값이 하나도 없으면 **안 싣는다**.
+    """
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    mon = HkMonitor(None, icfg)
+
+    now = time.time()
+    # 두 표본의 시각을 일부러 벌린다 -- 60 s 와 5 s 전.
+    mon._sample['ccdtemp'] = (-100.0, now - 60.0)      # noqa: SLF001
+    mon._sample['hebox'] = (21.5, now - 5.0)           # noqa: SLF001
+
+    vals = mon.sensors()
+    assert 'hkudate' in vals, vals
+    stamp = str(vals['hkudate'])
+    assert len(stamp) == 19 and stamp[10] == 'T', stamp      # 초 단위 19자, Z 없음
+    # ② 가장 낡은 쪽(60 s 전)이어야 한다.
+    want = datetime.datetime.fromtimestamp(
+        now - 60.0, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+    assert stamp == want, (stamp, want)
+    # 헤더까지 실제로 간다 -- 형식은 rawhdr 이 맡는다.
+    assert rawhdr.thermal_header(vals)['HKUDATE'] == want
+
+    # ③ 신선한 것이 없으면 안 싣는다 (빈 블록에 시각만 붙으면 안 된다).
+    stale = HkMonitor(None, icfg)
+    stale._sample['ccdtemp'] = (-100.0, now - 86400.0)  # noqa: SLF001
+    assert stale.sensors() == {}
+    assert rawhdr.thermal_header(stale.sensors())['HKUDATE'] == rawhdr.WORD_NC
 
 
 def test_htrout_is_sampled_from_mod10_heateraoutput(tmp_path, caplog):

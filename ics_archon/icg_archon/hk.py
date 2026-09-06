@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import datetime
 import json
 import logging
 import os
@@ -42,7 +43,8 @@ from ics_archon import _simpath
 
 _simpath.ensure()
 
-from ics_sim.state import stamp_compact, stamp_iso_ms, utcnow  # noqa: E402
+from ics_sim.state import (stamp_compact, stamp_iso,  # noqa: E402
+                           stamp_iso_ms, utcnow)
 
 from . import guidehdr, heater  # noqa: E402
 from .config import IcgCfg  # noqa: E402
@@ -288,24 +290,42 @@ class HkMonitor:
     # -- 소비 창구 -----------------------------------------------------------
 
     def sensors(self) -> dict[str, object]:
-        """센서 계약 키 **10개** 중 지금 신선한 것만 (원값).
+        """센서 계약 키 **10개** 중 지금 신선한 것만 (원값) + `hkudate`.
 
         ⚠️ **개수를 여기 적은 것이 낡았었다** (2026-09-04 정정: 9 -> 10) --
         RTD 6 + `dewpres` + Radionode 3 이다.  `HKDATA` 의 완전성 검사가
-        `계약키 교집합 + HKSTALE = 10` 이라 **이 수에 걸려 있다.**
+        `계약키 교집합 + HKSTALE = 10` 이라 **이 수에 걸려 있다.**  ⭐ 계약 키
+        **밖**의 것(`htrout`·`hkudate`)이 함께 나가도 교집합이라 셈은 안 흔들린다.
 
         guide FITS 헤더가 이걸 그대로 받는다 -- `rawhdr.thermal_header()` 가
         포맷·sentinel 을 맡는다.  **판정 기준은 표본시각 하나**다 --
         Radionode 몫도 `_sample` 에 자기 표본시각으로 들어와 있으므로
         (`_tick`) 여기서 따로 덧붙이지 않는다.  덧붙이면 폴러가 이미
         접은 값이 이 창을 타고 되살아난다.
+
+        ⭐ **`HKUDATE` -- 이 블록 값들의 취득 시각** (규격 5.6절, v1.10).
+        **가장 낡은 표본시각**을 준다: 카드는 하나인데 키마다 표본시각이 달라
+        어느 하나를 고르면 나머지에 대해 거짓말이 된다.  가장 낡은 것을 실어야
+        이 카드가 **실제보다 신선하다고 말하지 않는다**.
+        ⚠️ 살아남은 키가 없으면 **싣지 않는다** -- 호출측이 sentinel `'NC'` 로
+        채운다.  빈 블록에 시각만 붙으면 "쟀는데 다 결측" 으로 읽힌다.
+        ⛔ 이것이 없어서 **guide 헤더의 `HKUDATE` 가 늘 `NC` 였다** (2026-09-06
+        발견).  science 는 `ics_archon/archon/backend.py` 가 같은 셈을 하고
+        있었는데 guide 쪽만 빠져 있었다 -- 규격 OI-25 의 *"`HKUDATE` 는 통과
+        경로가 섰다"* 는 science 에만 해당했다.  **두 창구가 같은 규칙을 따라야
+        한다** (DevNote 11.36).
         """
         now = time.time()
         out: dict[str, object] = {}
         horizon = max(self.cfg.hk.interval * 3, 30.0)
+        oldest: float | None = None
         for key, (val, when) in self._sample.items():
             if now - when <= horizon:
                 out[key] = val
+                oldest = when if oldest is None else min(oldest, when)
+        if out and oldest is not None:
+            out['hkudate'] = stamp_iso(datetime.datetime.fromtimestamp(
+                oldest, datetime.timezone.utc))
         return out
 
     def ctrl_telemetry(self) -> dict:
