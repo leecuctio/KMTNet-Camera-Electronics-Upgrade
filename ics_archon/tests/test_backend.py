@@ -26,7 +26,7 @@ import pytest
 from fake_archon import FakeArchon
 
 from ics_archon import config as acfg_mod
-from ics_archon.app import IcsArchon, rdmode_from_acf
+from ics_archon.app import IcsArchon
 
 from ics_sim import config as simcfg
 
@@ -509,21 +509,6 @@ def test_status_timeout_does_not_lose_the_frame(tmp_path):  # noqa: ANN001
 # 자잘한 것
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize('name, want', [
-    ('acf/KMTNet_Sci_fast_med_U13.acf', 'FAST'),
-    ('KMTNet_Sci_comp_med_U13.acf', 'COMP'),
-    ('/x/KMTNet_Sci_slow_sens_U23.acf', 'SLOW'),
-    ('KMTA_SCI_101_R2609.1.acf', ''),          # 못 알아보면 빈 문자열
-    ('', ''),
-])
-def test_rdmode_is_derived_from_the_acf_name(name, want):  # noqa: ANN001
-    """컨트롤러는 적용된 ACF 이름을 보고하지 않는다 (매뉴얼 p.54).
-
-    호스트가 아는 유일한 근거가 파일명이다.  **못 알아보면 빈 문자열**이라야
-    한다 -- 여기서 값을 만들어 넣으면 "유도 실패" 와 "정말 그 값" 이
-    구별되지 않는다.
-    """
-    assert rdmode_from_acf(name) == want
 
 
 def test_ini_validate_warns_when_a_controller_is_missing():

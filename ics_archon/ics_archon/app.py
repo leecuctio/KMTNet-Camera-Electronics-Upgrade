@@ -112,12 +112,11 @@ class _OpError(Exception):
     """운영자 명령이 **정해진 문구로** 실패했다 -- 본문은 이미 와이어용이다."""
 
 #: ACF 경로에서 헤더 값을 뽑는 규칙 둘은 **`config.py` 에 함께 있다** --
-#: `rdmode_from_acf()`(`RDMODE`) · `cfg_name_from_acf()`(`CTRLnCFG`).
+#: `cfg_name_from_acf()`(`CTRLnCFG`).  ⛔ `RDMODE` 는 ini 전용이다 (규격 v1.12 5.5절) -- 유도하지 않는다.
 #: 같은 입력에서 나오는 값들이라 한 곳에 두었고, `config._cross_checks()` 가
 #: 둘의 어긋남을 기동에서 본다.
 #: **둘의 자르기 규칙이 다르다**: `RDMODE` 는 토큰을 찾을 뿐이라 `splitext`
 #: 로 충분하지만, `CTRLnCFG` 는 값 자체가 되므로 판 번호의 점을 먹으면 안 된다.
-rdmode_from_acf = acfg_mod.rdmode_from_acf
 
 
 def fill_controller_cfg_names(cfg, acfg) -> None:  # noqa: ANN001
@@ -518,15 +517,6 @@ class IcsArchon(IcsSim):
         # `CTRL1CFG`/`CTRL2CFG` -- ini 가 비었으면 적용 ACF 경로에서.
         fill_controller_cfg_names(cfg, acfg)
 
-        # `RDMODE` -- ini 가 비었으면 ACF 이름에서.
-        if not cfg.controllers.rdmode:
-            for tag in ('MK', 'NT'):
-                derived = rdmode_from_acf(acfg.acf.get(tag, ''))
-                if derived:
-                    cfg.controllers.rdmode = derived
-                    log.info('RDMODE 를 ACF 이름에서 유도했다 -- %s (%s)',
-                             derived, acfg.acf.get(tag, ''))
-                    break
 
     async def start(self) -> None:
         # ⭐ 게이지 감시는 **백엔드와 무관하게** 띄운다 -- 상대는 ICG 이고
@@ -646,7 +636,14 @@ class IcsArchon(IcsSim):
         drain = getattr(self.seq, 'drain_writers', None)
         if drain is not None:
             try:
-                await drain(self.acfg.shutdown_drain)
+                # ⭐ **반환값을 버리지 않는다** -- 상한 초과는 프레임을 잃은
+                # 것이므로 종료 기록에 남아야 한다 (2026-09-06).
+                late = await drain(self.acfg.shutdown_drain)
+                if late:
+                    log.error('종료 상한(%.0f초) 안에 저장을 못 마친 프레임이 '
+                              '%d개다 -- 독출은 끝났는데 파일이 없다.  '
+                              '[archon] shutdown_drain 을 늘리거나 저장 경로를 '
+                              '확인하라', self.acfg.shutdown_drain, late)
             except Exception:                       # noqa: BLE001
                 log.exception('저장 대기 중 예외 -- 프레임을 잃었을 수 있다')
         shutdown = getattr(self.backend, 'shutdown', None)

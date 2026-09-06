@@ -275,8 +275,17 @@ def test_archon_geometry_ini_reaches_naxis(tmp_path):  # noqa: ANN001
     assert (head['NAXIS1'], head['NAXIS2']) == (NX, NY)
 
 
-def test_rdmode_is_derived_from_the_acf_when_ini_is_empty(tmp_path):  # noqa: ANN001
-    """컨트롤러는 적용 ACF 이름을 보고하지 않는다 -- 파일명이 유일한 근거다."""
+def test_rdmode_is_unknown_when_the_ini_is_empty(tmp_path):  # noqa: ANN001
+    """⭐ **`RDMODE` 는 ini 로만 정한다** -- 비면 `UNKNOWN` (규격 v1.12 5.5절).
+
+    ⛔ **ACF 이름에서 유도하지 않는다** (운영자 확정 2026-09-06).  이 시험의
+    ACF 는 일부러 `KMTNet_Sci_**comp**_med_U13.acf` 다 -- 종전 규칙이면
+    `COMP` 가 유도되던 이름이라, 유도가 되살아나면 여기가 빨개진다.
+
+    ⚠️ `UNKNOWN` 은 문자열 sentinel `NC` 와 뜻이 다르다 -- `NC` 는 *"그
+    자리가 없다"*, `UNKNOWN` 은 *"있는데 값을 모른다"* 이고 독출 모드는
+    언제나 존재한다.  ⛔ 실제로 쓰이는 값(`NORMAL`)으로 가리지 않는다.
+    """
     acf = tmp_path / 'KMTNet_Sci_comp_med_U13.acf'
     acf.write_text(ACF_TEXT, encoding='ascii')
     over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
@@ -299,7 +308,8 @@ def test_rdmode_is_derived_from_the_acf_when_ini_is_empty(tmp_path):  # noqa: AN
         mk.shutdown()
         nt.shutdown()
     head = headers(tmp_path)['MK']
-    assert head['RDMODE'].strip() == 'COMP'
+    assert head['RDMODE'].strip() == 'UNKNOWN', (
+        'ini 가 비었는데 ACF 이름에서 유도됐다 -- 규격 v1.12 5.5절 위반')
     assert head['CTRL1CFG'].strip() == 'KMTNet_Sci_comp_med_U13'
 
 
@@ -384,14 +394,17 @@ def test_hand_typed_ctrlcfg_wins_but_the_mismatch_is_reported(tmp_path):  # noqa
     assert cfg.controllers.ctrl1_cfg == 'NC'
 
 
-def test_rdmode_mismatch_with_the_acf_name_is_reported(tmp_path):  # noqa: ANN001
-    """`RDMODE` 도 **양방향**으로 본다 (2026-08-29).
+def test_rdmode_is_never_inferred_from_the_acf_name(tmp_path):  # noqa: ANN001
+    """⛔ **ACF 이름과 `rdmode` 를 대조하지 않는다** (운영자 확정 2026-09-06).
 
-    현행 ACF 이름 규칙에는 속도 토큰(`fast`/`comp`/`slow`)이 아예 없어서
-    유도가 늘 실패한다 -- 그래서 ini 에 직접 적는다(현행 전부 `NORMAL`,
-    운영자 확정).  ⚠️ **그러면 그 줄은 ACF 를 바꿔도 따라오지 않는다** --
-    속도가 다른 ACF 를 올리고 이 줄을 안 고치면 헤더가 거짓말을 하고,
-    자료만 봐서는 드러나지 않는다.  `CTRLnCFG` 어긋남과 같은 형태다.
+    종전에는 이름의 `fast`/`comp`/`slow` 토큰으로 유도하고 ini 값과 **양방향**
+    으로 어긋남을 알렸다.  ⭐ 그 유도는 **한 번도 성립한 적이 없다** -- 현행
+    정본 ACF 이름(`<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`)에는 속도
+    토큰이 아예 없다.  없는 안전장치를 있는 것처럼 두면 읽는 사람이
+    *"ACF 를 바꾸면 알려 준다"* 고 믿으므로 통째로 걷었다.
+
+    ⚠️ 그 대가는 **ini 를 사람이 맞춰야 한다는 것**이고, 그것이 규격 v1.12
+    5.5절의 문면이다 -- 값은 ini 로만 정한다.
     """
     def notes(acf_name, rdmode):  # noqa: ANN001
         acf = tmp_path / acf_name
@@ -403,22 +416,13 @@ def test_rdmode_mismatch_with_the_acf_name_is_reported(tmp_path):  # noqa: ANN00
         from ics_archon.app import fill_controller_cfg_names
         fill_controller_cfg_names(cfg, acfg)
         return [n for n in acfg_mod.validate(
-            acfg, tuple(cfg.node.ccds), cfg) if 'rdmode' in n]
+            acfg, tuple(cfg.node.ccds), cfg) if 'rdmode' in n.lower()]
 
-    # ① 현행 이름 + ini 를 비우면 -- 유도가 실패한다는 사실을 알린다
-    warned = notes('KMTC_SCI_101_STA0284_R2608_MK.acf', '')
-    assert warned and '속도 토큰' in warned[0], warned
-
-    # ② 현행 이름 + ini 에 NORMAL -- 조용하다 (운영자가 확정한 값이다)
-    assert not notes('KMTC_SCI_101_STA0284_R2608_MK.acf', 'NORMAL')
-
-    # ③ ⚠️ 속도가 다른 ACF 를 올렸는데 ini 는 NORMAL 그대로 -- 헤더가 거짓말한다
-    warned = notes('KMTNet_Sci_fast_med_U13.acf', 'NORMAL')
-    assert warned, 'ACF 는 FAST 인데 ini 가 NORMAL 인 것을 아무도 안 알린다'
-    assert 'FAST' in warned[0]
-
-    # ④ 둘이 맞으면 조용하다
-    assert not notes('KMTNet_Sci_fast_med_U13.acf', 'FAST')
+    # 속도 토큰이 있든 없든, ini 가 비었든 채웠든 -- rdmode 경고는 없다
+    assert not notes('KMTC_SCI_101_STA0284_R2611_MK.acf', '')
+    assert not notes('KMTC_SCI_101_STA0284_R2611_MK.acf', 'NORMAL')
+    assert not notes('KMTNet_Sci_fast_med_U13.acf', 'NORMAL')
+    assert not notes('KMTNet_Sci_fast_med_U13.acf', '')
 
 
 def test_fetch_buffers_are_checked_against_the_wrote_window(tmp_path):  # noqa: ANN001

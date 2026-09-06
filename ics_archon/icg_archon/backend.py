@@ -61,7 +61,7 @@ _simpath.ensure()
 
 from ics_archon.archon import fitswrite, parse  # noqa: E402
 from ics_archon.archon.controller import ArchonController, ArchonError  # noqa: E402
-from ics_archon.config import cfg_name_from_acf, rdmode_from_acf  # noqa: E402
+from ics_archon.config import cfg_name_from_acf  # noqa: E402
 from ics_sim import rawhdr  # noqa: E402
 
 from . import acftiming, guidecards  # noqa: E402
@@ -497,22 +497,39 @@ class GuideBackend:
         unit = {
             'id': ident.get('id', ''),
             'sn': ident.get('sn', ''),
-            'cfg': cfg_name_from_acf(self.ctrl.acf_path
-                                     or self.icfg.acf_path),
+            'cfg': self._cfg_name(),
         }
         return {'units': [unit]}
 
-    def rdmode(self) -> str:
-        """`RDMODE` -- ini > ACF 이름 토큰 > `UNKNOWN` (raw spec 10.3절).
+    def _cfg_name(self) -> str:
+        """`CTRL1CFG` 값 -- **ini 가 이기고, 비면 적용 ACF 파일명**.
 
-        guide ACF 이름에는 속도 토큰이 없어 파생이 비므로, 결측값
-        `UNKNOWN`(운영자 확정 2026-08-29 -- 코드 선반영)이 기본이 된다.
+        규격 v1.12 5.5절(그리고 10.3절이 *"5.5절과 같은 규칙"* 이라 못박는다):
+        *"INI 에 정의돼 있으면 그 값, 비어 있으면 적용 ACF 파일에서, 어느
+        쪽이든 경로·폴더명과 확장자를 뗀 파일명만"*.
+
+        ⛔ **종전에는 ini 를 안 읽고 늘 ACF 에서 파생했다** -- 그런데 이
+        클래스의 docstring 과 배포 ini 주석은 이미 *"ini 가 이긴다"* 라고
+        적고 있었다.  운영자가 손으로 넣은 값을 코드가 조용히 버리는
+        상태였다 (2026-09-06 정정).  science 쪽 짝은
+        `ics_archon/app.py:fill_controller_cfg_names()` 다.
         """
-        ini = (self.cfg.controllers.rdmode or '').strip()
+        ini = (getattr(self.cfg.controllers, 'ctrl1_cfg', '') or '').strip()
         if ini:
             return ini
-        derived = rdmode_from_acf(self.ctrl.acf_path or self.icfg.acf_path)
-        return derived or rawhdr.RDMODE
+        return cfg_name_from_acf(self.ctrl.acf_path or self.icfg.acf_path)
+
+    def rdmode(self) -> str:
+        """`RDMODE` -- **ini 로만** 정하고, 비면 `UNKNOWN` (규격 v1.12 5.5절).
+
+        ⛔ **ACF 이름에서 유도하지 않는다** (운영자 확정 2026-09-06).  종전
+        단계였던 `fast`/`comp`/`slow` 토큰 찾기는 현행 ACF 이름에 그 토큰이
+        없어 **한 번도 성립한 적이 없는 죽은 경로**였다.
+        ⚠️ `UNKNOWN` 은 문자열 sentinel `NC` 와 뜻이 다르다 -- `NC` 는 *"그
+        자리가 없다"*, `UNKNOWN` 은 *"있는데 값을 모른다"* 이고 독출 모드는
+        언제나 존재한다 (운영자 확정 2026-08-29, 규격 5.5절에 v1.12 등재).
+        """
+        return (self.cfg.controllers.rdmode or '').strip() or rawhdr.RDMODE
 
     async def shutdown(self) -> None:
         """전원을 시도했으면 끈다 -- science 백엔드와 같은 규칙."""
@@ -663,8 +680,11 @@ class SimGuideBackend:
             widths=guidecards.WIDTHS)
 
     def controller_info(self) -> dict:
+        # `CTRL1CFG` -- ini 가 이기고 비면 적용 ACF 파일명 (규격 5.5절).
+        ini = (getattr(self.cfg.controllers, 'ctrl1_cfg', '') or '').strip()
         return {'units': [{'id': '', 'sn': '',
-                           'cfg': cfg_name_from_acf(self.icfg.acf_path)}]}
+                           'cfg': ini or cfg_name_from_acf(
+                               self.icfg.acf_path)}]}
 
     def rdmode(self) -> str:
         return (self.cfg.controllers.rdmode or '').strip() or rawhdr.RDMODE
