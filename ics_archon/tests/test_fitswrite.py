@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """raw FITS 기록 -- **견본 v1.0 pair 와 바이트 단위 대사.**
 
-견본(`raw_fits_spec/header_samples/KMT?.*.{MK,NT}.fits.header.v1.11.txt`)이 카드 순서·comment·
+견본(`raw_fits_spec/header_samples/KMT?.*.{MK,NT}.fits.header.v<판>.txt`)이 카드 순서·comment·
 문자열 패딩까지 바이트 단위 기준이다 (raw spec 5장 머리말).  여기서는 견본의
 카드 이미지를 되먹여 **같은 80바이트가 다시 나오는지** 본다 -- 렌더러가
 어긋나면 곧바로 걸린다.
@@ -28,7 +28,7 @@ _SPEC_DIR = os.path.normpath(os.path.join(
 
 def _find_draft(tag: str) -> str:
     pattern = os.path.join(_SPEC_DIR, 'header_samples',
-                           'KMT?.*.%s.fits.header.v1.11.txt' % tag)
+                           'KMT?.*.%s.fits.header.v*[0-9].txt' % tag)
     hits = sorted(glob.glob(pattern))
     if not hits:
         raise AssertionError(

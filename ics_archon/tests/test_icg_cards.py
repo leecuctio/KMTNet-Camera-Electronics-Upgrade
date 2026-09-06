@@ -35,8 +35,8 @@ def _samples() -> list[str]:
     (`test_raw_draft.py`, 2026-08-22 사고).
     """
     pats = os.path.join(REPO, 'raw_fits_spec',
-                        'header_samples', 'KMT?.*.G.fits.header.v1.11.txt')
-    found = [p for p in glob.glob(pats) if 'REFTEXT' not in p]
+                        'header_samples', 'KMT?.*.G.fits.header.v*[0-9].txt')
+    found = [p for p in glob.glob(pats) if '+LF' not in p]
     assert found, 'guide 견본 헤더를 찾지 못했다 -- raw_fits_spec/ 확인'
     return sorted(found)
 

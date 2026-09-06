@@ -1423,7 +1423,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | raw spec | **v1.11** (`main` `a55447f`, 태그 `raw-spec-v1.11`).  ⭐ v1.10 최종 상태 승계 — **내용 변경 없음** |
 | guide ACF | **`KMTK_GUI_162_STA0201_R2617.acf`** (122줄) |
 | science ACF | **`KMT?_SCI_*_R2611_*.acf`** 6장 (142줄) |
-| 시험 | `ics_archon` **518** · `ics_sim` **329** 통과 (알려진 flake 1 deselect) |
+| 시험 | `ics_archon` **514** · `ics_sim` **329** — **전수 통과** (2026-09-06 실측, deselect 없음).  ⚠️ 종전 표의 *"알려진 flake 1 deselect"* 는 **둘 다 사실이 아니었다** — flake 가 아니라 살아 있는 회귀였고(`036976a`), `deselect` 장치는 저장소에 없었다.  ⭐ 회귀는 고쳤다(`_store_settled`) |
 | 브랜치 | `ics-archon-v1.0-build` `7258aa8` · `main` 합류 완료 |
 
 #### 오늘 확정된 규약 (어기기 쉬운 것들)
@@ -1507,7 +1507,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.36) — 아래 것들보다 **이것이 최신**
 
-ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved`).
+ics_archon 전수 통과.  ⚠️ 종전에 *"알려진 flake"* 로 적었던 `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved` 는 **flake 가 아니라 종료 시 프레임을 잃던 회귀**였다 — 2026-09-06 에 고쳤다(시퀀서 `_store_settled`).
 
 **한 것 (11.36, 2026-09-06 — 미결 전수 점검)**
 - ⛔ **guide 헤더의 `HKUDATE` 가 늘 sentinel 이었다** — `icg_archon/hk.py` 의 `sensors()` 가 가장 낡은

@@ -77,7 +77,11 @@ converter 와 어긋나는 자리가 없다. **호스트 IP 판정(D-015)은 폐
 - **`air_in`/`air_out`/`glyc_in`/`glyc_out` 넷을 없앴다.**  해당 카드 4장이 v1.5 에서 폐지돼(`rawhdr.DEWAR_CARDS` 에 없다) 호출측이 값을 버리고 있었다 -- 계약에 남겨 두면 백엔드가 **아무도 읽지 않는 값을 읽으러 간다.**
 - 고친 파일: `hardware/base.py`(계약) · `rawhdr.py`(`thermal_header`) · `hardware/sim.py` · `hardware/archon.py`(스텁 주석) · `tests/test_raw_header.py` · `tests/test_raw_draft.py`.  `ics_archon/_vendor` 는 `tools/sync_vendor.py` 로 재생성했다.
 - ✅ **`CCDTEMP` 카드 comment 의 `M` 제거는 이것과 별개**였고 **2026-08-30 운영자 지시로 이행 완료**됐다 (v1.9 발행과 함께 견본 3장 제자리 개정, 브랜치 기계 사본 3곳은 머지 `bed2f20` 에서 동반 수정).
-- **시험**: `ics_sim` **330 통과** · `ics_archon` **217 통과** (2026-08-29 기준).  ⚠️ 두 스위트를 **동시에 돌리지 말 것** -- `ics_archon` 의 `test_shutdown_waits_for_frames…` 가 부하로 간헐 실패한다.
+- **시험**: `ics_sim` **329** · `ics_archon` **514** — 둘 다 전수 통과 (2026-09-06 실측).  ⛔ 종전 이 줄의 *"두 스위트를 동시에 돌리지 말 것 -- 부하로 간헐 실패한다"* 는 **오진이었다.**  그 시험(`test_shutdown_waits_for_frames…`)은 단독으로도
+  **3/3 결정적으로 실패**했고, `git bisect` 가 `036976a`("ics_sim 공유층을 연다")를
+  첫 bad 로 짚었다 -- 프레임별 발신이 저장 태스크 등록보다 앞서서 `drain_writers()`
+  가 빈 대기열을 보고 **다 저장됐다고 오해**하던 것이다.  ⭐ 2026-09-06 에
+  `_store_settled` 로 고쳤다 (10/10 통과).
   - ⚠️ **여기 적혀 있던 "`ics_archon` 171 통과" 는 사실이 아니었다** (2026-08-28 정정) -- 그때 `_vendor/MANIFEST.sha256` 이 어긋난 채 커밋돼 `test_vendor.py` 두 시험이 실패하고 있었다(**169 통과 · 2 실패**).  원인은 `sync_vendor.py` 를 돌린 **뒤에** 원천을 한 번 더 고친 것이다.  경위·교훈은 [DevNote 11.33](DevNote.md).
 
 ## ✅ `CTRLnCFG` 파생 -- **패키지는 무개정, `ics_sim.ini` 주석만** (2026-08-29)

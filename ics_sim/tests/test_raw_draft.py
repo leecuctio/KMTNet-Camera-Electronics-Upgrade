@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.8 5장).
 
-정본 견본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v1.11.txt`
+정본 견본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v<판>.txt`
 (경로는 박지 않고 glob 으로 찾는다 -- `_find_draft`)
 -- **카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다 (5장 머리말).
 이 파일은 세 겹으로 대사한다:
@@ -50,7 +50,7 @@ def _find_draft(tag: str) -> pathlib.Path:
     실패**다.  견본은 정본이므로 없는 것 자체가 결함이다.
     """
     found = sorted(SPEC_DIR.glob(
-        f'header_samples/KMT?.*.{tag}.fits.header.v1.11.txt'))
+        f'header_samples/KMT?.*.{tag}.fits.header.v*[0-9].txt'))
     assert found, (
         f'{tag} 견본을 찾을 수 없다 ({SPEC_DIR}) -- 견본은 5장의 바이트 '
         '정본이고, 이 대사가 없으면 구현과 규격이 갈라져도 잡히지 않는다')
