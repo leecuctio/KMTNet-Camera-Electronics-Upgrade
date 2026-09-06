@@ -473,7 +473,7 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 
 **HK 온도·습도 카드는 전부 문자열이다 (확인 요망 9 종결 — 운영자 확정 2026-08-22).** 레거시 실측이 이미 부호 포함 문자열(`'-103.16 '` · `'+34.98  '`)이었고 converter 는 pass-through 라 문자열 계승이 아카이브 전체의 형을 통일한다 — 신규만 실수형이면 같은 이름에 두 형이 섞인다. 표기는 초안대로 **부호 포함 소수 2자리**(`'-101.23'` · `'+16.78'`)다. **측정불가 sentinel 은 온도·습도 전 카드 `'-999.99'` 단일값** — 온도로는 불가능한 값이고 습도로는 음수라 불가능하다 (기각안: `-99.99` 는 CCDTEMP 냉각 램프가 실제로 지나가는 값, 습도 `0.00` 은 유효 측정값). `ics_sim` 의 실수형 구현이 고칠 대상이다.
 
-**`DEWPRES` 는 문자열 카드다** — 지수 표기 `x.xxe-x` 를 고정하려면 실수 카드로는 안 되고(astropy 가 표기를 정한다), 측정불가는 전부 **`9.99e-9`** 로 접는다. HK 카드의 공급 계통은 셋으로 갈린다 — Archon 쪽 `ICG RTD measurement` · 별도 장치 `standalone RTD readout unit`(AIR/GLYC) · `Radionode sensor`(`HEBOX`, 7장). 레거시의 "AUX relay" 출처는 HK 에서 전부 물러났다. ⚠️ **raw spec v1.5(2026-08-25)에서 `AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` 4장이 폐지되어 `standalone RTD readout unit` 계통은 raw 헤더에서 비었다.** ⭐ **raw spec v1.10(2026-09-04)에서 `ICG heater` 계통이 신설되어 공급 계통은 셋이다** — `ICG RTD`(온도·압력) · `Radionode`(`FSATEMP`·`FSAHUM`·`HEBOX`) · **`ICG heater`**(`HTREN`·`HTRSET`·`HTROUT`·`HTRFORCE`). 히터 넷은 값의 **층이 둘로 갈린다** — `RCONFIG` 되읽기(설정값 셋)와 `STATUS` 실측(`HTROUT`)이고, 되읽기 값은 **명령이 아니라 컨트롤러가 받아들인 값**이다 (raw spec 5.6.2절).
+**`DEWPRES` 는 문자열 카드다** — 지수 표기 `x.xxe-x` 를 고정하려면 실수 카드로는 안 되고(astropy 가 표기를 정한다), 측정불가는 전부 **`9.99e-9`** 로 접는다. HK 카드의 공급 계통은 셋으로 갈린다 — Archon 쪽 `ICG RTD measurement` · 별도 장치 `standalone RTD readout unit`(AIR/GLYC) · `Radionode sensor`(`HEBOX`, 7장). 레거시의 "AUX relay" 출처는 HK 에서 전부 물러났다. ⚠️ **raw spec v1.5(2026-08-25)에서 `AIR_IN`/`AIR_OUT`/`GLYC_IN`/`GLYC_OUT` 4장이 폐지되어 `standalone RTD readout unit` 계통은 raw 헤더에서 비었다.** ⭐ **raw spec v1.10(2026-09-04)에서 `ICG heater` 계통이 신설되어 공급 계통은 셋이다** — `ICG RTD`(온도·압력) · `Radionode`(`FSATEMP`·`FSAHUM`·`HEBOX`) · **`ICG heater`**(`HTREN`·`HTRSET`·`HTROUT`·`HTRFORCE`). 히터 넷은 값의 **층이 둘로 갈린다** — `RCONFIG` 되읽기(설정값 셋)와 `STATUS` `MOD10/HEATERAOUTPUT`(`HTROUT` — FW 1.0.1252 로 키 확인, 측정/명령값 여부 OI-28)이고, 되읽기 값은 **명령이 아니라 컨트롤러가 받아들인 값**이다 (raw spec 5.6.2절).
 
 ## 4. `card()` 밖에서 쓰이는 둘
 
@@ -577,8 +577,8 @@ FSA 4개는 레거시 raw 어디에도 없다 — 검토 항목 9의 물음("없
 | `HKUDATE` | **O** | **HK 블록 값들의 취득 시각** — 초 단위 19자 `'2026-09-04T09:10:33'`(`Z` 없음, 시간계는 `TIMESYS`). sentinel `'NC'`. 자리는 블록 **맨 앞**(`DEWPRES` 앞) | 규격 v1.10 신설 (운영자 확정 2026-09-04). ⏳ `HKQDATE`(명령 수신 시각)는 **안 싣는다** |
 | `HTREN` | **O** | 듀어 히터 사용 여부 — **`'ON'`/`'OFF'`** 낱말. sentinel `'NC'` | `ICG heater`(계통 신설). `RCONFIG` 되읽기 층. ⛔ 모르는 것을 `'OFF'` 로 적지 않는다 |
 | `HTRFORCE` | **O** | 강제 출력 모드 — **`'ON'`/`'OFF'`** 낱말. sentinel `'NC'` | `ICG heater`. `RCONFIG` 되읽기 층 |
-| `HTROUT` | **O** | 히터 **실제 출력 전압** `'3.512'` [V] — 부호 없음. sentinel `'NC'` | `ICG heater`. **`STATUS` 실측 층**(되읽기가 아니다). ⏳ 원천이 `ics_archon` 에 아직 없다 — 구현 전에는 `'NC'` |
-| `HTRSET` | **O** | 히터 **목표온도** `'-100.10'` [degC] — **부호 필수**. sentinel `'-999.99'` | `ICG heater`. `RCONFIG` 되읽기 층. ⚠️ guide `HEATER` 레일(+28 V)과 다른 것이다 |
+| `HTROUT` | **O** | 히터 **출력 전압** `'3.512'` [V] — 부호 없음. sentinel `'NC'` | `ICG heater`. **`STATUS` 층**(`MOD10/HEATERAOUTPUT`, 되읽기가 아니다 — FW 1.0.1252 확인, 측정/명령값 여부 OI-28). ⚠️ guide `HEATER` 레일(`HEATER_V`, 공칭 +28 V)과 **다른 것**이다. ⏳ 읽는 코드가 아직 없다 — 구현 전에는 `'NC'` |
+| `HTRSET` | **O** | 히터 **목표온도** `'-100.10'` [degC] — **부호 필수**. sentinel `'-999.99'` | `ICG heater`. `RCONFIG` 되읽기 층 |
 | `IMAGEX` | **O** | amp 당 image(active) 열 수 = `1152` | MEF `AMPDATA` 와 값 동일, 이름 상이 — `Use in MEF` 열이 그 대응이다 |
 | `IMAGEY` | **O** | amp 당 image(active) 행 수 = `4616` | `IMAGEX` 와 같음 — `Use in MEF` 열 참조 |
 | `MIDOSCB` | **X** | 중앙 overscan 중 BOT half에서 나온 row 수 | v1.9: 오류 사례 없음 — `OVRSCNY` 로 충분 (구 "OI-4 실측 후 도입") |

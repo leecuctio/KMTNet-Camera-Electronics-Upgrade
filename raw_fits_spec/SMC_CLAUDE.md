@@ -11,7 +11,11 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec **v1.10** (2026-09-04 개정 · ⏳ 푸시·태그 전)
+## ✅ 현행 규격 — raw spec **v1.11** (2026-09-06 판올림 · 푸시·태그 완료)
+
+> ⭐ **v1.11 은 v1.10 최종 상태를 그대로 승계한다 — 내용 변경이 없다.**  v1.10 이 발행(2026-09-04) 뒤 이틀 동안 제자리 개정을 많이 받아 **발행본과 갈렸기 때문에** 판을 끊었다(12장 v1.11 행).
+> ⚠️ 태그는 **최신 판에만** 둔다 — `raw-spec-v1.9` 를 지우고 `raw-spec-v1.11` 을 붙였다.  팀은
+> `git fetch --tags --prune --prune-tags` 가 필요하다.
 
 ⭐ v1.10 = **HK 카드 5장 신설**(`HKUDATE` + 히터 넷) · **온도 부호 규약** · **게이지 Off 조항** · 견본 6장을 `header_samples/` 로 모으고 이름을 `v1.10`/`+LF` 로 통일.
 ⛔ **science 견본이 4블록 → 5블록(14,400 B)** 이 됐다.  ⚠️ 브랜치의 바이트 대사 시험이 견본 경로·이름을 리터럴로 박고 있어 **같은 묶음으로** 고쳐야 한다.
@@ -134,7 +138,7 @@
 |---|---|
 | `KMT_CEU_Raw_FITS_Specification_v1.9.md` | ✅ **현행 raw spec** — 최종 정의·규격 (science 1~8장 + guide 9·10장). 배경은 아래 원장·통합 문서로 링크 |
 | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.16.md` | **이 폴더에서 지금 가장 쓸모 있는 문서** (v1.16 = `Radionode` 개명, 판정 불변). **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기) — v1.14 에서 구 검토 문서 폐기분을 본문으로 편입했다. converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
-| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.8.md` | **통합 문서** (v0.8 = `Radionode` 개명, C-항목 불변) — Part 1: LEECU 전달용 C-항목·이름 대응·MEF/converter 쪽 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.5 는 `archive/`, v0.4·v0.2 는 git 이력·외부 백업 |
+| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.9.md` | **통합 문서** (v0.9 = HK 카드 5장 + 게이지 Off + 반쪽 pair, C-항목 3건 신설) — Part 1: LEECU 전달용 C-항목·이름 대응·MEF/converter 쪽 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.5~v0.8 은 `archive/`, v0.4·v0.2 는 git 이력·외부 백업 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
 ## 개정 워크플로 — `__review/` 는 임시 왕복함 (운영자 확정 2026-08-22)
