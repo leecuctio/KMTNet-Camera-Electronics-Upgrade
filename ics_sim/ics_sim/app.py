@@ -61,6 +61,10 @@ class IcsSim:
         self.state.init_channels(cfg.node.ccds)
         self.state.guide_build = ''
 
+        #: 응답·보고에 붙은 **조치** -- `(mtype, cmdword) -> 함수`.
+        #: ⭐ 등록되지 않은 보고는 **실행하지 않고 알리기만** 한다
+        #: (운영자 지시 2026-09-06).  `register_report()` 참고.
+        self._reports: dict = {}
         self.transport = UdpEndpoint(cfg, self._on_message)
         self.emit = Emitter(cfg, self.router, self.transport.send)
         self.telem = TelemetryRelay(cfg, self._send_query)
@@ -268,6 +272,22 @@ class IcsSim:
         """TelemetryRelay 가 TC 에 질의할 때 쓰는 콜백."""
         self.emit.emit_req(dest, cmdword)
 
+    #: 응답·보고 메시지 종류 (IMPv2 7종 중 명령이 아닌 것).  ⭐ 파서가
+    #: 대문자로 정규화하므로 대소문자를 여기서 신경 쓰지 않아도 된다.
+    REPORT_TYPES = ('DONE', 'STATUS', 'ERROR', 'WARNING', 'FATAL')
+
+    def register_report(self, mtype: str, cmdword: str, fn) -> None:  # noqa: ANN001
+        """응답·보고에 **조치**를 붙인다 -- 예: `register_report('DONE', 'HKDATA', …)`.
+
+        ⭐ **등록하지 않은 보고는 실행되지 않고 로그로만 나간다** (운영자 지시
+        2026-09-06).  그것이 이 경로를 연 이유다: *내가 보낸 명령의 답은 받되,
+        모르는 보고에 답을 되쏘지 않는다.*
+
+        ⚠️ 조치 함수는 `(msg, target)` 를 받고 **답을 보내지 않는다.**  보고에
+        답하면 두 노드가 서로 보고를 주고받는 고리가 생긴다.
+        """
+        self._reports[(mtype.upper().rstrip(':'), cmdword.upper())] = fn
+
     def _on_message(self, msg: Message, addr) -> None:  # noqa: ANN001
         # 자기 발신 에코부터 버린다.  XIS 경유 모드에서는 시퀀서가 K.IC 등
         # 자기 노드 앞으로 보낸 INITIALIZE/ERASE/SHOPEN/GO 가 허브를 돌아
@@ -308,6 +328,25 @@ class IcsSim:
             self.dispatch.handle(msg, target)
             return
 
-        # DONE/STATUS/ERROR/WARNING 은 다른 노드의 보고다.  통합 구조에서는
-        # 우리가 스스로에게 보낼 일이 없으므로 기록만 한다.
-        log.debug('unhandled %s from %s: %s', msg.mtype, msg.src, msg.payload)
+        # ⭐ **응답·보고를 다 받는다** (운영자 지시 2026-09-06) -- `DONE`·
+        # `STATUS`·`ERROR`·`WARNING`·`FATAL`.  대소문자는 파서가 이미 정규화했다
+        # (`impv2.parse_line` 의 `head.upper().rstrip(':')`).
+        #
+        # ⛔ **조치가 등록된 것만 실행하고, 나머지는 알리기만 한다.**  여기서
+        # `dispatch.handle()` 로 흘리면 미등록 커맨드워드에 `Didn't understand …`
+        # ERROR 를 **남의 노드로 되쏜다** (DevNote 11.12 F1) -- 레거시의 메시지
+        # 오염과 같은 부류라 이 프로그램이 존재하는 이유에 어긋난다.
+        #
+        # ⚠️ 그래서 이 갈래는 **어떤 경우에도 답을 보내지 않는다.**
+        fn = self._reports.get((msg.mtype, (msg.cmdword or '').upper()))
+        if fn is not None:
+            try:
+                fn(msg, target)
+            except Exception:  # noqa: BLE001  조치 하나가 수신 루프를 죽이지 않는다
+                log.exception('report handler %s %s failed',
+                              msg.mtype, msg.cmdword)
+            return
+        # 조치가 없다 -- **출력만** 한다.  운영자가 자기가 낸 명령의 답과
+        # 남의 노드가 흘리는 경고를 눈으로 볼 수 있어야 한다.
+        log.info('보고 수신 (조치 없음) -- %s>%s %s: %s %s',
+                 msg.src, msg.dst, msg.mtype, msg.cmdword, msg.payload)

@@ -84,6 +84,7 @@ from ics_sim.nodes import Target  # noqa: E402
 
 from . import expenable as expen  # noqa: E402
 from . import heater  # noqa: E402
+from . import hkdata  # noqa: E402
 from .radionode import RadionodeError  # noqa: E402
 
 log = logging.getLogger('icg_archon.cmd')
@@ -91,7 +92,7 @@ log = logging.getLogger('icg_archon.cmd')
 #: emitter 의 커맨드워드 어휘에 icg 몫을 더한다 -- `validate()` 가 이 표로
 #: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다
 #: (`unknown_cmdword` -- `emit.violations` 에 쌓이고 경고 로그가 난다).
-ICG_COMMANDS = frozenset({'GUIDEEXP', 'HK', 'RADIONODE', 'EXPENABLE',
+ICG_COMMANDS = frozenset({'GUIDEEXP', 'HK', 'HKDATA', 'RADIONODE', 'EXPENABLE',
                           'HTRSET', 'HTRFORCE', 'HTRRAMP',
                           'HTRPID', 'VACGAUGE',
                           'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON'})
@@ -193,19 +194,45 @@ class IcgDispatcher(sim_commands.Dispatcher):
         return Reply.done('GUIDEEXP', 'GuideExp=%g seconds.' % seconds)
 
     def cmd_hk(self, msg: Message, target: Target) -> Reply:
-        """HK -- 최신 HK 표본 한 줄 (키=값, 결측은 안 싣는다)."""
-        hk = getattr(self.app, 'hk', None)
-        if hk is None:
-            return Reply.error('HK', 'HK monitor is not running')
-        vals = hk.sensors()
-        unit = hk.ctrl_telemetry()
-        parts = ['%s=%s' % (k.upper(), v) for k, v in sorted(vals.items())]
-        if unit.get('temp'):
-            parts.append('C1_TEMP=%s' % '|'.join(
-                '%.1f' % t if t is not None else 'NC'
-                for t in unit['temp']))
-        body = ' '.join(parts) if parts else 'no fresh HK sample yet'
-        return Reply.done('HK', body)
+        """HK -- `HKDATA` 와 **같은 본문**을 낸다 (운영자 지시 2026-09-06).
+
+        ⭐ 커맨드워드만 다르다 -- 조립은 `hkdata.body()` **한 곳뿐**이다.  두
+        명령이 다른 본문을 내면 어느 쪽이 정본인지 다투게 된다.
+
+        ⚠️ **종전 `HK` 가 내던 `C1_TEMP=40.1|41.2|…` 는 빠진다** -- 확정 문면
+        (DevNote 11.14-(1))에 그 필드가 없고, *"둘이 같은 본문"* 지시가 그보다
+        뒤다.  그 값은 `ARCHON STATUS` 응답과 HK CSV 에 그대로 남는다.
+        """
+        return self._hk_reply(msg, 'HK')
+
+    def cmd_hkdata(self, msg: Message, target: Target) -> Reply:
+        """HKDATA -- ICS 가 **자기 헤더를 채우려고** 묻는 것.
+
+        문면은 DevNote 11.14-(1) 운영자 확정이고 조립은 `hkdata.py` 다.
+        게이지·히터는 **ICG 만** 만지므로 이 응답에 없는 값은 ICS 가 만들 길이
+        없다 -- 그래서 빠진 자리는 ICS 가 규격 5.0절 sentinel 로 채운다.
+        """
+        return self._hk_reply(msg, 'HKDATA')
+
+    def _hk_reply(self, msg: Message, cmdword: str) -> Reply:
+        """`HK`/`HKDATA` 공통 진입.
+
+        ⚠️ **늦은 `DONE`** 이다 -- 히터 넷 중 셋이 `RCONFIG` 왕복이라
+        (`HTREN`·`HTRSET`·`HTRFORCE`) 핸들러가 동기로 답할 수 없다.  `EXPENABLE`
+        ·히터 명령과 같은 선례다 (`Reply.noop()` → 왕복 → `emit.done`).
+        """
+        if getattr(self.app, 'hk', None) is None:
+            return Reply.error(cmdword, 'HK monitor is not running')
+        self.app.spawn(self._do_hkdata(msg.src, cmdword))
+        return Reply.noop()
+
+    async def _do_hkdata(self, dest: str, cmdword: str) -> None:
+        try:
+            body = await hkdata.body(self.app)
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, cmdword, 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, cmdword, body or 'no fresh HK sample yet')
 
     def cmd_radionode(self, msg: Message, target: Target) -> Reply:
         """RADIONODE [STATUS | CONNECT | DISCONNECT | RECONNECT | EN/DISABLE].

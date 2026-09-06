@@ -109,9 +109,64 @@ def _limit_of(acf_config: dict, key: str):  # noqa: ANN201
     return got
 
 
-def decode_rtd(status: dict, acf_config: dict) -> dict[str, float]:
-    """RTD 6채널 -- ACF 한계 밖(미연결·노이즈)은 **내지 않는다**."""
+def notify(text: str) -> None:
+    """운영자에게 **콘솔로도** 알린다 (운영자 지시 2026-09-06).
+
+    ⚠️ 로그 핸들러는 `sys.stderr` 인데(`ics_sim/__main__.py`) 시험 절차의 실행
+    명령이 `python3 -u -m icg_archon | tee …` 라 **stdout 만 tee 된다** -- 로그만
+    쓰면 경고가 기록에 안 남는다.  그래서 `log` 와 **함께** stdout 으로 낸다.
+
+    ⚠️ 실패해도 삼킨다 -- stdout 이 닫힌 배치 실행에서 감시 루프가 죽으면 안 된다.
+    """
+    try:
+        print('⚠️  %s' % text, flush=True)
+    except Exception:                       # noqa: BLE001
+        pass
+
+
+def decode_rtd(status: dict, acf_config: dict = None) -> dict[str, float]:  # noqa: ANN001
+    """RTD 6채널 -- **STATUS 가 준 값을 그대로 낸다.**
+
+    ⛔ **한계로 버리지 않는다** (운영자 지시 2026-09-06: *"센서 상한/하한을
+    넘기더라도 버리지 말고 그대로 들어가게 해줘.  센서 결측을 임의로 만들지
+    마."*).  종전에는 ACF 의 `SENSOR?LOWER/UPPERLIMIT` 밖이면 키를 안 냈는데,
+    그것이 **두 가지 서로 다른 일을 겸하고** 있었다:
+
+    1. 미연결 채널 감추기 (`-273.2` 고정과 그 노이즈 -- 벤치에서 MOD7 의
+       `_TBC` 두 채널이 그랬다, 규격 v1.12 767행)
+    2. **한계 밖 실측값 감추기**
+
+    2번이 실제 사고를 만들었다 -- 히터 과열(상한 초과)이 헤더에서 `dmptemp`
+    **결측**으로만 보였다.  이상 상태가 센서 고장으로 위장된 것이다.
+
+    ⭐ 그래서 **버리는 대신 알린다** -- 한계 밖 판정은 `out_of_limit()` 이
+    따로 하고 `_tick` 이 경고 로그를 남긴다.  값은 그대로 나간다.
+
+    결측은 이제 **장치가 값을 안 준 것**뿐이다: STATUS 에 그 필드가 없거나,
+    있는데 수치로 못 읽거나.
+
+    ⚠️ `acf_config` 는 이제 안 쓴다 -- 부르는 쪽 표기를 안 깨려고 남겨 뒀다.
+    """
     out: dict[str, float] = {}
+    for field, key in RTD_FIELDS:
+        raw = status.get(field)
+        if raw is None:
+            continue                    # 장치가 안 줬다 -- 정직한 결측
+        try:
+            out[key] = float(raw)
+        except (TypeError, ValueError):
+            continue                    # 수치가 아니다 -- 역시 못 읽은 것
+    return out
+
+
+def out_of_limit(status: dict, acf_config: dict) -> dict[str, tuple]:
+    """ACF 한계 **밖**인 RTD 만 `key -> (값, 하한, 상한)` 으로.
+
+    ⭐ **값을 버리려는 것이 아니라 알리려는 것이다** (`decode_rtd` 주석 참고).
+    미연결 채널(`-273.2`)도, 진짜 과열도 여기 걸린다 -- 어느 쪽인지는 사람이
+    가른다.  한계를 못 읽으면(파싱 전) 아무것도 안 낸다: 판정 근거가 없다.
+    """
+    out: dict[str, tuple] = {}
     for field, key in RTD_FIELDS:
         raw = status.get(field)
         if raw is None:
@@ -121,15 +176,15 @@ def decode_rtd(status: dict, acf_config: dict) -> dict[str, float]:
         except (TypeError, ValueError):
             continue
         lo_k, hi_k = _limit_keys(field)
-        lo, hi = _limit_of(acf_config, lo_k), _limit_of(acf_config, hi_k)
-        if lo is not None and hi is not None:
-            try:
-                if not (float(lo) <= val <= float(hi)):
-                    # 미연결(-273.2 고정)과 그 노이즈까지 여기서 걸린다.
-                    continue
-            except ValueError:
-                pass
-        out[key] = val
+        lo, hi = _limit_of(acf_config or {}, lo_k), _limit_of(acf_config or {}, hi_k)
+        if lo is None or hi is None:
+            continue
+        try:
+            lo_f, hi_f = float(lo), float(hi)
+        except (TypeError, ValueError):
+            continue
+        if not (lo_f <= val <= hi_f):
+            out[key] = (val, lo_f, hi_f)
     return out
 
 
@@ -278,6 +333,13 @@ class HkMonitor:
         #: 아는 동안 `dewpres` 를 **싣지 않기 위해** 본다 (`_tick` 주석).
         self.gauge = None
         self._dew = DewpresDecoder()
+        #: ⛔ 되먹임 센서 과열 차단 (운영자 지시 2026-09-06).  한계는
+        #: ACF 에서 오고(`HEATER?SENSOR` → `SENSOR?UPPERLIMIT`) 판정은
+        #: 이 루프 주기로만 돈다 -- **최후 방어선이지 인터록이 아니다.**
+        self.heater_guard = heater.OverTempGuard()
+        #: ACF 한계 밖이라고 **이미 알린** RTD 키 -- 경고를 매 바퀴 되풀이하지
+        #: 않으려는 래치일 뿐이고, **값은 언제나 그대로 실린다**.
+        self._warned_oor: set = set()
         #: 마지막 표본 -- key -> (값, epoch).  `sensors()`/스냅샷의 원천.
         self._sample: dict[str, tuple[object, float]] = {}
         self._ctrl_unit: dict = {}
@@ -380,6 +442,22 @@ class HkMonitor:
                 log.warning('HK: STATUS 실패 -- %s', exc)
         row['valid'] = status.get('VALID', '')
         row['alive'] = status.get('MOD10/VCPU_OUTREG15', '')
+        # ⛔ **되먹임 센서 과열 차단** -- 상한을 넘었으면 히터를 끈다.
+        # ⚠️ **STATUS 원값으로 판정한다**: 아래 `decode_rtd` 는 한계 밖을
+        # 안 내므로(미연결 노이즈를 거르는 규칙) 과열이 `_sample` 에서는
+        # 결측으로만 보인다 -- 거기서 보면 영영 안 걸린다.
+        # ⚠️ 여기서 끄는 것은 컨트롤러 왕복이라 취득과 락을 다툰다.  그래도
+        # 과열 쪽이 먼저다 (운영자 지시 2026-09-06).
+        event = ''
+        try:
+            event = await self.heater_guard.check(self.ctrl, status)
+            if event:
+                notify(event)          # ⭐ 히터를 껐다 -- 콘솔에 반드시 보인다
+        except Exception as exc:  # noqa: BLE001
+            log.error('⛔ 히터 과열 차단이 실패했다 -- %s.  히터가 켜진 채로 '
+                      '남았을 수 있다', exc)
+            notify('히터 과열 차단이 실패했다 -- %s.  히터가 켜진 채로 남았을 '
+                   '수 있다' % exc)
         unit = ctrl_unit(status)
         self._ctrl_unit = unit
         temps = unit.get('temp') or [None] * len(guidehdr.TEMP_MODS)
@@ -391,10 +469,24 @@ class HkMonitor:
                 row['%s_%s' % (prefix, r.lower())] = '' if v is None else v
 
         # 층 3 -- RTD (ACF 한계 판정) · DIO (진공).
-        rtd = decode_rtd(status, getattr(self.ctrl, 'config', {}) or {})
+        acf_cfg = getattr(self.ctrl, 'config', {}) or {}
+        rtd = decode_rtd(status)
         for key, val in rtd.items():
             self._sample[key] = (val, now)
             row[key] = val
+        # ⛔ **버리지 않는다 -- 알린다.**  한계 밖 값도 위에서 이미 실렸다
+        # (운영자 지시 2026-09-06).  여기서는 그 사실만 한 번 알린다: 미연결
+        # 채널일 수도 있고 진짜 과열일 수도 있어 **사람이 가를 일**이다.
+        oor = out_of_limit(status, acf_cfg)
+        for key, (val, lo, hi) in oor.items():
+            if key not in self._warned_oor:
+                self._warned_oor.add(key)
+                text = ('HK: %s = %.2f 가 ACF 한계 [%.2f, %.2f] 밖이다 -- '
+                        '값은 그대로 싣는다.  미연결 채널인지 실제 이상인지는 '
+                        '배선을 볼 것' % (key, val, lo, hi))
+                log.warning('%s', text)
+                notify(text)
+        self._warned_oor &= set(oor)   # 돌아온 채널은 다시 알릴 수 있게
         # 히터 출력 -- `HTROUT` (11.30).  ⛔ 결측을 조용히 넘기지 않는다: STATUS 는
         # 왔는데 키가 없으면 FW 판이 다르거나 슬롯이 어긋난 것이라 한 번 알린다.
         htr = _float_or_none(status.get(HEATER_OUTPUT_FIELD))
@@ -460,7 +552,7 @@ class HkMonitor:
                     row[k.lower()] = v
 
         row['lag_ms'] = '%.0f' % lag_ms
-        self._write_row(row)
+        self._write_row(row, event=event)
         self._write_latest(now)
 
     # -- 산출물 ---------------------------------------------------------------

@@ -30,6 +30,14 @@ TARGET)` 를 **한 번에** 받는다.
 이다.  ⭐ 채널을 열거나 ACF 가 바뀌어도 코드가 따라온다 -- **상수 0개**
 (DevNote 11.14-(3)).
 
+⭐ **되먹임 센서 과열 차단이 여기 산다** (`OverTempGuard`, 운영자 지시
+2026-09-06).  `HEATER?SENSOR` 로 루프가 닫히는 센서를 찾고 그 센서의
+`SENSOR?UPPERLIMIT` 를 넘으면 히터를 끈다 -- **상수 0개**, ACF 가 바뀌면
+따라온다.  ⚠️ 판정은 **HK 루프 주기**([hk] interval, 기본 60초)로만 돈다
+-- 빠른 인터록이 아니라 **최후 방어선**이다.  DevNote 11.13 F3 이 경고한
+*"추정으로 안전장치를 대신하지 말 것"* 의 반대쪽 함정(있으니 안심)에
+빠지지 않도록 이 한계를 문서와 응답에 그대로 남긴다.
+
 ⛔⛔ **적용이 그 모듈의 VCPU 를 재시작한다.**  `APPLYALL` 만이 아니라 **모듈
 하나만 적용하는 `APPLYMOD09` 도** 그렇다 (매뉴얼 p.86).  guide 는 **진공
 게이지를 같은 MOD10 의 VCPU 가 읽으므로 히터 명령 한 번이 `DEWPRES` 결측 창을
@@ -237,9 +245,18 @@ async def set_force(ctrl, on: bool, level: float,  # noqa: ANN001
     """강제 출력 (`HEATER?FORCE` · `HEATER?FORCELEVEL`).  주석 문구를 돌려준다.
 
     ⛔ **PID 를 우회한다** -- 켜면 센서 온도와 무관하게 `level` 이 그대로
-    나가고 `HEATERALIMIT` 은 안 걸린다.  ⚠️ 그래서 **끌 때도 레벨을 함께
-    쓴다**: `FORCE=0` 만 보내고 레벨을 옛 값으로 두면 다음에 누가 `FORCE=1`
-    만 보냈을 때 **잊고 있던 전압이 되살아난다.**
+    나가고 `HEATERALIMIT` 은 안 걸린다.
+
+    ⭐ **`FORCE=0` 이면 출력이 꺼진다 (0 V)** -- 근거 등급 **운영자 확정
+    (2026-09-06)**.  ⚠️ 매뉴얼(p.60-61)은 `FORCELEVEL` 의 범위만 적고 이 점을
+    말하지 않는다.  실측이 아니므로 어긋나는 관찰이 나오면 이 주석부터 고칠 것.
+
+    ⚠️ **그래도 끌 때 레벨을 함께 쓴다.**  종전 주석은 *"`FORCE=0` 만 보내면
+    다음에 누가 `FORCE=1` 만 보냈을 때 옛 전압이 되살아난다"* 였는데, 그 경로는
+    **이 명령으로는 도달할 수 없다** -- `commands.py` 가 인자를 정확히 둘로
+    강제하고 이 함수가 두 키를 늘 한 쌍으로 쓰기 때문이다.  실제로 남는 창은
+    **손 `WCONFIG` 로 `FORCE` 만 건드리는 경로**뿐이고, 레벨을 0 으로 두는
+    비용이 0 이라 그 창을 닫는다.
     """
     _in_range('FORCELEVEL', level, 0.0, FORCELEVEL_MAX)
     await _write_and_apply(ctrl,
@@ -251,6 +268,131 @@ async def set_force(ctrl, on: bool, level: float,  # noqa: ANN001
         return '%s (%s)' % (FORCE_NOTE, VCPU_NOTE)
     log.info('히터 %s Force=0 Level=%.3f V -- ⚠️ %s', ch, level, VCPU_NOTE)
     return VCPU_NOTE
+
+
+def temp_field(sensor: str) -> str:
+    """`'A'` → `'MOD10/TEMPA'` -- 그 센서의 온도가 실리는 STATUS 필드.
+
+    ⚠️ **구분자가 `/` 다.**  ACF 원문은 역슬래시인데 `parse_acf()` 가 읽으면서
+    정규화한다 -- 역슬래시로 조회하면 한 채널도 안 맞는다 (`hk._limit_keys`
+    가 같은 함정을 주석으로 남겨 뒀다).
+    """
+    return 'MOD%d/TEMP%s' % (SLOT, sensor)
+
+
+def _as_float(raw):  # noqa: ANN001, ANN201
+    """STATUS 값 → float, 못 읽으면 `None`."""
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+async def shutdown(ctrl, ch: str = CH) -> None:  # noqa: ANN001
+    """히터를 **끈다** -- 강제도 PID 도.
+
+    `FORCE`·`FORCELEVEL`·`ENABLE` 셋을 한 `_write_and_apply` 로 쓴다:
+
+    * `FORCE=0` + `FORCELEVEL=0` -- 강제 경로를 끊고 **레벨까지 0 으로**.
+      레벨을 남기면 다음에 누가 `ArchonGUI` 나 손 `WCONFIG` 로 `FORCE` 만
+      켰을 때 잊고 있던 전압이 되살아난다 (`set_force` 와 같은 규약).
+    * `ENABLE=0` -- PID 경로도 끊는다.  과열의 원인이 강제가 아니라 PID 일 수
+      있으므로 **한쪽만 끄면 안 끈 것**이다.
+
+    ⭐ 적용은 한 번이라 `DEWPRES` 결측 창도 하나다 (11.18).
+    """
+    await _write_and_apply(ctrl,
+                           (heater_key('FORCE', ch), '0'),
+                           (heater_key('FORCELEVEL', ch), '0'),
+                           (heater_key('ENABLE', ch), '0'))
+
+
+class OverTempGuard:
+    """되먹임 센서가 **ACF 상한을 넘으면 히터를 끈다** (운영자 지시 2026-09-06).
+
+    ⭐ **상수 0개.**  `HEATER?SENSOR` → 그 센서의 `SENSOR?UPPERLIMIT` 를
+    컨트롤러에서 읽는다 (`read_limits`, `HTRSET` 클램프와 **같은 출처**).
+    현행 guide ACF 는 `HEATERASENSOR=0` → `SENSORA`(`RTD9_DMP`) → 상한 **50.0**
+    이고, ACF 가 바뀌면 따라온다.
+
+    ⭐ **STATUS 원값을 본다.**  ⚠️ 2026-09-06 까지는 `hk.decode_rtd()` 가 한계
+    밖을 버려서 과열이 `_sample` 에서 **결측으로만** 보였고, 그것이 이 차단을
+    STATUS 로 짠 원래 이유였다.  같은 날 운영자 지시로 그 폐기를 걷었으므로
+    이제는 `_sample` 로도 보이지만, **STATUS 를 계속 본다** -- `_tick` 안에서
+    `_sample` 갱신보다 먼저 돌아 순서에 안 매이고, 창구를 한 겹 덜 탄다.
+
+    ⚠️ **한계 셋** (다음 사람이 과신하지 않도록 여기 적어 둔다):
+
+    1. **주기가 HK 루프**다 (`[hk] interval`, 기본 60초) -- 최대 그만큼 늦다.
+       운영자 확정(2026-09-06): 추가 컨트롤러 왕복을 두지 않는다 (접속자가
+       컨트롤러당 하나라 왕복이 취득과 락을 다툰다).  빨리 보려면 운영자가
+       `interval` 을 낮춘다.
+    2. **결측으로는 끄지 않는다** -- 히터·게이지 명령 자체가 MOD10 VCPU 를
+       재시작해 STATUS 에 구멍을 내므로(11.18), 결측을 과열로 읽으면 우리
+       명령이 우리 차단을 부른다.  대신 결측이 이어지면 경고를 남긴다.
+    3. **한계는 한 번 읽어 캐시한다** -- ACF 를 갈아 끼우고 `APPLYALL` 을
+       다시 돌렸다면 프로그램도 다시 띄울 것.
+
+    ⭐ 래치는 **같은 초과로 두 번 쓰지 않기 위한 것**이다.  온도가 상한 아래로
+    돌아오면 풀리지만 **히터는 꺼진 채로 남는다** -- 되켜는 것은 사람 몫이다.
+    """
+
+    def __init__(self, ch: str = CH) -> None:
+        self.ch = ch
+        #: 되읽은 한계 (`Limits`).  못 읽었으면 `None` -- 다음 바퀴에 다시 시도.
+        self.limits = None
+        #: 이미 껐나 -- 같은 초과로 반복해 쓰지 않기 위한 래치.
+        self.tripped = False
+        self._warned_limits = False
+        self._warned_missing = False
+
+    async def check(self, ctrl, status: dict) -> str:  # noqa: ANN001
+        """한 바퀴.  껐으면 **사유 문구**, 아무 일도 없으면 `''`.
+
+        부르는 쪽(`hk._tick`)이 그 문구를 CSV `event` 열에 남긴다.
+        """
+        if ctrl is None or not status:
+            return ''
+        if self.limits is None:
+            try:
+                self.limits = await read_limits(ctrl, self.ch)
+            except Exception as exc:      # noqa: BLE001
+                if not self._warned_limits:
+                    self._warned_limits = True
+                    log.error('⛔ 히터 과열 차단이 **서지 못했다** -- 되먹임 '
+                              '센서의 한계를 못 읽는다 (%s).  상한을 모르는 '
+                              '동안은 차단이 없다', exc)
+                return ''
+            log.info('히터 과열 차단 -- %s 의 상한 %.2f °C 를 넘으면 끈다 '
+                     '(주기 = HK 루프)', self.limits.source, self.limits.hi)
+            self._warned_limits = False
+        lim = self.limits
+        val = _as_float(status.get(temp_field(lim.sensor)))
+        if val is None:
+            if not self._warned_missing:
+                self._warned_missing = True
+                log.warning('히터 과열 차단: 되먹임 센서 %s 의 온도가 STATUS 에 '
+                            '없다 -- **차단 판정을 못 한다**.  결측으로는 끄지 '
+                            '않는다 (VCPU 재시작 창이 이 모양이다)', lim.source)
+            return ''
+        self._warned_missing = False
+        if val <= lim.hi:
+            if self.tripped:
+                self.tripped = False
+                log.info('되먹임 센서 %s 가 상한 아래로 돌아왔다 (%.2f ≤ %.2f) '
+                         '-- ⚠️ 히터는 **꺼진 채**다.  다시 쓰려면 HTRSET / '
+                         'HTRFORCE 를 명시적으로 칠 것', lim.source, val, lim.hi)
+            return ''
+        if self.tripped:
+            return ''                     # 이미 껐다 -- 같은 초과로 또 쓰지 않는다
+        log.error('⛔ 되먹임 센서 %s = %.2f °C 가 상한 %.2f 를 넘었다 -- '
+                  '히터를 끈다 (FORCE·FORCELEVEL·ENABLE 셋)',
+                  lim.source, val, lim.hi)
+        await shutdown(ctrl, self.ch)
+        self.tripped = True
+        log.error('⛔ 히터 %s 를 껐다.  ⚠️ %s', self.ch, VCPU_NOTE)
+        return ('HEATER OFF -- %s=%.2f > %.2f (over-temperature)'
+                % (lim.source, val, lim.hi))
 
 
 async def ramp_rate_note(ctrl, rate: int) -> str:  # noqa: ANN001

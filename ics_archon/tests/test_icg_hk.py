@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """HK 해독·기록 검증 -- 층 3 규칙(`ics_archon/SMC_CLAUDE.md`)의 시험판.
 
-* RTD 결측 판정은 **값이 아니라 ACF 한계**다 (미연결 채널이 그럴듯한 값을
-  낸다 -- 실측 -196.9).
+* ⛔ **RTD 실측값은 버리지 않는다** (운영자 지시 2026-09-06) -- 한계 밖이어도
+  그대로 싣고, 한계 밖이라는 **사실만 따로 알린다**(`out_of_limit`).  종전의
+  한계 폐기는 과열을 센서 결측으로 위장시켰다.
 * `DEWPRES` 신선도는 **Alive 증가**로만 안다 (짧은 응답은 옛 글자를 남긴다).
 * 스냅샷은 원자적이고, 낡은 표본은 `sensors()` 가 내지 않는다.
 """
@@ -78,29 +79,62 @@ def test_rtd_limits_use_the_parsed_acf_key_form():
         '한계 키를 못 찾는다 -- 구분자 표기를 확인할 것'
     assert hk_mod._limit_of(ctrl.config, hi) is not None
 
-    out = decode_rtd(_status_with_rtd(), ctrl.config)
-    assert 'charcoal' not in out          # -273.2 -- 미연결
-    assert 'pt30n2' not in out            # -196.9 -- 그럴듯하지만 한계 밖
+    # ⛔ 값은 **버리지 않는다** -- 한계 밖도 그대로 나온다.
+    out = decode_rtd(_status_with_rtd())
+    assert out['charcoal'] == -273.2      # 미연결이지만 실측값 그대로
+    assert out['pt30n2'] == -196.9
     assert out['pt30n1'] == -29.5
     assert out['ccdtemp'] == -27.7
+    # ⭐ 한계 판정은 **알리는 쪽**이 한다 -- 실물 ACF 로 두 채널이 잡혀야 한다.
+    oor = hk_mod.out_of_limit(_status_with_rtd(), ctrl.config)
+    assert set(oor) == {'charcoal', 'pt30n2'}, oor
 
 
-def test_rtd_missing_is_judged_by_acf_limits_not_by_value():
-    """실측 사례 그대로 -- `-273.2` 고정도, 그럴듯한 `-196.9` 노이즈도
-    한계 밖이면 미측정이다."""
+def test_a_reading_outside_the_acf_limits_is_still_published():
+    """⛔ **한계 밖이라고 버리지 않는다** (운영자 지시 2026-09-06).
+
+    실측 사례 그대로 -- `-273.2` 고정도, 그럴듯한 `-196.9` 노이즈도 **값이
+    왔으면 값이다**.  버리면 진짜 이상(예: 히터 과열)이 센서 결측으로 위장된다.
+    """
     out = decode_rtd(_status_with_rtd(), ACF_LIMITS)
-    assert 'charcoal' not in out          # -273.2 -- 한계(-230…50) 밖
-    assert 'pt30n2' not in out            # -196.9 -- 그럴듯하지만 한계 밖
+    assert out['charcoal'] == -273.2      # 한계(-230…50) 밖이지만 실린다
+    assert out['pt30n2'] == -196.9
     assert out['pt30n1'] == -29.5
     assert out['ccdtemp'] == -27.7
     assert out['dmptemp'] == -31.8
     assert out['wallbrd'] == 7.8
 
 
-def test_rtd_without_limits_passes_through_with_no_judgement():
-    """ACF 한계가 없으면(파싱 전) 값 판정을 지어내지 않는다."""
+def test_out_of_limit_reports_without_dropping():
+    """⭐ **버리는 것과 알리는 것을 가른다** -- 한계 판정은 여기만 한다."""
+    oor = hk_mod.out_of_limit(_status_with_rtd(), ACF_LIMITS)
+    assert set(oor) == {'charcoal', 'pt30n2'}
+    assert oor['pt30n2'][0] == -196.9     # 값·하한·상한을 함께 낸다
+    assert oor['pt30n2'][1:] == (-180.0, 50.0)
+
+
+def test_out_of_limit_says_nothing_without_limits():
+    """한계를 못 읽으면(파싱 전) **판정을 지어내지 않는다.**"""
+    assert hk_mod.out_of_limit(_status_with_rtd(), {}) == {}
+
+
+def test_an_overheating_reading_is_not_disguised_as_a_missing_sensor():
+    """⛔⛔ **이것이 폐기를 걷은 이유다.**
+
+    히터 과열로 `dmptemp` 가 상한(50)을 넘으면, 종전에는 키가 사라져 헤더에서
+    *"센서가 죽었다"* 로만 보였다.  이제는 값이 그대로 실려 과열이 보인다.
+    """
+    st = _status_with_rtd(**{'MOD10/TEMPA': '61.5'})
+    out = decode_rtd(st, ACF_LIMITS)
+    assert out['dmptemp'] == 61.5, '과열이 결측으로 위장됐다'
+    assert 'dmptemp' in hk_mod.out_of_limit(st, ACF_LIMITS)
+
+
+def test_rtd_passes_through_with_no_judgement():
+    """⭐ 판정 자체가 없다 -- ACF 를 주든 안 주든 값은 그대로다."""
     out = decode_rtd(_status_with_rtd(), {})
-    assert out['charcoal'] == -273.2      # 판정 근거가 없으니 그대로
+    assert out['charcoal'] == -273.2
+    assert decode_rtd(_status_with_rtd()) == out
 
 
 def _vcpu(text: str, alive: int) -> dict:

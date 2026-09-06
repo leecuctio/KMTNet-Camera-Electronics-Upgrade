@@ -477,3 +477,159 @@ def test_a_query_fails_whole_rather_than_answering_in_part():
     del ctrl.configline['MOD10/HEATERAD']
     with pytest.raises(ArchonError):
         asyncio.run(heater.read_group(ctrl, 'HTRPID'))
+
+
+# -- ⛔ 되먹임 센서 과열 차단 (운영자 지시 2026-09-06) ------------------------
+#
+# *"지정된 HEATER의 feedback sensor의 상한 설정을 넘으면 HEATER가 꺼지도록"* +
+# *"이 값은 변동될 수 있어.  ACF의 설정을 따라가게 해야되."*
+#
+# 지키려는 것 다섯:
+#   · ⭐ 상한이 **ACF 에서 온다** -- 코드에 50 이 없다
+#   · ⭐ 루프 센서가 바뀌면 **보는 온도도 바뀐다**
+#   · 끌 때 `FORCE`·`FORCELEVEL`·`ENABLE` **셋을 한 번에** (반쯤 꺼진 창이 없다)
+#   · ⚠️ **결측으로는 안 끈다** -- 우리 히터 명령이 MOD10 VCPU 를 재시작해
+#     STATUS 에 구멍을 내므로(11.18), 결측을 과열로 읽으면 우리 명령이 우리
+#     차단을 부른다
+#   · 같은 초과로 **두 번 쓰지 않는다** (매 바퀴 VCPU 를 재시작하게 된다)
+
+
+def _status(**kw):  # noqa: ANN003, ANN202
+    """STATUS 최소 dict.  ⚠️ 키 구분자는 `/` 다 (`parse_acf` 정규화 규약)."""
+    out = {'VALID': '1'}
+    out.update(kw)
+    return out
+
+
+def test_the_overtemp_limit_comes_from_the_acf_not_the_code():
+    """⭐ **상수 0개** -- `HEATERASENSOR` → `SENSORA`(`RTD9_DMP`, 상한 50)."""
+    ctrl = RecordingCtrl()
+    guard = heater.OverTempGuard()
+    note = asyncio.run(guard.check(ctrl, _status(**{'MOD10/TEMPA': '-120.0'})))
+    assert guard.limits.hi == 50.0 and guard.limits.sensor == 'A'
+    assert guard.limits.label == 'RTD9_DMP'
+    assert note == '' and ctrl.writes() == []   # 정상 온도에서는 안 쓴다
+
+
+def test_the_heater_is_turned_off_above_the_acf_upper_limit():
+    """⛔ 강제도 PID 도 끈다 -- 한쪽만 끄면 **안 끈 것**이다."""
+    ctrl = RecordingCtrl()
+    guard = heater.OverTempGuard()
+    note = asyncio.run(guard.check(ctrl, _status(**{'MOD10/TEMPA': '50.1'})))
+    w = ctrl.writes()
+    assert any('MOD10/HEATERAFORCE=0' in c for c in w), w
+    assert any('MOD10/HEATERAFORCELEVEL=0' in c for c in w), w
+    assert any('MOD10/HEATERAENABLE=0' in c for c in w), w
+    # ⭐ 적용은 한 번 -- `DEWPRES` 결측 창도 하나여야 한다.
+    assert ctrl.applies() == ['APPLYMOD09'], ctrl.applies()
+    assert 'HEATER OFF' in note and '50.10' in note
+    assert guard.tripped
+
+
+def test_the_trip_follows_the_acf_when_the_upper_limit_changes():
+    """⭐ ACF 상한을 30 으로 낮추면 **31 에서** 끊긴다 -- 50 이 코드에 없다는 증거."""
+    ctrl = RecordingCtrl()
+    ctrl.config['MOD10/SENSORAUPPERLIMIT'] = '30.0'
+    guard = heater.OverTempGuard()
+    asyncio.run(guard.check(ctrl, _status(**{'MOD10/TEMPA': '31.0'})))
+    assert guard.tripped, 'ACF 상한을 안 따라갔다 -- 값이 코드에 박혀 있다'
+    assert guard.limits.hi == 30.0
+
+
+def test_the_guard_watches_the_sensor_the_loop_is_closed_on():
+    """⭐ 루프가 B 로 닫히면 **A 가 아무리 뜨거워도** 안 끈다.
+
+    되먹임이 아닌 센서로 끄면, 히터와 무관한 채널의 노이즈가 히터를 내린다.
+    """
+    ctrl = RecordingCtrl()
+    ctrl.config['MOD10/HEATERASENSOR'] = '1'
+    guard = heater.OverTempGuard()
+    note = asyncio.run(guard.check(ctrl, _status(**{'MOD10/TEMPA': '999.0',
+                                                    'MOD10/TEMPB': '-100.0'})))
+    assert guard.limits.sensor == 'B'
+    assert note == '' and not guard.tripped and ctrl.writes() == []
+
+
+def test_a_missing_reading_does_not_turn_the_heater_off():
+    """⚠️ **결측은 과열이 아니다.**
+
+    히터·게이지 명령이 MOD10 VCPU 를 재시작해 STATUS 에 구멍을 낸다(11.18).
+    결측으로 끄면 `HTRFORCE` 한 번이 자기 차단을 부른다.
+    """
+    ctrl = RecordingCtrl()
+    guard = heater.OverTempGuard()
+    note = asyncio.run(guard.check(ctrl, _status()))     # TEMPA 자체가 없다
+    assert note == '' and not guard.tripped and ctrl.writes() == []
+
+
+def test_the_same_excursion_is_not_written_twice():
+    """⭐ 래치가 없으면 **매 바퀴 VCPU 를 재시작한다** (DEWPRES 가 영영 결측)."""
+    ctrl = RecordingCtrl()
+    guard = heater.OverTempGuard()
+    st = _status(**{'MOD10/TEMPA': '60.0'})
+    asyncio.run(guard.check(ctrl, st))
+    n = len(ctrl.writes())
+    assert asyncio.run(guard.check(ctrl, st)) == ''
+    assert len(ctrl.writes()) == n, '같은 초과로 또 썼다'
+
+
+def test_the_guard_rearms_after_the_temperature_returns():
+    """⭐ 래치는 **중복 쓰기를 막는 것**이다 -- 돌아오면 풀린다.
+
+    ⚠️ 다만 히터는 **꺼진 채로 남는다** -- 되켜는 것은 사람 몫이고, 그래서
+    다시 넘으면 그때는 다시 끈다.
+    """
+    ctrl = RecordingCtrl()
+    guard = heater.OverTempGuard()
+    asyncio.run(guard.check(ctrl, _status(**{'MOD10/TEMPA': '60.0'})))
+    asyncio.run(guard.check(ctrl, _status(**{'MOD10/TEMPA': '20.0'})))
+    assert not guard.tripped
+    n = len(ctrl.applies())
+    asyncio.run(guard.check(ctrl, _status(**{'MOD10/TEMPA': '60.0'})))
+    assert len(ctrl.applies()) == n + 1
+
+
+def test_no_limit_means_no_trip_and_the_loop_still_lives():
+    """⛔ 한계를 못 읽으면 **차단이 없다** -- 그 사실은 로그로 남기고 루프는 산다.
+
+    `_StatusCtrl` 은 `read_config` 가 없다 -- 컨트롤러가 아직 안 붙은 모양이다.
+    ⚠️ 여기서 예외가 새면 HK 루프가 통째로 죽는다.
+    """
+    guard = heater.OverTempGuard()
+    note = asyncio.run(guard.check(_StatusCtrl(),
+                                   _status(**{'MOD10/TEMPA': '99.0'})))
+    assert note == '' and not guard.tripped
+
+
+class _OverTempCtrl(RecordingCtrl):
+    """실물 ACF + 과열 STATUS -- HK 루프를 통째로 지나게 한다."""
+
+    def __init__(self, temp: str = '60.0') -> None:
+        super().__init__()
+        self._temp = temp
+
+    async def refresh_status_live(self) -> bool:
+        self.status_live = {'VALID': '1', 'MOD10/TEMPA': self._temp,
+                            'MOD10/VCPU_OUTREG15': '1'}
+        return True
+
+
+def test_the_hk_loop_turns_the_heater_off_and_records_the_event(tmp_path):  # noqa: ANN001
+    """⛔⛔ **STATUS 원값으로 판정한다.**
+
+    ⚠️ 2026-09-06 까지는 `decode_rtd()` 가 ACF 한계 밖을 버려서 과열이
+    `_sample` 에서 **결측으로만** 보였다 -- 그 폐기는 같은 날 운영자 지시로
+    걷었다.  이제 값도 실리고 차단도 돈다: **둘 다** 확인한다.
+    """
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    ctrl = _OverTempCtrl('60.0')
+    mon = HkMonitor(ctrl, icfg)
+    asyncio.run(mon._tick(0.0))
+    assert any('MOD10/HEATERAENABLE=0' in c for c in ctrl.writes()), ctrl.writes()
+    # ⭐ 과열 온도가 **그대로 실린다** -- 결측으로 위장되지 않는다.
+    assert mon.sensors()['dmptemp'] == 60.0
+    rows = list(tmp_path.glob('hk.G.*.csv'))
+    assert rows, 'HK CSV 가 안 써졌다'
+    assert 'HEATER OFF' in rows[0].read_text(encoding='utf-8')

@@ -13,7 +13,7 @@
 | 1 | `HEATER` 레일의 STATUS 필드 이름 (후보 셋) | 1단계 |
 | 2 | `C1_TEMP` 8자리 자리 표 (규격 10.4절) | 1단계 |
 | 3 | `EXPTIME` 하한 **1.251 s** (ACF 계산값, R2610) | 4단계 |
-| 4 | `DATE-OBS` 트랜스퍼 보정 **6.8 ms** | 4단계 |
+| 4 | ~~`DATE-OBS` 트랜스퍼 보정 **6.8 ms**~~ ⛔ **폐기된 모델** (2026-09-06) -- 코드에 보정이 없다.  `DATE-OBS` = **직전 `FrameShift` 개시 시각** 그대로다 (`sequencer.py:738-741`, 규격 10.1-4) | -- |
 | 5 | guide **3버퍼** 잠금 거동 (science 실측은 2버퍼다) | 4단계 |
 | 6 | `Exposures=0` 뒤 꼬리가 **한 장인지 두 장인지** | 5단계 |
 
@@ -28,7 +28,10 @@
    가설의 출처일 뿐이고, `tests/fake_archon.py` 는 우리가 매뉴얼을 읽고 만든
    것이라 시험이 다 통과해도 여기의 물음은 안 닫힌다 (DevNote 8.7).
 
-로그는 전부 `python3 -u … | tee <파일>` 로 남긴다. 실행 자리는 `ics_archon/` 다.
+⛔ **로그는 `python3 -u … 2>&1 | tee <파일>` 로 남긴다** (2026-09-06 정정).
+⚠️ 종전 문구는 `| tee` 였는데 **로그 핸들러가 `sys.stderr`**(`ics_sim/__main__.py`)
+라 파이프가 stdout 만 넘긴다 — 경고·오류가 **기록에 하나도 안 남았다.**  실행
+자리는 `ics_archon/` 다.
 
 ## 0단계 — 준비 (사람이 확인, 왕복 없음)
 
@@ -52,7 +55,7 @@
 ## 1단계 — probe 읽기 전용 ⭐ **`STATUS` 원문을 확보하는 단계** (전원 안 켬)
 
 ```bash
-python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2617.acf | tee probe1_guide.log
+python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_GUI_162_STA0201_R2617.acf 2>&1 | tee probe1_guide.log
 ```
 
 ⚠️ **`--unit guide` 를 빠뜨리지 말 것.** science 10자리 자리 표로 재면
@@ -90,11 +93,20 @@ python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_G
 그대로 돌리면 `set_config` 가 엉뚱한 줄을 고쳐 **노출 시간이 조용히 안
 바뀐다**.
 
-## 3단계 — 본편 기동 (아직 전원은 안 켠다 — 첫 `go` 에서 켜진다)
+## 3단계 — 본편 기동 ⚠️ **여기서 전원이 켜진다** (2026-09-06 정정)
 
 ```bash
-python3 -u -m icg_archon | tee icg_boot.log
+python3 -u -m icg_archon 2>&1 | tee icg_boot.log
 ```
+
+⛔ **종전 제목의 *"아직 전원은 안 켠다 — 첫 `go` 에서 켜진다"* 는 거짓이었다.**
+`ArchonController.prepare()` 끝이 `if not self.powered: await self.power_on()` 이고
+기동의 `_connect_controller()` 가 그것을 부른다.  `apply_acf = true` 이므로 기동
+한 번에 **`CLEARCONFIG` → `WCONFIG` 전량 → `APPLYALL` → `POWERON`** 이 돈다.
+⚠️ 그러므로 **0·1·2단계(배선 · probe · Config 슬롯 대조)를 반드시 먼저 마칠 것** —
+슬롯 대조 전에 전원이 올라가면 되돌릴 수 없는 것은 없지만, 어긋난 줄로 `set_config`
+가 돌면 `EXPTIME` 이 조용히 안 바뀐 파일이 남는다.
+⭐ 전원 없이 기동만 보려면 `--backend sim` 을 쓴다.
 
 | 항목 | 기대 | 실측 |
 |---|---|---|
@@ -150,12 +162,13 @@ go 20
 | 항목 | 기대 | 실측 |
 |---|---|---|
 | ⭐ **최소 노출시간 클램프** | `guideexp 1` (설정 가능한 최소 노출시간 1.3 s 미만) → **거부가 아니라 1.3 s 로 눌러 담는다** (`IntMS` 는 기본 노출시간 1.2506 기준 49 ms). 헤더 `EXPTIME` 은 요청값이 아니라 **실현값** | |
-| ⭐ **`DATE-OBS`** | 직전 트랜스퍼 시각 + **6.8 ms**. 연속 두 파일의 `DATE-OBS` 차 ≈ 실현 주기여야 한다 (규격 10.5절 6번 불변식) | |
+| ⭐ **`DATE-OBS`** | ⛔ **+6.8 ms 는 폐기된 모델이다** (2026-09-06 정정) -- 코드는 **직전 `FrameShift` 개시 시각을 그대로** 싣는다 (`sequencer.py:738-741`).  볼 것은 **연속 두 파일의 `DATE-OBS` 차 ≈ 실현 주기** 하나다 (규격 10.5절 6번 불변식).  ⚠️ 폴링 편향으로 늦는 쪽 쏠림이 있다(`sequencer.py:274`) -- 그 크기를 적어 둘 것 | |
 | ⭐ **3버퍼 잠금** | 로그의 `RBUF`/`WBUF` — `LOCK` 이 반영되나, 엔진이 잠긴 버퍼를 피하나. ⚠️ science `--hold 20` 실측은 **2버퍼** 결과다, 옮겨 적지 말 것 | |
 | guide FETCH | 8.3 MiB. science 실측 99~107 MiB/s 를 옮기면 ≈0.08 s — `fetch_timeout=1.0` 이 12배 여유인지 확인 | |
 | 파일 | `~/AIC/data/guide/KMTK.<YYYYMMDD>.<NNNNNN>.G.fits`, **4224 x 1033** | |
 | 헤더 | `C1_TEMP`/`C1_VOLT`/`C1_CURR` 8자리 · `ICGBUILD`(개명) · `CTRL2*` 없음 · `DATASRC=ARCHON_GUIDE` · `RDMODE=UNKNOWN` | |
-| ⭐ **`BUFnFRAME` 다시** | 증가분 = 찍은 장수 + 폐기 1 이어야 한다 | |
+| ⭐ **최근 고친 카드 셋** (2026-09-06 추가) | ① **`FPAID` 가 공백 18자가 아니라 `NC`** (`1e650ce`) ② **`HKUDATE` 가 19자로 실린다** -- 종전엔 늘 `NC` 였다 (`64894f2`) ③ **`CTRL1CFG`** -- ini 값이 있으면 그 값, 비면 ACF 파일명 파생 (규격 v1.12 5.5절, `46aad59`) | |
+| ⭐ **`BUFnFRAME` 다시** | ⛔ **증가분 = 찍은 장수** 다 (2026-09-06 정정).  종전의 *"+ 폐기 1"* 은 v1.10 시절 모델이고 **R2613+ 사이클에는 폐기분이 없다** (`sequencer.py:627`).  flush 도 프레임을 안 만든다 | |
 
 ## 5단계 — `STOP` / `ABORT` 뒤 꼬리 (⏳ 미결 하나를 닫는다)
 
@@ -174,7 +187,13 @@ go 20
 ## 6단계 — P-k, `Pixels` 600 vs 540 ⚠️ **단일 변수**
 
 절차·판정은 [SMC_CLAUDE.md](SMC_CLAUDE.md) 의 **"P-k 실행 절차"** 를 그대로
-따른다. 요지: 두 ACF(`acf/archive/…_R2609.acf` = 600 · `acf/…_R2610.acf` =
+⛔ **판 차이를 먼저 읽을 것** (2026-09-06) -- 그 두 판은 현행 **R2617 과 7판 차이**이고
+그 사이에 유휴 flush·`DG`/`RG` 파형이 여러 번 바뀌었다.  **옛 판으로 받은 바이어스·다크를
+R2617 프레임과 섞으면 단일 변수가 깨진다** -- 옛 두 판은 **서로만** 견주고, 오늘 파형으로
+제대로 재려면 R2617 사본에 `Pixels=600` + `FlushLines=2692` 를 넣은 시험 ACF 를 만들어
+R2617 원본과 짝지어라.  ⚠️ `acf/…_R2610.acf` 는 이제 **`acf/archive/`** 에 있다.
+
+따른다. 요지: 두 ACF(`acf/archive/…_R2609.acf` = 600 · `acf/archive/…_R2610.acf` =
 540)는 **`PARAMETER5` 한 줄만 다르다.** 조명·온도·`IntMS` 를 고정하고 판마다
 여러 장 찍어 **통계로** 비교한다(평균·표준편차·컬럼 프로파일 — 구조적 이동은
 한 컬럼만 밀려도 바로 보인다). 부수로 주기가 1.375 → **1.251 s** 로 내려가는지

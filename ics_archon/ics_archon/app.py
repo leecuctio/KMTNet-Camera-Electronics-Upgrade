@@ -60,7 +60,8 @@ log = logging.getLogger('ics_archon.app')
 #: emitter 의 커맨드워드 어휘에 더하는 ICS 운영자 명령.  `icg_archon/commands.py` 의
 #: `ICG_COMMANDS` 와 같은 패턴이다 -- `emitter.validate()` 가 이 표로 발신을 검사하므로
 #: 등록 없이 쓰면 응답마다 `unknown_cmdword` 위생 경고가 난다 (`emitter.py:170`).
-ICS_OPS_COMMANDS = frozenset({'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON'})
+ICS_OPS_COMMANDS = frozenset({'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON',
+                              'HK', 'HKDATA'})
 
 #: `ARCHON` 바이패스 응답 본문의 상한 [문자].  한 메시지 상한 `impv2.MAX_LEN`(2048) 안에
 #: 머리(`src>dest DONE: ARCHON MK ` -- 노드 이름 8자씩이면 ~30) 와 잘림 꼬리(~40) 를
@@ -310,6 +311,33 @@ class IcsDispatcher(Dispatcher):
 
     # -- CCDFLUSH ----------------------------------------------------------------
 
+    def cmd_hk(self, msg: Message, target: Target) -> Reply:
+        """HK -- `HKDATA` 와 같다 (운영자 확정 2026-09-06).  ICG 에 묻는다."""
+        return self._ask_icg('HK')
+
+    def cmd_hkdata(self, msg: Message, target: Target) -> Reply:
+        """HKDATA -- ⭐ **ICS 는 이 값을 만들지 않는다.  ICG 에 묻는다.**
+
+        게이지·히터·듀어 RTD 는 **ICG 만** 만지므로(규격 v1.12 767행) ICS 가
+        자기 헤더의 5.6절 HK 카드를 채우려면 물어보는 수밖에 없다.
+
+        ⚠️ **답은 이 응답이 아니라 뒤따르는 보고로 온다** -- `ICG>ICS DONE:
+        HKDATA …` 가 도착하면 `register_report` 로 걸어 둔 조치가 받아 적고
+        콘솔에 출력한다.  여기서 기다리지 않는 것이 의도다: 기다리면 ICG 가
+        조용할 때 ICS 명령 처리부가 함께 멈춘다.
+        """
+        return self._ask_icg('HKDATA')
+
+    def _ask_icg(self, cmdword: str) -> Reply:
+        """ICG 에 질의 한 줄.  ⚠️ 답은 **보고 경로**로 온다."""
+        dest = self.app.acfg.icg_node
+        if not dest:
+            return Reply.error(cmdword, '[archon] icg_node 가 비어 있다')
+        self.emit.emit_req(dest, cmdword)
+        return Reply.done(cmdword,
+                          'Queried %s -- the reply arrives as a separate '
+                          'DONE: %s report' % (dest, cmdword))
+
     def cmd_ccdflush(self, msg: Message, target: Target) -> Reply:
         """CCDFLUSH [MK|NT|ALL] -- 유휴 CCD 를 FlushFrame 한 바퀴로 비운다.
 
@@ -518,7 +546,31 @@ class IcsArchon(IcsSim):
         fill_controller_cfg_names(cfg, acfg)
 
 
+    def _on_hkdata(self, msg: Message, target: Target) -> None:  # noqa: ANN001
+        """`ICG>ICS DONE: HKDATA …` 를 받는다 (DevNote 11.12 F1 이 없다던 경로).
+
+        ⭐ **받아 적고 출력만 한다 -- 답하지 않는다.**  보고에 답하면 두 노드가
+        서로 보고를 주고받는 고리가 생긴다 (`register_report` 주석).
+
+        ⚠️ 값을 헤더로 흘리지는 **아직** 않는다 -- 5.6절 카드의 현행 원천은
+        `[archon] hk_latest` 스냅샷 파일이고, 그 원천을 와이어로 바꾸는 것은
+        별개 결정이다 (SMC_CLAUDE *"HK 를 파일에서 와이어로"*).  여기서는
+        경로가 살아 있음을 보이고 마지막 응답을 남겨 둔다.
+        """
+        body = (msg.payload or '').strip()
+        self.hk_wire = {'when': utcnow(), 'src': msg.src, 'body': body}
+        log.info('ICG HK 수신 -- %s', body)
+        try:
+            print('HKDATA <- %s  %s' % (msg.src, body), flush=True)
+        except Exception:                   # noqa: BLE001
+            pass
+
     async def start(self) -> None:
+        # ⭐ ICG 의 답을 받는 조치를 건다 (DevNote 11.12 F1).  ⚠️ **발신자로
+        # 거르지 않는다** -- ICG 가 내는 답의 `src` 는 `G.IC` 가 아니라 `ICG`
+        # 이고(11.15 ①), 어차피 `(mtype, cmdword)` 로만 걸면 충분하다.
+        for word in ('HK', 'HKDATA'):
+            self.register_report('DONE', word, self._on_hkdata)
         # ⭐ 게이지 감시는 **백엔드와 무관하게** 띄운다 -- 상대는 ICG 이고
         #    우리 컨트롤러가 아니다.  `--backend sim` 에서도 배선을 볼 수 있다.
         if self.acfg.gauge_off_on_exposure or self.acfg.guiexpctrl:
