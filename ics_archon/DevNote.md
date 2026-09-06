@@ -6016,6 +6016,23 @@ ICG 기동의 `_connect_controller()` → `guide.prepare()` → 그것을 부르
 Alive 두 바퀴 불변이면 `DEWPRES` 를 버리는 것 · 게이지 Off 중 직전 표본 즉시 폐기 ·
 `RADIONODE DISABLE` 이 캐시를 지우는 것(`DISCONNECT` 와 규약이 반대이고 잠금도 없다).
 
+#### (9) 레거시 명령 전수 대조 -- 문서로 떨어뜨렸다
+
+> *"원래 Legacy ICG에 있던 명령어(예를 들면 go)들도 다 구현해야되."* ·
+> *"legacy에서 console 전용으로 되어 있던 것은 ics_archon/icg_archon에서도 console 전용으로."*
+
+레거시 명령 **134개**를 전수로 맞춰 [`legacy_command_coverage.md`](legacy_command_coverage.md)
+에 표로 남겼다 -- 구현됨 **42** · 미구현 **64** · 일부러 뺐다 **17** · 신설 **8**.
+
+⭐ **console 전용 지시의 답은 "이미 그렇게 돼 있다"** 다.  레거시 console 전용은
+`QUIT`·`EXIT`·`HELP`·`?` 이고 현행도 `console.py:66-71` 이 디스패치 **전에** 채간다.
+나머지 console 전용 일가는 **Caliban(CB) 프로세스의 것**인데 9노드 통합으로 그 프로세스가
+없어졌다.  ⚠️ **그 축소를 결정한 기록이 문서에 없었다** -- 이제 그 문서가 기록이다.
+
+⏳ 대조에서 나온 결함 셋은 **다음 세션 이월**(운영자 확정): `ICG>XIS HOSTS` 를 보낼 수단이
+없다(`grep` 0건 -- `icg_first_run` 3단계가 그것을 시킨다) · `>NODE` 가 와이어로 안 나간다 ·
+콘솔 도움말에 신설 14 낱말과 `ABORT`·`STOP` 이 없다.
+
 #### 시험
 
 `ics_archon` **535** · `ics_sim` **329** 전수 통과.  신설 18개 (과열 차단 9 · `HKDATA` 9),
