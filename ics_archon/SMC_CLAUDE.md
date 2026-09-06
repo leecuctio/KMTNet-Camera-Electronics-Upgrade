@@ -1406,6 +1406,54 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ## ▶ 인수인계 (2026-09-04 마감 — ⭐ 새 세션이면 **여기부터**)
 
+### ⭐⭐ 다음 세션은 여기서 시작한다 (2026-09-06 마감)
+
+**첫 항목은 `RADIONODE` 자료획득 시험**이다 (운영자 지시 2026-09-06).  절차·준비물·판정 기준은
+👉 **[`bench_test_plan.md`](bench_test_plan.md)** 에 있다 — **그 문서를 먼저 열 것.**
+
+⛔ **1단계가 막히는 조건이 있다** — Radionode Open API 자격증명 넷은 **콘솔 접근이 필요해 코드가
+대신 못 한다**(계정 등급 · API KEY/SECRET + base URL/경로/rate limit · 사이트 LoRa 게이트웨이 기종 ·
+장치 SEND INTERVAL).  운영자에게 확인하고 시작한다.  ⛔ KEY/SECRET 실값은 **저장소 ini 에 적지 않는다**
+— 벤치 설치본 `~/AIC/etc/icg_archon.ini` 에만.  `stale_after` 는 SEND INTERVAL 의 3배로 함께 맞춘다.
+
+#### 지금 상태 (2026-09-06)
+
+| 것 | 값 |
+|---|---|
+| raw spec | **v1.11** (`main` `a55447f`, 태그 `raw-spec-v1.11`).  ⭐ v1.10 최종 상태 승계 — **내용 변경 없음** |
+| guide ACF | **`KMTK_GUI_162_STA0201_R2617.acf`** (122줄) |
+| science ACF | **`KMT?_SCI_*_R2611_*.acf`** 6장 (142줄) |
+| 시험 | `ics_archon` **518** · `ics_sim` **329** 통과 (알려진 flake 1 deselect) |
+| 브랜치 | `ics-archon-v1.0-build` `7258aa8` · `main` 합류 완료 |
+
+#### 오늘 확정된 규약 (어기기 쉬운 것들)
+
+1. ⛔ **타이밍 스크립트를 줄 번호로 색인하지 않는다** — `acftiming.blocks()`/`call_arg()` 로 `라벨:`
+   블록과 호출 이름을 본다.  문서의 `LINEn` 은 읽는 이를 돕는 표기일 뿐이고 **판마다 밀린다**.
+2. ⛔ **`main` 은 커밋을 적게** — 라운드가 끝날 때 한 번.  브랜치는 잘게 나눠도 된다.  제목은
+   문서 풀네임(`Raw FITS Spec v1.11 -- …`).  ⭐ 발동 신호: *"main 에 오늘 두 번째 커밋을 하려 한다"*.
+3. ⛔ **안 바뀐 문서는 판올림하지 않는다** (운영자 2026-09-06) — 종전엔 규격·원장·통합 셋을 늘 함께
+   올렸다.  v1.11 은 규격만 올리고 원장 `v1.17`·통합 `v0.9` 는 그대로 뒀다.
+4. **규격 태그는 최신 판 하나만** — `raw-spec-v1.9` 를 지우고 `raw-spec-v1.11` 을 붙였다.  팀은
+   `git fetch --tags --prune --prune-tags` 가 필요하다.
+5. **Config 슬롯 번호**(`PARAMETERn` 의 n, LOADPARAMS 순서) vs **Config 줄 번호**(`WCONFIG` 4자리 16진)
+   — 스크립트에 줄이 늘면 **줄 번호만** 밀린다.
+
+#### ⏳ 운영자에게 물어야 할 것
+
+- **백업 태그 `main-presquash-20260906`** — 2026-09-05~06 의 main 구커밋 14개를 붙잡고 있다.
+  운영자 확정: **5일쯤 두고 지운다** → **2026-09-11 이후에 다시 물을 것.**
+  (지우는 명령: `git tag -d main-presquash-20260906`.  `git lg` 별칭이나 `--branches --remotes` 로
+  보면 지금도 안 보인다 — `--all` 로 볼 때만 보인다.)
+
+#### ⏳ 두 워크트리 전수 정합 검토 (15차원)
+
+이 세션에서 돌렸다.  **`med` 는 이 세션에서 고치고 `low` 는 목록으로 넘긴다**(운영자 2026-09-06).
+남은 `low` 목록과 미검증분은 아래 "검토 결과" 절에 남긴다.  ⭐ 새로 넣은 `linenum-drift` 차원이
+효과가 컸다 — 오늘 그 부류로 실제 결함 둘을 잡았다(`acftiming` 유휴 루프 주석이 R2613 부터 `LINE3`,
+`skipline_ticks` 표가 R2615 의 `DGHIGH` 미반영).
+
+
 ### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.36) — 아래 것들보다 **이것이 최신**
 
 ics_archon 전수 통과(알려진 flake 1: `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved`).
