@@ -1,6 +1,6 @@
 # KMTNet-CEU Raw FITS Specification
 
-최종 갱신일: 2026-08-30
+최종 갱신일: 2026-09-06
 
 > ⚠️ **`../ics_archon/` 은 `main` 에 아직 없다.**  실기 ICS 는
 > **`ics-archon-v1.0-build` 브랜치에서 진행 중**이고 **추후 `main` 합류 예정**
@@ -23,7 +23,10 @@ Archon controller x2  ──►  raw FITS pair  ──►  L0 64-amp MEF  ──
 
 ## 현재 기준선
 
-> ✅ **현행 규격: [`KMT_CEU_Raw_FITS_Specification_v1.9.md`](KMT_CEU_Raw_FITS_Specification_v1.9.md) — "raw spec"** (2026-08-30). 2026-08-18~22 전면 재검토(확인 요망 11건 전량 종결 · D-016 등재)의 재작성판(v1.3) → 운영자 1~4장 검토 반영(v1.4) → 5장(헤더 keyword) 검토 개시분(v1.5) → 노출 정체성 카드 개정(v1.6 — `ORIGNAME` → **`EXPID`** · `FILENAME` comment) → 파일명 넷째 필드 명명(v1.7 — `<DETID>`) → `OI-9` 폐기·`CTRLnCFG` 정합(v1.8) → **v1.9 가 guide raw FITS 를 9·10장으로 신설하고 환경 센서 장치명을 `Tapaculo` → `Radionode` 로 바꾼다** (운영자 지시 2026-08-30). 구 "Raw FITS Pair 규격" v1.2 를 개명·대체한다(구판은 `archive/`).
+> ✅ **현행 규격: [`KMT_CEU_Raw_FITS_Specification_v1.11.md`](KMT_CEU_Raw_FITS_Specification_v1.11.md) — "raw spec"** (2026-09-06).
+> v1.10 이 **HK 카드 5장 신설 · 온도 부호 규약 · 게이지 Off 조항 · 견본을 `header_samples/` 로 통일**했고,
+> v1.11 은 그 v1.10 이 발행 뒤 제자리 개정으로 발행본과 갈려 **판을 끊은 것**이다(내용 변경 없음).
+> 아래는 그 이전 경위다 — 2026-08-18~22 전면 재검토(확인 요망 11건 전량 종결 · D-016 등재)의 재작성판(v1.3) → 운영자 1~4장 검토 반영(v1.4) → 5장(헤더 keyword) 검토 개시분(v1.5) → 노출 정체성 카드 개정(v1.6 — `ORIGNAME` → **`EXPID`** · `FILENAME` comment) → 파일명 넷째 필드 명명(v1.7 — `<DETID>`) → `OI-9` 폐기·`CTRLnCFG` 정합(v1.8) → **v1.9 가 guide raw FITS 를 9·10장으로 신설하고 환경 센서 장치명을 `Tapaculo` → `Radionode` 로 바꾼다** (운영자 지시 2026-08-30). 구 "Raw FITS Pair 규격" v1.2 를 개명·대체한다(구판은 `archive/`).
 
 > ⏭️ **판올림 이월 대기 4건** (구 "v1.9 대기 5건" — ~~`CCDTEMP` comment 의 chip 귀속(`M`) 제거~~ 는 **2026-08-30 운영자 지시로 조기 실행**, 견본 3장 제자리 반영): `OI-18` 폐기 · `CAMVER` 범프 규범 명시(듀어 RTD 배치 변경 포함) · 바이어스 측정값의 헤더 카드 배치(D3) · **`RDMODE` 결측값 `UNKNOWN` 등재**(5.5절 + 5.0절 문자열 sentinel 어휘 — 코드는 이미 반영됐다). **헤더 견본 v1.0 → v1.1 승격 라운드**(guide 견본 v0.0 확정 대사와 함께)에서 처리 예정. 상세는 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md) "규격 쪽 후속".
 >
