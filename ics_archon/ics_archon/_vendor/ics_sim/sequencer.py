@@ -80,6 +80,13 @@ class Sequencer:
         #: 이것으로 좁힌다 -- `_writers` 전체를 취소하면 이미 완결된 앞
         #: 프레임의 파일까지 사라진다 (`cancel()` 참고).
         self._frame_writers: list[asyncio.Task] = []
+        #: ⭐ **"독출은 끝났는데 저장 태스크가 아직 안 떴다" 가 아님**을 뜻한다.
+        #: `Acquisition Complete.` 는 독출 중(`_frame_done`)에 나가는데 저장
+        #: 태스크는 그보다 뒤에 등록되므로, 그 사이에 종료가 들어오면
+        #: `drain_writers()` 가 빈 `_writers` 를 보고 **다 저장됐다고 오해**한다
+        #: (2026-09-06 회귀 -- 파일이 통째로 사라졌다).  이 창을 닫는다.
+        self._store_settled = asyncio.Event()
+        self._store_settled.set()
         #: STOP 신호.  세워지면 카운트다운이 즉시 끝나고 readout 으로 넘어간다.
         self._stop_evt = asyncio.Event()
         #: ABORT 로 취소됐는지.  _run 의 CancelledError 처리가 이것을 본다.
@@ -132,12 +139,31 @@ class Sequencer:
         Returns:
             상한 안에 못 끝낸 태스크 수 (0 이면 전부 저장됐다).
         """
+        if timeout <= 0:
+            return len([t for t in self._writers if not t.done()])
+
+        # ⭐ **먼저 "독출은 끝났는데 저장이 아직 안 뜬" 창을 닫는다.**  이걸
+        # 건너뛰고 `_writers` 를 훑으면 비어 있어서 **다 저장됐다고 오해**하고
+        # 곧바로 0 을 돌려준다 -- 그러면 부르는 쪽이 태스크를 취소해 프레임이
+        # 파일 없이 사라진다 (2026-09-06 회귀).
+        left = timeout
+        if not self._store_settled.is_set():
+            log.info('종료 대기 -- 독출을 마친 프레임의 저장이 아직 안 떴다')
+            t0 = time.monotonic()
+            try:
+                await asyncio.wait_for(self._store_settled.wait(), left)
+            except asyncio.TimeoutError:
+                log.error('저장이 %.0f초 안에 뜨지도 않았다 -- 독출을 마친 '
+                          '프레임을 잃는다', timeout)
+                return 1
+            left = max(left - (time.monotonic() - t0), 0.0)
+
         pending = [t for t in self._writers if not t.done()]
-        if not pending or timeout <= 0:
-            return len(pending)
+        if not pending:
+            return 0
         log.info('종료 대기 -- 저장 중인 프레임 %d개 (상한 %.0f초)',
-                 len(pending), timeout)
-        done, late = await asyncio.wait(pending, timeout=timeout)
+                 len(pending), left)
+        done, late = await asyncio.wait(pending, timeout=left)
         del done
         if late:
             log.error('저장이 %.0f초 안에 안 끝났다 -- 프레임 %d개를 잃는다. '
@@ -242,6 +268,8 @@ class Sequencer:
             raise
         finally:
             st.exposing = False
+            # ⭐ 안전망 -- ABORT·예외로 빠져나가도 종료가 안 잠긴다 (①).
+            self._store_settled.set()
 
     async def _frame(self, index: int, count: int, source: str) -> None:
         cfg, st = self.cfg, self.state
@@ -393,6 +421,8 @@ class Sequencer:
                 self.emit.ic_acq_complete_ics(ics, ccd)
             sent.extend(group)
 
+        # ⭐ 여기부터 저장 태스크 등록까지가 **종료가 프레임을 잃는 창**이다.
+        self._store_settled.clear()
         await self._readout(source, master, _frame_done)
 
         # ⭐ 남은 것을 낸다 -- **정상 경로에서는 비어 있다** (컨트롤러마다
@@ -527,6 +557,7 @@ class Sequencer:
             self._writers.append(task)
             self._frame_writers.append(task)
         self._writers = [t for t in self._writers if not t.done()]
+        self._store_settled.set()          # 창을 닫는다 (①)
 
         await asyncio.sleep(cfg.scaled(cfg.timing.acq_to_idle))
         st.expstatus = ExpStatus.IDLE

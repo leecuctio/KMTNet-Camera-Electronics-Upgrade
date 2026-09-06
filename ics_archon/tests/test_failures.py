@@ -381,10 +381,13 @@ def test_shutdown_waits_for_frames_that_are_still_being_saved(tmp_path):  # noqa
     한 장은 다시 못 찍으므로 전원 차단보다 이쪽이 먼저다.
     """
     cfg, acfg = cfgs(tmp_path, full_flush_on_erase=False)
-    # 저장을 늦춰 "독출은 끝났는데 파일은 아직" 창을 넓힌다.
     # 저장을 늦춰 "독출은 끝났는데 파일은 아직" 창을 넓힌다.  전체 스위트를
-    # 돌릴 때는 부하로 폴링이 밀리므로 넉넉히 둔다 (0.2초면 간헐 실패했다).
-    cfg.timing.write_delay = 50.0            # scaled(0.02) = 1.0초
+    # 돌릴 때는 부하로 폴링이 밀리므로 넉넉히 둔다.
+    # ⭐ **창이 좁아도 본 단정은 안 흔들린다** (2026-09-06) -- 시퀀서에
+    # `_store_settled` 가 생겨 "독출은 끝났는데 저장이 아직 안 떴다" 를
+    # `drain_writers()` 가 붙잡는다.  창은 아래 **전제 확인**("저장이 벌써
+    # 끝났다")에만 쓰이므로 적당하면 된다.
+    cfg.timing.write_delay = 100.0           # scaled(0.02) = 2.0초
     mk = FakeArchon(width=NX, height=NY)
     nt = FakeArchon(width=NX, height=NY)
     mk.start(); nt.start()
@@ -399,13 +402,16 @@ def test_shutdown_waits_for_frames_that_are_still_being_saved(tmp_path):  # noqa
                 app.transport.feed(line)
                 await asyncio.sleep(0.02)
             # 획득 완료가 나오는 즉시 종료한다 -- 저장이 아직 안 끝난 자리다.
-            for _ in range(400):
+            # ⚠️ 예산을 넉넉히 -- 전체 스위트를 돌리면 부하로 폴링이 밀린다.
+            # 4초(400회)로는 간헐로 못 봤다 (2026-09-06).  이건 하네스 예산이지
+            # 검사 대상이 아니다 -- 실제 단정은 종료 뒤 파일 수다.
+            for _ in range(2000):
                 if any('Acquisition Complete.' in m
                        for m in app.transport.sent_log):
                     break
                 await asyncio.sleep(0.01)
             else:                                    # pragma: no cover
-                raise AssertionError('획득 완료가 안 나왔다')
+                raise AssertionError('획득 완료가 20초 안에 안 나왔다')
             assert not glob.glob(str(tmp_path / 'rawdata' / '*.fits')),                 '저장이 벌써 끝났다 -- 이 시험이 창을 못 잡았다'
         finally:
             await app.stop()
