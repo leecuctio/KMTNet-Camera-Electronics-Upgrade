@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """guide raw FITS 헤더 카드 템플릿 — guide 견본 헤더 v0.0 의 기계 사본.
 
-정본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.G.fits.header.v1.10.txt`
+정본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.G.fits.header.v1.11.txt`
 (raw spec v1.9 **10장** — 값 카드 **123** + COMMENT 8 + END 1 + 공백 12 =
 144 레코드 = 4x2880 = 11,520 B).  science 템플릿(`ics_sim/rawcards.py`)과
 다른 자리 (10.2절):

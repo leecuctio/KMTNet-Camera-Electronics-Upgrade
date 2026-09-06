@@ -15,7 +15,7 @@ Configuration`** 이 됐다(견본 pair 동반 개정).  v1.7 은 파일명 넷�
 고쳤으며, `Cn_*` 나열 카드의 구분자를 파이프로·결측 자리 sentinel 을 `NC` 로
 했다.
 
-정본은 [`raw_fits_spec/header_samples/KMTA.20260821.123456.MK.fits.header.v1.10.txt`] (·NT) --
+정본은 [`raw_fits_spec/header_samples/KMTA.20260821.123456.MK.fits.header.v1.11.txt`] (·NT) --
 **카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다 (raw spec 5장
 머리말).  이 모듈의 `CARDS` 는 그 견본에서 기계 추출한 것이고, 추출 규칙은
 `tests/test_raw_draft.py` 가 견본 파일을 다시 파싱해 대사한다 -- 견본이
