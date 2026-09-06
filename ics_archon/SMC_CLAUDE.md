@@ -1452,6 +1452,57 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 남은 `low` 목록과 미검증분은 아래 "검토 결과" 절에 남긴다.  ⭐ 새로 넣은 `linenum-drift` 차원이
 효과가 컸다 — 오늘 그 부류로 실제 결함 둘을 잡았다(`acftiming` 유휴 루프 주석이 R2613 부터 `LINE3`,
 `skipline_ticks` 표가 R2615 의 `DGHIGH` 미반영).
+#### 검토 결과 (15차원 · 에이전트 51 · 발견 원시 246건)
+
+**확인 34 · 기각 2 · 미검증 203**(검증 상한 36 을 넘긴 분).  ⭐ **`high` 는 하나도 없었다.**
+
+**이 세션에서 고친 것 (18건)** — 코드 결함과 오도하는 주석 위주:
+
+| 무엇 | 자리 |
+|---|---|
+| ⛔ **guide 헤더의 `FPAID` 가 sentinel 이 아니라 공백 18자였다** | `icg_archon/guidehdr.py` — `cam.get('fpaid') or 'NC'` |
+| `ccdflush` 주석이 **삭제된 기제**(LINE9/10 `#` 여닫기 + LOADTIMING)를 현재형으로 | `ics_archon/config.py` |
+| `guidecards` docstring 이 자기 표와 어긋남(값 123→**128** · 공백 12→**7** · v1.9→**v1.11**) | `icg_archon/guidecards.py` |
+| `rawhdr` 의 5.6절 장수(14→**19**, HK 8→**13**) | `ics_sim/rawhdr.py` |
+| `stamp_iso` 를 *"DATE-OBS 형식"* 이라 적어 둠 — DATE-OBS 는 **ms 필수** | `ics_sim/state.py` |
+| icg backend 머리말의 옛 용어(하한)·flush 출처 | `icg_archon/backend.py` |
+| guide↔science 줄 대응이 옛 판(오프셋 +14 → **+12**) · `wc -l` 수 | `acf/README.md` |
+| 규격의 `CTRL1CFG` **현행 실물이 R2615** → 9장 연동 표를 가리키게 | 규격 10.3절 |
+| `타이밍 LINE43~47` → **`LINE44~48`** · 기본 노출시간 계산 판 `R2616`→**`R2617`** | 규격 9.4 · 10.1-1 |
+| `HKUDATE` 출처 열이 `ICG RTD` 한 계통 → **계통 셋(파생)** | 규격 5.6 표 |
+| README 의 「현재 기준선」이 **v1.9** 를 현행이라 함(그 파일은 `archive/`) | `raw_fits_spec/README.md` |
+
+**⏳ 다음 세션으로 넘긴 것 — 확인분 16건** (운영자 결정 2026-09-06: *med 만 고치고 low 는 목록으로*.
+아래는 확인분 중 남은 것이고, 성격이 **문서 셈·문서 간 대사**라 실기 일정과 무관하다):
+
+| # | 심각 | 자리 | 왜 |
+|---|---|---|---|
+| 6 | low | `KMT_CEU_Raw_FITS_Specification_v1.10.md:348` ↔ `KMTA.20260821.123456.MK.fits.header.v1.10.txt 레코드 57` | 5장 머리말(195행)이 견본을 카드 순서·comment·패딩까지 바이트 정본으로 못박았는데 산문 예시만 R2609 다. 게다가 같은 문서 12장의 v1.10 changelog ⑨는 "⛔ 5.5절 `CTRL1CFG` 예시는 **science** ACF 라 `R2608` |
+| 10 | low | `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1` ↔ `같은 파일 :694 · :888` | 7장 표를 전수로 세어 보면 데이터 행 60행이고 카드는 68장이다(`Cn_TEMP`/`Cn_VOLT`/`Cn_CURR` 행이 n=1·2 로 6장, `CHMAP_LT/LB/RT/RB` 행이 4장, 나머지 58행이 1장씩 → 58+6+4=68). v1.17 이 HK 5장 |
+| 13 | med | `README.md:69-70` ↔ `KMT_CEU_Raw_FITS_Specification_v1.10.md:7` | 이 문단은 실험실 스크립트가 내놓는 산출물 규격을 알리는 자리인데 v1.5~v1.6 시절 수(131·144·11,520 B)에 멈춰 있다. 정작 같은 폴더의 스크립트는 이미 136장을 실어 180 레코드·14,400 B 를 쓴다. 이 문단을 믿고 옛 분석 스크립트를 그 |
+| 14 | med | `README.md:96` ↔ `rawcards.py 의 `CARDS` 실측 + 규격 v1.10:195` | `ics_sim` 이 실제로 싣는 값 카드는 136장인데 README 는 131장이라고 말한다. 견본 이름도 `v1.0 pair` 로 남아 있어 현행 `header_samples/…v1.10.txt` 와 갈린다. |
+| 15 | med | `README.md:546-547 · :557 · :566` ↔ ``python -m pytest --collect-only -q` 실측 (2026-09-06)` | 세 수가 서로도 안 맞고(17 vs 56, 223 vs 244) 실제(58·461·519)와도 다 다르다. 바로 위 :549-554 의 `repo_only` 표는 세 파일 17건만 싣는데 실제로는 아홉 파일 58건이고 `test_labtest_spec_copy.py`  |
+| 16 | med | `README_labtest.md:206-208` ↔ `archon_kmtnet_labtest_v1.3.bigbuf.py:698-702` | 세 수가 다 어긋난다: 자리는 `BACKPLANE + AD 4장`(5자리)이 아니라 규격 5.6.1절의 10자리이고, 줄 번호는 598행이 아니라 700행이며, `모듈 나열 순서의 정본 명세는 규격 수록 예정` 도 v1.5 의 5.6.1절 신설로 이미 닫혔다. 돌리기  |
+| 17 | med | `README_labtest.md:466` ↔ `archon_kmtnet_labtest_v1.3.smallbuf.py 의 `RAWCARDS` ` | smallbuf 사본이 bigbuf 와 얼마나 대조됐는지를 알리는 수인데 v1.10 반영 뒤의 실제 항목 수와 5장 어긋난다. `test_labtest_spec_copy.py` 는 템플릿 전량을 보므로 시험은 통과하고 문서만 낡았다. |
+| 22 | med | `KMT_CEU_Raw_FITS_Specification_v1.10.md:254 (5.0절 공통` ↔ `rawcards.py:258-261` | 값 풀에 `EXPTIME` 이 없으면 이 최후 방어가 `SENTINEL['I']` = **-1** 을 실어.  규격은 바로 그 자리에서 *카드를 비우라*고 못박았는데(그래야 converter 의 실패 경로가 발동한다) 코드는 반대로 그럴싸한 정수를 채운다 — `-1`  |
+| 24 | med | `hk.py:293 (`sensors()` docstring)` ↔ `base.py:173,177` | 백엔드 계약의 정본 docstring 인데 세 군데가 어긋나 있어.  ① 세어 놓은 **아홉**이 실제 나열한 키 수(열 개)와 다르다 — `hk.py` 가 같은 계약을 10 이라 적고 `HKDATA` 완전성 검사가 그 수에 걸려 있다.  ② v1.10 이 신설한 다섯 |
+| 26 | med | `rawhdr.py:545-568 (`format_temp`) · rawcards.py:110 ` ↔ `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1` | 원장 3.7절이 현재형으로 *"고칠 대상"* 이라고 코드 상태를 단언하는데, `ics_sim` 은 이미 문자열 계승으로 고쳐져 있어 — `format_temp()` 가 `f'{t:+.2f}'` 문자열을 내고 `rawcards.CARDS` 의 온도 카드가 전부 `'S'` |
+| 27 | med | `KMT_CEU_Raw_FITS_Specification_v1.10.md:576 (8장 OI-2` ↔ `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1` | 원장이 아직 미구현이라 말하는데 규격 OI-25 는 배선 완료(✅)라 하고, 코드도 그렇다 — `icg_archon/hk.py:398-404` 가 `self._sample['htrout'] = (htr, now)` 로 주기마다 담고 STATUS 에 키가 없으면 래치 경 |
+| 28 | med | `KMT_CEU_Raw_FITS_Specification_v1.10.md:409 (5.6.2절)` ↔ `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.9.md:50 ` | 통합 문서가 LEECU 에 넘길 파급 목록인데, 거기 적힌 *"항상 `'NC'`"* 가 이미 사실이 아니야 — 배선은 2026-09-05 에 끝났고(규격 5.6.2절 ✅ · OI-25 ✅ · `hk.py:398-404`) 실기에서 `HTROUT` 은 값이 실린다.  하 |
+| 29 | med | `KMT_CEU_Raw_FITS_Specification_v1.10.md:435 (5.6.1절 ` ↔ `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1` | 원장 7장이 아직 v1.6 이전의 **공백 구분**으로 카드 표기를 규정하고 있어.  규격 5.6.1절은 2026-08-26 에 파이프로 확정했고 코드(`rawhdr._join_readings:811` `return '·'.join(parts)`)와 견본(`C1_TEM |
+| 30 | med | `KMT_CEU_Raw_FITS_Specification_v1.10.md:208 (5.0절 형 ` ↔ `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1` | 원장이 `FSATEMP` 를 아직 **부호 생략**으로 규정해.  규격 v1.10 이 `FSATEMP` 를 온도 부호 규약에 편입해 `'23.4'` → `'+23.4'` 로 올렸고, 코드(`rawhdr.thermal_header:699` `format_ens(s.get |
+| 31 | low | `KMT_CEU_Raw_FITS_Specification_v1.10.md:208 (5.0절 형 ` ↔ `KMT_CEU_Raw_FITS_Specification_v1.10.md:506 (5.8절 표 ` | 같은 규격 안에서 5.0절과 5.8절이 엇갈려.  5.0절은 *"ENS 는 부호 규약 예외"* 라 못박고 `FSATEMP` 만 규약에 편입했는데, 5.8절은 그 `FSATEMP` 를 여전히 **"ENS식 표기"** 라고만 적어서 5.8절만 읽는 사람은 무부호 `'23. |
+| 32 | med | `KMT_CEU_Raw_FITS_Specification_v1.10.md:752 (10.4절 g` ↔ `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1` | 두 가지가 같이 낡았어.  ① `Slot9 HVY Bias` 는 규격 10.4절이 *"ACF 실측 `MOD9_TYPE=8` = `HVXBias` 의 오기라 이 판에서 정정했다"* 고 명시한 그 오기다 — `HVYBias` 는 science 유닛의 모듈 형이라 guide |
+
+⭐ **미검증 203건**(med 70 · low 133)은 검증 상한(36)을 넘겨 반증 단계를 못 거쳤다.  전문은
+워크플로 결과 파일에 있고, 요약은 이 세션의 스크래치패드(`audit_confirmed.md` · `audit_unverified.md`)에
+있다 — ⚠️ 세션이 지나면 스크래치패드는 사라지므로, 다시 필요하면 **검토를 다시 돌리는 편이 빠르다**
+(스크립트는 `scratchpad/audit_x2_r2617.js`, 2개씩 순차 · 약 3시간).
+
+⛔ **남은 것 중 하나만 성격이 다르다** — `#22`(규격 5.0절이 sentinel 을 **금지한** 카드 열 개에
+`rawcards` 가 sentinel 을 넣을 수 있다)는 문서가 아니라 **코드 경로**다.  고치려면 금지 집합을
+`rawcards` 에 명시하고 두 갈래를 다 막아야 해서 손이 크다 — 다음 세션에서 따로 볼 것.
+
 
 
 ### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.36) — 아래 것들보다 **이것이 최신**

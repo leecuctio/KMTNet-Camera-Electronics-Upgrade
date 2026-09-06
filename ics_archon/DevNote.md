@@ -2282,7 +2282,7 @@ SEND INTERVAL 결정(1분 vs 배터리 -- 2~5분 절충 권장).
 | `C1_TEMP` 8자리 자리 표 | 규격 10.4절 (OI-19 종결분) | 첫 구동 STATUS 재확인 |
 | `CHMAP`/`IMGROT` 값 | [TBC] 코드 상수 | 커미셔닝 (OI-21) |
 | `PIXSCALE` = 0.49 | 견본값 (3파전) | 하늘 실측 (OI-22) |
-| `FPAID` 기본 빈 값 | guide 조립체 귀속 미확정 | OI-24 |
+| `FPAID` 기본 sentinel `NC` | guide 조립체 귀속 미확정 | OI-24 |
 | Open API 응답 파싱 (`_pick` 관대 판독) | 응답 모양이 계정 매뉴얼 소관 | KEY 발급 후 실응답 |
 | guide 견본 폭 특례 8장 | 9.3절 | 견본 v1.1 승격 대사 |
 

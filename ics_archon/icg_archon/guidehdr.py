@@ -121,7 +121,12 @@ def instrument_header(site_code: str,
         'INSTRUME': cam.get('instrume') or f'{site_code.upper()} Guide CCD',
         'CAMVER': cam.get('camver', 'CEU-v2.1'),
         # PROVISIONAL -- guide 조립체의 FPAID 귀속은 OI-24 (견본은 science 값).
-        'FPAID': cam.get('fpaid', ''),
+        # ⛔ **귀속이 정해지기 전에는 5.0절 문자열 sentinel `'NC'`** 다 -- 종전에는
+        # `''` 라 카드가 **공백 18자**로 나갔다(2026-09-06 전수 검토가 잡았다).
+        # ⛔ science 처럼 `rawhdr.fpaid_of(site_code)` 를 태우면 안 된다 -- 그것은
+        # "guide 조립체가 5.3.1절 `FPA#n` 에 드는가" 라는 OI-24 의 물음을 코드가
+        # 먼저 답해 버리는 것이다.
+        'FPAID': cam.get('fpaid') or 'NC',
         'DETECTOR': DETECTOR,
         'DETID': 'G',
         'PIXSIZE': PIXSIZE,

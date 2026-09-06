@@ -453,7 +453,7 @@ def controller_header(info: dict, *, backend_name: str, ics_build: str,
 
 
 # ---------------------------------------------------------------------------
-# 5.6 Camera System House Keeping (14장) + 5.8 의 Radionode 2장
+# 5.6 Camera System House Keeping (19장) + 5.8 의 Radionode 2장
 # ---------------------------------------------------------------------------
 
 #: 듀어·HK 센서 카드 -- 견본 v1.0 의 수록 순서.  출처 3계통은 백엔드
@@ -654,7 +654,7 @@ def format_hkudate(value: object) -> str:
 
 
 def thermal_header(sensors: dict | None) -> dict[str, object]:
-    """5.6절 HK 8장 (`DEWPRES`·`CCDTEMP` + 듀어 6장) + 5.8절 Radionode 2장
+    """5.6절 HK 13장 (`HKUDATE`·`DEWPRES`·`CCDTEMP` + 듀어 6장 + 히터 넷) + 5.8절 Radionode 2장
     (`FSATEMP`/`FSAHUM`) -- 5.6절의 나머지 6장(`Cn_*`)은 `ctrl_telemetry_header()` 몫.
 
     **`CCDTEMP` 는 실측 대표 센서 1개의 값이다** (운영자 확정 2026-08-21).

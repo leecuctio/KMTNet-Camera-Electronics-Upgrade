@@ -40,8 +40,10 @@ Tap"** 이 그 값이다 (운영자 확인 2026-08-29).
 | science | `Pixels=1201` + 1 = **1202** | `PIXELCOUNT=`**1200** | 2 |
 
 ⚠️ **아래 `LINE<n>` 은 전부 guide 기준이다** -- science 는 같은 번호에 다른 줄이
-있다(guide `LINE43`↔science `LINE57`, `44`↔`58`, `47`↔`61`).  판을 안 밝히면
-조용히 틀린 독해가 된다.
+있다(**guide R2617 · science R2611 기준, 오프셋 +12** -- guide `LINE44`↔science
+`LINE56`, `45`↔`57`, `48`↔`60`).  판을 안 밝히면 조용히 틀린 독해가 된다.
+⭐ 더 안전한 길은 번호를 아예 안 쓰는 것이다 -- 코드가 이미 `라벨:` 블록과 호출
+이름으로 색인한다 (DevNote 11.35).
 
     LINE44  LCLK;   CALL SkipPixelFirst(PreSkipPixels)    8   버리며 지나감(디지타이즈 안 함)
     LINE45  RGHIGH; CALL PixelFirst(Pixels)             540   디지타이즈  (구 R2609: 600)
@@ -872,8 +874,9 @@ guide 쪽 넷(`R2601` 계열 둘 · `STA0291` 둘)은 정본에 없는 판이라
 `tests/test_timing_script_extract.py` 가 정본 `acf/*.acf` 일곱에 대해 같은 대조를
 건다 (`archive/`·보관함은 역사적 판이라 범위 밖이다).  ⚠️ 함정 셋은 그 도구의
 주석에 있다 -- `^LINE\d+=` 앵커(guide ACF 에 `MOD10\VCPU_LINE*` 109개가 따로 있다) ·
-바깥 큰따옴표 한 쌍만 벗김 · **끝 개행 없음**(그래서 `wc -l` 은 119/141 을 내놓고
-실제 줄 수는 `LINES=` 와 같은 120/142 이다 -- guide R2613 · science R2609 부터).
+바깥 큰따옴표 한 쌍만 벗김 · **끝 개행 없음**(그래서 `wc -l` 은 121/141 을 내놓고
+실제 줄 수는 `LINES=` 와 같은 122/142 이다 -- guide R2617 · science R2611 기준.
+science 의 142 는 R2609 이래 그대로이고, guide 만 R2617 에서 120 → 122 가 됐다).
 
 ### ⭐ 2026-09-02 반입분 -- **이미 있는 바이트의 사본**이다
 

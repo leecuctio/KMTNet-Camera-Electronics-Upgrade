@@ -150,14 +150,20 @@ class ArchonCfg:
     #: `?xx` 로 거부된다 (2026-09-01 실기, DevNote 10.2) -- 그때는 true 로.
     apply_acf: bool = True
     acf_retry: int = 4
-    #: ⭐ **노출 전 CCD flush** (`Prep`+`Flush`)를 실행할지 (운영자 2026-09-04).
-    #: 타이밍 스크립트의 `LINE9`/`LINE10` 앞에 붙은 `#` 를 빼는 일이고, 그 둘은
-    #: 적분 직전에 있으므로 켜면 **매 프레임** 돈다.  ⚠️ `Flush` 가
+    #: ⭐ **노출 전 CCD flush** (`FlushFrame:` = `Prep`+`Flush`)를 실행할지
+    #: (운영자 2026-09-04).  ⭐ **설정 메모리의 `FirstFlush` 한 줄을 1/0 으로 쓰는
+    #: 일이다** (`controller.set_first_flush()` -- `WCONFIG` 한 줄 + `RCONFIG`
+    #: 되읽기, **`LOADTIMING` 없음**).  1 이면 노출마다 나가는 `LOADPARAMS` 가 그
+    #: 값을 RAM 에 실어 코어가 **매 노출 전** `FlushFrame` 을 한 번 돌고
+    #: `FirstFlush--` 로 소비한다.  ⚠️ `Flush` 가
     #: `SkipLine(FlushLines)` 라 **프레임 주기가 늘어난다** -- `MIN_FRAME_PERIOD`
     #: 와 10장 실측(13.27 s)은 **flush 를 끈 상태의 값**이다.
-    #: ⛔ **science 전용이다** -- guide ACF 에는 그 줄이 없고(같은 번호가 적분
-    #: 호출이다) `IcgCfg` 에는 이 설정 자체를 두지 않는다 (운영자 확정
-    #: 2026-09-04).  컨트롤러 층은 이 속성이 **없으면 아예 건너뛴다**.
+    #: (종전 R2609 까지는 타이밍 스크립트 두 줄의 `#` 를 여닫고 `LOADTIMING` 을
+    #: 냈다 -- R2610 에서 사라진 기제다.  `acf/README.md` 의 "science R2610" 절.)
+    #: ⛔ **science 전용이다** -- guide 는 ACF 가 `PARAMETER0="FirstFlush=1"` **상수**
+    #: 로 두어 호스트가 건드릴 것이 없고, 그래서 `IcgCfg` 에는 이 설정 자체를 두지
+    #: 않는다 (운영자 확정 2026-09-04).  컨트롤러 층은 이 속성이 **없으면 아예
+    #: 건너뛴다**.
     #: ⭐ **기본은 꺼짐**이다 (운영자 정정 2026-09-04: *"보통은 `ccdflush=false`
     #: 로 해놓을 건데 아주 가끔 `true`"*).  `true`/`on`/`1` 과
     #: `false`/`off`/`0` 을 같게 받는다.

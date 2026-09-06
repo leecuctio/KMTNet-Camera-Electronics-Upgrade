@@ -84,7 +84,10 @@ def stamp_compact(when: datetime | None = None) -> str:
 
 
 def stamp_iso(when: datetime | None = None) -> str:
-    """2024-03-03T22:23:25.  DATE-OBS 형식 (소수점 없음)."""
+    """2024-03-03T22:23:25.  **`HKUDATE` 형식** -- 초 단위 19자 (규격 5.6절).
+
+    ⛔ `DATE-OBS` 는 **밀리초 필수**다 (규격 5.4절) -- `stamp_iso_ms()` 를 쓸 것.
+    """
     return (when or utcnow()).strftime('%Y-%m-%dT%H:%M:%S')
 
 

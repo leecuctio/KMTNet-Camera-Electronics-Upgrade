@@ -15,17 +15,21 @@ science 의 `ArchonBackend` 와 달리 `ics_sim` 의 `DetectorBackend` 계약을
 
 ## 주기는 **시퀀서**가 만든다 (운영자 확정 2026-08-31)
 
-`Exposures = n` (+ `FirstFlush=1`, R2613+) 을 한 번만 걸면 타이밍 스크립트가 `GOTO Start` 뒤
-`Exposures` 가 남아 있는 동안 **유휴 없이** 다음 프레임으로 간다.  그래서
+`Exposures = n` 을 한 번만 걸면 타이밍 스크립트가 `GOTO Start` 뒤
+`Exposures` 가 남아 있는 동안 **유휴 없이** 다음 프레임으로 간다.
+(flush 는 R2616+ 의 ACF 상수 `FirstFlush=1` 이 싣는다 -- 모든 LOADPARAMS 가 RAM 에
+1 을 실어 코어가 `FlushFrame` 한 번을 돌고 `FirstFlush--` 로 소비하며, **호스트는 이
+슬롯을 쓰지도 되쓰지도 않는다**.  DevNote 11.33)  그래서
 독출 개시 간격이 Archon 타이밍 코어(100 MHz)로 정해진다:
 
     주기 = IntMS + NoIntMS + 트랜스퍼 + 독출
-         = IntMS + 하한(`acftiming.frame_timing()['floor']`)
+         = IntMS + **기본 노출시간**(`acftiming.frame_timing()['floor']`)
 
-호스트는 `IntMS = EXPTIME - 하한` 만 계산해 넣고 프레임 완료를 따라간다
-(`intms_for()`).  **하한보다 짧게 요청하면 하한으로 눌러 담는다** --
-거부하지 않는다 (운영자 지시).  그때 헤더 `EXPTIME` 은 요청값이 아니라
-**실현값**이다 (`effective_exptime()`).
+호스트는 요청을 먼저 **설정 가능한 최소 노출시간**(`exptime_min`, 기본 1.3 s)으로
+접고, `IntMS = EXPTIME - 기본 노출시간` 으로 셈해 넣는다 (`intms_for()`).
+⛔ **접는 기준과 빼는 기준은 다른 물건이다** (규격 10.1-1) -- 빼는 쪽에 최소
+노출시간을 넣으면 헤더가 거짓이 된다.  짧게 요청해도 거부하지 않고 눌러 담으며,
+그때 헤더 `EXPTIME` 은 요청값이 아니라 **실현값**이다 (`effective_exptime()`).
 
 **FETCH 는 readout 을 멈추지 않는다** -- 종전 8.9 의 "FETCH 중 정지" 는 GUI
 표시 착시였다 (2026-09-02 실측, science 두 유닛 + GUI 재관측 -- DevNote
