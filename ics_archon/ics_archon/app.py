@@ -44,7 +44,7 @@ from .gaugectl import CMD as GAUGE_CMD, GaugeControl      # noqa: E402
 from .guideexp import CMD as GUIEXP_CMD, GuideExpControl  # noqa: E402
 from .tcsclock import ClockWatch, watch_tc_queries
 from .xischeck import XIS_ID, XisGate         # noqa: E402
-from ics_sim import emitter                                # noqa: E402
+from ics_sim import console, emitter                       # noqa: E402
 from ics_sim.commands import Dispatcher, Reply, ReplyKind  # noqa: E402
 from ics_sim.hardware.base import BackendError             # noqa: E402
 from ics_sim.impv2 import Message                          # noqa: E402
@@ -564,6 +564,31 @@ class IcsArchon(IcsSim):
             print('HKDATA <- %s  %s' % (msg.src, body), flush=True)
         except Exception:                   # noqa: BLE001
             pass
+
+    # -- 콘솔 도움말 ------------------------------------------------------
+
+    def console_help(self):  # noqa: ANN201
+        """기반 명령 + **실기 ICS 의 CCD 조작 명령**  (운영자 지시 2026-09-07).
+
+        ⛔ 표를 손으로 맞추지 않는다 -- `tests/test_console.py` 가 이 목록과
+        `IcsDispatcher` 의 `cmd_*` 를 양방향으로 대조한다.
+        """
+        return console.extend_help(
+            ('CCD 조작 (실기 -- 운영자 명령 넷)', (
+                ('ccdflush [MK|NT|ALL]',
+                 '유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (프레임 없음)'),
+                ('ccdpowon [MK|NT|ALL]',
+                 'CCD 전원 ON -- poweron_wait 뒤에 DONE 이 온다'),
+                ('ccdpowoff [MK|NT|ALL]',
+                 'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
+                ('archon <MK|NT> <원문>',
+                 '컨트롤러 바이패스 -- 응답 원문을 그대로 답한다'),
+            )),
+            ('House Keeping (ICG 에 묻는다)', (
+                ('hk', 'HK 한 줄 -- HKDATA 와 같은 본문'),
+                ('hkdata', '헤더용 HK -- 답은 ICG 가 준다'),
+            )),
+        )
 
     async def start(self) -> None:
         # ⭐ ICG 의 답을 받는 조치를 건다 (DevNote 11.12 F1).  ⚠️ **발신자로

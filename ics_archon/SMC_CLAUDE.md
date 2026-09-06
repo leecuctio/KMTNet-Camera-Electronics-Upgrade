@@ -1506,7 +1506,29 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 
 
-### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.36) — 아래 것들보다 **이것이 최신**
+### ⭐⭐ 2026-09-07 추가분 (DevNote 11.38) — **이것이 최신**
+
+운영자가 다른 세션의 검토 메모를 조치 지시와 함께 넘겼다.  셋 다 *"문서가 시키는 일을 코드가 못 한다"* 였다.
+
+- ⛔ **`>NODE 명령` 이 와이어로 안 나갔다** — 프로세스 안에서 `dispatch.handle()` 을 부를 뿐이라
+  `is_ours` 가 아니면 막혔고, `icg_first_run` 3단계가 시키는 **`ICG>XIS HOSTS` 를 보낼 수단이 아예
+  없었다**.  이제 **우리 노드면 종전대로, 남의 노드면 와이어로**(`console.send_remote`) 간다.
+  ⭐ **`EXEC:` 를 우리가 붙이지 않는다 — 친 문면 그대로**(허브는 `HOSTS`(암묵 REQ)와 `EXEC: REMOVE`
+  를 다르게 다룬다).  곁들여 **ASCII 가드**와 **라우트 없음 통보**(`transport.route_for()` 공개).
+- **배포 ini 둘에 XIS 배선** (운영자: *"127.0.0.1 6660"*) — `xis_host`/`xis_port`.
+  ⭐ `bench_test_plan` 0단계 (c)-1(기동이 `XisUnreachable` 로 죽던 것)이 **닫혔다**.
+  ⚠️ **새 전제**: 벤치에 허브가 없으면 ICS 가 기동에서 멈춘다 → 탈출구는 `require_xis = false` +
+  **양쪽** `xis_host` 비움.  ⛔ 한쪽만 바꾸면 `ICS→ICG` 명령이 조용히 사라진다.
+- ⛔ **콘솔 도움말이 신설 14개를 하나도 안 싣고 `ABORT`·`STOP` 도 빠져 있었다** — 원인은 도움말
+  문자열 하나를 셋이 공유한 것.  이제 **표(절 목록)를 앱이 준다**(`console_help()`), 그리고
+  **`tests/test_console.py` 가 명령표와 양방향 대조**한다 — 명령을 넣고 도움말을 안 고치면 빨개진다.
+  실측 일치: `Dispatcher` 27 · `IcsDispatcher` 33 · `IcgDispatcher` 41.
+- ⚠️ **`ics_sim` 공유층을 또 열었다** (`console.py`·`transport.py`) — 목 지시다.  `_vendor` 동기화 포함.
+- 시험 **`ics_archon` 561 · `ics_sim` 344** 전수 통과 (2026-09-07 실측, deselect 없음).
+  ⚠️ 아래 "지금 상태" 표의 *v1.11 · 514 · `7258aa8`* 는 **낡았다** — 현행은 규격 **v1.12**
+  (태그 `raw-spec-v1.12`) · 시험 **561/344** 다.  ⏳ 그 표의 정정은 검토사항 조치 라운드에서.
+
+### ⭐ 2026-09-06 추가분 (DevNote 11.33~11.36)
 
 ics_archon 전수 통과.  ⚠️ 종전에 *"알려진 flake"* 로 적었던 `test_failures.py::test_shutdown_waits_for_frames_that_are_still_being_saved` 는 **flake 가 아니라 종료 시 프레임을 잃던 회귀**였다 — 2026-09-06 에 고쳤다(시퀀서 `_store_settled`).
 

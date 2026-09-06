@@ -730,7 +730,13 @@ python -m ics_archon
 ```
 
 콘솔에서 `projid ENG` → `dark begin` → `exp 1` → `go`. OBSAgent 없이
-direct-reply 로 전 경로가 돈다.
+전 경로가 돈다.
+
+> ⚠️ **배포 ini 는 허브를 본다** (2026-09-07 운영자 지시) — `xis_host = 127.0.0.1`
+> `xis_port = 6660` 이고 `[archon] require_xis = true` 라 **허브가 없으면 기동에서
+> 멈춘다**. 허브 없이 돌리려면 `require_xis = false` 로 내리고 `xis_host` 를
+> 비운다(direct-reply). ⛔ **ICG 쪽 `xis_host` 도 함께** — 한쪽만 바꾸면
+> `ICS→ICG` 의 `VACGAUGE`·`HKDATA` 가 조용히 사라진다.
 
 > ⚠️ **이 구성은 OBSAgent 규약을 만족하지 못한다** — `Acquisition Complete.` 와
 > `Wrote` 가 4회가 아니라 2회다(CCD 가 둘이니까). 관측 시퀀스 시험은 유닛 2대가
@@ -789,6 +795,41 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
   `LOADPARAMS` 가 flush 한 번을 싣고, `STOP` 뒤에도 꼬리 flush 한 번), science 는 `[archon] ccdflush` 옵션이 기동
   때 1/0 을 쓴다(1 이면 **매 노출 전** Prep+Flush).  호스트가 프레임마다 쓰는 플래그는 없다 (DevNote 11.33).
 * `sim` 백엔드에서는 `ARCHON` 이 `SIM (no controller): <원문>` 을 돌려준다 — 배선 확인용.
+
+## 콘솔 (운영자 지시 2026-09-07)
+
+`[behavior] console = true` 면 stdin 을 읽는다. 타이핑한 명령은 스펙 2.2절 관례대로
+**자기 자신에게 보내는 `EXEC:`** 다. `help` 또는 `?` 로 도움말이 나온다.
+
+⭐ **도움말은 앱마다 다르고 명령표에서 자동으로 검증된다.** `IcsArchon.console_help()`
+· `IcgArchon.console_help()` 가 절 목록을 주고, `tests/test_console.py` 가 그것과
+`Dispatcher` 의 `cmd_*` 를 **양방향**으로 대조한다 — 명령을 새로 넣고 도움말을 안
+고치면 시험이 빨개진다. ⛔ **표의 명령 이름을 손으로 유지하지 말 것.**
+
+### `>NODE 메시지` — 다른 노드로 보내기
+
+```
+>XIS HOSTS              # ICS>XIS HOSTS  -- 허브에 등록된 노드 목록
+>XIS HOST ICG           # 그 노드의 IdleTime 까지
+>TC status              # ICS>TC status
+>K.IC status            # 우리가 받는 노드 -- 프로세스 안에서 처리 (종전 거동)
+```
+
+* **목적지가 우리 노드면**(`ICS`·`K.IC`·`K.CB` …) 종전대로 프로세스 안에서 돈다.
+  **남의 노드면 와이어로 나간다** — `xis_host` 가 있으면 허브가 받아 전달한다.
+  ⛔ 2026-09-07 전에는 남의 노드도 프로세스 안으로 흘려서 *"담당하는 노드가
+  아닙니다"* 로 막혔고, `icg_first_run` 3단계가 시키는 `ICG>XIS HOSTS` 를 **보낼
+  수단이 아예 없었다**.
+* ⭐ **친 문면을 그대로 싣는다** — `EXEC:` 를 우리가 붙이지 않는다. 남의 노드의
+  어휘를 감싸면 뜻이 달라진다(`>XIS HOSTS` 는 타입 토큰 없는 암묵 REQ 이고, 같은
+  허브 명령표의 `REMOVE` 는 `EXEC:` 가드가 있다). `ARCHON <원문>` 과 같은 성격의
+  바이패스다.
+* ⛔ **ASCII 전용** — 한글은 `?` 로 바뀌어 상대가 못 읽으므로 보내기 전에 거절한다
+  (규약 7-1).
+* ⚠️ **답은 프롬프트가 아니라 로그로 온다** (`보고 수신 (조치 없음) -- …`).
+  `python -u -m ics_archon 2>&1 | tee` 처럼 stderr 를 함께 잡을 것.
+* 길이 없으면(`xis_host` 가 비었고 그 노드에게서 아직 아무것도 못 받았다)
+  **버려지기 전에 알린다** — 종전 transport 는 조용히 버렸다.
 
 ## 관련 문서
 

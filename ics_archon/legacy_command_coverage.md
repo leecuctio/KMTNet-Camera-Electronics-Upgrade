@@ -25,7 +25,7 @@
 
 ⭐ **remote 와 console 을 나누지 않는다** — `Console.feed()` 가 입력을
 `<ICS>><ICS> EXEC: <입력>` 으로 만들어 remote 와 **같은 디스패처**로 넘기므로
-(`ics_sim/ics_sim/console.py:77-93`), 판정 기준은 *"어느 쪽에서 되나"* 가 아니라
+(`ics_sim/ics_sim/console.py` 의 `Console.feed()`), 판정 기준은 *"어느 쪽에서 되나"* 가 아니라
 **"명령표에 등록됐나"** 다.  ⚠️ 예외는 `feed()` 가 디스패치 **전에** 채가는 넷뿐이다
 (`quit`·`exit`·`help`·`?`) — 아래 "console 전용" 절.
 
@@ -67,7 +67,7 @@
 
 | 명령 | 레거시 | 현행 |
 |---|---|---|
-| `QUIT` · `EXIT` | console 전용 | ✅ console 전용 — `console.py:66-71` 이 디스패치 전에 채간다 |
+| `QUIT` · `EXIT` | console 전용 | ✅ console 전용 — `Console.feed()` 머리가 디스패치 전에 채간다 |
 | `HELP` · `?` | console 전용 | ✅ console 전용 — 〃 |
 
 레거시의 나머지 console 전용 일가(`HISTORY`·`INFO`·`CBSTATUS`·`+ARCHIVE`·`+AUTOLOG`
@@ -83,7 +83,7 @@
 | 명령 | 노드 | 인자 | 용도 | 노트 (이유·근거) |
 |---|---|---|---|---|
 | **(판정 기준)** | 공통 | - | 핸들러 유무가 판정선 — 이름으로 getattr 해서 cmd_* 가 있으면 되고 없으면 거절 | 구현됨 — 원안 그대로 맞아. [검증: `grep -rn "def cmd_" --include=*.py` 워크트리 전수 재실행. 기반 29(ics_sim/ics_sim/commands.py) + ics_archon 7(app.py) + icg_archon 16(commands.py) = 원안과 한 개도 안 어긋나. impv2.py:107 `def cmd_is` 는 Message 메서드라 디스패처 표가 아니고, tools/scan_legacy_logs.py:97 `cmd_slot` 은 접두가 달라. 상속도 확인 — ics_archon/ics_archon/app.py:163 `class IcsDispatcher(Dispatcher)` · icg_archon/commands.py:131 `class IcgDispatcher(sim_commands.Dispatcher)`. 벤더본은 `diff -rq ics_sim/ics_sim/ ics_archon/ics_archon/_vendor/ics_sim/` 결과 __pycache__/.pytest_cache 말고 차이 0건이라 판정 무영향] |
-| **>NODE <명령>** | console 전용 문법 | `>K.IC status` | 콘솔에서 **우리 프로그램이 담당하는** 내부 노드를 골라 넘기는 문법 | 구현됨 — 판정은 맞는데 ⛔ **purpose 설명이 틀렸어. '특정 노드로 보내기' 가 아니야.** [검증: console.py:77-93 전문 열람. 조립한 줄은 **와이어로 안 나가** — `dispatch.handle()` 을 프로세스 안에서 직접 부를 뿐이야. 게다가 :90-92 가 목적지를 `router.resolve()` 로 풀어 `is_ours` 가 아니면 **거절하고 끝내**. `Target.is_ours`(nodes.py:49-51)는 ICS·IC·CB 뿐이라 `>XIS HOSTS`·`>TC AUXSTATUS`·`>ICG VACGAUGE OFF` 는 전부 *"담당하는 노드가 아닙니다"* 로 막혀. ⭐ 그러니 원안의 *"remote 로 임의 발신을 시킬 수 없다"* 는 **약한 서술이고, 사실은 console 로도 임의 발신을 못 해** — 레거시 CB 의 `>{host} {msg}` 능력은 재현되지 않았어. 이게 위 `HOSTS`·`TIME` 항목이 막히는 이유이기도 해] |
+| **>NODE <명령>** | console 전용 문법 | `>K.IC status` · `>XIS HOSTS` | 콘솔에서 노드를 골라 보내는 문법 | ✅ **구현됨 (2026-09-07 개정)** — 이제 **두 갈래다.** 목적지가 **우리가 받는 노드**면(`router.owns`) 종전대로 프로세스 안에서 `dispatch.handle()`, **남의 노드면 와이어로** (`Console.send_remote()`). ⭐ **`EXEC:` 를 우리가 붙이지 않는다** — 친 문면 그대로 싣는다. 허브가 `HOSTS`(암묵 REQ)와 `EXEC: REMOVE` 를 다르게 다루기 때문이다. 곁들여 ASCII 가드와 라우트 없음 통보(`transport.route_for()`)가 붙었다. ⛔ **개정 전에는** 조립한 줄이 와이어로 안 나가고 `is_ours` 가 아니면 거절해서 `>XIS …`·`>TC …`·`>ICG …` 가 전부 막혔다 — 레거시 CB 의 `>{host} {msg}` 능력이 재현되지 않았던 것이고, 그것이 `HOSTS` 항목이 막히던 이유이기도 하다 (DevNote 11.38) |
 | **ABORT** | ICS·ICG | 없음 | 취득 전체 중지 (독출·저장 안 함) | 구현됨 — 원안 맞아. [검증: 531-550 본문·docstring 직접 열람. 레거시 PAP7KX.CMD:291-302 분기 인용과 거부 문구 일치, 저장 태스크 정리·시퀀서의 `DONE: EXPSTATUS=IDLE` 설명도 docstring 그대로]. ⚠️ 원안에 없던 것 하나 — 이 명령은 **콘솔 도움말에 안 나와**(아래 `help / ?` 항목) |
 | **ACQSTATUS** | ICS·ICG | 없음 | IC 들의 연결·초기화 상태를 한 줄로 집계 | 구현됨 — 원안 맞아, ICS/ICG 분기 재현 주장까지 확인했어. [검증: ics_archon/ics_archon.ini:36 `ic_ids = K.IC, M.IC, T.IC, N.IC`(4대) · ics_archon/icg_archon.ini:12 `ic_ids = G.IC`(1대) 둘 다 열어 대조]. ⚠️ 값이 늘 `READY` 고정이라 실제 상태를 안 묻는 것도 :187 그대로 맞아 |
 | **AUXSTATUS** | ICS·ICG (발신 전용) | - | 보조 장비(필터·초점·환경) 텔레메트리 질의 → IC 중계 | 구현됨(발신) — 원안 맞아, 줄번호도 정확해. [검증: sequencer.py:292-332 열람 — :297 aux_query 를 국면 1 에서 먼저 띄우고 `await asyncio.sleep(0)` 로 실제 발신 순서를 맞춰. ICG 는 icg_archon/sequencer.py:248-249 에서 aux·tcs 를 `backend.prepare()` **앞에** 나란히 띄워 원안 서술대로야]. ⚠️ 위 TCSSTATUS 와 같은 정정 — TC 의 답은 `DONE:` 이고 app.py:311-314 가 가로채, `STATUS:` 는 우리가 IC 들에게 뿌리는 중계 방향이야 |
@@ -95,7 +95,7 @@
 | **DONE:** | 공통 | `<본문>` | IMPv2 완료 응답 수신 처리 (메시지 타입) | 구현됨 — 원안 맞아. [검증: impv2.py:40 · app.py:326-352 전 구간 열람. 보고 갈래는 :349-352 `log.info('보고 수신 (조치 없음) -- …')` 로 끝나 어떤 경우에도 답을 안 보내]. ⭐ 원안에 없던 사실: **실제로 등록된 조치는 딱 둘** — ics_archon/ics_archon/app.py:572-573 `for word in ('HK','HKDATA'): self.register_report('DONE', word, self._on_hkdata)`. 워크트리 전체에서 `register_report` 호출은 이 한 자리뿐이라, ICG 쪽은 등록된 조치가 0개야 |
 | **ERASE** | ICS·ICG·IC | 없음 | CCD flushing (master 채널에서만) | 구현됨 — 원안 맞아. [검증: 400-409 전문 열람. ICG 의 sim 스텁 경고도 icg_archon/app.py:52 로 확인] |
 | **ERROR:** | 공통 | `<본문>` | IMPv2 에러 알림 수신 처리 (메시지 타입) | 구현됨 — 원안 맞아. [검증: 위 DONE: 과 같은 구간]. ⭐ 덧붙일 것: ics_archon 은 ICG 의 `ERROR:` 를 **_on_message 에서 따로 엿들어** 게이지·노출잠금 데드맨을 푼다(ics_archon/ics_archon/app.py:653-667 `for ctl, word in ((self.gauge, GAUGE_CMD), (self.guideexp, GUIEXP_CMD)) … ctl.note_reply(msg.raw)`) — 명령 처리부가 아니라 수신 훅이야 |
-| **EXEC:** | 공통 | `<명령문>` | 콘솔 입력을 명령으로 넘기는 메시지 타입 | 구현됨 — 원안 맞아. remote·console 을 같은 표로 모으는 이음매가 이거라는 것도 확인했어. [검증: console.py:77-93 전문 + app.py:326-328]. ⚠️ 다만 콘솔 입력은 `app._on_message` 를 **안 지나고** `dispatch.handle` 을 직접 불러(console.py:93) — 자기 에코 걸러내기·브로드캐스트 중복 제거가 안 걸리는 경로야 |
+| **EXEC:** | 공통 | `<명령문>` | 콘솔 입력을 명령으로 넘기는 메시지 타입 | 구현됨 — 원안 맞아. remote·console 을 같은 표로 모으는 이음매가 이거라는 것도 확인했어. [검증: `Console.feed()` 전문 + `app.py` 의 `_on_message` 보고 갈래]. ⚠️ 다만 콘솔 입력은 `app._on_message` 를 **안 지나고** `dispatch.handle` 을 직접 불러 — 자기 에코 걸러내기·브로드캐스트 중복 제거가 안 걸리는 경로야 |
 | **EXP** | ICS·ICG | `EXP [<초>]` | 노출시간(EXPTIME) 조회·설정 | 구현됨 — 원안 맞고 ICS·ICG 갈림도 확인했어. [검증: icg_archon/commands.py:163-171 전문 열람 — BIAS 가드가 정말 없고 `if arg: st.exptime = float(arg)` 뒤 곧장 `Reply.done('EXP', 'ExpTime=%g seconds.' % st.exptime)`. docstring 이 `_image_type` 과 같은 이유라고 명시] |
 | **EXPNUM** | ICS·ICG | `EXPNUM [<n>]` | 파일 일련번호 조회·설정 | 구현됨 — 원안 맞아. [검증: 215-249 전문 열람. docstring 이 OBSAgent 가 `Filename=` 뒤 **정확히 15자**를 잘라 쓴다는 것과 D-018 이 D-016 상한 `099999` 를 대체했다는 것까지 적어 뒀어. 6자리 통일 서술도 그대로] |
 | **FATAL:** | 공통 | `<본문>` | IMPv2 치명 오류 알림 수신 처리 (메시지 타입) | 구현됨(수신) — 원안 맞아. [검증: MSG_TYPES 에 `'FATAL:'` 있음 확인]. 발신 대응물 없다는 것도 grep 으로 확인 — UDP 전환으로 UART 버퍼 폭주 상황 자체가 사라졌어 |
@@ -180,7 +180,7 @@
 | **ECHO** | ICS·ICG | `<문자열>`(추정) | 용도 미상 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **END** | ICS·ICG | 미상 | 종료 계열로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **ESTATUS** | ICS·ICG | 미상 | exposure status 축약으로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
-| **EXIT** | ICS·ICG | 없음 | 프로그램 종료 | 미구현(remote) / 구현됨(console) — 원안 맞아. [검증: console.py:66-76 `feed()` 머리 열람. `low = line.lower()` 뒤 문자열 비교로 먼저 채가서 :83 의 wire 조립까지 못 가]. 문서에 이 축소를 결정한 기록이 없다는 것도 grep 으로 재확인 |
+| **EXIT** | ICS·ICG | 없음 | 프로그램 종료 | 미구현(remote) / 구현됨(console) — 원안 맞아. [검증: `Console.feed()` 머리 열람. `low = line.lower()` 뒤 문자열 비교로 먼저 채가서 wire 조립까지 못 가]. 문서에 이 축소를 결정한 기록이 없다는 것도 grep 으로 재확인 |
 | **EXPO** | ICS·ICG | 미상 | EXP 별칭으로 짐작 (GEXPO 의 과학판) | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **EXPSTATUS** | ICS·ICG | 미상 | 노출 상태 질의로 짐작 | 미구현 — 원안 맞아. [검증: emitter.py:79 `_BODY_CMDWORD` 표에서 `EXPSTATUS=` 본문은 커맨드워드가 **빈 문자열이어야** 정상이라고 못박아 뒀어 — 명령 낱말이 아니라 비동기 알림 본문이라는 뜻이라 원안의 '헷갈리기 쉬운 자리' 경고가 맞아] |
 | **EXPTIME** | ICS·ICG | `<초>` | 노출시간 설정 (EXP 별칭) | 미구현 — 원안 유지. [검증: 핸들러 부재 + :281 응답 필드 확인] |
@@ -190,7 +190,7 @@
 | **GEXPTIME** | ICS·ICG | `<초>`(추정) | 가이드 노출시간 | 미구현 — 원안 유지. 실기능은 `GUIDEEXP` 가 대신해. [검증: 핸들러 부재] |
 | **GOQUIET** | ICS·ICG | 없음 \| `<n>`(추정) | 진행 보고 없는 GO 로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **GUIDEENABLE** | ICS·ICG | 미상 | 가이드 계통 활성화로 짐작 | 미구현 — 원안 맞아, 신중한 판단이 옳았어. [검증: ics_legacy/IC_commands_R20220302.pdf 본문에서 `GUIDEENABLE` **0회** — 문서 쪽에도 설명이 없어 무엇을 했는지 여전히 모르는 상태 그대로야. 신설 `EXPENABLE` 은 icg_archon/commands.py:20 주석이 *"추가 (운영자 확정 2026-09-03)"* 라고 못박아 레거시 계승이 아님을 명시하고 있어. 둘을 같은 것으로 볼지는 운영자 몫이라는 원안 결론 유지] |
-| **HOSTS** | ICS·ICG | 없음 | 알고 있는 호스트 목록 반환 | 미구현 — 원안 맞고, ⭐ **한 겹 더 나빠**. [검증: `grep -rn "HOSTS" --include=*.py` 워크트리 전체 **0건** — 받는 핸들러가 없는 건 물론이고 **보내는 코드도 없어**. 게다가 콘솔로도 못 보내 (아래 `>NODE` 항목 참고 — console.py:90-92 가 `target.is_ours` 아닌 목적지를 거절해서 `>XIS HOSTS` 가 안 나가). 즉 DevNote:3625 *"첫 구동 확인에 쓴다"* 는 계획에 **구현 경로가 하나도 없어**. 지금 이 워크트리에서 실제로 보낼 수 있는 유일한 수단은 별도 도구 `ics_sim/tools/xis_probe.py`(:59 `sock.sendto((line + '\r').encode('latin-1'), dest)`) 야] |
+| **HOSTS** | ICS·ICG | 없음 | 알고 있는 호스트 목록 반환 | ⭐ **받는 쪽은 미구현이 맞고, 그것이 정상이다** (2026-09-07 정정). `HOSTS` 는 **허브(XIS)의 명령**이고 우리는 **보내는 쪽**이라, 받는 핸들러가 없는 것은 결함이 아니다 — `grep` 0건을 *"구현이 빠졌다"* 로 읽었던 것이 방향 착오였다. 진짜 결함은 **보낼 통로**였고 2026-09-07 에 닫혔다: 콘솔 `>XIS HOSTS` 가 `ICG>XIS HOSTS` 로 나간다(`Console.send_remote()`), 목적지는 배포 ini 의 `xis_host`/`xis_port`(127.0.0.1:6660). `icg_first_run` 3단계가 그 절차다. 별도 도구 `ics_sim/tools/xis_probe.py` 는 허브 없이 프로브만 띄울 때 그대로 쓴다 (DevNote 11.38) |
 | **ICSTATUS** | ICS·ICG | 미상 | IC 상태 질의로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **LEDOFF** | ICS·ICG | 없음 | LED 끄기 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **LEDON** | ICS·ICG | 없음(추정) | LED 켜기 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
@@ -203,7 +203,7 @@
 | **PORTS** | ICS·ICG | 없음 | 통신 포트 목록·상태 반환 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **PROPID** | ICS·ICG | `<id>`(추정) | proposal ID | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **QUIET** | ICS·ICG | 없음 | 출력 억제 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
-| **QUIT** | ICS·ICG | 없음 | 프로그램 종료 | 미구현(remote) / 구현됨(console) — 원안 맞아. [검증: console.py:69-71] |
+| **QUIT** | ICS·ICG | 없음 | 프로그램 종료 | 미구현(remote) / 구현됨(console) — 원안 맞아. [검증: `Console.feed()` 머리의 문자열 비교] |
 | **READMAP** | ICS·ICG | 미상 | readout 맵으로 짐작 | 미구현 — 원안 유지. READSEQ·ZEROMAP·ZEROSEQ 와 4종 세트가 통째로 없어. [검증: 핸들러 부재] |
 | **READSEQ** | ICS·ICG | 미상 | readout 시퀀스 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **RECID** | ICS·ICG | 미상 | 용도 미상 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
@@ -239,16 +239,17 @@
 
 ---
 
-## ⏳ 다음 세션으로 이월 — 이 대조에서 나온 결함 셋
+## ✅ 이 대조에서 나온 결함 셋 — **다 닫혔다** (2026-09-07, 운영자 조치 지시)
 
 운영자 확정 2026-09-06: *"⛔ 내일 시험에 걸리는 결함 셋에 대해서는 다음 세션에서
-검토하여 반영할게."*
+검토하여 반영할게."* → 2026-09-07 에 조치 지시와 함께 반영했다.  경위는
+[`DevNote.md`](DevNote.md) **11.38**.
 
-| # | 무엇 | 근거 | 무게 |
-|---|---|---|---|
-| 1 | ⛔ **`ICG>XIS HOSTS` 를 보낼 수단이 없다** | `grep -rn "HOSTS" --include=*.py` **0건** — 받는 핸들러도 **보내는 코드도** 없다.  콘솔 `>XIS HOSTS` 도 아래 2번에 막힌다.  실제로 보낼 수 있는 것은 별도 도구 `../ics_sim/tools/xis_probe.py` 뿐 | [`icg_first_run.md`](icg_first_run.md) **3단계**가 이 명령으로 *"허브가 아는 노드"* 를 확인하라고 적어 두었다 — **구현 경로가 하나도 없다** |
-| 2 | ⛔ **`>NODE <명령>` 이 설명과 다르다** | `console.py:77-93` — 조립한 줄이 **와이어로 안 나간다**.  프로세스 안에서 `dispatch.handle()` 을 부를 뿐이고, `:90-92` 가 `router.resolve()` 로 풀어 `is_ours` 가 아니면 거절한다.  `Target.is_ours`(`nodes.py:49-51`)는 ICS·IC·CB 뿐 | `>XIS …` · `>TC …` · `>ICG …` 가 전부 *"담당하는 노드가 아닙니다"* 로 막힌다.  **"`>NODE` 를 진짜 remote 발신으로 만들 것인가"** 는 설계 결정이다 |
-| 3 | ⛔ **콘솔 도움말이 낡았다** | `console.py:22-38` `_HELP` — 신설 **14 낱말**(`HK`·`HKDATA`·`VACGAUGE`·`HTRSET`·`HTRFORCE`·`HTRRAMP`·`HTRPID`·`EXPENABLE`·`RADIONODE`·`GUIDEEXP`·`CCDFLUSH`·`CCDPOWON`·`CCDPOWOFF`·`ARCHON`)이 하나도 없고, **기반 명령 `ABORT`·`STOP` 도 빠져 있다** | 명령이 되는데 **찾을 수가 없다.**  명령표에서 도움말을 **생성**하게 고치면 다시는 어긋나지 않는다 |
+| # | 무엇이었나 | 조치 |
+|---|---|---|
+| 1 | ⛔ **`ICG>XIS HOSTS` 를 보낼 수단이 없다** — `grep -rn "HOSTS"` 0건, 콘솔도 2번에 막힘 | ✅ **닫힘.**  ⭐ 먼저 방향을 바로잡았다 — `HOSTS` 는 **허브의 명령**이고 우리는 보내는 쪽이라 `grep` 0건은 당연했다.  진짜 결함은 **통로**였고 그것이 2번이다.  운영자 조치 *"ICS/ICG INI에 XIS 정보 넣어줘. 127.0.0.1 6660"* → 배포 ini 둘에 `xis_host`/`xis_port`.  ⭐ 곁가지로 `bench_test_plan` 0단계 (c)-1(기동이 `XisUnreachable` 로 죽던 것)도 닫혔다 |
+| 2 | ⛔ **`>NODE <명령>` 이 와이어로 안 나갔다** — `is_ours` 가 아니면 거절 | ✅ **닫힘.**  운영자 조치 *"XIS로 메시지 보내도록. ICIMACS 규약에 따라 `ICS>TC ...`, `ICG>TC ...` 이런 식으로."*  **두 갈래로 갈랐다** — 우리가 받는 노드면 종전대로 프로세스 안, 남의 노드면 `console.send_remote()` 로 와이어.  ⭐ **`EXEC:` 를 우리가 붙이지 않는다**(친 문면 그대로) — 허브가 `HOSTS`(암묵 REQ)와 `EXEC: REMOVE` 를 다르게 다루기 때문이다.  곁들여 ASCII 가드 · 라우트 없음 통보(`transport.route_for()` 공개) |
+| 3 | ⛔ **콘솔 도움말이 낡았다** — 신설 14 낱말 0건, `ABORT`·`STOP` 누락 | ✅ **닫힘.**  ⭐ 원인은 *"도움말 문자열 하나를 세 앱이 공유"* 였다.  이제 **표(절 목록)를 앱이 준다**(`console_help()`).  ⚠️ **제안했던 "명령표에서 생성" 은 안 골랐다** — docstring 첫 줄은 **와이어 문법(대문자)** 이고 마크다운 강조·이모지가 섞여 있어 콘솔 문법(소문자·인자 표기)과 다르다.  대신 **`tests/test_console.py` 가 양방향 대조**해 같은 보장을 준다: `Dispatcher` 27 · `IcsDispatcher` 33 · `IcgDispatcher` 41 이 도움말과 완전 일치(면제는 `ping`/`pong`) |
 
 ### 곁들여 — 지금 안 울지만 언젠가 우는 자리
 
@@ -258,6 +259,7 @@
 옮기면 그 순간부터 `unknown_cmdword` 가 난다.
 (2026-09-06 에 신설한 `HK`·`HKDATA` 는 등록해 두었다.)
 
-⚠️ **콘솔 입력은 `app._on_message` 를 지나지 않는다** (`console.py:93` 이
-`dispatch.handle()` 을 직접 부른다) — 자기 에코 걸러내기·브로드캐스트 중복 제거가
+⚠️ **콘솔 입력은 `app._on_message` 를 지나지 않는다** (`Console.feed()` 가
+`dispatch.handle()` 을 직접 부른다.  ⭐ 2026-09-07 에 연 원격 갈래 `send_remote()` 도
+`transport.send()` 를 직접 부르므로 마찬가지다) — 자기 에코 걸러내기·브로드캐스트 중복 제거가
 그 경로에는 안 걸린다.

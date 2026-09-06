@@ -52,13 +52,15 @@
 
 | # | 무엇 | 근거 | 해야 할 것 |
 |---|---|---|---|
-| 1 | ⛔ **`ics_archon` 이 기동에서 죽는다** | 배포 `ics_archon.ini` 가 `require_xis = true`(274행) 인데 `xis_host` 는 **비어 있다**(44행).  `xischeck.py:100` 이 `XisUnreachable` 을 던진다 | 벤치 ini 에서 **`xis_host` 를 적거나 `require_xis = false`** 로.  ⛔ 코드는 자동으로 직결로 안 넘어간다 (11.15 확정) |
-| 2 | ⚠️ **ICS 는 허브를 요구하는데 ICG 는 안 쓴다** | `require_xis`·`XisGate` 는 `[archon]` 소관이라 **ICG 에 아예 없다**(`grep` 0건).  `icg_archon.ini:37` 은 `#xis_host` 주석 = direct-reply | 둘을 **같은 모드로** 맞춘다.  안 맞추면 `ICS→ICG` 의 `VACGAUGE OFF`·`HKDATA` 가 허브에서 버려진다 |
+| 1 | ✅ **닫혔다 (2026-09-07, 운영자 지시)** | 종전엔 배포 `ics_archon.ini` 가 `require_xis = true` 인데 `xis_host` 가 **비어 있어** `xischeck.py:100` 이 `XisUnreachable` 을 던졌다 | 이제 배포 ini 가 **`xis_host = 127.0.0.1` · `xis_port = 6660`** 이다.  ⚠️ **허브가 다른 호스트면 그 IP 로 바꾼다** — 그대로 두면 로컬에 허브가 없을 때 기동이 멈춘다(`require_xis = false` 로 내리는 것이 그때의 탈출구다).  ⛔ 코드는 자동으로 직결로 안 넘어간다 (11.15 확정) |
+| 2 | ⚠️ **ICS 는 허브를 요구하는데 ICG 엔 그 검사가 없다** | `require_xis`·`XisGate` 는 `[archon]` 소관이라 **ICG 에 아예 없다**(`grep` 0건) — ICG 는 `xis_host` 가 비어도 조용히 뜬다 | 배포 ini 둘 다 `127.0.0.1:6660` 으로 맞춰 뒀다 (2026-09-07).  ⛔ **한쪽만 바꾸지 말 것** — 안 맞추면 `ICS→ICG` 의 `VACGAUGE OFF`·`HKDATA` 가 허브에서 버려지고, 그 실패가 조용하다 |
 | 3 | ⛔ **`~/AIC/etc/…` 는 아무도 안 읽는다** | `DEFAULT_INI = 'ics_archon.ini'` — **실행 디렉터리 기준 상대경로**다.  `~/AIC/etc` 를 읽는 코드가 `grep` 0건 | 자격증명을 그 파일에 적었으면 **`-c ~/AIC/etc/icg_archon.ini` 로 명시**하거나 그 디렉터리에서 실행한다.  안 그러면 `RADIONODE CONNECT` 가 *"자격증명 없음"* 으로 거절하고, 운영자는 **콘솔 값이 틀린 줄 오해한다** |
 | 4 | ⚠️ **짝이 안 맞는 ACF 는 `IP=` 까지 밀어 넣는다** | ACF 안에 `IP=10.0.0.162`(guide)·`IP=10.0.0.113`(science)가 있고, `apply_acf()` 는 **전 키를 `WCONFIG`** 한다 — `IP` 를 거르는 코드가 없다 | 유닛과 ACF 짝을 **적용 전에 눈으로** 대조한다.  ⚠️ `APPLYALL` 만으로 IP 가 바뀌지는 않는 것으로 보이나(`APPLYNET` 이 따로다) **확인된 바 없다** — `FLASHACTIVECONFIG`·`REBOOT` 가 뒤따르면 굳는다 |
 
-⭐ **1·2 는 한 줄로 정리된다** — 첫 구동은 **둘 다 허브 없이**(ICS `require_xis = false`,
-ICG `xis_host` 비움) 돌려 취득 경로만 가르고, 허브 연동은 그 뒤에 **둘을 함께** 붙인다.
+⭐ **1·2 는 한 줄로 정리된다** — 배포 ini 는 이제 **둘 다 허브를 본다**(`127.0.0.1:6660`).
+벤치에 허브가 없으면 **둘을 함께 내린다** (ICS `require_xis = false` + 양쪽 `xis_host` 비움) —
+그러면 취득 경로만 가를 수 있다.  ⛔ **한쪽만 바꾸면 `ICS→ICG` 명령이 조용히 사라진다.**
+⚠️ 허브를 내린 동안은 콘솔의 `>NODE 메시지`(예 `>XIS HOSTS`)도 못 나간다.
 
 ---
 

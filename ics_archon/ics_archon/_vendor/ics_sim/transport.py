@@ -125,10 +125,16 @@ class UdpEndpoint:
         self.sent_log.append(line)
         if self.cfg.logging.wire:
             log.info('>>> %s', line)
-        self._queue.put_nowait((payload, self._resolve(dest_node), dest_node))
+        self._queue.put_nowait((payload, self.route_for(dest_node), dest_node))
 
-    def _resolve(self, dest_node: str) -> Addr | None:
-        """dest_node 를 실제 UDP 주소로."""
+    def route_for(self, dest_node: str) -> Addr | None:
+        """dest_node 를 실제 UDP 주소로.  없으면 `None`(발신이 버려진다).
+
+        ⭐ 공개 이름인 것은 **보내기 전에 물어볼 수 있어야** 하기 때문이다 --
+        콘솔의 `>NODE 메시지` 가 그렇다 (버려지는 것을 사람에게 알린다).
+        ⚠️ `xis_addr` 이 설정돼 있으면 **늘 주소가 나온다** — 허브가 살아 있는지는
+        이 함수가 모른다.
+        """
         xis = self.cfg.transport.xis_addr
         if xis is not None:
             return xis

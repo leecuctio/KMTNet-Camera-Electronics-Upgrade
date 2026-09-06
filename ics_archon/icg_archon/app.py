@@ -24,6 +24,7 @@ from ics_archon import _simpath
 
 _simpath.ensure()
 
+from ics_sim import console  # noqa: E402
 from ics_sim.app import IcsSim  # noqa: E402
 
 from . import build_id, guidehdr  # noqa: E402
@@ -75,6 +76,46 @@ class IcgArchon(IcsSim):
         self.seq = GuideSequencer(cfg, icfg, self.state, self.emit,
                                   self.telem, self.guide, self.hk)
         self.dispatch = icg_commands.IcgDispatcher(self)
+
+    # -- 콘솔 도움말 --------------------------------------------------------
+
+    def console_help(self):  # noqa: ANN201
+        """기반 명령 + **guide 몫**  (운영자 지시 2026-09-07).
+
+        ⚠️ 기반 절의 IC 레벨 명령(`shopen` 등)은 상속으로 **살아 있다** --
+        guide 에는 셔터가 없지만 응답은 하므로 감추지 않는다.
+        ⛔ 표를 손으로 맞추지 않는다 -- `tests/test_console.py` 가 이 목록과
+        `IcgDispatcher` 의 `cmd_*` 를 양방향으로 대조한다.
+        """
+        return console.extend_help(
+            ('guide 취득', (
+                ('guideexp <sec>', '가이드 노출시간 = 독출 개시 간격'),
+                ('expenable [on|off]', '노출 잠금 -- 인자 없으면 조회'),
+            )),
+            ('CCD 조작 (실기)', (
+                ('ccdflush',
+                 '유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (프레임 없음)'),
+                ('ccdpowon', 'CCD 전원 ON -- poweron_wait 뒤에 DONE'),
+                ('ccdpowoff', 'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
+                ('archon <원문>',
+                 '컨트롤러 바이패스 -- guide 는 한 대라 태그가 없다'),
+            )),
+            ('듀어 히터 (⛔ 안전 봉투는 bench_test_plan.md)', (
+                ('htrset [<0|1> <degC>]', 'Enable + 목표온도 -- 인자 없으면 조회'),
+                ('htrforce [<0|1> <V>]',
+                 '⛔ 강제 출력 (PID 우회 -- HEATERALIMIT 이 안 걸린다)'),
+                ('htrramp [<0|1> <mK/update>]', '목표온도 램프'),
+                ('htrpid [<P> <I> <D>]', 'PID 게인 셋'),
+            )),
+            ('House Keeping', (
+                ('hk', 'HK 한 줄 -- HKDATA 와 같은 본문'),
+                ('hkdata', 'ICS 가 헤더를 채우려고 묻는 것'),
+                ('vacgauge [on|off]', '이온게이지 -- 인자 없으면 조회'),
+                ('radionode [<하위명령> [장치]]',
+                 'status | connect | disconnect | reconnect | enable | '
+                 'disable -- 장치 이름이 없으면 폴링 자체'),
+            )),
+        )
 
     # -- 수명 ---------------------------------------------------------------
 

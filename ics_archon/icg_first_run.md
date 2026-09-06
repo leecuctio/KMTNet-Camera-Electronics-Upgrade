@@ -117,8 +117,8 @@ python3 -u -m icg_archon 2>&1 | tee icg_boot.log
 | 콘솔 `radionode status` | `off` | |
 | `age_ms`/`lag_ms` | 첫 감시 로그에서 어떤 값인가 — `monitor_interval` 기본값의 근거 | |
 | 포트 | `bind_port=6601` 로 떴나 (`ICS 몫` 경고가 없어야 한다) | |
-| 노드 등록 | `xis_host` 를 비웠으면 direct-reply 라 허브 왕복이 **없는 것이 정상**이다.  허브에 붙였다면 `ICG`·`G.IC`·`G.CB` 세 이름의 등록 PING 이 나가고, 허브가 `G.IC` 를 모르면 `ERROR: No Route to Destination Host G.IC` 가 온다 (레거시에도 있던 실패 사례) | |
-| ⭐ 허브가 아는 노드 | 허브에 붙였을 때만.  **`ICG>XIS HOSTS`** 를 보내면 `DONE: HOST numHosts=… host0=… ` 로 등록된 노드가 다 온다 — 거기 **`ICG`·`G.IC`·`G.CB` 셋이 보이는지**가 등록이 됐다는 직접 확인이다 (허브의 노드 표는 **순전히 동적**이라 노드가 뭘 보내기 전엔 모른다).  `HOST ICG` 는 `IdleTime` 까지 준다 — HK 보고가 끊겼을 때 *ICG 가 죽었나 / 링크가 죽었나* 를 가르는 값이다.  ⚠️ 읽기 전용이지만 같은 명령표의 **`REMOVE <ID>` 는 `EXEC:` 가드가 없다** — 실수로 보내면 그 노드가 허브 표에서 빠진다 | |
+| 노드 등록 | 배포 ini 는 이제 **`xis_host = 127.0.0.1` · `xis_port = 6660`** 이다 (운영자 2026-09-07).  `ICG`·`G.IC`·`G.CB` 세 이름의 등록 PING 이 나가고, 허브가 `G.IC` 를 모르면 `ERROR: No Route to Destination Host G.IC` 가 온다 (레거시에도 있던 실패 사례).  ⚠️ 허브가 다른 호스트면 그 IP 로 바꾼다.  비우면 direct-reply 라 허브 왕복이 **없는 것이 정상**이고, 그때는 아래 `>XIS HOSTS` 도 *"가는 길이 없습니다"* 로 거절된다 | |
+| ⭐ 허브가 아는 노드 | 콘솔에 **`>XIS HOSTS`** 를 친다 — 그것이 `ICG>XIS HOSTS` 로 나간다 (2026-09-07 신설.  ⛔ 종전에는 `>NODE` 가 와이어로 안 나가서 **보낼 수단이 없었다**).  답 `DONE: HOST numHosts=… host0=… ` 에 **`ICG`·`G.IC`·`G.CB` 셋이 보이는지**가 등록됐다는 직접 확인이다 (허브의 노드 표는 **순전히 동적**이라 노드가 뭘 보내기 전엔 모른다).  `>XIS HOST ICG` 는 `IdleTime` 까지 준다 — HK 보고가 끊겼을 때 *ICG 가 죽었나 / 링크가 죽었나* 를 가르는 값이다.  ⚠️ 답은 콘솔 프롬프트가 아니라 **로그로** 온다(`보고 수신 (조치 없음) -- XIS>ICG DONE: HOST …`) — 위 실행법의 `2>&1 | tee` 가 그것을 잡는다.  ⚠️ 읽기 전용이지만 같은 명령표의 **`REMOVE <ID>` 는 `EXEC:` 가드가 없다** — 실수로 보내면 그 노드가 허브 표에서 빠진다 | |
 
 ## 3.5단계 — 운영자 명령 넷 (전원 · flush · 바이패스) — 2026-09-05 신설
 

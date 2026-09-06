@@ -25,6 +25,23 @@
 | [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) | 레거시 원본 동작이 궁금할 때 |
 | [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) | OBSAgent 쪽 사정이 궁금할 때 |
 
+## ⚠️ 콘솔이 열렸다 (2026-09-07, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.38**
+
+이 폴더의 `console.py`·`transport.py` 를 **`ics_archon` 세션이 고쳤다**(규약 위반이 아니라
+목 지시로 연 것이다).  `ics_archon`·`icg_archon` 이 같은 `Console` 을 쓰기 때문이다.
+
+* **`>NODE 메시지` 가 두 갈래다** — 목적지가 우리가 받는 노드면 종전대로 프로세스 안,
+  **남의 노드면 와이어로**(`Console.send_remote`).  ⛔ 종전엔 남의 노드도 프로세스로
+  흘려 *"담당하는 노드가 아닙니다"* 로 막혔다.  ⭐ **`EXEC:` 를 우리가 붙이지 않는다**
+  (친 문면 그대로).  ASCII 가드와 라우트 없음 통보가 함께 붙었다.
+* **도움말이 표가 됐다** — `BASE_HELP`(절 목록) + `extend_help()`.  앱이 `console_help()`
+  로 자기 절을 준다.  ⛔ **표를 손으로 유지하지 말 것** — `tests/test_console.py` 가
+  `Dispatcher` 의 `cmd_*` 와 양방향 대조한다(면제는 `ping`/`pong`).
+* `transport._resolve()` → **`route_for()`** 로 공개 (보내기 전에 길을 물어본다).
+
+⚠️ `ics_sim.ini` 의 `xis_host` 는 **그대로 비워 뒀다** — 시험 하네스가 이 ini 를 읽는다.
+채운 것은 실기 배포 ini 둘(`ics_archon.ini`·`icg_archon.ini`)뿐이다.
+
 ## 절대 깨뜨리면 안 되는 것 (DevNote 3장)
 
 OBSAgent 는 **개정하지 않기로 확정**돼 있다. 그래서 아래는 규약이지 취향이 아니다.
