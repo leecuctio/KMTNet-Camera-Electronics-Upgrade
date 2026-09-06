@@ -512,16 +512,23 @@ class Dispatcher:
         return self._unimplemented(msg, target)
 
     def cmd_stop(self, msg: Message, target: Target) -> Reply:
-        """STOP -- 적분을 끊고 readout/저장은 정상 수행.
+        """STOP -- **적분을 끊지 않는다.**  현재 프레임을 저장까지 마치고
+        **다음 노출을 시작하지 않는다** (운영자 확정 2026-09-05, `93bfb08`).
 
-        레거시(PAP7KX.CMD:279-290)를 그대로 옮겼다:
+        ⚠️ **이 문단은 2026-09-07 까지 거짓이었다** -- *"적분을 끊고 readout/저장은
+        정상 수행"* 이라고 적혀 있었는데, 그것은 뒤집히기 **전**의 뜻이다.
+        실제 구현은 `Sequencer.stop_integration()` 이고 그 docstring 이 정본이다.
+        짧아진 적분이 헤더 `EXPTIME` 에는 요청값으로 실려(raw spec 5.4절)
+        *"정상으로 보이는 오염 프레임"* 을 만들기 때문에 뒤집은 것이다.
 
-            IF ExpLoopFlag = 1 THEN PauseFlag=0 : ExpLoopFlag=0 : SoftStop=1
-                                    AbortHost = 발신자
-            ELSE  ERROR: No integration in progress. Nothing to stop.
+        ⭐ 그래서 **`GO`(1장)에는 사실상 영향이 없고 `GO n` 에서만 뜻이 있다** --
+        막을 "다음" 이 있어야 한다.  `ABORT` 와의 차이:
 
-        `ExpLoopFlag = 1` 은 "적분 중"이므로 `sequencer.integrating` 으로 옮겼다.
-        거부 문자열은 레거시 그대로다.
+            ABORT  적분을 끊고 **저장하지 않는다**       -> 지금 이 프레임을 버린다
+            STOP   적분을 그대로 두고 **저장까지 한다**  -> 다음 프레임을 안 건다
+
+        레거시(PAP7KX.CMD:279-290)는 `SoftStop=1` 로 카운트다운을 끊었다 --
+        **거기서 갈라진다.**  거부 문자열만 레거시 그대로다.
         """
         if self.app.seq.stop_integration(msg.src):
             return Reply.done('STOP', f'Integration stopped by {msg.src}')
