@@ -11,10 +11,10 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec **v1.11** (2026-09-06 판올림 · 푸시·태그 완료)
+## ✅ 현행 규격 — raw spec **v1.12** (2026-09-06 판올림)
 
-> ⭐ **v1.11 은 v1.10 최종 상태를 그대로 승계한다 — 내용 변경이 없다.**  v1.10 이 발행(2026-09-04) 뒤 이틀 동안 제자리 개정을 많이 받아 **발행본과 갈렸기 때문에** 판을 끊었다(12장 v1.11 행).
-> ⚠️ 태그는 **최신 판에만** 둔다 — `raw-spec-v1.9` 를 지우고 `raw-spec-v1.11` 을 붙였다.  팀은
+> ⭐ **v1.12 는 v1.11 발행 뒤 쌓인 정합 수정을 담는다** (5.7.2절 신설 · `CTRL1CFG` 한 규칙 · `RDMODE` 등재 · 출처 어휘 — 12장).  ⚠️ 아래는 v1.11 을 끊은 경위다.  v1.10 이 발행(2026-09-04) 뒤 이틀 동안 제자리 개정을 많이 받아 **발행본과 갈렸기 때문에** 판을 끊었다(12장 v1.11 행).
+> ⚠️ 태그는 **최신 판에만** 둔다 — `raw-spec-v1.11` 을 지우고 `raw-spec-v1.12` 를 붙인다.  팀은
 > `git fetch --tags --prune --prune-tags` 가 필요하다.
 
 ### ⭐ 판올림 규약이 바뀌었다 (운영자 확정 2026-09-06)
@@ -22,8 +22,8 @@
 ⛔ **안 바뀐 문서는 안 올린다.**  종전에는 규격·원장·통합 **셋을 늘 함께** 올렸는데(v1.8·v1.9 라운드),
 운영자 확정: *"버전번호 별도로 가고 있었기 때문에, 안 바뀌었으면 안 올리도록 해줘."*
 
-* v1.11 라운드가 그 첫 적용이다 — **규격만 v1.10 → v1.11**, 원장 `v1.17` · 통합 `v0.9` 는 **내용이
-  안 바뀌어 그대로** 둔다.  규격 연동 표의 링크만 현행(v1.17 · v0.9)을 가리키게 고쳤다
+* v1.11 라운드가 그 첫 적용이었다 — **규격만 v1.10 → v1.11**, 원장 `v1.17` · 통합 `v0.9` 는 **내용이
+  안 바뀌어 그대로** 뒀다.  규격 연동 표의 링크만 현행을 가리키게 고쳤다.  ⭐ **v1.12 라운드에서는 원장 본문이 실제로 바뀌어 원장도 `v1.18` 로 올렸다** — 같은 규약의 뒤집힌 쪽이다 (통합 `v0.9` 는 그대로)
   (⚠️ v1.10 내내 구판 `v1.16` · `v0.8` 을 가리키고 있었다).
 * 각 문서의 머리말이 *"raw spec v1.x 동반"* 이라 적은 것은 **그 판이 언제 함께 나왔나의 이력**이다 —
   규격 판이 올라갔다고 고치지 않는다.
@@ -34,7 +34,7 @@
 
 ### (구) v1.9 (2026-08-30 발행 · 푸시 · 태그 `raw-spec-v1.9` 완료)
 
-**[`KMT_CEU_Raw_FITS_Specification_v1.9.md`](KMT_CEU_Raw_FITS_Specification_v1.9.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → v1.5·v1.6 = 5장 검토분 → v1.7 = 파일명 넷째 필드 `<DETID>` 명명 → v1.8 = `OI-9` 폐기 + `CTRLnCFG` 예시 정합 → **v1.9 = guide raw FITS 9·10장 신설 + `Tapaculo`→`Radionode` 개명**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 ~ v1.8).
+**[`KMT_CEU_Raw_FITS_Specification_v1.9.md`](archive/KMT_CEU_Raw_FITS_Specification_v1.9.md)** ("raw spec" / "로우 스펙") 이 현행이다 — v1.3 재작성판(구 "Raw FITS Pair 규격" v1.2 개명·대체) → v1.4 운영자 1~4장 검토 반영 → v1.5·v1.6 = 5장 검토분 → v1.7 = 파일명 넷째 필드 `<DETID>` 명명 → v1.8 = `OI-9` 폐기 + `CTRLnCFG` 예시 정합 → **v1.9 = guide raw FITS 9·10장 신설 + `Tapaculo`→`Radionode` 개명**. 구판은 `archive/`(v1.2 구명 Pair_Spec · v1.3 ~ v1.8).
 
 - ⭐ **v1.9 발행분 (2026-08-30, 커밋 `7ea3d63` — origin 푸시 완료)** — 세 문서를 함께 판올림했다: **규격 v1.8 → v1.9** · **원장 v1.15 → v1.16** · **통합문서 v0.7 → v0.8** (구판 `archive/`). 발행·후속 정정을 **커밋 하나로 합쳐** 올렸다(운영자 지시 — main 커밋 수 최소화). 태그 `raw-spec-v1.9` 는 운영자 지시(2026-08-30)로 이 판의 마지막 커밋(인수인계 갱신 커밋)에 붙었다.
   1. **guide raw FITS 장 신설 (9·10장)** — 운영자 확정(2026-08-29) 방침대로 science 와 분리. 9장 = 파일명(`<DETID>`=`G`, pair 없음)·구조(4224×1033)·픽셀 배치([16 다크 기준열|512|512|16]×4블록, Y=1024+9), 10장 = 노출 의미론(셔터 무관 — `EXPTIME` = 독출 개시 간격 · 첫 프레임 폐기 · `DATE-OBS` = 직전 독출 개시 · **`go n` = `n`+1 독출 `n` 저장, 프레임당 파일 1개** — 운영자 확정 2026-08-30)·헤더(science 골격, **값 카드 123장** — `CTRL2*`·`C2_*` 미수록 · `CHMAP` 1장 · `IMGROT` 신설 · `ICGBUILD` · `C1_VOLT`/`CURR` 8자리+`HEATER`)·`C1_TEMP` 8자리(**OI-19 종결** — 구판 5.6.1절 `Mod9 HVYBias` 는 `HVXBias` 오기 정정)·guide 검증 체크리스트·**OI-20~24 신설**(10.6절). 구 9·10장(관련 문서·Revision History)은 **11·12장**이 됐다. 원전: `__reference/CCD47-20.pdf` · `__reference/guide_ccd_format.xlsx`(운영자 2026-08-30) · guide ACF `KMTK_GUI_162_STA0201_R2608` 실측 · gmon v2.
@@ -148,8 +148,8 @@
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Specification_v1.9.md` | ✅ **현행 raw spec** — 최종 정의·규격 (science 1~8장 + guide 9·10장). 배경은 아래 원장·통합 문서로 링크 |
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.16.md` | **이 폴더에서 지금 가장 쓸모 있는 문서** (v1.16 = `Radionode` 개명, 판정 불변). **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기) — v1.14 에서 구 검토 문서 폐기분을 본문으로 편입했다. converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
+| `KMT_CEU_Raw_FITS_Specification_v1.12.md` | ✅ **현행 raw spec** — 최종 정의·규격 (science 1~8장 + guide 9·10장). 배경은 아래 원장·통합 문서로 링크 |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.18.md` | **이 폴더에서 지금 가장 쓸모 있는 문서** (v1.18 = 출처 어휘 정정, 판정 불변). **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기) — v1.14 에서 구 검토 문서 폐기분을 본문으로 편입했다. converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다. v1.10 판정 완결(미정 0) → v1.11 돔 Source TCS 전환 + 확인 요망 1~5 종결 → v1.12 확인 요망 9 종결(HK 문자열·sentinel `'-999.99'`) → **v1.13 잔여 전량 종결(6·7·8·10·11) + D-016 등재 — V1 착수 조건 완성** — 최근 구판은 `archive/` |
 | `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v0.9.md` | **통합 문서** (v0.9 = HK 카드 5장 + 게이지 Off + 반쪽 pair, C-항목 3건 신설) — Part 1: LEECU 전달용 C-항목·이름 대응·MEF/converter 쪽 미결 4건 / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.5~v0.8 은 `archive/`, v0.4·v0.2 는 git 이력·외부 백업 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
@@ -189,7 +189,7 @@
 ## 준수 우선순위 (v0.7 검토 문서 0장에서 확립)
 
 ```
-1  mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md    준거
+1  mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md    준거
 2  mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py   L0 MEF 산출 주체
 3  mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md 참고 (converter 미러)
 ```
@@ -525,7 +525,7 @@ git log --oneline --decorate origin/main..raw-fits-spec-v1-review   # 비어 있
 
 | 문서 | 위치 |
 |---|---|
-| L0 MEF ICD (1위 준거) | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md) |
+| L0 MEF ICD (1위 준거) | [`../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md`](../mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md) |
 | Converter | [`../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`](../mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py) |
 | 취득 SW 구현 | [`../ics_sim/SMC_CLAUDE.md`](../ics_sim/SMC_CLAUDE.md) · `../ics_sim/DevNote.md` 11.14 |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |
