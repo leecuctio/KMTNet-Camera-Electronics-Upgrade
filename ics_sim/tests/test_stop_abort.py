@@ -188,3 +188,37 @@ def test_abort_does_not_destroy_a_previous_frames_pending_save(tmp_path):
         f'프레임 1 의 pair 가 남아야 한다 -- 실제 {written}')
     relays = [m for m in run.to('OBS') if 'Wrote LASTFILE=' in m]
     assert len(relays) == 4, f'프레임 1 의 Wrote 4회가 유실됐다: {len(relays)}'
+
+
+# -- ABORT 는 노출 번호를 안 먹는다 (P1 규범 ①, 운영자 확정 2026-09-07) -----
+#
+# 셈 자체는 `test_expnum_persist.py` 의 되감기 절이 본다.  여기서 보는 것은
+# **배선**이다 -- 시퀀서의 `CancelledError` 핸들러가 실제로 `rewind_expnum()`
+# 을 부르는가.  DevNote 11.40 · `ics_archon/bench_test_plan.md` 3.5단계 P1.
+
+
+def test_abort_rewinds_the_expnum_record(tmp_path):
+    """⭐ `ABORT` 뒤 기록이 **되감겨** 재시작이 같은 번호부터 간다.
+
+    ⚠️ 이 시험은 지속을 **켠다** -- `conftest.make_config` 은 기본으로 끈다.
+    """
+    rec = tmp_path / 'ics.expnum'
+    cfg = make_config(paths__expnum_file=str(rec))
+    run = drive_at(DARK_SCRIPT, marker='Remaining=', inject='OBS>ICS abort',
+                   cfg=cfg)
+
+    assert run.count('Wrote LASTFILE=') == 0, '중지했는데 저장됐다'
+    # 000001 을 집었다가 되감았다 -> 기록은 "마지막으로 쓴 번호" = 0.
+    # 되감기가 없으면 1 이 남고 재시작이 000002 로 건너뛴다 (옛 거동).
+    assert rec.read_text(encoding='utf-8').strip() == '0', rec.read_text()
+
+
+def test_stop_does_not_rewind(tmp_path):
+    """⛔ `STOP` 은 저장까지 마치므로 번호를 **먹는다** -- 되감으면 안 된다."""
+    rec = tmp_path / 'ics.expnum'
+    cfg = make_config(paths__expnum_file=str(rec))
+    run = drive_at(DARK_SCRIPT, marker='Remaining=', inject='OBS>ICS stop',
+                   cfg=cfg)
+
+    assert run.count('Wrote LASTFILE=', node='OBS') == 4, '저장이 안 끝났다'
+    assert rec.read_text(encoding='utf-8').strip() == '1', rec.read_text()

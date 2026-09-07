@@ -422,3 +422,78 @@ def test_abort_then_shutdown_sends_resettiming_before_poweroff(tmp_path, monkeyp
         assert stop_took < 0.45, 'app.stop() 이 flush 대기를 기다렸다 (%.2fs)' % stop_took
     finally:
         fake.shutdown()
+
+
+def test_abort_rewinds_the_expnum_record(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ **P1 규범 ①** -- `ABORT` 는 노출 번호를 안 먹는다 (운영자 확정 2026-09-07).
+
+    첫 장을 저장하고 둘째 장 도중에 끊는다.  둘째 장은 나오지 않으므로 그 번호는
+    쓰이지 않은 것이고, 기록은 **첫 장의 번호**로 되감겨야 한다 -- 그래야 재시작이
+    둘째 번호부터 간다 (`load_expnum` 이 "마지막 +1").
+
+    ⭐ `expnum` 이 2 인데 기록이 1 이라는 것이 되감기의 증거다.  되감기가 없으면
+    둘 다 2 이고, 재시작은 3 으로 건너뛰어 **영구 구멍**이 남는다.
+    셈 자체는 `ics_sim/tests/test_expnum_persist.py`, 경위는 DevNote 11.40.
+    """
+    fake = FakeArchon(width=tb.NX, height=tb.NY, readout_ticks=4, tick=0.05,
+                      system=tb.GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        app = _app(tmp_path, fake, monkeypatch)
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            try:
+                app.transport.feed('abc>ICG GUIDEEXP 3')
+                await asyncio.sleep(0.02)
+                app.transport.feed('abc>ICG go 20')
+                await tb._first_wrote(app)       # 첫 장 저장 -- 둘째 장은 적분 중
+                await asyncio.sleep(0.3)
+                assert app.seq.cancel(save=False, requester='abc'), 'busy 가 아니다'
+                await app.seq.wait()
+                return app.state.expnum, _files(app)
+            finally:
+                await app.stop()
+
+        expnum, files = asyncio.run(run())
+        assert files == 1, '저장된 장수가 %d' % files
+        assert expnum == 2, '둘째 번호를 안 집었다 -- 시험 전제가 깨졌다 (%d)' % expnum
+        rec = tmp_path / 'icg.expnum'
+        assert rec.read_text(encoding='utf-8').strip() == '1', rec.read_text()
+    finally:
+        fake.shutdown()
+
+
+def test_shutdown_does_not_rewind(tmp_path, monkeypatch):  # noqa: ANN001
+    """⛔ **종료는 되감지 않는다** -- 규범이 정한 것은 `ABORT` 다.
+
+    프로세스가 사라지는 국면은 `_record_expnum` 이 *쓰는 시점*에 도는 바로 그
+    이유(재실행이 같은 번호를 다시 쓰는 것을 막는다)에 해당한다 -- 겹침보다
+    구멍이 안전하다.  ⏳ 이 갈래는 운영자 확인 대기다 (DevNote 11.40).
+    """
+    fake = FakeArchon(width=tb.NX, height=tb.NY, readout_ticks=4, tick=0.05,
+                      system=tb.GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        app = _app(tmp_path, fake, monkeypatch)
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            try:
+                app.transport.feed('abc>ICG GUIDEEXP 3')
+                await asyncio.sleep(0.02)
+                app.transport.feed('abc>ICG go 20')
+                await tb._first_wrote(app)
+                await asyncio.sleep(0.3)
+                assert app.seq.cancel(save=False, requester='shutdown')
+                await app.seq.wait()
+                return app.state.expnum
+            finally:
+                await app.stop()
+
+        expnum = asyncio.run(run())
+        assert expnum == 2, '시험 전제가 깨졌다 (%d)' % expnum
+        rec = tmp_path / 'icg.expnum'
+        assert rec.read_text(encoding='utf-8').strip() == '2', rec.read_text()
+    finally:
+        fake.shutdown()

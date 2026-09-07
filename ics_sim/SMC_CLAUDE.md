@@ -25,6 +25,38 @@
 | [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) | 레거시 원본 동작이 궁금할 때 |
 | [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) | OBSAgent 쪽 사정이 궁금할 때 |
 
+## ⚠️ `ABORT` 가 노출 번호를 되감는다 (2026-09-07, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.40**
+
+이 폴더의 `state.py`·`sequencer.py` 를 **`ics_archon` 세션이 고쳤다** (목 지시로 연 것이다).
+`ics_archon`·`icg_archon` 이 같은 `IcsState` 를 쓰기 때문이다.
+
+**규범 (운영자 확정: P1 안 ① 재사용)** — *"`ABORT` 는 노출 번호를 안 먹는다."*
+종전에는 **같은 프로세스는 재사용**하는데 **재시작은 건너뛰어**(영구 구멍) 비대칭이었다.
+
+* ⭐ **`IcsState.rewind_expnum()` 신설** — 기록(`expnum_file`)에 `expnum - 1` 을 적는다.
+  `load_expnum()` 이 *"마지막 +1"* 부터 시작하므로 재시작이 **그 번호부터** 간다.
+* ⛔ **`expnum` 자체는 안 바꾼다** — 같은 프로세스의 재사용은 이미 현행 거동이고, 이 함수가
+  맞추는 것은 *기록*뿐이다.  둘을 같이 건드리면 `peek_suffix()`(OBSAgent 의 ExpNum 질의)까지
+  흔들린다.
+* ⭐ **안전 조건은 `suffix_taken` 하나** — `next_suffix()` 가 세우고 `advance()` 가 내리므로,
+  참이라는 것이 곧 *"번호를 집었고 그 프레임은 저장까지 못 갔다"* 다.  **저장을 마친 프레임의
+  번호는 되감기가 못 건드린다.**  플래그를 내려 두 번 되감기지 않게 한다.
+* `_record_expnum()` 이 **값 인자**를 받게 됐다(`value=None` 이면 종전대로 `expnum`).
+  인자를 주는 곳은 `rewind_expnum()` 하나뿐이다.
+* `Sequencer.cancel()` 이 `save` 를 `_abort_kept_save` 에 기억한다 — ⛔ **`save=True` 면
+  진행 중 프레임의 저장이 살아 있어 그 번호가 파일이 되므로 되감지 않는다.**
+
+⛔ **`_record_expnum` 이 *쓰는 시점*에 도는 이유는 그대로다** — 노출 중 죽었을 때 재실행이
+같은 번호를 다시 쓰는 것을 막는 것.  되감기는 **명시적 `ABORT` 경로에서만** 불리므로 사고사는
+종전대로 보호된다 (죽은 프로세스는 아무것도 되감지 못한다).
+
+⚠️ **`BackendError` 로 죽은 프레임은 안 되감는다** — 파일이 안 생기는 것은 `ABORT` 와 같은데
+`advance()` 를 건너뛰므로 **P1 비대칭이 그 경로에 그대로 남아 있다**.  넓히는 것은 한 줄이지만
+규범을 넓히는 판단이라 ⏳ 운영자 몫으로 뒀다.
+
+시험: `tests/test_expnum_persist.py` **+8**(셈) · `tests/test_stop_abort.py` **+2**(배선).
+⭐ `STOP` 은 저장까지 마치므로 **되감지 않는다** — 그것을 못박는 시험이 그 둘 중 하나다.
+
 ## ⚠️ 콘솔이 열렸다 (2026-09-07, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.38**
 
 이 폴더의 `console.py`·`transport.py` 를 **`ics_archon` 세션이 고쳤다**(규약 위반이 아니라

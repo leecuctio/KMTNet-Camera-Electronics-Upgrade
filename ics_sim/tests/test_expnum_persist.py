@@ -205,3 +205,109 @@ def test_directory_fsync_helper_never_raises(tmp_path):
     st_mod._fsync_dir(str(tmp_path))                 # noqa: SLF001
     st_mod._fsync_dir(str(tmp_path / 'nosuchdir'))   # noqa: SLF001
     st_mod._fsync_dir('')                            # noqa: SLF001
+
+
+# -- 4. ABORT 되감기 (P1 규범 ①, 운영자 확정 2026-09-07) --------------------
+#
+# 규범: **`ABORT` 는 번호를 안 먹는다.**  같은 프로세스는 `advance()` 를
+# 건너뛰어 이미 재사용하고 있었고, 재시작만 그 번호를 건너뛰어(`load_expnum`
+# 이 "마지막 +1") **영구 구멍**을 남겼다 -- 그 비대칭을 없앤다.
+# 경위는 DevNote 11.39·11.40, 실기 확인은 `bench_test_plan.md` 3.5단계 P1.
+
+
+def test_abort_rewinds_so_a_restart_reuses_the_number(tmp_path):
+    """되감으면 재시작이 **그 번호부터** 간다 (구멍이 안 남는다)."""
+    rec = str(tmp_path / 'ics_sim.expnum')
+
+    aborted = _state(rec)
+    assert aborted.next_suffix().endswith('.000001')
+    assert aborted.rewind_expnum() is True
+
+    assert _state(rec).expnum == 1           # 종전에는 2 였다 (영구 구멍)
+
+
+def test_rewind_leaves_the_in_process_counter_alone(tmp_path):
+    """`expnum` 자체는 안 바꾼다 -- 같은 프로세스의 재사용은 이미 현행 거동이다."""
+    rec = str(tmp_path / 'ics_sim.expnum')
+    st = _state(rec)
+    st.next_suffix()
+    st.rewind_expnum()
+    assert st.expnum == 1
+    assert st.next_suffix().endswith('.000001')   # 그대로 재사용한다
+
+
+def test_rewind_does_not_reach_a_saved_frame(tmp_path):
+    """⛔ 저장을 마친 프레임의 번호는 못 건드린다 -- `advance()` 가 플래그를 내렸다.
+
+    `GO 3` 에서 두 장을 저장하고 세 장째에 `ABORT` 한 모양이다.  되감기가
+    **한 칸만** 물러나 저장된 000002 를 살려야 한다.
+    """
+    rec = str(tmp_path / 'ics_sim.expnum')
+    st = _state(rec)
+    for _ in range(2):                        # 000001 · 000002 저장 완료
+        st.next_suffix()
+        st.advance()
+    assert st.next_suffix().endswith('.000003')   # 세 장째를 집었다
+    assert st.rewind_expnum() is True
+
+    assert _state(rec).expnum == 3            # 000002 는 살아 있다
+
+
+def test_rewind_is_a_noop_without_a_taken_number(tmp_path):
+    """집은 번호가 없으면 아무것도 안 한다 -- 기록이 그대로다."""
+    rec = str(tmp_path / 'ics_sim.expnum')
+    st = _state(rec)
+    st.next_suffix()
+    st.advance()                              # 저장까지 끝난 상태
+    assert st.rewind_expnum() is False
+    with open(rec, encoding='utf-8') as fh:
+        assert int(fh.read()) == 1            # 안 건드렸다
+
+
+def test_rewind_twice_moves_only_once(tmp_path):
+    """두 번 불러도 한 칸이다 -- `suffix_taken` 을 내리는 것이 그 방어다."""
+    rec = str(tmp_path / 'ics_sim.expnum')
+    st = _state(rec)
+    for _ in range(2):
+        st.next_suffix()
+        st.advance()
+    st.next_suffix()                          # 000003 을 집었다
+    assert st.rewind_expnum() is True
+    assert st.rewind_expnum() is False
+    assert _state(rec).expnum == 3
+
+
+def test_rewind_wraps_below_zero(tmp_path):
+    """000000 에서 되감으면 999999 -- `load_expnum` 의 +1 과 짝이 맞는다 (D-018)."""
+    from ics_sim.rawpair import NUM_SPACE
+    rec = str(tmp_path / 'ics_sim.expnum')
+    st = IcsState(expnum_file=rec, expnum=0)
+    st.next_suffix()
+    assert st.rewind_expnum() is True
+    with open(rec, encoding='utf-8') as fh:
+        assert int(fh.read()) == NUM_SPACE - 1
+
+    assert _state(rec).expnum == 0            # 되감은 그 번호로 돌아온다
+
+
+def test_rewind_without_persistence_is_false(tmp_path):
+    """`expnum_file` 이 비면 되감을 것이 없다 -- 기록 자체를 안 하니까."""
+    st = IcsState(expnum_file='')
+    st.next_suffix()
+    assert st.rewind_expnum() is False
+
+
+def test_a_crash_still_cannot_rewind(tmp_path):
+    """⛔ 되감기가 사고사 보호를 깨지 않는다.
+
+    `_record_expnum` 이 *쓰는 시점*에 도는 이유는 노출 중 죽었을 때 재실행이
+    같은 번호를 다시 써 방금 저장한 파일과 충돌하는 것을 막으려는 것이다.
+    되감기는 **명시적 `ABORT` 경로에서만** 불리므로 그 보호는 그대로다 --
+    죽은 프로세스는 아무것도 되감지 못한다.
+    """
+    rec = str(tmp_path / 'ics_sim.expnum')
+    crashed = _state(rec)
+    crashed.next_suffix()                     # 여기서 프로세스가 사라진다
+    del crashed                               # rewind_expnum() 은 안 불렸다
+
+    assert _state(rec).expnum == 2            # 종전 보호 그대로

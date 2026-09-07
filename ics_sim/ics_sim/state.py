@@ -357,8 +357,51 @@ class IcsState:
         log.info('expnum 기록을 이어받는다 -- 마지막 %06d, 이번 %06d (%s)',
                  last, self.expnum, path)
 
-    def _record_expnum(self) -> None:
-        """방금 쓴 번호를 기록한다.  **실패해도 노출은 진행한다.**
+    def rewind_expnum(self) -> bool:
+        """ABORT 로 **쓰이지 못한** 번호를 기록에서 되감는다 (P1 규범 ①).
+
+        운영자 확정 2026-09-07: *"`ABORT` 는 번호를 안 먹는다"* -- 같은 프로세스
+        거동(`advance()` 를 건너뛰어 번호가 **재사용**된다)을 정본으로 삼고,
+        재시작도 그와 같게 만든다.  DevNote 11.40 · `bench_test_plan.md` 3.5단계 P1.
+
+        ⛔ **`_record_expnum` 의 원래 목적을 깨지 않는다.**  그 기록이 *쓰는
+        시점*에 도는 이유는 **노출 중 죽었을 때** 재실행이 같은 번호를 다시 써
+        방금 저장한 파일과 충돌하는 것을 막으려는 것이다.  되감기는 **명시적인
+        `ABORT` 경로에서만** 불리므로 사고사(死)는 종전대로 보호된다 -- 죽은
+        프로세스는 아무것도 되감지 못한다.
+
+        ⭐ **`suffix_taken` 이 유일한 안전 조건**이다.  그 플래그는
+        `next_suffix()` 가 세우고 `advance()` 가 내리므로, 참이라는 것은
+        *"번호를 집었고 그 프레임은 저장까지 못 갔다"* 와 같은 말이다.  저장을
+        마친 프레임의 번호는 이미 `advance()` 로 내려가 있어 되감기가 그것을
+        건드릴 수 없다.  플래그를 내려 **두 번 되감기지 않게** 한다.
+
+        `expnum` 자체는 **바꾸지 않는다** -- 같은 프로세스에서는 이미 그 번호가
+        다음 `GO` 에 재사용되는 것이 현행 거동이고, 이 함수가 맞추는 것은
+        *기록*(재시작 뒤의 시작점)뿐이다.  기록에는 *"마지막으로 쓴 번호"* 가
+        들어가야 하므로 `expnum - 1` 을 적는다 (`load_expnum` 이 +1 한다).
+
+        Returns:
+            되감았으면 True.  집은 번호가 없었거나(`suffix_taken` 이 거짓)
+            지속을 안 쓰면(`expnum_file` 이 빔) False.
+        """
+        if not self.suffix_taken or not self.expnum_file:
+            return False
+        # 000000 에서 되감으면 999999 로 (D-018 번호 공간, load_expnum 과 짝).
+        last = (self.expnum - 1) % NUM_SPACE
+        self._record_expnum(last)
+        self.suffix_taken = False
+        log.info('ABORT -- 노출 번호 %06d 을 되감는다 (P1 규범 ①: 재실행도 이 '
+                 '번호부터).  기록 %06d (%s)',
+                 self.expnum, last, self.expnum_file)
+        return True
+
+    def _record_expnum(self, value: int | None = None) -> None:
+        """번호를 기록한다.  **실패해도 노출은 진행한다.**
+
+        `value` 를 주면 그 값을, 안 주면 현재 `expnum` 을 적는다.  인자를 받는
+        것은 `rewind_expnum()` 하나뿐이다 -- 그 경로는 *"쓰려다 만 번호"* 의
+        **앞 번호**를 적어야 해서 현재 `expnum` 과 값이 다르다.
 
         같은 디렉토리에 임시 파일을 쓰고 `os.replace` 로 바꿔 넣는다 -- 기록
         도중에 죽어도 파일이 반쯤 쓰인 상태로 남지 않게 하려는 것이다.
@@ -374,20 +417,21 @@ class IcsState:
         path = self.expnum_file
         if not path:
             return
+        number = self.expnum if value is None else value
         tmp = f'{path}.tmp'
         try:
             parent = os.path.dirname(path)
             if parent:
                 os.makedirs(parent, exist_ok=True)
             with open(tmp, 'w', encoding='utf-8') as fh:
-                fh.write(f'{self.expnum}\n')
+                fh.write(f'{number}\n')
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp, path)
             _fsync_dir(parent or '.')
         except OSError as exc:
             log.warning('expnum %06d 을 기록할 수 없다 (%s: %s) '
-                        '-- 재실행하면 번호가 되돌아간다', self.expnum, path, exc)
+                        '-- 재실행하면 번호가 되돌아간다', number, path, exc)
 
     # -- 설정 요약 --------------------------------------------------------
 

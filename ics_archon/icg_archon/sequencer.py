@@ -411,6 +411,18 @@ class GuideSequencer:
             # 뒷정리 **뒤에** 정한다 -- 그 사이 다른 클라이언트의 ABORT 가 요청자를
             # 바꿨을 수 있다 (3차 반증).
             who = self._aborted_by or source
+            # ⭐ **P1 규범 ①** (운영자 확정 2026-09-07) -- `ABORT` 는 번호를 안
+            # 먹는다.  기록을 되감아 재시작도 같은 번호부터 가게 한다
+            # (DevNote 11.40).  `EXPENABLE OFF` 도 같은 경로라 함께 되감는다 --
+            # 그 프레임도 나오지 않으므로 번호를 먹을 이유가 없다.
+            # ⛔ **종료(shutdown)는 제외한다** -- 규범이 정한 것은 `ABORT` 이고,
+            # 프로세스가 사라지는 국면은 `_record_expnum` 이 지키려던 바로 그
+            # 자리다(겹침보다 구멍이 안전하다).
+            # ⭐ 안전 조건은 `rewind_expnum()` 안의 `suffix_taken` 이다 -- 이미
+            # `_dispatch_store()` 로 넘긴 프레임은 `advance()` 로 플래그가
+            # 내려가 있어 되감기가 그 번호를 건드리지 못한다.
+            if who != 'shutdown':
+                st.rewind_expnum()
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(who)
         except Exception:  # noqa: BLE001 -- 최후 안전망

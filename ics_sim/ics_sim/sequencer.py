@@ -91,6 +91,9 @@ class Sequencer:
         self._stop_evt = asyncio.Event()
         #: ABORT 로 취소됐는지.  _run 의 CancelledError 처리가 이것을 본다.
         self._aborted_by: str | None = None
+        #: 그 ABORT 가 `save=True` 였나 -- 진행 중 프레임의 저장을 살려
+        #: 두면 그 번호는 **파일이 된다**.  P1 되감기의 유일한 제외 조건이다.
+        self._abort_kept_save: bool = False
 
     # -- 외부 인터페이스 --------------------------------------------------
 
@@ -110,6 +113,7 @@ class Sequencer:
         """GO 접수.  실제 진행은 백그라운드 태스크."""
         self._stop_evt.clear()
         self._aborted_by = None
+        self._abort_kept_save = False
         self._task = asyncio.create_task(
             self._run(count, source), name='ics_sim.exposure')
 
@@ -222,6 +226,7 @@ class Sequencer:
         log.warning('ABORT from %s -- cancelling exposure (save=%s)',
                     requester, save)
         self._aborted_by = requester or self.cfg.node.ics_id
+        self._abort_kept_save = save
         if not save:
             # **진행 중 프레임이 띄운 저장만 취소한다.**  구판은 `_writers`
             # 전체를 취소해서, `GO n` 파이프라인에서 프레임 k 초반에 ABORT 가
@@ -264,6 +269,15 @@ class Sequencer:
             log.warning('exposure cancelled')
             st.expstatus = ExpStatus.IDLE
             if self._aborted_by is not None:
+                # ⭐ **P1 규범 ①** (운영자 확정 2026-09-07) -- `ABORT` 는 번호를
+                # 안 먹는다.  같은 프로세스는 `advance()` 를 건너뛰어 이미
+                # 재사용하므로, 기록도 그에 맞춰 되감아 **재시작도 같은 번호**
+                # 부터 가게 한다 (DevNote 11.40).  ⛔ `save=True` 면 그 프레임의
+                # 저장이 살아 있어 번호가 파일이 되므로 되감지 않는다.
+                # ⛔ 사고사는 여기 오지 않는다 -- 죽은 프로세스는 되감지 못하고,
+                # 그것이 `_record_expnum` 이 쓰는 시점에 도는 이유다.
+                if not self._abort_kept_save:
+                    st.rewind_expnum()
                 self.emit.idle_done(self._aborted_by)
             raise
         finally:
