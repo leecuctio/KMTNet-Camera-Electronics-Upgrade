@@ -405,3 +405,83 @@ def test_disconnecting_the_listener_sends_the_values_to_sentinel():
         assert rn.values().get('hebox') == 7.5
         rn._listener.stop()                                 # noqa: SLF001
     asyncio.run(run())
+
+
+# -- ⛔ mac 이 빈 장치 (1단계 오진 경로) -----------------------------------
+#
+# `bench_test_plan.md` 1단계 "멈출 조건" 이 경고하는 자리다: **3(`CONNECT`)은
+# 통과하는데 4(`HK`)에서 값이 계속 sentinel** 로 남아, 원인을 *"인터넷/계정
+# 등급"* 으로 오진하기 쉽다.  자격증명 넷과 **별개**이기 때문이다.
+# ⭐ `local_lns` 의 `deveui` 경고와 짝이 되게 세 자리에서 말하게 했다 --
+# 기동 경고(`validate`) · `STATUS` · `CONNECT` 응답.  그리고 폴링은 그 장치를
+# **건너뛴다**(빈 `{mac}` 으로 API 를 치면 쿼터만 깎이고 오진을 부른다).
+
+
+def _no_mac_devices():  # noqa: ANN202
+    return (RadionodeDevice(alias='hebox', mac='', keys=('hebox',)),
+            RadionodeDevice(alias='fsa', mac='', keys=('fsatemp', 'fsahum')))
+
+
+def test_status_says_which_devices_have_no_mac():
+    """`STATUS` 가 `NoMAC=` 로 대 준다 -- 자격증명이 **다 있어도**."""
+    rn = _client(devices=_no_mac_devices(), **CREDS)
+    said = rn.status_text()
+    assert 'NoMAC=hebox,fsa' in said, said
+    assert 'Credentials' not in said or 'missing' not in said, said
+
+
+def test_connect_succeeds_but_says_those_cards_stay_sentinel():
+    """⛔ `CONNECT` 는 **막지 않는다** — 다만 그 사실을 응답에 싣는다.
+
+    막지 않는 이유: 장치 하나만 MAC 이 있어도 그쪽은 받아야 하고, 나머지 HK
+    (RTD·진공·AUX)는 이것과 무관하게 돌아야 한다.
+    """
+    async def go():  # noqa: ANN202
+        tasks = []
+        rn = _client(devices=_no_mac_devices(), **CREDS)
+        rn.start(_spawn_in(tasks))
+        try:
+            return rn.connect()
+        finally:
+            await rn.stop()
+
+    body = asyncio.run(go())
+    assert 'Polling=on' in body, body
+    assert 'NoMAC=hebox,fsa' in body, body
+    assert 'sentinel' in body, body
+
+
+def test_polling_skips_a_device_without_a_mac():
+    """⛔ **API 를 안 친다** — 빈 `{mac}` URL 은 쿼터만 깎고 오진을 부른다.
+
+    ⭐ 대신 `last_err` 에 *어느 ini 절*이 비었는지를 담아 `STATUS` 가 장치별로
+    말하게 한다 — 그것이 없으면 화면에 `no sample yet` 만 남아 원인이 안 보인다.
+    """
+    rn = _client(devices=_no_mac_devices(), **CREDS)
+    hit = []
+    rn._fetch_latest = lambda mac: hit.append(mac) or {}      # noqa: SLF001
+    rn.cfg.backend = 'openapi'
+    for dev in rn.cfg.devices:
+        rn.enabled[dev.alias] = True
+
+    asyncio.run(rn._poll_all())                               # noqa: SLF001
+
+    assert hit == [], 'MAC 이 없는데 API 를 쳤다: %r' % hit
+    said = rn.status_text()
+    assert 'no mac in ini' in said, said
+    assert '[radionode.hebox] mac=' in said, said
+
+
+def test_startup_warns_about_a_missing_mac():
+    """기동 경고 — `local_lns` 의 `deveui` 경고와 **짝**이다.
+
+    ⚠️ 기동을 **세우지는 않는다**: 나머지 HK 는 돌아야 한다.
+    """
+    from icg_archon.config import IcgCfg, validate
+
+    cfg = IcgCfg()
+    cfg.radionode = RadionodeCfg(backend='openapi',
+                                 devices=_no_mac_devices(), **CREDS)
+    said = '\n'.join(validate(cfg, 'sim'))
+    assert 'mac' in said and 'hebox' in said and 'fsa' in said, said
+    assert 'sentinel' in said, said

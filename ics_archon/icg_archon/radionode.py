@@ -370,6 +370,18 @@ class RadionodeClient:
         """`openapi` 로 켜기에 **모자란 ini 값**들.  없으면 빈 목록."""
         return [k for k in REQUIRED_KEYS if not getattr(self.cfg, k, '')]
 
+    def devices_without_mac(self) -> list[str]:
+        """`mac` 이 빈 장치의 alias -- `openapi` 로는 **못 묻는 장치**다.
+
+        ⛔ **자격증명과 별개다.**  넷이 다 있어도 `[radionode.hebox]`·
+        `[radionode.fsa]` 의 `mac` 이 비면 그 카드는 계속 sentinel 이고,
+        그 실패가 *"인터넷/계정 등급"* 으로 보여 오진하기 쉽다
+        (`bench_test_plan.md` 1단계 "멈출 조건").  그래서 `STATUS` 와
+        `CONNECT` 응답에 함께 실어 **그 자리에서 보이게** 한다 --
+        `local_lns` 의 `NoDevEUI=` 와 같은 자리다.
+        """
+        return [d.alias for d in self.cfg.devices if not d.mac]
+
     def status_text(self) -> str:
         """`RADIONODE STATUS` 응답 본문 (ASCII 한 줄).
 
@@ -399,6 +411,11 @@ class RadionodeClient:
                 miss = self.missing_credentials()
                 parts.append('Credentials=%s' % (
                     ','.join(miss) + ' missing' if miss else 'ok'))
+            no_mac = self.devices_without_mac()
+            if no_mac:
+                # ⛔ 자격증명이 다 있어도 여기서 막힌다 -- 그 구별을
+                # 화면에 남긴다 (`local_lns` 의 `NoDevEUI=` 와 짝).
+                parts.append('NoMAC=%s' % ','.join(no_mac))
         now = time.monotonic()
         for dev in self.cfg.devices:
             if not self.publishing:
@@ -497,9 +514,15 @@ class RadionodeClient:
             log.info('radionode 폴링을 런타임에 켰다 (%s -> openapi, 주기 '
                      '%.0fs, 장치 %d) -- ⚠️ ini 는 안 고쳤다', was,
                      self.cfg.poll_period, len(self.cfg.devices))
-            return ('Polling=on Period=%.0fs Devices=%d (runtime only -- the '
-                    'ini still says backend=%s)'
+            body = ('Polling=on Period=%.0fs Devices=%d (runtime only -- '
+                    'the ini still says backend=%s)'
                     % (self.cfg.poll_period, len(self.cfg.devices), was))
+            no_mac = self.devices_without_mac()
+            if no_mac:
+                # ⛔ 켜지기는 한다 -- 그런데 이 장치들은 계속 sentinel 이다.
+                # 그 말을 여기서 안 하면 4번 걸음에서 원인을 딴 데서 찾는다.
+                body += ' NoMAC=%s (those cards stay sentinel)' % ','.join(no_mac)
+            return body
         return 'Already polling'
 
     async def disconnect(self) -> str:
@@ -607,6 +630,17 @@ class RadionodeClient:
         async with self._poll_lock:
             for dev in self.cfg.devices:
                 if not self.enabled.get(dev.alias, False):
+                    continue
+                if not dev.mac:
+                    # ⛔ **API 를 치지 않는다.**  빈 `{mac}` 으로 만든 URL 은
+                    # 어차피 그 장치를 못 가리키는데, 돌아오는 것은 HTTP
+                    # 오류라 *"인터넷·계정 등급 문제"* 로 읽힌다 -- 원인이
+                    # ini 인데 바깥을 의심하게 된다.  게다가 쿼터가 분
+                    # 단위라 헛되이 깎인다.  대신 그 사실을 `last_err` 에
+                    # 담아 `STATUS` 가 장치별로 말하게 한다.
+                    self.last_err[dev.alias] = (
+                        'no mac in ini ([radionode.%s] mac=)' % dev.alias)
+                    self._last_try[dev.alias] = 'err'
                     continue
                 try:
                     sample = await asyncio.to_thread(self._fetch_latest,

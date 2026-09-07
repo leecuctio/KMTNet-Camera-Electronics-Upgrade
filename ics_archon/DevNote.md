@@ -6455,3 +6455,72 @@ go 1  ->  next_suffix()   ->  번호 42 를 집고 기록에 42,  suffix_taken=T
 ⭐ ICG 시험이 `next_ticket` 을 **미리** 깨는 것이 요령이다 -- 첫 장은 `arm_sequence()` 로 뜨고
 둘째 장부터 그것을 타므로, 어느 프레임에서 깨질지가 **결정적**이 된다 (실행 중에 패치하면
 경합이라 저장 장수가 흔들린다).
+
+
+### 11.42 1단계 예행 -- **빈 MAC 이 "인터넷 문제" 처럼 보인다** (2026-09-07)
+
+RADIONODE 자료획득 시험(계획서 1단계)에 들어가기 전에, **자격증명 없이 되는 데까지**
+로컬에서 돌려 봤다 (`--backend sim` 상당의 조립 + 명령 주입).  ⛔ 바깥으로 나가지 않게
+`base_url` 을 `127.0.0.1` 의 막힌 포트로 뒀다.
+
+#### (1) 계획서대로 도는 것 -- 확인됨
+
+| 상태 | `RADIONODE STATUS` | `RADIONODE CONNECT` |
+|---|---|---|
+| 자격증명 0개 | `Credentials=base_url,latest_path,api_key,api_secret missing` | `ERROR: … Missing ini values: …넷` |
+| 넷 중 둘 | `Credentials=latest_path,api_secret missing` | `ERROR: …` 그 둘만 댄다 |
+| 넷 다 | `Credentials=ok` | `DONE: Polling=on … (runtime only -- the ini still says backend=off)` |
+
+⭐ *"자격증명이 모자라면 무엇이 없는지 대고 거절한다"* 는 계획서 문면이 **실제로 그렇다.**
+
+#### (2) ⛔ 그런데 **MAC 이 비어도 `CONNECT` 가 통과한다**
+
+배포 `icg_archon.ini` 는 `[radionode.hebox]`·`[radionode.fsa]` 의 `mac` 이 **둘 다 비어
+있다**(예행으로 확인).  그런데 `missing_credentials()` 는 `REQUIRED_KEYS` 넷만 보므로
+`CONNECT` 가 열리고 폴링이 돈다.  ⛔ 그 폴링은 `_fetch_latest(dev.mac)` 를 **빈 문자열로**
+불러 `latest_path.format(mac='')` 인 URL 을 **실제로 친다.**
+
+**그래서 무엇이 나쁜가 -- 셋이다.**
+
+1. **오진**: 돌아오는 것이 HTTP 오류라 화면에는 *"인터넷·계정 등급 문제"* 로 보인다.
+   원인은 **우리 ini** 인데 바깥을 의심하게 된다.  계획서 1단계 *"멈출 조건"* 이 산문으로
+   경고해 둔 바로 그 자리다 -- ⭐ **문서가 아는 것을 프로그램이 모르고 있었다.**
+2. **쿼터**: Open API 쿼터가 분 단위인데(ini 주석) 못 가리키는 URL 을 주기마다 친다.
+3. **비대칭**: `local_lns` 갈래는 같은 부류를 이미 **셋 다** 말한다 -- 기동 경고
+   (`validate` 의 `deveui` 없음) · `STATUS` 의 `NoDevEUI=`.  `openapi` 갈래에만 그
+   대응물이 없었다.
+
+#### (3) 고친 것 -- `local_lns` 와 짝을 맞췄다
+
+| 자리 | 무엇 |
+|---|---|
+| `radionode.devices_without_mac()` (신설) | `mac` 이 빈 장치의 alias.  ⭐ 자격증명과 **다른 개념**이라 `missing_credentials()` 에 섞지 않았다 |
+| `status_text()` | `openapi`/`off` 갈래에 **`NoMAC=hebox,fsa`** (`local_lns` 의 `NoDevEUI=` 자리) |
+| `connect()` | 성공 응답에 `NoMAC=… (those cards stay sentinel)` |
+| `_poll_all()` | ⛔ **그 장치를 건너뛴다** -- API 를 안 친다.  대신 `last_err` 에 *"no mac in ini (`[radionode.hebox] mac=`)"* 를 담아 `STATUS` 가 장치별로 말한다 |
+| `config.validate()` | 기동 경고 -- `local_lns` 의 `deveui` 경고와 같은 문장 구조 |
+
+⛔ **`CONNECT` 를 막지는 않는다** -- 장치 하나만 MAC 이 있어도 그쪽은 받아야 하고, 나머지
+HK(RTD·진공·AUX)는 이것과 무관하게 돌아야 한다.  기동도 안 세운다(경고만).
+
+예행 재실행 결과:
+
+```
+STATUS  : Backend=openapi Polling=yes NoMAC=hebox,fsa
+          hebox=err: no mac in ini ([radionode.hebox] mac=)
+          fsa=err: no mac in ini ([radionode.fsa] mac=)
+CONNECT : DONE: … Devices=2 (runtime only …) NoMAC=hebox,fsa (those cards stay sentinel)
+```
+
+#### (4) 시험 넷
+
+`tests/test_icg_radionode.py` -- `STATUS` 의 `NoMAC=` · `CONNECT` 는 통과하되 문구를 싣는다 ·
+**폴링이 API 를 안 친다**(`_fetch_latest` 호출 0회로 못박음) · 기동 경고.
+
+#### (5) ⏳ 여전히 운영자 몫
+
+**자격증명 넷은 콘솔 접근이라 코드가 대신 못 한다.**  MAC/시리얼도 마찬가지다.
+⭐ 이 절이 한 것은 *"없을 때 프로그램이 무엇을 말하는가"* 를 벼린 것이지, 1단계를 대신
+돈 것이 아니다.  ⚠️ 그리고 **`stale_after` 는 아직 손대지 않았다** -- SEND INTERVAL 이
+정해져야 세 문턱(`radionode.stale_after` 600 · `hk.sensors()` `interval*3`=180 ·
+science `hk_stale_after` 300)을 **함께** 맞출 수 있다 (계획서 0단계 (a) 4번).

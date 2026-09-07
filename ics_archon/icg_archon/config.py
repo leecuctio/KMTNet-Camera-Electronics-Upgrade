@@ -457,6 +457,17 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
         if not r.devices:
             warn.append('[radionode.*] 장치 절이 없다 -- HEBOX/FSATEMP/FSAHUM '
                         '이 전부 sentinel 로 실린다')
+        # ⭐ `local_lns` 의 `deveui` 경고와 **짝이다** -- 자격증명 넷이 다 있어도
+        # `mac` 이 비면 그 장치는 못 묻는다.  ⛔ 그런데 `CONNECT` 는 통과하므로
+        # 4번 걸음(`HK`)에서 sentinel 만 보이고, 원인을 *"인터넷·계정 등급"* 에서
+        # 찾게 된다 (`bench_test_plan.md` 1단계 "멈출 조건").  기동은 안 세운다 --
+        # 나머지 HK(RTD·진공·AUX)는 돌아야 한다.
+        no_mac = [d.alias for d in r.devices if not d.mac]
+        if no_mac:
+            warn.append('[radionode] mac 이 없는 장치: %s -- 그 장치는 폴링에서 '
+                        '건너뛰고 카드가 **계속 sentinel** 이다.  Radionode365 '
+                        '장치 목록의 MAC/시리얼을 옮겨 적을 것 (자격증명 넷과는 '
+                        '별개다)' % ', '.join(no_mac))
     if r.backend == 'sim' and backend == 'icg_archon':
         # 실기 취득인데 환경센서만 시뮬 -- 상수가 헤더에 실물처럼 남으면
         # 아카이브에서 잰 값과 못 가른다.  값 경로는 `values_with_time()`

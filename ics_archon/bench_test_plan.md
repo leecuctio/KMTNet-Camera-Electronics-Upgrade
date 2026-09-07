@@ -42,8 +42,12 @@
 - guide 유닛 `10.0.0.162` 접속 · ACF **`KMTK_GUI_162_STA0201_R2617.acf`** 적용 여부.
 - science 는 **`KMT?_SCI_*_R2611_*.acf`** 6장이 현행이다.
 - ⭐ **장치 MAC / 시리얼** — 벤치 ini 의 `[radionode.hebox]`·`[radionode.fsa]` 에 적을 값.
-  ⚠️ 자격증명 넷과 **별개**다.  이것이 어긋나면 3(`CONNECT`)은 통과하는데 4(`HK`)에서
-  값이 계속 sentinel 로 남아, 원인을 "인터넷/계정 등급" 으로 오진하기 쉽다.
+  ⚠️ 자격증명 넷과 **별개**다.  이것이 비면 3(`CONNECT`)은 통과하는데 4(`HK`)에서 값이
+  계속 sentinel 로 남는다.  ✅ **이제 프로그램이 그 사실을 먼저 말한다** (2026-09-07,
+  DevNote 11.42) — 기동 경고 · `RADIONODE STATUS` 의 `NoMAC=` · `CONNECT` 응답의
+  `NoMAC=… (those cards stay sentinel)`, 그리고 **폴링이 그 장치를 아예 건너뛴다**
+  (빈 `{mac}` URL 로 API 를 치면 쿼터만 깎이고 오진을 부른다).
+  ⛔ **배포 ini 는 지금 둘 다 비어 있다** — 예행으로 확인했다.
 - **`stale_after`** = 장치 SEND INTERVAL 의 **3배** 로 맞춘다 (0단계 (a) 4번에서 정한 값).
 
 ### (c) ⛔ 배포 ini 그대로면 **ICS 가 기동에서 멈춘다** (2026-09-06 전수 검토)
