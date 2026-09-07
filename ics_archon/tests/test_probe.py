@@ -370,12 +370,15 @@ def run_guide(args, tmp_path):  # noqa: ANN001
     def small(path):  # noqa: ANN001
         cfg = real_load(path)
         cfg.naxis1, cfg.naxis2 = NX, NY
-        # ini 의 ACF 경로는 상대경로다 -- **실행 디렉터리에 기대지 않는다.**
-        # 정본을 그대로 쓰되(층 2 이름표가 실물이어야 한다) 저장소 기준으로
-        # 푼다.
-        if cfg.acf.get('G') and not os.path.isabs(cfg.acf['G']):
+        # ⛔ ini 의 ACF 경로는 **배포 기준**이다 (`~/AIC/Config/acf/…`,
+        # 2026-09-07 운영자) -- 개발 기계에는 그 파일이 없다.  정본을 그대로
+        # 쓰되(층 2 이름표가 실물이어야 한다) **파일 이름만 떼어 저장소
+        # `acf/` 에서** 푼다.  ⚠️ 종전에는 "상대경로면" 만 다시 풀었는데,
+        # ini 가 절대경로가 되면서 그 가지가 안 타 시험이 빨개졌다.
+        name = os.path.basename(cfg.acf.get('G') or '')
+        if name:
             cfg.acf['G'] = os.path.normpath(
-                os.path.join(_ROOT, cfg.acf['G']))
+                os.path.join(_ROOT, 'acf', name))
         return cfg
 
     icfg_mod.load = small

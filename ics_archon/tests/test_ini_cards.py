@@ -248,22 +248,57 @@ def test_site_switch_moves_geometry_and_observat_together(tmp_path):  # noqa: AN
     assert names[0].split('.')[0] == 'KMTC'
 
 
-def test_kasi_leaves_the_coordinates_as_sentinels(tmp_path):  # noqa: ANN001
-    """KASI(실험실)는 **좌표만** 일부러 비운다 -- 시험 산출물이 관측처럼
-    보이면 안 된다.  `TELESCOP`/`FPAID` 는 D-017 항목 6 이 값을 정했다
-    (raw spec 5.3.1절) -- 구 `TESTBED` 판의 `'Sim'` 을 대체한다."""
+def _kasi_overrides():  # noqa: ANN202
     over = {k: dict(v) for k, v in INI_OVERRIDES.items()}
     over['node'] = {'observatory': 'KASI'}
     over['site'] = {}
     over['camera'] = {k: v for k, v in over.get('camera', {}).items()
                       if k != 'fpaid'}
-    run(tmp_path, over)
+    return over
+
+
+def test_kasi_declares_the_lab_coordinates(tmp_path):  # noqa: ANN001
+    """⭐ **KASI(실험실)도 실좌표를 싣는다** (운영자 2026-09-07, DevNote 11.43).
+
+    ⚠️ **뒤집힌 자리다.**  종전에는 *"실재 관측 좌표가 없다 -- 일부러 비워 둔다"*
+    였고 이 시험이 `LATITUDE=='NC'` 를 못박고 있었다.  뜻이 바뀐 것이 아니라
+    **실험실의 실제 위치(대전)를 선언**하기로 한 것이다.
+
+    ⛔ 값의 출처는 배포 `ics_archon.ini` 의 `[site.kasi]` 다 -- `write_ini()` 가
+    **저장소 ini 를 밑바탕으로** 쓰므로 이 시험이 곧 그 파일의 시험이다.
+    ⭐ `icg_archon.ini` 도 같은 값이어야 한다(한쪽만 채우면 같은 사이트를 두
+    프로그램이 다르게 말한다) -- 그쪽은 `test_icg_*` 가 본다.
+    `TELESCOP`/`FPAID` 는 종전대로 D-017 항목 6 이 정한다 (raw spec 5.3.1절).
+    """
+    run(tmp_path, _kasi_overrides())
     head = headers(tmp_path)['MK']
     assert head['OBSERVAT'].strip() == 'KASI'
+    assert head['LATITUDE'].strip() == '+36:23:52.25'
+    assert head['LONGITUD'].strip() == '232:37:27.81'
+    assert head['ELEVATIO'] == 103
+    assert head['ORIGIN'].strip() == 'KASI'
+    assert head['TELESCOP'].strip() == 'KMTNet 1.6m #0'
+    assert head['FPAID'].strip() == 'FPA#0'
+
+
+def test_the_code_still_refuses_to_invent_coordinates(tmp_path):  # noqa: ANN001
+    """⛔ **코드 기본값은 좌표를 지어내지 않는다** -- 절을 비우면 sentinel 이다.
+
+    ⭐ 위 시험과 짝이다.  실좌표는 **ini 가 선언하는 것**이고, 선언이 없으면
+    *"모른다"* 가 남아야 한다 -- 아무 좌표나 채우면 시험 산출물이 실제 관측처럼
+    보인다.  정본은 `ics_sim/rawhdr.py` 의 `VERIFIED_SITES['KMTK']` 로,
+    `telescop`/`fpaid` 만 있고 측지값은 없다.
+    ⏳ 그 표까지 채울지(그리고 규격 5.3.1절·D-017 항목 6 문면)는 다음 `main` 라운드.
+    """
+    over = _kasi_overrides()
+    over['site.kasi'] = {'telescop': '', 'latitude': '', 'longitud': '',
+                         'elevatio': ''}
+    run(tmp_path, over)
+    head = headers(tmp_path)['MK']
     assert head['LATITUDE'].strip() == 'NC'
     assert head['LONGITUD'].strip() == 'NC'
     assert head['ELEVATIO'] == -1
-    assert head['ORIGIN'].strip() == 'KASI'
+    # 이 둘은 사이트 표가 정하므로 절을 비워도 산다.
     assert head['TELESCOP'].strip() == 'KMTNet 1.6m #0'
     assert head['FPAID'].strip() == 'FPA#0'
 

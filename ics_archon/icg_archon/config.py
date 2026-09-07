@@ -171,7 +171,7 @@ class HkCfg:
     #: 이보다 성기면 science 헤더의 HK 나이가 그만큼 낡는다.
     interval: float = 60.0
     #: CSV·스냅샷 자리.  ⚠️ data_dir 밑에 두지 말 것 (아카이브 오염).
-    log_dir: str = '~/AIC/log'
+    log_dir: str = '~/AIC/Logs'
     #: 원자적 최신 스냅샷 파일 이름 (`log_dir` 안).  `ics_archon` 이 읽는다.
     latest_name: str = 'hk_latest.G.json'
     #: AUX(`ENS1~7`)도 주기마다 TC 에 물어 로그에 싣나.  노출 사이클과 별개의

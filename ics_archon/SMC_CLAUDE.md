@@ -498,7 +498,7 @@ labtest 는 v1.1.3 에서 같은 이유로 이 검사를 `POWERON` 앞으로 올
 
 ⚠️ **`test_backend.py` · `test_failures.py` 에서 감시를 꺼 뒀다** (`acfg.monitor
 = False`).  ini 기본값이 켬이라 그대로 두면 그 시험들이 **사용자 홈의
-`~/AIC/log/` 에 진짜 CSV 를 쌓고**, 기동 시점에 링크를 잡아 가짜 컨트롤러와
+`~/AIC/Logs/` 에 진짜 CSV 를 쌓고**, 기동 시점에 링크를 잡아 가짜 컨트롤러와
 왕복을 다툰다.  감시 자체는 `test_monitor.py` 가 자기 임시 폴더에서 본다.
 
 
@@ -936,7 +936,7 @@ science 컨트롤러 값을 읽어 **들고 있는** 것이 일이다 (운영자
    **취득 경로의 판단이 감시 쪽 사정으로 뒤집힌다.** 감시는 자기 실패 카운터를
    따로 들고 백오프로 재시도하며, 성공해도 헤더용 래치는 만지지 않는다.
 3. **파일은 컨트롤러당 하나 + 날짜별로 가른다** (`telemetry.<태그>.<YYYYMMDD>.csv`).
-   **위치는 `~/AIC/log/`** 다 (운영자 확정 2026-08-27) — `[paths] data_dir` 밑에
+   **위치는 `~/AIC/Logs/`** 다 (운영자 확정 2026-08-27) — `[paths] data_dir` 밑에
    두면 자료와 함께 굴러가 아카이브 정책에 걸린다.
    **기록 간격은 수십 초 ~ 수 분**이다 (운영자 2026-08-27) — 기본값 20초로 두고
    ini 로 늘릴 수 있게 한다.  이 간격이라 FETCH 락(science ≤ 10초 · guide ≤ 1초 --
@@ -983,7 +983,7 @@ telemetry.<태그>.<YYYYMMDD>.csv        # 주기 스냅샷, 고정 열
 ctrllog.<태그>.<YYYYMMDD>.log          # FETCHLOG 로 빼낸 항목 + 빼낸 시각
 ```
 
-경로는 `~/AIC/log/` 다.
+경로는 `~/AIC/Logs/` 다.
 
 **✅ 7레일이 맞다는 것이 실측으로 확정됐다** (운영자 2026-08-27) — science
 컨트롤러에서 `N35V` · `P100V` · `N100V` · `USER` 가 **전부 0 V / 0 A** 로 나온다.
@@ -1427,7 +1427,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | raw spec | **v1.12** — 발행 커밋 `8e3bdbf`, 태그 `raw-spec-v1.12`.  ⚠️ `main` 의 **끝**이 아니다 (Leecu 의 `cam_char` 작업이 그 뒤로 붙는다) — 판을 확인할 때는 커밋이 아니라 **태그**를 볼 것.  ⭐ 태그는 **최신 판 하나만** 둔다 — 팀은 `git fetch --tags --prune --prune-tags` 가 필요하다 |
 | guide ACF | **`KMTK_GUI_162_STA0201_R2617.acf`** (타이밍 스크립트 `LINES=122`) |
 | science ACF | **`KMT?_SCI_*_R2611_*.acf`** 6장 (타이밍 스크립트 142줄) |
-| 시험 | `ics_archon` **568** · `ics_sim` **355** — **전수 통과** (2026-09-07 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
+| 시험 | `ics_archon` **573** · `ics_sim` **355** — **전수 통과** (2026-09-08 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
 | 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `33a1bca` 까지.  ⏳ `main` 소관 잔여는 규격 10.6절 `OI-27` 문면 |
 
 #### 오늘 확정된 규약 (어기기 쉬운 것들)
@@ -1593,7 +1593,22 @@ API 를 쳐서** 돌아오는 HTTP 오류가 *"인터넷·계정 등급"* 으로
    ⏳ **남은 비대칭은 ICG `except Exception`(내부 오류) 하나** — 운영자가 *"이 정도 결번은
    받아들인다"* 로 확정했다.  ⚠️ **"안 고친 결함" 이 아니라 "그렇게 두기로 한 것"** 이다.
 2. **실기 1단계 RADIONODE** — 0단계 (a) 자격증명 넷이 운영자 몫이라 막혀 있다.
-3. **`main` 소관** — 규격 10.6절 OI-27 문면 갱신.
+3. **`main` 소관 — 규격 문면 이월 셋** (⏳ 운영자 확정 2026-09-08: *"지금 당장 할 필요
+   없고, 나중에 raw spec 손볼 일 있을 때 업데이트"*).  ⭐ **코드는 이미 새 결정대로 돌고
+   문서만 옛말**이므로, 이 셋을 보고 *"코드가 안 됐다"* 로 읽지 말 것:
+
+   | # | 어디 | 무엇이 옛말인가 | 근거 |
+   |---|---|---|---|
+   | ① | 규격 **10.3·10.6절 OI-24** | `INSTRUME` 을 *"`'<SITE코드> Guide CCD'` 안 — 어휘 확정 대기"*, `FPAID` 를 *"guide 조립체 귀속 확인 대기"* 로 든다.  ⭐ 둘 다 **닫혔다** — `'…Guide CCDs'` 확정 · guide 도 FPA 조립체에 든다(사이트 유도) | DevNote **11.43**-(1) |
+   | ② | 규격 **10.6절 OI-27** | *"`EXPENABLE=FALSE` 뒤 누가 새 `GO` 를 내는가"* 로 열려 있다.  ⭐ 답이 나왔다 — 주체가 따로 있고 **셔터 실측**을 본다 | DevNote **11.39**-(4) |
+   | ③ | 규격 **5.3.1절 · D-017 항목 6** | KASI 를 *"실재 관측 좌표가 없다"* 로 든다.  ⭐ 배포 ini 둘이 **실좌표(대전)를 선언**한다 | DevNote **11.43**-(3) |
+
+   ⛔ **③에 딸린 것 하나는 규격이 아니라 코드다** — `ics_sim/rawhdr.py` 의
+   `VERIFIED_SITES['KMTK']` 는 `telescop`/`fpaid` 만 있고 **측지값이 비어 있다**.
+   ⭐ **그것은 빠뜨린 것이 아니라 설계다**: 실좌표는 *ini 가 선언*하고, 선언이 없으면
+   *"모른다"* 가 남아야 한다(아무 좌표나 채우면 시험 산출물이 실제 관측처럼 보인다).
+   `test_ini_cards.py::test_the_code_still_refuses_to_invent_coordinates` 가 그것을 못박는다.
+   ⚠️ 그 표까지 채우려면 **그 시험도 함께** 뜻을 바꿔야 한다 — 규격만 고치고 지나가면 안 된다.
 4. **감사 잔여** — 15차원 확인분 16건(문서 정합) + ⛔ `#22`(`rawcards` sentinel, 유일한 **코드
    경로**건).
 
@@ -2407,7 +2422,7 @@ Part 2 의 내용이 v0.5 기준이라 판을 바꾸면 절 번호가 달라질 
 | `ctrl.status_live` + `status_live_at`, **헤더용 `ctrl.status` 와 분리** | `archon/controller.py` | ✅ |
 | 주기 감시 태스크 -- `IcsSim.spawn()` (`ics_sim` 무수정) | `app.py` | ✅ |
 | **기동 접속** -- `_connect_controllers()`, 감시는 그 뒤 | `app.py` | ✅ (운영자 지시 2026-08-28) |
-| CSV 기록 (컨트롤러당·날짜당 1파일, `~/AIC/log/`) | `archon/monitor.py` (신설) | ✅ |
+| CSV 기록 (컨트롤러당·날짜당 1파일, `~/AIC/Logs/`) | `archon/monitor.py` (신설) | ✅ |
 | ini 키 -- `monitor` · `monitor_interval` · `monitor_log` | `config.py` `[archon]` | ✅ (+ `frame_dump` · `[archon.rails]`) |
 | 바이어스 16채널 V/I (이름은 **ACF LABEL 에서**) | `archon/parse.py` | ✅ |
 | D4 -- `VALID=0` -> 헤더 `NC` | `parse.telemetry_of(honour_valid=)` | ✅ (+ `health_problems` 가짜 경보도 함께 닫았다) |
@@ -2607,8 +2622,8 @@ sentinel 이다.  **해독 규칙은 실측으로 다 확정해 뒀다** -- 위 
    한계 밖이라 못 읽는다.
 4. ⭐ **벤치 설치본 ini 에 감시 키를 넣는다** -- `~/AIC/Config/ics_archon.ini`
    는 저장소 사본이 아니다.  `monitor`/`monitor_interval`/`monitor_log` 가
-   없으면 **코드 기본값(켬 · 20초 · `~/AIC/log`)** 으로 돈다 -- 그 자체는
-   맞지만, **`mkdir -p ~/AIC/log` 는 해 두는 편이 낫다**(못 만들면 감시를 아예
+   없으면 **코드 기본값(켬 · 20초 · `~/AIC/Logs`)** 으로 돈다 -- 그 자체는
+   맞지만, **`mkdir -p ~/AIC/Logs` 는 해 두는 편이 낫다**(못 만들면 감시를 아예
    안 건다).
 5. ⭐ **`[node] observatory = TESTBED` 는 여전히 기동을 거부한다** (D-017) --
    벤치 ini 를 `KASI` 로, `[site.testbed]` -> `[site.kasi]` 로.  **이걸 안 하면

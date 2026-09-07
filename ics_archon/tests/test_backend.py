@@ -75,7 +75,7 @@ def make_cfgs(tmp_path, mk: FakeArchon, nt: FakeArchon):  # noqa: ANN001
     acfg.naxis1, acfg.naxis2 = NX, NY
     acfg.poweron_wait = 0.0
     # **감시는 끈다.**  ini 기본값이 켬이라 그대로 두면 이 시험이 사용자 홈의
-    # `~/AIC/log/` 에 진짜 CSV 를 쌓고, 기동 시점에 링크를 잡아 시험이 세운
+    # `~/AIC/Logs/` 에 진짜 CSV 를 쌓고, 기동 시점에 링크를 잡아 시험이 세운
     # 가짜 컨트롤러와 왕복을 다툰다.  감시 자체는 `test_monitor.py` 가 자기
     # 임시 폴더에서 본다.
     acfg.monitor = False

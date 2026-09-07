@@ -112,7 +112,7 @@ python3 -u -m icg_archon 2>&1 | tee icg_boot.log
 |---|---|---|
 | 기동 검사 | `[icg] FETCH 상한 … 가 프레임 하한 … 이상이다` 경고가 **없어야** 한다 (`fetch_timeout=1.0` < 하한 1.251 s) | |
 | ⭐ ACF 하한 | `acftiming` 이 타이밍 스크립트에서 읽은 하한 = **1.251 s**. 못 읽으면 ini 대체값 2.0 으로 내려가며 경고가 붙는다 — 그러면 4단계 수치의 뜻이 달라진다 | |
-| HK 루프 | 1분마다 `~/AIC/log/hk.G.<YYYYMMDD>.csv` 에 한 행 + `hk_latest.G.json` 갱신 | |
+| HK 루프 | 1분마다 `~/AIC/Logs/hk.G.<YYYYMMDD>.csv` 에 한 행 + `hk_latest.G.json` 갱신 | |
 | 콘솔 `hk` | 값 한 줄. `HEBOX`/`FSATEMP`/`FSAHUM` 은 안 실린다(=sentinel, Radionode off) | |
 | 콘솔 `radionode status` | `off` | |
 | `age_ms`/`lag_ms` | 첫 감시 로그에서 어떤 값인가 — `monitor_interval` 기본값의 근거 | |

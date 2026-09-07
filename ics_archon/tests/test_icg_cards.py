@@ -150,3 +150,54 @@ def test_resolve_guide_number_bumps_on_collision(tmp_path):
     # 999999 되감음 (D-018).
     assert guidepair.resolve_guide_number(
         str(tmp_path), site, date, 999999 + 1) == 0
+
+
+# -- OI-24 의 답 (운영자 2026-09-07) ---------------------------------------
+#
+# ⭐ 둘이 함께 정해졌다: `INSTRUME` 어휘는 `'<SITE코드> Guide CCDs'` 이고,
+# **guide CCD 도 FPA 조립체에 들어간다** -- 그래서 `FPAID` 는 science 와 같은
+# 사이트 유도를 탄다.  ⚠️ 이 자리는 판마다 뜻이 달랐다: ~2026-09-06 공백 18자
+# -> 09-06 `'NC'`(귀속 미결) -> 09-07 유도.  옛 파일로 판을 가늠하지 말 것.
+# ⏳ 규격 10.3·10.6절 문면 갱신은 다음 `main` 라운드.
+
+
+def test_instrume_default_is_the_guide_vocabulary():
+    """비우면 `'<SITE코드> Guide CCDs'` -- science 의 '18k CCD' 를 안 따른다."""
+    from icg_archon import guidehdr
+    assert guidehdr.instrument_header('KMTC', {})['INSTRUME'] == 'KMTC Guide CCDs'
+
+
+def test_ini_overrides_instrume_detector_and_fpaid():
+    """⭐ ini 에 적으면 그 값이 이긴다 (5.0절 'ICS INI' 출처 카드).
+
+    ⚠️ `DETECTOR` 는 2026-09-07 까지 **ini 를 안 읽었다** -- 모듈 상수만 실어
+    그 줄을 적은 사람은 바뀐 줄 알았다.  그 회귀를 여기서 막는다.
+    """
+    from icg_archon import guidehdr
+    out = guidehdr.instrument_header('KMTC', {'instrume': 'X CAM',
+                                              'detector': 'e2v X',
+                                              'fpaid': 'FPA#9',
+                                              'camver': 'CEU-v9'})
+    assert out['INSTRUME'] == 'X CAM'
+    assert out['DETECTOR'] == 'e2v X'
+    assert out['FPAID'] == 'FPA#9'
+    assert out['CAMVER'] == 'CEU-v9'
+
+
+def test_fpaid_is_derived_from_the_site_like_science():
+    """⭐ guide 도 FPA 조립체에 든다 (OI-24 종결) -- 5.3.1절 · D-017 항목 6.
+
+    ⚠️ **망원경 번호와 FPA 번호는 관측소 셋 모두 어긋난다** -- 맞추면 검출기
+    귀속이 틀어진다.  그래서 표를 그대로 못박는다.
+    """
+    from icg_archon import guidehdr
+    got = {c: guidehdr.instrument_header(c, {})['FPAID']
+           for c in ('KMTC', 'KMTA', 'KMTS', 'KMTK')}
+    assert got == {'KMTC': 'FPA#2', 'KMTA': 'FPA#1',
+                   'KMTS': 'FPA#3', 'KMTK': 'FPA#0'}, got
+
+
+def test_an_unknown_site_still_gets_the_sentinel():
+    """⛔ 모르는 사이트에 조립체 번호를 지어내지 않는다 -- 5.0절 sentinel."""
+    from icg_archon import guidehdr
+    assert guidehdr.instrument_header('XXXX', {})['FPAID'] == 'NC'

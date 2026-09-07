@@ -262,12 +262,13 @@ class ArchonCfg:
     #: **문제로 보지 않는다.**  밀린 시간은 기록의 `lag_ms` 열에 남고, 밀린
     #: 만큼 몰아서 뜨지는 않는다.
     monitor_interval: float = 20.0
-    #: 기록 자리.  **`~/AIC/log/`** (운영자 확정 2026-08-27).
+    #: 기록 자리.  **`~/AIC/Logs/`** (운영자 확정 2026-08-27, 자리 이름
+    #: `log` -> `Logs` 는 2026-09-07 -- 트리 안에서 두 이름이 섞여 있었다).
     #:
     #: ⚠️ `[paths] data_dir` 밑에 두지 않는다 -- 자료와 함께 굴러가 아카이브
     #: 정책에 걸린다.  `~` 는 읽을 때 펼친다(안 펼치면 **cwd 아래 `~` 폴더**가
     #: 조용히 생기고 오류도 안 난다).
-    monitor_log: str = '~/AIC/log'
+    monitor_log: str = '~/AIC/Logs'
     #: **듀어·환경 HK 의 원천** -- `icg_archon` 이 남기는 원자적 최신 스냅샷
     #: (`hk_latest.G.json`).  비우면 5.6절 HK 카드가 sentinel 로 실린다.
     #: 물리 원천(guide 유닛 RTD·진공 · Radionode)은 접속자 규칙상 icg 만

@@ -108,7 +108,7 @@ def _fmt(value, digits: int) -> str:
 class TelemetryLog:
     """컨트롤러 하나의 CSV 기록 -- **날짜별 파일 + 고정 열.**
 
-    파일 이름은 `telemetry.<태그>.<YYYYMMDD>.csv` 이고 자리는 `~/AIC/log/` 다
+    파일 이름은 `telemetry.<태그>.<YYYYMMDD>.csv` 이고 자리는 `~/AIC/Logs/` 다
     (운영자 확정 2026-08-27).  ⚠️ **`[paths] data_dir` 밑에 두지 않는다** --
     자료와 함께 굴러가 아카이브 정책에 걸린다.
     """

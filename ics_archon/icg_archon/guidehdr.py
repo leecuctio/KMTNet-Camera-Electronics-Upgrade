@@ -112,22 +112,30 @@ def instrument_header(site_code: str,
 
     `cfg_camera` 는 `[camera]` 절 (`SimConfig.camera.as_dict()` 꼴) --
     `instrume`/`camver`/`fpaid` 를 ini 로 덮을 수 있다 (5.0절 "ICS INI 카드").
-    `INSTRUME` 기본은 규격 10.3절 초안 `'<SITE코드> Guide CCD'` 다 --
-    견본 v0.0 의 `'KMTA 18k CCD'` 는 science 잔재로 등재된 대사 항목이라
-    따르지 않는다 (10.2절 "규격이 이긴다", OI-24).
+    ⭐ **OI-24 의 답** (운영자 2026-09-07) -- 어휘와 귀속이 둘 다 정해졌다:
+    `INSTRUME` 기본은 `'<SITE코드> Guide CCDs'` 이고, **guide CCD 도 FPA 조립체에
+    들어간다**.  견본 v0.0 의 `'KMTA 18k CCD'` 는 science 잔재로 등재된 대사
+    항목이라 따르지 않는다 (10.2절 "규격이 이긴다").
+    ⏳ 규격 10.3·10.6절 문면 갱신은 **다음 `main` 라운드**로 (브랜치에서 규격을
+    고치지 않는다) -- OI-27 과 같은 차례다.
     """
     cam = dict(cfg_camera or {})
     out: dict[str, object] = {
-        'INSTRUME': cam.get('instrume') or f'{site_code.upper()} Guide CCD',
+        'INSTRUME': cam.get('instrume') or f'{site_code.upper()} Guide CCDs',
         'CAMVER': cam.get('camver', 'CEU-v2.1'),
-        # PROVISIONAL -- guide 조립체의 FPAID 귀속은 OI-24 (견본은 science 값).
-        # ⛔ **귀속이 정해지기 전에는 5.0절 문자열 sentinel `'NC'`** 다 -- 종전에는
-        # `''` 라 카드가 **공백 18자**로 나갔다(2026-09-06 전수 검토가 잡았다).
-        # ⛔ science 처럼 `rawhdr.fpaid_of(site_code)` 를 태우면 안 된다 -- 그것은
-        # "guide 조립체가 5.3.1절 `FPA#n` 에 드는가" 라는 OI-24 의 물음을 코드가
-        # 먼저 답해 버리는 것이다.
-        'FPAID': cam.get('fpaid') or 'NC',
-        'DETECTOR': DETECTOR,
+        # ⭐ **OI-24 가 닫혔다** (운영자 2026-09-07): *"guide CCD 도 FPA 조립체에
+        # 들어가 있다"* -- 그래서 **science 와 같은 유도**를 태운다
+        # (`CTIO=FPA#2 SSO=FPA#1 SAAO=FPA#3 KASI=FPA#0`, 5.3.1절 · D-017 항목 6).
+        # ⚠️ 2026-09-06~09-07 사이에는 이 자리가 `'NC'` 였다 -- 귀속이 미결이라
+        # 코드가 먼저 답하지 않으려던 것이고, 그 전(~2026-09-06)에는 `''` 라
+        # 카드가 **공백 18자**로 나갔다(전수 검토가 잡았다).  세 판이 다르므로
+        # 옛 파일의 `FPAID` 로 판을 가늠하지 말 것.
+        # ⛔ 모르는 사이트 코드면 `fpaid_of()` 가 5.0절 sentinel `'NC'` 를 낸다.
+        'FPAID': cam.get('fpaid') or rawhdr.fpaid_of(site_code),
+        # ⭐ science 와 같이 **ini 가 이긴다** (`[camera] detector`, 5.0절 "ICS INI
+        # 카드").  종전에는 모듈 상수만 실어 ini 값이 조용히 무시됐다 --
+        # 그 줄을 적은 사람은 바뀐 줄 알았다 (2026-09-07).
+        'DETECTOR': cam.get('detector') or DETECTOR,
         'DETID': 'G',
         'PIXSIZE': PIXSIZE,
         'PIXSCALE': cam.get('pixscale', PIXSCALE),

@@ -6524,3 +6524,105 @@ CONNECT : DONE: … Devices=2 (runtime only …) NoMAC=hebox,fsa (those cards st
 돈 것이 아니다.  ⚠️ 그리고 **`stale_after` 는 아직 손대지 않았다** -- SEND INTERVAL 이
 정해져야 세 문턱(`radionode.stale_after` 600 · `hk.sensors()` `interval*3`=180 ·
 science `hk_stale_after` 300)을 **함께** 맞출 수 있다 (계획서 0단계 (a) 4번).
+
+
+### 11.43 배포 ini 개정 -- **OI-24 가 닫히고, 로그 자리 이름이 하나가 됐다** (2026-09-07, 운영자)
+
+운영자가 `icg_archon.ini` 에 넣을 항목을 문면으로 줬다.  ⭐ **그중 둘이 규격 미결을
+닫았고, 하나는 코드가 ini 를 안 읽고 있던 자리였다.**
+
+#### (1) ⭐ OI-24 종결 -- `INSTRUME` 어휘 · guide 도 FPA 조립체에 든다
+
+> 운영자: *"instrume 는 비웠을 때 `<SITE코드> Guide CCDs` 로 … fpaid 는 science 와 동일하게,
+> guide CCD 도 FPA 조립체에 들어가 있어."*
+
+| 카드 | 종전 | 지금 |
+|---|---|---|
+| `INSTRUME` | `'<SITE코드> Guide CCD'` (10.3절 **초안**) | **`'<SITE코드> Guide CCDs'`** (확정) |
+| `FPAID` | `'NC'` -- 귀속 미결이라 코드가 답을 안 했다 | **사이트 유도** `rawhdr.fpaid_of()` (science 와 같은 규칙) |
+
+⚠️ **`FPAID` 는 이 자리가 판마다 뜻이 달랐다** -- `''`(공백 18자, ~2026-09-06 결함) ->
+`'NC'`(09-06, 귀속 미결) -> **유도**(09-07).  ⛔ 옛 파일의 `FPAID` 로 판을 가늠하지 말 것.
+
+⭐ **11.39 의 OI-27 과 같은 모양이다** -- 운영자가 답을 주니 *"코드가 먼저 답하지 않으려고"*
+막아 둔 자리가 열렸다.  ⏳ 규격 **10.3·10.6절 OI-24 문면 갱신은 다음 `main` 라운드**
+(브랜치에서 규격을 고치지 않는다) -- OI-27 과 함께 간다.
+
+#### (2) ⛔ `DETECTOR` 가 ini 를 안 읽고 있었다
+
+운영자 문면이 `detector = # 기본 'e2v CCD47-20'` 이라 **덮어쓸 수 있다는 전제**인데,
+`instrument_header()` 는 `'DETECTOR': DETECTOR` 로 **모듈 상수만** 실었다.  science 는 같은
+`[camera] detector` 를 존중한다 -- guide 만 빠져 있었다.
+
+⭐ **그 줄을 ini 에 적기만 했으면 조용히 무시됐다.**  적은 사람은 바뀐 줄 안다 -- 5.6절
+`HKUDATE`(11.36)와 같은 부류다: *두 창구가 같은 계약을 따라야 하는데 규칙이 한 곳에만 있었다.*
+`cam.get('detector') or DETECTOR` 로 고치고 시험으로 못박았다.
+
+#### (3) `[site.*]` -- guide 도 관측소 좌표를 싣는다
+
+`icg_archon.ini` 에 `[site.ctio]`·`[site.saao]`·`[site.sso]`·`[site.kasi]`·`[site]` 를 넣었다.
+⭐ **코드는 이미 배선돼 있었다** -- `guidehdr.build_pool()` 이 `rawhdr.observatory_header()` 를
+부르고, `ics_sim.config.load()` 가 `[site.*]` 를 읽는다.  ini 에 절이 없어 기본값으로 가고
+있었을 뿐이다.  실측:
+
+```
+KMTC TELESCOP='KMTNet 1.6m #1' LAT='-30:10:01.84' LON='+70:48:14.39' ELEV=2140
+KMTA TELESCOP='KMTNet 1.6m #3' LAT='-31:16:24'    LON='210:56:08'    ELEV=1150
+KMTS TELESCOP='KMTNet 1.6m #2' LAT='-32:22:42'    LON='339:11:22'    ELEV=1800
+KMTK TELESCOP='KMTNet 1.6m #0' LAT='+36:23:52.25' LON='232:37:27.81' ELEV=103
+```
+
+⭐ **KASI 좌표를 채웠다** (운영자 확정) -- 종전에는 *"실재 관측 좌표가 없다, 일부러 비워
+둔다"* 였다.  뜻이 뒤집힌 것이 아니라 **실험실의 실제 위치(대전)를 선언**하는 것이다.
+⛔ **두 ini 를 함께 채웠다** -- 한쪽만 채우면 같은 사이트를 두 프로그램이 다르게 말한다.
+⚠️ **코드 기본값은 아직 비어 있다** (`rawhdr.VERIFIED_SITES['KMTK']` 은 `telescop`/`fpaid`
+만) -- 그 표와 규격 5.3.1절·D-017 항목 6 을 함께 고칠지는 ⏳ 다음 `main` 라운드.
+⛔ **시험이 깨졌고, 그것이 맞다** -- `test_kasi_leaves_the_coordinates_as_sentinels` 가
+`LATITUDE=='NC'` 를 못박고 있었다.  ⚠️ **내가 먼저 *"그 시험은 자기 ini 를 만들어서 안 깨진다"*
+고 잘못 읽었다** -- `write_ini()` 는 **저장소 ini 를 밑바탕으로 읽는다**.  머리말이 그 이유를
+밝힌다: *"시험용 ini 를 따로 쓰면 실제로 배포되는 파일이 시험되지 않는다."*  ⭐ 즉 이 시험은
+곧 **배포 ini 의 시험**이라, 결정이 뒤집히면 빨개지는 것이 설계대로다.
+
+시험을 **둘로 갈랐다**: `test_kasi_declares_the_lab_coordinates`(배포 ini 가 실좌표를
+선언한다)와 `test_the_code_still_refuses_to_invent_coordinates`(절을 비우면 sentinel --
+코드 기본값은 좌표를 지어내지 않는다).  ⭐ 결정은 바뀌었지만 *"아무 좌표나 채우지 않는다"* 는
+원칙은 남겨 둔 것이다.
+
+#### (4) 로그 자리 이름을 하나로 -- `~/AIC/log` -> `~/AIC/Logs`
+
+⛔ **트리 안에서 두 이름이 섞여 있었다**: `hk.log_dir`·`monitor_log` 는 `log`, `icg_archon.log`·
+`ObsStatus.txt` 는 `Logs`.  운영자가 `Logs` 로 통일하라 해서 **전수로 옮겼다** --
+ini 둘 · **코드 기본값 둘**(`icg_archon/config.py` `log_dir` · `ics_archon/config.py`
+`monitor_log`) · `monitor.py`/`archon/__init__.py` 머리말 · `README` 네 곳 · `SMC_CLAUDE` 네 곳 ·
+시험 주석 둘.
+
+⛔ **혼자 옮기면 안 되는 짝이 있었다** -- `ics_archon.ini` 의 `[archon] hk_latest` 다.
+`icg_archon` 이 쓰는 스냅샷을 science 가 읽어 5.6절 HK 카드를 채우므로, 한쪽만 바꾸면
+**science 의 HK 카드가 조용히 전부 sentinel** 이 된다 (ini 주석이 이미 그렇게 경고하고 있었다).
+`icg_first_run.md` 의 경로 표기도 함께.
+
+#### (5) ⛔ `acf` 를 배포 경로로 바꾸니 시험이 깨졌다
+
+`acf = ~/AIC/Config/acf/…` 로 바꾸자 `test_probe.py::test_guide_profile_is_quiet_on_a_guide_unit`
+가 빨개졌다 -- 그 시험은 **ini 의 정본 ACF 를 실제로 연다**(층 2 이름표가 실물이어야 한다).
+하네스가 *"상대경로면 저장소 기준으로 푼다"* 였는데, ini 가 절대경로가 되면서 그 가지가 안 탔다.
+⭐ **파일 이름만 떼어 저장소 `acf/` 에서 풀도록** 고쳤다 -- 배포 경로가 어떻게 바뀌어도 산다.
+
+#### (6) ⏳ `latest_name` 은 지웠으면 안 됐다 -- 물음에 대한 답
+
+> 운영자: *"`latest_name = hk_latest.G.json` 는 없애도 되지 않아?  이제 ICS 에서 ICG 의
+> 파일을 읽지 않으니까."*
+
+⛔ **전제가 아직 사실이 아니다.**  `HKDATA` 와이어는 살아 있지만 **헤더로 안 흐른다** --
+`ics_archon/app.py` 의 `_on_hkdata()` 가 자기 docstring 에 그렇게 적어 뒀다(*"값을 헤더로
+흘리지는 **아직** 않는다"*).  5.6절 카드의 현행 원천은 여전히 `[archon] hk_latest` 파일이고
+(`archon/backend.py`), 그 파일이 없으면 `config.py` 가 **기동 경고**를 낸다.
+
+⭐ 지우려면 **"HK 를 파일에서 와이어로" 2단 커밋**이 먼저다 (SMC_CLAUDE 가 그렇게 적어 둔 그
+작업).  그래서 이번엔 두었다.
+
+#### (7) 시험 넷 (`test_icg_cards.py`)
+
+`INSTRUME` 기본 어휘 · **ini 가 셋(`instrume`·`detector`·`fpaid`)을 다 이긴다** ·
+`FPAID` 사이트 유도 표 전수(⚠️ 망원경 번호와 FPA 번호는 관측소 셋 모두 어긋난다) ·
+모르는 사이트는 `'NC'`.

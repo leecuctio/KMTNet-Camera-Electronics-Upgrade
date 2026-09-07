@@ -5,7 +5,7 @@
     protocol.py   저수준 왕복 (텍스트/이진, 참조번호, 재동기)
     parse.py      SYSTEM/STATUS/FRAME 해석 (왕복 없음 -- 실기 없이 시험 가능)
     controller.py 컨트롤러 한 대의 제어 시퀀스 (asyncio 래핑)
-    monitor.py    텔레메트리 주기 감시·기록 (층 1·2, CSV -- `~/AIC/log/`)
+    monitor.py    텔레메트리 주기 감시·기록 (층 1·2, CSV -- `~/AIC/Logs/`)
     fitswrite.py  raw FITS pair 바이트 기록 (견본 v1.0 정본)
     backend.py    ics_sim `DetectorBackend` 구현
 

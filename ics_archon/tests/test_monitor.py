@@ -402,7 +402,7 @@ def test_monitor_does_not_run_when_telemetry_is_off(tmp_path):  # noqa: ANN001
 
 def test_monitor_refuses_an_unexpanded_tilde(tmp_path):  # noqa: ANN001
     """`~` 가 안 펼쳐지면 **cwd 아래 `~` 폴더**가 조용히 생긴다 -- 안 만든다."""
-    cfg = _cfg(tmp_path, monitor_log='~/AIC/log')
+    cfg = _cfg(tmp_path, monitor_log='~/AIC/Logs')
     mon = TelemetryMonitor(_FakeCtrl(), cfg)
     mon._stop = asyncio.Event()
     asyncio.run(asyncio.wait_for(mon.run(), timeout=5))

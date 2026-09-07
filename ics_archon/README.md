@@ -91,7 +91,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | `archon/protocol.py` | 저수준 왕복 — 텍스트/이진 프레이밍, 참조번호, 시한 초과 후 재동기 |
 | `archon/parse.py` | `SYSTEM`/`STATUS`/`FRAME` 해석. **왕복이 없어** 실기 응답 한 줄로 재현할 수 있다 |
 | `archon/controller.py` | 컨트롤러 한 대의 제어 시퀀스 — ACF · 전원 · 노출 · 독출 · FETCH (asyncio) |
-| `archon/monitor.py` | 텔레메트리 주기 감시·기록 (층 1·2) — CSV, `~/AIC/log/` |
+| `archon/monitor.py` | 텔레메트리 주기 감시·기록 (층 1·2) — CSV, `~/AIC/Logs/` |
 | `archon/fitswrite.py` | raw pair 바이트 기록 — 견본 v1.0 이 정본, 데이터부 2880B 패딩 |
 | `archon/backend.py` | `ics_sim` `DetectorBackend` 구현 (D-012) |
 | `app.py` · `__main__.py` | `ics_sim.IcsSim` 에 백엔드를 끼우고 `ICSBUILD`/`RDMODE`/`CTRLnCFG`/종료를 갈아낀다 |
@@ -116,8 +116,8 @@ CSV 로 남긴다.  원장 v1.14 가 `CCDTEMP` 대표 센서를 두고 **"센서
 로그가 담는다"** 고 약속해 뒀는데 그 로그가 없었다 — 이것이 그 이행물이다.
 
 ```
-~/AIC/log/telemetry.MK.20260828.csv        # 컨트롤러당 · 날짜당 하나
-~/AIC/log/telemetry.NT.20260828.csv
+~/AIC/Logs/telemetry.MK.20260828.csv       # 컨트롤러당 · 날짜당 하나
+~/AIC/Logs/telemetry.NT.20260828.csv
 ```
 
 | 열 | 무엇 |
@@ -137,7 +137,7 @@ CSV 로 남긴다.  원장 v1.14 가 `CCDTEMP` 대표 센서를 두고 **"센서
 ```ini
 monitor          = true      # telemetry=false 면 이 값과 무관하게 안 돈다
 monitor_interval = 20.0      # 수십 초 ~ 수 분 (운영자 확정)
-monitor_log      = ~/AIC/log
+monitor_log      = ~/AIC/Logs
 ```
 
 ### 접속자는 컨트롤러당 하나다 (운영자 확정 2026-08-28)
@@ -417,7 +417,7 @@ monitor      = true                 # 텔레메트리 주기 감시·기록 (위
                                     #   ⚠️ 접속은 이 값과 무관하다 -- 본편이
                                     #   기동에서 붙는다.  이 스위치는 CSV 기록과
                                     #   주기 폴링만 끈다
-monitor_log  = ~/AIC/log            # ⚠️ data_dir 밑에 두지 말 것
+monitor_log  = ~/AIC/Logs           # ⚠️ data_dir 밑에 두지 말 것
 fetch_buffers = 2                   # 호스트 수신·저장 버퍼 (컨트롤러당)
 wrote_window  = 25.0                # OBSAgent force_fitssaved 창 [s] -- 선언값
 full_flush_on_erase = false         # clock 개선으로 별도 erase 를 하지 않는다
