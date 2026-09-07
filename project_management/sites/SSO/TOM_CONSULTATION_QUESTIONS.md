@@ -112,12 +112,12 @@
 **TQ-12. [P1] ERASE 사이클(7.24 s)의 실체와 Archon ACF 재현 필요성**
 > Every legacy exposure ran a 7.24-second ERASE before shutter open. What did it do electrically (number of full-frame flushes, any erase-gate/substrate manipulation, why 7.24 s), do these CCDs show persistence that requires it, and is an equivalent pre-exposure sequence needed in the Archon ACF beyond continuous idle flushing?
 
-**TQ-13. [P1] 레거시 영상 병리 계보 ①: overscan 침수·long-tail의 발생단**
+**TQ-13. [P1] 레거시 영상 비정상 동작 계보 ①: overscan 침수·long-tail의 발생단**
 > Legacy data show signal-dependent overscan shifts (up to +1655 ADU at 50k signal on some SAAO amps) and a long-tail artifact after saturated sources — both are our headline new-vs-old GO/NOGO criteria. Which stage of your video chain causes each (baseline restore / AC-coupling droop / CDS recovery vs CCD serial register), and should we expect them to disappear completely with the Archon chain?
 
 - 기대 산출물: "사라져야 정상 / 남는 게 정상" 판정 기준 → GO/NOGO 오판 방지
 
-**TQ-14. [P2] 레거시 영상 병리 계보 ②: amp 경계 edge-column·하늘수준 overscan 칩**
+**TQ-14. [P2] 레거시 영상 비정상 동작 계보 ②: amp 경계 edge-column·하늘수준 overscan 칩**
 > Is the fixed-pattern edge column at the 1152-column amplifier boundaries intrinsic to the CCD or an OSU-electronics artifact? And in legacy CTIO data some frames show an entire chip's X overscan at sky level instead of bias (chip M on some exposures, T on others) — was this a known artifact, and will it persist with Archon?
 
 **TQ-15. [P1] Crosstalk 커플링 경로와 보정 보류 판단 검증**
