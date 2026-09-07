@@ -177,19 +177,26 @@ LoRaWAN 이라 LAN 폴링이 안 된다** — IP 스택이 없어 LoRa 게이트
 endpoint 상세가 콘솔 로그인 뒤의 문서에만 있어 **URL·경로·인증 헤더 이름까지
 ini 소관**이다 (코드에 박으면 계정이 바뀔 때 코드를 고쳐야 한다).
 
-### 옮겨 적을 값 넷 + 헤더 이름 둘
+### 옮겨 적을 값 **둘** (+ 장치 MAC 둘)
 
 | ini 키 | 무엇 | 콘솔에서 어디 |
 |---|---|---|
-| `api_key` | API KEY | 로그인 → **관리자 이름** → **고객사 정보 변경** |
+| `api_key` | API KEY | `s2.radionode365.com` → **고객사 정보변경** → API Key/Secret |
 | `api_secret` | API SECRET | 같은 자리 |
-| `base_url` | API 서버 주소 | **"OPENAPI 매뉴얼"** 첫 장 |
-| `latest_path` | 최근 측정값 endpoint (`{mac}` 자리에 장치 MAC) | 같은 매뉴얼의 endpoint 표 |
-| `key_header` · `secret_header` | 인증 헤더 **이름** (기본 `X-API-KEY`/`X-API-SECRET`) | 같은 매뉴얼의 인증 절 |
 
-장치 둘의 MAC·별칭·계약 키는 `[radionode.hebox]` · `[radionode.fsa]` 에 있다
-(HE box 는 온도만, FSA 는 온도+습도).  주기는 `poll_period`(기본 60 s),
-신선도 문턱은 `stale_after`(기본 600 s = 장치 SEND INTERVAL 의 ~3배)다.
+⭐ **나머지는 코드가 안다** (2026-09-08, DevNote 11.44).  `base_url` 은 ini 에 실값
+(`https://oa.radionode365.com`)이 있고 `api_path` 는 기본 `/tp365/v1` 이다.
+⛔ **`latest_path`·`key_header`·`secret_header` 는 폐기됐다** — 이 API 는 인증을
+**POST 본문 파라미터**로 받고(헤더 인증 자리가 없다) 값은 `channel/get_lst` 한 번으로 온다.
+ini 에 남아 있으면 **기동이 경고한다.**
+
+장치 둘의 `device_mac`·별칭·계약 키는 `[radionode.hebox]` · `[radionode.fsa]` 에 있다
+(HE box 는 온도만, FSA 는 온도+습도).  ⭐ `keys` 는 **채널 번호 순서로 짝짓는다**
+(CH1=온도 ℃ · CH2=습도 %) -- 단위가 이름과 어긋나면 그 채널은 **안 싣는다**.
+
+주기는 `poll_period`(기본 60 s -- ⛔ 쿼터가 **api_key 당 분당 10회**인데 우리는 한 바퀴에
+**한 번**만 친다).  신선도 문턱 `stale_after` 는 **4000 s 초기값**이고, 한 번 읽으면 그
+장치의 **`device_interval` x3** 으로 바뀐다 (API 가 전송주기를 알려 준다).
 
 ### ⛔ 실제 값을 저장소에 담지 않는다
 

@@ -45,6 +45,7 @@ import logging
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -54,7 +55,7 @@ log = logging.getLogger('icg_archon.radionode')
 
 #: `openapi` 로 켜려면 **반드시 있어야 하는** ini 값 넷.  ⭐ 운영자가 콘솔의
 #: "OPENAPI 매뉴얼" 에서 옮겨 적는 것이 이 넷이다 (README "Radionode 자격증명").
-REQUIRED_KEYS = ('base_url', 'latest_path', 'api_key', 'api_secret')
+REQUIRED_KEYS = ('base_url', 'api_key', 'api_secret')
 
 
 class RadionodeError(Exception):
@@ -267,6 +268,18 @@ class RadionodeClient:
         #: key(소문자) -> (값, 표본시각 monotonic).  `values()` 가 신선도를
         #: 대조한다.
         self._latest: dict[str, tuple[object, float]] = {}
+        #: alias -> 그 장치 응답에서 **헤더로 안 가는 것들**
+        #: (채널 원값·단위·배터리·신호세기·수신시각).  ⭐ 버리지
+        #: 않으려고 둔다 -- 실측 보존 감사 ①(`_pick` 이 첫 수치
+        #: 하나만 집고 나머지를 안 남긴다)의 답이다.
+        self.extras: dict[str, dict] = {}
+        #: alias -> 전송주기 경고를 이미 낸 값 (같은 말을 매 바퀴 안 한다).
+        self._warned_interval: dict[str, float] = {}
+        #: key -> 그 키의 **신선도 창** [s].  ⭐ 응답의 `device_interval`
+        #: 3배로 **읽은 뒤에 정해진다** (운영자 2026-09-08) -- ini 의
+        #: `stale_after` 는 그때까지의 초기값일 뿐이다.  장치마다 주기가
+        #: 다를 수 있어(실물 60초·600초) **하나로는 못 맞춘다**.
+        self._window: dict[str, float] = {}
         #: 장치 별칭 -> 폴링 활성 (RADIONODE DISCONNECT 명령이 끈다).
         self.enabled: dict[str, bool] = {
             d.alias: True for d in cfg.devices}
@@ -320,7 +333,8 @@ class RadionodeClient:
             items = list(self._latest.items())
         for key, (val, when) in items:
             age = now_m - when
-            if age <= self.cfg.stale_after:
+            # ⭐ **키마다 창이 다르다** -- 장치의 전송주기 3배 (2026-09-08).
+            if age <= self.window_for(key):
                 out[key] = (val, now_e - age)
         return out
 
@@ -369,6 +383,21 @@ class RadionodeClient:
     def missing_credentials(self) -> list[str]:
         """`openapi` 로 켜기에 **모자란 ini 값**들.  없으면 빈 목록."""
         return [k for k in REQUIRED_KEYS if not getattr(self.cfg, k, '')]
+
+    def all_keys(self) -> frozenset:
+        """이 폴러가 **소관하는 HK 키** 전부 (신선하든 아니든).
+
+        ⭐ `hk` 가 *"이 키는 폴러가 자기 창으로 이미 걸렀다"* 를 알아야
+        한다 -- 그래야 `sensors()` 의 공용 지평선이 두 번 자르지 않는다.
+        """
+        out: set = set()
+        for dev in self.cfg.devices:
+            out.update(dev.keys)
+        return frozenset(out)
+
+    def window_for(self, key: str) -> float:
+        """그 키의 신선도 창 -- 배운 값이 있으면 그것, 없으면 ini 초기값."""
+        return self._window.get(key, self.cfg.stale_after)
 
     def devices_without_mac(self) -> list[str]:
         """`mac` 이 빈 장치의 alias -- `openapi` 로는 **못 묻는 장치**다.
@@ -501,9 +530,12 @@ class RadionodeClient:
             return self._start_listener()
         miss = self.missing_credentials()
         if miss:
+            # ⛔ **문구는 ASCII 로** -- 이 응답은 ICIMACS 와이어로 나가고,
+            # 한글을 넣으면 '?' 로 깨져 운영자가 못 읽는다 (2026-09-08 실측).
             raise RadionodeError(
-                'Missing ini values: %s -- copy them from the Tapaculo365 '
-                'console ("OPENAPI manual")' % ','.join(miss))
+                'Missing ini values: %s -- issue them at s2.radionode365.com '
+                '[Customer Info -> API Key/Secret]  manual: '
+                'oa.radionode365.com/apidoc/kr/' % ','.join(miss))
         if self._spawn is None:
             raise RadionodeError('Poller is not started yet')
         was = self.cfg.backend
@@ -628,52 +660,208 @@ class RadionodeClient:
             log.info('radionode 폴링이 이미 진행 중이라 건너뛴다')
             return
         async with self._poll_lock:
-            for dev in self.cfg.devices:
-                if not self.enabled.get(dev.alias, False):
-                    continue
+            wanted = [d for d in self.cfg.devices
+                      if self.enabled.get(d.alias, False)]
+            for dev in wanted:
                 if not dev.mac:
-                    # ⛔ **API 를 치지 않는다.**  빈 `{mac}` 으로 만든 URL 은
-                    # 어차피 그 장치를 못 가리키는데, 돌아오는 것은 HTTP
-                    # 오류라 *"인터넷·계정 등급 문제"* 로 읽힌다 -- 원인이
-                    # ini 인데 바깥을 의심하게 된다.  게다가 쿼터가 분
-                    # 단위라 헛되이 깎인다.  대신 그 사실을 `last_err` 에
-                    # 담아 `STATUS` 가 장치별로 말하게 한다.
+                    # ⛔ ini 가 그 장치를 못 가리킨다.  API 를 쳐도 골라낼
+                    # 근거가 없으므로 그 사실을 `STATUS` 가 말하게 한다.
                     self.last_err[dev.alias] = (
                         'no mac in ini ([radionode.%s] mac=)' % dev.alias)
                     self._last_try[dev.alias] = 'err'
-                    continue
-                try:
-                    sample = await asyncio.to_thread(self._fetch_latest,
-                                                     dev.mac)
-                except Exception as exc:  # noqa: BLE001 -- 폴링 실패가 취득을 못 죽인다
-                    self.last_err[dev.alias] = (
-                        '%s: %s' % (type(exc).__name__, exc))[:120]
+            wanted = [d for d in wanted if d.mac]
+            if not wanted:
+                return
+            # ⭐ **한 바퀴에 호출 한 번**이다 (`channel/get_lst`) -- 장치 수와
+            # 무관하다.  API 쿼터가 **api_key 당 분당 10회**라 장치별로 치면
+            # 금방 닿는다(넘기면 1분 차단).  게다가 이 응답 하나에 우리가
+            # 쓰는 것이 다 들어 있다: 값·**측정시각**·단위·배터리·신호세기.
+            try:
+                rows = await asyncio.to_thread(self._fetch_channel_list)
+            except Exception as exc:  # noqa: BLE001 -- 폴링 실패가 취득을 못 죽인다
+                why = ('%s: %s' % (type(exc).__name__, exc))[:120]
+                for dev in wanted:
+                    self.last_err[dev.alias] = why
                     self._last_try[dev.alias] = 'err'
-                    log.warning('radionode %s 폴링 실패 -- %s (헤더는 sentinel '
-                                '로 간다)', dev.alias, exc)
+                log.warning('radionode 폴링 실패 -- %s (헤더는 sentinel 로 간다)',
+                            exc)
+                return
+            by_mac: dict[str, list] = {}
+            for row in rows:
+                if isinstance(row, dict):
+                    by_mac.setdefault(str(row.get('device_mac', '')), []
+                                      ).append(row)
+            for dev in wanted:
+                mine = by_mac.get(dev.mac, [])
+                if not mine:
+                    # ⛔ 응답은 왔는데 그 장치가 없다 -- MAC 오타이거나 그
+                    # 계정의 장치가 아니다.  *"인터넷 문제"* 와 구별해 적는다.
+                    self.last_err[dev.alias] = (
+                        'device_mac %r not in channel list (%d rows)'
+                        % (dev.mac, len(rows)))
+                    self._last_try[dev.alias] = 'err'
                     continue
-                self._store(dev, sample)
-                self.last_ok[dev.alias] = time.monotonic()
-                self._last_try[dev.alias] = 'ok'
+                if self._store_channels(dev, mine):
+                    self.last_ok[dev.alias] = time.monotonic()
+                    self._last_try[dev.alias] = 'ok'
+                else:
+                    self._last_try[dev.alias] = 'err'
 
     # -- HTTP --------------------------------------------------------------
 
-    def _fetch_latest(self, mac: str) -> dict:
-        """장치 하나의 최신 표본 -- **블로킹**, `to_thread` 로만 부른다.
+    def _post(self, path: str, **params) -> dict:  # noqa: ANN003
+        """OpenAPI 를 한 번 친다 -- **블로킹**, `to_thread` 로만 부른다.
 
-        응답 JSON 의 모양이 계정 매뉴얼에 달려 있어 **관대하게 판다** --
-        온도/습도로 읽을 수 있는 첫 필드 짝을 취한다 (`_pick`).  실기 응답을
-        받으면 그 모양을 여기 주석으로 못박을 것 (PROVISIONAL).
+        ⛔ **인증은 헤더가 아니라 본문 파라미터다** (공개 매뉴얼
+        `https://oa.radionode365.com/apidoc/kr/`, 2026-09-08 확인).  종전 구현은
+        `X-API-KEY`/`X-API-SECRET` 헤더에 실었는데 **이 API 에는 그런 자리가
+        없다** -- 우리가 실기 응답을 못 본 채 지어낸 모양이었다 (DevNote 11.44).
+
+        ⏳ `api_token`(1시간 보안 토큰) 갈래는 **안 넣었다** -- 운영자 계정이
+        보안 토큰을 안 쓴다(2026-09-08 실측).  ⚠️ 매뉴얼 경고: *"보안 토큰 설정
+        시 API KEY 의 사용 권한이 즉시 제거"* 되므로, 콘솔에서 그것을 켜면
+        여기가 그날로 인증 실패로 죽는다.
         """
-        url = self.cfg.base_url.rstrip('/') + \
-            self.cfg.latest_path.format(mac=mac)
-        req = urllib.request.Request(url, headers={
-            self.cfg.key_header: self.cfg.api_key,
-            self.cfg.secret_header: self.cfg.api_secret,
-            'Accept': 'application/json',
-        })
+        body = dict(params)
+        body['api_key'] = self.cfg.api_key
+        body['api_secret'] = self.cfg.api_secret
+        url = (self.cfg.base_url.rstrip('/')
+               + '/' + self.cfg.api_path.strip('/')
+               + '/' + path.lstrip('/'))
+        req = urllib.request.Request(
+            url, data=urllib.parse.urlencode(body).encode('utf-8'),
+            method='POST', headers={'Accept': 'application/json'})
         with urllib.request.urlopen(req, timeout=self.cfg.timeout) as resp:
-            return json.loads(resp.read().decode('utf-8'))
+            out = json.loads(resp.read().decode('utf-8'))
+        if not isinstance(out, dict):
+            raise RadionodeError('응답이 JSON 객체가 아니다 (%s)'
+                                 % type(out).__name__)
+        if not out.get('status'):
+            # ⭐ **HTTP 200 인데 실패**일 수 있다 -- 매뉴얼의 실패 예시가 그렇다.
+            # 그 문구를 그대로 물고 올라가야 `STATUS` 에서 원인이 보인다.
+            raise RadionodeError('%s: %s' % (out.get('errcode', '?'),
+                                             out.get('error', 'unknown')))
+        return out
+
+    def _fetch_channel_list(self) -> list:
+        """`channel/get_lst` -- 회원사의 **모든 채널 + 현재값**을 한 번에.
+
+        ⭐ 장치별로 `channel/get_value` 를 치지 않는 이유가 셋이다:
+        ① 호출이 **장치 수와 무관하게 1회**다 (쿼터: api_key 당 분당 10회) ·
+        ② 행마다 **`ch_timestamp`(실측정시각)** 가 온다 -- 폴링 받은 시각이
+        아니라 장치가 잰 시각이라 `stale_after`·`HKUDATE` 가 참이 된다 ·
+        ③ `ch_unit`·`battery`·`lqi` 가 함께 와서 버릴 것이 없다.
+
+        ⚠️ 우리 장치가 아닌 채널도 함께 온다 -- 호출측이 `device_mac` 으로 고른다.
+        """
+        out = self._post('/channel/get_lst')
+        rows = out.get('rows')
+        return list(rows) if isinstance(rows, list) else []
+
+    #: `ch_unit` 이 말해 주는 채널의 정체.  ⭐ 운영자 확인(2026-09-08):
+    #: **장치마다 채널 둘이고 CH1 = 온도(℃) · CH2 = 습도(%)** 다.
+    #: 그래서 `keys` 를 채널 번호 순서로 짝짓되, 단위로 **검산**한다 --
+    #: 어느 장치가 반대로 꽂혀 있으면 카드 이름과 값이 조용히 뒤바뀐다.
+    _HUM_UNITS = ('%', '%RH', 'RH')
+
+    #: 장치 시각이 이만큼 앞서는 것은 정상으로 본다 [s].  실물에서
+    #: RN320-BTH 가 `last_update` 보다 1분쯤 앞선 적이 있다.
+    _CLOCK_SLACK = 120.0
+
+    def _store_channels(self, dev, rows: list) -> bool:  # noqa: ANN001
+        """한 장치의 채널 행들을 `_latest` 에 담는다.  담았으면 True.
+
+        짝짓기는 **`ch_no` 순서 <-> `keys` 순서**다 (`keys = fsatemp, fsahum`
+        이면 CH1 -> `fsatemp`, CH2 -> `fsahum`).  ⛔ 채널이 `keys` 보다 많아도
+        남는 채널은 버리지 않고 **CSV 열로 남을 수 있게** `extras` 에 담는다.
+
+        ⭐ **표본시각은 `ch_timestamp`(epoch)** 다.  `_latest` 는 monotonic 을
+        쓰므로 *"얼마나 지났나"* 를 빼서 넣는다 -- 그러면 `values_with_time()`
+        의 환산과 `stale_after` 판정이 **장치가 잰 시각** 기준이 된다.
+        ⚠️ 장치 시계가 앞서 있으면 나이가 음수가 되므로 0 으로 접는다.
+        """
+        now_m, now_e = time.monotonic(), time.time()
+        got, extras = [], {}
+        for row in rows:
+            try:
+                ch_no = int(str(row.get('ch_no', '')).strip() or 0)
+            except ValueError:
+                continue
+            if ch_no < 1:
+                continue
+            unit = str(row.get('ch_unit', '')).strip()
+            try:
+                val = float(str(row.get('ch_value', '')).strip())
+            except (TypeError, ValueError):
+                continue
+            extras['ch%d' % ch_no] = val
+            extras['ch%d_unit' % ch_no] = unit
+            if ch_no > len(dev.keys):
+                continue                    # 우리가 안 쓰는 채널 -- extras 로만
+            key = dev.keys[ch_no - 1]
+            is_hum = key.endswith('hum')
+            if unit and (unit in self._HUM_UNITS) != is_hum:
+                # ⛔ 단위가 이름과 어긋난다 -- 짐작으로 싣지 않는다.  실으면
+                # 습도가 온도 카드에 앉아 **정상으로 보이는 틀린 값**이 된다.
+                log.warning('radionode %s CH%d 단위가 %r 인데 키가 %r 이다 -- '
+                            '이 채널은 싣지 않는다 (ini 의 keys 순서를 볼 것)',
+                            dev.alias, ch_no, unit, key)
+                continue
+            ts = row.get('ch_timestamp')
+            try:
+                # ⭐ **UTC epoch 이다** (실물 확인 2026-09-08: 같은 행의
+                # `last_update` 문자열과 초까지 맞는다).
+                age = now_e - float(str(ts).strip())
+            except (TypeError, ValueError):
+                age = 0.0                   # 시각을 못 읽으면 폴링 시각으로
+                log.warning('radionode %s CH%d 의 ch_timestamp 를 못 읽었다 '
+                            '(%r) -- 폴링 시각으로 대신한다', dev.alias, ch_no, ts)
+            if age < -self._CLOCK_SLACK:
+                # ⛔ **장치 시계가 우리보다 앞선다.**  그대로 두면 나이가 음수라
+                # 늘 신선해 보여, 진짜로 낡은 표본도 `stale_after` 를 못 걸린다
+                # -- *"낡은 값이 새 값처럼"* 이라 결측보다 나쁘다.
+                # ⚠️ 실물에서 RN320-BTH 가 `last_update` 보다 1분쯤 앞선 적이
+                # 있다(2026-09-08).  작은 앞섬은 정상으로 보고 넘긴다.
+                log.warning('radionode %s CH%d 표본시각이 우리 시계보다 %.0f초 '
+                            '앞선다 -- 장치/서버 시각을 볼 것 (신선도 판정이 '
+                            '느슨해진다)', dev.alias, ch_no, -age)
+            age = max(0.0, age)
+            with self._lock:                # ⚠️ 수신 스레드에서도 쓰는 dict
+                self._latest[key] = (val, now_m - age)
+            got.append(key)
+        for name in ('battery', 'lqi', 'last_update', 'sensor_mac',
+                     'device_name', 'device_model', 'device_interval',
+                     'device_splrate'):
+            if rows and name in rows[0]:
+                extras[name] = rows[0][name]
+        # ⭐ **전송주기를 API 가 알려 준다** -- 계획서 0단계가 운영자에게 물어
+        # `stale_after` 를 3배로 맞추라던 그 값이다.  ⛔ 장치마다 다를 수 있어
+        # (실물: 60초 · 600초) **하나의 `stale_after` 로는 둘을 다 못 맞춘다**.
+        # 여기서 고치지 않고 알리기만 한다 -- 문턱은 운영 판단이다.
+        try:
+            interval = float(str(extras.get('device_interval', '')).strip())
+        except (TypeError, ValueError):
+            interval = 0.0
+        if interval > 0:
+            # ⭐ **읽은 뒤에 창이 정해진다** (운영자 2026-09-08).  손으로 맞추던
+            # 값(계획서 0단계 (a) 4번)을 API 가 알려 주므로, 콘솔에서 주기를
+            # 바꾸면 다음 바퀴에 따라온다.
+            new = interval * 3
+            for key in dev.keys:
+                self._window[key] = new
+            if self._warned_interval.get(dev.alias) != interval:
+                self._warned_interval[dev.alias] = interval
+                log.info('radionode %s 신선도 창을 %.0f초로 잡았다 '
+                         '(전송주기 %.0f초 x3, ini 초기값 %.0f초를 대신한다)',
+                         dev.alias, new, interval, self.cfg.stale_after)
+        self.extras[dev.alias] = extras
+        if not got:
+            self.last_err[dev.alias] = (
+                'no usable channel rows (%d rows: %s)'
+                % (len(rows), ','.join('CH%s' % r.get('ch_no') for r in rows)))
+            return False
+        self.last_err.pop(dev.alias, None)
+        return True
 
     @staticmethod
     def _pick(obj: object, names: tuple[str, ...]) -> object | None:

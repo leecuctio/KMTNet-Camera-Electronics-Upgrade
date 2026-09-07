@@ -369,6 +369,16 @@ class HkMonitor:
         **가장 낡은 표본시각**을 준다: 카드는 하나인데 키마다 표본시각이 달라
         어느 하나를 고르면 나머지에 대해 거짓말이 된다.  가장 낡은 것을 실어야
         이 카드가 **실제보다 신선하다고 말하지 않는다**.
+
+        ⛔ **Radionode 몫은 그 셈에서 뺀다** (운영자 확정 2026-09-08):
+        *"`HKUDATE` 는 guide unit 에서 측정된 값 중 가장 오래된 값 기준.
+        라디오노드 자료는 별도로 시간 기록할 필요 없고 `stale_after` 검사만."*
+        ⭐ 근거가 선다 -- Radionode 는 **클라우드를 거치는 남의 계통**이고
+        전송주기가 장치마다 다르다(실물 60초·600초).  그것을 섞으면 600초
+        장치 하나가 **guide 유닛 전체의 취득 시각을 30분 뒤로** 끌고 간다.
+        ⚠️ 대신 그 세 카드(`HEBOX`·`FSATEMP`·`FSAHUM`)의 나이는 `HKUDATE` 로
+        읽을 수 없다 -- 신선도는 폴러의 창(`device_interval` x3)이 보증하고,
+        원값·표본시각은 HK CSV 에 남는다.
         ⚠️ 살아남은 키가 없으면 **싣지 않는다** -- 호출측이 sentinel `'NC'` 로
         채운다.  빈 블록에 시각만 붙으면 "쟀는데 다 결측" 으로 읽힌다.
         ⛔ 이것이 없어서 **guide 헤더의 `HKUDATE` 가 늘 `NC` 였다** (2026-09-06
@@ -380,10 +390,24 @@ class HkMonitor:
         now = time.time()
         out: dict[str, object] = {}
         horizon = max(self.cfg.hk.interval * 3, 30.0)
+        # ⭐ **Radionode 는 별도 관리다** (운영자 2026-09-08) -- 그 키들은 폴러가
+        # **장치의 전송주기 3배**로 이미 걸러서 넘긴다.  여기서 또 자르면 공용
+        # 지평선(기본 180초)이 먼저 이겨, 전송주기가 긴 장치(실물 600초)는 늘
+        # sentinel 이 된다.  ⛔ 면제가 성립하는 것은 `_tick` 이 **폴러가 접은
+        # 키를 `_sample` 에서 빼기** 때문이다 -- 그 짝이 깨지면 안 늙는다.
+        own = (self.radionode.all_keys()
+               if self.radionode is not None else frozenset())
         oldest: float | None = None
         for key, (val, when) in self._sample.items():
+            if key in own:
+                # ⭐ **Radionode 는 `stale_after` 검사만 받는다** (운영자
+                # 2026-09-08) -- 폴러가 자기 창으로 이미 걸렀으므로 여기서 또
+                # 자르지 않고, **`HKUDATE` 의 셈에도 넣지 않는다**(아래).
+                out[key] = val
+                continue
             if now - when <= horizon:
                 out[key] = val
+                # ⭐ `HKUDATE` 는 **guide 유닛에서 잰 값**만 기준이다.
                 oldest = when if oldest is None else min(oldest, when)
         if out and oldest is not None:
             out['hkudate'] = stamp_iso(datetime.datetime.fromtimestamp(
@@ -528,9 +552,16 @@ class HkMonitor:
         # 쓴다** (`now` 로 덮으면 낡은 값이 갓 잰 값이 되고, 그 나이를 보고
         # 거르라고 둔 `hk_stale_after` 가 영영 안 걸린다 -- DevNote 9.6).
         if self.radionode is not None:
-            for key, (val, when) in self.radionode.values_with_time().items():
-                self._sample[key] = (val, when)
-                row[key] = val
+            fresh = self.radionode.values_with_time()
+            for key in self.radionode.all_keys():
+                if key in fresh:
+                    self._sample[key] = fresh[key]
+                    row[key] = fresh[key][0]
+                else:
+                    # ⛔ **폴러가 접은 키는 여기서도 뺀다.**  안 빼면 옛 표본이
+                    # `_sample` 에 남고, `sensors()` 가 Radionode 키를 공용
+                    # 지평선에서 면제하므로 **영영 안 늙는다**.
+                    self._sample.pop(key, None)
 
         # AUX ENS1~7 -- **읽기만 한다.  질의는 취득 경로가 한다.**
         #

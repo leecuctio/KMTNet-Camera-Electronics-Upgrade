@@ -1582,9 +1582,40 @@ API 를 쳐서** 돌아오는 HTTP 오류가 *"인터넷·계정 등급"* 으로
 않는다(장치 하나만 있어도 그쪽은 받아야 하고, 나머지 HK 는 무관하게 돌아야 한다).
 
 ⏳ **자격증명 넷 · MAC 둘 · SEND INTERVAL 은 여전히 운영자 몫**이고, 실제 1단계는 벤치에서
-돈다.  ⚠️ SEND INTERVAL 이 정해지면 **문턱 셋을 함께** 고칠 것(`radionode.stale_after` 600 ·
-`hk.sensors()` `interval*3`=180 · science `hk_stale_after` 300 — 헤더 경로에선 180 이 먼저
-자른다).  아직 손대지 않았다.
+돈다.  ✅ **문턱 셋은 닫혔다** (2026-09-08, DevNote 11.44) — `radionode.stale_after` 는
+**4000 초기값 → `device_interval` x3**(API 가 주는 값), `hk.sensors()` 는 **Radionode 면제**,
+science `hk_stale_after` 는 **2000**.  ⭐ SEND INTERVAL 을 손으로 맞출 일이 없어졌다.
+
+#### (마) Radionode 를 **실제 규약**으로 (11.44)
+
+운영자가 공개 매뉴얼(`oa.radionode365.com/apidoc/kr/`)을 주면서 검토를 지시했다.
+⛔ **세 축이 전부 어긋나 있었다** — 우리 구현은 *"실기 응답을 아무도 못 봤다"* 는 전제 위의
+**지어낸 프로토콜**이었다(코드 스스로 PROVISIONAL 이라 적어 뒀다).
+
+| 축 | 우리 가정 | 실제 |
+|---|---|---|
+| 전송 | `GET` + 경로에 `{mac}` | **`POST` + form 본문**, 채널 단위 |
+| 인증 | `X-API-KEY` 헤더 | ⛔ **헤더 인증 자리가 없다** |
+| 필드 | `temperature`/`humidity` | **`ch_value`** |
+
+**지금**: `channel/get_lst` **한 바퀴 한 번**(쿼터 분당 10회 · 장치 수 무관) ·
+`device_mac` 으로 골라내기 · `ch_no`↔`keys` 짝짓기 + **단위 검산** ·
+**`ch_timestamp`(실측정시각, UTC epoch 검산)** · `extras` 에 배터리·신호세기·안 쓰는 채널 보관.
+
+**문턱 셋을 맞췄다**: `stale_after` **4000 초기값 → `device_interval` x3**(키별) ·
+`hk.sensors()` 지평선에서 **Radionode 면제** · science `hk_stale_after` **300 → 2000**.
+⚠️ 면제의 **짝**은 `_tick` 이 폴러가 접은 키를 `_sample` 에서 빼는 것이다 — 안 빼면 안 늙는다.
+⛔ **`HKUDATE` 는 guide 유닛 측정값만** 기준(운영자) — Radionode 는 값만 싣는다.
+
+**폐기한 ini 칸 셋**(`latest_path`·`key_header`·`secret_header`)은 남아 있으면 **기동이 경고**한다.
+⚠️ 와이어 문구는 **ASCII** 라야 한다(한글이 `???` 로 깨졌다).
+
+⏳ **남은 것 하나 — 실기 왕복 미검증.**  운영자가 `curl` 로 친 것은 봤지만 **우리 요청이
+200 을 받는지는 아직 아무도 안 봤다.**  벤치에서 `RADIONODE CONNECT` → `STATUS` 한 번이면
+갈린다.  ⭐ 이제 목이 채울 것은 **`api_key`·`api_secret`·`device_mac` 둘**뿐이다
+(`base_url` 은 ini 에 실값, SEND INTERVAL 은 API 가 알려 준다).
+⚠️ MAC 을 고를 때 `device_model` 이 **`RN320-BTH`** 인지 대조할 것 — 같은 계정의
+`SSO-FSA`(RN172)가 판박이라 잘못 적으면 그럴싸한 값이 실린다.
 
 #### ⏳ 다음 세션이 할 것
 

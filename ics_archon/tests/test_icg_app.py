@@ -573,14 +573,21 @@ def test_radionode_connect_names_what_is_missing(tmp_path):  # noqa: ANN001
     """⛔ **자격증명이 없으면 켜지 않는다** -- 무엇이 없는지 이름을 댄다.
 
     조용히 켜면 주기마다 실패 로그만 쌓이고 헤더는 sentinel 인데, 운영자는
-    *"연결했다"* 고 믿는다.  ⭐ 배포 ini 는 자격증명 넷이 다 주석이라 이것이
+    *"연결했다"* 고 믿는다.  ⭐ 배포 ini 는 **키 둘만** 주석이라(⚠️ `base_url` 은
+    2026-09-08 부터 실값 `https://oa.radionode365.com` 이 들어 있다) 이것이
     **첫 구동에서 실제로 만나는 갈래**다.
+    ⛔ 문구는 **ASCII 여야 한다** -- 이 응답이 ICIMACS 와이어로 나가므로 한글을
+    넣으면 '?' 로 깨져 운영자가 못 읽는다.
     """
     _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE CONNECT'])
     said = [s for s in sent if 'RADIONODE' in s]
     assert any('ERROR' in s for s in said), said
-    for key in ('base_url', 'api_key', 'api_secret'):
+    for key in ('api_key', 'api_secret'):
         assert any(key in s for s in said), (key, said)
+    # base_url 은 ini 가 이미 채운다 -- "없는 것" 목록에 나오면 안 된다.
+    assert not any('base_url' in s for s in said), said
+    for line in said:
+        line.encode('ascii')            # 깨지면 여기서 UnicodeEncodeError
 
 
 def test_radionode_connect_with_an_alias_is_the_device_branch(tmp_path):  # noqa: ANN001

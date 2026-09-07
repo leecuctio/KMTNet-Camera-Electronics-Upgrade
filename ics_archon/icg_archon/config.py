@@ -136,14 +136,17 @@ class RadionodeCfg:
     backend: str = 'off'
     poll_period: float = 60.0
     timeout: float = 10.0
+    #: API 서버 origin.  실기값 `https://oa.radionode365.com`.
     base_url: str = ''
-    #: 최근 측정값 endpoint -- `{mac}` 자리에 장치 MAC 이 들어간다.
-    latest_path: str = ''
-    #: 인증 -- 헤더 이름까지 ini 소관 (콘솔 매뉴얼이 정본).
+    #: 공통 경로.  매뉴얼의 모든 endpoint 가 이 아래다 (`…/channel/get_lst`).
+    api_path: str = '/tp365/v1'
+    #: 인증 -- ⛔ **본문 파라미터다, 헤더가 아니다** (공개 매뉴얼
+    #: `oa.radionode365.com/apidoc/kr/`).  종전의 `latest_path`·`key_header`·
+    #: `secret_header` 셋은 이 API 에 없는 자리라 **폐기**했다 (DevNote 11.44).
     api_key: str = ''
     api_secret: str = ''
-    key_header: str = 'X-API-KEY'
-    secret_header: str = 'X-API-SECRET'
+    #: ini 에 남아 있던 **폐기된 칸** 이름들 -- `validate()` 가 알린다.
+    retired_keys: tuple = ()
     #: 신선도 경보 문턱 [s] -- 장치 SEND INTERVAL 의 3배쯤.  이보다 낡은
     #: 표본은 헤더에 싣지 않는다 (호출측이 sentinel 을 채운다).
     stale_after: float = 600.0
@@ -353,11 +356,15 @@ def load(path: str) -> IcgCfg:
         r.poll_period = _float(s, 'poll_period', r.poll_period)
         r.timeout = _float(s, 'timeout', r.timeout)
         r.base_url = _text(s, 'base_url', r.base_url)
-        r.latest_path = _text(s, 'latest_path', r.latest_path)
+        r.api_path = _text(s, 'api_path', r.api_path)
         r.api_key = _text(s, 'api_key', r.api_key)
         r.api_secret = _text(s, 'api_secret', r.api_secret)
-        r.key_header = _text(s, 'key_header', r.key_header)
-        r.secret_header = _text(s, 'secret_header', r.secret_header)
+        # ⛔ 폐기한 칸이 **남아 있으면 알린다** -- 현장 ini 에 그대로 있으면
+        # 적어 둔 사람은 그것이 쓰인다고 믿는다 (조용히 무시가 제일 나쁘다).
+        gone = [k for k in ('latest_path', 'key_header', 'secret_header')
+                if s.get(k, fallback='').strip()]
+        if gone:
+            r.retired_keys = tuple(gone)
         r.stale_after = _float(s, 'stale_after', r.stale_after)
         r.lns_bind = _text(s, 'lns_bind', r.lns_bind)
         r.lns_path = _text(s, 'lns_path', r.lns_path)
@@ -447,7 +454,6 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
                         % ', '.join(no_eui))
     if r.backend == 'openapi':
         missing = [k for k, v in (('base_url', r.base_url),
-                                  ('latest_path', r.latest_path),
                                   ('api_key', r.api_key),
                                   ('api_secret', r.api_secret)) if not v]
         if missing:
@@ -462,6 +468,11 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
         # 4번 걸음(`HK`)에서 sentinel 만 보이고, 원인을 *"인터넷·계정 등급"* 에서
         # 찾게 된다 (`bench_test_plan.md` 1단계 "멈출 조건").  기동은 안 세운다 --
         # 나머지 HK(RTD·진공·AUX)는 돌아야 한다.
+        if r.retired_keys:
+            warn.append('[radionode] %s 는 **더 이상 쓰지 않는 칸**이다 -- 이 API '
+                        '는 인증을 본문 파라미터로 받고(헤더 없음) 채널 목록을 '
+                        'channel/get_lst 한 번으로 가져온다.  지워도 된다 '
+                        '(DevNote 11.44)' % ', '.join(r.retired_keys))
         no_mac = [d.alias for d in r.devices if not d.mac]
         if no_mac:
             warn.append('[radionode] mac 이 없는 장치: %s -- 그 장치는 폴링에서 '

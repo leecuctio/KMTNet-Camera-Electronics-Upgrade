@@ -16,21 +16,38 @@
 
 ### (a) RADIONODE 자격증명 — ⛔ **운영자만 할 수 있다** (콘솔 접근)
 
-코드가 대신 못 하는 것 넷이다 (DevNote 2266, 9.7):
+⭐ **2026-09-08 로 크게 줄었다** — 공개 매뉴얼(`oa.radionode365.com/apidoc/kr/`)을 읽고
+코드를 실제 규약에 맞추면서 *"매뉴얼에서 옮겨 적어야 하는 것"* 이 사라졌다 (DevNote 11.44).
 
-| # | 준비물 | 어디서 |
-|---|---|---|
-| 1 | **계정 등급** — Open API 를 쓸 수 있는 등급인가 | Tapaculo365 콘솔 |
-| 2 | **API KEY / SECRET** + OPENAPI 매뉴얼의 **base URL · 경로 · rate limit** | 관리자 이름 → 고객사 정보 변경 → API KEY/SECRET |
-| 3 | **사이트 LoRa 게이트웨이 기종** (사설 LNS 경로가 가능한지 판단용) | 현장 확인 |
-| 4 | **장치 SEND INTERVAL** 결정 — 1분은 배터리가 닳는다, **2~5분 절충 권장** | 콘솔 |
+| # | 준비물 | 어디서 | 상태 |
+|---|---|---|---|
+| 1 | **계정 등급** — Open API 를 쓸 수 있는 유료회원사인가 | Radionode365 콘솔 | ✅ 확인됨 (`get_lst` 가 돈다) |
+| 2 | **API KEY / SECRET** | `s2.radionode365.com` → 고객사 정보변경 → API Key/Secret | ⏳ 벤치 ini 에 적을 것 |
+| 3 | **장치 `device_mac` 둘** | `channel/get_lst` 응답 (아래) | ⏳ 벤치 ini 에 적을 것 |
+| 4 | ~~**base URL · 경로 · 헤더 이름**~~ | — | ✅ **필요 없다** — 코드가 안다 |
+| 5 | ~~**SEND INTERVAL** 결정~~ | — | ✅ **필요 없다** — 응답의 `device_interval` 로 신선도 창이 잡힌다 |
+| 6 | **사이트 LoRa 게이트웨이 기종** | 현장 확인 | ⏳ `local_lns` 갈래를 볼 때만 |
+
+⭐ **`device_mac` 은 이 한 줄로 다 보인다** (값은 저장소에 옮기지 말 것):
+
+```bash
+curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
+     https://oa.radionode365.com/tp365/v1/channel/get_lst
+```
+
+⚠️ 계정에 **남의 장치가 많이 섞여 온다** (실물: `SSO-Top-ring`·`SSO-FSA` 등).  우리 것은
+`device_model` 이 **`RN320-BTH`** 인 둘이다 — ⛔ `SSO-FSA` 는 이름도 채널 구성(T/RH)도
+판박이라 잘못 적으면 **그럴싸한 값이 실려 못 알아챈다.**
+
+⛔ **보안 토큰(`api_token`)은 쓰지 않는다.**  매뉴얼 경고: *"보안 토큰 설정 시 API KEY 의
+사용 권한이 즉시 제거"* — 콘솔에서 그것을 켜면 폴링이 그날로 인증 실패로 죽는다.
 
 ⛔ **KEY/SECRET 실값을 저장소 `icg_archon.ini` 에 적지 말 것.**  한 번 커밋되면 이력 재작성 없이는
 못 뺀다.  **벤치 설치본 `~/AIC/etc/icg_archon.ini` 에만** 적는다.  절차는 `README.md` 의
 "Radionode 자격증명" 절.
 
 ⛔ **`stale_after` 가 재는 것은 장치의 표본시각이 아니라 우리가 폴링을 받은 시각이다** (2026-09-06 확인) -- `_store()` 가 그 자리에서 `time.monotonic()` 을 찍고, 응답의 시각 필드를 읽는 코드가 없다.  그래서 이 값이 잡는 것은 **장치 침묵이 아니라 폴링 실패**(인터넷·API 장애)뿐이고, `HKUDATE` 도 측정시각이 아니라 **마지막 폴링 성공 시각**이다.
-⛔ **게다가 헤더 경로에서는 아무 일도 안 한다** -- `sensors()` 의 지평선 `interval*3`(기본 **180 s**)이 먼저 자르므로 600 s 는 헤더에 닿지 않는다.  세 문턱이 따로 논다: `radionode.stale_after` 600 → `hk.sensors()` 180 → science `hk_stale_after` 300.
+✅ **세 문턱이 이제 서로 맞는다** (운영자 2026-09-08 · DevNote 11.44): `radionode.stale_after` **4000 초기값 → `device_interval` x3**(60s→180 · 600s→1800) → `hk.sensors()` 180 s 지평선은 **Radionode 면제** → science `hk_stale_after` **2000**.  ⛔ `HKUDATE` 는 **guide 유닛 측정값만** 기준이다 (Radionode 는 값만 싣고 시각 셈에서 빠진다).
 
 ⭐ `stale_after` 는 **SEND INTERVAL 의 약 3배**로 맞춘다 (현재 600 s = 3분 간격 전제 -- ⚠️ 3×180 s = 540 이지 600 이 아니다).  ④를 정하면
 이 값도 함께 고친다 — 안 고치면 멀쩡한 표본을 낡았다고 버리거나, 낡은 값을 헤더에 싣는다.
@@ -42,7 +59,7 @@
 - guide 유닛 `10.0.0.162` 접속 · ACF **`KMTK_GUI_162_STA0201_R2617.acf`** 적용 여부.
 - science 는 **`KMT?_SCI_*_R2611_*.acf`** 6장이 현행이다.
 - ⭐ **장치 MAC / 시리얼** — 벤치 ini 의 `[radionode.hebox]`·`[radionode.fsa]` 에 적을 값.
-  ⚠️ 자격증명 넷과 **별개**다.  이것이 비면 3(`CONNECT`)은 통과하는데 4(`HK`)에서 값이
+  ⚠️ 자격증명과 **별개**다.  이것이 비면 3(`CONNECT`)은 통과하는데 4(`HK`)에서 값이
   계속 sentinel 로 남는다.  ✅ **이제 프로그램이 그 사실을 먼저 말한다** (2026-09-07,
   DevNote 11.42) — 기동 경고 · `RADIONODE STATUS` 의 `NoMAC=` · `CONNECT` 응답의
   `NoMAC=… (those cards stay sentinel)`, 그리고 **폴링이 그 장치를 아예 건너뛴다**
@@ -100,8 +117,9 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 - 시험 `tests/test_icg_radionode.py`
 
 **⛔ 안 선 것 — 그래서 이번 시험이 필요하다**
-- **자격증명 넷**(`base_url`·`latest_path`·`api_key`·`api_secret`) — 콘솔 접근이라
-  **코드가 대신 못 한다**.  0단계 (a)
+- **자격증명 둘**(`api_key`·`api_secret`)과 **`device_mac` 둘** — 콘솔 접근이라
+  **코드가 대신 못 한다**.  0단계 (a).  ⭐ `base_url` 은 ini 에 실값이 들어 있고,
+  `latest_path`·`key_header`·`secret_header` 는 **폐기됐다**(이 API 에 없는 자리다).
 - **실기 응답 모양을 아무도 못 봤다** — `radionode.py` 스스로 PROVISIONAL 이라 적어 뒀다.
   원값 포맷(소수 자리·부호·단위)이 규격 `OI-16` 의 답이다
 - **값 폐기 자리 넷** — 아래 "실험하면서 함께 볼 것"
@@ -110,13 +128,19 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
   `stale_after` 를 늘리는 것은 결측을 없애는 게 아니라 **틀릴 수 있는 값으로 덮는 것**이라
   규격 5.0절 sentinel 의 정신에 어긋난다
 
-**⚠️ 신선도 문턱이 셋인데 따로 논다** (2026-09-06 확인)
-`radionode.stale_after` **600 s** → `hk.sensors()` 지평선 `interval*3` = **180 s** →
-science `hk_stale_after` **300 s**.  ⛔ **헤더 경로에서는 180 s 가 먼저 자르므로 600 s 는
-닿지 않는다.**  게다가 `stale_after` 가 재는 것은 장치 표본시각이 아니라 **우리가 폴링을
-받은 시각**이다(`_store()` 가 그 자리에서 찍는다) — 즉 잡는 것은 *장치 침묵*이 아니라
-*폴링 실패*(인터넷·API 장애)뿐이고, `HKUDATE` 도 측정시각이 아니라 **마지막 폴링 성공
-시각**이다.  ⭐ 장치 SEND INTERVAL 을 정하면 **세 값을 함께** 맞출 것.
+**✅ 신선도 문턱 셋 -- 이제 맞는다** (2026-09-08 개정 · DevNote 11.44)
+
+| 문턱 | 값 | 무엇 |
+|---|---|---|
+| `radionode.stale_after` | **4000 초기값 → `device_interval` x3** | 응답이 전송주기를 알려 주므로 **읽은 뒤 키별로** 잡힌다 (실물 60s→180 · 600s→**1800**) |
+| `hk.sensors()` 지평선 | `[hk] interval` x3 = 180 s | ⭐ **Radionode 는 면제**다 -- 폴러가 자기 창으로 이미 걸렀다.  안 면제하면 주기가 긴 장치는 늘 sentinel |
+| science `hk_stale_after` | **2000 s** (종전 300) | ⛔ 300 의 근거 *"icg 주기 60s 의 5배"* 가 **Radionode 를 안 셌다** |
+
+⭐ **`stale_after` 가 재는 것도 바뀌었다** -- 종전에는 `_store()` 가 그 자리에서 찍어 *폴링
+받은 시각*을 쟀고, 그래서 잡는 것이 *장치 침묵*이 아니라 *폴링 실패*뿐이었다.  이제는 응답의
+**`ch_timestamp`(장치가 잰 시각, UTC epoch -- 실측 확인)** 를 쓴다.
+⛔ **`HKUDATE` 는 guide 유닛 측정값만 기준**이다 -- Radionode 는 값만 싣고 시각 셈에서 빠진다
+(운영자 2026-09-08).  ⚠️ **SEND INTERVAL 을 손으로 맞출 일이 없어졌다** -- API 가 알려 준다.
 
 
 

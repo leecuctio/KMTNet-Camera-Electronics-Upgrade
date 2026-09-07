@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 
 import pytest
 
@@ -39,8 +40,35 @@ from icg_archon.radionode import (RadionodeClient,  # noqa: E402
 DEVICES = (RadionodeDevice(alias='hebox', mac='AA', keys=('hebox',)),
            RadionodeDevice(alias='fsa', mac='BB', keys=('fsatemp', 'fsahum')))
 
-CREDS = dict(base_url='https://example.invalid', latest_path='/x/{mac}',
-             api_key='k', api_secret='s')
+CREDS = dict(base_url='https://example.invalid', api_key='k', api_secret='s')
+
+
+def _row(mac, ch_no, value, unit, ts=None, interval='60'):  # noqa: ANN001, ANN202
+    """`channel/get_lst` 의 한 행 -- **실물 응답 모양 그대로** (2026-09-08 실측).
+
+    ⚠️ 값·시각·배터리가 **문자열**로 오는 것까지 흉내낸다.  숫자로 주면 시험만
+    통과하고 실기에서 `float()` 자리가 터진다.
+    ⚠️ 온도 단위는 `℃`(U+2103) 한 글자다 -- 실물이 `"\u2103"` 으로 온다.
+    ⭐ 매뉴얼에 없는 `VS_INTERVAL`/`VS_SPLRATE` 도 실물에는 있다(둘 다 null) --
+    모르는 키가 섞여도 우리가 안 깨지는지 함께 본다.
+    """
+    return {'device_mac': mac, 'sensor_mac': '0000' + mac, 'ch_no': str(ch_no),
+            'ch_name': '%s-CH%d' % (mac, ch_no), 'ch_unit': unit,
+            'ch_value': '%.2f' % value, 'battery': '239', 'lqi': '-69',
+            'ch_timestamp': str(int(ts if ts is not None else time.time())),
+            'last_update': '2026-09-08 12:00:00',
+            'device_name': mac, 'device_model': 'RN320-BTH',
+            'sensor_model': 'RN320-BTH', 'device_interval': interval,
+            'device_splrate': interval,
+            'VS_INTERVAL': None, 'VS_SPLRATE': None}
+
+
+#: 우리 장치 둘 + **남의 장치 하나** -- get_lst 는 회원사 전부를 내므로
+#: 골라내기가 실제로 도는지 함께 본다.
+def _rows(ts=None):  # noqa: ANN001, ANN202
+    return [_row('AA', 1, 21.5, '℃', ts), _row('AA', 2, 44.0, '%', ts),
+            _row('BB', 1, 23.5, '℃', ts), _row('BB', 2, 51.0, '%', ts),
+            _row('ZZ', 1, 99.9, '℃', ts)]
 
 
 #: ⭐ `local_lns` 갈래는 DevEUI 로 붙는다 (게이트웨이 GWEUI 와 같은 계열의
@@ -58,11 +86,10 @@ def _client(**over):  # noqa: ANN201
     rn = RadionodeClient(cfg)
     # ⚠️ **실제 HTTP 를 치지 않는다** -- 폴링 한 바퀴가 바로 도는데 그것이
     # 바깥으로 나가면 시험이 네트워크에 매달린다.
-    # ⚠️ 응답 모양은 **실기 API 를 흉내낸다** (`_store` 가 temperature/
-    # humidity 를 판다) -- 우리 계약 키 이름을 그대로 주면 시험만 통과하고
-    # 실기에서는 "응답에서 온도/습도를 못 찾았다" 가 된다.
-    rn._fetch_latest = lambda mac: {'temperature': 21.5,   # noqa: SLF001
-                                    'humidity': 44.0}
+    # ⚠️ 응답 모양은 **매뉴얼 예시 그대로**다 (`ch_value`/`ch_timestamp` 가
+    # 문자열) -- 우리 계약 키 이름을 그대로 주면 시험만 통과하고 실기에서
+    # 터진다.
+    rn._fetch_channel_list = lambda: _rows()   # noqa: SLF001
     return rn
 
 
@@ -83,7 +110,7 @@ def test_connect_is_refused_when_the_credentials_are_missing():
     rn.start(lambda coro: None)
     with pytest.raises(RadionodeError) as exc:
         rn.connect()
-    for key in ('base_url', 'latest_path', 'api_key', 'api_secret'):
+    for key in ('base_url', 'api_key', 'api_secret'):
         assert key in str(exc.value), str(exc.value)
     assert rn.cfg.backend == 'off' and not rn.polling
 
@@ -485,3 +512,244 @@ def test_startup_warns_about_a_missing_mac():
     said = '\n'.join(validate(cfg, 'sim'))
     assert 'mac' in said and 'hebox' in said and 'fsa' in said, said
     assert 'sentinel' in said, said
+
+
+# -- 실제 OpenAPI 규약 (매뉴얼 oa.radionode365.com/apidoc/kr/, 2026-09-08) ----
+#
+# ⛔ 종전 구현은 **GET + X-API-KEY 헤더 + 장치별 호출**이었는데 이 API 에는
+# 그런 자리가 없다 -- 실기 응답을 못 본 채 지어낸 모양이었다 (DevNote 11.44).
+# 지금은 **POST form + channel/get_lst 한 번**이다.
+
+
+def _capture_post(rn, payload):  # noqa: ANN001, ANN202
+    """`urlopen` 을 가로채 요청을 붙잡고 `payload` 를 돌려준다."""
+    import json as _json
+    from icg_archon import radionode as rn_mod
+
+    seen = {}
+
+    class _Resp:
+        def __enter__(self):  # noqa: ANN204
+            return self
+
+        def __exit__(self, *a):  # noqa: ANN002, ANN204
+            return False
+
+        def read(self):  # noqa: ANN201
+            return _json.dumps(payload).encode('utf-8')
+
+    def fake_urlopen(req, timeout=None):  # noqa: ANN001, ANN202
+        seen['url'] = req.full_url
+        seen['method'] = req.get_method()
+        seen['headers'] = dict(req.headers)
+        seen['body'] = (req.data or b'').decode('utf-8')
+        return _Resp()
+
+    rn_mod.urllib.request.urlopen = fake_urlopen
+    return seen
+
+
+def test_the_request_is_a_post_form_not_a_header(monkeypatch):
+    """⛔ **인증은 본문 파라미터다** -- 이 API 에 헤더 인증 자리가 없다.
+
+    ⚠️ 종전 구현이 `X-API-KEY`/`X-API-SECRET` 헤더에 실었다.  그 모양이면
+    서버가 익명 요청으로 보고 거절한다.
+    """
+    from icg_archon import radionode as rn_mod
+    real = rn_mod.urllib.request.urlopen
+    rn = _client(**CREDS)
+    del rn._fetch_channel_list          # 하네스 스텁을 걷고 진짜 경로를 탄다
+    seen = _capture_post(rn, {'status': True, 'rows': _rows()})
+    try:
+        rows = rn._fetch_channel_list()              # noqa: SLF001
+    finally:
+        rn_mod.urllib.request.urlopen = real
+
+    assert seen['method'] == 'POST', seen
+    assert seen['url'] == 'https://example.invalid/tp365/v1/channel/get_lst', seen
+    assert 'api_key=k' in seen['body'] and 'api_secret=s' in seen['body'], seen
+    # ⛔ 키가 URL 에 실리면 안 된다 (프록시·로그에 남는다).
+    assert 'api_key' not in seen['url'], seen
+    assert not any(h.lower().startswith('x-api') for h in seen['headers']), seen
+    assert len(rows) == 5
+
+
+def test_a_200_with_status_false_is_still_a_failure():
+    """⛔ **HTTP 200 인데 실패**가 있다 -- 매뉴얼의 실패 예시가 그렇다.
+
+    문구를 물고 올라가지 않으면 `STATUS` 에 원인이 안 보인다.
+    """
+    from icg_archon import radionode as rn_mod
+    real = rn_mod.urllib.request.urlopen
+    rn = _client(**CREDS)
+    del rn._fetch_channel_list          # 〃
+    _capture_post(rn, {'status': False, 'errcode': 'common-401',
+                       'error': 'Authentication information is missing '
+                                'or invalid', 'args': []})
+    try:
+        with pytest.raises(RadionodeError) as exc:
+            rn._fetch_channel_list()                 # noqa: SLF001
+    finally:
+        rn_mod.urllib.request.urlopen = real
+    assert 'common-401' in str(exc.value), str(exc.value)
+
+
+def test_one_call_serves_every_device():
+    """⭐ 호출이 **장치 수와 무관하게 한 번**이다 (쿼터: api_key 당 분당 10회)."""
+    rn = _client(**CREDS)
+    calls = []
+    rn._fetch_channel_list = lambda: calls.append(1) or _rows()  # noqa: SLF001
+    rn.cfg.backend = 'openapi'
+    for d in rn.cfg.devices:
+        rn.enabled[d.alias] = True
+
+    asyncio.run(rn._poll_all())                      # noqa: SLF001
+
+    assert calls == [1], '장치 둘인데 %d 번 쳤다' % len(calls)
+    assert rn.values() == {'hebox': 21.5, 'fsatemp': 23.5, 'fsahum': 51.0}
+
+
+def test_channels_map_by_number_and_other_devices_are_ignored():
+    """`ch_no` 순서 <-> `keys` 순서.  ⛔ 남의 장치(ZZ) 행은 안 섞인다."""
+    rn = _client(**CREDS)
+    rn.cfg.backend = 'openapi'
+    for d in rn.cfg.devices:
+        rn.enabled[d.alias] = True
+    asyncio.run(rn._poll_all())                      # noqa: SLF001
+
+    got = rn.values()
+    assert got['fsatemp'] == 23.5 and got['fsahum'] == 51.0   # CH1 · CH2
+    assert 99.9 not in got.values(), got                      # ZZ 는 남의 것
+    # hebox 는 CH1 만 쓴다 -- CH2(44.0 %)는 헤더로 안 가고 extras 에만.
+    assert got['hebox'] == 21.5
+    assert rn.extras['hebox']['ch2'] == 44.0
+
+
+def test_the_sample_time_is_the_measurement_time_not_the_poll_time():
+    """⭐ **`ch_timestamp` 가 표본시각**이다 -- 폴링 받은 시각이 아니다.
+
+    ⚠️ 이것이 계획서가 결함으로 적어 둔 자리다: 종전에는 `_store()` 가 그
+    자리에서 `monotonic()` 을 찍어, **장치가 3시간 전에 잰 값도 갓 받은 값**으로
+    보였다.  그러면 `stale_after` 가 잡는 것이 *장치 침묵*이 아니라 *폴링 실패*
+    뿐이고 `HKUDATE` 도 측정시각이 아니게 된다.
+    """
+    rn = _client(stale_after=300.0, **CREDS)
+    old = time.time() - 600                          # 10분 전에 잰 값
+    rn._fetch_channel_list = lambda: _rows(ts=old)   # noqa: SLF001
+    rn.cfg.backend = 'openapi'
+    for d in rn.cfg.devices:
+        rn.enabled[d.alias] = True
+
+    asyncio.run(rn._poll_all())                      # noqa: SLF001
+
+    # 방금 받았지만 **잰 지 10분**이라 신선도 창(300초) 밖이다.
+    assert rn.values() == {}, rn.values()
+    # ⭐ 그래도 "폴링은 성공" 이다 -- 그 구별이 STATUS 에 남아야 한다.
+    assert rn.last_ok.get('fsa') is not None
+
+
+def test_a_swapped_unit_is_refused_not_guessed():
+    """⛔ 단위가 이름과 어긋나면 **싣지 않는다** -- 습도가 온도 카드에 앉으면
+    *정상으로 보이는 틀린 값*이 된다 (규격 5.0절의 정신)."""
+    rn = _client(**CREDS)
+    rn._fetch_channel_list = lambda: [                # noqa: SLF001
+        _row('BB', 1, 51.0, '%'), _row('BB', 2, 23.5, '℃')]
+    rn.cfg.backend = 'openapi'
+    rn.enabled['fsa'] = True
+    asyncio.run(rn._poll_all())                       # noqa: SLF001
+    assert 'fsatemp' not in rn.values() and 'fsahum' not in rn.values()
+
+
+def test_an_unknown_device_mac_says_so():
+    """⛔ 응답은 왔는데 그 MAC 이 없다 -- *"인터넷 문제"* 와 구별해 적는다."""
+    rn = _client(**CREDS)
+    rn._fetch_channel_list = lambda: [_row('ZZ', 1, 9.9, '℃')]  # noqa: SLF001
+    rn.cfg.backend = 'openapi'
+    for d in rn.cfg.devices:
+        rn.enabled[d.alias] = True
+    asyncio.run(rn._poll_all())                       # noqa: SLF001
+    said = rn.status_text()
+    assert 'not in channel list' in said, said
+
+
+def test_a_retired_ini_key_is_reported_not_ignored():
+    """⛔ 폐기한 칸이 ini 에 남아 있으면 **알린다** -- 조용히 무시가 제일 나쁘다.
+
+    적어 둔 사람은 그것이 쓰인다고 믿는다.
+    """
+    from icg_archon.config import IcgCfg, validate
+
+    cfg = IcgCfg()
+    cfg.radionode = RadionodeCfg(backend='openapi', devices=DEVICES,
+                                 retired_keys=('latest_path', 'key_header'),
+                                 **CREDS)
+    said = '\n'.join(validate(cfg, 'sim'))
+    assert 'latest_path' in said and 'key_header' in said, said
+
+
+def test_a_device_clock_running_ahead_is_flagged_not_trusted(caplog):
+    """⛔ 장치 시각이 우리보다 **크게 앞서면** 알린다.
+
+    그대로 두면 나이가 음수라 늘 신선해 보여, 진짜로 낡은 표본도
+    `stale_after` 를 못 걸린다 -- *"낡은 값이 새 값처럼"* 이라 결측보다 나쁘다.
+    ⚠️ 실물에서 1분쯤 앞선 적이 있어(2026-09-08) 작은 앞섬은 넘긴다.
+    """
+    import logging
+
+    rn = _client(**CREDS)
+    ahead = time.time() + 3600                       # 1시간 앞선 시계
+    rn._fetch_channel_list = lambda: _rows(ts=ahead)  # noqa: SLF001
+    rn.cfg.backend = 'openapi'
+    for d in rn.cfg.devices:
+        rn.enabled[d.alias] = True
+
+    with caplog.at_level(logging.WARNING, logger='icg_archon.radionode'):
+        asyncio.run(rn._poll_all())                  # noqa: SLF001
+
+    assert '앞선다' in caplog.text, caplog.text
+    assert rn.values(), '경고는 하되 값은 싣는다'     # 버리지는 않는다
+
+
+def test_the_window_follows_the_device_interval():
+    """⭐ **읽은 뒤 창이 장치 전송주기 x3 으로 바뀐다** (운영자 2026-09-08).
+
+    ini 의 `stale_after` 는 **첫 응답까지의 초기값**일 뿐이다.  계획서 0단계가
+    운영자에게 물어 손으로 맞추라던 값을 API 가 알려 주므로, 콘솔에서 주기를
+    바꾸면 다음 바퀴에 따라온다.
+    ⛔ 장치마다 주기가 다를 수 있어(실물 60초·600초) **하나로는 못 맞춘다** --
+    그래서 창을 키별로 둔다.
+    """
+    rn = _client(stale_after=4000.0, **CREDS)
+    rn._fetch_channel_list = lambda: [               # noqa: SLF001
+        _row('AA', 1, 21.5, '℃', interval='60'),
+        _row('BB', 1, 23.5, '℃', interval='600'),
+        _row('BB', 2, 51.0, '%', interval='600')]
+    rn.cfg.backend = 'openapi'
+    for d in rn.cfg.devices:
+        rn.enabled[d.alias] = True
+
+    assert rn.window_for('fsatemp') == 4000.0        # 아직 안 읽었다 -- 초기값
+    asyncio.run(rn._poll_all())                      # noqa: SLF001
+
+    assert rn.window_for('hebox') == 180.0           # 60 x3
+    assert rn.window_for('fsatemp') == 1800.0        # 600 x3
+    assert rn.window_for('fsahum') == 1800.0
+    assert rn.extras['fsa']['device_interval'] == '600'
+
+
+def test_a_long_interval_device_survives_the_shared_horizon():
+    """⛔ **주기가 긴 장치가 늘 sentinel 이 되면 안 된다.**
+
+    600초 장치의 표본은 최선일 때도 나이가 0~600초다.  창이 1800초라 살아야
+    한다 -- 종전의 600초 고정이면 절반 넘게 잘렸다.
+    """
+    rn = _client(stale_after=4000.0, **CREDS)
+    old = time.time() - 900                          # 15분 전에 잰 값
+    rn._fetch_channel_list = lambda: [               # noqa: SLF001
+        _row('BB', 1, 23.5, '℃', ts=old, interval='600'),
+        _row('BB', 2, 51.0, '%', ts=old, interval='600')]
+    rn.cfg.backend = 'openapi'
+    rn.enabled['fsa'] = True
+    asyncio.run(rn._poll_all())                      # noqa: SLF001
+
+    assert rn.values() == {'fsatemp': 23.5, 'fsahum': 51.0}, rn.values()

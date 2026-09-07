@@ -196,6 +196,11 @@ def test_monitor_writes_csv_and_atomic_latest(tmp_path):
 
         def values(self):  # noqa: ANN202
             return {k: v for k, (v, _t) in self.values_with_time().items()}
+
+        def all_keys(self):  # noqa: ANN202
+            # ⭐ 계약의 일부다 -- `hk` 가 *"이 키는 폴러 소관"* 을 알아야
+            # 공용 지평선에서 면제하고, 폴러가 접은 키를 `_sample` 에서 뺀다.
+            return frozenset(('hebox', 'fsatemp', 'fsahum'))
     mon.radionode = _RN()
 
     asyncio.run(mon._tick(0.0))
@@ -354,7 +359,9 @@ def test_sensors_carries_hkudate_as_the_oldest_sample_time(tmp_path):
     now = time.time()
     # 두 표본의 시각을 일부러 벌린다 -- 60 s 와 5 s 전.
     mon._sample['ccdtemp'] = (-100.0, now - 60.0)      # noqa: SLF001
-    mon._sample['hebox'] = (21.5, now - 5.0)           # noqa: SLF001
+    # ⚠️ 둘 다 **guide 유닛** 키여야 한다 -- Radionode 키는 이 셈에서 빠진다
+    # (운영자 2026-09-08, 아래 시험).
+    mon._sample['dmptemp'] = (-31.8, now - 5.0)        # noqa: SLF001
 
     vals = mon.sensors()
     assert 'hkudate' in vals, vals
@@ -427,3 +434,70 @@ def test_htrout_is_sampled_from_mod10_heateraoutput(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger='icg_archon.hk'):
         asyncio.run(mon3._tick(0.0))
     assert not [r for r in caplog.records if 'HEATERAOUTPUT' in r.getMessage()]
+
+
+def test_hkudate_ignores_radionode_samples(tmp_path):
+    """⛔ **`HKUDATE` 는 guide 유닛 측정값만 기준**이다 (운영자 2026-09-08).
+
+    *"라디오노드 자료는 별도로 시간 기록할 필요 없고 `stale_after` 검사만."*
+
+    ⭐ 근거: Radionode 는 클라우드를 거치는 남의 계통이고 전송주기가 장치마다
+    다르다(실물 60초·600초).  섞으면 600초 장치 하나가 **guide 유닛 전체의
+    취득 시각을 30분 뒤로** 끌고 간다 -- 카드가 실제보다 낡았다고 말하게 된다.
+    ⚠️ 값은 그대로 실린다.  빠지는 것은 **시각 셈**뿐이다.
+    """
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    mon = HkMonitor(None, icfg)
+
+    class _RN:
+        def all_keys(self):  # noqa: ANN202
+            return frozenset(('hebox', 'fsatemp', 'fsahum'))
+    mon.radionode = _RN()
+
+    now = time.time()
+    mon._sample['ccdtemp'] = (-100.0, now - 30.0)      # noqa: SLF001  guide
+    mon._sample['hebox'] = (21.5, now - 1800.0)        # noqa: SLF001  30분 전
+    vals = mon.sensors()
+
+    assert vals['hebox'] == 21.5, '값은 실려야 한다'
+    want = datetime.datetime.fromtimestamp(
+        now - 30.0, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+    assert str(vals['hkudate']) == want, (vals['hkudate'], want)
+
+
+def test_radionode_keys_are_exempt_from_the_shared_horizon(tmp_path):
+    """⭐ 공용 지평선(기본 180초)이 Radionode 를 두 번 자르면 안 된다.
+
+    폴러가 **장치 전송주기 x3** 으로 이미 걸러서 넘긴다.  여기서 또 자르면
+    주기가 긴 장치(실물 600초)는 늘 sentinel 이다.
+    ⛔ 면제가 성립하는 것은 `_tick` 이 **폴러가 접은 키를 `_sample` 에서 빼기**
+    때문이다 -- 그 짝이 깨지면 값이 영영 안 늙는다 (아래에서 함께 본다).
+    """
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    icfg.hk.interval = 60.0                            # 지평선 180초
+    mon = HkMonitor(None, icfg)
+
+    published = {'hebox': (21.5, time.time() - 900.0)}     # 15분 전
+
+    class _RN:
+        def all_keys(self):  # noqa: ANN202
+            return frozenset(('hebox', 'fsatemp', 'fsahum'))
+
+        def values_with_time(self):  # noqa: ANN202
+            return dict(published)
+
+        def values(self):  # noqa: ANN202
+            return {k: v for k, (v, _t) in published.items()}
+    mon.radionode = _RN()
+
+    asyncio.run(mon._tick(0.0))                        # noqa: SLF001
+    assert mon.sensors()['hebox'] == 21.5, '180초 지평선이 잘라 버렸다'
+
+    # ⛔ 폴러가 접으면 `_sample` 에서도 빠져야 한다 -- 안 빼면 안 늙는다.
+    published.clear()
+    asyncio.run(mon._tick(0.0))                        # noqa: SLF001
+    assert 'hebox' not in mon.sensors(), '폴러가 접었는데 헤더에 남았다'
