@@ -383,6 +383,12 @@ class GuideSequencer:
             log.error('guide 사이클 실패 -- %s', exc)
             clean = await self._settle(armed, clean, ticket, intms,
                                        '사이클 실패', drain=True)
+            # ⭐ **P1 규범은 `ABORT` 보다 넓다** (운영자 확대 2026-09-07,
+            # DevNote 11.41) -- 사이클이 실패하면 그 프레임은 안 나오므로
+            # 번호를 먹을 이유가 없다.  ⛔ `_settle` **뒤에** 부른다 -- 그것이
+            # 살아 있는 저장을 마저 소화하고, 그 프레임들은 이미 `advance()`
+            # 로 `suffix_taken` 이 내려가 있어 되감기가 못 건드린다.
+            st.rewind_expnum()
             st.expstatus = ExpStatus.ERROR
             self.emit.error(source, 'GO', _ascii(exc), st.expstatus)
             st.expstatus = ExpStatus.IDLE
@@ -411,18 +417,17 @@ class GuideSequencer:
             # 뒷정리 **뒤에** 정한다 -- 그 사이 다른 클라이언트의 ABORT 가 요청자를
             # 바꿨을 수 있다 (3차 반증).
             who = self._aborted_by or source
-            # ⭐ **P1 규범 ①** (운영자 확정 2026-09-07) -- `ABORT` 는 번호를 안
-            # 먹는다.  기록을 되감아 재시작도 같은 번호부터 가게 한다
-            # (DevNote 11.40).  `EXPENABLE OFF` 도 같은 경로라 함께 되감는다 --
-            # 그 프레임도 나오지 않으므로 번호를 먹을 이유가 없다.
-            # ⛔ **종료(shutdown)는 제외한다** -- 규범이 정한 것은 `ABORT` 이고,
-            # 프로세스가 사라지는 국면은 `_record_expnum` 이 지키려던 바로 그
-            # 자리다(겹침보다 구멍이 안전하다).
+            # ⭐ **P1 규범** (운영자 확정 2026-09-07 · 확대 같은 날, DevNote
+            # 11.40·11.41) -- *"파일이 안 생긴 프레임은 번호를 안 먹는다"*.
+            # 기록을 되감아 재시작도 같은 번호부터 가게 한다.
+            # ⭐ **셋이 같은 갈래로 온다** -- `ABORT` · `EXPENABLE OFF` ·
+            # **종료(shutdown)**.  셋 다 그 프레임을 못 내므로 구별하지 않는다
+            # (종전에는 shutdown 만 뺐는데, 그러면 종료할 때마다 번호에 구멍이
+            # 남았다 -- 운영자 확대 판단).
             # ⭐ 안전 조건은 `rewind_expnum()` 안의 `suffix_taken` 이다 -- 이미
             # `_dispatch_store()` 로 넘긴 프레임은 `advance()` 로 플래그가
             # 내려가 있어 되감기가 그 번호를 건드리지 못한다.
-            if who != 'shutdown':
-                st.rewind_expnum()
+            st.rewind_expnum()
             st.expstatus = ExpStatus.IDLE
             self.emit.idle_done(who)
         except Exception:  # noqa: BLE001 -- 최후 안전망

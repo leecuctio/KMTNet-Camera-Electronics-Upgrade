@@ -464,12 +464,12 @@ def test_abort_rewinds_the_expnum_record(tmp_path, monkeypatch):  # noqa: ANN001
         fake.shutdown()
 
 
-def test_shutdown_does_not_rewind(tmp_path, monkeypatch):  # noqa: ANN001
-    """⛔ **종료는 되감지 않는다** -- 규범이 정한 것은 `ABORT` 다.
+def test_shutdown_also_rewinds(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ **종료도 되감는다** (운영자 확대 2026-09-07, DevNote 11.41).
 
-    프로세스가 사라지는 국면은 `_record_expnum` 이 *쓰는 시점*에 도는 바로 그
-    이유(재실행이 같은 번호를 다시 쓰는 것을 막는다)에 해당한다 -- 겹침보다
-    구멍이 안전하다.  ⏳ 이 갈래는 운영자 확인 대기다 (DevNote 11.40).
+    ⚠️ **11.40 에서 뒤집힌 자리다** — 종전에는 `who != 'shutdown'` 으로 뺐다.
+    그러면 **종료할 때마다** 진행 중이던 프레임의 번호에 구멍이 남는다.  그 프레임도
+    `RESETTIMING` 으로 끊겨 안 나오므로 번호를 먹을 이유가 없다.
     """
     fake = FakeArchon(width=tb.NX, height=tb.NY, readout_ticks=4, tick=0.05,
                       system=tb.GUIDE_SYSTEM, nbuf=3)
@@ -494,6 +494,49 @@ def test_shutdown_does_not_rewind(tmp_path, monkeypatch):  # noqa: ANN001
         expnum = asyncio.run(run())
         assert expnum == 2, '시험 전제가 깨졌다 (%d)' % expnum
         rec = tmp_path / 'icg.expnum'
-        assert rec.read_text(encoding='utf-8').strip() == '2', rec.read_text()
+        assert rec.read_text(encoding='utf-8').strip() == '1', rec.read_text()
+    finally:
+        fake.shutdown()
+
+
+def test_cycle_failure_also_rewinds(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ guide 사이클 실패(`GuideBackendError`)도 번호를 안 먹는다 (11.41).
+
+    첫 장은 `arm_sequence()` 로 뜨고 둘째 장부터 `next_ticket()` 을 타므로, 그것을
+    **미리** 깨 두면 *"첫 장은 저장 · 둘째 장은 번호만 집고 실패"* 가 결정적으로 만들어진다.
+
+    ⛔ 되감기는 `_settle()` **뒤에** 돈다 — 그것이 살아 있는 저장을 마저 소화하고,
+    그 프레임들은 이미 `advance()` 로 `suffix_taken` 이 내려가 있어 되감기가 못
+    건드린다.  그래서 *"저장된 장은 살고 못 낸 장만 되감긴다"* 가 성립한다.
+    """
+    from icg_archon.backend import GuideBackendError
+
+    fake = FakeArchon(width=tb.NX, height=tb.NY, readout_ticks=4, tick=0.05,
+                      system=tb.GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        app = _app(tmp_path, fake, monkeypatch)
+
+        async def boom(*a, **kw):  # noqa: ANN002, ANN003, ANN202
+            raise GuideBackendError('next_ticket failed (시험)')
+
+        monkeypatch.setattr(app.guide, 'next_ticket', boom)
+
+        async def run():  # noqa: ANN202
+            await app.start()
+            try:
+                app.transport.feed('abc>ICG GUIDEEXP 3')
+                await asyncio.sleep(0.02)
+                app.transport.feed('abc>ICG go 5')
+                await app.seq.wait()
+                return app.state.expnum, _files(app)
+            finally:
+                await app.stop()
+
+        expnum, files = asyncio.run(run())
+        assert files == 1, '저장된 장수가 %d -- 첫 장만 나와야 한다' % files
+        assert expnum == 2, '둘째 번호를 안 집었다 -- 시험 전제가 깨졌다 (%d)' % expnum
+        rec = tmp_path / 'icg.expnum'
+        assert rec.read_text(encoding='utf-8').strip() == '1', rec.read_text()
     finally:
         fake.shutdown()

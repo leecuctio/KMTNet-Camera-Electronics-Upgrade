@@ -222,3 +222,30 @@ def test_stop_does_not_rewind(tmp_path):
 
     assert run.count('Wrote LASTFILE=', node='OBS') == 4, '저장이 안 끝났다'
     assert rec.read_text(encoding='utf-8').strip() == '1', rec.read_text()
+
+
+def test_backend_failure_also_rewinds(tmp_path, monkeypatch):
+    """⭐ **규범은 `ABORT` 보다 넓다** — 하드웨어 실패도 번호를 안 먹는다.
+
+    운영자 확대 2026-09-07 (DevNote 11.41): *"파일이 안 생긴 프레임은 번호를 안
+    먹는다"*.  `DMA WAIT TIMEOUT` 같은 `BackendError` 는 그 프레임을 못 내므로
+    `ABORT` 와 같은 규칙이다 — 종전에는 여기만 **재시작이 번호를 건너뛰었다**.
+
+    실패 자리는 `erase()` 다 — `next_suffix()` 뒤이고 저장 태스크가 뜨기 한참
+    전이라 *"집었는데 파일이 없다"* 가 확실하다.
+    """
+    from ics_sim.hardware.base import BackendError
+    from ics_sim.hardware.sim import SimBackend
+
+    async def boom(self, ccd):  # noqa: ANN001, ANN202
+        raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.', ccd=ccd)
+
+    monkeypatch.setattr(SimBackend, 'erase', boom)
+
+    rec = tmp_path / 'ics.expnum'
+    run = drive(DARK_SCRIPT, cfg=make_config(paths__expnum_file=str(rec)))
+
+    assert run.count('Wrote LASTFILE=') == 0, '실패했는데 저장됐다'
+    assert any('ERROR:' in m and 'DMA WAIT TIMEOUT' in m for m in run.sent), \
+        run.find('ERROR:')
+    assert rec.read_text(encoding='utf-8').strip() == '0', rec.read_text()

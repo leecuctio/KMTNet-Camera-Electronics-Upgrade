@@ -429,11 +429,20 @@ Archon 명령표에 없다.
 아무것도 되감지 못한다).  안전 조건은 `suffix_taken` 하나다 — `next_suffix()` 가 세우고
 `advance()` 가 내리므로, 참이라는 것이 곧 *"번호를 집었고 그 프레임은 저장까지 못 갔다"* 다.
 
-⏳ **아직 안 정한 갈래 둘** (실기에서 함께 볼 것):
-* **종료(shutdown) 중 취득**은 **안 되감는다** — 규범이 정한 것은 `ABORT` 이고, 프로세스가
-  사라지는 국면은 겹침보다 구멍이 안전하다고 봤다.  ICG `app.stop()` 이 그 경로다.
-* **`BackendError` 로 죽은 프레임**도 안 되감는다 — 그 프레임도 파일이 안 생기므로 같은
-  논리가 서지만, 운영자가 고른 것은 `ABORT` 라 넓히지 않았다.
+✅ **규범이 `ABORT` 밖으로 넓어졌다** (운영자 확대 2026-09-07, DevNote 11.41) —
+**"파일이 안 생긴 프레임은 번호를 안 먹는다."**  되감는 경로가 다섯이다:
+
+| 경로 | 되감나 |
+|---|---|
+| `ABORT` · `EXPENABLE OFF` (양쪽) | ✅ |
+| ICS `BackendError` (`DMA WAIT TIMEOUT` 등) | ✅ |
+| ICG `GuideBackendError` (사이클 실패) | ✅ |
+| ICG **종료(shutdown)** | ✅ |
+| ICG `except Exception` (내부 오류) | ⛔ **안 한다** — 우리 결함으로 죽어 상태를 모른다 |
+| `NumberSpaceExhausted` | ⛔ **안 한다** — 되감아도 다음에 또 고갈.  ⚠️ ICS 는 그 갈래에서 `advance()` 를 명시적으로 불러 번호를 소비하고, ICG 는 안 부른다 |
+
+⛔ **그래서 번호에 구멍이 보이면 뜻이 셋뿐이다** — ① ICG 내부 오류 ② 번호 공간 고갈
+③ `expnum_file` 을 못 읽음.  셋 다 로그에 자국이 남으니 **구멍만 보고 추측하지 말 것.**
 
 ⚠️ **ICG·ICS 각각 재라** — 카운터가 독립이다 (`icg_archon.expnum` / `ics_archon.expnum`,
 raw spec 9.2절 "카운터 독립").  ⭐ **`EXPENABLE OFF` 도 같은 되감기를 탄다** (ICG) — 그 경로가

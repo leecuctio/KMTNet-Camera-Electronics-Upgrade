@@ -1427,7 +1427,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | raw spec | **v1.12** — 발행 커밋 `8e3bdbf`, 태그 `raw-spec-v1.12`.  ⚠️ `main` 의 **끝**이 아니다 (Leecu 의 `cam_char` 작업이 그 뒤로 붙는다) — 판을 확인할 때는 커밋이 아니라 **태그**를 볼 것.  ⭐ 태그는 **최신 판 하나만** 둔다 — 팀은 `git fetch --tags --prune --prune-tags` 가 필요하다 |
 | guide ACF | **`KMTK_GUI_162_STA0201_R2617.acf`** (타이밍 스크립트 `LINES=122`) |
 | science ACF | **`KMT?_SCI_*_R2611_*.acf`** 6장 (타이밍 스크립트 142줄) |
-| 시험 | `ics_archon` **563** · `ics_sim` **354** — **전수 통과** (2026-09-07 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
+| 시험 | `ics_archon` **564** · `ics_sim` **355** — **전수 통과** (2026-09-07 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
 | 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `33a1bca` 까지.  ⏳ `main` 소관 잔여는 규격 10.6절 `OI-27` 문면 |
 
 #### 오늘 확정된 규약 (어기기 쉬운 것들)
@@ -1537,7 +1537,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 - **`bench_test_plan.md` 3.5단계 신설** — P2 4항 · P1 6항 · ABORT 거동 4항.
 - 실측 보존 감사 남은 넷의 해설 (11.39-(5)) — ⚠️ **넷이 성격이 다 달라 한 규칙으로 못 묶는다.**
 
-#### (나) 이 세션 몫 — P1 규범 ① 확정·구현 (11.40)
+#### (나) 이 세션 몫 — P1 규범 ① 확정·구현 + `ABORT` 밖으로 확대 (11.40~11.41)
 
 ⭐ **운영자 확정: ① 재사용** — *"`ABORT` 때 `expnum_file` 되감기"*.  같은 프로세스 거동을
 정본으로 삼고 **재시작을 거기에 맞췄다**.
@@ -1546,7 +1546,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 |---|---|
 | `ics_sim/state.py` | ⭐ **`rewind_expnum()` 신설** — 기록에 `expnum - 1` 을 적는다(`load_expnum` 이 +1 하므로 재시작이 그 번호부터).  `_record_expnum(value=None)` 이 값 인자를 받게 했다 |
 | `ics_sim/sequencer.py` · `icg_archon/sequencer.py` | `except CancelledError` 의 ABORT 갈래에서 부른다 (`_vendor` 동기화 포함) |
-| 시험 **+12** | 셈 8(`test_expnum_persist`) · 배선 ICS 2(`test_stop_abort`) · 배선 ICG 2(`test_icg_abort_flush`) |
+| 시험 **+14** | 셈 8(`test_expnum_persist`) · 배선 ICS 3(`test_stop_abort`) · 배선 ICG 3(`test_icg_abort_flush`).  ⭐ shutdown 시험은 **뜻이 반전**됐다(개명, 수는 안 는다) |
 
 - ⛔ **`expnum` 자체는 안 바꾼다** — 같은 프로세스의 재사용은 이미 현행 거동이고, 되감기가
   맞추는 것은 *기록*(재시작 뒤의 시작점)뿐이다.
@@ -1571,10 +1571,10 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 #### ⏳ 다음 세션이 할 것
 
-1. ⛔ **`BackendError` 로 죽은 프레임(ICS)에 P1 비대칭이 그대로 남아 있다** — 파일이 안 생기는
-   것은 `ABORT` 와 같은데 `advance()` 를 건너뛰므로 **같은 프로세스는 재사용, 재시작은 건너뜀**
-   이다.  넓히는 것은 한 줄이지만 **규범을 넓히는 판단**이라 운영자에게 물을 것.  같은 성격으로
-   **종료(shutdown) 중 취득**도 안 되감는다 (11.40-(5)).
+1. ✅ **닫혔다 (11.41)** — 규범이 *"파일이 안 생긴 프레임은 번호를 안 먹는다"* 로 넓어져
+   ICS `BackendError` · ICG `GuideBackendError` · ICG **종료(shutdown)** 도 되감는다.
+   ⏳ **남은 비대칭은 ICG `except Exception`(내부 오류) 하나** — 운영자가 *"이 정도 결번은
+   받아들인다"* 로 확정했다.  ⚠️ **"안 고친 결함" 이 아니라 "그렇게 두기로 한 것"** 이다.
 2. **실기 1단계 RADIONODE** — 0단계 (a) 자격증명 넷이 운영자 몫이라 막혀 있다.
 3. **`main` 소관** — 규격 10.6절 OI-27 문면 갱신.
 4. **감사 잔여** — 15차원 확인분 16건(문서 정합) + ⛔ `#22`(`rawcards` sentinel, 유일한 **코드

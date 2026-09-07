@@ -262,6 +262,14 @@ class Sequencer:
             log.error('exposure aborted: %s', exc)
             self.emit.error(source, '', str(exc), st.expstatus)
             st.expstatus = ExpStatus.IDLE
+            # ⭐ **P1 규범은 `ABORT` 보다 넓다** (운영자 확대 2026-09-07,
+            # DevNote 11.41) -- *"파일이 안 생긴 프레임은 번호를 안 먹는다"*.
+            # `DMA WAIT TIMEOUT` 같은 하드웨어 실패도 그 프레임을 못 내므로
+            # 같은 규칙이다.  ⭐ 저장 태스크는 `_frame` 끝에서 뜨고 그 뒤
+            # `advance()` 까지 사이의 `await` 는 `asyncio.sleep` 하나뿐이라,
+            # **여기 왔다는 것은 그 프레임의 저장이 안 떴다**는 뜻이다 --
+            # 그래서 `suffix_taken` 조건이 ABORT 와 똑같이 성립한다.
+            st.rewind_expnum()
         except asyncio.CancelledError:
             # ABORT 로 끊긴 경우에는 OBSAgent 가 IDLE 로 돌아올 수 있도록
             # 종료를 알려야 한다.  알리지 않으면 CamStatus 가 READOUT 에

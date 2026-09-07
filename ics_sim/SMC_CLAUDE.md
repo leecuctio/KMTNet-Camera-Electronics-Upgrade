@@ -50,11 +50,16 @@
 같은 번호를 다시 쓰는 것을 막는 것.  되감기는 **명시적 `ABORT` 경로에서만** 불리므로 사고사는
 종전대로 보호된다 (죽은 프로세스는 아무것도 되감지 못한다).
 
-⚠️ **`BackendError` 로 죽은 프레임은 안 되감는다** — 파일이 안 생기는 것은 `ABORT` 와 같은데
-`advance()` 를 건너뛰므로 **P1 비대칭이 그 경로에 그대로 남아 있다**.  넓히는 것은 한 줄이지만
-규범을 넓히는 판단이라 ⏳ 운영자 몫으로 뒀다.
+⭐ **규범은 `ABORT` 보다 넓다** (운영자 확대 2026-09-07, `ics_archon/DevNote.md` **11.41**) —
+**"파일이 안 생긴 프레임은 번호를 안 먹는다."**  그래서 `except BackendError`(`DMA WAIT
+TIMEOUT` 등)도 되감는다.  ⭐ 안전 조건은 그대로 `suffix_taken` 이다 — `_frame` 은 저장 태스크를
+띄운 뒤 `advance()` 까지 사이에 `asyncio.sleep` 하나만 있어서, **그 예외가 왔다는 것은 그
+프레임의 저장이 안 떴다**는 뜻이다.
 
-시험: `tests/test_expnum_persist.py` **+8**(셈) · `tests/test_stop_abort.py` **+2**(배선).
+⛔ **`NumberSpaceExhausted` 는 되감지 않는다** — 번호 공간이 다 찬 상황이라 되감아도 다음에 또
+고갈이다.  그 갈래는 `_frame` 안에서 `advance()` 를 **명시적으로** 부른다(번호를 소비한다).
+
+시험: `tests/test_expnum_persist.py` **+8**(셈) · `tests/test_stop_abort.py` **+3**(배선).
 ⭐ `STOP` 은 저장까지 마치므로 **되감지 않는다** — 그것을 못박는 시험이 그 둘 중 하나다.
 
 ## ⚠️ 콘솔이 열렸다 (2026-09-07, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.38**
