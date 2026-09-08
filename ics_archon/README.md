@@ -838,6 +838,121 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 * 길이 없으면(`xis_host` 가 비었고 그 노드에게서 아직 아무것도 못 받았다)
   **버려지기 전에 알린다** — 종전 transport 는 조용히 버렸다.
 
+## 셔터 · Trigger Out (운영자 확정 2026-09-09)
+
+⛔ **Trigger Out 이 무엇을 모는지가 계통마다 다르다.**
+
+| 유닛 | 그 선이 모는 것 | 쉬는 상태 | 명령 |
+|---|---|---|---|
+| **science** (`ics_archon`) | **실제 셔터** | `TRIGOUTFORCE=0` — 타이밍 스크립트가 몬다 | `SHOPEN <초>` · `SHCLOSE` |
+| **guide** (`icg_archon`) | **LED** (셔터가 없다 — frame-transfer) | `TRIGOUTFORCE=1` — 선을 우리가 붙든다 | `TRIGOUT <초>` · `TRIGOUT 0` |
+
+### 무엇을 쓰나 — 어느 쪽도 `APPLYSYSTEM` **한 번**
+
+| | science | guide |
+|---|---|---|
+| `SHOPEN <초>` / `TRIGOUT <초>` | `TRIGOUTLEVEL=1` + `TRIGOUTFORCE=1` | 같음 |
+| `<초>` 만료 · `SHCLOSE` / `TRIGOUT 0` | `TRIGOUTLEVEL=0` + **`TRIGOUTFORCE=0`** | `TRIGOUTLEVEL=0` + **`TRIGOUTFORCE=1`** |
+
+* 올림은 두 계통이 **완전히 같고**, 내림은 돌아갈 `TRIGOUTFORCE` 만 다르다.
+* **시한 만료와 명시적 내림이 같은 동작**이다. 새 `SHOPEN`/`TRIGOUT` 은 앞 타이머를 끊는다.
+* `TRIGOUTFORCE`/`TRIGOUTLEVEL` 은 조회·설정 명령으로 **따로 남아 있다**.
+* ⭐ **science 는 노출을 걸 때마다 `TRIGOUTFORCE` 를 되돌린다** —
+  `ArchonBackend.open_shutter()` 가 `set_trigger_forced(not drives_shutter(tag))`
+  를 쓴다. 그래서 `SHOPEN` 이나 즉시 차단이 선을 붙든 채 끝나도 **다음 `GO` 가
+  쉬는 상태(`FORCE=0`)로 되돌린다**.
+
+### ⛔ `SHCLOSE` 는 "닫는다" 가 아니라 "내 강제를 놓는다"
+
+`TRIGOUTFORCE=0` 으로 선을 **타이밍 스크립트에 돌려준다**.  그래서 노출 중에 쓰면
+셔터가 닫히는 시각은 **둘 중 늦은 쪽**이다:
+
+    셔터 닫힘 = max( SHOPEN <초> 만료,  노출의 NoIntMS )
+
+| `<초>` vs 남은 노출 | 닫는 주체 |
+|---|---|
+| `<초>` 가 **길다** | ⭐ **`<초>`** — 그동안 `FORCE=1` 이라 스크립트가 `NOINT` 로 내려도 핀은 HIGH 로 붙들려 있고, 만료 때 넘겨주면 스크립트는 이미 INT 밖이라 그때 닫힌다 |
+| `<초>` 가 **짧다** | **노출**(`NoIntMS`) — 넘겨줄 때 스크립트가 아직 `IntUnit` 안이라 계속 열려 있다 |
+
+`SHCLOSE` 는 시한 없이 곧바로 넘겨주므로 **항상 뒤쪽**이다 — 적분 중이면 노출이
+끝날 때 닫힌다.
+
+⛔ **`<초>` 가 남은 노출보다 길면 자료가 오염된다** — 노출이 끝난 뒤에도 셔터가
+열려 있는 동안 **프레임 트랜스퍼와 독출**이 돌기 때문이다(스미어).  교정·점검이
+아니라면 `<초>` 를 남은 노출보다 짧게 두거나 취득 밖에서 쓸 것.
+
+### `STOP` · `ABORT` 와의 관계
+
+⛔ **`STOP` 은 셔터를 안 건드린다.** 정의가 *"현재 노출을 끝까지 마치고 **다음을
+안 건다**"* 이므로(`Sequencer.stop_integration`), `GO`(1장)에는 사실상 영향이
+없고 **`GO n` 에서만** 뜻이 있다. ICS·ICG 가 같은 정의다.
+
+`ABORT` 는 현재 노출을 종료하고 **영상을 저장하지 않는다**. 뒤처리가 계통마다
+다르다:
+
+| | ABORT 뒤 | 유휴(idle) 상태 |
+|---|---|---|
+| **science** | readout **없이** 곧바로 유휴 (flush 는 `ccdflush` 가 정한다 — 아래) | `SkipLine` 을 계속 돌려 **CCD 를 계속 비운다** |
+| **guide** | **flush 한 번**(`abort_flush()` — `RESETTIMING` + flush) | `SkipLine` 을 안 돌린다 — **CCD clocking 을 멈춘다** |
+
+#### science 의 CCD flush 는 **기본이 꺼짐**이고 ini 가 정한다
+
+`ics_archon.ini` 의 `[archon] ccdflush` 가 기본 **`false`** 다. 켜면(`true`) 설정
+메모리의 `FirstFlush` 가 `1` 이 되고, 코어는 `Start:` 첫 줄에서 `FlushFrame`
+(Prep + Flush)으로 뛴다 — 그래서 **`true` 면 flush 가 두 자리에서 한 번씩 돈다**:
+
+| 언제 | 왜 도나 |
+|---|---|
+| **매 노출 전** | science 는 노출마다 `LOADPARAMS` 를 내고, 그때 코어가 `Start:` 를 지난다 |
+| **`ABORT` 뒤 한 번** | `abort_now()` 의 `RESETTIMING` 이 코어를 `Start:` 로 되돌린다 |
+
+⚠️ `false`(기본)면 두 자리 모두 flush 가 없다 — 유휴의 `SkipLine` 이 CCD 를 계속
+비우기 때문이다. ⛔ guide 는 다르다: ACF 상수가 `FirstFlush=1` 이라 **항상** 돈다.
+
+⚠️ **셔터를 즉시 끊는 경로는 `ArchonBackend.close_shutter()`** 이고
+(`TRIGOUTFORCE=1` + `TRIGOUTLEVEL=0` 으로 선을 **붙든다**), 적분 자체는 남은
+시간을 다 센다. ⏳ 다만 **현재 `ABORT` 는 이 함수를 안 지난다** — 시퀀서가
+태스크만 취소하므로 science 는 컨트롤러의 적분이 물리적으로 끝까지 가고 셔터는
+`NoIntMS` 에 닫힌다(프레임만 안 쓴다). 미결 항목이다 (DevNote 11.50).
+
+| | 강제 | 적분 중 셔터 |
+|---|---|---|
+| `SHCLOSE` | **놓는다** (`FORCE=0`) | 노출 끝(`NoIntMS`)에 닫힘 |
+| `STOP` | 안 건드린다 | 노출 끝에 닫힘 (정상 종료) |
+| `ABORT` | 펄스 중이면 **쉬는 상태로 되돌린다** | 적분을 끊고(`RESETTIMING`) **닫힘** |
+| `close_shutter()` (즉시 차단 경로) | **붙든다** (`FORCE=1`, `LEVEL=0`) | **즉시** 닫힘 |
+
+⭐ **진행 중인 `SHOPEN`/`TRIGOUT` 펄스를 끊는 자리가 셋이다** — `ABORT` ·
+`EXPENABLE OFF`(ICG) · **종료(`quit`)**. `RESETTIMING` 은 타이밍 코어만
+되돌리는데 펄스 중에는 `TRIGOUTFORCE=1` 이라 핀이 코어를 안 따라가기 때문이다 —
+안 끊으면 **셔터가(guide 는 LED 가) 열린 채 남는다**.
+⛔ **종료가 특히 그렇다**: 펄스는 백그라운드 태스크로 도는데 종료가 그것을
+취소하므로 내림이 **영영 안 돈다**. ⚠️ 펄스가 없었으면 아무것도 안 쓴다.
+⛔ **`STOP` 은 안 끊는다** — *"다음을 안 건다"* 라 펄스와 무관하다.
+
+### guide 는 선을 놓지 않는다
+
+`TRIGOUT 0` 도 시한 만료도 `TRIGOUTFORCE=1` 을 유지한다. guide 에서 `0` 은
+*"타이밍 스크립트가 몬다"* 이고, guide 는 `IntMS = EXPTIME − 기본 노출시간` 으로
+넣어 `INT` 가 실제로 서므로 **노출마다 LED 선이 흔들린다**. 그래서 ACF 출고값도
+`TRIGOUTFORCE=1` 로 올렸고(**R2618**), `GuideBackend.prepare()` 가 띄울 때마다
+되읽어 확인한다.
+
+⚠️ 이 명령들은 모두 `WCONFIG` + `APPLYSYSTEM` 이다. **적분 중·독출 중
+`APPLYSYSTEM` 의 안전성은 아직 실측 전**이라(DevNote 11.50) 취득 중에 치면 한 번
+경고가 나온다.
+
+### 없앤 명령
+
+| 명령 | 어디서 | 왜 |
+|---|---|---|
+| `FLASHNOW` · `LEDFLASH` | ICS · ICG | 점검용 LED 프로젝터 — 실기에서 구현된 적이 없다. 그 자리는 `SHOPEN`/`TRIGOUT` 이 대신한다 |
+| `DMAWAIT` | ICG | 광케이블 IC 의 통신 지연 — guide 는 Archon 한 대다 |
+| `SHOPEN` · `SHCLOSE` | ICG | guide 엔 셔터가 없다 → `TRIGOUT` 으로 갈렸다 |
+
+⛔ **감추지 않고 거절한다** — `ERROR: <명령> Not supported on this node`.
+⚠️ 시뮬(`ics_sim`)에는 그대로 남는다(레거시 흐름을 흉내내는 것이 시뮬의 몫이다).
+
 ## 관련 문서
 
 | 문서 | 위치 |

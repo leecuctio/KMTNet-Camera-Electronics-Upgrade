@@ -128,6 +128,11 @@ def test_three_are_refused_during_acquisition_and_archon_is_not(tmp_path):  # no
     """
     async def run():  # noqa: ANN202
         cfg, icfg = make_cfgs(tmp_path)
+        # ⛔ **지속 파일을 tmp 로 돌린다** -- 안 하면 `EXPENABLE OFF` 가 작업
+        # 폴더의 `icg_archon.expenable` 에 남아 **다음 시험의 `GO` 가 거절된다**
+        # (2026-09-09 실제로 났다).  `_drive` 는 처음부터 이렇게 하고 있었다.
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
         app = IcgArchon(cfg, icfg, backend='sim')
         await app.start()
         try:
@@ -409,14 +414,14 @@ def test_real_backend_path_flushes_once_powers_and_bypasses(tmp_path, monkeypatc
 
 # -- Trigger Out (셔터 자리) -----------------------------------------------
 #
-# ⛔ **guide 에는 셔터가 없다** (frame-transfer).  기반의 `SHOPEN`/`SHCLOSE` 를
+# ⛔ **guide 에는 셔터가 없다** (frame-transfer).  기반의 `TRIGOUT`/`TRIGOUT 0` 를
 # 살려 두되 **Archon 의 Trigger Out 선**을 세우는 뜻으로 쓴다 (운영자 2026-09-08).
 # ⭐ `TRIGOUTFORCE`(강제할지)와 `TRIGOUTLEVEL`(강제했을 때의 레벨)은 **다른
 # 물건**이라, 핀을 실제로 HIGH 로 세우려면 둘 다 필요하다.
 #
 # ⛔ **guide 의 쉬는 상태는 `FORCE=1` + `LEVEL=0`** 이다 (운영자 확정
-# 2026-09-08) -- 선을 우리가 붙들어 LOW 로 고정한다.  그래서 `SHCLOSE` 도,
-# `SHOPEN` 의 자동 내림도 **강제를 풀지 않는다**.  종전 판은 `FORCE=0` 으로
+# 2026-09-08) -- 선을 우리가 붙들어 LOW 로 고정한다.  그래서 `TRIGOUT 0` 도,
+# `TRIGOUT` 의 자동 내림도 **강제를 풀지 않는다**.  종전 판은 `FORCE=0` 으로
 # 내려놓아 선을 타이밍 스크립트에 넘겼고, `prepare()` 의 래치 탓에 재시작
 # 전까지 안 돌아왔다 (벤치 2026-09-08).
 
@@ -429,7 +434,7 @@ class _Rec:
     """왕복을 **적용 단위로** 붙잡는 가짜 컨트롤러 표면.
 
     ⭐ `calls` 의 항목 하나가 `APPLYSYSTEM` **한 번**이다 -- 적용 횟수를 그대로
-    셀 수 있어야 한다 (`SHOPEN` 이 평시에 한 번인 것이 이 판의 요점이다).
+    셀 수 있어야 한다 (`TRIGOUT` 이 평시에 한 번인 것이 이 판의 요점이다).
     항목 안의 차례는 **쓴 차례**(레벨이 먼저)다.
     ⚠️ 적용을 줄이는 이유가 *"VCPU 재시작 결측"* 은 **아니다** -- `APPLYSYSTEM`
     은 VCPU 를 안 건드린다(2026-09-08 실측).  이유는 **에지 시점**이다.
@@ -481,6 +486,11 @@ def _trig(tmp_path, script, held=None, settle=0.1, wire=None):  # noqa: ANN001, 
 
     async def run():  # noqa: ANN202
         cfg, icfg = make_cfgs(tmp_path)
+        # ⛔ **지속 파일을 tmp 로 돌린다** -- 안 하면 `EXPENABLE OFF` 가 작업
+        # 폴더의 `icg_archon.expenable` 에 남아 **다음 시험의 `GO` 가 거절된다**
+        # (2026-09-09 실제로 났다).  `_drive` 는 처음부터 이렇게 하고 있었다.
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
         app = IcgArchon(cfg, icfg, backend='sim')
         app.guide.ctrl = rec
         await app.start()
@@ -496,102 +506,71 @@ def _trig(tmp_path, script, held=None, settle=0.1, wire=None):  # noqa: ANN001, 
     return asyncio.run(run())
 
 
-def test_shopen_from_the_resting_state_is_a_single_apply(tmp_path):
+def test_trigout_from_the_resting_state_is_a_single_apply(tmp_path):
     """⭐ 평시(`LEVEL=0`·`FORCE=1`)에는 **에지 하나**로 끝난다 -- 적용 1회.
 
     무장이 이미 돼 있으므로 되읽기 둘로 확인하고 건너뛴다 (운영자 2026-09-08).
     ⚠️ 되읽기는 왕복이지만 **적용이 아니다** -- 모듈을 안 건드린다.
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'], held=dict(RESTING))
-    assert calls[:1] == [(('TRIGOUTLEVEL', True),)], calls
-    assert any('DONE: SHOPEN' in s and 'Sec=10' in s for s in sent), sent[-3:]
-    assert not any('armed first' in s for s in sent), sent[-3:]
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10'], held=dict(RESTING))
+    assert calls[:1] == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True))], calls
+    assert any('DONE: TRIGOUT' in s and 'Sec=10' in s for s in sent), sent[-3:]
 
 
-def test_shopen_arms_first_when_the_line_was_handed_over(tmp_path):
-    """⛔ 쉬는 상태가 아니면 **무장 먼저** -- 그것도 한 번의 적용으로.
+def test_trigout_writes_both_whatever_the_previous_state(tmp_path):
+    """⭐ **판단을 안 한다** -- 앞 상태가 무엇이든 둘을 같이 쓴다 (적용 한 번).
 
-    ⭐ 무장을 앞세우는 값어치는 **에지를 마지막 한 쓰기가 만든다**는 것이다 --
-    종전 판(`LEVEL=1` -> `FORCE=1`)은 앞 상태에 따라 에지가 첫 명령에서 나기도
-    둘째에서 나기도 해서 시점을 못 짚었다.
-    ⭐ 무장의 두 값이 **한 적용에 같이** 서므로 *"강제는 걸렸는데 레벨은 옛 값"*
-    인 찰나가 없다 -- 여기서는 옛 레벨이 `1` 이라 그 찰나가 곧 헛 펄스다.
+    ⛔ 종전 판은 *"이미 무장 상태면 건너뛴다"* 를 `RCONFIG` 되읽기로 판단했다.
+    늘 쓰면 그 판단이 필요 없고, **캐시가 거짓이면 조용히 아무것도 안 한다**는
+    결함 부류도 함께 사라진다 (운영자 2026-09-09).
+    ⚠️ 이 시험의 값어치는 **되읽기를 되살리려는 다음 사람을 막는 것**이다.
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'],
-                        held={'TRIGOUTLEVEL': '1', 'TRIGOUTFORCE': '0'})
-    assert calls[:2] == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)),
-                         (('TRIGOUTLEVEL', True),)], calls
-    assert any('armed first' in s for s in sent), sent[-3:]
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10'],
+                         held={'TRIGOUTLEVEL': '1', 'TRIGOUTFORCE': '0'})
+    assert calls[:1] == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True))], calls
 
 
-def test_a_lying_cache_does_not_make_shopen_do_nothing(tmp_path):
-    """⛔ **캐시로 판단하면 안 된다** -- 이 시험이 그 자리를 막는다.
+def test_a_lying_cache_cannot_make_trigout_do_nothing(tmp_path):
+    """⛔ 캐시가 *"이미 그 상태"* 라고 거짓말해도 **쓰기는 나간다**.
 
-    `set_config` 는 **왕복이 실패해도 캐시를 먼저** 갈아 끼운다 (11.13 F5).
-    그래서 캐시는 *"이미 `FORCE=1`"* 인데 컨트롤러는 `0` 인 경우가 실재한다.
-    그 상태에서 무장을 건너뛰면 **선이 안 올라가는데 `DONE` 은 나간다** --
-    결측보다 나쁜 종류다.  판단은 `RCONFIG` 되읽기여야 한다.
+    `set_config` 는 왕복이 실패해도 캐시를 먼저 갈아 끼운다 (11.13 F5) -- 그
+    캐시로 건너뛸지 판단하면 **선이 안 올라가는데 `DONE` 은 나간다**.
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'],
-                         held=dict(RESTING),          # 캐시는 쉬는 상태라 말한다
-                         wire={'TRIGOUTLEVEL': '0',   # ⛔ 실제로는 안 걸려 있다
-                               'TRIGOUTFORCE': '0'})
-    assert calls[:1] == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10'],
+                         held=dict(RESTING),
+                         wire={'TRIGOUTLEVEL': '0', 'TRIGOUTFORCE': '0'})
+    assert calls[:1] == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True))], calls
 
 
-def test_a_failed_state_read_back_arms_anyway(tmp_path):
-    """⚠️ 되읽기가 실패하면 **무장한다** -- 모르면 세워 두는 쪽이 안전하다."""
-    class _Blind(_Rec):
-        async def trigger_state(self):  # noqa: ANN202
-            raise RuntimeError('RCONFIG timeout')
-
-    rec = _Blind(dict(RESTING))
-
-    async def run():  # noqa: ANN202
-        cfg, icfg = make_cfgs(tmp_path)
-        app = IcgArchon(cfg, icfg, backend='sim')
-        app.guide.ctrl = rec
-        await app.start()
-        try:
-            app.transport.feed('abc>ICG SHOPEN 10')
-            await asyncio.sleep(0.15)
-        finally:
-            await app.stop()
-        return rec.calls
-
-    calls = asyncio.run(run())
-    assert calls[:1] == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
-
-
-def test_shopen_lowers_the_line_when_the_timer_expires(tmp_path):
+def test_trigout_lowers_the_line_when_the_timer_expires(tmp_path):
     """⭐ **<초> 뒤에 스스로 내린다** -- 내림도 레벨 먼저다.
 
     ⚠️ 시한은 `cfg.scaled()` 를 타므로 시험 축척(0.02)에서 짧다.
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 2'], settle=0.4,
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT 2'], settle=0.4,
                         held=dict(RESTING))
-    assert calls == [(('TRIGOUTLEVEL', True),),
+    assert calls == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True)),
                      (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
-    assert any('DONE: SHCLOSE' in s and 'auto' in s for s in sent), sent[-3:]
+    assert any('DONE: TRIGOUT' in s and 'auto' in s for s in sent), sent[-3:]
     # ⛔ 자동 내림도 **강제를 유지한다** -- 응답이 그 사실을 말해야 한다.
     assert any('TRIGOUTFORCE=1' in s and 'auto' in s for s in sent), sent[-3:]
 
 
-def test_shclose_cancels_a_pending_shopen_timer(tmp_path):
+def test_trigout_zero_cancels_a_pending_timer(tmp_path):
     """⛔ 옛 타이머가 나중에 깨어나 **그때 세워져 있던 선을 내리면** 안 된다.
 
     ⚠️ 시한이 **명령 간격보다 길어야** 시험이 뜻을 갖는다 -- 축척 0.02 에서
-    `SHOPEN 2` 는 0.04 s 라 `SHCLOSE` 가 닿기 전에 타이머가 먼저 터진다
+    `TRIGOUT 2` 는 0.04 s 라 `TRIGOUT 0` 가 닿기 전에 타이머가 먼저 터진다
     (그러면 취소를 안 해도 통과해 버린다).  `20` 이면 0.4 s 다.
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 20', 'abc>ICG SHCLOSE'],
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20', 'abc>ICG TRIGOUT 0'],
                          settle=0.6, held=dict(RESTING))
     # 적용은 둘뿐이어야 한다 -- 타이머가 살아 있으면 하나가 더 붙는다.
-    assert calls == [(('TRIGOUTLEVEL', True),),
+    assert calls == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True)),
                      (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
 
 
-def test_shclose_drops_the_level_but_keeps_the_force(tmp_path):
+def test_trigout_zero_drops_the_level_but_keeps_the_force(tmp_path):
     """⭐ **순서가 뜻이다** -- 레벨이 먼저다.  그리고 **강제는 유지한다**.
 
     거꾸로 강제를 먼저 만지면 그 찰나에 *옛* 레벨이 핀으로 나간다.
@@ -599,20 +578,20 @@ def test_shclose_drops_the_level_but_keeps_the_force(tmp_path):
     우리 손에 남고 레벨만 LOW 다.  `FORCE=0` 으로 내려놓으면 선이 타이밍
     스크립트 손에 넘어가 노출마다 흔들린다 (벤치 2026-09-08).
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG SHCLOSE'])
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT 0'])
     # ⭐ **적용 한 번**에 둘이 같이 선다 -- 되읽기도 안 한다 (아낄 적용이 없다).
     assert calls == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
-    assert any('DONE: SHCLOSE TRIGOUTLEVEL=0 TRIGOUTFORCE=1' in s
+    assert any('DONE: TRIGOUT TRIGOUTLEVEL=0 TRIGOUTFORCE=1' in s
                for s in sent), sent[-3:]
 
 
-def test_a_full_shopen_shclose_round_leaves_the_resting_state(tmp_path):
+def test_a_full_trigout_round_leaves_the_resting_state(tmp_path):
     """⛔ **한 바퀴 돌고 나면 쉬는 상태여야 한다** -- 벤치가 잡은 그 자리.
 
     운영자가 `shopen 10` 을 돌린 뒤 선이 `FORCE=0` 으로 남았고, 그 상태에서는
     **타이밍 스크립트가 선을 몬다.**  마지막 값만 본다 (순서는 위 시험들 몫).
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 20', 'abc>ICG SHCLOSE'],
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20', 'abc>ICG TRIGOUT 0'],
                          settle=0.6, held=dict(RESTING))
     last = {}
     for step in calls:
@@ -621,11 +600,11 @@ def test_a_full_shopen_shclose_round_leaves_the_resting_state(tmp_path):
     assert last == {'TRIGOUTLEVEL': False, 'TRIGOUTFORCE': True}, calls
 
 
-def test_shopen_needs_a_duration(tmp_path):
+def test_trigout_needs_a_duration(tmp_path):
     """⛔ 인자가 없으면 거절한다 -- 얼마나 세울지가 명령의 핵심이다."""
-    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN', 'abc>ICG SHOPEN abc'])
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT', 'abc>ICG TRIGOUT abc'])
     assert calls == [], '거절하고도 왕복했다'
-    assert sum('ERROR: SHOPEN' in s for s in sent) == 2, sent[-4:]
+    assert sum('ERROR: TRIGOUT' in s for s in sent) == 2, sent[-4:]
 
 
 def test_trigoutforce_and_level_are_separate_keys(tmp_path):
@@ -672,6 +651,11 @@ def test_a_failed_read_back_is_not_hidden(tmp_path):
 
     async def run():  # noqa: ANN202
         cfg, icfg = make_cfgs(tmp_path)
+        # ⛔ **지속 파일을 tmp 로 돌린다** -- 안 하면 `EXPENABLE OFF` 가 작업
+        # 폴더의 `icg_archon.expenable` 에 남아 **다음 시험의 `GO` 가 거절된다**
+        # (2026-09-09 실제로 났다).  `_drive` 는 처음부터 이렇게 하고 있었다.
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
         app = IcgArchon(cfg, icfg, backend='sim')
         app.guide.ctrl = rec
         await app.start()
@@ -685,3 +669,83 @@ def test_a_failed_read_back_is_not_hidden(tmp_path):
     sent = asyncio.run(run())
     assert any('ERROR: TRIGOUTLEVEL' in s and 'RCONFIG timeout' in s
                for s in sent), sent[-3:]
+
+
+def test_dmawait_is_refused_on_guide(tmp_path):
+    """⛔ guide 엔 **광케이블 IC 가 없다** -- 감추지 않고 거절한다 (운영자 2026-09-08).
+
+    `DMAWAIT` 는 레거시 IC 의 광케이블 통신 지연이다.  종전에는 상속으로 살아
+    있어 `DONE: DMAWAIT DMAWaitTime=…` 을 **성공으로** 답했고 그 값은 아무 데도
+    안 쓰였다 -- 거짓 성공이다.
+    ⚠️ **도움말에서만 빼면 안 된다**: 응답은 하면서 표에서만 빼면 *"모르는
+    명령"* 과 *"안 보이는 명령"* 이 구별되지 않는다.  그래서 응답도 멈춘다.
+    """
+    _calls, sent = _trig(tmp_path, ['abc>ICG DMAWAIT 5'])
+    assert any('ERROR: DMAWAIT' in s and 'Not supported' in s
+               for s in sent), sent[-3:]
+
+
+def test_abort_cancels_a_running_trigout_and_lowers_the_line(tmp_path):
+    """⛔ **ABORT 는 켜져 있던 LED 를 끄고 가야 한다** (운영자 2026-09-09).
+
+    `ABORT` 의 `RESETTIMING` 은 **타이밍 코어만** 되돌리는데, 펄스 중에는
+    `TRIGOUTFORCE=1` 이라 핀이 코어를 안 따라간다 -- 종전에는 타이머가 `<초>`
+    뒤에 쓸 때까지 **선이 HIGH 로 남았다**.
+    """
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20', 'abc>ICG ABORT'],
+                         held=dict(RESTING), settle=0.4)
+    assert calls, 'TRIGOUT/ABORT 가 트리거 선을 아예 안 건드렸다'
+    # 세움 하나 + ABORT 의 내림 하나.  타이머가 살아 있으면 하나가 더 붙는다.
+    assert len(calls) == 2, calls
+    last = {}
+    for step in calls:
+        for key, want in step:
+            last[key] = want
+    assert last == {'TRIGOUTLEVEL': False, 'TRIGOUTFORCE': True}, calls
+
+
+def test_abort_without_a_pulse_writes_nothing(tmp_path):
+    """⚠️ 펄스가 없었으면 **군더더기 왕복을 만들지 않는다**."""
+    calls, _sent = _trig(tmp_path, ['abc>ICG go 2', 'abc>ICG ABORT'],
+                         held=dict(RESTING), settle=0.3)
+    assert calls == [], '펄스도 없는데 트리거 선을 건드렸다: %r' % calls
+
+
+def test_expenable_off_also_releases_the_pulse(tmp_path):
+    """⭐ `EXPENABLE OFF` 도 사이클을 세우는 경로다 -- **펄스도 끊는다**.
+
+    ⚠️ `busy` 와 무관하다: 취득 중이 아니어도 펄스는 돌 수 있다.
+    """
+    calls, _sent = _trig(tmp_path,
+                         ['abc>ICG TRIGOUT 20', 'abc>ICG EXPENABLE OFF'],
+                         held=dict(RESTING), settle=0.4)
+    assert len(calls) == 2, calls
+    assert calls[1] == (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)), calls
+
+
+def test_shutdown_lowers_a_running_pulse(tmp_path):
+    """⛔ **종료가 펄스를 내리고 가야 한다** (운영자 2026-09-09).
+
+    `spawn` 한 펄스 태스크는 종료가 `_tasks` 를 취소하면서 함께 죽는다 -- 그러면
+    내림이 **영영 안 돌고** 사람 없는 채로 **LED 가 켜진 채** 프로세스가 끝난다.
+    ⚠️ 그래서 `stop()` 은 `spawn` 이 아니라 **기다린다**.
+    """
+    rec = _Rec(dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        # ⛔ **지속 파일을 tmp 로 돌린다** -- 안 하면 `EXPENABLE OFF` 가 작업
+        # 폴더의 `icg_archon.expenable` 에 남아 **다음 시험의 `GO` 가 거절된다**
+        # (2026-09-09 실제로 났다).  `_drive` 는 처음부터 이렇게 하고 있었다.
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide.ctrl = rec
+        await app.start()
+        app.transport.feed('abc>ICG TRIGOUT 20')
+        await asyncio.sleep(0.15)
+        await app.stop()                      # ← 여기서 내려야 한다
+        return rec.calls
+
+    calls = asyncio.run(run())
+    assert calls[-1] == (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)), calls

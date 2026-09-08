@@ -33,7 +33,12 @@ CONSOLE_WORDS = frozenset({'help', '?', 'quit', 'exit'})
 
 
 def check_help_matches(sections, dispatcher_cls) -> None:  # noqa: ANN001
-    """도움말 <-> 명령표 양방향 대조 (다른 앱의 시험도 이것을 부른다)."""
+    """도움말 <-> 명령표 양방향 대조 (다른 앱의 시험도 이것을 부른다).
+
+    ⭐ `dispatcher_cls.UNSUPPORTED` 는 **양쪽에서 뺀다** -- 그 명령은 핸들러가
+    상속으로 있어도 `handle()` 이 거절하므로 *"이 노드의 명령"* 이 아니다.
+    ⛔ 그래서 도움말에 있으면 그것이 오히려 잘못이다 (아래 `dead` 가 잡는다).
+    """
     listed = console.command_names(sections) - CONSOLE_WORDS
     real = console.dispatcher_commands(dispatcher_cls)
 

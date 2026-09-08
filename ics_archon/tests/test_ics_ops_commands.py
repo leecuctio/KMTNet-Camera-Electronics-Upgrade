@@ -43,6 +43,7 @@ NX, NY = 12, 4
 #: `param_intms_slot`(2) 의 기본값과 같은 자리다 (`config.ArchonCfg`).
 ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
+TRIGOUTLEVEL=0
 PARAMETER0="FirstFlush=0"
 PARAMETER1="Exposures=0"
 PARAMETER2="IntMS=0"
@@ -537,3 +538,133 @@ def test_wire_text_is_ascii_one_line():
     assert wire_text('MK: 연결이 없다\r\nA\tB') == 'MK: ??? ?? A B'
     assert wire_text('  VALID=1   COUNT=2  ') == 'VALID=1 COUNT=2'
     assert wire_text('').isascii() and wire_text('') == ''
+
+
+# -- 셔터 (Trigger Out) ----------------------------------------------------
+#
+# ⭐ **순서가 곧 규범이다** (운영자 확정 2026-09-09).  science 의 Trigger Out 은
+# **실제 셔터**를 몰고, 평시 `TRIGOUTFORCE=0`(타이밍 스크립트가 몬다)이다.
+#
+#   SHOPEN <초> : LEVEL=1 + FORCE=1   (한 적용)
+#   SHCLOSE     : LEVEL=0 + FORCE=0   (한 적용 -- 스크립트에 돌려준다)
+#
+# ⭐ **노출을 방해하지 않는 것이 우선**이다 (운영자 확정 2026-09-09).  무장
+# (`LEVEL=0`+`FORCE=1`)을 앞세우면 그 한 적용 동안 핀이 강제 LOW 라 **노출 중
+# 셔터가 잠깐 닫힌다** -- 그래서 둘을 같이 세운다.
+# ⚠️ 대가: 에지를 보장하지 않고, `SHCLOSE` 도 적분 중이면 안 닫힌다.
+
+
+def _trig_trace(fake, start: int) -> list[str]:  # noqa: ANN001
+    """가짜가 받은 명령에서 **TRIGOUT 관련 자취**만 뽑는다 (순서 그대로)."""
+    out = []
+    for c in fake.seen[start:]:
+        if 'TRIGOUTLE' in c:
+            out.append('LEVEL')
+        elif 'TRIGOUTFO' in c:
+            out.append('FORCE')
+        elif c.startswith('APPLYSYSTEM'):
+            out.append('APPLY')
+    return out
+
+
+def _shutter_fake(ses):  # noqa: ANN001, ANN202
+    """셔터를 모는 컨트롤러의 가짜 -- ACF 배선이 정한다."""
+    be = ses.app.backend
+    tags = [t for t in be.ctrls if be.acfg.drives_shutter(t)]
+    assert tags, '셔터를 모는 컨트롤러가 없다 -- 시험 전제가 깨졌다'
+    return ses.mk if tags[0] == 'MK' else ses.nt
+
+
+def test_shopen_raises_both_in_one_apply(tmp_path):
+    """⭐ `LEVEL=1`+`FORCE=1` 을 **한 적용**에 -- 노출을 안 끊는다.
+
+    ⛔ 무장을 앞세우면(`LEVEL=0`+`FORCE=1` 먼저) 그 한 적용 동안 핀이 강제 LOW 라
+    **노출 중 셔터가 잠깐 닫힌다**.  운영자가 그것을 피하는 쪽을 골랐다
+    (2026-09-09) -- 이미 열려 있었다면 **그대로 열린 채**로 넘어간다.
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            fake = _shutter_fake(ses)
+            n = len(fake.seen)
+            ses.app.transport.feed('abc>ICS SHOPEN 20')
+            await until(lambda: _trig_trace(fake, n).count('APPLY') >= 1,
+                        what='SHOPEN 의 적용')
+            return _trig_trace(fake, n)
+
+    trace = asyncio.run(run())
+    assert trace[:3] == ['LEVEL', 'FORCE', 'APPLY'], trace
+
+
+def test_shclose_hands_the_line_back_in_one_apply(tmp_path):
+    """⭐ `LEVEL=0`+`FORCE=0` 을 **한 적용**에 -- 선을 스크립트에 돌려준다.
+
+    ⚠️ **적분 중이면 셔터가 안 닫힌다** -- 스크립트가 그 선을 HIGH 로 몰고
+    있기 때문이고, 그것이 운영자가 고른 동작이다 (2026-09-09): 노출 중
+    `SHCLOSE` 가 자료를 끊지 않는다.
+    ⛔ 조기 차단은 `STOP`/`ABORT` 의 `close_shutter()` 몫이다 (`FORCE=1` 로 붙든다).
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            fake = _shutter_fake(ses)
+            n = len(fake.seen)
+            got = await ses.reply('abc>ICS SHCLOSE', 'SHCLOSE')
+            return _trig_trace(fake, n), got
+
+    trace, got = asyncio.run(run())
+    assert trace == ['LEVEL', 'FORCE', 'APPLY'], trace
+    assert 'Shutter=Closed' in got, got
+
+
+def test_abort_cuts_the_integration_at_the_controller(tmp_path):
+    r"""⛔ **ABORT 는 적분을 실제로 끊어야 한다** (운영자 지시 2026-09-09).
+
+    종전에는 시퀀서가 태스크만 취소해서 **컨트롤러의 노출이 물리적으로 끝까지
+    갔다** -- 프레임만 안 쓸 뿐 셔터도 `NoIntMS` 까지 열려 있었다.
+    ⭐ 순서가 뜻이다: `Exposures=0`(LOADPARAMS) **먼저**, 그다음 `RESETTIMING`.
+    `Start:` 둘째 줄이 `IF Exposures GOTO Exposure` 라, 남아 있으면 코어가
+    곧바로 다음 노출을 시작한다.
+    ⭐ 셔터는 이것만으로 닫힌다 -- `Start:` 첫 줄 상태 `RESET` 이 6비트를 전부
+    0 으로 몬다 (ACF `STATE0\CONTROL="0,0"`).
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            fake = _shutter_fake(ses)
+            n = len(fake.seen)
+            ses.app.transport.feed('abc>ICS go 2')
+            await asyncio.sleep(0.3)
+            await ses.reply('abc>ICS abort', 'ABORT')
+            await until(lambda: 'RESETTIMING' in fake.seen[n:],
+                        what='ABORT 의 RESETTIMING')
+            return fake.seen[n:]
+
+    seen = asyncio.run(run())
+    reset = seen.index('RESETTIMING')
+    loads = [i for i, c in enumerate(seen[:reset]) if c == 'LOADPARAMS']
+    assert loads, 'RESETTIMING 앞에 LOADPARAMS 가 없다 -- Exposures=0 을 안 걸었다'
+
+
+def test_abort_closes_a_shutter_left_open_by_shopen(tmp_path):
+    """⛔ **ABORT 는 `SHOPEN` 이 열어 둔 셔터를 닫고 가야 한다** (운영자 2026-09-09).
+
+    `abort_now()` 의 `RESETTIMING` 은 **타이밍 코어만** 되돌리는데, `SHOPEN`
+    중에는 `TRIGOUTFORCE=1` 이라 핀이 코어를 안 따라간다 -- 종전에는 타이머가
+    `<초>` 뒤에 쓸 때까지 **셔터가 강제로 열린 채** 남았다.
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            fake = _shutter_fake(ses)
+            ses.app.transport.feed('abc>ICS SHOPEN 20')
+            await until(lambda: 'APPLYSYSTEM' in fake.seen[-4:],
+                        what='SHOPEN 의 적용')
+            n = len(fake.seen)
+            ses.app.transport.feed('abc>ICS abort')
+            await until(lambda: _trig_trace(fake, n).count('APPLY') >= 1,
+                        what='ABORT 의 내림')
+            return _trig_trace(fake, n)
+
+    trace = asyncio.run(run())
+    assert trace[:3] == ['LEVEL', 'FORCE', 'APPLY'], trace

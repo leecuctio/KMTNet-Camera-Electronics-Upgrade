@@ -7083,6 +7083,11 @@ HK 의 `alive` 열(`MOD10/VCPU_OUTREG15`)을 보면서 명령을 넣었다:
 | 개방 | `LEVEL=1` | ⭐ **상승 에지는 오직 여기** |
 | `<초>` 뒤 · `SHCLOSE` | `LEVEL=0` + `FORCE=1` | 하강 에지 (한 번) |
 
+> ⚠️ **이 순서는 11.50 에서 개정됐다** -- 무장 단계가 그 한 적용 동안 핀을 **강제
+> LOW** 로 떨어뜨려 science 에서 **노출 중 셔터를 잠깐 닫기** 때문이다.  지금은
+> `LEVEL=1`+`FORCE=1` 을 **한 적용**에 같이 세운다.  명령 이름도 갈렸다
+> (guide `TRIGOUT`).
+
 ⭐ **무장을 한 적용으로 묶는 것이 중요하다** -- 따로 적용하면 그 사이에 *"강제는 걸렸는데
 레벨은 옛 값"* 인 찰나가 생긴다.  `WCONFIG` 는 적용을 안 하므로 둘을 써 두고 한 번만
 적용하면 **두 값이 동시에 선다**.
@@ -7193,3 +7198,187 @@ R2617 이 치른 비용(번호 밀림 전수 수정)이 여기엔 없다.  `TRIG
 `~/AIC/Config/acf/` 에 새 파일을 **복사**하고 `~/AIC/Config/icg_archon.ini` 의 `acf` 줄도
 **손으로** 고쳐야 한다 -- 그 ini 는 자격증명이 들어 저장소 밖이다.  안 하면 기동이
 *"acf 가 없다"* 로 죽는다 (11.46 이후 한 줄로 죽는다).
+
+### 11.50 셔터·Trigger Out 명령 정리 -- `TRIGOUT`(guide) · `SHOPEN`/`SHCLOSE`(science) (2026-09-09, 운영자)
+
+⛔ **배선이 계통마다 다르다는 것이 이 라운드의 출발점이었다** (운영자):
+science 의 Trigger Out 은 **실제 셔터**를 몰고, guide 의 것은 **LED** 를 켠다.
+guide 는 셔터가 없으므로(frame-transfer) 셔터 낱말을 빌려 쓰지 않는다.
+
+#### 최종 규범
+
+| | 쉬는 상태 | 올림 | 내림 (시한 만료·명시적 둘 다) |
+|---|---|---|---|
+| **science** `SHOPEN <초>` / `SHCLOSE` | `FORCE=0` | `LEVEL=1`+`FORCE=1` | `LEVEL=0`+**`FORCE=0`** |
+| **guide** `TRIGOUT <초>` / `TRIGOUT 0` | `FORCE=1` | `LEVEL=1`+`FORCE=1` | `LEVEL=0`+**`FORCE=1`** |
+
+⭐ **넷 다 `APPLYSYSTEM` 한 번**이다.  올림은 두 계통이 완전히 같고, 갈리는 것은
+**돌아갈 `TRIGOUTFORCE`** 하나다.  알맹이는 `ics_archon/archon/trigout.py` 한 곳에
+있다(`raise_line` · `rest_line`) -- 두 벌로 두면 순서가 갈린다.
+
+⭐ **둘을 한 적용에 같이 세운다.**  무장(`LEVEL=0`+`FORCE=1`)을 앞세우는 안도 검토
+했는데, 그러면 그 한 적용 동안 핀이 **강제 LOW** 라 science 에서 **노출 중 셔터가
+잠깐 닫힌다**.  ⭐ 운영자 판단: **노출을 방해하지 않는 쪽**.  ⚠️ 대가는 에지를
+보장하지 않는 것이다(이미 HIGH 였다면 에지가 없다).
+⭐ 딸린 이득: *"이미 그 상태면 건너뛴다"* 는 판단이 없어져 `RCONFIG` 되읽기도,
+**캐시가 거짓이면 조용히 아무것도 안 한다**는 결함 부류도 함께 사라졌다.
+
+#### ⛔ `SHCLOSE` 는 "닫는다" 가 아니다
+
+`FORCE=0` 은 선을 **타이밍 스크립트에 돌려주는** 것이다.  그래서 노출 중에 쓰면
+셔터가 닫히는 시각은 **둘 중 늦은 쪽**이다 (운영자 정정 2026-09-09):
+
+    셔터 닫힘 = max( SHOPEN <초> 만료,  노출의 NoIntMS )
+
+⭐ `<초>` 가 남은 노출보다 **길면 `<초>` 가 정한다** -- 그동안 `FORCE=1` 이라
+스크립트가 `NOINT` 로 내려도 핀은 붙들려 있고, 만료 때 넘겨주면 스크립트는 이미
+INT 밖이라 그때 닫힌다.  **짧으면 노출이 정한다**.  `SHCLOSE` 는 시한이 없으니 늘
+뒤쪽이다.
+⛔ **길게 잡으면 자료가 오염된다** -- 노출이 끝난 뒤에도 열려 있는 동안 **프레임
+트랜스퍼와 독출**이 돌아 스미어가 된다.
+⭐ 즉시 끊는 경로는 `ArchonBackend.close_shutter()` 이고 그쪽은 `FORCE=1`+`LEVEL=0`
+으로 선을 **붙든다**.  ⛔ **`SHCLOSE` 와 반대 방향**이다 -- `README.md` 의 표에 그대로
+적었다 (운영자 지시).
+
+#### `STOP` · `ABORT` -- 정의를 문서에 못박았다 (운영자 2026-09-09)
+
+⛔ **`STOP` 은 셔터를 안 건드린다.**  현재 노출을 끝까지 마치고 **다음을 안 건다** --
+`GO`(1장)에는 사실상 영향이 없고 **`GO n` 에서만** 뜻이 있다.  ICS·ICG 같은 정의다.
+⚠️ 그래서 `close_shutter()` 주석의 *"조기 종료(STOP · SHCLOSE)"* 는 **낡은 문면**이었다
+(둘 다 이제 그 자리를 안 지난다) -- 이번 조사에서 고쳤다.
+
+`ABORT` 는 현재 노출을 종료하고 **저장하지 않는다**.  뒤처리가 계통마다 다르다:
+
+| | ABORT 뒤 | 유휴 상태 |
+|---|---|---|
+| **science** | readout **없이** 곧바로 유휴 (flush 는 `ccdflush` 가 정한다) | `SkipLine` 을 계속 돌려 CCD 를 비운다 |
+| **guide** | **flush 한 번** (`abort_flush()`) | `SkipLine` 없이 **CCD clocking 정지** |
+
+⭐ **science 의 flush 는 설정이다** (운영자 2026-09-09).  `[archon] ccdflush` 기본
+**`false`**.  `true` 면 설정 메모리 `FirstFlush=1` 이라 코어가 `Start:` 에서
+`FlushFrame` 으로 뛰고, 그 자리가 **둘**이다: **매 노출 전**(노출마다 `LOADPARAMS`)과
+**`ABORT` 뒤 한 번**(`abort_now()` 의 `RESETTIMING` 이 `Start:` 로 되돌리므로).
+⚠️ 앞서 *"science 는 abort 뒤 flush 가 없다"* 로만 적었던 것은 **기본값 기준**이었다 --
+설정에 달렸다는 것을 문서에 명시했다.
+
+#### ⏳ 미결 -- science `ABORT` 는 셔터를 안 끊는다
+
+운영자 물음: *"science 는 `ABORT` 시 `TRIGOUTFORCE=1`+`LEVEL=0` 없이 타이밍 스크립트를
+종료시키면 셔터가 닫히지 않나?  `NoIntMS` 상태를 따로 만들어야 하나?"*
+
+⭐ **ACF 가 답한다: 따로 만들 필요 없다.**  `RESETTIMING` 은 코어를 `Start:` 로 돌리고,
+그 첫 줄 상태가 `RESET`(`STATE0\CONTROL="0,0"`)이라 **6비트를 전부 0** 으로 몬다 --
+INT 비트(bit0)도 0 이므로 `TRIGOUTFORCE=0`(스크립트가 모는 상태)에서 **핀이 LOW**,
+즉 셔터가 닫힌다.
+
+⛔ **그리고 science `ABORT` 는 `RESETTIMING` 을 안 보내고 있었다.**  시퀀서가 태스크만
+취소하므로 컨트롤러의 적분이 **물리적으로 끝까지 갔다** -- 프레임만 안 쓸 뿐 셔터도
+`NoIntMS` 까지 열려 있었다.  guide 는 `abort_flush()` 로 이미 끊고 있었다.
+
+⭐ **절반만 배선돼 있던 것이었다.**  DevNote 5597 의 운영자 지시는 *"science 는 abort 시
+**flush 불필요**하지만 시험을 위해 flush 함수를 구현해 두자"* 였는데, 수단
+(`reset_timing`·`flush_now(reset=True)`)은 그때 다 만들어졌고 **guide 만 배선**됐다.
+science 쪽은 *"flush 불필요"* 가 **"아무것도 안 함"** 으로 굳었다.
+
+#### ⭐ 고쳤다 -- `ABORT` 가 적분을 끊는다 (운영자 지시 2026-09-09)
+
+| 층 | 무엇 |
+|---|---|
+| `ArchonController.abort_now()` | `set_exposures(0)` -> `reset_timing()` |
+| `ArchonBackend.abort_now()` | 전 컨트롤러에.  ⚠️ **실패해도 위로 안 던진다**(이미 취소 경로) |
+| `Sequencer.cancel()` | 백엔드에 `abort_now` 가 **있으면** 띄운다 (선택 훅) |
+
+⭐ **순서가 뜻이다**: `Exposures=0`(LOADPARAMS) **먼저**, 그다음 `RESETTIMING`.
+`Start:` 둘째 줄이 `IF Exposures GOTO Exposure` 라, 남아 있으면 코어가 **곧바로 다음
+노출을 시작한다**.
+⭐ **셔터는 이것만으로 닫힌다** -- `TRIGOUTFORCE=1` 도 `NoIntMS` 전용 상태도 필요 없다.
+⚠️ **취소된 태스크 안에서 `await` 하지 않는다** -- 두 번째 취소에 끊길 수 있어 `cancel()`
+이 **따로 띄우고**(`_abort_fut`) `wait()` 가 거둔다.
+⚠️ 시뮬 백엔드에는 이 훅이 없어 **종전대로** 돈다 (`getattr` 로 확인).
+⛔ flush 는 안 붙였다 -- science 는 유휴가 `SkipLine` 을 돌려 CCD 를 계속 비운다.
+`test_abort_cuts_the_integration_at_the_controller` 가 순서를 못박는다.
+
+#### ⛔ 그 고침만으로는 부족했다 -- `ABORT` 가 **열린 선을 닫지 않았다**
+
+`RESETTIMING` 은 **타이밍 코어만** 되돌린다.  그런데 `SHOPEN`/`TRIGOUT` 이 펄스 중이면
+`TRIGOUTFORCE=1` 이라 **핀이 코어를 아예 안 따라간다** -- 그래서 `ABORT` 뒤에도
+**셔터가(guide 는 LED 가) 강제로 열린 채** 남았고, 닫히는 것은 타이머가 `<초>` 뒤에
+쓸 때뿐이었다.  ⭐ 운영자가 잡았다 (*"타이머에 의해 설정되는 거면 Abort 때 실행해
+줘야 할 것 같고, 또 타이머 남겨둘 필요 없을 듯"*).
+
+⭐ 두 디스패처의 `cmd_abort` 가 **펄스를 끊고 그 자리에서 쉬는 상태로 되돌린다**:
+
+| | 끊는 것 | 쓰는 것 |
+|---|---|---|
+| ICG | `_trigout_timer` | `LEVEL=0`+`FORCE=1` |
+| ICS | `_shutter_timer` | `LEVEL=0`+`FORCE=0` |
+
+⚠️ **펄스가 없었으면 아무것도 안 쓴다** -- 군더더기 왕복을 만들지 않는다
+(`test_abort_without_a_pulse_writes_nothing`).
+⚠️ 취득 중이 아니어도 끊는다 -- 기반 `ABORT` 가 *"No acquisition"* 으로 거절하더라도
+**열린 선을 남기는 쪽이 더 나쁘다**.
+
+⭐ **끊는 자리는 셋이다** (`release_pulse()`, 운영자 2026-09-09):
+
+| 자리 | ICG | ICS |
+|---|---|---|
+| `ABORT` | ✅ | ✅ |
+| `EXPENABLE OFF` | ✅ (사이클을 세우는 같은 경로) | -- |
+| **종료(`quit`)** | ✅ | ✅ |
+
+⛔ **종료가 특히 나빴다.**  펄스는 `app.spawn()` 으로 도는데 종료가 `_tasks` 를 통째로
+취소하므로 **내림이 영영 안 돈다** -- 사람 없는 채로 **LED 가 켜진 채**(science 는 셔터가
+열린 채) 프로세스가 끝난다.  그래서 `stop()` 은 `spawn` 이 아니라 **기다린다**.
+⚠️ `release_pulse()` 는 **실패를 삼킨다** -- 종료 경로에서 부르므로 여기서 던지면 종료가
+막힌다.  대신 *"선이 HIGH 로 남을 수 있다"* 를 `log.error` 로 남긴다.
+⛔ **`STOP` 은 안 끊는다** -- 정의가 *"다음을 안 건다"* 라 펄스와 무관하다 (의도).
+`test_shutdown_lowers_a_running_pulse` · `test_expenable_off_also_releases_the_pulse`.
+
+#### 없앤 명령
+
+| 명령 | 어디서 | 왜 |
+|---|---|---|
+| `FLASHNOW` · `LEDFLASH` | ICS · ICG | 점검용 LED.  실기 `flash_led()` 는 `_NOT_YET` 이라 늘 실패했고, **ICG 는 눌러 둔 sim 스텁을 불러 거짓 `DONE`** 을 냈다 |
+| `DMAWAIT` | ICG | 광케이블 IC 의 통신 지연 -- guide 는 Archon 한 대다 |
+| `SHOPEN` · `SHCLOSE` | ICG | 셔터가 없다 -> `TRIGOUT` 으로 갈렸다 |
+
+⛔ **감추지 않고 거절한다** (`Dispatcher.UNSUPPORTED` + 도움말 `drop=`) -- 응답은
+하면서 표에서만 빼면 *"모르는 명령"* 과 *"안 보이는 명령"* 이 구별되지 않는다.
+⭐ 둘이 **짝**이라 한쪽만 하면 `test_console.py` 의 양방향 대조가 잡는다.
+⚠️ 시뮬(`ics_sim`)에는 남는다.  ⚠️ 레거시 ICG 는 `DMAWAIT` 를 받았다 -- OBSAgent 가
+guide 로도 보낸다면 응답이 `DONE` -> `ERROR` 로 바뀐다 (운영자 확인 사항).
+
+#### ⏳ 남긴 것 -- 취득 중 `APPLYSYSTEM`
+
+이 명령들은 모두 `WCONFIG`+`APPLYSYSTEM` 이다.  창이 넷인데 둘만 닫혔다:
+
+| 창 | 상태 |
+|---|---|
+| 유휴 · 적분 **개시 직전** | ✅ 안전 (science 정상 경로가 매 노출 그렇게 돈다) |
+| **적분 중** · **독출 중** | ⏳ **미확인** -- 취득 중에 치면 **한 번 경고**한다 |
+
+⭐ guide 로 두 창을 갈라 잴 수 있다: `guiexp 5`(IntMS 3750 ms)면 적분 중, `guiexp 1.3`
+(IntMS 49 ms)이면 거의 항상 독출 중이다.  `go` 중에 `trigoutlevel high` 를 한 번 치고
+프레임 번호 연속성·주기·이미지·`alive` 를 본다.
+
+#### ⭐ `FSATEMP`/`FSAHUM` 을 **소수 2자리**로 (운영자 확정 2026-09-09, 실측)
+
+규격 v1.18 이 열어 둔 확인 항목 -- *"Radionode 원값 포맷은 워크스페이스에 근거가 없다.
+실기/장치 문서로 확인 후 **'원값 그대로 싣기'로 최종 확정**한다"* -- 이 **닫혔다**.
+운영자가 붙인 `get_lst` 원문:
+
+```
+"ch_name":"…-CH1-TEMP", "ch_unit":"℃", "ch_value":"22.35"
+"ch_name":"…-CH2-RH",   "ch_unit":"%",  "ch_value":"47.67"
+```
+
+⛔ **장치가 2자리를 주는데 우리가 1자리로 깎고 있었다** (`+22.3` · `51.7`).
+HK CSV 의 원값 열도 같은 것을 보였다(`22.19`·`53.14`).
+
+⛔ **종전 1자리의 근거였던 *"레거시 `ENS1='23.0'` 선례"* 는 성립하지 않는 유추였다**
+(운영자): `ENS1~7` 은 규격 **5.8절이 *"중계 그대로 -- 우리가 표기를 만들지 않는다"***
+로 규정해 **TCSSTATUS 가 준 자릿수**가 그대로 갈 뿐이다.  FSA 는 출처가 달라 2자리를
+준다.  ⭐ 같은 Radionode 에서 오는 `HEBOX` 가 이미 2자리라 **한 규약**이 된다.
+
+`hkdata._FIELDS` 두 줄(`1` -> `2`).  ⏳ 규격 문면(5.0절 · v1.18 확인 항목 · 견본 3장)은
+`main` 라운드 이월 목록에 **④**로 등재했다.

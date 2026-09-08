@@ -99,6 +99,14 @@ class IcgArchon(IcsSim):
         진짜 백엔드는 `self.guide` 다.  안 갈아 끼우면 실기인데 `sim` 이라 찍는다."""
         return self.guide.name
 
+    def banner_datasrc(self) -> str:
+        """guide 어휘로 옮긴다 -- science 표에는 `archon_guide` 가 없다.
+
+        ⛔ 부모 판을 그대로 쓰면 *"모르는 백엔드라 SIM 으로 적는다"* 경고가
+        나면서 배너가 `archon_guide -> DATASRC=SIM` 이 된다 (벤치 2026-09-08).
+        """
+        return guidehdr.datasrc_of(self.guide.name)
+
     def banner_instrument(self, site: str) -> dict:
         """guide 의 instrument 블록 -- `guidehdr` 가 정본이다 (`rawhdr` 아님)."""
         return guidehdr.instrument_header(site, self.cfg.camera.as_dict())
@@ -128,6 +136,8 @@ class IcgArchon(IcsSim):
                  '유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (프레임 없음)'),
                 ('ccdpowon', 'CCD 전원 ON -- poweron_wait 뒤에 DONE'),
                 ('ccdpowoff', 'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
+                ('trigout <sec>',
+                 'Trigger Out 을 <sec> 동안 HIGH 로 -- ⭐ 0 이면 즉시 LOW'),
                 ('trigoutforce [on|off]',
                  'Trigger Out 강제 -- guide 쉬는 상태는 1 (0 = 타이밍 스크립트)'),
                 ('trigoutlevel [high|low]',
@@ -150,13 +160,12 @@ class IcgArchon(IcsSim):
                  'status | connect | disconnect | reconnect | enable | '
                  'disable -- 장치 이름이 없으면 폴링 자체'),
             )),
-            swap={
-                # ⛔ guide 에는 셔터가 없다 -- 이 둘은 Trigger Out 선을 세운다.
-                'shopen':
-                    'Trigger Out 을 <sec> 동안 HIGH 로 -- 셔터가 아니다',
-                'shclose':
-                    '선을 즉시 LOW 로 (LEVEL=0, FORCE=1 유지 -- 타이머도 끊는다)',
-            },
+            # ⛔ **guide 에 없는 기반 명령** (운영자 2026-09-08~09).
+            # `dmawait` 는 광케이블 IC 의 지연이고, `flashnow`/`ledflash` 는
+            # 점검용 LED 프로젝터이며, `shopen`/`shclose` 는 셔터다 -- guide 엔
+            # 셋 다 없다.  ⭐ 감추는 게 아니라 **거절한다**
+            # (`IcgDispatcher.UNSUPPORTED` 와 짝).
+            drop=('dmawait', 'flashnow', 'ledflash', 'shopen', 'shclose'),
         )
 
     # -- 수명 ---------------------------------------------------------------
@@ -214,6 +223,11 @@ class IcgArchon(IcsSim):
         # `IcsSim.stop()` 의 `_tasks` 취소에 안 걸린다 -- 안 세우면 아래
         # `guide.shutdown()`(POWEROFF) 뒤에도 트리거가 나가고, 종료 통보는
         # 이미 멈춘 transport 큐에 쌓여 ABC 가 사이클 끝을 못 듣는다.
+        # ⛔ **펄스를 먼저 내린다** (운영자 2026-09-09).  `spawn` 한 펄스
+        # 태스크는 아래 종료가 취소하므로 내림이 **영영 안 돈다** -- 그러면
+        # 사람 없는 채로 **LED 가 켜진 채** 프로세스가 끝난다.
+        # ⚠️ `spawn` 이 아니라 **여기서 기다린다** (같은 이유로).
+        await self.dispatch.release_pulse('종료')
         if self.seq.busy:
             log.info('종료 -- 진행 중인 guide 사이클을 세운다')
             self.seq.cancel(save=False, requester='shutdown')

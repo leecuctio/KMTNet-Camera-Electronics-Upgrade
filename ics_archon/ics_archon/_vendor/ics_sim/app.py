@@ -138,6 +138,10 @@ class IcsSim:
         """
         if self.state.site_code != rawpair.KASI_SITE:
             return
+        # ⚠️ **여기는 `self.backend` 를 그대로 본다** (배너의 훅이 아니다) --
+        # ICG 는 이 스텁이 늘 `sim` 이라 이 갈래를 **안 탄다**.  guide 실기에도
+        # 같은 경고를 울릴지는 아직 안 정했다: 벤치가 KASI 이고 `KMTK` 가
+        # **맞는 사이트**라 매번 뜨면 오경보가 된다 (운영자 판단 대기).
         if rawhdr.datasrc_of(self.backend.name) == rawhdr.DATASRC_SIM:
             return
         log.warning(
@@ -165,8 +169,22 @@ class IcsSim:
         찍으면 **실기로 도는데 배너가 `sim` 이라고 말한다** -- 벤치 첫 전원
         인가에서 실제로 그랬다(2026-09-08).  ⚠️ 배너의 목적이 *"배포가 맞는지
         여기서 확인"* 인데 그 줄이 틀리면 목적을 잃는다.
+        ⛔ **설정값이 아니라 백엔드 객체의 이름**을 준다 -- 둘은 다른 물건이고,
+        한때 이 자리가 설정값이었다 (2026-09-08 반쪽 고침).
         """
-        return self.cfg.hardware.backend
+        return self.backend.name
+
+    def banner_datasrc(self) -> str:
+        """배너의 **`DATASRC`**.  ⭐ 앱이 갈아 끼운다.
+
+        ⛔ **이름과 같은 자리에서 나와야 한다.**  앞 고침이 이름만 갈아 끼우고
+        이 값은 눌린 스텁(`self.backend`)에서 뽑아, 벤치 배너가
+        `archon_guide   ->  DATASRC=SIM` 이라는 **자기모순**을 찍었다
+        (2026-09-08).  ⚠️ 한 줄 안에서 앞뒤가 어긋나면 둘 다 못 믿게 된다.
+        ⚠️ guide 는 어휘가 따로다 (`guidehdr.datasrc_of`) -- science 표에는
+        `archon_guide` 가 없어 여기서 부르면 *"모르는 백엔드"* 경고까지 난다.
+        """
+        return rawhdr.datasrc_of(self.banner_backend())
 
     def banner_instrument(self, site: str) -> dict:
         """배너가 `FPAID` 를 꺼내는 자리.  ⭐ 앱이 갈아 끼운다.
@@ -242,7 +260,7 @@ class IcsSim:
             ('EXPNUM', f'다음 {st.expnum:06d}'
                        f'   (기록 {st.expnum_file or "지속 없음"})'),
             ('backend', f'{self.banner_backend()}'
-                        f'   ->  DATASRC={rawhdr.datasrc_of(self.backend.name)}'),
+                        f'   ->  DATASRC={self.banner_datasrc()}'),
         ]
 
         width = 74

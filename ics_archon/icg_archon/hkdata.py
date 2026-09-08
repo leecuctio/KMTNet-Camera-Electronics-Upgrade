@@ -73,8 +73,16 @@ _FIELDS = (
     ('charcoal', 'CHARCOAL', 2, True),
     ('wallbrd', 'WALLBRD', 2, True),
     ('hebox', 'HEBOX', 2, True),
-    ('fsatemp', 'FSATEMP', 1, True),
-    ('fsahum', 'FSAHUM', 1, False),
+    # ⭐ **2자리다** (운영자 확정 2026-09-09, 실측 근거).  Radionode 원문이
+    # `"ch_value":"22.35"` · `"47.67"` 로 **소수 2자리**를 준다 -- 1자리로 적으면
+    # 받은 자리를 버린다.
+    # ⛔ 종전 1자리의 근거는 *"레거시 `ENS1='23.0'` 선례"* 였는데 **성립하지 않는
+    # 유추**였다: `ENS1~7` 은 규격 5.8절이 *"중계 그대로 -- 우리가 표기를 만들지
+    # 않는다"* 로 규정해 **TCSSTATUS 가 준 자릿수**가 그대로 갈 뿐이고, FSA 는
+    # 출처가 달라 2자리를 준다 (운영자).
+    # ⏳ 규격 문면(5.0절 · v1.18 확인 항목 · 견본 3장)은 `main` 라운드 이월.
+    ('fsatemp', 'FSATEMP', 2, True),
+    ('fsahum', 'FSAHUM', 2, False),
 )
 
 

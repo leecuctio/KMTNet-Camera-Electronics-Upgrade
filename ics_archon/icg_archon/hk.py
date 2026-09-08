@@ -37,12 +37,14 @@ import datetime
 import json
 import logging
 import os
+import sys
 import time
 
 from ics_archon import _simpath
 
 _simpath.ensure()
 
+from ics_sim import console  # noqa: E402
 from ics_sim.state import (stamp_compact, stamp_iso,  # noqa: E402
                            stamp_iso_ms, utcnow)
 
@@ -114,10 +116,20 @@ def notify(text: str) -> None:
 
     ⚠️ 로그 핸들러는 `sys.stderr` 인데(`ics_sim/__main__.py`) 시험 절차의 실행
     명령이 `python3 -u -m icg_archon | tee …` 라 **stdout 만 tee 된다** -- 로그만
-    쓰면 경고가 기록에 안 남는다.  그래서 `log` 와 **함께** stdout 으로 낸다.
+    쓰면 경고가 **기록 파일에 안 남는다**.  그래서 `log` 와 함께 stdout 으로 낸다.
 
+    ⛔ **그런데 stdout·stderr 가 같은 터미널이면 안 낸다.**  그때는 운영자가
+    로그 줄을 **이미 봤고**, 또 내면 모든 경고가 **두 줄**로 보이며 프롬프트
+    줄에 달라붙는다 (`ICG% ⚠️ HK: …` -- 벤치 2026-09-08).
+    ⭐ 이 함수의 존재 이유는 *"파이프로 흘릴 때 기록에 남기기"* 이므로, 그
+    조건에서만 내면 이유를 그대로 지킨다.
+    ⚠️ 부르는 쪽은 **로그도 함께** 내야 한다 -- 여기서 건너뛴 줄의 유일한
+    자취가 로그다 (히터 과열 차단은 `heater.OverTempGuard` 가 `log.error` 둘을
+    이미 낸다).
     ⚠️ 실패해도 삼킨다 -- stdout 이 닫힌 배치 실행에서 감시 루프가 죽으면 안 된다.
     """
+    if console.is_tty(sys.stdout) and console.is_tty(sys.stderr):
+        return
     try:
         print('⚠️  %s' % text, flush=True)
     except Exception:                       # noqa: BLE001
@@ -202,8 +214,14 @@ class DewpresDecoder:
         self._alive: int | None = None
         self._flat = 0
         self._warned_restart = False
+        #: 앞 바퀴에 본 `ctrl.apply_count` -- 되감김이 **우리 탓인지** 가른다.
+        self._applies: int | None = None
 
-    def decode(self, status: dict) -> str | None:
+    def decode(self, status: dict, applies: int | None = None) -> str | None:
+        """`applies` 는 `ArchonController.apply_count` -- 없으면 종전대로 문다."""
+        ours, self._applies = (applies is not None
+                               and self._applies is not None
+                               and applies != self._applies), applies
         alive_raw = status.get('MOD10/VCPU_OUTREG15')
         if alive_raw is None:
             return None                    # VCPU 보고 자체가 없다
@@ -217,6 +235,17 @@ class DewpresDecoder:
         elif alive > prev:
             fresh, self._flat = True, 0
         elif alive < prev or alive == 0:
+            if ours:
+                # ⭐ **우리가 친 `APPLY*` 가 만든 재시작이다** -- 기동의
+                # `APPLYALL` 이 대표적이라 이것을 경고로 울면 **띄울 때마다**
+                # 뜬다 (벤치 2026-09-08).  그러면 그 줄을 무시하는 버릇이 들어,
+                # 정작 *"우리가 안 했는데 재시작됐다"* 는 진짜 신호를 놓친다.
+                # ⚠️ 결측 처리는 그대로다 -- 잔재를 실을 수는 없다.
+                log.info('진공 VCPU Alive 가 되감겼다 (%s -> %s) -- 이 바퀴에 '
+                         '우리가 APPLY 를 보냈으니 예상된 재시작이다.  DEWPRES '
+                         '는 이번 바퀴만 결측이고 다음 바퀴에 돌아온다',
+                         prev, alive)
+                return None
             if not self._warned_restart:
                 self._warned_restart = True
                 log.warning('진공 VCPU Alive 가 되감겼다 (%s -> %s) -- 진공 '
@@ -524,7 +553,8 @@ class HkMonitor:
                         '나간다.  FW 1.0.1252 는 HeaterX 슬롯에 이 키를 내야 한다 '
                         '(DevNote 11.30) -- BACKPLANE_VERSION 과 MOD%d_TYPE 을 볼 것',
                         HEATER_OUTPUT_FIELD, heater.SLOT)
-        dew = self._dew.decode(status)
+        dew = self._dew.decode(status,
+                               getattr(self.ctrl, 'apply_count', None))
         gauge = self.gauge
         if gauge is not None and gauge.blocks_dewpres:
             # ⛔⛔ **이온게이지를 끈 것을 아는 동안은 싣지 않는다.**  MKS 356 은

@@ -88,8 +88,11 @@ def test_temperatures_carry_a_sign_and_humidity_does_not():
     kv = _kv(_body(FULL))
     assert kv['WALLBRD'] == '+16.78'
     assert kv['CCDTEMP'] == '-100.64'
-    assert kv['FSATEMP'] == '+16.7'          # 소수 1자리 + 부호
-    assert kv['FSAHUM'] == '17.8'            # ⛔ 습도는 부호 대상이 아니다
+    # ⭐ **2자리** (운영자 확정 2026-09-09) -- Radionode 원문이 `"22.35"` 로
+    # 2자리를 준다.  종전 1자리는 `ENS1` 선례를 유추한 것이었는데, `ENS` 는
+    # 규격 5.8절이 *"중계 그대로"* 라 TCSSTATUS 의 자릿수일 뿐이었다.
+    assert kv['FSATEMP'] == '+16.70'         # 소수 2자리 + 부호
+    assert kv['FSAHUM'] == '17.80'           # ⛔ 습도는 부호 대상이 아니다
 
 
 def test_nothing_is_quoted():

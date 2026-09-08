@@ -317,13 +317,46 @@ class ArchonBackend:
             raise BackendError(
                 'Failed to Start acquisition on one or more ICs') from exc
 
+    async def abort_now(self) -> None:
+        """ABORT -- **적분을 지금 끊는다** (`Exposures=0` -> `RESETTIMING`).
+
+        ⭐ 시퀀서가 ABORT 때 부른다 (`Sequencer.cancel`).  ⛔ 종전에는 이 자리가
+        비어 있어 **컨트롤러의 적분이 물리적으로 끝까지 갔다** -- 프레임만 안
+        쓸 뿐이라 셔터도 `NoIntMS` 까지 열려 있었다 (운영자 지시 2026-09-09로
+        고쳤다).  guide 는 `abort_flush()` 로 이미 끊고 있었다.
+        ⚠️ **실패해도 위로 안 던진다** -- 이미 취소 경로이고, 여기서 죽으면
+        `ABORT` 응답조차 못 낸다.  대신 로그로 남긴다.
+        """
+        async def _go(c: ArchonController) -> None:
+            await c.abort_now()
+
+        try:
+            await self._all(_go, 'abort 중단')
+        except (ArchonError, TimeoutError, OSError) as exc:
+            log.error('ABORT: 적분을 못 끊었다 -- %s.  컨트롤러가 노출을 끝까지 '
+                      '돌 수 있다 (프레임은 저장되지 않는다)', exc)
+
     async def close_shutter(self) -> None:
         """셔터를 닫는다.  **정상 경로에서는 할 일이 없다.**
 
         적분 길이는 컨트롤러가 재므로, 카운트다운이 끝난 시점에는 이미 닫혀
-        있다.  실제로 뭔가 하는 것은 **조기 종료**(STOP · SHCLOSE)뿐이고, 그때
-        할 수 있는 것은 `TRIGOUTFORCE=1` 로 트리거 라인을 강제해 **빛을 끊는
-        것**이다 -- 적분 자체는 남은 시간을 다 센다 (`controller.py` 머리말).
+        있다.  할 수 있는 것은 `TRIGOUTFORCE=1` 로 트리거 라인을 강제해 **빛을
+        끊는 것**이고, 적분 자체는 남은 시간을 다 센다 (`controller.py` 머리말).
+
+        ⛔ **종전 주석의 *"조기 종료(STOP · SHCLOSE)"* 는 낡았다** (2026-09-09
+        전수 조사).  둘 다 이제 이 자리를 안 지난다:
+
+        * `STOP` 은 **적분을 안 끊는다** -- 현재 프레임을 저장까지 마치고 다음을
+          안 건다 (운영자 확정 2026-09-05, `Sequencer.stop_integration`).
+        * `SHCLOSE` 는 `IcsDispatcher` 가 갈아 끼웠다 -- **강제를 놓는다**
+          (`TRIGOUTFORCE=0`), 붙드는 이 함수와 반대다 (`README.md`).
+
+        ⏳ **`ABORT` 도 이 자리를 안 지난다** -- 시퀀서가 태스크를 취소할 뿐이라
+        science 는 컨트롤러의 적분이 **물리적으로 끝까지 간다**(셔터는
+        `NoIntMS` 에 닫히고 프레임만 안 쓴다).  ⭐ 끊으려면 `RESETTIMING` 이면
+        된다: 코어가 `Start:` 로 가고 그 첫 줄 상태 `RESET` 이 `CONTROL="0,0"`
+        으로 **6비트를 전부 0** 으로 몰아 셔터가 닫힌다 -- `TRIGOUTFORCE=1` 도
+        `NoIntMS` 전용 상태도 필요 없다 (ACF 실측, DevNote 11.50 미결).
 
         ⚠️ `APPLYSYSTEM` 을 적분 중에 보내는 것이 안전한지는 **실기 확인
         항목**이다.  그래서 "아직 적분 중" 일 때만 보낸다 -- 정상 경로에서

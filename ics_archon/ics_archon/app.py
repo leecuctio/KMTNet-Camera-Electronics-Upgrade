@@ -39,6 +39,7 @@ from ics_sim.hardware import register_backend             # noqa: E402
 
 from .archon.backend import ArchonBackend                 # noqa: E402
 from .archon.monitor import TelemetryMonitor              # noqa: E402
+from .archon import trigout as trigout_core               # noqa: E402
 from .archon.protocol import ArchonError                  # noqa: E402
 from .gaugectl import CMD as GAUGE_CMD, GaugeControl      # noqa: E402
 from .guideexp import CMD as GUIEXP_CMD, GuideExpControl  # noqa: E402
@@ -338,6 +339,195 @@ class IcsDispatcher(Dispatcher):
                           'Queried %s -- the reply arrives as a separate '
                           'DONE: %s report' % (dest, cmdword))
 
+    #: ⛔ **science 에 없는 기반 명령** (운영자 2026-09-09).
+    #:
+    #: `FLASHNOW`/`LEDFLASH` 는 점검용 LED 프로젝터다.  실기 백엔드의
+    #: `flash_led()` 는 `BackendError(_NOT_YET)` 라 **늘 실패**했고, 그 자리는
+    #: `SHOPEN <초>`(Trigger Out 강제)가 대신한다.
+    #: ⭐ 감추는 것이 아니라 **거절한다** -- 도움말에서 빼려면 응답도 멈춰야
+    #: 한다 (`console.extend_help` 의 `drop=` 과 짝).
+    #: ⚠️ **시뮬(`ics_sim`)에는 그대로 남는다** -- 레거시 흐름을 흉내내는 것이
+    #: 시뮬의 몫이고 OBSAgent 시험이 그것을 본다.
+    UNSUPPORTED = frozenset({'FLASHNOW', 'LEDFLASH'})
+
+    # -- 셔터 (Trigger Out) ------------------------------------------------
+    #
+    # ⭐ **`SHOPEN <초>`/`SHCLOSE` 를 Trigger Out 강제로 구현한다** (운영자
+    # 2026-09-09).  ICG 의 `TRIGOUT <초>`/`TRIGOUT 0` 과 **같은 알맹이**
+    # (`archon.trigout`)를 쓰고 **쉬는 상태만 다르다**.
+    #
+    # ⛔ **배선이 계통마다 다르다** (운영자 2026-09-09): science 의 Trigger Out
+    # 은 **실제 셔터**를 몰고, guide 의 것은 **LED** 를 켠다.  그래서 science 의
+    # 쉬는 상태는 `FORCE=0`(타이밍 스크립트가 셔터를 몬다)이고 guide 는 `1` 이다.
+    #
+    # ⛔ **정상 취득 경로는 안 지난다** -- 시퀀서는 `backend.open_shutter()` 를
+    # 직접 부른다.  여기서 바뀌는 것은 **손으로 여는 경우**뿐이다.
+    # ⚠️ 종전 판은 `backend.open_shutter()` 를 불러 **실제 노출을 걸었다**
+    # (`LOADPARAMS` + 트리거).  지금은 **선만 세운다** -- 프레임을 안 만든다.
+    # ⭐ 응답 흐름(`IC Shutter Open`/`Closed`)은 **그대로 둔다**: OBSAgent 가 그
+    # 문면을 보므로 낱말까지 바꾸면 바깥이 깨진다.
+    # ⛔ **시뮬 백엔드면 기반 판 그대로**다.
+
+    #: science 의 쉬는 상태 -- `FORCE=0`(타이밍 스크립트가 몬다).  guide 와 반대.
+    _TRIGOUT_REST = trigout_core.REST_SCIENCE
+
+    #: `SHOPEN <초>` 가 띄운 자동 내림 타이머 (하나만 산다).
+    _shutter_timer = None
+
+    #: 취득 중 `APPLYSYSTEM` 경고를 한 번만 낸다.
+    _warned_busy_apply = False
+
+    def _shutter_ctrls(self, be):  # noqa: ANN001, ANN202
+        """셔터를 모는 컨트롤러들 -- ACF 배선이 정한다 (`drives_shutter`)."""
+        return [c for tag, c in getattr(be, 'ctrls', {}).items()
+                if be.acfg.drives_shutter(tag)]
+
+    def _cancel_shutter_timer(self) -> bool:
+        """대기 중 `SHOPEN` 을 끊는다.  **끊었으면 `True`** (셔터가 아직 열려 있다)."""
+        timer, self._shutter_timer = self._shutter_timer, None
+        if timer is None or timer.done():
+            return False
+        timer.cancel()
+        return True
+
+    async def release_pulse(self, why: str) -> bool:
+        """진행 중 `SHOPEN` 을 **끊고 셔터를 닫는다**.  끊었으면 `True`.
+
+        ⛔ **끊는 자리가 둘이다** (운영자 2026-09-09): `ABORT` · **종료**.
+        안 닫으면 **셔터가 강제로 열린 채 남는다** -- `abort_now()` 의
+        `RESETTIMING` 은 타이밍 코어만 되돌리는데 `SHOPEN` 중에는
+        `TRIGOUTFORCE=1` 이라 핀이 코어를 아예 안 따라가기 때문이다.
+        ⛔ **종료가 특히 나쁘다**: `spawn` 한 펄스 태스크가 종료에 취소되므로
+        내림이 **영영 안 돌고** 사람 없는 채로 셔터가 열린 채 끝난다.
+        ⚠️ 펄스가 없었으면 아무것도 안 쓴다.  ⚠️ **실패를 삼킨다** (종료 경로).
+        """
+        if not self._cancel_shutter_timer():
+            return False
+        be, bad = self._archon_backend('SHCLOSE')
+        ctrls = self._shutter_ctrls(be) if bad is None else []
+        if not ctrls:
+            return False
+        log.warning('%s -- 진행 중이던 SHOPEN 을 끊고 셔터를 닫는다', why)
+        for c in ctrls:
+            try:
+                await trigout_core.rest_line(c, self._TRIGOUT_REST)
+            except Exception as exc:  # noqa: BLE001 -- 종료를 막지 않는다
+                log.error('%s -- %s 의 셔터를 못 닫았다: %s.  **열린 채로 남을 '
+                          '수 있다**', why, getattr(c, 'tag', '?'), exc)
+        return True
+
+    def cmd_abort(self, msg: Message, target: Target) -> Reply:
+        """ABORT -- 기반 동작 + **진행 중 `SHOPEN` 을 끊는다** (`release_pulse`)."""
+        self.app.spawn(self.release_pulse('ABORT'))
+        return super().cmd_abort(msg, target)
+
+    def _warn_if_acquiring(self, word: str) -> None:
+        """⏳ **적분 중·독출 중 `APPLYSYSTEM`** 은 아직 실측 전이다 (11.50)."""
+        seq = getattr(self.app, 'seq', None)
+        if seq is None or not seq.busy or self._warned_busy_apply:
+            return
+        self._warned_busy_apply = True
+        log.warning('취득 중에 %s 를 쳤다 -- 그 프레임의 셔터 제어를 뺏는다 '
+                    '(SHOPEN 은 강제로 열어 두고, SHCLOSE 는 스크립트에 '
+                    '돌려줄 뿐이라 적분 중이면 안 닫힌다).  ⚠️ **적분 중·독출 '
+                    '중 APPLYSYSTEM 의 안전성은 아직 실측 전이다** '
+                    '(DevNote 11.50)', word)
+
+    def cmd_shopen(self, msg: Message, target: Target) -> Reply:
+        """SHOPEN <초> [<sourceID> …] -- **셔터를 <초> 동안 연다**.
+
+        ⭐ ICG 의 `TRIGOUT <초>` 와 **같은 규칙**이다: 무장(`LEVEL=0`+`FORCE=1`,
+        한 적용) -> `LEVEL=1`(**상승 에지**) -> `<초>` 뒤 쉬는 상태로.
+        ⭐ 무장을 앞세우는 값어치는 **에지를 보장**하는 것이다 (운영자
+        2026-09-09) -- 스크립트가 이미 셔터를 열어 둔 채였다면 둘을 한 번에
+        세우는 방식으로는 에지가 안 생긴다.
+        ⚠️ 끝은 `FORCE=0` -- 선을 **타이밍 스크립트에 돌려준다**.
+        ⛔ 취득 중에 치면 그 프레임의 셔터를 뺏는다 (경고를 낸다, 막지는 않는다).
+        """
+        be, bad = self._archon_backend('SHOPEN')
+        if bad is not None:
+            return super().cmd_shopen(msg, target)      # 시뮬 -- 기반 판 그대로
+        parts = msg.body.split()
+        if not parts:
+            return Reply.error('SHOPEN', 'Missing exposure time')
+        try:
+            seconds = float(parts[0])
+        except ValueError:
+            return Reply.error('SHOPEN', 'Invalid exposure time: %s' % parts[0])
+        if seconds < 0:
+            return Reply.error('SHOPEN', 'Invalid exposure time: %s' % parts[0])
+        ctrls = self._shutter_ctrls(be)
+        if not ctrls:
+            return Reply.error('SHOPEN', 'No shutter-driving controller')
+        source = parts[1] if len(parts) > 1 else msg.src
+        ccd = target.ccd or self.cfg.node.master
+        self._cancel_shutter_timer()
+        self.app.spawn(self._do_shutter_pulse(source, ccd, seconds, ctrls))
+        return Reply.noop()
+
+    async def _do_shutter_pulse(self, dest: str, ccd: str,  # noqa: ANN001
+                                seconds: float, ctrls) -> None:
+        import asyncio
+        self._warn_if_acquiring('SHOPEN')
+        try:
+            for c in ctrls:
+                await trigout_core.raise_line(c)
+        except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
+            self.emit.error(dest, 'SHOPEN', 'Failed: %s' % exc)
+            return
+        self.emit.ic_shutter_open(dest, ccd)
+        self._shutter_timer = asyncio.current_task()
+        try:
+            await asyncio.sleep(self.cfg.scaled(seconds))
+        except asyncio.CancelledError:
+            raise               # ⭐ SHCLOSE 가 끊었다 -- 그쪽이 선을 책임진다
+        self._shutter_timer = None
+        try:
+            for c in ctrls:
+                # ⭐ **강제를 유지한 채 닫는다** -- 스크립트가 노출 중이어도
+                # `<초>` 뒤에 확실히 닫힌다 (운영자 2026-09-09).  다음 노출의
+                # `open_shutter()` 가 `FORCE` 를 되돌린다.
+                await trigout_core.rest_line(c, self._TRIGOUT_REST)
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, 'SHCLOSE', 'Failed: %s' % exc)
+            return
+        self.emit.ic_shutter_closed(dest, ccd)
+
+    def cmd_shclose(self, msg: Message, target: Target) -> Reply:
+        """SHCLOSE -- 셔터를 닫고 **타이밍 스크립트에 돌려준다** (적용 한 번).
+
+        `LEVEL=0` + `FORCE=0` 을 한 `APPLYSYSTEM` 으로 쓴다 -- ICG 의
+        `TRIGOUT 0` 과 같은 자리이고 끝값만 다르다 (운영자 2026-09-09).
+        ⛔ **`SHOPEN` 의 타이머도 끊는다** -- 안 끊으면 옛 타이머가 나중에
+        깨어나 그때 세워져 있던 선을 내린다.
+        ⚠️ **적분 중이면 셔터가 닫힌 채로 남지 않는다** -- 선을 스크립트에
+        돌려주므로 그 노출의 셔터 제어가 이어진다.  조기 차단은 `STOP`/`ABORT`
+        의 `close_shutter()` 몫이고 그쪽은 `FORCE=1` 로 **붙들어** 끊는다.
+        """
+        be, bad = self._archon_backend('SHCLOSE')
+        if bad is not None:
+            return super().cmd_shclose(msg, target)     # 시뮬 -- 기반 판 그대로
+        ctrls = self._shutter_ctrls(be)
+        if not ctrls:
+            return Reply.error('SHCLOSE', 'No shutter-driving controller')
+        self._cancel_shutter_timer()
+        ccd = target.ccd or self.cfg.node.master
+        self.app.spawn(self._do_shutter_close(msg.src, ccd, ctrls))
+        return Reply.noop()
+
+    async def _do_shutter_close(self, dest: str, ccd: str, ctrls) -> None:  # noqa: ANN001
+        self._warn_if_acquiring('SHCLOSE')
+        try:
+            for c in ctrls:
+                # ⭐ **넘겨준다** -- 적분 중이면 `NoIntMS` 에서 닫힌다.
+                await trigout_core.rest_line(c, self._TRIGOUT_REST)
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, 'SHCLOSE', 'Failed: %s' % exc)
+            return
+        self.emit.ic_shutter_closed(dest, ccd)
+        self.emit.done(dest, 'SHCLOSE',
+                       'Shutter=Closed Integration Remaining=0 sec.')
+
     def cmd_ccdflush(self, msg: Message, target: Target) -> Reply:
         """CCDFLUSH [MK|NT|ALL] -- 유휴 CCD 를 FlushFrame 한 바퀴로 비운다.
 
@@ -588,6 +778,11 @@ class IcsArchon(IcsSim):
                 ('hk', 'HK 한 줄 -- HKDATA 와 같은 본문'),
                 ('hkdata', '헤더용 HK -- 답은 ICG 가 준다'),
             )),
+            # ⛔ **science 에 없는 기반 명령** (운영자 2026-09-09) -- 점검용 LED
+            # 프로젝터 명령 둘.  실기 백엔드의 `flash_led()` 는 `_NOT_YET` 이라
+            # 늘 실패했고, 그 자리는 `SHOPEN <초>`(Trigger Out)가 대신한다.
+            # ⭐ 감추는 게 아니라 **거절한다** (`IcsDispatcher.UNSUPPORTED`).
+            drop=('flashnow', 'ledflash'),
         )
 
     async def start(self) -> None:
@@ -700,6 +895,11 @@ class IcsArchon(IcsSim):
         (labtest 가 노출 루프를 `try/finally` 로 감싼 것과 같은 이유 --
         DevNote 11.22 (4)).
         """
+        # ⛔ **펄스를 먼저 내린다** (운영자 2026-09-09).  `spawn` 한 `SHOPEN`
+        # 태스크는 `super().stop()` 이 취소하므로 내림이 **영영 안 돈다** --
+        # 그러면 사람 없는 채로 **셔터가 열린 채** 프로세스가 끝난다.
+        # ⚠️ `spawn` 이 아니라 **여기서 기다린다** (같은 이유로).
+        await self.dispatch.release_pulse('종료')
         # **감시를 가장 먼저 세운다** -- 아래 `_stop_monitors()` 참조.
         await self._stop_monitors()
         # 게이지 타이머·데드맨 -- ⚠️ 게이지를 켜지는 않는다 (gaugectl.close).

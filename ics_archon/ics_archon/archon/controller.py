@@ -199,6 +199,12 @@ class ArchonController:
         #: `RCONFIG` 로 되읽는다.  ⭐ ACF 재파싱이 내리고, 되읽기 성공은
         #: 그 키만 고친다(플래그는 남긴다 -- 다른 키도 낡았을 수 있다).
         self.config_dirty = False
+        #: ⭐ `APPLY*` 를 **몇 번 보냈나**.  모듈 VCPU 는 `APPLYALL`/`APPLYMOD`/
+        #: `APPLYDIO` 에서 재시작되므로(매뉴얼 p.86), 진공 디코더가 이 값을 보고
+        #: *"되감김을 우리가 만들었나"* 를 가른다 -- 시각 창으로 어림하지 않는다.
+        #: ⚠️ **보낸 횟수**다(성공 여부가 아니다) -- 실패한 적용도 모듈을
+        #: 건드렸을 수 있으니 그쪽이 안전하다.
+        self.apply_count = 0
         #: 이 컨트롤러의 **온도 자리 표** (`Cn_TEMP` 자리).  `None` 이면
         #: science 기본값(규격 5.6.1절).  ⭐ guide 백엔드가
         #: `guidehdr.TEMP_MODS`(10.4절 8자리)를 꽂는다 -- 안 꽂으면
@@ -306,6 +312,10 @@ class ArchonController:
         두어(`protocol.py` 3번) 늦은 응답이 다음 명령에 먹히지는 않지만,
         부분 수신분이 소켓에 남는 문제는 그대로다.
         """
+        if command.upper().startswith('APPLY'):
+            # ⭐ 바이패스(`ARCHON APPLYALL`)도 여기를 지난다 -- 한 곳이면 족하다.
+            self.apply_count += 1
+
         def _run() -> bytes:
             t_s = time.monotonic()
             u_s = time.time()
@@ -1241,6 +1251,29 @@ class ArchonController:
                                          max(int(n), 0)))
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         log.info('%s: Exposures=%d 로 갱신', self.tag, max(int(n), 0))
+
+    async def abort_now(self) -> None:
+        r"""**진행 중 적분을 지금 끊는다** (ABORT) -- `Exposures=0` -> `RESETTIMING`.
+
+        ⭐ **순서가 뜻이다.**  `RESETTIMING` 은 코어를 `Start:` 로 돌리는데 그 두
+        번째 줄이 `IF Exposures GOTO Exposure` 다 -- `Exposures` 가 남아 있으면
+        **곧바로 다음 노출을 시작한다**.  그래서 `Exposures=0` 을 먼저 건다.
+
+        ⭐ **셔터는 이것만으로 닫힌다.**  `Start:` 첫 줄의 상태가 `RESET` 이고
+        ACF 의 `STATE0\CONTROL="0,0"` 이라 **6비트를 전부 0** 으로 몬다 -- INT
+        비트(bit0)도 0 이므로 `TRIGOUTFORCE=0`(스크립트가 모는 상태)에서 핀이
+        LOW 가 된다.  ⛔ 그래서 `TRIGOUTFORCE=1`+`LEVEL=0` 으로 붙들 필요도,
+        `NoIntMS` 전용 상태를 새로 만들 필요도 없다 (ACF 실측, 운영자 2026-09-09).
+
+        ⚠️ 진행 중이던 프레임은 미완료로 남고 그 표는 버려진다 -- ABORT 는
+        저장하지 않으므로 맞는 거동이다 (`reset_timing`).
+        ⚠️ 설정 메모리의 `FirstFlush` 가 1 이면 `Start:` 가 `FlushFrame` 으로
+        뛴다 -- 끊긴 전하를 비우므로 해롭지 않다.  science 는 `ccdflush` 가
+        정한다 (운영자: *"science 는 abort 뒤 flush 가 필요 없다"* -- 필요 없을
+        뿐 해가 되지는 않는다).
+        """
+        await self.set_exposures(0)
+        await self.reset_timing()
 
     @property
     def triggered(self) -> bool:

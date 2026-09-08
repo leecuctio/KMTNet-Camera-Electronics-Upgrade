@@ -83,6 +83,17 @@ IC_ONLY = ('ROI', 'DISPL', 'MOVIE', 'SNAP', 'DMAWAIT', 'FLASHNOW')
 class Dispatcher:
     """수신 메시지를 명령 핸들러로 보낸다."""
 
+    #: ⛔ **이 노드에 없는 기반 명령** -- 앱이 갈아 끼운다.
+    #:
+    #: 상속으로 살아 있지만 **그 장치가 아예 없는** 경우다 (ICG 의 `DMAWAIT` --
+    #: guide 는 광케이블 IC 가 아니라 Archon 한 대다).  ⭐ **감추지 않고
+    #: 거절한다**: 도움말에서 빼려면 응답도 멈춰야 한다.  응답은 하면서 표에서만
+    #: 빼면 *"모르는 명령"* 과 *"안 보이는 명령"* 이 구별되지 않는다
+    #: (`console.extend_help` 머리말과 같은 규범).
+    #: ⚠️ 도움말 쪽 `drop=` 과 **짝이다** -- 한쪽만 하면 `test_console.py` 의
+    #: 양방향 대조가 잡는다.
+    UNSUPPORTED: frozenset = frozenset()
+
     def __init__(self, app) -> None:  # noqa: ANN001
         self.app = app
         self.cfg = app.cfg
@@ -99,6 +110,13 @@ class Dispatcher:
 
         # bug_compat 재현용 기록.  정상 경로는 이 값을 읽지 않는다.
         self.emit.note_inbound(cmd)
+
+        if cmd in self.UNSUPPORTED:
+            # ⛔ 상속으로 핸들러는 있지만 **이 노드엔 그 장치가 없다**.
+            # 조용히 성공을 내면 부르는 쪽이 됐다고 믿는다.
+            self._reply(msg, target, Reply.error(
+                cmd, 'Not supported on this node'))
+            return
 
         handler = getattr(self, f'cmd_{cmd.lower().replace(".", "_")}', None)
         if handler is None:

@@ -55,6 +55,14 @@ ACTIVE_PROMPT = ''
 HISTORY_LINES = 500
 
 
+def is_tty(stream) -> bool:
+    """`stream` 이 터미널인가 -- 닫힌 스트림·가짜 객체도 안전하게 False."""
+    try:
+        return bool(stream is not None and stream.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
 class PromptSafeStream(logging.StreamHandler):
     """로그가 **입력 중인 줄을 덮지 않게** 한다 (프롬프트를 다시 그린다).
 
@@ -68,12 +76,7 @@ class PromptSafeStream(logging.StreamHandler):
     """
 
     def emit(self, record: logging.LogRecord) -> None:
-        live = bool(ACTIVE_PROMPT)
-        if live:
-            try:
-                live = self.stream.isatty() and sys.stdout.isatty()
-            except (AttributeError, ValueError):    # 닫힌 스트림
-                live = False
+        live = bool(ACTIVE_PROMPT) and is_tty(self.stream) and is_tty(sys.stdout)
         if live:
             self.stream.write('\r\x1b[K')
         super().emit(record)
@@ -154,7 +157,8 @@ BASE_HELP_BODY: tuple[Section, ...] = (
 BASE_HELP: tuple[Section, ...] = BASE_HELP_BODY + REMOTE_TAIL + CONSOLE_TAIL
 
 
-def extend_help(*extra: Section, swap: dict | None = None) -> tuple[Section, ...]:
+def extend_help(*extra: Section, swap: dict | None = None,
+                drop: tuple | None = None) -> tuple[Section, ...]:
     """기반 명령 **뒤**, 축약형·콘솔 낱말 절 **앞**에 앱의 절을 끼운다.
 
     ⭐ 인덱스로 자르지 않는다 -- 기반 절이 늘어도 앱 쪽이 안 깨진다.
@@ -163,12 +167,26 @@ def extend_help(*extra: Section, swap: dict | None = None) -> tuple[Section, ...
     **기반 명령의 뜻이 앱에서 다를 때** 갈아 끼운다.  ⭐ 표기까지 바꿀 수 있는
     것은 **인자가 달라지는 경우**가 있기 때문이다 (ICG 의 `shopen` 은 초를
     안 받는다 -- `shopen <sec>` 를 그대로 두면 표가 거짓말한다).
-    ⛔ 명령을 감추거나 빼지는 않는다: 응답하는 것을 안 보이게 하면 그것대로
-    거짓말이고, 도움말 ↔ 명령표 대조도 깨진다.
+    `drop` 은 **이 앱에 없는 기반 명령**을 표에서 뺀다.  ⛔ 감추는 것이 아니다 --
+    `Dispatcher.UNSUPPORTED` 와 **짝으로** 써서 그 명령이 실제로 거절될 때만
+    뺀다 (한쪽만 하면 도움말 ↔ 명령표 대조가 잡는다).
+    ⚠️ 응답하는 명령을 표에서만 빼면 *"모르는 명령"* 과 *"안 보이는 명령"* 이
+    구별되지 않는다 -- 그것이 거짓말이다.
     ⚠️ 이것이 필요한 실제 자리: ICG 의 `shopen`/`shclose` 는 셔터가 아니라
     **Trigger Out 선**을 세운다 (guide 는 frame-transfer 라 셔터가 없다).
     """
     body = BASE_HELP_BODY
+    if drop:
+        gone = {w.split()[0].lower() for w in drop}
+        found = set()
+        body = tuple(
+            (title, tuple((word, said) for word, said in entries
+                          if not (word.split()[0].lower() in gone
+                                  and not found.add(word.split()[0].lower()))))
+            for title, entries in body)
+        assert found == gone, (
+            'drop 대상이 기반 도움말에 없다: %s' % sorted(gone - found))
+        body = tuple((t, e) for t, e in body if e)
     if swap:
         want = {k.lower(): v for k, v in swap.items()}
         seen = set()
@@ -221,13 +239,17 @@ def dispatcher_commands(cls) -> set[str]:  # noqa: ANN001
     out-of-band 핸드셰이킹이라 뺀다 (`NOT_IN_HELP`).
 
     ⭐ 도움말 <-> 명령표 대조가 이것을 쓴다 (`tests/test_console.py`).
+    ⛔ **`UNSUPPORTED` 는 뺀다** -- 핸들러가 상속으로 있어도 `handle()` 이
+    거절하므로 *"이 노드가 아는 명령"* 이 아니다.  여기서 빼야 대조가 도움말의
+    `drop=` 과 맞물린다 (ICG 의 `DMAWAIT`, 2026-09-08).
     """
     out: set[str] = set()
     for klass in cls.__mro__:
         for name in vars(klass):
             if name.startswith('cmd_'):
                 out.add(name[4:].replace('_', '.'))
-    return out - NOT_IN_HELP
+    gone = {w.lower() for w in getattr(cls, 'UNSUPPORTED', ())}
+    return out - NOT_IN_HELP - gone
 
 
 def _cells(text: str) -> int:

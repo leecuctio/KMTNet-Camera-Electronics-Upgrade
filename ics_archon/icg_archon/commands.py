@@ -75,6 +75,7 @@ from ics_archon import _simpath
 
 _simpath.ensure()
 
+from ics_archon.archon import trigout as trigout_core  # noqa: E402
 from ics_archon.archon.protocol import ArchonError  # noqa: E402
 from ics_sim import commands as sim_commands  # noqa: E402
 from ics_sim import emitter  # noqa: E402
@@ -93,7 +94,7 @@ log = logging.getLogger('icg_archon.cmd')
 #: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다
 #: (`unknown_cmdword` -- `emit.violations` 에 쌓이고 경고 로그가 난다).
 ICG_COMMANDS = frozenset({'GUIEXP', 'HK', 'HKDATA', 'RADIONODE', 'EXPENABLE',
-                          'TRIGOUTFORCE', 'TRIGOUTLEVEL',
+                          'TRIGOUT', 'TRIGOUTFORCE', 'TRIGOUTLEVEL',
                           'HTRSET', 'HTRFORCE', 'HTRRAMP',
                           'HTRPID', 'VACGAUGE',
                           'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON'})
@@ -367,6 +368,11 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return Reply.error('EXPENABLE', _unknown(arg))
 
         flag.set(want)                            # ① 플래그를 먼저
+        if not want:
+            # ⭐ **펄스도 끊는다** (운영자 2026-09-09) -- `EXPENABLE OFF` 도
+            # 사이클을 세우는 경로이므로 `ABORT` 와 같은 자리다.  ⚠️ `busy` 와
+            # 무관하다: 취득 중이 아니어도 펄스는 돌 수 있다.
+            self.app.spawn(self.release_pulse('EXPENABLE OFF'))
         aborted = 0
         if not want and self.app.seq.busy:        # ② 그 다음 세운다
             if self.app.seq.cancel(save=False, requester=msg.src):
@@ -755,9 +761,34 @@ class IcgDispatcher(sim_commands.Dispatcher):
     # `GuideBackend.ensure_trigger_resting()` 이 그 상태로 되돌린다.
     # ⛔ 그래서 **`SHCLOSE` 는 강제를 풀지 않는다** -- 레벨만 내린다.
 
+    #: ⛔ **guide 에 없는 기반 명령** (운영자 2026-09-08).
+    #:
+    #: `DMAWAIT` 는 레거시 IC 의 **광케이블 통신 지연**이다 -- guide 는 IC 가
+    #: 아니라 **Archon 한 대**를 TCP 로 몰므로 그 값을 둘 자리가 없다.  종전에는
+    #: 상속으로 살아 있어 `DONE: DMAWAIT DMAWaitTime=…` 을 **성공으로** 답했고,
+    #: 그 값은 아무 데도 안 쓰였다 -- 거짓 성공이다.
+    #: ⚠️ **레거시 ICG 는 이것을 받았다** (`legacy_command_coverage.md`:
+    #: *"IC (ICS·ICG 주소로도 받음)"*).  OBSAgent 가 guide 로도 보낸다면 응답이
+    #: `DONE` 에서 `ERROR` 로 바뀐다 -- 운영자 확인 사항으로 남긴다.
+    #:
+    #: ⛔ **`FLASHNOW`/`LEDFLASH` 는 거짓 성공이었다** (운영자 2026-09-09).
+    #: `cmd_flashnow` 는 `app.backend.flash_led()` 를 부르는데 ICG 의 그 자리는
+    #: **눌러 둔 science sim 스텁**이라 아무 하드웨어도 안 건드리고 `DONE: FLASHNOW
+    #: LED Flash Done.` 이 나갔다.  ⚠️ science 실기는 `BackendError(_NOT_YET)` 로
+    #: **정직하게 거절**한다 -- 거짓말은 ICG 쪽만이었다.
+    #: ⚠️ `LEDFLASH` 를 없애면 **노출과 자동 동기되는 점등**이 사라진다
+    #: (`TRIGOUT <초>` 는 우리가 임의 시각에 내는 것이라 프레임과 비동기다).
+    #:
+    #: ⛔ **`SHOPEN`/`SHCLOSE` 는 `TRIGOUT` 으로 갈렸다** (운영자 2026-09-09) --
+    #: guide 에는 셔터가 없으니 셔터 낱말을 빌려 쓰지 않는다.  ⚠️ 11.45 에서는
+    #: *"낱말은 남기고 뜻만 바꾼다"* 였는데 그 결정이 뒤집혔다: OBSAgent 나 IC 가
+    #: guide 로 `SHOPEN` 을 보내면 이제 `ERROR` 다.
+    UNSUPPORTED = frozenset({'DMAWAIT', 'FLASHNOW', 'LEDFLASH',
+                             'SHOPEN', 'SHCLOSE'})
+
     #: guide 의 **쉬는 상태** -- `(TRIGOUTLEVEL, TRIGOUTFORCE)` 의 설정 문면.
     #: `ctrl.trigger_state()` 가 돌려주는 것과 같은 꼴이다.
-    _TRIGOUT_REST = ('0', '1')
+    _TRIGOUT_REST = trigout_core.REST_GUIDE
 
     @staticmethod
     def _trigout_words(high=None, forced=None) -> str:  # noqa: ANN001
@@ -768,21 +799,6 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if forced is not None:
             out.append('TRIGOUTFORCE=%d' % (1 if forced else 0))
         return ' '.join(out)
-
-    async def _trigout_armed(self, ctrl) -> bool:  # noqa: ANN001
-        """이미 **쉬는 상태**(`LEVEL=0`·`FORCE=1`)인가 -- `RCONFIG` 되읽기.
-
-        ⭐ 맞으면 `SHOPEN` 이 무장을 건너뛰어 **`APPLYSYSTEM` 한 번을 아낀다**
-        (운영자 2026-09-08).  쉬는 상태가 평시이므로 이 갈래가 보통이다.
-        ⛔ 판단을 **캐시로 하면 안 된다** (`ctrl.trigger_state()` 머리말) --
-        캐시가 거짓이면 `SHOPEN` 이 조용히 아무것도 안 한다.
-        ⚠️ 되읽기가 실패하면 **무장한다**(`False`) -- 모르면 세워 두는 쪽이다.
-        """
-        try:
-            return await ctrl.trigger_state() == self._TRIGOUT_REST
-        except Exception as exc:  # noqa: BLE001 -- 판단을 막지는 않는다
-            log.warning('TRIGOUT 상태 되읽기 실패 (%s) -- 무장부터 한다', exc)
-            return False
 
     def _trigout(self, msg: Message, word: str, key: str):  # noqa: ANN001, ANN202
         """`TRIGOUTFORCE`/`TRIGOUTLEVEL` 공통 -- 인자 없으면 조회."""
@@ -855,111 +871,139 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         return self._trigout(msg, 'TRIGOUTLEVEL', 'TRIGOUTLEVEL')
 
-    #: `SHOPEN <초>` 가 띄운 자동 내림 타이머.  ⭐ 하나만 산다 -- 새 `SHOPEN`
-    #: 이나 `SHCLOSE` 가 오면 앞의 것을 끊는다 (안 끊으면 옛 타이머가 나중에
-    #: 깨어나 **방금 세운 선을 내린다**).
-    _shopen_timer = None
+    #: `TRIGOUT <초>` 가 띄운 자동 내림 타이머.  ⭐ 하나만 산다 -- 새 `TRIGOUT`
+    #: 이 오면 앞의 것을 끊는다 (안 끊으면 옛 타이머가 나중에 깨어나 **방금
+    #: 세운 선을 내린다**).
+    _trigout_timer = None
 
-    def cmd_shopen(self, msg: Message, target: Target) -> Reply:
-        """SHOPEN <초> -- guide 판: **Trigger Out 을 <초> 동안 HIGH 로** 세운다.
+    #: 취득 중 `APPLYSYSTEM` 경고를 한 번만 낸다 (아래 `_do_trigout_pulse`).
+    _warned_busy_apply = False
 
-        운영자 확정 2026-09-08 (2차 개정):
+    def cmd_trigout(self, msg: Message, target: Target) -> Reply:
+        """TRIGOUT <초> -- **Trigger Out 을 <초> 동안 HIGH 로**.  `0` 이면 즉시 LOW.
 
-        | 단계 | 보내는 것 | 적용 |
+        운영자 확정 2026-09-09.  종전 `SHOPEN <초>`/`SHCLOSE` 를 이 한 낱말로
+        모았다 -- ⛔ guide 에는 셔터가 없으니 **셔터 낱말을 빌려 쓰지 않는다**.
+
+        | 인자 | 하는 것 | 적용 |
         |---|---|---|
-        | 무장 | `LEVEL=0` + `FORCE=1` | ⭐ **이미 쉬는 상태면 건너뛴다** |
-        | 개방 | `LEVEL=1` | ⭐ **상승 에지는 오직 이 한 번** |
-        | `<초>` 뒤 | `LEVEL=0` + `FORCE=1` | 하강 에지 (적용 1회) |
+        | `<초>` > 0 | 무장(`LEVEL=0`+`FORCE=1`) -> `LEVEL=1`, `<초>` 뒤 자동 내림 | 1~2회 |
+        | `0` | 즉시 `LEVEL=0` + `FORCE=1` (대기 중 타이머도 끊는다) | 1회 |
 
-        ⭐ **에지를 한 명령이 만든다**: 종전 판(`LEVEL=1` -> `FORCE=1`)은 앞
-        상태에 따라 에지가 첫 명령에서 나기도 둘째에서 나기도 했다 -- 시점을
-        못 짚는다.  무장을 앞세우면 **앞 상태와 무관하게 마지막 쓰기가 에지**다.
-        ⭐ **무장은 한 번의 `APPLYSYSTEM`** 으로 둘을 같이 세운다 -- 그래야 그
-        사이 *"강제는 걸렸는데 레벨은 옛 값"* 인 찰나가 없다.
-        ⭐ 평시(쉬는 상태)에는 되읽기 둘로 무장을 건너뛰어 **적용이 1회**다.
-        ⚠️ 되읽기는 `RCONFIG` 다 -- 캐시로 판단하면 조용히 아무것도 안 할 수
-        있다 (`_trigout_armed`).
-
-        ⛔ **기반 판과 뜻이 다르다** -- science 는 셔터를 열지만 guide 에는
-        셔터가 없다 (frame-transfer).  같은 낱말·같은 인자를 쓰되 세우는 것은
-        **Archon 의 Trigger Out 선**이다.
+        ⭐ **둘을 한 적용에 같이 세운다** (`archon.trigout.raise_line`) -- 무장을
+        앞세우면 그 한 적용 동안 핀이 강제 LOW 라 science 에서 노출 중 셔터가
+        잠깐 닫힌다.  두 계통이 같은 알맹이를 쓰므로 여기도 같은 규범이다.
         ⚠️ 시한은 `cfg.scaled()` 를 탄다 (시험 축척) -- 실기 `time_scale` 은 1 이다.
+
+        ⏳ **취득 중에 쳐도 되나 -- 아직 실측 전이다.**  핀 자체는 CCD 로
+        되먹임이 없어 자료에 관여하지 않는다.  ⚠️ 그런데 실현 수단이
+        `WCONFIG`+`APPLYSYSTEM` 이고, **독출 중 `APPLYSYSTEM`** 의 안전성은
+        science 쪽(`archon/backend.py` `close_shutter`)이 이미 *"실기 확인 항목"*
+        으로 열어 둔 자리다.  guide 는 연속 취득이라 거의 항상 그 상황이다.
+        ⭐ **막지는 않는다** -- 막으면 이 명령을 쓸 수가 없다.  대신 취득 중이면
+        **한 번 경고**해 나중에 프레임 이상과 이을 단서를 남긴다.
         """
         arg = msg.body.split()
         if not arg:
-            return Reply.error('SHOPEN', 'Missing duration (seconds)')
+            return Reply.error('TRIGOUT', 'Missing duration (seconds)')
         try:
             seconds = float(arg[0])
         except ValueError:
-            return Reply.error('SHOPEN', 'Invalid duration: %s' % arg[0])
+            return Reply.error('TRIGOUT', 'Invalid duration: %s' % arg[0])
         if seconds < 0:
-            return Reply.error('SHOPEN', 'Invalid duration: %s' % arg[0])
+            return Reply.error('TRIGOUT', 'Invalid duration: %s' % arg[0])
         ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
         if ctrl is None:
-            return Reply.error('SHOPEN', 'Controller is not available')
-        self._cancel_shopen_timer()
-        self.app.spawn(self._do_shopen(msg.src, seconds))
+            return Reply.error('TRIGOUT', 'Controller is not available')
+        self._cancel_trigout_timer()
+        if seconds == 0:
+            # ⭐ 종전 `SHCLOSE` -- 둘을 한 적용에 같이 세운다 (되읽기 없음).
+            self.app.spawn(self._do_trigout(msg.src, 'TRIGOUT',
+                                            high=False, forced=True))
+            return Reply.noop()
+        self.app.spawn(self._do_trigout_pulse(msg.src, seconds))
         return Reply.noop()
 
-    def _cancel_shopen_timer(self) -> None:
-        timer, self._shopen_timer = self._shopen_timer, None
-        if timer is not None and not timer.done():
-            timer.cancel()
+    def _cancel_trigout_timer(self) -> bool:
+        """대기 중 펄스를 끊는다.  **끊었으면 `True`** (선이 아직 HIGH 다)."""
+        timer, self._trigout_timer = self._trigout_timer, None
+        if timer is None or timer.done():
+            return False
+        timer.cancel()
+        return True
 
-    async def _do_shopen(self, dest: str, seconds: float) -> None:
+    async def release_pulse(self, why: str) -> bool:
+        """진행 중 `TRIGOUT` 펄스를 **끊고 선을 쉬는 상태로**.  끊었으면 `True`.
+
+        ⛔ **끊는 자리가 셋이다** (운영자 2026-09-09): `ABORT` · `EXPENABLE OFF` ·
+        **종료**.  안 내리면 **LED 가 켜진 채 남는다** -- `RESETTIMING` 은 타이밍
+        코어만 되돌리는데 펄스 중에는 `TRIGOUTFORCE=1` 이라 핀이 코어를 아예 안
+        따라가기 때문이다.  ⛔ **종료가 특히 나쁘다**: `spawn` 한 펄스 태스크가
+        종료에 취소되므로 내림이 **영영 안 돌고** 사람 없는 채로 광원이 남는다.
+        ⚠️ 펄스가 없었으면 **아무것도 안 쓴다** (군더더기 왕복을 안 만든다).
+        ⚠️ **실패를 삼킨다** -- 종료 경로에서 부르므로 여기서 던지면 종료가 막힌다.
+        """
+        if not self._cancel_trigout_timer():
+            return False
+        ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
+        if ctrl is None:
+            return False
+        log.warning('%s -- 진행 중이던 TRIGOUT 펄스를 끊고 선을 쉬는 상태로 '
+                    '되돌린다', why)
+        try:
+            await trigout_core.rest_line(ctrl, self._TRIGOUT_REST)
+        except Exception as exc:  # noqa: BLE001 -- 종료를 막지 않는다
+            log.error('%s -- TRIGOUT 을 못 내렸다: %s.  **선이 HIGH 로 남을 수 '
+                      '있다**', why, exc)
+        return True
+
+    def cmd_abort(self, msg: Message, target: Target) -> Reply:
+        """ABORT -- 기반 동작 + **진행 중 `TRIGOUT` 펄스를 끊는다** (`release_pulse`)."""
+        self.app.spawn(self.release_pulse('ABORT'))
+        return super().cmd_abort(msg, target)
+
+    def _warn_if_acquiring(self) -> None:
+        """취득 중 `APPLYSYSTEM` -- ⏳ 미확인이라 **한 번만** 알린다."""
+        seq = getattr(self.app, 'seq', None)
+        if seq is None or not seq.busy or self._warned_busy_apply:
+            return
+        self._warned_busy_apply = True
+        log.warning('취득 중에 TRIGOUT 을 쳤다 -- WCONFIG + APPLYSYSTEM 이 '
+                    '프레임 도중에 나간다.  핀 자체는 자료에 관여하지 않지만 '
+                    '**독출 중 APPLYSYSTEM 의 안전성은 아직 실측 전이다** '
+                    '(DevNote 11.50).  이 뒤 프레임에 이상이 보이면 이 줄을 '
+                    '함께 볼 것')
+
+    async def _do_trigout_pulse(self, dest: str, seconds: float) -> None:
         """세우고 -> 기다리고 -> 내린다.  ⛔ 내림은 **취소돼도 안 흘린다**."""
         import asyncio
         ctrl = self.app.guide.ctrl
-        armed = await self._trigout_armed(ctrl)
+        self._warn_if_acquiring()
         try:
-            if not armed:
-                # 무장 -- 레벨을 내리고 강제를 걸어 **한 번에** 적용한다.
-                await ctrl.set_trigger(high=False, forced=True)
-            await ctrl.set_trigger(high=True)     # ⭐ 상승 에지는 여기 하나
+            await trigout_core.raise_line(ctrl)
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
-            self.emit.error(dest, 'SHOPEN', 'Failed: %s' % exc)
+            self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
             return
-        self.emit.done(dest, 'SHOPEN', 'TRIGOUTLEVEL=1 Sec=%g%s'
-                       % (seconds, '' if armed else ' (armed first)'))
-        self._shopen_timer = asyncio.current_task()
+        self.emit.done(dest, 'TRIGOUT',
+                       'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 Sec=%g' % seconds)
+        self._trigout_timer = asyncio.current_task()
         try:
             await asyncio.sleep(self.cfg.scaled(seconds))
         except asyncio.CancelledError:
-            # ⭐ `SHCLOSE` 나 새 `SHOPEN` 이 끊었다 -- 그쪽이 선을 책임진다.
+            # ⭐ 새 `TRIGOUT` 이 끊었다 -- 그쪽이 선을 책임진다.
             raise
-        self._shopen_timer = None
+        self._trigout_timer = None
         try:
-            await self._write_trigout(ctrl, high=False, forced=True)
+            # ⭐ **시한 내림은 강제를 유지한다** -- guide 는 쉬는 상태가 곧
+            # 그것이라 `TRIGOUT 0` 과 같은 값이지만, 뜻이 다른 자리라 함수를
+            # 나눠 부른다 (science 에서는 실제로 갈린다).
+            await trigout_core.rest_line(ctrl, self._TRIGOUT_REST)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'SHCLOSE', 'Failed: %s' % exc)
+            self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
             return
-        # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보라 낱말을
-        # `SHCLOSE` 로 낸다 (한 요청에 `DONE` 이 둘이 되지 않게).
-        self.emit.done(dest, 'SHCLOSE', '%s (auto after %gs)'
+        # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보다.
+        self.emit.done(dest, 'TRIGOUT', '%s (auto after %gs)'
                        % (self._trigout_words(high=False, forced=True), seconds))
-
-    def cmd_shclose(self, msg: Message, target: Target) -> Reply:
-        """SHCLOSE -- guide 판: **선을 LOW 로 내린다** (강제는 유지).
-
-        `LEVEL=0` + `FORCE=1` 을 **한 번의 `APPLYSYSTEM`** 으로 쓴다 -- 둘 다
-        목표값이라 같이 세우는 것이 맞고, 적용이 한 번이면 그만이다.
-        ⭐ 끝이 `TRIGOUTFORCE=1` 이라 **guide 의 쉬는 상태로 돌아간다** -- 선은
-        우리 손에 남고 레벨만 LOW 다 (운영자 확정 2026-09-08).
-        ⛔ **강제를 풀지 않는다.**  종전 판은 `FORCE=0` 으로 내려놓았는데, 그러면
-        선이 **타이밍 스크립트 손에 넘어가** 노출마다 흔들리고, `prepare()` 의
-        래치 탓에 **재시작 전까지 안 돌아왔다** (벤치 2026-09-08).
-        ⭐ **되읽기를 안 한다** -- `SHOPEN` 과 달리 여기서는 아낄 적용이 없다
-        (어차피 한 번이고, 강제가 이미 1 이어도 같이 쓰는 값이 맞다).
-        ⛔ **`SHOPEN <초>` 의 타이머도 끊는다** -- 안 끊으면 옛 타이머가 나중에
-        깨어나 그때 세워져 있던 선을 내린다.
-        """
-        self._cancel_shopen_timer()
-        ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
-        if ctrl is None:
-            return Reply.error('SHCLOSE', 'Controller is not available')
-        self.app.spawn(self._do_trigout(msg.src, 'SHCLOSE',
-                                        high=False, forced=True))
-        return Reply.noop()
 
     def cmd_ccdpowon(self, msg: Message, target: Target) -> Reply:
         """CCDPOWON -- CCD 전원 ON (`POWERON` + `poweron_wait` 초의 flush 대기).

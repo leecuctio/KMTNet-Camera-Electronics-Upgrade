@@ -63,7 +63,21 @@ class DetectorBackend(Protocol):
         """셔터를 즉시 닫는다 (강제 중단 포함)."""
 
     async def flash_led(self, milliseconds: int) -> None:
-        """점검용 LED 프로젝터를 점등한다 (FLASHNOW)."""
+        """점검용 LED 프로젝터를 점등한다 (FLASHNOW).
+
+        ⚠️ 실기(ICS·ICG)에서는 **폐지됐다** (운영자 2026-09-09) -- 구현된 적이
+        없고, 그 자리는 `SHOPEN <초>`/`TRIGOUT <초>` 가 대신한다.  시뮬만 쓴다.
+        """
+
+    #: ⭐ **선택 훅** -- `ABORT` 가 이것을 부른다 (`Sequencer.cancel`).
+    #:
+    #: 실기 백엔드는 여기서 **적분을 물리적으로 끊는다**(`Exposures=0` ->
+    #: `RESETTIMING`).  ⛔ 태스크 취소만으로는 컨트롤러가 안 멈춘다 -- 노출이
+    #: 끝까지 가고 셔터도 `NoIntMS` 까지 열려 있다.
+    #: ⚠️ **없어도 된다** -- 시뮬 백엔드처럼 끊을 하드웨어가 없으면 안 만든다
+    #: (시퀀서가 `getattr` 로 확인한다).
+    #: async def abort_now(self) -> None: ...
+
 
     def readout(self, ccd: str) -> AsyncIterator[int]:
         """readout 을 시작하고 진행률(0~100)을 yield 한다.

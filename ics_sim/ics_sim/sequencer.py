@@ -94,6 +94,9 @@ class Sequencer:
         #: 그 ABORT 가 `save=True` 였나 -- 진행 중 프레임의 저장을 살려
         #: 두면 그 번호는 **파일이 된다**.  P1 되감기의 유일한 제외 조건이다.
         self._abort_kept_save: bool = False
+        #: ABORT 가 띄운 **백엔드 중단** 왕복 (`backend.abort_now`).  ⚠️ 취소된
+        #: 태스크 안에서 `await` 하면 두 번째 취소에 끊길 수 있어 **따로 띄운다**.
+        self._abort_fut: asyncio.Task | None = None
 
     # -- 외부 인터페이스 --------------------------------------------------
 
@@ -124,9 +127,23 @@ class Sequencer:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        if self._abort_fut is not None:
+            await asyncio.gather(self._abort_fut, return_exceptions=True)
+            self._abort_fut = None
         if self._writers:
             await asyncio.gather(*self._writers, return_exceptions=True)
             self._writers.clear()
+
+    async def _abort_backend(self, hook) -> None:  # noqa: ANN001
+        """ABORT 의 백엔드 중단 -- **실패해도 여기서 삼킨다**.
+
+        ⚠️ 이 태스크가 예외로 죽으면 *"Task exception was never retrieved"* 가
+        되고, 정작 `ABORT` 응답 경로와는 무관한 자리에서 시끄러워진다.
+        """
+        try:
+            await hook()
+        except Exception as exc:  # noqa: BLE001 -- 취소 경로다
+            log.error('ABORT: 백엔드 중단 실패 -- %s', exc)
 
     async def drain_writers(self, timeout: float) -> int:
         """**저장 태스크만** 끝날 때까지 기다린다 (종료 경로용).
@@ -227,6 +244,13 @@ class Sequencer:
                     requester, save)
         self._aborted_by = requester or self.cfg.node.ics_id
         self._abort_kept_save = save
+        # ⭐ **적분을 물리적으로 끊는다** (운영자 지시 2026-09-09).  백엔드가
+        # 그 수단을 가진 경우에만 -- 시뮬은 이 훅이 없어 종전대로 돈다.
+        # ⛔ 태스크 취소만으로는 컨트롤러가 안 멈춘다: 노출이 끝까지 가고
+        # 셔터도 `NoIntMS` 까지 열려 있었다 (`ArchonBackend.abort_now`).
+        hook = getattr(self.backend, 'abort_now', None)
+        if hook is not None:
+            self._abort_fut = asyncio.ensure_future(self._abort_backend(hook))
         if not save:
             # **진행 중 프레임이 띄운 저장만 취소한다.**  구판은 `_writers`
             # 전체를 취소해서, `GO n` 파이프라인에서 프레임 k 초반에 ABORT 가
