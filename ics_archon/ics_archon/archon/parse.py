@@ -405,6 +405,11 @@ POWER_STATES = {
 }
 #: 취득이 성립하는 유일한 상태.
 POWER_ON = 4
+#: ⭐ **전원 인가 전의 정상 상태들** -- 읽기 전용 단계에서 이것을 `문제` 로
+#: 찍으면 안 된다 (probe 1단계, 운영자 2026-09-08).  ⛔ `Intermediate`(3)는
+#: 여기 들지 않는다: 일부 모듈만 올라온 상태는 언제나 문제다.
+POWER_OFF = 2
+POWER_STANDBY = 5
 
 
 def power_state(status: dict[str, str] | None) -> int | None:
@@ -426,7 +431,8 @@ def overheating(status: dict[str, str] | None) -> bool:
     return bool(status) and str(status.get('OVERHEAT', '0')).strip() == '1'
 
 
-def health_problems(status: dict[str, str] | None) -> list[str]:
+def health_problems(status: dict[str, str] | None, *,
+                    powered: bool = True) -> list[str]:
     """전원·과열 이상을 사람이 읽을 문장으로 (없으면 빈 목록).
 
     **취득 경로가 이것을 한 번도 안 봤다** (2026-08-24 검토, F2).  전원 레일이
@@ -454,7 +460,14 @@ def health_problems(status: dict[str, str] | None) -> list[str]:
         bad.append('OVERHEAT=1 (과열 -- 모듈이 스스로 전원을 내린다)')
     state = power_state(status)
     if state is not None and state != POWER_ON:
-        bad.append('POWER=%d %s' % (state, POWER_STATES.get(state, '?')))
+        # ⭐ **전원을 켜기 전에는 `Off`/`Standby` 가 정상이다** (2026-09-08 벤치).
+        # 기동 중 첫 `STATUS` 가 `POWERON` 보다 먼저 도는데, 거기서 "상태 이상"
+        # 을 울면 **켤 때마다 오경보**가 뜬다 -- 그 줄을 무시하는 버릇이 들면
+        # 진짜 전원 이상이 왔을 때 아무도 안 본다 (2026-08-27 오경보와 같은 부류).
+        # ⛔ `Intermediate`(일부 모듈만)·`Unknown`·`Not Configured` 는 **켜기
+        # 전이라도 이상**이다 -- 그것들은 그대로 올린다.
+        if powered or state not in (POWER_OFF, POWER_STANDBY):
+            bad.append('POWER=%d %s' % (state, POWER_STATES.get(state, '?')))
     return bad
 
 

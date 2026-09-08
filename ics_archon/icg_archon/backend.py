@@ -64,7 +64,7 @@ from ics_archon.archon.controller import ArchonController, ArchonError  # noqa: 
 from ics_archon.config import cfg_name_from_acf  # noqa: E402
 from ics_sim import rawhdr  # noqa: E402
 
-from . import acftiming, guidecards  # noqa: E402
+from . import acftiming, guidecards, guidehdr  # noqa: E402
 from .config import TAG, IcgCfg  # noqa: E402
 
 log = logging.getLogger('icg_archon.backend')
@@ -83,7 +83,10 @@ class GuideBackend:
         self.cfg = cfg            # ics_sim.config.SimConfig
         self.icfg = icfg
         self.ctrl = ArchonController(TAG, icfg)
-        self._trigger_forced = False
+        # ⭐ **자리 표를 꽂아 준다** -- guide 는 규격 10.4절 8자리다.
+        # 안 꽂으면 컨트롤러가 science 표(5.6.1절 10자리)로 대조해
+        # 정상 구성에서 `extra [6,7]`·`missing [1,2,8,11]` 오경보가 난다.
+        self.ctrl.temp_fields = guidehdr.TEMP_MODS
         # numpy 는 저장형 변환의 하드 의존이다 (science 백엔드와 같은 이유).
         try:
             import numpy  # noqa: F401
@@ -383,14 +386,42 @@ class GuideBackend:
 
     # -- 준비 ---------------------------------------------------------------
 
+    #: ⭐ guide 의 **쉬는 상태** -- `TRIGOUTFORCE=1`(강제) + `TRIGOUTLEVEL=0`
+    #: (LOW).  guide 는 셔터가 없어(frame-transfer) 트리거 선을 노출마다 흔들
+    #: 일이 없으므로 **우리가 붙들어 LOW 로 고정한다** (운영자 확정 2026-09-08).
+    #: ⛔ `FORCE=0` 은 *"타이밍 스크립트가 몬다"* 라 선이 노출마다 흔들린다 --
+    #: ACF 출고값이 바로 그것이라 **띄울 때마다 되돌려야** 한다.
+    TRIGOUT_REST_FORCED = True
+
     async def prepare(self) -> None:
         """접속·ACF·전원 -- 멱등.  실패는 그대로 올린다 (시퀀서가 통보)."""
         await self.ctrl.prepare()
-        if not self._trigger_forced:
-            # guide 는 셔터가 없다 -- TRIGOUT 을 노출마다 흔들 일이 없으므로
-            # 한 번만 강제 상태로 둔다 (modtm_gui 원형과 같은 자리).
-            await self.ctrl.set_trigger_forced(True)
-            self._trigger_forced = True
+        await self.ensure_trigger_resting()
+
+    async def ensure_trigger_resting(self) -> None:
+        """트리거 선을 **쉬는 상태로 되돌린다** -- 멱등.
+
+        ⛔ 종전에는 `_trigger_forced` **래치**로 *"한 번만"* 세웠다.  그런데 그
+        뒤에 누가 `TRIGOUTFORCE=0` 을 쓰면(`SHCLOSE` 가 실제로 그랬다 -- 벤치
+        2026-09-08) 래치가 이미 서 있어 **재시작 전까지 안 돌아왔다.**
+        ⭐ 래치 대신 **설정값을 보고** 어긋났을 때만 쓴다 -- 맞으면 왕복이 없어
+        래치만큼 싸고, 어긋나면 스스로 낫는다.  ACF 를 새로 밀어 캐시가
+        파일값(`0`)으로 돌아간 경우도 여기서 다시 잡힌다.
+        ⚠️ 되읽기가 실패해도 **쓰기는 한다** -- 모르면 세워 두는 쪽이 안전하다.
+        """
+        want = '1' if self.TRIGOUT_REST_FORCED else '0'
+        try:
+            held = (await self.ctrl.config_value('TRIGOUTFORCE')).strip()
+        except (ArchonError, TimeoutError, OSError) as exc:
+            log.warning('guide: TRIGOUTFORCE 를 못 읽었다 (%s) -- 쉬는 상태로 '
+                        '그냥 다시 쓴다', exc)
+            held = ''
+        if held == want:
+            return
+        await self.ctrl.set_trigger_forced(self.TRIGOUT_REST_FORCED)
+        log.info('guide: 트리거 선을 쉬는 상태로 둔다 -- TRIGOUTFORCE=%s '
+                 '(종전 %s).  0 이면 타이밍 스크립트가 몰아 노출마다 흔들린다',
+                 want, held or '(모름)')
 
     # -- 취득 ---------------------------------------------------------------
 

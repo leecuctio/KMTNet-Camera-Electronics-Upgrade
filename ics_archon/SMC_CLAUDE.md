@@ -1509,7 +1509,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 
 
-### ⭐⭐ 2026-09-07 추가분 (DevNote 11.39~11.40) — **이것이 최신**
+### ⭐⭐ 2026-09-07~08 추가분 (DevNote 11.39~11.47) — **이것이 최신**
 
 ⚠️ **두 세션 분이 한 절에 있다.**  11.39 는 앞 세션(*"28. ICG/ICS 구현현황검토 및 시험준비"*)이
 **커밋(`c2bbb87`)까지 하고 사용 한도로 멈추면서 인수인계에 못 적은 것**이고, 11.40 부터가 이
@@ -1629,7 +1629,8 @@ science `hk_stale_after` 는 **2000**.  ⭐ SEND INTERVAL 을 손으로 맞출 �
 - **셔터가 없는데 셔터 명령이 있었다** → `SHOPEN <초>`/`SHCLOSE` 를 **Trigger Out** 으로
   (운영자).  `TRIGOUTFORCE`/`TRIGOUTLEVEL` 두 명령도 신설.
   ⭐ **순서가 뜻이다** — 세울 때도 내릴 때도 **레벨이 먼저**(강제를 먼저 걸면 그 찰나에
-  *옛* 레벨이 핀으로 나간다).  ⭐ 끝이 `FORCE=0` 이라 **ACF 출고 상태로 돌아간다**.
+  *옛* 레벨이 핀으로 나간다).  ⚠️ ~~끝이 `FORCE=0` 이라 ACF 출고 상태로 돌아간다~~ →
+  **11.47 에서 개정**: 내림의 끝값은 `FORCE=1` **유지**다 (guide 의 쉬는 상태).  아래 (아).
   ⚠️ `SHOPEN` 은 `<초>` 뒤 자동으로 내리고, `SHCLOSE` 는 **대기 중 타이머도 끊는다**.
 - **`GUIDEEXP` → `GUIEXP`** (운영자).  `EXP` 는 남는다 — **gmon 이 그것을 쓴다**.
   둘은 같은 `exptime` 을 채운다.  ⛔ 레거시 실측 낱말은 `GUIDEEXP` 였다.
@@ -1659,6 +1660,39 @@ science `hk_stale_after` 는 **2000**.  ⭐ SEND INTERVAL 을 손으로 맞출 �
   `RCONFIG` 로 되읽는다 (ICG·ICS 가 같은 함수를 지나 한 곳이면 족하다).
   ⭐ **값을 흉내내지 않고 표시만** 한다 — 원문을 우리가 파싱하면 그 파싱이 또 하나의
   진실이 된다.  ⚠️ 되읽기 실패로 죽지 않는다(캐시로 물러나되 표시는 남긴다).
+
+#### (아) 벤치 **첫 전원 인가** -- 오경보 셋 + 놓아 버린 트리거 선 (11.47)
+
+운영자가 실기에 **전원을 넣었다** -- `POWERON` -> `POWER=4 (On)` -> `준비 완료`, HK 에
+Radionode 실측, `SHOPEN 10` 자동 내림까지 **경로는 다 돌았다**.  그 로그가 넷을 드러냈다.
+
+- ⛔ **배너가 `backend sim` 이라고 말했다** (실제는 `archon_guide`).  `IcgArchon` 이
+  `cfg.hardware.backend` 를 **일부러 `'sim'` 으로 눌러 두기** 때문이다 -- 갈아 끼울 자리를
+  하나 더 열었다(`banner_backend()`).  11.46 의 `.MK.fits` 와 같은 부류.
+- ⛔ **켜기 전 `POWER=Off` 를 `Error: 상태 이상` 으로 울었다.**  기동 첫 `STATUS` 는
+  `POWERON` 보다 먼저 돈다 -> `health_problems(..., powered=)` 로 그 판정만 접는다.
+  ⛔ `Intermediate`·`Unknown` 은 **켜기 전이라도 이상**이다.  probe 도 같은 부류라
+  `문제` -> `확인` (운영자 지시).
+- ⛔ **guide 를 science 자리 표로 대조**해 `extra [6,7]` 오경보 -- `field_order_problems()`
+  의 docstring 이 **글자 그대로 예언해 둔** 것인데 호출부가 표를 안 넘겼다.
+  `ArchonController.temp_fields` 를 백엔드가 꽂는다(`guidehdr.TEMP_MODS`).
+  ⚠️ **그 고침이 `guidehdr` 미수입으로 `NameError` 였다** -- 새 백엔드 시험이 첫 실행에서
+  잡았다.  고치고 나서 시험을 돌린다.
+- ⛔ **`SHCLOSE` 가 트리거 선을 타이밍 스크립트에 넘기고 있었다** (`FORCE=0`).  ⭐ 운영자
+  확정: **guide 의 쉬는 상태는 `TRIGOUTFORCE=1` + `TRIGOUTLEVEL=0`** -- `SHCLOSE` 도
+  `FORCE=1` 을 **유지**한다.  ⚠️ 핀은 어느 쪽이든 LOW 지만 `FORCE=1` 이라야 스크립트에 안
+  넘어가고 확실히 LOW 로 붙들린다.
+  ⭐ `prepare()` 의 `_trigger_forced` **래치를 걷고 값을 본다**(`ensure_trigger_resting()`)
+  -- 래치는 *"아무도 그 값을 안 건드릴 때"* 만 맞았고, 바로 그 세션에 건드리는 명령을 우리
+  손으로 만들었다(11.45 `SHCLOSE`).  **상태를 기억하지 말고 확인한다** (`config_dirty` 와
+  같은 결론).
+- ⚠️ **벤치는 지금 `FORCE=0` 인 채로 남아 있다** (그 `shopen 10` 의 잔재).  다음 `go` 가
+  되돌리지만, 그 전에 맞추려면 `trigoutforce on`.
+
+⭐ **`quit` 은 전원을 끈다** (운영자 물음): 진행 중 사이클 중단 -> HK·Radionode 정지 ->
+저장 배수(`shutdown_drain` 상한) -> `guide.shutdown()` -> **`POWEROFF`**.
+⚠️ 실패해도 경고만 남기고 종료는 계속되므로, `quit` 뒤 `POWEROFF 실패` 줄이 있으면 전원이
+남아 있는 것이다.
 
 #### ⏳ 다음 세션이 할 것
 

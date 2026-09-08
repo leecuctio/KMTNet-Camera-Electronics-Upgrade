@@ -313,11 +313,24 @@ async def stage_read_only(ctrl: ArchonController, acfg,  # noqa: ANN001
     # `POWERON` 이 성공 응답을 준 것과 전원이 실제로 올라온 것은 다르다 --
     # `POWER=3`(일부 모듈만 올라옴)이 그 사이의 상태다 (매뉴얼 p.47).
     pstate = parse.power_state(status)
+    label = 'POWER = %d %s' % (pstate, parse.POWER_STATES.get(pstate, '?')) \
+        if pstate is not None else ''
     if pstate is None:
         say(WARN, 'POWER 를 보고하지 않는다 -- 전원 상태를 못 가른다')
+    elif pstate == parse.POWER_ON:
+        # ⚠️ 이 단계는 전원을 켜지 않는다 -- 켜져 있으면 **앞 세션 잔재**다.
+        # 문제는 아니지만 아래 바이어스 값을 읽는 전제가 달라진다.
+        say(OK, label + '  (이 단계는 켜지 않는다 -- 앞 세션이 켜 둔 것이다)')
+    elif pstate in (parse.POWER_OFF, parse.POWER_STANDBY):
+        # ⭐ **`문제` 가 아니라 `확인` 이다** (운영자 2026-09-08).  1단계는
+        # 읽기 전용이라 전원이 내려가 있는 것이 **정상 상태**다.  `문제` 로
+        # 찍으면 그 줄을 무시하는 버릇이 들어 **진짜 문제가 안 보인다** --
+        # 요약의 "문제 1건" 이 늘 1 이면 아무도 안 센다.
+        say(WARN, label + '  (전원 인가 전이므로 정상 -- 바이어스는 ~0 V 다)')
     else:
-        say(OK if pstate == parse.POWER_ON else BAD,
-            'POWER = %d %s' % (pstate, parse.POWER_STATES.get(pstate, '?')))
+        # ⛔ `Unknown`·`Not Configured`·`Intermediate` 는 **여전히 문제**다.
+        # 특히 `Intermediate`(일부 모듈만 올라옴)는 조용히 자료를 망친다.
+        say(BAD, label)
     if 'OVERHEAT' not in status:
         say(WARN, 'OVERHEAT 를 보고하지 않는다')
     else:

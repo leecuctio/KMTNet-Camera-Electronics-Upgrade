@@ -413,6 +413,12 @@ def test_real_backend_path_flushes_once_powers_and_bypasses(tmp_path, monkeypatc
 # 살려 두되 **Archon 의 Trigger Out 선**을 세우는 뜻으로 쓴다 (운영자 2026-09-08).
 # ⭐ `TRIGOUTFORCE`(강제할지)와 `TRIGOUTLEVEL`(강제했을 때의 레벨)은 **다른
 # 물건**이라, 핀을 실제로 HIGH 로 세우려면 둘 다 필요하다.
+#
+# ⛔ **guide 의 쉬는 상태는 `FORCE=1` + `LEVEL=0`** 이다 (운영자 확정
+# 2026-09-08) -- 선을 우리가 붙들어 LOW 로 고정한다.  그래서 `SHCLOSE` 도,
+# `SHOPEN` 의 자동 내림도 **강제를 풀지 않는다**.  종전 판은 `FORCE=0` 으로
+# 내려놓아 선을 타이밍 스크립트에 넘겼고, `prepare()` 의 래치 탓에 재시작
+# 전까지 안 돌아왔다 (벤치 2026-09-08).
 
 
 class _Rec:
@@ -474,8 +480,10 @@ def test_shopen_lowers_the_line_when_the_timer_expires(tmp_path):
     """
     calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 2'], settle=0.4)
     assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True),
-                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', False)], calls
+                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)], calls
     assert any('DONE: SHCLOSE' in s and 'auto' in s for s in sent), sent[-3:]
+    # ⛔ 자동 내림도 **강제를 유지한다** -- 응답이 그 사실을 말해야 한다.
+    assert any('TRIGOUTFORCE=1' in s and 'auto' in s for s in sent), sent[-3:]
 
 
 def test_shclose_cancels_a_pending_shopen_timer(tmp_path):
@@ -489,18 +497,35 @@ def test_shclose_cancels_a_pending_shopen_timer(tmp_path):
                          settle=0.6)
     # 세움 2 + SHCLOSE 2 뿐이어야 한다 -- 타이머가 살아 있으면 2 가 더 붙는다.
     assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True),
-                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', False)], calls
+                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)], calls
 
 
-def test_shclose_drops_the_level_before_releasing_the_force(tmp_path):
-    """⭐ **순서가 뜻이다** -- 레벨을 먼저 내리고 강제를 푼다.
+def test_shclose_drops_the_level_but_keeps_the_force(tmp_path):
+    """⭐ **순서가 뜻이다** -- 레벨이 먼저다.  그리고 **강제는 유지한다**.
 
-    거꾸로 하면 강제를 푼 뒤 레벨을 만지는 셈이라 그 사이 핀이 HIGH 로 남는다.
-    ⭐ 끝이 `TRIGOUTFORCE=0` 이라 **ACF 출고 상태로 돌아간다**.
+    거꾸로 강제를 먼저 만지면 그 찰나에 *옛* 레벨이 핀으로 나간다.
+    ⛔ 끝이 `TRIGOUTFORCE=1` 이라 **guide 의 쉬는 상태로 돌아간다** -- 선은
+    우리 손에 남고 레벨만 LOW 다.  `FORCE=0` 으로 내려놓으면 선이 타이밍
+    스크립트 손에 넘어가 노출마다 흔들린다 (벤치 2026-09-08).
     """
     calls, sent = _trig(tmp_path, ['abc>ICG SHCLOSE'])
-    assert calls == [('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', False)], calls
-    assert any('DONE: SHCLOSE' in s for s in sent), sent[-3:]
+    assert calls == [('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)], calls
+    assert any('DONE: SHCLOSE TRIGOUTLEVEL=0 TRIGOUTFORCE=1' in s
+               for s in sent), sent[-3:]
+
+
+def test_a_full_shopen_shclose_round_leaves_the_resting_state(tmp_path):
+    """⛔ **한 바퀴 돌고 나면 쉬는 상태여야 한다** -- 벤치가 잡은 그 자리.
+
+    운영자가 `shopen 10` 을 돌린 뒤 선이 `FORCE=0` 으로 남았고, 그 상태에서는
+    **타이밍 스크립트가 선을 몬다.**  마지막 값만 본다 (순서는 위 시험들 몫).
+    """
+    calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 20', 'abc>ICG SHCLOSE'],
+                         settle=0.6)
+    last = {}
+    for key, want in calls:
+        last[key] = want
+    assert last == {'TRIGOUTLEVEL': False, 'TRIGOUTFORCE': True}, calls
 
 
 def test_shopen_needs_a_duration(tmp_path):

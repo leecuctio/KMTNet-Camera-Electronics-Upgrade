@@ -76,6 +76,68 @@ def make_cfgs(tmp_path, fake: FakeArchon):  # noqa: ANN001, ANN201
     return cfg, icfg
 
 
+def _config_value(fake, key):  # noqa: ANN001, ANN202
+    """가짜 컨트롤러의 **설정 메모리**에서 한 줄 -- 줄 번호가 아니라 값으로."""
+    for text in fake.config.values():
+        if text.startswith(key + '='):
+            return text.split('=', 1)[1]
+    return None
+
+
+def test_prepare_puts_the_trigger_line_in_the_resting_state(tmp_path):
+    """⭐ guide 의 **쉬는 상태는 `TRIGOUTFORCE=1`** 이다 (운영자 2026-09-08).
+
+    ACF 출고값은 `0`(= 타이밍 스크립트가 몬다)이라 **띄울 때 되돌려야** 한다.
+    """
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.01,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        cfg, icfg = make_cfgs(tmp_path, fake)
+        be = GuideBackend(cfg, icfg)
+
+        async def run():  # noqa: ANN202
+            await be.prepare()
+            got = _config_value(fake, 'TRIGOUTFORCE')
+            await be.shutdown()
+            return got
+
+        assert asyncio.run(run()) == '1'
+    finally:
+        fake.shutdown()
+
+
+def test_prepare_restores_the_resting_state_after_it_was_released(tmp_path):
+    """⛔ **래치가 아니다** -- 누가 `FORCE=0` 을 써도 다음 `prepare()` 가 낫는다.
+
+    종전에는 `_trigger_forced` 래치라 한 번 세운 뒤에는 다시 안 봤고, `SHCLOSE`
+    가 `FORCE=0` 으로 내려놓으면 **재시작 전까지 안 돌아왔다** (벤치 2026-09-08).
+    ⭐ `prepare()` 는 멱등이라 두 번 불러도 되고, 값이 맞으면 왕복도 안 한다.
+    """
+    fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.01,
+                      system=GUIDE_SYSTEM, nbuf=3)
+    fake.start()
+    try:
+        cfg, icfg = make_cfgs(tmp_path, fake)
+        be = GuideBackend(cfg, icfg)
+
+        async def run():  # noqa: ANN202
+            await be.prepare()
+            # 운영자가 `TRIGOUTFORCE OFF` 를 썼다 (또는 옛 SHCLOSE 가 그랬다).
+            await be.ctrl.set_trigger_forced(False)
+            released = _config_value(fake, 'TRIGOUTFORCE')
+            await be.prepare()
+            got = _config_value(fake, 'TRIGOUTFORCE')
+            await be.shutdown()
+            return released, got
+
+        released, got = asyncio.run(run())
+        assert released == '0', '시험 전제가 깨졌다 -- 놓지도 못했다'
+        assert got == '1', 'prepare() 가 쉬는 상태를 안 되돌렸다'
+    finally:
+        fake.shutdown()
+
+
 def test_acquire_discard_then_save(tmp_path):
     fake = FakeArchon(width=NX, height=NY, readout_ticks=2, tick=0.01,
                       system=GUIDE_SYSTEM, nbuf=3)

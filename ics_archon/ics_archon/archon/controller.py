@@ -199,6 +199,11 @@ class ArchonController:
         #: `RCONFIG` 로 되읽는다.  ⭐ ACF 재파싱이 내리고, 되읽기 성공은
         #: 그 키만 고친다(플래그는 남긴다 -- 다른 키도 낡았을 수 있다).
         self.config_dirty = False
+        #: 이 컨트롤러의 **온도 자리 표** (`Cn_TEMP` 자리).  `None` 이면
+        #: science 기본값(규격 5.6.1절).  ⭐ guide 백엔드가
+        #: `guidehdr.TEMP_MODS`(10.4절 8자리)를 꽂는다 -- 안 꽂으면
+        #: 정상 구성에서 오경보가 난다.
+        self.temp_fields = None
         self.configline: dict[str, int] = {}
         #: ACF `LINECOUNT` -- 진행률(`PCTREAD`)의 분모.  `BUFnHEIGHT` 는 split
         #: 에서 두 배라 못 쓴다 (DevNote 10.3).  0 이면 HEIGHT 로 물러난다.
@@ -1012,8 +1017,10 @@ class ArchonController:
         보이도록 크게 남긴다: 종전에는 전원 이상이 밖에서 "취득 실패" 로만
         보였다.
         """
+        # ⚠️ **아직 안 켰으면 `POWER=Off` 는 이상이 아니다** -- `powered` 를
+        # 넘겨 그 판정만 접는다 (2026-09-08 벤치 오경보).
         bad = parse.health_problems(self.status if status is None
-                                    else status)
+                                    else status, powered=self.powered)
         if not bad:
             self._health_bad = False
             return
@@ -1709,7 +1716,14 @@ class ArchonController:
         # 비디오 모듈 위치는 **참고로만** 찍는다 -- 판정 근거가 아니다.
         ad = sorted(s for s, t in mods.items() if t in parse.AD_TYPES)
         log.info('%s: 비디오(AD 계열) 모듈 슬롯 %s', self.tag, ad or '없음')
-        for note in parse.field_order_problems(self.system):
-            log.warning('%s: 규격 5.6.1절 자리 표와 어긋난다 -- %s.  Cn_TEMP '
-                        '자리가 밀릴 수 있으니 rawhdr.TEMP_MODS 를 확인할 것',
-                        self.tag, note)
+        # ⛔ **대는 표를 골라 줘야 한다** -- `field_order_problems` 의 docstring
+        # 이 이 오경보를 그대로 예언해 뒀는데(*"안 골라 주면 guide 실기 정상
+        # 구성에서 extra [6,7] + missing [1,2,8,11] 이 거짓으로 뜬다"*) 여기서
+        # 안 넘겨서 벤치 첫 전원 인가에 정확히 그것이 났다 (2026-09-08).
+        # ⭐ 표는 백엔드가 꽂아 준다(`temp_fields`) -- science 층이 guide 패키지를
+        # 수입하면 의존이 거꾸로 선다.
+        section = '10.4절' if self.temp_fields else '5.6.1절'
+        for note in parse.field_order_problems(self.system, self.temp_fields):
+            log.warning('%s: 규격 %s 자리 표와 어긋난다 -- %s.  Cn_TEMP '
+                        '자리가 밀릴 수 있으니 자리 표를 확인할 것',
+                        self.tag, section, note)

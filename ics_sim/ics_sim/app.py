@@ -157,6 +157,17 @@ class IcsSim:
         """
         return rawpair.physical_name(site, suffix, rawpair.CONTROLLERS[0][0])
 
+    def banner_backend(self) -> str:
+        """배너의 **백엔드 이름**.  ⭐ 앱이 갈아 끼운다.
+
+        ⛔ ICG 는 `cfg.hardware.backend` 를 `'sim'` 으로 **일부러 눌러 둔다**
+        (부모가 만드는 science 스텁의 경고를 막으려고).  그래서 이 값을 그대로
+        찍으면 **실기로 도는데 배너가 `sim` 이라고 말한다** -- 벤치 첫 전원
+        인가에서 실제로 그랬다(2026-09-08).  ⚠️ 배너의 목적이 *"배포가 맞는지
+        여기서 확인"* 인데 그 줄이 틀리면 목적을 잃는다.
+        """
+        return self.cfg.hardware.backend
+
     def banner_instrument(self, site: str) -> dict:
         """배너가 `FPAID` 를 꺼내는 자리.  ⭐ 앱이 갈아 끼운다.
 
@@ -230,7 +241,7 @@ class IcsSim:
                             else f'   (설정 {cfg.paths.data_dir!r} · cwd 기준)')),
             ('EXPNUM', f'다음 {st.expnum:06d}'
                        f'   (기록 {st.expnum_file or "지속 없음"})'),
-            ('backend', f'{self.backend.name}'
+            ('backend', f'{self.banner_backend()}'
                         f'   ->  DATASRC={rawhdr.datasrc_of(self.backend.name)}'),
         ]
 

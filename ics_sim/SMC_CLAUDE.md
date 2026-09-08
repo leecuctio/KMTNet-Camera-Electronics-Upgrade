@@ -32,6 +32,10 @@
 guide 는 `.G.fits` 다.
 
 * `banner_example(site, suffix)` · `banner_instrument(site)` 를 **덮을 수 있게** 갈랐다.
+* ⚠️ **`banner_backend()` 도 갈랐다** (2026-09-08, `ics_archon/DevNote.md` **11.47**) —
+  ICG 는 `cfg.hardware.backend` 를 **일부러 `'sim'` 으로 눌러 두므로**(science 스텁의
+  경고를 막으려고) 그 값을 그대로 찍으면 **실기로 도는데 배너가 `sim` 이라고 말한다**.
+  ⛔ `cfg` 를 고쳐 맞추지 않는다 — *"찍는 값"* 만 갈아 끼운다.
 * ⚠️ `FPAID` 도 `rawhdr.instrument_header()` 를 부르고 있었다 — guide 는 `guidehdr` 가
   정본이다.  값이 맞아 보인 것은 OI-24 가 닫히며 두 계통이 같은 사이트 유도를 쓰게 돼
   **우연히** 맞은 것이다.

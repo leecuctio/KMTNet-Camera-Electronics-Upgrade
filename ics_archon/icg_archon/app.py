@@ -94,6 +94,11 @@ class IcgArchon(IcsSim):
         """guide 는 `.G.fits` 다 -- 기반의 science `.MK.fits` 를 갈아 끼운다."""
         return rawpair.physical_name(site, suffix, guidepair.TAG)
 
+    def banner_backend(self) -> str:
+        """⛔ `cfg.hardware.backend` 는 `'sim'` 으로 눌러 둔 값이다 -- guide 의
+        진짜 백엔드는 `self.guide` 다.  안 갈아 끼우면 실기인데 `sim` 이라 찍는다."""
+        return self.guide.name
+
     def banner_instrument(self, site: str) -> dict:
         """guide 의 instrument 블록 -- `guidehdr` 가 정본이다 (`rawhdr` 아님)."""
         return guidehdr.instrument_header(site, self.cfg.camera.as_dict())
@@ -124,7 +129,7 @@ class IcgArchon(IcsSim):
                 ('ccdpowon', 'CCD 전원 ON -- poweron_wait 뒤에 DONE'),
                 ('ccdpowoff', 'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
                 ('trigoutforce [on|off]',
-                 'Trigger Out 을 강제할지 -- 0 이면 타이밍 스크립트가 몬다'),
+                 'Trigger Out 강제 -- guide 쉬는 상태는 1 (0 = 타이밍 스크립트)'),
                 ('trigoutlevel [high|low]',
                  '강제했을 때 나갈 레벨 -- ⛔ FORCE=1 이라야 핀에 나간다'),
                 ('archon <원문>',
@@ -149,7 +154,8 @@ class IcgArchon(IcsSim):
                 # ⛔ guide 에는 셔터가 없다 -- 이 둘은 Trigger Out 선을 세운다.
                 'shopen':
                     'Trigger Out 을 <sec> 동안 HIGH 로 -- 셔터가 아니다',
-                'shclose': '선을 즉시 내린다 (LEVEL=0 -> FORCE=0, 타이머도 끊는다)',
+                'shclose':
+                    '선을 즉시 LOW 로 (LEVEL=0, FORCE=1 유지 -- 타이머도 끊는다)',
             },
         )
 

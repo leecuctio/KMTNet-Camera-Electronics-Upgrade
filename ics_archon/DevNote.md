@@ -6787,6 +6787,10 @@ guide 는 frame-transfer 라 **셔터가 없다**(규격 10.1 "셔터 무관"). 
 |---|---|
 | `SHOPEN <초>` | `TRIGOUTLEVEL=1` -> `TRIGOUTFORCE=1`, **`<초>` 뒤 자동으로** `LEVEL=0` -> `FORCE=0` |
 | `SHCLOSE` | 즉시 `LEVEL=0` -> `FORCE=0`.  ⛔ **대기 중 타이머도 끊는다** |
+
+> ⚠️ **내림의 끝값은 11.47 에서 개정됐다** -- `FORCE=0` 은 선을 **타이밍 스크립트에
+> 넘기는** 것이라, 지금은 `LEVEL=0` 만 내리고 **`FORCE=1` 을 유지**한다 (guide 의 쉬는
+> 상태).  아래 문단의 *"ACF 출고 상태로 돌아간다"* 도 그 개정으로 뜻이 바뀌었다.
 | `TRIGOUTFORCE [on\|off]` | 강제할지.  인자 없으면 조회 |
 | `TRIGOUTLEVEL [high\|low]` | 강제했을 때 나갈 레벨.  인자 없으면 조회 |
 
@@ -6923,3 +6927,107 @@ IcgConfigError: [icg] acf=… 가 없다                   <- 그런데 죽는�
 운영자 바이패스 한 번이 다음 `ccdflush` 를 통째로 막는다.
 ⛔ **무해한 원문(`STATUS`·`APPLYALL`)은 표시를 안 세운다** -- 세우면 매번 되읽어 시간을
 버린다.  판단 셋을 시험이 못박는다.
+
+### 11.47 벤치 **첫 전원 인가** -- 오경보 셋, 그리고 셔터 없는 선을 놓아 버리고 있었다 (2026-09-08, 운영자)
+
+운영자가 실기에 전원을 넣었다.  `POWERON` -> `POWER=4 (On) 확인 1.0초` -> `준비 완료`,
+HK 에 Radionode 실측이 실리고 `SHOPEN 10` 이 10 초 뒤 스스로 내려갔다 -- **경로는 다 돌았다.**
+⭐ 그런데 그 로그가 **오경보 셋과 규범 위반 하나**를 같이 드러냈다.  11.45·11.46 과 같은
+부류다: **띄워 보지 않으면 안 보인다.**
+
+#### (1) 배너가 `backend sim` 이라고 말했다 -- 실기로 돌면서
+
+```
+백엔드          sim  ->  DATASRC=SIM
+```
+
+⛔ 실제로 도는 것은 `archon_guide` 였다.  `IcgArchon.__init__` 이 `cfg.hardware.backend` 를
+**일부러 `'sim'` 으로 눌러 둔다**(부모가 만드는 science 스텁이 경고를 뿜지 않게).  배너는
+그 눌린 값을 찍었다.  ⚠️ 배너의 목적이 *"배포가 맞는지 여기서 확인"* 인데 그 줄이 틀리면
+목적을 잃는다 -- 11.46 의 `.MK.fits` 와 **정확히 같은 부류**다.
+
+⭐ 갈아 끼울 자리를 하나 더 열었다: `banner_backend()` (`ics_sim/app.py`), ICG 는
+`self.guide.name` 을 준다.  ⛔ **`cfg` 를 고쳐서 맞추지 않았다** -- 그 값을 진짜로 바꾸면
+science 스텁 쪽 뜻이 달라진다.  *"찍는 값"* 만 갈아 끼운다.
+
+#### (2) 켜기 전 `POWER=Off` 를 "상태 이상" 으로 울었다
+
+```
+Error: G: 컨트롤러 상태 이상 -- POWER=2 Off.  이 상태의 프레임은 자료가 아니라 잔해일 수 있다
+```
+
+기동 첫 `STATUS` 는 `POWERON` **보다 먼저** 돈다.  그 자리에서 `POWER=Off` 는 **정상**이다.
+⛔ 켤 때마다 뜨는 `Error:` 는 **그 줄을 무시하는 버릇**을 만든다 -- 진짜 전원 이상이 왔을 때
+아무도 안 본다.  2026-08-27 의 AD 슬롯 오경보와 같은 값어치다.
+
+* `parse.health_problems(status, *, powered=True)` -- 안 켰으면 `Off`/`Standby` 만 접는다.
+* ⛔ `Intermediate`(일부 모듈만 올라옴)·`Unknown`·`Not Configured` 는 **켜기 전이라도 이상**
+  이라 그대로 올린다.  `Intermediate` 는 조용히 자료를 망치는 상태다.
+* `probe_archon.py` 도 같은 부류였다 (운영자 지시): 1단계는 **읽기 전용**이라 전원이 내려가
+  있는 것이 정상인데 `문제` 로 찍고 있었다 -> `확인`.  ⚠️ 요약의 *"문제 1건"* 이 늘 1 이면
+  아무도 세지 않는다.  ⭐ 반대로 `POWER=On` 이면 **앞 세션이 켜 둔 것**이라 그 사실을 적는다
+  (아래 바이어스 판정의 전제가 달라진다).
+
+#### (3) guide 를 **science 자리 표**로 대조하고 있었다 -- docstring 이 예언한 그대로
+
+```
+Warning: G: 규격 5.6.1절 자리 표와 어긋난다 -- extra [6,7] / missing [1,2,8,11]
+```
+
+⭐ `parse.field_order_problems()` 의 docstring 이 **이 오경보를 글자 그대로 예언해 두었다**:
+*"안 골라 주면 guide 실기 정상 구성에서 `extra [6,7]` + `missing [1,2,8,11]` 이 거짓으로
+뜬다."*  그런데 호출부(`_log_module_map`)가 표를 안 넘기고 있었다.
+
+* `ArchonController.temp_fields` 를 신설하고 **백엔드가 꽂는다**
+  (`GuideBackend.__init__` -> `guidehdr.TEMP_MODS`, 규격 10.4절 8자리).
+  ⛔ science 층이 guide 패키지를 수입하면 의존이 거꾸로 선다 -- 그래서 꽂는 쪽이 백엔드다.
+* 경고 문면도 표에 따라 `10.4절`/`5.6.1절` 로 갈린다.
+
+⛔ **그 고침이 실은 즉사였다.**  `guidehdr` 를 수입하지 않아 `GuideBackend.__init__` 이
+`NameError` 로 죽었다 -- **실기를 띄우면 첫 줄에서 끝난다.**  이 라운드에 새로 넣은 백엔드
+시험이 첫 실행에서 잡았다.  ⚠️ 교훈은 늘 같다: **고치고 나서 시험을 돌린다** (문서만 보고
+넘어가면 이런 것이 배포로 나간다).
+
+#### (4) ⛔ `SHCLOSE` 가 트리거 선을 **타이밍 스크립트에 넘기고 있었다**
+
+운영자가 `shopen 10` 을 돌렸고 10 초 뒤 자동 내림이 `TRIGOUTLEVEL=0` -> **`TRIGOUTFORCE=0`**
+을 썼다 (11.45 에서 그렇게 지정했다).  ⛔ 그런데 **guide 의 쉬는 상태가 `FORCE=1`** 이다 --
+`GuideBackend.prepare()` 가 일부러 그렇게 둔다(`modtm_gui` 원형과 같은 자리).
+
+| 무엇 | 종전 | 왜 문제인가 |
+|---|---|---|
+| `SHCLOSE`·자동 내림 끝값 | `FORCE=0` | 선이 **타이밍 스크립트 손**에 넘어가 노출마다 흔들린다 |
+| `prepare()` 의 복구 | `_trigger_forced` **래치** | 이미 서 있어 **다시 안 세운다** -> 재시작 전까지 안 돌아온다 |
+
+⭐ **운영자 확정 (2026-09-08)**: *"Guide 유닛은 기본 trigger output force = 1 로,
+`SHCLOSE` 시에도 `TRIGOUTFORCE=1` 로 유지."*  ⚠️ 핀은 어느 쪽이든 LOW 지만, `FORCE=1`
+이라야 **스크립트에 안 넘어가고 확실히 LOW 로 붙들린다.**
+
+| 것 | 새 규범 |
+|---|---|
+| guide 쉬는 상태 | `TRIGOUTFORCE=1` + `TRIGOUTLEVEL=0` (`GuideBackend.TRIGOUT_REST_FORCED`) |
+| `SHOPEN <초>` | `LEVEL=1` -> `FORCE=1` (그대로) |
+| `<초>` 뒤 자동 내림 · `SHCLOSE` | `LEVEL=0` -> **`FORCE=1` 유지** (`_TRIGOUT_REST`) |
+| `TRIGOUTFORCE OFF` | 여전히 **된다** -- 운영자가 일부러 쓰는 자리다.  ⚠️ 경고를 남기고, **다음 `GO` 의 `prepare()` 가 되돌린다** |
+
+⭐ **래치를 걷고 값을 본다** (`ensure_trigger_resting()`): `config_value('TRIGOUTFORCE')` 가
+`1` 이 아닐 때만 쓴다.  맞으면 왕복이 없으니 **래치만큼 싸고**, 어긋나면 **스스로 낫는다**.
+ACF 를 새로 밀어 캐시가 파일값(`0`)으로 돌아간 경우도 여기서 잡힌다.
+⚠️ 되읽기가 실패해도 **쓰기는 한다** -- 모르면 세워 두는 쪽이 안전하다.
+
+⛔ **래치는 "한 번만 하면 되는 일" 의 표준적인 함정이다.**  한 번만 하는 것이 맞았던 것은
+*아무도 그 값을 안 건드릴 때*뿐인데, 바로 그 세션에 우리 손으로 건드리는 명령을 만들었다
+(11.45 의 `SHCLOSE`).  ⭐ **상태를 기억하지 말고 상태를 확인한다** -- `config_dirty`(11.46)와
+같은 결론이다.
+
+#### 시험
+
+| 시험 | 못박는 것 |
+|---|---|
+| `test_prepare_puts_the_trigger_line_in_the_resting_state` | 띄우면 `FORCE=1` 이다 (ACF 출고값은 `0`) |
+| `test_prepare_restores_the_resting_state_after_it_was_released` | ⛔ **래치가 아니다** -- 누가 `0` 을 써도 다음 `prepare()` 가 낫는다 |
+| `test_shclose_drops_the_level_but_keeps_the_force` | 레벨이 먼저, **강제는 유지** |
+| `test_a_full_shopen_shclose_round_leaves_the_resting_state` | 한 바퀴 돌고 나면 쉬는 상태다 (벤치가 잡은 그 자리) |
+
+⚠️ **벤치는 지금 `FORCE=0` 인 채로 남아 있다** (그 `shopen 10` 의 잔재).  다음 `go` 의
+`prepare()` 가 되돌리지만, 그 전에 확인하려면 `trigoutforce on` 이다.

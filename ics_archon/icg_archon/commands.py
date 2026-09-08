@@ -749,7 +749,20 @@ class IcgDispatcher(sim_commands.Dispatcher):
     #
     # ⭐ **둘은 다른 물건이다**: `TRIGOUTFORCE` 는 *강제할지*, `TRIGOUTLEVEL` 은
     # *강제했을 때 나갈 레벨*.  핀을 실제로 HIGH 로 세우려면 **둘 다** 필요하다.
-    # guide ACF 출고값은 둘 다 0 이다 (`TRIGOUTFORCE=0` = 타이밍 스크립트가 몬다).
+    # guide ACF 출고값은 둘 다 0 이지만(`TRIGOUTFORCE=0` = 타이밍 스크립트가
+    # 몬다), **guide 의 쉬는 상태는 `FORCE=1` + `LEVEL=0`** 이다 (운영자 확정
+    # 2026-09-08) -- 선을 우리가 붙들어 LOW 로 고정한다.  띄울 때마다
+    # `GuideBackend.ensure_trigger_resting()` 이 그 상태로 되돌린다.
+    # ⛔ 그래서 **`SHCLOSE` 는 강제를 풀지 않는다** -- 레벨만 내린다.
+
+    #: `SHCLOSE` 와 `SHOPEN` 의 자동 내림이 돌아가는 자리 -- **쉬는 상태**.
+    #: ⭐ 순서가 뜻이다: 레벨을 먼저 내리고, 강제는 `1` 로 유지한다.
+    _TRIGOUT_REST = (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))
+
+    @staticmethod
+    def _trigout_words(steps) -> str:  # noqa: ANN001
+        """응답 본문 -- 쓴 것을 **쓴 차례대로** 적는다."""
+        return ' '.join('%s=%d' % (k, 1 if v else 0) for k, v in steps)
 
     def _trigout(self, msg: Message, word: str, key: str):  # noqa: ANN001, ANN202
         """`TRIGOUTFORCE`/`TRIGOUTLEVEL` 공통 -- 인자 없으면 조회."""
@@ -779,20 +792,30 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return
         self.emit.done(dest, word, '%s=%s' % (key, held))
 
+    async def _write_trigout(self, ctrl, steps) -> None:  # noqa: ANN001
+        """설정 한둘을 **차례대로** 쓴다.  ⛔ 순서가 뜻이다 -- `SHOPEN` 참고."""
+        for key, want in steps:
+            if key == 'TRIGOUTFORCE':
+                if not want:
+                    # ⚠️ **쉬는 상태를 벗어난다** -- 선이 타이밍 스크립트 손에
+                    # 넘어가 노출마다 흔들린다.  거절하지는 않는다(운영자가
+                    # 일부러 쓰는 자리다) -- 대신 그 사실을 남긴다.
+                    log.warning('TRIGOUTFORCE=0 -- 트리거 선을 타이밍 스크립트에 '
+                                '넘긴다.  guide 의 쉬는 상태는 FORCE=1 이고, '
+                                '다음 GO 의 prepare() 가 되돌린다')
+                await ctrl.set_trigger_forced(want)
+            else:
+                await ctrl.set_trigger_level(want)
+
     async def _do_trigout(self, dest: str, word: str, steps) -> None:  # noqa: ANN001
-        """설정 한둘을 순서대로 쓴다.  ⛔ **순서가 뜻이다** -- `SHOPEN` 참고."""
+        """쓰고 늦은 `DONE` 을 낸다 -- 실패는 숨기지 않는다."""
         ctrl = self.app.guide.ctrl
         try:
-            for key, want in steps:
-                if key == 'TRIGOUTFORCE':
-                    await ctrl.set_trigger_forced(want)
-                else:
-                    await ctrl.set_trigger_level(want)
+            await self._write_trigout(ctrl, steps)
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
             self.emit.error(dest, word, 'Failed: %s' % exc)
             return
-        self.emit.done(dest, word, ' '.join(
-            '%s=%d' % (k, 1 if v else 0) for k, v in steps))
+        self.emit.done(dest, word, self._trigout_words(steps))
 
     def cmd_trigoutforce(self, msg: Message, target: Target) -> Reply:
         """TRIGOUTFORCE [ON|OFF] -- Trigger Out 을 **강제할지**.  없으면 조회.
@@ -800,6 +823,9 @@ class IcgDispatcher(sim_commands.Dispatcher):
         `0` 이면 타이밍 스크립트가 몬다(ACF 출고값), `1` 이면 `TRIGOUTLEVEL` 로
         고정.  ⚠️ science 는 이 값으로 셔터를 여닫는다(`0`=열림) -- guide 는
         셔터가 없어 **바깥 트리거 선**을 세우는 뜻이다.
+        ⭐ **guide 의 쉬는 상태는 `1` 이다** (운영자 확정 2026-09-08).  `0` 으로
+        내려놓는 것은 되지만 그 사실을 경고로 남기고, **다음 `GO` 의
+        `prepare()` 가 `1` 로 되돌린다** (`ensure_trigger_resting`).
         """
         return self._trigout(msg, 'TRIGOUTFORCE', 'TRIGOUTFORCE')
 
@@ -819,10 +845,11 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """SHOPEN <초> -- guide 판: **Trigger Out 을 <초> 동안 HIGH 로** 세운다.
 
         운영자 확정 2026-09-08: 세울 때 `TRIGOUTLEVEL=1` -> `TRIGOUTFORCE=1`,
-        `<초>` 뒤에 `TRIGOUTLEVEL=0` -> `TRIGOUTFORCE=0`.
+        `<초>` 뒤에 `TRIGOUTLEVEL=0` (**`TRIGOUTFORCE=1` 은 유지**).
         ⭐ **세우는 순서가 레벨 먼저인 것이 중요하다** -- 강제를 먼저 걸면 그
         찰나에 **옛 레벨**이 핀으로 나간다.  내릴 때도 같은 이유로 레벨이 먼저다.
-        ⭐ 끝이 `TRIGOUTFORCE=0` 이라 **ACF 출고 상태로 돌아간다**.
+        ⭐ 끝이 `TRIGOUTFORCE=1` 이라 **guide 의 쉬는 상태로 돌아간다** -- 선은
+        우리 손에 남고 레벨만 LOW 다 (개정 2026-09-08).
 
         ⛔ **기반 판과 뜻이 다르다** -- science 는 셔터를 열지만 guide 에는
         셔터가 없다 (frame-transfer).  같은 낱말·같은 인자를 쓰되 세우는 것은
@@ -870,31 +897,30 @@ class IcgDispatcher(sim_commands.Dispatcher):
             raise
         self._shopen_timer = None
         try:
-            await ctrl.set_trigger_level(False)
-            await ctrl.set_trigger_forced(False)
+            await self._write_trigout(ctrl, self._TRIGOUT_REST)
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, 'SHCLOSE', 'Failed: %s' % exc)
             return
         # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보라 낱말을
         # `SHCLOSE` 로 낸다 (한 요청에 `DONE` 이 둘이 되지 않게).
-        self.emit.done(dest, 'SHCLOSE',
-                       'TRIGOUTLEVEL=0 TRIGOUTFORCE=0 (auto after %gs)' % seconds)
+        self.emit.done(dest, 'SHCLOSE', '%s (auto after %gs)'
+                       % (self._trigout_words(self._TRIGOUT_REST), seconds))
 
     def cmd_shclose(self, msg: Message, target: Target) -> Reply:
-        """SHCLOSE -- guide 판: **선을 내리고 타이밍 스크립트에 돌려준다**.
+        """SHCLOSE -- guide 판: **선을 LOW 로 내린다** (강제는 유지).
 
-        `TRIGOUTLEVEL=0` -> `TRIGOUTFORCE=0`.  ⭐ **순서가 뜻이다** -- 레벨을
-        먼저 내리고 강제를 푼다.  거꾸로 하면 강제를 푼 뒤 레벨을 만지는 셈이라
-        그 사이 핀이 HIGH 로 남는다.
-        ⭐ 끝이 `TRIGOUTFORCE=0` 이라 **ACF 출고 상태로 돌아간다** -- 한 번
-        쓰고 나서 선이 강제된 채 남지 않는다.
+        `TRIGOUTLEVEL=0` -> `TRIGOUTFORCE=1`.  ⭐ **순서가 뜻이다** -- 레벨이
+        먼저다.  거꾸로 강제를 먼저 만지면 그 찰나에 *옛* 레벨이 핀으로 나간다.
+        ⭐ 끝이 `TRIGOUTFORCE=1` 이라 **guide 의 쉬는 상태로 돌아간다** -- 선은
+        우리 손에 남고 레벨만 LOW 다 (운영자 확정 2026-09-08).
+        ⛔ **강제를 풀지 않는다.**  종전 판은 `FORCE=0` 으로 내려놓았는데, 그러면
+        선이 **타이밍 스크립트 손에 넘어가** 노출마다 흔들리고, `prepare()` 의
+        래치 탓에 **재시작 전까지 안 돌아왔다** (벤치 2026-09-08).
         ⛔ **`SHOPEN <초>` 의 타이머도 끊는다** -- 안 끊으면 옛 타이머가 나중에
         깨어나 그때 세워져 있던 선을 내린다.
         """
         self._cancel_shopen_timer()
-        return self._trigout_pair(msg, 'SHCLOSE',
-                                  [('TRIGOUTLEVEL', False),
-                                   ('TRIGOUTFORCE', False)])
+        return self._trigout_pair(msg, 'SHCLOSE', list(self._TRIGOUT_REST))
 
     def _trigout_pair(self, msg: Message, word: str, steps):  # noqa: ANN001, ANN202
         ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
