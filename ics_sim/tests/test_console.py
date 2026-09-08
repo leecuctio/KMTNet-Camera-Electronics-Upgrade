@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 
@@ -217,3 +218,138 @@ def _entry(sections, name: str) -> str:  # noqa: ANN001
             if word.split()[0] == name:
                 return said
     raise AssertionError('%r 가 도움말에 없다' % name)
+
+
+# -- 입력 고리 (`Console.run`) ---------------------------------------------
+#
+# ⭐ **이 절이 생긴 이유**: 2026-09-08 에 입력을 `sys.stdin.readline()` 에서
+# `input(prompt)` 로 바꿨다 (프롬프트·화살표 이력, 운영자 요청).  ⛔ 두 함수는
+# **빈 줄의 뜻이 다르다** -- `readline()` 의 `''` 는 EOF 지만 `input()` 은 그냥
+# Enter 에도 `''` 를 준다.  그대로 뒀으면 **Enter 한 번에 콘솔이 죽는다.**
+
+
+class _Loop(console.Console):
+    """`run()` 만 도는 최소 콘솔 -- 앱도 라우터도 필요 없다."""
+
+    def __init__(self) -> None:
+        import types
+        self.app = types.SimpleNamespace(
+            cfg=types.SimpleNamespace(
+                node=types.SimpleNamespace(ics_id='ICS')))
+        self._stop = asyncio.Event()
+        self.seen: list[str] = []
+
+    def help_text(self) -> str:
+        return ''
+
+    # ⛔ 시험이 `$HOME` 에 이력 파일을 만들면 안 된다.
+    def _load_history(self) -> None:
+        pass
+
+    def _save_history(self) -> None:
+        pass
+
+    def feed(self, line: str) -> None:
+        self.seen.append(line)
+        if line == 'quit':
+            self.stop()
+
+
+def _drive(monkeypatch, lines, tty):  # noqa: ANN001, ANN202
+    """`lines` 를 콘솔에 먹이고 (본 줄, 프롬프트들) 을 돌려준다."""
+    left = list(lines)
+    prompts = []
+
+    def _input(prompt=''):  # noqa: ANN001, ANN202
+        prompts.append(prompt)
+        if not left:
+            raise EOFError
+        return left.pop(0)
+
+    def _readline():  # noqa: ANN202
+        return left.pop(0) if left else ''
+
+    monkeypatch.setattr('builtins.input', _input)
+    monkeypatch.setattr(console.sys.stdin, 'isatty', lambda: tty,
+                        raising=False)
+    monkeypatch.setattr(console.sys.stdin, 'readline', _readline,
+                        raising=False)
+    con = _Loop()
+    asyncio.run(con.run())
+    return con.seen, prompts
+
+
+def test_a_blank_line_does_not_end_the_console(monkeypatch):
+    """⛔ **Enter 한 번에 콘솔이 죽으면 안 된다** -- 빈 줄은 EOF 가 아니다.
+
+    `input()` 은 그냥 Enter 에도 `''` 를 준다.  종전 `readline()` 판에서는 `''`
+    가 EOF 였으므로, 갈래를 안 갈랐으면 이 시험이 빨개진다.
+    """
+    seen, prompts = _drive(monkeypatch, ['', 'hk', '', 'quit'], tty=True)
+    assert seen == ['', 'hk', '', 'quit'], seen
+    assert prompts and all(p == 'ICS% ' for p in prompts), prompts
+
+
+def test_ctrl_d_ends_the_console(monkeypatch):
+    """⭐ TTY 에서 EOF 는 `EOFError`(Ctrl-D) 다 -- 그때는 끝난다."""
+    seen, _prompts = _drive(monkeypatch, ['hk'], tty=True)
+    assert seen == ['hk'], seen
+
+
+def test_a_pipe_gets_no_prompt_and_ends_at_eof(monkeypatch):
+    """⛔ TTY 가 아니면 **프롬프트를 안 띄우고** 종전 경로를 그대로 탄다.
+
+    파이프로 먹이거나 로그로 흘릴 때 프롬프트가 섞이면 그 자체가 잡음이다.
+    거기서는 `''` 가 EOF 다.
+    """
+    seen, prompts = _drive(monkeypatch, ['hk\n', 'go 1\n'], tty=False)
+    assert seen == ['hk', 'go 1'], seen
+    assert prompts == [], prompts
+
+
+def test_the_active_prompt_is_cleared_when_not_waiting(monkeypatch):
+    """⭐ 로그 처리기가 보는 `ACTIVE_PROMPT` 는 **기다릴 때만** 차 있어야 한다.
+
+    안 그러면 콘솔이 안 기다리는데도 로그마다 헛 프롬프트가 다시 그려진다.
+    """
+    _drive(monkeypatch, ['quit'], tty=True)
+    assert console.ACTIVE_PROMPT == '', console.ACTIVE_PROMPT
+
+
+# -- 로그 한 줄의 꼴 -------------------------------------------------------
+#
+# ⭐ 콘솔 읽기 좋게 하려고 **시각 태그를 `[...]` 로** 감쌌다 (운영자 2026-09-08,
+# OBSAgent 관례).  ⛔ 그 태그와 `Warning:`/`Error:` 앞머리는 **서로 걸린다** --
+# `_TailModule` 이 **첫 공백**에서 갈라 시각 뒤에 낱말을 끼우므로, 태그 안에
+# 공백이 생기면 조용히 어긋난다.  여기서 그 결합을 못박는다.
+
+
+def _line(level, name, msg):  # noqa: ANN001, ANN202
+    import logging
+
+    from ics_sim import __main__ as sim_main
+    fmt = sim_main._TailModule(sim_main.LOG_FORMAT,
+                               datefmt=sim_main.LOG_DATEFMT)
+    rec = logging.LogRecord(name, level, __file__, 1, msg, None, None)
+    return fmt.format(rec)
+
+
+def test_the_time_tag_is_bracketed():
+    """⭐ `[2026-09-08T13:10:47.008] 본문` -- OBSAgent 와 같은 꼴."""
+    import logging
+    import re
+    out = _line(logging.INFO, 'ics_sim.transport', 'ICG>XIS PING')
+    assert re.match(r'^\[\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}\] ICG>XIS PING$',
+                    out), out
+
+
+def test_a_warning_word_goes_after_the_bracketed_tag():
+    """⛔ 앞머리는 **시각 태그 뒤**에 온다 -- 대괄호가 그 가름을 안 깨야 한다."""
+    import logging
+    import re
+    out = _line(logging.WARNING, 'ics_sim.hk', 'HK polling failed')
+    assert re.match(r'^\[[^ ]+\] Warning: HK polling failed '
+                    r'\(module: ics_sim\.hk\)$', out), out
+    err = _line(logging.ERROR, 'icg_archon.cmd', 'nope')
+    assert re.match(r'^\[[^ ]+\] Error: nope \(module: icg_archon\.cmd\)$',
+                    err), err

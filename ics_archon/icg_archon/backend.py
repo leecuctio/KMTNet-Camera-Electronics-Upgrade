@@ -386,12 +386,14 @@ class GuideBackend:
 
     # -- 준비 ---------------------------------------------------------------
 
-    #: ⭐ guide 의 **쉬는 상태** -- `TRIGOUTFORCE=1`(강제) + `TRIGOUTLEVEL=0`
-    #: (LOW).  guide 는 셔터가 없어(frame-transfer) 트리거 선을 노출마다 흔들
-    #: 일이 없으므로 **우리가 붙들어 LOW 로 고정한다** (운영자 확정 2026-09-08).
+    #: ⭐ guide 의 **쉬는 상태** -- `(TRIGOUTLEVEL, TRIGOUTFORCE)` 의 설정 문면.
+    #: guide 는 셔터가 없어(frame-transfer) 트리거 선을 노출마다 흔들 일이
+    #: 없으므로 **우리가 붙들어 LOW 로 고정한다** (운영자 확정 2026-09-08).
     #: ⛔ `FORCE=0` 은 *"타이밍 스크립트가 몬다"* 라 선이 노출마다 흔들린다 --
     #: ACF 출고값이 바로 그것이라 **띄울 때마다 되돌려야** 한다.
-    TRIGOUT_REST_FORCED = True
+    #: ⛔ **레벨도 함께 본다** -- `FORCE=1` 인데 `LEVEL=1` 이면 쉬는 상태에서
+    #: 선이 **HIGH 로 붙들려 있다** (앞 세션이 `SHOPEN` 중에 죽은 경우).
+    TRIGOUT_REST = ('0', '1')
 
     async def prepare(self) -> None:
         """접속·ACF·전원 -- 멱등.  실패는 그대로 올린다 (시퀀서가 통보)."""
@@ -409,19 +411,20 @@ class GuideBackend:
         파일값(`0`)으로 돌아간 경우도 여기서 다시 잡힌다.
         ⚠️ 되읽기가 실패해도 **쓰기는 한다** -- 모르면 세워 두는 쪽이 안전하다.
         """
-        want = '1' if self.TRIGOUT_REST_FORCED else '0'
         try:
-            held = (await self.ctrl.config_value('TRIGOUTFORCE')).strip()
+            held = await self.ctrl.trigger_state()
         except (ArchonError, TimeoutError, OSError) as exc:
-            log.warning('guide: TRIGOUTFORCE 를 못 읽었다 (%s) -- 쉬는 상태로 '
+            log.warning('guide: TRIGOUT 상태를 못 읽었다 (%s) -- 쉬는 상태로 '
                         '그냥 다시 쓴다', exc)
-            held = ''
-        if held == want:
+            held = ('?', '?')
+        if held == self.TRIGOUT_REST:
             return
-        await self.ctrl.set_trigger_forced(self.TRIGOUT_REST_FORCED)
-        log.info('guide: 트리거 선을 쉬는 상태로 둔다 -- TRIGOUTFORCE=%s '
-                 '(종전 %s).  0 이면 타이밍 스크립트가 몰아 노출마다 흔들린다',
-                 want, held or '(모름)')
+        # ⭐ **둘을 한 번에 적용한다** -- 따로 쓰면 `FORCE=1` 이 먼저 서는 찰나에
+        # 옛 `LEVEL=1` 이 핀으로 나간다 (앞 세션이 SHOPEN 중에 죽은 경우).
+        await self.ctrl.set_trigger(high=False, forced=True)
+        log.info('guide: 트리거 선을 쉬는 상태로 둔다 -- TRIGOUTLEVEL=0 '
+                 'TRIGOUTFORCE=1 (종전 LEVEL=%s FORCE=%s).  FORCE=0 이면 '
+                 '타이밍 스크립트가 몰아 노출마다 흔들린다', *held)
 
     # -- 취득 ---------------------------------------------------------------
 

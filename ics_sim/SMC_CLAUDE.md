@@ -41,6 +41,20 @@ guide 는 `.G.fits` 다.
   **우연히** 맞은 것이다.
 * ⭐ 배너의 목적은 *"자료 한 장 찍기 전에 사람 눈에 띄게"* 다 — 그 한 줄이 틀리면 목적을 잃는다.
 
+## ⚠️ 콘솔에 프롬프트·이력을 달았다 (2026-09-08) — 경위는 `ics_archon/DevNote.md` **11.48**
+
+`Console.run()` 이 `sys.stdin.readline()` 대신 **`input(prompt)`** 를 쓴다 — `readline` 을
+수입만 해도 **화살표·행 편집·이력**이 붙는다.  프롬프트는 `ICG% ` — **OBSAgent 와 같은
+관례**이고 노드 이름을 단다.  로그의 시각 태그도 `[…]` 로 감쌌다(`setup_logging`).
+
+* 이력은 `~/.<노드>_console_history` (500줄).  ⚠️ 실패는 삼킨다.
+* ⛔ **`PromptSafeStream`**(이 패키지의 `console.py`)이 로그 앞뒤로 줄을 지웠다 다시 그린다
+  — 프롬프트는 stdout, 로그는 stderr 라 서로 모른다.  ⚠️ **둘 다 TTY 일 때만**.
+* ⚠️ **빈 줄은 EOF 가 아니다** — `input()` 은 Enter 에도 `''` 를 준다.  종전 `readline()`
+  판에서는 `''` 가 EOF 였으므로 갈래를 갈랐다(TTY 는 `EOFError`, 파이프는 `''`).
+* ⛔ TTY 가 아니면 **종전 경로 그대로**(프롬프트 없음).  Windows 엔 `readline` 이 없어
+  이력 없이 돈다.
+
 ## ⚠️ 콘솔·로그를 또 열었다 (2026-09-08, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.45**
 
 `console.py`·`transport.py`·`__main__.py` 를 **`ics_archon` 세션이 고쳤다** (목 지시다).

@@ -14,7 +14,7 @@ import sys
 
 from . import __version__, config
 from .app import IcsSim
-from .console import Console
+from .console import Console, PromptSafeStream
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,6 +81,16 @@ def apply_args(cfg: config.SimConfig, args: argparse.Namespace) -> None:
         cfg.logging.level = args.log_level
 
 
+#: ⭐ 로그 한 줄의 꼴 -- **시각 태그를 `[...]` 로 감싼다** (운영자 2026-09-08).
+#: OBSAgent 와 같은 관례다: `[2026-09-04T10:36:34.942] PONG received from XIS`.
+#: 대괄호가 있으면 **시각과 본문의 경계가 눈에 먼저 잡힌다** -- 콘솔에서는
+#: 프롬프트 줄과 로그 줄이 섞여 흐르므로 그 경계가 값을 한다.
+#: ⛔ **태그 안에 공백을 넣지 말 것** -- `_TailModule` 이 첫 공백에서 갈라 시각
+#: 뒤에 `Warning:` 을 끼운다 (`tests/test_console.py` 가 못박는다).
+LOG_FORMAT = '[%(asctime)s.%(msecs)03d] %(message)s'
+LOG_DATEFMT = '%Y-%m-%dT%H:%M:%S'
+
+
 class _TailModule(logging.Formatter):
     """경고 이상이면 **`Warning:`/`Error:` 앞머리**와 **`(module: …)` 꼬리**를 붙인다.
 
@@ -104,13 +114,17 @@ class _TailModule(logging.Formatter):
             return out
         head = next(w for lvl, w in self._WORD if record.levelno >= lvl)
         # 시각 뒤·본문 앞에 끼운다 -- `asctime` 은 형식이 정한 맨 앞이다.
+        # ⚠️ **시각 태그 안에 공백이 없어야** 이 가름이 성립한다 --
+        # `[%(asctime)s.%(msecs)03d]` 는 대괄호까지 한 덩어리라 괜찮다.
         stamp, sep, body = out.partition(' ')
         return '%s%s%s%s (module: %s)' % (stamp, sep, head, body, record.name)
 
 
 def setup_logging(cfg: config.SimConfig) -> None:
     level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
-    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    # ⭐ **프롬프트를 알아보는 처리기다** -- 콘솔이 입력을 기다리는 중에 로그가
+    # 오면 줄을 지웠다가 프롬프트와 입력 버퍼를 다시 그린다 (운영자 2026-09-08).
+    handlers: list[logging.Handler] = [PromptSafeStream(sys.stderr)]
     if cfg.logging.file:
         handlers.append(logging.FileHandler(cfg.logging.file, encoding='utf-8'))
     logging.basicConfig(
@@ -122,8 +136,11 @@ def setup_logging(cfg: config.SimConfig) -> None:
     # (운영자 2026-09-08).  콘솔에서 가장 잦은 줄은 와이어 추적인데 거기엔
     # `ics_sim.transport` 18자가 아무것도 더해 주지 않는다.  반대로 문제가
     # 났을 때는 **어느 모듈인지가 첫 단서**라 그때는 남긴다.
-    fmt = _TailModule('%(asctime)s.%(msecs)03d %(message)s',
-                      datefmt='%Y-%m-%dT%H:%M:%S')
+    # ⭐ **시각 태그를 `[...]` 로 감싼다** (운영자 2026-09-08) -- OBSAgent 와
+    # 같은 관례다: `[2026-09-04T10:36:34.942] PONG received from XIS`.
+    # 대괄호가 있으면 **시각과 본문의 경계가 눈에 먼저 잡힌다** -- 콘솔에서는
+    # 프롬프트 줄과 로그 줄이 섞여 흐르므로 그 경계가 값을 한다.
+    fmt = _TailModule(LOG_FORMAT, datefmt=LOG_DATEFMT)
     for h in logging.getLogger().handlers:
         h.setFormatter(fmt)
 

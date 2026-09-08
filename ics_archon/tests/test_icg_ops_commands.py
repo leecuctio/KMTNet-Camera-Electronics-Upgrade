@@ -421,29 +421,63 @@ def test_real_backend_path_flushes_once_powers_and_bypasses(tmp_path, monkeypatc
 # 전까지 안 돌아왔다 (벤치 2026-09-08).
 
 
-class _Rec:
-    """왕복을 가로채 **순서까지** 붙잡는 가짜 컨트롤러 표면."""
+#: 쉬는 상태로 시작하는 가짜 -- 평시 갈래를 재는 시험들이 쓴다.
+RESTING = {'TRIGOUTLEVEL': '0', 'TRIGOUTFORCE': '1'}
 
-    def __init__(self, held=None):  # noqa: ANN001
+
+class _Rec:
+    """왕복을 **적용 단위로** 붙잡는 가짜 컨트롤러 표면.
+
+    ⭐ `calls` 의 항목 하나가 `APPLYSYSTEM` **한 번**이다 -- 적용 횟수를 그대로
+    셀 수 있어야 한다 (`SHOPEN` 이 평시에 한 번인 것이 이 판의 요점이다).
+    항목 안의 차례는 **쓴 차례**(레벨이 먼저)다.
+    ⚠️ 적용을 줄이는 이유가 *"VCPU 재시작 결측"* 은 **아니다** -- `APPLYSYSTEM`
+    은 VCPU 를 안 건드린다(2026-09-08 실측).  이유는 **에지 시점**이다.
+    """
+
+    def __init__(self, held=None, wire=None):  # noqa: ANN001
         self.calls = []
+        #: 우리가 들고 있는 값 (`ctrl.config` 대역).
         self.config = dict(held or {'TRIGOUTFORCE': '0', 'TRIGOUTLEVEL': '0'})
+        #: ⛔ **컨트롤러가 실제로 든 값** -- 주면 캐시와 갈린다 (11.13 F5).
+        self.wire = dict(wire) if wire is not None else None
+
+    async def set_trigger(self, *, high=None, forced=None):  # noqa: ANN001, ANN202
+        step = []
+        if high is not None:
+            step.append(('TRIGOUTLEVEL', bool(high)))
+        if forced is not None:
+            step.append(('TRIGOUTFORCE', bool(forced)))
+        if not step:
+            return                      # ⛔ 맨 APPLYSYSTEM 은 안 보낸다
+        for key, want in step:
+            self.config[key] = '1' if want else '0'
+            if self.wire is not None:
+                self.wire[key] = '1' if want else '0'
+        self.calls.append(tuple(step))          # = APPLYSYSTEM 한 번
 
     async def set_trigger_forced(self, forced):  # noqa: ANN001, ANN202
-        self.calls.append(('TRIGOUTFORCE', bool(forced)))
-        self.config['TRIGOUTFORCE'] = '1' if forced else '0'
+        await self.set_trigger(forced=forced)
 
     async def set_trigger_level(self, high):  # noqa: ANN001, ANN202
-        self.calls.append(('TRIGOUTLEVEL', bool(high)))
-        self.config['TRIGOUTLEVEL'] = '1' if high else '0'
+        await self.set_trigger(high=high)
+
+    def _held(self):  # noqa: ANN202
+        return self.wire if self.wire is not None else self.config
+
+    async def trigger_state(self):  # noqa: ANN202
+        """`RCONFIG` 되읽기 -- ⛔ 캐시가 아니라 **컨트롤러가 든 값**이다."""
+        held = self._held()
+        return held['TRIGOUTLEVEL'], held['TRIGOUTFORCE']
 
     async def read_config(self, key):  # noqa: ANN001, ANN202
         """`RCONFIG` 대역 -- 조회가 **캐시가 아니라 여기를** 타야 한다."""
-        return self.config[key]
+        return self._held()[key]
 
 
-def _trig(tmp_path, script, held=None, settle=0.1):  # noqa: ANN001, ANN202
-    """스크립트를 먹이고 (호출 순서, 발신) 을 돌려준다."""
-    rec = _Rec(held)
+def _trig(tmp_path, script, held=None, settle=0.1, wire=None):  # noqa: ANN001, ANN202
+    """스크립트를 먹이고 (적용 목록, 발신) 을 돌려준다."""
+    rec = _Rec(held, wire)
 
     async def run():  # noqa: ANN202
         cfg, icfg = make_cfgs(tmp_path)
@@ -462,15 +496,71 @@ def _trig(tmp_path, script, held=None, settle=0.1):  # noqa: ANN001, ANN202
     return asyncio.run(run())
 
 
-def test_shopen_raises_the_level_before_forcing(tmp_path):
-    """`SHOPEN <초>` = `TRIGOUTLEVEL=1` -> `TRIGOUTFORCE=1` (운영자 2026-09-08).
+def test_shopen_from_the_resting_state_is_a_single_apply(tmp_path):
+    """⭐ 평시(`LEVEL=0`·`FORCE=1`)에는 **에지 하나**로 끝난다 -- 적용 1회.
 
-    ⭐ **레벨이 먼저인 것이 중요하다** -- 강제를 먼저 걸면 그 찰나에 **옛 레벨**이
-    핀으로 나간다.
+    무장이 이미 돼 있으므로 되읽기 둘로 확인하고 건너뛴다 (운영자 2026-09-08).
+    ⚠️ 되읽기는 왕복이지만 **적용이 아니다** -- 모듈을 안 건드린다.
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'])
-    assert calls[:2] == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True)], calls
+    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'], held=dict(RESTING))
+    assert calls[:1] == [(('TRIGOUTLEVEL', True),)], calls
     assert any('DONE: SHOPEN' in s and 'Sec=10' in s for s in sent), sent[-3:]
+    assert not any('armed first' in s for s in sent), sent[-3:]
+
+
+def test_shopen_arms_first_when_the_line_was_handed_over(tmp_path):
+    """⛔ 쉬는 상태가 아니면 **무장 먼저** -- 그것도 한 번의 적용으로.
+
+    ⭐ 무장을 앞세우는 값어치는 **에지를 마지막 한 쓰기가 만든다**는 것이다 --
+    종전 판(`LEVEL=1` -> `FORCE=1`)은 앞 상태에 따라 에지가 첫 명령에서 나기도
+    둘째에서 나기도 해서 시점을 못 짚었다.
+    ⭐ 무장의 두 값이 **한 적용에 같이** 서므로 *"강제는 걸렸는데 레벨은 옛 값"*
+    인 찰나가 없다 -- 여기서는 옛 레벨이 `1` 이라 그 찰나가 곧 헛 펄스다.
+    """
+    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'],
+                        held={'TRIGOUTLEVEL': '1', 'TRIGOUTFORCE': '0'})
+    assert calls[:2] == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)),
+                         (('TRIGOUTLEVEL', True),)], calls
+    assert any('armed first' in s for s in sent), sent[-3:]
+
+
+def test_a_lying_cache_does_not_make_shopen_do_nothing(tmp_path):
+    """⛔ **캐시로 판단하면 안 된다** -- 이 시험이 그 자리를 막는다.
+
+    `set_config` 는 **왕복이 실패해도 캐시를 먼저** 갈아 끼운다 (11.13 F5).
+    그래서 캐시는 *"이미 `FORCE=1`"* 인데 컨트롤러는 `0` 인 경우가 실재한다.
+    그 상태에서 무장을 건너뛰면 **선이 안 올라가는데 `DONE` 은 나간다** --
+    결측보다 나쁜 종류다.  판단은 `RCONFIG` 되읽기여야 한다.
+    """
+    calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'],
+                         held=dict(RESTING),          # 캐시는 쉬는 상태라 말한다
+                         wire={'TRIGOUTLEVEL': '0',   # ⛔ 실제로는 안 걸려 있다
+                               'TRIGOUTFORCE': '0'})
+    assert calls[:1] == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
+
+
+def test_a_failed_state_read_back_arms_anyway(tmp_path):
+    """⚠️ 되읽기가 실패하면 **무장한다** -- 모르면 세워 두는 쪽이 안전하다."""
+    class _Blind(_Rec):
+        async def trigger_state(self):  # noqa: ANN202
+            raise RuntimeError('RCONFIG timeout')
+
+    rec = _Blind(dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide.ctrl = rec
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG SHOPEN 10')
+            await asyncio.sleep(0.15)
+        finally:
+            await app.stop()
+        return rec.calls
+
+    calls = asyncio.run(run())
+    assert calls[:1] == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
 
 
 def test_shopen_lowers_the_line_when_the_timer_expires(tmp_path):
@@ -478,9 +568,10 @@ def test_shopen_lowers_the_line_when_the_timer_expires(tmp_path):
 
     ⚠️ 시한은 `cfg.scaled()` 를 타므로 시험 축척(0.02)에서 짧다.
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 2'], settle=0.4)
-    assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True),
-                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)], calls
+    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 2'], settle=0.4,
+                        held=dict(RESTING))
+    assert calls == [(('TRIGOUTLEVEL', True),),
+                     (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
     assert any('DONE: SHCLOSE' in s and 'auto' in s for s in sent), sent[-3:]
     # ⛔ 자동 내림도 **강제를 유지한다** -- 응답이 그 사실을 말해야 한다.
     assert any('TRIGOUTFORCE=1' in s and 'auto' in s for s in sent), sent[-3:]
@@ -494,10 +585,10 @@ def test_shclose_cancels_a_pending_shopen_timer(tmp_path):
     (그러면 취소를 안 해도 통과해 버린다).  `20` 이면 0.4 s 다.
     """
     calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 20', 'abc>ICG SHCLOSE'],
-                         settle=0.6)
-    # 세움 2 + SHCLOSE 2 뿐이어야 한다 -- 타이머가 살아 있으면 2 가 더 붙는다.
-    assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True),
-                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)], calls
+                         settle=0.6, held=dict(RESTING))
+    # 적용은 둘뿐이어야 한다 -- 타이머가 살아 있으면 하나가 더 붙는다.
+    assert calls == [(('TRIGOUTLEVEL', True),),
+                     (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
 
 
 def test_shclose_drops_the_level_but_keeps_the_force(tmp_path):
@@ -509,7 +600,8 @@ def test_shclose_drops_the_level_but_keeps_the_force(tmp_path):
     스크립트 손에 넘어가 노출마다 흔들린다 (벤치 2026-09-08).
     """
     calls, sent = _trig(tmp_path, ['abc>ICG SHCLOSE'])
-    assert calls == [('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)], calls
+    # ⭐ **적용 한 번**에 둘이 같이 선다 -- 되읽기도 안 한다 (아낄 적용이 없다).
+    assert calls == [(('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
     assert any('DONE: SHCLOSE TRIGOUTLEVEL=0 TRIGOUTFORCE=1' in s
                for s in sent), sent[-3:]
 
@@ -521,10 +613,11 @@ def test_a_full_shopen_shclose_round_leaves_the_resting_state(tmp_path):
     **타이밍 스크립트가 선을 몬다.**  마지막 값만 본다 (순서는 위 시험들 몫).
     """
     calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 20', 'abc>ICG SHCLOSE'],
-                         settle=0.6)
+                         settle=0.6, held=dict(RESTING))
     last = {}
-    for key, want in calls:
-        last[key] = want
+    for step in calls:
+        for key, want in step:
+            last[key] = want
     assert last == {'TRIGOUTLEVEL': False, 'TRIGOUTFORCE': True}, calls
 
 
@@ -539,7 +632,8 @@ def test_trigoutforce_and_level_are_separate_keys(tmp_path):
     """둘은 **다른 설정 키**다 -- 한쪽만 세우면 한쪽만 간다."""
     calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUTFORCE ON',
                                     'abc>ICG TRIGOUTLEVEL HIGH'])
-    assert calls == [('TRIGOUTFORCE', True), ('TRIGOUTLEVEL', True)], calls
+    assert calls == [(('TRIGOUTFORCE', True),),
+                     (('TRIGOUTLEVEL', True),)], calls
 
 
 def test_the_boolean_vocabulary_is_the_shared_one(tmp_path):
@@ -550,7 +644,8 @@ def test_the_boolean_vocabulary_is_the_shared_one(tmp_path):
     calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUTLEVEL enable',
                                    'abc>ICG TRIGOUTFORCE disable',
                                    'abc>ICG TRIGOUTLEVEL sideways'])
-    assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', False)], calls
+    assert calls == [(('TRIGOUTLEVEL', True),),
+                     (('TRIGOUTFORCE', False),)], calls
     assert any('ERROR: TRIGOUTLEVEL' in s and 'Unrecognized' in s
                for s in sent), sent[-3:]
 

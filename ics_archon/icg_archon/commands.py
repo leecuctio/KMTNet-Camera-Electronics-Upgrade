@@ -755,14 +755,34 @@ class IcgDispatcher(sim_commands.Dispatcher):
     # `GuideBackend.ensure_trigger_resting()` 이 그 상태로 되돌린다.
     # ⛔ 그래서 **`SHCLOSE` 는 강제를 풀지 않는다** -- 레벨만 내린다.
 
-    #: `SHCLOSE` 와 `SHOPEN` 의 자동 내림이 돌아가는 자리 -- **쉬는 상태**.
-    #: ⭐ 순서가 뜻이다: 레벨을 먼저 내리고, 강제는 `1` 로 유지한다.
-    _TRIGOUT_REST = (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))
+    #: guide 의 **쉬는 상태** -- `(TRIGOUTLEVEL, TRIGOUTFORCE)` 의 설정 문면.
+    #: `ctrl.trigger_state()` 가 돌려주는 것과 같은 꼴이다.
+    _TRIGOUT_REST = ('0', '1')
 
     @staticmethod
-    def _trigout_words(steps) -> str:  # noqa: ANN001
-        """응답 본문 -- 쓴 것을 **쓴 차례대로** 적는다."""
-        return ' '.join('%s=%d' % (k, 1 if v else 0) for k, v in steps)
+    def _trigout_words(high=None, forced=None) -> str:  # noqa: ANN001
+        """응답 본문 -- 쓴 것만, **쓴 차례대로**(레벨이 먼저)."""
+        out = []
+        if high is not None:
+            out.append('TRIGOUTLEVEL=%d' % (1 if high else 0))
+        if forced is not None:
+            out.append('TRIGOUTFORCE=%d' % (1 if forced else 0))
+        return ' '.join(out)
+
+    async def _trigout_armed(self, ctrl) -> bool:  # noqa: ANN001
+        """이미 **쉬는 상태**(`LEVEL=0`·`FORCE=1`)인가 -- `RCONFIG` 되읽기.
+
+        ⭐ 맞으면 `SHOPEN` 이 무장을 건너뛰어 **`APPLYSYSTEM` 한 번을 아낀다**
+        (운영자 2026-09-08).  쉬는 상태가 평시이므로 이 갈래가 보통이다.
+        ⛔ 판단을 **캐시로 하면 안 된다** (`ctrl.trigger_state()` 머리말) --
+        캐시가 거짓이면 `SHOPEN` 이 조용히 아무것도 안 한다.
+        ⚠️ 되읽기가 실패하면 **무장한다**(`False`) -- 모르면 세워 두는 쪽이다.
+        """
+        try:
+            return await ctrl.trigger_state() == self._TRIGOUT_REST
+        except Exception as exc:  # noqa: BLE001 -- 판단을 막지는 않는다
+            log.warning('TRIGOUT 상태 되읽기 실패 (%s) -- 무장부터 한다', exc)
+            return False
 
     def _trigout(self, msg: Message, word: str, key: str):  # noqa: ANN001, ANN202
         """`TRIGOUTFORCE`/`TRIGOUTLEVEL` 공통 -- 인자 없으면 조회."""
@@ -780,7 +800,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         want = expen.parse(arg)
         if want is None:
             return Reply.error(word, _unknown(arg))
-        self.app.spawn(self._do_trigout(msg.src, word, [(key, want)]))
+        one = {'high' if key == 'TRIGOUTLEVEL' else 'forced': want}
+        self.app.spawn(self._do_trigout(msg.src, word, **one))
         return Reply.noop()
 
     async def _read_trigout(self, dest: str, word: str, key: str) -> None:
@@ -792,30 +813,28 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return
         self.emit.done(dest, word, '%s=%s' % (key, held))
 
-    async def _write_trigout(self, ctrl, steps) -> None:  # noqa: ANN001
-        """설정 한둘을 **차례대로** 쓴다.  ⛔ 순서가 뜻이다 -- `SHOPEN` 참고."""
-        for key, want in steps:
-            if key == 'TRIGOUTFORCE':
-                if not want:
-                    # ⚠️ **쉬는 상태를 벗어난다** -- 선이 타이밍 스크립트 손에
-                    # 넘어가 노출마다 흔들린다.  거절하지는 않는다(운영자가
-                    # 일부러 쓰는 자리다) -- 대신 그 사실을 남긴다.
-                    log.warning('TRIGOUTFORCE=0 -- 트리거 선을 타이밍 스크립트에 '
-                                '넘긴다.  guide 의 쉬는 상태는 FORCE=1 이고, '
-                                '다음 GO 의 prepare() 가 되돌린다')
-                await ctrl.set_trigger_forced(want)
-            else:
-                await ctrl.set_trigger_level(want)
+    async def _write_trigout(self, ctrl, *, high=None,  # noqa: ANN001
+                             forced=None) -> None:
+        """한 번의 `APPLYSYSTEM` 으로 쓴다 (`ctrl.set_trigger`)."""
+        if forced is False:
+            # ⚠️ **쉬는 상태를 벗어난다** -- 선이 타이밍 스크립트 손에 넘어가
+            # 노출마다 흔들린다.  거절하지는 않는다(운영자가 일부러 쓰는
+            # 자리다) -- 대신 그 사실을 남긴다.
+            log.warning('TRIGOUTFORCE=0 -- 트리거 선을 타이밍 스크립트에 '
+                        '넘긴다.  guide 의 쉬는 상태는 FORCE=1 이고, '
+                        '다음 GO 의 prepare() 가 되돌린다')
+        await ctrl.set_trigger(high=high, forced=forced)
 
-    async def _do_trigout(self, dest: str, word: str, steps) -> None:  # noqa: ANN001
+    async def _do_trigout(self, dest: str, word: str, *,  # noqa: ANN001
+                          high=None, forced=None) -> None:
         """쓰고 늦은 `DONE` 을 낸다 -- 실패는 숨기지 않는다."""
         ctrl = self.app.guide.ctrl
         try:
-            await self._write_trigout(ctrl, steps)
+            await self._write_trigout(ctrl, high=high, forced=forced)
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
             self.emit.error(dest, word, 'Failed: %s' % exc)
             return
-        self.emit.done(dest, word, self._trigout_words(steps))
+        self.emit.done(dest, word, self._trigout_words(high=high, forced=forced))
 
     def cmd_trigoutforce(self, msg: Message, target: Target) -> Reply:
         """TRIGOUTFORCE [ON|OFF] -- Trigger Out 을 **강제할지**.  없으면 조회.
@@ -844,12 +863,22 @@ class IcgDispatcher(sim_commands.Dispatcher):
     def cmd_shopen(self, msg: Message, target: Target) -> Reply:
         """SHOPEN <초> -- guide 판: **Trigger Out 을 <초> 동안 HIGH 로** 세운다.
 
-        운영자 확정 2026-09-08: 세울 때 `TRIGOUTLEVEL=1` -> `TRIGOUTFORCE=1`,
-        `<초>` 뒤에 `TRIGOUTLEVEL=0` (**`TRIGOUTFORCE=1` 은 유지**).
-        ⭐ **세우는 순서가 레벨 먼저인 것이 중요하다** -- 강제를 먼저 걸면 그
-        찰나에 **옛 레벨**이 핀으로 나간다.  내릴 때도 같은 이유로 레벨이 먼저다.
-        ⭐ 끝이 `TRIGOUTFORCE=1` 이라 **guide 의 쉬는 상태로 돌아간다** -- 선은
-        우리 손에 남고 레벨만 LOW 다 (개정 2026-09-08).
+        운영자 확정 2026-09-08 (2차 개정):
+
+        | 단계 | 보내는 것 | 적용 |
+        |---|---|---|
+        | 무장 | `LEVEL=0` + `FORCE=1` | ⭐ **이미 쉬는 상태면 건너뛴다** |
+        | 개방 | `LEVEL=1` | ⭐ **상승 에지는 오직 이 한 번** |
+        | `<초>` 뒤 | `LEVEL=0` + `FORCE=1` | 하강 에지 (적용 1회) |
+
+        ⭐ **에지를 한 명령이 만든다**: 종전 판(`LEVEL=1` -> `FORCE=1`)은 앞
+        상태에 따라 에지가 첫 명령에서 나기도 둘째에서 나기도 했다 -- 시점을
+        못 짚는다.  무장을 앞세우면 **앞 상태와 무관하게 마지막 쓰기가 에지**다.
+        ⭐ **무장은 한 번의 `APPLYSYSTEM`** 으로 둘을 같이 세운다 -- 그래야 그
+        사이 *"강제는 걸렸는데 레벨은 옛 값"* 인 찰나가 없다.
+        ⭐ 평시(쉬는 상태)에는 되읽기 둘로 무장을 건너뛰어 **적용이 1회**다.
+        ⚠️ 되읽기는 `RCONFIG` 다 -- 캐시로 판단하면 조용히 아무것도 안 할 수
+        있다 (`_trigout_armed`).
 
         ⛔ **기반 판과 뜻이 다르다** -- science 는 셔터를 열지만 guide 에는
         셔터가 없다 (frame-transfer).  같은 낱말·같은 인자를 쓰되 세우는 것은
@@ -881,14 +910,17 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """세우고 -> 기다리고 -> 내린다.  ⛔ 내림은 **취소돼도 안 흘린다**."""
         import asyncio
         ctrl = self.app.guide.ctrl
+        armed = await self._trigout_armed(ctrl)
         try:
-            await ctrl.set_trigger_level(True)
-            await ctrl.set_trigger_forced(True)
+            if not armed:
+                # 무장 -- 레벨을 내리고 강제를 걸어 **한 번에** 적용한다.
+                await ctrl.set_trigger(high=False, forced=True)
+            await ctrl.set_trigger(high=True)     # ⭐ 상승 에지는 여기 하나
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
             self.emit.error(dest, 'SHOPEN', 'Failed: %s' % exc)
             return
-        self.emit.done(dest, 'SHOPEN',
-                       'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 Sec=%g' % seconds)
+        self.emit.done(dest, 'SHOPEN', 'TRIGOUTLEVEL=1 Sec=%g%s'
+                       % (seconds, '' if armed else ' (armed first)'))
         self._shopen_timer = asyncio.current_task()
         try:
             await asyncio.sleep(self.cfg.scaled(seconds))
@@ -897,36 +929,36 @@ class IcgDispatcher(sim_commands.Dispatcher):
             raise
         self._shopen_timer = None
         try:
-            await self._write_trigout(ctrl, self._TRIGOUT_REST)
+            await self._write_trigout(ctrl, high=False, forced=True)
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, 'SHCLOSE', 'Failed: %s' % exc)
             return
         # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보라 낱말을
         # `SHCLOSE` 로 낸다 (한 요청에 `DONE` 이 둘이 되지 않게).
         self.emit.done(dest, 'SHCLOSE', '%s (auto after %gs)'
-                       % (self._trigout_words(self._TRIGOUT_REST), seconds))
+                       % (self._trigout_words(high=False, forced=True), seconds))
 
     def cmd_shclose(self, msg: Message, target: Target) -> Reply:
         """SHCLOSE -- guide 판: **선을 LOW 로 내린다** (강제는 유지).
 
-        `TRIGOUTLEVEL=0` -> `TRIGOUTFORCE=1`.  ⭐ **순서가 뜻이다** -- 레벨이
-        먼저다.  거꾸로 강제를 먼저 만지면 그 찰나에 *옛* 레벨이 핀으로 나간다.
+        `LEVEL=0` + `FORCE=1` 을 **한 번의 `APPLYSYSTEM`** 으로 쓴다 -- 둘 다
+        목표값이라 같이 세우는 것이 맞고, 적용이 한 번이면 그만이다.
         ⭐ 끝이 `TRIGOUTFORCE=1` 이라 **guide 의 쉬는 상태로 돌아간다** -- 선은
         우리 손에 남고 레벨만 LOW 다 (운영자 확정 2026-09-08).
         ⛔ **강제를 풀지 않는다.**  종전 판은 `FORCE=0` 으로 내려놓았는데, 그러면
         선이 **타이밍 스크립트 손에 넘어가** 노출마다 흔들리고, `prepare()` 의
         래치 탓에 **재시작 전까지 안 돌아왔다** (벤치 2026-09-08).
+        ⭐ **되읽기를 안 한다** -- `SHOPEN` 과 달리 여기서는 아낄 적용이 없다
+        (어차피 한 번이고, 강제가 이미 1 이어도 같이 쓰는 값이 맞다).
         ⛔ **`SHOPEN <초>` 의 타이머도 끊는다** -- 안 끊으면 옛 타이머가 나중에
         깨어나 그때 세워져 있던 선을 내린다.
         """
         self._cancel_shopen_timer()
-        return self._trigout_pair(msg, 'SHCLOSE', list(self._TRIGOUT_REST))
-
-    def _trigout_pair(self, msg: Message, word: str, steps):  # noqa: ANN001, ANN202
         ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
         if ctrl is None:
-            return Reply.error(word, 'Controller is not available')
-        self.app.spawn(self._do_trigout(msg.src, word, steps))
+            return Reply.error('SHCLOSE', 'Controller is not available')
+        self.app.spawn(self._do_trigout(msg.src, 'SHCLOSE',
+                                        high=False, forced=True))
         return Reply.noop()
 
     def cmd_ccdpowon(self, msg: Message, target: Target) -> Reply:

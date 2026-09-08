@@ -26,14 +26,65 @@ OBS 드라이버를 만들지 않기로 했으므로 이것이 손으로 시뮬�
 from __future__ import annotations
 
 import asyncio
+import atexit
 import logging
+import os
 import sys
 import unicodedata
+
+try:
+    # ⭐ **수입만 해도 `input()` 이 화살표·이력·행 편집을 얻는다** (GNU readline).
+    # 운영자 요청 2026-09-08: *"화살표로 이전 명령을 재입력"*.
+    import readline
+except ImportError:            # pragma: no cover -- Windows 기본 파이썬엔 없다
+    readline = None
 
 from . import impv2
 from .impv2 import parse_line
 
 log = logging.getLogger('ics_sim.console')
+
+#: ⭐ **지금 콘솔이 띄워 놓고 기다리는 프롬프트** (기다리지 않으면 빈 문자열).
+#: 로그 처리기(`PromptSafeStream`)가 이것을 보고 **입력 중인 줄을 지웠다가 다시
+#: 그린다** -- 안 그러면 로그 한 줄이 프롬프트와 타이핑 중인 글자를 덮어
+#: *"내가 뭘 치고 있었지"* 가 된다.
+#: ⚠️ 스레드 하나(executor)만 이 값을 쓴다 -- 잠금이 필요한 자리가 아니다.
+ACTIVE_PROMPT = ''
+
+#: 이력 파일에 남길 줄 수.  ⚠️ 무제한이면 파일이 계속 자란다.
+HISTORY_LINES = 500
+
+
+class PromptSafeStream(logging.StreamHandler):
+    """로그가 **입력 중인 줄을 덮지 않게** 한다 (프롬프트를 다시 그린다).
+
+    ⛔ 프롬프트는 stdout(`input()`)이고 로그는 stderr 라 **서로 모른다** --
+    터미널에서는 같은 화면이라 로그가 프롬프트 뒤에 붙어 버린다.  그래서 로그를
+    내기 전에 줄을 지우고(`\r` + ANSI `EL`), 낸 뒤에 **프롬프트와 입력 버퍼를
+    다시 그린다**.
+    ⚠️ **둘 다 TTY 일 때만** 한다 -- 파이프·로그 파일로 가면 제어열이 그대로
+    글자가 된다.  ⚠️ 기다리는 중이 아니면(`ACTIVE_PROMPT` 가 비면) 아무것도 안
+    한다 -- 기동 중 로그가 헛 프롬프트를 남기면 안 된다.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        live = bool(ACTIVE_PROMPT)
+        if live:
+            try:
+                live = self.stream.isatty() and sys.stdout.isatty()
+            except (AttributeError, ValueError):    # 닫힌 스트림
+                live = False
+        if live:
+            self.stream.write('\r\x1b[K')
+        super().emit(record)
+        if not live:
+            return
+        buf = readline.get_line_buffer() if readline is not None else ''
+        try:
+            sys.stdout.write(ACTIVE_PROMPT + buf)
+            sys.stdout.flush()
+        except (OSError, ValueError):               # pragma: no cover
+            pass
 
 #: 도움말 한 줄 -- (문법, 설명).  문법의 첫 토큰이 명령 이름이고 `|` 로 여럿을
 #: 묶을 수 있다 (`object|dark|bias`).  `>` 로 시작하면 명령이 아니라 축약형이다.
@@ -227,17 +278,79 @@ class Console:
     def help_text(self) -> str:
         return render_help(self.sections)
 
+    def prompt(self) -> str:
+        """입력 자리 표시 -- `ICG% ` 꼴 (**OBSAgent 와 같은 관례**, 운영자 2026-09-08).
+
+        ⭐ 이름을 넣는 이유: ICS 와 ICG 를 **한 화면에 나란히 띄우는 일이 흔하다**
+        -- 표시만 있고 이름이 없으면 어느 쪽 창에 치는지 헷갈린다.
+        ⛔ `>` 가 아니라 `%` 인 것도 뜻이 있다 -- `>` 는 이 콘솔에서 **`>NODE` 축약형**
+        의 첫 글자라 프롬프트와 입력이 같은 글자로 시작해 눈에 섞인다.
+        """
+        return '%s%% ' % self.app.cfg.node.ics_id
+
+    def _history_path(self) -> str:
+        """이력 파일 -- 노드마다 따로 (`~/.icg_console_history`).
+
+        ⭐ 벤치에서는 **다시 띄우는 일이 잦아서** 세션 안 이력만으로는 부족하다.
+        """
+        return os.path.expanduser(
+            '~/.%s_console_history' % self.app.cfg.node.ics_id.lower())
+
+    def _load_history(self) -> None:
+        """⚠️ 실패는 **삼킨다** -- 이력 파일 때문에 콘솔이 안 뜨면 안 된다."""
+        if readline is None:
+            return
+        path = self._history_path()
+        try:
+            readline.read_history_file(path)
+        except (OSError, ValueError):
+            pass                       # 없거나 깨졌다 -- 새로 쓴다
+        readline.set_history_length(HISTORY_LINES)
+        atexit.register(self._save_history)
+
+    def _save_history(self) -> None:
+        if readline is None:
+            return
+        try:
+            readline.write_history_file(self._history_path())
+        except (OSError, ValueError):  # pragma: no cover
+            pass
+
     async def run(self) -> None:
+        global ACTIVE_PROMPT
         loop = asyncio.get_running_loop()
         print(self.help_text())
+        # ⛔ **TTY 일 때만 프롬프트를 띄운다** -- 파이프로 먹이거나 로그로
+        # 흘릴 때 프롬프트가 섞이면 그 자체가 잡음이다.
+        tty = False
+        try:
+            tty = sys.stdin.isatty()
+        except (AttributeError, ValueError):        # pragma: no cover
+            pass
+        prompt = self.prompt() if tty else ''
+        if tty:
+            self._load_history()
         while not self._stop.is_set():
             try:
-                line = await loop.run_in_executor(None, sys.stdin.readline)
+                if tty:
+                    ACTIVE_PROMPT = prompt
+                    try:
+                        line = await loop.run_in_executor(None, input, prompt)
+                    finally:
+                        ACTIVE_PROMPT = ''
+                else:
+                    raw = await loop.run_in_executor(None, sys.stdin.readline)
+                    if not raw:
+                        break                       # EOF
+                    line = raw
+            except EOFError:                        # Ctrl-D
+                break
             except (RuntimeError, ValueError):
                 break
-            if not line:
-                break
+            # ⚠️ 빈 줄은 **EOF 가 아니다** -- `input()` 은 그냥 Enter 에도 `''`
+            # 를 준다.  `feed('')` 가 조용히 되돌아가므로 다시 묻는다.
             self.feed(line.strip())
+        self._save_history()
 
     def stop(self) -> None:
         self._stop.set()

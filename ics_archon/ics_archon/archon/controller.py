@@ -1035,6 +1035,45 @@ class ArchonController:
 
     # -- 셔터 트리거 ------------------------------------------------------
 
+    async def set_trigger(self, *, high: bool | None = None,
+                          forced: bool | None = None) -> None:
+        """`TRIGOUTLEVEL`/`TRIGOUTFORCE` 를 **한 번의 `APPLYSYSTEM`** 으로 쓴다.
+
+        ⭐ **둘을 같이 주는 것이 뜻이다.**  `WCONFIG` 는 적용을 안 하므로 둘을
+        먼저 써 두고 한 번만 적용하면 **두 값이 동시에 선다** -- 따로 적용하면
+        그 사이에 *"강제는 걸렸는데 레벨은 옛 값"* 인 찰나가 생긴다.
+        ⭐ **`APPLYSYSTEM` 은 모듈 VCPU 를 재시작하지 않는다 -- 실측**
+        (2026-09-08 벤치, DevNote 11.48).  `MOD10/VCPU_OUTREG15` 가 60초마다
+        `+545`·`+546`·`+545` 로 한 번도 안 끊겼고 그 창에 `APPLYSYSTEM` 이 두 번
+        들어 있었다.  ⚠️ 그러니 **적용을 줄이는 이유는 `DEWPRES` 결측이 아니다**
+        (그 걱정은 실측으로 지웠다) -- **에지 시점을 한 명령이 정하게** 하는
+        것이다 (`IcgDispatcher.cmd_shopen`).
+        ⏳ 적용 하나가 몇 ms 인지는 아직 안 쟀다.
+        ⛔ 둘 다 `None` 이면 아무것도 안 한다 -- 맨 `APPLYSYSTEM` 은 안 보낸다.
+        """
+        wrote = False
+        if high is not None:
+            await self.set_config('TRIGOUTLEVEL', '1' if high else '0')
+            wrote = True
+        if forced is not None:
+            await self.set_config('TRIGOUTFORCE', '1' if forced else '0')
+            wrote = True
+        if wrote:
+            await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
+
+    async def trigger_state(self) -> tuple[str, str]:
+        """`(TRIGOUTLEVEL, TRIGOUTFORCE)` -- **`RCONFIG` 되읽기**.
+
+        ⛔ **캐시(`self.config`)로 이 판단을 하면 안 된다.**  `set_config` 는
+        왕복이 실패해도 캐시를 **먼저** 갈아 끼우므로(11.13 F5), 캐시가
+        *"이미 `FORCE=1` 이다"* 라고 거짓말하면 `SHOPEN` 이 무장을 건너뛰고
+        **조용히 아무것도 안 한다** (선은 안 올라가는데 `DONE` 은 나간다).
+        ⚠️ 왕복 둘이지만 **적용이 아니라** 빠르고 모듈을 안 건드린다.
+        """
+        level = (await self.read_config('TRIGOUTLEVEL')).strip()
+        forced = (await self.read_config('TRIGOUTFORCE')).strip()
+        return level, forced
+
     async def set_trigger_forced(self, forced: bool) -> None:
         """`TRIGOUTFORCE` -- 셔터/광원 트리거 라인을 강제할지.
 
@@ -1042,9 +1081,9 @@ class ArchonController:
         (매뉴얼 p.15).  그래서 `TRIGOUTFORCE=0` 이 "타이밍 스크립트가 몬다"
         (= 셔터 노출), `1` 이 "`TRIGOUTLEVEL` 로 고정" (= 열지 않는다) 이다.
         labtest 의 `shopen` 분기가 정확히 이 두 값이다.
+        ⭐ 한 값만 쓰는 얇은 겉이다 -- 둘을 같이 쓸 때는 `set_trigger()`.
         """
-        await self.set_config('TRIGOUTFORCE', '1' if forced else '0')
-        await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
+        await self.set_trigger(forced=forced)
 
     async def set_trigger_level(self, high: bool) -> None:
         """`TRIGOUTLEVEL` -- **강제했을 때** Trigger Out 이 나갈 레벨.
@@ -1053,9 +1092,9 @@ class ArchonController:
         다.  `TRIGOUTFORCE=0` 이면 타이밍 스크립트가 몰므로 이 값은 안 나간다.
         ⚠️ 그래서 핀을 실제로 HIGH 로 세우려면 **둘 다** 필요하다 --
         `TRIGOUTLEVEL=1` + `TRIGOUTFORCE=1`.  guide ACF 의 출고값은 둘 다 0 이다.
+        ⭐ 한 값만 쓰는 얇은 겉이다 -- 둘을 같이 쓸 때는 `set_trigger()`.
         """
-        await self.set_config('TRIGOUTLEVEL', '1' if high else '0')
-        await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
+        await self.set_trigger(high=high)
 
     # -- 노출 -------------------------------------------------------------
     #
