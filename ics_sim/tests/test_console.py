@@ -180,3 +180,40 @@ def test_remote_section_comes_after_app_sections():
     got = console.extend_help(('시험', (('foo', '설명'),)))
     titles = [t for t, _e in got]
     assert titles.index('시험') < titles.index('다른 노드로 보내기')
+
+
+def test_the_help_wording_for_stop_matches_the_norm():
+    """⛔ **도움말 대사가 규범과 정반대였다** (2026-09-08 발견, 벤치 콘솔 실측).
+
+    `stop` 이 *"적분을 끊고 readout·저장은 정상 수행"* 이라고 적혀 있었다 --
+    2026-09-05(`93bfb08`)에 뒤집히기 **전**의 뜻이다.  정본은
+    `Sequencer.stop_integration()`: **적분을 끊지 않는다.**
+
+    ⭐ **막으라고 세운 장치가 안 막았다** -- `check_help_matches()` 는 도움말과
+    `cmd_*` 를 양방향 대조하지만 **명령 이름만** 본다.  그래서 *"명령을 넣고
+    도움말을 안 고치면 빨개진다"* 는 보장은 사는데, *"거동을 바꾸고 대사를 안
+    고치면"* 은 안 잡혔다.  이 시험이 그 틈을 메운다.
+
+    ⚠️ 운영자가 **콘솔에서 직접 읽는 문장**이라 조용한 오도가 비싸다 --
+    이대로면 `stop` 을 `abort` 처럼 쓴다.
+    """
+    text = console.render_help(console.BASE_HELP)
+
+    # ⛔ 뒤집히기 전의 뜻이 어디에도 남으면 안 된다.
+    assert '적분을 끊고' not in text, text
+
+    stop = _entry(console.BASE_HELP, 'stop')
+    assert '저장' in stop and '다음' in stop, stop      # 마치고 · 다음을 안 건다
+
+    abort = _entry(console.BASE_HELP, 'abort')
+    assert '저장도 안 한다' in abort, abort              # 이쪽은 종전대로 맞다
+    assert stop != abort, '둘이 같은 말이면 갈림이 사라진다'
+
+
+def _entry(sections, name: str) -> str:  # noqa: ANN001
+    """도움말 표에서 그 명령의 **대사**를 꺼낸다."""
+    for _title, entries in sections:
+        for word, said in entries:
+            if word.split()[0] == name:
+                return said
+    raise AssertionError('%r 가 도움말에 없다' % name)

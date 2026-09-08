@@ -77,7 +77,7 @@ BASE_HELP_BODY: tuple[Section, ...] = (
     )),
     ('취득', (
         ('go [n]', '노출 n 장 (기본 1)'),
-        ('stop', '적분을 끊고 readout·저장은 정상 수행'),
+        ('stop', '진행 중 노출은 저장까지 마치고 다음을 안 건다'),
         ('abort', '노출 전체 중지 -- readout 도 저장도 안 한다'),
     )),
     ('조회', (
@@ -103,12 +103,44 @@ BASE_HELP_BODY: tuple[Section, ...] = (
 BASE_HELP: tuple[Section, ...] = BASE_HELP_BODY + REMOTE_TAIL + CONSOLE_TAIL
 
 
-def extend_help(*extra: Section) -> tuple[Section, ...]:
+def extend_help(*extra: Section, swap: dict | None = None) -> tuple[Section, ...]:
     """기반 명령 **뒤**, 축약형·콘솔 낱말 절 **앞**에 앱의 절을 끼운다.
 
     ⭐ 인덱스로 자르지 않는다 -- 기반 절이 늘어도 앱 쪽이 안 깨진다.
+
+    `swap` 은 `{명령: 새 대사}` 또는 `{명령: (새 표기, 새 대사)}` --
+    **기반 명령의 뜻이 앱에서 다를 때** 갈아 끼운다.  ⭐ 표기까지 바꿀 수 있는
+    것은 **인자가 달라지는 경우**가 있기 때문이다 (ICG 의 `shopen` 은 초를
+    안 받는다 -- `shopen <sec>` 를 그대로 두면 표가 거짓말한다).
+    ⛔ 명령을 감추거나 빼지는 않는다: 응답하는 것을 안 보이게 하면 그것대로
+    거짓말이고, 도움말 ↔ 명령표 대조도 깨진다.
+    ⚠️ 이것이 필요한 실제 자리: ICG 의 `shopen`/`shclose` 는 셔터가 아니라
+    **Trigger Out 선**을 세운다 (guide 는 frame-transfer 라 셔터가 없다).
     """
-    return BASE_HELP_BODY + tuple(extra) + REMOTE_TAIL + CONSOLE_TAIL
+    body = BASE_HELP_BODY
+    if swap:
+        want = {k.lower(): v for k, v in swap.items()}
+        seen = set()
+        out = []
+        for title, entries in body:
+            rows = []
+            for word, said in entries:
+                key = word.split()[0].lower()
+                if key in want:
+                    repl = want[key]
+                    if isinstance(repl, tuple):
+                        word, said = repl
+                    else:
+                        said = repl
+                    seen.add(key)
+                rows.append((word, said))
+            out.append((title, tuple(rows)))
+        missed = set(want) - seen
+        # ⛔ 갈아 끼울 자리를 못 찾으면 **조용히 넘어가지 않는다** -- 기반
+        # 도움말이 바뀌었는데 앱이 옛 이름을 들고 있는 상태다.
+        assert not missed, 'swap 대상이 기반 도움말에 없다: %s' % sorted(missed)
+        body = tuple(out)
+    return body + tuple(extra) + REMOTE_TAIL + CONSOLE_TAIL
 
 
 # -- 도움말 조립 ----------------------------------------------------------

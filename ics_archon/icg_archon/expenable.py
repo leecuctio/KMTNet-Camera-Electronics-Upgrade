@@ -41,8 +41,13 @@ ON, OFF = 'ON', 'OFF'
 
 #: 받는 어휘 -> 정규형.  ⚠️ 여기 없는 값은 **거부**한다 (기본값으로 떨어뜨리지
 #: 않는다 -- 위 docstring).
-VOCAB = {'ON': True, 'TRUE': True, '1': True,
-         'OFF': False, 'FALSE': False, '0': False}
+#: ⭐ **한 표를 여럿이 쓴다** -- `EXPENABLE` 과 `TRIGOUTFORCE`/`TRIGOUTLEVEL`
+#: 이 같은 어휘를 받는다 (운영자 2026-09-08: *"true=enable=high=on=1 모두 같게,
+#: false=disable=low=off=0 모두 같게"*).  표를 둘로 나누면 한쪽만 늘어난다 --
+#: 이 저장소가 되풀이해 겪은 부류다.
+VOCAB = {'ON': True, 'TRUE': True, '1': True, 'ENABLE': True, 'HIGH': True,
+         'OFF': False, 'FALSE': False, '0': False, 'DISABLE': False,
+         'LOW': False}
 
 
 class ExpEnable:

@@ -1415,7 +1415,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 ⛔ **1단계가 막히는 조건이 있다** — Radionode Open API 자격증명 넷은 **콘솔 접근이 필요해 코드가
 대신 못 한다**(계정 등급 · API KEY/SECRET + base URL/경로/rate limit · 사이트 LoRa 게이트웨이 기종 ·
 장치 SEND INTERVAL).  운영자에게 확인하고 시작한다.  ⛔ KEY/SECRET 실값은 **저장소 ini 에 적지 않는다**
-— 벤치 설치본 `~/AIC/etc/icg_archon.ini` 에만.  `stale_after` 는 SEND INTERVAL 의 3배로 함께 맞춘다.
+— 벤치 설치본 `~/AIC/Config/icg_archon.ini` 에만.  `stale_after` 는 SEND INTERVAL 의 3배로 함께 맞춘다.
 
 #### 지금 상태 (2026-09-07 갱신)
 
@@ -1610,14 +1610,35 @@ science `hk_stale_after` 는 **2000**.  ⭐ SEND INTERVAL 을 손으로 맞출 �
 **폐기한 ini 칸 셋**(`latest_path`·`key_header`·`secret_header`)은 남아 있으면 **기동이 경고**한다.
 ⚠️ 와이어 문구는 **ASCII** 라야 한다(한글이 `???` 로 깨졌다).
 
-✅ **실기 왕복이 첫 시도에 통했다** (2026-09-07 23:22 벤치) — `STATUS` 가
-`Backend=openapi Polling=yes hebox=ok 3s ago fsa=ok 3s ago` 다.  로그의 *"신선도 창을
-180초로 잡았다 (전송주기 60초 x3)"* 가 **인증·파싱·장치 선별·주기 자동산출**을 함께
-증명한다.  ⏳ 남은 확인은 응답 전문(`OI-16`) · 헤더 경로(`1-B`, 전원 인가 뒤)다.
-⭐ 목이 채울 것은 **`api_key`·`api_secret`·`device_mac` 둘**뿐이다
+✅ **실기 왕복이 첫 시도에 통했다** (2026-09-07 23:22 벤치) — 로그의
+*"신선도 창을 180초로 잡았다 (전송주기 60초 x3)"* 두 줄이 **인증·파싱·장치 선별·주기
+자동산출**을 한꺼번에 증명한다.  ⏳ 남은 확인은 `STATUS` 실값 · 응답 전문(`OI-16`) ·
+헤더 경로(`1-B`, 전원 인가 뒤)다.  ⭐ 목이 채울 것은 **`api_key`·`api_secret`·`device_mac` 둘**뿐이다
 (`base_url` 은 ini 에 실값, SEND INTERVAL 은 API 가 알려 준다).
 ⚠️ MAC 을 고를 때 `device_model` 이 **`RN320-BTH`** 인지 대조할 것 — 같은 계정의
 `SSO-FSA`(RN172)가 판박이라 잘못 적으면 그럴싸한 값이 실린다.
+
+#### (바) 벤치 콘솔이 셋을 오도하고 있었다 (11.45)
+
+운영자가 벤치에서 ICG 를 띄우고 **도움말 전문을 붙여** 검토를 지시했다 — 실기에 띄워 보니
+종이로는 안 보이던 것이 셋 나왔다.
+
+- ⛔ **`stop` 대사가 규범과 정반대**였다 (*"적분을 끊고…"* — 2026-09-05 에 뒤집힌 옛 뜻).
+  ⭐ **막으라던 장치가 안 막았다** — `check_help_matches()` 는 **명령 이름만** 본다.
+  대사까지 보는 시험을 새로 넣었다.
+- **셔터가 없는데 셔터 명령이 있었다** → `SHOPEN <초>`/`SHCLOSE` 를 **Trigger Out** 으로
+  (운영자).  `TRIGOUTFORCE`/`TRIGOUTLEVEL` 두 명령도 신설.
+  ⭐ **순서가 뜻이다** — 세울 때도 내릴 때도 **레벨이 먼저**(강제를 먼저 걸면 그 찰나에
+  *옛* 레벨이 핀으로 나간다).  ⭐ 끝이 `FORCE=0` 이라 **ACF 출고 상태로 돌아간다**.
+  ⚠️ `SHOPEN` 은 `<초>` 뒤 자동으로 내리고, `SHCLOSE` 는 **대기 중 타이머도 끊는다**.
+- **`GUIDEEXP` → `GUIEXP`** (운영자).  `EXP` 는 남는다 — **gmon 이 그것을 쓴다**.
+  둘은 같은 `exptime` 을 채운다.  ⛔ 레거시 실측 낱말은 `GUIDEEXP` 였다.
+
+**로그도 다듬었다**: 평시엔 로거 이름을 안 싣고 **경고 이상에서만 꼬리에** `(module: …)`.
+나가는 줄의 `>>>` 를 뗐다 — ⭐ **표시 없음 = 나간 것, `<<<` = 들어온 것**.
+
+⚠️ **`ics_archon/guideexp.py` 는 이름과 달리 `EXPENABLE` 제어다** — 새 `GUIEXP` 명령과
+겹쳐 보인다.  ⏳ 개명(`expenablectl.py` 쯤)은 운영자 판단.
 
 #### ⏳ 다음 세션이 할 것
 

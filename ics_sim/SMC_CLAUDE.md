@@ -25,6 +25,28 @@
 | [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) | 레거시 원본 동작이 궁금할 때 |
 | [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) | OBSAgent 쪽 사정이 궁금할 때 |
 
+## ⚠️ 콘솔·로그를 또 열었다 (2026-09-08, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.45**
+
+`console.py`·`transport.py`·`__main__.py` 를 **`ics_archon` 세션이 고쳤다** (목 지시다).
+
+* ⛔ **`stop` 도움말 대사가 규범과 정반대였다** — *"적분을 끊고 readout·저장은 정상 수행"*
+  은 2026-09-05 에 뒤집히기 **전**의 뜻이다.  정본은 `Sequencer.stop_integration()`.
+  ⭐ `check_help_matches()` 가 **명령 이름만** 봐서 못 잡았다 — 대사까지 보는 시험을
+  `tests/test_console.py` 에 넣었다(옛 문구가 도움말 어디에도 없어야 한다).
+* **`extend_help(swap=)`** 신설 — 기반 명령의 뜻이 앱에서 다를 때 **대사(와 표기)를 갈아
+  끼운다**.  ⛔ 명령을 감추지는 않는다(응답하는 것을 안 보이게 하면 대조가 깨진다).
+  ⭐ 못 찾으면 **터지는 가드**가 붙어 있다 — 기반이 바뀌었는데 앱이 옛 이름을 들고 있는 상태다.
+* **로그** (`_TailModule` · `transport`) — 평시엔 로거 이름을 안 싣고, 경고 이상에서만
+  **앞머리 `Warning:`/`Error:`** + **꼬리 `(module: …)`**.
+  ⛔ **방향 표시 `>>>`/`<<<` 를 둘 다 뗐다** — `SRC>DST` 가 이미 방향을 말한다.
+  ⭐ **키보드 줄은 노드 표기를 떼고, 그 에코는 안 찍는다** (`_keyboard_line`/
+  `_trim_keyboard`) — 콘솔 응답은 자기 자신에게 UDP 로 나갔다 되돌아와 버려지는
+  **헛된 왕복**이라 한 메시지가 두 줄로 보였다.
+  ⚠️ 와이어의 `ERROR:`/`DONE:`(메시지 타입)과 로그의 `Error:`/`Warning:`(수준)은
+  **다른 물건**이다 — 하나는 상대에게 보낸 응답, 하나는 우리 기록이다.
+
+⚠️ `ics_sim` 자신의 `SHOPEN`/`SHCLOSE` 는 **그대로다** — 뜻을 바꾼 것은 ICG 쪽 재정의뿐이다.
+
 ## ⚠️ `ABORT` 가 노출 번호를 되감는다 (2026-09-07, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.40**
 
 이 폴더의 `state.py`·`sequencer.py` 를 **`ics_archon` 세션이 고쳤다** (목 지시로 연 것이다).

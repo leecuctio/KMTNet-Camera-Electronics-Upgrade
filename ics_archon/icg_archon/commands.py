@@ -5,7 +5,7 @@
 레거시 계승: ICG 는 ICS 와 **같은 명령 테이블**을 썼으므로(`PAP7KX.CMD`,
 icg_legacy_report 8.1절) `OBJECT`/`DARK`/`EXP`/`GO`/`STOP`/`ABORT` 등은
 `ics_sim.commands.Dispatcher` 를 상속해서 그대로 받는다.  실측 관측된
-전용 명령은 `GUIDEEXP` 하나다 (5.2절 -- 응답 문구까지 계승).
+전용 명령은 `GUIEXP` 하나다 (레거시 실측은 `GUIDEEXP` -- 2026-09-08 에 줄였다).
 
 추가 (운영자 요구 2026-08-31):
 
@@ -92,7 +92,8 @@ log = logging.getLogger('icg_archon.cmd')
 #: emitter 의 커맨드워드 어휘에 icg 몫을 더한다 -- `validate()` 가 이 표로
 #: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다
 #: (`unknown_cmdword` -- `emit.violations` 에 쌓이고 경고 로그가 난다).
-ICG_COMMANDS = frozenset({'GUIDEEXP', 'HK', 'HKDATA', 'RADIONODE', 'EXPENABLE',
+ICG_COMMANDS = frozenset({'GUIEXP', 'HK', 'HKDATA', 'RADIONODE', 'EXPENABLE',
+                          'TRIGOUTFORCE', 'TRIGOUTLEVEL',
                           'HTRSET', 'HTRFORCE', 'HTRRAMP',
                           'HTRPID', 'VACGAUGE',
                           'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON'})
@@ -171,27 +172,30 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 return Reply.error('EXP', 'Invalid exposure time: %s' % arg)
         return Reply.done('EXP', 'ExpTime=%g seconds.' % st.exptime)
 
-    def cmd_guideexp(self, msg: Message, target: Target) -> Reply:
-        """GUIDEEXP <초> -- 가이드 노출시간(독출 개시 간격) 설정.
+    def cmd_guiexp(self, msg: Message, target: Target) -> Reply:
+        """GUIEXP <초> -- 가이드 노출시간(독출 개시 간격) 설정.
 
-        레거시 응답 문구를 계승한다 -- `DONE: GUIDEEXP GuideExp=<n> seconds.`
-        (icg_legacy_report 5.2절 실측).  값 의미는 신규 규격으로 넘어와
-        `EXPTIME` = 독출 개시 간격이다 (raw spec 10.1절) -- `EXP` 와 같은
-        상태 필드를 채우므로 어느 쪽으로 설정해도 같다 (guide 는 `EXP` 의
+        ⭐ **낱말을 `GUIDEEXP` 에서 줄였다** (운영자 2026-09-08).  값 의미는
+        `EXPTIME` = 독출 개시 간격이다 (raw spec 10.1절) -- `EXP` 와 **같은
+        상태 필드**를 채우므로 어느 쪽으로 설정해도 같다 (guide 는 `EXP` 의
         `BIAS` 가드도 풀어 뒀다 -- `cmd_exp`).
+        ⚠️ `EXP` 를 남겨 두는 것은 **초점조절 유틸리티(gmon)가 그것을 쓰기**
+        때문이다 (운영자) -- 아니었으면 `GUIEXP` 하나만 뒀다.
+        ⛔ 레거시 실측 낱말은 `GUIDEEXP` 였다(icg_legacy_report 5.2절) --
+        옛 낱말로 보내는 발신자가 있으면 `Didn't understand` 가 된다.
         """
         arg = msg.body.strip()
         if not arg:
-            return Reply.done('GUIDEEXP',
-                              'GuideExp=%g seconds.' % self.state.exptime)
+            return Reply.done('GUIEXP',
+                              'GuiExp=%g seconds.' % self.state.exptime)
         try:
             seconds = float(arg)
         except ValueError:
-            return Reply.error('GUIDEEXP', 'Invalid exposure time: %s' % arg)
+            return Reply.error('GUIEXP', 'Invalid exposure time: %s' % arg)
         if seconds < 0:
-            return Reply.error('GUIDEEXP', 'Invalid exposure time: %s' % arg)
+            return Reply.error('GUIEXP', 'Invalid exposure time: %s' % arg)
         self.state.exptime = seconds
-        return Reply.done('GUIDEEXP', 'GuideExp=%g seconds.' % seconds)
+        return Reply.done('GUIEXP', 'GuiExp=%g seconds.' % seconds)
 
     def cmd_hk(self, msg: Message, target: Target) -> Reply:
         """HK -- `HKDATA` 와 **같은 본문**을 낸다 (운영자 지시 2026-09-06).
@@ -736,6 +740,159 @@ class IcgDispatcher(sim_commands.Dispatcher):
             self._finish(dest, 'CCDFLUSH', 'Flushed=1', note)
         finally:
             self._end_op('CCDFLUSH')
+
+    # -- Trigger Out (셔터 자리의 실기 명령) --------------------------------
+    #
+    # ⛔ **guide 에는 셔터가 없다** (frame-transfer, 규격 10.1 "셔터 무관").
+    # 기반의 `SHOPEN`/`SHCLOSE` 는 상속으로 살아 있는데, guide 에서는 셔터
+    # 대신 **Archon 의 Trigger Out 선**을 세우는 뜻으로 쓴다 (운영자 2026-09-08).
+    #
+    # ⭐ **둘은 다른 물건이다**: `TRIGOUTFORCE` 는 *강제할지*, `TRIGOUTLEVEL` 은
+    # *강제했을 때 나갈 레벨*.  핀을 실제로 HIGH 로 세우려면 **둘 다** 필요하다.
+    # guide ACF 출고값은 둘 다 0 이다 (`TRIGOUTFORCE=0` = 타이밍 스크립트가 몬다).
+
+    def _trigout(self, msg: Message, word: str, key: str):  # noqa: ANN001, ANN202
+        """`TRIGOUTFORCE`/`TRIGOUTLEVEL` 공통 -- 인자 없으면 조회."""
+        ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
+        if ctrl is None:
+            return Reply.error(word, 'Controller is not available')
+        arg = msg.body.strip()
+        if not arg:
+            # ⚠️ **우리가 들고 있는 설정값**이다 (ACF 파싱 + 우리가 쓴 것).
+            # 컨트롤러에 되물은 값이 아니다 -- `set_config` 는 왕복이 실패해도
+            # 캐시를 갈아 끼운다 (11.13 F5).
+            held = ctrl.config.get(key)
+            return Reply.done(word, '%s=%s' % (
+                key, 'UNKNOWN' if held is None else held))
+        want = expen.parse(arg)
+        if want is None:
+            return Reply.error(word, _unknown(arg))
+        self.app.spawn(self._do_trigout(msg.src, word, [(key, want)]))
+        return Reply.noop()
+
+    async def _do_trigout(self, dest: str, word: str, steps) -> None:  # noqa: ANN001
+        """설정 한둘을 순서대로 쓴다.  ⛔ **순서가 뜻이다** -- `SHOPEN` 참고."""
+        ctrl = self.app.guide.ctrl
+        try:
+            for key, want in steps:
+                if key == 'TRIGOUTFORCE':
+                    await ctrl.set_trigger_forced(want)
+                else:
+                    await ctrl.set_trigger_level(want)
+        except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
+            self.emit.error(dest, word, 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, word, ' '.join(
+            '%s=%d' % (k, 1 if v else 0) for k, v in steps))
+
+    def cmd_trigoutforce(self, msg: Message, target: Target) -> Reply:
+        """TRIGOUTFORCE [ON|OFF] -- Trigger Out 을 **강제할지**.  없으면 조회.
+
+        `0` 이면 타이밍 스크립트가 몬다(ACF 출고값), `1` 이면 `TRIGOUTLEVEL` 로
+        고정.  ⚠️ science 는 이 값으로 셔터를 여닫는다(`0`=열림) -- guide 는
+        셔터가 없어 **바깥 트리거 선**을 세우는 뜻이다.
+        """
+        return self._trigout(msg, 'TRIGOUTFORCE', 'TRIGOUTFORCE')
+
+    def cmd_trigoutlevel(self, msg: Message, target: Target) -> Reply:
+        """TRIGOUTLEVEL [HIGH|LOW] -- 강제했을 때 Trigger Out 이 나갈 레벨.
+
+        ⛔ 이것만 세우면 핀은 안 바뀐다 -- `TRIGOUTFORCE` 가 `1` 이라야 나간다.
+        """
+        return self._trigout(msg, 'TRIGOUTLEVEL', 'TRIGOUTLEVEL')
+
+    #: `SHOPEN <초>` 가 띄운 자동 내림 타이머.  ⭐ 하나만 산다 -- 새 `SHOPEN`
+    #: 이나 `SHCLOSE` 가 오면 앞의 것을 끊는다 (안 끊으면 옛 타이머가 나중에
+    #: 깨어나 **방금 세운 선을 내린다**).
+    _shopen_timer = None
+
+    def cmd_shopen(self, msg: Message, target: Target) -> Reply:
+        """SHOPEN <초> -- guide 판: **Trigger Out 을 <초> 동안 HIGH 로** 세운다.
+
+        운영자 확정 2026-09-08: 세울 때 `TRIGOUTLEVEL=1` -> `TRIGOUTFORCE=1`,
+        `<초>` 뒤에 `TRIGOUTLEVEL=0` -> `TRIGOUTFORCE=0`.
+        ⭐ **세우는 순서가 레벨 먼저인 것이 중요하다** -- 강제를 먼저 걸면 그
+        찰나에 **옛 레벨**이 핀으로 나간다.  내릴 때도 같은 이유로 레벨이 먼저다.
+        ⭐ 끝이 `TRIGOUTFORCE=0` 이라 **ACF 출고 상태로 돌아간다**.
+
+        ⛔ **기반 판과 뜻이 다르다** -- science 는 셔터를 열지만 guide 에는
+        셔터가 없다 (frame-transfer).  같은 낱말·같은 인자를 쓰되 세우는 것은
+        **Archon 의 Trigger Out 선**이다.
+        ⚠️ 시한은 `cfg.scaled()` 를 탄다 (시험 축척) -- 실기 `time_scale` 은 1 이다.
+        """
+        arg = msg.body.split()
+        if not arg:
+            return Reply.error('SHOPEN', 'Missing duration (seconds)')
+        try:
+            seconds = float(arg[0])
+        except ValueError:
+            return Reply.error('SHOPEN', 'Invalid duration: %s' % arg[0])
+        if seconds < 0:
+            return Reply.error('SHOPEN', 'Invalid duration: %s' % arg[0])
+        ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
+        if ctrl is None:
+            return Reply.error('SHOPEN', 'Controller is not available')
+        self._cancel_shopen_timer()
+        self.app.spawn(self._do_shopen(msg.src, seconds))
+        return Reply.noop()
+
+    def _cancel_shopen_timer(self) -> None:
+        timer, self._shopen_timer = self._shopen_timer, None
+        if timer is not None and not timer.done():
+            timer.cancel()
+
+    async def _do_shopen(self, dest: str, seconds: float) -> None:
+        """세우고 -> 기다리고 -> 내린다.  ⛔ 내림은 **취소돼도 안 흘린다**."""
+        import asyncio
+        ctrl = self.app.guide.ctrl
+        try:
+            await ctrl.set_trigger_level(True)
+            await ctrl.set_trigger_forced(True)
+        except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
+            self.emit.error(dest, 'SHOPEN', 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, 'SHOPEN',
+                       'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 Sec=%g' % seconds)
+        self._shopen_timer = asyncio.current_task()
+        try:
+            await asyncio.sleep(self.cfg.scaled(seconds))
+        except asyncio.CancelledError:
+            # ⭐ `SHCLOSE` 나 새 `SHOPEN` 이 끊었다 -- 그쪽이 선을 책임진다.
+            raise
+        self._shopen_timer = None
+        try:
+            await ctrl.set_trigger_level(False)
+            await ctrl.set_trigger_forced(False)
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, 'SHCLOSE', 'Failed: %s' % exc)
+            return
+        # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보라 낱말을
+        # `SHCLOSE` 로 낸다 (한 요청에 `DONE` 이 둘이 되지 않게).
+        self.emit.done(dest, 'SHCLOSE',
+                       'TRIGOUTLEVEL=0 TRIGOUTFORCE=0 (auto after %gs)' % seconds)
+
+    def cmd_shclose(self, msg: Message, target: Target) -> Reply:
+        """SHCLOSE -- guide 판: **선을 내리고 타이밍 스크립트에 돌려준다**.
+
+        `TRIGOUTLEVEL=0` -> `TRIGOUTFORCE=0`.  ⭐ **순서가 뜻이다** -- 레벨을
+        먼저 내리고 강제를 푼다.  거꾸로 하면 강제를 푼 뒤 레벨을 만지는 셈이라
+        그 사이 핀이 HIGH 로 남는다.
+        ⭐ 끝이 `TRIGOUTFORCE=0` 이라 **ACF 출고 상태로 돌아간다** -- 한 번
+        쓰고 나서 선이 강제된 채 남지 않는다.
+        ⛔ **`SHOPEN <초>` 의 타이머도 끊는다** -- 안 끊으면 옛 타이머가 나중에
+        깨어나 그때 세워져 있던 선을 내린다.
+        """
+        self._cancel_shopen_timer()
+        return self._trigout_pair(msg, 'SHCLOSE',
+                                  [('TRIGOUTLEVEL', False),
+                                   ('TRIGOUTFORCE', False)])
+
+    def _trigout_pair(self, msg: Message, word: str, steps):  # noqa: ANN001, ANN202
+        ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
+        if ctrl is None:
+            return Reply.error(word, 'Controller is not available')
+        self.app.spawn(self._do_trigout(msg.src, word, steps))
+        return Reply.noop()
 
     def cmd_ccdpowon(self, msg: Message, target: Target) -> Reply:
         """CCDPOWON -- CCD 전원 ON (`POWERON` + `poweron_wait` 초의 flush 대기).

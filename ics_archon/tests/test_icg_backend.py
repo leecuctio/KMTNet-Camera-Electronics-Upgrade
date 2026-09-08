@@ -64,7 +64,7 @@ def make_cfgs(tmp_path, fake: FakeArchon):  # noqa: ANN001, ANN201
     icfg.acf = {'G': str(acf)}
     icfg.poweron_wait = 0.0
     icfg.frame_poll = 0.01
-    # 이 파일의 시간 전제(GUIDEEXP 2 = IntMS 0 · 두 홉 창 …)는 설정 가능한 최소 노출시간 2.0 으로 쓰였다 --
+    # 이 파일의 시간 전제(GUIEXP 2 = IntMS 0 · 두 홉 창 …)는 설정 가능한 최소 노출시간 2.0 으로 쓰였다 --
     # 기본값이 1.3 으로 바뀐 뒤(2026-09-05)에도 그 전제를 유지한다.
     icfg.exptime_min = 2.0
     icfg.progress_step = 0
@@ -242,7 +242,7 @@ def test_abort_disarms_the_running_sequence(tmp_path, monkeypatch):  # noqa: ANN
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')      # IcgCfg 기본 exptime_min 은 1.3(설정 가능한 최소 노출시간) -- 2.0 요청은 IntMS=700 이다 (2026-09-05)
+                app.transport.feed('abc>ICG GUIEXP 2')      # IcgCfg 기본 exptime_min 은 1.3(설정 가능한 최소 노출시간) -- 2.0 요청은 IntMS=700 이다 (2026-09-05)
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')           # 21 독출 · 20 저장
                 for _ in range(400):
@@ -352,7 +352,7 @@ def test_abort_then_shutdown_loads_exposures_zero_before_poweroff(tmp_path, monk
 
         async def run():  # noqa: ANN202
             await app.start()
-            app.transport.feed('abc>ICG GUIDEEXP 2')
+            app.transport.feed('abc>ICG GUIEXP 2')
             await asyncio.sleep(0.02)
             app.transport.feed('abc>ICG go 20')
             for _ in range(400):
@@ -453,7 +453,7 @@ def test_go_right_after_abort_starts_on_a_clean_baseline(tmp_path, monkeypatch):
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')
+                app.transport.feed('abc>ICG GUIEXP 2')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await _first_wrote(app)
@@ -491,7 +491,7 @@ def test_stop_disarms_and_drains_before_idle(tmp_path, monkeypatch):  # noqa: AN
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')
+                app.transport.feed('abc>ICG GUIEXP 2')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await _first_wrote(app)
@@ -541,7 +541,7 @@ def test_two_frame_tail_is_drained_when_disarm_lands_late(tmp_path, monkeypatch,
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')
+                app.transport.feed('abc>ICG GUIEXP 2')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await _first_wrote(app)

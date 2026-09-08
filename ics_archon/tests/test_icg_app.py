@@ -62,7 +62,7 @@ async def _drive(tmp_path, script):  # noqa: ANN001, ANN201
 @pytest.fixture()
 def run_go3(tmp_path):  # noqa: ANN201
     return asyncio.run(_drive(tmp_path, [
-        'abc>ICG GUIDEEXP 2',
+        'abc>ICG GUIEXP 2',
         'abc>ICG go 3',
     ]))
 
@@ -130,7 +130,7 @@ def test_messages_follow_the_wrote_and_idle_forms(run_go3):
     text = '\n'.join(sent)
     assert text.count('Wrote LASTFILE=') == 3
     assert 'DONE: EXPSTATUS=IDLE' in text
-    assert 'DONE: GUIDEEXP GuideExp=2 seconds.' in text
+    assert 'DONE: GUIEXP GuiExp=2 seconds.' in text
     assert app.emit.violations == [] if hasattr(app.emit, 'violations') else True
 
 
@@ -154,7 +154,7 @@ def test_readout_failure_reports_error_and_returns_to_idle(tmp_path):
         app.seq.backend = app.guide
         await app.start()
         try:
-            app.transport.feed('abc>ICG GUIDEEXP 1')
+            app.transport.feed('abc>ICG GUIEXP 1')
             await asyncio.sleep(0.02)
             app.transport.feed('abc>ICG go')
             await asyncio.sleep(0.02)
@@ -187,7 +187,7 @@ def test_collision_bumps_number_but_keeps_expid(tmp_path):
                 cfg.paths.data_dir,
                 '%s.%s.%06d.G.fits' % (site, date, nxt))
             open(taken, 'wb').close()
-            app.transport.feed('abc>ICG GUIDEEXP 1')
+            app.transport.feed('abc>ICG GUIEXP 1')
             await asyncio.sleep(0.02)
             app.transport.feed('abc>ICG go')
             await asyncio.sleep(0.02)
@@ -321,7 +321,7 @@ def test_go_is_refused_while_locked(tmp_path):  # noqa: ANN001
     """⛔ 잠겨 있으면 `GO` 가 시작하지 않는다 -- 파일도 안 생긴다."""
     app, sent = _drive_lines(tmp_path, [
         'abc>ICG EXPENABLE OFF',
-        'abc>ICG GUIDEEXP 2',
+        'abc>ICG GUIEXP 2',
         'abc>ICG go 3',
     ])
     assert any('Exposure is disabled (EXPENABLE OFF)' in s for s in sent), sent
@@ -342,7 +342,7 @@ def test_expenable_off_stops_a_running_acquisition(tmp_path):  # noqa: ANN001
         app = IcgArchon(cfg, icfg, backend='sim')
         await app.start()
         try:
-            app.transport.feed('abc>ICG GUIDEEXP 2')
+            app.transport.feed('abc>ICG GUIEXP 2')
             await asyncio.sleep(0.02)
             app.transport.feed('abc>ICG go 5')
             await asyncio.sleep(0.05)

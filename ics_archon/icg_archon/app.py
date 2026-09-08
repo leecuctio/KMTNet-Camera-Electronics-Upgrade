@@ -5,7 +5,7 @@
 `ics_archon.app.IcsArchon` 과 같은 상속 골격이되 갈아 끼우는 폭이 넓다:
 
 * **시퀀서** -- science 노출 상태기 대신 `GuideSequencer` (frame-transfer).
-* **디스패처** -- `IcgDispatcher` (+`GUIDEEXP`/`HK`/`RADIONODE`).
+* **디스패처** -- `IcgDispatcher` (+`GUIEXP`/`HK`/`RADIONODE`).
 * **백엔드** -- `GuideBackend`(실기) / `SimGuideBackend`(메시지 층 회귀).
   `ics_sim` 의 `DetectorBackend` 계약을 쓰지 않으므로 `make_backend()` 경로
   밖이다 -- 부모가 만든 science 시퀀서·백엔드는 버려진다 (아래 주석).
@@ -82,14 +82,19 @@ class IcgArchon(IcsSim):
     def console_help(self):  # noqa: ANN201
         """기반 명령 + **guide 몫**  (운영자 지시 2026-09-07).
 
-        ⚠️ 기반 절의 IC 레벨 명령(`shopen` 등)은 상속으로 **살아 있다** --
-        guide 에는 셔터가 없지만 응답은 하므로 감추지 않는다.
+        ⚠️ 기반 절의 IC 레벨 명령은 상속으로 **살아 있다** -- 응답하는 것을
+        감추면 그것대로 거짓말이다.  ⛔ 다만 **`shopen`/`shclose` 는 뜻이 다르다**
+        (운영자 2026-09-08): guide 에는 셔터가 없어 **Trigger Out 선**을
+        세우고/내린다 (`IcgDispatcher.cmd_shopen`).  그 사실이 도움말에 보이도록
+        기반 절의 대사를 **guide 판으로 갈아 끼운다** (`console.extend_help` 의
+        `swap=`) -- 대사를 그대로 두면 도움말이 "셔터 개방" 이라고 거짓말한다.
         ⛔ 표를 손으로 맞추지 않는다 -- `tests/test_console.py` 가 이 목록과
         `IcgDispatcher` 의 `cmd_*` 를 양방향으로 대조한다.
         """
         return console.extend_help(
             ('guide 취득', (
-                ('guideexp <sec>', '가이드 노출시간 = 독출 개시 간격'),
+                ('guiexp <sec>',
+                 '가이드 노출시간 = 독출 개시 간격 -- `exp` 와 같은 값'),
                 ('expenable [on|off]', '노출 잠금 -- 인자 없으면 조회'),
             )),
             ('CCD 조작 (실기)', (
@@ -97,6 +102,10 @@ class IcgArchon(IcsSim):
                  '유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (프레임 없음)'),
                 ('ccdpowon', 'CCD 전원 ON -- poweron_wait 뒤에 DONE'),
                 ('ccdpowoff', 'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
+                ('trigoutforce [on|off]',
+                 'Trigger Out 을 강제할지 -- 0 이면 타이밍 스크립트가 몬다'),
+                ('trigoutlevel [high|low]',
+                 '강제했을 때 나갈 레벨 -- ⛔ FORCE=1 이라야 핀에 나간다'),
                 ('archon <원문>',
                  '컨트롤러 바이패스 -- guide 는 한 대라 태그가 없다'),
             )),
@@ -115,6 +124,12 @@ class IcgArchon(IcsSim):
                  'status | connect | disconnect | reconnect | enable | '
                  'disable -- 장치 이름이 없으면 폴링 자체'),
             )),
+            swap={
+                # ⛔ guide 에는 셔터가 없다 -- 이 둘은 Trigger Out 선을 세운다.
+                'shopen':
+                    'Trigger Out 을 <sec> 동안 HIGH 로 -- 셔터가 아니다',
+                'shclose': '선을 즉시 내린다 (LEVEL=0 -> FORCE=0, 타이머도 끊는다)',
+            },
         )
 
     # -- 수명 ---------------------------------------------------------------

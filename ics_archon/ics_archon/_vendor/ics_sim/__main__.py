@@ -81,6 +81,33 @@ def apply_args(cfg: config.SimConfig, args: argparse.Namespace) -> None:
         cfg.logging.level = args.log_level
 
 
+class _TailModule(logging.Formatter):
+    """경고 이상이면 **`Warning:`/`Error:` 앞머리**와 **`(module: …)` 꼬리**를 붙인다.
+
+    운영자 지시 2026-09-08: *"실패나 오류의 경우에, 콘솔 메시지여도 `Error:` 나
+    `Warning:` 을 붙여줘"* · *"메시지 뒤에 `(module: xxxx)` 이런 식으로"*.
+
+    ⭐ 앞머리와 꼬리가 나뉜 것은 **읽는 차례** 때문이다 -- *무엇인지*(경고냐
+    오류냐)는 먼저 보여야 하고, *어디서*(모듈)는 필요할 때만 찾으면 된다.
+    ⚠️ 문턱이 `WARNING` 이다(`ERROR` 아님) -- 이 프로그램의 진단은 대부분
+    경고로 나간다 (폴링 실패·한계 밖·형태 어긋남).  거기서 모듈이 안 보이면
+    단서가 없다.  ⛔ 좁히려면 두 자리를 `ERROR` 로 올릴 것.
+    ⚠️ 평시(INFO)에는 **아무것도 안 붙는다** -- 와이어 줄이 가장 잦아서다.
+    """
+
+    #: 수준 -> 앞머리.  `CRITICAL` 도 `Error:` 다 (운영자가 든 낱말이 둘이다).
+    _WORD = ((logging.ERROR, 'Error: '), (logging.WARNING, 'Warning: '))
+
+    def format(self, record: logging.LogRecord) -> str:  # noqa: A003
+        out = super().format(record)
+        if record.levelno < logging.WARNING:
+            return out
+        head = next(w for lvl, w in self._WORD if record.levelno >= lvl)
+        # 시각 뒤·본문 앞에 끼운다 -- `asctime` 은 형식이 정한 맨 앞이다.
+        stamp, sep, body = out.partition(' ')
+        return '%s%s%s%s (module: %s)' % (stamp, sep, head, body, record.name)
+
+
 def setup_logging(cfg: config.SimConfig) -> None:
     level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
@@ -88,10 +115,17 @@ def setup_logging(cfg: config.SimConfig) -> None:
         handlers.append(logging.FileHandler(cfg.logging.file, encoding='utf-8'))
     logging.basicConfig(
         level=level,
-        format='%(asctime)s.%(msecs)03d %(name)-18s %(message)s',
         datefmt='%Y-%m-%dT%H:%M:%S',
         handlers=handlers,
     )
+    # ⭐ **평시엔 모듈 이름을 안 싣고, 경고 이상에서만 꼬리에 붙인다**
+    # (운영자 2026-09-08).  콘솔에서 가장 잦은 줄은 와이어 추적인데 거기엔
+    # `ics_sim.transport` 18자가 아무것도 더해 주지 않는다.  반대로 문제가
+    # 났을 때는 **어느 모듈인지가 첫 단서**라 그때는 남긴다.
+    fmt = _TailModule('%(asctime)s.%(msecs)03d %(message)s',
+                      datefmt='%Y-%m-%dT%H:%M:%S')
+    for h in logging.getLogger().handlers:
+        h.setFormatter(fmt)
 
 
 async def amain(cfg: config.SimConfig) -> int:

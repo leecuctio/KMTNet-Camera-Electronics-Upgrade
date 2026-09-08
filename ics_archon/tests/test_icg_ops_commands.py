@@ -172,7 +172,7 @@ def test_go_and_the_other_ops_wait_for_a_power_on_in_flight(tmp_path, monkeypatc
         await asyncio.sleep(0.3)
 
     monkeypatch.setattr(SimGuideBackend, 'power_ccd', slow_power)
-    app, sent = _drive(tmp_path, ['abc>ICG CCDPOWON', 'abc>ICG GUIDEEXP 1',
+    app, sent = _drive(tmp_path, ['abc>ICG CCDPOWON', 'abc>ICG GUIEXP 1',
                                   'abc>ICG GO 1', 'abc>ICG CCDFLUSH',
                                   'abc>ICG ARCHON STATUS'], settle=0.5)
     text = '\n'.join(sent)
@@ -194,7 +194,7 @@ def test_a_failed_flush_is_reported_and_releases_the_gate(tmp_path, monkeypatch)
         raise GuideBackendError('CCD flush failed: guide ACF has no FirstFlush')
 
     monkeypatch.setattr(SimGuideBackend, 'flush_ccd', boom)
-    _app, sent = _drive(tmp_path, ['abc>ICG CCDFLUSH', 'abc>ICG GUIDEEXP 1',
+    _app, sent = _drive(tmp_path, ['abc>ICG CCDFLUSH', 'abc>ICG GUIEXP 1',
                                    'abc>ICG GO 1'])
     assert any('ERROR: CCDFLUSH Failed: CCD flush failed' in s for s in sent), sent
     assert any('Wrote LASTFILE=' in s for s in sent), '실패 뒤 GO 가 막혀 있다'
@@ -210,7 +210,7 @@ def test_ccdflush_is_allowed_while_locked_and_says_so(tmp_path):  # noqa: ANN001
     `GO` 는 그대로 막힌다 -- 잠금 자체가 풀린 것이 아님을 함께 본다.
     """
     app, sent = _drive(tmp_path, ['abc>ICG EXPENABLE OFF', 'abc>ICG CCDFLUSH',
-                                  'abc>ICG GUIDEEXP 1', 'abc>ICG GO 1'])
+                                  'abc>ICG GUIEXP 1', 'abc>ICG GO 1'])
     assert any(s.endswith('DONE: CCDFLUSH Flushed=1 (ExpEnable=OFF)') for s in sent), sent
     assert any('Exposure is disabled (EXPENABLE OFF)' in s for s in sent), sent
     assert not app.expenable.allowed
@@ -405,3 +405,129 @@ def test_real_backend_path_flushes_once_powers_and_bypasses(tmp_path, monkeypatc
         assert app.emit.violations == [], app.emit.violations
     finally:
         fake.shutdown()
+
+
+# -- Trigger Out (셔터 자리) -----------------------------------------------
+#
+# ⛔ **guide 에는 셔터가 없다** (frame-transfer).  기반의 `SHOPEN`/`SHCLOSE` 를
+# 살려 두되 **Archon 의 Trigger Out 선**을 세우는 뜻으로 쓴다 (운영자 2026-09-08).
+# ⭐ `TRIGOUTFORCE`(강제할지)와 `TRIGOUTLEVEL`(강제했을 때의 레벨)은 **다른
+# 물건**이라, 핀을 실제로 HIGH 로 세우려면 둘 다 필요하다.
+
+
+class _Rec:
+    """왕복을 가로채 **순서까지** 붙잡는 가짜 컨트롤러 표면."""
+
+    def __init__(self, held=None):  # noqa: ANN001
+        self.calls = []
+        self.config = dict(held or {'TRIGOUTFORCE': '0', 'TRIGOUTLEVEL': '0'})
+
+    async def set_trigger_forced(self, forced):  # noqa: ANN001, ANN202
+        self.calls.append(('TRIGOUTFORCE', bool(forced)))
+        self.config['TRIGOUTFORCE'] = '1' if forced else '0'
+
+    async def set_trigger_level(self, high):  # noqa: ANN001, ANN202
+        self.calls.append(('TRIGOUTLEVEL', bool(high)))
+        self.config['TRIGOUTLEVEL'] = '1' if high else '0'
+
+
+def _trig(tmp_path, script, held=None, settle=0.1):  # noqa: ANN001, ANN202
+    """스크립트를 먹이고 (호출 순서, 발신) 을 돌려준다."""
+    rec = _Rec(held)
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide.ctrl = rec
+        await app.start()
+        try:
+            for line in script:
+                app.transport.feed(line)
+                await asyncio.sleep(0.05)
+            await asyncio.sleep(settle)
+        finally:
+            await app.stop()
+        return rec.calls, [str(s) for s in app.transport.sent_log]
+
+    return asyncio.run(run())
+
+
+def test_shopen_raises_the_level_before_forcing(tmp_path):
+    """`SHOPEN <초>` = `TRIGOUTLEVEL=1` -> `TRIGOUTFORCE=1` (운영자 2026-09-08).
+
+    ⭐ **레벨이 먼저인 것이 중요하다** -- 강제를 먼저 걸면 그 찰나에 **옛 레벨**이
+    핀으로 나간다.
+    """
+    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 10'])
+    assert calls[:2] == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True)], calls
+    assert any('DONE: SHOPEN' in s and 'Sec=10' in s for s in sent), sent[-3:]
+
+
+def test_shopen_lowers_the_line_when_the_timer_expires(tmp_path):
+    """⭐ **<초> 뒤에 스스로 내린다** -- 내림도 레벨 먼저다.
+
+    ⚠️ 시한은 `cfg.scaled()` 를 타므로 시험 축척(0.02)에서 짧다.
+    """
+    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN 2'], settle=0.4)
+    assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True),
+                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', False)], calls
+    assert any('DONE: SHCLOSE' in s and 'auto' in s for s in sent), sent[-3:]
+
+
+def test_shclose_cancels_a_pending_shopen_timer(tmp_path):
+    """⛔ 옛 타이머가 나중에 깨어나 **그때 세워져 있던 선을 내리면** 안 된다.
+
+    ⚠️ 시한이 **명령 간격보다 길어야** 시험이 뜻을 갖는다 -- 축척 0.02 에서
+    `SHOPEN 2` 는 0.04 s 라 `SHCLOSE` 가 닿기 전에 타이머가 먼저 터진다
+    (그러면 취소를 안 해도 통과해 버린다).  `20` 이면 0.4 s 다.
+    """
+    calls, _sent = _trig(tmp_path, ['abc>ICG SHOPEN 20', 'abc>ICG SHCLOSE'],
+                         settle=0.6)
+    # 세움 2 + SHCLOSE 2 뿐이어야 한다 -- 타이머가 살아 있으면 2 가 더 붙는다.
+    assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True),
+                     ('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', False)], calls
+
+
+def test_shclose_drops_the_level_before_releasing_the_force(tmp_path):
+    """⭐ **순서가 뜻이다** -- 레벨을 먼저 내리고 강제를 푼다.
+
+    거꾸로 하면 강제를 푼 뒤 레벨을 만지는 셈이라 그 사이 핀이 HIGH 로 남는다.
+    ⭐ 끝이 `TRIGOUTFORCE=0` 이라 **ACF 출고 상태로 돌아간다**.
+    """
+    calls, sent = _trig(tmp_path, ['abc>ICG SHCLOSE'])
+    assert calls == [('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', False)], calls
+    assert any('DONE: SHCLOSE' in s for s in sent), sent[-3:]
+
+
+def test_shopen_needs_a_duration(tmp_path):
+    """⛔ 인자가 없으면 거절한다 -- 얼마나 세울지가 명령의 핵심이다."""
+    calls, sent = _trig(tmp_path, ['abc>ICG SHOPEN', 'abc>ICG SHOPEN abc'])
+    assert calls == [], '거절하고도 왕복했다'
+    assert sum('ERROR: SHOPEN' in s for s in sent) == 2, sent[-4:]
+
+
+def test_trigoutforce_and_level_are_separate_keys(tmp_path):
+    """둘은 **다른 설정 키**다 -- 한쪽만 세우면 한쪽만 간다."""
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUTFORCE ON',
+                                    'abc>ICG TRIGOUTLEVEL HIGH'])
+    assert calls == [('TRIGOUTFORCE', True), ('TRIGOUTLEVEL', True)], calls
+
+
+def test_the_boolean_vocabulary_is_the_shared_one(tmp_path):
+    """⭐ `true=enable=high=on=1` · `false=disable=low=off=0` (운영자 2026-09-08).
+
+    ⛔ 어휘 밖은 **기본값으로 안 떨어뜨린다** -- 무엇이 허용인지 대고 거절한다.
+    """
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUTLEVEL enable',
+                                   'abc>ICG TRIGOUTFORCE disable',
+                                   'abc>ICG TRIGOUTLEVEL sideways'])
+    assert calls == [('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', False)], calls
+    assert any('ERROR: TRIGOUTLEVEL' in s and 'Unrecognized' in s
+               for s in sent), sent[-3:]
+
+
+def test_no_argument_reports_what_we_hold(tmp_path):
+    """인자가 없으면 조회.  ⚠️ **우리가 들고 있는 설정값**이지 되물은 값이 아니다."""
+    _calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUTFORCE'],
+                         held={'TRIGOUTFORCE': '1', 'TRIGOUTLEVEL': '0'})
+    assert any('DONE: TRIGOUTFORCE TRIGOUTFORCE=1' in s for s in sent), sent[-3:]

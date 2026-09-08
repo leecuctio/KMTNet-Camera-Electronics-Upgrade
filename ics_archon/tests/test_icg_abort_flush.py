@@ -47,9 +47,9 @@ def _app(tmp_path, fake, monkeypatch):  # noqa: ANN001, ANN202
     icfg.hk.query_aux = False
     # ⭐ 하한을 **명시**한다 -- 시험 ACF 는 타이밍 스크립트가 없어 `base_exptime()` 가
     # `exptime_min` 으로 물러나는데, `make_cfgs` 는 `IcgCfg()` 기본값을 쓴다(ini 아님).
-    # 기본값이 바뀌면 `GUIDEEXP 2` 의 IntMS 가 0 이 아니게 되어 "독출 중/적분 중" 전제가
+    # 기본값이 바뀌면 `GUIEXP 2` 의 IntMS 가 0 이 아니게 되어 "독출 중/적분 중" 전제가
     # 조용히 어긋난다 (실제로 기본 1.3 으로 IntMS=700 이 나와 (b) 의 전제가 깨졌다).
-    icfg.exptime_min = 2.0          # GUIDEEXP 2 -> IntMS 0 · GUIDEEXP 3 -> IntMS 1000
+    icfg.exptime_min = 2.0          # GUIEXP 2 -> IntMS 0 · GUIEXP 3 -> IntMS 1000
     import icg_archon.app as app_mod
     monkeypatch.setattr(app_mod, 'validate', lambda cfg, backend: [])
     return IcgArchon(cfg, icfg, backend='icg_archon')
@@ -99,7 +99,7 @@ def test_abort_during_integration_resets_and_flushes_without_a_frame(tmp_path, m
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 3')     # 하한 2.0 + IntMS 1000 -- 가짜 적분 1 s
+                app.transport.feed('abc>ICG GUIEXP 3')     # 하한 2.0 + IntMS 1000 -- 가짜 적분 1 s
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await tb._first_wrote(app)                   # 첫 장 저장 -- 둘째 장은 적분 중
@@ -154,7 +154,7 @@ def test_abort_during_readout_leaves_the_buffer_incomplete(tmp_path, monkeypatch
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')     # IntMS=0 -- 프레임이 연달아
+                app.transport.feed('abc>ICG GUIEXP 2')     # IntMS=0 -- 프레임이 연달아
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 t_go = time.monotonic()
@@ -205,7 +205,7 @@ def test_expenable_off_takes_the_abort_flush_path(tmp_path, monkeypatch):  # noq
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 3')
+                app.transport.feed('abc>ICG GUIEXP 3')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await tb._first_wrote(app)
@@ -251,7 +251,7 @@ def test_stop_still_saves_the_current_frame_without_resettiming(tmp_path, monkey
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')
+                app.transport.feed('abc>ICG GUIEXP 2')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await tb._first_wrote(app)
@@ -297,7 +297,7 @@ def test_go_right_after_abort_flush_makes_exactly_two_frames(tmp_path, monkeypat
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')
+                app.transport.feed('abc>ICG GUIEXP 2')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await tb._first_wrote(app)
@@ -351,7 +351,7 @@ def test_abort_falls_back_to_exposures_zero_when_the_flush_is_refused(tmp_path, 
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 2')
+                app.transport.feed('abc>ICG GUIEXP 2')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await tb._first_wrote(app)
@@ -398,7 +398,7 @@ def test_abort_then_shutdown_sends_resettiming_before_poweroff(tmp_path, monkeyp
 
         async def run():  # noqa: ANN202
             await app.start()
-            app.transport.feed('abc>ICG GUIDEEXP 3')
+            app.transport.feed('abc>ICG GUIEXP 3')
             await asyncio.sleep(0.02)
             app.transport.feed('abc>ICG go 20')
             await tb._first_wrote(app)
@@ -444,7 +444,7 @@ def test_abort_rewinds_the_expnum_record(tmp_path, monkeypatch):  # noqa: ANN001
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 3')
+                app.transport.feed('abc>ICG GUIEXP 3')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await tb._first_wrote(app)       # 첫 장 저장 -- 둘째 장은 적분 중
@@ -480,7 +480,7 @@ def test_shutdown_also_rewinds(tmp_path, monkeypatch):  # noqa: ANN001
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 3')
+                app.transport.feed('abc>ICG GUIEXP 3')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 20')
                 await tb._first_wrote(app)
@@ -525,7 +525,7 @@ def test_cycle_failure_also_rewinds(tmp_path, monkeypatch):  # noqa: ANN001
         async def run():  # noqa: ANN202
             await app.start()
             try:
-                app.transport.feed('abc>ICG GUIDEEXP 3')
+                app.transport.feed('abc>ICG GUIEXP 3')
                 await asyncio.sleep(0.02)
                 app.transport.feed('abc>ICG go 5')
                 await app.seq.wait()

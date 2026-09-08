@@ -62,7 +62,7 @@ def test_ics_ops_commands_are_documented(word):
     assert word in console.command_names(ICS_HELP)
 
 
-@pytest.mark.parametrize('word', ['guideexp', 'expenable', 'radionode',
+@pytest.mark.parametrize('word', ['guiexp', 'expenable', 'radionode',
                                   'vacgauge', 'htrset', 'htrforce',
                                   'htrramp', 'htrpid', 'ccdflush',
                                   'ccdpowon', 'ccdpowoff', 'archon',

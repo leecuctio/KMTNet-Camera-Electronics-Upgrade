@@ -998,6 +998,17 @@ class ArchonController:
         await self.set_config('TRIGOUTFORCE', '1' if forced else '0')
         await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
 
+    async def set_trigger_level(self, high: bool) -> None:
+        """`TRIGOUTLEVEL` -- **강제했을 때** Trigger Out 이 나갈 레벨.
+
+        ⛔ `TRIGOUTFORCE` 와 **다른 물건이다**: 이것은 레벨이고 그것은 *강제할지*
+        다.  `TRIGOUTFORCE=0` 이면 타이밍 스크립트가 몰므로 이 값은 안 나간다.
+        ⚠️ 그래서 핀을 실제로 HIGH 로 세우려면 **둘 다** 필요하다 --
+        `TRIGOUTLEVEL=1` + `TRIGOUTFORCE=1`.  guide ACF 의 출고값은 둘 다 0 이다.
+        """
+        await self.set_config('TRIGOUTLEVEL', '1' if high else '0')
+        await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
+
     # -- 노출 -------------------------------------------------------------
     #
     # **프레임 상태는 프레임이 들고 간다 (`FrameTicket`).**  컨트롤러 필드에

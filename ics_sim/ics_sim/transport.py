@@ -109,9 +109,35 @@ class UdpEndpoint:
         self._last_sender = addr
         self._peers[msg.src.upper()] = (addr, time.monotonic())
         self.recv_log.append(msg.raw)
-        if self.cfg.logging.wire:
-            log.info('<<< %s', msg.raw)
+        if self.cfg.logging.wire and not self._keyboard_line(msg.raw):
+            # ⛔ **키보드 에코는 안 찍는다** (운영자 2026-09-08).  콘솔 명령의
+            # 응답은 우리 자신에게 나갔다가 되돌아와 `_on_message` 가 버리는데
+            # (self-echo), 그것까지 찍으면 **한 메시지가 두 줄로 보인다**.
+            # ⭐ 방향 표시(`<<<`)도 뗐다 -- `SRC>DST` 가 이미 방향을 말한다
+            # (목적지가 우리면 들어온 것).
+            log.info('%s', msg.raw)
         self._on_message(msg, addr)
+
+    def _keyboard_line(self, raw: str) -> bool:
+        """`ICG>ICG …` 처럼 **우리가 우리에게** 보낸 줄인가.
+
+        콘솔(키보드) 입력이 그 꼴로 조립된다 (`Console.feed`) -- 스펙 2.2절의
+        키보드 인터페이스 관례다.  ⚠️ 노드 이름이 같은 것만 본다: 남이 우리
+        앞으로 보낸 줄은 `SRC` 가 다르므로 걸리지 않는다.
+        """
+        me = (self.cfg.node.ics_id or '').upper()
+        if not me:
+            return False
+        src, _, rest = raw.partition('>')
+        dst = rest.split(' ', 1)[0] if rest else ''
+        return src.strip().upper() == me and dst.strip().upper() == me
+
+    def _trim_keyboard(self, line: str) -> str:
+        """키보드 줄이면 `SRC>DST ` 앞머리를 뗀다 -- 아니면 그대로."""
+        if not self._keyboard_line(line):
+            return line
+        _head, _, rest = line.partition(' ')
+        return rest or line
 
     def feed(self, line: str, addr: Addr = ('127.0.0.1', 0)) -> None:
         """테스트에서 소켓 없이 메시지를 주입한다."""
@@ -124,7 +150,11 @@ class UdpEndpoint:
         line = payload.rstrip(b'\r').decode('ascii', errors='replace')
         self.sent_log.append(line)
         if self.cfg.logging.wire:
-            log.info('>>> %s', line)
+            # ⭐ **방향 표시를 안 쓴다** (운영자 2026-09-08) -- `SRC>DST` 가
+            # 이미 방향을 말하므로 `>>>`/`<<<` 는 넉 자를 더할 뿐이다.
+            # ⭐ **키보드 줄은 노드 표기까지 뗀다** -- `ICG>ICG DONE: …` 의
+            # 앞 여덟 자는 *"내가 나에게"* 라 아무것도 안 알린다.
+            log.info('%s', self._trim_keyboard(line))
         self._queue.put_nowait((payload, self.route_for(dest_node), dest_node))
 
     def route_for(self, dest_node: str) -> Addr | None:
