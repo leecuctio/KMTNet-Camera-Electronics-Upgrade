@@ -8,7 +8,7 @@
 두었다 -- **그래서 이 파일이 있다.**  산문으로 적힌 규칙은 다음 사람이 틀리게
 옮기기 쉽고, 아래 규칙에는 실제로 밟기 쉬운 함정이 셋 있다.
 
-    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2617.acf
+    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2618.acf
     python tools/extract_timing_script.py acf/*.acf --out acf/          # 다시 뽑기
     python tools/extract_timing_script.py acf/*.acf --check acf/        # 대조만
 
@@ -69,7 +69,7 @@ def extract(path: str) -> tuple[str, int | None, int | None]:
     그렇고, 그것이 저장소 txt 의 서명이다.  붙이면 1 B 늘어 ACF 와의 바이트
     동일성이 깨지고 DevNote 9.10 의 주장이 조용히 거짓이 된다.  그래서
     `wc -l` 은 121/141 을 내놓지만 실제 줄 수는 122/142 이다 (`LINES=` 와 일치 --
-    guide R2617 · science R2611 기준; guide 는 R2613~R2616 이 120, 그 전이 113,
+    guide R2618 · science R2611 기준; guide 는 R2613~R2616 이 120, 그 전이 113,
     science 는 R2608 이 137 이었다.  ⭐ science R2611 은 빈 줄을 둘 빼고 둘 넣어
     **142 그대로**다).
     줄 수를 셀 때는 `grep -c ''` 나 `text.count('\\n') + 1` 을 쓴다.

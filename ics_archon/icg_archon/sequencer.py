@@ -317,7 +317,7 @@ class GuideSequencer:
                 done_mono = time.monotonic()
                 done_utc = utcnow()
 
-                # 가드는 **하드웨어 타이밍 모델이 있을 때만** 건다 -- 실기(R2617)는 늘
+                # 가드는 **하드웨어 타이밍 모델이 있을 때만** 건다 -- 실기(R2618)는 늘
                 # 있고, 스크립트 없는 시험 ACF 나 대역은 모델이 없어 기준이 없다
                 # (ini 하한 2.0 s 를 그대로 쓰면 ms 로 도는 가짜의 첫 장을 다 버린다).
                 if k == 0 and getattr(self.backend, 'timing', None) is not None:

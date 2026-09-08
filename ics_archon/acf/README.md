@@ -17,7 +17,7 @@
 | `KMTS_SCI_102_STA0287_R2611_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
 | `KMTK_SCI_113_STA0200_R2611_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
 | `KMTK_SCI_113_STA0200_R2611_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
-| `KMTK_GUI_162_STA0201_R2617.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
+| `KMTK_GUI_162_STA0201_R2618.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -40,7 +40,7 @@ Tap"** 이 그 값이다 (운영자 확인 2026-08-29).
 | science | `Pixels=1201` + 1 = **1202** | `PIXELCOUNT=`**1200** | 2 |
 
 ⚠️ **아래 `LINE<n>` 은 전부 guide 기준이다** -- science 는 같은 번호에 다른 줄이
-있다(**guide R2617 · science R2611 기준, 오프셋 +12** -- guide `LINE44`↔science
+있다(**guide R2618 · science R2611 기준, 오프셋 +12** -- guide `LINE44`↔science
 `LINE56`, `45`↔`57`, `48`↔`60`).  판을 안 밝히면 조용히 틀린 독해가 된다.
 ⭐ 더 안전한 길은 번호를 아예 안 쓰는 것이다 -- 코드가 이미 `라벨:` 블록과 호출
 이름으로 색인한다 (DevNote 11.35).
@@ -50,7 +50,7 @@ Tap"** 이 그 값이다 (운영자 확인 2026-08-29).
     LINE46  RGHIGH; CALL SkipPixelFirst(PostSkipPixels)   0
     LINE47  RGHIGH; CALL PixelFirst(OverscanPixels)       0
     LINE48  RGHIGH; CALL PixelFirst                       1   ← 인자 없는 호출 = 1개 더
-                                                              (번호는 R2617 기준)
+                                                              (번호는 R2618 기준 -- R2617 과 같다)
 
 **그래서 저장 영상은 채널(탭)당 528 컬럼**이고, guide 프레임 전체는
 **8탭 × 528 = `NAXIS1=4224`**, `NAXIS2=1033` 이다.  science 는 16탭 × 1200 =
@@ -260,6 +260,53 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
+
+## R2618 -- guide 의 **쉬는 상태를 ACF 에** (2026-09-08, 운영자)
+
+    KMTK_GUI_162_STA0201_R2617.acf  ->  ..._R2618.acf   (구판은 archive/)
+    TRIGOUTFORCE=0  ->  1                   ([CONFIG] 한 줄)
+    TRIGOUTLEVEL=0                          (그대로 -- 이미 0 이다)
+    TRIGOUTINVERT=0                         (그대로)
+
+⭐ **타이밍 스크립트는 한 글자도 안 바뀐다** -- `LINES=122` 그대로이고 **줄 번호도 안
+밀린다**.  R2617 이 치른 비용(번호 밀림 전수 수정)이 여기엔 없다.  바뀌는 것은 `[CONFIG]`
+값 한 줄이고 파일 크기도 같다.
+
+⛔ **왜 바꾸나.**  guide 는 frame-transfer 라 셔터가 없고, 트리거 선은 **우리가 붙들어 LOW 로
+고정**하는 것이 쉬는 상태다 (DevNote 11.47, 운영자 확정).  그런데 ACF 출고값이
+`TRIGOUTFORCE=0`(= *"타이밍 스크립트가 몬다"*)이라 **띄울 때마다 소프트웨어가 되돌려야**
+했다.  ⚠️ 되돌리기 전까지는 `APPLYALL` 직후 잠깐 선이 스크립트 손에 있다 -- guide 는
+`IntMS = EXPTIME - 기본 노출시간` 으로 넣으므로 타이밍 스크립트의 `IntUnit:`(`INT`)이 실제로
+서고, 그 창에 노출이 걸리면 트리거 선이 **노출마다 흔들린다**.  ACF 가 정본이 되면 그 창이
+아예 없어진다.
+
+⭐ **소프트웨어의 되돌림은 그대로 둔다** (`../icg_archon/backend.py` `ensure_trigger_resting`)
+-- ACF 는 갈릴 수 있고 `apply_acf=false` 경로도 있다.  ACF 가 맞으면 그 되돌림은 **되읽기만
+하고 아무것도 안 쓴다** (왕복 둘, 적용 0).
+
+⛔ **science ACF 5장은 안 건드린다** -- 거기서는 `TRIGOUTFORCE=0` 이 **셔터를 여는 모드**다
+(매뉴얼 p.15; `ArchonBackend` 가 `drives_shutter()` 로 가른다).  `TRIGOUTINVERT` 도 양쪽 다
+`0` 그대로다.
+
+### ⚠️ `CTRL1CFG` 헤더 값이 바뀐다 -- 자료에 보이는 변경이다
+
+`CTRLnCFG` 는 **적용 ACF 파일명에서 유도**한다 (규격 5.5절, `cfg_name_from_acf`):
+
+    CTRL1CFG= 'KMTK_GUI_162_STA0201_R2617'   ->   'KMTK_GUI_162_STA0201_R2618'
+
+파일명을 박아 두던 자리를 전수로 고쳤다:
+
+| 자리 | 무엇 |
+|---|---|
+| `../icg_archon.ini` `[icg] acf` | 배포 경로 |
+| `../tests/` 다섯 -- `test_ccdflush` · `test_ch10_reflection` · `test_icg_heater_gauge` · `test_icg_hk` · `test_icg_timing` | 시험이 읽는 ACF |
+| `../tools/probe_archon.py` · `../tools/extract_timing_script.py` | 사용법 예시 |
+| `../bench_test_plan.md` · `../icg_first_run.md` · `../SMC_CLAUDE.md` · 이 문서 표 | 문서 |
+| `../icg_archon/backend.py` · `config.py` · `sequencer.py` | *"R2610~R2617 기준"* 처럼 **현행 판을 가리키던 문면** (타이밍은 안 바뀌었으니 범위만 넓혔다) |
+
+⛔ **벤치는 `git pull` 만으로 안 간다.**  `~/AIC/Config/acf/` 에 새 파일을 복사하고
+`~/AIC/Config/icg_archon.ini` 의 `acf` 줄도 손으로 고쳐야 한다 -- 그 ini 는 자격증명이 들어
+**저장소 밖**이다.  ⚠️ 안 하면 기동이 *"acf 가 없다"* 로 죽는다 (11.46 이후 한 줄로 죽는다).
 
 ## R2617 -- `Exposure:`·`FlushFrame:` 앞에 빈 줄 (2026-09-06, 운영자)
 
