@@ -1610,9 +1610,11 @@ science `hk_stale_after` 는 **2000**.  ⭐ SEND INTERVAL 을 손으로 맞출 �
 **폐기한 ini 칸 셋**(`latest_path`·`key_header`·`secret_header`)은 남아 있으면 **기동이 경고**한다.
 ⚠️ 와이어 문구는 **ASCII** 라야 한다(한글이 `???` 로 깨졌다).
 
-⏳ **남은 것 하나 — 실기 왕복 미검증.**  운영자가 `curl` 로 친 것은 봤지만 **우리 요청이
-200 을 받는지는 아직 아무도 안 봤다.**  벤치에서 `RADIONODE CONNECT` → `STATUS` 한 번이면
-갈린다.  ⭐ 이제 목이 채울 것은 **`api_key`·`api_secret`·`device_mac` 둘**뿐이다
+✅ **실기 왕복이 첫 시도에 통했다** (2026-09-07 23:22 벤치) — `STATUS` 가
+`Backend=openapi Polling=yes hebox=ok 3s ago fsa=ok 3s ago` 다.  로그의 *"신선도 창을
+180초로 잡았다 (전송주기 60초 x3)"* 가 **인증·파싱·장치 선별·주기 자동산출**을 함께
+증명한다.  ⏳ 남은 확인은 응답 전문(`OI-16`) · 헤더 경로(`1-B`, 전원 인가 뒤)다.
+⭐ 목이 채울 것은 **`api_key`·`api_secret`·`device_mac` 둘**뿐이다
 (`base_url` 은 ini 에 실값, SEND INTERVAL 은 API 가 알려 준다).
 ⚠️ MAC 을 고를 때 `device_model` 이 **`RN320-BTH`** 인지 대조할 것 — 같은 계정의
 `SSO-FSA`(RN172)가 판박이라 잘못 적으면 그럴싸한 값이 실린다.

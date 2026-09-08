@@ -43,7 +43,7 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
 사용 권한이 즉시 제거"* — 콘솔에서 그것을 켜면 폴링이 그날로 인증 실패로 죽는다.
 
 ⛔ **KEY/SECRET 실값을 저장소 `icg_archon.ini` 에 적지 말 것.**  한 번 커밋되면 이력 재작성 없이는
-못 뺀다.  **벤치 설치본 `~/AIC/etc/icg_archon.ini` 에만** 적는다.  절차는 `README.md` 의
+못 뺀다.  **벤치 설치본 `~/AIC/Config/icg_archon.ini` 에만** 적는다.  절차는 `README.md` 의
 "Radionode 자격증명" 절.
 
 ⛔ **`stale_after` 가 재는 것은 장치의 표본시각이 아니라 우리가 폴링을 받은 시각이다** (2026-09-06 확인) -- `_store()` 가 그 자리에서 `time.monotonic()` 을 찍고, 응답의 시각 필드를 읽는 코드가 없다.  그래서 이 값이 잡는 것은 **장치 침묵이 아니라 폴링 실패**(인터넷·API 장애)뿐이고, `HKUDATE` 도 측정시각이 아니라 **마지막 폴링 성공 시각**이다.
@@ -75,7 +75,7 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
 |---|---|---|---|
 | 1 | ✅ **닫혔다 (2026-09-07, 운영자 지시)** | 종전엔 배포 `ics_archon.ini` 가 `require_xis = true` 인데 `xis_host` 가 **비어 있어** `xischeck.py:100` 이 `XisUnreachable` 을 던졌다 | 이제 배포 ini 가 **`xis_host = 127.0.0.1` · `xis_port = 6660`** 이다.  ⚠️ **허브가 다른 호스트면 그 IP 로 바꾼다** — 그대로 두면 로컬에 허브가 없을 때 기동이 멈춘다(`require_xis = false` 로 내리는 것이 그때의 탈출구다).  ⛔ 코드는 자동으로 직결로 안 넘어간다 (11.15 확정) |
 | 2 | ⚠️ **ICS 는 허브를 요구하는데 ICG 엔 그 검사가 없다** | `require_xis`·`XisGate` 는 `[archon]` 소관이라 **ICG 에 아예 없다**(`grep` 0건) — ICG 는 `xis_host` 가 비어도 조용히 뜬다 | 배포 ini 둘 다 `127.0.0.1:6660` 으로 맞춰 뒀다 (2026-09-07).  ⛔ **한쪽만 바꾸지 말 것** — 안 맞추면 `ICS→ICG` 의 `VACGAUGE OFF`·`HKDATA` 가 허브에서 버려지고, 그 실패가 조용하다 |
-| 3 | ⛔ **`~/AIC/etc/…` 는 아무도 안 읽는다** | `DEFAULT_INI = 'ics_archon.ini'` — **실행 디렉터리 기준 상대경로**다.  `~/AIC/etc` 를 읽는 코드가 `grep` 0건 | 자격증명을 그 파일에 적었으면 **`-c ~/AIC/etc/icg_archon.ini` 로 명시**하거나 그 디렉터리에서 실행한다.  안 그러면 `RADIONODE CONNECT` 가 *"자격증명 없음"* 으로 거절하고, 운영자는 **콘솔 값이 틀린 줄 오해한다** |
+| 3 | ⛔ **`~/AIC/Config/…` 는 아무도 안 읽는다** | `DEFAULT_INI = 'ics_archon.ini'` — **실행 디렉터리 기준 상대경로**다.  `~/AIC/Config` 를 읽는 코드가 `grep` 0건 | 자격증명을 그 파일에 적었으면 **`-c ~/AIC/Config/icg_archon.ini` 로 명시**하거나 그 디렉터리에서 실행한다.  안 그러면 `RADIONODE CONNECT` 가 *"자격증명 없음"* 으로 거절하고, 운영자는 **콘솔 값이 틀린 줄 오해한다** |
 | 4 | ⚠️ **짝이 안 맞는 ACF 는 `IP=` 까지 밀어 넣는다** | ACF 안에 `IP=10.0.0.162`(guide)·`IP=10.0.0.113`(science)가 있고, `apply_acf()` 는 **전 키를 `WCONFIG`** 한다 — `IP` 를 거르는 코드가 없다 | 유닛과 ACF 짝을 **적용 전에 눈으로** 대조한다.  ⚠️ `APPLYALL` 만으로 IP 가 바뀌지는 않는 것으로 보이나(`APPLYNET` 이 따로다) **확인된 바 없다** — `FLASHACTIVECONFIG`·`REBOOT` 가 뒤따르면 굳는다 |
 
 ⭐ **1·2 는 한 줄로 정리된다** — 배포 ini 는 이제 **둘 다 허브를 본다**(`127.0.0.1:6660`).
