@@ -430,6 +430,10 @@ class _Rec:
         self.calls.append(('TRIGOUTLEVEL', bool(high)))
         self.config['TRIGOUTLEVEL'] = '1' if high else '0'
 
+    async def read_config(self, key):  # noqa: ANN001, ANN202
+        """`RCONFIG` 대역 -- 조회가 **캐시가 아니라 여기를** 타야 한다."""
+        return self.config[key]
+
 
 def _trig(tmp_path, script, held=None, settle=0.1):  # noqa: ANN001, ANN202
     """스크립트를 먹이고 (호출 순서, 발신) 을 돌려준다."""
@@ -526,8 +530,38 @@ def test_the_boolean_vocabulary_is_the_shared_one(tmp_path):
                for s in sent), sent[-3:]
 
 
-def test_no_argument_reports_what_we_hold(tmp_path):
-    """인자가 없으면 조회.  ⚠️ **우리가 들고 있는 설정값**이지 되물은 값이 아니다."""
+def test_no_argument_reads_back_from_the_controller(tmp_path):
+    """인자가 없으면 조회 -- ⭐ **캐시가 아니라 `RCONFIG` 되읽기**다.
+
+    히터 다섯과 같은 규약이다 (`commands.py` 머리말).  ⛔ `ctrl.config` 는
+    `set_config` 가 **왕복 실패에도 먼저** 갈아 끼우므로 못 믿는다 -- 캐시를
+    답하면 *"1 이라고 답하는데 실제 핀은 0"* 이 된다.
+    """
     _calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUTFORCE'],
                          held={'TRIGOUTFORCE': '1', 'TRIGOUTLEVEL': '0'})
     assert any('DONE: TRIGOUTFORCE TRIGOUTFORCE=1' in s for s in sent), sent[-3:]
+
+
+def test_a_failed_read_back_is_not_hidden(tmp_path):
+    """⛔ 되읽기가 실패하면 **답을 지어내지 않는다** -- ERROR 로 올린다."""
+    class _Broken(_Rec):
+        async def read_config(self, key):  # noqa: ANN001, ANN202
+            raise RuntimeError('RCONFIG timeout')
+
+    rec = _Broken()
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide.ctrl = rec
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUTLEVEL')
+            await asyncio.sleep(0.15)
+        finally:
+            await app.stop()
+        return [str(s) for s in app.transport.sent_log]
+
+    sent = asyncio.run(run())
+    assert any('ERROR: TRIGOUTLEVEL' in s and 'RCONFIG timeout' in s
+               for s in sent), sent[-3:]

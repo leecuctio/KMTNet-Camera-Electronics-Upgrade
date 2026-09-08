@@ -25,6 +25,18 @@
 | [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) | 레거시 원본 동작이 궁금할 때 |
 | [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) | OBSAgent 쪽 사정이 궁금할 때 |
 
+## ⚠️ 기동 배너에 앱이 갈아 끼울 자리를 냈다 (2026-09-08) — 경위는 `ics_archon/DevNote.md` **11.46**
+
+`log_identity_banner()` 가 **science 를 박아 두고** 있었다 (`rawpair.CONTROLLERS[0][0]`=`MK`)
+— ICG 가 그대로 물려받아 벤치 첫 구동에서 `KMTK.20260908.000001.**MK**.fits` 를 찍었다.
+guide 는 `.G.fits` 다.
+
+* `banner_example(site, suffix)` · `banner_instrument(site)` 를 **덮을 수 있게** 갈랐다.
+* ⚠️ `FPAID` 도 `rawhdr.instrument_header()` 를 부르고 있었다 — guide 는 `guidehdr` 가
+  정본이다.  값이 맞아 보인 것은 OI-24 가 닫히며 두 계통이 같은 사이트 유도를 쓰게 돼
+  **우연히** 맞은 것이다.
+* ⭐ 배너의 목적은 *"자료 한 장 찍기 전에 사람 눈에 띄게"* 다 — 그 한 줄이 틀리면 목적을 잃는다.
+
 ## ⚠️ 콘솔·로그를 또 열었다 (2026-09-08, 운영자 지시) — 경위는 `ics_archon/DevNote.md` **11.45**
 
 `console.py`·`transport.py`·`__main__.py` 를 **`ics_archon` 세션이 고쳤다** (목 지시다).

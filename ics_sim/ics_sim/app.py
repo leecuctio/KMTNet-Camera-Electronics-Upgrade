@@ -147,6 +147,26 @@ class IcsSim:
             '자료를 찍기 전에 확인할 것 (D-017)',
             rawpair.KASI_SITE, self.backend.name, rawpair.KASI_SITE)
 
+    def banner_example(self, site: str, suffix: str) -> str:
+        """배너의 **파일명 예시**.  ⭐ 앱이 갈아 끼운다.
+
+        ⛔ 기반은 science 다 (`MK`).  guide 는 `.G.fits` 라 그대로 두면 배너가
+        **거짓말한다** -- 벤치 첫 구동에서 `KMTK.20260908.000001.MK.fits` 가
+        찍혔다(2026-09-08 실측).  배너의 목적이 *"자료 한 장 찍기 전에 사람 눈에
+        띄게"* 인데, 정작 그 한 줄이 틀리면 목적을 잃는다.
+        """
+        return rawpair.physical_name(site, suffix, rawpair.CONTROLLERS[0][0])
+
+    def banner_instrument(self, site: str) -> dict:
+        """배너가 `FPAID` 를 꺼내는 자리.  ⭐ 앱이 갈아 끼운다.
+
+        ⚠️ guide 는 `guidehdr.instrument_header()` 로 **다른 함수**다.  값이
+        지금 같은 것은 둘이 같은 사이트 유도를 쓰기 때문이고(OI-24 종결),
+        갈리면 배너만 조용히 틀린다.
+        """
+        return rawhdr.instrument_header(rawpair.CONTROLLERS[0][0], site,
+                                        self.cfg.camera.as_dict())
+
     def log_identity_banner(self) -> None:
         """기동 시 **사이트 정체를 한 덩어리로** 남긴다.
 
@@ -167,10 +187,9 @@ class IcsSim:
         cfg, st = self.cfg, self.state
         site = st.site_code
         geo = rawhdr.observatory_header(site, cfg.site_for(site))
-        instr = rawhdr.instrument_header(rawpair.CONTROLLERS[0][0], site,
-                                         cfg.camera.as_dict())
+        instr = self.banner_instrument(site)
         suffix = f'{st.obs_date()}.{st.expnum:06d}'
-        example = rawpair.physical_name(site, suffix, rawpair.CONTROLLERS[0][0])
+        example = self.banner_example(site, suffix)
 
         def known(card: str) -> bool:
             """sentinel 이 아닌 실제 값인가 (규격 5.0절: 문자열 `NC`, 정수 `-1`)."""

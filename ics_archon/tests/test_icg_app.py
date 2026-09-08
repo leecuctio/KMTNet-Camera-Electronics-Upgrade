@@ -614,3 +614,28 @@ def test_radionode_reconnect_points_at_connect(tmp_path):  # noqa: ANN001
     _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE RECONNECT'])
     said = [s for s in sent if 'RADIONODE' in s]
     assert any('ERROR' in s and 'RADIONODE CONNECT' in s for s in said), said
+
+
+def test_the_startup_banner_shows_a_guide_filename(tmp_path):
+    """⛔ **배너가 guide 에서 science 이름을 찍고 있었다** (벤치 실측 2026-09-08).
+
+    첫 구동 로그에 `KMTK.20260908.000001.MK.fits` 가 나왔다 -- `.MK.` 는 science
+    확장자이고 guide 는 `.G.fits` 다 (규격 9장).  기반 배너가
+    `rawpair.CONTROLLERS[0][0]`(=`MK`)을 박아 두고 ICG 가 그대로 물려받았다.
+
+    ⚠️ 배너의 목적이 *"자료 한 장 찍기 전에 사람 눈에 띄게"* 인데 정작 그 한 줄이
+    틀리면 목적을 잃는다 -- 운영자가 저장 경로를 그 이름으로 짐작한다.
+
+    ⭐ `FPAID`/`INSTRUME` 도 함께 본다: 종전 배너는 **science 의
+    `rawhdr.instrument_header()`** 를 불렀다.  값이 맞아 보였던 것은 두 계통이
+    같은 사이트 유도를 쓰기 때문이고(OI-24 종결), 갈리면 배너만 조용히 틀린다.
+    """
+    cfg, icfg = make_cfgs(tmp_path)
+    app = IcgArchon(cfg, icfg, backend='sim')
+
+    name = app.banner_example('KMTK', '20260908.000001')
+    assert name == 'KMTK.20260908.000001.G.fits', name
+
+    instr = app.banner_instrument('KMTK')
+    assert instr['INSTRUME'] == 'KMTK Guide CCDs', instr['INSTRUME']
+    assert instr['FPAID'] == 'FPA#0', instr['FPAID']

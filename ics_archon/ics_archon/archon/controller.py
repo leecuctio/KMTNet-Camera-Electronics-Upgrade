@@ -193,6 +193,12 @@ class ArchonController:
         #: ACF 설정 줄 -> 내용, 그리고 키 -> 줄 번호.  `WCONFIG` 는 줄 번호로
         #: 쓰므로 이 대응이 없으면 파라미터를 못 바꾼다.
         self.config: dict[str, str] = {}
+        #: ⛔ 캐시를 못 믿는 상태인가.  `ARCHON` 바이패스가 `WCONFIG`/
+        #: `CLEARCONFIG` 를 보내면 참이 된다 -- 그 경로는 `set_config` 를
+        #: 안 지나 설정 메모리만 바뀐다.  `config_value()` 가 이것을 보고
+        #: `RCONFIG` 로 되읽는다.  ⭐ ACF 재파싱이 내리고, 되읽기 성공은
+        #: 그 키만 고친다(플래그는 남긴다 -- 다른 키도 낡았을 수 있다).
+        self.config_dirty = False
         self.configline: dict[str, int] = {}
         #: ACF `LINECOUNT` -- 진행률(`PCTREAD`)의 분모.  `BUFnHEIGHT` 는 split
         #: 에서 두 배라 못 쓴다 (DevNote 10.3).  0 이면 HEIGHT 로 물러난다.
@@ -377,6 +383,7 @@ class ArchonController:
 
         # INI 형식의 역슬래시·인용부호를 Archon 형식으로 (labtest 그대로).
         self.config = {}
+        self.config_dirty = False       # 파일에서 새로 읽었다
         self.configline = {}
         for i, (key, value) in enumerate(items):
             k = key.upper().replace('\\', '/')
@@ -484,7 +491,7 @@ class ArchonController:
         # ⛔ **Config 슬롯 번호(`PARAMETERn` 의 n)만 보면 안 된다** -- R2608 의
         # `PARAMETER0` 은 `ContinuousExposures` 였다.
         # 그 자리에 FirstFlush 를 쓰면 다른 파라미터를 덮는다.
-        cur = _unquote(str(self.config.get(fslot, ''))) if fslot else ''
+        cur = _unquote(await self.config_value(fslot)) if fslot else ''
         if not cur.startswith(fname + '='):
             if on:
                 log.warning('⛔ %s: ccdflush 를 켜라고 했는데 ACF 의 %s 슬롯에 %s 가 없다 '
@@ -767,8 +774,42 @@ class ArchonController:
         text = ' '.join(text.split())
         if not text:
             raise ArchonError('%s: empty command' % self.tag, cmd='')
+        word = text.split(' ', 1)[0].upper()
+        if word.startswith('WCONFIG') or word == 'CLEARCONFIG':
+            # ⛔ **여기가 캐시와 컨트롤러가 갈리는 유일한 경로다.**  바이패스는
+            # `set_config` 를 안 지나므로 설정 메모리만 바뀌고 `self.config` 는
+            # 옛 값을 든다.  그 뒤 `set_first_flush`/`flush_now` 가 캐시를 믿고
+            # *"그 슬롯에 FirstFlush 가 있다"* 로 판단하면 **엉뚱한 슬롯을 덮는다**.
+            # ⭐ 그래서 값을 흉내내 고치지 않고 **못 믿는다고 표시만** 한다 --
+            # 원문을 우리가 파싱하면 그 파싱이 또 하나의 진실이 된다.
+            # 다음 판단은 `config_value()` 가 `RCONFIG` 로 되읽는다.
+            self.config_dirty = True
+            log.info('%s: 바이패스가 설정 메모리를 건드렸다 (%s) -- 캐시를 '
+                     '못 믿는 것으로 표시한다 (다음 판단은 RCONFIG 되읽기)',
+                     self.tag, word)
         out = await self.cmd(text, timeout=timeout)
         return out.decode('latin-1', 'replace').strip()
+
+    async def config_value(self, key: str) -> str:
+        """설정 줄 하나 -- **믿을 수 있는 값**으로.
+
+        평시에는 캐시(`self.config`)를 준다.  ⭐ 그런데 `ARCHON` 바이패스가
+        `WCONFIG`/`CLEARCONFIG` 를 보낸 뒤라면 캐시가 옛 값이므로 **`RCONFIG` 로
+        되읽어** 캐시를 고치고 준다 (`config_dirty`).
+        ⚠️ 되읽기가 실패하면 **캐시로 물러나되 표시는 남긴다** -- 여기서 죽으면
+        운영자 바이패스 한 번이 다음 `ccdflush` 를 통째로 막는다.
+        """
+        if not self.config_dirty:
+            return str(self.config.get(key, ''))
+        try:
+            got = (await self.read_config(key)).strip()
+        except Exception as exc:  # noqa: BLE001 -- 판단을 막지는 않는다
+            log.warning('%s: %s 되읽기 실패 (%s) -- 캐시 값으로 간다.  '
+                        'ARCHON 바이패스 뒤라 값이 낡았을 수 있다',
+                        self.tag, key, exc)
+            return str(self.config.get(key, ''))
+        self.config[key] = got
+        return got
 
     async def flush_now(self, *, reset: bool = False) -> None:
         """CCD 를 한 바퀴 비운다 -- 타이밍 스크립트의 `FlushFrame` 을 한 번 돌린다.
@@ -788,7 +829,7 @@ class ArchonController:
         """
         fslot = getattr(self.cfg, 'param_flush_slot', None)
         fname = getattr(self.cfg, 'param_flush_name', 'FirstFlush')
-        cur = _unquote(str(self.config.get(fslot, ''))) if fslot else ''
+        cur = _unquote(await self.config_value(fslot)) if fslot else ''
         if not cur.startswith(fname + '='):        # Config 슬롯 번호만 믿지 않는다 (위 참조)
             raise ArchonError('%s: ACF has no %s parameter (slot %s) -- load an ACF '
                               'with FlushFrame (guide R2613+ / science R2609+)'

@@ -249,3 +249,68 @@ def test_an_unrecognized_word_is_refused(tmp_path):  # noqa: ANN001
     with pytest.raises(acfg_mod.ArchonConfigError) as exc:
         acfg_mod.load(str(path))
     assert 'ccdflush' in str(exc.value)
+
+
+# -- ARCHON 바이패스가 캐시를 갈라놓는다 (2026-09-08, 운영자) ----------------
+#
+# ⛔ **캐시와 컨트롤러가 갈릴 수 있는 유일한 경로**다.  바이패스는 `set_config` 를
+# 안 지나므로 설정 메모리만 바뀌고 `ctrl.config` 는 옛 값을 든다.  그 뒤
+# `set_first_flush`/`flush_now` 가 캐시를 믿고 *"그 슬롯에 FirstFlush 가 있다"* 로
+# 판단하면 **엉뚱한 슬롯을 덮는다**.
+
+
+class _Ctrl:
+    """`ArchonController` 의 설정 층만 흉내낸다 -- 왕복은 세기만."""
+
+    def __init__(self, cached, on_wire):  # noqa: ANN001
+        from ics_archon.archon.controller import ArchonController
+        self.config = dict(cached)
+        self.config_dirty = False
+        self._wire = dict(on_wire)
+        self.reads = []
+        self.tag = 'G'
+        self.raw_command = ArchonController.raw_command.__get__(self)
+        self.config_value = ArchonController.config_value.__get__(self)
+
+    async def cmd(self, text, timeout=None):  # noqa: ANN001, ANN202
+        return b'OK'
+
+    async def read_config(self, key):  # noqa: ANN001, ANN202
+        self.reads.append(key)
+        return self._wire[key]
+
+
+def test_a_bypass_wconfig_marks_the_cache_untrustworthy():
+    """⭐ 값을 흉내내 고치지 않고 **못 믿는다고 표시만** 한다.
+
+    원문을 우리가 파싱하면 그 파싱이 또 하나의 진실이 된다 -- 다음 판단이
+    `RCONFIG` 로 되읽게 두는 편이 낫다.
+    """
+    c = _Ctrl({'PARAMETER0': '"FirstFlush=1"'}, {'PARAMETER0': '"Other=9"'})
+    assert not c.config_dirty
+    asyncio.run(c.raw_command('WCONFIG0000PARAMETER0="Other=9"'))
+    assert c.config_dirty, '설정을 건드렸는데 표시가 안 섰다'
+
+    # 되읽기로 실제 값이 온다 -- 캐시가 아니라.
+    got = asyncio.run(c.config_value('PARAMETER0'))
+    assert got == '"Other=9"', got
+    assert c.reads == ['PARAMETER0'], c.reads
+
+
+def test_a_harmless_bypass_does_not_mark_the_cache():
+    """⛔ `STATUS` 같은 조회까지 표시하면 **매번 되읽어** 쿼터·시간을 버린다."""
+    c = _Ctrl({'PARAMETER0': '"FirstFlush=1"'}, {})
+    asyncio.run(c.raw_command('STATUS'))
+    asyncio.run(c.raw_command('APPLYALL'))
+    assert not c.config_dirty, '설정을 안 건드렸는데 표시가 섰다'
+    assert asyncio.run(c.config_value('PARAMETER0')) == '"FirstFlush=1"'
+    assert c.reads == [], '평시에 되읽으면 안 된다'
+
+
+def test_a_failed_read_back_falls_back_to_the_cache():
+    """⚠️ 되읽기 실패로 **죽지는 않는다** -- 여기서 죽으면 바이패스 한 번이
+    다음 `ccdflush` 를 통째로 막는다.  캐시로 물러나되 표시는 남긴다."""
+    c = _Ctrl({'PARAMETER0': '"FirstFlush=1"'}, {})   # _wire 가 비어 KeyError
+    asyncio.run(c.raw_command('CLEARCONFIG'))
+    assert asyncio.run(c.config_value('PARAMETER0')) == '"FirstFlush=1"'
+    assert c.config_dirty, '실패했다고 표시를 내리면 안 된다'

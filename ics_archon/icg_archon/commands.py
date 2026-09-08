@@ -758,17 +758,26 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return Reply.error(word, 'Controller is not available')
         arg = msg.body.strip()
         if not arg:
-            # ⚠️ **우리가 들고 있는 설정값**이다 (ACF 파싱 + 우리가 쓴 것).
-            # 컨트롤러에 되물은 값이 아니다 -- `set_config` 는 왕복이 실패해도
-            # 캐시를 갈아 끼운다 (11.13 F5).
-            held = ctrl.config.get(key)
-            return Reply.done(word, '%s=%s' % (
-                key, 'UNKNOWN' if held is None else held))
+            # ⭐ **캐시가 아니라 `RCONFIG` 되읽기다** -- 히터 다섯과 같은 규약
+            # (이 모듈 머리말).  ⛔ `ctrl.config` 는 `set_config` 가 **왕복
+            # 실패에도 먼저** 갈아 끼우므로 못 믿는다 (11.13 F5) -- 캐시를
+            # 답하면 *"1 이라고 답하는데 실제 핀은 0"* 이 된다.
+            self.app.spawn(self._read_trigout(msg.src, word, key))
+            return Reply.noop()
         want = expen.parse(arg)
         if want is None:
             return Reply.error(word, _unknown(arg))
         self.app.spawn(self._do_trigout(msg.src, word, [(key, want)]))
         return Reply.noop()
+
+    async def _read_trigout(self, dest: str, word: str, key: str) -> None:
+        """`RCONFIG` 로 되읽어 답한다 -- 실패는 숨기지 않는다."""
+        try:
+            held = (await self.app.guide.ctrl.read_config(key)).strip()
+        except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
+            self.emit.error(dest, word, 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, word, '%s=%s' % (key, held))
 
     async def _do_trigout(self, dest: str, word: str, steps) -> None:  # noqa: ANN001
         """설정 한둘을 순서대로 쓴다.  ⛔ **순서가 뜻이다** -- `SHOPEN` 참고."""

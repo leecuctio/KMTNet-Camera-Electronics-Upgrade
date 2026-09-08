@@ -27,7 +27,9 @@ _simpath.ensure()
 from ics_sim import console  # noqa: E402
 from ics_sim.app import IcsSim  # noqa: E402
 
-from . import build_id, guidehdr  # noqa: E402
+from ics_sim import rawpair  # noqa: E402
+
+from . import build_id, guidehdr, guidepair  # noqa: E402
 from . import commands as icg_commands  # noqa: E402
 from .backend import GuideBackend, SimGuideBackend  # noqa: E402
 from .config import TAG, IcgCfg, validate  # noqa: E402
@@ -55,6 +57,15 @@ class IcgArchon(IcsSim):
         self.icfg = icfg
         self.backend_name = backend
         self.state.ics_build = build_id()      # 배너·STATUS 응답용
+        # ⛔ **백엔드를 만들기 전에 검사한다** (2026-09-08, 벤치 실측).
+        # 종전에는 `start()` 에서 했는데, 그때는 `GuideBackend.__init__` 이 이미
+        # ACF 를 읽어 본 뒤라 **경고가 치명적 오류보다 먼저** 찍혔다:
+        #     Warning: guide ACF 를 못 읽어 … ini 기본값을 쓴다   <- "계속 간다" 는 투
+        #     IcgConfigError: [icg] acf=… 가 없다                  <- 그런데 죽는다
+        # 읽는 사람이 경고를 보고 "기본값으로라도 도는구나" 했다가 곧 죽는 것을
+        # 본다.  없는 파일은 **한 줄로** 죽는 것이 맞다.
+        for line in validate(icfg, backend):
+            log.warning('%s', line)
         if backend == 'icg_archon':
             self.guide = GuideBackend(cfg, icfg)
         else:
@@ -76,6 +87,16 @@ class IcgArchon(IcsSim):
         self.seq = GuideSequencer(cfg, icfg, self.state, self.emit,
                                   self.telem, self.guide, self.hk)
         self.dispatch = icg_commands.IcgDispatcher(self)
+
+    # -- 기동 배너 ----------------------------------------------------------
+
+    def banner_example(self, site: str, suffix: str) -> str:
+        """guide 는 `.G.fits` 다 -- 기반의 science `.MK.fits` 를 갈아 끼운다."""
+        return rawpair.physical_name(site, suffix, guidepair.TAG)
+
+    def banner_instrument(self, site: str) -> dict:
+        """guide 의 instrument 블록 -- `guidehdr` 가 정본이다 (`rawhdr` 아님)."""
+        return guidehdr.instrument_header(site, self.cfg.camera.as_dict())
 
     # -- 콘솔 도움말 --------------------------------------------------------
 
@@ -141,8 +162,8 @@ class IcgArchon(IcsSim):
     ICS_BIND_PORT = 6600
 
     async def start(self) -> None:
-        for line in validate(self.icfg, self.backend_name):
-            log.warning('%s', line)
+        # ⚠️ `validate()` 는 **`__init__` 에서** 돈다 -- 백엔드가 ACF 를 읽어
+        # 보기 전에 막아야 경고와 치명이 뒤바뀌지 않는다 (위 주석).
         self.expenable.load()
         if not self.expenable.allowed:
             log.warning('⛔ 노출이 **잠겨** 있다 (EXPENABLE OFF, 출처 %s) -- '
