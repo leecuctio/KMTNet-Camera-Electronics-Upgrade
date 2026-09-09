@@ -942,3 +942,35 @@ def test_trigout_latency_is_logged_even_under_a_high_threshold(tmp_path, caplog)
     asyncio.run(run())
     assert 'TRIGOUT 올림 지연' in caplog.text, caplog.text
     assert 'TRIGOUT 내림 지연' in caplog.text, caplog.text
+
+
+def test_trigout_subtracts_the_lowering_apply_from_the_pulse(tmp_path, caplog):
+    """⭐ **폭이 요청값이 된다** -- 내림 적용시간을 잠들 시간에서 뻐다.
+
+    ⛔ **벤치 실측이 앞 판을 뒤집었다** (2026-09-09): 요청 2 s 에 폭오차가
+    **+235 ms 로 17회 내내 일정**했다.  낙 대기가 아니라 **내림 자신의
+    `APPLYSYSTEM` 처리시간**(≈233 ms)이 통째로 폭에 들어간 것이다.
+    ⚠️ 0.5 s 펀스라면 **+47 %** 다 -- 광원 노출량이 그만큼 틀린다.
+
+    ⭐ 보정이 옆길로 새지 않는 근거: 적용 하나에 `C` 가 걸리고 핀이 그
+    안 비율 `f` 에서 뒤집힌다면 HIGH 는 `t + fC`, LOW 는 `t + C + 잠 + fC`
+    이므로 **폭 = 잠 + C** 이고 `f` 가 지워진다.  그래서 `잠 = <초> - C` 다.
+
+    ⚠️ 여기서는 느린 컨트롤러(0.1 s)로 `C` 를 대역한다.  보정이 없으면
+    폭오차가 **+100 ms** 로 나온다 -- 그것이 이 시험이 잡는 회귀다.
+    """
+    import logging
+    import re
+
+    caplog.set_level(logging.INFO, logger='icg_archon.cmd')
+    # time_scale = 0.02 이므로 `trigout 20` 은 실제 0.4 s 펀스다.
+    calls, _sent = _trig_slow(tmp_path, ['abc>ICG TRIGOUT 20'], delay=0.1,
+                              settle=1.0, held=dict(RESTING))
+    assert len(calls) == 2, calls
+
+    err = re.search(r'폭오차 ([+-][0-9.]+) ms', caplog.text)
+    assert err is not None, caplog.text
+    got = float(err.group(1))
+    # ⭐ 보정 전이면 +100 ms 다 -- 그 절반보다 작아야 보정이 먹은 것이다.
+    assert abs(got) < 50.0, (got, caplog.text)
+    assert '보정 -' in caplog.text, caplog.text

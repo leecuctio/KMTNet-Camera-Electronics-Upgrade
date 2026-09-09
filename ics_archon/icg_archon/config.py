@@ -233,9 +233,11 @@ class IcgCfg:
     #: 명령이라 늘 남긴다 (`commands._log_latency(always=True)`).
     #: ⚠️ 임계가 있는 이유는 **바깥 감시 계통이 `HKDATA` 를 초 단위로 물어
     #: 올 수 있어서**다 -- 우리 프로그램에는 주기 발신자가 없다.
-    #: ⏳ 기본 50 은 한가할 때 기준선(`RCONFIG` 3회 = 6 ms)의 8배로 잡은
-    #: 임시값이다 -- **취득 중 실측 뒤에 다시 정한다** (DevNote 11.53).
-    latency_warn_ms: float = 50.0
+    #: ⭐ **150 은 실측으로 정했다** (2026-09-09, DevNote 11.55): 취득 중
+    #: `HKDATA` 는 중앙 7.7 ms · 95 % 96.5 ms · 최악 **107.8 ms** 였다.
+    #: 종전 임시값 50 으로 두면 **14 %가 매번 `INFO`** 라 소음이 된다 --
+    #: 최악값 위로 올려야 *"평시 조용 · 튀면 이상"* 이 된다.
+    latency_warn_ms: float = 150.0
     fetch_timeout: float = 1.0
     frame_dump: float = 0.0
     frame_timeout: float = 60.0

@@ -1064,28 +1064,59 @@ class IcgDispatcher(sim_commands.Dispatcher):
         * **수신 -> HIGH** -- 락 대기 + 적용.  운영자가 물은 *"명령 실행 지연"*.
         * **수신 -> LOW** -- 내림도 같은 락을 탄다.
         * ⭐ **펄스 폭 오차** -- 실제 HIGH 지속과 요청 `<초>` 의 차.  ⚠️ 이것이
-          가장 중요한 값이다: 시작이 밀려도 **폭이 정확하면** 광원 노출량은
-          맞는다.  시한은 `raise_line` **뒤부터** 재므로 구조상 밀림이 폭에
-          안 섞이고, 남는 오차는 **내림 쪽 락 대기**뿐이다.
+          가장 중요한 값이다: 시작이 밀려도 **폭이 맞으면** 광원 노출량은 맞는다.
+
+        ⛔ **실측이 내 예측을 뒤집었다** (2026-09-09): *"밀림은 폭에 안 섞이고
+        남는 오차는 내림 쪽 락 대기뿐"* 이라고 봤는데, 폭오차가 **+235 ms 로
+        17회 내내 일정**했다.  락 대기가 아니라 **내림 자신의 `APPLYSYSTEM`
+        처리시간**(≈233 ms)이 통째로 폭에 들어간 것이다.  ⭐ 그래서 이제
+        **잠들 시간에서 그만큼을 뺀다** (아래 `apply_cost`).
         """
         import asyncio
         import time
         ctrl = self.app.guide.ctrl
         self._warn_if_acquiring()
+        raise_at = time.monotonic()
         try:
             await trigout_core.raise_line(ctrl)
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
             self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
             return
         high_at = time.monotonic()
+        apply_cost = high_at - raise_at
         if t0 is not None:
             self._log_latency('TRIGOUT 올림', t0, 'Sec=%g' % seconds,
                               always=True)
         self.emit.done(dest, 'TRIGOUT',
                        'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 Sec=%g' % seconds)
         self._trigout_timer = asyncio.current_task()
+        # ⭐ **내림에 걸릴 시간을 미리 뺀다** (2026-09-09 실측).
+        #
+        # ⛔ 종전에는 `sleep(<초>)` 만 하고 그 뒤에 내림 왕복을 보냈다 -- 그래서
+        # 핀이 실제로 HIGH 인 시간이 **`<초>` + 내림 적용시간**이었다.  벤치
+        # 실측: 요청 2 s 에 폭오차 **+235 ms 가 17회 내내 일정** (2.235 s).
+        # 짧은 펄스일수록 비율이 커진다 -- 0.5 s 면 +47 % 다.
+        #
+        # ⭐ **핀이 적용 처리의 어느 지점에서 뒤집히든 이 보정은 옳다.**  적용
+        # 하나에 `C` 가 걸리고 핀이 그 안 비율 `f` 에서 뒤집힌다고 하면
+        # HIGH 는 `t올림 + fC`, LOW 는 `t올림 + C + 잠 + fC` 이므로
+        # **폭 = 잠 + C** 이고 `f` 가 지워진다.  그래서 `잠 = <초> - C` 다.
+        # ⭐ `C` 는 **방금 잰 올림 비용**을 쓴다 -- 올림과 내림이 같은 왕복
+        # (`WCONFIG` 둘 + `APPLYSYSTEM`)이고 실측도 232 ms 대 236 ms 였다.
+        # ⛔ 상수로 박지 않는다 -- 링크·펌웨어가 바뀌면 따라와야 한다.
+        #
+        # ⚠️ **`<초>` 가 적용 하나보다 짧으면 못 만든다** -- 0 으로 눌러 담고
+        # 그 사실을 알린다 (실현 최소 폭 ≈ 235 ms).
+        want = self.cfg.scaled(seconds)
+        nap = want - apply_cost
+        if nap < 0:
+            log.warning('TRIGOUT %g초는 적용 한 번(%.0f ms)보다 짧다 -- 실현 '
+                        '폭은 약 %.0f ms 가 된다 (그보다 짧은 펄스는 이 방식'
+                        '으로 못 만든다)', seconds, apply_cost * 1000,
+                        apply_cost * 1000)
+            nap = 0.0
         try:
-            await asyncio.sleep(self.cfg.scaled(seconds))
+            await asyncio.sleep(nap)
         except asyncio.CancelledError:
             # ⭐ 새 `TRIGOUT` 이 끊었다 -- 그쪽이 선을 책임진다.
             raise
@@ -1098,12 +1129,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
             return
-        # ⭐ **폭 오차** -- 실제 HIGH 지속 - 요청 (시험 축척을 되돌려 잰다).
-        want = self.cfg.scaled(seconds)
+        # ⭐ **폭 오차** -- 실제 HIGH 지속 - 요청.  ⚠️ 이제 보정이 들어갔으므로
+        # **0 근처여야 한다** -- 종전의 +235 ms 가 그대로면 보정이 안 먹은 것이다.
         wide_ms = (time.monotonic() - high_at - want) * 1000.0
         if t0 is not None:
             self._log_latency('TRIGOUT 내림', t0,
-                              '폭오차 %+.1f ms (요청 %gs)' % (wide_ms, seconds),
+                              '폭오차 %+.1f ms (요청 %gs, 보정 -%.0f ms)'
+                              % (wide_ms, seconds, apply_cost * 1000),
                               always=True)
         # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보다.
         self.emit.done(dest, 'TRIGOUT', '%s (auto after %gs)'
