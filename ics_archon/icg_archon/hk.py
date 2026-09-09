@@ -499,6 +499,15 @@ class HkMonitor:
         """
         if self.ctrl is None:
             return
+        # ⛔ **ACF 를 미는 중이면 비킨다** (2026-09-09, DevNote 11.54).
+        # `CLEARCONFIG` 직후에는 그 설정 줄이 **아직 없다** -- 읽어 봐야 뜻이
+        # 없고, 기동 경로는 이 창을 실제로 만든다 (`app.start()` 가 ACF 적용을
+        # `spawn` 하고 곧바로 `hk.start()`).  ⚠️ 다음 바퀴(60초)에 다시 읽으므로
+        # 잃는 것은 없다 -- 그 사이 카드는 sentinel 이다.
+        if getattr(self.ctrl, 'acf_applying', False):
+            log.info('HK: ACF 적용 중이라 히터 설정 되읽기를 건너뛴다 '
+                     '-- 다음 바퀴에 다시 읽는다')
+            return
         try:
             got = await heater.read_settings(self.ctrl)
             force = (await self.ctrl.read_config(

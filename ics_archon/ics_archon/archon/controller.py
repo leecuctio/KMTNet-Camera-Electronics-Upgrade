@@ -199,6 +199,10 @@ class ArchonController:
         #: `RCONFIG` 로 되읽는다.  ⭐ ACF 재파싱이 내리고, 되읽기 성공은
         #: 그 키만 고친다(플래그는 남긴다 -- 다른 키도 낡았을 수 있다).
         self.config_dirty = False
+        #: ⭐ **ACF 를 미는 중이다** -- 그동안 설정 메모리는 반쯤 실린 상태라
+        #: `RCONFIG` 되읽기가 뜻이 없다 (`CLEARCONFIG` 뒤 아직 안 쓴 줄).
+        #: HK 처럼 주기로 도는 것이 이 표시를 보고 비킨다 (DevNote 11.54).
+        self.acf_applying = False
         #: ⭐ `APPLY*` 를 **몇 번 보냈나**.  모듈 VCPU 는 `APPLYALL`/`APPLYMOD`/
         #: `APPLYDIO` 에서 재시작되므로(매뉴얼 p.86), 진공 디코더가 이 값을 보고
         #: *"되감김을 우리가 만들었나"* 를 가른다 -- 시각 창으로 어림하지 않는다.
@@ -423,14 +427,39 @@ class ArchonController:
         cmds = ['WCONFIG%04X%s=%s' % (self.configline[k], k, self.config[k])
                 for k in keys]
 
+        # ⭐ **적용 중 표시** -- HK 처럼 주기로 도는 것이 `RCONFIG` 로 설정
+        # 메모리를 읽지 않도록 비켜 준다 (`CLEARCONFIG` 직후에는 그 줄이 아직
+        # 없다).  ⚠️ 락과 **다른 일**을 한다: 락은 왕복을 줄 세우고, 이 표시는
+        # *"지금 읽어 봐야 뜻이 없다"* 를 알린다.
+        self.acf_applying = True
+        try:
+            return await self._apply_acf_loop(path, cmds)
+        finally:
+            self.acf_applying = False
+
+    async def _apply_acf_loop(self, path: str, cmds: list) -> None:
+        """`apply_acf` 의 재시도 고리 -- 적용 중 표시를 확실히 내리려고 뗐다."""
         last: Exception | None = None
         for attempt in range(max(self.cfg.acf_retry, 1)):
             try:
+                # ⭐ **`APPLYALL` 까지 한 락에 묶는다** (2026-09-09).
+                # ⛔ 종전에는 `_push` 와 `APPLYALL` 이 락을 **따로** 잡아, 그
+                # 사이에 남의 왕복이 끼어들 수 있었다.  기동 경로가 바로 그
+                # 상황을 만든다 -- `app.start()` 가 `_connect_controller()`
+                # (= ACF 적용)를 `spawn` 하고 **곧바로 `hk.start()`** 를 하므로
+                # HK 첫 바퀴가 ACF 적용과 **동시에** 돈다.
+                # ⚠️ 끼어든 왕복이 실패해 `resync()` 를 하면 **소켓이 통째로
+                # 갈린다** -- 그러면 `APPLYALL` 은 밀어 넣은 것과 **다른
+                # 연결**로 나간다.  실제로 2026-09-09 벤치에서 `RCONFIG` 가
+                # 깨진 3 ms 뒤에 ACF 적용이 실패했다 (DevNote 11.54).
+                # ⚠️ 락을 최대 `T_APPLY`(60초) 쥔다 -- 기동·첫 `GO` 뿐이고
+                # 그동안 다른 왕복은 어차피 의미가 없다 (설정이 반쯤 실린 상태).
                 def _push() -> None:
                     self.link.command('CLEARCONFIG', timeout=T_APPLY)
                     self.link.pipeline(cmds, timeout=T_APPLY)
+                    self.link.command('APPLYALL', timeout=T_APPLY)
+                self.apply_count += 1        # `cmd()` 를 안 지나므로 여기서
                 await self._locked_thread(_push)
-                await self.cmd('APPLYALL', timeout=T_APPLY)
             except (ArchonError, TimeoutError, OSError) as exc:
                 if isinstance(exc, ArchonError) and exc.reply_error:
                     # **컨트롤러가 거부한 것이다 -- 연결 문제가 아니다.**  같은
