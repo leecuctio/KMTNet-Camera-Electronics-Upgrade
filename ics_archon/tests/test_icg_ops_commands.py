@@ -749,3 +749,39 @@ def test_shutdown_lowers_a_running_pulse(tmp_path):
 
     calls = asyncio.run(run())
     assert calls[-1] == (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)), calls
+
+
+def test_go_says_why_while_the_stop_tail_drains(tmp_path):
+    """⭐ 뒷정리 중 `GO` 거절은 **이유를 말한다** (운영자 2026-09-09).
+
+    ⛔ 기반은 `Data acquisition already in progress!` 하나로 답하는데, `STOP`
+    뒤 꼬리 소화 구간에서는 **틀린 그림**이다 -- 저장은 이미 끝났고 컨트롤러
+    꼬리를 기다리는 중이다 (벤치: `guiexp 15` 에서 32초).
+    ⚠️ **거절 자체는 그대로**다 -- 그 꼬리를 다음 시퀀스가 제 첫 프레임으로
+    알면 남의 픽셀이 정상 헤더로 저장된다 (9.15-(9)).
+    """
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
+        app = IcgArchon(cfg, icfg, backend='sim')
+        await app.start()
+        try:
+            # ⭐ **사이클이 도는 중이고 뒷정리 단계**인 상태를 만든다.
+            # ⚠️ `_settling` 만 세우면 안 된다 -- 그것은 다음 사이클 시작 때만
+            # 내려가므로 `settling` 은 `busy` 와 함께 본다 (시험이 잡은 자리).
+            app.seq._task = asyncio.ensure_future(asyncio.sleep(1))
+            app.seq._settling = True
+            app.transport.feed('abc>ICG go 1')
+            await asyncio.sleep(0.1)
+        finally:
+            app.seq._settling = False
+            app.seq._task.cancel()
+            app.seq._task = None
+            await app.stop()
+        return [str(s) for s in app.transport.sent_log]
+
+    sent = asyncio.run(run())
+    assert any('ERROR: GO' in s and 'draining controller tail' in s
+               for s in sent), sent[-3:]
+    assert not any('already in progress' in s for s in sent), sent[-3:]

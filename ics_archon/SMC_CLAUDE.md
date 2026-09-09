@@ -1754,6 +1754,51 @@ Radionode 실측, `SHOPEN 10` 자동 내림까지 **경로는 다 돌았다**.  
 - ⛔ **`STOP` 은 셔터를 안 건드린다** (현재 노출 끝까지 · `GO n` 에서만 뜻).
   `close_shutter()` 주석의 *"조기 종료(STOP · SHCLOSE)"* 는 낡아서 고쳤다.
 
+#### (타) 벤치 2차 -- `PRESCNX` · `PCTREAD` · guide `EXPSTATUS` (11.51)
+
+- ⛔ **guide X 의 16 은 `PRESCNX`** (CCD 다크 기준열).  합 불변식이 **합만 봐서** 못 잡았다
+  -- ⚠️ **자리가 뜻이다**(converter 의 `DETSEC` 좌표).  ⏳ 규격·견본·converter 는 CU 뒤.
+- ⛔ **`PCTREAD` 가 직전 프레임 값을 냈다** -- 프레임이 끝나도 `WBUF`/`BUFnLINES` 가 남는다.
+  ⭐ **기준선 방식**(첫 값은 기준선, 움직인 뒤부터)으로 고쳤다.  `frame_poll` 0.5 -> **0.2**.
+- ⛔ **`STOP` 뒤 꼬리 대기(최대 `period x 2 + 2`)가 안 보였다** -- 기다림은 **필요**하다
+  (9.15-(9): 꼬리를 다음 GO 가 제 첫 프레임으로 안다).  ⭐ 로그로 알리고 `GO` 거절 문구를
+  사실대로 (`GuideSequencer.settling`).
+- ⛔ **guide `EXPSTATUS` 모형 정정** -- `wait_frame` 은 적분+독출을 다 덮으므로 그 앞은
+  `INTEGRATING`, **첫 진행률에서** `READOUT`.  저장 뒤 `INTEGRATING` 예측은 `STOP` 이면 안 건다.
+- ⚠️ **실기 미검증**: science `abort_now()` · 적분/독출 중 `APPLYSYSTEM` · 고친 `PCTREAD`.
+
+#### ⏳ CU 확인 대기 -- guide 의 `OVRSCNX/Y` 가 실은 **prescan(또는 darkscan)** 인가
+
+운영자 지적 (2026-09-08 벤치): *"`OVRSCAN` 이 잘못된 것 같다.  guide CCD 는 prescan
+인데, 또는 darkscan 으로 해야 할 것 같다.  **CU 와 상의해 정정사항을 알려주겠다**."*
+
+⚠️ 지금 상태: guide 헤더에 `PRESCNX/Y` 와 `OVRSCNX/Y` 가 **둘 다** 있고
+(`icg_archon/guidecards.py:69-72`), 머리말이 guide 값을 **`OVRSCNX/Y = 16/9`**
+(규격 10.3절)로 적는다.  즉 그 16/9 가 **어느 카드의 몫인가**가 물음이다.
+
+⏳ 답이 오면 함께 볼 자리:
+* `icg_archon/guidecards.py` (카드 정의·머리말) · 그 값을 채우는 곳
+* 규격 **10.3절** 과 guide 견본 헤더
+* ⚠️ **낱말이 바뀌면**(`darkscan`) 카드 이름 자체가 새로 서므로 converter·MEF 쪽
+  파급까지 본다 -- `OVRSCNY` 개명 때 겪은 부류다.
+
+#### ⏳ 실기 TC 확인 대기 -- 돔 **방위** 세 카드가 `NC` (2026-09-08 벤치)
+
+guide 헤더에서 `DSAZ` · `DSTELAZ` · `DAZERR` 이 `NC` 로 나온다.  ⭐ **결함이 아니라
+자료가 안 오는 것**이다 -- `AUXSTATUS` 응답에 돔 **고도**만 있고 방위가 없다:
+
+    DSSTAT DSUP DSLW DSSAF DSAUTO DSALT=60.0 DSTEL=60.0      ← 고도뿐
+
+고도 쪽은 정상이다: `DSTEL` -> `DSTELALT` 개명(`telemetry._FITS_RENAME`)이 이미 있고
+`DALTERR` 도 `60.0-60.0=+0.0` 로 계산된다.  ⛔ **`TCSSTATUS` 의 `AZ` 를 `DSTELAZ` 로
+끌어다 쓰면 안 된다** -- `DAZERR` 의 뜻이 *"돔과 망원경이 어긋났나"* 라 **돔 쪽이 스스로
+보고한 값**이라야 한다(TCS 값을 넣으면 자기 자신과의 차를 재는 꼴).  고도에서 `DSTEL`
+(60.0)과 `ALT`(87.0)가 다른 것이 그 증거다.
+
+⏳ **운영자가 실기 TC 담당자에게 확인 중**: 방위를 보내는가?
+* 보내는데 이름이 다르면 -> `_FITS_RENAME` 에 한 줄 (`DSTEL` 선례).
+* 안 보내면 -> 그 셋은 영구 `NC` 이고 **규격에 그렇게 적는다**.
+
 #### ⏳ 다음 세션이 볼 것 -- 미결 둘
 
 1. ✅ **science `ABORT` 가 적분을 끊는다** (2026-09-09 구현).  `abort_now()` =

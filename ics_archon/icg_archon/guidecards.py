@@ -14,7 +14,8 @@
 * `ICSBUILD` -> **`ICGBUILD`** (+ `TIMESYS`/`EXPID` comment 의 ICS -> ICG)
 * `C1_TEMP` **8자리** · `C1_VOLT`/`C1_CURR` **8자리**(`HEATER` +28 V) — 10.4절
 * 기하 카드 값이 guide 다 — `NAXIS` 4224x1033 · `AMPNAX` 528/1033 ·
-  `OVRSCNX/Y` 16/9 (10.3절)
+  **`PRESCNX` 16**(CCD 의 다크 기준열) · `OVRSCNY` 9 (10.3절.  ⏳ 규격 문면은
+  CU 와 상의 후 — 운영자 정정 2026-09-08)
 
 ⚠️ **공유 키 8장의 문자열 패딩 폭이 science 와 다르다** (컨트롤러 블록
 24/29 -> **26**, `C1_*` 51 -> **49**) — 그래서 저장은 `fitswrite` 에

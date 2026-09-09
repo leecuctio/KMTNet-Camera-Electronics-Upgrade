@@ -32,12 +32,24 @@ log = logging.getLogger('icg_archon.guidehdr')
 # 기하 (raw spec 9.3·9.4절 · 10.3절) -- 견본 v0.0 과 값 일치
 # ---------------------------------------------------------------------------
 
-#: amp 타일 해부 -- 채널 528 = prescan 0 + active 512 + 다크 기준열 16,
+#: amp 타일 해부 -- 채널 528 = **다크 기준열 16** + active 512 + 0,
 #: 행 1033 = 0 + active 1024 + 9 (store 구간, 위치·성격은 OI-21).
+#:
+#: ⛔ **X 의 16 은 `PRESCNX` 다** (운영자 정정 2026-09-08 벤치).  실제 CCD 의
+#: **DARK REFERENCE COLUMNS** 를 읽은 것이라 overscan 이 아니다.  종전에는
+#: `OVRSCNX=16` 으로 적었는데, 바로 위 주석이 *"다크 기준열"* 이라고 이미
+#: 말하고 있었다 -- **설명은 맞고 배정만 틀렸다.**
+#: ⚠️ **합 불변식이 이것을 못 잡는다** -- 아래 `assert` 는 `PRESCNX + IMAGEX +
+#: OVRSCNX == AMPNAX1` 로 **합만** 보므로 16 이 어느 쪽에 있든 통과한다.
+#: ⛔ **자리가 뜻이다**: converter 는 `DETSEC`/`DATASEC` 을 prescan/overscan
+#: **위치**로 셈하므로, 16 이 왼쪽(pre)이냐 오른쪽(over)이냐가 **영상 좌표를
+#: 뒤집는다** -- 합만 맞고 좌표가 조용히 틀리는 부류다.
+#: ⏳ 규격(10.3절)·견본 헤더·converter 파급은 **CU 와 상의 후** 정한다
+#: (운영자 2026-09-08) -- 지금은 코드만 맞춘다.
 AMPNAX1, AMPNAX2 = 528, 1033
 IMAGEX, IMAGEY = 512, 1024
-PRESCNX = PRESCNY = 0
-OVRSCNX, OVRSCNY = 16, 9
+PRESCNX, PRESCNY = 16, 0
+OVRSCNX, OVRSCNY = 0, 9
 NAMPDET, NAMPRAW = 2, 8
 PIXSIZE = 13.0
 #: PROVISIONAL -- 하늘 실측 전 (guide OI-22: 0.49 / 0.51 / 0.52 3파전).

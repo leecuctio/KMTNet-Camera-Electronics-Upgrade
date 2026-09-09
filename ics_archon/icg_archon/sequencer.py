@@ -123,6 +123,20 @@ class GuideSequencer:
         return self._task is not None and not self._task.done()
 
     @property
+    def settling(self) -> bool:
+        """**뒷정리 중인가** -- `STOP` 의 꼬리 소화 · `ABORT` 의 flush 대기.
+
+        ⭐ `busy` 와 갈라 두는 이유: 그 동안에도 `GO` 는 거절되는데, 운영자에게
+        *"취득 중"* 이라고 답하면 **틀린 그림**을 준다 -- 저장은 이미 끝났고
+        컨트롤러 꼬리를 소화하는 중이다 (벤치 2026-09-08: `guiexp 15` 에서
+        32초 동안 그렇게 보였다).  거절 문구가 이것을 보고 갈린다.
+        """
+        # ⛔ **`busy` 와 함께 본다.**  `_settling` 은 다음 사이클이 시작될 때만
+        # 내려가므로 그것만 보면 ABORT 한 번 뒤 **모든 `GO` 가 막힌다**
+        # (시험이 잡았다).  뒷정리는 사이클 태스크 안에서 도므로 `busy` 다.
+        return bool(self._settling) and self.busy
+
+    @property
     def integrating(self) -> bool:
         """guide 는 사이클 내내 '적분 중' 이다 (독출 사이가 곧 노출)."""
         return self.busy
@@ -311,8 +325,15 @@ class GuideSequencer:
                     ticket = await self.backend.next_ticket(
                         ticket, intms, suffix=orig_suffix, queue=True)
 
-                st.expstatus = ExpStatus.READOUT
+                # ⛔ **여기는 아직 적분이다** (운영자 지적 2026-09-08).
+                # guide 의 `wait_frame()` 은 **적분(IntMS)과 독출을 다 덮는다**
+                # -- 그런데 종전에는 그 앞에서 `READOUT` 으로 못박아, `guiexp 15`
+                # 로 돌 때 적분 2.7초째의 `STOP` 응답이 `EXPSTATUS=READOUT` 이라고
+                # 답했다.  ⭐ 독출이 **실제로 시작된 신호**는 첫 진행률이다
+                # (`PCTREAD` 는 독출 진행이라야 뜻이 있다 -- `wait_frame` 머리말).
+                st.expstatus = ExpStatus.INTEGRATING
                 async for pct in self.backend.wait_frame(ticket):
+                    st.expstatus = ExpStatus.READOUT
                     self.emit.status(source, 'PCTREAD=%d' % pct, cmdword='GO')
                 done_mono = time.monotonic()
                 done_utc = utcnow()
@@ -359,7 +380,11 @@ class GuideSequencer:
                 st.advance()
                 # 이 프레임의 FrameShift 개시 = 완료 관측 − (transfer + 독출) -> 다음 DATE-OBS.
                 t_prev = done_utc - timedelta(seconds=fs_to_done)
-                if k < count - 1:
+                # ⚠️ 이것은 **예측**이다 (다음 장이 곧 적분에 든다).  ⛔ `STOP`
+                # 이 들어와 있으면 다음 장이 없으므로 예측이 틀린다 -- 종전에는
+                # 그래서 `Wrote … EXPSTATUS=INTEGRATING` 이 나가고, 뒤이은 꼬리
+                # 소화 내내 *"적분 중"* 으로 보였다 (벤치 2026-09-08).
+                if k < count - 1 and not self._stop_evt.is_set():
                     st.expstatus = ExpStatus.INTEGRATING
 
             if stopped and armed:
@@ -369,6 +394,9 @@ class GuideSequencer:
                 # 루프가 자연히 끝났으면 컨트롤러는 이미 멈췄고 꼬리도 없다
                 # (2차 반증: 그때 소화를 기다리면 IDLE 이 3초 넘게 늦었다).
                 self._settling = True
+                # ⭐ 꼬리 소화 중의 상태는 **READOUT** 이다 -- 컨트롤러가 아직
+                # 내보내는 중이지 적분 중이 아니다.
+                st.expstatus = ExpStatus.READOUT
                 await self.backend.stop_sequence()
                 # `Exposures=0` 은 **현재 프레임까지** 찍는다 -- 그 꼬리가 끝날
                 # 때까지 busy 를 유지한다 (안 그러면 다음 GO 가 그 꼬리를 제
@@ -666,6 +694,14 @@ class GuideSequencer:
             # 주기' 가 깨진다.  엔진이 첫 프레임을 낼 수 있는 가장 늦은 시각까지만.
             flush_total = self.backend.flush_duration() + intms / 1000.0
             limit = max(0.0, armed_mono + flush_total - time.monotonic()) + period + 0.5
+
+        # ⭐ **기다린다는 것을 알린다** (운영자 2026-09-09).  이 구간은 저장이
+        # 끝난 뒤인데도 `busy` 라 `GO` 가 거절된다 -- 벤치에서 `guiexp 15` 로
+        # 32초 동안 그랬고, 그 사이 아무 설명이 없었다.
+        # ⚠️ 상한은 `guiexp` 에 비례한다 (`_tail_is_quiet` 이 **한 주기** 동안
+        # 번호가 안 느는 것을 확인하기 때문) -- 실운영 1.3 s 에서는 ~3 s 다.
+        log.info('STOP -- 컨트롤러 꼬리 프레임을 소화한다 (최대 %.0f초).  '
+                 '그 동안 GO 는 거절된다', limit)
 
         async def _wait() -> None:
             newest = await self.backend.newest_frame()

@@ -1416,6 +1416,10 @@ class ArchonController:
         # "값이 바뀔 때마다" 로 읽는다.
         step = max(int(self.cfg.progress_step), 1)
         reported = -1
+        #: 첫 폴링의 진행률 -- **직전 프레임의 잔값**일 수 있어 기준선으로만 쓴다.
+        base_pct = None
+        #: 그 기준선에서 값이 움직였나 (= 이 프레임이 채워지기 시작했다).
+        moved = False
         prev = ticket.prev_frame
         limit = float(getattr(self.cfg, 'frame_timeout', 0.0) or 0.0)
         started = time.monotonic()
@@ -1496,8 +1500,29 @@ class ArchonController:
                         % (self.tag, prev + 1, mine.frame), cmd='FRAME')
                 ticket.ready = mine
                 return
+            # ⛔ **낡은 진행률을 내보내지 않는다** (벤치 2026-09-08).
+            #
+            # 프레임이 끝나도 컨트롤러는 `WBUF` 를 **그 버퍼에 그대로 두고**
+            # `BUFnLINES` 도 꽉 찬 값으로 남긴다.  그래서 무장 직후 첫 폴링이
+            # **직전 프레임의 99** 를 진행률로 읽어 `PCTREAD=99` 를 5 ms 만에
+            # 내보냈다 -- 그 뒤로는 `step` 을 못 넘어 프레임당 한 번씩만 나갔다.
+            # ⚠️ 이 함수의 머리말이 *"적분 중에는 쓰기 버퍼가 없어 None 이
+            # 나온다"* 고 적어 둔 것이 **하드웨어에서 성립하지 않았다.**
+            #
+            # ⭐ 판정: **첫 값은 기준선으로만 쓰고 내보내지 않는다.**  값이
+            # 그 기준선에서 움직인 순간부터가 이 프레임의 진행이다.
+            # ⛔ 버퍼 식별로 가르려다 실패했다 -- 컨트롤러가 같은 버퍼를
+            # 재사용하면 *"낡은 것"* 과 *"새로 채우는 중"* 이 구별되지 않아
+            # 진행률이 **하나도 안 나갔다** (시험이 잡았다).  기준선 방식은
+            # 버퍼를 어떻게 쓰든 성립한다.
+            # ⚠️ 대가는 **이른 표본 하나**를 잃는 것뿐이고, 틀린 값을 내지는
+            # 않는다 -- 그 방향이 맞다.
             pct = parse.newest(fields).progress_of(self.lines_total)
-            if pct is not None and pct >= reported + step:
+            if pct is not None and base_pct is None:
+                base_pct = pct           # 기준선 -- 직전 프레임의 잔값일 수 있다
+            elif pct is not None and pct != base_pct:
+                moved = True
+            if moved and pct is not None and pct >= reported + step:
                 reported = pct
                 yield pct
             if next_dump is not None and time.monotonic() >= next_dump:

@@ -332,6 +332,17 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if self._op_in_flight:
             return Reply.error('GO', 'Busy with %s -- wait for its DONE'
                                % self._op_in_flight)
+        # ⭐ **뒷정리 중이면 그 사실을 말한다** (운영자 2026-09-09).  기반은
+        # `Data acquisition already in progress!` 하나로 답하는데, `STOP` 뒤
+        # 꼬리 소화 구간에서는 **틀린 그림**이다 -- 저장은 이미 끝났고 컨트롤러
+        # 꼬리를 기다리는 중이다 (벤치 2026-09-08: `guiexp 15` 에서 32초).
+        # ⚠️ **거절은 그대로 한다** -- 그 꼬리를 다음 시퀀스가 제 첫 프레임으로
+        # 알면 남의 픽셀이 정상 헤더로 저장된다 (9.15-(9)).
+        seq = getattr(self.app, 'seq', None)
+        if seq is not None and getattr(seq, 'settling', False):
+            return Reply.error(
+                'GO', 'Finishing previous sequence (draining controller '
+                      'tail frame) -- retry shortly')
         return super().cmd_go(msg, target)
 
     def cmd_expenable(self, msg: Message, target: Target) -> Reply:

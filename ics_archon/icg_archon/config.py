@@ -208,7 +208,11 @@ class IcgCfg:
     param_flush_name: str = 'FirstFlush'
     telemetry: bool = True
     status_timeout: float = 2.0
-    frame_poll: float = 0.5
+    #: ⭐ **0.2 다** (운영자 2026-09-09).  guide 독출이 1.25 s 라 0.5 면
+    #: `PCTREAD` 표본이 **3~4개**뿐이었다.  0.2 면 ~6개다.
+    #: ⚠️ 폴링 하나가 `FRAME` 왕복이고 FETCH 와 락을 다투므로 더 낮추지 않았다
+    #: -- `progress_step`(5%)이 값이 안 움직이면 안 내보내므로 소음은 걸러진다.
+    frame_poll: float = 0.2
     progress_step: int = 5
     burst_len: int = 1024
     fetch_buffers: int = 2
