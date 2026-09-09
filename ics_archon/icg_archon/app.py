@@ -215,6 +215,7 @@ class IcgArchon(IcsSim):
             # "모름" 으로 남고 그때는 DEWPRES 를 막지 않는다 -- 추측으로 ON
             # 을 적으면 헤더 판정의 근거가 거짓이 된다 (gauge.load 주석).
             await self.gauge.load(self.guide.ctrl)
+            await self._settle_gauge()
             # ⭐ **준비되자마자 HK 한 바퀴를 돌린다** (운영자 지시 2026-09-09).
             #
             # ⛔ 종전에는 기동 뒤 **최대 한 주기(60초)** 동안 게이지 상태도
@@ -239,6 +240,35 @@ class IcgArchon(IcsSim):
             log.error('guide 컨트롤러 기동 접속 실패 -- %s.  첫 GO 의 prepare() 가 '
                       '다시 시도한다 (HK 감시는 재접속하지 않고 STATUS 결측으로 '
                       '기록한다)', exc)
+
+    async def _settle_gauge(self) -> None:
+        """기동 때 이온게이지를 `[icg] gauge_on_start` 에 맞춘다.
+
+        ⛔ **기본은 `off` 다** -- 필라멘트가 science 영상을 오염시키므로 science
+        노출 중에는 꺼져 있어야 하는데, 그 사이에 ICG 를 재실행하면 종전에는
+        **ACF 가 켜 버렸다**(`MOD10\\DIO_POWER=1`).  R2619 에서 ACF 를 `0` 으로
+        내렸고 이것은 그 위의 정책이다.  ⭐ **켜는 쪽은 ICS 몫**이다 -- 노출이
+        끝나면 `ICS>ICG VACGAUGE ON` 이 온다.
+
+        ⭐ **되읽은 값과 다를 때만 쓴다.**  `set()` 은 `APPLYDIO09` 라 모듈
+        VCPU 를 재시작하고 `DEWPRES` 에 구멍을 내므로, 이미 맞는 값이면
+        왕복도 구멍도 만들지 않는다 (ACF 를 갓 적용한 정상 경로가 이쪽이다).
+        ⛔ **모르면 쓴다** -- `load()` 가 실패해 상태가 `None` 이면 추측하지
+        않고 원하는 값으로 맞춘다.  안 맞추면 *"꺼져 있다고 믿는데 켜져 있는"*
+        상태가 남고, 그것이 바로 이 눈금이 막으려는 것이다.
+        """
+        want = self.icfg.gauge_on_start == 'on'
+        if self.gauge.on is want:
+            log.info('이온게이지는 이미 %s -- 기동에서 건드리지 않는다 '
+                     '([icg] gauge_on_start=%s)',
+                     self.gauge.word, self.icfg.gauge_on_start)
+            return
+        try:
+            await self.gauge.set(self.guide.ctrl, want)
+        except Exception as exc:  # noqa: BLE001
+            log.warning('기동 이온게이지 %s 실패 -- %s.  ⚠️ 상태를 **모른다** '
+                        '-- science 노출 중이면 `vacgauge off` 로 확인할 것',
+                        'ON' if want else 'OFF', exc)
 
     async def stop(self) -> None:
         # ⭐ **취득 사이클을 먼저 세운다** (2026-08-31 교차검토).  사이클

@@ -1425,9 +1425,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | 것 | 값 |
 |---|---|
 | raw spec | **v1.12** — 발행 커밋 `8e3bdbf`, 태그 `raw-spec-v1.12`.  ⚠️ `main` 의 **끝**이 아니다 (Leecu 의 `cam_char` 작업이 그 뒤로 붙는다) — 판을 확인할 때는 커밋이 아니라 **태그**를 볼 것.  ⭐ 태그는 **최신 판 하나만** 둔다 — 팀은 `git fetch --tags --prune --prune-tags` 가 필요하다 |
-| guide ACF | **`KMTK_GUI_162_STA0201_R2618.acf`** (타이밍 스크립트 `LINES=122`) |
+| guide ACF | **`KMTK_GUI_162_STA0201_R2619.acf`** (타이밍 스크립트 `LINES=122`) |
 | science ACF | **`KMT?_SCI_*_R2611_*.acf`** 6장 (타이밍 스크립트 142줄) |
-| 시험 | `ics_archon` **673** · `ics_sim` **395** — **전수 통과** (2026-09-10 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
+| 시험 | `ics_archon` **676** · `ics_sim` **395** — **전수 통과** (2026-09-10 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
 | 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `33a1bca` 까지.  ⏳ `main` 소관 잔여는 규격 10.6절 `OI-27` 문면 |
 
 #### 오늘 확정된 규약 (어기기 쉬운 것들)
@@ -1541,6 +1541,21 @@ science `abort_now()` · **적분/독출 중 `APPLYSYSTEM`**)은 링크가 무�
 POWERON 앞**이라 헛돈다.  ⭐ 준비되자마자 `hk.refresh_now()` 를 한 번 더 돌린다
 (`HKDATA NOW` 와 **같은 함수** — 따로 만들면 경로가 갈린다).
 ⚠️ **`self.cfg.hk.interval` 로 읽는 실수를 또 냈다** — HK 는 `icfg` 소관이다.  시험으로 못박았다.
+
+#### ⛔ guide ACF **R2619** — 이온게이지를 꺼진 채로 (11.60)
+
+⛔ **범인은 파일이었다** — ACF 의 `MOD10\DIO_POWER=1` 이 **적용마다 게이지를 켰다**.
+science 노출 중 ICG 를 재실행하면 ICS 는 껐다고 믿는데 필라멘트가 켜져 **영상이 조용히
+오염**된다.  ⭐ 한 줄 판이라 타이밍 스크립트도 줄 번호도 안 밀린다.
+
+- **`[icg] gauge_on_start`** (`off` 기본 / `on`) — 파일 위에 얹는 정책.  ⭐ 되읽은 값과
+  **다를 때만** 쓴다 (`set()` 이 `APPLYDIO09` 라 VCPU 를 재시작한다).  ⛔ 모르면 쓴다.
+  ⚠️ **`keep` 은 없다** — 기동이 늘 ACF 를 적용해 앞선 상태 보존이 성립하지 않는다.
+- ⭐ **켜는 쪽은 ICS 몫**이고 배선은 이미 있었다 (`gaugectl` 의 `OFF → PENDING_ON → ON`,
+  `[ics] gauge_reenable_after` 뒤).  ICG 가 중간에 재실행돼도 ICS 가 다시 켠다.
+- ⛔ **벤치는 `git pull` 만으로 안 간다** — `~/AIC/Config/acf/` 에 **R2619 복사** +
+  `icg_archon.ini` 의 `acf` 줄 손 수정.  안 하면 *"acf 가 없다"* 로 죽는다.
+- ⚠️ 곁들여 *"FRAME6 후속 판 R2618"* 이라 적힌 자리 셋을 **R2620** 으로 밀었다.
 
 #### 헤더 규범 셋이 바뀌었다 (11.58) — ⚠️ 규격은 나중
 

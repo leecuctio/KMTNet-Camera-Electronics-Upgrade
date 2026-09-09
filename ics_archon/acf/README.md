@@ -17,7 +17,7 @@
 | `KMTS_SCI_102_STA0287_R2611_NT.acf` | SAAO science 2 (NT) ⭐ **2026-09-03 반입** | 33 | 1 | **1200** × 4700 | `.102` |
 | `KMTK_SCI_113_STA0200_R2611_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` |
 | `KMTK_SCI_113_STA0200_R2611_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` |
-| `KMTK_GUI_162_STA0201_R2618.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
+| `KMTK_GUI_162_STA0201_R2619.acf` | KASI guide ⭐ **현행 유일본** | 9 | **0** | **528** × 1033 | `.162` |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -40,7 +40,7 @@ Tap"** 이 그 값이다 (운영자 확인 2026-08-29).
 | science | `Pixels=1201` + 1 = **1202** | `PIXELCOUNT=`**1200** | 2 |
 
 ⚠️ **아래 `LINE<n>` 은 전부 guide 기준이다** -- science 는 같은 번호에 다른 줄이
-있다(**guide R2618 · science R2611 기준, 오프셋 +12** -- guide `LINE44`↔science
+있다(**guide R2619 · science R2611 기준, 오프셋 +12** -- guide `LINE44`↔science
 `LINE56`, `45`↔`57`, `48`↔`60`).  판을 안 밝히면 조용히 틀린 독해가 된다.
 ⭐ 더 안전한 길은 번호를 아예 안 쓰는 것이다 -- 코드가 이미 `라벨:` 블록과 호출
 이름으로 색인한다 (DevNote 11.35).
@@ -50,7 +50,7 @@ Tap"** 이 그 값이다 (운영자 확인 2026-08-29).
     LINE46  RGHIGH; CALL SkipPixelFirst(PostSkipPixels)   0
     LINE47  RGHIGH; CALL PixelFirst(OverscanPixels)       0
     LINE48  RGHIGH; CALL PixelFirst                       1   ← 인자 없는 호출 = 1개 더
-                                                              (번호는 R2618 기준 -- R2617 과 같다)
+                                                              (번호는 R2619 기준 -- R2617 부터 같다)
 
 **그래서 저장 영상은 채널(탭)당 528 컬럼**이고, guide 프레임 전체는
 **8탭 × 528 = `NAXIS1=4224`**, `NAXIS2=1033` 이다.  science 는 16탭 × 1200 =
@@ -260,6 +260,42 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
+
+## R2619 -- 이온게이지를 **꺼진 채로** 내보낸다 (2026-09-10, 운영자)
+
+    KMTK_GUI_162_STA0201_R2618.acf  ->  ..._R2619.acf   (구판은 archive/)
+    MOD10\DIO_POWER=1  ->  0                ([CONFIG] 한 줄)
+
+⭐ **타이밍 스크립트는 안 바뀌고 줄 번호도 안 밀린다** (`LINES=122`) -- R2618 과 같은
+성격의 한 줄 판이다.
+
+### 왜 필요했나
+
+⛔ **ACF 가 게이지를 켜고 있었다.**  진공 이온게이지의 필라멘트는 science 영상을
+오염시키므로 **science 노출 중에는 꺼져 있어야 하는데**, 그 사이에 ICG 를 재실행하면
+기동의 ACF 적용이 `DIO_POWER=1` 로 **다시 켜 버렸다** (운영자가 벤치에서 잡았다:
+*"science 노출중에 icg를 재실행 했을 때 gauge가 켜지면 안되거든"*).
+
+⭐ **아무도 켠 적이 없었다** -- 우리 코드에 기동 시 켜는 경로가 없고, 로그의
+`이온게이지 ON (…)` 줄은 `gauge.load()` 가 **되읽어 보고한** 것이다.  범인이 파일이었다.
+
+### 짝이 되는 것 둘
+
+1. **`[icg] gauge_on_start`** (`off` 기본 / `on`) -- 파일 위에 얹는 정책이다.
+   ⭐ 되읽은 값과 **다를 때만** 쓴다 -- `set()` 이 `APPLYDIO09` 라 모듈 VCPU 를
+   재시작하고 `DEWPRES` 에 구멍을 내므로, 정상 경로(파일 `0` · 정책 `off`)에서는
+   왕복도 구멍도 없다.
+   ⚠️ **`keep` 은 두지 않았다** -- 기동이 늘 ACF 를 적용해 그 순간 값이 파일 값으로
+   덮이므로 *"앞선 상태를 보존한다"* 가 성립하지 않는다.
+2. **켜는 쪽은 ICS 몫** -- 노출이 끝나고 `[ics] gauge_reenable_after` 뒤에
+   `ICS>ICG VACGAUGE ON` 이 온다 (`ics_archon/gaugectl.py` 의 `OFF -> PENDING_ON
+   -> ON`).  ⭐ 그 사이 ICG 가 재실행돼도 ICS 는 자기 상태로 다시 켜므로 배선이
+   끊기지 않는다.
+
+⚠️ **`CTRL1CFG` 헤더 값이 바뀐다** (`…R2618` → `…R2619`) -- 파일명에서 유도하기 때문.
+⛔ **벤치는 `git pull` 만으로 안 간다**: `~/AIC/Config/acf/` 에 복사 + `~/AIC/Config/
+icg_archon.ini` 의 `acf` 줄 손 수정.  안 하면 *"acf 가 없다"* 로 죽는다.
+⛔ **science ACF 6장은 그대로다** -- 게이지는 guide 유닛 모듈이다.
 
 ## R2618 -- guide 의 **쉬는 상태를 ACF 에** (2026-09-08, 운영자)
 
@@ -607,8 +643,8 @@ p.2 note 2 공식으로 5.4e-4~1.1e-3 e/px/s, 보수적 바닥값 0.01 을 두�
 
 ⏳ 고치려면 `STATE31\MOD4` ch6 을 `,1,1`(keep) 로 -- FrameShift 내내 DG 12 V 유지.
 **그러나 데이터시트 본문만으로는 DG 가 정적 레지스터를 통째로 덤프하는지(가로 인접
-덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 후속 판으로(**R2618** -- R2615 는 위 `SkipLine` DGHIGH 건, R2616 은 `FirstFlush` 상수,
-R2617 은 빈 줄이 썼다): 암실·저온·유휴
+덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 후속 판으로(**R2620** -- R2615 는 위 `SkipLine` DGHIGH 건, R2616 은 `FirstFlush` 상수,
+R2617 은 빈 줄, R2618 은 `TRIGOUTFORCE`, R2619 는 `DIO_POWER` 가 썼다): 암실·저온·유휴
 시험 ACF 에서 `LINE12`(R2617 의 `LINE13`)를 `DGLOW; X(1)` 로 바꿔(HorizontalShift 생략) 레지스터
 잔량이 1 행에 더해져 나오게 하고 FRAME6 ch6 을 A_LOW/keep 두 판으로 찍어 비교.
 ⭐ **정본 절차는 `../icg_first_run.md` 의 "부록 -- DG 정적 덤프 실측"** 이다 (2026-09-05 밤에

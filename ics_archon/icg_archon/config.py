@@ -268,7 +268,7 @@ class IcgCfg:
     #: **설정 가능한 최소 노출시간** [s] -- 이보다 짧은 `EXPTIME` 요청은 이 값으로 접는다
     #: (운영자 확정 2026-09-05: 기본 노출시간 1.2506 s 위에 여유를 두어 1.3; 용어는 운영자
     #: 개명 2026-09-05 -- 구 '운영 하한').  ⚠️ **기본 노출시간**(`GuideBackend.base_exptime()`:
-    #: `IntMS=0` 일 때의 주기 = NoIntMS + 트랜스퍼 + 독출, ACF 계산값 -- R2610~R2618 1.251 s;
+    #: `IntMS=0` 일 때의 주기 = NoIntMS + 트랜스퍼 + 독출, ACF 계산값 -- R2610~R2619 1.251 s;
     #: `NoIntMS` 항은 10.3 실측 1% 적중, 트랜스퍼·독출 항은 ⏳ 첫 guide 구동 실측)과 **다른
     #: 물건**이다 -- `IntMS = EXPTIME - 기본 노출시간` 의 기준은 계산값이어야 헤더가 참이고,
     #: 이 값은 그 위에 얹는 정책이다.  기본 노출시간보다 작게 두면 기본 노출시간이 이긴다.
@@ -294,6 +294,18 @@ class IcgCfg:
     #: ⏳ `ionen` 은 **여전히 미검증**이다 -- 읽기를 살린 채 필라멘트만 끄는
     #: 쪽이라 이론상 낫지만 실기로 확인되지 않았다 (DevNote 11.19·11.24).
     gauge_off_method: str = 'diopower'
+    #: 기동 때 이온게이지를 **켤지 끌지** (`off`/`on`, 운영자 지시 2026-09-10).
+    #:
+    #: ⛔ **기본이 `off` 인 이유**: 게이지 필라멘트가 science 영상을 오염시키므로
+    #: science 노출 중에는 꺼져 있어야 하는데, 그 사이에 ICG 를 재실행하면
+    #: 종전에는 **ACF 가 켜 버렸다**(`MOD10\\DIO_POWER=1`).  ⭐ R2619 에서 ACF 를
+    #: `0` 으로 내렸고 이 눈금이 그 위의 정책이다.
+    #: ⭐ **켜는 쪽은 ICS 몫이다** -- 노출이 끝나고 `[ics] gauge_reenable_after`
+    #: 뒤에 `ICS>ICG VACGAUGE ON` 이 온다 (`ics_archon/gaugectl.py`).
+    #: ⚠️ `keep`(건드리지 않는다)은 **두지 않았다** -- 기동이 늘 ACF 를 적용하고
+    #: 그 순간 값이 파일 값으로 덮이므로, 앞선 상태를 보존한다는 뜻이 성립하지
+    #: 않는다.  *"안 건드린다"* 라고 적어 두면 거짓말이 된다.
+    gauge_on_start: str = 'off'
 
     hk: HkCfg = field(default_factory=HkCfg)
     radionode: RadionodeCfg = field(default_factory=RadionodeCfg)
@@ -384,6 +396,14 @@ def load(path: str) -> IcgCfg:
                                    cfg.expenable_file)
         cfg.gauge_off_method = (s.get('gauge_off_method', '').strip().lower()
                                 or cfg.gauge_off_method)
+        want = (s.get('gauge_on_start', '').strip().lower()
+                or cfg.gauge_on_start)
+        if want not in ('on', 'off'):
+            raise IcgConfigError(
+                "[icg] gauge_on_start 는 'on' 또는 'off' 다 -- 받은 값 %r.  "
+                "⛔ 'keep' 은 없다: 기동이 늘 ACF 를 적용해 그 순간 값이 파일 "
+                '값으로 덮이므로 앞선 상태를 보존할 수 없다' % want)
+        cfg.gauge_on_start = want
 
     if cp.has_section('hk'):
         s = cp['hk']

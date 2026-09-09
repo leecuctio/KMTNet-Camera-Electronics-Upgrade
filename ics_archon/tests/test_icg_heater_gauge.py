@@ -35,7 +35,7 @@ from icg_archon.config import IcgCfg, IcgConfigError, validate  # noqa: E402
 from icg_archon.hk import HkMonitor  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2618.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2619.acf')
 
 
 class RecordingCtrl(ArchonController):
@@ -205,7 +205,9 @@ def test_the_gauge_state_is_read_back_from_the_controller_at_startup():
     ctrl = RecordingCtrl()
     state = gauge_mod.GaugeState()
     asyncio.run(state.load(ctrl))
-    assert state.on is True              # ACF 출하값 DIO_SOURCE3=1
+    # ⭐ **ACF 파일값을 그대로 읽는다** -- R2619 부터 `MOD10\DIO_POWER=0` 이다
+    # (그 전 판은 1 이었고, science 노출 중 재실행이 게이지를 켜 버렸다).
+    assert state.on is False
     assert state.origin == 'rconfig'
 
 
@@ -228,12 +230,15 @@ def test_the_gauge_state_rolls_back_when_the_round_trip_fails():
     ctrl = RecordingCtrl()
     state = gauge_mod.GaugeState()
     asyncio.run(state.load(ctrl))
-    assert state.on is True
+    assert state.on is False             # R2619 ACF 는 꺼진 채로 나온다
     ctrl.fail_on = 'APPLYDIO'
     with pytest.raises(ArchonError):
-        asyncio.run(state.set(ctrl, False))
-    assert state.on is True, '실패한 왕복이 상태를 바꿨다'
-    assert state.blocks_dewpres is False
+        asyncio.run(state.set(ctrl, True))
+    assert state.on is False, '실패한 왕복이 상태를 바꿨다'
+    # ⭐ **방향이 뒤집혔다** (R2619 부터 ACF 가 꺼진 채로 나온다) -- 켜려다
+    # 실패했으니 게이지는 여전히 꺼져 있고, 그러면 `DEWPRES` 를 **막아야**
+    # 한다 (꺼도 같은 모듈의 열손실 센서가 값을 계속 낸다).
+    assert state.blocks_dewpres is True
 
 
 def test_an_unknown_gauge_off_method_refuses_to_start():
@@ -633,3 +638,66 @@ def test_the_hk_loop_turns_the_heater_off_and_records_the_event(tmp_path):  # no
     rows = list(tmp_path.glob('hk.G.*.csv'))
     assert rows, 'HK CSV 가 안 써졌다'
     assert 'HEATER OFF' in rows[0].read_text(encoding='utf-8')
+
+
+# ---------------------------------------------------------------------------
+# [icg] gauge_on_start -- 기동 때 켤지 끌지 (운영자 2026-09-10)
+# ---------------------------------------------------------------------------
+
+
+def test_the_acf_no_longer_turns_the_gauge_on():
+    r"""⛔ **R2619 가 `MOD10\DIO_POWER` 을 `0` 으로 내렸다.**
+
+    종전에는 ACF 가 `1` 이라 **ACF 적용마다 게이지가 켜졌고**, science 노출
+    중에 ICG 를 재실행하면 필라멘트가 켜져 영상을 오염시켰다 (운영자가 벤치에서
+    잡았다).  ⭐ 이제 파일이 꺼진 상태로 나오고, 켜는 것은 정책(`gauge_on_start`)
+    이거나 ICS 의 `VACGAUGE ON` 이다.
+    """
+    import io as _io
+    text = _io.open(GUIDE_ACF, encoding='latin-1').read()
+    assert 'MOD10' + chr(92) + 'DIO_POWER=0' in text
+    assert 'MOD10' + chr(92) + 'DIO_POWER=1' not in text
+
+
+def test_gauge_on_start_defaults_to_off_and_only_takes_on_or_off():
+    """⛔ **기본은 `off`** -- science 노출 중 재실행이 게이지를 켜면 안 된다.
+
+    ⚠️ `keep` 은 없다: 기동이 늘 ACF 를 적용해 그 순간 값이 파일 값으로
+    덮이므로 *"앞선 상태를 보존한다"* 가 성립하지 않는다.  뜻이 안 서는 값을
+    받아 두면 문서가 거짓말한다.
+    """
+    from icg_archon.config import IcgCfg, IcgConfigError, load
+    assert IcgCfg().gauge_on_start == 'off'
+    import tempfile
+    import os as _os
+    for word, ok in (('on', True), ('off', True), ('keep', False),
+                     ('yes', False)):
+        fd, path = tempfile.mkstemp(suffix='.ini')
+        with _os.fdopen(fd, 'w', encoding='utf-8') as fh:
+            fh.write('[icg]\ngauge_on_start = %s\n' % word)
+        try:
+            if ok:
+                assert load(path).gauge_on_start == word
+            else:
+                with pytest.raises(IcgConfigError):
+                    load(path)
+        finally:
+            _os.unlink(path)
+
+
+def test_startup_only_writes_when_the_readback_disagrees():
+    """⭐ 이미 맞는 값이면 **왕복도 VCPU 구멍도 만들지 않는다.**
+
+    `set()` 은 `APPLYDIO09` 라 모듈 VCPU 를 재시작하고 `DEWPRES` 에 구멍을
+    낸다.  ACF 를 갓 적용한 정상 경로(파일이 `0`, 정책이 `off`)가 바로 이
+    자리이므로 여기서 쓰면 매 기동마다 헛구멍이 난다.
+    ⛔ **모르면 쓴다** -- 되읽기가 실패해 `None` 이면 추측하지 않고 맞춘다.
+    """
+    import io as _io
+    import os as _os
+    src = _io.open(_os.path.join(ROOT, 'icg_archon', 'app.py'),
+                   encoding='utf-8').read()
+    body = src[src.index('    async def _settle_gauge'):]
+    body = body[:body.index('\n    async def stop')]
+    assert 'if self.gauge.on is want:' in body, '되읽은 값과 견준다'
+    assert 'return' in body

@@ -691,8 +691,11 @@ def test_a_failed_gauge_off_does_not_stop_the_shutdown():
     import os as _os
     src = _io.open(_os.path.join(ROOT, 'icg_archon', 'app.py'),
                    encoding='utf-8').read()
-    at = src.index('await self.gauge.set(')
-    tail = src[at:at + 500]
+    # ⚠️ `gauge.set(` 은 이제 **둘**이다 (기동 `_settle_gauge` · 종료).
+    # 종료 쪽만 본다 -- `stop()` 안의 것이다.
+    body = src[src.index('    async def stop(self)'):]
+    at = body.index('await self.gauge.set(')
+    tail = body[at:at + 500]
     assert 'except Exception' in tail
     assert '켜진' in tail, '켜진 채 남는다는 경고 문구가 있어야 한다'
 

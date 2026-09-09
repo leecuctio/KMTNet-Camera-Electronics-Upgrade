@@ -56,7 +56,7 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
 
 - 벤치 네트워크에서 **인터넷이 되는가** — `openapi` 백엔드는 인터넷이 있어야 한다.  끊기면
   `HEBOX`/`FSATEMP`/`FSAHUM` 이 그동안 sentinel 이고, 운영자는 그 결측을 받아들이지 않는다(2026-09-04).
-- guide 유닛 `10.0.0.162` 접속 · ACF **`KMTK_GUI_162_STA0201_R2618.acf`** 적용 여부.
+- guide 유닛 `10.0.0.162` 접속 · ACF **`KMTK_GUI_162_STA0201_R2619.acf`** 적용 여부.
 - science 는 **`KMT?_SCI_*_R2611_*.acf`** 6장이 현행이다.
 - ⭐ **장치 MAC / 시리얼** — 벤치 ini 의 `[radionode.hebox]`·`[radionode.fsa]` 에 적을 값.
   ⚠️ 자격증명과 **별개**다.  이것이 비면 3(`CONNECT`)은 통과하는데 4(`HK`)에서 값이
@@ -351,7 +351,7 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 ⚠️ **`APPLYMOD` 가 MOD10 VCPU 를 재시작한다** (DevNote 11.18) — 이 절차를 도는 동안
 `DEWPRES` 가 한동안 결측일 수 있다.  그것은 고장이 아니다.
 
-### DG 정적 덤프 실측 (FRAME6 후속 판 **R2618** 판단)
+### DG 정적 덤프 실측 (FRAME6 후속 판 **R2620** 판단)
 
 [`icg_first_run.md`](icg_first_run.md) 의 **부록 "DG 정적 덤프 실측"** 에 단계(A~E)·판정표·멈출 조건이
 있다.  ⭐ **약한 균일광**이 필요하다 — 어둠에서는 `go 1` 의 첫 flush 가 image/store 를 비워 신호가 안 남는다.
