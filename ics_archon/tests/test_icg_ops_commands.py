@@ -905,3 +905,40 @@ def test_hkdata_logs_its_latency(tmp_path):
         lg.setLevel(old)
 
     assert any('HKDATA 지연' in m for m in seen), seen
+
+
+def test_trigout_latency_is_logged_even_under_a_high_threshold(tmp_path, caplog):
+    """⭐ **`TRIGOUT` 은 임계를 안 태고 늘 남긴다** (2026-09-09 정정).
+
+    ⛔ 종전 판은 셋 다 `latency_warn_ms` 를 타게 했고, 그 근거로
+    *"`HKDATA` 는 프레임마다 온다"* 를 적었다.  그 근거가 **틀렸다** --
+    `_ask_icg('HKDATA')` 를 부르는 곳은 명령 처리기 둘뿐이고 주기
+    발신자가 없다.  `TRIGOUT` 은 더욱 드물고(운영자가 칠 때뿐),
+    ⭐ 그 지연 자체가 진단 값이라 높은 임계에도 숨으면 안 된다.
+
+    ⚠️ 임계를 매우 크게(10 s) 두고도 줄이 남는지를 본다 --
+    `always=True` 를 떼면 여기서 깨진다.
+    """
+    import asyncio
+    import logging
+
+    rec = _Rec(dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
+        icfg.latency_warn_ms = 10_000.0      # ⛔ 잠재울 만큼 높게
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide.ctrl = rec
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUT 2')
+            await asyncio.sleep(0.3)
+        finally:
+            await app.stop()
+
+    caplog.set_level(logging.INFO, logger='icg_archon.cmd')
+    asyncio.run(run())
+    assert 'TRIGOUT 올림 지연' in caplog.text, caplog.text
+    assert 'TRIGOUT 내림 지연' in caplog.text, caplog.text

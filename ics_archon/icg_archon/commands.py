@@ -219,16 +219,32 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         return self._hk_reply(msg, 'HKDATA')
 
-    def _log_latency(self, what: str, t0: float, extra: str = '') -> float:
+    def _log_latency(self, what: str, t0: float, extra: str = '',
+                     always: bool = False) -> float:
         r"""⏳ **수신 -> 완료 지연을 남긴다** (2026-09-09 실측용).  ms 를 돌려준다.
 
         ⭐ **왜 로그로 남기나**: 종전에는 `HKQDATE`(명령 수신 시각)와 응답
         로그 줄의 시각을 **눈으로 빼야** 했다 -- 연속 노출 중에 여러 번 치며
         재려면 그 뺄셈이 실측을 가로막는다.  한 줄에 이미 뺀 값을 적는다.
 
-        ⚠️ **임계 아래는 `DEBUG` 다** (`[icg] latency_warn_ms`, 기본 50 ms) --
-        `HKDATA` 는 프레임마다 오므로 늘 `INFO` 로 찍으면 로그를 덮는다.
-        ⭐ **벤치에서는 `latency_warn_ms = 0` 으로 두어 전부 남긴다.**
+        ## 늘 남기는 것과 임계를 타는 것이 갈린다
+
+        * `always=True` -- **`TRIGOUT` 계열**.  운영자가 칠 때만 나가는 드문
+          명령이라 로그를 덮을 수가 없고, ⭐ 그 지연 자체가 진단 값이다.
+        * `always=False` -- **`HKDATA`/`HK`**.  ⚠️ 이쪽만 임계를 탄다
+          (`[icg] latency_warn_ms`, 기본 50 ms): 우리 프로그램은 이 명령을
+          **스스로 보내지 않지만**, 바깥 감시 계통이 초 단위로 물어 올 수는
+          있어서다.  임계 아래는 `DEBUG` 로 내린다.
+
+        ⛔ **종전에 적어 둔 근거 *"`HKDATA` 는 프레임마다 온다"* 는 틀렸다**
+        (2026-09-09 정정).  `ics_archon/app.py` 의 `_ask_icg('HKDATA')` 를
+        부르는 곳은 **명령 처리기 둘뿐**이고 주기 발신자가 없다 -- 빈도를
+        정하는 것은 바깥이다.
+
+        ⏳ **실측 뒤에 임계를 다시 정한다** -- 취득 중 정상 지연이 50 ms 를
+        늘 넘으면 그 기본값은 *"이상"* 이 아니라 **소음**이 된다.
+        ⭐ **벤치에서는 `latency_warn_ms = 0` 으로 두어 전부 남긴다** -- 그것이
+        이 눈금의 시험용 자리다.
 
         ⛔ 이 값은 **락 대기 + 왕복 처리**를 합친 것이다 -- 둘을 가르지
         않는다.  가르려면 `_locked_thread` 안팎에 각각 시각을 찍어야 하는데,
@@ -246,7 +262,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
         cap = float(getattr(icfg, 'latency_warn_ms', 50.0) or 0.0)
         line = '%s 지연 -- 수신→완료 %.1f ms (%s)%s'
         args = (what, ms, busy, (' %s' % extra) if extra else '')
-        if ms >= cap:
+        if always or ms >= cap:
             log.info(line, *args)
         else:
             log.debug(line, *args)
@@ -909,7 +925,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
             self.emit.error(dest, word, 'Failed: %s' % exc)
             return
         if t0 is not None:
-            self._log_latency('%s 쓰기' % word, t0)
+            self._log_latency('%s 쓰기' % word, t0, always=True)
         self.emit.done(dest, word, self._trigout_words(high=high, forced=forced))
 
     def cmd_trigoutforce(self, msg: Message, target: Target) -> Reply:
@@ -1063,7 +1079,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return
         high_at = time.monotonic()
         if t0 is not None:
-            self._log_latency('TRIGOUT 올림', t0, 'Sec=%g' % seconds)
+            self._log_latency('TRIGOUT 올림', t0, 'Sec=%g' % seconds,
+                              always=True)
         self.emit.done(dest, 'TRIGOUT',
                        'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 Sec=%g' % seconds)
         self._trigout_timer = asyncio.current_task()
@@ -1086,7 +1103,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         wide_ms = (time.monotonic() - high_at - want) * 1000.0
         if t0 is not None:
             self._log_latency('TRIGOUT 내림', t0,
-                              '폭오차 %+.1f ms (요청 %gs)' % (wide_ms, seconds))
+                              '폭오차 %+.1f ms (요청 %gs)' % (wide_ms, seconds),
+                              always=True)
         # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보다.
         self.emit.done(dest, 'TRIGOUT', '%s (auto after %gs)'
                        % (self._trigout_words(high=False, forced=True), seconds))

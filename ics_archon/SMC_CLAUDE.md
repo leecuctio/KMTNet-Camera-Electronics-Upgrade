@@ -1786,6 +1786,8 @@ Radionode 실측, `SHOPEN 10` 자동 내림까지 **경로는 다 돌았다**.  
 `TRIGOUT*` 은 **인자 없이 치면 조회**(즉시 `RCONFIG`)라 확인 경로는 따로 있다.
 
 1. `~/AIC/Config/icg_archon.ini` 의 `[icg] latency_warn_ms = 0` (전부 남긴다).
+   ⭐ **실측용 설정이다** -- 끝나면 운용값으로 되돌리고, ⏳ **그 운용값을 실측 최악값
+   위로 다시 정한다** (기본 50 은 임시).  ⛔ `TRIGOUT` 은 이 눈금을 안 탄다(늘 남긴다).
 2. `guiexp 1.3` → `go 20` → 그 사이에 `trigout 2` 와 `hkdata` 를 여러 번.
 3. 로그(`icg_archon.cmd`)에서 세 줄을 본다 -- `TRIGOUT 올림 지연` · `TRIGOUT 내림 지연`
    (+ **폭오차**) · `HKDATA 지연`.  ⚠️ 한가할 때 기준선은 `RCONFIG` 3회 = **6 ms**.
