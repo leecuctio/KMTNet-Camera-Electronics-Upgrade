@@ -193,7 +193,14 @@ class IcgCfg:
     connect_retry: int = 2
     acf: dict = field(default_factory=dict)            # {'G': path}
     apply_acf: bool = True
-    acf_retry: int = 1
+    #: ⛔ **4 다 -- science(`ics_archon.ini`)·labtest 와 같은 값** (2026-09-09).
+    #: 종전 `1` 은 근거 없이 낮았고, 벤치에서 **첫 실패에 곧바로 `GO` 가 죽었다**
+    #: (`WCONFIG` 하나의 응답이 비어 참조번호가 한 칸 밀렸다).  ⭐ 원본 labtest 는
+    #: 이 실패를 **정상으로 보고 재접속+재시도**한다 (`SWSET_ACFRETRY = 4`) --
+    #: ACF 밀어넣기는 왕복 1000여 개를 몰아 보내는 자리라 링크가 한 번 어긋날
+    #: 확률이 실제로 있다.  ⚠️ 재시도 사이에 `resync()` 로 **연결을 새로 연다**
+    #: (참조번호만 고치면 늦은 응답이 다음 명령을 먹는다 -- 11.22 (1)).
+    acf_retry: int = 4
     poweron_wait: float = 12.0
     param_intms_slot: str = 'PARAMETER2'
     param_intms_name: str = 'IntMS'
