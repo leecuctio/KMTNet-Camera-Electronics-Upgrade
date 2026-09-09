@@ -228,6 +228,22 @@ RELAY_CARDS = tuple(
 #: 최후 방어이기도 하다 -- 그 경우는 우리 결함이므로 에러 로그가 함께 남는다.
 SENTINEL = {'S': 'NC', 'I': -1, 'R': -999.0, 'L': False}
 
+#: ⛔ **sentinel 을 금지한 카드** (raw spec 5.0절) -- `EXPTIME` · `DATE-OBS` ·
+#: geometry keyword.  취득 SW 가 **구조적으로 아는** 값이라 못 채웠다는 것은
+#: 그 노출이 결함이라는 뜻이고, 그럴싸한 값을 채우면 그 결함이 조용히 묻힌다.
+#: ⭐ 그래서 sentinel 대신 **카드를 비운다** -- 규격이 그렇게 정한 이유는
+#: converter 의 **변환 실패 경로가 발동해야** 하기 때문이다 (규격 6장:
+#: `DATE-OBS` 가 없으면 converter 가 변환 시각으로 대체하고, `EXPTIME` 이
+#: 없으면 0 을 넣는다 -- 카드가 *있는데 거짓*이면 그 방어도 안 돈다).
+#: ⚠️ geometry 여덟은 **축별 합 불변식**에 드는 것들이다 (5.2절
+#: `AMPNAX1 = PRESCNX + IMAGEX + OVRSCNX`).  `CCDXBIN`·`NAMPDET`·`NAMPRAW` 는
+#: 그 식에 안 들어가고 규격도 따로 들지 않아 뺐다.
+NO_SENTINEL = frozenset({
+    'EXPTIME', 'DATE-OBS',
+    'AMPNAX1', 'AMPNAX2', 'IMAGEX', 'IMAGEY',
+    'PRESCNX', 'PRESCNY', 'OVRSCNX', 'OVRSCNY',
+})
+
 
 def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
     """값 풀에서 규격 5장 카드를 템플릿 순서대로 조립한다.
@@ -256,6 +272,11 @@ def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
         if key in STRUCTURAL:
             continue
         if key not in pool:
+            if key in NO_SENTINEL:
+                log.error('값 풀에 %s 가 없다 -- ⛔ sentinel 금지 카드라 '
+                          '**카드를 비운다** (raw spec 5.0절 -- converter 의 '
+                          '변환 실패 경로가 발동해야 한다)', key)
+                continue
             log.error('값 풀에 %s 가 없다 -- 5장 전 카드가 필수이므로 우리 '
                       '결함이다. sentinel 로 싣는다 (raw spec 5.0절)', key)
             value: object = SENTINEL[kind]
@@ -285,6 +306,11 @@ def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
         except (TypeError, ValueError):
             # 헤더 하나 때문에 노출을 망치지 않는다 -- sentinel 로 남기고
             # "값이 이상했다" 는 사실은 에러 로그로 남긴다.
+            if key in NO_SENTINEL:
+                log.error('%s 값 %r 를 %s 형으로 만들 수 없다 -- ⛔ sentinel '
+                          '금지 카드라 **카드를 비운다** (raw spec 5.0절)',
+                          key, value, kind)
+                continue
             log.error('%s 값 %r 를 %s 형으로 만들 수 없다 -- sentinel 로 '
                       '싣는다 (raw spec 5.0절)', key, value, kind)
             out.append((key, SENTINEL[kind], comment))

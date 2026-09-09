@@ -914,3 +914,73 @@ def test_a_long_observer_input_does_not_grow_the_header(tmp_path):
             blob = f.read()
         end = blob.find(b'END' + b' ' * 77)
         assert end >= 0 and end % 80 == 0, name
+
+
+# ---------------------------------------------------------------------------
+# ⛔ sentinel 을 금지한 카드 (규격 5.0절, 감사 #22) -- 두 갈래를 다 막는다
+# ---------------------------------------------------------------------------
+
+
+def test_the_forbidden_set_is_exactly_what_the_spec_names():
+    """금지 집합은 `EXPTIME` · `DATE-OBS` · geometry 여덟이다.
+
+    ⛔ 손으로 세지 말고 **뜻으로** 대조한다 -- geometry 여덟은 5.2절의 축별
+    합 불변식(`AMPNAX1 = PRESCNX + IMAGEX + OVRSCNX`)에 드는 것들이다.
+    ⚠️ `CCDXBIN`·`NAMPDET`·`NAMPRAW` 는 그 식 밖이라 들어오면 안 된다.
+    """
+    axis = {'AMPNAX1', 'AMPNAX2', 'IMAGEX', 'IMAGEY',
+            'PRESCNX', 'PRESCNY', 'OVRSCNX', 'OVRSCNY'}
+    assert rawcards.NO_SENTINEL == axis | {'EXPTIME', 'DATE-OBS'}
+    assert not (rawcards.NO_SENTINEL
+                & {'CCDXBIN', 'CCDYBIN', 'NAMPDET', 'NAMPRAW'})
+    # 금지 카드는 전부 템플릿에 실제로 있어야 한다 -- 오타면 시험이 조용히
+    # 아무것도 안 지킨다.
+    names = {k for k, _kind, _w, _c in rawcards.CARDS}
+    assert rawcards.NO_SENTINEL <= names
+
+
+@pytest.mark.parametrize('key', sorted(rawcards.NO_SENTINEL))
+def test_a_missing_forbidden_card_is_left_out_not_faked(key):
+    """값 풀에 없으면 **카드를 비운다** -- sentinel 을 채우지 않는다.
+
+    규격 5.0절이 그렇게 정한 이유는 converter 의 **변환 실패 경로가
+    발동해야** 하기 때문이다.  `-1` 이나 `'NC'` 를 실으면 카드가 *있는데
+    거짓*이라 그 방어가 안 돈다 (6장 "조용한 오염").
+    """
+    pool = {k: 1 for k, _kind, _w, _c in rawcards.CARDS if k != 'COMMENT'}
+    pool.pop(key)
+    out = rawcards.render(pool)
+    assert rawcards.value_of(out, key) is None, key
+    assert key not in {k for k, _v, _c in out}, key
+
+
+#: 형 변환 갈래를 실제로 지나는 금지 카드 -- ⛔ `DATE-OBS` 는 문자열이라
+#: `str(value)` 가 절대 안 깨지고, 그래서 그 갈래로는 sentinel 이 안 나온다
+#: (그쪽 위험은 위 "값 풀에 없음" 하나뿐이고 그것은 앞 시험이 지킨다).
+_CASTABLE = sorted(k for k, kind, _w, _c in rawcards.CARDS
+                   if k in rawcards.NO_SENTINEL and kind != 'S')
+
+
+@pytest.mark.parametrize('key', _CASTABLE)
+def test_an_uncastable_forbidden_card_is_left_out_too(key):
+    """형 변환이 깨져도 마찬가지다 -- **둘째 갈래**.
+
+    ⛔ 첫 갈래(값 풀에 없음)만 막으면 *"값이 왔는데 쓰레기"* 인 경우에
+    sentinel 이 그대로 실린다.  감사 #22 가 지목한 자리가 이 둘이다.
+    """
+    pool = {k: 1 for k, _kind, _w, _c in rawcards.CARDS if k != 'COMMENT'}
+    pool[key] = object()          # int()/float() 가 못 삼키는 값
+    out = rawcards.render(pool)
+    assert key not in {k for k, _v, _c in out}, key
+
+
+def test_cards_outside_the_forbidden_set_still_get_a_sentinel():
+    """⛔ 금지 집합 **밖**은 종전대로 sentinel 이다.
+
+    5장은 전 카드가 필수라 빠지면 레코드 수가 어긋난다 -- 비우는 것은
+    규격이 콕 집은 열 장뿐이다.
+    """
+    pool = {k: 1 for k, _kind, _w, _c in rawcards.CARDS if k != 'COMMENT'}
+    pool.pop('OBJECT')
+    out = rawcards.render(pool)
+    assert rawcards.value_of(out, 'OBJECT') == rawcards.SENTINEL['S'].ljust(18)

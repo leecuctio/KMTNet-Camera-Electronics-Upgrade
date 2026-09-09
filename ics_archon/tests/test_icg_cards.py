@@ -201,3 +201,43 @@ def test_an_unknown_site_still_gets_the_sentinel():
     """⛔ 모르는 사이트에 조립체 번호를 지어내지 않는다 -- 5.0절 sentinel."""
     from icg_archon import guidehdr
     assert guidehdr.instrument_header('XXXX', {})['FPAID'] == 'NC'
+
+
+# ---------------------------------------------------------------------------
+# ⛔ sentinel 을 금지한 카드 -- guide 도 같은 규격 조항을 진다 (감사 #22)
+# ---------------------------------------------------------------------------
+
+
+def test_the_guide_shares_the_science_forbidden_set():
+    """guide 는 집합을 **수입한다** -- 사본을 두면 조용히 갈린다.
+
+    규격 5.0절은 계통을 안 가린다.  ⚠️ guide 헤더도 `EXPTIME`·`DATE-OBS`·
+    geometry 여덟을 다 싣는다.
+    """
+    from ics_sim import rawcards
+    assert guidecards.NO_SENTINEL is rawcards.NO_SENTINEL
+    names = {k for k, _kind, _w, _c in guidecards.CARDS}
+    assert guidecards.NO_SENTINEL <= names
+
+
+@pytest.mark.parametrize('key', sorted(guidecards.NO_SENTINEL))
+def test_a_missing_forbidden_guide_card_is_left_out(key):
+    """값 풀에 없으면 카드를 비운다 (첫 갈래)."""
+    pool = {k: 1 for k, _kind, _w, _c in guidecards.CARDS if k != 'COMMENT'}
+    pool.pop(key)
+    out = guidecards.render(pool)
+    assert key not in {k for k, _v, _c in out}, key
+
+
+#: science 와 같은 이유로 `DATE-OBS`(문자열)는 이 갈래를 안 지난다.
+_G_CASTABLE = sorted(k for k, kind, _w, _c in guidecards.CARDS
+                     if k in guidecards.NO_SENTINEL and kind != 'S')
+
+
+@pytest.mark.parametrize('key', _G_CASTABLE)
+def test_an_uncastable_forbidden_guide_card_is_left_out(key):
+    """형 변환이 깨져도 카드를 비운다 (둘째 갈래)."""
+    pool = {k: 1 for k, _kind, _w, _c in guidecards.CARDS if k != 'COMMENT'}
+    pool[key] = object()
+    out = guidecards.render(pool)
+    assert key not in {k for k, _v, _c in out}, key

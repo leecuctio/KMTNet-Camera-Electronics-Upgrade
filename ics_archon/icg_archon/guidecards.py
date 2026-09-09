@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import logging
 
+from ics_sim.rawcards import NO_SENTINEL
+
 log = logging.getLogger('icg_archon.guidecards')
 
 # ---------------------------------------------------------------------------
@@ -214,6 +216,11 @@ RELAY_CARDS = tuple(
 #: 형별 sentinel (raw spec 5.0절) — science 와 동일.
 SENTINEL = {'S': 'NC', 'I': -1, 'R': -999.0, 'L': False}
 
+#: ⛔ sentinel 금지 카드는 **science 와 같은 집합을 수입한다** (`ics_sim.
+#: rawcards.NO_SENTINEL`) -- 규격 5.0절 조항이라 두 계통이 갈리면 한쪽이
+#: 조용히 규격을 어긴다.  ⚠️ 위 `SENTINEL` 은 사본인데, 그것은 *값*이고
+#: 이것은 *규칙*이다 -- 규칙이 갈리는 쪽이 훨씬 비싸다.
+
 
 def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
     """값 풀에서 guide 카드를 템플릿 순서대로 조립한다.
@@ -231,6 +238,11 @@ def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
         if key in STRUCTURAL:
             continue
         if key not in pool:
+            if key in NO_SENTINEL:
+                log.error('값 풀에 %s 가 없다 -- ⛔ sentinel 금지 카드라 '
+                          '**카드를 비운다** (raw spec 5.0절 -- converter 의 '
+                          '변환 실패 경로가 발동해야 한다)', key)
+                continue
             log.error('값 풀에 %s 가 없다 -- 10장 전 카드가 필수이므로 우리 '
                       '결함이다. sentinel 로 싣는다 (raw spec 5.0절)', key)
             value: object = SENTINEL[kind]
@@ -257,6 +269,11 @@ def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
             else:
                 out.append((key, bool(value), comment))
         except (TypeError, ValueError):
+            if key in NO_SENTINEL:
+                log.error('%s 값 %r 를 %s 형으로 만들 수 없다 -- ⛔ sentinel '
+                          '금지 카드라 **카드를 비운다** (raw spec 5.0절)',
+                          key, value, kind)
+                continue
             log.error('%s 값 %r 를 %s 형으로 만들 수 없다 -- sentinel 로 '
                       '싣는다 (raw spec 5.0절)', key, value, kind)
             out.append((key, SENTINEL[kind], comment))
