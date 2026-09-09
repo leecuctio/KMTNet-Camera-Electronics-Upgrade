@@ -283,6 +283,24 @@ class Dispatcher:
             self._propagate(msg)
         return Reply.done('OBSERVER', f'Observer={paren(self.state.observer)}')
 
+    def cmd_obstype(self, msg: Message, target: Target) -> Reply:
+        """OBSTYPE -- 헤더 `OBSTYPE` 카드 값.  인자가 없으면 조회.
+
+        ⭐ **`OBSERVER` 와 같은 부류다** (운영자 확정 2026-09-09) -- 정해 두면
+        헤더에 그대로 실리고 **다른 기능은 없다**.  취득·셔터·시퀀서 어디에도
+        닿지 않는다.
+        ⛔ **`IMAGETYP` 를 안 건드린다** (그 반대도 마찬가지다) -- 종전에는
+        `OBSTYPE` 이 `IMAGETYP` 의 복사본이었는데 운영자가 둘을 갈랐다.
+        ⚠️ 값은 **대문자로 접는다** -- `OBSTYPE` 은 L1 이 문자열로 비교하는
+        카드이고(규격 5.4절) 기본값 둘도 대문자다.  `OBSERVER` 와 다른 점이
+        여기 하나뿐이다.
+        """
+        arg = msg.body.strip()
+        if arg:
+            self.state.obstype = arg.upper()
+            self._propagate(msg)
+        return Reply.done('OBSTYPE', f'ObsType={self.state.obstype}')
+
     def cmd_exp(self, msg: Message, target: Target) -> Reply:
         """EXP -- 노출시간.  BIAS 상태에서는 거부한다 (레거시 실측)."""
         st = self.state

@@ -336,11 +336,17 @@ def observatory_header(site_code: str, cfg_site: dict | None = None,
 
 def exposure_header(*, imgtype: str, objname: str, projid: str,
                     exptime: float, ledflash_ms: int, date_obs: str,
-                    filename: str, expid: str) -> dict[str, object]:
+                    filename: str, expid: str,
+                    obstype: str = '') -> dict[str, object]:
     """5.4절 -- 노출 식별 + `FILENAME`/`EXPID` 정체성 (D-016 · **D-019**).
 
-    * `IMAGETYP`/`OBSTYPE` 는 **대문자** 통제 어휘 -- L1 파이프라인이 문자열
-      비교로 검사한다.  `OBSTYPE` 는 `IMAGETYP` 와 동일 어휘다 (raw spec 5.4절).
+    * `IMAGETYP`/`OBSTYPE` 는 **대문자** -- L1 파이프라인이 문자열 비교로
+      검사한다.  ⛔ **둘은 2026-09-09 에 갈렸다** (운영자): `IMAGETYP` 는
+      프레임의 종류(`OBJECT`/`BIAS`/…), `OBSTYPE` 는 **어느 계통이 찍었나**
+      (ICS `'SCIENCE'` · ICG `'GUIDE'`)이고 `OBSTYPE` 명령으로 바꾼다.
+      ⚠️ 그래서 규격 5.4절의 *"`IMAGETYP` 과 동일 어휘"* 는 낡았다 -- 갱신은
+      `main` 소관.  ⭐ `obstype` 이 비면 종전대로 `IMAGETYP` 를 따른다
+      (명령보다 먼저 쓰인 호출부가 조용히 빈 카드를 내지 않게).
     * `EXPTIME` 은 정수형 기본, 소수점 아래 값이 있을 때만 실수형
       (형 판정은 `rawcards.render`).  sentinel 금지 -- 취득 SW 가 구조적으로
       아는 값이다.
@@ -367,7 +373,7 @@ def exposure_header(*, imgtype: str, objname: str, projid: str,
         'PROJID': projid or 'NC',
         'IMAGETYP': kind,
         'OBJECT': objname or 'NC',
-        'OBSTYPE': kind,
+        'OBSTYPE': (obstype or kind).upper(),
         'EXPTIME': float(exptime),
         'LEDFLASH': int(ledflash_ms),
         'TIMESYS': 'UTC',
@@ -860,7 +866,8 @@ def build_pool(*, ctrltag: str, site_code: str, backend_name: str,
                telem_cards: dict[str, object],
                date_obs: str, exptime: float, ledflash_ms: int,
                imgtype: str, objname: str, projid: str, observer: str,
-               filename: str, expid: str) -> dict[str, object]:
+               filename: str, expid: str,
+               obstype: str = '') -> dict[str, object]:
     """규격 5장 값 풀 하나로.  카드 조립은 `rawcards.render()` 가 한다.
 
     `telem_cards`(TC 중계, `telemetry.fits_header_dict()`)를 바닥에 깔고 이
@@ -874,7 +881,8 @@ def build_pool(*, ctrltag: str, site_code: str, backend_name: str,
     pool.update(exposure_header(imgtype=imgtype, objname=objname,
                                 projid=projid, exptime=exptime,
                                 ledflash_ms=ledflash_ms, date_obs=date_obs,
-                                filename=filename, expid=expid))
+                                filename=filename, expid=expid,
+                                obstype=obstype))
     pool.update(controller_header(ctrl_info, backend_name=backend_name,
                                   ics_build=ics_build, cfg_ctrl=cfg_ctrl,
                                   rdmode=rdmode))

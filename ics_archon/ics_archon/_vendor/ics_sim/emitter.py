@@ -53,7 +53,7 @@ log = logging.getLogger('ics_sim.emitter')
 KNOWN_COMMANDS = frozenset({
     # ICS 레벨
     'STATUS', 'ACQSTATUS', 'FILENAME', 'SYNCHRONIZE', 'EXPNUM', 'TIME',
-    'LEDFLASH', 'PROJID', 'OBSERVER', 'EXP', 'GO',
+    'LEDFLASH', 'PROJID', 'OBSERVER', 'OBSTYPE', 'EXP', 'GO',
     'BIAS', 'DARK', 'OBJECT', 'FLAT', 'SKY', 'DOMEFLAT',
     # IC 레벨
     'DMAWAIT', 'DATASOURCE', 'INITIALIZE', 'ERASE', 'SHOPEN', 'SHCLOSE',

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import glob
+import io
 import os
 import sys
 
@@ -18,7 +19,8 @@ import pytest
 
 import ics_archon  # noqa: F401  -- _simpath 배선
 
-from icg_archon import guidecards, guidepair  # noqa: E402
+from icg_archon import (guidecards,  # noqa: E402
+                        guidehdr, guidepair)
 from ics_archon.archon import fitswrite  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,9 +52,12 @@ def test_template_matches_the_sample_generator():
     같은 자리다.
     """
     cards, _values = gen.parse()
-    assert tuple(cards) == tuple(guidecards.CARDS), (
-        'guidecards.CARDS 가 견본과 갈렸다 -- tools/gen_guidecards.py 를 '
-        '다시 돌려 갱신할 것')
+    # ⏳ **일부러 갈라 둔 자리는 먼저 적용한다** (`guidecards.SPEC_PENDING`).
+    # ⛔ 그 목록 밖의 갈림은 여기서 그대로 걸린다 -- 견본이 개정되면
+    # `tools/gen_guidecards.py` 를 다시 돌리고 목록을 비운다.
+    assert tuple(guidecards.apply_pending(cards)) == tuple(guidecards.CARDS), (
+        'guidecards.CARDS 가 견본과 갈렸다 (SPEC_PENDING 밖의 차이) -- '
+        'tools/gen_guidecards.py 를 다시 돌려 갱신할 것')
 
 
 @pytest.mark.repo_only
@@ -63,10 +68,14 @@ def test_sample_bytes_are_reproduced():
     걸린다 -- guide 저장 경로(`fitswrite.header_bytes` + `WIDTHS`)의 대사다.
     """
     for path in _samples():
-        _cards, values = gen.parse(path)
-        rendered = guidecards.render(values)
-        blob = fitswrite.header_bytes(rendered, 4224, 1033,
-                                      widths=guidecards.WIDTHS)
+        cards, values = gen.parse(path)
+        # ⏳ **견본의 템플릿으로** 재현한다 -- `CARDS` 는 `SPEC_PENDING` 만큼
+        # 앞서 있어 그대로 쓰면 이 대사가 성립하지 않는다.  ⭐ 그래도 값어치는
+        # 그대로다: 카드 순서·형·폭·comment·패딩의 대사는 살아 있고, 갈린 자리
+        # 하나는 바로 위 시험이 따로 못박는다.
+        widths = {k: w for k, _t, w, _c in cards if k != 'COMMENT'}
+        rendered = guidecards.render(values, cards=cards)
+        blob = fitswrite.header_bytes(rendered, 4224, 1033, widths=widths)
         want = open(path, 'rb').read()
         assert blob == want, '%s 재현 실패' % os.path.basename(path)
 
@@ -241,3 +250,109 @@ def test_an_uncastable_forbidden_guide_card_is_left_out(key):
     pool[key] = object()
     out = guidecards.render(pool)
     assert key not in {k for k, _v, _c in out}, key
+
+
+# ---------------------------------------------------------------------------
+# guide 헤더 기본값 둘 -- OBSTYPE=GUIDE · OBSERVER=KMTNetOp (운영자 2026-09-09)
+# ---------------------------------------------------------------------------
+
+
+def test_the_guide_presses_its_own_header_defaults():
+    """⭐ 부모(`IcsState`)의 기본은 science 값이라 ICG 가 눌러 둔다.
+
+    ⛔ 이 둘이 `cfg.hardware.backend = 'sim'` 과 같은 부류의 자리다 -- 부모를
+    쓰되 계통이 다른 값만 갈아 끼운다.  ⚠️ **명령이 이걸 덮는다** (기본값일
+    뿐이다).
+    """
+    from ics_sim.state import IcsState
+    assert IcsState().obstype == 'SCIENCE'      # ICS 쪽 기본
+    assert IcsState().observer == 'none'
+    src = io.open(os.path.join(ROOT, 'icg_archon', 'app.py'),
+                  encoding='utf-8').read()
+    assert "self.state.obstype = 'GUIDE'" in src
+    assert "self.state.observer = 'KMTNetOp'" in src
+
+
+def test_the_guide_pool_carries_obstype_through():
+    """`guidehdr.build_pool` 이 `obstype` 을 실제로 실어야 한다.
+
+    ⛔ 배선이 빠지면 guide 헤더만 조용히 `IMAGETYP` 사본으로 돌아간다 --
+    science 시험은 그것을 못 잡는다.
+    """
+    pool = guidehdr.build_pool(
+        site_code='KMTA', ctrl_info={'units': ()},
+        ctrl_telem=None, sensors=None, cfg_site=None, cfg_camera=None,
+        cfg_ctrl=None, rdmode='', backend_name='sim', telem_cards={},
+        date_obs='2026-08-22T00:00:00.000', exptime=1.0, ledflash_ms=0,
+        imgtype='OBJECT', objname='x', projid='x', observer='KMTNetOp',
+        filename='f', expid='f', obstype='GUIDE')
+    assert pool['OBSTYPE'] == 'GUIDE'
+    assert pool['IMAGETYP'] == 'OBJECT'
+    assert pool['OBSERVER'] == 'KMTNetOp'
+
+
+# ---------------------------------------------------------------------------
+# guide 전용 카드 -- LEDFLASH 를 빼고 TRIGOUT 을 넣었다 (운영자 2026-09-09)
+# ---------------------------------------------------------------------------
+
+
+def test_trigout_sits_right_after_exptime_and_ledflash_is_gone():
+    """⭐ 자리가 뜻이다 -- 운영자가 **`EXPTIME` 바로 다음**으로 지정했다.
+
+    ⚠️ 장수는 안 변한다 (`LEDFLASH` 한 장을 `TRIGOUT` 한 장이 대신한다) --
+    그래서 144 레코드·11,520 B 가 그대로다.
+    """
+    keys = [k for k, *_ in guidecards.CARDS]
+    assert 'LEDFLASH' not in keys, 'guide 에서 LEDFLASH 는 빠졌다'
+    assert keys[keys.index('EXPTIME') + 1] == 'TRIGOUT'
+    kind = {k: t for k, t, _w, _c in guidecards.CARDS}
+    assert kind['TRIGOUT'] == 'I'
+
+
+def test_science_keeps_ledflash_and_has_no_trigout():
+    """⛔ **두 계통이 갈린다** (운영자 2026-09-09) -- science 는 종전 그대로.
+
+    ⚠️ 이 시험이 없으면 다음 사람이 *"두 템플릿을 맞춰야지"* 하고 science 를
+    따라 고친다.
+    """
+    from ics_sim import rawcards
+    sci = [k for k, *_ in rawcards.CARDS]
+    assert 'LEDFLASH' in sci
+    assert 'TRIGOUT' not in sci
+
+
+def test_the_pending_divergence_list_is_exactly_this_one_swap():
+    """⏳ 견본과의 갈림은 **이 하나**여야 한다.
+
+    ⛔ 목록이 늘면 규격 갱신이 밀린 자리가 늘었다는 뜻이다 -- 다음 `main`
+    라운드에서 견본을 고치고 목록을 비운다.
+    """
+    assert len(guidecards.SPEC_PENDING) == 1
+    old, new = guidecards.SPEC_PENDING[0]
+    assert old == 'LEDFLASH'
+    assert new[0] == 'TRIGOUT'
+
+
+def test_the_card_is_left_out_when_nobody_knows():
+    """⛔ 모르면 **카드를 비운다** -- `0` 은 *"펄스가 없었다"* 는 단언이다."""
+    base = dict(
+        site_code='KMTA', ctrl_info={'units': ()}, ctrl_telem=None,
+        sensors=None, cfg_site=None, cfg_camera=None, cfg_ctrl=None,
+        rdmode='', backend_name='sim', telem_cards={},
+        date_obs='2026-08-22T00:00:00.000', exptime=1.0, ledflash_ms=0,
+        imgtype='OBJECT', objname='x', projid='x', observer='x',
+        filename='f', expid='f')
+    assert 'TRIGOUT' not in guidehdr.build_pool(**base)
+    assert guidehdr.build_pool(trigout=True, **base)['TRIGOUT'] == 1
+    assert guidehdr.build_pool(trigout=False, **base)['TRIGOUT'] == 0
+
+
+def test_obstype_works_on_the_guide_node_too():
+    """운영자: *"`OBSTYPE` 지정은 ICG와 ICS 둘 다 동일하게"*.
+
+    ⭐ 기반 `Dispatcher` 의 명령이라 ICG 가 **상속으로** 갖는다 -- ⛔ 없앤
+    명령 목록(`UNSUPPORTED`)과 도움말 `drop=` 어디에도 들어 있으면 안 된다.
+    """
+    from icg_archon.commands import IcgDispatcher
+    assert hasattr(IcgDispatcher, 'cmd_obstype')
+    assert 'OBSTYPE' not in IcgDispatcher.UNSUPPORTED

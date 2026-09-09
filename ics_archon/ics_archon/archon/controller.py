@@ -1113,6 +1113,63 @@ class ArchonController:
             wrote = True
         if wrote:
             await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
+        # ⭐ **적용이 끝난 뒤에 적는다** -- 선이 실제로 바뀌는 시점이 여기다.
+        # 실패하면 위에서 예외가 올라가므로 **거짓 기록이 안 남는다**.
+        if high is not None:
+            self.note_trigger_level(bool(high))
+
+    # -- Trigger Out 이 HIGH 였던 구간 (guide 헤더 `TRIGOUT` 카드의 원천) ----
+    #
+    # ⭐ **한 곳에서만 적는다** -- `set_trigger()` 가 레벨을 쓰는 유일한 자리다
+    # (`set_trigger_level` 도 이것을 지난다).  ⛔ 명령마다 따로 적으면 경로가
+    # 갈려 *"카드가 0 인데 로그에는 펄스가 있다"* 가 생긴다.
+    # ⚠️ **`TRIGOUTFORCE` 는 안 본다** -- 운영자 문면이 *"`TRIGOUTLEVEL=1` 이었던
+    # 적이 있으면 1"* 이다.  guide 는 쉬는 상태가 `FORCE=1` 이라 레벨이 곧 핀이다
+    # (science 는 이 카드를 안 싣는다).
+    # ⚠️ `ARCHON` 바이패스로 `WCONFIG TRIGOUTLEVEL` 을 직접 던지면 여기를 안
+    # 지난다 -- 그 경로는 `config_dirty` 와 같은 한계다.
+
+    #: `(시작, 끝)` epoch 구간들.  열려 있으면 끝이 `None`.
+    _trig_spans: list | None = None
+
+    #: 붙들 구간 수·나이 상한 -- 밤새 연속 가이딩에서 무한히 쌓이지 않게.
+    _TRIG_SPAN_MAX = 32
+    _TRIG_SPAN_AGE = 3600.0
+
+    def note_trigger_level(self, high: bool) -> None:
+        """Trigger Out 레벨이 바뀌었다고 적는다.
+
+        ⭐ **구간으로 적는 이유**: 카드가 묻는 것이 *"이 프레임의 노출 창에
+        HIGH 인 적이 있었나"* 라 **시점 하나로는 못 답한다**.  한 창에 펄스가
+        둘 이상 들 수도 있고, 창보다 긴 펄스는 시작도 끝도 창 밖이다.
+        """
+        import time
+        now = time.time()
+        spans = self._trig_spans
+        if spans is None:
+            spans = self._trig_spans = []
+        if high:
+            if not spans or spans[-1][1] is not None:
+                spans.append([now, None])
+            return
+        if spans and spans[-1][1] is None:
+            spans[-1][1] = now
+        # 오래된 것부터 버린다 -- 열린 구간은 남긴다.
+        cut = now - self._TRIG_SPAN_AGE
+        spans[:] = [s for s in spans if s[1] is None or s[1] >= cut]
+        if len(spans) > self._TRIG_SPAN_MAX:
+            del spans[:-self._TRIG_SPAN_MAX]
+
+    def trigger_was_high_between(self, t0: float, t1: float) -> bool:
+        """`[t0, t1]` 에 Trigger Out 이 HIGH 인 적이 있었나.
+
+        ⚠️ **열린 구간은 `t1` 까지 이어진 것으로 본다** -- 지금도 HIGH 면
+        그 창에 걸린 것이 맞다.
+        """
+        for start, end in (self._trig_spans or ()):
+            if (t1 if end is None else end) >= t0 and start <= t1:
+                return True
+        return False
 
     async def trigger_state(self) -> tuple[str, str]:
         """`(TRIGOUTLEVEL, TRIGOUTFORCE)` -- **`RCONFIG` 되읽기**.

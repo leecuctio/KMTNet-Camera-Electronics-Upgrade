@@ -123,6 +123,7 @@ BASE_HELP_BODY: tuple[Section, ...] = (
     ('노출 설정', (
         ('projid <id>', '프로젝트 ID'),
         ('observer <name>', '관측자 (띄어쓰기 허용)'),
+        ('obstype <word>', '헤더 OBSTYPE 카드 값 (헤더 전용)'),
         ('object|dark|bias|flat|sky|domeflat <objname>',
          '이미지 종류 + 대상 이름'),
         ('exp <sec>', '노출시간 [s]'),

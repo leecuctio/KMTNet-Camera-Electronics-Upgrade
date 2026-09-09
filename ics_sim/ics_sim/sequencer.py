@@ -588,6 +588,7 @@ class Sequencer:
             'objname': st.objname,
             'projid': st.projid,
             'observer': st.observer,
+            'obstype': st.obstype,
             'exptime': st.effective_exptime,
             'ledflash_ms': st.ledflash_ms,
         }
@@ -1003,6 +1004,7 @@ class Sequencer:
                 ledflash_ms=snap['ledflash_ms'],
                 imgtype=snap['imgtype'], objname=snap['objname'],
                 projid=snap['projid'], observer=snap['observer'],
+                obstype=snap['obstype'],
                 # FILENAME = 실제 저장명 · EXPID = 카운터 최초 배정 식별자.
                 # 충돌 신호 = 두 값의 불일치 (D-016).
                 filename=rawpair.name_stem(site, suffix, ctrltag),

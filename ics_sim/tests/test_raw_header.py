@@ -984,3 +984,63 @@ def test_cards_outside_the_forbidden_set_still_get_a_sentinel():
     pool.pop('OBJECT')
     out = rawcards.render(pool)
     assert rawcards.value_of(out, 'OBJECT') == rawcards.SENTINEL['S'].ljust(18)
+
+
+# ---------------------------------------------------------------------------
+# OBSTYPE -- OBSERVER 와 같은 부류의 헤더 전용 값 (운영자 2026-09-09)
+# ---------------------------------------------------------------------------
+
+
+def test_obstype_defaults_to_science_and_no_longer_copies_imagetyp(tmp_path):
+    """⛔ **`OBSTYPE` 은 더 이상 `IMAGETYP` 의 사본이 아니다.**
+
+    운영자가 둘을 갈랐다 (2026-09-09): `IMAGETYP` 는 프레임의 종류,
+    `OBSTYPE` 은 **어느 계통이 찍었나**다.  ICS 기본값은 `'SCIENCE'`.
+    ⚠️ 이 시험이 지키는 것은 *"`DARK` 를 찍어도 `OBSTYPE` 이 안 따라간다"* 다 --
+    옛 파생이 되살아나면 여기서 걸린다.
+    """
+    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
+    drive(['OBS>ICS DARK d1', 'OBS>ICS EXP 1', 'OBS>ICS GO 1'], cfg)
+    names = [n for n in sorted(os.listdir(tmp_path)) if n.endswith('.fits')]
+    assert names, '프레임이 저장되지 않았다'
+    with fits.open(os.path.join(tmp_path, names[0])) as hdul:
+        h = hdul[0].header
+    assert h['IMAGETYP'].strip() == 'DARK'
+    assert h['OBSTYPE'].strip() == 'SCIENCE'
+
+
+def test_the_obstype_command_reaches_the_header_and_nothing_else(tmp_path):
+    """⭐ `OBSERVER` 와 같은 부류 -- 정하면 헤더에 실리고 **다른 기능은 없다**.
+
+    ⚠️ `IMAGETYP` 가 안 흔들리는 것까지 본다 (반대 방향의 파생도 없다).
+    """
+    cfg = make_config(paths__write_fits=True, paths__data_dir=str(tmp_path))
+    drive(['OBS>ICS OBSTYPE calib', 'OBS>ICS OBJECT BLG11',
+           'OBS>ICS EXP 1', 'OBS>ICS GO 1'], cfg)
+    names = [n for n in sorted(os.listdir(tmp_path)) if n.endswith('.fits')]
+    assert names, '프레임이 저장되지 않았다'
+    with fits.open(os.path.join(tmp_path, names[0])) as hdul:
+        h = hdul[0].header
+    # ⚠️ 대문자로 접힌다 -- L1 이 문자열로 비교하는 카드다 (5.4절).
+    assert h['OBSTYPE'].strip() == 'CALIB'
+    assert h['IMAGETYP'].strip() == 'OBJECT'
+
+
+def test_an_empty_obstype_still_falls_back_to_imagetyp():
+    """⭐ 값이 비면 종전대로 `IMAGETYP` 를 따른다.
+
+    ⚠️ 명령보다 먼저 쓰인 호출부(`obstype` 를 안 넘기는 곳)가 **빈 카드**를
+    내지 않게 하는 안전망이다 -- sentinel 금지 카드는 아니지만 5장은 전
+    카드가 필수다.
+    """
+    pool = rawhdr.exposure_header(
+        imgtype='flat', objname='x', projid='x', exptime=1.0,
+        ledflash_ms=0, date_obs='2026-08-22T00:00:00.000',
+        filename='f', expid='f')
+    assert pool['OBSTYPE'] == 'FLAT' == pool['IMAGETYP']
+
+
+def test_obstype_is_a_known_command_word():
+    """와이어 어휘에 있어야 한다 -- 없으면 `validate()` 가 운다."""
+    from ics_sim import emitter
+    assert 'OBSTYPE' in emitter.KNOWN_COMMANDS

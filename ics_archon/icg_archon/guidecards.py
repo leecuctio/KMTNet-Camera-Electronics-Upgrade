@@ -90,7 +90,7 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('OBJECT', 'S', 18, 'Name of object'),
     ('OBSTYPE', 'S', 18, 'Type of observation'),
     ('EXPTIME', 'I', 0, 'Exposure time [seconds]'),
-    ('LEDFLASH', 'I', 0, 'Time to flash projector LEDs [milliseconds]'),
+    ('TRIGOUT', 'I', 0, 'Trigger Out asserted during exposure (1=yes)'),
     ('TIMESYS', 'S', 18, 'ICG Time System'),
     ('DATE-OBS', 'S', 23, 'UTC Date and Time at start of obs'),
     ('FILENAME', 'S', 23, 'FITS file name as written to storage'),
@@ -193,6 +193,39 @@ STRUCTURAL = frozenset(
 
 #: keyword -> 문자열 패딩 폭 — `fitswrite.card_image(widths=...)` 에 꽂는 표.
 #: science `_WIDTH` 를 쓰면 공유 키 8장이 견본과 어긋난다 (모듈 docstring).
+#: ⏳ **견본과 일부러 갈라 둔 자리** (운영자 2026-09-09, DevNote 11.58).
+#:
+#: 운영자가 guide 헤더에서 `LEDFLASH` 를 빼고 그 자리(=`EXPTIME` 다음)에
+#: `TRIGOUT` 을 넣으라고 정했는데, **규격·견본 갱신은 나중**으로 미뤘다
+#: (*"일단 raw fits spec 갱신은 나중에 할 거니까, 코드와 ics-archon 브랜치의
+#: 문서에만"*).  그래서 `CARDS` 가 견본보다 앞서 있다.
+#:
+#: ⛔ **이 목록이 그 갈림의 전부여야 한다** -- `tests/test_icg_cards.py` 가
+#: 견본에 이것을 적용한 뒤에 대조하므로, 여기 없는 갈림이 생기면 **여전히
+#: 걸린다**.  ⭐ 다음 `main` 라운드에서 견본을 고치고 이 목록을 비운다.
+#:
+#: 꼴: `(견본 키, 현행 카드 또는 None)`.  `None` 은 삭제.
+SPEC_PENDING: tuple[tuple[str, tuple | None], ...] = (
+    ('LEDFLASH',
+     ('TRIGOUT', 'I', 0, 'Trigger Out asserted during exposure (1=yes)')),
+)
+
+
+def apply_pending(cards) -> list:  # noqa: ANN001
+    """견본에서 뽑은 카드 목록에 `SPEC_PENDING` 을 적용한다.
+
+    ⭐ 시험이 **양쪽에서** 쓴다 -- 견본을 현행으로 올려 `CARDS` 와 견주고,
+    거꾸로 `CARDS` 로 견본 바이트를 재현할 때는 원래 목록을 그대로 쓴다.
+    """
+    swap = dict(SPEC_PENDING)
+    out = []
+    for card in cards:
+        rep = swap.get(card[0], card) if card[0] in swap else card
+        if rep is not None:
+            out.append(rep)
+    return out
+
+
 WIDTHS = {k: w for k, _t, w, _c in CARDS if k != 'COMMENT'}
 
 #: keyword -> 블록 제목 (COMMENT 카드의 본문에서 유도).
@@ -222,8 +255,14 @@ SENTINEL = {'S': 'NC', 'I': -1, 'R': -999.0, 'L': False}
 #: 이것은 *규칙*이다 -- 규칙이 갈리는 쪽이 훨씬 비싸다.
 
 
-def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
+def render(pool: dict[str, object],
+           cards=None) -> list[tuple[str, object, str]]:  # noqa: ANN001
     """값 풀에서 guide 카드를 템플릿 순서대로 조립한다.
+
+    ⭐ `cards` 를 주면 **그 템플릿으로** 조립한다 -- 기본은 `CARDS` 다.
+    ⚠️ 있는 이유는 하나뿐이다: 견본이 아직 옛 판이라(`SPEC_PENDING`) 시험이
+    **견본의 템플릿으로** 견본 바이트를 재현해야 한다.  ⛔ 운영 경로에서는
+    쓰지 말 것 -- 헤더 템플릿이 둘이 되면 그 순간 정본이 사라진다.
 
     규칙·귀결은 `ics_sim.rawcards.render()` 와 같다 (그쪽 docstring 참조):
     문자열은 템플릿 폭까지 패딩, 풀 값 `None` 은 카드 미기록, `I` 형은
@@ -231,7 +270,7 @@ def render(pool: dict[str, object]) -> list[tuple[str, object, str]]:
     템플릿에 없는 풀 항목은 버린다.
     """
     out: list[tuple[str, object, str]] = []
-    for key, kind, width, comment in CARDS:
+    for key, kind, width, comment in (CARDS if cards is None else cards):
         if key == 'COMMENT':
             out.append(('COMMENT', comment, ''))
             continue

@@ -512,9 +512,9 @@ def test_trigout_from_the_resting_state_is_a_single_apply(tmp_path):
     무장이 이미 돼 있으므로 되읽기 둘로 확인하고 건너뛴다 (운영자 2026-09-08).
     ⚠️ 되읽기는 왕복이지만 **적용이 아니다** -- 모듈을 안 건드린다.
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10'], held=dict(RESTING))
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10000'], held=dict(RESTING))
     assert calls[:1] == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True))], calls
-    assert any('DONE: TRIGOUT' in s and 'Sec=10' in s for s in sent), sent[-3:]
+    assert any('DONE: TRIGOUT' in s and 'MS=10000' in s for s in sent), sent[-3:]
 
 
 def test_trigout_writes_both_whatever_the_previous_state(tmp_path):
@@ -525,7 +525,7 @@ def test_trigout_writes_both_whatever_the_previous_state(tmp_path):
     결함 부류도 함께 사라진다 (운영자 2026-09-09).
     ⚠️ 이 시험의 값어치는 **되읽기를 되살리려는 다음 사람을 막는 것**이다.
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10'],
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10000'],
                          held={'TRIGOUTLEVEL': '1', 'TRIGOUTFORCE': '0'})
     assert calls[:1] == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True))], calls
 
@@ -536,18 +536,18 @@ def test_a_lying_cache_cannot_make_trigout_do_nothing(tmp_path):
     `set_config` 는 왕복이 실패해도 캐시를 먼저 갈아 끼운다 (11.13 F5) -- 그
     캐시로 건너뛸지 판단하면 **선이 안 올라가는데 `DONE` 은 나간다**.
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10'],
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 10000'],
                          held=dict(RESTING),
                          wire={'TRIGOUTLEVEL': '0', 'TRIGOUTFORCE': '0'})
     assert calls[:1] == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True))], calls
 
 
 def test_trigout_lowers_the_line_when_the_timer_expires(tmp_path):
-    """⭐ **<초> 뒤에 스스로 내린다** -- 내림도 레벨 먼저다.
+    """⭐ **<ms> 뒤에 스스로 내린다** -- 내림도 레벨 먼저다.
 
     ⚠️ 시한은 `cfg.scaled()` 를 타므로 시험 축척(0.02)에서 짧다.
     """
-    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT 2'], settle=0.4,
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT 2000'], settle=0.4,
                         held=dict(RESTING))
     assert calls == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True)),
                      (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))], calls
@@ -560,10 +560,10 @@ def test_trigout_zero_cancels_a_pending_timer(tmp_path):
     """⛔ 옛 타이머가 나중에 깨어나 **그때 세워져 있던 선을 내리면** 안 된다.
 
     ⚠️ 시한이 **명령 간격보다 길어야** 시험이 뜻을 갖는다 -- 축척 0.02 에서
-    `TRIGOUT 2` 는 0.04 s 라 `TRIGOUT 0` 가 닿기 전에 타이머가 먼저 터진다
-    (그러면 취소를 안 해도 통과해 버린다).  `20` 이면 0.4 s 다.
+    `TRIGOUT 2000` 은 0.04 s 라 `TRIGOUT 0` 가 닿기 전에 타이머가 먼저 터진다
+    (그러면 취소를 안 해도 통과해 버린다).  `20000` 이면 0.4 s 다.
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20', 'abc>ICG TRIGOUT 0'],
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20000', 'abc>ICG TRIGOUT 0'],
                          settle=0.6, held=dict(RESTING))
     # 적용은 둘뿐이어야 한다 -- 타이머가 살아 있으면 하나가 더 붙는다.
     assert calls == [(('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True)),
@@ -591,7 +591,7 @@ def test_a_full_trigout_round_leaves_the_resting_state(tmp_path):
     운영자가 `shopen 10` 을 돌린 뒤 선이 `FORCE=0` 으로 남았고, 그 상태에서는
     **타이밍 스크립트가 선을 몬다.**  마지막 값만 본다 (순서는 위 시험들 몫).
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20', 'abc>ICG TRIGOUT 0'],
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20000', 'abc>ICG TRIGOUT 0'],
                          settle=0.6, held=dict(RESTING))
     last = {}
     for step in calls:
@@ -692,7 +692,7 @@ def test_abort_cancels_a_running_trigout_and_lowers_the_line(tmp_path):
     `TRIGOUTFORCE=1` 이라 핀이 코어를 안 따라간다 -- 종전에는 타이머가 `<초>`
     뒤에 쓸 때까지 **선이 HIGH 로 남았다**.
     """
-    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20', 'abc>ICG ABORT'],
+    calls, _sent = _trig(tmp_path, ['abc>ICG TRIGOUT 20000', 'abc>ICG ABORT'],
                          held=dict(RESTING), settle=0.4)
     assert calls, 'TRIGOUT/ABORT 가 트리거 선을 아예 안 건드렸다'
     # 세움 하나 + ABORT 의 내림 하나.  타이머가 살아 있으면 하나가 더 붙는다.
@@ -717,7 +717,7 @@ def test_expenable_off_also_releases_the_pulse(tmp_path):
     ⚠️ `busy` 와 무관하다: 취득 중이 아니어도 펄스는 돌 수 있다.
     """
     calls, _sent = _trig(tmp_path,
-                         ['abc>ICG TRIGOUT 20', 'abc>ICG EXPENABLE OFF'],
+                         ['abc>ICG TRIGOUT 20000', 'abc>ICG EXPENABLE OFF'],
                          held=dict(RESTING), settle=0.4)
     assert len(calls) == 2, calls
     assert calls[1] == (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True)), calls
@@ -742,7 +742,7 @@ def test_shutdown_lowers_a_running_pulse(tmp_path):
         app = IcgArchon(cfg, icfg, backend='sim')
         app.guide.ctrl = rec
         await app.start()
-        app.transport.feed('abc>ICG TRIGOUT 20')
+        app.transport.feed('abc>ICG TRIGOUT 20000')
         await asyncio.sleep(0.15)
         await app.stop()                      # ← 여기서 내려야 한다
         return rec.calls
@@ -844,7 +844,7 @@ def test_trigout_pulse_width_does_not_inherit_the_startup_delay(tmp_path, caplog
     import re
 
     caplog.set_level(logging.INFO, logger='icg_archon.cmd')
-    calls, _sent = _trig_slow(tmp_path, ['abc>ICG TRIGOUT 2'], delay=0.15,
+    calls, _sent = _trig_slow(tmp_path, ['abc>ICG TRIGOUT 2000'], delay=0.15,
                               settle=0.6, held=dict(RESTING))
     assert len(calls) == 2, calls              # 올림 한 번 · 내림 한 번
 
@@ -933,7 +933,7 @@ def test_trigout_latency_is_logged_even_under_a_high_threshold(tmp_path, caplog)
         app.guide.ctrl = rec
         await app.start()
         try:
-            app.transport.feed('abc>ICG TRIGOUT 2')
+            app.transport.feed('abc>ICG TRIGOUT 2000')
             await asyncio.sleep(0.3)
         finally:
             await app.stop()
@@ -964,7 +964,7 @@ def test_trigout_subtracts_the_lowering_apply_from_the_pulse(tmp_path, caplog):
 
     caplog.set_level(logging.INFO, logger='icg_archon.cmd')
     # time_scale = 0.02 이므로 `trigout 20` 은 실제 0.4 s 펀스다.
-    calls, _sent = _trig_slow(tmp_path, ['abc>ICG TRIGOUT 20'], delay=0.1,
+    calls, _sent = _trig_slow(tmp_path, ['abc>ICG TRIGOUT 20000'], delay=0.1,
                               settle=1.0, held=dict(RESTING))
     assert len(calls) == 2, calls
 

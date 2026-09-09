@@ -792,6 +792,20 @@ class GuideSequencer:
         # (arm 의 LOADPARAMS 시각, R2613+)이고 그 뒤는 직전 프레임 완료에서 되짚은 값 --
         # 트리거 시각이다 -- t_prev 가 그 값이다.
         date_obs = stamp_iso_ms(t_prev) if t_prev is not None else None
+        # ⭐ **`TRIGOUT` 카드** -- 이 프레임의 노출 창에 Trigger Out 이 HIGH 인
+        # 적이 있었나 (운영자 2026-09-09).  창은 `[DATE-OBS, 지금]` 이다:
+        # 저장 프레임의 적분은 **직전 트랜스퍼**에서 시작해(10.1-4) 이 독출로
+        # 끝난다.
+        # ⚠️ `t_prev` 가 없으면(첫 프레임) 노출시간만큼 되짚는다 -- 그 창의
+        # 시작을 달리 알 길이 없다.
+        # ⛔ 컨트롤러가 없으면 **카드를 비운다** (`None`) -- `0` 은 *"없었다"*
+        # 는 단언이라 모를 때 쓰면 거짓말이다.
+        ctrl = getattr(self.backend, 'ctrl', None)
+        trigout = None
+        if ctrl is not None and hasattr(ctrl, 'trigger_was_high_between'):
+            now = time.time()
+            trigout = ctrl.trigger_was_high_between(
+                t_prev if t_prev is not None else now - max(exptime, 0.0), now)
 
         pool = guidehdr.build_pool(
             site_code=site,
@@ -809,6 +823,7 @@ class GuideSequencer:
             ledflash_ms=st.ledflash_ms,
             imgtype=st.imgtype, objname=st.objname,
             projid=st.projid, observer=st.observer,
+            obstype=st.obstype, trigout=trigout,
             filename=guidepair.guide_stem(site, suffix),
             expid=guidepair.exposure_id(site, orig_suffix))
         cards = guidecards.render(pool)

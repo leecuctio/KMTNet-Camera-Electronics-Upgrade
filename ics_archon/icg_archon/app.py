@@ -57,6 +57,12 @@ class IcgArchon(IcsSim):
         self.icfg = icfg
         self.backend_name = backend
         self.state.ics_build = build_id()      # 배너·STATUS 응답용
+        # ⭐ **헤더 기본값 둘이 계통마다 다르다** (운영자 확정 2026-09-09).
+        # 부모(`IcsState`)의 기본은 science 값이라 guide 쪽을 여기서 누른다 --
+        # `cfg.hardware.backend` 와 같은 부류의 자리다.
+        # ⚠️ **명령이 이걸 덮는다** (`OBSTYPE`/`OBSERVER`) -- 기본값일 뿐이다.
+        self.state.obstype = 'GUIDE'
+        self.state.observer = 'KMTNetOp'
         # ⛔ **백엔드를 만들기 전에 검사한다** (2026-09-08, 벤치 실측).
         # 종전에는 `start()` 에서 했는데, 그때는 `GuideBackend.__init__` 이 이미
         # ACF 를 읽어 본 뒤라 **경고가 치명적 오류보다 먼저** 찍혔다:
@@ -136,8 +142,9 @@ class IcgArchon(IcsSim):
                  '유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (프레임 없음)'),
                 ('ccdpowon', 'CCD 전원 ON -- poweron_wait 뒤에 DONE'),
                 ('ccdpowoff', 'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
-                ('trigout <sec>',
-                 'Trigger Out 을 <sec> 동안 HIGH 로 -- ⭐ 0 이면 즉시 LOW'),
+                ('trigout <ms>',
+                 'Trigger Out 을 <ms> 동안 HIGH 로 -- ⭐ 0 이면 즉시 LOW · '
+                 '⚠️ 실현 최소 폭 ≈235 ms'),
                 ('trigoutforce [on|off]',
                  'Trigger Out 강제 -- guide 쉬는 상태는 1 (0 = 타이밍 스크립트)'),
                 ('trigoutlevel [high|low]',
@@ -208,6 +215,22 @@ class IcgArchon(IcsSim):
             # "모름" 으로 남고 그때는 DEWPRES 를 막지 않는다 -- 추측으로 ON
             # 을 적으면 헤더 판정의 근거가 거짓이 된다 (gauge.load 주석).
             await self.gauge.load(self.guide.ctrl)
+            # ⭐ **준비되자마자 HK 한 바퀴를 돌린다** (운영자 지시 2026-09-09).
+            #
+            # ⛔ 종전에는 기동 뒤 **최대 한 주기(60초)** 동안 게이지 상태도
+            # `DEWPRES` 도 온도도 결측이었다.  기동 첫 바퀴는 `hk.start()` 가
+            # 곧바로 돌리지만 그때는 **ACF 적용·POWERON 이 아직**이라 쓸 값이
+            # 안 나오고(로그의 *"ACF 적용 중이라 … 건너뛴다"*), 다음 바퀴는
+            # 60초 뒤다.  운영자가 벤치에서 그 공백을 봤다.
+            # ⭐ **`HKDATA NOW` 와 같은 함수**를 쓴다 (`refresh_now`) -- 따로
+            # 만들면 두 경로가 갈린다 (11.56 의 결론).  덤으로 주기 기준이
+            # *준비된 시각*으로 다시 놓여 곧바로 또 도는 낭비도 없다.
+            # ⚠️ 실패해도 기동은 계속한다 -- 다음 주기 바퀴가 채운다.
+            try:
+                await self.hk.refresh_now()
+            except Exception as exc:  # noqa: BLE001
+                log.warning('기동 HK 첫 바퀴 실패 -- %s.  다음 주기(%.0f초)에 '
+                            '다시 읽는다', exc, self.icfg.hk.interval)
         except Exception as exc:  # noqa: BLE001
             # `?xx` 거부(이 세션의 APPLYALL 미실시)는 power_on() 이 진단 문구를
             # 붙여 올린다 (DevNote 10.2) -- 여기서 따로 가르지 않는다.  ⚠️ HK
@@ -239,6 +262,21 @@ class IcgArchon(IcsSim):
         await self.hk.stop()
         await self.radionode.stop()
         await self.seq.drain_writers(self.icfg.shutdown_drain)
+        # ⭐ **이온게이지를 끈다** (운영자 지시 2026-09-09).  ⛔ 우리가 켠 적이
+        # 없어도 끈다 -- guide ACF 가 `MOD10\DIO_POWER=1` 을 박아 두어 **ACF
+        # 적용마다 저절로 켜지고**, 종전에는 아무도 안 껐다 (벤치에서 운영자가
+        # 잡았다: *"ICG 실행 시 켜지고 quit 할 때는 안 꺼지더라"*).
+        # ⚠️ **HK 를 세운 뒤에 끈다** -- 먼저 끄면 남은 HK 바퀴가 Conductron
+        # 값을 `DEWPRES` 로 보고 인정범위 밖 경고를 낸다.
+        # ⚠️ **POWEROFF 앞에 둔다** -- 끄는 것 자체가 `WCONFIG`+`APPLYDIO09`
+        # 왕복이라 링크가 살아 있어야 한다.
+        # ⚠️ 실패해도 종료는 계속한다 -- 다만 **게이지가 켜진 채 남는다**는
+        # 사실을 남긴다 (필라멘트가 켜진 채로 방치되지 않게 사람이 알아야 한다).
+        try:
+            await self.gauge.set(self.guide.ctrl, False)
+        except Exception as exc:  # noqa: BLE001
+            log.warning('종료 -- 이온게이지를 못 껐다: %s.  ⚠️ **게이지가 켜진 '
+                        '채 남아 있을 수 있다**', exc)
         try:
             await self.guide.shutdown()
         except Exception as exc:  # noqa: BLE001

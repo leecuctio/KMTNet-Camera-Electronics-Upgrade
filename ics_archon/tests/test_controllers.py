@@ -364,3 +364,73 @@ def test_the_ascii_check_covers_every_ini_sourced_header_field():
             assert (section, name) in covered, (
                 '%s.%s 가 문자열인데 비ASCII 검사 목록에 없다 -- 헤더에 실리는 '
                 '값이면 _HEADER_INI_FIELDS 에 넣을 것' % (section, name))
+
+
+# ---------------------------------------------------------------------------
+# Trigger Out 래치 -- guide 헤더 `TRIGOUT` 카드의 원천 (2026-09-09)
+# ---------------------------------------------------------------------------
+
+
+def _latch():
+    """래치만 쓰는 껍데기 -- 컨트롤러를 통째로 세우지 않는다."""
+    from ics_archon.archon.controller import ArchonController
+    obj = ArchonController.__new__(ArchonController)
+    obj._trig_spans = None
+    return obj
+
+
+def test_the_latch_answers_for_a_window_not_a_moment():
+    """⭐ 카드가 묻는 것은 *"창 안에 HIGH 인 적이 있었나"* 다.
+
+    ⛔ 시점 하나로 적으면 **창보다 짧은 펄스**를 놓친다 -- 올림도 내림도
+    창 안이면 지금 상태는 LOW 다.
+    """
+    import time
+    c = _latch()
+    t0 = time.time()
+    c.note_trigger_level(True)
+    c.note_trigger_level(False)
+    t1 = time.time()
+    assert c.trigger_was_high_between(t0, t1) is True
+    # 창이 펄스보다 **뒤**면 안 걸린다.
+    assert c.trigger_was_high_between(t1 + 10, t1 + 20) is False
+    # 창이 펄스보다 **앞**이어도 안 걸린다.
+    assert c.trigger_was_high_between(t0 - 20, t0 - 10) is False
+
+
+def test_a_still_high_line_counts_for_the_current_window():
+    """⚠️ **열린 구간은 창 끝까지 이어진 것으로 본다** -- 지금도 HIGH 면 걸린다."""
+    import time
+    c = _latch()
+    c.note_trigger_level(True)
+    now = time.time()
+    assert c.trigger_was_high_between(now - 1, now + 1) is True
+
+
+def test_two_pulses_in_one_window_still_answer_yes():
+    """⭐ 한 창에 펄스가 둘 이상 들 수 있다 -- 마지막 것만 들고 있으면 안 된다."""
+    import time
+    c = _latch()
+    t0 = time.time()
+    for _ in range(3):
+        c.note_trigger_level(True)
+        c.note_trigger_level(False)
+    assert c.trigger_was_high_between(t0, time.time()) is True
+    assert len(c._trig_spans) == 3
+
+
+def test_the_latch_does_not_grow_without_bound():
+    """⛔ 밤새 연속 가이딩에서 구간이 무한히 쌓이면 안 된다."""
+    c = _latch()
+    for _ in range(200):
+        c.note_trigger_level(True)
+        c.note_trigger_level(False)
+    assert len(c._trig_spans) <= c._TRIG_SPAN_MAX
+
+
+def test_repeated_same_level_does_not_open_a_second_span():
+    """⚠️ 같은 값을 두 번 써도 구간이 갈라지면 안 된다 (`raise_line` 은 늘 쓴다)."""
+    c = _latch()
+    c.note_trigger_level(True)
+    c.note_trigger_level(True)
+    assert len(c._trig_spans) == 1

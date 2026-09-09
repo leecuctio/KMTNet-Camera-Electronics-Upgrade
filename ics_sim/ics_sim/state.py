@@ -171,6 +171,18 @@ class IcsState:
     exptime: float = 0.0
     observer: str = 'none'
     projid: str = 'ENG'
+    #: `OBSTYPE` 카드 값.  ⭐ **`OBSERVER` 와 같은 부류다** (운영자 확정
+    #: 2026-09-09) -- 사람이 정해 두면 헤더에 그대로 실리고 **다른 기능은
+    #: 없다**.  기본값은 계통마다 다르다: ICS `'SCIENCE'` · ICG `'GUIDE'`
+    #: (`IcgArchon` 이 눌러 둔다).
+    #:
+    #: ⚠️ **`IMAGETYP` 파생이 아니다** -- 2026-09-09 이전에는
+    #: `rawhdr.exposure_header()` 가 `IMAGETYP` 를 그대로 복사했다.  운영자가
+    #: 두 카드를 갈랐다: `IMAGETYP` 는 프레임의 종류(`OBJECT`/`BIAS`/…),
+    #: `OBSTYPE` 는 **어느 계통이 찍었나**다.
+    #: ⛔ 그래서 규격 5.4절의 *"`IMAGETYP` 과 동일 어휘"* 조항이 **낡았다** --
+    #: `SCIENCE`/`GUIDE` 는 그 어휘에 없다.  ⏳ 규격 갱신은 `main` 소관이다.
+    obstype: str = 'SCIENCE'
     #: 6자리 파일 일련번호.  레거시 IC 는 4자리였고 그 불일치를 INITIALIZE 로
     #: 우회했다(ics_legacy_report 3.4절).  신규는 애초에 6자리로 통일한다.
     #:

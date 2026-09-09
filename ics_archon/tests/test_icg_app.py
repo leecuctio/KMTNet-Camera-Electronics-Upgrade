@@ -67,6 +67,17 @@ def run_go3(tmp_path):  # noqa: ANN201
     ]))
 
 
+
+def _cmd_writes(ctrl):  # noqa: ANN001, ANN201
+    """**명령이** 컨트롤러에 쓴 것만 -- 종료 몫은 뺀다.
+
+    ⚠️ 2026-09-09 부터 `stop()` 이 이온게이지를 끄므로(운영자 지시) 앱을 내리는
+    도우미를 쓰는 시험마다 `DIO_POWER=0` 한 줄이 섞인다.  이 시험들이 보는 것은
+    *"그 명령이 썼는가"* 라 종료의 쓰기는 뜻이 없다.
+    ⛔ `writes()` 자체를 거르지 않는 이유: `vacgauge` 시험이 바로 그 줄을 봐야 한다.
+    """
+    return [w for w in ctrl.writes() if 'DIO_POWER' not in w]
+
 def test_go_n_saves_n_files_discarding_the_first(run_go3, tmp_path):
     """10.1-2·3 -- `go 3` = 독출 4회 · 저장 3장 · 파일명 `.G.fits` 연번."""
     app, _sent = run_go3
@@ -459,7 +470,7 @@ def test_htrset_takes_exactly_two_arguments(tmp_path):  # noqa: ANN001
     ])
     said = [s for s in sent if 'HTRSET' in s]
     assert sum('ERROR' in s for s in said) == 3, said
-    assert ctrl.writes() == [], '거부했는데 컨트롤러에 썼다'
+    assert _cmd_writes(ctrl) == [], '거부했는데 컨트롤러에 썼다'
 
 
 def test_the_onoff_words_are_the_same_as_expenable(tmp_path):  # noqa: ANN001
@@ -529,7 +540,7 @@ def test_the_new_heater_commands_check_their_argument_count(tmp_path):  # noqa: 
     said = [s for s in sent if 'ERROR' in s]
     assert sum('Usage:' in s for s in said) == 3, said
     assert any('Invalid D: nope' in s for s in said), said
-    assert ctrl.writes() == [], '거부했는데 컨트롤러에 썼다'
+    assert _cmd_writes(ctrl) == [], '거부했는데 컨트롤러에 썼다'
 
 
 def test_htrforce_says_that_the_pid_limit_does_not_apply(tmp_path):  # noqa: ANN001
@@ -562,7 +573,7 @@ def test_a_heater_query_answers_from_the_controller(tmp_path):  # noqa: ANN001
     # ⭐ `HTRSET` 조회는 **둘을 함께** 답한다 (헤더가 그 둘을 따로 싣는다).
     assert any('HTRSET' in s and 'Enable=0 Target=0' in s for s in sent), sent
     assert any('HTRFORCE' in s and 'Force=0 Level=0' in s for s in sent), sent
-    assert ctrl.writes() == [], '조회인데 컨트롤러에 썼다'
+    assert _cmd_writes(ctrl) == [], '조회인데 컨트롤러에 썼다'
 
 
 # ---------------------------------------------------------------------------
@@ -639,3 +650,70 @@ def test_the_startup_banner_shows_a_guide_filename(tmp_path):
     instr = app.banner_instrument('KMTK')
     assert instr['INSTRUME'] == 'KMTK Guide CCDs', instr['INSTRUME']
     assert instr['FPAID'] == 'FPA#0', instr['FPAID']
+
+
+# ---------------------------------------------------------------------------
+# 종료 -- 이온게이지를 끈다 (운영자 2026-09-09, 벤치에서 잡았다)
+# ---------------------------------------------------------------------------
+
+
+def test_shutdown_turns_the_ion_gauge_off():
+    r"""⛔ **우리가 켠 적이 없어도 끈다.**
+
+    guide ACF 가 `MOD10\DIO_POWER=1` 을 박아 두어 **ACF 적용마다 저절로
+    켜지는데** 종전에는 아무도 안 껐다 -- 운영자가 벤치에서 잡았다
+    (*"ICG 실행 시 켜지고 quit 할 때는 안 꺼지더라"*).
+
+    ⚠️ 순서까지 본다: **HK 를 세운 뒤 · `POWEROFF` 앞**이다.  먼저 끄면 남은
+    HK 바퀴가 Conductron 값을 `DEWPRES` 로 보고, 나중에 끄면 링크가 이미
+    닫혀 있다.
+    """
+    import io as _io
+    import os as _os
+    src = _io.open(_os.path.join(ROOT, 'icg_archon', 'app.py'),
+                   encoding='utf-8').read()
+    body = src[src.index('    async def stop(self)'):]
+    body = body[:body.index('\n    # -- 배너')]
+    at_hk = body.index('await self.hk.stop()')
+    at_gauge = body.index('await self.gauge.set(')
+    at_power = body.index('await self.guide.shutdown()')
+    assert at_hk < at_gauge < at_power, '순서가 뜻이다'
+    assert 'self.gauge.set(self.guide.ctrl, False)' in body
+
+
+def test_a_failed_gauge_off_does_not_stop_the_shutdown():
+    """⚠️ 실패해도 종료는 계속하되 **켜진 채 남는다**는 사실을 남긴다.
+
+    ⛔ 여기서 던지면 `POWEROFF` 와 연결 닫기가 통째로 안 돈다 -- 게이지 하나
+    때문에 더 나쁜 둘을 부르면 안 된다.
+    """
+    import io as _io
+    import os as _os
+    src = _io.open(_os.path.join(ROOT, 'icg_archon', 'app.py'),
+                   encoding='utf-8').read()
+    at = src.index('await self.gauge.set(')
+    tail = src[at:at + 500]
+    assert 'except Exception' in tail
+    assert '켜진' in tail, '켜진 채 남는다는 경고 문구가 있어야 한다'
+
+
+def test_startup_refreshes_hk_as_soon_as_the_controller_is_ready():
+    """⭐ 기동 뒤 **한 주기(60초)** 를 기다리지 않는다 (운영자 2026-09-09).
+
+    ⛔ 종전에는 게이지 상태도 `DEWPRES` 도 온도도 최대 60초 결측이었다.
+    `hk.start()` 의 첫 바퀴는 **ACF 적용·POWERON 앞**이라 쓸 값이 안 나오고
+    (로그의 *"ACF 적용 중이라 … 건너뛴다"*) 다음 바퀴가 60초 뒤이기 때문이다.
+    ⭐ `HKDATA NOW` 와 **같은 함수**를 쓴다 -- 따로 만들면 두 경로가 갈린다.
+    """
+    import io as _io
+    import os as _os
+    src = _io.open(_os.path.join(ROOT, 'icg_archon', 'app.py'),
+                   encoding='utf-8').read()
+    body = src[src.index('    async def _connect_controller'):]
+    body = body[:body.index('\n    async def stop')]
+    at_gauge = body.index('await self.gauge.load(')
+    at_hk = body.index('await self.hk.refresh_now()')
+    assert at_gauge < at_hk, '게이지 되읽기 뒤에 HK 를 돌린다'
+    # ⛔ 설정 객체가 둘이다 -- HK 주기는 `icfg` 소관이고 `cfg` 에는 없다.
+    assert 'self.icfg.hk.interval' in body
+    assert 'self.cfg.hk.interval' not in body

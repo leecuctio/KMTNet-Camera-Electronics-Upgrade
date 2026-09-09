@@ -231,7 +231,9 @@ def build_pool(*, site_code: str, ctrl_info: dict | None,
                telem_cards: dict[str, object],
                date_obs: str | None, exptime: float, ledflash_ms: int,
                imgtype: str, objname: str, projid: str, observer: str,
-               filename: str, expid: str) -> dict[str, object]:
+               filename: str, expid: str,
+               obstype: str = '',
+               trigout: bool | None = None) -> dict[str, object]:
     """guide 값 풀 -- 카드 조립은 `guidecards.render()` 가 한다.
 
     조립 순서는 `rawhdr.build_pool()` 과 같다 (TC 중계를 바닥에 깔고 블록을
@@ -245,7 +247,15 @@ def build_pool(*, site_code: str, ctrl_info: dict | None,
                                        projid=projid, exptime=exptime,
                                        ledflash_ms=ledflash_ms,
                                        date_obs=date_obs,
-                                       filename=filename, expid=expid))
+                                       filename=filename, expid=expid,
+                                       obstype=obstype))
+    # ⭐ **guide 전용 카드** (운영자 2026-09-09) -- `LEDFLASH` 를 뺀 자리다.
+    # ⚠️ `rawhdr.exposure_header()` 가 `LEDFLASH` 를 풀에 계속 넣지만 guide
+    # 템플릿에 그 카드가 없어 `render()` 가 버린다 (science 는 그대로 싣는다).
+    # ⛔ 값을 모르면 **카드를 비운다** -- `0` 을 채우면 *"펄스가 없었다"* 는
+    # 거짓 단언이 된다 (5.0절의 sentinel 정신).
+    if trigout is not None:
+        pool['TRIGOUT'] = 1 if trigout else 0
     pool.update(controller_header(ctrl_info, cfg_ctrl=cfg_ctrl,
                                   rdmode=rdmode,
                                   backend_name=backend_name))

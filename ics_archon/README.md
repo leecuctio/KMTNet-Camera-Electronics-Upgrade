@@ -314,7 +314,7 @@ file        = ~/AIC/Logs        ; 폴더 → icg.<YYYYMMDD>.log
 
 ### ⭐ 취득은 해치지 않는다
 
-`go 20` 이 **20장을 다 찍었다**(`000076`~`000095`).  그 사이 `trigout 2` 를 4회 쳤다 —
+`go 20` 이 **20장을 다 찍었다**(`000076`~`000095`).  그 사이 `trigout 2` 를 4회 쳤다(당시 인자는 **초**다 — 지금 눈금은 ms 라 같은 펄스가 `trigout 2000` 이다) —
 걱정하던 *"`APPLYSYSTEM` 이 `Exposures` 를 되돌린다"* 는 일어나지 않았다.
 
 ⚠️ `독출 완료 간격이 밀렸다` 가 8건 났지만 **명령과 상관이 없다** — 가장 가까운 명령까지
@@ -339,7 +339,7 @@ latency_warn_ms = 0
 guiexp 1.3
 expenable on
 go 60
-trigout 2      ← 연속 노출 중에 여러 번
+trigout 2000   ← 연속 노출 중에 여러 번 (⚠️ 단위는 **ms** 다)
 hkdata         ← 연속 노출 중에 20회 이상 (락 경합이 14 % 라 적게 치면 최악값을 못 잡는다)
 ```
 
@@ -1033,7 +1033,7 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 | 유닛 | 그 선이 모는 것 | 쉬는 상태 | 명령 |
 |---|---|---|---|
 | **science** (`ics_archon`) | **실제 셔터** | `TRIGOUTFORCE=0` — 타이밍 스크립트가 몬다 | `SHOPEN <초>` · `SHCLOSE` |
-| **guide** (`icg_archon`) | **LED** (셔터가 없다 — frame-transfer) | `TRIGOUTFORCE=1` — 선을 우리가 붙든다 | `TRIGOUT <초>` · `TRIGOUT 0` |
+| **guide** (`icg_archon`) | **LED** (셔터가 없다 — frame-transfer) | `TRIGOUTFORCE=1` — 선을 우리가 붙든다 | `TRIGOUT <ms>` · `TRIGOUT 0` |
 
 ### 무엇을 쓰나 — 어느 쪽도 `APPLYSYSTEM` **한 번**
 

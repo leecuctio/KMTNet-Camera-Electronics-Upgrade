@@ -860,7 +860,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
     #: LED Flash Done.` 이 나갔다.  ⚠️ science 실기는 `BackendError(_NOT_YET)` 로
     #: **정직하게 거절**한다 -- 거짓말은 ICG 쪽만이었다.
     #: ⚠️ `LEDFLASH` 를 없애면 **노출과 자동 동기되는 점등**이 사라진다
-    #: (`TRIGOUT <초>` 는 우리가 임의 시각에 내는 것이라 프레임과 비동기다).
+    #: (`TRIGOUT <ms>` 는 우리가 임의 시각에 내는 것이라 프레임과 비동기다).
     #:
     #: ⛔ **`SHOPEN`/`SHCLOSE` 는 `TRIGOUT` 으로 갈렸다** (운영자 2026-09-09) --
     #: guide 에는 셔터가 없으니 셔터 낱말을 빌려 쓰지 않는다.  ⚠️ 11.45 에서는
@@ -960,7 +960,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         return self._trigout(msg, 'TRIGOUTLEVEL', 'TRIGOUTLEVEL')
 
-    #: `TRIGOUT <초>` 가 띄운 자동 내림 타이머.  ⭐ 하나만 산다 -- 새 `TRIGOUT`
+    #: `TRIGOUT <ms>` 가 띄운 자동 내림 타이머.  ⭐ 하나만 산다 -- 새 `TRIGOUT`
     #: 이 오면 앞의 것을 끊는다 (안 끊으면 옛 타이머가 나중에 깨어나 **방금
     #: 세운 선을 내린다**).
     _trigout_timer = None
@@ -969,14 +969,21 @@ class IcgDispatcher(sim_commands.Dispatcher):
     _warned_busy_apply = False
 
     def cmd_trigout(self, msg: Message, target: Target) -> Reply:
-        """TRIGOUT <초> -- **Trigger Out 을 <초> 동안 HIGH 로**.  `0` 이면 즉시 LOW.
+        """TRIGOUT <ms> -- **Trigger Out 을 <ms> 동안 HIGH 로**.  `0` 이면 즉시 LOW.
 
         운영자 확정 2026-09-09.  종전 `SHOPEN <초>`/`SHCLOSE` 를 이 한 낱말로
         모았다 -- ⛔ guide 에는 셔터가 없으니 **셔터 낱말을 빌려 쓰지 않는다**.
 
+        ⛔ **단위가 초에서 ms 로 바뀌었다** (운영자 2026-09-09 저녁).  ⚠️ 옛
+        버릇이 위험하다 -- `trigout 2` 는 종전 **2 초**였는데 이제 **2 ms** 라
+        실현 최소 폭(≈235 ms)으로 눌린다.  2 초를 원하면 `trigout 2000`.
+        ⭐ 눈금을 ms 로 옮긴 이유는 **실현 최소 폭 자체가 ms 단위**라서다
+        (적용 한 번 ≈235 ms) -- 초로 적으면 쓸 수 있는 값이 소수점 아래로
+        몰린다 (`0.25`·`0.5`).
+
         | 인자 | 하는 것 | 적용 |
         |---|---|---|
-        | `<초>` > 0 | 무장(`LEVEL=0`+`FORCE=1`) -> `LEVEL=1`, `<초>` 뒤 자동 내림 | 1~2회 |
+        | `<ms>` > 0 | 무장(`LEVEL=0`+`FORCE=1`) -> `LEVEL=1`, `<ms>` 뒤 자동 내림 | 1~2회 |
         | `0` | 즉시 `LEVEL=0` + `FORCE=1` (대기 중 타이머도 끊는다) | 1회 |
 
         ⭐ **둘을 한 적용에 같이 세운다** (`archon.trigout.raise_line`) -- 무장을
@@ -994,12 +1001,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         arg = msg.body.split()
         if not arg:
-            return Reply.error('TRIGOUT', 'Missing duration (seconds)')
+            return Reply.error('TRIGOUT', 'Missing duration (milliseconds)')
         try:
-            seconds = float(arg[0])
+            ms = float(arg[0])
         except ValueError:
             return Reply.error('TRIGOUT', 'Invalid duration: %s' % arg[0])
-        if seconds < 0:
+        if ms < 0:
             return Reply.error('TRIGOUT', 'Invalid duration: %s' % arg[0])
         ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
         if ctrl is None:
@@ -1007,12 +1014,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
         import time
         t0 = time.monotonic()
         self._cancel_trigout_timer()
-        if seconds == 0:
+        if ms == 0:
             # ⭐ 종전 `SHCLOSE` -- 둘을 한 적용에 같이 세운다 (되읽기 없음).
             self.app.spawn(self._do_trigout(msg.src, 'TRIGOUT',
                                             high=False, forced=True, t0=t0))
             return Reply.noop()
-        self.app.spawn(self._do_trigout_pulse(msg.src, seconds, t0))
+        self.app.spawn(self._do_trigout_pulse(msg.src, ms, t0))
         return Reply.noop()
 
     def _cancel_trigout_timer(self) -> bool:
@@ -1071,7 +1078,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
                  '밀림은 명령과 무관했으며 모듈 VCPU 도 안 재시작됐다.  '
                  '이 뒤 프레임에 이상이 보이면 이 줄을 함께 볼 것')
 
-    async def _do_trigout_pulse(self, dest: str, seconds: float,
+    async def _do_trigout_pulse(self, dest: str, ms: float,
                                 t0: float | None = None) -> None:
         r"""세우고 -> 기다리고 -> 내린다.  ⛔ 내림은 **취소돼도 안 흘린다**.
 
@@ -1082,7 +1089,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
 
         * **수신 -> HIGH** -- 락 대기 + 적용.  운영자가 물은 *"명령 실행 지연"*.
         * **수신 -> LOW** -- 내림도 같은 락을 탄다.
-        * ⭐ **펄스 폭 오차** -- 실제 HIGH 지속과 요청 `<초>` 의 차.  ⚠️ 이것이
+        * ⭐ **펄스 폭 오차** -- 실제 HIGH 지속과 요청 `<ms>` 의 차.  ⚠️ 이것이
           가장 중요한 값이다: 시작이 밀려도 **폭이 맞으면** 광원 노출량은 맞는다.
 
         ⛔ **실측이 내 예측을 뒤집었다** (2026-09-09): *"밀림은 폭에 안 섞이고
@@ -1093,6 +1100,9 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         import asyncio
         import time
+        # ⭐ **바깥 눈금은 ms, 안쪽 셈은 초다** -- `cfg.scaled()` 도
+        # `asyncio.sleep()` 도 초를 받는다.  경계에서 한 번만 나눈다.
+        seconds = ms / 1000.0
         ctrl = self.app.guide.ctrl
         self._warn_if_acquiring()
         raise_at = time.monotonic()
@@ -1104,17 +1114,17 @@ class IcgDispatcher(sim_commands.Dispatcher):
         high_at = time.monotonic()
         apply_cost = high_at - raise_at
         if t0 is not None:
-            self._log_latency('TRIGOUT 올림', t0, 'Sec=%g' % seconds,
+            self._log_latency('TRIGOUT 올림', t0, 'MS=%g' % ms,
                               always=True)
         self.emit.done(dest, 'TRIGOUT',
-                       'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 Sec=%g' % seconds)
+                       'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 MS=%g' % ms)
         self._trigout_timer = asyncio.current_task()
         # ⭐ **내림에 걸릴 시간을 미리 뺀다** (2026-09-09 실측).
         #
         # ⛔ 종전에는 `sleep(<초>)` 만 하고 그 뒤에 내림 왕복을 보냈다 -- 그래서
         # 핀이 실제로 HIGH 인 시간이 **`<초>` + 내림 적용시간**이었다.  벤치
-        # 실측: 요청 2 s 에 폭오차 **+235 ms 가 17회 내내 일정** (2.235 s).
-        # 짧은 펄스일수록 비율이 커진다 -- 0.5 s 면 +47 % 다.
+        # 실측: 요청 2000 ms 에 폭오차 **+235 ms 가 17회 내내 일정** (2235 ms).
+        # 짧은 펄스일수록 비율이 커진다 -- 500 ms 면 +47 % 다.
         #
         # ⭐ **핀이 적용 처리의 어느 지점에서 뒤집히든 이 보정은 옳다.**  적용
         # 하나에 `C` 가 걸리고 핀이 그 안 비율 `f` 에서 뒤집힌다고 하면
@@ -1124,8 +1134,9 @@ class IcgDispatcher(sim_commands.Dispatcher):
         # (`WCONFIG` 둘 + `APPLYSYSTEM`)이고 실측도 232 ms 대 236 ms 였다.
         # ⛔ 상수로 박지 않는다 -- 링크·펌웨어가 바뀌면 따라와야 한다.
         #
-        # ⚠️ **`<초>` 가 적용 하나보다 짧으면 못 만든다** -- 0 으로 눌러 담고
-        # 그 사실을 알린다 (실현 최소 폭 ≈ 235 ms).
+        # ⚠️ **`<ms>` 가 적용 하나보다 짧으면 못 만든다** -- 0 으로 눌러 담고
+        # 그 사실을 알린다 (실현 최소 폭 ≈ 235 ms).  ⭐ 눈금이 ms 라 운영자가
+        # 그 하한을 **같은 단위로** 읽고 쓴다.
         #
         # ⏳ ⚠️ **남은 빈틈: `apply_cost` 에는 락 대기가 섞인다.**  이 값은
         # *"올림을 시작해서 끝날 때까지"* 라 **진행 중인 FETCH 를 기다린
@@ -1138,9 +1149,9 @@ class IcgDispatcher(sim_commands.Dispatcher):
         want = self.cfg.scaled(seconds)
         nap = want - apply_cost
         if nap < 0:
-            log.warning('TRIGOUT %g초는 적용 한 번(%.0f ms)보다 짧다 -- 실현 '
-                        '폭은 약 %.0f ms 가 된다 (그보다 짧은 펄스는 이 방식'
-                        '으로 못 만든다)', seconds, apply_cost * 1000,
+            log.warning('TRIGOUT %g ms 는 적용 한 번(%.0f ms)보다 짧다 -- '
+                        '실현 폭은 약 %.0f ms 가 된다 (그보다 짧은 펄스는 이 '
+                        '방식으로 못 만든다)', ms, apply_cost * 1000,
                         apply_cost * 1000)
             nap = 0.0
         try:
@@ -1162,12 +1173,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
         wide_ms = (time.monotonic() - high_at - want) * 1000.0
         if t0 is not None:
             self._log_latency('TRIGOUT 내림', t0,
-                              '폭오차 %+.1f ms (요청 %gs, 보정 -%.0f ms)'
-                              % (wide_ms, seconds, apply_cost * 1000),
+                              '폭오차 %+.1f ms (요청 %g ms, 보정 -%.0f ms)'
+                              % (wide_ms, ms, apply_cost * 1000),
                               always=True)
         # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보다.
-        self.emit.done(dest, 'TRIGOUT', '%s (auto after %gs)'
-                       % (self._trigout_words(high=False, forced=True), seconds))
+        self.emit.done(dest, 'TRIGOUT', '%s (auto after %g ms)'
+                       % (self._trigout_words(high=False, forced=True), ms))
 
     def cmd_ccdpowon(self, msg: Message, target: Target) -> Reply:
         """CCDPOWON -- CCD 전원 ON (`POWERON` + `poweron_wait` 초의 flush 대기).
