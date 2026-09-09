@@ -566,12 +566,36 @@ class GuideBackend:
         return (self.cfg.controllers.rdmode or '').strip() or rawhdr.RDMODE
 
     async def shutdown(self) -> None:
-        """전원을 시도했으면 끈다 -- science 백엔드와 같은 규칙."""
+        """전원을 시도했으면 끄고 **연결을 닫는다** -- science 와 같은 규칙.
+
+        ⛔ **`close()` 가 빠져 있었다** (2026-09-09 벤치에서 드러났다).
+        science(`ArchonBackend.shutdown`)는 `power_off()` 뒤에 `ctrl.close()`
+        까지 하는데 guide 만 안 했다.  Archon 은 연결을 사실상 하나만 잡으므로,
+        FIN 을 안 보내고 끝나면 **컨트롤러가 옛 연결을 계속 붙들고** 곧바로 한
+        재실행이 `timed out` 으로 못 붙는다.  실제로 벤치에서 네 번 연속
+        재기동이 그렇게 무너졌다 (`icg.20260909` 로그).
+        ⚠️ **닫기는 `POWEROFF` 가 실패해도 한다** -- 그래서 `finally` 다.
+        전원이 남는 것보다 연결이 남는 것이 다음 실행을 더 확실히 막는다.
+
+        ⭐ **종료가 무엇을 했는지 로그에 남긴다** (같은 벤치에서 드러난 둘째
+        결함).  종전에는 성공하면 아무 자취가 없어 *"`quit` 을 했는지 죽었는지"*
+        를 로그로 구별할 수 없었다.
+        """
         try:
             if self.ctrl.powered or self.ctrl.power_attempted:
                 await self.ctrl.power_off()
+                log.info('종료 -- POWEROFF 를 보냈다')
         except (ArchonError, TimeoutError, OSError) as exc:
-            log.warning('종료 POWEROFF 실패 -- %s', exc)
+            log.warning('종료 POWEROFF 실패 -- %s.  **전원이 남아 있을 수 '
+                        '있다**', exc)
+        finally:
+            try:
+                await self.ctrl.close()
+                log.info('종료 -- 컨트롤러 연결을 닫았다')
+            except (ArchonError, TimeoutError, OSError) as exc:
+                log.warning('종료 -- 연결을 못 닫았다: %s.  ⚠️ 컨트롤러가 옛 '
+                            '연결을 붙들면 **곧바로 한 재실행이 못 붙는다** '
+                            '-- 그때는 컨트롤러를 리셋할 것', exc)
 
 
 class _SimTicket:

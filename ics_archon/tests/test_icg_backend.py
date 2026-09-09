@@ -720,3 +720,56 @@ def test_arm_leaves_firstflush_alone_and_the_flush_makes_no_frame(tmp_path):
         asyncio.run(run())
     finally:
         fake.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# 종료 -- 연결을 닫는다 (2026-09-09 벤치에서 드러난 결함)
+# ---------------------------------------------------------------------------
+
+
+class _ShutdownCtrl:
+    """`shutdown()` 이 무엇을 부르는지만 세는 대역."""
+
+    def __init__(self, *, power_fails: bool = False) -> None:
+        self.powered = True
+        self.power_attempted = True
+        self.calls: list[str] = []
+        self._power_fails = power_fails
+
+    async def power_off(self) -> None:
+        from ics_archon.archon.protocol import ArchonError
+        self.calls.append('power_off')
+        if self._power_fails:
+            raise ArchonError('POWEROFF 가 안 됐다고 치자')
+
+    async def close(self) -> None:
+        self.calls.append('close')
+
+
+def _bare_backend(ctrl):  # noqa: ANN001, ANN201
+    be = GuideBackend.__new__(GuideBackend)
+    be.ctrl = ctrl
+    return be
+
+
+def test_shutdown_closes_the_link_not_just_the_power():
+    """⛔ **연결을 닫아야 한다** -- science 와 같은 규칙.
+
+    Archon 은 연결을 사실상 하나만 잡으므로 FIN 없이 끝나면 컨트롤러가 옛
+    연결을 붙들고, 곧바로 한 재실행이 `timed out` 으로 못 붙는다 (2026-09-09
+    벤치에서 네 번 연속 재기동이 그렇게 무너졌다).
+    """
+    ctrl = _ShutdownCtrl()
+    asyncio.run(_bare_backend(ctrl).shutdown())
+    assert ctrl.calls == ['power_off', 'close']
+
+
+def test_the_link_is_closed_even_when_poweroff_fails():
+    """⚠️ **닫기는 `POWEROFF` 실패에도 돈다** (`finally`).
+
+    전원이 남는 것보다 연결이 남는 것이 다음 실행을 더 확실히 막는다 --
+    전원은 사람이 다시 끌 수 있지만 안 붙는 컨트롤러는 리셋해야 한다.
+    """
+    ctrl = _ShutdownCtrl(power_fails=True)
+    asyncio.run(_bare_backend(ctrl).shutdown())
+    assert ctrl.calls == ['power_off', 'close']
