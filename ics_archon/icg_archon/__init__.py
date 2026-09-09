@@ -17,7 +17,8 @@ Archon 계층(`archon/protocol·parse·controller·fitswrite`)을 **그대로 �
 
 레거시 대응은 `ics_legacy/icg_legacy_report.md` 9장 -- 신규 `icg` 는 레거시
 `ICG` + `G.IC` + `G.CB` 3노드의 통합이고, 내부 UDP 경계는 함수 호출로
-대체한다.  외부 인터페이스는 `go`/`guideexp` 수신(ABC)·TC 질의·XIS 등록.
+대체한다.  외부 인터페이스는 `go`/`GUIEXP` 수신(ABC)·TC 질의·XIS 등록
+(⚠️ 레거시 낱말은 `guideexp` 였다 -- 2026-09-08 에 줄였다, 11.45).
 
 버전 규약은 `ics_sim.build_id()` 를 따른다 -- 두 상수를 손으로 올린다
 (`ICGBUILD` 카드가 이 값을 싣는다, raw spec 10.3절).

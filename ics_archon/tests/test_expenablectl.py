@@ -28,8 +28,8 @@ import pytest
 
 import ics_archon  # noqa: F401
 
-from ics_archon import guideexp as ge  # noqa: E402
-from ics_archon.guideexp import GuideExpControl  # noqa: E402
+from ics_archon import expenablectl as ge  # noqa: E402
+from ics_archon.expenablectl import ExpEnableControl  # noqa: E402
 
 INF = float('inf')
 
@@ -40,7 +40,7 @@ class Harness:
         self.tasks: list = []
         opts = dict(node='ICG', lead=2.0, reply_timeout=5.0, enabled=True)
         opts.update(over)
-        self.ctl = GuideExpControl(
+        self.ctl = ExpEnableControl(
             opts['node'], opts['lead'], self._spawn, self._emit,
             opts['reply_timeout'], enabled=opts['enabled'])
 

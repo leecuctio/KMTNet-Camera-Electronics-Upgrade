@@ -42,7 +42,7 @@ from .archon.monitor import TelemetryMonitor              # noqa: E402
 from .archon import trigout as trigout_core               # noqa: E402
 from .archon.protocol import ArchonError                  # noqa: E402
 from .gaugectl import CMD as GAUGE_CMD, GaugeControl      # noqa: E402
-from .guideexp import CMD as GUIEXP_CMD, GuideExpControl  # noqa: E402
+from .expenablectl import CMD as EXPENABLE_CMD, ExpEnableControl  # noqa: E402
 from .tcsclock import ClockWatch, watch_tc_queries
 from .xischeck import XIS_ID, XisGate         # noqa: E402
 from ics_sim import console, emitter                       # noqa: E402
@@ -701,7 +701,7 @@ class IcsArchon(IcsSim):
         if backend is not None:
             backend.gauge = self.gauge
         #: science 독출 앞뒤로 guide 노출을 막고 푼다 (`GUIEXPCTRL`).
-        self.guideexp = GuideExpControl(
+        self.expenable = ExpEnableControl(
             acfg.icg_node, acfg.guiexp_lead, self.spawn,
             self.emit.emit_req, acfg.gauge_reply_timeout,
             enabled=acfg.guiexpctrl)
@@ -847,8 +847,8 @@ class IcsArchon(IcsSim):
             await asyncio.sleep(max(0.05, self.acfg.phase_poll))
             # ⭐ guide 노출 잠금은 **국면**을 본다 (독출 앞뒤), 게이지는
             #    **취득 전체**를 본다 (끝나면 되켜기 타이머).  한 틱에서 둘 다.
-            self.guideexp.on_phase(self.state.expstatus,
-                                   self._seconds_to_readout())
+            self.expenable.on_phase(self.state.expstatus,
+                                    self._seconds_to_readout())
             now = bool(self.seq.busy)
             if was and not now:
                 self.gauge.after_acquisition()
@@ -859,7 +859,7 @@ class IcsArchon(IcsSim):
 
         ⚠️ **적분 국면에서만 앞을 내다본다** -- `exp_start` 와 실효 노출시간이
         있어야 계산이 되고, BIAS/DARK 처럼 적분 국면이 없거나 짧은 갈래는
-        `READOUT` 국면 자체가 신호다 (`guideexp.on_phase`).
+        `READOUT` 국면 자체가 신호다 (`expenable.on_phase`).
         """
         st = self.state
         phase = (st.expstatus or '').upper()
@@ -881,7 +881,7 @@ class IcsArchon(IcsSim):
             gate.note_message(msg)
         raw = (msg.raw or '').upper()
         for ctl, word in ((getattr(self, 'gauge', None), GAUGE_CMD),
-                          (getattr(self, 'guideexp', None), GUIEXP_CMD)):
+                          (getattr(self, 'expenable', None), EXPENABLE_CMD)):
             if (ctl is not None and ctl.enabled
                     and msg.src.upper() == ctl.node.upper() and word in raw):
                 ctl.note_reply(msg.raw)
@@ -905,7 +905,7 @@ class IcsArchon(IcsSim):
         # 게이지 타이머·데드맨 -- ⚠️ 게이지를 켜지는 않는다 (gaugectl.close).
         await self.gauge.close()
         # guide 노출 잠금 -- ⚠️ **풀지 않는다** (독출 중에 죽었을 수 있다).
-        await self.guideexp.close()
+        await self.expenable.close()
         # **저장 중인 프레임을 먼저 지킨다.**  `super().stop()` 이 태스크를
         # 취소하고 `backend.shutdown()` 이 링크를 닫으므로, 그 전에 기다리지
         # 않으면 독출을 마친 프레임이 파일 없이 사라진다 -- 전원을 끄는 것보다

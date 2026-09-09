@@ -2,6 +2,13 @@
 # -*- coding: utf-8 -*-
 """ICS 가 science 독출 앞뒤로 guide 노출을 막고 푼다 -- `EXPENABLE` (2026-09-04).
 
+⭐ **파일 이름이 `guideexp.py` 였다** (개명 2026-09-09, DevNote 11.57).  이 모듈이
+다루는 것은 `EXPENABLE` 이고 `GUIEXP`(가이드 노출시간)는 **다른 명령**인데, 옛
+이름이 그 명령을 가리키는 것처럼 읽혔다 -- `app.py` 가 `CMD as GUIEXP_CMD` 로
+들여오기까지 해서 더 그랬다 (지금은 `EXPENABLE_CMD`).
+⛔ **ini 키는 그대로 `GUIEXPCTRL`·`guiexp_lead` 다** -- 설치본이 쓰는 운영자 낱말이라
+갈아 끼우면 벤치 ini 가 깨진다.  그 둘의 개명은 운영자 판단이다.
+
 운영자 문면: *"`EXPENABLE` 은 ICS 노출 전/후에 보내는 게 아니고, ICS(science
 CCD) **독출 2초 전**과 **독출완료 직후**에 보내는 거야.  독출 전에 0, 독출 후에
 1.  `ics_archon.ini` 에 `GUIEXPCTRL = true/false` 옵션을 두어서 true 일 때 자동
@@ -35,7 +42,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-log = logging.getLogger('ics_archon.guideexp')
+log = logging.getLogger('ics_archon.expenablectl')
 
 CMD = 'EXPENABLE'
 
@@ -46,7 +53,7 @@ BLOCKED, ALLOWED, UNKNOWN = 'BLOCKED', 'ALLOWED', 'UNKNOWN'
 _DONE_PHASES = ('WRITING', 'IDLE')
 
 
-class GuideExpControl:
+class ExpEnableControl:
     """science 독출 구간에 맞춰 `EXPENABLE` 을 여닫는다."""
 
     def __init__(self, node: str, lead: float, spawn,  # noqa: ANN001
