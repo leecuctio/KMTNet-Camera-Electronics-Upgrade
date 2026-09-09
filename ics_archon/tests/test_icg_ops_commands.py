@@ -785,3 +785,123 @@ def test_go_says_why_while_the_stop_tail_drains(tmp_path):
     assert any('ERROR: GO' in s and 'draining controller tail' in s
                for s in sent), sent[-3:]
     assert not any('already in progress' in s for s in sent), sent[-3:]
+
+
+class _SlowRec(_Rec):
+    """적용 하나가 `delay` 초 걸리는 컨트롤러 -- **FETCH 락 대기 대역**이다."""
+
+    def __init__(self, delay, **kw):  # noqa: ANN001, ANN204
+        super().__init__(**kw)
+        self.delay = delay
+
+    async def set_trigger(self, *, high=None, forced=None):  # noqa: ANN001, ANN202
+        import asyncio
+        await asyncio.sleep(self.delay)
+        await super().set_trigger(high=high, forced=forced)
+
+
+def _trig_slow(tmp_path, script, delay, settle=0.4, held=None):  # noqa: ANN001, ANN202
+    """`_trig` 와 같되 **느린 컨트롤러**를 먹인다.  (적용목록, 발신) 을 준다."""
+    import asyncio
+
+    rec = _SlowRec(delay, held=held)
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
+        icfg.latency_warn_ms = 0.0          # ⭐ 전부 남긴다 (벤치와 같은 설정)
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide.ctrl = rec
+        await app.start()
+        try:
+            for line in script:
+                app.transport.feed(line)
+                await asyncio.sleep(0.05)
+            await asyncio.sleep(settle)
+        finally:
+            await app.stop()
+        return rec.calls, [str(s) for s in app.transport.sent_log]
+
+    return asyncio.run(run())
+
+
+def test_trigout_pulse_width_does_not_inherit_the_startup_delay(tmp_path, caplog):
+    """⭐ **밀려서 시작해도 폭은 맞는다** -- 시한을 `raise_line` **뒤부터** 잰다.
+
+    ⏳ 운영자가 물은 것 (2026-09-09): *"guide 연속 노출 중 `trigout <sec>`
+    실행 지연 여부"*.  ⛔ 실기에서 밀리는 원인은 `_locked_thread` 다 -- 모든
+    왕복이 한 줄로 서므로 진행 중인 FETCH(guide 8.3 MiB ≈ 0.08 s, 잠금 상한
+    `fetch_timeout` = 1 s) 뒤에 선다.  여기서는 그 대기를 **느린 컨트롤러**로
+    대역한다.
+
+    ⭐ **재는 것이 둘로 갈린다**: *시작이 밀리는 것* 과 *폭이 틀어지는 것*.
+    앞은 어쩔 수 없지만 뒤는 광원 노출량을 바꾸므로 훨씬 나쁘다.  이 시험은
+    **뒤가 앞에 안 물린다**를 못박는다 -- `asyncio.sleep` 이 올림 왕복 **뒤에**
+    시작하므로 구조상 그렇고, 순서를 뒤집는 고침이 오면 여기서 깨진다.
+    """
+    import logging
+    import re
+
+    caplog.set_level(logging.INFO, logger='icg_archon.cmd')
+    calls, _sent = _trig_slow(tmp_path, ['abc>ICG TRIGOUT 2'], delay=0.15,
+                              settle=0.6, held=dict(RESTING))
+    assert len(calls) == 2, calls              # 올림 한 번 · 내림 한 번
+
+    text = caplog.text
+    assert 'TRIGOUT 올림 지연' in text, text
+    assert 'TRIGOUT 내림 지연' in text, text
+
+    # ⭐ 올림은 대역한 대기(150 ms)만큼 밀렸다.
+    up = re.search(r'TRIGOUT 올림 지연 -- 수신→완료 ([0-9.]+) ms', text)
+    assert up is not None and float(up.group(1)) >= 140.0, text
+
+    # ⭐ 그런데 **폭 오차는 그 밀림을 안 물려받는다** -- 남는 것은 내림 쪽
+    # 대기뿐이라 대역값 언저리지, 그 두 배가 아니다.
+    err = re.search(r'폭오차 ([+-][0-9.]+) ms', text)
+    assert err is not None, text
+    assert 0.0 <= float(err.group(1)) < 250.0, text
+
+
+def test_hkdata_logs_its_latency(tmp_path):
+    """⏳ `HKDATA` 도 **수신→완료**를 한 줄로 남긴다 (같은 실측 항목).
+
+    ⚠️ 종전에는 `HKQDATE` 와 응답 로그 시각을 **눈으로 빼야** 했다 -- 연속
+    노출 중에 여러 번 치며 재려면 그 뺄셈이 실측을 가로막는다.
+    """
+    import asyncio
+    import logging
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
+        icfg.latency_warn_ms = 0.0
+        app = IcgArchon(cfg, icfg, backend='sim')
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG HKDATA')
+            await asyncio.sleep(0.2)
+        finally:
+            await app.stop()
+
+    import logging as _lg
+
+    seen = []
+
+    class _Grab(_lg.Handler):
+        def emit(self, record):  # noqa: ANN001, ANN202
+            seen.append(record.getMessage())
+
+    lg = logging.getLogger('icg_archon.cmd')
+    h = _Grab()
+    lg.addHandler(h)
+    old = lg.level
+    lg.setLevel(logging.INFO)
+    try:
+        asyncio.run(run())
+    finally:
+        lg.removeHandler(h)
+        lg.setLevel(old)
+
+    assert any('HKDATA 지연' in m for m in seen), seen

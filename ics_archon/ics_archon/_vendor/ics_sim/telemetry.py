@@ -78,6 +78,13 @@ _SENTINEL_NUM = _SENTINEL_INT | _SENTINEL_FLOAT
 #: 원래 이름도 함께 남긴다 -- 레거시 도구와의 연속성이고, 옮겨 실은 것이
 #: 대조 가능해야 한다.
 _FITS_RENAME = {'DSTEL': 'DSTELALT'}
+#: ⛔ **`AZ` 를 `DSTELAZ` 로 개명하지 않는다** (운영자 정정 2026-09-09).
+#: `DSAZ` 와 `DSTELAZ` 는 **둘 다 `TCSSTATUS` 에 추가**하기로 정해졌다 -- TC 쪽
+#: 구현에 시간이 걸릴 뿐이다.  ⭐ 그때까지 **우리가 손댈 것은 없다**: 오는 값은
+#: 그대로 실리고(`on_tc_reply` 가 와이어를 통째로 담는다) 안 오는 중계 카드는
+#: `'NC'` 로 남는다 (벤치 헤더의 `DSAZ = 'NC'` 가 그 증거다).
+#: ⚠️ 한때 *"돔 Az 를 TCS 가 모니 `AZ` 를 그대로 쓰자"* 로 정했다가 되돌렸다 --
+#: `DSTELAZ` 는 **DS 가 보고하는 값**이고 TC 가 그것을 따로 보낸다.
 
 _SENTINEL_STR = frozenset({
     'ENFAN', 'ENSTAT', 'CHOP', 'CHSTAT', 'MCSTAT', 'DSSTAT', 'FASTAT',
@@ -148,6 +155,22 @@ def _sync_error(dome: object, tel: object) -> str:
     except (TypeError, ValueError):
         return 'NC'
     return f'{diff:+.1f}'
+
+
+def _sync_error_az(dome: object, tel: object) -> str:
+    """`DAZERR` -- 방위차를 **-180 ~ +180 으로 접어서** 낸다 (운영자 2026-09-09).
+
+    ⭐ 방위는 **순환**이라 그냥 빼면 `270` 같은 값이 나오는데, 그것은 실제로
+    반대 방향 `-90` 이다.  운영자 지시: *"계산결과가 270 이면 -90 이 되도록"*.
+    ⛔ **고도(`DALTERR`)에는 이 접기를 쓰면 안 된다** -- 고도는 -90~+90 이라
+    순환이 아니고, 접으면 진짜로 큰 어긋남을 작게 보이게 만든다.
+    ⚠️ 정확히 `180` 은 `-180` 으로 나온다 (같은 각이다).
+    """
+    try:
+        diff = float(str(dome)) - float(str(tel))
+    except (TypeError, ValueError):
+        return 'NC'
+    return f'{(diff + 180.0) % 360.0 - 180.0:+.1f}'
 
 
 class TelemetryRelay:
@@ -415,7 +438,7 @@ class TelemetryRelay:
         out.setdefault('DALTERR',
                        _sync_error(out.get('DSALT'), out.get('DSTELALT')))
         out.setdefault('DAZERR',
-                       _sync_error(out.get('DSAZ'), out.get('DSTELAZ')))
+                       _sync_error_az(out.get('DSAZ'), out.get('DSTELAZ')))
         for k in rawcards.RELAY_CARDS:
             out.setdefault(k, 'NC')
         if date_obs:

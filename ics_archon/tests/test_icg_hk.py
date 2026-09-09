@@ -501,3 +501,78 @@ def test_radionode_keys_are_exempt_from_the_shared_horizon(tmp_path):
     published.clear()
     asyncio.run(mon._tick(0.0))                        # noqa: SLF001
     assert 'hebox' not in mon.sensors(), '폴러가 접었는데 헤더에 남았다'
+
+
+def test_heater_settings_reach_the_header_not_just_hkdata(tmp_path):
+    """⛔ `HTREN`·`HTRSET`·`HTRFORCE` 가 **FITS 헤더에도** 실려야 한다.
+
+    ⭐ 벤치가 잡은 어긋남 (2026-09-08): `HKDATA` 응답에는 `HTREN=OFF
+    HTRSET=+0.00 HTRFORCE=OFF` 가 있는데 **헤더는 셋 다 sentinel** 이었다.
+    원인은 값을 못 읽어서가 아니라 **경로가 둘로 갈려서** -- `hkdata` 가 응답을
+    만들 때만 `RCONFIG` 로 읽고 버렸고, 헤더가 보는 `sensors()` 에는 `htrout`
+    하나뿐이었다.
+    ⚠️ 셋은 **`STATUS` 에 없다** (설정값이라 `RCONFIG`) -- HK 한 바퀴에 왕복
+    셋이 느는 것이 이 고침의 값이다.
+    ⭐ **원값을 그대로 담는다** -- `'1'`/`'0'` 은 헤더의 `format_word()` 가
+    낱말로 옮긴다 (매핑을 두 곳에 두지 않는다, 11.14-(1-a)).
+    """
+    from ics_sim import rawhdr
+
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+
+    class _Ctrl:
+        """STATUS + 히터 설정 `RCONFIG` 를 내는 컨트롤러 대역."""
+
+        def __init__(self):  # noqa: ANN204
+            self.status_live = _status_with_rtd()
+            self.config = {}
+
+        async def refresh_status_live(self):  # noqa: ANN202
+            return True
+
+        async def read_config(self, key):  # noqa: ANN001, ANN202
+            return {'MOD10\\HEATERAENABLE': '1',
+                    'MOD10\\HEATERATARGET': '-95.25',
+                    'MOD10\\HEATERAFORCE': '0'}[key]
+
+    mon = HkMonitor(_Ctrl(), icfg)
+    asyncio.run(mon._tick(0.0))                            # noqa: SLF001
+
+    got = mon.sensors()
+    assert got['htren'] == '1' and got['htrforce'] == '0', got
+    assert got['htrset'] == -95.25, got
+
+    cards = rawhdr.thermal_header(got)
+    assert cards['HTREN'] == 'ON', cards['HTREN']
+    assert cards['HTRFORCE'] == 'OFF', cards['HTRFORCE']
+    assert cards['HTRSET'] == '-95.25', cards['HTRSET']
+
+
+def test_a_failed_heater_read_back_leaves_sentinels_and_warns_once(tmp_path):
+    """⚠️ 되읽기가 실패하면 **sentinel 이 맞다** -- 다만 한 번은 알린다.
+
+    ACF 파싱 전에는 *"설정 줄을 모른다"* 가 난다.  ⛔ 조용히 넘어가면 헤더가
+    영영 `NC` 인 이유를 아무도 모른다.
+    """
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+
+    class _Blind:
+        def __init__(self):  # noqa: ANN204
+            self.status_live = _status_with_rtd()
+            self.config = {}
+
+        async def refresh_status_live(self):  # noqa: ANN202
+            return True
+
+        async def read_config(self, key):  # noqa: ANN001, ANN202
+            raise RuntimeError("설정 줄 '%s' 을 모른다" % key)
+
+    mon = HkMonitor(_Blind(), icfg)
+    asyncio.run(mon._tick(0.0))                            # noqa: SLF001
+    got = mon.sensors()
+    assert 'htren' not in got and 'htrset' not in got, got
+    assert mon._warned_htrset is True                      # noqa: SLF001

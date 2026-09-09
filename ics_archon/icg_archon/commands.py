@@ -219,6 +219,39 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         return self._hk_reply(msg, 'HKDATA')
 
+    def _log_latency(self, what: str, t0: float, extra: str = '') -> float:
+        r"""⏳ **수신 -> 완료 지연을 남긴다** (2026-09-09 실측용).  ms 를 돌려준다.
+
+        ⭐ **왜 로그로 남기나**: 종전에는 `HKQDATE`(명령 수신 시각)와 응답
+        로그 줄의 시각을 **눈으로 빼야** 했다 -- 연속 노출 중에 여러 번 치며
+        재려면 그 뺄셈이 실측을 가로막는다.  한 줄에 이미 뺀 값을 적는다.
+
+        ⚠️ **임계 아래는 `DEBUG` 다** (`[icg] latency_warn_ms`, 기본 50 ms) --
+        `HKDATA` 는 프레임마다 오므로 늘 `INFO` 로 찍으면 로그를 덮는다.
+        ⭐ **벤치에서는 `latency_warn_ms = 0` 으로 두어 전부 남긴다.**
+
+        ⛔ 이 값은 **락 대기 + 왕복 처리**를 합친 것이다 -- 둘을 가르지
+        않는다.  가르려면 `_locked_thread` 안팎에 각각 시각을 찍어야 하는데,
+        그것은 `controller.last_cmd_timing`(스레드 안 RTT)과 이 값의 차로
+        나중에 얻을 수 있다.
+        """
+        import time
+        ms = (time.monotonic() - t0) * 1000.0
+        seq = getattr(self.app, 'seq', None)
+        busy = '취득중' if (seq is not None and seq.busy) else '한가'
+        # ⛔ **`self.cfg` 가 아니라 `app.icfg` 다** -- 앞은 ics_sim 설정이라
+        # 이 눈금이 없고, 그러면 벤치에서 `0` 으로 낮춰도 기본값 50 이 살아
+        # **재려던 줄이 `DEBUG` 로 숨는다** (2026-09-09 시험이 잡았다).
+        icfg = getattr(self.app, 'icfg', None)
+        cap = float(getattr(icfg, 'latency_warn_ms', 50.0) or 0.0)
+        line = '%s 지연 -- 수신→완료 %.1f ms (%s)%s'
+        args = (what, ms, busy, (' %s' % extra) if extra else '')
+        if ms >= cap:
+            log.info(line, *args)
+        else:
+            log.debug(line, *args)
+        return ms
+
     def _hk_reply(self, msg: Message, cmdword: str) -> Reply:
         """`HK`/`HKDATA` 공통 진입.
 
@@ -228,15 +261,25 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         if getattr(self.app, 'hk', None) is None:
             return Reply.error(cmdword, 'HK monitor is not running')
-        self.app.spawn(self._do_hkdata(msg.src, cmdword))
+        import time
+        self.app.spawn(self._do_hkdata(msg.src, cmdword, time.monotonic()))
         return Reply.noop()
 
-    async def _do_hkdata(self, dest: str, cmdword: str) -> None:
+    async def _do_hkdata(self, dest: str, cmdword: str,
+                         t0: float | None = None) -> None:
+        """본문을 만들어 늦은 `DONE` 으로 답한다.
+
+        ⏳ `t0`(수신 monotonic)가 있으면 **지연을 로그로 남긴다** -- 연속
+        노출 중 `RCONFIG` 셋이 FETCH 락 뒤에 얼마나 밀리는지가 관측 대상이다
+        (`_log_latency`, DevNote 11.53).
+        """
         try:
             body = await hkdata.body(self.app)
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, cmdword, 'Failed: %s' % exc)
             return
+        if t0 is not None:
+            self._log_latency(cmdword, t0)
         self.emit.done(dest, cmdword, body or 'no fresh HK sample yet')
 
     def cmd_radionode(self, msg: Message, target: Target) -> Reply:
@@ -853,14 +896,20 @@ class IcgDispatcher(sim_commands.Dispatcher):
         await ctrl.set_trigger(high=high, forced=forced)
 
     async def _do_trigout(self, dest: str, word: str, *,  # noqa: ANN001
-                          high=None, forced=None) -> None:
-        """쓰고 늦은 `DONE` 을 낸다 -- 실패는 숨기지 않는다."""
+                          high=None, forced=None, t0=None) -> None:
+        """쓰고 늦은 `DONE` 을 낸다 -- 실패는 숨기지 않는다.
+
+        ⏳ `t0`(수신 monotonic)가 있으면 **지연을 남긴다** -- `TRIGOUT 0`
+        (즉시 내림)이 연속 노출 중에 얼마나 밀리는지가 관측 대상이다.
+        """
         ctrl = self.app.guide.ctrl
         try:
             await self._write_trigout(ctrl, high=high, forced=forced)
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
             self.emit.error(dest, word, 'Failed: %s' % exc)
             return
+        if t0 is not None:
+            self._log_latency('%s 쓰기' % word, t0)
         self.emit.done(dest, word, self._trigout_words(high=high, forced=forced))
 
     def cmd_trigoutforce(self, msg: Message, target: Target) -> Reply:
@@ -926,13 +975,15 @@ class IcgDispatcher(sim_commands.Dispatcher):
         ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
         if ctrl is None:
             return Reply.error('TRIGOUT', 'Controller is not available')
+        import time
+        t0 = time.monotonic()
         self._cancel_trigout_timer()
         if seconds == 0:
             # ⭐ 종전 `SHCLOSE` -- 둘을 한 적용에 같이 세운다 (되읽기 없음).
             self.app.spawn(self._do_trigout(msg.src, 'TRIGOUT',
-                                            high=False, forced=True))
+                                            high=False, forced=True, t0=t0))
             return Reply.noop()
-        self.app.spawn(self._do_trigout_pulse(msg.src, seconds))
+        self.app.spawn(self._do_trigout_pulse(msg.src, seconds, t0))
         return Reply.noop()
 
     def _cancel_trigout_timer(self) -> bool:
@@ -985,9 +1036,24 @@ class IcgDispatcher(sim_commands.Dispatcher):
                     '(DevNote 11.50).  이 뒤 프레임에 이상이 보이면 이 줄을 '
                     '함께 볼 것')
 
-    async def _do_trigout_pulse(self, dest: str, seconds: float) -> None:
-        """세우고 -> 기다리고 -> 내린다.  ⛔ 내림은 **취소돼도 안 흘린다**."""
+    async def _do_trigout_pulse(self, dest: str, seconds: float,
+                                t0: float | None = None) -> None:
+        r"""세우고 -> 기다리고 -> 내린다.  ⛔ 내림은 **취소돼도 안 흘린다**.
+
+        ⏳ **여기가 지연 실측 자리다** (운영자 2026-09-09).  연속 노출 중에는
+        `_locked_thread` 가 모든 왕복을 한 줄로 세우므로 이 명령의 `WCONFIG`
+        둘 + `APPLYSYSTEM` 은 **진행 중인 FETCH 뒤에 선다** (guide 8.3 MiB
+        ≈ 0.08 s, 잠금 상한 `fetch_timeout = 1.0 s`).  세 값을 남긴다:
+
+        * **수신 -> HIGH** -- 락 대기 + 적용.  운영자가 물은 *"명령 실행 지연"*.
+        * **수신 -> LOW** -- 내림도 같은 락을 탄다.
+        * ⭐ **펄스 폭 오차** -- 실제 HIGH 지속과 요청 `<초>` 의 차.  ⚠️ 이것이
+          가장 중요한 값이다: 시작이 밀려도 **폭이 정확하면** 광원 노출량은
+          맞는다.  시한은 `raise_line` **뒤부터** 재므로 구조상 밀림이 폭에
+          안 섞이고, 남는 오차는 **내림 쪽 락 대기**뿐이다.
+        """
         import asyncio
+        import time
         ctrl = self.app.guide.ctrl
         self._warn_if_acquiring()
         try:
@@ -995,6 +1061,9 @@ class IcgDispatcher(sim_commands.Dispatcher):
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
             self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
             return
+        high_at = time.monotonic()
+        if t0 is not None:
+            self._log_latency('TRIGOUT 올림', t0, 'Sec=%g' % seconds)
         self.emit.done(dest, 'TRIGOUT',
                        'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 Sec=%g' % seconds)
         self._trigout_timer = asyncio.current_task()
@@ -1012,6 +1081,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
             return
+        # ⭐ **폭 오차** -- 실제 HIGH 지속 - 요청 (시험 축척을 되돌려 잰다).
+        want = self.cfg.scaled(seconds)
+        wide_ms = (time.monotonic() - high_at - want) * 1000.0
+        if t0 is not None:
+            self._log_latency('TRIGOUT 내림', t0,
+                              '폭오차 %+.1f ms (요청 %gs)' % (wide_ms, seconds))
         # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보다.
         self.emit.done(dest, 'TRIGOUT', '%s (auto after %gs)'
                        % (self._trigout_words(high=False, forced=True), seconds))

@@ -1767,6 +1767,35 @@ Radionode 실측, `SHOPEN 10` 자동 내림까지 **경로는 다 돌았다**.  
   `INTEGRATING`, **첫 진행률에서** `READOUT`.  저장 뒤 `INTEGRATING` 예측은 `STOP` 이면 안 건다.
 - ⚠️ **실기 미검증**: science `abort_now()` · 적분/독출 중 `APPLYSYSTEM` · 고친 `PCTREAD`.
 
+#### (파) 돔 방위 · 히터 설정 셋 · HK/TRIGOUT 지연 (11.52·11.53)
+
+- ⭐ `DSAZ`/`DSTELAZ` 는 **TC 가 `TCSSTATUS` 에 추가**한다 (구현 대기).  오면 그대로 실리고
+  없으면 `NC` -- **우리가 할 일은 없다**.  `DAZERR = DSAZ - DSTELAZ` 를 **±180 으로 접는다**.
+  ⛔ 고도에는 접기를 **안 쓴다**(순환이 아니다).  ⚠️ *"`AZ` 를 `DSTELAZ` 로"* 는 한 번
+  정했다 되돌린 자리라 **개명 금지를 시험으로 못박았다**.
+- ⛔ **히터 설정 셋이 헤더에 안 실렸다** -- `hkdata` 가 응답 때만 `RCONFIG` 로 읽고 버려서
+  `sensors()` 에 없었다(`HTROUT` 만 있었다).  ⭐ **HK 한 바퀴에서 함께 되읽어 `_sample` 로**.
+  원값을 그대로 담고 낱말 변환은 헤더의 `format_word()` 몫 (매핑 한 곳 규범).
+- ⭐ **Radionode 는 폴링값으로 답한다** (확정) -- 즉시 조회해도 **더 신선해지지 않는다**.
+  ⚠️ **guide 유닛 설정값은 별개**고 아직 미정이다 (아래).
+
+##### ⏳ 다음 벤치에서 잴 것 -- 연속 노출 중 지연 (11.53)
+
+운영자가 가른 지점: *"히터나 trigger 출력의 **실시간 반영**이 문제"*.  측정값은 폴링값으로
+충분하지만 설정값은 **방금 바꾼 값**이라 다르다.  ⭐ 다만 `HTRSET`·`HTRFORCE`·
+`TRIGOUT*` 은 **인자 없이 치면 조회**(즉시 `RCONFIG`)라 확인 경로는 따로 있다.
+
+1. `~/AIC/Config/icg_archon.ini` 의 `[icg] latency_warn_ms = 0` (전부 남긴다).
+2. `guiexp 1.3` → `go 20` → 그 사이에 `trigout 2` 와 `hkdata` 를 여러 번.
+3. 로그(`icg_archon.cmd`)에서 세 줄을 본다 -- `TRIGOUT 올림 지연` · `TRIGOUT 내림 지연`
+   (+ **폭오차**) · `HKDATA 지연`.  ⚠️ 한가할 때 기준선은 `RCONFIG` 3회 = **6 ms**.
+4. ⛔ **자료를 해치나는 별개 물음** -- 연속 `n` 장 중 `trigout` 을 쳤을 때 **남은 장수가
+   끊기지 않는지** 확인 (`APPLYSYSTEM` 이 `Exposures` 를 되돌리면 끊긴다).
+
+결과로 정할 것: `HKDATA` 의 히터 셋을 (갑) 지금대로 `RCONFIG` 3회 · (을) 폴링값 ·
+(병) `config_value()`(캐시+dirty) 중 무엇으로 둘지.  ⛔ (을)은 헤더와 `HKDATA` 의 원천이
+하나가 되는 이점이 있고, (병)은 왕복 0 이면서 즉시다.
+
 #### ⏳ CU 확인 대기 -- guide 의 `OVRSCNX/Y` 가 실은 **prescan(또는 darkscan)** 인가
 
 운영자 지적 (2026-09-08 벤치): *"`OVRSCAN` 이 잘못된 것 같다.  guide CCD 는 prescan

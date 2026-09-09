@@ -354,6 +354,8 @@ class HkMonitor:
         #: `HEATER_OUTPUT_FIELD` 결측 경고 래치 -- STATUS 가 왔는데 그 키가 없을 때
         #: 한 번만 (없으면 카드가 조용히 sentinel 로 나가서 아무도 모른다).
         self._warned_htrout = False
+        #: 히터 **설정** 되읽기 실패를 한 번만 알린다 (`_read_heater_settings`).
+        self._warned_htrset = False
         self.cfg = cfg
         self.telem = telem
         self._expstatus = expstatus
@@ -480,6 +482,43 @@ class HkMonitor:
                 self._csv.close()
                 self._csv = None
 
+    async def _read_heater_settings(self, now: float) -> None:
+        """`HTREN`·`HTRSET`·`HTRFORCE` 를 `RCONFIG` 로 되읽어 `_sample` 에.
+
+        ⭐ **원값을 그대로 담는다** -- `'1'`/`'0'` 은 헤더의
+        `rawhdr.format_word()` 가 낱말로 옮긴다.  ⛔ 여기서 `ON`/`OFF` 로
+        바꾸면 매핑이 **두 곳**이 된다 (`hkdata._word` 가 유일해야 한다,
+        11.14-(1-a)).
+        ⚠️ `htrset` 만 수치로 담는다 -- 헤더가 `format_temp()` 로 온도로 싣는다.
+
+        ⚠️ **실패는 조용히 넘긴다** -- ACF 파싱 전이면 *"설정 줄을 모른다"* 가
+        나고, 그때는 그 셋이 sentinel 로 가는 것이 맞다.  ⛔ 다만 **한 번은
+        알린다**: 계속 조용하면 헤더가 영영 `NC` 인 이유를 아무도 모른다.
+        ⚠️ 계약 키 **밖**이라 `HKUDATE`(가장 오래된 측정시각) 셈에 안 낀다 --
+        `htrout` 과 같은 자리다 (`sensors()` 머리말).
+        """
+        if self.ctrl is None:
+            return
+        try:
+            got = await heater.read_settings(self.ctrl)
+            force = (await self.ctrl.read_config(
+                heater.heater_key('FORCE'))).strip()
+        except Exception as exc:            # noqa: BLE001 -- HK 를 못 죽인다
+            if not self._warned_htrset:
+                self._warned_htrset = True
+                log.warning('HK: 히터 설정 되읽기 실패 -- %s.  HTREN·HTRSET·'
+                            'HTRFORCE 카드가 sentinel 로 나간다 (ACF 파싱 전이면 '
+                            '첫 GO 뒤에 풀린다)', exc)
+            return
+        self._warned_htrset = False
+        if got.get('htren') is not None:
+            self._sample['htren'] = (got['htren'], now)
+        self._sample['htrforce'] = (force, now)
+        try:
+            self._sample['htrset'] = (float(got.get('htrset')), now)
+        except (TypeError, ValueError):
+            pass                            # 못 읽었으면 안 담는다 -> sentinel
+
     async def _tick(self, lag_ms: float) -> None:
         now = time.time()
         row: dict[str, object] = {}
@@ -553,6 +592,14 @@ class HkMonitor:
                         '나간다.  FW 1.0.1252 는 HeaterX 슬롯에 이 키를 내야 한다 '
                         '(DevNote 11.30) -- BACKPLANE_VERSION 과 MOD%d_TYPE 을 볼 것',
                         HEATER_OUTPUT_FIELD, heater.SLOT)
+        # ⭐ **히터 설정 셋도 여기서 되읽는다** -- `HTREN`·`HTRSET`·`HTRFORCE`
+        # (운영자 2026-09-09).  ⛔ 종전에는 `HKDATA` **응답을 만들 때만** 읽고
+        # 버려서, FITS 헤더는 그 셋을 sentinel 로 실었다 -- `HKDATA` 에는 값이
+        # 있는데 헤더에는 `NC` 인 어긋남이 벤치에서 드러났다 (2026-09-08).
+        # ⚠️ 이 셋은 **`STATUS` 에 없다** -- 설정값이라 `RCONFIG` 되읽기다
+        # (`HTROUT` 만 `STATUS` 다).  HK 한 바퀴에 왕복 셋이 는다 -- 주기가
+        # 60초라 부담이 아니고, 헤더가 한 원천을 보게 되는 값이 그보다 크다.
+        await self._read_heater_settings(now)
         dew = self._dew.decode(status,
                                getattr(self.ctrl, 'apply_count', None))
         gauge = self.gauge

@@ -218,6 +218,12 @@ class IcgCfg:
     fetch_buffers: int = 2
     #: FETCH 상한 [s] = **잠금 상한** -- 하한(1.251 s) 아래여야 한다 (DevNote
     #: 10.6).  8.3 MiB ≈ 0.08 s 라 1 s 면 12배 여유.  `GuideBackend` 가 검사한다.
+    #: ⏳ **명령 지연을 로그로 남기는 임계 [ms]** (2026-09-09 실측용).
+    #: `HKDATA`/`HK`/`TRIGOUT` 이 **수신부터 실제 완료까지** 이 값을 넘으면
+    #: `INFO` 한 줄을 남긴다.  ⭐ **`0` 이면 전부 남긴다** -- 벤치에서 연속
+    #: 노출 중 지연을 잴 때 그렇게 쓴다.  ⚠️ 기본 50 ms 는 한가할 때 실측
+    #: 기준선(`RCONFIG` 3회 = 6 ms)의 8배라, 평상 운용에서는 조용하다.
+    latency_warn_ms: float = 50.0
     fetch_timeout: float = 1.0
     frame_dump: float = 0.0
     frame_timeout: float = 60.0
@@ -333,6 +339,8 @@ def load(path: str) -> IcgCfg:
         cfg.frame_poll = _float(s, 'frame_poll', cfg.frame_poll)
         cfg.progress_step = _int(s, 'progress_step', cfg.progress_step)
         cfg.fetch_buffers = _int(s, 'fetch_buffers', cfg.fetch_buffers)
+        cfg.latency_warn_ms = _float(s, 'latency_warn_ms',
+                                     cfg.latency_warn_ms)
         cfg.fetch_timeout = _float(s, 'fetch_timeout', cfg.fetch_timeout)
         cfg.frame_dump = _float(s, 'frame_dump', cfg.frame_dump)
         cfg.frame_timeout = _float(s, 'frame_timeout', cfg.frame_timeout)
