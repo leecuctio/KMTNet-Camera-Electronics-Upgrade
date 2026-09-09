@@ -1201,9 +1201,17 @@ class ArchonController:
             ticket.armed_utc = u_s + (t_r - t_s) / 2.0
             ticket.arm_rtt = t_r - t_s
             if ticket.arm_rtt > 0.020:
-                log.warning('%s: LOADPARAMS 왕복 %.1f ms -- 링크가 느리다.  첫 저장 '
-                            '프레임 DATE-OBS 의 불확도가 그 절반이다', self.tag,
-                            ticket.arm_rtt * 1e3)
+                # ⛔ **종전 문면 *"링크가 느리다"* 는 오귀속이었다** (2026-09-09
+                # 정정).  링크는 빠르다 -- `RCONFIG` 3회가 **6 ms** 다.  느린
+                # 것은 **`LOADPARAMS` 자신의 처리**이고, APPLY 계열이 다 그렇다
+                # (`APPLYSYSTEM` ≈229 ms · `RESETTIMING` 246 ms 실측,
+                # DevNote 11.55).  ⚠️ 원인을 링크로 적으면 망을 들여다보게 만든다.
+                # ⭐ 경고를 남기는 이유는 그대로다: 이 왕복의 **중점**을
+                # `DATE-OBS` 로 쓰므로 불확도가 그 절반이다.
+                log.warning('%s: LOADPARAMS 왕복 %.1f ms -- 첫 저장 프레임 '
+                            'DATE-OBS 의 불확도가 그 절반이다.  ⚠️ 링크가 아니라 '
+                            '**이 명령 자체의 처리 시간**이다 (APPLY 계열은 다 '
+                            '200 ms 대 -- 실측)', self.tag, ticket.arm_rtt * 1e3)
         self._current = ticket
         if queue:
             self._queue.append(ticket)

@@ -971,7 +971,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
         잠깐 닫힌다.  두 계통이 같은 알맹이를 쓰므로 여기도 같은 규범이다.
         ⚠️ 시한은 `cfg.scaled()` 를 탄다 (시험 축척) -- 실기 `time_scale` 은 1 이다.
 
-        ⏳ **취득 중에 쳐도 되나 -- 아직 실측 전이다.**  핀 자체는 CCD 로
+        ✅ **취득 중에 쳐도 된다 -- 실측했다** (2026-09-09, DevNote 11.55).  핀 자체는 CCD 로
         되먹임이 없어 자료에 관여하지 않는다.  ⚠️ 그런데 실현 수단이
         `WCONFIG`+`APPLYSYSTEM` 이고, **독출 중 `APPLYSYSTEM`** 의 안전성은
         science 쪽(`archon/backend.py` `close_shutter`)이 이미 *"실기 확인 항목"*
@@ -1041,16 +1041,22 @@ class IcgDispatcher(sim_commands.Dispatcher):
         return super().cmd_abort(msg, target)
 
     def _warn_if_acquiring(self) -> None:
-        """취득 중 `APPLYSYSTEM` -- ⏳ 미확인이라 **한 번만** 알린다."""
+        """취득 중 `APPLYSYSTEM` -- **한 번만** 남긴다 (자취용).
+
+        ⭐ **경고에서 알림(`INFO`)으로 낮췄다** (2026-09-09) -- 해롭지 않다는
+        것을 실측했기 때문이다 (11.55).  ⚠️ 그래도 **남기기는 한다**: 나중에
+        프레임 이상을 쫓을 때 *"그때 적용을 보냈나"* 가 첫 갈래이고, 그 자취가
+        없으면 되짚을 수가 없다.
+        """
         seq = getattr(self.app, 'seq', None)
         if seq is None or not seq.busy or self._warned_busy_apply:
             return
         self._warned_busy_apply = True
-        log.warning('취득 중에 TRIGOUT 을 쳤다 -- WCONFIG + APPLYSYSTEM 이 '
-                    '프레임 도중에 나간다.  핀 자체는 자료에 관여하지 않지만 '
-                    '**독출 중 APPLYSYSTEM 의 안전성은 아직 실측 전이다** '
-                    '(DevNote 11.50).  이 뒤 프레임에 이상이 보이면 이 줄을 '
-                    '함께 볼 것')
+        log.info('취득 중에 TRIGOUT 을 쳤다 -- WCONFIG + APPLYSYSTEM 이 프레임 '
+                 '도중에 나간다.  ⭐ **해롭지 않다는 것은 실측했다** '
+                 '(2026-09-09, DevNote 11.55): go 20 이 완주했고 프레임 주기 '
+                 '밀림은 명령과 무관했으며 모듈 VCPU 도 안 재시작됐다.  '
+                 '이 뒤 프레임에 이상이 보이면 이 줄을 함께 볼 것')
 
     async def _do_trigout_pulse(self, dest: str, seconds: float,
                                 t0: float | None = None) -> None:
