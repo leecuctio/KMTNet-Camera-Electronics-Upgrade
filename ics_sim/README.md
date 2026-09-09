@@ -100,7 +100,8 @@ python -m ics_sim --fits --data-dir ./icsdata
 ```
 
 `numpy`/`astropy` 가 있으면 노출마다 **raw pair 2개**(`<SITE>.<날짜>.<번호>.MK/NT.fits`)를
-저장한다 — 헤더는 raw spec 의 값 카드 131장 전량(견본 초안 v1.0 pair 와 바이트
+저장한다 — 헤더는 raw spec 의 값 카드 **136장** 전량(현행 견본
+`raw_fits_spec/header_samples/KMTA.….{MK,NT}.fits.header.v1.12.txt` 와 바이트
 단위 동일, `ics_sim/rawcards.py`), 더미 픽셀. `ics_sim.ini` 에서 `fits_shape = spec`
 으로 두면 실물 크기(19200×9400, 파일당 344 MiB)를 4장 geometry 구조(amp tile·
 X/중앙 overscan) 그대로 만들어 **converter 에 바로 넣을 수 있다.**

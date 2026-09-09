@@ -25,7 +25,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`icg_archon.ini`](icg_archon.ini) | icg 설정 — `[icg]` 가 guide 컨트롤러 배선, `[hk]` 가 로깅, `[radionode]` 가 Tapaculo365 Open API 접속(콘솔의 "OPENAPI 매뉴얼" 값을 옮겨 적는다) |
 | [`tools/gen_guidecards.py`](tools/gen_guidecards.py) | guide 견본 헤더 → `icg_archon/guidecards.py` 생성기 — 견본이 개정되면(v1.1 승격) 다시 돌린다.  `--diff` 는 science 폭 대조만 |
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (**300항목**, 약 4분). 배치본은 `-m "not repo_only"` (**244항목**).  ⚠️ 숫자를 손으로 유지하지 말 것 -- `python -m pytest --collect-only -q` 꼬리가 정본이다.  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (약 5분). 배치본은 `-m "not repo_only"`.  ⛔ **항목 수를 여기 적지 않는다** -- `python -m pytest --collect-only -q` 꼬리가 정본이고, 적어 두면 커밋마다 밀린다 (2026-09-09 에 300/244 가 실제 656/598 과 어긋난 것을 걷어냈다).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/ics_archon_buftest.py`](tools/ics_archon_buftest.py) | **`LOCK`/`FETCH` 2x2 회귀 시험** — 엔진 라인 속도를 `idle`·`lock`·`fetch`·`nolock` 넷으로 견준다 (본편 무수정). 2026-09-01 실기 결론은 [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) |
 | [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}.txt` 의 절차 정본. `--check` 로 대조, `--out` 으로 재추출.  ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
@@ -66,8 +66,10 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 - **실기로는 한 번도 돌리지 않았다.** 헤더·파일명·검증 하네스는 통과했지만
   POWERON → FETCH 왕복은 미검증이다.
 - **산출물 규격이 통째로 바뀌었다** — 파일명 `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK|NT>.fits`,
-  헤더 **144 레코드**(값 카드 131 + COMMENT 8 + `END` 1 + 공백 4 = 4x2880 =
-  11,520B, 견본 바이트 재현), 날짜는 UTC. **기존 분석 스크립트는 glob 패턴과
+  헤더 **180 레코드**(값 카드 136 + COMMENT 8 + `END` 1 + 공백 35 = 5x2880 =
+  14,400B, 견본 바이트 재현), 날짜는 UTC.  ⚠️ **144 레코드·11,520B 는 이제
+  guide 쪽 수다** -- science 는 v1.10 의 HK 5장까지 실어 180 으로 늘었다
+  (견본 `raw_fits_spec/header_samples/` 실측 2026-09-09). **기존 분석 스크립트는 glob 패턴과
   카드명을 갱신해야 한다.** ⚠️ raw spec v1.5(2026-08-26 반영)로 `<SITE>` 넷째
   코드가 `KMTT`→**`KMTK`**, HK 4장 폐지, `CHMAP_*` 토큰 3자→**4자** 가 됐고,
   **v1.6 으로 `ORIGNAME` → `EXPID`**(값에 `DETID` 필드(`.MK`/`.NT`)가 없어 pair 양쪽이
@@ -735,23 +737,25 @@ cd ~/AIC/src/ics_archon
 python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
 ```
 
-⚠️ **배치본에서는 `-m "not repo_only"` 를 붙인다.**  붙이지 않으면 17개가
-실패하는데 설치가 깨진 것이 아니다 — 그 17개는 **저장소에만 있는 원천**을
-대조하는 시험이라 배치본에는 대조할 상대가 없다.
+⚠️ **배치본에서는 `-m "not repo_only"` 를 붙인다.**  붙이지 않으면 그 표식이
+붙은 것들이 실패하는데 설치가 깨진 것이 아니다 — 그것들은 **저장소에만 있는
+원천**을 대조하는 시험이라 배치본에는 대조할 상대가 없다.
 
-| `repo_only` 표식 | 개수 | 왜 |
-|---|---|---|
-| `test_fitswrite.py` 견본 pair 바이트 재현 | 4 | 견본 pair 파일이 배포 트리 밖(`raw_fits_spec/`)에 있다 |
-| `test_labtest_spec_copy.py` labtest 규격 사본 대조 | 9 | 원천 `ics_sim` 이 배치본에 없다 (같은 파일의 배포 ini 대조 1건은 표식이 없다 — ini 는 배치본에도 간다).  **상수 대조만이 아니라 카드 절단 규범·나열 자리 채움 같은 동작도 본다** (v1.6) |
-| `test_vendor.py` 벤더 표류 대조 | 4 | 형제 `ics_sim/` 원천이 배치본에 없다 |
+⛔ **개수를 적지 않는다** -- `python -m pytest --collect-only -q -m repo_only` 가 정본이다 (2026-09-09 에 이 표가 *세 파일 17건*에 멈춰 있는 것을 고쳤다 — 실제는 **아홉 파일**이었다).
 
-**223 통과 · 실패 0 이 배치본의 기대값이다** (2026-08-31 실측).  그 밖의 실패는 정상이 아니다.
+| 없는 원천 | 표식이 붙은 파일 |
+|---|---|
+| 형제 `ics_sim/` 원천 | `test_vendor.py`(벤더 표류) · `test_labtest_spec_copy.py`(labtest 규격 사본 — 같은 파일의 배포 ini 대조는 표식이 없다.  **상수 대조만이 아니라 카드 절단 규범·나열 자리 채움 같은 동작도 본다**, v1.6) |
+| `raw_fits_spec/` 견본·규격 | `test_fitswrite.py`(견본 pair 바이트 재현) · `test_icg_cards.py`(guide 견본) · `test_ch10_reflection.py`(규격 10장 문면) |
+| 저장소 `acf/` 실물 | `test_icg_timing.py` · `test_timing_script_extract.py` · `test_monitor.py` · `test_icg_app.py` |
+
+**배치본의 기대값은 `-m "not repo_only"` 가 수집한 수 전량 통과 · 실패 0** 이다.  그 밖의 실패는 정상이 아니다.  ⛔ 기대 수를 여기 박아 두지 않는다 — 2026-08-31 실측이라던 *223* 이 그 뒤로 두 배 넘게 벌어져 있었다.
 
 ⚠️ **저장소에서는 `-m "not repo_only"` 를 쓰지 말 것.**  표식의 뜻은 "안 돌려도
 되는 시험" 이 아니라 "배치본에는 대조할 원천이 없다" 다.  저장소에서 빼면
 **벤더 표류와 견본 어긋남을 놓친다** — 그 둘이 raw spec 5장 개정이 왔을 때
 울리는 알람이다.  **2026-08-26 의 v1.5 반영이 그 알람으로 시작됐다.**
-저장소에서는 표식 없이 전부 돌린다 (**300항목** = 배치본 244 + `repo_only` 56).
+저장소에서는 표식 없이 전부 돌린다.
 
 - **야간에는 갱신하지 않는다.** 돌고 있는 코드가 바뀐다.
 - `~/AIC/Config/` 의 ini 는 배포본 밖이라 **덮이지 않는다.** 새 키가 생겼는지는

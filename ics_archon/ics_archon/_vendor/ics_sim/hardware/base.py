@@ -184,11 +184,23 @@ class DetectorBackend(Protocol):
     def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
         """chip 온도 + 듀어·환경 센서 (raw spec 5.6절 + 5.8절 Radionode 2장).
 
-        키는 소문자 **아홉**뿐이다: `ccdtemp` `dewpres` `dmptemp` `pt30n1`
+        계약 키는 소문자 **열**이다: `ccdtemp` `dewpres` `dmptemp` `pt30n1`
         `pt30n2` `charcoal` `wallbrd`(ICG RTD) · `hebox` `fsatemp` `fsahum`
         (Radionode -- 구칭 `Tapaculo`, v1.9 개명).  공급 계통은 raw spec
         5.6절 표 참조.  읽지 못한 항목은 **넣지 않는다** -- 호출측이
         sentinel(`'-999.99'`, `dewpres` 만 `'9.99e-9'`)로 채운다.
+        ⚠️ **여기 적힌 수가 곧 검사 기준이다** -- `HKDATA` 의 완전성 검사가
+        *계약키 교집합 + `HKSTALE`* 로 세므로, 이 문장이 틀리면 검사가 틀린
+        수를 좇는다 (2026-09-09 정정: *아홉* 이라 적고 열 개를 나열하고
+        있었다.  `icg_archon/hk.py` 의 같은 계약은 진작 **10** 이었다).
+
+        ⭐ **구현은 계약 키 밖의 것을 함께 낼 수 있다** -- `hkudate`(이 블록
+        값들의 취득 시각, raw spec 5.6절 v1.10 신설)를 두 계통이 다 싣는다
+        (science 는 `ics_archon/archon/backend.py`, guide 는
+        `icg_archon/hk.py`).  ⛔ 그래도 **계약 키 수는 안 흔들린다** -- 위
+        완전성 검사가 교집합으로 세기 때문이다.
+        ⚠️ v1.10 이 함께 신설한 히터 넷(`HTREN`·`HTRSET`·`HTROUT`·`HTRFORCE`)은
+        **이 계약이 아니라 ICG 소관**이다 (guide 유닛의 듀어 히터).
 
         ⚠️ **`air_in`/`air_out`/`glyc_in`/`glyc_out` 은 없앴다** (2026-08-27).
         standalone RTD 계통의 그 카드 4장이 **v1.5 에서 폐지**됐고
