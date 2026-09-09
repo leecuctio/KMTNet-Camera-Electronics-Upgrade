@@ -199,7 +199,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
         return Reply.done('GUIEXP', 'GuiExp=%g seconds.' % seconds)
 
     def cmd_hk(self, msg: Message, target: Target) -> Reply:
-        """HK -- `HKDATA` 와 **같은 본문**을 낸다 (운영자 지시 2026-09-06).
+        """HK [NOW] -- `HKDATA` 와 **같은 본문**을 낸다 (운영자 지시 2026-09-06).
 
         ⭐ 커맨드워드만 다르다 -- 조립은 `hkdata.body()` **한 곳뿐**이다.  두
         명령이 다른 본문을 내면 어느 쪽이 정본인지 다투게 된다.
@@ -211,7 +211,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
         return self._hk_reply(msg, 'HK')
 
     def cmd_hkdata(self, msg: Message, target: Target) -> Reply:
-        """HKDATA -- ICS 가 **자기 헤더를 채우려고** 묻는 것.
+        """HKDATA [NOW] -- ICS 가 **자기 헤더를 채우려고** 묻는 것.
+
+        ⭐ **인자가 없으면 폴링값** (60초 주기, 왕복 없음), **`NOW` 면 즉시
+        되읽기** (운영자 확정 2026-09-09).  ⛔ 갈리는 것은 **히터 설정 셋**
+        (`HTREN`·`HTRSET`·`HTRFORCE`) 하나뿐이다 -- 나머지는 원래부터 폴링값이다.
+        ⚠️ 낡음은 `HKUDATE`·`HKSTALE` 이 그대로 알린다.
 
         문면은 DevNote 11.14-(1) 운영자 확정이고 조립은 `hkdata.py` 다.
         게이지·히터는 **ICG 만** 만지므로 이 응답에 없는 값은 ICS 가 만들 길이
@@ -269,20 +274,28 @@ class IcgDispatcher(sim_commands.Dispatcher):
         return ms
 
     def _hk_reply(self, msg: Message, cmdword: str) -> Reply:
-        """`HK`/`HKDATA` 공통 진입.
+        """`HK`/`HKDATA` 공통 진입 -- 인자는 `NOW` 하나뿐이다.
 
-        ⚠️ **늦은 `DONE`** 이다 -- 히터 넷 중 셋이 `RCONFIG` 왕복이라
-        (`HTREN`·`HTRSET`·`HTRFORCE`) 핸들러가 동기로 답할 수 없다.  `EXPENABLE`
-        ·히터 명령과 같은 선례다 (`Reply.noop()` → 왕복 → `emit.done`).
+        ⚠️ **늦은 `DONE`** 이다.  ⭐ 기본 갈래는 왕복이 없어 동기로도 답할 수
+        있지만 **한 경로로 둔다** -- 갈래마다 응답 방식이 다르면 받는 쪽이 두
+        가지를 다뤄야 한다.  `NOW` 는 `RCONFIG` 셋이라 어차피 늦은 `DONE` 이다.
+        ⛔ **모르는 인자는 거절한다** -- `HKDATA NOWW` 를 조용히 폴링값으로
+        답하면 운영자가 *"즉시 읽었는데 옛 값이 온다"* 로 읽는다.
         """
         if getattr(self.app, 'hk', None) is None:
             return Reply.error(cmdword, 'HK monitor is not running')
+        arg = msg.body.split()
+        if len(arg) > 1 or (arg and arg[0].upper() != 'NOW'):
+            return Reply.error(cmdword,
+                               "Usage: %s [NOW] -- got '%s'"
+                               % (cmdword, msg.body.strip()))
         import time
-        self.app.spawn(self._do_hkdata(msg.src, cmdword, time.monotonic()))
+        self.app.spawn(self._do_hkdata(msg.src, cmdword, time.monotonic(),
+                                       now=bool(arg)))
         return Reply.noop()
 
     async def _do_hkdata(self, dest: str, cmdword: str,
-                         t0: float | None = None) -> None:
+                         t0: float | None = None, now: bool = False) -> None:
         """본문을 만들어 늦은 `DONE` 으로 답한다.
 
         ⏳ `t0`(수신 monotonic)가 있으면 **지연을 로그로 남긴다** -- 연속
@@ -290,12 +303,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
         (`_log_latency`, DevNote 11.53).
         """
         try:
-            body = await hkdata.body(self.app)
+            body = await hkdata.body(self.app, now=now)
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, cmdword, 'Failed: %s' % exc)
             return
         if t0 is not None:
-            self._log_latency(cmdword, t0)
+            self._log_latency(cmdword + (' NOW' if now else ''), t0)
         self.emit.done(dest, cmdword, body or 'no fresh HK sample yet')
 
     def cmd_radionode(self, msg: Message, target: Target) -> Reply:

@@ -974,3 +974,16 @@ def test_trigout_subtracts_the_lowering_apply_from_the_pulse(tmp_path, caplog):
     # ⭐ 보정 전이면 +100 ms 다 -- 그 절반보다 작아야 보정이 먹은 것이다.
     assert abs(got) < 50.0, (got, caplog.text)
     assert '보정 -' in caplog.text, caplog.text
+
+
+def test_hkdata_rejects_an_argument_it_does_not_know(tmp_path):
+    """⛔ `HKDATA NOWW` 를 **거절한다** -- 조용히 폴링값을 내면 안 된다.
+
+    ⭐ 인자가 갈래를 가르게 된 뒤라서 생긴 자리다 (운영자 2026-09-09:
+    *"인자로 now 를 입력하면 즉시 되읽기"*).  ⚠️ 오타를 받아넘기면
+    운영자는 *"즉시 읽었는데 옛 값이 온다"* 로 읽는다 -- 잘못된 곳을 본다.
+    """
+    _calls, sent = _trig(tmp_path, ['abc>ICG HKDATA NOWW'], held=dict(RESTING))
+    bad = [s for s in sent if 'HKDATA' in s]
+    assert any('ERROR' in s for s in bad), bad
+    assert not any('DONE: HKDATA HKQDATE' in s for s in bad), bad

@@ -354,6 +354,9 @@ class HkMonitor:
         #: `HEATER_OUTPUT_FIELD` 결측 경고 래치 -- STATUS 가 왔는데 그 키가 없을 때
         #: 한 번만 (없으면 카드가 조용히 sentinel 로 나가서 아무도 모른다).
         self._warned_htrout = False
+        #: 다음 주기 바퀴 시각 (monotonic).  ⭐ `refresh_now()` 가 뒤로
+        #: 민다 -- `HKDATA NOW` 뒤에는 60초를 새로 센다 (운영자 2026-09-09).
+        self._next_at = 0.0
         #: 히터 **설정** 되읽기 실패를 한 번만 알린다 (`_read_heater_settings`).
         self._warned_htrset = False
         self.cfg = cfg
@@ -461,26 +464,80 @@ class HkMonitor:
 
     async def run(self) -> None:
         interval = max(self.cfg.hk.interval, 1.0)
-        next_at = time.monotonic()
+        self._next_at = time.monotonic()
         try:
             while not self._stop.is_set():
-                lag_ms = max((time.monotonic() - next_at) * 1000.0, 0.0)
+                await self._await_quiet_link()
+                lag_ms = max((time.monotonic() - self._next_at) * 1000.0, 0.0)
                 try:
                     await self._tick(lag_ms)
                 except Exception:  # noqa: BLE001 -- HK 가 취득을 못 죽인다
                     log.exception('HK 바퀴 실패 -- 다음 바퀴에 다시 돈다')
-                next_at = max(next_at + interval, time.monotonic())
-                try:
-                    await asyncio.wait_for(
-                        self._stop.wait(),
-                        timeout=max(next_at - time.monotonic(), 0.0))
-                except asyncio.TimeoutError:
-                    pass
+                self._next_at = max(self._next_at + interval, time.monotonic())
+                if not await self._sleep_until():
+                    break
         finally:
             self._write_row({}, event='stop')
             if self._csv is not None:
                 self._csv.close()
                 self._csv = None
+
+    async def _sleep_until(self) -> bool:
+        """다음 바퀴 시각(`_next_at`)까지 잔다.  **정지하면 `False`.**
+
+        ⭐ **깨어날 때마다 `_next_at` 을 다시 본다** -- `refresh_now()` 가 자는
+        중에 그것을 뒤로 밀 수 있기 때문이다 (`HKDATA NOW` 뒤 60초).
+        ⭐ 미는 쪽은 **늘 뒤로만** 밀므로 이 되풀이는 반드시 끝난다.  ⚠️ 밀린
+        만큼 한 번 헛되이 깨어나는데, 60초에 한 번이라 값이 없는 비용이다.
+        ⛔ 별도의 깨움 신호(`Event`)를 두지 않은 이유가 이것이다 -- 신호를 두면
+        *"세운 쪽과 지운 쪽"* 이 어긋나는 부류가 하나 는다.
+        """
+        while not self._stop.is_set():
+            delay = self._next_at - time.monotonic()
+            if delay <= 0:
+                return True
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=delay)
+            except asyncio.TimeoutError:
+                continue                     # 다시 재어 본다
+            return False                     # 정지 신호
+        return False
+
+    #: ⭐ 주기 바퀴가 **왕복 하나를 비켜 주는 상한** [s] (운영자 2026-09-09).
+    #: ⛔ **상한이 있어야 한다** -- guide 는 **연속 취득**이라 *"안 바쁠 때까지"*
+    #: 를 곧이곧대로 기다리면 **영영 안 돈다**: HK 가 멈추면 헤더의 온도·진공
+    #: 카드가 통째로 sentinel 이 되고, 히터 과열 차단도 같이 멈춘다.
+    #: ⭐ 1초면 충분하다 -- guide FETCH 는 8.3 MiB ≈ 0.08 s 고 잠금 상한이
+    #: `fetch_timeout` = 1.0 s 다 (DevNote 11.55).
+    QUIET_WAIT = 1.0
+    #: 위 상한 안에서 다시 보는 간격 [s].
+    QUIET_POLL = 0.05
+
+    async def _await_quiet_link(self) -> None:
+        """왕복이 도는 중이면 **상한 안에서** 비켜 준다.
+
+        운영자 지시 2026-09-09: *"guide unit 이 바쁠 때에는 60초 폴링 시점이
+        되었어도 안 바쁠 때까지 잠시 기다리기."*
+
+        ⭐ **바쁜 것은 취득이 아니라 링크다** -- 연속 취득 중에도 컨트롤러는
+        주기(1.251 s)의 대부분이 한가하고 FETCH(≈0.08 s)일 때만 락이 잡힌다.
+        그래서 *"취득 중이면 건너뛴다"* 가 아니라 **"왕복 하나가 끝나기를
+        기다린다"** 가 맞는 크기다.
+        ⛔ **상한을 넘기면 그냥 돈다** (`QUIET_WAIT`) -- 안 그러면 연속 취득이
+        HK 를 굶긴다.  ⚠️ 비켜 준 것은 `lag_ms` 에 그대로 남는다(주기 실현
+        지연) -- 숨기지 않는다.
+        ⚠️ **경합을 막는 장치가 아니다** -- 그것은 락의 몫이고, 이건 예의다.
+        """
+        ctrl = self.ctrl
+        if ctrl is None or not getattr(ctrl, 'link_busy', False):
+            return
+        deadline = time.monotonic() + self.QUIET_WAIT
+        while getattr(ctrl, 'link_busy', False):
+            if time.monotonic() >= deadline:
+                log.debug('HK: 링크가 %.1fs 넘게 바빠 그냥 돈다 -- 이 바퀴의 '
+                          '왕복은 줄을 선다', self.QUIET_WAIT)
+                return
+            await asyncio.sleep(self.QUIET_POLL)
 
     async def _read_heater_settings(self, now: float) -> None:
         """`HTREN`·`HTRSET`·`HTRFORCE` 를 `RCONFIG` 로 되읽어 `_sample` 에.
@@ -528,7 +585,71 @@ class HkMonitor:
         except (TypeError, ValueError):
             pass                            # 못 읽었으면 안 담는다 -> sentinel
 
-    async def _tick(self, lag_ms: float) -> None:
+
+    async def refresh_now(self) -> None:
+        """`HKDATA NOW` -- **한 바퀴를 지금 돌려** `_sample` 을 갱신한다.
+
+        운영자 지시 2026-09-09: *"`hkdata now` 면 RTD, 진공, Radionode, 히터설정
+        모두 되읽기해서 값을 넣어주고, 폴링 값들도 갱신하도록."*
+
+        ⭐ **주기 바퀴와 같은 함수를 쓴다** (`_tick`) -- 따로 만들면 두 경로가
+        갈려 *"명령으로 읽은 값과 폴링 값이 다르다"* 가 생긴다.  11.52 가 그
+        부류였다.
+        ⭐ 그래서 **폴링 값도 함께 갱신된다** -- 다음 FITS 헤더도 이 값을 본다.
+
+        ⚠️ **Radionode 는 충분히 낡았을 때만 다시 친다** (`RADIONODE_NOW_MIN_AGE`)
+        -- 쿼터가 분당 10회고, 즉시 조회해도 더 신선해지지 않기 때문이다.
+        ⚠️ **CSV 행은 남기되 `hkdata_now` 로 표시한다** -- 실측을 버리지 않으면서
+        주기 행과 구별된다 (`lag_ms` 는 주기 실현 지연이라 이 행에서는 뜻이 없다).
+        ⏳ ⚠️ **느릴 수 있다** -- `STATUS` + `RCONFIG` 셋은 수 ms 지만 Radionode 를
+        실제로 치면 인터넷 왕복(수백 ms~초)이 붙는다.
+        """
+        # ⭐ **주기 기준을 여기서 민다** (운영자 2026-09-09: *"`HKDATA NOW`
+        # 이후 60초 후에 60초 주기 폴링을 하도록"*).  ⛔ 안 밀면 방금 한 바퀴를
+        # 돌렸는데 몇 초 뒤 주기 바퀴가 또 돈다 -- 왕복만 쓰고 값은 그대로다.
+        # ⚠️ `run()` 의 잠자기가 이 값을 **깨어날 때마다 다시 본다** -- 그래서
+        # 자는 중에 밀어도 따라간다 (`_sleep_until`).
+        self._next_at = time.monotonic() + max(self.cfg.hk.interval, 1.0)
+        if self.radionode is not None and self._radionode_is_old():
+            try:
+                await self.radionode.poll_now()
+            except Exception as exc:      # noqa: BLE001 -- 나머지는 돌아야 한다
+                log.warning('HKDATA NOW: Radionode 즉시 조회 실패 -- %s.  '
+                            '폴러가 받아 둔 값으로 간다', exc)
+        await self._tick(0.0, note='hkdata_now')
+
+    def _radionode_is_old(self) -> bool:
+        r"""Radionode 표본이 `[radionode] now_min_age` 보다 낡았나.
+
+        ⭐ **눈금 하나로 정한다** (운영자 2026-09-09, 기본 60초).  ⛔ 폴링
+        주기(`poll_period`)를 쓰면 안 된다 -- 운영자가 그것을 늘릴 수 있는데
+        그러면 재조회 기준까지 따라 늘어나 *"방금 값을 원해서 `NOW` 를 쳤는데
+        안 친다"* 가 된다.  ⛔ 장치가 알려 주는 `device_interval` 로도 안 된다 --
+        **배우기 전에는 `stale_after`(초기값 4000초)의 1/3** 이라 첫 `NOW` 들이
+        통째로 막힌다 (2026-09-09 검토에서 잡은 결함이다).
+
+        ⭐ **60초인 근거**: 장치가 그 주기로 올리므로 그 안에 다시 물어도 같은
+        값이고, 쿼터가 **분당 10회**라 태우면 **주기 폴링까지 실패해** 세 카드가
+        sentinel 이 된다 -- 하려던 것의 정반대다.
+
+        ⚠️ **키 하나라도 낡았으면 친다** -- 주기가 다른 장치가 섞여 있어도
+        (실물 60초·600초) 짧은 쪽이 긴 쪽에 묻히지 않는다.  ⭐ 한 번의 호출이
+        **장치 전부**를 가져오므로(`get_lst` 한 번, 쿼터 1회) 하나만 낡아도 칠
+        값이 있다.
+        ⚠️ 표본이 **하나도 없으면 낡은 것으로 본다** -- 첫 `HKDATA NOW` 가
+        아무것도 안 하고 끝나면 안 된다.
+        """
+        rn = self.radionode
+        if rn is None:
+            return False
+        fresh = rn.values_with_time()
+        if not fresh:
+            return True
+        floor = float(getattr(getattr(rn, 'cfg', None), 'now_min_age', 60.0))
+        now = time.time()
+        return any(now - when >= floor for _v, when in fresh.values())
+
+    async def _tick(self, lag_ms: float, note: str = '') -> None:
         now = time.time()
         row: dict[str, object] = {}
         # 층 1 -- 컨트롤러 STATUS (온도·레일).  접속 실패는 결측일 뿐이다.
@@ -669,7 +790,9 @@ class HkMonitor:
                     row[k.lower()] = v
 
         row['lag_ms'] = '%.0f' % lag_ms
-        self._write_row(row, event=event)
+        # ⭐ `note` 는 **왜 이 바퀴가 돌았나** 다 (`hkdata_now`).  ⛔ 과열 차단
+        # 사건이 있으면 그것이 먼저다 -- 사건을 표시로 덮으면 안 된다.
+        self._write_row(row, event=event or note)
         self._write_latest(now)
 
     # -- 산출물 ---------------------------------------------------------------

@@ -2,7 +2,7 @@
 # tools/sync_vendor.py 가 만든다 -- 손으로 고치지 말 것.
 # 확인:  python tools/sync_vendor.py --check
 895d02c3fd8b659c76b3910e42e8b80d6efeb8a9d639d679076d05d66d7cb8af  __init__.py
-70d9b500e687d32dc1c3f09832b7ac4a9164ef7fe006cdf28bbbdafedd2f71c2  __main__.py
+93eb4b53e8fe0164805aca92097309d54c145337009f355b5a81f91631a415a3  __main__.py
 5d80558b35f8d75bd7203349238ec1b4301aab49880f7b415f75afec6f00be1e  app.py
 f4647ab766b9ea1a2628b6b085ca9c2e8313b8a927b67ecfd98d221ab694d0ed  auxcontrol.py
 c6baa81959aae5f93a781c906626403aa62584670f064b89bc182d1db3fbd453  commands.py

@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import time
+import os
 import sys
 
 from . import __version__, config
@@ -120,13 +122,97 @@ class _TailModule(logging.Formatter):
         return '%s%s%s%s (module: %s)' % (stamp, sep, head, body, record.name)
 
 
-def setup_logging(cfg: config.SimConfig) -> None:
+class DailyFile(logging.Handler):
+    r"""`<폴더>/<이름>.<YYYYMMDD>.log` 에 **덧붙이고**, 날이 바뀌면 갈아탄다.
+
+    운영자 지시 2026-09-09: *"icg 로그를 isis 로그처럼 `icg.yyyymmdd.log` 으로
+    매일 갱신하여 저장.  재실행해도 전에 파일 지우지 않고 같은 날짜 뒤에
+    덧붙이는 식으로."*
+
+    ⭐ **날짜는 UTC 다.**  `HKQDATE`·`DATE-OBS`·FITS 파일명(`KMTK.20260909.…`)이
+    다 UTC 이고 사이트 배너도 *"관측일 경계 UT 날짜 그대로"* 라 적는다 --
+    로그 파일만 지역시로 끊으면 **같은 관측일의 자취가 두 파일로 갈린다**.
+    ⚠️ 그래서 `setup_logging` 이 포매터의 시각도 UTC 로 맞춘다 (아래).
+
+    ⛔ **`logging.Handler.name` 을 가리면 안 된다** -- 그 이름은 처리기 등록부의
+    키다.  그래서 파일 이름의 앞머리는 `stem` 으로 든다.
+
+    ⚠️ **회전을 시각이 아니라 기록마다 판정한다** -- `TimedRotatingFileHandler`
+    는 자정에 현재 파일을 **개명**하므로 *"오늘 파일은 늘 오늘 이름"* 이 안
+    된다.  여기서는 기록의 시각으로 파일을 고르므로 이름이 늘 맞고, 프로그램이
+    자정을 넘겨 돌아도 자취가 날짜대로 갈린다.
+    ⚠️ 실패해도 **죽지 않는다** -- 로그를 못 남기는 것이 프로그램을 세울 이유는
+    아니다 (`handleError` 가 stderr 로 알린다).
+    """
+
+    def __init__(self, directory: str, stem: str,
+                 encoding: str = 'utf-8') -> None:
+        super().__init__()
+        self.directory = directory
+        self.stem = stem
+        self.file_encoding = encoding
+        self._day: str | None = None
+        self._stream = None
+
+    def path_for(self, day: str) -> str:
+        """그 날짜의 파일 경로."""
+        return os.path.join(self.directory, '%s.%s.log' % (self.stem, day))
+
+    def _open(self, day: str) -> None:
+        os.makedirs(self.directory, exist_ok=True)
+        stream = open(self.path_for(day), 'a', encoding=self.file_encoding)
+        self.close_stream()
+        self._stream, self._day = stream, day
+
+    def close_stream(self) -> None:
+        if self._stream is not None:
+            try:
+                self._stream.close()
+            except OSError:
+                pass
+            self._stream = None
+
+    def emit(self, record: logging.LogRecord) -> None:  # noqa: D102
+        try:
+            day = time.strftime('%Y%m%d', time.gmtime(record.created))
+            if day != self._day or self._stream is None:
+                self._open(day)
+            self._stream.write(self.format(record) + '\n')
+            self._stream.flush()
+        except Exception:                       # noqa: BLE001
+            self.handleError(record)
+
+    def close(self) -> None:  # noqa: D102
+        self.close_stream()
+        super().close()
+
+
+def _log_handler(spec: str, stem: str) -> logging.Handler | None:
+    r"""`[logging] file` 한 줄을 처리기로 옮긴다.  비면 `None`.
+
+    ⭐ **`.log` 로 끝나면 그 파일 하나, 아니면 폴더**다 (운영자 2026-09-09:
+    *"이제 ini 에는 폴더경로까지만 넣어두면 될까?"* -> 그렇다).
+    ⚠️ **판정을 파일계에 묻지 않는다** -- `os.path.isdir` 로 가르면 폴더가 아직
+    없을 때 뜻이 뒤집혀, 같은 ini 가 첫 실행과 두 번째 실행에서 다르게 돈다.
+    이름만 보고 정하면 그런 일이 없다.
+    ⭐ 옛 설정(`~/AIC/Logs/icg_archon.log`)은 **그대로 파일 하나**로 돈다.
+    """
+    spec = (spec or '').strip()
+    if not spec:
+        return None
+    if spec.lower().endswith('.log'):
+        return logging.FileHandler(spec, encoding='utf-8')
+    return DailyFile(spec.rstrip('/\\'), stem)
+
+
+def setup_logging(cfg: config.SimConfig, name: str = 'ics') -> None:
     level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
     # ⭐ **프롬프트를 알아보는 처리기다** -- 콘솔이 입력을 기다리는 중에 로그가
     # 오면 줄을 지웠다가 프롬프트와 입력 버퍼를 다시 그린다 (운영자 2026-09-08).
     handlers: list[logging.Handler] = [PromptSafeStream(sys.stderr)]
-    if cfg.logging.file:
-        handlers.append(logging.FileHandler(cfg.logging.file, encoding='utf-8'))
+    fileh = _log_handler(cfg.logging.file, name)
+    if fileh is not None:
+        handlers.append(fileh)
     logging.basicConfig(
         level=level,
         datefmt='%Y-%m-%dT%H:%M:%S',
@@ -140,7 +226,12 @@ def setup_logging(cfg: config.SimConfig) -> None:
     # 같은 관례다: `[2026-09-04T10:36:34.942] PONG received from XIS`.
     # 대괄호가 있으면 **시각과 본문의 경계가 눈에 먼저 잡힌다** -- 콘솔에서는
     # 프롬프트 줄과 로그 줄이 섞여 흐르므로 그 경계가 값을 한다.
+    # ⭐ **로그 시각을 UTC 로 맞춘다** (2026-09-09).  ⛔ 종전에는 지역시였다 --
+    # 벤치가 UTC 로 돌아서 `HKQDATE` 와 맞아 보였을 뿐, 한국시로 맞춘 기계에
+    # 배포하면 로그만 +9 시간이 되어 `HKQDATE`·`DATE-OBS`·FITS 파일명과 어긋난다.
+    # ⚠️ 날짜별 로그 파일의 경계도 그때 관측일과 갈린다.
     fmt = _TailModule(LOG_FORMAT, datefmt=LOG_DATEFMT)
+    fmt.converter = time.gmtime
     for h in logging.getLogger().handlers:
         h.setFormatter(fmt)
 

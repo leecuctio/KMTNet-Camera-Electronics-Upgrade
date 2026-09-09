@@ -100,6 +100,14 @@ def _word(raw) -> str | None:  # noqa: ANN001
         return None
 
 
+def _signed_or_none(raw) -> str | None:  # noqa: ANN001
+    """수치면 `+00.00` 표기, 아니면 `None` (= 안 싣는다).  `HTRSET` 전용."""
+    try:
+        return hkwire.fmt_signed(float(raw), 2)
+    except (TypeError, ValueError):
+        return None
+
+
 def _unsigned(value, digits: int) -> str | None:  # noqa: ANN001
     """부호 없는 소수 표기 (`FSAHUM`·`HTROUT`).  수치가 아니면 `None`."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -107,18 +115,48 @@ def _unsigned(value, digits: int) -> str | None:  # noqa: ANN001
     return '%.*f' % (digits, value)
 
 
-async def body(app, *, ctrl=None) -> str:  # noqa: ANN001
-    """`HKDATA`/`HK` 응답 본문 한 줄.
+async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
+    r"""`HKDATA`/`HK` 응답 본문 한 줄.
 
-    ⚠️ **`RCONFIG` 왕복이 셋 있다**(`HTREN`·`HTRSET`·`HTRFORCE`) -- 부르는 쪽은
-    코루틴으로 다루고 `Reply.noop()` 뒤 늦은 `DONE` 으로 답해야 한다.  컨트롤러가
-    없거나 왕복이 실패하면 그 셋만 빠지고 나머지는 나간다.
+    ## ⭐ 갈래가 둘이다 (운영자 확정 2026-09-09)
+
+    | | 히터 설정 셋 (`HTREN`·`HTRSET`·`HTRFORCE`) | 왕복 |
+    |---|---|---|
+    | `now=False` (**기본**) | HK 폴러가 60초마다 받아 둔 값 (`sensors()`) | **없다** |
+    | `now=True` (`HKDATA NOW`) | `RCONFIG` **즉시 되읽기** | 셋 |
+
+    ⭐ **기본이 폴링값인 것이 요점이다** -- 리모트 명령에 **왕복 없이 곧바로**
+    답한다.  ⛔ 나머지 값(RTD·진공·`HTROUT`·Radionode)은 **원래부터** 폴링값이라
+    갈래와 무관하다 -- `STATUS` 를 이 자리에서 다시 읽은 적이 없다.
+
+    ⚠️ **낡음을 숨기지 않는다** -- `HKUDATE`(가장 낡은 표본시각)와 `HKSTALE` 이
+    그대로 나가므로, 방금 바꾼 설정이 아직 안 실렸으면 **시각으로 드러난다.**
+    ⭐ 그리고 확인 창구가 따로 있다: `HTRSET`/`HTRFORCE` 를 **인자 없이** 치면
+    `RCONFIG` 즉시 조회다.
+
+    ⚠️ `now=True` 여도 **취득을 방해하지 않는다** -- 왕복은 `_locked_thread` 가
+    한 줄로 세우므로 진행 중인 FETCH 뒤에 설 뿐이다 (실측 최악 108 ms,
+    DevNote 11.55).  ⛔ 그러니 따로 기다리는 장치를 두지 않는다.
+
+    ⚠️ `now=True` 인데 컨트롤러가 없거나 왕복이 실패하면 **폴링값으로 물러난다**
+    -- 그 셋만 빼 버리면 `now` 가 오히려 정보를 줄인다.
     """
     hk = getattr(app, 'hk', None)
     if hk is None:
         raise RuntimeError('HK monitor is not running')
+    # ⚠️ `now` 는 바로 아래에서 **시각**으로 다시 쓰인다 -- 갈래 표시를 먼저 뜬다.
+    now_read = bool(now)
 
     now = utcnow()
+    if now_read:
+        # ⭐ **한 바퀴를 지금 돌린다** -- RTD·진공·`HTROUT`·히터 설정·Radionode
+        # 가 다 갱신되고, `_sample` 에 담기므로 **다음 헤더도 이 값을 본다**
+        # (운영자 2026-09-09).  ⚠️ Radionode 는 충분히 낡았을 때만 다시 친다.
+        # ⚠️ **실패해도 답은 낸다** -- 폴링값이 그대로 나가는 것이 무응답보다 낫다.
+        try:
+            await hk.refresh_now()
+        except Exception as exc:           # noqa: BLE001
+            log.warning('HKDATA NOW: 갱신 실패 -- %s.  폴링값으로 답한다', exc)
     vals = hk.sensors()                    # 신선한 계약 키 + hkudate
     pairs: list[tuple[str, object]] = [
         ('HKQDATE', stamp_iso_ms(now)),    # 23자 -- 명령을 받은 시각
@@ -142,23 +180,18 @@ async def body(app, *, ctrl=None) -> str:  # noqa: ANN001
     pairs.append(('DEWPRES', dew if dew is not None else None))
 
     # 히터 넷 -- ⛔ `FORCELEVEL` 은 안 싣는다.
+    #
+    # ⭐ **기본은 폴링값이다** -- HK 가 한 바퀴마다 `RCONFIG` 로 받아 `_sample`
+    # 에 담아 두므로(11.52-(2)) 여기서 왕복이 없다.  ⭐ 그래서 **헤더와
+    # `HKDATA` 가 같은 원천**을 본다 -- 11.52 가 만들었던 갈림이 여기서 닫힌다.
     ctrl = ctrl if ctrl is not None else getattr(hk, 'ctrl', None)
-    htren = htrset = htrforce = None
-    if ctrl is not None:
-        try:
-            got = await heater.read_settings(ctrl)
-            htren = _word(got.get('htren'))
-            htrset = got.get('htrset')
-            try:
-                htrset = hkwire.fmt_signed(float(htrset), 2)
-            except (TypeError, ValueError):
-                htrset = None
-        except Exception as exc:           # noqa: BLE001
-            log.warning('HKDATA: 히터 되읽기 실패 -- %s.  그 셋만 뺀다', exc)
-        try:
-            htrforce = _word(await ctrl.read_config(heater.heater_key('FORCE')))
-        except Exception as exc:           # noqa: BLE001
-            log.warning('HKDATA: HTRFORCE 되읽기 실패 -- %s', exc)
+    htren = _word(vals.get('htren'))
+    htrset = _signed_or_none(vals.get('htrset'))
+    htrforce = _word(vals.get('htrforce'))
+    # ⛔ **여기서 따로 되읽지 않는다** -- `NOW` 는 위에서 `hk.refresh_now()` 로
+    # 한 바퀴를 돌렸고 그 바퀴가 히터 설정 셋도 `RCONFIG` 로 읽어 `_sample` 에
+    # 담았다.  ⚠️ 여기서 또 읽으면 **왕복이 두 배**가 되고, 두 값이 갈리면
+    # 어느 쪽이 정본인지 다투게 된다 (11.52 가 그 부류였다).
     pairs.append(('HTREN', htren))
     pairs.append(('HTRSET', htrset))
     # `HTROUT` 은 `STATUS` 에서 온다 -- HK 루프가 이미 읽어 뒀다 (11.30).

@@ -62,7 +62,9 @@ def main(argv=None) -> int:  # noqa: ANN001
     if getattr(args, 'backend', None):
         backend = 'icg_archon' if args.backend == 'archon' else args.backend
     sim_main.apply_args(cfg, args)
-    sim_main.setup_logging(cfg)
+    # ⭐ 로그 파일 이름의 앞머리 -- `[logging] file` 이 폴더면
+    # `icg.<YYYYMMDD>.log` 이 된다 (운영자 2026-09-09).
+    sim_main.setup_logging(cfg, name='icg')
     icfg = icfg_mod.load(args.config)
     asyncio.run(amain(cfg, icfg, backend))
     return 0

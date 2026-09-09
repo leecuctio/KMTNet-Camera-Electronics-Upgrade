@@ -149,6 +149,23 @@ class RadionodeCfg:
     retired_keys: tuple = ()
     #: 신선도 경보 문턱 [s] -- 장치 SEND INTERVAL 의 3배쯤.  이보다 낡은
     #: 표본은 헤더에 싣지 않는다 (호출측이 sentinel 을 채운다).
+    #: ⭐ **`HKDATA NOW` 가 클라우드를 다시 칠 최소 표본 나이** [s]
+    #: (운영자 2026-09-09).  표본이 이보다 젊으면 **안 친다**.
+    #:
+    #: ⛔ **`poll_period` 를 쓰면 안 된다** -- 운영자가 폴링 주기를 60초보다
+    #: 늘릴 수 있는데, 그러면 재조회 기준까지 따라 늘어나 *"방금 값을 원해서
+    #: `NOW` 를 쳤는데 안 친다"* 가 된다.  두 눈금은 **뜻이 다르다.**
+    #: ⛔ 장치가 응답에서 알려 주는 `device_interval` 로도 안 된다 -- **배우기
+    #: 전에는 `stale_after`(초기값 4000초)의 1/3** 이라 첫 `NOW` 들이 통째로
+    #: 막힌다 (2026-09-09 검토에서 잡은 결함이다).
+    #:
+    #: ⭐ **60초인 근거**: 장치가 그 주기로 클라우드에 올리므로 그 안에 다시
+    #: 물어도 **같은 값**이다.  그리고 쿼터가 **api_key 당 분당 10회**라
+    #: 명령마다 치면 태우는데, 태우면 **주기 폴링까지 실패해** 세 카드가
+    #: sentinel 이 된다 -- 하려던 것의 정반대다.
+    #: ⚠️ **장치 전송주기보다 작게 두지 말 것** -- 얻는 것 없이 쿼터만 쓴다.
+    #: ⚠️ `0` 이면 **늘 친다** -- 쿼터를 태울 수 있으니 시험 때만.
+    now_min_age: float = 60.0
     stale_after: float = 600.0
     #: ⭐ `local_lns` -- 게이트웨이 내장 NS 가 uplink 를 **밀어 줄** 우리 주소.
     #: `호스트:포트` (`0.0.0.0:8088`).  ⚠️ 게이트웨이 integration 에 적은 것과
@@ -391,6 +408,7 @@ def load(path: str) -> IcgCfg:
                 if s.get(k, fallback='').strip()]
         if gone:
             r.retired_keys = tuple(gone)
+        r.now_min_age = _float(s, 'now_min_age', r.now_min_age)
         r.stale_after = _float(s, 'stale_after', r.stale_after)
         r.lns_bind = _text(s, 'lns_bind', r.lns_bind)
         r.lns_path = _text(s, 'lns_path', r.lns_path)

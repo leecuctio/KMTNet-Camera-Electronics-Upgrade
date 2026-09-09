@@ -576,3 +576,232 @@ def test_a_failed_heater_read_back_leaves_sentinels_and_warns_once(tmp_path):
     got = mon.sensors()
     assert 'htren' not in got and 'htrset' not in got, got
     assert mon._warned_htrset is True                      # noqa: SLF001
+
+
+# -- 주기 바퀴가 링크를 비켜 준다 (운영자 2026-09-09) -----------------------
+
+
+class _Link:
+    """`link_busy` 만 흉내내는 컨트롤러 표면."""
+
+    def __init__(self, busy) -> None:  # noqa: ANN001
+        self.link_busy = busy
+
+
+def _quiet(monitor, busy_for):  # noqa: ANN001, ANN202
+    """`_await_quiet_link()` 가 실제로 기다린 시간 [s]."""
+    import time as _t
+
+    ctrl = _Link(True)
+    monitor.ctrl = ctrl
+
+    async def run():  # noqa: ANN202
+        if busy_for is not None:
+            async def release():  # noqa: ANN202
+                await asyncio.sleep(busy_for)
+                ctrl.link_busy = False
+            asyncio.ensure_future(release())
+        t0 = _t.monotonic()
+        await monitor._await_quiet_link()          # noqa: SLF001
+        return _t.monotonic() - t0
+
+    return asyncio.run(run())
+
+
+def test_the_cycle_yields_to_a_round_trip_in_flight(tmp_path):
+    """⭐ 왕복이 도는 중이면 **끝나기를 기다린다** (운영자 2026-09-09).
+
+    ⭐ **바쁜 것은 취득이 아니라 링크다** -- 연속 취득 중에도 컨트롤러는
+    주기(1.251 s)의 대부분이 한가하고 FETCH(≈0.08 s)일 때만 락이 잡힌다.
+    그래서 *"취득 중이면 건너뛴다"* 가 아니라 **"왕복 하나가 끝나기를
+    기다린다"** 가 맞는 크기다.
+    """
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    mon = HkMonitor(None, icfg)
+    mon.QUIET_POLL = 0.01
+    waited = _quiet(mon, busy_for=0.08)
+    assert 0.05 <= waited < mon.QUIET_WAIT, waited
+
+
+def test_a_busy_link_can_never_starve_the_cycle(tmp_path):
+    """⛔ **상한을 넘기면 그냥 돈다** -- 이것이 이 시험의 존재 이유다.
+
+    guide 는 **연속 취득**이라 *"안 바쁠 때까지 기다린다"* 를 곧이곧대로 쓰면
+    **HK 가 영영 안 돈다**: 헤더의 온도·진공 카드가 통째로 sentinel 이 되고,
+    ⛔ **히터 과열 차단도 같이 멈춘다**(그것이 HK 바퀴에 얹혀 있다).
+    ⚠️ 비켜 준 것은 `lag_ms` 에 남으므로 숨겨지지 않는다.
+    """
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    mon = HkMonitor(None, icfg)
+    mon.QUIET_WAIT, mon.QUIET_POLL = 0.15, 0.01
+    waited = _quiet(mon, busy_for=None)            # 영원히 바쁘다
+    assert mon.QUIET_WAIT <= waited < mon.QUIET_WAIT + 0.15, waited
+
+
+def test_an_idle_link_is_not_waited_for(tmp_path):
+    """⚠️ 한가하면 **한 틱도 안 쉰다** -- 군더더기 지연을 만들지 않는다."""
+    import time as _t
+
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    mon = HkMonitor(_Link(False), icfg)
+    t0 = _t.monotonic()
+    asyncio.run(mon._await_quiet_link())           # noqa: SLF001
+    assert _t.monotonic() - t0 < 0.02
+
+
+def test_a_controller_without_the_flag_is_not_waited_for(tmp_path):
+    """⚠️ 시뮬 백엔드처럼 `link_busy` 가 없는 표면에서도 **그냥 돈다**.
+
+    ⛔ `getattr` 기본값이 참이면 시뮬이 매 바퀴 상한만큼 멈춘다.
+    """
+    import time as _t
+
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    mon = HkMonitor(object(), icfg)
+    t0 = _t.monotonic()
+    asyncio.run(mon._await_quiet_link())           # noqa: SLF001
+    assert _t.monotonic() - t0 < 0.02
+
+
+# -- HKDATA NOW 의 Radionode 제동 · 주기 기준 밀기 (운영자 2026-09-09) -------
+
+
+class _RnCfg:
+    def __init__(self, now_min_age) -> None:  # noqa: ANN001
+        self.now_min_age = float(now_min_age)
+
+
+class _Rn:
+    """표본시각과 `cfg.now_min_age` 만 흉내내는 Radionode 대역."""
+
+    def __init__(self, samples, now_min_age=60.0) -> None:  # noqa: ANN001
+        self._samples = dict(samples)       # key -> (값, 표본시각 epoch)
+        self.cfg = _RnCfg(now_min_age)
+        self.polls = 0
+
+    def values_with_time(self) -> dict:  # noqa: ANN201
+        return dict(self._samples)
+
+    def all_keys(self):  # noqa: ANN201
+        return frozenset(self._samples)
+
+    async def poll_now(self) -> None:  # noqa: ANN202
+        self.polls += 1
+
+
+def _mon(tmp_path, rn=None):  # noqa: ANN001, ANN202
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    m = HkMonitor(None, icfg)
+    m.radionode = rn
+    return m
+
+
+def test_radionode_is_not_hit_again_inside_its_own_upload_interval(tmp_path):
+    """⭐ **전송주기 안에서는 다시 안 친다** (운영자 2026-09-09).
+
+    ⛔ 근거 둘: ① 쿼터가 **api_key 당 분당 10회**라 태우면 **주기 폴링까지
+    실패해** 세 카드가 sentinel 이 된다 -- 하려던 것의 정반대다.  ② ⭐ 장치가
+    `device_interval` 마다 올리므로 **그 안에 다시 물어도 같은 값**이다.
+    ⚠️ 기준을 상수로 박으면 안 된다 -- 실물 장치가 60초·600초로 갈린다.
+    """
+    now = time.time()
+    m = _mon(tmp_path, _Rn({'hebox': (22.2, now - 10.0)}, now_min_age=60.0))
+    assert m._radionode_is_old() is False           # noqa: SLF001
+
+
+def test_radionode_is_hit_once_the_interval_has_passed(tmp_path):
+    """⭐ 전송주기가 지났으면 **친다** -- 그때는 새 값이 있을 수 있다."""
+    now = time.time()
+    m = _mon(tmp_path, _Rn({'hebox': (22.2, now - 61.0)}, now_min_age=60.0))
+    assert m._radionode_is_old() is True            # noqa: SLF001
+
+
+def test_one_stale_key_is_enough_to_hit_the_cloud(tmp_path):
+    """⚠️ **키 하나라도 낡았으면 친다** -- 가장 신선한 것에 맞추지 않는다.
+
+    ⭐ 한 번의 호출이 **장치 전부**를 가져오므로(`get_lst` 한 번, 쿼터 1회)
+    하나만 낡아도 칠 값이 있다.  ⛔ 반대로 *"가장 낡은 것이 아직 젊으면 안
+    친다"* 로 짜면, 늘 신선한 장치 하나가 **나머지를 영영 막는다**.
+    """
+    now = time.time()
+    rn = _Rn({'hebox': (22.2, now - 90.0),       # 낡았다
+              'fsatemp': (21.0, now - 5.0)},     # 갓 받았다
+             now_min_age=60.0)
+    assert _mon(tmp_path, rn)._radionode_is_old() is True   # noqa: SLF001
+
+
+def test_the_threshold_comes_from_the_ini_not_the_poll_period(tmp_path):
+    """⛔ 기준은 **`[radionode] now_min_age`** 다 -- 폴링 주기가 아니다.
+
+    ⭐ 운영자 지적 2026-09-09: *"폴링 주기를 60초보다 늘릴 수 있으니 Radionode
+    갱신 기준은 폴링주기로 하면 안 된다."*  ⚠️ 두 눈금은 **뜻이 다르다** --
+    하나는 *"얼마나 자주 받아 두나"*, 다른 하나는 *"다시 물어볼 만큼 낡았나"* 다.
+    ⛔ 장치가 알려 주는 `device_interval` 로도 안 된다: **배우기 전에는
+    `stale_after`(초기값 4000초)의 1/3** 이라 첫 `NOW` 들이 통째로 막힌다.
+    """
+    now = time.time()
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    icfg.hk.interval = 300.0                       # 폴링을 5분으로 늘려 둔다
+    m = HkMonitor(None, icfg)
+    m.radionode = _Rn({'hebox': (22.2, now - 90.0)}, now_min_age=60.0)
+    # ⭐ 90초는 눈금(60)보다 낡았다 -- 폴링 주기(300)를 따라갔다면 거짓이 된다.
+    assert m._radionode_is_old() is True            # noqa: SLF001
+
+
+def test_no_sample_at_all_counts_as_old(tmp_path):
+    """⚠️ 표본이 하나도 없으면 **낡은 것으로 본다** -- 첫 `NOW` 가 헛돌면 안 된다."""
+    assert _mon(tmp_path, _Rn({}))._radionode_is_old() is True   # noqa: SLF001
+
+
+def test_hkdata_now_pushes_the_periodic_cycle_out_by_one_interval(tmp_path):
+    """⭐ `HKDATA NOW` 뒤에는 **60초를 새로 센다** (운영자 2026-09-09).
+
+    ⛔ 안 밀면 방금 한 바퀴를 돌렸는데 몇 초 뒤 주기 바퀴가 **또 돈다** --
+    왕복만 쓰고 값은 그대로다.
+    ⚠️ 여기서 재는 것은 `_next_at` 이 **미래로 밀렸는가** 다.  `run()` 의
+    잠자기가 깨어날 때마다 그 값을 다시 보므로 자는 중에 밀어도 따라간다.
+    """
+    m = _mon(tmp_path, _Rn({'hebox': (22.2, time.time())}, now_min_age=60.0))
+    m._next_at = time.monotonic()                   # noqa: SLF001 -- 곧 돌 참
+    asyncio.run(m.refresh_now())
+    left = m._next_at - time.monotonic()            # noqa: SLF001
+    assert 55.0 < left <= 60.0, left
+
+
+def test_the_sleeper_follows_a_deadline_that_moved(tmp_path):
+    """⭐ 자는 중에 `_next_at` 이 밀리면 **따라간다**.
+
+    ⚠️ 이것이 별도 깨움 신호 없이 도는 근거다 -- 미는 쪽은 **늘 뒤로만** 밀고,
+    자던 쪽은 옛 시각에 한 번 깨어나 다시 재고 또 잔다.
+    ⛔ 따라가지 않으면 `HKDATA NOW` 직후에 주기 바퀴가 그대로 돌아 미는 뜻이
+    사라진다.
+    """
+    m = _mon(tmp_path)
+    m.QUIET_POLL = 0.01
+
+    async def run():  # noqa: ANN202
+        m._next_at = time.monotonic() + 0.05        # noqa: SLF001
+
+        async def push():  # noqa: ANN202
+            await asyncio.sleep(0.02)
+            m._next_at = time.monotonic() + 0.15    # noqa: SLF001
+
+        asyncio.ensure_future(push())
+        t0 = time.monotonic()
+        assert await m._sleep_until() is True       # noqa: SLF001
+        return time.monotonic() - t0
+
+    waited = asyncio.run(run())
+    assert waited >= 0.15, waited                   # 밀린 시각을 따라갔다

@@ -144,3 +144,102 @@ def test_htrout_is_unsigned_with_three_decimals():
     vals['htrout'] = 3.5123
     kv = _kv(_body(vals))
     assert kv['HTROUT'] == '3.512'
+
+
+# -- 폴링값 대 즉시 되읽기 (운영자 확정 2026-09-09) -------------------------
+#
+# ⭐ **`NOW` 는 조립기가 컨트롤러를 직접 치지 않는다** -- `hk.refresh_now()` 로
+# **한 바퀴를 돌리고** 그 결과(`sensors()`)를 읽는다.  ⛔ 여기서 또 읽으면
+# 왕복이 두 배가 되고, 두 값이 갈리면 어느 쪽이 정본인지 다투게 된다
+# (11.52 가 그 부류였다).  그래서 대역도 *"한 바퀴를 돌면 값이 바뀐다"* 로 만든다.
+
+
+class _HkNow(_Hk):
+    """`refresh_now()` 가 표본을 갈아 끼우는 HK 대역 -- 호출 횟수를 센다."""
+
+    def __init__(self, vals, after=None, fail=False) -> None:  # noqa: ANN001
+        super().__init__(vals)
+        self._after = after
+        self._fail = fail
+        self.refreshed = 0
+
+    async def refresh_now(self) -> None:  # noqa: ANN202
+        self.refreshed += 1
+        if self._fail:
+            raise RuntimeError('링크가 죽었다')
+        if self._after is not None:
+            self._vals.update(self._after)
+
+
+def _body_now(vals, after=None, fail=False):  # noqa: ANN001, ANN202
+    """(본문, 갱신횟수) -- `after` 는 한 바퀴 뒤에 바뀔 값."""
+    app = _App({})
+    app.hk = _HkNow(dict(vals), after, fail)
+    body = asyncio.run(hkdata.body(app, now=True))
+    return body, app.hk.refreshed
+
+
+POLLED = {'htren': '1', 'htrset': -95.25, 'htrforce': '0'}
+AFTER = {'htren': '0', 'htrset': -80.50, 'htrforce': '1',
+         'ccdtemp': -101.11}
+
+
+def test_hkdata_without_now_uses_the_polled_values_and_does_not_refresh():
+    """⭐ **인자가 없으면 폴링값** -- 한 바퀴를 돌리지 **않는다**.
+
+    ⭐ 요점은 속도가 아니라 **원천이 하나**가 되는 것이다: FITS 헤더도 같은
+    `_sample` 을 보므로, 같은 순간에 헤더와 `HKDATA` 가 다른 값을 낼 수 없다
+    (11.52 가 만들었던 갈림이 여기서 닫힌다).
+    ⚠️ 낡음은 `HKUDATE`·`HKSTALE` 이 그대로 알린다 -- 숨기지 않는다.
+    """
+    vals = dict(FULL)
+    vals.update(POLLED)
+    app = _App({})
+    app.hk = _HkNow(vals, AFTER)
+    got = _kv(asyncio.run(hkdata.body(app)))
+    assert app.hk.refreshed == 0, '폴링 갈래가 한 바퀴를 돌렸다'
+    assert got['HTREN'] == 'ON' and got['HTRFORCE'] == 'OFF', got
+    assert got['HTRSET'] == '-95.25', got
+
+
+def test_hkdata_now_turns_one_full_cycle_and_uses_its_result():
+    """⭐ `HKDATA NOW` 는 **한 바퀴를 돌려** 그 값을 싣는다.
+
+    운영자 지시 2026-09-09: *"`hkdata now` 면 RTD, 진공, Radionode, 히터설정
+    모두 되읽기해서 값을 넣어주고, **폴링 값들도 갱신**하도록."*
+    ⭐ 그래서 히터 셋만이 아니라 **RTD 도 갱신되는지** 함께 본다 -- 히터만
+    보면 *"한 바퀴"* 가 아니라 *"셋만 읽기"* 로 되돌아가도 안 잡힌다.
+    ⚠️ 폴링값과 **다른 값**을 먹여야 어느 쪽이 실렸는지 갈린다.
+    """
+    vals = dict(FULL)
+    vals.update(POLLED)
+    body, turns = _body_now(vals, AFTER)
+    got = _kv(body)
+    assert turns == 1, turns
+    assert got['HTREN'] == 'OFF' and got['HTRFORCE'] == 'ON', got
+    assert got['HTRSET'] == '-80.50', got
+    assert got['CCDTEMP'] == '-101.11', got      # ⭐ RTD 도 갱신됐다
+
+
+def test_now_still_answers_when_the_refresh_fails():
+    """⚠️ 갱신이 실패해도 **폴링값으로 답한다** -- 무응답보다 낫다.
+
+    ⛔ 여기서 예외를 올리면 링크가 잠깐 흔들린 것만으로 `HKDATA` 가 통째로
+    `ERROR` 가 된다 -- 나머지 열몇 카드는 멀쩡한데도.
+    """
+    vals = dict(FULL)
+    vals.update(POLLED)
+    body, turns = _body_now(vals, AFTER, fail=True)
+    got = _kv(body)
+    assert turns == 1
+    assert got['HTREN'] == 'ON' and got['HTRSET'] == '-95.25', got
+
+
+def test_the_heater_three_are_omitted_when_the_poll_has_nothing():
+    """⛔ 폴링값도 없으면 **아예 안 싣는다** -- ICS 가 sentinel 로 채운다.
+
+    ⚠️ HK 가 아직 한 바퀴도 안 돌았거나 ACF 파싱 전이면 이 자리다.
+    """
+    got = _kv(_body(dict(FULL)))
+    for k in ('HTREN', 'HTRSET', 'HTRFORCE'):
+        assert k not in got, (k, got)

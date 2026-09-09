@@ -78,7 +78,8 @@ def main(argv: list[str] | None = None) -> int:
     if not acfg_mod.backend_declared(args.config) and args.backend is None:
         cfg.hardware.backend = 'archon'
     apply_args(cfg, args)
-    setup_logging(cfg)
+    # ⭐ `[logging] file` 이 폴더면 `ics.<YYYYMMDD>.log` 이 된다.
+    setup_logging(cfg, name='ics')
     acfg = acfg_mod.load(args.config)
     try:
         return asyncio.run(amain(cfg, acfg))
