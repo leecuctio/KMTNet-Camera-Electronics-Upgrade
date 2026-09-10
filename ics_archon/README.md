@@ -253,6 +253,52 @@ file        = ~/AIC/Logs        ; 폴더 → icg.<YYYYMMDD>.log
 ⚠️ 로그 시각도 UTC 로 고정했다 — 종전에는 지역시라 한국시 기계에서 +9 시간 어긋났다
 (벤치가 UTC 라 안 드러났던 자리).
 
+### 화면을 조용하게 — `verbose` (운영자 지시 2026-09-11)
+
+```ini
+[logging]
+verbose     = on        ; off 면 화면만 간결.  on|true|yes|1|enable|high 와 그 반대편
+```
+
+⭐ **화면만 간결해지고 로그 파일은 언제나 전부다.**  화면에서 안 보인 줄이 파일에는
+있으므로, 벤치에서 *"그 줄 못 봤는데"* 로 판정하면 안 된다.
+
+`verbose = off` 에서 화면에 남는 줄을 **함축 메시지(essential message)** 라 한다.
+빠지는 것은 **프로그램이 스스로 주고받는** 줄들뿐이다:
+
+| 빠진다 | 남는다 |
+|---|---|
+| `AUXSTATUS`/`TCSSTATUS` 자동 왕복 | 명령과 그 응답 (`EXEC:` · `DONE:` · `ERROR:`) |
+| `PING`/`PONG` 핸드셰이킹 | `EXPSTATUS=…` · `PCTREAD=…` · `Wrote …` |
+| 매번 같은 값인 `LOADPARAMS` 왕복 경고 | 경고·오류 전부 (딸린 한글 설명만 떨어진다) |
+
+⚠️ **`wire = off` 와 다른 물건이다** — 그쪽은 와이어 줄을 **아예 안 남긴다**(파일에도
+없다).  자취를 지우는 눈금이라 운영에서는 켜 둔다.
+
+⭐ 문구는 **영문 한 줄 + 딸린 세부**다.  세부(한글 설명 · 버퍼·주소 같은 값)는
+`verbose = off` 화면에서만 떨어진다:
+
+```
+verbose off :  fetch frame 12: 8.3 MiB in 0.1s
+verbose on  :  fetch frame 12: 8.3 MiB in 0.1s  --  buf 3, base 0xE0000000, lock=True …
+```
+
+### 노출 국면 — `EXPSTATUS`
+
+| 낱말 | 언제 | 비고 |
+|---|---|---|
+| `INITIALIZING` | 사이클 개시 | |
+| `ERASE` | **flush 창** (guide 실측 1.25초) | ⭐ 2026-09-11 신설 자리 — 종전엔 이 창이 `INTEGRATING` 이라 거짓이었다 |
+| `INTEGRATING` | 적분 | guide 는 **사이클마다 한 번**, science 는 노출마다 |
+| `READOUT` | CCD → 컨트롤러 버퍼 | 진행률이 `PCTREAD=` 로 함께 나간다 |
+| `FETCH` | 컨트롤러 버퍼 → 호스트 | ⭐ **신설** — guide 0.1초 · science ≈4초(추정, 344 MiB) |
+| `WRITING` | 호스트 → FITS 파일 | guide 0.06초 · science ≈1.7초(추정) |
+| `IDLE` / `ERROR` | 종료 | |
+
+⛔ **`FETCH`/`WRITING` 은 알림일 뿐 국면 변수를 안 바꾼다** — 저장은 다음 노출과
+겹쳐 도는데(정상 운영), 변수를 여기서 바꾸면 진행 중인 프레임의 국면을 덮어쓰고
+그 변수를 보고 판단하는 자리(`GO` 거절 · `STOP` 응답)가 틀린 국면을 본다.
+
 ## ✅ 연속 노출 중 명령 지연 — **실측 결과** (2026-09-09 벤치)
 
 운영자 물음: *"guide 유닛 timing script 가 돌고 연속 촬영 중일 때 `trigout <초>`
