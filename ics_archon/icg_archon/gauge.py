@@ -78,41 +78,94 @@ class GaugeState:
 
     `on` 은 셋 가운데 하나다 -- `True`(켬) · `False`(끔) · `None`(**모름**).
     ⭐ `None` 은 *"끄라는 명령을 받은 적이 없다"* 는 뜻이고, 그때는 `DEWPRES`
-    를 **막지 않는다** -- ACF 출하값이 `DIO_SOURCE3=1`(켬)이고, 모름을 결측으로
-    치면 평상 운영에서 진공값이 조용히 사라진다.
+    를 **막지 않는다** -- 모름을 결측으로 치면 평상 운영에서 진공값이 조용히
+    사라진다.
+
+    ⭐ **켠 직후에는 `WARMUP` 이다** (운영자 지시 2026-09-10).  이온게이지는
+    **전원을 넣고 `warmup` 초가 지나야 측정이 미덥다** -- 그동안은 켜져 있어도
+    값을 믿으면 안 된다.  ⛔ **켤 때마다** 그렇다 (기동이든 `VACGAUGE ON` 이든).
+
+    | 상태 | 낱말 |
+    |---|---|
+    | 켬 · 예열 중 | **`WARMUP`** |
+    | 켬 · 예열 끝 | `ON` |
+    | 끔 | `OFF` |
+    | 모름 | `UNKNOWN` |
+
+    ⚠️ **예열 중에는 `DEWPRES` 를 막는다** -- 켜져 있긴 하지만 값이 아직 안
+    미덥고, 안 미더운 값을 싣는 것이 sentinel 보다 나쁘다 (5.0절의 정신).
+    ⭐ **되읽어서 알게 된 `ON` 은 예열이 끝난 것으로 본다** -- 우리가 켠 것이
+    아니라 이미 켜져 있던 것이므로 언제 켜졌는지 알 수 없고, 앞 세션이 켜 둔
+    것이라면 진작 예열이 끝났다.  ⛔ 모르는 것을 예열 중이라 적으면 그것대로
+    거짓이다.
     """
 
-    def __init__(self, method: str = DIOPOWER) -> None:
+    def __init__(self, method: str = DIOPOWER,
+                 warmup: float = 12.0) -> None:
         if method not in METHODS:
             raise ValueError('gauge_off_method 는 %s 가운데 하나여야 한다 -- %r'
                              % ('|'.join(sorted(METHODS)), method))
         self.method = method
         self.on: bool | None = None
-        self.origin = 'unset'               #: 'unset'|'rconfig'|'command'
+        #: `'unset'`(아직 안 읽음) | `'failed'`(읽다 실패) | `'rconfig'` | `'command'`
+        self.origin = 'unset'
+        #: 켠 뒤 측정이 미더워지기까지 [s] (운영자 확정 2026-09-10: 12초).
+        self.warmup = float(warmup)
+        #: **우리가 켠** 시각 (monotonic).  `None` 이면 예열 중이 아니다 --
+        #: 껐거나, 되읽어서 이미 켜져 있음을 알게 된 경우다.
+        self.on_at: float | None = None
 
     # -- 상태 ---------------------------------------------------------------
 
+    #: 켜졌지만 **측정이 아직 안 미더운** 상태의 낱말.
+    WARMUP = 'WARMUP'
+
+    @property
+    def warming(self) -> bool:
+        """켠 지 `warmup` 초가 아직 안 지났나."""
+        if self.on is not True or self.on_at is None:
+            return False
+        import time
+        return (time.monotonic() - self.on_at) < self.warmup
+
     @property
     def word(self) -> str:
-        """`VACGAUGE` 조회 응답에 쓰는 정규형."""
-        return 'UNKNOWN' if self.on is None else ('ON' if self.on else 'OFF')
+        """`VACGAUGE` 조회 응답에 쓰는 정규형.
+
+        ⭐ 켬이 둘로 갈린다 -- `WARMUP`(예열 중) · `ON`(측정 미덥다).
+        """
+        if self.on is None:
+            return 'UNKNOWN'
+        if not self.on:
+            return 'OFF'
+        return self.WARMUP if self.warming else 'ON'
 
     @property
     def blocks_dewpres(self) -> bool:
         """⛔ 지금 `DEWPRES` 를 sentinel 로 내려야 하나.
 
-        **꺼진 것을 아는 동안만** 참이다 -- `None`(모름)은 막지 않는다.
+        **꺼진 것을 아는 동안**과 **예열 중**에 참이다 (운영자 2026-09-10).
+        ⚠️ `None`(모름)은 막지 않는다 -- 모름을 결측으로 치면 평상 운영에서
+        진공값이 조용히 사라진다.
+        ⭐ 예열 중을 막는 이유: 켜져 있긴 하지만 값이 아직 안 미덥고, **안
+        미더운 값을 싣는 것이 sentinel 보다 나쁘다** (규격 5.0절의 정신).
         """
-        return self.on is False
+        return self.on is False or self.warming
 
     # -- 왕복 ---------------------------------------------------------------
 
-    async def load(self, ctrl) -> None:  # noqa: ANN001
+    async def load(self, ctrl, *, fresh: bool = False) -> None:  # noqa: ANN001
         """기동에서 **컨트롤러 설정을 되읽어** 상태를 세운다.
 
         ⚠️ 게이지 자체에 물어보는 것이 아니다 (그 경로가 없다 -- 모듈 문서의
         `IGS` 참고).  실패하면 `None`(모름)으로 남긴다 -- 추측으로 `ON` 을
         적으면 `DEWPRES` 판정의 근거가 거짓이 된다.
+
+        ⭐ **`fresh` 는 *"전원 상태가 방금 정해졌다"* 는 뜻이다** (운영자 지적
+        2026-09-10).  `APPLYALL` 이 ACF 의 `MOD10\\DIO_POWER` 를 그대로
+        적용하므로, ACF 적용 직후에 읽은 `ON` 은 **막 켜진 것**이고 예열 중이다.
+        ⛔ `fresh=False`(기본)면 언제 켜졌는지 모르는 것이므로 **예열이 끝난
+        것으로 본다** -- 모르는 것을 예열 중이라 적으면 그것대로 거짓이다.
         """
         key, on_val, _off = METHODS[self.method]
         try:
@@ -120,10 +173,15 @@ class GaugeState:
         except Exception as exc:            # noqa: BLE001
             log.warning('이온게이지 상태를 되읽지 못했다 (%s) -- %s.  모름으로 '
                         '두고 DEWPRES 는 막지 않는다', key, exc)
-            self.on, self.origin = None, 'unset'
+            # ⛔ `'unset'`(아직 안 읽음)이 아니라 `'failed'` 다 -- 시도했고
+            # 실패한 것이라 `WARMUP` 이 아니라 `UNKNOWN` 으로 나가야 한다.
+            self.on, self.origin = None, 'failed'
             return
+        import time
         self.on = got == on_val
         self.origin = 'rconfig'
+        # ⭐ `fresh` 면 방금 켜진 것이라 예열 시계를 세운다 (머리말 참조).
+        self.on_at = time.monotonic() if (fresh and self.on) else None
         log.info('이온게이지 %s (%s=%s, 갈래 %s)',
                  self.word, key, got, self.method)
 
@@ -136,14 +194,18 @@ class GaugeState:
         ⚠️ 그래서 왕복이 실패하면 **상태를 모름으로 되돌린다** -- 성공한
         것처럼 남겨 두면 반대 방향으로 거짓말한다.
         """
+        import time
         key, on_val, off_val = METHODS[self.method]
-        prev, prev_origin = self.on, self.origin
+        prev, prev_origin, prev_at = self.on, self.origin, self.on_at
         self.on, self.origin = on, 'command'
+        # ⭐ **켤 때마다 예열 시계를 다시 세운다** (운영자 2026-09-10).
+        # ⛔ 끌 때는 지운다 -- 꺼진 것에 예열은 뜻이 없다.
+        self.on_at = time.monotonic() if on else None
         try:
             await ctrl.set_config(key, on_val if on else off_val)
             await ctrl.apply_module(10, dio=True)      # ⭐ APPLYDIO09
         except Exception:
-            self.on, self.origin = prev, prev_origin
+            self.on, self.origin, self.on_at = prev, prev_origin, prev_at
             raise
         log.info('이온게이지 %s (%s, 갈래 %s) -- ⚠️ %s',
                  self.word, key, self.method, VCPU_NOTE)

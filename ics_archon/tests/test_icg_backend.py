@@ -62,7 +62,7 @@ def make_cfgs(tmp_path, fake: FakeArchon):  # noqa: ANN001, ANN201
     icfg.hosts = {'G': '127.0.0.1'}
     icfg.port = fake.port
     icfg.acf = {'G': str(acf)}
-    icfg.poweron_wait = 0.0
+    icfg.gauge_warmup_wait = 0.0   # ⭐ 개명 (2026-09-10) -- 시험은 안 기다린다
     icfg.frame_poll = 0.01
     # 이 파일의 시간 전제(GUIEXP 2 = IntMS 0 · 두 홉 창 …)는 설정 가능한 최소 노출시간 2.0 으로 쓰였다 --
     # 기본값이 1.3 으로 바뀐 뒤(2026-09-05)에도 그 전제를 유지한다.

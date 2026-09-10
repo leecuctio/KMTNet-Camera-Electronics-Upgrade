@@ -212,7 +212,7 @@ class IcgCfg:
     #: ⚠️ 컨트롤러가 어긋난 연결을 놓는 데 **약 10초**가 걸리는데 `2` 는
     #: 시도 사이 대기를 합쳐도 2초라 **거의 늘 포기했다** (벤치 로그의
     #: `접속 실패 1/2 · 2/2` 뒤 기동 실패).
-    connect_retry: int = 4
+    connect_retry: int = 5
     #: 재수립에서 **끊고** 쉬는 시간 [s].  ⭐ labtest(실기에서 도는 원본)가
     #: `0.8` 이다.  ⛔ 종전에는 **0** 이라 즉시 다시 들이받았고, 컨트롤러가
     #: 앞선 폭주분을 소화하는 동안 **새 SYN 에 응답하지 않아** 재접속이
@@ -232,7 +232,15 @@ class IcgCfg:
     #: 확률이 실제로 있다.  ⚠️ 재시도 사이에 `resync()` 로 **연결을 새로 연다**
     #: (참조번호만 고치면 늦은 응답이 다음 명령을 먹는다 -- 11.22 (1)).
     acf_retry: int = 4
-    poweron_wait: float = 12.0
+    #: `POWERON` 뒤 기다리는 시간 [s] -- ⭐ **이온게이지 예열이 그 이유다**
+    #: (운영자 확정 2026-09-10, 종전 이름 `poweron_wait`).  켠 뒤 이만큼이
+    #: 지나야 측정이 미덥고, 그동안 `VACGAUGE` 는 `WARMUP` · `DEWPRES` 는
+    #: sentinel 이다.  ⛔ **켤 때마다** 적용된다 (기동 · `APPLYALL` 이 켠 경우 ·
+    #: `VACGAUGE ON`).
+    #: ⚠️ **옛 이름은 labtest 에서 왔고 *CCD flush 대기*라고 적혀 있었다**
+    #: (`24 x 0.5`) -- 운영자가 실제 이유를 게이지 예열로 확정해 이름을 맞췄다.
+    #: 그 유래는 남겨 둔다 (근거가 갈리면 되짚을 자리다).
+    gauge_warmup_wait: float = 12.0
     param_intms_slot: str = 'PARAMETER2'
     param_intms_name: str = 'IntMS'
     param_exposures_slot: str = 'PARAMETER1'
@@ -380,7 +388,14 @@ def load(path: str) -> IcgCfg:
         cfg.settle_after = _float(s, 'settle_after', cfg.settle_after)
         cfg.apply_acf = _bool(s, 'apply_acf', cfg.apply_acf)
         cfg.acf_retry = _int(s, 'acf_retry', cfg.acf_retry)
-        cfg.poweron_wait = _float(s, 'poweron_wait', cfg.poweron_wait)
+        cfg.gauge_warmup_wait = _float(s, 'gauge_warmup_wait',
+                                       cfg.gauge_warmup_wait)
+        # ⛔ 옛 이름이 남아 있으면 **알린다** -- 조용히 무시하면 운영자가
+        # 15 를 적어 두고 12 로 도는 것을 모른다 (폐기 칸 규약과 같다).
+        if 'poweron_wait' in s:
+            log.warning("[icg] poweron_wait 는 **gauge_warmup_wait 로 "
+                        "개명됐다** (2026-09-10) -- 지금 값 %r 는 무시된다.  "
+                        "ini 를 고칠 것", s.get('poweron_wait'))
         cfg.param_flush_slot = _head(s, 'param_flush_slot',
                                      cfg.param_flush_slot)
         cfg.param_flush_name = _head(s, 'param_flush_name',

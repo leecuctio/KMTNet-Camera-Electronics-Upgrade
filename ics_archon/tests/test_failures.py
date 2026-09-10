@@ -946,7 +946,10 @@ def test_the_guide_connect_retry_matches_science():
     """
     from icg_archon.config import IcgCfg
     from ics_archon.config import ArchonCfg
-    assert IcgCfg().connect_retry == ArchonCfg().connect_retry == 4
+    # ⭐ 값은 운영자가 정한다 (2026-09-10: 4 -> 5).  ⛔ **시험이 지키는 것은
+    # 값이 아니라 "둘이 같다" 는 것**이다 -- guide 만 낮았던 것이 결함이었다.
+    assert IcgCfg().connect_retry == ArchonCfg().connect_retry
+    assert IcgCfg().connect_retry >= 4, '너무 낮으면 컨트롤러가 자리를 놓기 전에 포기한다'
 
 
 # ---------------------------------------------------------------------------

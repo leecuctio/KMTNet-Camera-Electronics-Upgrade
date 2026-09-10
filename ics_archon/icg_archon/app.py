@@ -83,7 +83,8 @@ class IcgArchon(IcsSim):
         #: ⭐ 꺼진 것을 아는 동안 `DEWPRES` 를 sentinel 로 내리기 위한 것이다
         #: (게이지를 끄면 모듈이 Conductron 값을 계속 내보내는데 그것이
         #: 정상값처럼 보인다 -- `gauge.py` 머리말).
-        self.gauge = GaugeState(icfg.gauge_off_method)
+        self.gauge = GaugeState(icfg.gauge_off_method,
+                                warmup=icfg.gauge_warmup_wait)
         self.radionode = RadionodeClient(icfg.radionode)
         self.hk = HkMonitor(self.guide.ctrl, icfg, telem=self.telem,
                             expstatus=lambda: self.state.expstatus,
@@ -140,7 +141,7 @@ class IcgArchon(IcsSim):
             ('CCD 조작 (실기)', (
                 ('ccdflush',
                  '유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (프레임 없음)'),
-                ('ccdpowon', 'CCD 전원 ON -- poweron_wait 뒤에 DONE'),
+                ('ccdpowon', 'CCD 전원 ON -- gauge_warmup_wait 뒤에 DONE'),
                 ('ccdpowoff', 'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
                 ('trigout <ms>',
                  'Trigger Out 을 <ms> 동안 HIGH 로 -- ⭐ 0 이면 즉시 LOW · '
@@ -206,32 +207,50 @@ class IcgArchon(IcsSim):
         self.hk.start()
         self.radionode.start(self.spawn)
 
+    async def _after_config(self) -> None:
+        """ACF 적용 직후 · `POWERON` **앞**에 도는 곁다리 (2026-09-10).
+
+        ⭐ **여기 있는 것들은 설정 메모리만 있으면 된다** -- CCD 전원도 `SYSTEM`
+        스냅샷도 필요 없다.  ⛔ 종전에는 `prepare()` **전체 뒤**에 줄 서서
+        `gauge_warmup_wait`(종전 `poweron_wait`, 벤치 15초)를 통째로
+        기다렸고, 그동안 `VACGAUGE` 가
+        `UNKNOWN`, `DEWPRES`·온도가 결측이었다 (운영자가 벤치에서 잡았다).
+        ⚠️ ArchonGUI 가 빨라 보이는 것은 같은 일을 더 빨리 해서가 아니라
+        **ACF 적용도 `POWERON` 도 안 하기** 때문이다 -- 우리가 늦었던 것은
+        그 둘 뒤에 이 읽기를 매달아 둔 탓이다.
+        """
+        # ⭐ 이온게이지 상태는 **ACF 적용 뒤에** 읽는다 (설정 줄 번호가 ACF
+        # 파싱에서 오고, `CLEARCONFIG` 가 지운 메모리를 읽으면 뜻이 없다).
+        # 실패하면 "모름" 으로 남고 그때는 DEWPRES 를 막지 않는다 -- 추측으로
+        # ON 을 적으면 헤더 판정의 근거가 거짓이 된다 (gauge.load 주석).
+        # ⭐ **`APPLYALL` 이 방금 게이지 전원을 정했다** (운영자 지적
+        # 2026-09-10) -- ACF 의 `MOD10\\DIO_POWER` 가 그대로 적용된다.  그래서
+        # 여기서 읽은 `ON` 은 **막 켜진 것**이고 예열 중이다.
+        # ⛔ R2619 부터 ACF 는 `0` 이라 보통 `OFF` 로 읽히지만, 옛 ACF(`=1`)를
+        # 올리면 켜진 채로 읽힌다 -- 그때 예열을 안 세면 안 미더운 값을 `ON`
+        # 이라 적는다.
+        await self.gauge.load(self.guide.ctrl, fresh=True)
+        await self._settle_gauge()
+        # ⭐ **준비되자마자 HK 한 바퀴** (운영자 지시 2026-09-09).
+        #
+        # ⛔ 종전에는 기동 뒤 **최대 한 주기(60초)** 동안 게이지 상태도
+        # `DEWPRES` 도 온도도 결측이었다.  기동 첫 바퀴는 `hk.start()` 가
+        # 곧바로 돌리지만 그때는 **ACF 적용이 아직**이라 쓸 값이 안 나오고
+        # (로그의 *"ACF 적용 중이라 … 건너뛴다"*), 다음 바퀴는 60초 뒤다.
+        # ⭐ **`HKDATA NOW` 와 같은 함수**를 쓴다 (`refresh_now`) -- 따로
+        # 만들면 두 경로가 갈린다 (11.56 의 결론).  덤으로 주기 기준이
+        # *준비된 시각*으로 다시 놓여 곧바로 또 도는 낭비도 없다.
+        # ⚠️ 실패해도 기동은 계속한다 -- 다음 주기 바퀴가 채운다.
+        try:
+            await self.hk.refresh_now()
+        except Exception as exc:  # noqa: BLE001
+            log.warning('기동 HK 첫 바퀴 실패 -- %s.  다음 주기(%.0f초)에 '
+                        '다시 읽는다', exc, self.icfg.hk.interval)
+
     async def _connect_controller(self) -> None:
         try:
-            await self.guide.prepare()
+            await self.guide.prepare(self._after_config)
             log.info('guide 컨트롤러 준비 완료 (%s)', self.icfg.host)
-            # ⭐ 이온게이지 상태는 **준비된 뒤에야** 되읽을 수 있다 (설정 줄
-            # 번호가 ACF 파싱에서 오고, RCONFIG 왕복이 필요하다).  실패하면
-            # "모름" 으로 남고 그때는 DEWPRES 를 막지 않는다 -- 추측으로 ON
-            # 을 적으면 헤더 판정의 근거가 거짓이 된다 (gauge.load 주석).
-            await self.gauge.load(self.guide.ctrl)
-            await self._settle_gauge()
-            # ⭐ **준비되자마자 HK 한 바퀴를 돌린다** (운영자 지시 2026-09-09).
-            #
-            # ⛔ 종전에는 기동 뒤 **최대 한 주기(60초)** 동안 게이지 상태도
-            # `DEWPRES` 도 온도도 결측이었다.  기동 첫 바퀴는 `hk.start()` 가
-            # 곧바로 돌리지만 그때는 **ACF 적용·POWERON 이 아직**이라 쓸 값이
-            # 안 나오고(로그의 *"ACF 적용 중이라 … 건너뛴다"*), 다음 바퀴는
-            # 60초 뒤다.  운영자가 벤치에서 그 공백을 봤다.
-            # ⭐ **`HKDATA NOW` 와 같은 함수**를 쓴다 (`refresh_now`) -- 따로
-            # 만들면 두 경로가 갈린다 (11.56 의 결론).  덤으로 주기 기준이
-            # *준비된 시각*으로 다시 놓여 곧바로 또 도는 낭비도 없다.
-            # ⚠️ 실패해도 기동은 계속한다 -- 다음 주기 바퀴가 채운다.
-            try:
-                await self.hk.refresh_now()
-            except Exception as exc:  # noqa: BLE001
-                log.warning('기동 HK 첫 바퀴 실패 -- %s.  다음 주기(%.0f초)에 '
-                            '다시 읽는다', exc, self.icfg.hk.interval)
         except Exception as exc:  # noqa: BLE001
             # `?xx` 거부(이 세션의 APPLYALL 미실시)는 power_on() 이 진단 문구를
             # 붙여 올린다 (DevNote 10.2) -- 여기서 따로 가르지 않는다.  ⚠️ HK
@@ -258,6 +277,16 @@ class IcgArchon(IcsSim):
         상태가 남고, 그것이 바로 이 눈금이 막으려는 것이다.
         """
         want = self.icfg.gauge_on_start == 'on'
+        # ⭐ **예열할 게이지가 없으면 `POWERON` 뒤 대기를 건너뛴다**
+        # (운영자 2026-09-10: *"CCD POWERON에 대한 대기시간은 필요 없는데?"*).
+        # 전원 투입 자체는 실측 **약 1초**(`POWER=4 (On) 확인 -- 1.0초 걸렸다`)
+        # 이고, 남는 시간은 순전히 이온게이지 예열 몫이다.
+        # ⚠️ 판단을 **`want` 가 아니라 실제 상태**로 한다 -- 되읽기가 실패해
+        # 모르는 상태면 켜질 수도 있으니 기다리는 쪽이 안전하다.
+        ctrl = getattr(self.guide, 'ctrl', None)
+        if ctrl is not None:
+            ctrl.power_wait = 0.0 if (not want and self.gauge.on is False) \
+                else None
         if self.gauge.on is want:
             log.info('이온게이지는 이미 %s -- 기동에서 건드리지 않는다 '
                      '([icg] gauge_on_start=%s)',

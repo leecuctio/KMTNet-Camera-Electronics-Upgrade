@@ -45,14 +45,15 @@ VCPU 가 재시작되고 `DEWPRES` 에 결측 창이 생긴다** (매뉴얼 p.86
 추가 (운영자 지시 2026-09-05) -- **CCD 조작 넷**:
 
 * `CCDFLUSH`               -- 유휴 CCD 를 `FlushFrame` 한 바퀴로 비운다 (프레임 없음)
-* `CCDPOWON` / `CCDPOWOFF` -- CCD 전원 (`POWERON`/`POWEROFF`; ON 은 `poweron_wait` 초)
+* `CCDPOWON` / `CCDPOWOFF` -- CCD 전원 (`POWERON`/`POWEROFF`; ON 은
+  `gauge_warmup_wait` 초 -- 이온게이지 예열이 그 이유다)
 * `ARCHON <명령 원문…>`     -- 컨트롤러 바이패스 (응답 원문을 `DONE` 으로 되돌린다)
 
 ⛔ 앞의 셋은 **취득 중이면 거부**한다 (`ERROR: … Exposure in progress -- ABORT
 first`) -- 히터·게이지와 반대다.  그쪽은 결측 창 하나가 대가지만, 이쪽은
 진행 중 노출 위에 `LOADPARAMS`/`POWEROFF` 가 들어가 **자료를 망친다**.  ⭐ 그리고
 **셋이 서로도, `GO` 도 막는다** (`_op_in_flight`) --
-`POWERON` 의 `poweron_wait` 동안 들어온 `GO` 는 `prepare()` 가 이미 `powered`
+`POWERON` 의 `gauge_warmup_wait` 동안 들어온 `GO` 는 `prepare()` 가 이미 `powered`
 라 그대로 arm 해 flush 가 안 끝난 CCD 를 찍는다.  ⚠️ `EXPENABLE` 잠금과는
 **무관하게 허용**한다 (flush·전원·바이패스는 노출이 아니다) -- 잠겨 있으면
 응답에 `ExpEnable=OFF` 를 덧붙여 알리기만 한다.
@@ -393,7 +394,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
 
         ⭐ CCD 조작 넷(`CCDFLUSH`/`CCDPOWON`/`CCDPOWOFF`/`ARCHON`)이 왕복 중이면
         **그것도 거부**한다 (2026-09-05).  `POWERON` 은 ack 직후 `powered=True`
-        가 되고 그 뒤 `poweron_wait` 를 CCD flush 로 보내는데, 그 사이의 `GO` 는
+        가 되고 그 뒤 `gauge_warmup_wait` 를 게이지 예열로 보내는데, 그 사이의 `GO` 는
         `prepare()` 가 전원을 건너뛰어 **flush 가 안 끝난 CCD 를 arm 한다**
         (`controller.power_on` 주석).  시퀀서 `busy` 는 이 왕복을 모른다.
         """
@@ -1181,10 +1182,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
                        % (self._trigout_words(high=False, forced=True), ms))
 
     def cmd_ccdpowon(self, msg: Message, target: Target) -> Reply:
-        """CCDPOWON -- CCD 전원 ON (`POWERON` + `poweron_wait` 초의 flush 대기).
+        """CCDPOWON -- CCD 전원 ON (`POWERON` + `gauge_warmup_wait` 초 대기).
 
-        ⚠️ **`DONE` 이 수 초 뒤에 온다** (`[icg] poweron_wait`, 기본 12 s) -- 그
-        시간은 전원 램프가 아니라 CCD flush 대기라 줄이지 않는다
+        ⚠️ **`DONE` 이 수 초 뒤에 온다** (`[icg] gauge_warmup_wait`, 기본 12 s) --
+        ⭐ 그 시간은 전원 램프가 아니라 **이온게이지 예열**이라 줄이지 않는다
+        (운영자 확정 2026-09-10 -- 종전 이름 `poweron_wait` 과 *"CCD flush 대기"*
+        라는 설명은 labtest 에서 온 것이었다)
         (`controller.power_on`).  그동안 `GO` 는 거부된다 (`cmd_go`).
         ⭐ 접속·ACF 는 하지 않는다 -- 기동 접속(`_connect_controller`)이나 첫
         `GO` 의 `prepare()` 가 그 몫이고, 접속 전이면 `ERROR … Failed` 다.
@@ -1213,7 +1216,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
             return bad
         note = self._lock_note()
         log.info('%s by %s -- CCD 전원 %s%s', cmdword, msg.src,
-                 'ON (POWERON, poweron_wait 뒤 DONE)' if on else 'OFF (POWEROFF)',
+                 'ON (POWERON, gauge_warmup_wait 뒤 DONE)' if on else 'OFF (POWEROFF)',
                  ' (EXPENABLE OFF 상태)' if note else '')
         self._begin_op(cmdword)
         self.app.spawn(self._do_ccdpower(msg.src, be, cmdword, on, note))

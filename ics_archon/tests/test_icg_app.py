@@ -712,11 +712,15 @@ def test_startup_refreshes_hk_as_soon_as_the_controller_is_ready():
     import os as _os
     src = _io.open(_os.path.join(ROOT, 'icg_archon', 'app.py'),
                    encoding='utf-8').read()
-    body = src[src.index('    async def _connect_controller'):]
-    body = body[:body.index('\n    async def stop')]
+    body = src[src.index('    async def _after_config'):]
+    body = body[:body.index('\n    async def _connect_controller')]
     at_gauge = body.index('await self.gauge.load(')
     at_hk = body.index('await self.hk.refresh_now()')
     assert at_gauge < at_hk, '게이지 되읽기 뒤에 HK 를 돌린다'
+    # ⭐ **`POWERON` 앞에서 돈다** -- `prepare()` 에 곁다리로 넘긴다
+    # (2026-09-10).  종전에는 `prepare()` 전체 뒤라 `poweron_wait`(벤치 15초)를
+    # 통째로 기다렸다.
+    assert 'await self.guide.prepare(self._after_config)' in src
     # ⛔ 설정 객체가 둘이다 -- HK 주기는 `icfg` 소관이고 `cfg` 에는 없다.
     assert 'self.icfg.hk.interval' in body
     assert 'self.cfg.hk.interval' not in body

@@ -82,11 +82,18 @@ class ArchonLink:
 
     def __init__(self, host: str, port: int = 4242, *,
                  settle_before: float = 0.8, settle_after: float = 2.0,
+                 connect_retry: int = 3,
                  sock_timeout: float = 1.0, burst_len: int = BURST_LEN,
                  name: str = '') -> None:
         self.host = host
         self.port = port
         self.sock_timeout = sock_timeout
+        #: 재수립에서 접속을 몇 번까지 시도할지.  ⛔ 종전에는 `resync()` 에
+        #: **3 이 박혀 있어** ini 의 `connect_retry` 를 아무리 올려도 ACF 실패
+        #: 뒤 재접속은 늘 3회였다 (2026-09-10 발견).  ⚠️ 시도 하나가 진정
+        #: 시간까지 합쳐 수 초라 무작정 올리면 기동이 그만큼 느려진다 --
+        #: **소진될 때만** 올릴 값이다.
+        self.connect_retry = int(connect_retry)
         #: 재수립에서 **끊고** 쉬는 시간 [s] (labtest 0.8).
         self.settle_before = float(settle_before)
         #: 재수립에서 **붙고** 쉬는 시간 [s] (labtest 2.0).  ⚠️ 붙은 직후에도
@@ -207,13 +214,13 @@ class ArchonLink:
                     self.name, why, self.resyncs)
         # ⭐ **RST 로 끊는다** -- 스트림을 어차피 버리는 자리이고, 컨트롤러가
         # 밀린 것을 붙들고 있으면 새 SYN 에 응답하지 않는다 (위 `close`).
-        self.close(abortive=True)
+        self.close(abortive=True)  # noqa: E501 -- 아래 진정 시간과 한 묶음
         # ⭐ **진정 시간** -- labtest(실기에서 도는 원본)가 그렇게 한다:
         # 끊고 `0.8초`, 붙고 `2.0초`.  ⛔ 우리는 종전에 **즉시** 다시 들이받아
         # 옛 응답이 새 연결로 넘어왔다 (`기대 <01, 받음 <00`).
         if self.settle_before > 0:
             time.sleep(self.settle_before)
-        self.connect(retry=3)
+        self.connect(retry=self.connect_retry)
         if self.settle_after > 0:
             time.sleep(self.settle_after)
 

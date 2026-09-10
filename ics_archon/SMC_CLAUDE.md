@@ -1427,7 +1427,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | raw spec | **v1.12** — 발행 커밋 `8e3bdbf`, 태그 `raw-spec-v1.12`.  ⚠️ `main` 의 **끝**이 아니다 (Leecu 의 `cam_char` 작업이 그 뒤로 붙는다) — 판을 확인할 때는 커밋이 아니라 **태그**를 볼 것.  ⭐ 태그는 **최신 판 하나만** 둔다 — 팀은 `git fetch --tags --prune --prune-tags` 가 필요하다 |
 | guide ACF | **`KMTK_GUI_162_STA0201_R2619.acf`** (타이밍 스크립트 `LINES=122`) |
 | science ACF | **`KMT?_SCI_*_R2611_*.acf`** 6장 (타이밍 스크립트 142줄) |
-| 시험 | `ics_archon` **682** · `ics_sim` **395** — **전수 통과** (2026-09-10 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
+| 시험 | `ics_archon` **688** · `ics_sim` **395** — **전수 통과** (2026-09-10 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
 | 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `33a1bca` 까지.  ⏳ `main` 소관 잔여는 규격 10.6절 `OI-27` 문면 |
 
 #### 오늘 확정된 규약 (어기기 쉬운 것들)
@@ -1541,6 +1541,37 @@ science `abort_now()` · **적분/독출 중 `APPLYSYSTEM`**)은 링크가 무�
 POWERON 앞**이라 헛돈다.  ⭐ 준비되자마자 `hk.refresh_now()` 를 한 번 더 돌린다
 (`HKDATA NOW` 와 **같은 함수** — 따로 만들면 경로가 갈린다).
 ⚠️ **`self.cfg.hk.interval` 로 읽는 실수를 또 냈다** — HK 는 `icfg` 소관이다.  시험으로 못박았다.
+
+#### ⭐ 기동이 `VACGAUGE` 를 15초 늦게 알려 줬다 (11.63)
+
+⛔ 게이지 되읽기가 `prepare()` **전체 뒤**에 줄 서서 `poweron_wait`(벤치 15초)를 통째로
+기다렸다.  ⭐ `MOD10\DIO_POWER` 를 `RCONFIG` 로 읽는 데는 **CCD 전원도 `SYSTEM` 스냅샷도
+필요 없다**.  → `prepare(after_config=)` 를 열어 **ACF 적용 직후·`POWERON` 앞**에서 돈다
+(`IcgArchon._after_config`: `gauge.load` → `_settle_gauge` → `hk.refresh_now`).
+⛔ **ACF 적용 앞은 안 된다** — `CLEARCONFIG` 가 지우고 적용이 값을 바꾼다.
+
+⭐ **ArchonGUI 가 빠른 것은 다른 일을 하기 때문**이다 — 붙자마자 읽기만 하고 ACF 적용도
+`POWERON` 도 안 한다.  우리가 늦은 것은 그 둘을 해서가 아니라 **읽기를 뒤에 매달아 둔 탓**.
+
+⭐ **`VACGAUGE=WARMUP` 신설** (운영자) — ⚠️ 내가 처음엔 *"아직 안 읽음"* 으로 만들었는데
+운영자가 가리킨 것은 **이온게이지 자신의 예열**이었다.  `WARMUP`(켜졌고 예열 중) /
+`ON`(측정 미덥다) / `OFF` / `UNKNOWN`(모름).
+⛔ **켤 때마다** 예열 시계가 선다 (기동 · `APPLYALL` 이 켠 경우 · `VACGAUGE ON`).
+⚠️ **예열 중에는 `DEWPRES` 를 막는다** — 안 미더운 값을 싣는 것이 sentinel 보다 나쁘다.
+⭐ **규격 무관** — `VACGAUGE` 는 FITS 카드가 아니라 명령·`HKDATA` 응답 낱말이다.
+
+⛔ **`poweron_wait` → `gauge_warmup_wait` (guide 만, 12.0)** — 그 대기의 *이유*가 게이지
+예열이라는 운영자 판정이다.  ⚠️ 옛 이름과 *"CCD flush 대기"* 설명은 **labtest 유래**였고
+그 유래는 주석에 남겼다.  ⛔ **science 는 `poweron_wait` 그대로**(이온게이지가 없다) —
+공용 `controller.py` 가 두 이름을 다 받는다.  옛 이름이 ini 에 남으면 **기동이 경고**한다.
+
+⭐ **예열할 게이지가 없으면 `POWERON` 뒤 대기를 건너뛴다** — 실측으로 전원 투입 자체는
+**약 1초**(`POWER=4 (On) 확인 -- 1.0초`)다.  ⛔ 판단은 `gauge_on_start` 가 아니라 **실제
+상태**로 — 모르면 기다리는 쪽이 안전하다.
+⭐ **게이지 ON 은 `POWERON` 앞**이라 예열이 그 대기와 **겹친다** (뒤로 미루면 직렬).
+
+⛔ 곁들여 **`resync()` 가 `connect_retry` 를 안 봤다** — `retry=3` 이 박혀 있어 ini 를
+올려도 ACF 실패 뒤 재접속은 늘 3회였다.  ⚠️ 올리는 것은 **소진될 때만** 뜻이 있다.
 
 #### ⛔⛔ 재실행이 컨트롤러에 못 붙는 것 — ⏳ **미해결, 처방 넣고 재현 대기** (11.61·11.62)
 

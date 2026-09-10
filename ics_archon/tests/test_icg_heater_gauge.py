@@ -701,3 +701,100 @@ def test_startup_only_writes_when_the_readback_disagrees():
     body = body[:body.index('\n    async def stop')]
     assert 'if self.gauge.on is want:' in body, '되읽은 값과 견준다'
     assert 'return' in body
+
+
+def test_turning_it_on_starts_a_warmup_window():
+    """⭐ **켠 직후에는 `WARMUP`** -- 측정이 아직 안 미덥다 (운영자 2026-09-10).
+
+    ⛔ **켤 때마다** 그렇다 (기동이든 `VACGAUGE ON` 이든).
+    ⚠️ 그동안 `DEWPRES` 를 **막는다** -- 안 미더운 값을 싣는 것이 sentinel 보다
+    나쁘다 (규격 5.0절의 정신).
+    """
+    state = gauge_mod.GaugeState(warmup=10.0)
+    asyncio.run(state.set(RecordingCtrl(), True))
+    assert state.word == 'WARMUP'
+    assert state.blocks_dewpres is True, '예열 중에는 DEWPRES 를 막는다'
+    # 예열이 지나면 ON 이고 막지 않는다.
+    state.warmup = 0.0
+    assert state.word == 'ON'
+    assert state.blocks_dewpres is False
+
+
+def test_turning_it_off_clears_the_warmup():
+    """⛔ 꺼진 것에 예열은 뜻이 없다."""
+    state = gauge_mod.GaugeState(warmup=10.0)
+    ctrl = RecordingCtrl()
+    asyncio.run(state.set(ctrl, True))
+    asyncio.run(state.set(ctrl, False))
+    assert state.on_at is None
+    assert state.word == 'OFF'
+    assert state.warming is False
+
+
+def test_a_gauge_found_already_on_is_not_called_warming():
+    """⭐ **되읽은 `ON` 은 예열이 끝난 것으로 본다**.
+
+    우리가 켠 것이 아니라 이미 켜져 있던 것이므로 언제 켜졌는지 알 수 없고,
+    앞 세션이 켜 둔 것이라면 진작 예열이 끝났다.  ⛔ 모르는 것을 예열 중이라
+    적으면 그것대로 거짓이다.
+    """
+    ctrl = RecordingCtrl()
+    # R2619 ACF 는 0 이므로, **이미 켜져 있던** 상태를 흉내내려고 갈아 준다.
+    ctrl.config['MOD10/DIO_POWER'] = '1'
+    state = gauge_mod.GaugeState(warmup=10.0)
+    asyncio.run(state.load(ctrl))
+    assert state.on is True
+    assert state.on_at is None
+    assert state.word == 'ON', '되읽은 켬은 예열 중이 아니다'
+
+
+def test_an_unknown_gauge_is_still_unknown():
+    """⚠️ 모름은 그대로 `UNKNOWN` 이고 `DEWPRES` 를 막지 않는다."""
+    state = gauge_mod.GaugeState()
+    assert state.word == 'UNKNOWN'
+    assert state.blocks_dewpres is False
+
+
+def test_the_warmup_overlaps_the_ccd_flush_wait():
+    """⭐ **게이지를 `POWERON` 앞에서 켠다** -- 두 대기가 겹쳐 기동이 안 느려진다.
+
+    운영자 지시(2026-09-10): *"전원을 먼저 켜고 15초 대기 해야되"*.  ⭐ 우리
+    기동은 `after_config`(ACF 적용 직후 · `POWERON` 앞)에서 게이지를 켜므로,
+    예열 12초가 뒤따르는 CCD flush 대기와 **겹쳐서** 돈다.
+    ⛔ `POWERON` **뒤**로 옮기면 둘이 직렬이 되어 기동이 그만큼 길어진다.
+    """
+    import io as _io
+    import os as _os
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    app = _io.open(_os.path.join(root, 'icg_archon', 'app.py'),
+                   encoding='utf-8').read()
+    ctrl = _io.open(_os.path.join(root, 'ics_archon', 'archon',
+                                  'controller.py'), encoding='utf-8').read()
+    # 앱은 게이지 맞추기를 `_after_config` 에서 한다.
+    body = app[app.index('    async def _after_config'):]
+    body = body[:body.index('\n    async def _connect_controller')]
+    assert 'await self._settle_gauge()' in body
+    # 컨트롤러는 그 곁다리를 `power_on()` **앞**에서 부른다.
+    prep = ctrl[ctrl.index('    async def prepare(self'):]
+    prep = prep[:prep.index('\n    def _log_module_map')]
+    assert (prep.index('await after_config()')
+            < prep.index('await self.power_on(wait=self.power_wait)'))
+
+
+def test_no_gauge_means_no_poweron_wait():
+    """⭐ **예열할 게이지가 없으면 기다리지 않는다** (운영자 2026-09-10).
+
+    전원 투입 자체는 실측 **약 1초**(`POWER=4 (On) 확인 -- 1.0초 걸렸다`)이고,
+    남는 시간은 순전히 이온게이지 예열 몫이다.
+    ⚠️ 판단을 **`gauge_on_start` 가 아니라 실제 상태**로 한다 -- 되읽기가
+    실패해 모르면 켜질 수도 있으니 기다리는 쪽이 안전하다.
+    """
+    import io as _io
+    import os as _os
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    app = _io.open(_os.path.join(root, 'icg_archon', 'app.py'),
+                   encoding='utf-8').read()
+    body = app[app.index('    async def _settle_gauge'):]
+    body = body[:body.index(chr(10) + '    async def stop')]
+    assert 'ctrl.power_wait = 0.0' in body
+    assert 'self.gauge.on is False' in body, '모름일 때는 기다린다'

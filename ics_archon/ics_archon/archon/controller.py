@@ -138,7 +138,8 @@ def _unquote(text: str) -> str:
 
 #: `POWERON` 뒤 `POWER` 를 다시 물어보는 간격 [s].
 #:
-#: **`poweron_wait` 를 줄이지 않는다** -- 그 시간은 전원 램프가 아니라 **CCD
+#: **`POWERON` 뒤 대기를 줄이지 않는다** (guide `gauge_warmup_wait` ·
+#: science `poweron_wait`) -- 그 시간은 전원 램프가 아니라 **CCD
 #: flush** 를 기다리는 것이라(labtest 24 x 0.5), `POWER=4` 를 봤다고 일찍
 #: 빠져나오면 첫 프레임이 flush 가 덜 된 상태로 나간다.  여기서 하는 것은 그
 #: 대기 **안에서** 전원이 실제로 올라왔는지 확인하는 것뿐이다.
@@ -151,10 +152,16 @@ class ArchonController:
     def __init__(self, tag: str, cfg) -> None:  # noqa: ANN001 -- ArchonCfg
         self.tag = tag
         self.cfg = cfg
+        #: `prepare()` 의 `POWERON` 뒤 대기를 **곁다리가 덮어쓸 수 있다**
+        #: (`None` 이면 설정값).  ⭐ guide 가 *"예열할 게이지가 없다"* 를 알 때
+        #: `0.0` 으로 놓는다 -- 전원 투입 자체는 실측 **약 1초**이고, 남는
+        #: 시간은 순전히 이온게이지 예열 몫이기 때문이다 (2026-09-10).
+        self.power_wait: float | None = None
         self.link = ArchonLink(cfg.hosts.get(tag, ''), cfg.port,
                                sock_timeout=cfg.sock_timeout,
                                settle_before=getattr(cfg, 'settle_before', 0.8),
                                settle_after=getattr(cfg, 'settle_after', 2.0),
+                               connect_retry=cfg.connect_retry,
                                burst_len=cfg.burst_len, name=tag)
         #: 한 연결에 한 번에 하나.  FETCH 가 락을 오래 쥐지만 컨트롤러마다
         #: 연결이 따로라 다른 대의 왕복은 막지 않는다.
@@ -717,7 +724,8 @@ class ArchonController:
         확인된 쪽으로 판단할 수 있다.
 
         flush 대기 **안에서** `POWER=4` 를 확인한다 -- `_await_power()`.
-        대기 시간(`poweron_wait`)은 그대로다: 그 시간은 전원 램프가 아니라
+        대기 시간(guide `gauge_warmup_wait` · science `poweron_wait`)은
+        그대로다: 그 시간은 전원 램프가 아니라
         **CCD flush** 를 기다리는 것이라 일찍 빠져나오면 안 된다.
         """
         # **여기서 낡은 저장 표를 버린다** (2026-08-30 배선).  ⚠️ CCD `POWERON`
@@ -747,10 +755,29 @@ class ArchonController:
                     cmd='POWERON', reply_error=True) from exc
             raise
         self.powered = True
-        delay = self.cfg.poweron_wait if wait is None else wait
+        # ⛔ **두 계통이 이름이 다르다** (2026-09-10).  같은 "POWERON 뒤
+        # 대기" 인데 **이유가 다르다**: guide 는 `gauge_warmup_wait`(이온게이지
+        # 예열), science 는 `poweron_wait`(CCD flush -- labtest 유래).
+        # ⚠️ **guide 만 개명했다** (운영자 확정) -- science 컨트롤러에는 이온
+        # 게이지가 없어 그 이름이 거짓이 된다.  공용 코드는 둘을 다 받는다.
+        # ⭐ **대기의 이유가 계통마다 다르므로 문구도 다르다** (운영자
+        # 2026-09-10) -- guide 는 *"게이지 예열"*, science 는 *"CCD flush"*.
+        why = 'CCD flush'
+        if wait is not None:
+            delay = wait
+        else:
+            delay = getattr(self.cfg, 'gauge_warmup_wait', None)
+            if delay is None:
+                delay = self.cfg.poweron_wait
+            else:
+                why = '이온게이지 예열'
         if delay <= 0:
+            # ⭐ **건너뛴 것도 남긴다** -- 조용히 안 기다리면 "왜 빠른가" 를
+            # 로그로 못 되짚는다 (guide 가 게이지를 안 켤 때 이 갈래다).
+            log.info('%s: POWERON -- 대기 없음 (예열할 게이지가 없다)', self.tag)
             return
-        log.info('%s: POWERON -- CCD flush %.1f초 대기', self.tag, delay)
+        log.info('%s: POWERON -- %s %.1f초 대기 (그 뒤 측정 시작)',
+                 self.tag, why, delay)
         if not self.cfg.telemetry:
             # 규약 4 -- `telemetry=false` 는 **왕복을 labtest v1.0 계보와 똑같이
             # 둔다**는 뜻이다.  확인 질의도 왕복이므로 여기서는 걸지 않는다.
@@ -1882,8 +1909,18 @@ class ArchonController:
 
     # -- 준비 -------------------------------------------------------------
 
-    async def prepare(self) -> None:
+    async def prepare(self, after_config=None) -> None:  # noqa: ANN001
         """첫 노출 앞에 한 번 -- 연결 · ACF · 전원 · `SYSTEM` 스냅샷.
+
+        ⭐ **`after_config` 는 ACF 적용 직후·`POWERON` 앞에 불린다** (2026-09-10).
+        설정 메모리만 있으면 되는 일(이온게이지 되읽기 · 첫 HK 바퀴)을 위해
+        있다 -- 그것들은 **CCD 전원도 `SYSTEM` 스냅샷도 필요 없는데** 종전에는
+        `prepare()` 전체 뒤에 줄 서서 **`POWERON` 뒤 대기(벤치 15초)를 통째로
+        기다렸다** (운영자가 벤치에서 잡았다: *"VACGAUGE=UNKNOWN 가 한참
+        유지되다가 준비 완료 이후 동작하네"*).
+        ⛔ **ACF 적용 *앞*은 안 된다** -- `CLEARCONFIG` 가 설정 메모리를 지우고,
+        적용이 값을 바꾸므로 그때 읽으면 곧 낡는다.
+        ⚠️ 실패는 삼킨다 -- 곁다리가 기동을 막으면 안 된다.
 
         **멱등하다.**  시퀀서는 프레임마다 CCD 별로 `initialize()` 를 부르므로
         (컨트롤러 하나당 2회) 여기서 걸러 준다.  ACF 적용(`APPLYALL`)은 초
@@ -1925,8 +1962,15 @@ class ArchonController:
         want_flush = getattr(self.cfg, 'ccdflush', None)
         if want_flush is not None:
             await self.set_first_flush(bool(want_flush))
+        # ⭐ **전원 앞에서 곁다리를 먼저 돌린다** -- 위 docstring 참조.
+        if after_config is not None:
+            try:
+                await after_config()
+            except Exception as exc:  # noqa: BLE001
+                log.warning('%s: ACF 뒤 곁다리 작업이 실패했다 -- %s.  기동은 '
+                            '계속한다', self.tag, exc)
         if not self.powered:
-            await self.power_on()
+            await self.power_on(wait=self.power_wait)
         if not self.system:
             await self.refresh_system()
             self._log_module_map()

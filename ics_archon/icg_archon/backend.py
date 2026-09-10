@@ -395,9 +395,13 @@ class GuideBackend:
     #: 선이 **HIGH 로 붙들려 있다** (앞 세션이 `SHOPEN` 중에 죽은 경우).
     TRIGOUT_REST = ('0', '1')
 
-    async def prepare(self) -> None:
-        """접속·ACF·전원 -- 멱등.  실패는 그대로 올린다 (시퀀서가 통보)."""
-        await self.ctrl.prepare()
+    async def prepare(self, after_config=None) -> None:  # noqa: ANN001
+        """접속·ACF·전원 -- 멱등.  실패는 그대로 올린다 (시퀀서가 통보).
+
+        ⭐ `after_config` 는 그대로 넘긴다 -- ACF 적용 직후·`POWERON` 앞에
+        불린다 (`ArchonController.prepare`).
+        """
+        await self.ctrl.prepare(after_config)
         await self.ensure_trigger_resting()
 
     async def ensure_trigger_resting(self) -> None:
