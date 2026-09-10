@@ -356,3 +356,32 @@ def test_obstype_works_on_the_guide_node_too():
     from icg_archon.commands import IcgDispatcher
     assert hasattr(IcgDispatcher, 'cmd_obstype')
     assert 'OBSTYPE' not in IcgDispatcher.UNSUPPORTED
+
+
+def test_the_trigout_window_takes_a_datetime_not_an_epoch():
+    r"""⛔ **`t_prev` 는 `datetime` 이고 래치는 epoch 다** (2026-09-10 벤치).
+
+    내가 epoch 인 줄 알고 그대로 넘겨 `go 10` 이 첫 저장에서 `TypeError` 로
+    죽었다 -- ⚠️ **시험이 `trigger_was_high_between()` 을 직접 float 로만
+    불러서** 그 경로를 한 번도 안 지났다.  이제 시퀀서가 변환하는 것을 본다.
+    ⚠️ naive 가 들어오면 **UTC 로 본다** -- 지역시로 보면 시간대만큼 창이 어긋난다.
+    """
+    import io as _io
+    import os as _os
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    src = _io.open(_os.path.join(root, 'icg_archon', 'sequencer.py'),
+                   encoding='utf-8').read()
+    body = src[src.index('        ctrl = getattr(self.backend, \'ctrl\', None)'):]
+    body = body[:body.index('trigger_was_high_between(start, now)') + 40]
+    assert '.timestamp()' in body, 'datetime 을 epoch 로 바꿔야 한다'
+    assert 'tzinfo is None' in body, 'naive 는 UTC 로 본다'
+    # ⭐ 실제로 datetime 을 넣어 봐서 터지지 않는지 -- 위 문자열 검사만으로는
+    # "고쳤다고 믿는" 상태가 또 생긴다.
+    import datetime as _dt
+    import time as _time
+    from ics_archon.archon.controller import ArchonController
+    latch = ArchonController.__new__(ArchonController)
+    latch._trig_spans = None
+    latch.note_trigger_level(True)
+    when = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(seconds=1)
+    assert latch.trigger_was_high_between(when.timestamp(), _time.time()) is True

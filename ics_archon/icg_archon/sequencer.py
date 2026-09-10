@@ -37,7 +37,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from ics_archon import _simpath
 
@@ -800,12 +800,22 @@ class GuideSequencer:
         # 시작을 달리 알 길이 없다.
         # ⛔ 컨트롤러가 없으면 **카드를 비운다** (`None`) -- `0` 은 *"없었다"*
         # 는 단언이라 모를 때 쓰면 거짓말이다.
+        # ⛔ **`t_prev` 는 `datetime` 이고 래치는 epoch 다** (2026-09-10 벤치에서
+        # `TypeError` 로 드러났다 -- 내가 epoch 인 줄 알고 그대로 넘겼다).
+        # ⚠️ `utcnow()` 는 tz-aware 라 `.timestamp()` 가 옳다.  혹시 naive 가
+        # 들어오면 **UTC 로 본다** -- 지역시로 보면 시간대만큼 창이 어긋난다.
         ctrl = getattr(self.backend, 'ctrl', None)
         trigout = None
         if ctrl is not None and hasattr(ctrl, 'trigger_was_high_between'):
             now = time.time()
-            trigout = ctrl.trigger_was_high_between(
-                t_prev if t_prev is not None else now - max(exptime, 0.0), now)
+            if t_prev is None:
+                start = now - max(exptime, 0.0)
+            else:
+                when = t_prev
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                start = when.timestamp()
+            trigout = ctrl.trigger_was_high_between(start, now)
 
         pool = guidehdr.build_pool(
             site_code=site,
