@@ -144,6 +144,9 @@ def _unquote(text: str) -> str:
 #: 빠져나오면 첫 프레임이 flush 가 덜 된 상태로 나간다.  여기서 하는 것은 그
 #: 대기 **안에서** 전원이 실제로 올라왔는지 확인하는 것뿐이다.
 T_POWER_POLL = 1.0
+#: `POWER=4` 확인에 줄 상한 [s] -- 대기가 0 이어도 이만큼은 확인한다.
+#: ⭐ 도달하면 즉시 빠져나오므로 정상 경로의 비용은 실측 **약 1초**다.
+T_POWER_CONFIRM = 15.0
 
 
 class ArchonController:
@@ -771,22 +774,38 @@ class ArchonController:
                 delay = self.cfg.poweron_wait
             else:
                 why = '이온게이지 예열'
-        if delay <= 0:
-            # ⭐ **건너뛴 것도 남긴다** -- 조용히 안 기다리면 "왜 빠른가" 를
-            # 로그로 못 되짚는다 (guide 가 게이지를 안 켤 때 이 갈래다).
-            log.info('%s: POWERON -- 대기 없음 (예열할 게이지가 없다)', self.tag)
-            return
-        log.info('%s: POWERON -- %s %.1f초 대기 (그 뒤 측정 시작)',
-                 self.tag, why, delay)
+        # ⛔ **확인과 대기는 다른 물건이다** (2026-09-10).  `POWER=4` 확인은
+        # 도달하면 곧바로 끝나지만(실측 **약 1초**), 대기는 그 위에 얹는
+        # 정착 시간이다.  종전에는 확인이 대기 **안에** 있어서, 대기를 0 으로
+        # 두면 **확인까지 통째로 사라졌다** -- 전원이 안 올라온 채로 노출이
+        # 걸리고 밖에서는 "취득 실패" 로만 보인다.
+        # ⭐ science 는 운영자 확정으로 대기가 **0** 이다 (아래 근거 셋):
+        #   ① 다른 절차 때문에 첫 노출까지 어차피 시간이 흐른다
+        #   ② `ccdflush=true` 면 노출 전에 flush 를 한다
+        #   ③ ⭐ **빠른 스캔은 CCD 를 다 못 비운다** -- 실제로 비우는 것은
+        #      독출이다 (운영자, 실험 영상 관측).
+        if delay > 0:
+            log.info('%s: POWERON -- %s %.1f초 대기 (그 뒤 측정 시작)',
+                     self.tag, why, delay)
         if not self.cfg.telemetry:
             # 규약 4 -- `telemetry=false` 는 **왕복을 labtest v1.0 계보와 똑같이
             # 둔다**는 뜻이다.  확인 질의도 왕복이므로 여기서는 걸지 않는다.
-            await asyncio.sleep(delay)
+            if delay > 0:
+                await asyncio.sleep(delay)
             return
-        await self._await_power(delay)
+        # ⭐ 확인은 **늘 한다** -- 도달하면 즉시 빠져나오므로 대기 0 이어도
+        # 비용이 실측 ~1초뿐이다.
+        await self._await_power(delay, confirm_cap=T_POWER_CONFIRM)
 
-    async def _await_power(self, delay: float) -> None:
-        """flush 대기 **안에서** `POWER=4` 를 확인한다 (modtm 계보, 2026-08-28).
+    async def _await_power(self, delay: float,
+                           confirm_cap: float = 0.0) -> None:
+        """`POWER=4` 를 확인하고, 남은 `delay` 가 있으면 마저 기다린다.
+
+        ⭐ **확인 창은 `max(delay, confirm_cap)`** 이다 (2026-09-10) -- 대기가
+        0 이어도 확인은 한다.  종전에는 확인이 대기 안에만 있어서 대기를 0 으로
+        두면 확인까지 사라졌다.  (원래 머리말은 아래 그대로.)
+
+        (modtm 계보, 2026-08-28)
 
         **`POWERON` 이 성공 응답을 준 것과 전원이 실제로 올라온 것은 다르다**
         (`parse.POWER_STATES` 의 주석이 이미 그렇게 적어 두고 있었는데 아무도
@@ -806,12 +825,15 @@ class ArchonController:
         이유로 스냅샷(`status`/`status_live`)도 덮지 않는다 -- 저 둘은 각각
         헤더와 감시의 것이고, 여기 값은 **지나가는 상태**다.
         """
-        deadline = time.monotonic() + delay
+        # ⭐ **확인 창과 대기 창을 따로 둔다** -- 확인은 도달하면 곧 끝나고,
+        # 대기는 그 위에 얹는 정착 시간이다 (대기가 0 이어도 확인은 한다).
         started = time.monotonic()
+        deadline = started + delay
+        confirm_until = started + max(delay, confirm_cap)
         state = None
-        while time.monotonic() < deadline:
+        while time.monotonic() < confirm_until:
             await asyncio.sleep(min(T_POWER_POLL,
-                                    max(deadline - time.monotonic(), 0.0)))
+                                    max(confirm_until - time.monotonic(), 0.0)))
             try:
                 fields = await self.query('STATUS',
                                           timeout=self.cfg.status_timeout)
