@@ -256,9 +256,12 @@ file        = ~/AIC/Logs        ; 폴더 → icg.<YYYYMMDD>.log
 ### 화면을 조용하게 — `verbose` (운영자 지시 2026-09-11)
 
 ```ini
-[logging]
+[behavior]
 verbose     = on        ; off 면 화면만 간결.  on|true|yes|1|enable|high 와 그 반대편
 ```
+
+⚠️ **`[behavior]` 다** (2026-09-11 에 `[logging]` 에서 옮겼다) -- 이 눈금은
+**화면 표시**를 정하고 로그 파일은 언제나 전부다.
 
 ⭐ **명령으로도 바꾼다** -- `verbose [on|off]` (인자 없으면 조회).  ini 값은
 기동값이고, 이 명령은 **재기동 없이** 그것을 민다:

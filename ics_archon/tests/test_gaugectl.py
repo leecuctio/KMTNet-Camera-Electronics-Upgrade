@@ -176,7 +176,7 @@ def test_a_missing_reply_is_reported(caplog):  # noqa: ANN001
         await h.settle(0.10)
         await h.gauge.close()
     asyncio.run(run())
-    assert any('답하지 않았다' in r.message for r in caplog.records), \
+    assert any('did not answer' in r.message for r in caplog.records), \
         [r.message for r in caplog.records]
 
 
@@ -190,7 +190,7 @@ def test_a_reply_clears_the_deadman(caplog):  # noqa: ANN001
         await h.settle(0.12)
         await h.gauge.close()
     asyncio.run(run())
-    assert not any('답하지 않았다' in r.message for r in caplog.records)
+    assert not any('did not answer' in r.message for r in caplog.records)
 
 
 def test_an_error_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
@@ -207,7 +207,7 @@ def test_an_error_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
         assert h.words == ['OFF', 'OFF'], h.sent
         await h.gauge.close()
     asyncio.run(run())
-    assert any('거절됐다' in r.message for r in caplog.records)
+    assert any('was refused' in r.message for r in caplog.records)
 
 
 def test_the_summary_reads_back_the_state():

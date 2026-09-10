@@ -342,8 +342,36 @@ class Console:
         except (OSError, ValueError):  # pragma: no cover
             pass
 
-    async def run(self) -> None:
+    def _prompt_input(self, prompt: str) -> str:
+        """프롬프트를 띄우고 한 줄을 읽는다 -- **executor 스레드에서** 돈다.
+
+        ⭐⭐ **표시 사실(`ACTIVE_PROMPT`)을 여기서 세우고 지운다** (벤치
+        2026-09-10).  ⛔ 종전에는 이벤트 루프 쪽에서 세웠는데, 그 사이에
+        **프롬프트가 아직 화면에 없는 창**이 있었다:
+
+            루프: ACTIVE_PROMPT = prompt
+            루프: run_in_executor(...) 로 넘기고 **잠든다**
+            루프: 그 차례에 다른 태스크가 로그를 뱉는다
+                  -> 처리기가 "기다리는 중" 으로 보고 프롬프트를 그린다
+            스레드: 이제야 input() 이 프롬프트를 그린다   -> **두 개**
+
+        ⭐ 그래서 **`hk` 만** 그랬다 -- 왕복이 없어 그 응답 태스크가 같은
+        차례 안에서 끝난다.  `hk now` 는 `RCONFIG` 셋이라 수십 ms 뒤에
+        끝나고, 그때는 프롬프트가 이미 화면에 있어 다시 그려도 하나다.
+        ⚠️ 창이 완전히 사라지지는 않는다 -- 이 줄과 `input()` 사이가 남는데,
+        같은 스레드의 몇 명령어라 이벤트 루프 한 차례와는 크기가 다르다.
+        ⛔ 프롬프트를 우리가 직접 찍고 `input('')` 을 부르면 창이 없어지지만,
+        그러면 readline 이 프롬프트를 모르게 되어 Ctrl-L·이력 이동에서 화면이
+        어긋난다 -- 그 대가가 더 크다.
+        """
         global ACTIVE_PROMPT
+        ACTIVE_PROMPT = prompt
+        try:
+            return input(prompt)
+        finally:
+            ACTIVE_PROMPT = ''
+
+    async def run(self) -> None:
         loop = asyncio.get_running_loop()
         print(self.help_text())
         # ⛔ **TTY 일 때만 프롬프트를 띄운다** -- 파이프로 먹이거나 로그로
@@ -359,11 +387,8 @@ class Console:
         while not self._stop.is_set():
             try:
                 if tty:
-                    ACTIVE_PROMPT = prompt
-                    try:
-                        line = await loop.run_in_executor(None, input, prompt)
-                    finally:
-                        ACTIVE_PROMPT = ''
+                    line = await loop.run_in_executor(
+                        None, self._prompt_input, prompt)
                 else:
                     raw = await loop.run_in_executor(None, sys.stdin.readline)
                     if not raw:

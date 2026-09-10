@@ -295,7 +295,7 @@ def setup_logging(cfg: config.SimConfig, name: str = 'ics') -> None:
     # ⭐ **필터는 늘 달아 두고 스위치로 켠다** -- `VERBOSE` 명령이 재기동 없이
     # 바꿀 수 있게 하려는 것이다 (2026-09-11).
     _SCREEN_FILTER = EssentialOnly()
-    _SCREEN_FILTER.enabled = not cfg.logging.verbose
+    _SCREEN_FILTER.enabled = not cfg.behavior.verbose
     screen.addFilter(_SCREEN_FILTER)
     _SCREEN = screen
     handlers: list[logging.Handler] = [screen]
@@ -324,7 +324,7 @@ def setup_logging(cfg: config.SimConfig, name: str = 'ics') -> None:
     # `with_why` 가 서로 다른 값이어야 한다.
     for h in logging.getLogger().handlers:
         fmt = _TailModule(LOG_FORMAT, datefmt=LOG_DATEFMT,
-                          with_detail=(h is not screen) or cfg.logging.verbose)
+                          with_detail=(h is not screen) or cfg.behavior.verbose)
         fmt.converter = time.gmtime
         h.setFormatter(fmt)
 

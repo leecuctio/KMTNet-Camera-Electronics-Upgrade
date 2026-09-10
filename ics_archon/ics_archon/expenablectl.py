@@ -104,7 +104,8 @@ class ExpEnableControl:
         else:
             self.sent_allow += 1
         log.info('ICS>%s %s %s (%s)', self.node, CMD, word,
-                 'guide 노출 금지' if state == BLOCKED else 'guide 노출 허용')
+                 'guide exposures blocked' if state == BLOCKED
+                 else 'guide exposures allowed')
         self._emit_req(self.node, CMD, word)
         self._cancel(self._deadman)
         self._deadman = self._spawn(self._watch_reply(word))
@@ -116,19 +117,20 @@ class ExpEnableControl:
         except asyncio.CancelledError:
             return
         if not self._replied:
-            log.warning('⚠️ %s 가 %s %s 에 %.0f 초 안에 답하지 않았다 -- guide '
-                        '노출 잠금 상태는 **모름**이다', self.node, CMD, word,
-                        self.reply_timeout)
+            log.warning('%s did not answer %s %s within %.0fs -- the guide '
+                        'exposure lock state is UNKNOWN',
+                        self.node, CMD, word, self.reply_timeout)
             self.state = UNKNOWN
 
     def note_reply(self, line: str) -> None:
         """ICG 의 `EXPENABLE` 응답을 봤다."""
         self._replied = True
         if 'ERROR' in line.upper():
-            log.warning('⛔ guide 노출 잠금 명령이 거절됐다 -- %s', line.strip())
+            log.warning('the guide exposure-lock command was refused -- %s',
+                        line.strip())
             self.state = UNKNOWN
         else:
-            log.debug('guide 노출 잠금 응답 -- %s', line.strip())
+            log.debug('guide exposure-lock reply -- %s', line.strip())
 
     async def close(self) -> None:
         """종료 -- 데드맨만 세운다.

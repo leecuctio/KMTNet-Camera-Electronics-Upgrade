@@ -183,8 +183,9 @@ class GaugeState:
         try:
             got = (await ctrl.read_config(key)).strip()
         except Exception as exc:            # noqa: BLE001
-            log.warning('이온게이지 상태를 되읽지 못했다 (%s) -- %s.  모름으로 '
-                        '두고 DEWPRES 는 막지 않는다', key, exc)
+            log.warning('could not read back the ion gauge state (%s) -- %s',
+                        key, exc,
+                        extra={'detail': '모름으로 두고 DEWPRES 는 막지 않는다'})
             # ⛔ `'unset'`(아직 안 읽음)이 아니라 `'failed'` 다 -- 시도했고
             # 실패한 것이라 `WARMUP` 이 아니라 `UNKNOWN` 으로 나가야 한다.
             self.on, self.origin = None, 'failed'

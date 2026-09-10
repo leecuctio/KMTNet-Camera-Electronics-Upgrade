@@ -706,7 +706,7 @@ def test_a_device_clock_running_ahead_is_flagged_not_trusted(caplog):
     with caplog.at_level(logging.WARNING, logger='icg_archon.radionode'):
         asyncio.run(rn._poll_all())                  # noqa: SLF001
 
-    assert '앞선다' in caplog.text, caplog.text
+    assert 'ahead of our clock' in caplog.text, caplog.text
     assert rn.values(), '경고는 하되 값은 싣는다'     # 버리지는 않는다
 
 

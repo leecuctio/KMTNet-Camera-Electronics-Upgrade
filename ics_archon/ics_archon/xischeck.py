@@ -110,11 +110,11 @@ class XisGate:
             try:
                 await asyncio.wait_for(self._pong.wait(), self.timeout)
             except asyncio.TimeoutError:
-                log.warning('XIS 가 PING 에 답하지 않는다 (%d/%d) -- %s',
+                log.warning('XIS did not answer PING (%d/%d) -- %s',
                             attempt, self.tries, self.xis_host)
                 continue
             self.answered_on = attempt
-            log.info('XIS 확인됨 -- PONG (%d번째 시도, %s)',
+            log.info('XIS confirmed -- PONG (attempt %d, %s)',
                      attempt, self.xis_host)
             return
         raise XisUnreachable(

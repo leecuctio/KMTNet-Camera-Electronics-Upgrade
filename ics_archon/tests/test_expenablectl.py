@@ -151,7 +151,7 @@ def test_a_missing_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
         return h
     h = asyncio.run(run())
     assert h.ctl.state == ge.UNKNOWN
-    assert any('답하지 않았다' in r.message for r in caplog.records)
+    assert any('did not answer' in r.message for r in caplog.records)
 
 
 def test_an_error_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
@@ -162,7 +162,7 @@ def test_an_error_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
         h.ctl.note_reply('ICG>ICS ERROR: EXPENABLE Exposure lock is not available')
     h = _run(script)
     assert h.ctl.state == ge.UNKNOWN
-    assert any('거절됐다' in r.message for r in caplog.records)
+    assert any('was refused' in r.message for r in caplog.records)
 
 
 def test_closing_does_not_release_the_lock():

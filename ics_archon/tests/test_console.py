@@ -156,20 +156,20 @@ def test_detail_is_dropped_only_on_the_concise_screen():
     assert 'base 0xE0000000' in _fmt(rec, with_detail=True)
 
 
-def test_logging_verbose_reads_the_ini_vocabulary(tmp_path):
+def test_behavior_verbose_reads_the_ini_vocabulary(tmp_path):
     """`on/true/enable/1` 과 `off/false/disable/0` 을 같이 받는다."""
     from ics_sim import config as sim_config
 
     for word, want in (('off', False), ('false', False), ('0', False),
                        ('disable', False), ('on', True), ('enable', True)):
         path = tmp_path / ('v_%s.ini' % word)
-        path.write_text('[logging]\nverbose = %s\n' % word, encoding='utf-8')
+        path.write_text('[behavior]\nverbose = %s\n' % word, encoding='utf-8')
         cfg = sim_config.load(str(path))
-        assert cfg.logging.verbose is want, word
+        assert cfg.behavior.verbose is want, word
     # 안 적으면 켜진 것이다 -- 조용해지는 쪽이 기본이면 안 된다.
     path = tmp_path / 'v_none.ini'
-    path.write_text('[logging]\nlevel = info\n', encoding='utf-8')
-    assert sim_config.load(str(path)).logging.verbose is True
+    path.write_text('[behavior]\nconsole = true\n', encoding='utf-8')
+    assert sim_config.load(str(path)).behavior.verbose is True
 
 
 def test_verbose_command_moves_the_screen_filter():
@@ -223,3 +223,59 @@ def test_verbose_takes_the_shared_onoff_vocabulary():
         assert _ONOFF[word.upper()] is True, word
     for word in sim_config.FALSE_WORDS:
         assert _ONOFF[word.upper()] is False, word
+
+
+def test_the_prompt_flag_only_lives_while_input_is_showing_it():
+    """⛔ **프롬프트가 화면에 없는 동안 "기다리는 중" 이면 안 된다** (2026-09-10).
+
+    벤치에서 `hk` 만 프롬프트를 둘로 그렸다.  가른 것은 **일이 끝나는 속도**다:
+    `hk` 는 왕복이 없어 응답 태스크가 **같은 이벤트 루프 차례 안에서** 끝나고,
+    그때 표시는 이미 서 있는데 `input()` 은 아직 프롬프트를 안 그린 상태였다.
+    -> 로그 처리기가 한 번 그리고, 곧이어 `input()` 이 또 그렸다.
+
+    ⭐ 그래서 표시를 **`input()` 과 같은 스레드에서** 세우고 지운다.
+    """
+    from ics_sim import console as console_mod
+
+    seen = []
+
+    def _fake_input(prompt):  # noqa: ANN001, ANN202
+        # `input()` 이 도는 **동안에만** 표시가 서 있어야 한다.
+        seen.append(console_mod.ACTIVE_PROMPT)
+        return 'hk'
+
+    import builtins
+
+    real = builtins.input
+    builtins.input = _fake_input
+    try:
+        console = console_mod.Console.__new__(console_mod.Console)
+        assert console_mod.ACTIVE_PROMPT == ''       # 부르기 전
+        line = console._prompt_input('ICG% ')        # noqa: SLF001
+        assert line == 'hk'
+        assert seen == ['ICG% '], seen               # 도는 동안에는 서 있다
+        assert console_mod.ACTIVE_PROMPT == ''       # 돌아오면 지워진다
+    finally:
+        builtins.input = real
+
+
+def test_the_prompt_flag_is_cleared_even_when_input_raises():
+    """⚠️ Ctrl-D(EOF)로 빠져나가도 표시가 남으면 안 된다."""
+    import builtins
+
+    from ics_sim import console as console_mod
+
+    def _boom(prompt):  # noqa: ANN001, ANN202
+        raise EOFError
+
+    real = builtins.input
+    builtins.input = _boom
+    try:
+        console = console_mod.Console.__new__(console_mod.Console)
+        try:
+            console._prompt_input('ICG% ')           # noqa: SLF001
+        except EOFError:
+            pass
+        assert console_mod.ACTIVE_PROMPT == ''
+    finally:
+        builtins.input = real

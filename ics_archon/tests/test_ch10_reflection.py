@@ -209,7 +209,9 @@ def test_guide_fetch_timeout_must_sit_under_the_base_exptime(caplog):
         with caplog.at_level(logging.WARNING, logger='icg_archon.backend'):
             GuideBackend(simcfg.load(ini), icfg)
         hits = [r for r in caplog.records if 'fetch_timeout' in r.getMessage()]
-        assert hits and '덮인다' in hits[0].getMessage(), bad
+        # ⭐ 문구는 영문 한 줄이고 **이유는 `detail` 에 있다** (2026-09-11).
+        assert hits, bad
+        assert '덮인다' in getattr(hits[0], 'detail', ''), bad
 
 
 # ---------------------------------------------------------------------------

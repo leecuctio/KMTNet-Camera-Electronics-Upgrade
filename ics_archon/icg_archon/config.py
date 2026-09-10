@@ -84,7 +84,7 @@ def _float(sec, key: str, default: float) -> float:  # noqa: ANN001
     try:
         return float(raw) if raw else default
     except ValueError:
-        log.warning('[%s] %s=%r 를 수로 읽을 수 없다 -- 기본값 %s',
+        log.warning('[%s] %s=%r is not a number -- using the default %s',
                     sec.name, key, raw, default)
         return default
 
@@ -394,9 +394,10 @@ def load(path: str) -> IcgCfg:
         # ⛔ 옛 이름이 남아 있으면 **알린다** -- 조용히 무시하면 운영자가
         # 15 를 적어 두고 12 로 도는 것을 모른다 (폐기 칸 규약과 같다).
         if 'poweron_wait' in s:
-            log.warning("[icg] poweron_wait 는 **gauge_warmup_wait 로 "
-                        "개명됐다** (2026-09-10) -- 지금 값 %r 는 무시된다.  "
-                        "ini 를 고칠 것", s.get('poweron_wait'))
+            log.warning('[icg] poweron_wait was renamed to '
+                        'gauge_warmup_wait -- the value %r is ignored',
+                        s.get('poweron_wait'),
+                        extra={'detail': 'ini 를 고칠 것 (2026-09-10 개명)'})
         cfg.param_flush_slot = _head(s, 'param_flush_slot',
                                      cfg.param_flush_slot)
         cfg.param_flush_name = _head(s, 'param_flush_name',

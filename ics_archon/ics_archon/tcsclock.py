@@ -119,8 +119,9 @@ class ClockWatch:
             return None
         if t1 < t0:
             # 우리 시계가 왕복 중에 뒤로 밟혔다 (NTP step).  이 표본은 못 쓴다.
-            log.warning('%s 시각 비교 건너뜀 -- 우리 시계가 왕복 중에 뒤로 '
-                        '갔다 (t0=%.3f > t1=%.3f)', self.name, t0, t1)
+            log.warning('skipping the %s clock comparison -- our clock went '
+                        'backwards during the round trip (t0=%.3f > t1=%.3f)',
+                        self.name, t0, t1)
             return None
         self.samples += 1
         self.uncertainty = (t1 - t0) / 2.0
@@ -139,16 +140,17 @@ class ClockWatch:
             if not self._warned:
                 self._warned = True
                 log.warning(
-                    '⚠️ 우리 시계가 %s 보다 %+.3f 초 앞선다 (문턱 %.3f 초, 왕복 '
-                    '불확실도 %.3f 초).  ⛔ 헤더 안에서 DATE-OBS(우리 시계)와 '
-                    'TCSQDATE·포인팅(%s 시계)이 다른 순간을 가리킨다 -- 값은 '
-                    '보정하지 않는다(어느 것이 실측인지 못 가르게 된다).  '
-                    'NTP 를 확인할 것', self.name, off, lim, self.uncertainty,
-                    self.name)
+                    'our clock is %+.3fs ahead of %s (threshold %.3fs, round-trip '
+                    'uncertainty %.3fs)', off, self.name, lim, self.uncertainty,
+                    extra={'detail': '⛔ 헤더 안에서 DATE-OBS(우리 시계)와 '
+                                     'TCSQDATE·포인팅(%s 시계)이 다른 순간을 '
+                                     '가리킨다 -- 값은 보정하지 않는다(어느 것이 '
+                                     '실측인지 못 가르게 된다).  NTP 를 확인할 것'
+                                     % self.name})
         elif self._warned:
             self._warned = False
-            log.info('%s 시계가 문턱 안으로 돌아왔다 (%+.3f 초, 문턱 %.3f 초)',
-                     self.name, off, lim)
+            log.info('the %s clock is back within the threshold '
+                     '(%+.3fs, threshold %.3fs)', self.name, off, lim)
 
     def summary(self) -> str:
         """배너·진단 한 줄."""

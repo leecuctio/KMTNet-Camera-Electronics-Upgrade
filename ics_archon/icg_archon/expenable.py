@@ -86,23 +86,27 @@ class ExpEnable:
             return
         if not os.path.exists(self.path):
             self.allowed, self.origin = True, 'absent'
-            log.info('노출 잠금 기록이 없다 -- 허용으로 시작한다 (%s)', self.path)
+            log.info('no exposure-lock record -- starting allowed (%s)',
+                     self.path)
             return
         try:
             with open(self.path, encoding='utf-8') as fh:
                 raw = fh.read().strip().upper()
         except OSError as exc:
             self.allowed, self.origin = False, 'unreadable'
-            log.warning('노출 잠금 기록을 읽지 못했다 (%s: %s) -- **금지**로 '
-                        '기동한다.  풀려면 EXPENABLE ON', self.path, exc)
+            log.warning('could not read the exposure-lock record (%s: %s) -- '
+                        'starting LOCKED', self.path, exc,
+                        extra={'detail': '풀려면 EXPENABLE ON'})
             return
         if raw not in VOCAB:
             self.allowed, self.origin = False, 'garbled'
-            log.warning('노출 잠금 기록이 어휘 밖이다 (%s: %r) -- **금지**로 '
-                        '기동한다.  풀려면 EXPENABLE ON', self.path, raw)
+            log.warning('the exposure-lock record is outside the vocabulary '
+                        '(%s: %r) -- starting LOCKED', self.path, raw,
+                        extra={'detail': '풀려면 EXPENABLE ON'})
             return
         self.allowed, self.origin = VOCAB[raw], 'file'
-        log.info('노출 잠금 기록을 이어받는다 -- %s (%s)', self.word, self.path)
+        log.info('exposure lock carried over -- %s (%s)',
+                 self.word, self.path)
 
     # -- 쓰기 -------------------------------------------------------------
 
@@ -132,8 +136,9 @@ class ExpEnable:
             os.replace(tmp, path)
             _fsync_dir(parent or '.')
         except OSError as exc:
-            log.warning('노출 잠금(%s)을 기록할 수 없다 (%s: %s) -- 재기동하면 '
-                        '이 값이 사라진다', self.word, path, exc)
+            log.warning('could not persist the exposure lock %s (%s: %s)',
+                        self.word, path, exc,
+                        extra={'detail': '재기동하면 이 값이 사라진다'})
 
     # -- 표현 -------------------------------------------------------------
 

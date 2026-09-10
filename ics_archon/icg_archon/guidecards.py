@@ -278,12 +278,15 @@ def render(pool: dict[str, object],
             continue
         if key not in pool:
             if key in NO_SENTINEL:
-                log.error('값 풀에 %s 가 없다 -- ⛔ sentinel 금지 카드라 '
-                          '**카드를 비운다** (raw spec 5.0절 -- converter 의 '
-                          '변환 실패 경로가 발동해야 한다)', key)
+                log.error('%s is missing from the value pool -- the card is '
+                          'left out (sentinel is forbidden for it)', key,
+                          extra={'detail': 'raw spec 5.0절 -- converter 의 변환 '
+                                           '실패 경로가 발동해야 한다'})
                 continue
-            log.error('값 풀에 %s 가 없다 -- 10장 전 카드가 필수이므로 우리 '
-                      '결함이다. sentinel 로 싣는다 (raw spec 5.0절)', key)
+            log.error('%s is missing from the value pool -- writing sentinel',
+                      key,
+                      extra={'detail': '10장 전 카드가 필수이므로 우리 결함이다 '
+                                       '(raw spec 5.0절)'})
             value: object = SENTINEL[kind]
         else:
             value = pool[key]
@@ -309,12 +312,14 @@ def render(pool: dict[str, object],
                 out.append((key, bool(value), comment))
         except (TypeError, ValueError):
             if key in NO_SENTINEL:
-                log.error('%s 값 %r 를 %s 형으로 만들 수 없다 -- ⛔ sentinel '
-                          '금지 카드라 **카드를 비운다** (raw spec 5.0절)',
-                          key, value, kind)
+                log.error('%s value %r cannot be rendered as %s -- the card '
+                          'is left out (sentinel is forbidden for it)',
+                          key, value, kind,
+                          extra={'detail': 'raw spec 5.0절'})
                 continue
-            log.error('%s 값 %r 를 %s 형으로 만들 수 없다 -- sentinel 로 '
-                      '싣는다 (raw spec 5.0절)', key, value, kind)
+            log.error('%s value %r cannot be rendered as %s -- writing '
+                      'sentinel', key, value, kind,
+                      extra={'detail': 'raw spec 5.0절'})
             out.append((key, SENTINEL[kind], comment))
     return out
 

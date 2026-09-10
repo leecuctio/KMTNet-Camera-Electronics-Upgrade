@@ -94,6 +94,8 @@ class IcgArchon(IcsSim):
         self.seq = GuideSequencer(cfg, icfg, self.state, self.emit,
                                   self.telem, self.guide, self.hk)
         self.dispatch = icg_commands.IcgDispatcher(self)
+        #: 기동 접속 태스크 -- 종료가 먼저 끊는다 (`stop()`).
+        self._connect_task = None
 
     # -- 기동 배너 ----------------------------------------------------------
 
@@ -189,21 +191,27 @@ class IcgArchon(IcsSim):
         # 보기 전에 막아야 경고와 치명이 뒤바뀌지 않는다 (위 주석).
         self.expenable.load()
         if not self.expenable.allowed:
-            log.warning('⛔ 노출이 **잠겨** 있다 (EXPENABLE OFF, 출처 %s) -- '
-                        'GO 가 거절된다.  풀려면 EXPENABLE ON',
-                        self.expenable.origin)
+            log.warning('exposures are LOCKED (EXPENABLE OFF, origin %s) -- '
+                        'GO will be refused', self.expenable.origin,
+                        extra={'detail': '풀려면 EXPENABLE ON'})
         port = int(getattr(self.cfg.transport, 'bind_port', 0))
         if port == self.ICS_BIND_PORT:
-            log.warning('[transport] bind_port=%d 는 **ICS 몫**이다 -- ICG 는 '
-                        '6601 이다 (INSTALL.md 배정표).  같은 호스트에서 ICS 와 '
-                        '함께 돌리면 뒤에 뜨는 쪽이 bind 에 실패한다.  호스트를 '
-                        '갈랐다면 이 경고는 무시해도 된다', port)
+            log.warning('[transport] bind_port=%d belongs to ICS -- ICG uses '
+                        '6601', port,
+                        extra={'detail': 'INSTALL.md 배정표.  같은 호스트에서 '
+                                         'ICS 와 함께 돌리면 뒤에 뜨는 쪽이 '
+                                         'bind 에 실패한다.  호스트를 갈랐다면 '
+                                         '이 경고는 무시해도 된다'})
         await super().start()
         self._log_icg_banner()
         if self.backend_name == 'icg_archon':
             # 기동 접속 -- 실패해도 기동은 계속한다 (ics_archon 과 같은
             # 규칙: 컨트롤러 전원이 나중에 들어오는 배치가 실재한다).
-            self.spawn(self._connect_controller())
+            # ⭐ **표를 들고 있는다** -- 종료가 이것을 먼저 끊는다 (아래
+            # `stop()`).  안 끊으면 기동의 `POWERON` 왕복이 컨트롤러 락을 쥔 채
+            # 시한(벤치 실측 18초)까지 버티고, 그동안 종료의 `POWEROFF` 가 줄을
+            # 서서 **`quit` 이 안 먹은 것처럼 보인다** (벤치 2026-09-10 23:02).
+            self._connect_task = self.spawn(self._connect_controller())
         self.hk.start()
         self.radionode.start(self.spawn)
 
@@ -244,8 +252,9 @@ class IcgArchon(IcsSim):
         try:
             await self.hk.refresh_now()
         except Exception as exc:  # noqa: BLE001
-            log.warning('기동 HK 첫 바퀴 실패 -- %s.  다음 주기(%.0f초)에 '
-                        '다시 읽는다', exc, self.icfg.hk.interval)
+            log.warning('the first hk round at startup failed -- %s', exc,
+                        extra={'detail': '다음 주기(%.0f초)에 다시 읽는다'
+                                         % self.icfg.hk.interval})
         # ⭐ **예열 중이면 끝나는 시각에 한 바퀴 더** (2026-09-11).  방금 돈
         # 바퀴는 예열 중이라 `DEWPRES` 를 막았고, 그대로 두면 낱말이 `ON` 으로
         # 뒤집힌 뒤에도 값은 다음 주기(60초)까지 안 온다 (DevNote 11.70).
@@ -261,9 +270,10 @@ class IcgArchon(IcsSim):
             # 붙여 올린다 (DevNote 10.2) -- 여기서 따로 가르지 않는다.  ⚠️ HK
             # 감시는 재접속하지 않는다 (`refresh_status_live` 는 소켓이 없으면
             # 그냥 실패해 결측으로 남긴다) -- 종전 문구가 그렇게 주장했었다.
-            log.error('guide controller connect failed at startup -- %s.  첫 GO 의 prepare() 가 '
-                      '다시 시도한다 (HK 감시는 재접속하지 않고 STATUS 결측으로 '
-                      '기록한다)', exc)
+            log.error('guide controller connect failed at startup -- %s', exc,
+                      extra={'detail': '첫 GO 의 prepare() 가 다시 시도한다 '
+                                       '(HK 감시는 재접속하지 않고 STATUS '
+                                       '결측으로 기록한다)'})
 
     async def _settle_gauge(self) -> None:
         """기동 때 이온게이지를 `[icg] gauge_on_start` 에 맞춘다.
@@ -301,9 +311,10 @@ class IcgArchon(IcsSim):
         try:
             await self.gauge.set(self.guide.ctrl, want)
         except Exception as exc:  # noqa: BLE001
-            log.warning('기동 이온게이지 %s 실패 -- %s.  ⚠️ 상태를 **모른다** '
-                        '-- science 노출 중이면 `vacgauge off` 로 확인할 것',
-                        'ON' if want else 'OFF', exc)
+            log.warning('could not set the ion gauge %s at startup -- %s',
+                        'ON' if want else 'OFF', exc,
+                        extra={'detail': '⚠️ 상태를 모른다 -- science 노출 '
+                                         '중이면 `vacgauge off` 로 확인할 것'})
 
     async def stop(self) -> None:
         # ⭐ **취득 사이클을 먼저 세운다** (2026-08-31 교차검토).  사이클
@@ -315,6 +326,18 @@ class IcgArchon(IcsSim):
         # 태스크는 아래 종료가 취소하므로 내림이 **영영 안 돈다** -- 그러면
         # 사람 없는 채로 **LED 가 켜진 채** 프로세스가 끝난다.
         # ⚠️ `spawn` 이 아니라 **여기서 기다린다** (같은 이유로).
+        # ⭐ **종료가 시작됐다는 것을 알린다** (운영자 벤치 2026-09-10) --
+        # 종전에는 `quit` 뒤가 조용해서, 왕복 하나에 막혀 기다리는 동안
+        # 운영자가 *"안 먹었다"* 로 읽고 한 번 더 쳤다.
+        log.info('shutdown: stopping ICG')
+        # ⛔ **기동 왕복을 먼저 끊는다** -- 그것이 컨트롤러 락을 쥐고 있으면
+        # 아래 `POWEROFF` 가 그 시한만큼 줄을 선다.
+        # ⚠️ 취소해도 `_locked_thread()` 규약대로 **스레드가 소켓을 놓을
+        # 때까지는** 락이 남는다 -- 그래도 시한 전체를 기다리는 것보다 짧다.
+        task = self._connect_task
+        if task is not None and not task.done():
+            log.info('shutdown: cancelling the startup connect round trip')
+            task.cancel()
         await self.dispatch.release_pulse('종료')
         if self.seq.busy:
             log.info('shutdown: stopping the running guide cycle')
@@ -351,12 +374,13 @@ class IcgArchon(IcsSim):
             else:
                 await self.gauge.set(self.guide.ctrl, False)
         except Exception as exc:  # noqa: BLE001
-            log.warning('종료 -- 이온게이지를 못 껐다: %s.  ⚠️ **게이지가 켜진 '
-                        '채 남아 있을 수 있다**', exc)
+            log.warning('shutdown: could not turn the ion gauge off -- %s',
+                        exc,
+                        extra={'detail': '⚠️ 게이지가 켜진 채 남아 있을 수 있다'})
         try:
             await self.guide.shutdown()
         except Exception as exc:  # noqa: BLE001
-            log.warning('guide 백엔드 종료 실패 -- %s', exc)
+            log.warning('guide backend shutdown failed -- %s', exc)
         await super().stop()
 
     # -- 배너 ---------------------------------------------------------------

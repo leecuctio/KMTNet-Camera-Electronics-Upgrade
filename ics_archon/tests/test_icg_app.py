@@ -258,7 +258,8 @@ def test_icg_warns_when_it_is_given_the_ics_port(tmp_path, caplog):  # noqa: ANN
     caplog.set_level('WARNING')
     asyncio.run(run())
     said = [r.getMessage() for r in caplog.records]
-    assert any('ICS 몫' in m for m in said), said
+    # ⭐ 문구가 영문이다 (2026-09-11) -- 사실만 본다.
+    assert any('belongs to ICS' in m for m in said), said
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +519,9 @@ def test_a_heater_command_during_acquisition_is_accepted_with_a_warning(  # noqa
     assert any('DONE' in s for s in said), said
     assert not any('ERROR' in s for s in said), said
     assert any('DuringAcquisition=1' in s for s in said), said
-    assert any('취득 중에' in r.message for r in caplog.records), \
+    # ⭐ 문구가 영문이다 (2026-09-11) -- 사실만 보고 문면은 안 못박는다.
+    assert any('during an acquisition' in r.message
+               for r in caplog.records), \
         '경고가 없다 -- 결측이 조용히 생긴다'
 
 

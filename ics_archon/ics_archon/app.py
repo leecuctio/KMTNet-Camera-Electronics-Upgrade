@@ -157,7 +157,7 @@ def fill_controller_cfg_names(cfg, acfg) -> None:  # noqa: ANN001
         derived = acfg_mod.cfg_name_from_acf(acfg.acf.get(tag, ''))
         if derived:
             setattr(cfg.controllers, field, derived)
-            log.info('CTRL%dCFG 를 ACF 경로에서 파생했다 -- %s (%s)',
+            log.info('CTRL%dCFG derived from the acf path -- %s (%s)',
                      n, derived, acfg.acf.get(tag, ''))
 
 
@@ -297,11 +297,11 @@ class IcsDispatcher(Dispatcher):
             self.emit.error(dest, cmdword, str(exc))
             return
         except (BackendError, ArchonError, TimeoutError, OSError) as exc:
-            log.error('%s 실패 -- %s', cmdword, exc)
+            log.error('%s failed -- %s', cmdword, exc)
             self.emit.error(dest, cmdword, 'Failed: %s' % _fail_text(exc))
             return
         except Exception as exc:  # noqa: BLE001  하나의 명령이 프로세스를 죽이지 않는다
-            log.exception('%s 실패 -- 예상 밖 예외', cmdword)
+            log.exception('%s failed -- unexpected exception', cmdword)
             self.emit.error(dest, cmdword, 'Failed: %s: %s'
                             % (type(exc).__name__, _fail_text(exc)))
             return
@@ -407,13 +407,15 @@ class IcsDispatcher(Dispatcher):
         ctrls = self._shutter_ctrls(be) if bad is None else []
         if not ctrls:
             return False
-        log.warning('%s -- 진행 중이던 SHOPEN 을 끊고 셔터를 닫는다', why)
+        log.warning('%s -- cutting the running SHOPEN and closing the '
+                    'shutter', why)
         for c in ctrls:
             try:
                 await trigout_core.rest_line(c, self._TRIGOUT_REST)
             except Exception as exc:  # noqa: BLE001 -- 종료를 막지 않는다
-                log.error('%s -- %s 의 셔터를 못 닫았다: %s.  **열린 채로 남을 '
-                          '수 있다**', why, getattr(c, 'tag', '?'), exc)
+                log.error('%s -- could not close the %s shutter: %s',
+                          why, getattr(c, 'tag', '?'), exc,
+                          extra={'detail': '⚠️ 열린 채로 남을 수 있다'})
         return True
 
     def cmd_abort(self, msg: Message, target: Target) -> Reply:
@@ -427,11 +429,13 @@ class IcsDispatcher(Dispatcher):
         if seq is None or not seq.busy or self._warned_busy_apply:
             return
         self._warned_busy_apply = True
-        log.warning('취득 중에 %s 를 쳤다 -- 그 프레임의 셔터 제어를 뺏는다 '
-                    '(SHOPEN 은 강제로 열어 두고, SHCLOSE 는 스크립트에 '
-                    '돌려줄 뿐이라 적분 중이면 안 닫힌다).  ⚠️ **적분 중·독출 '
-                    '중 APPLYSYSTEM 의 안전성은 아직 실측 전이다** '
-                    '(DevNote 11.50)', word)
+        log.warning('%s during an acquisition -- taking shutter control away '
+                    'from that frame', word,
+                    extra={'detail': 'SHOPEN 은 강제로 열어 두고, SHCLOSE 는 '
+                                     '스크립트에 돌려줄 뿐이라 적분 중이면 안 '
+                                     '닫힌다.  ⚠️ 적분 중·독출 중 APPLYSYSTEM '
+                                     '의 안전성은 아직 실측 전이다 (DevNote '
+                                     '11.50)'})
 
     def cmd_shopen(self, msg: Message, target: Target) -> Reply:
         """SHOPEN <초> [<sourceID> …] -- **셔터를 <초> 동안 연다**.
@@ -556,7 +560,7 @@ class IcsDispatcher(Dispatcher):
         if cold:
             return Reply.error('CCDFLUSH', 'Failed: ACF not loaded on %s in this '
                                'session -- run GO once first' % ','.join(cold))
-        log.info('CCDFLUSH %s -- %s 가 시켰다', tags, msg.src)
+        log.info('CCDFLUSH %s -- requested by %s', tags, msg.src)
         return self._start_op(msg.src, 'CCDFLUSH', self._flush_work(be, tags))
 
     async def _flush_work(self, be, tags) -> str:  # noqa: ANN001
@@ -589,7 +593,7 @@ class IcsDispatcher(Dispatcher):
         bad = self._refuse_if_busy(cmdword)
         if bad is not None:
             return bad
-        log.info('%s %s -- %s 가 시켰다', cmdword, tags, msg.src)
+        log.info('%s %s -- requested by %s', cmdword, tags, msg.src)
         return self._start_op(msg.src, cmdword, self._power_work(be, on, tags))
 
     async def _power_work(self, be, on: bool, tags) -> str:  # noqa: ANN001
@@ -627,8 +631,8 @@ class IcsDispatcher(Dispatcher):
         tag, text = head.upper(), text.strip()
         if tag not in be.tags or not text:
             return Reply.error('ARCHON', usage)
-        log.info('ARCHON %s %r -- %s 가 시켰다 (바이패스, 위생 검사 없음, 제한 없음)',
-                 tag, text, msg.src)
+        log.info('ARCHON %s %r -- requested by %s', tag, text, msg.src,
+                 extra={'detail': '바이패스 -- 위생 검사도 제한도 없다'})
         self.app.spawn(self._finish_op(msg.src, 'ARCHON',
                                        self._archon_work(be, tag, text), track=False))
         return Reply.noop()
@@ -639,12 +643,13 @@ class IcsDispatcher(Dispatcher):
         except ArchonError as exc:
             if exc.reply_error:
                 # 컨트롤러가 `?xx` 로 거부했다 -- 내 명령이 틀린 것이라 `DONE` 이 아니다.
-                log.warning('ARCHON %s: 컨트롤러가 거부했다 -- %r (%s)', tag, text, exc)
+                log.warning('ARCHON %s: the controller rejected it -- %r (%s)',
+                            tag, text, exc)
                 raise _OpError('%s rejected: %s' % (tag, wire_text(text))) from exc
-            log.error('ARCHON %s %r 실패 -- %s', tag, text, exc)
+            log.error('ARCHON %s %r failed -- %s', tag, text, exc)
             raise _OpError('%s Failed: %s' % (tag, _fail_text(exc))) from exc
         except (BackendError, TimeoutError, OSError) as exc:
-            log.error('ARCHON %s %r 실패 -- %s', tag, text, exc)
+            log.error('ARCHON %s %r failed -- %s', tag, text, exc)
             raise _OpError('%s Failed: %s' % (tag, _fail_text(exc))) from exc
         body = wire_text(reply)
         # ⭐ **전문은 여기에** -- 와이어는 잘려도 로그는 안 잘린다.
@@ -667,10 +672,11 @@ class IcsArchon(IcsSim):
         # 가 불리므로, 늦으면 이 폴더의 스텁이 만들어진다.
         register_backend('archon', lambda c: ArchonBackend(c, acfg))
         if cfg.hardware.backend != 'archon':
-            log.warning('[hardware] backend=%r 로 ics_archon 을 띄웠다 -- '
-                        'Archon 컨트롤러를 만지지 않는다.  실기로 돌리려면 '
-                        'archon 으로 두거나 --backend archon 을 주라',
-                        cfg.hardware.backend)
+            log.warning('ics_archon started with [hardware] backend=%r -- it '
+                        'will not touch the Archon controllers',
+                        cfg.hardware.backend,
+                        extra={'detail': '실기로 돌리려면 archon 으로 두거나 '
+                                         '--backend archon 을 주라'})
         self.acfg = acfg
         super().__init__(cfg)
 
@@ -749,7 +755,7 @@ class IcsArchon(IcsSim):
         """
         body = (msg.payload or '').strip()
         self.hk_wire = {'when': utcnow(), 'src': msg.src, 'body': body}
-        log.info('ICG HK 수신 -- %s', body)
+        log.info('ICG HK received -- %s', body)
         try:
             print('HKDATA <- %s  %s' % (msg.src, body), flush=True)
         except Exception:                   # noqa: BLE001
@@ -917,19 +923,21 @@ class IcsArchon(IcsSim):
                 # 것이므로 종료 기록에 남아야 한다 (2026-09-06).
                 late = await drain(self.acfg.shutdown_drain)
                 if late:
-                    log.error('종료 상한(%.0f초) 안에 저장을 못 마친 프레임이 '
-                              '%d개다 -- 독출은 끝났는데 파일이 없다.  '
-                              '[archon] shutdown_drain 을 늘리거나 저장 경로를 '
-                              '확인하라', self.acfg.shutdown_drain, late)
+                    log.error('%d frame(s) did not finish writing within the '
+                              'shutdown limit (%.0fs) -- read out but no file',
+                              late, self.acfg.shutdown_drain,
+                              extra={'detail': '[archon] shutdown_drain 을 '
+                                               '늘리거나 저장 경로를 확인하라'})
             except Exception:                       # noqa: BLE001
-                log.exception('저장 대기 중 예외 -- 프레임을 잃었을 수 있다')
+                log.exception('exception while draining writes -- frames may '
+                              'have been lost')
         shutdown = getattr(self.backend, 'shutdown', None)
         if shutdown is not None:
             try:
                 await shutdown()
             except Exception:                       # noqa: BLE001
-                log.exception('백엔드 종료 중 예외 -- 유닛 전원 상태를 직접 '
-                              '확인하라')
+                log.exception('exception during backend shutdown',
+                              extra={'detail': '유닛 전원 상태를 직접 확인하라'})
         await super().stop()
 
     async def _connect_controllers(self) -> None:
@@ -956,11 +964,14 @@ class IcsArchon(IcsSim):
             try:
                 await ctrl.connect()
             except (ArchonError, TimeoutError, OSError) as exc:
-                log.warning('%s: 기동 접속 실패 (%s) -- 기동은 계속한다.  '
-                            '컨트롤러 전원과 [archon] ctrl_%s_host 를 확인하라',
-                            ctrl.tag, exc, ctrl.tag.lower())
+                log.warning('%s: connect failed at startup (%s) -- startup '
+                            'continues', ctrl.tag, exc,
+                            extra={'detail': '컨트롤러 전원과 [archon] '
+                                             'ctrl_%s_host 를 확인하라'
+                                             % ctrl.tag.lower()})
                 continue
-            log.info('%s: 접속 %s:%d', ctrl.tag, ctrl.link.host, ctrl.link.port)
+            log.info('%s: connected %s:%d',
+                     ctrl.tag, ctrl.link.host, ctrl.link.port)
 
     def _start_monitors(self) -> None:
         """컨트롤러마다 텔레메트리 감시 태스크를 띄운다 (층 1·2).
@@ -974,7 +985,7 @@ class IcsArchon(IcsSim):
         "노출 개시 시점 값" 에서 "마지막 폴링 값" 으로 조용히 바뀐다.
         """
         if not self.acfg.monitor:
-            log.info('[archon] monitor=false -- 텔레메트리 감시를 걸지 않는다')
+            log.info('[archon] monitor=false -- no telemetry monitor')
             return
         ctrls = getattr(self.backend, 'ctrls', None)
         if not ctrls:
@@ -1010,8 +1021,8 @@ class IcsArchon(IcsSim):
             _done, pending = await asyncio.wait(
                 tasks, timeout=max(self.acfg.status_timeout, 1.0) + 1.0)
             for task in pending:
-                log.warning('감시가 제때 멈추지 않았다 -- 취소한다 (FETCH 락에 '
-                            '걸려 있을 수 있다)')
+                log.warning('the monitor did not stop in time -- cancelling',
+                            extra={'detail': 'FETCH 락에 걸려 있을 수 있다'})
                 task.cancel()
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)

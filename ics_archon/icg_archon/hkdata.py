@@ -96,7 +96,7 @@ def _word(raw) -> str | None:  # noqa: ANN001
     try:
         return 'ON' if int(float(str(raw).strip())) else 'OFF'
     except (TypeError, ValueError):
-        log.warning('불린으로 못 읽는 되읽기 값이라 뺀다 -- %r', raw)
+        log.warning('readback value is not a boolean -- dropped: %r', raw)
         return None
 
 
@@ -156,7 +156,8 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
         try:
             await hk.refresh_now()
         except Exception as exc:           # noqa: BLE001
-            log.warning('HKDATA NOW: 갱신 실패 -- %s.  폴링값으로 답한다', exc)
+            log.warning('HKDATA NOW: refresh failed -- %s.  answering with '
+                        'the polled values', exc)
     vals = hk.sensors()                    # 신선한 계약 키 + hkudate
     pairs: list[tuple[str, object]] = [
         ('HKQDATE', stamp_iso_ms(now)),    # 23자 -- 명령을 받은 시각
@@ -206,7 +207,7 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
         try:
             num = float(raw)
         except (TypeError, ValueError):
-            log.warning('HKDATA: %s 값이 수치가 아니라 뺀다 -- %r', wire, raw)
+            log.warning('HKDATA: %s is not numeric -- dropped: %r', wire, raw)
             continue
         pairs.append((wire,
                       hkwire.fmt_signed(num, digits) if signed

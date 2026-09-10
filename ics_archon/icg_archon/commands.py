@@ -163,9 +163,10 @@ class IcgDispatcher(sim_commands.Dispatcher):
         keep = st.exptime
         reply = super()._image_type(msg, imgtype)
         if st.exptime != keep:
-            log.info('guide 는 %s 에서도 주기를 유지한다 -- EXPTIME 은 독출 '
-                     '개시 간격이라 0 이 될 수 없다 (%g s 유지)',
-                     imgtype, keep)
+            log.info('guide keeps the cadence for %s -- EXPTIME stays %g s',
+                     imgtype, keep,
+                     extra={'detail': 'EXPTIME 은 독출 개시 간격이라 0 이 될 수 '
+                                      '없다'})
             st.exptime = keep
         return reply
 
@@ -467,8 +468,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if not want and self.app.seq.busy:        # ② 그 다음 세운다
             if self.app.seq.cancel(save=False, requester=msg.src):
                 aborted = 1
-                log.info('EXPENABLE OFF -- 진행 중이던 취득을 세웠다 (%s)',
-                         msg.src)
+                log.info('EXPENABLE OFF -- stopped the running acquisition '
+                         '(by %s)', msg.src)
         body = 'ExpEnable=%s' % flag.word
         if aborted:
             body += ' Aborted=1'
@@ -500,11 +501,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
         seq = getattr(self.app, 'seq', None)
         if seq is None or not seq.busy:
             return ''
-        log.warning('%s 를 **취득 중에** 받았다 -- APPLYMOD/APPLYDIO 가 진공 '
-                    '게이지를 읽는 MOD10 VCPU 를 재시작하므로 지금 도는 '
-                    '프레임의 DEWPRES 가 결측이 된다.  ⭐ 거부하지 않는다 '
-                    '(운영자 확정).  결측까지 피하려면 HK 기록 주기(기본 '
-                    '60초)를 비켜 보낼 것', cmdword)
+        log.warning('%s arrived during an acquisition -- this frame loses '
+                    'DEWPRES', cmdword,
+                    extra={'detail': 'APPLYMOD/APPLYDIO 가 진공 게이지를 읽는 '
+                                     'MOD10 VCPU 를 재시작한다.  ⭐ 거부하지 '
+                                     '않는다 (운영자 확정) -- 결측까지 피하려면 '
+                                     'HK 기록 주기(기본 60초)를 비켜 보낼 것'})
         return 'DuringAcquisition=1'
 
     def _finish(self, dest: str, cmdword: str, body: str, note: str) -> None:
@@ -825,8 +827,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if bad is not None:
             return bad
         note = self._lock_note()
-        log.info('CCDFLUSH by %s -- 유휴 CCD 를 FlushFrame 한 바퀴로 비운다%s',
-                 msg.src, ' (EXPENABLE OFF 상태 -- flush 는 노출이 아니라 허용)'
+        log.info('CCDFLUSH by %s -- one FlushFrame over the idle CCD%s',
+                 msg.src, ' (EXPENABLE OFF -- flush is not an exposure)'
                  if note else '')
         self._begin_op('CCDFLUSH')
         self.app.spawn(self._do_ccdflush(msg.src, be, note))
@@ -837,7 +839,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
             try:
                 await be.flush_ccd()
             except Exception as exc:  # noqa: BLE001
-                log.error('CCDFLUSH 실패 -- %s', exc)
+                log.error('CCDFLUSH failed -- %s', exc)
                 self.emit.error(dest, 'CCDFLUSH', 'Failed: %s' % exc)
                 return
             self._finish(dest, 'CCDFLUSH', 'Flushed=1', note)
@@ -933,9 +935,10 @@ class IcgDispatcher(sim_commands.Dispatcher):
             # ⚠️ **쉬는 상태를 벗어난다** -- 선이 타이밍 스크립트 손에 넘어가
             # 노출마다 흔들린다.  거절하지는 않는다(운영자가 일부러 쓰는
             # 자리다) -- 대신 그 사실을 남긴다.
-            log.warning('TRIGOUTFORCE=0 -- 트리거 선을 타이밍 스크립트에 '
-                        '넘긴다.  guide 의 쉬는 상태는 FORCE=1 이고, '
-                        '다음 GO 의 prepare() 가 되돌린다')
+            log.warning('TRIGOUTFORCE=0 -- handing the trigger line to the '
+                        'timing script',
+                        extra={'detail': 'guide 의 쉬는 상태는 FORCE=1 이고, '
+                                         '다음 GO 의 prepare() 가 되돌린다'})
         await ctrl.set_trigger(high=high, forced=forced)
 
     async def _do_trigout(self, dest: str, word: str, *,  # noqa: ANN001
@@ -1060,13 +1063,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
         ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
         if ctrl is None:
             return False
-        log.warning('%s -- 진행 중이던 TRIGOUT 펄스를 끊고 선을 쉬는 상태로 '
-                    '되돌린다', why)
+        log.warning('%s -- cutting the running TRIGOUT pulse and resting '
+                    'the line', why)
         try:
             await trigout_core.rest_line(ctrl, self._TRIGOUT_REST)
         except Exception as exc:  # noqa: BLE001 -- 종료를 막지 않는다
-            log.error('%s -- TRIGOUT 을 못 내렸다: %s.  **선이 HIGH 로 남을 수 '
-                      '있다**', why, exc)
+            log.error('%s -- could not rest TRIGOUT: %s', why, exc,
+                      extra={'detail': '⚠️ 선이 HIGH 로 남을 수 있다'})
         return True
 
     def cmd_abort(self, msg: Message, target: Target) -> Reply:
@@ -1086,11 +1089,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if seq is None or not seq.busy or self._warned_busy_apply:
             return
         self._warned_busy_apply = True
-        log.info('취득 중에 TRIGOUT 을 쳤다 -- WCONFIG + APPLYSYSTEM 이 프레임 '
-                 '도중에 나간다.  ⭐ **해롭지 않다는 것은 실측했다** '
-                 '(2026-09-09, DevNote 11.55): go 20 이 완주했고 프레임 주기 '
-                 '밀림은 명령과 무관했으며 모듈 VCPU 도 안 재시작됐다.  '
-                 '이 뒤 프레임에 이상이 보이면 이 줄을 함께 볼 것')
+        log.info('TRIGOUT during an acquisition -- WCONFIG + APPLYSYSTEM go '
+                 'out mid-frame',
+                 extra={'detail': '⭐ 해롭지 않다는 것은 실측했다 (2026-09-09, '
+                                  'DevNote 11.55): go 20 이 완주했고 프레임 주기 '
+                                  '밀림은 명령과 무관했으며 모듈 VCPU 도 안 '
+                                  '재시작됐다.  이 뒤 프레임에 이상이 보이면 이 '
+                                  '줄을 함께 볼 것'})
 
     async def _do_trigout_pulse(self, dest: str, ms: float,
                                 t0: float | None = None) -> None:
@@ -1163,10 +1168,11 @@ class IcgDispatcher(sim_commands.Dispatcher):
         want = self.cfg.scaled(seconds)
         nap = want - apply_cost
         if nap < 0:
-            log.warning('TRIGOUT %g ms 는 적용 한 번(%.0f ms)보다 짧다 -- '
-                        '실현 폭은 약 %.0f ms 가 된다 (그보다 짧은 펄스는 이 '
-                        '방식으로 못 만든다)', ms, apply_cost * 1000,
-                        apply_cost * 1000)
+            log.warning('TRIGOUT %g ms is shorter than one apply (%.0f ms) '
+                        '-- the realised width will be about %.0f ms',
+                        ms, apply_cost * 1000, apply_cost * 1000,
+                        extra={'detail': '그보다 짧은 펄스는 이 방식으로 못 '
+                                         '만든다'})
             nap = 0.0
         try:
             await asyncio.sleep(nap)
@@ -1228,9 +1234,10 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if bad is not None:
             return bad
         note = self._lock_note()
-        log.info('%s by %s -- CCD 전원 %s%s', cmdword, msg.src,
-                 'ON (POWERON, gauge_warmup_wait 뒤 DONE)' if on else 'OFF (POWEROFF)',
-                 ' (EXPENABLE OFF 상태)' if note else '')
+        log.info('%s by %s -- ccd power %s%s', cmdword, msg.src,
+                 'ON (POWERON, DONE after gauge_warmup_wait)' if on
+                 else 'OFF (POWEROFF)',
+                 ' (EXPENABLE OFF)' if note else '')
         self._begin_op(cmdword)
         self.app.spawn(self._do_ccdpower(msg.src, be, cmdword, on, note))
         return Reply.noop()
@@ -1241,14 +1248,15 @@ class IcgDispatcher(sim_commands.Dispatcher):
             try:
                 await be.power_ccd(on)
             except Exception as exc:  # noqa: BLE001
-                log.error('%s 실패 -- %s', cmdword, exc)
+                log.error('%s failed -- %s', cmdword, exc)
                 self.emit.error(dest, cmdword, 'Failed: %s' % exc)
                 return
             ctrl = getattr(be, 'ctrl', None)
             if not on and ctrl is not None and getattr(ctrl, 'powered', False):
                 # `power_off()` 가 삼킨 실패 -- 확인된 상태(`powered`)가 안 바뀌었다.
-                log.error('%s -- POWEROFF 가 확인되지 않았다 (powered 가 그대로 참). '
-                          '유닛 전원 상태를 직접 확인할 것', cmdword)
+                log.error('%s -- POWEROFF was not acknowledged (powered is '
+                          'still true)', cmdword,
+                          extra={'detail': '유닛 전원 상태를 직접 확인할 것'})
                 self.emit.error(dest, cmdword,
                                 'Failed: POWEROFF was not acknowledged -- check '
                                 'the unit power (see log)')
@@ -1280,8 +1288,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if not text:
             return Reply.error('ARCHON', 'Usage: ARCHON <command>')
         note = self._lock_note()
-        log.info('ARCHON by %s -- 원문 바이패스: %r%s', msg.src, text,
-                 ' (EXPENABLE OFF 상태)' if note else '')
+        log.info('ARCHON by %s -- raw bypass: %r%s', msg.src, text,
+                 ' (EXPENABLE OFF)' if note else '')
         self.app.spawn(self._do_archon(msg.src, be, text, note))
         return Reply.noop()
 
@@ -1293,14 +1301,15 @@ class IcgDispatcher(sim_commands.Dispatcher):
             if exc.reply_error:
                 # 컨트롤러가 `?xx` 로 거부했다 -- 내 명령이 틀린 것이고
                 # 링크는 멀쩡하다 (`controller.cmd` 주석).
-                log.warning('ARCHON %r -- 컨트롤러가 거부했다 (%s)', text, exc)
+                log.warning('ARCHON %r -- the controller rejected it (%s)',
+                            text, exc)
                 self.emit.error(dest, 'ARCHON', 'rejected: %s' % text)
                 return
-            log.error('ARCHON %r 실패 -- %s', text, exc)
+            log.error('ARCHON %r failed -- %s', text, exc)
             self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
             return
         except Exception as exc:  # noqa: BLE001
-            log.error('ARCHON %r 실패 -- %s', text, exc)
+            log.error('ARCHON %r failed -- %s', text, exc)
             self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
             return
         # ⭐ 전문은 로그에 -- 응답이 잘려도 여기서 다 볼 수 있다.

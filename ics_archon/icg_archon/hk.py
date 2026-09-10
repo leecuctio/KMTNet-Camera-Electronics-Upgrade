@@ -241,20 +241,24 @@ class DewpresDecoder:
                 # 뜬다 (벤치 2026-09-08).  그러면 그 줄을 무시하는 버릇이 들어,
                 # 정작 *"우리가 안 했는데 재시작됐다"* 는 진짜 신호를 놓친다.
                 # ⚠️ 결측 처리는 그대로다 -- 잔재를 실을 수는 없다.
-                log.info('진공 VCPU Alive 가 되감겼다 (%s -> %s) -- 이 바퀴에 '
-                         '우리가 APPLY 를 보냈으니 예상된 재시작이다.  DEWPRES '
-                         '는 이번 바퀴만 결측이고 다음 바퀴에 돌아온다',
-                         prev, alive)
+                log.info('vacuum VCPU alive counter rewound (%s -> %s) -- '
+                         'expected, we sent an APPLY this round',
+                         prev, alive,
+                         extra={'detail': 'DEWPRES 는 이번 바퀴만 결측이고 '
+                                          '다음 바퀴에 돌아온다'})
                 return None
             if not self._warned_restart:
                 self._warned_restart = True
-                log.warning('진공 VCPU Alive 가 되감겼다 (%s -> %s) -- 진공 '
-                            '게이지를 읽는 MOD10 의 VCPU 가 재시작됐다는 '
-                            '신호다.  ⚠️ APPLYALL 뿐 아니라 **모듈 하나만 '
-                            '적용하는 APPLYMOD09 · APPLYDIO09 도** 그렇다 '
-                            '(매뉴얼 p.86) -- 히터 명령(HTREN/HTRSET)과 '
-                            '게이지 명령(VACGAUGE)이 이것을 일으킨다.  '
-                            'DEWPRES 는 결측으로 싣는다', prev, alive)
+                log.warning('vacuum VCPU alive counter rewound (%s -> %s) '
+                            '-- we sent no APPLY, so this looks like a restart',
+                            prev, alive,
+                            extra={'detail':
+                                   '⚠️ APPLYALL 뿐 아니라 모듈 하나만 적용하는 '
+                                   'APPLYMOD09 · APPLYDIO09 도 그렇다 (매뉴얼 '
+                                   'p.86) -- 히터 명령(HTREN/HTRSET)과 게이지 '
+                                   '명령(VACGAUGE)이 이것을 일으킨다.  DEWPRES '
+                                   '는 결측으로 싣는다.  ⏳ 카운터 wrap 일 수도 '
+                                   '있다 -- HK CSV 의 alive 열로 폭을 실측할 것'})
             return None
         else:
             self._flat += 1
@@ -524,19 +528,20 @@ class HkMonitor:
             try:
                 await self.refresh_now()
             except Exception as exc:        # noqa: BLE001 -- 주기 바퀴가 있다
-                log.warning('예열 뒤 HK 한 바퀴 실패 -- %s.  다음 주기 바퀴가 '
-                            '채운다', exc)
+                log.warning('hk round after gauge warmup failed -- %s', exc,
+                            extra={'detail': '다음 주기 바퀴가 채운다'})
                 return
             if self._sample.get('dewpres') is not None:
-                log.info('이온게이지 예열이 끝나 HK 를 한 바퀴 돌렸다 -- '
-                         'DEWPRES 가 들어왔다 (%d번째)', attempt + 1)
+                log.info('gauge warmup done: hk round %d brought DEWPRES back',
+                         attempt + 1)
                 return
             if attempt < self.WARMUP_RETRIES:
                 await asyncio.sleep(self.WARMUP_RETRY_WAIT)
-        log.warning('예열이 끝났는데 %d 번을 돌려도 DEWPRES 가 안 들어왔다 -- '
-                    '다음 주기 바퀴를 기다린다.  ⚠️ VCPU 재시작이 길거나 게이지 '
-                    '응답이 없는 것이니 `hkdata now` 로 다시 볼 것',
-                    self.WARMUP_RETRIES + 1)
+        log.warning('gauge warmup done but DEWPRES did not come back after '
+                    '%d hk rounds', self.WARMUP_RETRIES + 1,
+                    extra={'detail': '다음 주기 바퀴를 기다린다.  ⚠️ VCPU '
+                                     '재시작이 길거나 게이지 응답이 없는 것이니 '
+                                     '`hkdata now` 로 다시 볼 것'})
 
     async def run(self) -> None:
         interval = max(self.cfg.hk.interval, 1.0)
@@ -548,7 +553,7 @@ class HkMonitor:
                 try:
                     await self._tick(lag_ms)
                 except Exception:  # noqa: BLE001 -- HK 가 취득을 못 죽인다
-                    log.exception('HK 바퀴 실패 -- 다음 바퀴에 다시 돈다')
+                    log.exception('hk round failed -- retrying next round')
                 self._next_at = max(self._next_at + interval, time.monotonic())
                 if not await self._sleep_until():
                     break
@@ -638,8 +643,8 @@ class HkMonitor:
         # `spawn` 하고 곧바로 `hk.start()`).  ⚠️ 다음 바퀴(60초)에 다시 읽으므로
         # 잃는 것은 없다 -- 그 사이 카드는 sentinel 이다.
         if getattr(self.ctrl, 'acf_applying', False):
-            log.info('HK: ACF 적용 중이라 히터 설정 되읽기를 건너뛴다 '
-                     '-- 다음 바퀴에 다시 읽는다')
+            log.info('hk: skipping heater readback while the acf is applying',
+                     extra={'detail': '다음 바퀴에 다시 읽는다'})
             return
         try:
             got = await heater.read_settings(self.ctrl)
@@ -648,9 +653,10 @@ class HkMonitor:
         except Exception as exc:            # noqa: BLE001 -- HK 를 못 죽인다
             if not self._warned_htrset:
                 self._warned_htrset = True
-                log.warning('HK: 히터 설정 되읽기 실패 -- %s.  HTREN·HTRSET·'
-                            'HTRFORCE 카드가 sentinel 로 나간다 (ACF 파싱 전이면 '
-                            '첫 GO 뒤에 풀린다)', exc)
+                log.warning('hk: heater settings readback failed -- %s', exc,
+                            extra={'detail': 'HTREN·HTRSET·HTRFORCE 카드가 '
+                                             'sentinel 로 나간다 (ACF 파싱 '
+                                             '전이면 첫 GO 뒤에 풀린다)'})
             return
         self._warned_htrset = False
         if got.get('htren') is not None:
@@ -690,8 +696,8 @@ class HkMonitor:
             try:
                 await self.radionode.poll_now()
             except Exception as exc:      # noqa: BLE001 -- 나머지는 돌아야 한다
-                log.warning('HKDATA NOW: Radionode 즉시 조회 실패 -- %s.  '
-                            '폴러가 받아 둔 값으로 간다', exc)
+                log.warning('hkdata now: radionode poll failed -- %s', exc,
+                            extra={'detail': '폴러가 받아 둔 값으로 간다'})
         await self._tick(0.0, note='hkdata_now')
 
     def _radionode_is_old(self) -> bool:
@@ -737,7 +743,7 @@ class HkMonitor:
                 if ok:
                     status = dict(self.ctrl.status_live or {})
             except Exception as exc:  # noqa: BLE001
-                log.warning('HK: STATUS 실패 -- %s', exc)
+                log.warning('hk: STATUS query failed -- %s', exc)
         row['valid'] = status.get('VALID', '')
         row['alive'] = status.get('MOD10/VCPU_OUTREG15', '')
         # ⛔ **되먹임 센서 과열 차단** -- 상한을 넘었으면 히터를 끈다.
@@ -779,10 +785,12 @@ class HkMonitor:
         for key, (val, lo, hi) in oor.items():
             if key not in self._warned_oor:
                 self._warned_oor.add(key)
-                text = ('HK: %s = %.2f 가 ACF 한계 [%.2f, %.2f] 밖이다 -- '
-                        '값은 그대로 싣는다.  미연결 채널인지 실제 이상인지는 '
-                        '배선을 볼 것' % (key, val, lo, hi))
-                log.warning('%s', text)
+                text = ('hk: %s = %.2f is outside the acf limits '
+                        '[%.2f, %.2f]' % (key, val, lo, hi))
+                log.warning('%s', text,
+                            extra={'detail': '값은 그대로 싣는다.  미연결 '
+                                             '채널인지 실제 이상인지는 배선을 '
+                                             '볼 것'})
                 notify(text)
         self._warned_oor &= set(oor)   # 돌아온 채널은 다시 알릴 수 있게
         # 히터 출력 -- `HTROUT` (11.30).  ⛔ 결측을 조용히 넘기지 않는다: STATUS 는
@@ -794,10 +802,12 @@ class HkMonitor:
             self._warned_htrout = False
         elif status and not self._warned_htrout:
             self._warned_htrout = True
-            log.warning('HK: STATUS 에 %s 가 없다 -- HTROUT 카드가 sentinel 로 '
-                        '나간다.  FW 1.0.1252 는 HeaterX 슬롯에 이 키를 내야 한다 '
-                        '(DevNote 11.30) -- BACKPLANE_VERSION 과 MOD%d_TYPE 을 볼 것',
-                        HEATER_OUTPUT_FIELD, heater.SLOT)
+            log.warning('hk: STATUS has no %s -- HTROUT goes out as sentinel',
+                        HEATER_OUTPUT_FIELD,
+                        extra={'detail': 'FW 1.0.1252 는 HeaterX 슬롯에 이 키를 '
+                                         '내야 한다 (DevNote 11.30) -- '
+                                         'BACKPLANE_VERSION 과 MOD%d_TYPE 을 볼 것'
+                                         % heater.SLOT})
         # ⭐ **히터 설정 셋도 여기서 되읽는다** -- `HTREN`·`HTRSET`·`HTRFORCE`
         # (운영자 2026-09-09).  ⛔ 종전에는 `HKDATA` **응답을 만들 때만** 읽고
         # 버려서, FITS 헤더는 그 셋을 sentinel 로 실었다 -- `HKDATA` 에는 값이
@@ -902,7 +912,7 @@ class HkMonitor:
             # **행마다 flush** -- `ics_archon` 이 지연 없이 읽는다는 요구.
             self._csv.flush()
         except OSError as exc:
-            log.error('HK CSV 기록 실패 -- %s', exc)
+            log.error('hk: CSV write failed -- %s', exc)
 
     def _write_latest(self, now: float) -> None:
         """원자적 최신 스냅샷 -- `ics_archon.sensors()` 의 소비 창구.
@@ -928,7 +938,7 @@ class HkMonitor:
                 json.dump(snap, fh)
             os.replace(tmp, path)
         except OSError as exc:
-            log.error('HK 스냅샷 기록 실패 -- %s', exc)
+            log.error('hk: snapshot write failed -- %s', exc)
             try:
                 os.remove(tmp)
             except OSError:

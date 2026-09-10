@@ -133,23 +133,26 @@ class GuideBackend:
         cap = (icfg.fetch_timeout if icfg.fetch_timeout > 0
                else max(60.0, icfg.frame_bytes / (1 << 20)))
         if icfg.lock_buffer and cap >= self.base_exptime():
-            log.warning('[icg] FETCH 상한 %.1fs (fetch_timeout=%g%s) 가 프레임 하한 '
-                        '%.3fs 이상이다 -- lock_buffer=true 에서 잠금이 주기를 넘으면 '
-                        '못 받은 장이 덮인다 (DevNote 10.6).  하한 아래(예 1.0)로 '
-                        '적을 것', cap, icfg.fetch_timeout,
-                        ' -> 크기 유도' if icfg.fetch_timeout <= 0 else '',
-                        self.base_exptime())
+            log.warning('[icg] fetch cap %.1fs (fetch_timeout=%g%s) is not '
+                        'below the frame floor %.3fs',
+                        cap, icfg.fetch_timeout,
+                        ' -> derived from size' if icfg.fetch_timeout <= 0 else '',
+                        self.base_exptime(),
+                        extra={'detail': 'lock_buffer=true 에서 잠금이 주기를 '
+                                         '넘으면 못 받은 장이 덮인다 (DevNote '
+                                         '10.6).  하한 아래(예 1.0)로 적을 것'})
 
     def _read_timing(self) -> dict | None:
         path = self.icfg.acf_path
         if not path or not os.path.isfile(path):
-            log.warning('guide ACF 를 못 읽어 프레임 주기를 계산하지 못했다 '
-                        '(%s) -- EXPTIME 하한·DATE-OBS 보정이 ini 기본값을 '
-                        '쓴다', path or '(미설정)')
+            log.warning('could not read the guide acf (%s) -- frame timing '
+                        'falls back to the ini defaults', path or '(unset)',
+                        extra={'detail': 'EXPTIME 하한·DATE-OBS 보정이 ini '
+                                         '기본값을 쓴다'})
             return None
         if not acftiming.verify_tick_anchor():   # pragma: no cover
-            log.error('acftiming 셈법 검산 실패 -- NoIntUnit 이 1 ms 가 '
-                      '아니다.  타이밍 계산을 신뢰하지 않는다')
+            log.error('acftiming self-check failed -- NoIntUnit is not 1 ms',
+                      extra={'detail': '타이밍 계산을 신뢰하지 않는다'})
             return None
         try:
             probe = ArchonController(TAG, self.icfg, log_tag=False)
@@ -162,9 +165,11 @@ class GuideBackend:
             # 거부한다 (그 판에 Exposures=n 을 걸면 첫 장이 flush 없이 저장된다 -- 11.31).
             self._flush_capable = acftiming.parameters(probe.config).get('FirstFlush') == 1
             if not self._flush_capable:
-                log.error('guide ACF 의 FirstFlush 가 1 이 아니다 (%s) -- R2615 이하다. '
-                          'GO 가 거부된다.  R2616+ 를 [icg] acf 에 걸 것 (규격 10.1-2)',
-                          os.path.basename(path))
+                log.error('guide acf FirstFlush is not 1 (%s) -- R2615 or '
+                          'older, GO will be refused',
+                          os.path.basename(path),
+                          extra={'detail': 'R2616+ 를 [icg] acf 에 걸 것 '
+                                           '(규격 10.1-2)'})
             # ⚠️ 이 셈법은 **guide 타이밍 스크립트 형태** 전용이다 (FrameShift ·
             # HorizontalShift(600) · PixelFirst · CLAMP).  science ACF 는 루틴
             # 배치가 달라(guide 의 `FrameShift` 자리가 `IntUnit`, `HorizontalSWShift(1200)`,
@@ -172,10 +177,11 @@ class GuideBackend:
             # -- 형태가 다르면 셈하지 않는다.
             bad = acftiming.script_matches(probe.config)
             if bad:
-                log.warning('guide ACF 의 타이밍 스크립트가 acftiming 이 아는 '
-                            '형태가 아니다 (%s) -- 프레임 주기를 계산하지 않고 '
-                            'ini exptime_min 을 쓴다.  science ACF 를 가리키고 '
-                            '있지 않은지 볼 것', '; '.join(bad))
+                log.warning('the guide acf timing script is not a shape '
+                            'acftiming knows (%s) -- using ini exptime_min',
+                            '; '.join(bad),
+                            extra={'detail': 'science ACF 를 가리키고 있지 '
+                                             '않은지 볼 것'})
                 return None
             params = acftiming.parameters(probe.config)
             # ⚠️ `Lines`/`Pixels` 는 **대체값 없이** ACF 에서 읽는다.  종전에는
@@ -183,9 +189,8 @@ class GuideBackend:
             # 것이 안 보인다 -- 못 읽으면 ini 대체값 경로로 크게 물러난다.
             missing = [k for k in ('Lines', 'Pixels') if k not in params]
             if missing:
-                log.warning('guide ACF 에 %s 파라미터가 없다 -- 프레임 주기를 '
-                            '계산하지 않고 ini exptime_min 을 쓴다',
-                            '/'.join(missing))
+                log.warning('the guide acf has no %s parameter -- using ini '
+                            'exptime_min', '/'.join(missing))
                 return None
             # ⭐ `config` 를 함께 넘긴다 -- 트랜스퍼의 스크립트 리터럴
             # (`FrameShift(1033)`·`HorizontalShift(600)`)을 **이름으로** 읽는다.
@@ -202,16 +207,19 @@ class GuideBackend:
                 params, lines=params['Lines'], pixels=params['Pixels'],
                 config=probe.config)
             if drift is not None:
-                log.error('guide ACF 의 FlushLines=%d 가 계산값 %d 와 다르다 '
-                          '-- Pixels/Lines/AT/ST 를 고치고 FlushLines 를 안 '
-                          '고친 것으로 보인다.  그대로 두면 **첫 저장 프레임의 '
-                          '실적분이 EXPTIME 과 다르다** (규격 10.1-2). ACF 를 '
-                          '고칠 것 (acf/README.md 의 산수표)', *drift)
+                log.error('guide acf FlushLines=%d differs from the computed '
+                          '%d', *drift,
+                          extra={'detail': 'Pixels/Lines/AT/ST 를 고치고 '
+                                           'FlushLines 를 안 고친 것으로 보인다.  '
+                                           '⚠️ 그대로 두면 첫 저장 프레임의 '
+                                           '실적분이 EXPTIME 과 다르다 (규격 '
+                                           '10.1-2) -- acf/README.md 의 산수표'})
             elif 'FlushLines' not in params:
-                log.info('guide ACF 에 FlushLines 가 없다 -- flush 프레임 '
-                         '길이 맞추기(규격 10.1-2)는 R2611 부터다')
+                log.info('the guide acf has no FlushLines',
+                         extra={'detail': 'flush 프레임 길이 맞추기(규격 10.1-2)'
+                                          '는 R2611 부터다'})
         except (ArchonError, OSError, ValueError) as exc:
-            log.warning('guide ACF 타이밍 계산 실패 -- %s', exc)
+            log.warning('guide acf timing computation failed -- %s', exc)
             return None
         # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 `Start:` flush 분기·
         # 통과했고 `FirstFlush`·`FlushLines` 가 있어야 한다.  없으면 `arm_sequence` 가
@@ -369,8 +377,8 @@ class GuideBackend:
         try:
             await self.ctrl.set_exposures(0)
         except (ArchonError, TimeoutError, OSError) as exc:
-            log.warning('Exposures=0 을 못 걸었다 -- %s (남은 프레임이 더 '
-                        '나올 수 있다)', exc)
+            log.warning('could not set Exposures=0 -- %s', exc,
+                        extra={'detail': '남은 프레임이 더 나올 수 있다'})
 
     # -- flush · 전원 · 바이패스 (운영자 2026-09-05) ---------------------------
 
@@ -441,17 +449,18 @@ class GuideBackend:
         try:
             held = await self.ctrl.trigger_state()
         except (ArchonError, TimeoutError, OSError) as exc:
-            log.warning('guide: TRIGOUT 상태를 못 읽었다 (%s) -- 쉬는 상태로 '
-                        '그냥 다시 쓴다', exc)
+            log.warning('could not read the TRIGOUT state (%s) -- writing '
+                        'the resting state anyway', exc)
             held = ('?', '?')
         if held == self.TRIGOUT_REST:
             return
         # ⭐ **둘을 한 번에 적용한다** -- 따로 쓰면 `FORCE=1` 이 먼저 서는 찰나에
         # 옛 `LEVEL=1` 이 핀으로 나간다 (앞 세션이 SHOPEN 중에 죽은 경우).
         await self.ctrl.set_trigger(high=False, forced=True)
-        log.info('guide: 트리거 선을 쉬는 상태로 둔다 -- TRIGOUTLEVEL=0 '
-                 'TRIGOUTFORCE=1 (종전 LEVEL=%s FORCE=%s).  FORCE=0 이면 '
-                 '타이밍 스크립트가 몰아 노출마다 흔들린다', *held)
+        log.info('resting the trigger line -- TRIGOUTLEVEL=0 TRIGOUTFORCE=1 '
+                 '(was LEVEL=%s FORCE=%s)', *held,
+                 extra={'detail': 'FORCE=0 이면 타이밍 스크립트가 몰아 노출마다 '
+                                  '흔들린다'})
 
     # -- 취득 ---------------------------------------------------------------
 
@@ -526,6 +535,39 @@ class GuideBackend:
             self.ctrl.release_buffer(raw)
         log.info('wrote %s (%d KB/sec)', os.path.basename(path), rate)
         return rate
+
+    async def _power_off_with_retry(self) -> None:
+        """`POWEROFF` -- 한 번 실패하면 **링크를 다시 세우고 한 번 더** 한다.
+
+        운영자 2026-09-11: *"retry해서 완전히 CCD POWEROFF와 종료 프로시져를
+        끝내면 좋겠다."*
+
+        ⭐ 첫 시도가 실패하는 흔한 까닭은 **링크가 어긋난 것**이지 컨트롤러가
+        거부한 것이 아니다 -- ArchonGUI 가 붙었다 떨어진 뒤가 그렇다.
+        ⭐⭐ **여기서 연결을 직접 다시 열지 않는다** -- `cmd()` 가 시한 초과와
+        프레이밍 어긋남에서 **이미 `resync()` 를 한 뒤** 예외를 올린다
+        (`controller.cmd`).  그러니 그냥 한 번 더 보내면 새 연결로 나간다.
+        ⛔ 여기서 `close()`+`connect()` 를 또 하면 닫기가 두 번이 되고,
+        재수립 규약이 두 곳에 생긴다.
+        ⚠️ **두 번까지다** -- 전원이 남는 것은 나쁘지만, 종료가 안 끝나는 것도
+        나쁘다.  두 번째도 실패하면 그 사실을 크게 남기고 연결 닫기로 넘어간다.
+        """
+        for attempt in (1, 2):
+            try:
+                await self.ctrl.power_off()
+                log.info('shutdown: POWEROFF sent%s',
+                         ' (attempt %d)' % attempt if attempt > 1 else '')
+                return
+            except (ArchonError, TimeoutError, OSError) as exc:
+                if attempt == 2:
+                    log.warning('shutdown: POWEROFF failed twice -- %s', exc,
+                                extra={'detail': '⚠️ 전원이 남아 있을 수 있다 '
+                                                 '-- 유닛 전원을 직접 확인할 것'})
+                    return
+                log.warning('shutdown: POWEROFF failed -- %s.  trying once more',
+                            exc,
+                            extra={'detail': '시한 초과·프레이밍 어긋남이면 '
+                                             'cmd() 가 이미 링크를 다시 세웠다'})
 
     async def discard_frame(self, ticket, *, release: bool = True) -> None:  # noqa: ANN001
         """저장하지 않는 프레임(꼬리 배수 · 낯선 첫 프레임 가드) -- 완료만 확인하고 fetch 하지 않는다 (10.1-2).
@@ -618,19 +660,17 @@ class GuideBackend:
         """
         try:
             if self.ctrl.powered or self.ctrl.power_attempted:
-                await self.ctrl.power_off()
-                log.info('종료 -- POWEROFF 를 보냈다')
-        except (ArchonError, TimeoutError, OSError) as exc:
-            log.warning('종료 POWEROFF 실패 -- %s.  **전원이 남아 있을 수 '
-                        '있다**', exc)
+                await self._power_off_with_retry()
         finally:
             try:
                 await self.ctrl.close()
-                log.info('종료 -- 컨트롤러 연결을 닫았다')
+                log.info('shutdown: controller connection closed')
             except (ArchonError, TimeoutError, OSError) as exc:
-                log.warning('종료 -- 연결을 못 닫았다: %s.  ⚠️ 컨트롤러가 옛 '
-                            '연결을 붙들면 **곧바로 한 재실행이 못 붙는다** '
-                            '-- 그때는 컨트롤러를 리셋할 것', exc)
+                log.warning('shutdown: could not close the connection -- %s',
+                            exc,
+                            extra={'detail': '⚠️ 컨트롤러가 옛 연결을 붙들면 '
+                                             '곧바로 한 재실행이 못 붙는다 -- '
+                                             '그때는 컨트롤러를 리셋할 것'})
 
 
 class _SimTicket:

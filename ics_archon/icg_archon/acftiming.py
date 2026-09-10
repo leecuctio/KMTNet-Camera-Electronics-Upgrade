@@ -238,8 +238,8 @@ def _hshift_count(config: dict, label: str) -> int:
     n = call_arg(config, label, 'HorizontalShift')
     if n is None:
         if config:
-            log.warning('guide 스크립트의 %s: 블록에서 HorizontalShift 횟수를 못 '
-                        '읽었다 -- 대체값 %d 로 셈한다', label, _FRAME_HSHIFT)
+            log.warning('could not read the HorizontalShift count in the %s: '
+                        'block -- falling back to %d', label, _FRAME_HSHIFT)
         return _FRAME_HSHIFT
     return n
 

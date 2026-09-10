@@ -481,10 +481,10 @@ class ArchonCfg:
             if not self.hosts.get(tag):
                 if tag not in self._warned:
                     self._warned.add(tag)
-                    log.warning('[archon] ctrl_%s_host 가 비어 있는데 [node] '
-                                'ccds 에 %s 가 있다 -- 이 컨트롤러는 건너뛴다 '
-                                '(그 파일은 생기지 않는다)',
-                                tag.lower(), '/'.join(chips))
+                    log.warning('[archon] ctrl_%s_host is empty but [node] '
+                                'ccds lists %s -- skipping this controller',
+                                tag.lower(), '/'.join(chips),
+                                extra={'detail': '그 파일은 생기지 않는다'})
                 continue
             out.append(tag)
         return tuple(out)
@@ -595,9 +595,9 @@ def _solo_tag(cp: configparser.ConfigParser, n_controllers: int) -> str:
     if two:
         return CTRLTAGS[1]
     if not one:
-        log.warning('[archon] n_controllers=1 인데 [controllers] 에 ctrl1_id 도 '
-                    'ctrl2_id 도 선언돼 있지 않다 -- %s 로 본다.  의도한 쪽의 '
-                    'ctrl<n>_id 를 채워 명시할 것', CTRLTAGS[0])
+        log.warning('[archon] n_controllers=1 but neither ctrl1_id nor '
+                    'ctrl2_id is declared -- assuming %s', CTRLTAGS[0],
+                    extra={'detail': '의도한 쪽의 ctrl<n>_id 를 채워 명시할 것'})
     return CTRLTAGS[0]
 
 
@@ -634,14 +634,15 @@ def _rail_limits(cp: configparser.ConfigParser) -> dict | None:
                 '[archon.rails] %s 의 값이 수치가 아니다: %r' % (key, raw)
             ) from None
         if lo > hi:
-            log.warning('[archon.rails] %s 의 하한·상한이 뒤집혀 있다 (%g, %g) '
-                        '-- 바로잡아 쓴다.  음전압 레일은 -6.6, -5.3 처럼 작은 '
-                        '쪽을 앞에 적는다', key, lo, hi)
+            log.warning('[archon.rails] %s has its low/high swapped (%g, %g) '
+                        '-- corrected', key, lo, hi,
+                        extra={'detail': '음전압 레일은 -6.6, -5.3 처럼 작은 '
+                                         '쪽을 앞에 적는다'})
             lo, hi = hi, lo
         if rail not in out:
-            log.warning('[archon.rails] %r 는 규격 5.6.1절 레일 목록에 없다 '
-                        '(%s) -- 판정에 쓰이지 않는다',
-                        key, ' '.join(_parse.VOLT_RAILS))
+            log.warning('[archon.rails] %r is not in the 5.6.1 rail list (%s) '
+                        '-- it will not be used', key,
+                        ' '.join(_parse.VOLT_RAILS))
         out[rail] = (lo, hi)
     return out
 
@@ -651,12 +652,13 @@ def load(path: str) -> ArchonCfg:
     cfg = ArchonCfg()
     cp = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
     if not cp.read(path, encoding='utf-8'):
-        log.warning('설정 파일을 읽지 못했다 (%s) -- [archon] 기본값을 쓴다',
-                    path)
+        log.warning('could not read the config file (%s) -- using the '
+                    '[archon] defaults', path)
         return cfg
     if not cp.has_section('archon'):
-        log.warning('%s 에 [archon] 절이 없다 -- 기본값을 쓴다.  컨트롤러 '
-                    '주소가 비어 있으면 첫 노출에서 실패한다', path)
+        log.warning('%s has no [archon] section -- using the defaults', path,
+                    extra={'detail': '컨트롤러 주소가 비어 있으면 첫 노출에서 '
+                                     '실패한다'})
         return cfg
     s = cp['archon']
 

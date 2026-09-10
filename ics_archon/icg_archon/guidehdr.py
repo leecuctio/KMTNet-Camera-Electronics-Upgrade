@@ -180,9 +180,10 @@ def datasrc_of(backend_name: str) -> str:
     """
     src = _DATASRC_GUIDE.get((backend_name or '').lower())
     if src is None:
-        log.warning('guide 백엔드 %r 를 모르므로 DATASRC=%s 로 적는다 -- '
-                    '실물이라고 잘못 적는 것보다 낫다 (raw spec 5.5절)',
-                    backend_name, rawhdr.DATASRC_SIM)
+        log.warning('unknown guide backend %r -- writing DATASRC=%s',
+                    backend_name, rawhdr.DATASRC_SIM,
+                    extra={'detail': '실물이라고 잘못 적는 것보다 낫다 '
+                                     '(raw spec 5.5절)'})
         return rawhdr.DATASRC_SIM
     return src
 

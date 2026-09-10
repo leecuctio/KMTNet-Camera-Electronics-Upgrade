@@ -123,7 +123,8 @@ class GaugeControl:
             # 게이지는 이미 꺼져 있다 -- `APPLYDIO` 가 `DEWPRES` 결측 창을
             # 만드므로 되풀이하지 않는다.  ⭐ 상태만 `OFF` 로 굳힌다.
             if self.state != OFF:
-                log.info('켜짐대기를 취소하고 꺼짐으로 되돌린다 (새 노출)')
+                log.info('cancelling PENDING_ON and going back to OFF '
+                         '(new exposure)')
             self.state = OFF
             return False
         self._send(False)
@@ -155,8 +156,9 @@ class GaugeControl:
         left = until - time.monotonic()
         if left <= 0:
             return
-        log.info('진공게이지를 껐다 -- %.1f 초 안정화한 뒤 노출을 시작한다 '
-                 '(APPLYDIO 가 MOD10 VCPU 를 재시작한다)', left)
+        log.info('vacuum gauge off -- settling %.1fs before the exposure',
+                 left,
+                 extra={'detail': 'APPLYDIO 가 MOD10 VCPU 를 재시작한다'})
         await asyncio.sleep(left)
 
     def after_acquisition(self) -> None:
@@ -179,7 +181,7 @@ class GaugeControl:
             return
         self._cancel_timer('새 타이머를 건다')
         self.state = PENDING_ON
-        log.info('취득 종료 -- 켜짐대기.  %.0f 초 뒤에 진공게이지를 켠다',
+        log.info('acquisition done -- PENDING_ON, gauge back on in %.0fs',
                  self.reenable_after)
         self._timer = self._spawn(self._reenable_later())
 
@@ -188,13 +190,15 @@ class GaugeControl:
         self._replied = True
         if 'ERROR' in line.upper():
             # ⛔ 껐다고 믿는 채로 science 를 찍는 것이 막으려던 상태다.
-            log.warning('⛔ 진공게이지 명령이 거절됐다 -- %s.  게이지가 안 '
-                        '꺼진 채 노출이 돌 수 있다', line.strip())
+            log.warning('the vacuum gauge command was refused -- %s',
+                        line.strip(),
+                        extra={'detail': '⛔ 게이지가 안 꺼진 채 노출이 돌 수 '
+                                         '있다'})
             # ⚠️ 모르는 상태에서 켜짐대기 타이머를 남기면 **모르는 채로 켠다**.
             self._cancel_timer('상태를 모르게 됐다')
             self.state = UNKNOWN
         else:
-            log.info('진공게이지 응답 -- %s', line.strip())
+            log.info('vacuum gauge reply -- %s', line.strip())
 
     async def close(self) -> None:
         """종료 -- 타이머를 세운다.  ⚠️ 게이지를 켜지는 않는다.
@@ -228,10 +232,11 @@ class GaugeControl:
         except asyncio.CancelledError:
             return
         if not self._replied:
-            log.warning('⚠️ %s 가 %s %s 에 %.0f 초 안에 답하지 않았다 -- ICG 가 '
-                        '떠 있는지, 허브가 이 이름을 아는지 볼 것.  게이지 '
-                        '상태는 **모름**이다', self.node, CMD, word,
-                        self.reply_timeout)
+            log.warning('%s did not answer %s %s within %.0fs -- the gauge '
+                        'state is UNKNOWN', self.node, CMD, word,
+                        self.reply_timeout,
+                        extra={'detail': 'ICG 가 떠 있는지, 허브가 이 이름을 '
+                                         '아는지 볼 것'})
             self._cancel_timer('상태를 모르게 됐다')
             self.state = UNKNOWN
 
@@ -244,7 +249,8 @@ class GaugeControl:
         if self.state != PENDING_ON:
             # ⛔⛔ **이중 안전장치**다.  취소가 한 박자 늦거나 취소 예외를
             # 놓쳤을 때, 여기서 상태를 다시 안 보면 **노출 도중에 켜진다**.
-            log.info('타이머가 만료됐지만 상태가 %s 라 켜지 않는다', self.state)
+            log.info('the timer fired but the state is %s -- not turning on',
+                     self.state)
             return
         # ⛔⛔ **세 번째 안전장치 -- 취득 중이면 무조건 안 켠다**
         # (운영자 지시 2026-09-04).  상태 확인만으로는 못 막는 길이 있다:
@@ -255,11 +261,13 @@ class GaugeControl:
         # `after_acquisition()` 몫이고, 그래야 10분이 **독출 완료 기준**으로
         # 유지된다.
         if self._busy_now():
-            log.info('%.0f 초가 지났지만 **취득 중이라 켜지 않는다** -- '
-                     '켜짐대기로 남긴다.  독출이 끝나면 거기서부터 다시 '
-                     '%.0f 초를 센다', self.reenable_after, self.reenable_after)
+            log.info('%.0fs elapsed but an acquisition is running -- staying '
+                     'PENDING_ON', self.reenable_after,
+                     extra={'detail': '독출이 끝나면 거기서부터 다시 %.0f 초를 '
+                                      '센다' % self.reenable_after})
             return
-        log.info('%.0f 초가 지났다 -- 진공게이지를 켠다', self.reenable_after)
+        log.info('%.0fs elapsed -- turning the vacuum gauge on',
+                 self.reenable_after)
         self._send(True)
 
     def _busy_now(self) -> bool:
@@ -277,13 +285,14 @@ class GaugeControl:
         try:
             return bool(self._is_busy())
         except Exception:                       # noqa: BLE001
-            log.warning('취득 여부를 못 읽었다 -- 안전한 쪽으로 "취득 중" 으로 '
-                        '본다 (게이지를 안 켠다)')
+            log.warning('could not read whether an acquisition is running -- '
+                        'assuming it is',
+                        extra={'detail': '안전한 쪽이다 -- 게이지를 안 켠다'})
             return True
 
     def _cancel_timer(self, why: str) -> None:
         if self._timer is not None:
-            log.info('되켜기 타이머를 취소한다 (%s)', why)
+            log.info('cancelling the re-enable timer (%s)', why)
             self._cancel(self._timer)
             self._timer = None
 

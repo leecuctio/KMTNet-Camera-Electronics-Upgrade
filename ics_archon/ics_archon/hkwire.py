@@ -179,9 +179,10 @@ def wire_safe(key: str, value: str) -> bool:
     따옴표가 있으면 어디서 끊을지 모른다.
     """
     if any(ch.isspace() for ch in value) or "'" in value or '"' in value:
-        log.warning('와이어에 못 낼 값이라 뺀다 -- %s=%r (공백이나 따옴표가 '
-                    '들어 있다).  ⭐ 값이 빠지면 STALE 로 세어져 받는 쪽이 '
-                    '결측을 안다', key, value)
+        log.warning('value cannot go on the wire -- dropped: %s=%r', key, value,
+                    extra={'detail': '공백이나 따옴표가 들어 있다.  ⭐ 값이 '
+                                     '빠지면 STALE 로 세어져 받는 쪽이 결측을 '
+                                     '안다'})
         return False
     return True
 

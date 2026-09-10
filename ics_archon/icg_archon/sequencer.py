@@ -60,7 +60,7 @@ _MAX_TAIL_HOPS = 3
 
 #: 로그 문구용 -- "꼬리가 둘/셋/넷".  ⚠️ 시험이 이 문구로 두 홉 경로를 확인한다
 #: (`test_two_frame_tail_is_drained_when_disarm_lands_late`) -- 지우지 말 것.
-_HOP_WORD = ('둘', '셋', '넷')
+_HOP_WORD = ('two', 'three', 'four')
 
 #: abort flush 뒤 IDLE 까지의 여유 [s] -- `backend.flush_duration()`(ACF 계산값, 실기
 #: ≈1.25 s) 위에 더한다.  RESETTIMING 응답 → 코어 `Start:` → `FlushFrame` → `IF
@@ -154,7 +154,8 @@ class GuideSequencer:
         """STOP -- 진행 중 프레임까지 저장하고 나머지를 포기한다."""
         if not self.busy:
             return False
-        log.info('STOP by %s -- 현재 프레임까지 저장하고 멈춘다', requester)
+        log.info('STOP by %s -- finishing the current frame, then stopping',
+                 requester)
         self._stop_evt.set()
         return True
 
@@ -174,7 +175,7 @@ class GuideSequencer:
             # 반증).  받아 준 것으로 답하고 그대로 둔다.  종료(shutdown)만 통과.
             # 다만 IDLE 통보는 **마지막 요청자**에게 간다 -- 그래야 `DONE: ABORT`
             # 가 약속한 `EXPSTATUS=IDLE` 을 그 클라이언트가 받는다 (3차 반증).
-            log.info('ABORT by %s -- 이미 세우는 중이라 그대로 둔다', requester)
+            log.info('ABORT by %s -- already stopping, left as is', requester)
             self._aborted_by = requester
             return True
         self._aborted_by = requester
@@ -218,8 +219,8 @@ class GuideSequencer:
             await asyncio.wait_for(
                 asyncio.gather(*pending, return_exceptions=True), timeout)
         except asyncio.TimeoutError:
-            log.error('저장 태스크 %d개가 %s초 안에 안 끝났다 -- 취소한다',
-                      len(pending), timeout)
+            log.error('%d write task(s) did not finish within %ss -- '
+                      'cancelling', len(pending), timeout)
             for w in pending:
                 w.cancel()
 
@@ -251,9 +252,10 @@ class GuideSequencer:
             intms = self.backend.intms_for(requested)
             exptime = self.backend.effective_exptime(requested)
             if exptime > requested + 1e-6:
-                log.info('EXPTIME %g s 는 최소 노출시간보다 짧다 -- 기본 노출시간 %.3f s '
-                         '위로 담는다 (헤더에는 실현값 %.3f s 를 싣는다)',
-                         requested, floor, exptime)
+                log.info('EXPTIME %g s is below the floor -- clamped to %.3f s',
+                         requested, exptime,
+                         extra={'detail': '기본 노출시간 %.3f s 위로 담는다 '
+                                          '(헤더에는 실현값을 싣는다)' % floor})
                 st.exptime = exptime
 
             # TC 스냅샷 -- 사이클 개시 전 1회 (OI-23 초안).  실패해도 노출은
@@ -264,7 +266,7 @@ class GuideSequencer:
             try:
                 await self.backend.prepare()
             except Exception as exc:  # noqa: BLE001 -- 접속·ACF·전원 실패
-                log.error('guide 준비 실패 -- %s', exc)
+                log.error('fatal: guide prepare failed -- %s', exc)
                 aux_q.cancel()
                 tcs_q.cancel()
                 self.emit.error(source, 'GO',
@@ -305,7 +307,7 @@ class GuideSequencer:
             stopped = False
             for k in range(count):
                 if self._stop_evt.is_set():
-                    log.info('STOP -- %d/%d 장 저장 후 멈춘다', saved, count)
+                    log.info('STOP -- stopping after %d/%d frames', saved, count)
                     stopped = True
                     break
 
@@ -362,9 +364,10 @@ class GuideSequencer:
                     earliest = flush_dur + intms / 1000.0 + floor - 0.2
                     hops = 0
                     while done_mono - t_arm_mono < earliest and hops < 2:
-                        log.error('첫 프레임이 arm 뒤 %.2fs 에 왔다 (최소 %.2fs) -- 직전 '
-                                  '블록의 꼬리로 보고 버린다', done_mono - t_arm_mono,
-                                  earliest)
+                        log.error('first frame arrived %.2fs after arm '
+                                  '(minimum %.2fs) -- discarding it as a tail '
+                                  'of the previous block',
+                                  done_mono - t_arm_mono, earliest)
                         await self.backend.discard_frame(ticket, release=False)
                         ticket = await self.backend.next_ticket(
                             ticket, intms, suffix=orig_suffix, queue=True)
@@ -382,10 +385,12 @@ class GuideSequencer:
                     achieved = done_mono - prev_done_mono
                     if achieved > exptime * 1.05 + 0.1:
                         log.warning(
-                            '독출 완료 간격이 밀렸다 -- 실현 %.3fs, 지시 %.3fs (프레임 '
-                            '%d/%d).  원인 미상 -- 첫 구동 실측 항목.  DATE-OBS 는 완료 '
-                            '관측에서 되짚으므로 이 프레임의 10.5절 6번은 그대로 성립',
-                            achieved, exptime, k + 1, count)
+                            'readout interval slipped -- realised %.3fs vs '
+                            'commanded %.3fs (frame %d/%d)',
+                            achieved, exptime, k + 1, count,
+                            extra={'detail': '원인 미상 -- 첫 구동 실측 항목.  '
+                                             'DATE-OBS 는 완료 관측에서 되짚으므로 '
+                                             '이 프레임의 10.5절 6번은 그대로 성립'})
                 prev_done_mono = done_mono
 
                 self._dispatch_store(source, orig_suffix, t_prev, exptime, k + 1, count)
@@ -475,7 +480,7 @@ class GuideSequencer:
             # 여기 오면 우리 결함이다 -- 그래도 **조용히 죽지 않는다**:
             # 통보 없이 태스크만 죽으면 expstatus 가 그 국면에 고착되고
             # 가이딩 클라이언트가 영원히 기다린다.
-            log.exception('guide 사이클이 예상 밖 예외로 죽었다')
+            log.exception('fatal: guide cycle died on an unexpected exception')
             clean = await self._settle(armed, clean, ticket, intms,
                                        '내부 오류', drain=True)
             st.expstatus = ExpStatus.ERROR
@@ -578,8 +583,8 @@ class GuideSequencer:
             # 끝까지 클록되므로 종전대로 꼬리를 배수한다.
             await self._drain_tail(ticket, intms)
         else:
-            log.info('LOADPARAMS 가 나가기 전에 취소됐다 -- 컨트롤러는 유휴, 끊을 '
-                     '사이클도 꼬리도 없다')
+            log.info('cancelled before LOADPARAMS went out -- the controller '
+                     'is idle, nothing to stop')
         return True
 
     def _cycle_started(self, ticket) -> bool:  # noqa: ANN001
@@ -599,9 +604,10 @@ class GuideSequencer:
             await self.backend.abort_flush()
             return True
         except GuideBackendError as exc:
-            log.warning('abort flush 를 못 보냈다 -- %s.  종전 Exposures=0 으로 '
-                        '물러난다 (진행 중 프레임은 끝까지 클록되고 꼬리를 배수한다)',
-                        exc)
+            log.warning('could not send the abort flush -- %s.  falling back '
+                        'to Exposures=0', exc,
+                        extra={'detail': '진행 중 프레임은 끝까지 클록되고 꼬리를 '
+                                         '배수한다'})
             await self.backend.stop_sequence()
             return False
 
@@ -638,7 +644,8 @@ class GuideSequencer:
         # 고아가 돼도(아무도 안 기다려도) 실패를 삼키지 않는다.
         fut.add_done_callback(
             lambda f: None if f.cancelled() or f.exception() is None else
-            log.warning('해제 왕복이 뒤늦게 실패했다 -- %s', f.exception()))
+            log.warning('the disarm round trip failed late -- %s',
+                        f.exception()))
         try:
             return bool(await asyncio.shield(fut))
         except asyncio.CancelledError:
@@ -646,8 +653,8 @@ class GuideSequencer:
             # 결과를 모르니 `False` -- 종료가 뒤따르므로 flush 대기는 어차피 없다.
             return False
         except Exception as exc:  # noqa: BLE001
-            log.warning('컨트롤러를 세우지 못했다 -- %s (남은 프레임이 더 나올 '
-                        '수 있다)', exc)
+            log.warning('could not stop the controller -- %s', exc,
+                        extra={'detail': '남은 프레임이 더 나올 수 있다'})
             return False
 
     async def _await_flush(self) -> None:
@@ -671,7 +678,8 @@ class GuideSequencer:
         try:
             await asyncio.sleep(hold)
         except asyncio.CancelledError:
-            log.info('종료가 겹쳤다 -- flush 대기를 접는다 (POWEROFF 가 뒤따른다)')
+            log.info('shutdown overlapped -- dropping the flush wait '
+                     '(POWEROFF follows)')
 
     async def _tail_is_quiet(self, done: int, period: float) -> bool:
         """프레임 번호가 **한 주기 동안 안 늘면** 엔진이 멈춘 것이다.
@@ -690,11 +698,11 @@ class GuideSequencer:
             try:
                 now = await self.backend.newest_frame()
             except Exception as exc:  # noqa: BLE001
-                log.info('꼬리 확인 중 FRAME 을 못 읽었다 -- %s (조용한 것으로 '
-                         '본다)', exc)
+                log.info('could not read FRAME while checking the tail -- %s '
+                         '(treated as quiet)', exc)
                 return True
             if now is not None and now > done:
-                log.info('꼬리가 더 있다 -- 프레임 %d 가 더 나왔다', now)
+                log.info('the tail continues -- frame %d appeared', now)
                 return False
         return True
 
@@ -738,8 +746,8 @@ class GuideSequencer:
         # 32초 동안 그랬고, 그 사이 아무 설명이 없었다.
         # ⚠️ 상한은 `guiexp` 에 비례한다 (`_tail_is_quiet` 이 **한 주기** 동안
         # 번호가 안 느는 것을 확인하기 때문) -- 실운영 1.3 s 에서는 ~3 s 다.
-        log.info('STOP -- 컨트롤러 꼬리 프레임을 소화한다 (최대 %.0f초).  '
-                 '그 동안 GO 는 거절된다', limit)
+        log.info('STOP -- draining the controller tail frame (up to %.0fs)',
+                 limit, extra={'detail': '그 동안 GO 는 거절된다'})
 
         async def _wait() -> None:
             newest = await self.backend.newest_frame()
@@ -773,13 +781,14 @@ class GuideSequencer:
                     newest = done                    # 아직 돌고 있다 -- 한 장 더
                 else:
                     # 해제 전에 이미 끝나 있던 장이었다 -- 엔진은 다음 장을 시작했다.
-                    log.info('꼬리가 %s -- 프레임 %d 는 해제 전 완료분, 한 장 더 '
-                             '기다린다', _HOP_WORD[min(hop, len(_HOP_WORD) - 1)],
-                             done)
+                    log.info('tail hop %s -- frame %d completed before the '
+                             'disarm, waiting for one more',
+                             _HOP_WORD[min(hop, len(_HOP_WORD) - 1)], done)
                 if hop == _MAX_TAIL_HOPS - 1:
-                    log.warning('꼬리를 %d홉 안에 못 닫았다 (마지막 완료 %s) -- '
-                                '다음 시퀀스의 기준선이 어긋날 수 있다',
-                                _MAX_TAIL_HOPS, done)
+                    log.warning('could not close the tail within %d hops '
+                                '(last completed %s)', _MAX_TAIL_HOPS, done,
+                                extra={'detail': '다음 시퀀스의 기준선이 어긋날 '
+                                                 '수 있다'})
                     return
                 tail = await self.backend.next_ticket(tail, intms, suffix='',
                                                       queue=False)
@@ -793,10 +802,10 @@ class GuideSequencer:
             task.cancel()
             task.add_done_callback(lambda f: f.cancelled() or f.exception())
         except asyncio.TimeoutError:
-            log.info('꼬리 프레임이 %.1fs 안에 안 끝났다 -- 이미 멈춰 있었을 것이다',
-                     limit)
+            log.info('the tail frame did not finish within %.1fs -- it had '
+                     'probably already stopped', limit)
         except Exception as exc:  # noqa: BLE001
-            log.info('꼬리 프레임 소화 생략 -- %s', exc)
+            log.info('skipping the tail drain -- %s', exc)
 
     # -- 저장 ----------------------------------------------------------------
 
@@ -819,9 +828,10 @@ class GuideSequencer:
             data_dir, site, date_part, int(num))
         suffix = orig_suffix
         if final != int(num):
-            log.warning('guide 이름 충돌 -- %s.%s 가 점유돼 %06d 로 민다 '
-                        '(EXPID 는 최초 배정분을 유지, D-016/D-019)',
-                        date_part, num, final)
+            log.warning('guide filename clash -- %s.%s is taken, bumping to '
+                        '%06d', date_part, num, final,
+                        extra={'detail': 'EXPID 는 최초 배정분을 유지한다 '
+                                         '(D-016/D-019)'})
             st.sync_expnum(final)
             suffix = f'{date_part}.{final:06d}'
 
@@ -886,9 +896,11 @@ class GuideSequencer:
                      cards, index: int, total: int) -> None:  # noqa: ANN001
         # 컨트롤러 한 대에 fetch 하나만 -- `_store_gate` 주석 참조.
         if self._store_gate.locked():
-            log.warning('저장이 겹친다 -- 앞 프레임의 fetch·기록이 트리거 '
-                        '주기를 넘겼다 (%s 대기).  EXPTIME 을 늘리거나 저장 '
-                        '경로를 봐야 한다', os.path.basename(path))
+            log.warning('writes are overlapping -- the previous frame fetch '
+                        'and write ran past the trigger period (%s waiting)',
+                        os.path.basename(path),
+                        extra={'detail': 'EXPTIME 을 늘리거나 저장 경로를 봐야 '
+                                         '한다'})
         async with self._store_gate:
             await self._store_locked(source, suffix, path, cards, index, total)
 
@@ -914,7 +926,8 @@ class GuideSequencer:
                 # ABORT 의 `drop_pending` 과 이 태스크의 `take_ticket` 이
                 # 경합하면 'No pending' 이 나온다 -- 의도된 폐기이지 결함이
                 # 아니므로 IDLE 통보 뒤에 낙오 ERROR 를 흘리지 않는다.
-                log.info('ABORT 뒤 저장 포기 -- %s (%s)', path, exc)
+                log.info('giving up the write after ABORT -- %s (%s)',
+                         path, exc)
                 return
             self.emit.error(source, 'GO', _ascii(exc), self.st.expstatus)
             return

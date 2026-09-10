@@ -627,7 +627,9 @@ def test_two_frame_tail_is_drained_when_disarm_lands_late(tmp_path, monkeypatch,
                 await app.stop()
 
         produced, saved = asyncio.run(run())
-        assert any('꼬리가 둘' in r.getMessage() for r in caplog.records), \
+        # ⭐ 문구가 영문이다 (2026-09-11) -- 홉 낱말도 함께 영문이다.
+        assert any('tail hop two' in r.getMessage()
+                   for r in caplog.records), \
             '두 홉 경로를 안 탔다 -- 시험 전제(늦은 해제)가 안 성립'
         assert (produced, saved) == (2, 2), (produced, saved)   # R2613+: flush 는 프레임을 안 만든다
         del _time
@@ -764,12 +766,16 @@ def test_shutdown_closes_the_link_not_just_the_power():
     assert ctrl.calls == ['power_off', 'close']
 
 
-def test_the_link_is_closed_even_when_poweroff_fails():
-    """⚠️ **닫기는 `POWEROFF` 실패에도 돈다** (`finally`).
+def test_poweroff_is_retried_once_and_the_link_is_closed_either_way():
+    """⭐ **한 번 더 해 본다** (운영자 2026-09-11) + ⚠️ 닫기는 그래도 돈다.
 
-    전원이 남는 것보다 연결이 남는 것이 다음 실행을 더 확실히 막는다 --
-    전원은 사람이 다시 끌 수 있지만 안 붙는 컨트롤러는 리셋해야 한다.
+    ⭐ 첫 시도가 실패하는 흔한 까닭은 링크가 어긋난 것이고, 그때 `cmd()` 가
+    이미 `resync()` 를 한 뒤라 두 번째는 새 연결로 나간다 (벤치 2026-09-10:
+    ArchonGUI 가 붙었다 떨어진 뒤 `quit` 이 안 끝났다).
+    ⚠️ **두 번까지다** -- 종료가 안 끝나는 것도 나쁘다.
+    ⚠️ 닫기는 `finally` 라 두 번 다 실패해도 돈다: 전원이 남는 것보다 연결이
+    남는 것이 다음 실행을 더 확실히 막는다.
     """
     ctrl = _ShutdownCtrl(power_fails=True)
     asyncio.run(_bare_backend(ctrl).shutdown())
-    assert ctrl.calls == ['power_off', 'close']
+    assert ctrl.calls == ['power_off', 'power_off', 'close'], ctrl.calls

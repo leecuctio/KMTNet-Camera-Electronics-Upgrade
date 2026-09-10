@@ -169,13 +169,14 @@ async def set_target(ctrl, on: bool, celsius: float,  # noqa: ANN001
     lim = await read_limits(ctrl, ch)
     value, note = clamp(celsius, lim)
     if note:
-        log.warning('HTRSET %.2f 는 %s 의 한계 [%.2f, %.2f] 밖이다 -- %.2f 로 '
-                    '접어 넣는다', celsius, lim.source, lim.lo, lim.hi, value)
+        log.warning('HTRSET %.2f is outside the %s limits [%.2f, %.2f] -- '
+                    'clamped to %.2f',
+                    celsius, lim.source, lim.lo, lim.hi, value)
     await _write_and_apply(ctrl,
                            (heater_key('ENABLE', ch), '1' if on else '0'),
                            (heater_key('TARGET', ch), '%g' % value))
-    log.info('히터 %s Enable=%d Target=%.2f -- ⚠️ %s', ch, int(on), value,
-             VCPU_NOTE)
+    log.info('heater %s Enable=%d Target=%.2f', ch, int(on), value,
+             extra={'detail': '⚠️ %s' % VCPU_NOTE})
     return value, ' '.join(x for x in (note, '(%s)' % VCPU_NOTE) if x)
 
 
@@ -194,7 +195,7 @@ async def read_settings(ctrl, ch: str = CH) -> dict:  # noqa: ANN001
         try:
             out[name] = (await ctrl.read_config(heater_key(key, ch))).strip()
         except Exception as exc:            # noqa: BLE001
-            log.warning('히터 %s 되읽기 실패 -- %s', key, exc)
+            log.warning('heater readback failed for %s -- %s', key, exc)
             out[name] = None
     return out
 
@@ -263,10 +264,12 @@ async def set_force(ctrl, on: bool, level: float,  # noqa: ANN001
                            (heater_key('FORCE', ch), '1' if on else '0'),
                            (heater_key('FORCELEVEL', ch), '%g' % level))
     if on:
-        log.warning('히터 %s **강제 출력** Force=1 Level=%.3f V -- %s.  ⚠️ %s',
-                    ch, level, FORCE_NOTE, VCPU_NOTE)
+        log.warning('heater %s FORCED output Force=1 Level=%.3f V',
+                    ch, level,
+                    extra={'detail': '%s.  ⚠️ %s' % (FORCE_NOTE, VCPU_NOTE)})
         return '%s (%s)' % (FORCE_NOTE, VCPU_NOTE)
-    log.info('히터 %s Force=0 Level=%.3f V -- ⚠️ %s', ch, level, VCPU_NOTE)
+    log.info('heater %s Force=0 Level=%.3f V', ch, level,
+             extra={'detail': '⚠️ %s' % VCPU_NOTE})
     return VCPU_NOTE
 
 
@@ -359,38 +362,44 @@ class OverTempGuard:
             except Exception as exc:      # noqa: BLE001
                 if not self._warned_limits:
                     self._warned_limits = True
-                    log.error('⛔ 히터 과열 차단이 **서지 못했다** -- 되먹임 '
-                              '센서의 한계를 못 읽는다 (%s).  상한을 모르는 '
-                              '동안은 차단이 없다', exc)
+                    log.error('heater over-temperature guard is NOT armed -- '
+                              'cannot read the feedback sensor limits (%s)', exc,
+                              extra={'detail': '⛔ 상한을 모르는 동안은 차단이 '
+                                               '없다'})
                 return ''
-            log.info('히터 과열 차단 -- %s 의 상한 %.2f °C 를 넘으면 끈다 '
-                     '(주기 = HK 루프)', self.limits.source, self.limits.hi)
+            log.info('heater over-temperature guard armed -- turns off above '
+                     '%s %.2f °C', self.limits.source, self.limits.hi,
+                     extra={'detail': '판정 주기는 HK 루프다'})
             self._warned_limits = False
         lim = self.limits
         val = _as_float(status.get(temp_field(lim.sensor)))
         if val is None:
             if not self._warned_missing:
                 self._warned_missing = True
-                log.warning('히터 과열 차단: 되먹임 센서 %s 의 온도가 STATUS 에 '
-                            '없다 -- **차단 판정을 못 한다**.  결측으로는 끄지 '
-                            '않는다 (VCPU 재시작 창이 이 모양이다)', lim.source)
+                log.warning('over-temperature guard: STATUS has no temperature '
+                            'for the feedback sensor %s -- cannot judge',
+                            lim.source,
+                            extra={'detail': '결측으로는 끄지 않는다 (VCPU '
+                                             '재시작 창이 이 모양이다)'})
             return ''
         self._warned_missing = False
         if val <= lim.hi:
             if self.tripped:
                 self.tripped = False
-                log.info('되먹임 센서 %s 가 상한 아래로 돌아왔다 (%.2f ≤ %.2f) '
-                         '-- ⚠️ 히터는 **꺼진 채**다.  다시 쓰려면 HTRSET / '
-                         'HTRFORCE 를 명시적으로 칠 것', lim.source, val, lim.hi)
+                log.info('feedback sensor %s is back below the limit '
+                         '(%.2f <= %.2f)', lim.source, val, lim.hi,
+                         extra={'detail': '⚠️ 히터는 꺼진 채다.  다시 쓰려면 '
+                                          'HTRSET / HTRFORCE 를 명시적으로 칠 것'})
             return ''
         if self.tripped:
             return ''                     # 이미 껐다 -- 같은 초과로 또 쓰지 않는다
-        log.error('⛔ 되먹임 센서 %s = %.2f °C 가 상한 %.2f 를 넘었다 -- '
-                  '히터를 끈다 (FORCE·FORCELEVEL·ENABLE 셋)',
-                  lim.source, val, lim.hi)
+        log.error('feedback sensor %s = %.2f °C is above the limit %.2f -- '
+                  'turning the heater off', lim.source, val, lim.hi,
+                  extra={'detail': 'FORCE·FORCELEVEL·ENABLE 셋을 내린다'})
         await shutdown(ctrl, self.ch)
         self.tripped = True
-        log.error('⛔ 히터 %s 를 껐다.  ⚠️ %s', self.ch, VCPU_NOTE)
+        log.error('heater %s turned off', self.ch,
+                  extra={'detail': '⚠️ %s' % VCPU_NOTE})
         return ('HEATER OFF -- %s=%.2f > %.2f (over-temperature)'
                 % (lim.source, val, lim.hi))
 
@@ -406,8 +415,8 @@ async def ramp_rate_note(ctrl, rate: int) -> str:  # noqa: ANN001
     try:
         ms = float(await ctrl.read_config(UPDATETIME_KEY))
     except Exception as exc:                # noqa: BLE001
-        log.warning('%s 를 못 읽어 RAMPRATE 환산을 생략한다 -- %s',
-                    UPDATETIME_KEY, exc)
+        log.warning('could not read %s -- skipping the RAMPRATE conversion '
+                    '(%s)', UPDATETIME_KEY, exc)
         return ''
     if ms <= 0:
         return ''
@@ -429,8 +438,9 @@ async def set_ramp(ctrl, on: bool, rate: int,  # noqa: ANN001
     await _write_and_apply(ctrl,
                            (heater_key('RAMP', ch), '1' if on else '0'),
                            (heater_key('RAMPRATE', ch), '%d' % rate))
-    log.info('히터 %s Ramp=%d RampRate=%d%s -- ⚠️ %s', ch, on, rate,
-             ' (%s)' % conv if conv else '', VCPU_NOTE)
+    log.info('heater %s Ramp=%d RampRate=%d%s', ch, on, rate,
+             ' (%s)' % conv if conv else '',
+             extra={'detail': '⚠️ %s' % VCPU_NOTE})
     return ' '.join(x for x in (conv, '(%s)' % VCPU_NOTE) if x)
 
 
@@ -456,7 +466,8 @@ async def set_pid(ctrl, p: float, i: float, d: float,  # noqa: ANN001
                            (heater_key('P', ch), '%g' % p),
                            (heater_key('I', ch), '%g' % i),
                            (heater_key('D', ch), '%g' % d))
-    log.info('히터 %s PID=%g/%g/%g -- ⚠️ %s', ch, p, i, d, VCPU_NOTE)
+    log.info('heater %s PID=%g/%g/%g', ch, p, i, d,
+             extra={'detail': '⚠️ %s' % VCPU_NOTE})
     return VCPU_NOTE
 
 

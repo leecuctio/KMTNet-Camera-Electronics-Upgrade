@@ -205,7 +205,7 @@ def _make_handler(client):  # noqa: ANN001, ANN202
                 # 우리 uplink 는 킬로바이트 단위다 -- 이만한 것은 우리 것이
                 # 아니므로 읽지 않고 연결을 닫는다.
                 self.close_connection = True
-                log.warning('lns 요청 본문이 %d 바이트다 -- 버린다', length)
+                log.warning('lns request body is %d bytes -- dropped', length)
                 return b''
             return self.rfile.read(length)
 
@@ -220,14 +220,14 @@ def _make_handler(client):  # noqa: ANN001, ANN202
                     cfg.lns_token:
                 # ⚠️ LAN 안이라도 **누가 보냈는지**는 가른다 -- 틀린 값이
                 # 헤더로 들어가는 길이다.
-                log.warning('lns uplink 를 토큰 불일치로 버린다 (%s)',
+                log.warning('dropping an lns uplink -- token mismatch (%s)',
                             self.client_address[0])
                 self._reply(401, 'no')
                 return
             try:
                 msg = json.loads(raw.decode('utf-8'))
             except Exception as exc:        # noqa: BLE001
-                log.warning('lns uplink 를 못 읽었다 -- %s', exc)
+                log.warning('could not read the lns uplink -- %s', exc)
                 self._reply(200, 'bad')
                 return
             client.take_uplink(msg if isinstance(msg, dict) else {})
@@ -513,8 +513,9 @@ class RadionodeClient:
         except OSError as exc:
             raise RadionodeError('Cannot listen on %r -- %s'
                                  % (self.cfg.lns_bind or '(any)', exc)) from exc
-        log.info('lns 수신기 %s%s -- 게이트웨이 integration 이 여기로 POST 한다 '
-                 '(장치 %d)', addr, self.cfg.lns_path, len(self._by_eui))
+        log.info('lns listener on %s%s (%d device(s))',
+                 addr, self.cfg.lns_path, len(self._by_eui),
+                 extra={'detail': '게이트웨이 integration 이 여기로 POST 한다'})
         return ('Listening=%s Path=%s Devices=%d (push from the gateway '
                 'network server)' % (addr, self.cfg.lns_path, len(self._by_eui)))
 
@@ -566,9 +567,10 @@ class RadionodeClient:
         if not self.polling:
             self._stop.clear()
             self._task = self._spawn(self._run())
-            log.info('radionode 폴링을 런타임에 켰다 (%s -> openapi, 주기 '
-                     '%.0fs, 장치 %d) -- ⚠️ ini 는 안 고쳤다', was,
-                     self.cfg.poll_period, len(self.cfg.devices))
+            log.info('radionode polling enabled at runtime (%s -> openapi, '
+                     'period %.0fs, %d device(s))', was,
+                     self.cfg.poll_period, len(self.cfg.devices),
+                     extra={'detail': '⚠️ ini 는 안 고쳤다'})
             body = ('Polling=on Period=%.0fs Devices=%d (runtime only -- '
                     'the ini still says backend=%s)'
                     % (self.cfg.poll_period, len(self.cfg.devices), was))
@@ -601,16 +603,16 @@ class RadionodeClient:
             # ⭐ **백엔드는 그대로 둔다** -- `off` 로 되돌리면 다음 `CONNECT` 가
             # 클라우드로 간다.  공개 여부는 `publishing` 이 수신기 생사로
             # 판정하므로, 이것만으로 세 카드는 곧바로 sentinel 이다.
-            log.info('lns 수신기를 껐다 -- HEBOX/FSATEMP/FSAHUM 는 이제 '
-                     'sentinel 이다 (백엔드는 local_lns 그대로)')
+            log.info('lns listener stopped -- HEBOX/FSATEMP/FSAHUM go to '
+                     'sentinel', extra={'detail': '백엔드는 local_lns 그대로다'})
             return ('Listening=off (HEBOX/FSATEMP/FSAHUM go to sentinel; '
                     'backend stays local_lns)')
         if self.cfg.backend != 'openapi':
             return 'Not connected (backend=%s)' % self.cfg.backend
         await self.stop()
         self.cfg.backend = 'off'
-        log.info('radionode 폴링을 런타임에 껐다 -- 헤더의 HEBOX/FSATEMP/'
-                 'FSAHUM 는 이제 sentinel 이다')
+        log.info('radionode polling disabled at runtime -- HEBOX/FSATEMP/'
+                 'FSAHUM go to sentinel')
         return 'Polling=off (HEBOX/FSATEMP/FSAHUM go to sentinel)'
 
 
@@ -643,11 +645,12 @@ class RadionodeClient:
             except RadionodeError as exc:
                 # ⚠️ 기동을 세우지 않는다 -- 나머지 HK(RTD·진공·AUX)는 돌아야
                 # 한다.  대신 크게 남기고 `STATUS` 가 계속 보여 준다.
-                log.warning('lns 수신기를 못 띄웠다 -- %s.  HEBOX/FSATEMP/'
-                            'FSAHUM 는 sentinel 이다', exc)
+                log.warning('could not start the lns listener -- %s', exc,
+                            extra={'detail': 'HEBOX/FSATEMP/FSAHUM 는 sentinel '
+                                             '이다'})
             return
         if self.cfg.backend != 'openapi':
-            log.info('radionode 백엔드 %s -- 폴링 루프를 띄우지 않는다',
+            log.info('radionode backend is %s -- no polling loop',
                      self.cfg.backend)
             return
         self._stop.clear()
@@ -680,7 +683,7 @@ class RadionodeClient:
         if self._poll_lock.locked():
             # 주기 루프가 도는 중에 `RECONNECT` 가 겹쳤다 -- 같은 API 를
             # 두 번 치지 않는다 (쿼터가 분 단위다).
-            log.info('radionode 폴링이 이미 진행 중이라 건너뛴다')
+            log.info('a radionode poll is already running -- skipping')
             return
         async with self._poll_lock:
             wanted = [d for d in self.cfg.devices
@@ -706,8 +709,8 @@ class RadionodeClient:
                 for dev in wanted:
                     self.last_err[dev.alias] = why
                     self._last_try[dev.alias] = 'err'
-                log.warning('radionode 폴링 실패 -- %s (헤더는 sentinel 로 간다)',
-                            exc)
+                log.warning('radionode poll failed -- %s', exc,
+                            extra={'detail': '헤더는 sentinel 로 간다'})
                 return
             by_mac: dict[str, list] = {}
             for row in rows:
@@ -826,9 +829,10 @@ class RadionodeClient:
             if unit and (unit in self._HUM_UNITS) != is_hum:
                 # ⛔ 단위가 이름과 어긋난다 -- 짐작으로 싣지 않는다.  실으면
                 # 습도가 온도 카드에 앉아 **정상으로 보이는 틀린 값**이 된다.
-                log.warning('radionode %s CH%d 단위가 %r 인데 키가 %r 이다 -- '
-                            '이 채널은 싣지 않는다 (ini 의 keys 순서를 볼 것)',
-                            dev.alias, ch_no, unit, key)
+                log.warning('radionode %s CH%d has unit %r but the key is %r '
+                            '-- dropping this channel',
+                            dev.alias, ch_no, unit, key,
+                            extra={'detail': 'ini 의 keys 순서를 볼 것'})
                 continue
             ts = row.get('ch_timestamp')
             try:
@@ -837,17 +841,19 @@ class RadionodeClient:
                 age = now_e - float(str(ts).strip())
             except (TypeError, ValueError):
                 age = 0.0                   # 시각을 못 읽으면 폴링 시각으로
-                log.warning('radionode %s CH%d 의 ch_timestamp 를 못 읽었다 '
-                            '(%r) -- 폴링 시각으로 대신한다', dev.alias, ch_no, ts)
+                log.warning('radionode %s CH%d ch_timestamp is unreadable '
+                            '(%r) -- using the poll time instead',
+                            dev.alias, ch_no, ts)
             if age < -self._CLOCK_SLACK:
                 # ⛔ **장치 시계가 우리보다 앞선다.**  그대로 두면 나이가 음수라
                 # 늘 신선해 보여, 진짜로 낡은 표본도 `stale_after` 를 못 걸린다
                 # -- *"낡은 값이 새 값처럼"* 이라 결측보다 나쁘다.
                 # ⚠️ 실물에서 RN320-BTH 가 `last_update` 보다 1분쯤 앞선 적이
                 # 있다(2026-09-08).  작은 앞섬은 정상으로 보고 넘긴다.
-                log.warning('radionode %s CH%d 표본시각이 우리 시계보다 %.0f초 '
-                            '앞선다 -- 장치/서버 시각을 볼 것 (신선도 판정이 '
-                            '느슨해진다)', dev.alias, ch_no, -age)
+                log.warning('radionode %s CH%d sample time is %.0fs ahead of '
+                            'our clock', dev.alias, ch_no, -age,
+                            extra={'detail': '장치/서버 시각을 볼 것 (신선도 '
+                                             '판정이 느슨해진다)'})
             age = max(0.0, age)
             with self._lock:                # ⚠️ 수신 스레드에서도 쓰는 dict
                 self._latest[key] = (val, now_m - age)
@@ -874,8 +880,8 @@ class RadionodeClient:
                 self._window[key] = new
             if self._warned_interval.get(dev.alias) != interval:
                 self._warned_interval[dev.alias] = interval
-                log.info('radionode %s 신선도 창을 %.0f초로 잡았다 '
-                         '(전송주기 %.0f초 x3, ini 초기값 %.0f초를 대신한다)',
+                log.info('radionode %s freshness window set to %.0fs '
+                         '(send interval %.0fs x3, replacing the ini %.0fs)',
                          dev.alias, new, interval, self.cfg.stale_after)
         self.extras[dev.alias] = extras
         if not got:
@@ -916,8 +922,9 @@ class RadionodeClient:
         if dev is None:
             self._unknown_eui[eui] = self._unknown_eui.get(eui, 0) + 1
             if self._unknown_eui[eui] == 1:     # 첫 번만 크게
-                log.warning('lns uplink 의 DevEUI %s 가 ini 에 없다 -- 버린다.  '
-                            '[radionode.<별칭>] deveui 를 적을 것', eui or '(없음)')
+                log.warning('lns uplink DevEUI %s is not in the ini -- dropped',
+                            eui or '(none)',
+                            extra={'detail': '[radionode.<별칭>] deveui 를 적을 것'})
             return
         if not self.enabled.get(dev.alias, True):
             return                              # RADIONODE DISABLE 된 장치
@@ -925,9 +932,10 @@ class RadionodeClient:
         if obj is None:
             self.last_err[dev.alias] = 'no decoded object (codec on the NS?)'
             self._last_try[dev.alias] = 'err'
-            log.warning('lns uplink %s 에 해석된 값이 없다 -- 게이트웨이 NS 에 '
-                        '코덱(rn320bth.js)이 올라가 있는지 볼 것.  ⛔ 원문 '
-                        'base64 를 우리가 짐작으로 자르지 않는다', dev.alias)
+            log.warning('lns uplink %s carries no decoded values', dev.alias,
+                        extra={'detail': '게이트웨이 NS 에 코덱(rn320bth.js)이 '
+                                         '올라가 있는지 볼 것.  ⛔ 원문 base64 를 '
+                                         '우리가 짐작으로 자르지 않는다'})
             return
         self._store(dev, obj)
         self.last_ok[dev.alias] = time.monotonic()
@@ -947,7 +955,7 @@ class RadionodeClient:
                 got.append(key)
         if not got:
             self.last_err[dev.alias] = 'no usable fields in response'
-            log.warning('radionode %s 응답에서 온도/습도를 못 찾았다 -- '
-                        '응답 키: %s', dev.alias,
+            log.warning('radionode %s: no temperature/humidity in the reply '
+                        '-- keys: %s', dev.alias,
                         ', '.join(list(sample)[:8]) if isinstance(sample, dict)
                         else type(sample).__name__)

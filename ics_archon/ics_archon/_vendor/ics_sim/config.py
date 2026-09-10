@@ -375,6 +375,20 @@ class BehaviorCfg:
     bug_compat: bool = False
     send_guide_init: bool = True
     console: bool = True
+    #: ⭐ **화면을 얼마나 자세히 쓸까** (운영자 2026-09-11).  끄면 화면에는
+    #: **함축 메시지(essential message)만** 흐른다 -- 자동으로 오가는 텔레메트리
+    #: 왕복·핸드셰이킹, 그리고 매번 같은 값으로 되풀이되는 경고가 빠진다.
+    #:
+    #: ⛔⛔ **로그 파일은 이 눈금을 안 탄다** -- 언제나 켜진 것과 같이 전부
+    #: 적는다.  ⚠️ 화면에서 안 보인 줄이 파일에는 있다는 뜻이라, 벤치에서
+    #: *"그 줄 못 봤는데"* 로 판정하면 안 된다.
+    #:
+    #: ⭐ **`[logging]` 이 아니라 여기 있는 이유** (운영자 2026-09-11): 이것은
+    #: **화면 표시**를 정하는 눈금이지 로그를 정하는 눈금이 아니다.  `[logging]`
+    #: 에 두면 *"로그 파일도 줄어든다"* 로 읽힌다.
+    #: ⚠️ `[logging] wire` 와도 다른 물건이다 -- 그쪽은 와이어 줄을 **아예 안
+    #: 남긴다**(파일에도 없다).
+    verbose: bool = True
     inject: frozenset[str] = frozenset()
 
     def injecting(self, fault: str) -> bool:
@@ -460,18 +474,6 @@ class LoggingCfg:
     level: str = 'info'
     wire: bool = True
     file: str = ''
-    #: ⭐ **화면을 얼마나 자세히 쓸까** (운영자 2026-09-11).  끄면 화면에는
-    #: **함축 메시지(essential message)만** 흐른다 -- 자동으로 오가는 텔레메트리
-    #: 왕복·핸드셰이킹, 그리고 매번 같은 값으로 되풀이되는 경고가 빠진다.
-    #:
-    #: ⛔⛔ **로그 파일은 이 눈금을 안 탄다** -- 언제나 켜진 것과 같이 전부
-    #: 적는다 (운영자: *"verbose on이던 off던, log 파일에는 verbose on의 메시지
-    #: 출력"*).  ⚠️ 화면에서 안 보인 줄이 파일에는 있다는 뜻이라, 벤치에서
-    #: *"그 줄 못 봤는데"* 로 판정하면 안 된다.
-    #:
-    #: ⚠️ `wire` 와 다른 물건이다 -- `wire = off` 는 와이어 줄을 **아예 안
-    #: 남긴다**(파일에도 없다).  자취를 지우는 눈금이라 운영에서는 켜 둔다.
-    verbose: bool = True
 
 
 @dataclass
@@ -929,6 +931,7 @@ def load(path: str | None = None) -> SimConfig:
     if cp.has_section('behavior'):
         s = cp['behavior']
         b = cfg.behavior
+        b.verbose = _bool(s, 'verbose', b.verbose)
         b.strict_legacy = _bool(s, 'strict_legacy', b.strict_legacy)
         b.bug_compat = _bool(s, 'bug_compat', b.bug_compat)
         b.send_guide_init = _bool(s, 'send_guide_init', b.send_guide_init)
@@ -976,7 +979,6 @@ def load(path: str | None = None) -> SimConfig:
         lg = cfg.logging
         lg.level = s.get('level', lg.level).strip().lower()
         lg.wire = _bool(s, 'wire', lg.wire)
-        lg.verbose = _bool(s, 'verbose', lg.verbose)
         lg.file = _path_or(s, 'file', lg.file)
 
     resolve_expnum_file(cfg)

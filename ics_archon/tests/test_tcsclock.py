@@ -158,7 +158,8 @@ def test_it_warns_once_and_says_recovery(caplog):  # noqa: ANN001
     assert watch.breaches == 5, '넘은 횟수는 세어 둔다'
     caplog.clear()
     watch.observe('2026-08-21T12:34:56.266', BASE, BASE)   # 돌아왔다
-    assert any('돌아왔다' in r.message for r in caplog.records), caplog.records
+    assert any('back within the threshold' in r.message
+               for r in caplog.records), caplog.records
 
 
 def test_the_summary_says_it_has_no_sample_before_the_first_query():

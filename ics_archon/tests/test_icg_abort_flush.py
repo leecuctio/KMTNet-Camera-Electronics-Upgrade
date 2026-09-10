@@ -366,7 +366,9 @@ def test_abort_falls_back_to_exposures_zero_when_the_flush_is_refused(tmp_path, 
                 await app.stop()
 
         before, after, later = asyncio.run(run())
-        assert any('abort flush 를 못 보냈다' in r.getMessage() for r in caplog.records)
+        # ⭐ 문구가 영문이다 (2026-09-11) -- 사실만 본다.
+        assert any('could not send the abort flush' in r.getMessage()
+                   for r in caplog.records)
         assert after.resets == 0
         assert 'RESETTIMING' not in [c.upper() for c in fake.seen]
         assert fake._exposures() == 0                   # noqa: SLF001
