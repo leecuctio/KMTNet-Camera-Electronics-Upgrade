@@ -1553,7 +1553,13 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ⭐ **원칙: 로그는 무슨 일이 일어났는지만 영문 한 줄로, 왜 그런지는 주석(한글)에.**
 `G:` 접두는 **guide 에서만** 뺐다 (`log_tag=False`) — science 는 유닛이 넷이라
-그 접두로만 갈린다.  ⏳ **hk·commands·config 는 아직 한글**이다 (3단계).
+그 접두로만 갈린다.
+
+⏳ **남은 것은 science `ics_archon/archon/` 밑이다** (2026-09-11 마감 시점 **90곳**):
+`controller` 33 · `backend` 28 · `monitor` 13 · `protocol` 7 · `fitswrite` 4 ·
+`parse` 3.  ⭐ `icg_archon` 은 **전부 끝났다** — guide 로 벤치를 도는 동안 화면에
+뜨는 줄은 다 영문이다.  ⚠️ `ics_archon/app.py:74` 는 `validate()` 가 만든 한글을
+그대로 흘리는 자리라 **문구가 아니라 그 함수**를 고쳐야 한다.
 
 #### ✅ `EXPSTATUS` — `ERASE` 되살리고 `FETCH` 신설
 
@@ -1599,7 +1605,10 @@ flush 창(1.25초)이 통째로 안 보이고 그동안 `INTEGRATING` 이 거짓
    였다: 4분(실패) vs 34초(성공).  ⚠️ 표본이 하나씩이라 가설이다.)
    ⭐ **일부러 재현할 필요는 없다** — `exposure armed: … bufs 9/8/7` 이 매 GO
    마다 남으므로 다음에 깨질 때 자동으로 잡힌다.
-2. **3단계 영문화** — `hk`·`commands`·`config` 의 남은 한글 문구
+2. **영문화 잔여 90곳** — science `ics_archon/archon/` 밑 (`controller` ·
+   `backend` · `monitor` · `protocol` · `fitswrite` · `parse`).  ⭐ 급하지 않다:
+   지금 벤치는 guide 라 그 줄들이 화면에 안 뜬다.  ⚠️ 고칠 때 **시험이 문구를
+   보는 자리**를 함께 고칠 것 — 오늘 그것으로 여섯 번 깨졌다
 3. **Alive 되감김이 재시작인지 wrap 인지** — ⭐ **새 코드는 필요 없다**:
    `hk.py` 가 이미 매 바퀴 `alive` 를 HK CSV 에 적고 있다.  ⭐ 벤치 2차에서
    되감김 둘이 **모두 `88` 로 착지**했다(`641->88`, `304->88`) — wrap 이면

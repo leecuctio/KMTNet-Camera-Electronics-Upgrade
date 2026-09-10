@@ -291,8 +291,9 @@ def render(pool: dict[str, object],
         else:
             value = pool[key]
         if value is None:
-            log.debug('%s 값이 없어 카드를 내지 않는다 (5.0절 -- 변환 실패 '
-                      '경로가 발동해야 하는 카드)', key)
+            log.debug('%s has no value -- the card is left out', key,
+                      extra={'detail': '5.0절 -- 변환 실패 경로가 발동해야 하는 '
+                                       '카드'})
             continue
         if kind == 'S':
             text = str(value)

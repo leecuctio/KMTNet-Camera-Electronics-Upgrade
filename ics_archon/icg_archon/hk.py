@@ -615,8 +615,9 @@ class HkMonitor:
         deadline = time.monotonic() + self.QUIET_WAIT
         while getattr(ctrl, 'link_busy', False):
             if time.monotonic() >= deadline:
-                log.debug('HK: 링크가 %.1fs 넘게 바빠 그냥 돈다 -- 이 바퀴의 '
-                          '왕복은 줄을 선다', self.QUIET_WAIT)
+                log.debug('hk: the link stayed busy for %.1fs -- going ahead '
+                          'anyway', self.QUIET_WAIT,
+                          extra={'detail': '이 바퀴의 왕복은 줄을 선다'})
                 return
             await asyncio.sleep(self.QUIET_POLL)
 
@@ -758,10 +759,10 @@ class HkMonitor:
             if event:
                 notify(event)          # ⭐ 히터를 껐다 -- 콘솔에 반드시 보인다
         except Exception as exc:  # noqa: BLE001
-            log.error('⛔ 히터 과열 차단이 실패했다 -- %s.  히터가 켜진 채로 '
-                      '남았을 수 있다', exc)
-            notify('히터 과열 차단이 실패했다 -- %s.  히터가 켜진 채로 남았을 '
-                   '수 있다' % exc)
+            log.error('heater over-temperature guard failed -- %s', exc,
+                      extra={'detail': '⚠️ 히터가 켜진 채로 남았을 수 있다'})
+            notify('heater over-temperature guard failed -- %s '
+                   '(the heater may still be on)' % exc)
         unit = ctrl_unit(status)
         self._ctrl_unit = unit
         temps = unit.get('temp') or [None] * len(guidehdr.TEMP_MODS)
