@@ -854,3 +854,62 @@ def test_health_columns_carry_real_values_when_reported(tmp_path, count_step,  #
     assert last[head.index('power')] == '4'
     assert last[head.index('overheat')] == '0'
     assert last[head.index('fresh')] == expect_fresh
+
+
+def test_frame_skip_leaves_the_buffer_state_in_the_log(tmp_path, caplog):  # noqa: ANN001
+    """⛔ **번호가 어긋나면 그 순간의 버퍼 상태를 남긴다** (2026-09-11).
+
+    2026-09-10 벤치가 *"프레임 6 을 지나쳤다 (찾은 것은 7)"* 로 죽었는데 로그에
+    **그 순간의 값이 한 글자도 없었다** -- 6 이 어느 버퍼에 있었는지도, 애초에
+    완료된 적이 있는지도 못 갈랐다 (DevNote 11.69).  시한 초과 경로는
+    `diagnostic_snapshot()` 을 남기는데 이쪽만 빠져 있었다.
+
+    ⚠️ **문구가 원인을 단정하지 않는 것도 함께 못박는다** -- 종전 문면은
+    *"그 버퍼가 이미 덮였다"* 로 못박았는데, 그 벤치는 FETCH 0.1초 · 주기
+    2.0초라 **저장이 늦을 여지가 없었다.**
+    """
+    import logging
+
+    from ics_archon.archon.controller import FrameTicket
+    from ics_archon.archon.protocol import ArchonError
+
+    fake = FakeArchon(status=dict(DEFAULT_STATUS), system=dict(DEFAULT_SYSTEM))
+    fake.start()
+    try:
+        cfg = _cfg(tmp_path, frame_timeout=5.0, frame_poll=0.02,
+                   connect_retry=1)
+        cfg.port = fake.port
+        ctrl = ArchonController('MK', cfg)
+
+        async def go():
+            await ctrl.connect()
+            # 노출을 걸 때 세 버퍼가 5/4/3 이었고, 지금 **7** 이 완료로 와 있다
+            # -- 6 은 어느 버퍼에도 없다 (벤치가 만난 모양 그대로).
+            fake.frame_no = 7
+            fake.bufs[0].update(frame=5, complete=1)
+            fake.bufs[1].update(frame=7, complete=1)
+            fake.bufs[2].update(frame=3, complete=1)
+            ticket = FrameTicket(suffix='x', prev_frame=5,
+                                 prev_frames=(5, 4, 3))
+            with pytest.raises(ArchonError) as err:
+                async for _pct in ctrl.wait_frame(ticket):
+                    pass
+            await ctrl.close()
+            return str(err.value)
+
+        with caplog.at_level(logging.ERROR, logger='ics_archon.ctrl'):
+            message = asyncio.run(go())
+
+        diag = [r.getMessage() for r in caplog.records
+                if '어긋났다' in r.getMessage()]
+        assert diag, '어긋난 순간의 진단이 없다 -- 벤치가 또 빈손이 된다'
+        line = diag[0]
+        # 기준선과 지금 값이 **둘 다** 있어야 갈린다.
+        assert '5/4/3' in line, line
+        assert 'COMPLETE=' in line and 'LINES=' in line, line
+        assert 'FRAME=5/7/3' in line, line
+        # ⚠️ 던지는 문구는 원인을 단정하지 않는다.
+        assert '지나쳤다' in message
+        assert '이미 덮였다' not in message, message
+    finally:
+        fake.shutdown()

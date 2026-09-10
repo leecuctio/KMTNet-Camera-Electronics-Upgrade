@@ -211,6 +211,28 @@ def buffer_frames(fields: dict[str, str]) -> tuple[int, ...]:
     return tuple(_int(fields, 'BUF%dFRAME' % (i + 1), -1) for i in range(3))
 
 
+def frame_line(fields: dict[str, str]) -> str:
+    """`FRAME` 응답 한 줄 -- 세 버퍼의 번호·완료·줄수 + `RBUF`/`WBUF`.
+
+    ⭐ **어긋난 순간을 사람이 읽을 수 있게 하는 자리**다.  프레임 번호가
+    기대와 다를 때 *"몇 번을 기다렸는데 몇 번이 왔다"* 만으로는 못 가른다 --
+    ① 저장이 늦어 그 버퍼가 **덮인 것**인지 ② 그 번호가 애초에 **버퍼에 온
+    적이 없는 것**인지가 갈리지 않는다.  ⚠️ 완료 플래그와 줄수가 함께 있어야
+    그 둘이 갈린다.
+
+    ⛔ 2026-09-10 벤치가 이것 없이 죽었다 -- 로그에 *"프레임 6 을 지나쳤다"*
+    만 남고 6 이 어느 버퍼에 있었는지가 한 글자도 없었다 (DevNote 11.69).
+    """
+    return ('RBUF=%s WBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s  LINES=%s/%s/%s'
+            % (fields.get('RBUF', '?'), fields.get('WBUF', '?'),
+               fields.get('BUF1FRAME', '?'), fields.get('BUF2FRAME', '?'),
+               fields.get('BUF3FRAME', '?'),
+               fields.get('BUF1COMPLETE', '?'), fields.get('BUF2COMPLETE', '?'),
+               fields.get('BUF3COMPLETE', '?'),
+               fields.get('BUF1LINES', '?'), fields.get('BUF2LINES', '?'),
+               fields.get('BUF3LINES', '?')))
+
+
 def restarted_frame(fields: dict[str, str], prev: int,
                     before: tuple[int, ...]) -> FrameStatus | None:
     """번호가 **새로 바뀐** 완료 버퍼 중 `prev` 보다 크지 않은 것.  없으면 `None`.

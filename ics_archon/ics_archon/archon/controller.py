@@ -152,8 +152,17 @@ T_POWER_CONFIRM = 15.0
 class ArchonController:
     """컨트롤러 한 대 (`MK` 또는 `NT`)."""
 
-    def __init__(self, tag: str, cfg) -> None:  # noqa: ANN001 -- ArchonCfg
+    def __init__(self, tag: str, cfg,  # noqa: ANN001 -- ArchonCfg
+                 log_tag: bool = True) -> None:
         self.tag = tag
+        #: ⭐ **로그 앞머리** -- `'MK: '` 처럼 태그와 콜론, 또는 빈 문자열.
+        #:
+        #: science 는 컨트롤러가 넷이라 어느 유닛의 줄인지가 **그 접두로만**
+        #: 갈린다.  guide 는 하나뿐이라 늘 `'G: '` 여서 아무것도 안 알린다 --
+        #: 그래서 **뺀다** (운영자 2026-09-11).
+        #: ⛔ `tag` 자체는 그대로 둔다 -- 그것은 설정 조회(`hosts[tag]` ·
+        #: `acf[tag]`)와 파일 갈래에 쓰는 **기능값**이지 표시가 아니다.
+        self.ltag = '%s: ' % tag if log_tag else ''
         self.cfg = cfg
         #: `prepare()` 의 `POWERON` 뒤 대기를 **곁다리가 덮어쓸 수 있다**
         #: (`None` 이면 설정값).  ⭐ guide 가 *"예열할 게이지가 없다"* 를 알 때
@@ -439,7 +448,8 @@ class ArchonController:
             self.lines_total = int(self.config.get('LINECOUNT', '0') or 0)
         except ValueError:
             self.lines_total = 0
-        log.info('%s: ACF 파싱 %d줄 -- %s', self.tag, len(self.config), path)
+        log.info('%sacf parsed: %d lines', self.ltag, len(self.config),
+                 extra={'detail': path})
 
     async def apply_acf(self, path: str) -> None:
         """ACF 를 컨트롤러에 밀어 넣고 적용한다 (`CLEARCONFIG`+`WCONFIG`+`APPLYALL`).
@@ -529,7 +539,7 @@ class ArchonController:
                 await self._locked_thread(self.link.resync, 'ACF 적용 실패')
                 continue
             self.acf_applied = True
-            log.info('%s: ACF 적용 완료 -- %s', self.tag, path)
+            log.info('%sacf applied', self.ltag, extra={'detail': path})
             return
         raise ArchonError('%s: ACF 를 적용할 수 없다 (%s)' % (self.tag, last))
 
@@ -675,8 +685,9 @@ class ArchonController:
                               % (self.tag, slot))
         word = 'APPLYDIO' if dio else 'APPLYMOD'
         await self.cmd('%s%02X' % (word, slot - 1), timeout=T_MODULE)
-        log.info('%s: %s%02X (모듈 %d) 적용 -- ⚠️ 그 모듈의 VCPU 가 재시작됐다',
-                 self.tag, word, slot - 1, slot)
+        log.info('%s%s%02X applied (module %d)', self.ltag, word, slot - 1, slot,
+                 extra={'detail': '⚠️ 그 모듈의 VCPU 가 재시작됐다 -- '
+                                  'DEWPRES 에 결측 창이 생긴다 (매뉴얼 p.86)'})
 
     async def verify_config_lines(self, keys) -> list[str]:  # noqa: ANN001
         """`RCONFIG` 로 줄 번호 대응이 맞는지 확인한다.  어긋난 키 목록을 돌려준다.
@@ -785,8 +796,7 @@ class ArchonController:
         #   ③ ⭐ **빠른 스캔은 CCD 를 다 못 비운다** -- 실제로 비우는 것은
         #      독출이다 (운영자, 실험 영상 관측).
         if delay > 0:
-            log.info('%s: POWERON -- %s %.1f초 대기 (그 뒤 측정 시작)',
-                     self.tag, why, delay)
+            log.info('%spoweron: waiting %.1fs (%s)', self.ltag, delay, why)
         if not self.cfg.telemetry:
             # 규약 4 -- `telemetry=false` 는 **왕복을 labtest v1.0 계보와 똑같이
             # 둔다**는 뜻이다.  확인 질의도 왕복이므로 여기서는 걸지 않는다.
@@ -850,9 +860,9 @@ class ArchonController:
                          '건너뛴다 (구 펌웨어일 수 있다)', self.tag)
                 break
             if state == parse.POWER_ON:
-                log.info('%s: POWER=4 (On) 확인 -- %.1f초 걸렸다.  남은 flush '
-                         '시간을 마저 기다린다', self.tag,
-                         time.monotonic() - started)
+                log.info('%spower on confirmed (POWER=4) in %.1fs',
+                         self.ltag, time.monotonic() - started,
+                         extra={'detail': '남은 flush 시간을 마저 기다린다'})
                 break
         # ⚠️ **마지막으로 읽은 값을 버리지 않는다.**  `POWER=3` 을 보다가 시한이
         # 끝난 것과 한 번도 못 물어본 것은 다른 사실이고, 아래 판정이 그 둘을
@@ -896,7 +906,7 @@ class ArchonController:
         """
         await self.cmd('RESETTIMING', timeout=T_SYSTEM)
         self.drop_tickets('RESETTIMING -- 진행 중이던 프레임은 완료되지 않는다')
-        log.info('%s: RESETTIMING -- 코어가 Start 로 돌아갔다', self.tag)
+        log.info('%sresettiming: timing core back at Start', self.ltag)
 
     async def raw_command(self, text: str, timeout: float = T_SYSTEM) -> str:
         """운영자 바이패스 -- 명령 문자열을 **그대로** 보내고 응답을 **그대로** 돌려준다.
@@ -979,7 +989,7 @@ class ArchonController:
             await self.reset_timing()
         if not armed:
             await self.set_config(fslot, '%s=0' % fname)
-        log.info('%s: CCD flush %s', self.tag,
+        log.info('%sccd flush %s', self.ltag,
                  'after RESETTIMING (abort)' if reset else 'from idle')
 
     # -- 스냅샷 -----------------------------------------------------------
@@ -1108,16 +1118,9 @@ class ArchonController:
             fields = await self.query('FRAME', timeout=T_FAST)
         except (ArchonError, TimeoutError, OSError) as exc:
             return 'FRAME 질의 실패: %s' % exc
-        line = ('RBUF=%s WBUF=%s  FRAME=%s/%s/%s  COMPLETE=%s/%s/%s  '
-                'LINES=%s/%s/%s'
-                % (fields.get('RBUF', '?'), fields.get('WBUF', '?'),
-                   fields.get('BUF1FRAME', '?'), fields.get('BUF2FRAME', '?'),
-                   fields.get('BUF3FRAME', '?'),
-                   fields.get('BUF1COMPLETE', '?'),
-                   fields.get('BUF2COMPLETE', '?'),
-                   fields.get('BUF3COMPLETE', '?'),
-                   fields.get('BUF1LINES', '?'), fields.get('BUF2LINES', '?'),
-                   fields.get('BUF3LINES', '?')))
+        # ⭐ 서식은 `parse.frame_line()` 하나다 -- 프레임이 어긋난 자리도 같은
+        # 줄을 남기므로, 사본을 두면 두 진단이 서로 다른 모양이 된다.
+        line = parse.frame_line(fields)
         if not with_status:
             return line
         # **감시가 이미 떠 둔 값을 쓰지 않는다** -- 지금 이 순간의 값이라야
@@ -1356,16 +1359,26 @@ class ArchonController:
                 # DevNote 11.55).  ⚠️ 원인을 링크로 적으면 망을 들여다보게 만든다.
                 # ⭐ 경고를 남기는 이유는 그대로다: 이 왕복의 **중점**을
                 # `DATE-OBS` 로 쓰므로 불확도가 그 절반이다.
-                log.warning('%s: LOADPARAMS 왕복 %.1f ms -- 첫 저장 프레임 '
-                            'DATE-OBS 의 불확도가 그 절반이다.  ⚠️ 링크가 아니라 '
-                            '**이 명령 자체의 처리 시간**이다 (APPLY 계열은 다 '
-                            '200 ms 대 -- 실측)', self.tag, ticket.arm_rtt * 1e3)
+                # ⚠️ **화면에서는 뺀다** (운영자 2026-09-11) -- 값이 매번 거의
+                # 같아(실측 239~240 ms) 노출마다 같은 줄이 되풀이된다.  ⭐ 자취는
+                # 로그 파일에 그대로 남으므로 나중에 세어 볼 수 있다.
+                log.warning('%sloadparams took %.1f ms', self.ltag,
+                            ticket.arm_rtt * 1e3,
+                            extra={'essential': False,
+                                   'detail': '첫 저장 프레임 DATE-OBS 의 불확도가 '
+                                             '그 절반이다.  ⚠️ 링크가 아니라 이 '
+                                             '명령 자체의 처리 시간이다 (APPLY '
+                                             '계열은 다 200 ms 대 -- 실측)'})
         self._current = ticket
         if queue:
             self._queue.append(ticket)
-        log.info('%s: 노출 지시 -- IntMS=%d Exposures=%d (프레임 %d 다음%s)',
-                 self.tag, int(exptime_ms), max(int(exposures), 1), prev,
-                 '' if queue else ', 버림')
+        # ⭐ **기준선 세 버퍼를 함께 남긴다** (2026-09-11) -- `prev` 하나만으로는
+        # 나중에 번호가 어긋났을 때 *"그때 버퍼가 어땠나"* 를 되짚을 수 없다.
+        log.info('%sexposure armed: IntMS=%d Exposures=%d after frame %d%s',
+                 self.ltag, int(exptime_ms), max(int(exposures), 1), prev,
+                 '' if queue else ' (discard)',
+                 extra={'detail': 'bufs %s'
+                                  % ('/'.join(str(x) for x in before) or '?')})
         return ticket
 
     async def expect_next(self, after: FrameTicket, *, suffix: str = '',
@@ -1536,7 +1549,8 @@ class ArchonController:
         """
         n = len(self._queue)
         if n:
-            log.warning('%s: 저장 표 %d개를 버린다 (%s)', self.tag, n, why)
+            log.warning('%sdropping %d queued frame ticket(s)', self.ltag, n,
+                        extra={'detail': why})
             self._queue.clear()
         return n
 
@@ -1639,8 +1653,8 @@ class ArchonController:
                 # ⚠️ 실기에서 이 조합(`POWER=4` · `POWERGOOD=1` · `FRAME` 정지)
                 # 의 원인은 **`Sync In` 이 물려 상대 컨트롤러가 클록을 잡고
                 # 있던 것**이었다 -- `POWERGOOD` 은 외부 클록을 보지 않는다.
-                log.error('%s: 프레임 대기 시한 초과 -- %s', self.tag,
-                          await self.diagnostic_snapshot())
+                log.error('%sfatal: frame wait timed out', self.ltag,
+                          extra={'detail': await self.diagnostic_snapshot()})
                 raise ArchonError(
                     '%s: 프레임 %d 이 %.0f초 안에 나오지 않았다 (적분 %.1f초 '
                     '뒤부터 셌다) -- 독출이 시작되지 않았을 수 있다.  ACF·'
@@ -1678,10 +1692,34 @@ class ArchonController:
                 # 하나도 없으면 `newest()` 가 -1 을 주고, 컨트롤러의 첫 프레임
                 # 번호가 1 이면 "0 을 지나쳤다" 가 되어 첫 노출을 버린다.
                 if prev >= 0 and mine.frame != prev + 1:
+                    # ⛔⛔ **어긋난 순간을 남긴다** (2026-09-11).  종전에는 문구만
+                    # 던지고 죽어서 벤치 로그에 **그 순간의 버퍼 상태가 한 글자도
+                    # 없었다** -- 2026-09-10 `go 5` 가 *"프레임 6 을 지나쳤다"* 로
+                    # 죽었는데, 6 이 어느 버퍼에 있었는지도, 애초에 완료된 적이
+                    # 있는지도 못 갈랐다 (DevNote 11.69).  ⚠️ 시한 초과 경로는
+                    # `diagnostic_snapshot()` 을 남기는데 이쪽만 빠져 있었다.
+                    # ⭐ **왕복을 더 쓰지 않는다** -- 방금 읽은 `fields` 가 어긋난
+                    # 바로 그 순간의 값이라, 다시 묻는 것보다 정확하다.
+                    log.error('%sfatal: frame %d skipped (found %d)  '
+                              'armed with bufs %s, now %s',
+                              self.ltag, prev + 1, mine.frame,
+                              '/'.join(str(x) for x in ticket.prev_frames)
+                              or '?', parse.frame_line(fields),
+                              extra={'detail':
+                                     '⭐ 이 두 줄로 가른다: %d 이 버퍼에 **왔다가 '
+                                     '덮인 것**인지(그 자리에 더 큰 번호가 있다), '
+                                     '아니면 **온 적이 없는 것**인지(어느 버퍼에도 '
+                                     '흔적이 없다 -- 번호만 쓰고 지나가는 프레임이 '
+                                     '있다는 뜻이다)' % (prev + 1)})
+                    # ⚠️ **문구가 원인을 단정하지 않는다** (2026-09-11 정정) --
+                    # 종전 문면은 *"그 버퍼가 이미 덮였다"* 로 못박았는데, 2026-09-10
+                    # 벤치는 FETCH 0.1초 · 주기 2.0초로 **저장이 늦을 여지가 없었다.**
+                    # 원인을 적을 자리는 위 진단 줄이고, 여기는 사실만 적는다.
                     raise ArchonError(
-                        '%s: 프레임 %d 을 지나쳤다 (찾은 것은 %d) -- 그 버퍼가 '
-                        '이미 덮였다.  저장이 다음 노출보다 늦었다는 뜻이니 '
-                        'write_delay·독출 시간과 버퍼 수(BIGBUF 는 2개)를 보라'
+                        '%s: 프레임 %d 을 지나쳤다 (찾은 것은 %d) -- 그 번호가 '
+                        '버퍼에 없다.  저장이 다음 노출보다 늦어 덮였거나, 그 '
+                        '번호가 버퍼를 안 거치고 지나갔다는 뜻이다 -- 어느 쪽인지는 '
+                        '바로 위 진단 줄의 COMPLETE·LINES 로 가른다'
                         % (self.tag, prev + 1, mine.frame), cmd='FRAME')
                 ticket.ready = mine
                 return
@@ -1712,9 +1750,9 @@ class ArchonController:
                 yield pct
             if next_dump is not None and time.monotonic() >= next_dump:
                 next_dump = time.monotonic() + dump_every
-                log.info('%s: 프레임 대기 %.0f초 -- %s', self.tag,
+                log.info('%sstill waiting for a frame (%.0fs)', self.ltag,
                          time.monotonic() - started,
-                         await self.diagnostic_snapshot())
+                         extra={'detail': await self.diagnostic_snapshot()})
             await asyncio.sleep(interval)
 
     async def await_frame(self, ticket: FrameTicket) -> parse.FrameStatus:
@@ -1884,13 +1922,14 @@ class ArchonController:
         # ⭐ 잠금 관측값을 **이미 있는 줄에 얹는다** -- 정상 취득에 새 줄을
         # 늘리지 않으면서 회귀 감시(FW 가 바뀌면 RBUF/WBUF 가 달라진다)에 필요한
         # 것이 매 프레임 남는다.  A/B 실험은 2026-09-01 종결 (DevNote 10.6).
-        log.info('%s: FETCH %.1f MiB, %.1f초 (프레임 %d, buf %d, base 0x%08X) '
-                 '[lock=%s RBUF=%d WBUF=%d%s]',
-                 self.tag, expect_bytes / (1 << 20),
-                 time.monotonic() - started, fs.frame, buf_n, fs.base,
-                 lock, self.lock_rbuf, self.lock_wbuf,
-                 '' if self.lock_wbuf_after < 0
-                 else '->%d' % self.lock_wbuf_after)
+        log.info('%sfetch frame %d: %.1f MiB in %.1fs',
+                 self.ltag, fs.frame, expect_bytes / (1 << 20),
+                 time.monotonic() - started,
+                 extra={'detail': 'buf %d, base 0x%08X, lock=%s RBUF=%d WBUF=%d%s'
+                                  % (buf_n, fs.base, lock, self.lock_rbuf,
+                                     self.lock_wbuf,
+                                     '' if self.lock_wbuf_after < 0
+                                     else '->%d' % self.lock_wbuf_after)})
         return data
 
     async def _take_buffer(self, nbytes: int) -> bytearray:
@@ -2011,10 +2050,10 @@ class ArchonController:
         shown = ', '.join(
             '%d:%s' % (s, parse.MODULE_TYPES.get(t, '?%d' % t))
             for s, t in sorted(mods.items()) if t)
-        log.info('%s: 모듈 %s', self.tag, shown)
+        log.info('%smodules: %s', self.ltag, shown)
         # 비디오 모듈 위치는 **참고로만** 찍는다 -- 판정 근거가 아니다.
         ad = sorted(s for s, t in mods.items() if t in parse.AD_TYPES)
-        log.info('%s: 비디오(AD 계열) 모듈 슬롯 %s', self.tag, ad or '없음')
+        log.info('%svideo (AD) module slots: %s', self.ltag, ad or 'none')
         # ⛔ **대는 표를 골라 줘야 한다** -- `field_order_problems` 의 docstring
         # 이 이 오경보를 그대로 예언해 뒀는데(*"안 골라 주면 guide 실기 정상
         # 구성에서 extra [6,7] + missing [1,2,8,11] 이 거짓으로 뜬다"*) 여기서
