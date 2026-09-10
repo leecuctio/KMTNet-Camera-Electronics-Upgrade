@@ -249,6 +249,8 @@ class _FakeCtrl:
     """왕복 없이 감시 루프만 도는 상대역."""
 
     tag = 'MK'
+    #: ⭐ 진짜 `parse_acf()` 를 그대로 쓰므로 로그 앞머리도 든다 (2026-09-11).
+    ltag = 'MK: '
 
     def __init__(self, status=None, fail=False) -> None:  # noqa: ANN001
         self.config = {}
@@ -901,11 +903,11 @@ def test_frame_skip_leaves_the_buffer_state_in_the_log(tmp_path, caplog):  # noq
             message = asyncio.run(go())
 
         diag = [r.getMessage() for r in caplog.records
-                if '어긋났다' in r.getMessage()]
+                if 'skipped' in r.getMessage()]
         assert diag, '어긋난 순간의 진단이 없다 -- 벤치가 또 빈손이 된다'
         line = diag[0]
         # 기준선과 지금 값이 **둘 다** 있어야 갈린다.
-        assert '5/4/3' in line, line
+        assert 'bufs 5/4/3' in line, line
         assert 'COMPLETE=' in line and 'LINES=' in line, line
         assert 'FRAME=5/7/3' in line, line
         # ⚠️ 던지는 문구는 원인을 단정하지 않는다.
