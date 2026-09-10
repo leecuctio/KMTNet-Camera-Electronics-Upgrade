@@ -69,6 +69,23 @@ from .config import TAG, IcgCfg  # noqa: E402
 
 log = logging.getLogger('icg_archon.backend')
 
+#: ⛔ **레거시 와이어 문구다 -- 지운 `DMAWAIT` 명령과 무관하다** (2026-09-10,
+#: 운영자 물음).  ABC 가 받던 문자열이라 **와이어에서는 글자를 안 바꾼다**.
+DMA_TIMEOUT = 'DMA WAIT TIMEOUT. EXPOSURES ABORTED.'
+
+
+def _dma_cause(tag: str, exc: BaseException) -> str:
+    """와이어 문구는 그대로 두고 **진짜 원인을 로그로** 남긴다.
+
+    ⛔ 이 문구는 `ArchonError`·`TimeoutError`·`OSError` 를 **아무거나** 감싸므로,
+    남기지 않으면 *"무엇이 실패했나"* 가 로그에서 통째로 사라진다 -- 2026-09-10
+    벤치에서 실제로 그랬다(원인이 한 글자도 없었다).
+    """
+    log.error('%s: 취득이 실패했다 -- **%s: %s**.  ⚠️ 와이어에는 레거시 문구'
+              '(%s)로 나가지만 원인은 이것이다 (⛔ 지운 DMAWAIT 명령과 무관)',
+              tag, exc.__class__.__name__, exc, DMA_TIMEOUT)
+    return DMA_TIMEOUT
+
 
 class GuideBackendError(Exception):
     """취득 한 사이클을 세우는 실패 -- 시퀀서가 ERROR 통보로 옮긴다."""
@@ -311,7 +328,7 @@ class GuideBackend:
                                            exposures=frames)
         except (ArchonError, TimeoutError, OSError) as exc:
             raise GuideBackendError(
-                'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
+                _dma_cause(TAG, exc)) from exc
 
     async def next_ticket(self, after, intms: int, *, suffix: str = '',
                           queue: bool = True):  # noqa: ANN001, ANN201
@@ -444,7 +461,7 @@ class GuideBackend:
             return await self.ctrl.trigger(0, queue=queue, suffix=suffix)
         except (ArchonError, TimeoutError, OSError) as exc:
             raise GuideBackendError(
-                'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
+                _dma_cause(TAG, exc)) from exc
 
     async def wait_frame(self, ticket):  # noqa: ANN001, ANN201
         """진행률 yield -- 컨트롤러 위임 (완료는 `ticket.ready`).
@@ -460,7 +477,7 @@ class GuideBackend:
                 yield pct
         except (ArchonError, TimeoutError, OSError) as exc:
             raise GuideBackendError(
-                'DMA WAIT TIMEOUT. EXPOSURES ABORTED.') from exc
+                _dma_cause(TAG, exc)) from exc
 
     async def write_frame(self, suffix: str, path: str, cards) -> int:  # noqa: ANN001
         """fetch + guide FITS 저장.  반환은 전송률 [KB/s].

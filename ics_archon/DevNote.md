@@ -9030,3 +9030,50 @@ CH2=습도(%) 이고(운영자 확인 2026-09-08) 전장박스는 온도만 쓰�
 `icg_archon` 이 그 노드를 수신 등록한다.  켜 두면 **science 노출마다 ICG 안으로
 `INITIALIZE` 가 들어가 남의 상태를 건드린다.**  레거시에서 이 메시지는 ICG->G.IC 내부
 통신이었고 신규 설계는 그것을 프로그램 안으로 흡수한다(icg_legacy_report 9.2).
+### 11.67 ⛔ 내가 낸 회귀 -- `TRIGOUT` 카드가 첫 저장을 죽였다 (2026-09-10 벤치)
+
+운영자가 `go 10` 을 돌리자 **첫 프레임 저장에서** 사이클이 죽었다:
+
+    TypeError: '>=' not supported between instances of 'float' and 'datetime.datetime'
+      icg_archon/sequencer.py:807  trigger_was_high_between(t_prev …)
+
+⛔ **오늘(11.58) 내가 넣은 줄이다.**  guide 헤더에 `TRIGOUT` 카드를 신설하며
+`_dispatch_store()` 에서 래치를 물어보게 했는데, **`t_prev` 가 `datetime` 인 것을
+epoch float 로 알고 그대로 넘겼다.**  ⭐ 어제까지 잘 돌던 것이 당연하다 -- 그 줄이
+없었다.  ⚠️ **첫 저장에서 100 % 재현**된다.
+
+#### ⚠️ 왜 시험이 못 잡았나 -- **경로를 안 지났다**
+
+`trigger_was_high_between()` 을 **float 로 직접만** 불렀고, **시퀀서를 지나는 경로**로는
+한 번도 안 불렀다.  ⛔ 같은 부류를 또 만들지 않으려면 *"단위가 있는 값"* 은 **호출부를
+지나는 시험**이 필요하다 (`t_prev` 는 단위가 아니라 **형**이 달랐다).
+⭐ 그 경로를 보는 시험을 넣었다 -- 변환(`.timestamp()`)과 naive 처리(UTC)를 함께 못박고,
+실제 `datetime` 을 넣어 터지지 않는 것까지 본다.
+
+⚠️ **naive 가 오면 UTC 로 본다** -- 지역시로 보면 시간대만큼 창이 어긋난다 (벤치가 UTC 라
+거기서는 안 드러났을 자리다).
+
+### 11.68 ⛔ `DMA WAIT TIMEOUT` 이 **원인을 가리고 있었다** (2026-09-10, 운영자 물음)
+
+운영자: *"`DMA WAIT TIMEOUT` 이 걸렸는데, DMA WAIT 기능은 없앴던 걸로 기억하는데."*
+
+⭐ **기억이 맞고, 동시에 별개 물건이다**:
+* `DMAWAIT` **명령**은 11.50 에서 ICG 에서 없앴다(`UNSUPPORTED`).
+* `DMA WAIT TIMEOUT. EXPOSURES ABORTED.` 는 **레거시 와이어 문자열**이다 -- ABC 가 받던
+  문구이고 `trigger`/`wait_frame`/`write_frame` 이 예외를 감쌀 때 쓴다.
+
+⛔ **문제는 그것이 `ArchonError`·`TimeoutError`·`OSError` 를 아무거나 감싸면서 진짜
+원인을 통째로 지웠다는 것**이다 -- 벤치 로그에 원인이 **한 글자도** 없었다.
+
+⭐ **와이어 문구는 글자 그대로 두고**(ABC 계약이다) 감쌀 때마다 원인을 `ERROR` 로 남긴다:
+
+    G: 취득이 실패했다 -- **ArchonError: <진짜 원인>**.  ⚠️ 와이어에는 레거시
+       문구(DMA WAIT TIMEOUT…)로 나가지만 원인은 이것이다 (⛔ 지운 DMAWAIT 와 무관)
+
+두 계통에 다 넣었다 (guide 3곳 · science 3곳, 상수 `DMA_TIMEOUT` 한 곳).
+
+#### ⏳ 2회차의 `DMA WAIT TIMEOUT` 은 **아직 원인 미상**
+
+⚠️ 1회차가 사이클 도중에 죽고 `RESETTIMING` 을 친 **직후**에 났다 (프레임 번호가
+`-1 다음` -> `1 다음` 으로 달라진 것도 그 흔적) -- 그 여파일 수 있으나 **단정 못 한다**.
+⭐ 이제 원인이 찍히므로 다음 재현에서 갈린다.  ⛔ 재시험은 **깨끗한 상태에서** 할 것.

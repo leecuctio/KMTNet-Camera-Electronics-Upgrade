@@ -70,6 +70,23 @@ from .protocol import ArchonError                        # noqa: E402
 
 log = logging.getLogger('ics_archon.hw')
 
+#: ⛔ **레거시 와이어 문구다 -- 지운 `DMAWAIT` 명령과 무관하다** (2026-09-10,
+#: 운영자 물음).  ABC 가 받던 문자열이라 **와이어에서는 글자를 안 바꾼다**.
+DMA_TIMEOUT = 'DMA WAIT TIMEOUT. EXPOSURES ABORTED.'
+
+
+def _dma_cause(tag: str, exc: BaseException) -> str:
+    """와이어 문구는 그대로 두고 **진짜 원인을 로그로** 남긴다.
+
+    ⛔ 이 문구는 `ArchonError`·`TimeoutError`·`OSError` 를 **아무거나** 감싸므로,
+    남기지 않으면 *"무엇이 실패했나"* 가 로그에서 통째로 사라진다 -- 2026-09-10
+    벤치에서 실제로 그랬다(원인이 한 글자도 없었다).
+    """
+    log.error('%s: 취득이 실패했다 -- **%s: %s**.  ⚠️ 와이어에는 레거시 문구'
+              '(%s)로 나가지만 원인은 이것이다 (⛔ 지운 DMAWAIT 명령과 무관)',
+              tag, exc.__class__.__name__, exc, DMA_TIMEOUT)
+    return DMA_TIMEOUT
+
 #: 셔터를 강제로 닫을지 판단하는 여유 폭 [s].  남은 적분이 이보다 길 때만
 #: "조기 종료" 로 본다 -- 정상 경로의 카운트다운 종료와 컨트롤러의 적분
 #: 종료가 완전히 같은 순간일 수 없기 때문이다 (`close_shutter` 주석).
@@ -485,7 +502,7 @@ class ArchonBackend:
                     c.trigger(ms, suffix=self._suffix.get(c.tag, ''))
                     for c in pending))
             except (ArchonError, TimeoutError, OSError) as exc:
-                raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.',
+                raise BackendError(_dma_cause(ccd, exc),
                                    ccd=ccd) from exc
 
         ticket = master.current_ticket
@@ -567,7 +584,7 @@ class ArchonBackend:
             # 위 두 갈래가 못 잡은 것만 여기 온다.  레거시가 이 상황에 낸
             # 문구를 그대로 쓴다 (base.py docstring):
             #   G.IC>ABC ERROR: GO  DMA WAIT TIMEOUT. EXPOSURES ABORTED.
-            raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.',
+            raise BackendError(_dma_cause(ccd, exc),
                                ccd=ccd) from exc
         finally:
             # master 가 실패하면 나머지 대의 폴링이 영원히 남는다 -- 다음
@@ -604,7 +621,7 @@ class ArchonBackend:
             self.ctrls[tag].discard_ticket(tickets.get(tag))
         alive = sorted(engaged - set(failed))
         if not alive:
-            raise BackendError('DMA WAIT TIMEOUT. EXPOSURES ABORTED.',
+            raise BackendError(_dma_cause(ccd, next(iter(failed.values()))),
                                ccd=ccd) from next(iter(failed.values()))
         log.error('⛔ 컨트롤러 %s 의 프레임을 잃었다 -- 성한 %s 는 그대로 '
                   '저장한다.  ⚠️ pair 한 짝만 나가므로 converter 는 이 노출을 '
