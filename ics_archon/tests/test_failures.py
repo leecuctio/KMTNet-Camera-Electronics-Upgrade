@@ -947,3 +947,76 @@ def test_the_guide_connect_retry_matches_science():
     from icg_archon.config import IcgCfg
     from ics_archon.config import ArchonCfg
     assert IcgCfg().connect_retry == ArchonCfg().connect_retry == 4
+
+
+# ---------------------------------------------------------------------------
+# ACF 적용 절차 -- 벤더(ArchonGUI)와 같게 (2026-09-10)
+# ---------------------------------------------------------------------------
+
+
+def _apply_order(cmds_seen, acf_lines=3):
+    """`apply_acf` 가 링크에 낸 명령 순서를 뽑는다 (대역 링크)."""
+    return [c for c in cmds_seen if not c.startswith('WCONFIG')]
+
+
+def test_the_acf_apply_follows_the_vendor_sequence():
+    """⭐ **POLLOFF → CLEARCONFIG → WCONFIG×N → POLLON → APPLYALL**.
+
+    ⛔ `POLLOFF` 가 빠져 있었다.  ArchonGUI 분석이 그 이유를 그대로 적어 둔다 --
+    *"배경 폴링이 `WCONFIG` 수천 줄 사이에 끼어드는 것을 막으려는 것"* 이고,
+    우리 증상이 정확히 그것이었다 (폭주 중 응답 하나가 밀린다).
+    ⚠️ 벤더는 `POLLON` 을 `APPLYALL` **앞**에 둔다 -- 그대로 따랐다.
+    """
+    import io as _io
+    import os as _os
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    src = _io.open(_os.path.join(root, 'ics_archon', 'archon',
+                                 'controller.py'), encoding='utf-8').read()
+    body = src[src.index('                def _push() -> None:'):]
+    body = body[:body.index('await self._locked_thread(_push)')]
+    at = {w: body.index("'%s'" % w)
+          for w in ('POLLOFF', 'CLEARCONFIG', 'POLLON', 'APPLYALL')}
+    # ⭐ WCONFIG 는 문자열이 아니라 `cmds` 순회다 -- 그 자리로 본다.
+    at['WCONFIG'] = body.index('for one in cmds:')
+    order = sorted(at, key=at.get)
+    assert order == ['POLLOFF', 'CLEARCONFIG', 'WCONFIG', 'POLLON',
+                     'APPLYALL'], order
+
+
+def test_pollon_is_restored_even_when_the_write_fails():
+    """⚠️ **`finally` 로 되돌린다** -- 폴링이 꺼진 채 남으면 `STATUS` 가 낡는다.
+
+    ⛔ 적용은 중간에 깨질 수 있고(그래서 `acf_retry` 가 있다), 그때 폴링을
+    안 켜면 그 뒤의 모든 HK 값이 조용히 옛것이 된다.
+    """
+    import io as _io
+    import os as _os
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    src = _io.open(_os.path.join(root, 'ics_archon', 'archon',
+                                 'controller.py'), encoding='utf-8').read()
+    body = src[src.index('                def _push() -> None:'):]
+    body = body[:body.index('await self._locked_thread(_push)')]
+    assert 'finally:' in body
+    assert body.index('finally:') < body.index("'POLLON'")
+
+
+def test_wconfig_goes_one_round_trip_at_a_time():
+    """⛔ **몰아 보내지 않는다 -- 눈금도 없다** (운영자 확정 2026-09-10).
+
+    벤더 클라이언트가 키 하나당 왕복 하나다.  ⚠️ 되돌릴 수 있게 두면 언젠가
+    되돌아가므로 ini 눈금을 **일부러 안 뒀다**.
+    """
+    import io as _io
+    import os as _os
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    src = _io.open(_os.path.join(root, 'ics_archon', 'archon',
+                                 'controller.py'), encoding='utf-8').read()
+    body = src[src.index('                def _push() -> None:'):]
+    body = body[:body.index('await self._locked_thread(_push)')]
+    assert 'pipeline' not in body, 'ACF 적용은 pipeline 을 쓰지 않는다'
+    assert 'for one in cmds:' in body
+    # 눈금이 되살아나지 않게 못박는다.
+    from icg_archon.config import IcgCfg
+    from ics_archon.config import ArchonCfg
+    assert not hasattr(IcgCfg(), 'acf_pipeline')
+    assert not hasattr(ArchonCfg(), 'acf_pipeline')

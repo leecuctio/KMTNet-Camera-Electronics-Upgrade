@@ -434,9 +434,26 @@ class ArchonController:
     async def apply_acf(self, path: str) -> None:
         """ACF 를 컨트롤러에 밀어 넣고 적용한다 (`CLEARCONFIG`+`WCONFIG`+`APPLYALL`).
 
-        설정 줄이 수천 개라 왕복마다 기다리면 몇 분이 걸린다 -- labtest 처럼
-        **몰아 보내고 몰아 받는다** (`ArchonLink.pipeline`).  실패하면 연결을
-        다시 세우고 재시도한다.
+        ⭐ **벤더 클라이언트(ArchonGUI)와 같은 절차다** (2026-09-10):
+
+            POLLOFF -> CLEARCONFIG -> WCONFIG x N -> POLLON -> APPLYALL
+
+        ⛔ **`POLLOFF` 가 빠져 있었다.**  ArchonGUI 분석(`ARCHONGUI_ANALYSIS.md`
+        5.5절)이 그 이유를 그대로 적어 둔다 -- *"배경 폴링이 `WCONFIG` 수천 줄
+        사이에 끼어드는 것을 막으려는 것"*.  ⚠️ 우리 증상이 정확히 그것이었다:
+        폭주 중 **응답 하나가 밀린다**(받은 참조번호가 기대 + 1).
+        ⚠️ **`POLLON` 은 `finally` 로 되돌린다** -- 적용이 중간에 죽어 폴링이
+        꺼진 채 남으면 `STATUS` 값이 통째로 낡는다.  ⭐ 벤더는 `POLLON` 을
+        `APPLYALL` **앞**에 두는데 그대로 따랐다.
+
+        ⛔ **`WCONFIG` 는 한 줄씩 왕복한다 -- 눈금이 없다** (운영자 확정
+        2026-09-10).  벤더도 그렇게 한다(같은 문서 결함표 C6: *"키 하나당 왕복
+        한 번이라 Apply All 이 오래 걸린다"*).  ⚠️ 비용은 실측으로 작다: 왕복
+        하나가 약 2 ms 라 1020줄이 **약 2초**다.
+        ⛔ **몰아 보내기(`pipeline`)로 되돌리지 말 것** -- 그것이 어긋날 자리를
+        만들고, 벤치에서 재현된 결함이 바로 그것이다 (폭주 중 응답 하나가
+        밀린다).  ⚠️ 눈금으로 남기지 않은 것도 운영자 판단이다 -- 되돌릴 수
+        있게 두면 언젠가 되돌아간다.
         """
         self.parse_acf(path)
         keys = list(self.config)
@@ -471,8 +488,16 @@ class ArchonController:
                 # ⚠️ 락을 최대 `T_APPLY`(60초) 쥔다 -- 기동·첫 `GO` 뿐이고
                 # 그동안 다른 왕복은 어차피 의미가 없다 (설정이 반쯤 실린 상태).
                 def _push() -> None:
-                    self.link.command('CLEARCONFIG', timeout=T_APPLY)
-                    self.link.pipeline(cmds, timeout=T_APPLY)
+                    # ⭐ **벤더 절차** -- POLLOFF 로 배경 폴링을 세운다.
+                    # ⚠️ 여기서 실패하면 폴링이 꺼진 채 남으므로 `finally`.
+                    self.link.command('POLLOFF', timeout=T_APPLY)
+                    try:
+                        self.link.command('CLEARCONFIG', timeout=T_APPLY)
+                        # ⛔ **한 줄씩 왕복한다** -- 몰아 보내면 어긋난다.
+                        for one in cmds:
+                            self.link.command(one, timeout=T_APPLY)
+                    finally:
+                        self.link.command('POLLON', timeout=T_APPLY)
                     self.link.command('APPLYALL', timeout=T_APPLY)
                 self.apply_count += 1        # `cmd()` 를 안 지나므로 여기서
                 await self._locked_thread(_push)

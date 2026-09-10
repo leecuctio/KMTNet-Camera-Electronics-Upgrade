@@ -347,9 +347,17 @@ class ArchonLink:
     def pipeline(self, cmds: list[str], timeout: float | None = None) -> list[bytes]:
         """여러 명령을 **한꺼번에 보내고** 순서대로 응답을 받는다.
 
-        ACF 적용이 이 형태다 -- 설정 줄 수천 개를 왕복마다 기다리면 몇 분이
-        걸린다 (labtest 가 `archonsend` 를 몰아 보내고 `archonrecv` 를 몰아
-        받는 이유).  응답은 명령 순서대로 온다.
+        응답은 명령 순서대로 온다.
+
+        ⛔⛔ **ACF 적용에 다시 쓰지 말 것** (2026-09-10).  종전에 그렇게 했다가
+        벤치에서 **폭주 중 응답 하나가 밀리는** 결함이 재현됐다 (받은 참조번호가
+        기대 + 1, 자리는 매번 다르다).  ⭐ 벤더 클라이언트(ArchonGUI)는 애초에
+        **키 하나당 왕복 하나**이고, 우리도 그렇게 고쳤다
+        (`ArchonController.apply_acf`).  ⚠️ *"왕복마다 기다리면 몇 분이 걸린다"*
+        는 옛 문면인데 **실측이 아니었다** -- 왕복 하나가 약 2 ms 라 1020줄이
+        약 2초다.
+        ⚠️ 지금 이 함수를 부르는 곳은 **시험뿐**이다.  프로토콜 원시 기능이라
+        남겨 두었을 뿐이니, 새로 쓸 자리가 생기면 위 결함부터 읽을 것.
         """
         refs = [self._take_ref() for _ in cmds]
         for ref, cmd in zip(refs, cmds):
