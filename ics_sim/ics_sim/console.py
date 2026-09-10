@@ -135,6 +135,9 @@ BASE_HELP_BODY: tuple[Section, ...] = (
         ('stop', '진행 중 노출은 저장까지 마치고 다음을 안 건다'),
         ('abort', '노출 전체 중지 -- readout 도 저장도 안 한다'),
     )),
+    ('운영 편의', (
+        ('verbose [on|off]', '화면 자세함 -- ⚠️ 로그 파일은 늘 전부'),
+    )),
     ('조회', (
         ('status', '통합 설정 (IC 앞이면 그 CCD 상태)'),
         ('acqstatus', '4개 IC 의 연결·초기화 상태'),

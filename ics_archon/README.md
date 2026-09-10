@@ -260,6 +260,14 @@ file        = ~/AIC/Logs        ; 폴더 → icg.<YYYYMMDD>.log
 verbose     = on        ; off 면 화면만 간결.  on|true|yes|1|enable|high 와 그 반대편
 ```
 
+⭐ **명령으로도 바꾼다** -- `verbose [on|off]` (인자 없으면 조회).  ini 값은
+기동값이고, 이 명령은 **재기동 없이** 그것을 민다:
+
+```
+ICG% verbose off
+DONE: VERBOSE Verbose=OFF
+```
+
 ⭐ **화면만 간결해지고 로그 파일은 언제나 전부다.**  화면에서 안 보인 줄이 파일에는
 있으므로, 벤치에서 *"그 줄 못 봤는데"* 로 판정하면 안 된다.
 

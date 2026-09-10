@@ -107,7 +107,16 @@ class EssentialOnly(logging.Filter):
     ⚠️ **이 필터는 화면 처리기에만 단다** -- 로그 파일은 언제나 전부 받는다.
     """
 
+    def __init__(self) -> None:
+        super().__init__()
+        #: ⭐ **끄고 켤 수 있다** -- `VERBOSE` 명령이 이것을 민다 (2026-09-11).
+        #: ⛔ 필터를 붙였다 뗐다 하지 않는 이유: 처리기의 필터 목록을 런타임에
+        #: 만지면 *"떼는 쪽과 붙이는 쪽"* 이 어긋나는 부류가 하나 는다.
+        self.enabled = True
+
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003, D102
+        if not self.enabled:
+            return True
         return bool(getattr(record, 'essential', True))
 
 
@@ -247,15 +256,48 @@ def _log_handler(spec: str, stem: str) -> logging.Handler | None:
     return DailyFile(spec.rstrip('/\\'), stem)
 
 
+#: 화면 처리기와 그 필터 -- `set_verbose()` 가 민다.  ⚠️ `setup_logging()` 을
+#: 안 부른 자리(단위 시험)에서는 `None` 이고, 그때 `set_verbose()` 는 조용히
+#: 아무것도 안 한다 (**로그 때문에 명령이 실패하면 안 된다**).
+_SCREEN = None
+_SCREEN_FILTER = None
+
+
+def verbose_state() -> bool:
+    """지금 화면이 자세한가.  처리기가 없으면 `True`(자세함)로 본다."""
+    return _SCREEN_FILTER is None or not _SCREEN_FILTER.enabled
+
+
+def set_verbose(on: bool) -> bool:
+    """화면 자세함을 바꾼다.  **바뀐 뒤의 값**을 돌려준다.
+
+    ⭐ 두 가지를 함께 민다 -- 함축 메시지만 흘리는 **필터**와, 딸린 세부를
+    붙일지 정하는 **서식**.  ⛔ 로그 파일 쪽은 안 건드린다: 파일은 언제나
+    전부다 (운영자 2026-09-11).
+    """
+    on = bool(on)
+    if _SCREEN_FILTER is not None:
+        _SCREEN_FILTER.enabled = not on
+    fmt = getattr(_SCREEN, 'formatter', None) if _SCREEN is not None else None
+    if fmt is not None and hasattr(fmt, 'with_detail'):
+        fmt.with_detail = on
+    return on
+
+
 def setup_logging(cfg: config.SimConfig, name: str = 'ics') -> None:
     level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
     # ⭐ **프롬프트를 알아보는 처리기다** -- 콘솔이 입력을 기다리는 중에 로그가
     # 오면 줄을 지웠다가 프롬프트와 입력 버퍼를 다시 그린다 (운영자 2026-09-08).
+    global _SCREEN, _SCREEN_FILTER
     screen = PromptSafeStream(sys.stderr)
     # ⭐ **간결한 화면은 필터 하나로** -- 줄을 안 만드는 것이 아니라 화면에만
     # 안 내보내는 것이다.  파일은 아래에서 그대로 다 받는다.
-    if not cfg.logging.verbose:
-        screen.addFilter(EssentialOnly())
+    # ⭐ **필터는 늘 달아 두고 스위치로 켠다** -- `VERBOSE` 명령이 재기동 없이
+    # 바꿀 수 있게 하려는 것이다 (2026-09-11).
+    _SCREEN_FILTER = EssentialOnly()
+    _SCREEN_FILTER.enabled = not cfg.logging.verbose
+    screen.addFilter(_SCREEN_FILTER)
+    _SCREEN = screen
     handlers: list[logging.Handler] = [screen]
     fileh = _log_handler(cfg.logging.file, name)
     if fileh is not None:

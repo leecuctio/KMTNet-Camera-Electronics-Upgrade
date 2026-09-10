@@ -22,7 +22,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-from . import rawpair
+from . import config, rawpair
 from .impv2 import Message, paren, quote_always
 from .nodes import Role, Target
 from .state import IMAGE_TYPES, ExpStatus, stamp_iso_ms, utcnow
@@ -78,6 +78,12 @@ NOT_YET_IMPLEMENTED = ('BIN',)
 #: ICS 범위 밖 -- 과학/가이드 IC 전용 명령.  레거시 ICS 와 동일하게 거부한다.
 #: 핸들러를 정의하지 않는 것 자체가 구현이므로, 참고용으로만 적어 둔다.
 IC_ONLY = ('ROI', 'DISPL', 'MOVIE', 'SNAP', 'DMAWAIT', 'FLASHNOW')
+
+#: `ON|OFF` 인자의 어휘 -- ⛔ **정본은 `config.TRUE_WORDS`/`FALSE_WORDS`** 이고
+#: 여기는 대문자 조회표일 뿐이다 (사본을 만들지 않는다, DevNote 11.74).
+_ONOFF = dict(
+    [(w.upper(), True) for w in config.TRUE_WORDS]
+    + [(w.upper(), False) for w in config.FALSE_WORDS])
 
 
 class Dispatcher:
@@ -381,6 +387,29 @@ class Dispatcher:
         for ccd in self.cfg.node.ccds:
             self.emit.emit_req(self.cfg.node.ic_of(ccd),
                                msg.cmdword, msg.body)
+
+    def cmd_verbose(self, msg: Message, target: Target) -> Reply:  # noqa: ARG002
+        """VERBOSE [ON|OFF] -- **화면**을 얼마나 자세히 쓸까.  없으면 조회.
+
+        ⭐ **로그 파일은 이 명령을 안 탄다** -- 언제나 전부 적는다 (운영자
+        2026-09-11).  ⚠️ 그래서 화면에서 안 보인 줄이 파일에는 있다.
+        ⭐ ini `[logging] verbose` 가 기동값이고, 이 명령은 **재기동 없이**
+        그것을 민다 -- 벤치에서 화면이 시끄러울 때 그 자리에서 끄고, 뭔가
+        이상할 때 그 자리에서 켜라고 둔 창구다.
+        ⛔ 어휘 밖은 기본값으로 떨어뜨리지 않고 **거부**한다.
+        """
+        from .__main__ import set_verbose, verbose_state
+
+        arg = msg.body.strip()
+        if arg:
+            word = arg.upper()
+            if word not in _ONOFF:
+                return Reply.error(
+                    'VERBOSE', 'Unrecognized value: %s -- use %s'
+                    % (arg, '|'.join(sorted(_ONOFF, key=str.lower))))
+            set_verbose(_ONOFF[word])
+        return Reply.done('VERBOSE',
+                          'Verbose=%s' % ('ON' if verbose_state() else 'OFF'))
 
     # -- IC 전용 설정 -----------------------------------------------------
 

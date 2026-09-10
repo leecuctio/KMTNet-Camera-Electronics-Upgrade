@@ -170,3 +170,56 @@ def test_logging_verbose_reads_the_ini_vocabulary(tmp_path):
     path = tmp_path / 'v_none.ini'
     path.write_text('[logging]\nlevel = info\n', encoding='utf-8')
     assert sim_config.load(str(path)).logging.verbose is True
+
+
+def test_verbose_command_moves_the_screen_filter():
+    """⭐ `VERBOSE` 는 **재기동 없이** 화면 자세함을 민다 (2026-09-11).
+
+    ⛔ 로그 파일 쪽은 안 건드린다 -- 파일은 언제나 전부다.
+    """
+    from ics_sim import __main__ as main_mod
+
+    saved = (main_mod._SCREEN, main_mod._SCREEN_FILTER)   # noqa: SLF001
+    try:
+        filt = main_mod.EssentialOnly()
+        filt.enabled = False                  # 자세한 화면으로 시작
+        main_mod._SCREEN_FILTER = filt        # noqa: SLF001
+        main_mod._SCREEN = None               # noqa: SLF001
+
+        assert main_mod.verbose_state() is True
+        main_mod.set_verbose(False)
+        assert main_mod.verbose_state() is False
+        assert filt.enabled is True           # 함축 메시지만 흘린다
+        # 잡음이 실제로 막힌다.
+        assert filt.filter(_record('x', essential=False)) is False
+        assert filt.filter(_record('x')) is True
+
+        main_mod.set_verbose(True)
+        assert main_mod.verbose_state() is True
+        assert filt.filter(_record('x', essential=False)) is True
+    finally:
+        main_mod._SCREEN, main_mod._SCREEN_FILTER = saved   # noqa: SLF001
+
+
+def test_verbose_command_is_safe_without_a_screen_handler():
+    """⛔ **로그 때문에 명령이 실패하면 안 된다** -- 처리기가 없어도 답한다."""
+    from ics_sim import __main__ as main_mod
+
+    saved = (main_mod._SCREEN, main_mod._SCREEN_FILTER)   # noqa: SLF001
+    try:
+        main_mod._SCREEN = main_mod._SCREEN_FILTER = None  # noqa: SLF001
+        assert main_mod.set_verbose(False) is False        # 예외 없이
+        assert main_mod.verbose_state() is True            # 모르면 자세함으로
+    finally:
+        main_mod._SCREEN, main_mod._SCREEN_FILTER = saved  # noqa: SLF001
+
+
+def test_verbose_takes_the_shared_onoff_vocabulary():
+    """⭐ 어휘는 ini·다른 명령과 **같은 표**다 (DevNote 11.74)."""
+    from ics_sim import config as sim_config
+    from ics_sim.commands import _ONOFF
+
+    for word in sim_config.TRUE_WORDS:
+        assert _ONOFF[word.upper()] is True, word
+    for word in sim_config.FALSE_WORDS:
+        assert _ONOFF[word.upper()] is False, word

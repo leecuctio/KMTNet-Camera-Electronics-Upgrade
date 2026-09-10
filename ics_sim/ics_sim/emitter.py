@@ -60,6 +60,8 @@ KNOWN_COMMANDS = frozenset({
     'FLASHNOW', 'AUXSTATUS', 'TCSSTATUS',
     # 미구현(스텁)이지만 명령 테이블에는 있는 것들
     'BIN', 'ROI', 'DISPL', 'STOP', 'ABORT', 'MOVIE',
+    # 운영 편의 (레거시에 없다 -- 콘솔에서 쓴다)
+    'VERBOSE',
     # out-of-band
     'PING', 'PONG',
 })
