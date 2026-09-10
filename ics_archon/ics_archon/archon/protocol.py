@@ -53,6 +53,7 @@ from __future__ import annotations
 import logging
 import select
 import socket
+import struct
 import time
 
 log = logging.getLogger('ics_archon.proto')
@@ -80,11 +81,17 @@ class ArchonLink:
     """컨트롤러 한 대와의 TCP 연결 하나."""
 
     def __init__(self, host: str, port: int = 4242, *,
+                 settle_before: float = 0.8, settle_after: float = 2.0,
                  sock_timeout: float = 1.0, burst_len: int = BURST_LEN,
                  name: str = '') -> None:
         self.host = host
         self.port = port
         self.sock_timeout = sock_timeout
+        #: 재수립에서 **끊고** 쉬는 시간 [s] (labtest 0.8).
+        self.settle_before = float(settle_before)
+        #: 재수립에서 **붙고** 쉬는 시간 [s] (labtest 2.0).  ⚠️ 붙은 직후에도
+        #: 컨트롤러가 앞선 것을 소화 중일 수 있다.
+        self.settle_after = float(settle_after)
         self.burst_len = burst_len
         #: 로그에 찍을 이름 (컨트롤러 태그).  같은 로그에 두 대가 섞인다.
         self.name = name or host
@@ -149,8 +156,33 @@ class ArchonLink:
         raise ArchonError('%s: %s:%d 에 접속할 수 없다 (%s)'
                           % (self.name, self.host, self.port, last))
 
-    def close(self) -> None:
+    def close(self, abortive: bool = False) -> None:
+        """연결을 닫는다.  `abortive` 면 **FIN 이 아니라 RST** 로 끊는다.
+
+        ⭐ **왜 RST 가 필요한가** (2026-09-09 벤치).  `FIN` 은 *"나는 더 안
+        보낸다"* 일 뿐이라 상대가 자리를 즉시 비우지 않는다.  ACF 폭주 중에
+        어긋나 끊으면 컨트롤러에는 아직 수백 개의 `WCONFIG` 가 남아 있고,
+        그것을 다 소화할 때까지 **새 SYN 에 응답하지 않는다** -- 로그에서
+        재접속이 `timed out` 으로 세 번 깨지고 **약 10초 뒤에야** 붙었다.
+        ⛔ `RST` 는 *"이 연결은 죽었다, 지금 버려라"* 라서 밀린 것까지 통째로
+        버리게 한다.
+        ⚠️ **곱게 끝내는 자리에는 쓰지 않는다** -- RST 는 상대가 아직 안 읽은
+        것을 버리므로, 정상 종료(`quit`)에서는 FIN 이 맞다.  어긋나서 스트림을
+        어차피 버리는 `resync()` 가 이것을 쓴다.
+
+        ⚠️ `SO_LINGER` 는 **닫기 직전에** 건다 -- 연결 내내 걸어 두면 정상
+        종료까지 RST 가 된다.
+        """
         if self._sock is not None:
+            if abortive:
+                try:
+                    self._sock.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_LINGER,
+                        struct.pack('ii', 1, 0))
+                except OSError as exc:
+                    log.warning('%s: RST 로 끊지 못한다 (%s) -- FIN 으로 '
+                                '닫는다.  다음 접속이 늦을 수 있다',
+                                self.name, exc)
             try:
                 self._sock.close()
             except OSError:
@@ -173,8 +205,17 @@ class ArchonLink:
         self.resyncs += 1
         log.warning('%s: 연결을 다시 세운다 (%s) -- 누적 %d회',
                     self.name, why, self.resyncs)
-        self.close()
+        # ⭐ **RST 로 끊는다** -- 스트림을 어차피 버리는 자리이고, 컨트롤러가
+        # 밀린 것을 붙들고 있으면 새 SYN 에 응답하지 않는다 (위 `close`).
+        self.close(abortive=True)
+        # ⭐ **진정 시간** -- labtest(실기에서 도는 원본)가 그렇게 한다:
+        # 끊고 `0.8초`, 붙고 `2.0초`.  ⛔ 우리는 종전에 **즉시** 다시 들이받아
+        # 옛 응답이 새 연결로 넘어왔다 (`기대 <01, 받음 <00`).
+        if self.settle_before > 0:
+            time.sleep(self.settle_before)
         self.connect(retry=3)
+        if self.settle_after > 0:
+            time.sleep(self.settle_after)
 
     # -- 참조번호 ---------------------------------------------------------
 
@@ -259,6 +300,11 @@ class ArchonLink:
             #     비었거나 남의 줄을 하나 더 먹었다 (파이프라인 밀림).
             #   * 글자가 아닌 것이 섞여 있다 -> 앞의 `FETCH` 잔여 이진이
             #     흐르는 것이다 (`fetch` 머리말의 그 경우).
+            # ⭐ **버퍼에 남은 것까지 보여준다** (2026-09-09) -- 3바이트로는
+            # *"응답이 아예 없다"* 와 *"엉뚱한 것이 왔다"* 가 안 갈린다.
+            log.error('%s: 어긋난 자리의 원문 -- 읽은 줄 %r · 버퍼 잔여 %d B '
+                      '%r', self.name, line[:80], len(self._buf),
+                      bytes(self._buf[:200]))
             raise ArchonError(
                 '응답 머리가 어긋났다 -- 기대 <%02X, 받음 %r (줄 %r, 명령 %s)'
                 % (ref, head, line[:48], cmd), cmd=cmd)

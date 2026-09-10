@@ -207,7 +207,21 @@ class IcgCfg:
     hosts: dict = field(default_factory=dict)          # {'G': ip}
     port: int = 4242
     sock_timeout: float = 1.0
-    connect_retry: int = 2
+    #: ⛔ **4 다 -- science 와 같은 값** (2026-09-09 정정).  종전 `2` 는 근거
+    #: 없이 낮았고 `acf_retry` 가 `1` 이었던 것과 **같은 부류**다 (11.54).
+    #: ⚠️ 컨트롤러가 어긋난 연결을 놓는 데 **약 10초**가 걸리는데 `2` 는
+    #: 시도 사이 대기를 합쳐도 2초라 **거의 늘 포기했다** (벤치 로그의
+    #: `접속 실패 1/2 · 2/2` 뒤 기동 실패).
+    connect_retry: int = 4
+    #: 재수립에서 **끊고** 쉬는 시간 [s].  ⭐ labtest(실기에서 도는 원본)가
+    #: `0.8` 이다.  ⛔ 종전에는 **0** 이라 즉시 다시 들이받았고, 컨트롤러가
+    #: 앞선 폭주분을 소화하는 동안 **새 SYN 에 응답하지 않아** 재접속이
+    #: `timed out` 으로 깨졌다 (2026-09-09 벤치, 약 10초가 걸렸다).
+    settle_before: float = 0.8
+    #: 재수립에서 **붙고** 쉬는 시간 [s] (labtest `2.0`).  ⚠️ 붙은 직후에도
+    #: 컨트롤러가 앞선 것을 소화 중일 수 있다 -- 실제로 새 연결에 **옛 응답**이
+    #: 흘러들어왔다 (`기대 <01, 받음 <00`).
+    settle_after: float = 2.0
     acf: dict = field(default_factory=dict)            # {'G': path}
     apply_acf: bool = True
     #: ⛔ **4 다 -- science(`ics_archon.ini`)·labtest 와 같은 값** (2026-09-09).
@@ -362,6 +376,8 @@ def load(path: str) -> IcgCfg:
         cfg.port = _int(s, 'port', cfg.port)
         cfg.sock_timeout = _float(s, 'sock_timeout', cfg.sock_timeout)
         cfg.connect_retry = _int(s, 'connect_retry', cfg.connect_retry)
+        cfg.settle_before = _float(s, 'settle_before', cfg.settle_before)
+        cfg.settle_after = _float(s, 'settle_after', cfg.settle_after)
         cfg.apply_acf = _bool(s, 'apply_acf', cfg.apply_acf)
         cfg.acf_retry = _int(s, 'acf_retry', cfg.acf_retry)
         cfg.poweron_wait = _float(s, 'poweron_wait', cfg.poweron_wait)

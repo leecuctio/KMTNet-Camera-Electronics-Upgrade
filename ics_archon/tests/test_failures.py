@@ -891,3 +891,59 @@ def test_the_startup_path_runs_the_check_without_deadlocking(tmp_path, caplog): 
         srv.shutdown()
     assert 'POWER=4' in caplog.text, caplog.text
     assert srv.seen.count('APPLYALL') == 1, srv.seen
+
+
+# ---------------------------------------------------------------------------
+# 링크 회복 -- RST 로 끊고 진정 시간을 준다 (2026-09-09 벤치)
+# ---------------------------------------------------------------------------
+
+
+def test_resync_closes_abortively_and_settles():
+    """⭐ **RST 로 끊고 앞뒤로 쉰다** -- labtest(실기 원본)와 같은 회복이다.
+
+    ⛔ 종전에는 `close()`(FIN) 뒤 **즉시** 다시 붙었다.  FIN 은 *"나는 더 안
+    보낸다"* 일 뿐이라 컨트롤러가 자리를 즉시 비우지 않고, ACF 폭주 중이면
+    수백 개를 소화할 때까지 **새 SYN 에 응답하지 않는다** -- 벤치에서 재접속이
+    `timed out` 으로 세 번 깨지고 약 10초 뒤에야 붙었다.
+    """
+    import time as _time
+    from ics_archon.archon import protocol as proto
+
+    link = proto.ArchonLink('10.0.0.99', 4242, name='T')
+    calls = []
+    naps = []
+
+    link.close = lambda abortive=False: calls.append(('close', abortive))
+    link.connect = lambda retry=1: calls.append(('connect', retry))
+    real_sleep = _time.sleep
+    proto.time.sleep = lambda s: naps.append(s)
+    try:
+        link.resync('시험')
+    finally:
+        proto.time.sleep = real_sleep
+
+    assert calls[0] == ('close', True), 'RST 로 끊어야 한다'
+    assert calls[1][0] == 'connect'
+    # ⭐ 끊고 0.8 · 붙고 2.0 (labtest 그대로) -- 순서까지 본다.
+    assert naps == [link.settle_before, link.settle_after], naps
+
+
+def test_the_settle_times_are_configurable_and_default_to_labtest():
+    """⚠️ 눈금은 ini 로 조절한다 -- 실기 링크가 바뀌면 따라와야 한다."""
+    from ics_archon.archon import protocol as proto
+    assert proto.ArchonLink('h', name='T').settle_before == 0.8
+    assert proto.ArchonLink('h', name='T').settle_after == 2.0
+    tuned = proto.ArchonLink('h', name='T', settle_before=0, settle_after=0)
+    assert tuned.settle_before == 0 and tuned.settle_after == 0
+
+
+def test_the_guide_connect_retry_matches_science():
+    """⛔ **guide 만 낮았다** -- `acf_retry` 가 1 이었던 것과 같은 부류다 (11.54).
+
+    컨트롤러가 어긋난 연결을 놓는 데 약 10초가 걸리는데 `2` 로는 시도 사이
+    대기를 합쳐도 2초라 **거의 늘 포기했다** (벤치 로그의 `접속 실패 1/2 ·
+    2/2` 뒤 기동 실패).
+    """
+    from icg_archon.config import IcgCfg
+    from ics_archon.config import ArchonCfg
+    assert IcgCfg().connect_retry == ArchonCfg().connect_retry == 4

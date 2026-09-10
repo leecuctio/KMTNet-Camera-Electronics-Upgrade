@@ -153,6 +153,8 @@ class ArchonController:
         self.cfg = cfg
         self.link = ArchonLink(cfg.hosts.get(tag, ''), cfg.port,
                                sock_timeout=cfg.sock_timeout,
+                               settle_before=getattr(cfg, 'settle_before', 0.8),
+                               settle_after=getattr(cfg, 'settle_after', 2.0),
                                burst_len=cfg.burst_len, name=tag)
         #: 한 연결에 한 번에 하나.  FETCH 가 락을 오래 쥐지만 컨트롤러마다
         #: 연결이 따로라 다른 대의 왕복은 막지 않는다.
@@ -487,8 +489,9 @@ class ArchonController:
                 log.warning('%s: ACF 적용 실패 %d/%d (%s) -- 연결을 다시 '
                             '세우고 재시도한다', self.tag, attempt + 1,
                             max(self.cfg.acf_retry, 1), exc)
+                # ⭐ `resync()` 가 RST 로 끊고 진정 시간까지 쥔다 (2026-09-09)
+                # -- 여기서 따로 더 쉬지 않는다.
                 await self._locked_thread(self.link.resync, 'ACF 적용 실패')
-                await asyncio.sleep(1.0)
                 continue
             self.acf_applied = True
             log.info('%s: ACF 적용 완료 -- %s', self.tag, path)

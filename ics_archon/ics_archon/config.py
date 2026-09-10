@@ -117,6 +117,15 @@ class ArchonCfg:
     #: 계속 흐르므로 이 값에 걸리지 않는다.
     sock_timeout: float = 1.0
     connect_retry: int = 4
+    #: 재수립에서 **끊고** 쉬는 시간 [s].  ⭐ labtest(실기에서 도는 원본)가
+    #: `0.8` 이다.  ⛔ 종전에는 **0** 이라 즉시 다시 들이받았고, 컨트롤러가
+    #: 앞선 폭주분을 소화하는 동안 **새 SYN 에 응답하지 않아** 재접속이
+    #: `timed out` 으로 깨졌다 (2026-09-09 벤치, 약 10초가 걸렸다).
+    settle_before: float = 0.8
+    #: 재수립에서 **붙고** 쉬는 시간 [s] (labtest `2.0`).  ⚠️ 붙은 직후에도
+    #: 컨트롤러가 앞선 것을 소화 중일 수 있다 -- 실제로 새 연결에 **옛 응답**이
+    #: 흘러들어왔다 (`기대 <01, 받음 <00`).
+    settle_after: float = 2.0
 
     # -- ACF -------------------------------------------------------------
     #: 컨트롤러 태그 -> ACF 경로.  **상대경로면 작업 디렉터리 기준**이다
@@ -655,6 +664,8 @@ def load(path: str) -> ArchonCfg:
     cfg.port = _num(s, 'port', cfg.port, int)
     cfg.sock_timeout = _num(s, 'sock_timeout', cfg.sock_timeout, float)
     cfg.connect_retry = _num(s, 'connect_retry', cfg.connect_retry, int)
+    cfg.settle_before = _num(s, 'settle_before', cfg.settle_before, float)
+    cfg.settle_after = _num(s, 'settle_after', cfg.settle_after, float)
 
     cfg.apply_acf = _bool(s, 'apply_acf', cfg.apply_acf)
     cfg.acf_retry = _num(s, 'acf_retry', cfg.acf_retry, int)
