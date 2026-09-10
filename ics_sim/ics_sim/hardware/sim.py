@@ -172,8 +172,11 @@ class SimBackend:
         return img
 
     async def write_frame(self, controller: str, chips: tuple[str, ...],
-                          path: str, header) -> int:  # noqa: ANN001
+                          path: str, header, on_fetched=None) -> int:  # noqa: ANN001
         """컨트롤러 1대분을 파일 하나로 저장.  전송률(KB/sec)을 돌려준다.
+
+        ⚠️ 대역에는 fetch 구간이 없어 `on_fetched()` 를 **곧바로** 부른다 --
+        실기와 같은 순서(`FETCH` -> `WRITING`)를 지키기 위한 것이다.
 
         **chip 2개를 X 방향으로 이어 붙인다** -- 실기 raw 가 그렇다(MK 파일의
         X 1–9600 이 M, 9601–19200 이 K).  `fits_shape = spec` 이면 실물 크기
@@ -186,6 +189,8 @@ class SimBackend:
         `write_fits=false` 면 실제로 쓰지 않고 그럴듯한 전송률만 돌려준다 --
         레거시 로그의 RATE= 값 범위(수십만~백만 KB/sec)에 맞춘다.
         """
+        if on_fetched is not None:
+            on_fetched()
         if self.cfg.paths.write_fits:
             from ..fitsout import write_dummy_fits
             from ..rawcards import value_of

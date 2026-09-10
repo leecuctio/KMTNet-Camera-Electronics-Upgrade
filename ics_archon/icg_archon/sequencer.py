@@ -275,7 +275,15 @@ class GuideSequencer:
                 return
             await asyncio.gather(aux_q, tcs_q, return_exceptions=True)
 
-            st.expstatus = ExpStatus.INTEGRATING
+            # ⭐ **flush 창을 국면으로 알린다** (운영자 2026-09-11).  ⛔ 종전에는
+            # 여기서 곧바로 `INTEGRATING` 이라 했는데, arm 직후 1.25초는 **적분이
+            # 아니라 flush** 다 (`FirstFlush=1`, 규격 10.1-2) -- 화면에서 그 창이
+            # 통째로 안 보였고 `INTEGRATING` 은 그동안 거짓이었다.
+            # ⭐ 낱말은 **`ERASE`** 다 -- 규약 어휘 일곱 안에 있고(`state.ExpStatus`)
+            # 레거시에서 그 자리가 곧 CCD 지우기다.  ⛔ `FLUSHING` 을 새로
+            # 만들지 않는다: 규약 밖 낱말은 실물 OBSAgent 의 CamStatus 가 모른다
+            # (운영자 확정 2026-09-11 -- *"flushing 말고 erase로"*).
+            st.expstatus = ExpStatus.ERASE
             self.emit.exp_status(source, st.expstatus)
 
             # ── R2613+: go n = flush 1회 + 독출 n회 · n장 저장 (규격 10.1-2·3).
@@ -320,6 +328,11 @@ class GuideSequencer:
                         t_prev = utcnow() - timedelta(seconds=max(time.time() - armed_utc, 0.0))
                     else:
                         t_prev = utcnow()
+                    # ⭐ **flush 가 끝나야 적분이다** -- 그 창을 지나고 나서
+                    # `INTEGRATING` 을 알린다 (위 주석).
+                    await self._await_flush_window(flush_dur, t_arm_mono)
+                    st.expstatus = ExpStatus.INTEGRATING
+                    self.emit.exp_status(source, st.expstatus)
                 else:
                     # 이후 프레임은 **표만** 잇는다 (`LOADPARAMS` 없음).
                     ticket = await self.backend.next_ticket(
@@ -408,7 +421,7 @@ class GuideSequencer:
             # STOP 뒷정리 중에 ABORT 가 왔으면 IDLE 은 그 요청자에게 (3차 반증).
             self.emit.idle_done(self._aborted_by or source)
         except GuideBackendError as exc:
-            log.error('guide 사이클 실패 -- %s', exc)
+            log.error('fatal: guide cycle failed -- %s', exc)
             clean = await self._settle(armed, clean, ticket, intms,
                                        '사이클 실패', drain=True)
             # ⭐ **P1 규범은 `ABORT` 보다 넓다** (운영자 확대 2026-09-07,
@@ -483,6 +496,29 @@ class GuideSequencer:
                 await self._disarm(self._aborted_by or source,
                                    flush=self._cycle_started(ticket))
             st.exposing = False
+
+    async def _await_flush_window(self, flush_dur: float,
+                                  armed_mono: float) -> None:
+        """arm 뒤 **flush 창**(`FirstFlush=1`)이 지나기를 기다린다.
+
+        ⭐ **거짓을 안 말하기 위한 기다림이다** -- 이 창 동안 CCD 는 지워지는
+        중이고 적분이 아니다.  ⛔ 취득이 늦어지지는 않는다: 컨트롤러는 이미
+        제 속도로 flush 를 돌고 있고, 첫 프레임은 어차피 `flush + IntMS + 하한`
+        전에 나올 수 없다 (11.31 의 꼬리 가드가 같은 셈을 쓴다).
+
+        ⚠️ **`STOP` 에는 그 자리에서 깨어난다** -- 통짜 `sleep` 으로 자면
+        flush 창(실기 1.25초)만큼 응답이 늦는다.  `ABORT` 는 사이클 태스크를
+        취소하므로 이 기다림도 함께 풀린다.
+        """
+        if flush_dur <= 0 or armed_mono is None:
+            return
+        remain = self.cfg.scaled(flush_dur) - (time.monotonic() - armed_mono)
+        if remain <= 0:
+            return
+        try:
+            await asyncio.wait_for(self._stop_evt.wait(), timeout=remain)
+        except asyncio.TimeoutError:
+            pass                    # 정상 -- 창이 지났다
 
     async def _settle(self, armed: bool, clean: bool, ticket, intms: int,  # noqa: ANN001
                       why: str, *, drain: bool) -> bool:
@@ -591,10 +627,12 @@ class GuideSequencer:
         소켓을 놓기 전에 이 왕복이 끼어들면 응답 번호가 어긋난다.
         """
         if flush:
-            log.info('사이클을 끊고 CCD 를 비운다 (%s) -- RESETTIMING + FlushFrame', why)
+            log.info('aborting the cycle and flushing the CCD (%s)', why,
+                     extra={'detail': 'RESETTIMING + FlushFrame'})
             fut = asyncio.ensure_future(self._abort_flush_or_stop())
         else:
-            log.info('연속 노출을 끊는다 (%s) -- Exposures=0', why)
+            log.info('ending the exposure block (%s)', why,
+                     extra={'detail': 'Exposures=0'})
             fut = asyncio.ensure_future(self.backend.stop_sequence())
         self._disarm_fut = fut
         # 고아가 돼도(아무도 안 기다려도) 실패를 삼키지 않는다.
@@ -629,7 +667,7 @@ class GuideSequencer:
         """
         hold = self.cfg.scaled(self.backend.flush_duration()) + _FLUSH_SETTLE_MARGIN
         self.backend.drop_pending('abort flush -- 끊긴 프레임은 오지 않는다')
-        log.info('flush 가 끝나기를 %.2fs 기다린다 -- 그 뒤 IDLE', hold)
+        log.info('waiting %.2fs for the flush to finish, then IDLE', hold)
         try:
             await asyncio.sleep(hold)
         except asyncio.CancelledError:
@@ -856,8 +894,21 @@ class GuideSequencer:
 
     async def _store_locked(self, source: str, suffix: str, path: str,  # noqa: ANN001
                             cards, index: int, total: int) -> None:  # noqa: ANN001
+        # ⭐ **알림만 낸다 -- `st.expstatus` 는 안 건드린다** (운영자 2026-09-11).
+        # ⛔ guide 는 **저장이 다음 노출과 겹쳐 돈다**(그것이 정상 운영이다).
+        # 여기서 국면 변수를 바꾸면 같은 순간 진행 중인 다음 프레임의
+        # `INTEGRATING`/`READOUT` 을 덮어쓰고, 그 변수를 보고 판단하는 자리
+        # (`GO` 거절 · `STOP` 응답)가 **틀린 국면을 본다**.
+        # ⚠️ 그래서 *"무엇이 일어나는 중인지"* 는 알리되 *"사이클이 어느
+        # 국면인지"* 는 취득 쪽이 계속 소유한다.
+        # ⭐ **fetch 직전에 알리고, 끝나면 `WRITING` 으로 넘긴다** (운영자
+        # 2026-09-11).  guide 는 그 사이가 0.1초지만 science 는 4초쯤이다.
+        self.emit.exp_status(source, ExpStatus.FETCH)
         try:
-            rate = await self.backend.write_frame(suffix, path, cards)
+            rate = await self.backend.write_frame(
+                suffix, path, cards,
+                on_fetched=lambda: self.emit.exp_status(source,
+                                                        ExpStatus.WRITING))
         except GuideBackendError as exc:
             if self._aborted_by:
                 # ABORT 의 `drop_pending` 과 이 태스크의 `take_ticket` 이

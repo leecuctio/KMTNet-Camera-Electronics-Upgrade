@@ -322,7 +322,16 @@ def test_expenable_refuses_an_unknown_value_and_keeps_the_state(tmp_path):  # no
     said = [s for s in sent if 'EXPENABLE' in s]
     # ⭐ **"모르는 값"이라고 말하고 받는 낱말을 댄다** (운영자 2026-09-04).
     assert sum('Unrecognized value' in s for s in said) == 2, said
-    assert any('0|1|FALSE|OFF|ON|TRUE' in s for s in said), said
+    # ⭐ **어휘를 여기 손으로 적지 않는다** -- 표가 넓어질 때마다 이 시험이
+    # 낡는다 (2026-09-11 에 실제로 두 번 낡았다).  정본을 그대로 끌어온다.
+    from icg_archon.expenable import VOCAB
+
+    listed = '|'.join(sorted(VOCAB, key=str.lower))
+    assert any(listed in s for s in said), (listed, said)
+    # ⚠️ 넓어진 낱말이 실제로 **먹히는지**도 본다 -- 문구만 맞고 파서가 좁으면
+    # 시험이 통과하면서 운영자는 거부를 만난다.
+    for word in ('ENABLE', 'high', 'disable', 'LOW'):
+        assert VOCAB[word.upper()] is (word.lower() in ('enable', 'high'))
     # 오타 둘을 겪고도 여전히 잠겨 있다
     assert not app.expenable.allowed
     assert said[-1].endswith('ExpEnable=OFF')

@@ -93,6 +93,24 @@ LOG_FORMAT = '[%(asctime)s.%(msecs)03d] %(message)s'
 LOG_DATEFMT = '%Y-%m-%dT%H:%M:%S'
 
 
+class EssentialOnly(logging.Filter):
+    """화면에 **함축 메시지(essential message)만** 흘린다 (`verbose = off`).
+
+    ⭐ **판정은 표시 하나다** -- 줄을 내는 자리가 `extra={'essential': False}`
+    로 *"이건 잡음"* 이라고 적고, 여기서는 그 표시만 본다.  ⛔ 문구를 여기서
+    골라내면 안 된다: 문구가 바뀌면 조용히 안 맞게 되고, 어느 줄이 잡음인지가
+    **그 줄에서 멀리 떨어진 곳**에 적히게 된다.
+
+    ⭐ **기본은 "보인다"** 다 -- 표시가 없으면 함축 메시지로 본다.  표시를
+    빠뜨렸을 때 **화면이 시끄러워질 뿐 정보가 사라지지 않는** 쪽이 맞다.
+
+    ⚠️ **이 필터는 화면 처리기에만 단다** -- 로그 파일은 언제나 전부 받는다.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003, D102
+        return bool(getattr(record, 'essential', True))
+
+
 class _TailModule(logging.Formatter):
     """경고 이상이면 **`Warning:`/`Error:` 앞머리**와 **`(module: …)` 꼬리**를 붙인다.
 
@@ -110,8 +128,32 @@ class _TailModule(logging.Formatter):
     #: 수준 -> 앞머리.  `CRITICAL` 도 `Error:` 다 (운영자가 든 낱말이 둘이다).
     _WORD = ((logging.ERROR, 'Error: '), (logging.WARNING, 'Warning: '))
 
+    #: 딸린 세부를 본문에서 가르는 표시.
+    DETAIL_LEAD = '  --  '
+
+    def __init__(self, *a, with_detail: bool = True, **kw) -> None:  # noqa: ANN002, ANN003
+        """`with_detail` 이 거짓이면 **딸린 세부를 뗀다** (`verbose = off` 화면).
+
+        ⭐ **한 사건은 한 기록이다** -- 함축 한 줄과 세부를 따로 남기면 로그
+        파일에서 둘이 떨어져 앉고, 사이에 다른 줄이 끼면 짝을 못 찾는다.
+        그래서 기록은 하나로 두고 **어디에 어떻게 쓸지는 여기서** 가른다
+        (운영자 2026-09-11).
+
+        `detail` 에 들어가는 것 둘:
+
+        * **한글 설명** -- *왜 그런지·어디를 보라* (`⤷` 없이 그대로 잇는다)
+        * **영문 세부** -- 버퍼·주소·잠금처럼 평시엔 안 보는 값
+
+        ⛔ 로그 파일 처리기에는 이것을 끄지 않는다 -- 파일은 언제나 전부다.
+        """
+        super().__init__(*a, **kw)
+        self.with_detail = bool(with_detail)
+
     def format(self, record: logging.LogRecord) -> str:  # noqa: A003
         out = super().format(record)
+        detail = getattr(record, 'detail', '')
+        if detail and self.with_detail:
+            out = '%s%s%s' % (out, self.DETAIL_LEAD, detail)
         if record.levelno < logging.WARNING:
             return out
         head = next(w for lvl, w in self._WORD if record.levelno >= lvl)
@@ -209,7 +251,12 @@ def setup_logging(cfg: config.SimConfig, name: str = 'ics') -> None:
     level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
     # ⭐ **프롬프트를 알아보는 처리기다** -- 콘솔이 입력을 기다리는 중에 로그가
     # 오면 줄을 지웠다가 프롬프트와 입력 버퍼를 다시 그린다 (운영자 2026-09-08).
-    handlers: list[logging.Handler] = [PromptSafeStream(sys.stderr)]
+    screen = PromptSafeStream(sys.stderr)
+    # ⭐ **간결한 화면은 필터 하나로** -- 줄을 안 만드는 것이 아니라 화면에만
+    # 안 내보내는 것이다.  파일은 아래에서 그대로 다 받는다.
+    if not cfg.logging.verbose:
+        screen.addFilter(EssentialOnly())
+    handlers: list[logging.Handler] = [screen]
     fileh = _log_handler(cfg.logging.file, name)
     if fileh is not None:
         handlers.append(fileh)
@@ -230,9 +277,13 @@ def setup_logging(cfg: config.SimConfig, name: str = 'ics') -> None:
     # 벤치가 UTC 로 돌아서 `HKQDATE` 와 맞아 보였을 뿐, 한국시로 맞춘 기계에
     # 배포하면 로그만 +9 시간이 되어 `HKQDATE`·`DATE-OBS`·FITS 파일명과 어긋난다.
     # ⚠️ 날짜별 로그 파일의 경계도 그때 관측일과 갈린다.
-    fmt = _TailModule(LOG_FORMAT, datefmt=LOG_DATEFMT)
-    fmt.converter = time.gmtime
+    # ⭐ **서식이 둘이다** -- 화면은 `verbose` 를 타고, 파일은 언제나 전부다
+    # (운영자 2026-09-11).  ⚠️ 같은 객체를 두 처리기에 물리면 안 된다:
+    # `with_why` 가 서로 다른 값이어야 한다.
     for h in logging.getLogger().handlers:
+        fmt = _TailModule(LOG_FORMAT, datefmt=LOG_DATEFMT,
+                          with_detail=(h is not screen) or cfg.logging.verbose)
+        fmt.converter = time.gmtime
         h.setFormatter(fmt)
 
 

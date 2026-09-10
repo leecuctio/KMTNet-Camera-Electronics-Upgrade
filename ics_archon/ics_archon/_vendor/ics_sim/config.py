@@ -460,6 +460,18 @@ class LoggingCfg:
     level: str = 'info'
     wire: bool = True
     file: str = ''
+    #: ⭐ **화면을 얼마나 자세히 쓸까** (운영자 2026-09-11).  끄면 화면에는
+    #: **함축 메시지(essential message)만** 흐른다 -- 자동으로 오가는 텔레메트리
+    #: 왕복·핸드셰이킹, 그리고 매번 같은 값으로 되풀이되는 경고가 빠진다.
+    #:
+    #: ⛔⛔ **로그 파일은 이 눈금을 안 탄다** -- 언제나 켜진 것과 같이 전부
+    #: 적는다 (운영자: *"verbose on이던 off던, log 파일에는 verbose on의 메시지
+    #: 출력"*).  ⚠️ 화면에서 안 보인 줄이 파일에는 있다는 뜻이라, 벤치에서
+    #: *"그 줄 못 봤는데"* 로 판정하면 안 된다.
+    #:
+    #: ⚠️ `wire` 와 다른 물건이다 -- `wire = off` 는 와이어 줄을 **아예 안
+    #: 남긴다**(파일에도 없다).  자취를 지우는 눈금이라 운영에서는 켜 둔다.
+    verbose: bool = True
 
 
 @dataclass
@@ -626,8 +638,18 @@ def _make_parser() -> configparser.ConfigParser:
 #: ⚠️ **`ics_archon`·`icg_archon` 의 `_bool` 과 같은 표여야 한다** -- 한
 #: 저장소에서 ini 규칙이 갈리면 운영자가 어느 파일이 무엇을 받는지 외워야
 #: 한다.  셋을 함께 고칠 것.
-_TRUE_WORDS = ('1', 'true', 'yes', 'on')
-_FALSE_WORDS = ('0', 'false', 'no', 'off')
+#: ⭐⭐ **참/거짓 낱말의 정본**이다 (운영자 2026-09-11: *"1/ON/TRUE/ENABLE/HIGH
+#: 는 모두 같은 의미로, 0/OFF/FALSE/DISABLE/LOW 는 모두 같은 의미로"*).
+#: ini 도 명령 인자도 이 표를 본다 -- ⛔ **사본을 만들지 말 것**: 종전에 셋이
+#: 있었고 넓이가 달라서, 같은 낱말이 `EXPENABLE` 에서는 되고 `VACGAUGE` 나 ini
+#: 에서는 거부됐다.
+#: ⚠️ `high`/`low` 가 ini 에 있는 것이 어색해 보이지만, **표가 하나여야** 그
+#: 어긋남이 안 생긴다.  대소문자는 안 가린다.
+TRUE_WORDS = ('1', 'true', 'yes', 'on', 'enable', 'high')
+FALSE_WORDS = ('0', 'false', 'no', 'off', 'disable', 'low')
+
+_TRUE_WORDS = TRUE_WORDS
+_FALSE_WORDS = FALSE_WORDS
 
 
 def _bool(sec: configparser.SectionProxy, key: str, default: bool) -> bool:
@@ -954,6 +976,7 @@ def load(path: str | None = None) -> SimConfig:
         lg = cfg.logging
         lg.level = s.get('level', lg.level).strip().lower()
         lg.wire = _bool(s, 'wire', lg.wire)
+        lg.verbose = _bool(s, 'verbose', lg.verbose)
         lg.file = _path_or(s, 'file', lg.file)
 
     resolve_expnum_file(cfg)

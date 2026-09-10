@@ -44,6 +44,15 @@ class ExpStatus:
     ERASE = 'ERASE'
     INTEGRATING = 'INTEGRATING'
     READOUT = 'READOUT'
+    #: ⭐ **신설** (운영자 2026-09-11) -- 컨트롤러 버퍼에서 호스트로 가져오는
+    #: 구간.  ⚠️ **레거시 어휘에 없다**: 옛 계통은 광케이블 IC 가 그 일을 해서
+    #: 호스트가 볼 단계가 아니었다.  Archon 계통에서는 실재하고, 무엇보다
+    #: **science 에서 초 단위**다 -- 프레임이 컨트롤러당 344 MiB 로 guide(8.3 MiB)
+    #: 의 41배라 fetch 만 4초쯤 걸린다(추정).  그동안 `WRITING` 이라고 적으면
+    #: 디스크가 느린 것처럼 보인다.
+    #: ⭐ OBSAgent 는 모르는 메시지를 무시하므로 어휘를 늘려도 안전하다
+    #: (운영자 확인 2026-09-11).
+    FETCH = 'FETCH'
     WRITING = 'WRITING'
     ERROR = 'ERROR'
 

@@ -1012,9 +1012,19 @@ class Sequencer:
                 # 같은 값을 싣고 그것이 짝을 잇는 키가 된다 (D-019, 5.9절).
                 expid=rawpair.exposure_id(site, orig_suffix))
 
+            # ⭐ **fetch 직전에 알리고, 끝나면 `WRITING` 으로 넘긴다** (운영자
+            # 2026-09-11).  science 는 프레임이 컨트롤러당 344 MiB 라 그 사이가
+            # **초 단위**다 (추정 4초) -- 그동안 `WRITING` 이라고 적으면 디스크가
+            # 느린 것처럼 보인다.
+            # ⚠️ **알림만 낸다 -- `st.expstatus` 는 안 건드린다**: 이 태스크는
+            # 백그라운드라 사이클이 이미 다음 국면(또는 IDLE)에 가 있을 수 있고,
+            # 그 변수를 여기서 바꾸면 판단하는 자리가 틀린 국면을 본다.
+            self.emit.exp_status(source, ExpStatus.FETCH)
             try:
-                rate = await self.backend.write_frame(ctrltag, chips, path,
-                                                      cards)
+                rate = await self.backend.write_frame(
+                    ctrltag, chips, path, cards,
+                    on_fetched=lambda: self.emit.exp_status(
+                        source, ExpStatus.WRITING))
             except BackendError as exc:
                 self.emit.error(source, '', str(exc), st.expstatus)
                 return

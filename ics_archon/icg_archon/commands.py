@@ -111,11 +111,17 @@ assert ARCHON_REPLY_MAX + 31 + 40 + 16 < MAX_LEN
 #: 넷의 공통 거부 문구 -- 취득 중.
 BUSY_REFUSAL = 'Exposure in progress -- ABORT first'
 
-#: `ON|OFF` 를 받는 명령들의 어휘.  ⭐ `EXPENABLE` 과 **같은 낱말**을 쓴다 --
-#: 명령마다 다른 어휘를 두면 운영자가 어느 명령이 `TRUE` 를 받는지 외워야
-#: 한다.  ⛔ 어휘 밖은 기본값으로 떨어뜨리지 않고 **거부**한다.
-ONOFF = {'ON': True, 'TRUE': True, '1': True,
-         'OFF': False, 'FALSE': False, '0': False}
+#: `ON|OFF` 를 받는 명령들의 어휘.  ⛔⛔ **표는 하나다** -- `expenable.VOCAB`.
+#:
+#: ⚠️ 종전에는 여기 **사본**이 있었고, 그것이 좁았다 (`ENABLE`/`HIGH`/
+#: `DISABLE`/`LOW` 가 빠져 있었다).  운영자는 2026-09-08 에 이미
+#: *"true=enable=high=on=1 모두 같게, false=disable=low=off=0 모두 같게"* 라고
+#: 정했고 `VOCAB` 은 그때 넓어졌는데, 이 사본만 안 따라와서 **같은 낱말이
+#: `EXPENABLE`·`TRIGOUTFORCE` 에서는 되고 `VACGAUGE`·`HTREN` 에서는 거부**됐다
+#: (2026-09-11 운영자가 다시 짚었다).  ⭐ `VOCAB` 주석이 *"표를 둘로 나누면
+#: 한쪽만 늘어난다"* 고 경고해 둔 바로 그 일이다 -- 그래서 **가리킨다**.
+#: ⛔ 어휘 밖은 기본값으로 떨어뜨리지 않고 **거부**한다.
+ONOFF = expen.VOCAB
 
 #: 어휘 밖 값에 붙이는 문구.  ⭐ **"모르는 값"이라고 말하고 받는 낱말을 댄다**
 #: (운영자 2026-09-04) -- "Invalid" 만으로는 무엇이 허용인지 알 수 없다.
@@ -598,6 +604,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
         except Exception as exc:  # noqa: BLE001
             self.emit.error(dest, 'VACGAUGE', 'Failed: %s' % exc)
             return
+        if on:
+            # ⭐ **예열이 끝나는 시각에 HK 한 바퀴** (2026-09-11).  안 그러면
+            # 낱말은 12초 뒤 `ON` 이 되는데 `DEWPRES` 는 다음 주기(60초)까지
+            # 안 와서, `HKDATA` 한 줄 안에서 둘이 어긋난다 (DevNote 11.70).
+            hk = getattr(self.app, 'hk', None)
+            if hk is not None:
+                hk.schedule_warmup_refresh()
         self._finish(dest, 'VACGAUGE', 'Gauge=%s' % state.word,
                      ' '.join(x for x in (busy, note) if x))
 

@@ -6,11 +6,11 @@
 와 다르다: 그것들은 *진행 중인 것*을 세우는 일회성이고, 이것은 **다음 `GO` 를
 계속 거절하는 상태**다.
 
-* 받는 값은 `ON`/`TRUE`/`1`(허용) · `OFF`/`FALSE`/`0`(금지) 여섯이고 **대소문자를
-  안 가린다** (운영자 확정 2026-09-04 -- ini 와 명령이 같은 어휘를 쓴다).
-  응답은 **정규형**
-  (`ON`/`OFF`)으로 되돌린다 -- 운영자가 `true` 를 쳐도 로그가 한 형태로만
-  남아 나중에 grep 이 된다.
+* 받는 낱말은 **`ics_sim.config` 의 표 하나**다 (`TRUE_WORDS`/`FALSE_WORDS`) --
+  `on`/`true`/`yes`/`1`/`enable`/`high` 와 그 반대편이고 **대소문자를 안 가린다**
+  (운영자 2026-09-11: *"1/ON/TRUE/ENABLE/HIGH 는 모두 같은 의미"*).  ini 와
+  명령이 **같은 표**를 본다.  응답은 **정규형**(`ON`/`OFF`)으로 되돌린다 --
+  운영자가 `true` 를 쳐도 로그가 한 형태로만 남아 나중에 grep 이 된다.
 * ⛔ **모르는 값은 기본값으로 떨어뜨리지 않는다** -- `EXPENABLE FLASE` 는
   거부하고 **상태를 그대로 둔다.**  ⭐ 이 규칙이 **잘림 손상까지 막는다**:
   시리얼 구간에서 `OFF` 가 `O` 로 잘려 와도 거부된다 (그 구간의 실측 고장이
@@ -34,6 +34,8 @@ _simpath.ensure()
 
 from ics_sim.state import _fsync_dir  # noqa: E402  -- 같은 영속 규약을 쓴다
 
+from ics_sim import config as _sim_config  # noqa: E402 -- 참/거짓 낱말의 정본
+
 log = logging.getLogger('icg_archon.expenable')
 
 #: 와이어·응답의 정규형.
@@ -45,9 +47,9 @@ ON, OFF = 'ON', 'OFF'
 #: 이 같은 어휘를 받는다 (운영자 2026-09-08: *"true=enable=high=on=1 모두 같게,
 #: false=disable=low=off=0 모두 같게"*).  표를 둘로 나누면 한쪽만 늘어난다 --
 #: 이 저장소가 되풀이해 겪은 부류다.
-VOCAB = {'ON': True, 'TRUE': True, '1': True, 'ENABLE': True, 'HIGH': True,
-         'OFF': False, 'FALSE': False, '0': False, 'DISABLE': False,
-         'LOW': False}
+VOCAB = dict(
+    [(w.upper(), True) for w in _sim_config.TRUE_WORDS]
+    + [(w.upper(), False) for w in _sim_config.FALSE_WORDS])
 
 
 class ExpEnable:

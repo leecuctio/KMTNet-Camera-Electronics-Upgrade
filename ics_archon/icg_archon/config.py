@@ -19,6 +19,8 @@ import logging
 import os
 from dataclasses import dataclass, field
 
+from ics_sim import config as _sim_config  # noqa: E402 -- 참/거짓 낱말의 정본
+
 from . import gauge
 
 log = logging.getLogger('icg_archon.config')
@@ -50,11 +52,10 @@ def _text(sec, key: str, default: str) -> str:  # noqa: ANN001
     return (sec.get(key, default) or '').strip()
 
 
-#: ini 의 참/거짓 낱말.  ⭐ **`true`/`on`/`1` 과 `false`/`off`/`0` 을 같게**
-#: 받는다 (운영자 확정 2026-09-04) -- 대소문자는 안 가린다.  `yes`/`no` 는
-#: 종전부터 받던 것이라 남긴다.
-_TRUE_WORDS = ('1', 'true', 'yes', 'on')
-_FALSE_WORDS = ('0', 'false', 'no', 'off')
+#: ini 의 참/거짓 낱말 -- ⛔ **정본은 `ics_sim.config`** 이고 여기는 가리킴만
+#: 이다 (2026-09-11).  사본을 두면 넓이가 갈린다 (실제로 갈려 있었다).
+_TRUE_WORDS = _sim_config.TRUE_WORDS
+_FALSE_WORDS = _sim_config.FALSE_WORDS
 
 
 def _bool(sec, key: str, default: bool) -> bool:  # noqa: ANN001

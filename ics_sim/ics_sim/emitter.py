@@ -340,9 +340,21 @@ class Emitter:
 
         **OBSAgent 가 세는 것은 이 중계 메시지다** (CB->ICS 직송이 아니라).
         4회 누적돼야 FitsSaved=1 이 된다 (DevNote 3.2, 4.1).
+
+        ⭐ **국면은 다음 줄로 뺀다** (운영자 2026-09-11: *"두 메시지를 붙여서
+        내보내지 말고 … 아래줄로 별도의 메시지로"*).  ⛔ 종전에는 레거시처럼
+        같은 줄 꼬리에 `EXPSTATUS=` 를 붙였는데, 한 줄이 두 가지를 말해서
+        **저장 통보인지 국면 통보인지** 눈으로 갈리지 않았다.
+        ⚠️ OBSAgent 는 `Wrote` 줄을 세고 `EXPSTATUS=` 는 버퍼에서 **부분
+        문자열로** 찾으므로 둘 다 그대로 걸린다.
+        ⚠️ **IDLE 이면 국면 줄을 안 낸다** -- 종전 꼬리와 같은 규칙이다
+        (`_suffix` 가 IDLE 에서 빈 문자열이었다).
         """
         body = f'Wrote LASTFILE={path} RATE={rate} KB/sec'
-        return self.status(dest, body + self._suffix(expstatus))
+        line = self.status(dest, body)
+        if self._suffix(expstatus):
+            self.exp_status(dest, expstatus)
+        return line
 
     # -- IC 발신 ----------------------------------------------------------
 

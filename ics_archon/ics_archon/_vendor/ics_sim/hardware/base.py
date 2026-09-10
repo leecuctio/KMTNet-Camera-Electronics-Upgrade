@@ -115,7 +115,7 @@ class DetectorBackend(Protocol):
         """읽어낸 픽셀 배열.  FITS 를 쓰지 않을 때는 None 을 돌려도 된다."""
 
     async def write_frame(self, controller: str, chips: tuple[str, ...],
-                          path: str, header: dict) -> int:
+                          path: str, header: dict, on_fetched=None) -> int:  # noqa: ANN001
         """컨트롤러 1대분 프레임을 FITS 파일 **하나**로 저장, 전송률(KB/sec) 반환.
 
         **개정됨 (D-012, 2026-08-11).** 종전 시그니처는 `write_fits(ccd, …)` 로

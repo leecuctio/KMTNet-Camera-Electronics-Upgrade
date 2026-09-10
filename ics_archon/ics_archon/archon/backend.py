@@ -657,11 +657,14 @@ class ArchonBackend:
     # -- 저장 -------------------------------------------------------------
 
     async def write_frame(self, controller: str, chips: tuple[str, ...],
-                          path: str, header) -> int:  # noqa: ANN001
+                          path: str, header, on_fetched=None) -> int:  # noqa: ANN001
         """컨트롤러 1대분 프레임을 FITS **파일 하나**로 저장 (D-012).
 
         `path` 는 D-016 선검사를 거친 확정 경로이고 `header` 는 규격 5장 카드가
         이미 채워져 온다 -- **둘 다 여기서 바꾸지 않는다.**
+
+        `on_fetched()` 는 **fetch 가 끝난 순간 부르는 곁다리**다 -- 부르는 쪽이
+        `EXPSTATUS` 를 `FETCH` 에서 `WRITING` 으로 넘기는 데 쓴다.
 
         **픽셀 배치는 Archon 이 준 순서 그대로다.**  raw spec 4.1절은
         `chips[0]` 이 X 낮은 쪽이라고 정하고, 컨트롤러가 두 chip 의 32 tap 을
@@ -709,6 +712,11 @@ class ArchonBackend:
                 'Failed to fetch frame from %s' % controller,
                 ccd=chips[0] if chips else '') from exc
 
+        # ⭐ **fetch 가 끝났다** -- 부르는 쪽이 `EXPSTATUS` 를 `FETCH` 에서
+        # `WRITING` 으로 넘긴다 (운영자 2026-09-11).  ⚠️ science 는 그 사이가
+        # **초 단위**다 (344 MiB).
+        if on_fetched is not None:
+            on_fetched()
         try:
             # ⚠️ **저장이 끝나면 버퍼를 링에 돌려준다** (`finally`).  안 돌려주면
             # 링이 한 칸씩 줄어 **몇 프레임 뒤에 영구히 막힌다.**

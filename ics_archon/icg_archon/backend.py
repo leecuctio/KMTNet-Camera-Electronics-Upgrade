@@ -81,9 +81,11 @@ def _dma_cause(tag: str, exc: BaseException) -> str:
     남기지 않으면 *"무엇이 실패했나"* 가 로그에서 통째로 사라진다 -- 2026-09-10
     벤치에서 실제로 그랬다(원인이 한 글자도 없었다).
     """
-    log.error('%s: 취득이 실패했다 -- **%s: %s**.  ⚠️ 와이어에는 레거시 문구'
-              '(%s)로 나가지만 원인은 이것이다 (⛔ 지운 DMAWAIT 명령과 무관)',
-              tag, exc.__class__.__name__, exc, DMA_TIMEOUT)
+    log.error('acquisition failed -- %s: %s',
+              exc.__class__.__name__, exc,
+              extra={'detail': '⚠️ 와이어에는 레거시 문구(%s)로 나가지만 원인은 '
+                               '이것이다 (⛔ 지운 DMAWAIT 명령과 무관)'
+                               % DMA_TIMEOUT})
     return DMA_TIMEOUT
 
 
@@ -99,7 +101,10 @@ class GuideBackend:
     def __init__(self, cfg, icfg: IcgCfg) -> None:  # noqa: ANN001
         self.cfg = cfg            # ics_sim.config.SimConfig
         self.icfg = icfg
-        self.ctrl = ArchonController(TAG, icfg)
+        # ⭐ **접두를 안 쓴다** -- guide 는 컨트롤러가 하나라 `G:` 가 늘 같은
+        # 값이고 아무것도 안 알린다 (운영자 2026-09-11).  science 는 넷이라
+        # 그 접두로만 유닛이 갈리므로 거기서는 그대로 붙는다.
+        self.ctrl = ArchonController(TAG, icfg, log_tag=False)
         # ⭐ **자리 표를 꽂아 준다** -- guide 는 규격 10.4절 8자리다.
         # 안 꽂으면 컨트롤러가 science 표(5.6.1절 10자리)로 대조해
         # 정상 구성에서 `extra [6,7]`·`missing [1,2,8,11]` 오경보가 난다.
@@ -111,8 +116,8 @@ class GuideBackend:
             raise RuntimeError(
                 'icg_archon 백엔드는 numpy 가 필요하다 (FITS 저장형 변환) -- '
                 'pip install numpy 후 다시 띄울 것') from exc
-        log.info('guide 백엔드 -- %s:%d, 선언 기하 %dx%d (%.2f MiB/프레임)',
-                 icfg.host or '(미설정)', icfg.port, icfg.naxis1, icfg.naxis2,
+        log.info('guide backend: %s:%d, %dx%d (%.2f MiB/frame)',
+                 icfg.host or '(unset)', icfg.port, icfg.naxis1, icfg.naxis2,
                  icfg.frame_bytes / (1 << 20))
         #: ACF 타이밍 스크립트에서 계산한 프레임 주기 (`acftiming`).
         #: 왕복 없이 파일만 읽으므로 기동에서 바로 잡는다 -- 이 값이 있어야
@@ -147,7 +152,7 @@ class GuideBackend:
                       '아니다.  타이밍 계산을 신뢰하지 않는다')
             return None
         try:
-            probe = ArchonController(TAG, self.icfg)
+            probe = ArchonController(TAG, self.icfg, log_tag=False)
             probe.parse_acf(path)                # 왕복 없음
             # R2616+: flush 는 ACF 가 싣는다 -- 설정 메모리의 `FirstFlush=1` 상수가 모든
             # LOADPARAMS 에 실려 코어가 `FlushFrame` 한 번을 돌고 `FirstFlush--` 로
@@ -211,9 +216,10 @@ class GuideBackend:
         # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 `Start:` flush 분기·
         # 통과했고 `FirstFlush`·`FlushLines` 가 있어야 한다.  없으면 `arm_sequence` 가
         # GO 를 거부한다 -- `Exposures=n` 으로 걸면 첫 장이 flush 없이 저장되니까.
-        log.info('guide 프레임 타이밍 (ACF 계산, PROVISIONAL) -- %s · flush %s',
+        log.info('frame timing from acf (PROVISIONAL): %s · flush %s',
                  acftiming.describe(t),
-                 ('%.4f s' % t['flush']) if t.get('flush') else '(없음 -- R2612 이하)')
+                 ('%.4f s' % t['flush']) if t.get('flush')
+                 else '(none -- R2612 or older)')
         return t
 
     # -- 노출 주기 (규격 10.1절) --------------------------------------------
@@ -479,8 +485,14 @@ class GuideBackend:
             raise GuideBackendError(
                 _dma_cause(TAG, exc)) from exc
 
-    async def write_frame(self, suffix: str, path: str, cards) -> int:  # noqa: ANN001
+    async def write_frame(self, suffix: str, path: str, cards,  # noqa: ANN001
+                          on_fetched=None) -> int:  # noqa: ANN001
         """fetch + guide FITS 저장.  반환은 전송률 [KB/s].
+
+        `on_fetched()` 는 **fetch 가 끝난 순간 부르는 곁다리**다 -- 부르는 쪽이
+        `EXPSTATUS` 를 `FETCH` 에서 `WRITING` 으로 넘기는 데 쓴다.  ⭐ 백엔드가
+        발신기를 모르게 두려는 것이다: 무엇이 끝났는지는 여기가 알고, 그것을
+        누구에게 어떻게 알릴지는 시퀀서가 안다.
 
         science `ArchonBackend.write_frame()` 과 같은 뼈대 -- **저장 표를
         `take_ticket(suffix)` 로 대기열에서 집어 온다** (안 집으면 표가
@@ -500,17 +512,19 @@ class GuideBackend:
         except (ArchonError, TimeoutError, OSError) as exc:
             raise GuideBackendError(
                 'Failed to fetch guide frame') from exc
+        if on_fetched is not None:
+            on_fetched()
         try:
             rate = await asyncio.to_thread(
                 fitswrite.write_frame, path, cards, raw,
                 naxis1=self.icfg.naxis1, naxis2=self.icfg.naxis2,
                 widths=guidecards.WIDTHS)
         except (OSError, ValueError, ImportError) as exc:
-            log.error('guide FITS 저장 실패 -- %s', exc)
+            log.error('fatal: guide FITS write failed -- %s', exc)
             raise GuideBackendError('Failed to write guide FITS') from exc
         finally:
             self.ctrl.release_buffer(raw)
-        log.info('%s 저장 (%d KB/sec)', os.path.basename(path), rate)
+        log.info('wrote %s (%d KB/sec)', os.path.basename(path), rate)
         return rate
 
     async def discard_frame(self, ticket, *, release: bool = True) -> None:  # noqa: ANN001
@@ -746,7 +760,10 @@ class SimGuideBackend:
     def loadparams_sent(self) -> bool:
         return False
 
-    async def write_frame(self, suffix: str, path: str, cards) -> int:  # noqa: ANN001, ARG002
+    async def write_frame(self, suffix: str, path: str, cards,  # noqa: ANN001, ARG002
+                          on_fetched=None) -> int:  # noqa: ANN001
+        if on_fetched is not None:
+            on_fetched()
         if not self.cfg.paths.write_fits:
             return 0
         import numpy as np

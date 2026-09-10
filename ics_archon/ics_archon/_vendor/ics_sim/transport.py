@@ -31,6 +31,48 @@ from .impv2 import Message
 
 log = logging.getLogger('ics_sim.transport')
 
+#: ⭐ **화면에서 뺄 자동 왕복**의 커맨드워드 (운영자 2026-09-11).  사람이 친
+#: 것도, 사람에게 답한 것도 아니고 **프로그램이 스스로 주고받는** 줄들이다 --
+#: 취득마다 나가는 텔레메트리 질의(`AUXSTATUS`/`TCSSTATUS`)와 기동 핸드셰이킹
+#: (`PING`/`PONG`).
+#:
+#: ⛔ **자취가 지워지는 것이 아니다** -- 로그 파일에는 그대로 남는다.  화면에만
+#: 안 낸다 (`[logging] verbose`).
+#: ⚠️ 목록을 늘릴 때는 *"이것이 없으면 사람이 무엇을 못 아나"* 를 먼저 볼 것.
+#: 명령과 그 응답은 **여기 들어오면 안 된다** -- ABC/OBSAgent 가 무엇을
+#: 시켰는지가 화면에서 사라진다.
+CHATTER_WORDS = frozenset({'AUXSTATUS', 'TCSSTATUS', 'PING', 'PONG'})
+
+
+def wire_command(raw: str) -> str:
+    """와이어 한 줄에서 **커맨드워드**를 뽑는다.  못 뽑으면 빈 문자열.
+
+    형식은 `SRC>DST [종류:] CMDWORD 본문` 이다 (스펙 2장) -- 종류(`DONE:` ·
+    `ERROR:` · `STATUS:` · `EXEC:`)는 있을 수도 없을 수도 있다.
+
+        ICG>TC AUXSTATUS                     -> 'AUXSTATUS'
+        TC>ICG DONE: AUXSTATUS AUXQDATE=...  -> 'AUXSTATUS'
+        ICG>ICG STATUS: GO PCTREAD=5         -> 'GO'
+    """
+    addr, _, rest = raw.partition(' ')
+    if '>' not in addr:
+        return ''
+    parts = rest.split()
+    if not parts:
+        return ''
+    word = parts[0]
+    if word.endswith(':'):                 # 종류 -- 그 다음이 커맨드워드다
+        word = parts[1] if len(parts) > 1 else ''
+    return word.rstrip(':').upper()
+
+
+def essential_wire(raw: str) -> bool:
+    """이 와이어 줄을 **화면에 낼까** (`verbose = off` 일 때).
+
+    ⭐ 판정은 커맨드워드 하나다 -- `CHATTER_WORDS` 에 들면 잡음이다.
+    """
+    return wire_command(raw) not in CHATTER_WORDS
+
 Addr = tuple[str, int]
 MessageHandler = Callable[[Message, Addr], None]
 
@@ -115,7 +157,8 @@ class UdpEndpoint:
             # (self-echo), 그것까지 찍으면 **한 메시지가 두 줄로 보인다**.
             # ⭐ 방향 표시(`<<<`)도 뗐다 -- `SRC>DST` 가 이미 방향을 말한다
             # (목적지가 우리면 들어온 것).
-            log.info('%s', msg.raw)
+            log.info('%s', msg.raw,
+                     extra={'essential': essential_wire(msg.raw)})
         self._on_message(msg, addr)
 
     def _keyboard_line(self, raw: str) -> bool:
@@ -154,7 +197,8 @@ class UdpEndpoint:
             # 이미 방향을 말하므로 `>>>`/`<<<` 는 넉 자를 더할 뿐이다.
             # ⭐ **키보드 줄은 노드 표기까지 뗀다** -- `ICG>ICG DONE: …` 의
             # 앞 여덟 자는 *"내가 나에게"* 라 아무것도 안 알린다.
-            log.info('%s', self._trim_keyboard(line))
+            log.info('%s', self._trim_keyboard(line),
+                     extra={'essential': essential_wire(line)})
         self._queue.put_nowait((payload, self.route_for(dest_node), dest_node))
 
     def route_for(self, dest_node: str) -> Addr | None:

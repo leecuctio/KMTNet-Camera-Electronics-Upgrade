@@ -87,3 +87,86 @@ def test_help_renders(sections):
     for _title, entries in sections:
         for syntax, _desc in entries:
             assert syntax in text
+
+
+# ---------------------------------------------------------------------------
+# `[logging] verbose` -- 화면만 간결, **파일은 언제나 전부** (2026-09-11)
+# ---------------------------------------------------------------------------
+
+def _fmt(record, *, with_detail):  # noqa: ANN001, ANN202
+    """`_TailModule` 로 한 줄을 만든다 (화면/파일 두 서식을 흉내낸다)."""
+    from ics_sim.__main__ import LOG_DATEFMT, LOG_FORMAT, _TailModule
+
+    return _TailModule(LOG_FORMAT, datefmt=LOG_DATEFMT,
+                       with_detail=with_detail).format(record)
+
+
+def _record(msg, level=None, **extra):  # noqa: ANN001, ANN202
+    import logging
+
+    rec = logging.LogRecord('ics_sim.test', level or logging.INFO,
+                            __file__, 1, msg, (), None)
+    for key, val in extra.items():
+        setattr(rec, key, val)
+    return rec
+
+
+def test_essential_filter_keeps_everything_unmarked():
+    """⭐ **기본은 보인다** -- 표시를 빠뜨려도 정보가 사라지면 안 된다."""
+    from ics_sim.__main__ import EssentialOnly
+
+    keep = EssentialOnly()
+    assert keep.filter(_record('anything')) is True
+    assert keep.filter(_record('x', essential=True)) is True
+    assert keep.filter(_record('x', essential=False)) is False
+
+
+def test_wire_chatter_is_classified_by_command_word():
+    """자동 왕복만 잡음이다 -- **명령과 그 응답은 아니다.**
+
+    ⛔ 명령이 잡음으로 분류되면 ABC/OBSAgent 가 무엇을 시켰는지가 화면에서
+    사라진다.
+    """
+    from ics_sim.transport import essential_wire, wire_command
+
+    # 자동 왕복 -- 화면에서 뺀다.
+    assert wire_command('ICG>TC AUXSTATUS') == 'AUXSTATUS'
+    assert not essential_wire('ICG>TC AUXSTATUS')
+    assert not essential_wire('TC>ICG DONE: TCSSTATUS TCSQDATE=2026-09-10T18:19:20')
+    assert not essential_wire('ICG>AL PING')
+    assert not essential_wire('XIS>ICG PONG')
+
+    # 명령·상태·응답 -- 남는다.
+    assert wire_command('ICG>ICG STATUS: GO PCTREAD=5') == 'GO'
+    assert essential_wire('ICG>ICG STATUS: GO PCTREAD=5')
+    assert essential_wire('ICG>ICG STATUS: EXPSTATUS=INTEGRATING')
+    assert essential_wire('abc>ICG EXEC: go 10')
+    assert essential_wire('ICG>abc DONE: GO EXPSTATUS=IDLE')
+    # 깨진 줄에도 안 죽는다.
+    assert wire_command('') == ''
+    assert essential_wire('쓰레기')
+
+
+def test_detail_is_dropped_only_on_the_concise_screen():
+    """⭐ 같은 기록 하나가 **화면에서는 짧고 파일에서는 온전하다.**"""
+    rec = _record('fetch frame 12: 8.3 MiB in 0.1s',
+                  detail='buf 3, base 0xE0000000, lock=True')
+    assert 'base 0xE0000000' not in _fmt(rec, with_detail=False)
+    assert 'fetch frame 12' in _fmt(rec, with_detail=False)
+    assert 'base 0xE0000000' in _fmt(rec, with_detail=True)
+
+
+def test_logging_verbose_reads_the_ini_vocabulary(tmp_path):
+    """`on/true/enable/1` 과 `off/false/disable/0` 을 같이 받는다."""
+    from ics_sim import config as sim_config
+
+    for word, want in (('off', False), ('false', False), ('0', False),
+                       ('disable', False), ('on', True), ('enable', True)):
+        path = tmp_path / ('v_%s.ini' % word)
+        path.write_text('[logging]\nverbose = %s\n' % word, encoding='utf-8')
+        cfg = sim_config.load(str(path))
+        assert cfg.logging.verbose is want, word
+    # 안 적으면 켜진 것이다 -- 조용해지는 쪽이 기본이면 안 된다.
+    path = tmp_path / 'v_none.ini'
+    path.write_text('[logging]\nlevel = info\n', encoding='utf-8')
+    assert sim_config.load(str(path)).logging.verbose is True
