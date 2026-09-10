@@ -121,12 +121,24 @@ class GaugeState:
     WARMUP = 'WARMUP'
 
     @property
+    def warmup_remaining(self) -> float:
+        """예열이 끝나기까지 남은 시간 [s].  예열 중이 아니면 **0.0**.
+
+        ⭐ **HK 가 이 값으로 한 바퀴를 예약한다** (2026-09-11) -- 낱말이
+        `WARMUP` 에서 `ON` 으로 뒤집히는 그 시각에 값도 같이 오게 하려는
+        것이다.  ⛔ 종전에는 낱말만 즉시 뒤집히고 `DEWPRES` 는 **다음 주기
+        바퀴(60초)까지** 안 왔다 -- 벤치 로그에 `VACGAUGE=ON` 인데 `DEWPRES`
+        가 없는 줄이 셋 찍혔다 (2026-09-10 18:12:46~55, DevNote 11.70).
+        """
+        if self.on is not True or self.on_at is None:
+            return 0.0
+        import time
+        return max(self.warmup - (time.monotonic() - self.on_at), 0.0)
+
+    @property
     def warming(self) -> bool:
         """켠 지 `warmup` 초가 아직 안 지났나."""
-        if self.on is not True or self.on_at is None:
-            return False
-        import time
-        return (time.monotonic() - self.on_at) < self.warmup
+        return self.warmup_remaining > 0.0
 
     @property
     def word(self) -> str:
@@ -182,8 +194,8 @@ class GaugeState:
         self.origin = 'rconfig'
         # ⭐ `fresh` 면 방금 켜진 것이라 예열 시계를 세운다 (머리말 참조).
         self.on_at = time.monotonic() if (fresh and self.on) else None
-        log.info('이온게이지 %s (%s=%s, 갈래 %s)',
-                 self.word, key, got, self.method)
+        log.info('ion gauge %s', self.word,
+                 extra={'detail': '%s=%s, method %s' % (key, got, self.method)})
 
     async def set(self, ctrl, on: bool) -> str:  # noqa: ANN001
         """게이지를 켜거나 끈다.  응답에 붙일 주석 문구를 돌려준다.
@@ -207,6 +219,7 @@ class GaugeState:
         except Exception:
             self.on, self.origin, self.on_at = prev, prev_origin, prev_at
             raise
-        log.info('이온게이지 %s (%s, 갈래 %s) -- ⚠️ %s',
-                 self.word, key, self.method, VCPU_NOTE)
+        log.info('ion gauge %s', self.word,
+                 extra={'detail': '%s, method %s -- ⚠️ %s'
+                                  % (key, self.method, VCPU_NOTE)})
         return VCPU_NOTE if on else '%s (%s)' % (CONDUCTRON_NOTE, VCPU_NOTE)

@@ -382,6 +382,8 @@ class HkMonitor:
         self._csv = None
         self._writer = None
         self._spawn = spawn
+        #: 예열이 끝나는 시각에 한 바퀴를 도는 일회성 작업 (`schedule_warmup_refresh`).
+        self._warmup_task = None
 
     # -- 소비 창구 -----------------------------------------------------------
 
@@ -431,8 +433,19 @@ class HkMonitor:
         # 키를 `_sample` 에서 빼기** 때문이다 -- 그 짝이 깨지면 안 늙는다.
         own = (self.radionode.all_keys()
                if self.radionode is not None else frozenset())
+        # ⛔⛔ **게이지 판정은 읽는 자리에서도 한다** (2026-09-11).  `_tick` 이
+        # 표본을 지우는 것만으로는 **주기(60초)만큼 늦는다** -- `VACGAUGE OFF`
+        # 를 친 순간 낱말은 즉시 `OFF` 인데 `_sample` 에는 직전 압력이 그대로
+        # 남아, 다음 바퀴까지 `VACGAUGE=OFF DEWPRES=<실측값>` 이 나갔다.
+        # ⛔ 그것이 바로 `gauge.py` 가 존재하는 이유(*"끈 동안 DEWPRES 를
+        # 실으면 안 된다"*)를 깨는 창이다 -- 헤더도 같은 창을 탄다.
+        # ⚠️ `_tick` 의 지우기는 **그대로 둔다** -- 그쪽은 CSV 진단(Conductron
+        # 값)까지 갈라 적는 자리라 역할이 다르다.
+        gate = self.gauge is not None and self.gauge.blocks_dewpres
         oldest: float | None = None
         for key, (val, when) in self._sample.items():
+            if key == 'dewpres' and gate:
+                continue
             if key in own:
                 # ⭐ **Radionode 는 `stale_after` 검사만 받는다** (운영자
                 # 2026-09-08) -- 폴러가 자기 창으로 이미 걸렀으므로 여기서 또
@@ -461,6 +474,69 @@ class HkMonitor:
 
     async def stop(self) -> None:
         self._stop.set()
+        # ⚠️ 예약해 둔 예열 바퀴도 접는다 -- 종료 뒤에 왕복이 하나 더 나가면
+        # 이미 닫은 연결을 두드린다.
+        task = self._warmup_task
+        if task is not None and not task.done():
+            task.cancel()
+
+    #: ⭐ 예열이 끝난 뒤 이만큼 더 기다렸다가 돈다 [s] -- 경계에서 `warming` 이
+    #: 아직 참인 것을 피하는 여유다.
+    WARMUP_REFRESH_GRACE = 0.5
+    #: 그 바퀴가 빈손이면 다시 보는 간격 [s] 과 횟수.  ⭐ **빈손일 수 있다** --
+    #: `VACGAUGE ON` 은 `APPLYDIO09` 라 MOD10 VCPU 가 재시작하고, 그 뒤 첫
+    #: 바퀴는 Alive 되감김을 보고 **무조건 결측**이기 때문이다 (`DewpresDecoder`).
+    WARMUP_RETRY_WAIT = 3.0
+    WARMUP_RETRIES = 2
+
+    def schedule_warmup_refresh(self) -> None:
+        """게이지 **예열이 끝나는 시각**에 HK 한 바퀴를 예약한다.
+
+        ⭐ **낱말과 값이 같이 뒤집히게 하는 장치**다 (2026-09-11).  `VACGAUGE`
+        는 답을 만드는 순간 `gauge.word` 를 live 로 읽어 예열이 끝나면 곧바로
+        `ON` 이 되는데, `DEWPRES` 는 폴링 표본에서 오므로 **다음 주기 바퀴
+        (60초)까지** 안 왔다 -- 한 줄 안에서 둘이 어긋났다 (벤치 2026-09-10
+        18:12:46~55, DevNote 11.70).
+
+        ⛔ **주기 바퀴를 앞당기지 않는다** -- `_sleep_until` 이 `_next_at` 을
+        **뒤로만** 미는 것을 전제로 짜여 있어(깨움 신호를 일부러 안 뒀다),
+        앞당기려면 그 전제를 깨야 한다.  대신 `refresh_now()`(= `HKDATA NOW`
+        와 같은 함수)를 한 번 부른다 -- 그 함수가 주기 기준도 알아서 민다.
+        ⚠️ **켤 때만 부른다** -- 끄는 쪽은 `sensors()` 의 문이 그 자리에서
+        막으므로 기다릴 것이 없다.
+        """
+        if self._spawn is None:
+            return                          # 단위 시험 등 -- 띄울 자리가 없다
+        task = self._warmup_task
+        if task is not None and not task.done():
+            task.cancel()                   # 다시 켰다 -- 시계가 새로 섰다
+        self._warmup_task = self._spawn(self._warmup_refresh())
+
+    async def _warmup_refresh(self) -> None:
+        """예열이 끝나기를 기다렸다가 한 바퀴.  빈손이면 몇 번 더 본다."""
+        gauge = self.gauge
+        if gauge is None:
+            return
+        await asyncio.sleep(gauge.warmup_remaining + self.WARMUP_REFRESH_GRACE)
+        for attempt in range(self.WARMUP_RETRIES + 1):
+            if self._stop.is_set() or gauge.blocks_dewpres:
+                return                      # 그새 껐거나 다시 예열 중이다
+            try:
+                await self.refresh_now()
+            except Exception as exc:        # noqa: BLE001 -- 주기 바퀴가 있다
+                log.warning('예열 뒤 HK 한 바퀴 실패 -- %s.  다음 주기 바퀴가 '
+                            '채운다', exc)
+                return
+            if self._sample.get('dewpres') is not None:
+                log.info('이온게이지 예열이 끝나 HK 를 한 바퀴 돌렸다 -- '
+                         'DEWPRES 가 들어왔다 (%d번째)', attempt + 1)
+                return
+            if attempt < self.WARMUP_RETRIES:
+                await asyncio.sleep(self.WARMUP_RETRY_WAIT)
+        log.warning('예열이 끝났는데 %d 번을 돌려도 DEWPRES 가 안 들어왔다 -- '
+                    '다음 주기 바퀴를 기다린다.  ⚠️ VCPU 재시작이 길거나 게이지 '
+                    '응답이 없는 것이니 `hkdata now` 로 다시 볼 것',
+                    self.WARMUP_RETRIES + 1)
 
     async def run(self) -> None:
         interval = max(self.cfg.hk.interval, 1.0)

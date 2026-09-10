@@ -805,3 +805,134 @@ def test_the_sleeper_follows_a_deadline_that_moved(tmp_path):
 
     waited = asyncio.run(run())
     assert waited >= 0.15, waited                   # 밀린 시각을 따라갔다
+
+
+# ---------------------------------------------------------------------------
+# 이온게이지와 `DEWPRES` -- **낱말과 값이 같이 움직인다** (2026-09-11)
+# ---------------------------------------------------------------------------
+
+def _mon_with_gauge(tmp_path, warmup=0.2):  # noqa: ANN001
+    """표본에 `dewpres` 가 들어 있는 감시 + 게이지 상태."""
+    from icg_archon.gauge import GaugeState
+
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    mon = HkMonitor(None, icfg)
+    mon._sample['dewpres'] = (1.02e-6, time.time())    # noqa: SLF001
+    mon._sample['ccdtemp'] = (-100.0, time.time())     # noqa: SLF001
+    gauge = GaugeState(warmup=warmup)
+    mon.gauge = gauge
+    return mon, gauge
+
+
+def test_sensors_drops_dewpres_the_moment_the_gauge_is_blocked(tmp_path):
+    """⛔ **끈 순간 값이 사라져야 한다 -- 다음 바퀴가 아니라.**
+
+    `_tick` 의 지우기만으로는 **주기(60초)만큼 늦는다**: `VACGAUGE OFF` 를 친
+    순간 낱말은 즉시 `OFF` 인데 표본에는 직전 압력이 남아, 다음 바퀴까지
+    `VACGAUGE=OFF DEWPRES=<실측값>` 이 나갔다.  ⛔ 그것이 `gauge.py` 가
+    존재하는 이유를 정면으로 깨는 창이다 (DevNote 11.70).
+    """
+    mon, gauge = _mon_with_gauge(tmp_path)
+
+    # ① 모름 -- **막지 않는다** (모름을 결측으로 치면 평상 운영에서 사라진다).
+    assert gauge.on is None
+    assert mon.sensors().get('dewpres') is not None
+
+    # ② 껐다 -- 그 자리에서 사라진다 (바퀴를 안 돌렸는데도).
+    gauge.on = False
+    assert 'dewpres' not in mon.sensors()
+
+    # ③ 예열 중 -- 역시 막는다 (켜졌지만 값이 아직 안 미덥다).
+    gauge.on, gauge.on_at = True, time.monotonic()
+    assert gauge.word == 'WARMUP'
+    assert 'dewpres' not in mon.sensors()
+
+    # ④ 예열이 끝나면 돌아온다 -- 낱말과 값이 같이 뒤집힌다.
+    gauge.on_at = time.monotonic() - gauge.warmup - 1.0
+    assert gauge.word == 'ON'
+    assert mon.sensors().get('dewpres') is not None
+
+    # ⚠️ 막힌 동안에도 **다른 키는 그대로다** -- 통째로 접으면 안 된다.
+    gauge.on = False
+    assert mon.sensors().get('ccdtemp') == -100.0
+
+
+def test_warmup_refresh_runs_a_round_when_the_warmup_ends(tmp_path):
+    """⭐ 예열이 끝나는 **그 시각에** 한 바퀴를 돈다 (`VACGAUGE ON` 경로)."""
+    mon, gauge = _mon_with_gauge(tmp_path, warmup=0.25)
+    del mon._sample['dewpres']                          # noqa: SLF001
+    gauge.on, gauge.on_at = True, time.monotonic()
+    calls = []
+
+    async def _fake_refresh():
+        calls.append(time.monotonic())
+        mon._sample['dewpres'] = (1.02e-6, time.time())  # noqa: SLF001
+
+    mon.refresh_now = _fake_refresh
+
+    async def go():
+        mon._spawn = asyncio.ensure_future                # noqa: SLF001
+        started = time.monotonic()
+        mon.schedule_warmup_refresh()
+        await asyncio.wait_for(mon._warmup_task, timeout=5.0)  # noqa: SLF001
+        return started
+
+    started = asyncio.run(go())
+    assert len(calls) == 1, calls
+    # **예열이 끝난 뒤**에 돌아야 한다 -- 그 전에 돌면 또 막힌 값을 본다.
+    assert calls[0] - started >= 0.25, calls[0] - started
+    assert mon.sensors().get('dewpres') is not None
+
+
+def test_warmup_refresh_retries_when_the_first_round_is_empty(tmp_path):
+    """⭐ 첫 바퀴가 빈손일 수 있다 -- **VCPU 되감김 바퀴**를 삼키기 때문이다.
+
+    `VACGAUGE ON` 은 `APPLYDIO09` 라 MOD10 VCPU 가 재시작하고, 그 뒤 첫
+    바퀴는 Alive 되감김을 보고 무조건 결측이다 (`DewpresDecoder`).  한 번만
+    돌고 끝내면 그 바퀴를 삼켜 **또 60초를 기다린다**.
+    """
+    mon, gauge = _mon_with_gauge(tmp_path, warmup=0.05)
+    del mon._sample['dewpres']                          # noqa: SLF001
+    gauge.on, gauge.on_at = True, time.monotonic()
+    mon.WARMUP_RETRY_WAIT = 0.05
+    calls = []
+
+    async def _fake_refresh():
+        calls.append(1)
+        if len(calls) >= 2:                 # 첫 바퀴는 되감김에 걸렸다
+            mon._sample['dewpres'] = (1.02e-6, time.time())  # noqa: SLF001
+
+    mon.refresh_now = _fake_refresh
+
+    async def go():
+        mon._spawn = asyncio.ensure_future                # noqa: SLF001
+        mon.schedule_warmup_refresh()
+        await asyncio.wait_for(mon._warmup_task, timeout=5.0)  # noqa: SLF001
+
+    asyncio.run(go())
+    assert len(calls) == 2, calls
+    assert mon.sensors().get('dewpres') is not None
+
+
+def test_warmup_refresh_gives_up_if_the_gauge_is_turned_off_meanwhile(tmp_path):
+    """⛔ 예열 중에 꺼 버리면 **왕복을 쓰지 않는다** (기다릴 것이 없다)."""
+    mon, gauge = _mon_with_gauge(tmp_path, warmup=0.15)
+    gauge.on, gauge.on_at = True, time.monotonic()
+    calls = []
+
+    async def _fake_refresh():
+        calls.append(1)
+
+    mon.refresh_now = _fake_refresh
+
+    async def go():
+        mon._spawn = asyncio.ensure_future                # noqa: SLF001
+        mon.schedule_warmup_refresh()
+        await asyncio.sleep(0.05)
+        gauge.on, gauge.on_at = False, None              # 그새 껐다
+        await asyncio.wait_for(mon._warmup_task, timeout=5.0)  # noqa: SLF001
+
+    asyncio.run(go())
+    assert calls == [], calls

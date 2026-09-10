@@ -246,17 +246,22 @@ class IcgArchon(IcsSim):
         except Exception as exc:  # noqa: BLE001
             log.warning('기동 HK 첫 바퀴 실패 -- %s.  다음 주기(%.0f초)에 '
                         '다시 읽는다', exc, self.icfg.hk.interval)
+        # ⭐ **예열 중이면 끝나는 시각에 한 바퀴 더** (2026-09-11).  방금 돈
+        # 바퀴는 예열 중이라 `DEWPRES` 를 막았고, 그대로 두면 낱말이 `ON` 으로
+        # 뒤집힌 뒤에도 값은 다음 주기(60초)까지 안 온다 (DevNote 11.70).
+        # ⚠️ 예열 중이 아니면 곧바로 한 바퀴 돌고 끝난다 -- 값은 이미 있다.
+        self.hk.schedule_warmup_refresh()
 
     async def _connect_controller(self) -> None:
         try:
             await self.guide.prepare(self._after_config)
-            log.info('guide 컨트롤러 준비 완료 (%s)', self.icfg.host)
+            log.info('guide controller ready (%s)', self.icfg.host)
         except Exception as exc:  # noqa: BLE001
             # `?xx` 거부(이 세션의 APPLYALL 미실시)는 power_on() 이 진단 문구를
             # 붙여 올린다 (DevNote 10.2) -- 여기서 따로 가르지 않는다.  ⚠️ HK
             # 감시는 재접속하지 않는다 (`refresh_status_live` 는 소켓이 없으면
             # 그냥 실패해 결측으로 남긴다) -- 종전 문구가 그렇게 주장했었다.
-            log.error('guide 컨트롤러 기동 접속 실패 -- %s.  첫 GO 의 prepare() 가 '
+            log.error('guide controller connect failed at startup -- %s.  첫 GO 의 prepare() 가 '
                       '다시 시도한다 (HK 감시는 재접속하지 않고 STATUS 결측으로 '
                       '기록한다)', exc)
 
@@ -288,9 +293,10 @@ class IcgArchon(IcsSim):
             ctrl.power_wait = 0.0 if (not want and self.gauge.on is False) \
                 else None
         if self.gauge.on is want:
-            log.info('이온게이지는 이미 %s -- 기동에서 건드리지 않는다 '
-                     '([icg] gauge_on_start=%s)',
-                     self.gauge.word, self.icfg.gauge_on_start)
+            log.info('ion gauge already %s -- left alone at startup',
+                     self.gauge.word,
+                     extra={'detail': '[icg] gauge_on_start=%s'
+                                      % self.icfg.gauge_on_start})
             return
         try:
             await self.gauge.set(self.guide.ctrl, want)
@@ -311,7 +317,7 @@ class IcgArchon(IcsSim):
         # ⚠️ `spawn` 이 아니라 **여기서 기다린다** (같은 이유로).
         await self.dispatch.release_pulse('종료')
         if self.seq.busy:
-            log.info('종료 -- 진행 중인 guide 사이클을 세운다')
+            log.info('shutdown: stopping the running guide cycle')
             self.seq.cancel(save=False, requester='shutdown')
         # busy 가 아니어도 기다린다 -- 방금 끝난 ABORT 의 `Exposures=0` 왕복·꼬리
         # 소화가 아직 날아가는 중일 수 있다 (고아 미래 회수, 9.15-(9)).  비어
@@ -322,9 +328,11 @@ class IcgArchon(IcsSim):
         await self.radionode.stop()
         await self.seq.drain_writers(self.icfg.shutdown_drain)
         # ⭐ **이온게이지를 끈다** (운영자 지시 2026-09-09).  ⛔ 우리가 켠 적이
-        # 없어도 끈다 -- guide ACF 가 `MOD10\DIO_POWER=1` 을 박아 두어 **ACF
-        # 적용마다 저절로 켜지고**, 종전에는 아무도 안 껐다 (벤치에서 운영자가
-        # 잡았다: *"ICG 실행 시 켜지고 quit 할 때는 안 꺼지더라"*).
+        # 없어도 끈다 -- 종전에는 아무도 안 껐다 (벤치에서 운영자가 잡았다:
+        # *"ICG 실행 시 켜지고 quit 할 때는 안 꺼지더라"*).
+        # ⚠️ **그때의 근거였던 *"ACF 가 켠다"* 는 이제 아니다** -- R2619 에서
+        # `MOD10\DIO_POWER` 를 0 으로 내렸다 (11.60).  그래도 이 자리는 남는다:
+        # 옛 ACF 를 올리거나 `VACGAUGE ON` 뒤 그냥 나가면 켜진 채 남는다.
         # ⚠️ **HK 를 세운 뒤에 끈다** -- 먼저 끄면 남은 HK 바퀴가 Conductron
         # 값을 `DEWPRES` 로 보고 인정범위 밖 경고를 낸다.
         # ⚠️ **POWEROFF 앞에 둔다** -- 끄는 것 자체가 `WCONFIG`+`APPLYDIO09`
@@ -332,7 +340,16 @@ class IcgArchon(IcsSim):
         # ⚠️ 실패해도 종료는 계속한다 -- 다만 **게이지가 켜진 채 남는다**는
         # 사실을 남긴다 (필라멘트가 켜진 채로 방치되지 않게 사람이 알아야 한다).
         try:
-            await self.gauge.set(self.guide.ctrl, False)
+            # ⭐ **이미 꺼져 있으면 안 건드린다** (2026-09-11) -- `set()` 은
+            # `APPLYDIO09` 라 MOD10 VCPU 를 재시작시킨다.  기동의
+            # `_settle_gauge` 는 진작 그 규칙인데 종료에만 없어서, 꺼진 게이지를
+            # 한 번 더 끄며 재시작을 일으키고 있었다 (벤치 2026-09-10 18:07:27 ·
+            # 18:22:32).  ⛔ **모르면 끈다** -- 꺼졌다고 믿는데 켜져 있는 것이
+            # 이 명령이 막으려는 바로 그 상태다.
+            if self.gauge.on is False:
+                log.info('ion gauge already OFF -- left alone at shutdown')
+            else:
+                await self.gauge.set(self.guide.ctrl, False)
         except Exception as exc:  # noqa: BLE001
             log.warning('종료 -- 이온게이지를 못 껐다: %s.  ⚠️ **게이지가 켜진 '
                         '채 남아 있을 수 있다**', exc)
