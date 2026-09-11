@@ -110,9 +110,9 @@ def card_image(key: str, value: object, comment: str, *,
         # 값의 출처가 ini·STATUS·ACF 이름처럼 바깥이므로 여기가 마지막 방어선
         # 이다.
         if not text.isascii():
-            log.warning('FITS 카드 %s 의 값에 비ASCII 문자가 있다 (%r) -- '
-                        '? 로 바꾼다.  헤더는 ASCII 전용이다 (raw spec 5.0절)',
-                        key.strip(), text)
+            log.warning('card %s: non-ascii value (%r) -- replaced with ?',
+                        key.strip(), text,
+                        extra={'detail': '헤더는 ASCII 전용이다 (raw spec 5.0절)'})
             text = text.encode('ascii', 'replace').decode('ascii')
         # **값 안의 홑따옴표는 겹쳐 쓴다** (FITS 표준 4.2.1).  안 겹치면 그
         # 자리가 값의 끝으로 읽혀 카드가 통째로 깨진다 -- `object O'Brien` 한
@@ -135,14 +135,15 @@ def card_image(key: str, value: object, comment: str, *,
             if len(text) <= room_bare:
                 keep = 80 - (10 + 1 + 1 + 3) - len(text)
                 comment = comment[:max(keep, 0)].rstrip()
-                log.warning('FITS 카드 %s 의 값이 길어 comment 를 줄였다 '
-                            '(값 %d자) -- 값은 그대로다 (raw spec 5.0절)',
-                            key.strip(), len(text))
+                log.warning('card %s: comment trimmed to fit the value '
+                            '(%d chars)', key.strip(), len(text),
+                            extra={'detail': '값은 그대로다 (raw spec 5.0절)'})
             else:
-                log.warning('FITS 카드 %s 의 값이 너무 길다 (%d > %d) -- '
-                            'comment 를 다 지워도 안 들어가 값을 잘라낸다. '
-                            '자리 나열 카드면 뒤 항목이 사라진다 (5.6.1절)',
-                            key.strip(), len(text), room_bare)
+                log.warning('card %s: value too long (%d > %d) -- comment '
+                            'dropped and value truncated',
+                            key.strip(), len(text), room_bare,
+                            extra={'detail': '자리 나열 카드면 뒤 항목이 '
+                                             '사라진다 (5.6.1절)'})
                 comment = ''
                 text = text[:room_bare]
             # **겹친 따옴표 한가운데서 자르면 안 된다.**  홀수 개가 남으면
@@ -177,11 +178,13 @@ def card_image(key: str, value: object, comment: str, *,
         # ⚠️ 폭은 **이 호출이 쓴 표**로 찍는다 -- science 표를 찍으면 guide
         # 저장에서 엉뚱한 숫자가 나온다 (공유 키는 science 폭, guide 전용
         # 키는 0).  2026-08-31 교차검토.
-        log.warning('FITS 카드 %s 가 %d자다 -- comment 가 %d자 잘린다.  견본 '
-                    '폭(%d)과 comment 길이(%d)의 합이 80자를 넘는다',
+        log.warning('card %s is %d chars -- comment truncated by %d; '
+                    'template width (%d) plus comment length (%d) exceeds 80',
                     key.strip(), len(base), len(base) - CARD,
                     (_WIDTH if widths is None else widths).get(key, 0),
-                    len(comment))
+                    len(comment),
+                    extra={'detail': '이 조합은 템플릿 개정에서만 나온다 -- '
+                                     'rawcards.CARDS 를 확인하라'})
     return base.ljust(CARD)[:CARD]
 
 

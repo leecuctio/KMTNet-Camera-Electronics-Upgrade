@@ -115,7 +115,10 @@ class ClockWatch:
         if when is None:
             # ⚠️ 못 읽는 것과 어긋난 것은 다르다 -- 여기서 0 을 돌려주면
             # "맞았다" 로 읽힌다.
-            log.debug('%s 시각 비교 건너뜀 -- %s 를 못 읽었다', self.name, stamp)
+            log.debug('skipping the %s clock comparison -- cannot parse %r',
+                      self.name, stamp,
+                      extra={'detail': '못 읽는 것과 어긋난 것은 다르다 -- '
+                                       '이 표본을 세지 않는다'})
             return None
         if t1 < t0:
             # 우리 시계가 왕복 중에 뒤로 밟혔다 (NTP step).  이 표본은 못 쓴다.

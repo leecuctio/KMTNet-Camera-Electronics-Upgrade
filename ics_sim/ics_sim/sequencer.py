@@ -333,6 +333,13 @@ class Sequencer:
         # 이 프레임이 띄운 저장 태스크만 담는다 -- ABORT 가 이전 프레임의
         # 저장을 취소하지 않게 하는 근거다 (`cancel()` 참고).
         self._frame_writers = []
+        # ⛔ 앞 프레임의 돔 읽기가 남아 있으면 **끊는다.**  저장까지 못 가고
+        # 끝난 프레임(ABORT)의 태스크가 늦게 끝나면 이 프레임이 읽어 둔 값을
+        # **옛 값으로 덮는다** -- 옛 방위를 새 값처럼 싣는 바로 그 길이다.
+        stale = getattr(self, '_dome_read', None)
+        if stale is not None and not stale.done():
+            stale.cancel()
+        self._dome_read = None
 
         await asyncio.sleep(cfg.scaled(cfg.timing.go_to_initializing))
 
@@ -393,6 +400,14 @@ class Sequencer:
 
         # 노출 개시 시각을 여기서 확정한다.  TCSSTATUS 의 DATE-OBS 가 이 값이다.
         st.exp_start = utcnow()
+        # ⭐ **돔 방위를 여기서 읽는다** (`DSTELAZ`/`DSAZ`/`DAZERR`, 2026-09-11).
+        # 이 줄이 `DATE-OBS` 를 찍는 그 순간이라, 돔 방위도 **노출 개시 시각의
+        # 값**이 된다 -- AUX 스냅샷을 노출 시각에 맞추는 것과 같은 규범이다
+        # (운영자 확정 2026-08-13, `_spawn_aux_requery` 머리말).
+        # ⛔ **여기서 기다리지 않는다** -- 상한이 `[dome] timeout`(0.3초)이라
+        # 인라인으로 읽으면 `exp_start` 와 `SHOPEN` 사이가 그만큼 벌어져
+        # **`DATE-OBS` 가 틀린다**.  값은 헤더를 조립하는 자리에서 받는다.
+        self._dome_read = self._spawn_dome_read()
         st.expstatus = ExpStatus.INTEGRATING
         self.emit.exp_status(source, ExpStatus.INTEGRATING)
 
@@ -507,6 +522,13 @@ class Sequencer:
         if requery is not None:
             await asyncio.gather(requery, return_exceptions=True)
             self._aux_requery = None
+        # 돔 방위 읽기도 같은 이유로 여기서 받는다 -- 개시 순간에 띄워 둔 것이고
+        # readout 뒤라 이미 끝나 있다.  ⛔ 실패해도 여기서 멈추지 않는다:
+        # `read()` 가 예외를 안 올리고 세 카드가 `NC` 가 된다.
+        dome = getattr(self, '_dome_read', None)
+        if dome is not None:
+            await asyncio.gather(dome, return_exceptions=True)
+            self._dome_read = None
         telem = self.telem.fits_header_dict(date_obs)
         self._check_shutter_agrees_with_imagetyp(telem)
         # **`suffix` 는 이 프레임 개시 때 확정한 지역 변수를 그대로 쓴다**
@@ -663,6 +685,21 @@ class Sequencer:
         st.exp_end = utcnow()
         self.emit.ic_shutter_closed(source, master)
         await self._aux_event('close')
+
+    def _spawn_dome_read(self):  # noqa: ANN201
+        """돔 방위 셋을 redis 에서 읽는 태스크 (`DSTELAZ`/`DSAZ`/`DAZERR`).
+
+        **백그라운드로 돌린다** -- `_spawn_aux_requery` 와 같은 이유다: 노출
+        개시와 셔터 개방 사이에 기다림을 넣으면 `DATE-OBS` 가 그만큼 틀린다.
+        헤더를 조립하는 `_store()` 는 readout 뒤이므로 넉넉히 끝나 있다.
+
+        `[dome] source = off` 면 **태스크를 안 만든다** -- 아무 일도 안 할
+        코루틴을 띄우고 기다리는 것은 군더더기다 (`None` 을 돌려준다).
+        """
+        if not self.telem.dome.enabled:
+            return None
+        return asyncio.create_task(self.telem.query_dome(),
+                                   name='ics_sim.dome_read')
 
     def _spawn_aux_requery(self, exptime: float):  # noqa: ANN201
         """`SHOPEN` 후 설정 시간에 `AUXSTATUS` 를 다시 질의하는 태스크.

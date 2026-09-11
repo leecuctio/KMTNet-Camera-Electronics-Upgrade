@@ -154,7 +154,7 @@ def _int(d: dict[str, str], key: str, default: int = 0) -> int:
     try:
         return int(raw)
     except ValueError:
-        log.warning('FRAME %s=%r 를 정수로 읽을 수 없다 -- %d 로 본다',
+        log.warning('FRAME %s=%r is not an integer -- using %d',
                     key, raw, default)
         return default
 
@@ -332,8 +332,10 @@ def field_value(status: dict[str, str], key: str) -> float | str:
     try:
         return float(raw)
     except (TypeError, ValueError):
-        log.warning('STATUS %s=%r 가 수치가 아니다 -- %s 로 싣는다',
-                    key, raw, FIELD_NC)
+        log.warning('STATUS %s=%r is not numeric -- storing %s',
+                    key, raw, FIELD_NC,
+                    extra={'detail': '헤더 값 하나 때문에 프레임을 버리지 '
+                                     '않는다 -- 저장은 계속한다'})
         return FIELD_NC
 
 
@@ -418,10 +420,10 @@ def power_good(status: dict[str, str] | None) -> bool:
 #: `POWER=n` -- **CCD 전원의 실제 상태** (매뉴얼 p.47).  `POWERON` 이 성공
 #: 응답을 줬다는 것과 전원이 실제로 올라왔다는 것은 다르다.
 POWER_STATES = {
-    0: 'Unknown (내부 오류)',
-    1: 'Not Configured (설정 미적용)',
+    0: 'Unknown (internal error)',
+    1: 'Not Configured (no config applied)',
     2: 'Off',
-    3: 'Intermediate (일부 모듈만 전원이 올라왔다)',
+    3: 'Intermediate (only some modules powered up)',
     4: 'On',
     5: 'Standby',
 }
@@ -475,11 +477,12 @@ def health_problems(status: dict[str, str] | None, *,
     # 때 사람이 그것을 이미 무시하도록 학습돼 있다.  같은 응답이 헤더에서는
     # `NC` 로 떨어진다(D4) -- 두 경로가 같은 판단을 해야 한다.
     if status_valid(status) is False:
-        return ['VALID=0 (이 응답의 나머지 필드는 무효다 -- 판정을 보류한다)']
+        return ['VALID=0 (the remaining fields of this response are '
+                'invalid -- judgement withheld)']
     if 'POWERGOOD' in status and not power_good(status):
-        bad.append('POWERGOOD=0 (시스템 전원 공급 이상)')
+        bad.append('POWERGOOD=0 (system power supply fault)')
     if overheating(status):
-        bad.append('OVERHEAT=1 (과열 -- 모듈이 스스로 전원을 내린다)')
+        bad.append('OVERHEAT=1 (overheat -- the module powers itself down)')
     state = power_state(status)
     if state is not None and state != POWER_ON:
         # ⭐ **전원을 켜기 전에는 `Off`/`Standby` 가 정상이다** (2026-09-08 벤치).
@@ -527,8 +530,10 @@ def status_valid(status: dict[str, str] | None) -> bool | None:
     try:
         return int(str(raw).strip()) != 0
     except (TypeError, ValueError):
-        log.warning('STATUS VALID=%r 를 정수로 읽을 수 없다 -- 판정을 '
-                    '보류한다(보고 없음과 같게 다룬다)', raw)
+        log.warning('STATUS VALID=%r is not an integer -- treating it as '
+                    'not reported', raw,
+                    extra={'detail': '판정을 보류한다 -- 보고 없음(None)과 '
+                                     '같게 다룬다'})
         return None
 
 
@@ -871,9 +876,10 @@ def field_order_problems(system: dict[str, str] | None,
     extra = sorted(present - expected)
     missing = sorted(expected - present)
     if extra:
-        bad.append('장착된 슬롯 %s 가 자리 표에 없다 -- 그 모듈 온도는 '
-                   'Cn_TEMP 에 실리지 않는다' % extra)
+        bad.append('installed slots %s are absent from the slot map -- '
+                   'those module temperatures are not carried in Cn_TEMP'
+                   % extra)
     if missing:
-        bad.append('자리 표의 슬롯 %s 가 미장착·무보고다 -- 그 자리는 NC 로 '
-                   '실린다' % missing)
+        bad.append('slot map slots %s are not installed and not reported '
+                   '-- those positions are carried as NC' % missing)
     return bad

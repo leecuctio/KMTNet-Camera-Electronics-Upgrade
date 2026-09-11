@@ -82,9 +82,11 @@ def _dma_cause(tag: str, exc: BaseException) -> str:
     남기지 않으면 *"무엇이 실패했나"* 가 로그에서 통째로 사라진다 -- 2026-09-10
     벤치에서 실제로 그랬다(원인이 한 글자도 없었다).
     """
-    log.error('%s: 취득이 실패했다 -- **%s: %s**.  ⚠️ 와이어에는 레거시 문구'
-              '(%s)로 나가지만 원인은 이것이다 (⛔ 지운 DMAWAIT 명령과 무관)',
-              tag, exc.__class__.__name__, exc, DMA_TIMEOUT)
+    log.error('%s: acquisition failed -- %s: %s',
+              tag, exc.__class__.__name__, exc,
+              extra={'detail': '⚠️ 와이어에는 레거시 문구(%s)로 나가지만 '
+                               '원인은 이것이다 '
+                               '(⛔ 지운 DMAWAIT 명령과 무관)' % DMA_TIMEOUT})
     return DMA_TIMEOUT
 
 #: 셔터를 강제로 닫을지 판단하는 여유 폭 [s].  남은 적분이 이보다 길 때만
@@ -173,8 +175,9 @@ class ArchonBackend:
             raise RuntimeError(
                 'archon 백엔드는 numpy 가 필요하다 (FITS 저장형 변환) -- '
                 'pip install numpy 후 다시 띄울 것') from exc
-        log.info('archon 백엔드 -- 컨트롤러 %s, 선언 기하 %dx%d (%.1f MiB/파일)',
-                 ', '.join(self.tags) or '없음', acfg.naxis1, acfg.naxis2,
+        log.info('archon backend -- controllers %s, declared geometry '
+                 '%dx%d (%.1f MiB/file)',
+                 ', '.join(self.tags) or 'none', acfg.naxis1, acfg.naxis2,
                  acfg.frame_bytes / (1 << 20))
 
     # -- 내부 -------------------------------------------------------------
@@ -186,8 +189,9 @@ class ArchonBackend:
             # `decode('ascii', 'replace')` 를 하므로(레거시 IMPv2 는 ASCII
             # 프로토콜이다) 한글은 `?` 로 바뀌어 관측자가 읽을 수 없다.
             # 그래서 **사실은 로그에, 통보는 ASCII 로** 나눈다.
-            log.error('chip %r 를 담당하는 컨트롤러가 설정에 없다 -- [archon] '
-                      'ctrl_*_host 와 [node] ccds 를 확인하라', ccd)
+            log.error('no controller configured for chip %r', ccd,
+                      extra={'detail': '[archon] ctrl_*_host 와 [node] ccds '
+                                       '를 확인하라'})
             raise BackendError(
                 'No controller configured for chip %s' % ccd, ccd=ccd)
         return tag
@@ -246,7 +250,7 @@ class ArchonBackend:
             *(coro_factory(c) for c in self._active()), return_exceptions=True)
         for ctrl, res in zip(self._active(), results):
             if isinstance(res, BaseException):
-                log.error('%s: %s 실패 -- %s', ctrl.tag, what, res)
+                log.error('%s: %s failed -- %s', ctrl.tag, what, res)
         for res in results:
             if isinstance(res, BaseException):
                 raise res
@@ -287,7 +291,7 @@ class ArchonBackend:
                 # PROVISIONAL: STATUS 필드 이름(`TEMP_MODS`)은 실기 미검증이다.
                 await ctrl.refresh_status()
             except (ArchonError, TimeoutError, OSError) as exc:
-                log.error('%s: 준비 실패 -- %s', tag, exc)
+                log.error('%s: prepare failed -- %s', tag, exc)
                 # 레거시와 같은 문구여야 한다 (base.py 의 BackendError docstring)
                 msg = 'Failed to initialize one or more ICs'
                 self._prep_failed[tag] = (suffix, msg)
@@ -298,7 +302,7 @@ class ArchonBackend:
     async def erase(self, ccd: str) -> None:
         """CCD flushing -- **살아 있는 컨트롤러 전부**를 비운다 (위 2번)."""
         if not self.acfg.full_flush_on_erase:
-            log.info('[archon] full_flush_on_erase=false -- ERASE 를 건너뛴다')
+            log.info('skipping ERASE -- [archon] full_flush_on_erase=false')
             return
         try:
             await self._all(lambda c: c.flush(), 'flush')
@@ -329,7 +333,7 @@ class ArchonBackend:
             await c.trigger(ms, suffix=self._suffix.get(c.tag, ''))
 
         try:
-            await self._all(_go, '노출 지시')
+            await self._all(_go, 'exposure command')
         except (ArchonError, TimeoutError, OSError) as exc:
             raise BackendError(
                 'Failed to Start acquisition on one or more ICs') from exc
@@ -348,10 +352,11 @@ class ArchonBackend:
             await c.abort_now()
 
         try:
-            await self._all(_go, 'abort 중단')
+            await self._all(_go, 'abort stop')
         except (ArchonError, TimeoutError, OSError) as exc:
-            log.error('ABORT: 적분을 못 끊었다 -- %s.  컨트롤러가 노출을 끝까지 '
-                      '돌 수 있다 (프레임은 저장되지 않는다)', exc)
+            log.error('ABORT: could not cut the integration -- %s', exc,
+                      extra={'detail': '컨트롤러가 노출을 끝까지 돌 수 있다 '
+                                       '(프레임은 저장되지 않는다)'})
 
     async def close_shutter(self) -> None:
         """셔터를 닫는다.  **정상 경로에서는 할 일이 없다.**
@@ -389,17 +394,20 @@ class ArchonBackend:
         still = [c for c, left in remain if left > SHUTTER_FORCE_MARGIN]
         if not still:
             return
-        log.warning('남은 적분 %s초 -- 조기 폐쇄로 본다',
+        log.warning('integration left %s s -- this looks like an early close',
                     ', '.join('%s:%.1f' % (c.tag, left)
                               for c, left in remain))
-        log.warning('적분 중에 셔터 폐쇄 지시가 왔다 (STOP/SHCLOSE) -- '
-                    'TRIGOUTFORCE=1 로 빛을 끊는다.  적분은 남은 시간을 다 세고 '
-                    '끝나므로 EXPTIME 은 요청값이다')
+        log.warning('shutter close arrived during integration '
+                    '(STOP/SHCLOSE) -- forcing TRIGOUTFORCE=1 to cut the '
+                    'light',
+                    extra={'detail': '적분은 남은 시간을 다 세고 끝나므로 '
+                                     'EXPTIME 은 요청값이다'})
         for c in still:
             try:
                 await c.set_trigger_forced(True)
             except (ArchonError, TimeoutError, OSError) as exc:
-                log.error('%s: 셔터 강제 폐쇄 실패 -- %s', c.tag, exc)
+                log.error('%s: forced shutter close failed -- %s',
+                          c.tag, exc)
 
     async def begin_exposure(self, seconds: float,
                              opens_shutter: bool) -> None:
@@ -434,9 +442,9 @@ class ArchonBackend:
         기억한다.  헤더 `LEDFLASH` 는 명령이 넣은 값이라 영향이 없다.
         """
         self._led_ms = int(milliseconds)
-        log.warning('archon 백엔드에는 LED 프로젝터 배선이 아직 없다 -- '
-                    'FLASHNOW %d ms 를 기록만 하고 하드웨어는 만지지 않는다',
-                    self._led_ms)
+        log.warning('archon backend has no LED projector wiring yet -- '
+                    'FLASHNOW %d ms is only recorded', self._led_ms,
+                    extra={'detail': '하드웨어는 만지지 않는다'})
 
     # -- readout ----------------------------------------------------------
 
@@ -487,14 +495,18 @@ class ArchonBackend:
             # 세면 정상 노출마다 경고가 뜨고, 그 소음이 진짜 결측을 덮는다.
             missing = self._dark_seconds is None
             ms = int(round((self._dark_seconds or 0.0) * 1000))
-            log.info('셔터를 열지 않는 노출 -- 독출 시점에 IntMS=%d 으로 건다 '
-                     '(%s)', ms, ', '.join(c.tag for c in pending))
+            log.info('exposure without the shutter -- triggering IntMS=%d '
+                     'at readout (%s)',
+                     ms, ', '.join(c.tag for c in pending))
             if missing:
-                log.warning('셔터를 열지 않는 노출인데 적분 시간을 못 받았다 -- '
-                            'IntMS=0 으로 곧바로 읽어낸다(호스트가 적분을 잰 '
-                            '셈이다).  `begin_exposure()` 훅이 이 노출에서 '
-                            '불리지 않았다 -- 시퀀서가 그것을 부르는지 볼 것 '
-                            '(`sequencer._integrate_dark`)')
+                log.warning('no integration time for an exposure without '
+                            'the shutter -- reading out right away with '
+                            'IntMS=0',
+                            extra={'detail':
+                                   '호스트가 적분을 잰 셈이다.  '
+                                   '`begin_exposure()` 훅이 이 노출에서 '
+                                   '불리지 않았다 -- 시퀀서가 그것을 부르는지 '
+                                   '볼 것 (`sequencer._integrate_dark`)'})
             try:
                 for c in pending:
                     await c.set_trigger_forced(True)
@@ -550,7 +562,7 @@ class ArchonBackend:
                 # 빠져나가면 성한 대의 표가 확인되지 않은 채 남고, 그 프레임도
                 # 함께 잃는다 (이 변경이 막으려는 바로 그 상태).
                 failed[master.tag] = exc
-                log.error('%s(master): 프레임을 확인하지 못했다 -- %s',
+                log.error('%s(master): could not confirm the frame -- %s',
                           master.tag, exc)
             else:
                 t_master = time.monotonic()
@@ -565,18 +577,19 @@ class ArchonBackend:
                     exc = task.exception()
                     if exc is not None:
                         failed[tag] = exc
-                        log.error('%s: 프레임을 확인하지 못했다 -- %s', tag, exc)
+                        log.error('%s: could not confirm the frame -- %s',
+                                  tag, exc)
                         continue
                     if t_master is None:
-                        log.info('%s: 프레임 완료 (master %s 는 실패했다)',
+                        log.info('%s: frame complete (master %s failed)',
                                  tag, master.tag)
                     else:
-                        log.info('%s: 프레임 완료 (master %s 뒤 %.2f초)',
+                        log.info('%s: frame complete (master %s +%.2fs)',
                                  tag, master.tag,
                                  time.monotonic() - t_master)
                     yield 'frame', tag
             if t_master is not None:
-                log.info('독출 완료 -- master %s %.1f초', master.tag,
+                log.info('readout complete -- master %s %.1fs', master.tag,
                          t_master - t0)
             if failed:
                 self._after_frame_loss(failed, engaged, tickets, ccd)
@@ -623,11 +636,14 @@ class ArchonBackend:
         if not alive:
             raise BackendError(_dma_cause(ccd, next(iter(failed.values()))),
                                ccd=ccd) from next(iter(failed.values()))
-        log.error('⛔ 컨트롤러 %s 의 프레임을 잃었다 -- 성한 %s 는 그대로 '
-                  '저장한다.  ⚠️ pair 한 짝만 나가므로 converter 는 이 노출을 '
-                  '못 읽는다 (raw spec 5.9절) -- 원인을 먼저 볼 것: %s',
+        log.error('lost the frame on controller %s -- storing the healthy '
+                  '%s anyway: %s',
                   ', '.join(sorted(failed)), ', '.join(alive),
-                  '; '.join('%s=%s' % (t, failed[t]) for t in sorted(failed)))
+                  '; '.join('%s=%s' % (t, failed[t]) for t in sorted(failed)),
+                  extra={'detail':
+                         '⛔ 프레임 손실이다.  ⚠️ pair 한 짝만 나가므로 '
+                         'converter 는 이 노출을 못 읽는다 (raw spec 5.9절) '
+                         '-- 원인을 먼저 볼 것'})
 
     async def fetch_image(self, ccd: str):  # noqa: ANN201
         """chip 하나분 픽셀 (진단·도구용).  시퀀서는 부르지 않는다.
@@ -677,9 +693,11 @@ class ArchonBackend:
         want = dict(rawpair.CONTROLLERS).get(controller)
         if want is not None and tuple(chips) != tuple(want):
             # 순서가 뒤집혀 오면 픽셀 좌우가 뒤바뀐 파일이 조용히 생긴다.
-            log.error('%s 의 chip 순서가 규격과 다르다 -- 받은 %r, 규격 %r '
-                      '(raw spec 4.1절: chips[0] 이 X 낮은 쪽)',
-                      controller, tuple(chips), tuple(want))
+            log.error('chip order for %s does not match the spec -- got %r, '
+                      'spec %r',
+                      controller, tuple(chips), tuple(want),
+                      extra={'detail': 'raw spec 4.1절: chips[0] 이 X 낮은 '
+                                       '쪽이다'})
             raise BackendError(
                 'Chip order for %s does not match the spec' % controller)
 
@@ -698,8 +716,10 @@ class ArchonBackend:
         want = _frame_key(header) or _frame_key_from_path(path)
         ticket = ctrl.take_ticket(want)
         if ticket is None:
-            log.error('%s: 프레임 %s 의 저장 표가 없다 -- 노출이 걸리지 '
-                      '않았거나 이미 저장됐다', controller, want or '?')
+            log.error('%s: no write ticket for frame %s',
+                      controller, want or '?',
+                      extra={'detail': '노출이 걸리지 않았거나 이미 '
+                                       '저장됐다'})
             raise BackendError(
                 'No pending frame for %s' % controller,
                 ccd=chips[0] if chips else '')
@@ -707,7 +727,7 @@ class ArchonBackend:
             fs = await ctrl.await_frame(ticket)
             raw = await ctrl.fetch(fs, self.acfg.frame_bytes)
         except (ArchonError, TimeoutError, OSError) as exc:
-            log.error('%s: 프레임을 받지 못했다 -- %s', controller, exc)
+            log.error('%s: could not fetch the frame -- %s', controller, exc)
             raise BackendError(
                 'Failed to fetch frame from %s' % controller,
                 ccd=chips[0] if chips else '') from exc
@@ -736,14 +756,14 @@ class ArchonBackend:
             # (DevNote 11.20 의 critical 과 같은 부류).
             # 통보는 ASCII 다 -- OS 오류 문구가 한국어 Windows 에서 한글로
             # 오므로(`[WinError 3] ...`) 그대로 실으면 와이어가 `?` 범벅이 된다.
-            log.error('%s: FITS 저장 실패 -- %s', controller, exc)
+            log.error('%s: FITS write failed -- %s', controller, exc)
             raise BackendError(
                 'Failed to write FITS for %s' % controller,
                 ccd=chips[0] if chips else '') from exc
         finally:
             ctrl.release_buffer(raw)
-        log.info('%s: %s 저장 (%d KB/sec)', controller, os.path.basename(path),
-                 rate)
+        log.info('%s: wrote %s (%d KB/sec)', controller,
+                 os.path.basename(path), rate)
         return rate
 
     # -- FITS 헤더용 사실 (동기 -- 스냅샷을 읽는다) -----------------------
@@ -816,10 +836,12 @@ class ArchonBackend:
         if not path:
             if not self._warned_sensors:
                 self._warned_sensors = True
-                log.warning('듀어·환경 HK 원천이 설정에 없다 -- [archon] '
-                            'hk_latest 에 icg_archon 스냅샷 경로를 주면 '
-                            'CCDTEMP 등 5.6절 카드가 실값으로 실린다.  '
-                            '지금은 sentinel 이다')
+                log.warning('no dewar/environment HK source configured -- '
+                            'those cards stay at the sentinel',
+                            extra={'detail':
+                                   '[archon] hk_latest 에 icg_archon 스냅샷 '
+                                   '경로를 주면 CCDTEMP 등 5.6절 카드가 '
+                                   '실값으로 실린다'})
             return {}
         try:
             with open(os.path.expanduser(path), encoding='utf-8') as fh:
@@ -827,9 +849,11 @@ class ArchonBackend:
         except (OSError, ValueError) as exc:
             if not self._warned_sensors:
                 self._warned_sensors = True
-                log.warning('icg HK 스냅샷(%s)을 읽지 못했다 -- %s.  5.6절 '
-                            '카드가 sentinel 로 실린다 (icg_archon 이 돌고 '
-                            '있는지 볼 것)', path, exc)
+                log.warning('could not read the icg HK snapshot %s -- %s',
+                            path, exc,
+                            extra={'detail':
+                                   '5.6절 카드가 sentinel 로 실린다 -- '
+                                   'icg_archon 이 돌고 있는지 볼 것'})
             return {}
         self._warned_sensors = False       # 회복하면 다음 결측 때 다시 경고
         now = time.time()
@@ -855,13 +879,16 @@ class ArchonBackend:
         # 그 뒤에 새로 낡아지는 센서를 영영 안 알린다 (2026-08-31 교차검토).
         now_stale = frozenset(s.split('(')[0] for s in stale)
         if now_stale and now_stale != self._warned_stale:
-            log.warning('icg HK 표본이 낡았다 -- %s (한도 %.0fs).  해당 '
-                        '카드는 sentinel 로 실린다', ', '.join(stale), horizon)
+            log.warning('icg HK samples are stale -- %s (limit %.0fs)',
+                        ', '.join(stale), horizon,
+                        extra={'detail': '해당 카드는 sentinel 로 실린다'})
         self._warned_stale = now_stale
         if future and not self._warned_future:
             self._warned_future = True
-            log.error('icg HK 스냅샷의 표본시각이 **미래**다 -- %s.  두 호스트의 '
-                      '시계를 확인하라(NTP).  그 키는 버린다', ', '.join(future))
+            log.error('icg HK snapshot sample times are in the future '
+                      '-- %s', ', '.join(future),
+                      extra={'detail': '두 호스트의 시계를 확인하라(NTP).  '
+                                       '그 키는 버린다'})
         elif not future:
             self._warned_future = False
         # ⭐ `HKUDATE` -- 이 블록 값들의 취득 시각 (raw spec 5.6절, v1.10).

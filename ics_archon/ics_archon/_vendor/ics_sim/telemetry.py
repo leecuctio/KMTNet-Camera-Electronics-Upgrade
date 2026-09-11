@@ -28,6 +28,25 @@ DSSTAT=NC 관례와 같은 방식이다.
   * TCSSTATUS 는 같이 질의해두지만 **셔터가 실제로 열린 시각을 DATE-OBS 로
     확정한 뒤에야** 중계한다.  FITS 헤더의 DATE-OBS/좌표가 노출 시작 순간을
     정확히 반영하도록 하기 위한 설계다.
+
+## ⭐ 세 번째 원천 -- 돔 방위는 redis 에서 온다 (2026-09-11)
+
+`DSTELAZ`·`DSAZ`·`DAZERR` 는 **TC 가 아니라 돔 제어 프로그램**이 redis 에
+실어 두는 값이다 (`domeaz.py`, 규격 5.7절의 `TCS relay or REDIS`).
+`query_dome()` 이 `TCSSTATUS` 질의와 **나란히** 돌고, 받은 값은
+`fits_header_dict()` 가 그 세 카드에 **덮어 쓴다**.
+
+⭐ **`[dome] source` 가 출처를 가른다** -- 두 곳에서 같은 카드를 채우면 헤더만
+보고는 어느 쪽 값인지 가릴 수 없으므로, 어느 쪽이든 **한 번에 하나**다:
+
+| `[dome] source` | `DSTELAZ`·`DSAZ`·`DAZERR` 의 출처 |
+|---|---|
+| `off` (기본) | 종전 그대로 -- 와이어값 + `DAZERR` 는 ICS 계산 |
+| `redis` | **redis 만.**  키가 없으면 `NC` 이고 ⛔ 와이어값은 안 본다 |
+
+⚠️ **중계 본문(`tcs_body()`)은 건드리지 않는다** -- 거기 없던 필드를 우리가
+만들어 넣으면 *"TC 가 보냈다"* 로 읽힌다.  redis 값은 **FITS 헤더 몫**이다
+(운영자 요청 범위).
 """
 
 from __future__ import annotations
@@ -35,7 +54,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from . import impv2, rawcards
+from . import domeaz, impv2, rawcards
 from .config import SimConfig
 from .impv2 import Message
 
@@ -79,12 +98,16 @@ _SENTINEL_NUM = _SENTINEL_INT | _SENTINEL_FLOAT
 #: 대조 가능해야 한다.
 _FITS_RENAME = {'DSTEL': 'DSTELALT'}
 #: ⛔ **`AZ` 를 `DSTELAZ` 로 개명하지 않는다** (운영자 정정 2026-09-09).
-#: `DSAZ` 와 `DSTELAZ` 는 **둘 다 `TCSSTATUS` 에 추가**하기로 정해졌다 -- TC 쪽
-#: 구현에 시간이 걸릴 뿐이다.  ⭐ 그때까지 **우리가 손댈 것은 없다**: 오는 값은
-#: 그대로 실리고(`on_tc_reply` 가 와이어를 통째로 담는다) 안 오는 중계 카드는
-#: `'NC'` 로 남는다 (벤치 헤더의 `DSAZ = 'NC'` 가 그 증거다).
-#: ⚠️ 한때 *"돔 Az 를 TCS 가 모니 `AZ` 를 그대로 쓰자"* 로 정했다가 되돌렸다 --
-#: `DSTELAZ` 는 **DS 가 보고하는 값**이고 TC 가 그것을 따로 보낸다.
+#: `DSTELAZ` 는 **DS(돔)가 보고하는 망원경 방위**이고 망원경 자신의 `AZ` 와
+#: 다른 값이다.  ⚠️ 한때 *"돔 Az 를 TCS 가 모니 `AZ` 를 그대로 쓰자"* 로
+#: 정했다가 되돌렸다 -- 개명 금지는 시험이 못박고 있다
+#: (`test_azimuth_is_not_borrowed_from_the_telescope_az`).
+#:
+#: ⭐⭐ **출처가 바뀌었다 (운영자 확정 2026-09-11)** -- `DSAZ`·`DSTELAZ` 를
+#: `TCSSTATUS` 에 추가하려고 TC 쪽 구현을 기다리던 자리인데, **돔 제어
+#: 프로그램의 redis** 에서 직접 읽는 것으로 정해졌다 (`domeaz.py` ·
+#: `[dome] source`).  규격 5.7절이 출처를 `TCS relay or REDIS` 로 적어 둔
+#: 그 갈래다.  ⛔ redis 를 켜면 와이어의 그 이름들은 **안 본다.**
 
 _SENTINEL_STR = frozenset({
     'ENFAN', 'ENSTAT', 'CHOP', 'CHSTAT', 'MCSTAT', 'DSSTAT', 'FASTAT',
@@ -128,8 +151,17 @@ CANNED_TCS = (
     'TELMOVE', 'TCSLIMIT', 'TCSDRIVE', 'EXECODE',
     # 돔 셔터·지향 -- newTCS 편입으로 출처가 TCS 계통이다 (raw spec 5.7절).
     # 실기 중계 필드명은 미확정이라 카드명과 같게 두었다 (canned 전용).
-    'DSSTAT', 'DSUP', 'DSLW', 'DSSAF', 'DSAUTO', 'DSALT', 'DSAZ',
-    'DSTELALT', 'DSTELAZ',
+    #
+    # ⛔⛔ **방위(`DSAZ`·`DSTELAZ`)를 여기서 뺐다** (2026-09-11).  종전에는
+    # `DSAZ='12.3'`·`DSTELAZ='12.1'` 을 지어내 넣었는데, **TC 는 방위를 아예
+    # 보내지 않는다** -- `TCSAgent/.../KMTNet/commands.c:2834` 가 돔 블록으로
+    # 내는 것은 `DSUP DSLW DSSAF DSAUTO DSALT DSTEL` 뿐이고, TCSAgent 트리
+    # 전체에 `DSAZ`/`DSTELAZ` 가 **한 번도 안 나온다.**  ⭐ 그래서 canned 의
+    # 그 두 값은 *"TC 가 방위를 중계한다"* 는 거짓을 모사하고 있었다.
+    # 방위의 원천은 redis 다 (`domeaz.py` · `[dome] source`).
+    # ⭐ **고도는 남는다** -- `DSALT`/`DSTEL` 은 실제로 오는 필드다.
+    'DSSTAT', 'DSUP', 'DSLW', 'DSSAF', 'DSAUTO', 'DSALT',
+    'DSTELALT',
 )
 CANNED_TCS_VALUES = {
     'TIMESYS': 'UTC', 'TCSLINK': 'Up', 'TCSARC': 'Enabled',
@@ -139,8 +171,9 @@ CANNED_TCS_VALUES = {
     'TELMOVE': 'Idle', 'TCSLIMIT': 'No', 'TCSDRIVE': 'Disabled',
     'EXECODE': 'E',
     'DSSTAT': 'STANDBY', 'DSUP': 'MID', 'DSLW': 'OPEN', 'DSSAF': 'INACTIVE',
-    'DSAUTO': 'ENABLED', 'DSALT': '87.7', 'DSAZ': '12.3',
-    'DSTELALT': '88.1', 'DSTELAZ': '12.1',
+    'DSAUTO': 'ENABLED', 'DSALT': '87.7',
+    'DSTELALT': '88.1',
+    # ⛔ `DSAZ`/`DSTELAZ` 없음 -- 위 `CANNED_TCS` 주석 참조 (TC 는 방위를 안 보낸다).
 }
 
 
@@ -188,6 +221,12 @@ class TelemetryRelay:
         #: 마지막 TC 응답의 (key, value) 목록 -- **원문 순서 보존**
         self.aux_fields: list[tuple[str, str]] = []
         self.tcs_fields: list[tuple[str, str]] = []
+        #: 돔 방위의 redis 원천 (`[dome] source`).  꺼져 있으면 아무것도 안 한다.
+        self.dome = domeaz.DomeRedis(cfg.dome)
+        #: 마지막 `query_dome()` 결과 -- `{카드이름: 값}`.  ⭐ **없는 키는
+        #: 아예 안 들어온다**(`NC` 를 넣어 두지 않는다) -- 그래야
+        #: `fits_header_dict()` 가 "안 왔다" 와 "NC 라고 왔다" 를 가를 수 있다.
+        self.dome_fields: dict[str, str] = {}
         self._waiters: dict[str, asyncio.Future] = {}
         self.last_aux_ok = False
         self.last_tcs_ok = False
@@ -234,6 +273,23 @@ class TelemetryRelay:
         finally:
             self._waiters.pop(key, None)
         return True
+
+    async def query_dome(self) -> bool:
+        """돔 방위 셋을 redis 에서 읽어 스냅샷에 담는다.
+
+        `TCSSTATUS` 질의와 **나란히** 돌리라고 만든 것이다 (`asyncio.gather`
+        또는 `create_task`).  ⭐ **노출을 막지 않는다** -- 실패는 전부
+        "자료 없음" 으로 접히고 세 카드가 `NC` 가 된다.
+
+        Returns:
+            값을 하나라도 받았으면 True.  ⚠️ 판정용이 아니라 로그·시험용이다.
+
+        ⛔ **직전 스냅샷을 남겨 두지 않는다** -- 매번 통째로 갈아 치운다.
+        키 TTL 이 수백 ms 라 *"지난 노출의 방위"* 는 값이 아니라 오염이다
+        (`domeaz` 모듈 주석 "옛 값을 이어 싣지 않는다").
+        """
+        self.dome_fields = await self.dome.read()
+        return bool(self.dome_fields)
 
     def _apply_timeout(self, key: str) -> None:
         """TC 무응답 처리.
@@ -387,6 +443,34 @@ class TelemetryRelay:
             out['DATE-OBS'] = date_obs
         return out
 
+    def _apply_dome(self, out: dict[str, object]) -> None:
+        """돔 방위 세 카드를 확정한다 -- `[dome] source` 가 켜져 있을 때만.
+
+        `off` 면 **아무것도 하지 않는다**: 와이어값과 `DAZERR` 의 ICS 계산이
+        종전 그대로 돈다.  ⭐ 그래서 규격 견본 pair 의 바이트 대사가 그대로
+        살아 있다 (`ics_sim/tests/test_raw_draft.py`) -- 견본은 세 값을
+        와이어에 실어 역산하는 자료다.
+
+        `redis` 면 세 카드를 **redis 것으로 덮는다.**  ⛔ 와이어가 그 이름을
+        보내도 안 본다 (운영자 확정 2026-09-11 *"redis 만 본다"*) -- 출처가
+        둘이면 헤더만 보고 어느 쪽 값인지 가릴 수 없다.  키가 없으면 `'NC'`
+        이고, 그것이 곧 *"지금 돔 자료가 없다"* 다 (TTL 수백 ms).
+
+        ⭐ **예외 하나** -- `dome_del_az` 만 없고 `dome_az`·`dome_tel_az` 는
+        있을 때는 `DAZERR` 를 **그 둘로 계산**한다 (규격 5.7절이 원래 정한
+        `ICS calculation`, -180~+180 접기).  ⛔ 손에 든 값 둘로 낼 수 있는 것을
+        `NC` 로 싣는 것은 실측을 버리는 것이다.  ⚠️ 피연산값도 redis 것이라
+        *"redis 만 본다"* 를 벗어나지 않는다.
+        """
+        if not self.dome.enabled:
+            return
+        got = self.dome_fields
+        for card in domeaz.CARDS:
+            out[card] = got.get(card, 'NC')
+        if 'DAZERR' not in got:
+            out['DAZERR'] = _sync_error_az(got.get('DSAZ'),
+                                           got.get('DSTELAZ'))
+
     def fits_header_dict(self, date_obs: str) -> dict[str, object]:
         """**FITS 헤더용** 값 딕셔너리 -- raw spec 5.7·5.8절 몫.
 
@@ -404,8 +488,12 @@ class TelemetryRelay:
           `TIMESYS` 카드(5.4절, `rawhdr`)와 시각계를 분리하는 신설 카드다.
         * `DSTELALT` -- 실선 `DSTEL` 의 개칭 (converter 가 fallback 없이 이
           이름만 읽는다, `_FITS_RENAME`).
+        * `DSTELAZ`/`DSAZ`/`DAZERR` -- `[dome] source = redis` 면 **redis 에서
+          읽은 값으로 덮는다** (`_apply_dome()`, `domeaz.py`).  `off` 면 아래
+          종전 경로다.
         * `DALTERR`/`DAZERR` -- **ICS calculation** (raw spec 5.7절): 돔과
-          망원경의 지향차.  피연산 카드가 없으면 `'NC'`.
+          망원경의 지향차.  피연산 카드가 없으면 `'NC'`.  ⚠️ `DAZERR` 는
+          redis 가 켜져 있으면 이 계산에 오지 않는다(위 항목이 먼저 정한다).
         * `RADECSYS` -- TC 가 안 보내면 좌표계 기본 `'ICRS'`.
         * `TCSLINK`/`AUXLINK` -- 와이어 값이 없으면 마지막 질의 성패로.
 
@@ -434,7 +522,11 @@ class TelemetryRelay:
         out.setdefault('RADECSYS', 'ICRS')
         out.setdefault('TCSLINK', 'Up' if self.last_tcs_ok else 'Down')
         out.setdefault('AUXLINK', 'Up' if self.last_aux_ok else 'Down')
-        # 돔-망원경 지향차 (ICS calculation).  와이어가 직접 주면 그 값을 쓴다.
+        # 돔 방위 셋 -- redis 가 켜져 있으면 **그것만** 본다 (모듈 머리말의 표).
+        self._apply_dome(out)
+        # 돔-망원경 **고도**차 (ICS calculation).  와이어가 직접 주면 그 값을
+        # 쓴다.  ⛔ 방위차(`DAZERR`)와 달리 이 카드는 redis 와 무관하다 --
+        # 피연산값(`DSALT`/`DSTELALT`)이 `AUXSTATUS` 에서 실제로 오고 있다.
         out.setdefault('DALTERR',
                        _sync_error(out.get('DSALT'), out.get('DSTELALT')))
         out.setdefault('DAZERR',

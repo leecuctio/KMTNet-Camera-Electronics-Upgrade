@@ -96,6 +96,10 @@ class GuideSequencer:
         self._writers: list[asyncio.Task] = []
         self._stop_evt = asyncio.Event()
         self._aborted_by = ''
+        #: 이 프레임의 돔 방위 읽기 (`_spawn_dome_read`).  ⭐ **프레임마다**
+        #: 새로 띄우고 `_dispatch_store` 직전에 받는다 -- `[dome] source = off`
+        #: 면 늘 `None` 이다.
+        self._dome_read: asyncio.Task | None = None
         #: `_disarm()` 이 띄운 해제 왕복 -- abort flush(`RESETTIMING`) 또는
         #: `Exposures=0`.  두 번째 취소(ABORT 위에 종료)가 겹치면 `wait()` 가
         #: 이것을 기다려야 POWEROFF·링크 종료가 그 앞을 지나가지 않는다 (9.15-(9)).
@@ -340,6 +344,16 @@ class GuideSequencer:
                     ticket = await self.backend.next_ticket(
                         ticket, intms, suffix=orig_suffix, queue=True)
 
+                # ⭐ **돔 방위를 프레임마다 읽는다** (`DSTELAZ`/`DSAZ`/`DAZERR`,
+                # 2026-09-11).  ⛔ **`GO` 마다 한 번이 아니다** -- guide 주기가
+                # 1.3초인데 키 TTL 은 수백 ms 라, `GO` 앞의 `TCSSTATUS` 스냅샷에
+                # 얹으면 2번째 장부터는 **TTL 이 지난 값을 새 값처럼** 싣는다.
+                # 헤더는 프레임마다 `fits_header_dict()` 를 live 로 읽으므로
+                # (`hk.py` 머리말) 여기서 프레임마다 갈아 주면 그대로 맞는다.
+                # ⛔ 기다리지 않는다 -- `wait_frame`(주기 하나)과 나란히 돌고
+                # `_dispatch_store` 직전에 받는다.  그때는 이미 끝나 있다.
+                self._dome_read = self._spawn_dome_read()
+
                 # ⛔ **여기는 아직 적분이다** (운영자 지적 2026-09-08).
                 # guide 의 `wait_frame()` 은 **적분(IntMS)과 독출을 다 덮는다**
                 # -- 그런데 종전에는 그 앞에서 `READOUT` 으로 못박아, `guiexp 15`
@@ -393,6 +407,10 @@ class GuideSequencer:
                                              '이 프레임의 10.5절 6번은 그대로 성립'})
                 prev_done_mono = done_mono
 
+                # 돔 방위 읽기를 받는다 -- `_dispatch_store` 가 헤더를 **그
+                # 자리에서** 조립하므로(동기) 그 앞이어야 한다.  ⭐ 주기 하나가
+                # 지났으니 이 await 는 사실상 즉시 끝난다.
+                await self._collect_dome_read()
                 self._dispatch_store(source, orig_suffix, t_prev, exptime, k + 1, count)
                 saved += 1
                 st.advance()
@@ -500,6 +518,10 @@ class GuideSequencer:
                 # 이미 보냈는지 모른다 (RESETTIMING 은 겹쳐 보내도 해가 없다).
                 await self._disarm(self._aborted_by or source,
                                    flush=self._cycle_started(ticket))
+            # 저장까지 못 간 프레임의 돔 읽기는 주인이 없다 -- 끊는다.
+            stale, self._dome_read = self._dome_read, None
+            if stale is not None and not stale.done():
+                stale.cancel()
             st.exposing = False
 
     async def _await_flush_window(self, flush_dur: float,
@@ -808,6 +830,31 @@ class GuideSequencer:
             log.info('skipping the tail drain -- %s', exc)
 
     # -- 저장 ----------------------------------------------------------------
+
+    def _spawn_dome_read(self):  # noqa: ANN201
+        """이 프레임의 돔 방위 읽기를 띄운다 (`DSTELAZ`/`DSAZ`/`DAZERR`).
+
+        science 쪽 `ics_sim.sequencer.Sequencer._spawn_dome_read` 와 같은
+        규범이다 -- 읽기를 노출과 겹쳐 돌려 주기를 늘리지 않는다.  ⛔ 앞
+        프레임 것이 아직 돌고 있으면 **끊는다**: 늦게 끝나면 이 프레임이 읽어
+        둔 값을 옛 값으로 덮는다.
+
+        `[dome] source = off` 면 `None` 을 돌려준다 (태스크를 안 만든다).
+        """
+        stale = self._dome_read
+        if stale is not None and not stale.done():
+            stale.cancel()
+        if not self.telem.dome.enabled:
+            return None
+        return asyncio.get_running_loop().create_task(
+            self.telem.query_dome(), name='icg_archon.dome_read')
+
+    async def _collect_dome_read(self) -> None:
+        """띄워 둔 돔 방위 읽기를 받는다.  ⛔ 실패는 삼킨다 -- `NC` 가 답이다."""
+        task, self._dome_read = self._dome_read, None
+        if task is None:
+            return
+        await asyncio.gather(task, return_exceptions=True)
 
     def _dispatch_store(self, source: str, orig_suffix: str,  # noqa: ANN001
                         t_prev, exptime: float, index: int,  # noqa: ANN001

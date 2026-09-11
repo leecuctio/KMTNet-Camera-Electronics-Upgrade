@@ -125,7 +125,8 @@ def test_invalid_status_suppresses_the_other_health_verdicts():
     garbage = dict(DEFAULT_STATUS, VALID='0', POWER='0', POWERGOOD='0',
                    OVERHEAT='1')
     bad = parse.health_problems(garbage)
-    assert bad == ['VALID=0 (이 응답의 나머지 필드는 무효다 -- 판정을 보류한다)']
+    assert bad == ['VALID=0 (the remaining fields of this response are '
+                   'invalid -- judgement withheld)']
     # 유효한 응답에서는 종전대로 셋을 다 본다.
     assert len(parse.health_problems(dict(garbage, VALID='1'))) == 3
 

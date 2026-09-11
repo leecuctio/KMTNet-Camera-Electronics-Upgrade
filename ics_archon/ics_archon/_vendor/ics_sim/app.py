@@ -261,6 +261,10 @@ class IcsSim:
                        f'   (기록 {st.expnum_file or "지속 없음"})'),
             ('backend', f'{self.banner_backend()}'
                         f'   ->  DATASRC={self.banner_datasrc()}'),
+            # ⭐ **꺼져 있는 것이 눈에 띄어야 한다** -- 기본이 `off` 라, ini 에
+            # 적는 것을 잊으면 `DSTELAZ`/`DSAZ`/`DAZERR` 가 밤새 `NC` 로 나가고
+            # 헤더를 나중에 보기 전에는 아무도 모른다.
+            ('돔 방위', self.telem.dome.describe()),
         ]
 
         width = 74
@@ -305,6 +309,9 @@ class IcsSim:
             await asyncio.gather(*self._tasks, return_exceptions=True)
             self._tasks.clear()
         await self.aux.stop()
+        # 돔 redis 접속을 물고 있으므로 놓아 준다.  ⭐ 꺼져 있거나 한 번도 안
+        # 붙었으면 아무것도 안 한다 (`close()` 는 두 번 불러도 된다).
+        await self.telem.dome.close()
         await self.transport.stop()
 
     def spawn(self, coro: Awaitable) -> asyncio.Task:

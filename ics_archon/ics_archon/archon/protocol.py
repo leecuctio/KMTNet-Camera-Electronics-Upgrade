@@ -129,8 +129,8 @@ class ArchonLink:
         """
         if not self._broken:
             self._broken = True
-            log.warning('%s: 링크를 깨진 것으로 표시한다 (%s) -- 다음 왕복 전에 '
-                        '재수립해야 한다', self.name, why)
+            log.warning('%s: link marked broken (%s)', self.name, why,
+                        extra={'detail': '다음 왕복 전에 재수립해야 한다'})
 
     def connect(self, retry: int = 1, retry_wait: float = 1.0) -> None:
         """연결한다.  이미 열려 있으면 아무것도 하지 않는다."""
@@ -150,15 +150,16 @@ class ArchonLink:
                 s.connect((self.host, self.port))
             except OSError as exc:
                 last = exc
-                log.warning('%s: 접속 실패 %d/%d (%s)', self.name,
+                log.warning('%s: connect failed %d/%d (%s)', self.name,
                             attempt + 1, max(retry, 1), exc)
                 time.sleep(retry_wait)
                 continue
             self._sock = s
             self._buf.clear()
             self._ref = 0
-            log.info('%s: %s:%d 접속 -- 참조번호 00 부터', self.name,
-                     self.host, self.port)
+            log.info('%s: connected to %s:%d', self.name,
+                     self.host, self.port,
+                     extra={'detail': '참조번호를 00 부터 다시 센다'})
             return
         raise ArchonError('%s: %s:%d 에 접속할 수 없다 (%s)'
                           % (self.name, self.host, self.port, last))
@@ -187,9 +188,10 @@ class ArchonLink:
                         socket.SOL_SOCKET, socket.SO_LINGER,
                         struct.pack('ii', 1, 0))
                 except OSError as exc:
-                    log.warning('%s: RST 로 끊지 못한다 (%s) -- FIN 으로 '
-                                '닫는다.  다음 접속이 늦을 수 있다',
-                                self.name, exc)
+                    log.warning('%s: cannot close with RST (%s) '
+                                '-- closing with FIN',
+                                self.name, exc,
+                                extra={'detail': '다음 접속이 늦을 수 있다'})
             try:
                 self._sock.close()
             except OSError:
@@ -210,7 +212,7 @@ class ArchonLink:
         있다.
         """
         self.resyncs += 1
-        log.warning('%s: 연결을 다시 세운다 (%s) -- 누적 %d회',
+        log.warning('%s: rebuilding the connection (%s) -- %d resyncs so far',
                     self.name, why, self.resyncs)
         # ⭐ **RST 로 끊는다** -- 스트림을 어차피 버리는 자리이고, 컨트롤러가
         # 밀린 것을 붙들고 있으면 새 SYN 에 응답하지 않는다 (위 `close`).
@@ -260,7 +262,7 @@ class ArchonLink:
                 continue
             chunk = sock.recv(65536)
             if not chunk:
-                self.mark_broken('상대가 연결을 닫았다')
+                self.mark_broken('peer closed the connection')
                 raise ArchonError('%s: 연결이 상대에서 끊겼다' % self.name,
                                   cmd=cmd)
             self._buf += chunk
@@ -281,7 +283,7 @@ class ArchonLink:
                 continue
             chunk = sock.recv(65536)
             if not chunk:
-                self.mark_broken('상대가 연결을 닫았다')
+                self.mark_broken('peer closed the connection')
                 raise ArchonError('%s: 연결이 상대에서 끊겼다' % self.name,
                                   cmd=cmd)
             self._buf += chunk
@@ -300,7 +302,7 @@ class ArchonLink:
                 '컨트롤러가 명령을 거부했다 (?%02X): %s' % (ref, cmd),
                 cmd=cmd, reply_error=True)
         if head != '<%02X' % ref:
-            self.mark_broken('응답 머리 어긋남 (%s)' % cmd)
+            self.mark_broken('reply header mismatched (%s)' % cmd)
             # ⭐ **줄을 더 보여준다** (2026-09-09) -- 머리 3자만으로는 어긋난
             # 결이 안 갈린다.  갈래가 둘이고 처방이 다르다:
             #   * `<NN` 인데 번호가 **한 칸 앞**이다 -> 앞에서 응답 하나가
@@ -309,9 +311,9 @@ class ArchonLink:
             #     흐르는 것이다 (`fetch` 머리말의 그 경우).
             # ⭐ **버퍼에 남은 것까지 보여준다** (2026-09-09) -- 3바이트로는
             # *"응답이 아예 없다"* 와 *"엉뚱한 것이 왔다"* 가 안 갈린다.
-            log.error('%s: 어긋난 자리의 원문 -- 읽은 줄 %r · 버퍼 잔여 %d B '
-                      '%r', self.name, line[:80], len(self._buf),
-                      bytes(self._buf[:200]))
+            log.error('%s: raw bytes at the mismatch -- line read %r, '
+                      '%d B left in buffer %r', self.name, line[:80],
+                      len(self._buf), bytes(self._buf[:200]))
             raise ArchonError(
                 '응답 머리가 어긋났다 -- 기대 <%02X, 받음 %r (줄 %r, 명령 %s)'
                 % (ref, head, line[:48], cmd), cmd=cmd)
@@ -343,12 +345,12 @@ class ArchonLink:
             return self.command(cmd, timeout=timeout)
         except TimeoutError as exc:
             log.warning('%s: %s', self.name, exc)
-            self.resync('%s 응답을 포기했다' % cmd)
+            self.resync('gave up on the %s reply' % cmd)
             return None
         except ArchonError as exc:
             log.warning('%s: %s', self.name, exc)
             if not exc.reply_error:
-                self.resync('%s 왕복이 깨졌다' % cmd)
+                self.resync('%s round trip broke' % cmd)
             return None
 
     def pipeline(self, cmds: list[str], timeout: float | None = None) -> list[bytes]:
@@ -424,11 +426,11 @@ class ArchonLink:
             # **거부(`?xx`)는 예외다** -- 컨트롤러가 명령 자체를 안 받았으니
             # 버스트가 흐르지 않는다.  링크는 멀쩡하다.
             if not exc.reply_error:
-                self.mark_broken('FETCH 가 중간에 끊겼다 (%d/%d 블록)'
+                self.mark_broken('FETCH broke off mid-transfer (%d/%d blocks)'
                                  % (filled[0] // self.burst_len, blocks))
             raise
         except BaseException:
-            self.mark_broken('FETCH 가 중간에 끊겼다 (%d/%d 블록)'
+            self.mark_broken('FETCH broke off mid-transfer (%d/%d blocks)'
                              % (filled[0] // self.burst_len, blocks))
             raise
 
@@ -450,7 +452,7 @@ class ArchonLink:
                 # **남은 블록이 소켓으로 계속 흐른다.**  링크를 깨진 것으로
                 # 표시해 다음 왕복 전에 반드시 재수립하게 한다 -- 안 그러면
                 # 그 컨트롤러는 재기동까지 못 쓴다.
-                self.mark_broken('FETCH 블록 머리 어긋남')
+                self.mark_broken('FETCH block header mismatched')
                 raise ArchonError(
                     'FETCH 블록 %d/%d 의 머리가 어긋났다 -- 기대 %r, 받음 %r'
                     % (i + 1, blocks, head, bytes(self._buf[:4])), cmd='FETCH')

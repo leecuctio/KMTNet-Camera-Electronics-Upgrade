@@ -680,9 +680,24 @@ ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE
 ctrl1_sn     = STA-0288
 ctrl1_cfg    =                      # 비우면 [archon] acf_mk 에서 파생 (아래)
 
+[dome]                              # 돔 방위 -- DSTELAZ/DSAZ/DAZERR (→ 11.79)
+source       = redis                # off 면 세 카드가 늘 NC
+host         = 127.0.0.1            # 돔 제어 프로그램이 값을 넣어 두는 redis
+port         = 6379
+timeout      = 0.3                  # 왕복 상한 [s].  ⚠️ 키 TTL 보다 크게 잡지 말 것
+
 [logging]
 file         = ~/AIC/Logs/ics_archon.log
 ```
+
+> ⭐ **돔 방위 셋은 redis 에서 온다** (2026-09-11, D-021). 돔 제어 프로그램이
+> `dome_tel_az`·`dome_az`·`dome_del_az` 를 넣어 두고 ICS 는 **노출 개시 시각에**
+> 읽는다(ICG 는 **프레임마다** — 주기가 1.3초다). ⛔ **키에 TTL(수백 ms)이 걸려
+> 있어** 값을 못 넣으면 키가 사라지고, 그때 카드는 `NC` 다 — 옛 값을 이어 싣지
+> 않는다. ⭐ 서버가 안 떠 있어도 **노출은 정상으로 돈다**(세 카드만 `NC`).
+> ⚠️ **기동 배너의 `돔 방위` 줄로 켜졌는지 확인할 것** — 코드 기본값은 `off` 라
+> ini 에 안 적으면 밤새 `NC` 로 나가고 헤더를 볼 때까지 아무도 모른다.
+> ⛔ `DALTERR` 는 이 셋에 없다 — 그쪽은 **고도** 어긋남이고 `AUXSTATUS` 에서 온다.
 
 > ⭐ **호스트 수신 버퍼는 링이다** (2026-08-29). `[archon] fetch_buffers`(기본 **2**)
 > 만큼만 잡아 **재사용**하고, 다 차면 FETCH 가 **기다리며 그 횟수를 센다**

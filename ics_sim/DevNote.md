@@ -616,6 +616,13 @@ ICS>K.IC STATUS: TCSSTATUS  DATE-OBS=<셔터 개방 시각> …   ← Shutter=Op
 
 ### 4.3 텔레메트리 중계 — 필드 순서가 뒤집힌다
 
+⭐ **중계가 유일한 원천이 아니다 (2026-09-11)** — 돔 방위 세 카드
+(`DSTELAZ`·`DSAZ`·`DAZERR`)는 TC 가 **아예 보내지 않고**(`TCSAgent` 트리에
+`DSAZ`/`DSTELAZ` 0건) 돔 제어 프로그램의 **redis** 에서 읽는다
+(`ics_sim/domeaz.py` · `[dome] source`).  경위·규범은 `ics_archon/DevNote.md`
+**11.79** 와 **D-021**.  ⚠️ 중계 본문(`tcs_body()`)은 그대로다 — redis 값은
+FITS 헤더 몫이고 와이어에 끼워 넣지 않는다.
+
 `TC>ICS DONE: AUXSTATUS` 의 필드 순서와 `ICS>*.IC STATUS: AUXSTATUS` 의 순서가 **정확히 역순**이다. 스택에 쌓았다 빼는 구현으로 보인다.
 
 ```

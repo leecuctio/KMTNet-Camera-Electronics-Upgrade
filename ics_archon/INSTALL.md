@@ -31,6 +31,13 @@ sudo apt install build-essential libreadline-dev libcurl4-openssl-dev python3-nu
 Python 은 **3.10 이상**.  `astropy` 는 선택이다 — `tools/probe_archon.py` 의 되읽기
 확인과 시험에만 쓰고 **취득 경로에는 필요 없다**.  시험을 돌리려면 `pytest`.
 
+⭐ **`redis-py` 는 필요 없다** (2026-09-11).  돔 방위 셋(`DSTELAZ`·`DSAZ`·`DAZERR`)을
+redis 에서 읽지만(`[dome]`, DevNote 11.79) 우리가 주고받는 것은 **`MGET` 한 번**이라
+표준 `asyncio` 로 직접 말한다 -- `pip install redis` 를 하지 않는다.
+⚠️ **필요한 것은 파이썬 꾸러미가 아니라 서버다**: 돔 제어 프로그램이 값을 넣어 두는
+**redis 서버가 `[dome] host:port` 에 떠 있어야** 한다.  ⭐ 안 떠 있으면 그 세 카드가
+`NC` 로 나가고 **노출은 정상으로 돈다** -- 기동을 막지 않는다.
+
 ## 1. 저장소
 
 ```bash
@@ -267,6 +274,7 @@ python3 -m ics_sim -c ~/AIC/Config/ics_sim.ini --xis-host 127.0.0.1 --xis-port 6
 | 6660 | XIS 허브 | 레거시 (`isis.ini` `ServerPort`) |
 | 6650 | OBSAgent | 레거시 |
 | 6606 | TCSAgent | 레거시 |
+| **6379** | **redis** (돔 방위 -- `[dome]`) | redis 기본 포트.  ⭐ **우리는 읽기만 한다**(`MGET`); 값을 넣는 것은 돔 제어 프로그램이다 (→ 11.79) |
 
 ⚠️ **ICG 포트를 6600 으로 되돌리지 말 것.**  레거시는 IC 계열과 `ICG` 가 **다
 6600** 이고 **호스트로** 갈랐다(`ICG` 는 Guide server `.108`, ICS·XIS 는 Science

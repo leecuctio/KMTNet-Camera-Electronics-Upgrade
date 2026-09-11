@@ -142,10 +142,12 @@ class TelemetryLog:
             if head is None or head == self.columns:
                 break
             seq += 1
-            log.warning('%s: %s 의 열 구성이 지금과 다르다 -- 이어 쓰지 않고 '
-                        '%s.%d.csv 로 가른다 (ACF 가 바뀌면 바이어스 채널 수가 '
-                        '달라진다)', self.tag, os.path.basename(path),
-                        os.path.basename(base), seq)
+            log.warning('%s: %s has a different column layout -- splitting '
+                        'into %s.%d.csv instead of appending',
+                        self.tag, os.path.basename(path),
+                        os.path.basename(base), seq,
+                        extra={'detail': 'ACF 가 바뀌면 바이어스 채널 수가 '
+                                         '달라진다'})
             path = '%s.%d.csv' % (base, seq)
         fresh = self._existing_header(path) is None
         # `newline=''` 은 csv 모듈의 요구다 -- 없으면 윈도우에서 빈 줄이 낀다.
@@ -167,7 +169,8 @@ class TelemetryLog:
                     return row
             return []
         except OSError as exc:                  # pragma: no cover
-            log.warning('기존 기록 파일을 읽지 못했다 (%s) -- %s', exc, path)
+            log.warning('cannot read the existing log file (%s) -- %s',
+                        exc, path)
             return []
 
     def write(self, row: list[str], when: float) -> None:
@@ -186,8 +189,8 @@ class TelemetryLog:
             # 라 OS 버퍼로 충분하고, fsync 는 저장 경로와 디스크를 다툰다).
             self._fh.flush()
         except OSError as exc:
-            log.error('%s: 텔레메트리 기록 실패 (%s) -- 취득은 계속한다',
-                      self.tag, exc)
+            log.error('%s: telemetry write failed (%s)', self.tag, exc,
+                      extra={'detail': '취득은 계속한다'})
             self.close()
 
     def close(self) -> None:
@@ -329,9 +332,11 @@ class TelemetryMonitor:
                 lag = max(time.monotonic() - next_at, 0.0)
                 event = await self._poll(interval)
                 if lag > interval:
-                    log.info('%s: 감시 주기가 %.1f초 밀렸다 (FETCH 락이 원인일 '
-                             '수 있다) -- 건너뛴 표본은 몰아서 뜨지 않는다',
-                             self.ctrl.tag, lag)
+                    log.info('%s: monitor cycle lagged %.1fs',
+                             self.ctrl.tag, lag,
+                             extra={'detail': 'FETCH 락이 원인일 수 있다 -- '
+                                              '건너뛴 표본은 몰아서 뜨지 '
+                                              '않는다'})
                 # ⚠️ **실패 여부와 사건 이름을 갈라 둔다.**  `resumed` 를
                 # 넣은 뒤에 `_failing = bool(event)` 로 세면 그 값이 참이 되어
                 # **다음 성공마다 `resumed` 가 되풀이된다** (자기 회복 표시가
@@ -370,13 +375,15 @@ class TelemetryMonitor:
             except (ArchonError, TimeoutError, OSError) as exc:
                 self.ctrl.status_live = {}
                 if not self._failing:
-                    log.warning('%s: 감시가 접속하지 못했다 (%s) -- %.0f초마다 '
-                                '다시 시도한다.  컨트롤러 전원과 [archon] '
-                                'ctrl_%s_host 를 확인하라', self.ctrl.tag, exc,
-                                interval, self.ctrl.tag.lower())
+                    log.warning('%s: monitor could not connect (%s) -- '
+                                'retrying every %.0fs',
+                                self.ctrl.tag, exc, interval,
+                                extra={'detail': '컨트롤러 전원과 [archon] '
+                                                 'ctrl_%s_host 를 확인하라'
+                                                 % self.ctrl.tag.lower()})
                 return 'offline'
-            log.info('%s: 감시가 링크를 다시 세웠다 -- %s:%d', self.ctrl.tag,
-                     self.ctrl.link.host, self.ctrl.link.port)
+            log.info('%s: monitor re-established the link -- %s:%d',
+                     self.ctrl.tag, self.ctrl.link.host, self.ctrl.link.port)
         return '' if await self.ctrl.refresh_status_live() else 'poll_failed'
 
     # -- 내부 -------------------------------------------------------------
@@ -384,9 +391,10 @@ class TelemetryMonitor:
     def _prepare(self) -> bool:
         """기록 자리와 열을 정한다.  못 하면 `False` (감시를 걸지 않는다)."""
         if not self.acfg.telemetry:
-            log.info('%s: [archon] telemetry=false -- 감시도 돌리지 않는다 '
-                     '(컨트롤러와의 왕복을 labtest v1.0 계보와 같게 둔다)',
-                     self.ctrl.tag)
+            log.info('%s: [archon] telemetry=false -- monitor not started',
+                     self.ctrl.tag,
+                     extra={'detail': '컨트롤러와의 왕복을 labtest v1.0 '
+                                      '계보와 같게 둔다'})
             return False
         directory = self.acfg.monitor_log
         # ⚠️ **`~` 가 안 펼쳐졌으면 만들지 않는다.**  `os.makedirs` 는 그것을
@@ -394,14 +402,14 @@ class TelemetryMonitor:
         # 불평 없이 만든다 -- 오류가 없으므로 기록이 엉뚱한 곳에 쌓인다
         # (`ics_sim config.py` 의 2026-08-23 실측과 같은 함정).
         if not directory or directory.startswith('~'):
-            log.error('[archon] monitor_log 가 비었거나 `~` 가 안 펼쳐졌다 '
-                      '(%r) -- 감시를 걸지 않는다', directory)
+            log.error('[archon] monitor_log is empty or its `~` was not '
+                      'expanded (%r) -- monitor not started', directory)
             return False
         try:
             os.makedirs(directory, exist_ok=True)
         except OSError as exc:
-            log.error('감시 기록 자리를 만들지 못했다 (%s) -- %s.  감시를 '
-                      '걸지 않는다', exc, directory)
+            log.error('cannot create the monitor log directory (%s) -- %s; '
+                      'monitor not started', exc, directory)
             return False
         # **ACF 를 먼저 읽어 둔다 -- 왕복이 없다.**  `parse_acf()` 는 파일만
         # 읽고 컨트롤러를 만지지 않는다.  이것이 없으면 감시가 기동 직후에
@@ -418,22 +426,24 @@ class TelemetryMonitor:
                 try:
                     self.ctrl.parse_acf(acf)
                 except ArchonError as exc:
-                    log.warning('%s: 감시용 ACF 읽기 실패 (%s) -- 층 2(바이어스)'
-                                ' 열 없이 돈다', self.ctrl.tag, exc)
+                    log.warning('%s: acf read for the monitor failed (%s) -- '
+                                'running without the tier 2 (bias) columns',
+                                self.ctrl.tag, exc)
         # **바이어스 채널은 ACF 에서 찾는다** -- STATUS 가 아니다.  두 dict 의
         # 키 문자열이 같아서(지령값 vs 실측값) 헷갈리기 쉬운 자리다.
         self.channels = parse.bias_channels(self.ctrl.config)
         if not self.channels:
-            log.warning('%s: ACF 에서 이름표 붙은 바이어스 채널을 못 찾았다 -- '
-                        '층 2(16채널 V/I) 열이 비게 된다.  ACF 파싱이 먼저인지 '
-                        '확인할 것', self.ctrl.tag)
+            log.warning('%s: no labelled bias channel found in the acf -- '
+                        'the tier 2 (16-channel V/I) columns will be empty',
+                        self.ctrl.tag,
+                        extra={'detail': 'ACF 파싱이 먼저인지 확인할 것'})
         else:
-            log.info('%s: 바이어스 %d채널 감시 -- %s', self.ctrl.tag,
+            log.info('%s: monitoring %d bias channels -- %s', self.ctrl.tag,
                      len(self.channels),
                      ', '.join(label for _p, label in self.channels))
         self.log = TelemetryLog(self.ctrl.tag, directory, self.columns())
-        log.info('%s: 텔레메트리 감시 %.0f초 간격, 기록 %s', self.ctrl.tag,
-                 self.acfg.monitor_interval, directory)
+        log.info('%s: telemetry monitor at %.0fs interval, logging to %s',
+                 self.ctrl.tag, self.acfg.monitor_interval, directory)
         return True
 
     def _emit(self, when: float, *, event: str = '', lag: float = 0.0) -> None:

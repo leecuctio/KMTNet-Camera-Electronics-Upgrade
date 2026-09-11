@@ -159,7 +159,8 @@ def test_a_write_that_did_not_land_is_reported(caplog):  # noqa: ANN001
     with caplog.at_level('ERROR'):
         assert asyncio.run(ctrl.set_first_flush(True)) is False
     assert ctrl.flag() == 'FirstFlush=0'
-    assert any('앉지 않았다' in r.getMessage() for r in caplog.records), caplog.text
+    assert any('did not land' in r.getMessage()
+               for r in caplog.records), caplog.text
 
 
 def test_an_acf_whose_slot_zero_is_another_parameter_is_left_alone(tmp_path, caplog):  # noqa: ANN001
@@ -175,7 +176,8 @@ def test_an_acf_whose_slot_zero_is_another_parameter_is_left_alone(tmp_path, cap
     with caplog.at_level('WARNING'):
         assert asyncio.run(ctrl.set_first_flush(True)) is False
     assert ctrl.writes() == [] and ctrl.loads() == [], ctrl.sent
-    assert any('flush 없이' in r.getMessage() for r in caplog.records), caplog.text
+    assert any('continuing without flush' in r.getMessage()
+               for r in caplog.records), caplog.text
     caplog.clear()
     with caplog.at_level('WARNING'):
         assert asyncio.run(ctrl.set_first_flush(False)) is False

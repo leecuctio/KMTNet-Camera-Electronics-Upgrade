@@ -317,7 +317,7 @@ def test_acquisition_does_not_go_out_before_the_other_controller_finishes(tmp_pa
     # **안 뒤에** 나간다(종전 결함은 master 만 기다린 것이었다).  아래 독출 층
     # 경고가 그 순서를 못박는다: 그 문구는 두 대의 대기가 **다 끝난 뒤**에만
     # 나온다.
-    assert any('프레임을 잃었다' in r.message for r in caplog.records), \
+    assert any('lost the frame' in r.message for r in caplog.records), \
         'NT 의 결과를 확인하기 전에 진행했다: %r' % [r.message
                                                     for r in caplog.records]
     got = sorted(os.path.basename(p)
@@ -795,7 +795,7 @@ def test_poweron_is_verified_against_the_power_field(tmp_path, caplog):  # noqa:
         srv.shutdown()
     text = caplog.text
     assert 'POWER=4' in text, text
-    assert '컨트롤러 상태 이상' not in text, ('램프 도중의 POWER=3 이 건강 '
+    assert 'controller state is bad' not in text, ('램프 도중의 POWER=3 이 건강 '
                                              '판정으로 샜다: %s' % text)
 
 
@@ -855,7 +855,7 @@ def test_a_firmware_without_the_power_field_is_not_an_error(tmp_path, caplog):  
     finally:
         srv.shutdown()
     assert not [r for r in caplog.records if r.levelname == 'ERROR'], caplog.text
-    assert 'POWER 필드가 없다' in caplog.text, caplog.text
+    assert 'no POWER field in STATUS' in caplog.text, caplog.text
 
 
 def test_the_startup_path_runs_the_check_without_deadlocking(tmp_path, caplog):  # noqa: ANN001

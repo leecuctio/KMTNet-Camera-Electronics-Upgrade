@@ -470,6 +470,44 @@ class AuxControlCfg:
 
 
 @dataclass
+class DomeCfg:
+    """돔 방위 셋의 원천 -- `DSTELAZ`·`DSAZ`·`DAZERR` (domeaz.py).
+
+    돔 제어 프로그램이 redis 에 실어 두는 값을 노출 개시 때 읽는다 (운영자
+    확정 2026-09-11).  ⭐ raw spec 5.7절이 이 카드들의 출처를
+    `TCS relay or REDIS` 로 이미 적어 둔 그 `REDIS` 다.
+
+    ⭐ **`[node]` 가 아니라 여기 둔다** -- ICS(science)와 ICG(guide)가 같은
+    돔을 보므로 두 ini 가 같은 값을 적게 되고, 그래야 나란히 놓고 비교할 수
+    있다.  `SimConfig` 에 달았으니 두 프로그램이 한 벌만 고치면 된다.
+
+    ⛔ **기본은 `off`** 다 -- Radionode(`backend = off`)와 같은 이유로
+    **시험이 망을 건드리지 않게** 하려는 것이다.  ⚠️ 실기 ini 는
+    `source = redis` 로 적어 두고, 기동 배너가 `DomeRedis.describe()` 로
+    어느 쪽인지 찍는다 (*"켠 줄 알았는데 꺼져 있었다"* 를 막는다).
+    """
+
+    #: `off` -- 아무것도 안 한다 (세 카드가 `NC`).  `redis` -- 아래 서버를 읽는다.
+    source: str = 'off'
+    host: str = '127.0.0.1'
+    port: int = 6379
+    #: ⭐ **왕복 상한**이고, 이 읽기는 `TCSSTATUS` 질의와 나란히 도므로 노출
+    #: 시간에 더해지지 않는다.  ⚠️ 키 TTL 이 수백 ms 라 이보다 크게 잡을 이유가
+    #: 없다 -- 늦게 온 값은 이미 낡은 값이다.
+    timeout: float = 0.3
+    #: 인증을 걸어 둔 서버용.  비우면 `AUTH` 를 안 보낸다.
+    username: str = ''
+    password: str = ''
+    #: 0 이 아니면 접속 직후 `SELECT`.
+    db: int = 0
+    #: 키 이름.  ⚠️ **어느 카드로 가는지는 ini 로 못 바꾼다**
+    #: (`domeaz.CARD_OF` -- 규격 5.7절 소관).  바꿀 수 있는 것은 이름뿐이다.
+    key_tel_az: str = 'dome_tel_az'
+    key_az: str = 'dome_az'
+    key_del_az: str = 'dome_del_az'
+
+
+@dataclass
 class LoggingCfg:
     level: str = 'info'
     wire: bool = True
@@ -498,6 +536,8 @@ class SimConfig:
     behavior: BehaviorCfg = field(default_factory=BehaviorCfg)
     hardware: HardwareCfg = field(default_factory=HardwareCfg)
     auxcontrol: AuxControlCfg = field(default_factory=AuxControlCfg)
+    #: `[dome]` -- `DSTELAZ`/`DSAZ`/`DAZERR` 의 redis 원천 (domeaz.py).
+    dome: DomeCfg = field(default_factory=DomeCfg)
     logging: LoggingCfg = field(default_factory=LoggingCfg)
 
     source_path: str = ''
@@ -617,6 +657,13 @@ class SimConfig:
         if self.node.emit_node_mode == 'merged' and self.behavior.bug_compat:
             warn.append('merged 모드에서는 bug_compat 재현이 레거시 로그와 '
                         '일치하지 않습니다 (골든 대조는 legacy 모드로)')
+
+        # ⛔ 오타를 조용히 삼키면 **세 카드가 영구히 `NC`** 다.  `off` 로
+        # 떨어뜨리되(모르는 서버에 붙는 것보다 안전하다) 반드시 알린다.
+        if self.dome.source not in ('off', 'redis'):
+            warn.append(
+                f'[dome] source={self.dome.source!r} 를 모릅니다 (off | redis) '
+                '-> off 로 봅니다. DSTELAZ/DSAZ/DAZERR 가 NC 로 나갑니다')
         return warn
 
 
@@ -973,6 +1020,20 @@ def load(path: str | None = None) -> SimConfig:
             head, _, rest = raw.partition(' ')
             setattr(a, f'{key}_subsystem', head.strip())
             setattr(a, f'{key}_command', rest.strip())
+
+    if cp.has_section('dome'):
+        s = cp['dome']
+        d = cfg.dome
+        d.source = s.get('source', d.source).strip().lower()
+        d.host = _head(s, 'host', d.host)
+        d.port = _int_or(s, 'port', d.port)
+        d.timeout = s.getfloat('timeout', d.timeout)
+        d.username = _head(s, 'username', d.username)
+        d.password = _head(s, 'password', d.password)
+        d.db = _int_or(s, 'db', d.db)
+        d.key_tel_az = _head(s, 'key_tel_az', d.key_tel_az)
+        d.key_az = _head(s, 'key_az', d.key_az)
+        d.key_del_az = _head(s, 'key_del_az', d.key_del_az)
 
     if cp.has_section('logging'):
         s = cp['logging']

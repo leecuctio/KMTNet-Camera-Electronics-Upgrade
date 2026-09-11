@@ -229,6 +229,38 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 
 ---
 
+## 1-C 단계 — 돔 방위 세 카드가 **redis 에서 실리나** (2026-09-11 신설, D-021)
+
+⛔ **전제**: 돔 제어 프로그램이 돌고 있어야 한다 -- 그것이 `dome_tel_az`·`dome_az`·
+`dome_del_az` 를 redis 에 넣는 쪽이다.  ⭐ 우리는 **읽기만** 한다.
+
+⚠️ **먼저 ini 를 본다** -- 벤치 설치본(`~/AIC/Config/*.ini`)에 `[dome]` 절이 없으면
+코드 기본값 `off` 라 세 카드가 **밤새 `NC`** 로 나간다.  ⭐ **기동 배너의 `돔 방위`
+줄**이 그것을 t=0 에 보여 준다:
+
+    돔 방위        dome azimuth source: redis 127.0.0.1:6379 keys dome_tel_az,dome_az,dome_del_az
+    돔 방위        dome azimuth source: off (DSAZ/DSTELAZ/DAZERR stay NC)   ← 이러면 ini 를 고친다
+
+| # | 하는 것 | 기대 | 실측 |
+|---|---|---|---|
+| 1 | 기동 배너 | `돔 방위` 줄이 `redis …:6379` 다 | |
+| 2 | `redis-cli mget dome_tel_az dome_az dome_del_az` | 셋 다 값이 있다.  ⚠️ **TTL 이 수백 ms** 라 돔이 멈춰 있으면 `(nil)` 이 정상이다 (`ttl dome_az` 로 확인) | |
+| 3 | `go 1` 뒤 FITS 헤더 | `DSTELAZ`·`DSAZ`·`DAZERR` 이 **2번에서 본 값 그대로** (자리수도 그대로 -- 우리가 다시 맞추지 않는다) | |
+| 4 | ⭐ **`DALTERR` 는 따로다** | 고도 어긋남(`DSALT` − `DSTELALT`)이고 `AUXSTATUS` 에서 온다.  ⛔ 방위값이 여기 들어와 있으면 **결함**이다 | |
+| 5 | 돔 제어 프로그램을 멈춘다 (또는 `redis-cli del dome_az`) | 그 카드가 **다음 노출에서 `NC`** 다.  ⛔ 옛 값이 계속 실리면 결함이다 | |
+| 6 | redis 를 내린다 (`systemctl stop redis`) | 세 카드가 `NC` 이고 **노출은 정상으로 끝난다**.  로그에 `dome redis unavailable -- …` 이 **한 번만** 뜬다 (프레임마다 뜨면 결함) | |
+| 7 | ICG 로 `go 3` | ⭐ **세 장의 `DSAZ` 가 서로 달라야 한다**(돔이 돌고 있으면) -- 같으면 `GO` 당 한 번만 읽는 것이다.  `redis-cli info commandstats` 의 `cmdstat_mget` 증가분이 **장수만큼**인지로도 본다 | |
+
+### 판정 (1-C)
+
+- **통과**: 3 이 실값, 5·6 이 `NC` 로 정확히 떨어지고, 7 에서 프레임마다 읽는다.
+- **멈출 조건**: 3 이 `NC` 인데 2 는 값이 있으면 **키 이름**부터 본다
+  (`[dome] key_*` vs 돔 프로그램이 쓰는 이름).  그다음이 `db` 번호다.
+- ⚠️ `DAZERR` 는 `dome_del_az` 가 없을 때 **나머지 둘로 계산**된다 -- 3 에서 값이
+  맞는데 redis 의 `dome_del_az` 와 다르면 그 키가 만료된 것이다.
+
+---
+
 ## 2단계 — guide 첫 구동 실측 [ICG]
 
 절차는 [`icg_first_run.md`](icg_first_run.md) 0~6단계 그대로.  이 문서는 **그 표에서 닫히는 미결**만

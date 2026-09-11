@@ -116,7 +116,7 @@ def test_stage1_reports_a_module_layout_that_breaks_the_field_table(tmp_path):  
     text = labels()
     # 슬롯 6 은 장착됐지만 자리 표에 없고, 1·2·8·9·10·11 은 자리 표에 있는데 없다.
     assert '[6]' in text
-    assert '자리 표의 슬롯' in text
+    assert 'slot map slots' in text
 
 
 def test_stage1_reports_each_missing_status_field(tmp_path):  # noqa: ANN001
@@ -419,8 +419,8 @@ def test_science_profile_on_a_guide_unit_is_the_false_alarm(guide_fake, tmp_path
     rc = run(['--host', '127.0.0.1', '--port', str(guide_fake.port)], tmp_path)
     assert rc == 1
     text = labels()
-    assert '자리 표에 없다' in text          # 장착 6·7 이 science 표 밖
-    assert '자리 표의 슬롯' in text          # 1·2·8·11 이 무보고
+    assert 'absent from the slot map' in text   # 장착 6·7 이 science 표 밖
+    assert 'slot map slots' in text        # 1·2·8·11 이 무보고
     assert '온도 슬롯' in text and 'MOD1/TEMP' in text
 
 
