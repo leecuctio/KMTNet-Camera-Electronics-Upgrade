@@ -542,7 +542,8 @@ RAWCARDS = (
     ('LONGITUD', 'S', 18, 'Site Longitude [deg W]'),
     ('ELEVATIO', 'I', 0, 'Site Elevation [meters]'),
     ('OBSERVER', 'S', 18, 'Observer(s)'),
-    ('COMMENT', '', 0, '  Exposure Information'),
+    ('COMMENT', '', 0, '  Exposure Information '
+                       '_______________________________________________'),
     ('PROJID', 'S', 18, 'Project ID'),
     ('IMAGETYP', 'S', 18, 'Type of observation'),
     ('OBJECT', 'S', 18, 'Name of object'),
@@ -564,7 +565,8 @@ RAWCARDS = (
     ('CTRL2CFG', 'S', 29, 'Controller 2 Configuration'),
     ('ICSBUILD', 'S', 24, 'ICS/ICG software version and build Info'),
     ('RDMODE', 'S', 24, 'Readout mode setting'),
-    ('COMMENT', '', 0, '  Camera System House Keeping Data'),
+    ('COMMENT', '', 0, '  Camera System House Keeping Data '
+                       '___________________________________'),
     ('HKUDATE', 'S', 19, 'UTC Date and Time of HK sample'),
     ('DEWPRES', 'S', 18, 'Dewar pressure [torr]'),
     ('CCDTEMP', 'S', 18, 'CCD temperature [deg C]'),

@@ -351,19 +351,20 @@ def test_dewpres_formatting_and_rejection_rules():
         assert f(bad) == rawhdr.DEWPRES_NC, bad
 
 
-def test_fsa_cards_use_the_ens_style_and_the_hk_sentinel():
-    """`FSATEMP`/`FSAHUM` -- ENS식 소수 1자리 잠정 (OI-16), sentinel 은
-    HK 온도·습도 공통 `'-999.99'` (raw spec 5.0절이 FSA 2장을 명시).
+def test_fsa_cards_carry_two_decimals_and_the_hk_sentinel():
+    """`FSATEMP`/`FSAHUM` -- **소수 2자리** (규격 v1.13, OI-16 종결),
+    sentinel 은 HK 온도·습도 공통 `'-999.99'` (5.0절이 FSA 2장을 명시).
 
-    ⭐ **v1.10: `FSATEMP` 가 온도 부호 규약에 편입됐다** (`'+23.4'`).
-    ⛔ `FSAHUM`(습도)은 대상이 아니다 -- 부호가 붙지 않는다."""
-    assert rawhdr.format_ens(23.44) == '23.4'
-    assert rawhdr.format_ens(23.44, signed=True) == '+23.4'
-    assert rawhdr.format_ens(-23.44, signed=True) == '-23.4'
+    ⭐ **`FSATEMP` 는 온도 부호 규약에 든다** (`'+23.45'`).
+    ⛔ `FSAHUM`(습도)은 대상이 아니다 -- 부호가 붙지 않는다.
+    ⭐ 자릿수의 근거는 Radionode 원값이다 (`get_lst` 실측 `"22.35"`)."""
+    assert rawhdr.format_ens(23.446) == '23.45'
+    assert rawhdr.format_ens(23.446, signed=True) == '+23.45'
+    assert rawhdr.format_ens(-23.446, signed=True) == '-23.45'
     assert rawhdr.format_ens(None) == '-999.99'
     assert rawhdr.format_ens(None, signed=True) == '-999.99'
-    h = rawhdr.thermal_header({'fsatemp': 23.4, 'fsahum': 12.3})
-    assert h['FSATEMP'] == '+23.4' and h['FSAHUM'] == '12.3'
+    h = rawhdr.thermal_header({'fsatemp': 23.45, 'fsahum': 12.34})
+    assert h['FSATEMP'] == '+23.45' and h['FSAHUM'] == '12.34'
     empty = rawhdr.thermal_header(None)
     assert empty['FSATEMP'] == '-999.99' and empty['FSAHUM'] == '-999.99'
 

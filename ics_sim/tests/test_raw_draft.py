@@ -246,6 +246,11 @@ def _rebuild(tag: str) -> list[str]:
         date_obs=sample['DATE-OBS'], exptime=int(sample['EXPTIME']),
         ledflash_ms=int(sample['LEDFLASH']),
         imgtype=sample['IMAGETYP'].strip(), objname=sample['OBJECT'].strip(),
+        # ⭐ `OBSTYPE` 도 **견본 값을 되먹인다** (규격 v1.13) -- `IMAGETYP`
+        # 의 사본이 아니라 어느 계통이 찍었나라서 견본이 `BIAS`/`SCIENCE`
+        # 로 갈렸다.  안 넘기면 `exposure_header()` 의 안전망이 `IMAGETYP`
+        # 값을 실어 이 대사가 깨진다.
+        obstype=sample['OBSTYPE'].strip(),
         projid=sample['PROJID'].strip(), observer=sample['OBSERVER'].strip(),
         filename=sample['FILENAME'], expid=sample['EXPID'])
     out = []

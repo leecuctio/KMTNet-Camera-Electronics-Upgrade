@@ -2,20 +2,21 @@
 # -*- coding: utf-8 -*-
 """guide raw FITS 헤더 카드 템플릿 — guide 견본 헤더 v0.0 의 기계 사본.
 
-정본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.G.fits.header.v1.11.txt`
-(raw spec v1.11 **10장** — 값 카드 **128** + COMMENT 8 + END 1 + 공백 7 =
+정본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.G.fits.header.v1.13.txt`
+(raw spec **10장** — 값 카드 **128** + COMMENT 8 + END 1 + 공백 7 =
 144 레코드 = 4x2880 = 11,520 B).  science 템플릿(`ics_sim/rawcards.py`)과
 다른 자리 (10.2절):
 
 * `CTRL2ID`/`CTRL2SN`/`CTRL2CFG` · `C2_TEMP`/`C2_VOLT`/`C2_CURR` **미수록**
   (컨트롤러가 하나다 — "NC 채움" 안은 기각됐다)
-* `CHMAP_*` 4장 -> **`CHMAP` 1장** (`'NRL,ERL,SRL,WRL'` [TBC], OI-21)
+* `CHMAP_*` 4장 -> **`CHMAP` 1장** (`'NRL,ERL,SRL,WRL'`, 값은 OI-21).
+  ⛔ comment 의 `[TBC]` 는 걷혔다 -- 5.0절이 검토 표식을 금지한다 (v1.13)
 * **`IMGROT` 신설** (`'270,180,90,0'` [deg, CW] — 자리는 `CHMAP` 과 같은 칩 순서)
 * `ICSBUILD` -> **`ICGBUILD`** (+ `TIMESYS`/`EXPID` comment 의 ICS -> ICG)
 * `C1_TEMP` **8자리** · `C1_VOLT`/`C1_CURR` **8자리**(`HEATER` +28 V) — 10.4절
 * 기하 카드 값이 guide 다 — `NAXIS` 4224x1033 · `AMPNAX` 528/1033 ·
-  **`PRESCNX` 16**(CCD 의 다크 기준열) · `OVRSCNY` 9 (10.3절.  ⏳ 규격 문면은
-  CU 와 상의 후 — 운영자 정정 2026-09-08)
+  **`PRESCNX` 16**(CCD 의 dark reference columns) · `OVRSCNX` **0** ·
+  `OVRSCNY` 9 (10.3절.  ✅ 규격 v1.13 이 귀속을 확정했다 — CU 협의 완료)
 
 ⚠️ **공유 키 8장의 문자열 패딩 폭이 science 와 다르다** (컨트롤러 블록
 24/29 -> **26**, `C1_*` 51 -> **49**) — 그래서 저장은 `fitswrite` 에
@@ -69,12 +70,12 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('AMPNAX2', 'I', 0, 'Rows per amplifier (prescan+image+overscan)'),
     ('IMAGEX', 'I', 0, 'Image columns per amplifier'),
     ('IMAGEY', 'I', 0, 'Image rows per amplifier'),
-    ('PRESCNX', 'I', 0, 'Prescan columns per amplifier (side varies)'),
+    ('PRESCNX', 'I', 0, 'Dark reference columns per amplifier'),
     ('PRESCNY', 'I', 0, 'Prescan rows per amplifier (frame-edge side)'),
-    ('OVRSCNX', 'I', 0, 'Overscan columns per amplifier (side varies)'),
+    ('OVRSCNX', 'I', 0, 'Overscan columns per amplifier (none)'),
     ('OVRSCNY', 'I', 0, 'Overscan rows per amplifier (frame-center side)'),
     ('COMMENT', '', 0, '  Map of CCD output channels, raw X ascending within each card'),
-    ('CHMAP', 'S', 18, 'CCD and output channel layout [TBC]'),
+    ('CHMAP', 'S', 18, 'CCD and output channel layout'),
     ('IMGROT', 'S', 18, 'Image rotation [deg, CW] for each CCD (N,E,S,W)'),
     ('COMMENT', '', 0, '  Observatory Information ____________________________________________'),
     ('ORIGIN', 'S', 18, 'Location where the data was generated'),
@@ -84,7 +85,7 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('LONGITUD', 'S', 18, 'Site Longitude [deg W]'),
     ('ELEVATIO', 'I', 0, 'Site Elevation [meters]'),
     ('OBSERVER', 'S', 18, 'Observer(s)'),
-    ('COMMENT', '', 0, '  Exposure Information'),
+    ('COMMENT', '', 0, '  Exposure Information _______________________________________________'),
     ('PROJID', 'S', 18, 'Project ID'),
     ('IMAGETYP', 'S', 18, 'Type of observation'),
     ('OBJECT', 'S', 18, 'Name of object'),
@@ -102,7 +103,7 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('CTRL1CFG', 'S', 26, 'Controller 1 Configuration'),
     ('ICGBUILD', 'S', 26, 'ICG software version and build Info'),
     ('RDMODE', 'S', 26, 'Readout mode setting'),
-    ('COMMENT', '', 0, '  Camera System House Keeping Data'),
+    ('COMMENT', '', 0, '  Camera System House Keeping Data ___________________________________'),
     ('HKUDATE', 'S', 19, 'UTC Date and Time of HK sample'),
     ('DEWPRES', 'S', 18, 'Dewar pressure [torr]'),
     ('CCDTEMP', 'S', 18, 'CCD temperature [deg C]'),
@@ -193,22 +194,16 @@ STRUCTURAL = frozenset(
 
 #: keyword -> 문자열 패딩 폭 — `fitswrite.card_image(widths=...)` 에 꽂는 표.
 #: science `_WIDTH` 를 쓰면 공유 키 8장이 견본과 어긋난다 (모듈 docstring).
-#: ⏳ **견본과 일부러 갈라 둔 자리** (운영자 2026-09-09, DevNote 11.58).
+#: ✅ **견본과 갈라 둔 자리 -- 지금은 없다.**  규격 v1.13 이 `LEDFLASH` ->
+#: `TRIGOUT` 교체를 실으면서 견본이 따라잡았다 (2026-09-12).
 #:
-#: 운영자가 guide 헤더에서 `LEDFLASH` 를 빼고 그 자리(=`EXPTIME` 다음)에
-#: `TRIGOUT` 을 넣으라고 정했는데, **규격·견본 갱신은 나중**으로 미뤘다
-#: (*"일단 raw fits spec 갱신은 나중에 할 거니까, 코드와 ics-archon 브랜치의
-#: 문서에만"*).  그래서 `CARDS` 가 견본보다 앞서 있다.
-#:
-#: ⛔ **이 목록이 그 갈림의 전부여야 한다** -- `tests/test_icg_cards.py` 가
-#: 견본에 이것을 적용한 뒤에 대조하므로, 여기 없는 갈림이 생기면 **여전히
-#: 걸린다**.  ⭐ 다음 `main` 라운드에서 견본을 고치고 이 목록을 비운다.
+#: ⭐ **장치를 남겨 두는 이유**: 운영자가 카드를 정하고 규격·견본 갱신을
+#: 나중으로 미루는 국면이 또 온다.  그때 `CARDS` 가 견본보다 앞서므로
+#: 여기에 적어 두면 대조 시험이 그 하나만 면제하고 **나머지 표류는 그대로
+#: 걸린다**.  ⛔ 채운 채로 두지 말 것 -- 규격이 따라잡으면 곧바로 비운다.
 #:
 #: 꼴: `(견본 키, 현행 카드 또는 None)`.  `None` 은 삭제.
-SPEC_PENDING: tuple[tuple[str, tuple | None], ...] = (
-    ('LEDFLASH',
-     ('TRIGOUT', 'I', 0, 'Trigger Out asserted during exposure (1=yes)')),
-)
+SPEC_PENDING: tuple[tuple[str, tuple | None], ...] = ()
 
 
 def apply_pending(cards) -> list:  # noqa: ANN001
@@ -260,9 +255,10 @@ def render(pool: dict[str, object],
     """값 풀에서 guide 카드를 템플릿 순서대로 조립한다.
 
     ⭐ `cards` 를 주면 **그 템플릿으로** 조립한다 -- 기본은 `CARDS` 다.
-    ⚠️ 있는 이유는 하나뿐이다: 견본이 아직 옛 판이라(`SPEC_PENDING`) 시험이
-    **견본의 템플릿으로** 견본 바이트를 재현해야 한다.  ⛔ 운영 경로에서는
-    쓰지 말 것 -- 헤더 템플릿이 둘이 되면 그 순간 정본이 사라진다.
+    ⚠️ 있는 이유는 하나뿐이다: 견본이 현행보다 뒤처진 국면(`SPEC_PENDING`)
+    에서 시험이 **견본의 템플릿으로** 견본 바이트를 재현해야 한다.  ⭐ 지금은
+    그 목록이 비어 있어 둘이 같다.  ⛔ 운영 경로에서는 쓰지 말 것 -- 헤더
+    템플릿이 둘이 되면 그 순간 정본이 사라진다.
 
     규칙·귀결은 `ics_sim.rawcards.render()` 와 같다 (그쪽 docstring 참조):
     문자열은 템플릿 폭까지 패딩, 풀 값 `None` 은 카드 미기록, `I` 형은

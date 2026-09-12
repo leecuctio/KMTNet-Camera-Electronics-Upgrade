@@ -589,15 +589,18 @@ def format_temp(value: object) -> str:
 
 
 def format_ens(value: object, *, signed: bool = False) -> str:
-    """`FSATEMP`/`FSAHUM` 의 ENS식 표기 -- 소수 1자리 (`'23.4'`).
+    """`FSATEMP`/`FSAHUM` 의 표기 -- **소수 2자리** (`'23.45'`).
 
-    **잠정이다** (raw spec 5.8절, OI-16) -- Radionode 원값 포맷을 확인한 뒤
-    "원값 그대로 싣기"로 최종 확정한다.  측정 불가 sentinel 은 HK 온도·습도
-    공통의 `TEMP_NC`(`'-999.99'`) -- 5.0절이 FSA 2장을 그 규약에 명시했다.
+    ✅ **확정이다** (raw spec v1.13 5.0·5.8절 — ~~OI-16~~ 종결).  운영자
+    실측으로 `get_lst` 원문이 `"22.35"`·`"47.67"` 임이 확인돼 **Radionode
+    원값 그대로** 싣는다.  ⛔ 종전 근거였던 *"레거시 `ENS1` 선례"* 는
+    성립하지 않는 유추였다 -- `ENS1`-`ENS7` 은 *"중계 그대로"* 라 자릿수의
+    출처가 다르다.  측정 불가 sentinel 은 HK 온도·습도 공통의
+    `TEMP_NC`(`'-999.99'`) -- 5.0절이 FSA 2장을 그 규약에 명시했다.
 
-    ⭐ **`signed=True` 는 온도 부호 규약이다** (raw spec 5.0절, v1.10) --
+    ⭐ **`signed=True` 는 온도 부호 규약이다** (raw spec 5.0절) --
     온도 카드는 양수에도 `+` 를 적는다.  `FSATEMP` 가 그 규약에 편입돼
-    `'23.4'` -> **`'+23.4'`** 가 됐다.  ⛔ `FSAHUM`(습도)은 대상이 아니고
+    `'23.45'` -> **`'+23.45'`** 가 됐다.  ⛔ `FSAHUM`(습도)은 대상이 아니고
     **`ENS1`-`ENS7` 도 예외**다 -- 5.8절이 *"중계 그대로"* 로 규정하므로
     우리가 표기를 만들지 않는다.
     """
@@ -611,7 +614,7 @@ def format_ens(value: object, *, signed: bool = False) -> str:
         return TEMP_NC
     if t != t or t in (float('inf'), float('-inf')):
         return TEMP_NC
-    return f'{t:+.1f}' if signed else f'{t:.1f}'
+    return f'{t:+.2f}' if signed else f'{t:.2f}'
 
 
 def format_word(value: object) -> str:

@@ -52,9 +52,9 @@ def test_template_matches_the_sample_generator():
     같은 자리다.
     """
     cards, _values = gen.parse()
-    # ⏳ **일부러 갈라 둔 자리는 먼저 적용한다** (`guidecards.SPEC_PENDING`).
-    # ⛔ 그 목록 밖의 갈림은 여기서 그대로 걸린다 -- 견본이 개정되면
-    # `tools/gen_guidecards.py` 를 다시 돌리고 목록을 비운다.
+    # ⭐ **일부러 갈라 둔 자리는 먼저 적용한다** (`guidecards.SPEC_PENDING`,
+    # 지금은 비어 있어 no-op 이다).  ⛔ 그 목록 밖의 갈림은 여기서 그대로
+    # 걸린다 -- 견본이 개정되면 `tools/gen_guidecards.py` 를 다시 돌린다.
     assert tuple(guidecards.apply_pending(cards)) == tuple(guidecards.CARDS), (
         'guidecards.CARDS 가 견본과 갈렸다 (SPEC_PENDING 밖의 차이) -- '
         'tools/gen_guidecards.py 를 다시 돌려 갱신할 것')
@@ -69,10 +69,9 @@ def test_sample_bytes_are_reproduced():
     """
     for path in _samples():
         cards, values = gen.parse(path)
-        # ⏳ **견본의 템플릿으로** 재현한다 -- `CARDS` 는 `SPEC_PENDING` 만큼
-        # 앞서 있어 그대로 쓰면 이 대사가 성립하지 않는다.  ⭐ 그래도 값어치는
-        # 그대로다: 카드 순서·형·폭·comment·패딩의 대사는 살아 있고, 갈린 자리
-        # 하나는 바로 위 시험이 따로 못박는다.
+        # ⭐ **견본의 템플릿으로** 재현한다 -- `CARDS` 가 `SPEC_PENDING` 만큼
+        # 앞서는 국면에서도 이 대사가 성립하게 하려는 것이다 (지금은 목록이
+        # 비어 둘이 같다).  갈린 자리는 바로 위 시험이 따로 못박는다.
         widths = {k: w for k, _t, w, _c in cards if k != 'COMMENT'}
         rendered = guidecards.render(values, cards=cards)
         blob = fitswrite.header_bytes(rendered, 4224, 1033, widths=widths)
@@ -321,16 +320,14 @@ def test_science_keeps_ledflash_and_has_no_trigout():
     assert 'TRIGOUT' not in sci
 
 
-def test_the_pending_divergence_list_is_exactly_this_one_swap():
-    """⏳ 견본과의 갈림은 **이 하나**여야 한다.
+def test_the_sample_has_caught_up_and_nothing_diverges():
+    """✅ 견본이 규격 v1.13 에서 따라잡았다 -- 갈림은 **없다**.
 
-    ⛔ 목록이 늘면 규격 갱신이 밀린 자리가 늘었다는 뜻이다 -- 다음 `main`
-    라운드에서 견본을 고치고 목록을 비운다.
+    ⛔ 목록이 다시 차면 규격·견본 갱신이 밀린 자리가 생겼다는 뜻이다.
+    그 국면은 정상이지만 **오래 두면 안 된다** -- 다음 `main` 라운드에서
+    견본을 고치고 비운다.
     """
-    assert len(guidecards.SPEC_PENDING) == 1
-    old, new = guidecards.SPEC_PENDING[0]
-    assert old == 'LEDFLASH'
-    assert new[0] == 'TRIGOUT'
+    assert guidecards.SPEC_PENDING == ()
 
 
 def test_the_card_says_unknown_when_nobody_knows():
