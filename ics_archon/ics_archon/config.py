@@ -773,12 +773,35 @@ def backend_declared(path: str) -> bool:
 
 def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
              sim_cfg=None) -> list[str]:  # noqa: ANN001
-    """기동 시 경고 목록.  `ics_sim.config.validate()` 와 같은 자리다."""
+    """기동 시 경고 목록.  `ics_sim.config.validate()` 와 같은 자리다.
+
+    ⛔ **컨트롤러 정의가 없으면 경고가 아니라 `ArchonConfigError` 다**
+    (운영자 지시 2026-09-12).  종전에는 경고 한 줄이라, 주소가 빈 채로 실기
+    모드로 띄우면 허브 확인도 배너도 다 지나가고 **첫 `GO` 에서야** 실패했다.
+    ⚠️ 배포 ini 의 `ctrl_*_host` 는 **빈 채로 나가는 것이 출하 상태**라
+    (`ics_archon.ini` 94-95행) 밟기 쉬운 자리다.
+    ⭐ 이 함수는 `--backend archon` 에서만 돈다 -- 호출부(`app.py`)가 sim 을
+    먼저 걸러내므로 시뮬 회귀는 이 검사를 안 탄다.
+    """
     notes: list[str] = []
+    # ⚠️ **`active_tags()` 보다 앞이다.**  그 함수가 먼저 *"이 컨트롤러를
+    # 건너뛴다"* 경고를 찍으면 읽는 사람이 *"그래도 도는구나"* 했다가 곧 죽는
+    # 것을 본다 -- ICG 가 2026-09-08 벤치에서 겪고 고친 순서 문제다.
+    if not any(cfg.hosts.get(tag) for tag in CTRLTAGS):
+        raise ArchonConfigError(
+            '[archon] ctrl_mk_host 와 ctrl_nt_host 가 둘 다 비었다 -- science '
+            '컨트롤러 IP 를 적을 것 (메시지 층만 돌려 보려면 --backend sim)')
     tags = cfg.active_tags(ccds)
     if not tags:
-        notes.append('살아 있는 컨트롤러가 없다 -- [archon] ctrl_*_host 와 '
-                     '[node] ccds 를 확인하라.  이 상태로는 노출이 실패한다')
+        # 주소는 있는데 다른 눈금과 안 맞는 자리다 -- 어느 눈금을 볼지 알도록
+        # 값을 실어 준다.
+        raise ArchonConfigError(
+            '[archon] 살아 있는 컨트롤러가 없다 -- 주소를 적은 태그와 [node] '
+            'ccds 가 안 맞는다 (주소=%s · ccds=%s · n_controllers=%d%s).  '
+            '이 상태로는 노출이 실패한다'
+            % ('/'.join(t for t in CTRLTAGS if cfg.hosts.get(t)) or '없음',
+               ','.join(ccds) or '없음', cfg.n_controllers,
+               (' · solo_tag=%s' % cfg.solo_tag) if cfg.solo_tag else ''))
     for tag in tags:
         if cfg.apply_acf and not cfg.acf.get(tag):
             notes.append('[archon] acf_%s 가 비어 있는데 apply_acf=true 다 -- '

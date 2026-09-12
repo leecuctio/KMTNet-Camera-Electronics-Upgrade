@@ -10,6 +10,13 @@ python -m ics_archon                 # ics_archon.ini 를 읽는다 (실기)
 python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시지 층만
 ```
 
+⭐ **실기가 기본이다 -- `--backend archon` 을 적을 필요가 없다.**
+ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
+(`ics_sim` 의 기본값 `sim` 을 그대로 물려받으면 *"왜 컨트롤러를 안
+만지나"* 가 되기 때문이다).  ⚠️ 거꾸로 **ini 가 `backend = sim` 이라고
+적어 두었으면 그 뜻을 존중한다** -- 메시지 층만 돌려 보는 회귀가
+그 설정이다.  guide(`icg_archon`)도 같다.
+
 > **현재 판 `v0.0.0` — 실기 왕복은 한 번도 돌리지 않았다.**  가짜 컨트롤러
 > (`tests/fake_archon.py`)로 전 경로가 돌고 견본 헤더와 바이트 단위로 일치하지만,
 > 실물 Archon 과의 왕복·독출 시간·픽셀 배치는 미검증이다.  잠정인 자리는

@@ -511,15 +511,29 @@ def test_status_timeout_does_not_lose_the_frame(tmp_path):  # noqa: ANN001
 
 
 
-def test_ini_validate_warns_when_a_controller_is_missing():
-    """`[node] ccds` 에 있는데 주소가 없으면 그 파일은 생기지 않는다."""
+def test_ini_validate_halts_when_no_controller_is_defined():
+    """⛔ 컨트롤러 정의가 없으면 **기동을 멈춘다** (운영자 2026-09-12).
+
+    ⚠️ 배포 ini 는 `ctrl_*_host` 가 빈 채로 나간다 -- 종전처럼 경고만 내면
+    허브 확인도 배너도 지나가고 첫 `GO` 에서야 실패한다.
+    ⭐ 한쪽만 있으면 그 한 대로 도는 것이 정상이다 -- 빠진 쪽의 파일이 안
+    나온다는 경고는 `active_tags()` 가 따로 찍는다.
+    """
     cfg = acfg_mod.ArchonCfg()
-    notes = acfg_mod.validate(cfg, ('K', 'M', 'T', 'N'))
-    assert any('살아 있는 컨트롤러가 없다' in n for n in notes)
+    with pytest.raises(acfg_mod.ArchonConfigError) as e:
+        acfg_mod.validate(cfg, ('K', 'M', 'T', 'N'))
+    assert 'ctrl_mk_host' in str(e.value)
+    # 주소는 있는데 `[node] ccds` 가 그 컨트롤러의 칩을 안 부른 자리 --
+    # 문면이 달라야 운영자가 어느 눈금을 볼지 안다.
     cfg.hosts = {'MK': '10.0.0.13'}
+    with pytest.raises(acfg_mod.ArchonConfigError) as e2:
+        acfg_mod.validate(cfg, ('N', 'T'))
+    assert 'ccds' in str(e2.value) and 'MK' in str(e2.value)
+    # 한쪽만 있는 정상 배치는 그대로 뜬다.
     cfg.acf = {'MK': 'x.acf'}
     assert cfg.active_tags(('K', 'M', 'T', 'N')) == ('MK',)
     assert cfg.index_of('MK') == 1 and cfg.index_of('NT') == 2
+    acfg_mod.validate(cfg, ('K', 'M', 'T', 'N'))
 
 
 def test_pipelined_frames_do_not_steal_each_others_state(tmp_path):  # noqa: ANN001
