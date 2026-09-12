@@ -471,6 +471,20 @@ def controller_header(info: dict, *, backend_name: str, ics_build: str,
 #: 135 -> **131** 이 됐다.  되살리려면 **규격부터** 고칠 것.
 DEWAR_CARDS = ('DMPTEMP', 'PT30N1', 'PT30N2', 'CHARCOAL', 'WALLBRD', 'HEBOX')
 
+#: ⛔ **`HKUDATE` 셈에서 빼는 계통** -- `Radionode`(환경 센서) 세 키다
+#: (raw spec **5.6절**, 운영자 확정 2026-09-08).  그 계통은 클라우드를 거치고
+#: 전송주기가 장치마다 달라(실물 60 s · 600 s), 시각 셈에 섞으면 **600 s 장치
+#: 하나가 블록 전체의 취득 시각을 30분 뒤로 끌고 간다**.
+#:
+#: ⚠️ 대가는 규격이 명시한다 -- **`HKUDATE` 는 이 세 카드의 나이를 말하지
+#: 않는다.**  그 셋의 신선도는 폴러의 창(장치 전송주기 x3)이 보증한다.
+#:
+#: ⭐ **두 창구가 같은 규칙을 써야 한다** -- guide 는 `icg_archon/hk.py` 의
+#: `sensors()` 가 폴러의 `all_keys()`(런타임 소관 집합)로 같은 일을 하고,
+#: science 는 스냅샷 파일만 보므로 이 이름 집합을 쓴다.  ⛔ 한쪽만 고치면 같은
+#: 스냅샷을 읽고도 두 헤더의 `HKUDATE` 가 갈린다 (규격 OI-25 꼬리).
+RADIONODE_KEYS = frozenset({'hebox', 'fsatemp', 'fsahum'})
+
 #: 측정 불가를 뜻하는 `DEWPRES` 값 (운영자 확정 2026-08-21).
 DEWPRES_NC = '9.99e-9'
 

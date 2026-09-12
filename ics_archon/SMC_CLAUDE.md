@@ -1601,6 +1601,175 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 **docstring 에 남아 있으면** 진짜 파손이 통째로 걸러진다(주석 `#` 만 걸렀다).
 ⭐ **문면을 바꾼 커밋은 전수를 돌리고 나서 커밋할 것.**
 
+#### ⏳ 다음 세션이 할 것 (권장 순서)
+
+⭐ **`main` 이 raw spec v1.13 을 발행했다** (2026-09-12 · main 커밋 `d681617` — ⚠️ 아직
+푸시 전이고 `raw-spec-v1.13` 태그도 안 붙었다).  이 브랜치의 일이 그래서 **규격 추종**과
+**벤치 실기** 둘로 갈린다.
+
+⭐ **따라잡을 것을 전수로 훑어 놨다** — 일곱 갈래(템플릿 대조 · 값 포맷 코드 · 시험 · ics_archon
+문서 · ics_sim 문서 · ini/ACF · 거버넌스)로 114건을 찾아 항목마다 반증 검증을 돌렸고, **111건**이
+남았다(기각 3).  그중 **🔴 red 6**(머지하면 시험이 빨개진다) · **🟡 silent 3**(조용히 규격을
+어긴다) · **⚪ stale 나머지**(문서·주석만 낡았다)다.
+
+##### ✅ 이 커밋에서 이미 한 것
+
+- **science `HKUDATE` 가 `Radionode` 세 키를 시각 셈에서 뺀다** (규격 5.6절, 운영자 확정
+  2026-09-08).  종전에는 스냅샷의 **전 키**로 최솟값을 내서, 같은 스냅샷을 읽고도 guide 헤더와
+  science 헤더의 `HKUDATE` 가 갈렸다 — 전송주기 600 s 장치 하나가 블록 전체의 취득 시각을
+  끌고 간다.  키 집합은 공유층 한 자리에 뒀다 (`ics_sim/ics_sim/rawhdr.py` 의 **`RADIONODE_KEYS`**).
+  ⚠️ guide 쪽은 폴러의 `all_keys()`(런타임 소관 집합)로 같은 일을 하므로 안 건드렸다 —
+  **그 둘이 어긋나면 규칙이 다시 갈린다.**
+- `_vendor` **매니페스트 갱신** (`tools/sync_vendor.py`).  ⛔ **`ics_sim/` 을 고치면 이 도구를
+  돌려야 한다** — 안 돌리면 `tests/test_vendor.py` 둘이 빨개진다.  설계대로 기계가 잡아 주는
+  자리라 **조용히 지나가지 않는다**(이번에도 실제로 그렇게 걸렸다).
+- 시험 **`ics_sim` 425 · `ics_archon` 716** 전수 통과.
+
+##### ⛔ 묶음 A — 머지 **전**에 털 것 (규격 판올림과 무관하다)
+
+이걸 먼저 하면 머지 뒤 빨간 것이 **순수하게 v1.13 탓**이 된다.
+
+| id | 자리 · 무엇을 → 무엇으로 |
+|---|---|
+| **S2** 🟡 | `scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`(+유닛 사본 셋 · `smallbuf.py`) · `'OBSTYPE': imgtype` → **`'OBSTYPE': 'SCIENCE'`** (규격 5.4절 — `IMAGETYP` 의 사본이 아니다).  ⛔ 같은 파일 `RAWCARDS` 의 `('OBSTYPE','S',18,…)` 줄은 건드리지 말 것 |
+| **S3** 🟡 | `icg_archon/config.py` `stale_after: float = 600.0` → **`4000.0`** (ini·README·bench 넷이 4000 쪽인데 코드 기본값만 600) · `INSTALL.md` 의 push 예시는 **1800**(push 백엔드는 `device_interval` 을 못 배워 ini 값이 영구 창이다) · `radionode.py` 의 *"10분(`stale_after`)"* 수치 제거 |
+| **D7** ⚪ | `icg_archon/guidehdr.py` 주석 *"값을 모르면 **카드를 비운다**"* → **sentinel `-1`, 카드는 남긴다** + `pool['TRIGOUT'] = -1 if trigout is None else (1 if trigout else 0)` · 짝으로 `sequencer.py` 주석 · `tests/test_icg_cards.py` 의 `'TRIGOUT' not in …` → `== -1` · 규격 **10.3절 「`TRIGOUT` 값의 뜻」**.  ⭐ 바이트는 이미 `-1` 로 나간다(렌더러 sentinel 폴백) — 실익은 `--backend sim` 이 프레임마다 찍는 **가짜 `ERROR … 우리 결함이다` 로그**를 없애는 것 |
+| **D10** ⚪ | `acf/README.md` · `icg_archon/config.py` · 이 문서 · `[ics] gauge_reenable_after` → **`[archon] gauge_reenable_after`** (실물이 그렇다 — ini 에 `[ics]` 절이 없다).  ⛔ `DevNote.md` 의 같은 오기는 날짜 붙은 회고라 그대로 |
+| **D14** ⚪ | `legacy_command_coverage.md` · 신설 명령이 `(8)` 로 남아 있다 → **`(10)`**, 표에 `OBSTYPE`·`TRIGOUT` 두 행 추가, 집계 `134`→`136` · 짝으로 이 문서의 같은 수.  ⛔ *"현행 구현 66"* 은 셈법을 재현 못 했으니 건드리지 말 것 |
+
+##### ⛔ 묶음 B — `main` 합류 (`--no-ff`)
+
+⭐ **충돌 파일은 `project_management/governance/DECISION_LOG.md` 하나뿐**이다 (`git merge-tree` 로
+미리 재 본 결과).  해소할 hunk 셋:
+
+1. 머리 `최종 갱신일` → **2026-09-12**
+2. **D-021 `상태:` 줄**을 main 문면으로 — *"✅ 규격 본문 정정은 raw spec v1.13 에서 끝났다"*.
+   ⚠️ main 문면 끝의 *"브랜치 쪽 같은 절의 이 줄도 합류 때 함께 맞출 것"* 은 **이 머지가 그
+   행위**이므로 받은 뒤 걷는다.
+3. D-021 뒤에 main 의 **D-022 블록**(저장 안 된 프레임은 노출 번호를 소비하지 않는다)을 그대로.
+
+⚠️ **조용히 접히는 두 줄을 놓치지 말 것** — 양쪽 문면이 같아 충돌이 안 나지만, D-021 영향 칸의
+⏳ 둘(*"`DAZERR` 가 아직 `ICS calculation`"* · *"`TCS relay` 를 뺄지"*)은 v1.13 이 이미 끝낸
+일이다.  같은 커밋에서 ✅ 로 바꾼다.
+
+##### ⭐⭐ 묶음 C — 견본 v1.13 바이트 추종 (**B 와 붙여서 간다**)
+
+⚠️ **B 직후 C 를 커밋하지 않으면 그 사이 브랜치는 전수 시험이 빨간 채다.**  나누는 이유는
+*"머지가 가져온 것"* 과 *"우리가 추종한 것"* 을 first-parent 한 줄에서 갈라 읽으려는 것이고,
+**같은 푸시 단위로 묶는다.**  ⛔ 지금 미리 고치면 v1.12 견본 기준으로 거꾸로 빨개진다 —
+**초록인 순간이 없다.**
+
+| id | 자리 · 무엇을 → 무엇으로 |
+|---|---|
+| **R1** 🔴 | `ics_sim/ics_sim/rawcards.py` · 블록 `COMMENT` **두 장**에 밑줄 — `'  Exposure Information ' + '_'*47` · `'  Camera System House Keeping Data ' + '_'*35`(둘 다 본문 70자 = 78열에서 끝).  ⛔ 같은 두 줄이 `scr_labtest/*.py` **다섯 벌**에도 있다 — `test_labtest_spec_copy.py` 가 `rawcards.CARDS` 와 통째 대조하니 **원천만 고치면 다섯이 빨개진다** |
+| **R2** 🔴 | ① `tools/gen_guidecards.py` 의 견본 경로 `…v1.12.txt` → **`v1.13`** ② **도구를 다시 돌려** `guidecards.CARDS` 를 통째 교체 — 바뀌는 자리 **다섯**(`PRESCNX` comment → `Dark reference columns per amplifier` · `OVRSCNX` → `Overscan columns per amplifier (none)` · `CHMAP` 의 `[TBC]` 제거 · `COMMENT` 밑줄 둘) ③ `SPEC_PENDING` **빈 튜플**로 ④ `tests/test_icg_cards.py` 의 `len(...) == 1` 단언 뒤집기.  ⚠️ **순서가 목숨이다** — 견본 v1.12 는 개명으로 사라져서(archive 에도 없다) 경로를 안 올리면 `gen.parse()` 가 *"견본을 찾을 수 없다"* 로 **먼저 죽는다** |
+| **R3** 🔴 | `ics_sim/ics_sim/rawhdr.py` `format_ens()` · `.1f` → **`.2f`**(부호 포함/미포함 둘 다) · docstring 의 *"ENS식 소수 1자리"*·*"**잠정이다** … OI-16"* → *"Radionode 원값 그대로 소수 2자리, OI-16 **종결**"* · 시험 `test_raw_header.py` 기대값 `'+23.4'` → `'+23.45'` 류.  ⭐ guide 도 같은 함수를 타므로 이 한 줄이 양쪽을 동시에 맞춘다(`hkdata.py` 는 이미 2자리라 **지금은 창구끼리 갈려 있다**) |
+| **R4** 🔴 | `ics_sim/tests/test_raw_draft.py` `_rebuild()` 의 인자에 **`obstype=sample['OBSTYPE'].strip(),`** 한 줄.  견본이 `IMAGETYP='BIAS'` / `OBSTYPE='SCIENCE'` 로 갈려서, 안 넘기면 안전망이 `BIAS` 를 실어 대사가 깨진다.  ⭐ **코드는 이미 규격대로다** — 고칠 곳은 이 시험 한 줄뿐 |
+
+⚠️ **C 안에서 `sync_vendor.py` 를 두 번 돌린다** — R1(rawcards) 뒤 한 번, R3(rawhdr) 뒤 한 번.
+
+##### ⚪ 묶음 D — 코드 문면 추종 · 묶음 E — 문서 라운드
+
+머지해도 안 빨개지고 규격을 어기지도 않는다.  다만 **다음 사람이 끝난 일을 다시 하거나 닫힌
+물음을 열린 것으로 읽게** 만드는 자리들이다.
+
+- **D1·D2** 판 번호 박힌 견본·규격 인용 → `v<판>` 표기 또는 **절 번호만**(집안 규범).
+  ⚠️ `hk.py`·`app.py` 는 판이 아니라 **행 번호**(`v1.12 767행`)를 인용한다 — v1.13 은 절이 셋
+  늘어 행이 밀렸으니 **`10.4절`** 로 바꾼다.
+- **D3** `⏳ main 소관/라운드 이월` 표식 **여덟** → ✅.  ⚠️ 둘만 조심 — `guidehdr.py` 의 것은
+  **OI-24 를 통째로 닫으면 안 되고**(잔여 둘), `test_ini_cards.py` 의 것은 **반쪽만** 걷는다.
+- **D4** 걷힌 출처 어휘 **`TCS relay or REDIS`** → **`REDIS (dome control)`**, 절은 5.7절 → **5.7.3절**.
+  ⭐ *"규격이 처음부터 이 길을 열어 두었다"* 는 **서사도 함께 버린다** — v1.13 이 그 갈래를 지운
+  이유가 *"한 카드의 출처를 두 갈래로 열어 두면 헤더만 보고 못 가린다"* 라서, 남기면 규격이
+  지운 논리를 코드가 되살린다.  검산: `grep -rn "TCS relay or REDIS" ics_sim/ ics_archon/ics_archon/` → **0건**
+- **D5** `CAMVER` 범프 사유가 ①(포장) 하나만 적혀 있다 → **셋**(포장 · `Cn_*` 자리 · **듀어 RTD
+  배치**).  ⭐ ③이 중요하다 — 규격이 그걸 규범으로 못박은 이유가 *"그 변경은 헤더 어디에도
+  자취를 안 남긴다"* 라서, 주석이 ①만 말하면 RTD 를 옮긴 사람이 범프를 안 하고 지나간다.
+- **D5b·D6** `sim.py` 의 *"다섯 키를 아직 안 담는다(OI-25)"* → **종결** · `rawhdr.py` 의 `RDMODE`
+  *"규격 등재 대기"* → ✅(⚠️ 이건 v1.13 이 아니라 **v1.12** 가 닫았다 — 판을 v1.13 으로 적지 말 것).
+- **D17** `hardware/base.py` 의 `sensors()` **계약 docstring 에 Radionode 제외 규범이 없다** →
+  추가.  ⭐ 규칙이 구현 둘에만 흩어져 있으면 세 번째 백엔드가 붙을 때 또 갈린다.
+- **D18** 되감기 규범이 벤치계획 지역명 *"P1 규범 ①"* 으로만 불린다 → **D-022 · 2.3절 8항 ·
+  5.4.1절** 인용.  ⚠️ **머지 뒤에** — 지금 붙이면 브랜치 원장이 D-021 에서 끝나 죽은 인용이 된다.
+- **D8** `acf/README.md` 가 선두 16 을 `OVRSCNX` 에 귀속 → **`PRESCNX=16` · `OVRSCNX=0`**.
+  ⭐ 같이 걷을 것 둘: *"다음 판올림 때 갱신"* 이월 문구 · *"P-k 로 귀속이 뒷받침된다"* 는 **인과
+  자체**(규격이 `R2610` 트림을 *"이 물음과 별개"* 로 못박았다).
+- **E**: 벤치 계획서 · ini 주석 · 이 문서 · 거버넌스 후속(CR-003) · OI 자리.
+
+##### ⏳ 벤치에서 할 것 (앞 세션 이월 — 그대로 유효)
+
+1. ⭐⭐ **벤치 ini 를 새로 깔 것** — 실기 쪽 **1순위**.  `~/AIC/Config/*.ini` 에 **`[dome]` 절이
+   없으면** 코드 기본값 `off` 라 `DSTELAZ`/`DSAZ`/`DAZERR` 이 **밤새 `NC`** 로 나가고, 헤더를 볼
+   때까지 아무도 모른다.  ⭐ 기동 배너의 **`돔 방위`** 줄이 t=0 에 어느 쪽인지 보여 준다.
+   ⚠️ radionode 설정도 같은 ini 다.
+2. **벤치 `1-C` 단계** ([`bench_test_plan.md`](bench_test_plan.md)) — 돔 방위가 실기에서 실리나.
+   ⭐ **7번(guide `go 3` 의 세 장이 서로 다른 `DSAZ`)** 이 프레임마다 읽는지를 가른다.
+   ⛔ `DALTERR` 에 방위값이 들어와 있으면 결함이다.  ⭐ 규격이 이 확인을 **`OI-31`** 로 등재했다.
+3. **벤치 재현 `go 5`** — ⛔ 전원 리셋은 필요 없다.  ⭐ **일부러 재현할 필요도 없다**:
+   `exposure armed: … bufs 9/8/7` 이 매 GO 마다 남아 다음에 깨질 때 자동으로 잡힌다.
+4. **Alive 되감김이 재시작인가 wrap 인가** — ⭐ 새 코드 불필요(`hk.py` 가 HK CSV 에 `alive` 를
+   매 바퀴 적는다).  ⛔ 표본이 둘이라 아직 단정하지 않는다(둘 다 `88` 착지 = 재시작 쪽 증거).
+
+##### ⏳ 운영자 판단을 기다리는 것
+
+| 물음 | 추천 (반대 논거 병기) |
+|---|---|
+| **`raise` 예외 문구 47곳** 영문화 | ⛔ `protocol` 쪽을 고치면 `app._fail_text()` 의 `(see log)` 분기가 **죽는다** — IMPv2 로 나가는 문구가 바뀌는 **와이어 가시 변경**이다 |
+| **`validate()` 설정 경고 42곳** 영문화 | ⭐ *운영자가 ini 를 고치며 기동 화면에서 읽는 진단*이라 **영문화가 맞는지 자체가 판단 사항**이다.  ⚠️ 시험 여섯 파일이 그 문구를 본다 |
+| **`format_ens` 개명**(`format_radionode` 등) | **별건으로.** 이름이 폐기된 유추(ENS)를 가리켜 오도하는 건 맞지만, R3 에 섞으면 **바이트 대사 커밋에 개명 잡음이 낀다**.  ⛔ 반대 논거 — 따로 빼면 영영 안 하게 된다 |
+| **`Radionode stale_after` 기본값** | **코드 4000 + INSTALL 의 push 예시 1800.**  두 경로가 성격이 다르다(openapi 는 `device_interval×3` 를 배우고, push 는 못 배워 ini 값이 영구 창).  ⛔ 반대 논거 — 4000 은 60 s 장치에 헐거워 push 를 실제로 쓰면 낡은 값이 새 값처럼 실린다 |
+| **OI-24 잔여 둘**(guide `CAMVER`·`IMAGETYP` 기본 어휘) | 규격이 *"규정이 없다 가 아니라 **다른 값을 써야 하는가**"* 로 좁혔으니 **현행 유지**가 기본값 |
+| **OI-32 `PROJID` 기본값** | 견본·레거시·코드 셋이 `'ENG'` 고 규격 표 하나만 `'OBS'` 다 → **규격을 고치는 쪽** 추천.  ⛔ 반대 논거 — *"규격이 먼저 서고 코드가 따른다"* 는 순서를 뒤집는 전례가 된다 |
+| **회고 문면을 어디까지 손대나** | ⛔ 날짜 붙은 절(`DevNote` 11.x · 이 문서의 *"⚠️ 위 절이 더 최신"* 블록 · `recovered_session_*`)은 **안 고친다**.  살아 있는 것만 — *"지금 상태"* 표 · *"⏳ 남은 것"* 목록 · 벤치 계획서 · ini/코드 주석 |
+
+##### ✅ `main` 라운드로 넘겼던 것 — **전부 끝났다** (raw spec v1.13)
+
+- ~~raw spec 5.7절 Source 열~~ — `DAZERR` 가 `ICS calculation` → **`REDIS (dome control)`**,
+  `DSAZ`/`DSTELAZ` 의 `TCS relay` 도 걷혔다.  규약은 **5.7.3절** 신설.
+- ~~종전 이월분~~ — `OI-24`(`INSTRUME`·`FPAID`) · `OI-27` · 5.3.1/D-017 KASI 좌표 ·
+  `FSATEMP`/`FSAHUM` 2자리 · 감사 main 이월 9건 · `#22` **전부 반영**됐다.
+- ⛔ **하나는 그대로 남는다** — 합류할 때 `CHANGE_CONTROL.md` 의 **CR-003 이 site baseline
+  변경으로 다시 걸린다.**
+
+##### ✅ 확인 방법 (묶음별)
+
+⛔ **두 스위트를 따로 돌린다** — 루트가 둘이라 함께 돌리면 수집이 깨진다.  합쳐 약 **7분**.
+⛔ `-m "not repo_only"` 를 붙이지 말 것 — 그러면 **벤더 표류와 견본 어긋남을 놓친다.**
+
+```bash
+# A 뒤
+cd ics_archon && python tools/sync_vendor.py --check && python -m pytest tests/test_vendor.py -q
+
+# B 뒤 (머지 예행은 커밋 전에)
+git merge-tree --write-tree HEAD main          # 충돌이 DECISION_LOG 하나인지
+grep -c "^<<<<<<<" project_management/governance/DECISION_LOG.md   # 0
+grep -n "^## D-02" project_management/governance/DECISION_LOG.md   # D-020·021·022 셋
+
+# C 뒤 — ⭐ 여기가 판정선
+cd ics_sim    && python -m pytest tests/test_raw_draft.py tests/test_raw_header.py -q
+cd ics_archon && python tools/sync_vendor.py --check
+cd ics_archon && python -m pytest tests/test_icg_cards.py tests/test_fitswrite.py tests/test_labtest_spec_copy.py tests/test_vendor.py -q
+cd ics_archon && python tools/gen_guidecards.py    # 도구가 살았나 (SystemExit 안 나는지)
+
+# D·E 뒤 — 전수가 판정한다
+cd ics_sim    && python -m pytest tests -q
+cd ics_archon && python -m pytest tests -q
+```
+
+⚠️ **`find_stale_quotes.py` 는 미리 보는 체일 뿐이다** — 2026-09-11 에 아홉 건 중 넷만 찾았고
+**맹점이 바로 docstring** 이라 D 묶음은 거의 못 잡는다.  판정은 전수 시험이다.
+
+##### ⚠️ 새로 밟기 쉬운 함정 셋
+
+1. ⛔⛔ **시험은 진짜 redis 에 붙으면 안 된다** — 벤치·관측소 기계에 redis 가 돌고 있다.
+   `tests/conftest.py` 의 autouse `no_real_redis` 가 한 자리에서 끄고,
+   `pytestmark = pytest.mark.dome_redis` 를 붙인 모듈만 빠져나간다.  ⛔ **그 표식을 붙이면
+   가짜 서버를 직접 세워야 한다** (6379 를 쓰면 기계마다 답이 달라진다).
+2. ⚠️ **가짜 asyncio 서버는 핸들러 writer 를 직접 닫아야 한다** — 안 닫으면 py3.12
+   `Server.wait_closed()` 가 **영영 안 돌아온다**(클라이언트를 이미 닫았어도).
+3. ⚠️ **`_spawn_dome_read()` 를 guide 프레임 루프 밖으로 옮기지 말 것** — 주기 1.3초 > 키 TTL
+   수백 ms 라 `GO` 당 한 번이면 둘째 장부터 낡은 값을 싣는다.
+
 ---
 
 ### ⭐ 2026-09-11 마감 (DevNote 11.69~11.74) — ⚠️ **위 절이 더 최신**

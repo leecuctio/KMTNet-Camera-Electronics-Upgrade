@@ -59,7 +59,7 @@ from .. import _simpath
 
 _simpath.ensure()
 
-from ics_sim import rawpair                              # noqa: E402
+from ics_sim import rawhdr, rawpair                     # noqa: E402
 from ics_sim.hardware.base import BackendError           # noqa: E402
 from ics_sim.state import stamp_iso                      # noqa: E402
 
@@ -900,9 +900,17 @@ class ArchonBackend:
         #
         # ⚠️ 살아남은 키가 없으면 싣지 않는다 -- 호출측이 sentinel `'NC'`
         # 로 채운다.  빈 블록에 시각만 붙으면 "쟀는데 다 결측" 으로 읽힌다.
-        if out:
+        #
+        # ⛔ **`Radionode` 세 키는 이 셈에서 뺀다** (raw spec 5.6절, 운영자
+        # 확정 2026-09-08) -- guide 창구(`icg_archon/hk.py`)가 하는 것과 같은
+        # 규칙이다.  전송주기가 장치마다 달라(60 s · 600 s) 섞으면 600 s 장치
+        # 하나가 블록 전체의 취득 시각을 끌고 간다.  ⚠️ 그래서 이 카드는
+        # `HEBOX`·`FSATEMP`·`FSAHUM` 의 나이를 말하지 않는다 -- 값 자체는
+        # 그대로 싣고 시각 셈에서만 뺀다.
+        own = [k for k in out if k not in rawhdr.RADIONODE_KEYS]
+        if own:
             oldest = min(float(sampled.get(k, snap.get('written', 0.0)))
-                         for k in out)
+                         for k in own)
             out['hkudate'] = stamp_iso(
                 datetime.datetime.fromtimestamp(oldest, datetime.timezone.utc))
         return out
