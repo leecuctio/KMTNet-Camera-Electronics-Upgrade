@@ -706,7 +706,7 @@ def _repo_acfs():
 
 @pytest.mark.repo_only
 def test_every_science_acf_declares_the_same_16_bias_channels():
-    """**science 유닛 여섯이 같은 16채널을 선언한다** (2026-08-28 실측 + 09-03 반입분).
+    """**science 유닛 여덟이 같은 16채널을 선언한다** (2026-08-28 실측 + 반입분).
 
     이것이 깨지면 감시 CSV 의 **열 구성이 유닛마다 달라진다** -- 두 유닛의
     기록을 나란히 놓고 못 읽고, 나중에 층 2 를 헤더에 실을 때(D3) **자리 =
@@ -715,13 +715,15 @@ def test_every_science_acf_declares_the_same_16_bias_channels():
 
     ⚠️ **guide 는 18채널이고 라벨도 다르다** -- 아래 시험이 그 사실을 못박는다.
 
-    ⭐ **2026-09-03**: `KMTS_SCI_102_STA0287_R2608_NT.acf`(SAAO NT) 반입으로
-    다섯 -> **여섯**이 됐다.  ⚠️ 이 수는 **자산 개수**이지 규범이 아니다 --
-    유닛이 늘면 여기를 올리고, 그때 **16채널 목록이 그대로인지**가 진짜 검사다
-    (반입분도 정확히 같았다).
+    ⭐ **2026-09-11 초기화 시험 반입**으로 여섯 -> **여덟**이 됐다 --
+    `KMTK_SCI_112_STA0212_R2611_MK/NT`(KASI 둘째 상자).  그 전 증가는
+    2026-09-03 의 `KMTS_SCI_102_STA0287`(SAAO NT, 다섯 -> 여섯)이다.
+    ⚠️ 이 수는 **자산 개수**이지 규범이 아니다 -- 유닛이 늘면 여기를 올리고,
+    그때 **16채널 목록이 그대로인지**가 진짜 검사다 (반입분도 정확히 같았다).
     """
     science, _guide = _repo_acfs()
-    assert len(science) == 6, science           # 실기 6종 (CTIO 2 · SAAO 2 · KASI 2)
+    # 실기 8종 (CTIO 2 · SAAO 2 · KASI 4 -- STA0200 둘 · STA0212 둘)
+    assert len(science) == 8, science
 
     seen = {}
     for path, cfg, _system in science:

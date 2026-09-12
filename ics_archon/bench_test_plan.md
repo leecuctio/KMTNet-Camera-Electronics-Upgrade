@@ -57,7 +57,10 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
 - 벤치 네트워크에서 **인터넷이 되는가** — `openapi` 백엔드는 인터넷이 있어야 한다.  끊기면
   `HEBOX`/`FSATEMP`/`FSAHUM` 이 그동안 sentinel 이고, 운영자는 그 결측을 받아들이지 않는다(2026-09-04).
 - guide 유닛 `10.0.0.162` 접속 · ACF **`KMTK_GUI_162_STA0201_R2619.acf`** 적용 여부.
-- science 는 **`KMT?_SCI_*_R2611_*.acf`** 6장이 현행이다.
+  ⚠️ **KASI guide 상자가 둘이다** — `STA0201` 과 `STA0230` 이 같은 `.162` 를 쓴다.
+  어느 쪽이 붙었는지는 `BACKPLANE_ID` 로 가린다 (`…1A99369B` / `…1A9939ED`).
+- science 는 **`KMT?_SCI_*_R2611_*.acf`** **8장**, guide 는 **`*_R2619.acf`**
+  **4장**이 현행이다 (2026-09-11 각 유닛 초기화 시험 반입 — `acf/README.md` 목록).
 - ⭐ **장치 MAC / 시리얼** — 벤치 ini 의 `[radionode.hebox]`·`[radionode.fsa]` 에 적을 값.
   ⚠️ 자격증명과 **별개**다.  이것이 비면 3(`CONNECT`)은 통과하는데 4(`HK`)에서 값이
   계속 sentinel 로 남는다.  ✅ **이제 프로그램이 그 사실을 먼저 말한다** (2026-09-07,

@@ -31,6 +31,26 @@ __pycache__/
 *.zip
 *.zip.sha256.txt
 
+# ⭐ Archon FW 이미지는 **푼 `.mcs` 로 담는다** -- 위 `*.zip` 에 예외를 두지 않는다.
+# 2026-09-04 방침을 그대로 유지한다 (운영자 2026-09-12 재확인, DevNote 11.14-(5)).
+# ⚠️ ZIP 으로 담는 안을 한 번 재 봤고 접었다 -- git 이력에 드는 부피가 ZIP 13.7 MB
+#    대 `.mcs` 5.5 MB 로 **`.mcs` 가 오히려 작다**(같은 바이트인 넷은 blob 을
+#    재사용한다).  작업 트리는 ZIP 이 작지만(13.7 대 63.4 MB) 그 대가로 볼 때마다
+#    풀어야 하고, 규칙이 둘 늘고, 판이 오를 때 통째로 새 blob 이 된다.
+# ⛔ 벤더가 준 ZIP 은 **디스크에도 안 남긴다** -- 푼 `.mcs` 가 원본과 바이트
+#    동일임을 sha256 으로 확인했고, 같은 것이 둘이면 정본이 갈린다.
+
+# ⛔ 받은 ACF 보관함의 **중간 판**은 담지 않는다 (운영자 2026-09-12).
+# 디스크에는 그대로 있고 git 에만 안 들어간다.  대부분 `acf/archive/` ·
+# `acf_labtest/` 와 겹치고, ⚠️ 그 안의 `KMTK_GUI_162_STA0201_R2619.acf` 는
+# `TAPLINE` 정돈 **전** 판이라 정본 `acf/` 의 같은 이름과 **내용이 다르다** --
+# 담으면 어느 쪽이 정본인지 갈린다.
+ics_archon/__ref_archon_control/acf_20260911/oldold/
+
+# ⛔ 이 README 는 받은 자료가 아니라 `ics_archon/acf/README.md` 의 **구판 사본**이다.
+# 담으면 낡은 문서가 저장소에 둘이 된다.
+ics_archon/__ref_archon_control/acf_20260911/README.md
+
 # Local data directories (inputs/samples and pipeline products; managed outside Git)
 raw/
 mef_pipeline_out/

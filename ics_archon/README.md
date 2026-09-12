@@ -6,7 +6,7 @@
 
 ```bash
 cd ics_archon
-python -m ics_archon                 # ics_archon.ini 를 읽는다
+python -m ics_archon                 # ics_archon.ini 를 읽는다 (실기)
 python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시지 층만
 ```
 
@@ -31,7 +31,7 @@ python -m ics_archon --backend sim   # 컨트롤러를 만지지 않고 메시�
 | [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}.txt` 의 절차 정본. `--check` 로 대조, `--out` 으로 재추출.  ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
-| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 7개 = science 6 + guide 1, `archive/` 구판 4개, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
+| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 **12개** = science 8 + guide 4 — 2026-09-11 초기화 시험 반입분, `archive/` 에 판올림한 구판, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
 | [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.3.4`, science 유닛).  유닛별 사본 셋(`KMTC-102`·`KMTC-113`·`KMTS-101`)이 나란히 있고 `tests/test_labtest_spec_copy.py` 가 표류를 막는다 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |

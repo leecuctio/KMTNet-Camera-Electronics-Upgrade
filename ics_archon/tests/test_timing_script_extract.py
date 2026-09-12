@@ -14,7 +14,7 @@ freeze 사본").  저장소 밖에 진실의 원천이 없으므로 **원본 ACF
     python tools/extract_timing_script.py acf/*.acf --out acf/
 
 ⚠️ **범위는 정본 `acf/*.acf` 뿐이다.**  `acf/archive/` 와
-`__ref_archon_control/acf/` 는 **역사적 판**이라, 스크립트가 정당하게 개정되면
+`__ref_archon_control/acf_labtest/` 는 **역사적 판**이라, 스크립트가 정당하게 개정되면
 현행 txt 와 안 맞는 것이 맞는 상태다 -- 거기까지 걸면 정상 동작을 결함이라고
 우기는 시험이 된다.  보관함의 `*_R<YYMMDD>.txt` 도 같은 이유로 뺀다(freeze
 사본이라 갈리는 것이 제 일이다).  ⭐ 2026-09-03 현재는 24장이 전부 두 판 중

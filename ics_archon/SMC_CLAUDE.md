@@ -1425,8 +1425,8 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | 것 | 값 |
 |---|---|
 | raw spec | **v1.12** — 발행 커밋 `8e3bdbf`, 태그 `raw-spec-v1.12`.  ⚠️ `main` 의 **끝**이 아니다 (Leecu 의 `cam_char` 작업이 그 뒤로 붙는다) — 판을 확인할 때는 커밋이 아니라 **태그**를 볼 것.  ⭐ 태그는 **최신 판 하나만** 둔다 — 팀은 `git fetch --tags --prune --prune-tags` 가 필요하다 |
-| guide ACF | **`KMTK_GUI_162_STA0201_R2619.acf`** (타이밍 스크립트 `LINES=122`) |
-| science ACF | **`KMT?_SCI_*_R2611_*.acf`** 6장 (타이밍 스크립트 142줄) |
+| guide ACF | **`*_R2619.acf`** **4장** (타이밍 스크립트 `LINES=122`) — CTIO `STA0290` · SAAO `STA0291` · KASI `STA0201`·`STA0230`.  ⚠️ KASI 두 상자가 같은 `.162` 다 |
+| science ACF | **`KMT?_SCI_*_R2611_*.acf`** **8장** (타이밍 스크립트 142줄) — CTIO 2 · SAAO 2 · KASI 4(`STA0200`·`STA0212` 각 MK/NT).  ⏳ SSO(`KMTA_*`) 는 아직 없다 |
 | 시험 | `ics_archon` **689** · `ics_sim` **395** — **전수 통과** (2026-09-10 실측, deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
 | 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `33a1bca` 까지.  ⏳ `main` 소관 잔여는 규격 10.6절 `OI-27` 문면 |
 
