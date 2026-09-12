@@ -333,8 +333,12 @@ def test_the_pending_divergence_list_is_exactly_this_one_swap():
     assert new[0] == 'TRIGOUT'
 
 
-def test_the_card_is_left_out_when_nobody_knows():
-    """⛔ 모르면 **카드를 비운다** -- `0` 은 *"펄스가 없었다"* 는 단언이다."""
+def test_the_card_says_unknown_when_nobody_knows():
+    """⛔ 모르면 sentinel **`-1`** -- `0` 은 *"펄스가 없었다"* 는 단언이다.
+
+    ⭐ 규격 10.3절 「`TRIGOUT` 값의 뜻」 -- `0`(없었다)과 `-1`(못 판정했다)
+    를 섞지 않는다.  카드 자체는 언제나 남는다 (10장 전 카드 필수).
+    """
     base = dict(
         site_code='KMTA', ctrl_info={'units': ()}, ctrl_telem=None,
         sensors=None, cfg_site=None, cfg_camera=None, cfg_ctrl=None,
@@ -342,7 +346,7 @@ def test_the_card_is_left_out_when_nobody_knows():
         date_obs='2026-08-22T00:00:00.000', exptime=1.0, ledflash_ms=0,
         imgtype='OBJECT', objname='x', projid='x', observer='x',
         filename='f', expid='f')
-    assert 'TRIGOUT' not in guidehdr.build_pool(**base)
+    assert guidehdr.build_pool(**base)['TRIGOUT'] == -1
     assert guidehdr.build_pool(trigout=True, **base)['TRIGOUT'] == 1
     assert guidehdr.build_pool(trigout=False, **base)['TRIGOUT'] == 0
 

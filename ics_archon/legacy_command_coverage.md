@@ -43,12 +43,12 @@
 
 | 판정 | 수 |
 |---|---:|
-| 구현됨 | **42** |
-| 신설 | **8** |
+| 구현됨 | **43** |
+| 신설 | **10** |
 | 일부러 뺐다 | **17** |
-| 미구현 | **64** |
+| 미구현 | **63** |
 | 기타 | **3** |
-| **합계** | **134** |
+| **합계** | **136** |
 
 추출 원표: 레거시 ICS **143** · 레거시 ICG **47** · 현행 구현 **66**.
 
@@ -78,7 +78,7 @@
 
 ---
 
-## 구현됨 (42)
+## 구현됨 (43)
 
 | 명령 | 노드 | 인자 | 용도 | 노트 (이유·근거) |
 |---|---|---|---|---|
@@ -121,11 +121,12 @@
 | **STATUS: GO / DONE: EXPSTATUS=IDLE (ICG→ABC 보고)** | ICG | `EXPSTATUS=<상태>` | 노출 진행 상태를 요청자에게 보고 | 구현됨 + 개선 — 원안 맞아, 줄번호도 정확해. [검증: icg_archon/sequencer.py:240-266 전문 열람 — :247 사이클 개시 보고, :252-259 `backend.prepare()` 실패 갈래가 `emit.error(source,'GO',...)` 뒤 `st.expstatus = ExpStatus.IDLE` · `self.emit.idle_done(source)` 로 **반드시 IDLE 을 내보내**, :264-265 INTEGRATING 전이 뒤 재발신. 레거시가 CB 에 미루느라 안 보내던 자리를 신규가 스스로 채운다는 서술 그대로야] |
 | **STOP** | ICS·ICG | 없음 | integration 중지 후 readout/저장까지는 진행 | 구현됨 — 원안 맞아. [검증: 514-530 전문·docstring 열람, PAP7KX.CMD:279-290 분기 인용 확인]. ⚠️ 원안에 없던 미결 하나 — ics_sim/DevNote.md:2872 미해결 표에 *"`STOP`/`ABORT` 실물 재확인"* 이 **우선순위 중간으로 아직 열려 있어**: `DONE:` 본문은 실측 근거 없이 우리가 정한 문구라 실물 OBSAgent 로 확인해야 해. 그리고 이 명령도 콘솔 도움말에 없어 |
 | **TIME** | 공통 | 없음 | OS/FITS 시각과 TIMESYS 반환 | 구현됨(수신) — 원안 맞아. [검증: :192-195]. ⚠️ 원안에 없던 반쪽 — **보내는 쪽은 없어.** icg_legacy_report.md:300 은 XIS 허브에 대한 필수 인터페이스로 *"노드 등록(PING), `TIME` 질의, PONG 응답"* 셋을 적었는데, `grep -rn "'TIME'"` 결과 발신 자리는 0건이고 emitter 에도 대응 메서드가 없어. `HOSTS` 와 같은 부류(우리가 물어봐야 하는데 물어볼 코드가 없음)야 |
+| **VERBOSE** | 공통 | `VERBOSE [ON\|OFF]` | 상세 출력 켜기·끄기 | 구현됨 — ⭐ **2026-09-11 신설**이다(원안의 *"미구현"* 은 그 전 상태다). ⭐ **화면만 탄다** — 로그 파일은 이 명령과 무관하게 **언제나 전부** 적는다 (운영자 2026-09-11).  ini `[logging] verbose` 가 기동값이고 이 명령이 **재기동 없이** 그것을 민다.  ⛔ 어휘 밖 인자는 기본값으로 떨어뜨리지 않고 **거부**한다.  [검증: `ics_sim/ics_sim/commands.py` `cmd_verbose` — `set_verbose()`/`verbose_state()` 왕복까지 열람] |
 | **WARNING:** | 공통 | `<본문>` | IMPv2 경고 알림 수신 (메시지 타입) | 구현됨 — 원안 맞아. 레거시 99개에 없던 것을 신규가 채운 자리라는 서술도 표와 대조해 확인했어(레거시 표에 `WARNING:` 없음). [검증: impv2.py:40 · 레거시 표 파싱 결과 낱말 집합] |
 | **help / ?** | console 전용 | 없음 | 콘솔 도움말 출력 | 구현됨(console) / ⛔ 내용 낡음 — 판정은 원안대로인데 **숫자가 틀렸고 누락 범위가 더 넓어.** [검증: ① **16개가 아니라 14개**야. 층2 ICS 가 더한 새 낱말은 6(HK·HKDATA·CCDFLUSH·CCDPOWON·CCDPOWOFF·ARCHON — `cmd_go` 는 재정의라 새 낱말 아님), 층3 ICG 는 14(그 6 + GUIDEEXP·RADIONODE·EXPENABLE·HTRSET·HTRFORCE·HTRRAMP·HTRPID·VACGAUGE — `cmd_go`·`cmd_exp` 는 재정의). ICS 의 6 이 ICG 의 14 에 포함되니 합집합은 **14**야 — 원안이 괄호 안에 손으로 적은 목록도 정확히 14개였어. ② ⭐ **더 나쁜 건 기반 명령도 빠졌다는 것**: `_HELP`(:23-38)를 세어 보니 기반 29개 중 `stop`·`abort`·`datasource`·`initialize`·`erase`·`shopen`·`shclose`·`dmawait`·`bin`·`ping`·`pong` **열한 개가 없어**. 특히 `stop`/`abort` 는 노출을 세우는 비상 수단인데 도움말에 없어. ③ 세 프로그램이 같은 `Console` 을 쓰는 것 맞아 — `_HELP` 는 grep 결과 console.py 한 곳에만 정의되고 ics_archon/icg_archon 어디에도 재정의가 없어] |
 | **quit / exit** | console 전용 | 없음 | 콘솔 종료 | 구현됨(console) — 원안 맞아. [검증: :66-71] |
 
-## 신설 — 레거시에 없던 것 (8)
+## 신설 — 레거시에 없던 것 (10)
 
 | 명령 | 노드 | 인자 | 용도 | 노트 (이유·근거) |
 |---|---|---|---|---|
@@ -135,7 +136,9 @@
 | **EXPENABLE** | ICG (ICS 는 발신) | `EXPENABLE [ON\|TRUE\|1\|OFF\|FALSE\|0]` | 가이드 노출 잠금 조회·설정 (지속) | 신설 — 원안 맞아. [검증: `expenablectl.py` 의 `CMD` 상수 + icg_archon/commands.py 의 `cmd_expenable` 핸들러 + `ICG_COMMANDS` 어휘 셋 다 확인. ini 옵션 이름과 와이어 낱말이 다르다는 경고도 유효 — ics_archon/config.py 의 `guiexpctrl` 주석이 `EXPENABLE` 은 *"ICS 노출 전/후가 아니라 독출 앞뒤"* 라고 정정해 뒀어]. ⚠️ 위 '(어휘 전수)' 항목의 아슬아슬한 자리가 여기야 — **ICS 는 `EXPENABLE` 을 보내면서 자기 어휘(ICS_OPS_COMMANDS)에는 안 넣었어.** `emit_req` 가 validate() 를 건너뛰어서 지금은 안 울 뿐이야 |
 | **HK / HKDATA** | ICS·ICG | 없음 | HK(하우스키핑) 스냅샷 — ICG 가 만들고 ICS 는 물어본다 | 신설 — 원안 맞아, ⚠️ 도 사실이야. [검증: ics_archon/app.py:314-339 전문 열람 — `_ask_icg` 가 `self.emit.emit_req(dest, cmdword)` 로 묻고 곧바로 `Reply.done(cmdword, 'Queried %s -- the reply arrives as a separate DONE: %s report')` 를 돌려줘(안 기다려). 답은 :572-573 `register_report('DONE', word, self._on_hkdata)` 로 받고, :549-568 `_on_hkdata` 는 `self.hk_wire` 에 담고 `log.info` + `print` 만 해. 그 docstring 이 직접 *"⚠️ 값을 헤더로 흘리지는 **아직** 않는다"* 라고 적어 뒀어 — 원안의 '콘솔에 찍기만 한다' 가 정확해] |
 | **HTRSET / HTRFORCE / HTRRAMP / HTRPID** | ICG | `HTRSET [<0\|1> <섭씨>]` · `HTRFORCE [<0\|1> <V>]` · `HTRRAMP [<0\|1> <mK/update>]` · `HTRPID [<P> <I> <D>]` | guide 듀어 히터 제어 넷 | 신설 — 원안 맞아. [검증: 네 핸들러 다 sweep 에 있고 :95-99 ICG_COMMANDS 에 네 낱말 다 등록돼(위험 ② 통과). commands.py:26-30 머리말이 `HTR` 접두 통일(운영자 2026-09-04)과 인자 없으면 조회라는 규약을 적어 뒀고, :34-36 이 `HTRFORCE` 의 PID 우회 위험을 못박아. `HTREN` 이 별도 명령이 아니라는 것도 sweep 으로 확인 — `cmd_htren` 없어] |
+| **OBSTYPE** | ICS·ICG | `OBSTYPE [<낱말>]` | 헤더 `OBSTYPE` 카드 값 — **어느 계통이 찍었나** (science `SCIENCE` · guide `GUIDE`) | 신설 — 운영자 확정 2026-09-09.  ⛔ **`IMAGETYP` 의 사본이 아니다** (규격 5.4절·10.3절) — 종전에는 사본이었다.  값은 **대문자로 접는다**(L1 파이프라인이 문자열로 비교한다).  인자가 없으면 조회. [검증: `ics_sim/ics_sim/commands.py:292` `cmd_obstype` · 상태 칸은 `state.py:183` · 어휘는 기반 `KNOWN_COMMANDS` 라 두 노드가 함께 받는다] |
 | **RADIONODE** | ICG | `RADIONODE [STATUS\|CONNECT\|DISCONNECT\|RECONNECT\|ENABLE <별칭>\|DISABLE <별칭>]` | Radionode 폴러 상태 조회 / 폴링 켜고 끄기 / 장치별 켜고 끄기 | 신설 — 원안 맞아. [검증: :237-296 구간 + 어휘 등록 확인. 하위 낱말을 갖는 유일한 2단 구조라는 것도 sweep 상 다른 핸들러엔 없어] |
+| **TRIGOUT / TRIGOUTFORCE / TRIGOUTLEVEL** | ICG | `TRIGOUT <ms>` \| `TRIGOUT 0` · `TRIGOUTFORCE [ON\|OFF]` · `TRIGOUTLEVEL [0\|1]` | guide Trigger Out 선 — n ms 펄스 / 강제할지 / 강제했을 때의 레벨 | 신설 — **guide 에는 셔터가 없다**(frame-transfer). `SHOPEN`·`SHCLOSE`·`FLASHNOW` 가 폐지된 자리를 이 셋이 대신한다 (2026-09-09, DevNote 11.50).  ⚠️ **`FORCE` 와 `LEVEL` 은 다른 것이다** — `TRIGOUT 0` 도 펄스의 자동 내림도 **강제를 풀지 않는다**.  ⭐ 쉬는 상태가 `TRIGOUTFORCE=1`·`TRIGOUTLEVEL=0` 이다(선을 우리가 붙들어 LOW 로 고정, 운영자 2026-09-08).  [검증: `icg_archon/commands.py:988`(`cmd_trigout`)·`:961`(force)·`:973`(level) + 어휘 `:98`] |
 | **VACGAUGE** | ICG (ICS 는 발신) | `VACGAUGE [ON\|OFF]` | 이온게이지 켜기·끄기·조회 | 신설 — 원안 맞아. [검증: gaugectl.py:57 + icg_archon/commands.py:473 + 어휘 :95 확인. ⭐ 원안이 안 적은 배선 하나 — ICS 는 이 응답을 **명령 처리부가 아니라 `_on_message` 훅에서 엿들어** 데드맨을 풀어(app.py:653-667 `if (ctl is not None and ctl.enabled and msg.src.upper() == ctl.node.upper() and word in raw): ctl.note_reply(msg.raw)`). gaugectl.py:43 주석도 *"답이 안 와도 우리는 모른다"* 라고 그 이유를 적어 뒀어. `EXPENABLE` 어휘 미등록 주의는 이 낱말도 똑같아] |
 
 ## 일부러 뺐다 — 폐지 근거가 문서에 있는 것 (17)
@@ -160,7 +163,7 @@
 | **USE** | IC→CB (ICS 테이블에도 CASE) | `DISK<n> <서명>` \| `MOUNT <경로>` | CB 에 쓸 디스크·마운트 지점 지정 | 일부러 뺐다 — 원안 유지. [검증: DevNote 원문 두 곳 열람] |
 | **USING** | CB→IC (ICS 테이블에도 CASE) | `<alias>` | CB 의 디스크 확정 통보 수신 | 일부러 뺐다 — 원안 유지. [검증: 원문 두 곳 열람] |
 
-## 미구현 — 없고 폐지 근거도 못 찾은 것 (64)
+## 미구현 — 없고 폐지 근거도 못 찾은 것 (63)
 
 | 명령 | 노드 | 인자 | 용도 | 노트 (이유·근거) |
 |---|---|---|---|---|
@@ -175,7 +178,7 @@
 | **COMMENT** | ICS·ICG | `<문자열>`(추정) | FITS 헤더 COMMENT 카드용으로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **COMP** | ICS·ICG | `<objname>`(추정) | 비교광원 IMAGETYP 으로 짐작 | 미구현 — 원안 유지. [검증: state.py:55-65 주석·상수 직접 열람. 어휘 여섯 확인, `COMP` 는 폐지 기록에 이름이 없어 `STANDARD` 와 판정이 갈린다는 원안 논리 그대로 성립] |
 | **COMTEST** | ICS·ICG | 미상 | 통신 회선 시험으로 짐작 | 미구현 — 원안 맞아. [검증: :180-182 본문 조립식 직접 확인 — `ComTest=F` 는 STATUS 응답의 고정 문자열이고 명령 핸들러는 없어] |
-| **CONCISE** | ICS·ICG | 없음 | 상세 출력 끄기 (VERBOSE 반대) | 미구현 — 원안 유지. VERBOSE·QUIET 와 셋 다 없어. [검증: 핸들러 부재] |
+| **CONCISE** | ICS·ICG | 없음 | 상세 출력 끄기 (VERBOSE 반대) | 미구현 — **낱말로는** 없다.  ⭐ 다만 **기능은 `VERBOSE OFF` 가 갈음한다** (2026-09-11 신설).  ⚠️ 원안의 *"VERBOSE·QUIET 셋 다 없다"* 는 이제 거짓이다 — `QUIET` 만 남았다. [검증: `cmd_concise` 부재 · `cmd_verbose` 는 있다] |
 | **CONFIG** | ICS·ICG | 없음(추정) | 현재 설정 덤프 | 미구현 — 원안 유지. [검증: :164-183, :197-205 둘 다 열람] |
 | **ECHO** | ICS·ICG | `<문자열>`(추정) | 용도 미상 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **END** | ICS·ICG | 미상 | 종료 계열로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
@@ -222,7 +225,6 @@
 | **UARTFLUSH** | ICS·ICG | 없음(추정) | UART(광케이블 시리얼) 버퍼 비우기 | 미구현 — 원안 유지(간접 근거뿐이라 '일부러 뺐다' 로 안 올린 판단이 맞아). [검증: 핸들러 부재] |
 | **UPTIME** | ICS·ICG | 없음 | 프로그램 가동 시간 반환 | 미구현 — 원안 유지. 첫 구동 점검용 후보로 적어 두자는 제안도 그대로 유효해. [검증: 핸들러 부재] |
 | **USAGE:** | 공통 | `<본문>` | IMPv2 사용법 안내 수신 (메시지 타입) | 미구현 — 원안 맞고 ⭐ **원안보다 한 겹 더 나빠.** [검증: impv2.py:150-176 `parse_line` 전문 추적 — `USAGE:` 는 MSG_TYPES 에 없어서 타입으로 안 잡히고 `mtype='REQ'` · `cmdword='USAGE:'` 가 돼. app.py:327 이 REQ 를 디스패처로 넘기고, commands.py:103 의 치환은 `.`→`_` 뿐이라 콜론이 남아 `cmd_usage:` 를 찾다 실패, :107-108 이 상대에게 ERROR 를 되쏴. ⭐ **추가 피해**: 그 ERROR 의 커맨드워드가 `USAGE:` 라 emitter.py:170 `if cmdword is not None and cmd and cmd.upper().rstrip(':') not in KNOWN_COMMANDS` 에도 걸려(`USAGE` 는 KNOWN_COMMANDS 밖) 발신할 때마다 `unknown_cmdword` 위생 위반이 함께 쌓여. IMPv2.5 7종 중 이것만 빠진 것은 손볼 자리라는 원안 결론 그대로] |
-| **VERBOSE** | 공통 | 없음 | 상세 출력 켜기 | 미구현 — 원안 유지. 원격에서 로그 상세도를 못 올린다는 지적도 맞아. [검증: 핸들러 부재] |
 | **VERSION** | 공통 | 없음 | 버전·컴파일 정보 반환 | 미구현 — 원안 맞아. [검증: icg_archon/app.py:56 `self.state.ics_build = build_id() # 배너·STATUS 응답용` 직접 확인 + state.py:212 필드 + sequencer.py:818 `ICSBUILD` 카드. 값은 있는데 물어볼 낱말이 없다는 서술 그대로야] |
 | **VERT** | ICS·ICG | 미상 | 수직 클럭/전송으로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |
 | **ZERO** | ICS·ICG | `<objname>`(추정) | BIAS 의 다른 이름으로 짐작 | 미구현 — 원안 유지. [검증: 핸들러 부재] |

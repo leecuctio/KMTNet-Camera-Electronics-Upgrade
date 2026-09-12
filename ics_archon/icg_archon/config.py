@@ -148,8 +148,6 @@ class RadionodeCfg:
     api_secret: str = ''
     #: ini 에 남아 있던 **폐기된 칸** 이름들 -- `validate()` 가 알린다.
     retired_keys: tuple = ()
-    #: 신선도 경보 문턱 [s] -- 장치 SEND INTERVAL 의 3배쯤.  이보다 낡은
-    #: 표본은 헤더에 싣지 않는다 (호출측이 sentinel 을 채운다).
     #: ⭐ **`HKDATA NOW` 가 클라우드를 다시 칠 최소 표본 나이** [s]
     #: (운영자 2026-09-09).  표본이 이보다 젊으면 **안 친다**.
     #:
@@ -167,7 +165,16 @@ class RadionodeCfg:
     #: ⚠️ **장치 전송주기보다 작게 두지 말 것** -- 얻는 것 없이 쿼터만 쓴다.
     #: ⚠️ `0` 이면 **늘 친다** -- 쿼터를 태울 수 있으니 시험 때만.
     now_min_age: float = 60.0
-    stale_after: float = 600.0
+    #: 신선도 경보 문턱 [s] -- 장치 SEND INTERVAL 의 3배쪼.  이보다 낙은
+    #: 표본은 헤더에 싸지 않는다 (호출측이 sentinel 을 채운다).
+    #: ⭐ **이 값은 초기값이다** -- `openapi` 백엔드는 첫 응답에서
+    #: `device_interval` 을 배워 키별로 `x3` 으로 잡는다 (60s→180 ·
+    #: 600s→1800, DevNote 11.44).  그래서 느슬한 초기값이 맞다 --
+    #: 배우기 전에 좀기면 600s 장치가 첫 바퀴에 통째로 stale 이 된다.
+    #: ⚠ **`local_lns`(push) 는 배우지 못한다** -- 그 백엔드를 쓰면
+    #: ini 값이 영구 창이라 장치 SEND INTERVAL 에 맞춰 적어야 한다
+    #: (`INSTALL.md` 7.5 예시는 600s 장치 전제의 1800).
+    stale_after: float = 4000.0
     #: ⭐ `local_lns` -- 게이트웨이 내장 NS 가 uplink 를 **밀어 줄** 우리 주소.
     #: `호스트:포트` (`0.0.0.0:8088`).  ⚠️ 게이트웨이 integration 에 적은 것과
     #: **같아야** 한다.  비우면 임의 포트라 시험용 말고는 쓸 수 없다.
@@ -323,7 +330,7 @@ class IcgCfg:
     #: science 노출 중에는 꺼져 있어야 하는데, 그 사이에 ICG 를 재실행하면
     #: 종전에는 **ACF 가 켜 버렸다**(`MOD10\\DIO_POWER=1`).  ⭐ R2619 에서 ACF 를
     #: `0` 으로 내렸고 이 눈금이 그 위의 정책이다.
-    #: ⭐ **켜는 쪽은 ICS 몫이다** -- 노출이 끝나고 `[ics] gauge_reenable_after`
+    #: ⭐ **켜는 쪽은 ICS 몫이다** -- 노출이 끝나고 `[archon] gauge_reenable_after`
     #: 뒤에 `ICS>ICG VACGAUGE ON` 이 온다 (`ics_archon/gaugectl.py`).
     #: ⚠️ `keep`(건드리지 않는다)은 **두지 않았다** -- 기동이 늘 ACF 를 적용하고
     #: 그 순간 값이 파일 값으로 덮이므로, 앞선 상태를 보존한다는 뜻이 성립하지

@@ -253,10 +253,14 @@ def build_pool(*, site_code: str, ctrl_info: dict | None,
     # ⭐ **guide 전용 카드** (운영자 2026-09-09) -- `LEDFLASH` 를 뺀 자리다.
     # ⚠️ `rawhdr.exposure_header()` 가 `LEDFLASH` 를 풀에 계속 넣지만 guide
     # 템플릿에 그 카드가 없어 `render()` 가 버린다 (science 는 그대로 싣는다).
-    # ⛔ 값을 모르면 **카드를 비운다** -- `0` 을 채우면 *"펄스가 없었다"* 는
-    # 거짓 단언이 된다 (5.0절의 sentinel 정신).
-    if trigout is not None:
-        pool['TRIGOUT'] = 1 if trigout else 0
+    # ⛔ **`0` 과 `-1` 을 섞지 않는다** (규격 10.3절 「`TRIGOUT` 값의
+    # 뜻」) -- `0` 은 *"펄스가 없었다"* 는 **단언**이고 `-1` 은
+    # *"판정을 못 했다"* 다.  하류가 둘을 같게 다루면 펄스가 없었던
+    # 프레임과 판정이 안 선 프레임이 한 덩어리가 된다.
+    # ⭐ 모를 때도 **카드는 남긴다** -- 정수 sentinel `-1` 이 그 자리다.
+    # 비우면 `guidecards.render()` 가 같은 `-1` 을 쓰면서 프레임마다
+    # *"우리 결함이다"* ERROR 를 찍는다 -- 바이트는 같고 로그만 거짓이다.
+    pool['TRIGOUT'] = -1 if trigout is None else (1 if trigout else 0)
     pool.update(controller_header(ctrl_info, cfg_ctrl=cfg_ctrl,
                                   rdmode=rdmode,
                                   backend_name=backend_name))

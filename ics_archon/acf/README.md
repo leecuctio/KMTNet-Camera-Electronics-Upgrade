@@ -287,7 +287,7 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
    왕복도 구멍도 없다.
    ⚠️ **`keep` 은 두지 않았다** -- 기동이 늘 ACF 를 적용해 그 순간 값이 파일 값으로
    덮이므로 *"앞선 상태를 보존한다"* 가 성립하지 않는다.
-2. **켜는 쪽은 ICS 몫** -- 노출이 끝나고 `[ics] gauge_reenable_after` 뒤에
+2. **켜는 쪽은 ICS 몫** -- 노출이 끝나고 `[archon] gauge_reenable_after` 뒤에
    `ICS>ICG VACGAUGE ON` 이 온다 (`ics_archon/gaugectl.py` 의 `OFF -> PENDING_ON
    -> ON`).  ⭐ 그 사이 ICG 가 재실행돼도 ICS 는 자기 상태로 다시 켜므로 배선이
    끊기지 않는다.

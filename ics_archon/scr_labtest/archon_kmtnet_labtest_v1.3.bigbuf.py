@@ -1079,7 +1079,10 @@ def build_spec_header(ShutOpen, ExpTimeMs, DateObs, AcfPath, FileStem,
         'OBSERVAT': observat, 'ORIGIN': origin, 'TELESCOP': telescop,
         'OBSERVER': OBSERVER_NAME,
         # 5.4
-        'PROJID': 'ENG', 'IMAGETYP': imgtype, 'OBSTYPE': imgtype,
+        # OBSTYPE 은 IMAGETYP 의 사본이 아니다 -- 어느 계통이 찍었나다
+        # (science 'SCIENCE' / guide 'GUIDE', 규격 5.4절 · 운영자 확정
+        # 2026-09-09).  이 스크립트는 science 유닛을 돌린다.
+        'PROJID': 'ENG', 'IMAGETYP': imgtype, 'OBSTYPE': 'SCIENCE',
         'OBJECT': 'DS%04d' % DatasetId,
         'EXPTIME': exptime,
         'LEDFLASH': ExpTimeMs if ShutOpen else 0,

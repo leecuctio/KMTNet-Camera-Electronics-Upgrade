@@ -454,7 +454,8 @@ backend      = local_lns
 lns_bind     = 0.0.0.0:8088    # 게이트웨이가 POST 할 우리 주소
 lns_path     = /uplink         # integration 에 적은 경로와 같아야 한다
 lns_token    =                 # 비우면 검사 안 함 (LAN 전용일 때)
-stale_after  = 600             # ⚠️ push 라 이 값은 장치 SEND INTERVAL 을 재는 자다
+stale_after  = 1800            # ⚠️ push 는 device_interval 을 못 배운다 -- 이 값이 영구 창이다
+                               #    (장치 SEND INTERVAL x3.  600s 전송주기 전제)
 
 [radionode.hebox]
 deveui       = ...             # ⭐ 게이트웨이 장치 목록의 DevEUI

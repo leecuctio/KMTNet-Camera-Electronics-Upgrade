@@ -58,7 +58,7 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
 | `ics_archon/archon/backend.py` 머리말 | 계약과 실기의 어긋남 3건 · 동기 접근자가 스냅샷을 읽는 이유 |
 | [README.md](README.md) "실기 첫 실행 절차" | ⭐ **science 실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
 | ⭐ [`icg_first_run.md`](icg_first_run.md) | ⭐ **guide 실기를 붙일 때 이것부터** (2026-09-03 신설) — 0~6단계 · 기록표 · 멈출 조건.  PROVISIONAL 6건이 여기서 닫힌다.  ⚠️ probe 는 **`--unit guide`** 로 부른다 |
-| ⭐ [`legacy_command_coverage.md`](legacy_command_coverage.md) | **레거시 명령 134개 전수 대조** (2026-09-06) -- 구현됨 42 · 미구현 64 · 일부러 뺐다 17 · 신설 8.  *"이 명령이 왜 없나"* 를 물을 때 여기부터.  ⛔ 다음 세션 이월 결함 셋(`HOSTS` 발신 경로 · `>NODE` · 콘솔 도움말)도 여기 |
+| ⭐ [`legacy_command_coverage.md`](legacy_command_coverage.md) | **레거시 명령 136개 전수 대조** (2026-09-06, 갱신 2026-09-12) -- 구현됨 43 · 미구현 63 · 일부러 뺐다 17 · 신설 10.  *"이 명령이 왜 없나"* 를 물을 때 여기부터.  ✅ 이 대조가 낸 결함 셋(`HOSTS` 발신 경로 · `>NODE` · 콘솔 도움말)은 **다 닫혔다**(2026-09-07) |
 | [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
 | ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다.  ⭐ **10장 = 실기 시험 결론**(`LOCK`/`FETCH`/버퍼, 2026-09-01~02) |
 | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.30 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
