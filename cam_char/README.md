@@ -20,7 +20,8 @@
 | --- | --- |
 | `KMTNet_CCD_Lab_Characterization_Plan_v1.0.md` | 실험실 특성 측정 계획 (v1.0; 검토 의견 반영 개정은 v1.1로) |
 | `KMT_CamChar_Legacy_Baseline_Report_v1.0.md` | **구형 전자부 기준선 보고서** (LEGACY-2026-06/07 캠페인) |
-| `kmt_cam_char/` | 분석 코드 — `qc.py`(legacy 스크리닝·병리 census), `core.py`(mock64 ROI 접근), `readnoise.py`, `ptc.py`(쌍 정규화+곡률 fit), `linearity.py`(2체제 램프+페데스탈), `eper.py`(serial CTE+SATURAT), `prnu.py`(+gain 시계열), `runner.py`(사이트-야간 → CSV), `report.py`(보고서 생성) |
+| `KMT_CamChar_SSO_Diagnostics_Report_v1.0.md` | **SSO 진단 5계열 적용 보고서** (2026-09-05) — 신규 모듈 실자료 검증 + SSO 심화 소견; 산출물은 `results/LEGACY-SSO-<야간>/<모듈>/` |
+| `kmt_cam_char/` | 분석 코드 — `qc.py`(legacy 스크리닝·비정상 동작 집계), `core.py`(mock64 ROI 접근), `readnoise.py`, `ptc.py`(쌍 정규화+곡률 fit), `linearity.py`(2체제 램프+페데스탈), `eper.py`(serial CTE+SATURAT), `prnu.py`(+gain 시계열), `runner.py`(사이트-야간 → CSV), `report.py`(보고서 생성) |
 | `archon/` | Archon 실험실 제어 스크립트 — **v2.0** (`archon_kmtnet_labtest_v2.py` + 캠페인 INI + 시뮬레이터/테스트, 설계: [ARCHON_LABTEST_V2.md](archon/ARCHON_LABTEST_V2.md)); v1.0 (`archon_kmtnet_labtest_v1.0.*.py`, 이력 보존) |
 | `results/` | QC census(JSON)와 amp 특성 CSV (스키마: [results/README.md](results/README.md)) |
 | (측정 FITS) | git 밖 — `raw/preproc/<site>/<night>/`(legacy)와 그 하위 `mock64/`(변환본) |
@@ -28,7 +29,7 @@
 ## 실행 (LEGACY 캠페인 재현)
 
 ```bash
-# ① legacy QC/선별 + 병리 census
+# ① legacy QC/선별 + 비정상 동작 집계
 python3 cam_char/kmt_cam_char/qc.py raw/preproc/sso/20260610 \
         cam_char/results/qc_legacy_sso_20260610.json
 # ② 선별분 mock64 변환 (전량도 무방)

@@ -169,7 +169,7 @@ def main(results_dir: str, out_md: str) -> int:
         d = [abs(g2[k] - g1[k]) / g1[k] * 100 for k in g1 if k in g2]
         L.append(f"| {s} | {np.median(d):.2f} / {np.max(d):.2f} |")
     L.append("")
-    L.append("## 5. 병리 census (legacy 기준선의 핵심 소견)")
+    L.append("## 5. 비정상 동작 집계 (legacy 기준선의 핵심 소견)")
     L.append("")
     for (site, night), q in sorted(qc.items()):
         fl = q.get("flooding_amps", {})
@@ -181,7 +181,7 @@ def main(results_dir: str, out_md: str) -> int:
     L.append("")
     L.append("SAAO의 일부 앰프는 50k 신호에서 overscan이 **~1,500 ADU(3%)** 이동하는")
     L.append("심각한 침수를 보인다 — 전처리 파이프라인의 overscan 오염 가드(>100 ADU)가")
-    L.append("발동하는 수준이며, CEU 전자부에서 이 병리의 소멸 여부가 신구 비교의")
+    L.append("발동하는 수준이며, CEU 전자부에서 이 비정상 동작의 소멸 여부가 신구 비교의")
     L.append("핵심 판정 항목이다 (실험실 계획서 §23).")
     L.append("")
     L.append("## 6. Placeholder 반영")
