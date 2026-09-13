@@ -1509,7 +1509,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 
 
-### ⭐⭐ 2026-09-11 마감 (32. DevNote 11.79) — **이것이 최신 · 새 세션은 여기부터**
+### 2026-09-11 마감 (32. DevNote 11.79) — ⚠️ **낡았다.  최신은 아래 「2026-09-13 마감」**
 
 세션 *"32. ICS 검토+개선+시험"*.  두 덩이다 — **돔 방위 redis** 와 **영문화 잔여**.
 
@@ -1625,7 +1625,11 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
   자리라 **조용히 지나가지 않는다**(이번에도 실제로 그렇게 걸렸다).
 - 시험 **`ics_sim` 425 · `ics_archon` 716** 전수 통과.
 
-##### ⛔ 묶음 A — 머지 **전**에 털 것 (규격 판올림과 무관하다)
+##### ✅ 묶음 A — **끝났다** (2026-09-12 커밋 `cbffe40`·`0dc3f8c` 계열)
+
+> 아래 표는 그때의 작업 목록이다.  기록으로 남긴다.
+
+##### ~~⛔ 묶음 A — 머지 전에 털 것~~
 
 이걸 먼저 하면 머지 뒤 빨간 것이 **순수하게 v1.13 탓**이 된다.
 
@@ -1637,7 +1641,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | **D10** ⚪ | `acf/README.md` · `icg_archon/config.py` · 이 문서 · `[ics] gauge_reenable_after` → **`[archon] gauge_reenable_after`** (실물이 그렇다 — ini 에 `[ics]` 절이 없다).  ⛔ `DevNote.md` 의 같은 오기는 날짜 붙은 회고라 그대로 |
 | **D14** ⚪ | `legacy_command_coverage.md` · 신설 명령이 `(8)` 로 남아 있다 → **`(10)`**, 표에 `OBSTYPE`·`TRIGOUT` 두 행 추가, 집계 `134`→`136` · 짝으로 이 문서의 같은 수.  ⛔ *"현행 구현 66"* 은 셈법을 재현 못 했으니 건드리지 말 것 |
 
-##### ⛔ 묶음 B — `main` 합류 (`--no-ff`)
+##### ✅ 묶음 B — **끝났다** (DECISION_LOG 충돌 3 hunk + 조용히 접히던 두 줄까지 해소)
+
+##### ~~⛔ 묶음 B — `main` 합류~~
 
 ⭐ **충돌 파일은 `project_management/governance/DECISION_LOG.md` 하나뿐**이다 (`git merge-tree` 로
 미리 재 본 결과).  해소할 hunk 셋:
@@ -1652,7 +1658,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 ⏳ 둘(*"`DAZERR` 가 아직 `ICS calculation`"* · *"`TCS relay` 를 뺄지"*)은 v1.13 이 이미 끝낸
 일이다.  같은 커밋에서 ✅ 로 바꾼다.
 
-##### ⭐⭐ 묶음 C — 견본 v1.13 바이트 추종 (**B 와 붙여서 간다**)
+##### ✅ 묶음 C — **끝났다** (견본 v1.13 추종 넷 R1~R4)
+
+##### ~~⭐⭐ 묶음 C — 견본 v1.13 바이트 추종~~
 
 ⚠️ **B 직후 C 를 커밋하지 않으면 그 사이 브랜치는 전수 시험이 빨간 채다.**  나누는 이유는
 *"머지가 가져온 것"* 과 *"우리가 추종한 것"* 을 first-parent 한 줄에서 갈라 읽으려는 것이고,
@@ -1668,7 +1676,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ⚠️ **C 안에서 `sync_vendor.py` 를 두 번 돌린다** — R1(rawcards) 뒤 한 번, R3(rawhdr) 뒤 한 번.
 
-##### ⚪ 묶음 D — 코드 문면 추종 · 묶음 E — 문서 라운드
+##### ⏳ 묶음 D — 코드 문면 추종 · 묶음 E — 문서 라운드 (**아직 안 했다 — 그대로 유효**)
 
 머지해도 안 빨개지고 규격을 어기지도 않는다.  다만 **다음 사람이 끝난 일을 다시 하거나 닫힌
 물음을 열린 것으로 읽게** 만드는 자리들이다.
@@ -1709,7 +1717,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
    `exposure armed: … bufs 9/8/7` 이 매 GO 마다 남아 다음에 깨질 때 자동으로 잡힌다.
 4. **Alive 되감김이 재시작인가 wrap 인가** — ⭐ 새 코드 불필요(`hk.py` 가 HK CSV 에 `alive` 를
    매 바퀴 적는다).  ⛔ 표본이 둘이라 아직 단정하지 않는다(둘 다 `88` 착지 = 재시작 쪽 증거).
-5. **FW `1.0.1271` 재실측** (2026-09-12 신설) — 2026-09-11 초기화 시험으로
+5. **FW `1.0.1271` 재실측** (2026-09-12 신설 — ⏳ 그대로 유효) — 2026-09-11 초기화 시험으로
    **관측소 상자가 `1.0.1261` -> `1.0.1271`** 로 올랐다.  `archon_lock_fetch_
    report.md` 의 값(독출 368.0 행/초 · 12.77 s · `LOCK` 반영)이 그 판에서도
    서는지 `tools/ics_archon_buftest.py` 로 다시 잰다.  ⭐ 운영자는 *"디버깅만
@@ -4694,3 +4702,369 @@ Notes(2014-10-30), 쪽수는 매뉴얼 기준.
 | 백엔드 계약 | `../ics_sim/ics_sim/hardware/base.py` (D-012) |
 | L0 MEF ICD · converter | `../mef_fits_spec/` · `../mef_converter/` |
 | 결정 기록 | [`../project_management/governance/DECISION_LOG.md`](../project_management/governance/DECISION_LOG.md) |
+
+
+---
+
+### 2026-09-13 마감 (33. ACF 규약 · 셔터 닫힘 대기 · 타이밍 스크립트 검토) — ⚠️ **낡았다.  최신은 아래 「34. TG 타이밍」**
+
+세션 *"33"*.  ACF 파라미터 규약을 세우고, `apply_acf` 눈금을 걷고, 셔터 닫힘 대기를
+넣었다.  그리고 **타이밍 스크립트 검토**가 진행 중인 채로 끝났다.
+
+#### ✅ 커밋됨 — `982ebe5` (원격 대비 **ahead 2**, ⚠️ 푸시 안 함)
+
+| 묶음 | 무엇 |
+|---|---|
+| **ACF 판올림** | science `R2611→R2612`(8장) · guide `R2619→R2620`(4장).  `Exposures` 를 **맨 마지막 슬롯**으로(`ContinuousExposures` 와 맞바꿈, 파일당 두 줄).  구판은 `acf/archive/`.  발췌 txt 도 이름에 판 번호가 붙는다(`acf_timing_script_science_R2612.txt`) |
+| **KMTNet ACF 규약** | 파라미터를 **이름으로** 찾는다(ini 슬롯 눈금 여섯 제거) · `Exposures` 가 맨 마지막이 아니면 노출 준비에서 멈춘다 · 순서는 **슬롯 번호** 순으로 읽는다 |
+| **`apply_acf` 제거** | ACF 는 늘 적용 · `acf_mk`/`acf_nt` 필수(기동 검사에서 멈춤, 문면에 작업 디렉터리) · 죽은 `verify_config_lines()` 삭제 |
+| **셔터 닫힘 대기** | `[archon] shutter_close_ms` 신설 — ACF 의 `NoIntMS` 하한 |
+| 그 밖 | 사이트별 관측일 로그 · `C1TRIGOUT`/`C2TRIGOUT` · AUX 셔터 경로 제거 · `TRIGOUTLEVEL` 결함 수정 · ini 전반 정비 |
+
+시험 **`ics_sim` 431 · `ics_archon` 732** 전수 통과.  경위는 **DevNote 11.31 정정 · 11.81 · 11.82 · 11.83**.
+
+#### ⏳ 미커밋 — 작업 트리에 남아 있다
+
+- **`shutter_close_ms` 를 5200 으로** (운영자 지시).  `ics_archon.ini` + `README.md` 두 파일.
+  ⛔ **전수 시험을 안 돌렸다** — 커밋 전에 돌릴 것.
+  ⚠️ 5200 이면 **현행 ACF 열둘이 전부 `NoIntMS=500` 이라 기동마다 경고가 뜨고** 호스트가
+  5200 으로 올려 쓴다.  그것이 설계한 동작이고 *"ACF 를 고쳐라"* 는 신호다 — 다음 ACF
+  판올림에서 `NoIntMS=5200` 으로 올릴 것.  ⚠️ **프레임 주기가 +4.7 s** 늘어난다(BIAS·DARK 포함).
+
+#### ✅ 끝났다 — **타이밍 스크립트 검증 워크플로** (결과는 **DevNote 11.84**)
+
+⭐ **확정안이 나왔다.**  판정·수정 후 스크립트 전문·판 번호 계획·호스트 영향·실측 항목이
+**DevNote 11.84** 에 있다.  ⛔ **거기부터 읽을 것** — 아래 네 제안 중 **둘이 뒤집혔다.**
+
+| 제안 | 판정 |
+|---|---|
+| science 13행 `X;` → `RGHIGH;` (+ 56행 동반) | ⭐ **채택** — science **R2613** |
+| guide 119행 `DGLOW;` → `DGHIGH;` | ⭐ **채택** — guide **R2621** (단독 판) |
+| guide `FRAME6` DG → keep | ⏳ **실측 뒤** — **R2622** |
+| guide `IMAGE6` 손대기 | ⛔ **기각** — 매 행 덤프 게이트 **자물쇠**다.  바꾸면 본 독출 1033행이 열린 게이트 위를 지난다 |
+| `FlushFrame:` → `RETURN` 서브루틴 | ⏳ **조건부** — 마지막 줄이 **`RESET; RETURN`** 이어야 하고 `acftiming._SHAPE:171` 을 같은 커밋에서 고쳐야 한다 |
+| `EveryFlush` 신설 | ⛔ **기각(보류)** — 관측 요구가 없고, `acftiming` 이 증가를 안 세서 **`DATE-OBS` 가 조용히 틀린다** |
+
+⛔ **벤치 절차의 실제 결함을 하나 고쳤다** — `icg_first_run.md` 부록 **변형 D** 가
+*"`FRAME6`/`IMAGE6` 둘 다 `DG_HIGH`"* 라고 적혀 있었다.  그대로 하면 **재려던 영상이 비는
+자기모순**이라 벤치 한 세션을 버린다.  `FRAME6` 에만 · `,1,1`(keep) 로 정정했다.
+
+⚠️ **잠복 결함 하나** — guide 는 `PreSkipLines>0` 이면 **지금도** 본 독출 첫 행이 DG=12 V 로
+시작한다.  현행 `PreSkipLines=0` 이라 안 터진다.
+
+##### (원본 기록 — 워크플로)
+
+    Run ID : wf_55fb234d-64f
+    기록   : ~/.claude/projects/C--DATA-CLOC-CEU/3d51e3f7-af9e-46f9-a831-e5ad6c029cfe/
+             subagents/workflows/wf_55fb234d-64f/
+             (journal.jsonl · agent-*.jsonl)
+
+**조사 4갈래**(CCD47-20 데이터시트 · CCD290-99 데이터시트 · ACF 상태 실측 · 호스트 영향)
+→ **제안 4건 적대적 검증** → 종합.  ⭐ 새 세션은 **`journal.jsonl` 을 먼저 읽어** 결과를
+거둘 것.  안 끝났으면 같은 script 로 다시 돌릴 수 있다(`scriptPath` + `resumeFromRunId`,
+끝난 agent 는 캐시에서 온다).
+
+**검증 대상 네 제안:**
+
+| | 대상 | 내용 |
+|---|---|---|
+| ① | science 13행 | `X; CALL HorizontalSWShift(1200)` → **`RGHIGH;`** (RG 를 열고 레지스터를 비운다) |
+| ② | guide 119행 | `DGLOW; CALL HorizontalShift(600)` → **`DGHIGH;`** (덤프 드레인으로 버린다) |
+| ③ | guide `IMAGE6`/`FRAME6` | DG 를 `A_LOW` 로 set 하는 것이 STA 실수인가 의도인가 |
+| ④ | 구조 개정 | `FlushFrame:` 을 **`RETURN` 서브루틴**으로 + `EveryFlush` 신설 |
+
+#### ⭐ 이 세션에서 **기계로 확정한 사실** (추론 아님 — 흔들리지 않는다)
+
+⭐ 도구를 **저장소에 넣어 두었다**: [`tools/trace_clock_states.py`](tools/trace_clock_states.py).
+ACF 의 `STATEn\MODm` 에서 `level,slew,keep` 을 읽어(keep=0 만 set) 경로를 따라가며 각 줄에서
+채널이 실제로 무엇인지 **계산한다** — 손추론이 안 끼어든다.
+
+    python tools/trace_clock_states.py acf/<파일>.acf RG,DG FlushFrame
+    python tools/trace_clock_states.py acf/<파일>.acf RG,SW Continuous
+
+⛔ **`CALL Sub(Param)` 은 파라미터가 0 이면 호출 자체가 안 된다**(매뉴얼 p.52) — 도구가
+`[건너뜀]` 으로 표시한다.  처음 만들 때 이걸 빼먹어 `PreSkipLines=0` 자리에서 **돌지도 않는
+서브루틴의 효과**를 계산했다.  같은 실수를 하지 말 것.
+⚠️ 라벨은 **진입 상태를 모르므로** 경로를 지정해 부른다(위 예의 `FlushFrame`/`Continuous`).
+
+**guide** (RG=MOD4 ch4 · DG=MOD4 ch6):
+
+| 상태 | RG | DG |
+|---|---|---|
+| `RESET` | **SET HIGH** | **SET LOW** |
+| `RGHIGH` | SET HIGH | keep |
+| `DGHIGH` | keep | **SET HIGH** |
+| `DGLOW` | **SET HIGH** | SET LOW |
+| `FRAME6`·`IMAGE6` | keep | **SET A_LOW** |
+
+⛔ **`DGLOW` 는 이름과 달리 RG 도 올린다** (R2614 가 넣었다) — 밟기 쉬운 함정.
+그래서 정상 독출 14행의 `DGLOW` 는 **RG 를 올리는 것이 본뜻**이고(그 자리에서 RG 는 LOW),
+flush 119행의 `DGLOW` 는 **완전한 no-op** 이다(`Start:` 의 `RESET` 이 이미 RG 를 올렸고
+`FRAME6` 이 DG 를 내렸다).
+
+**science** (RG=MOD3·MOD11 ch4 · SW=ch5):
+
+| 상태 | RG | SW |
+|---|---|---|
+| `RESET` | **SET HIGH** | SET HIGH |
+| `RGHIGH`/`RGLOW` | SET HIGH/LOW | keep |
+| `IMAGE1~8` | keep | keep |
+| `SWHIGH`/`SWLOW` | keep | SET |
+
+⛔ **science ACF 에는 DG 채널도 `DGHIGH`/`DGLOW` 상태도 0건이다** — 덤프 게이트가 없다.
+그래서 버리는 통로가 **리셋 드레인**뿐이고, `SkipLine` 은 앞 줄 `RGHIGH` 로 그걸 연다.
+⚠️ **정상 독출 13행에는 그 `RGHIGH` 가 없다** — `SmallIntUnit` 이 `RGLOW` 로 끝나 RG 가 LOW 다.
+그것이 제안 ①이다.
+
+**`HorizontalShift` ↔ `HorizontalSWShift`**: 3상 직렬 클록은 같고 **SW 토글 두 줄**만 다르다.
+전자는 SW 에 **모은다**(수평 비닝용, `HorizontalBinning`), 후자는 매 픽셀 **내보낸다**(버릴 때 쓴다).
+⭐ `HorizontalBinning` 파라미터는 **science 에만 있다** — guide 는 수평 비닝을 안 한다.
+
+#### ⏳ 다음 세션이 할 것 (권장 순서)
+
+1. **타이밍 스크립트 판올림** — 확정안은 **DevNote 11.84** 에 다 있다(수확 끝).
+   ⏳ 먼저 정할 것 셋: ① science R2613 번호가 guide 계열 R2613 과 겹치는 문제
+   ② R2621 을 실측 앞/뒤 어디에 둘지 ③ `FlushFrame:` `RESET; FirstFlush--` 선택 항목.
+   ⛔ 클록 파형 변경은 **한 판씩 갈라** 굽는 것이 이 저장소의 전례다(R2614/R2615 가 그랬다).
+2. **`shutter_close_ms` 5200 커밋** — 전수 시험 먼저.
+3. **ini 시뮬 전용 키 정리** (분석은 끝났다 — 아래 목록 그대로 쓰면 된다).
+4. **인수인계 묶음 D·E** (문서 라운드) — 앞 절에 목록이 그대로 있다.
+5. science **타이밍 계산 모듈** · **`CxHKDATA` 배선** (오래된 이월).
+
+##### 3번의 분석 결과 — **다시 조사하지 말 것**
+
+운영자 지시: *"sim 전용 파라미터는 `ics_archon.ini` 에서 없애고 `ics_sim.ini` 에만 남겨라.
+같은 의미의 키는 이름을 통일하라."*
+
+**시뮬 전용 (→ `ics_archon.ini` 에서 제거해도 안전):**
+
+| 절 | 키 | 근거 |
+|---|---|---|
+| `[paths]` | `write_fits` · `fits_shape` | archon 백엔드는 *"항상 실파일을 쓴다"* (`backend.py:132`).  ⚠️ 지금 `write_fits=true` 라 기동에서 *"시뮬 전용 눈금이 바뀌어 있다"* 경고가 뜬다 |
+| `[timing]` | `initialize_ack` · `erase_sec` · `shutter_open_delay` | `ics_sim/hardware/sim.py` 에서만 쓴다 |
+| `[readout]` | `pctread_start` · `pctread_step` · `pctread_tick` | 진행률은 컨트롤러 `FRAME` 에서 온다 (`config.py:1184` 의 죽은 눈금 감지기가 이미 이 셋을 본다) |
+
+**공유 (archon 도 쓴다 — 지우면 안 된다):** `time_scale` · `go_to_initializing` ·
+`aux_relay_gap` · `tcs_relay_gap` · `aux_requery_after_shopen` · `countdown_tick_dark` ·
+`countdown_tick_shop` · `acq_to_idle` · `ccd_skew_order` · `tc_query_timeout` ·
+`tc_timeout_mode` · `pctread_final` · `acq_skew_warn`
+
+⛔ **`shutter_to_readout` 이 까다롭다 — 시뮬 전용이 아니다.**
+`ics_sim/sequencer.py:423` 에 있고 **`ics_archon` 은 시퀀서를 덮지 않으므로 실기도 그 6초를 잔다.**
+그냥 지우면 코드 기본값 6.00 으로 **조용히 그대로 잔다.**
+⭐ 그리고 그것은 `shutter_close_ms` 와 **같은 물리량**이다(블레이드 주행 ~5초).
+실기에서는 컨트롤러가 `NoIntMS` 로 이미 기다리므로 **호스트가 또 자는 것은 중복**이다.
+
+> **제안**: 시퀀서가 `getattr(self.backend, 'waits_for_shutter_close', False)` 를 보고
+> 자지 않게 하고, `ArchonBackend` 에 그 속성을 `True` 로 둔다.  그러면
+> `shutter_to_readout` 이 **진짜 시뮬 전용**이 되어 `ics_archon.ini` 에서 뺄 수 있고,
+> `ics_sim.ini` 쪽 이름을 `shutter_close_ms`(ms)로 통일할 수 있다.
+> ⚠️ **실기 거동 변경**이다(셔터 노출마다 호스트 6초 지연이 사라진다) — 운영자 확인 필요.
+
+#### ⚠️ 이 세션에서 얻은 함정 (되풀이하지 말 것)
+
+- ⛔ **`DGLOW` 는 RG 도 올린다** (위 표).  이름만 보고 판단하면 틀린다.
+- ⛔ **없는 증상은 반증이 아니다.**  *"`Exposures`·`IntMS` 사이가 100 ms 인데 노출시간이
+  안 밀리니 `LOADPARAMS` 가 원자적"* 이라고 결론 내렸다가 되돌렸다 — 그 100 ms 가
+  *"parameter list 순서 = 파일 줄 순서"* 라는 **미검증 가정** 위였다 (DevNote 11.31).
+- ⛔ **조각을 읽으며 결론을 내지 말 것.**  ACF 상태·경로는 **파싱해서 계산**한다.
+  이 세션에서 같은 자리를 세 번 다르게 말했고, 운영자가 신뢰성 문제로 지적했다.
+- ⭐ **전수 시험은 돌리기 전에 물어본다** (`ics_sim` 4분 15초 · `ics_archon` 7분 20초).
+
+
+---
+
+### 2026-09-13 마감 (34. TG 타이밍 · `tdtr` · BIAS/DARK 셔터) — ⚠️ **최신은 아래 35 다**
+
+세션 *"34"*.  33 이 남긴 타이밍 스크립트 워크플로를 거둬 확정안까지 갔고, 그 과정에서
+**전송 게이트(TG) 타이밍**과 **`tdtr` 규격 미달**, 그리고 **BIAS/DARK 셔터 결함**이 나왔다.
+경위는 **DevNote 11.85** 가 정본이다 (11.84 는 같은 날 다른 세션 것 -- 겹치지 않는다).
+
+#### ⏳ 미커밋 -- 작업 트리에 있는 것 전부
+
+| 무엇 | 누가 |
+|---|---|
+| `ics_archon.ini` · `README.md` -- `shutter_close_ms` 를 5200 으로 | 세션 33 |
+| `tools/trace_clock_states.py` (untracked) | 세션 33 |
+| `DevNote.md` 11.84 · `icg_first_run.md` 부록 D 정정 · `SMC_CLAUDE.md` 일부 | **다른 세션** (13:37~38) |
+| `DevNote.md` **11.85** · 11.84-(6) 에 판 번호 밀림 알림 | 세션 34 |
+| `ics_archon/archon/{controller,backend}.py` -- BIAS/DARK 셔터 재설계 | 세션 34 |
+| `tests/test_{backend,failures,ini_cards,vendor}.py` -- 붙박이 ACF + 옛 설계 단언 | 세션 34 |
+| `acf/bench/` (untracked) -- 사다리 40장 + README | 세션 34 |
+
+⛔ **전수 시험 732 passed** (변경 전과 같은 건수).  ⛔ **커밋 안 했다** -- 범위를 목이 정해야
+한다 (다른 세션 변경이 섞여 있다).
+
+#### ⭐ 이 세션에서 기계로 확정한 것 (추론 아님)
+
+1. **TG 구동이 벤더 문면과 어긋나 있다** -- 네 모서리 중 셋.  `TGA=IØ4`(=`A4`) ·
+   `TGD=IØ1`(=`D1`) 인데 현행은 TGA↓가 `IMAGE5`(→`IMAGE6`), TGD↑가 `IMAGE1`(→`IMAGE3`),
+   TGD↓가 `IMAGE7`(→**`IMAGE8`**).  근거 셋이 독립으로 선다(p.14 표 · p.8 전극 배치 ·
+   p.8 폴리 층 색).  ⛔ **전하 손실 기전은 못 찾았다** -- "결함 수정" 이 아니라 **규격 적합 +
+   TG 폭 뱅크 대칭**(80/120 → 100/100 µs)이다.
+2. **`tdtr` 이 오늘 이미 미달** -- 20.03 µs vs min 30.  TG 판과 무관하고, `CLAMP` 에서
+   60 µs 를 빌려 오면 **공짜로** typ 80 까지 간다(사다리 `T4`).
+3. **비트0 = 셔터 트리거** -- `STATEn\CONTROL` 을 전수로 풀어 확인.  `INT` 가 올리고
+   `NOINT` 가 내리며 나머지 22개는 전부 유지.  ⇒ DARK 를 `NoIntMS` 로 재면 **스크립트가
+   스스로 셔터를 닫은 채** 돈다.
+4. **CDS 표집점의 0 점은 `PCLK`** (Archon 매뉴얼 p.69).  그 기준으로 **guide 는 맞고
+   science 는 안 맞는다** -- ADM 지연 22~24틱을 가정해야 맞는데 그 값이 문서에 없다.
+5. **SW 의 상류 이웃은 `RØ2`** (SW 가 `RØ3` 자리를 대신한다).  *"SW 를 S3 보다 먼저 내려
+   민다"* 류의 논증은 성립하지 않는다.
+6. **A/D 하네스 맞바꿈은 불능**(전하가 칩 가운데로 모인다), **커넥터 180° 바꿔 꽂기도 불능**
+   (레지스터 위상 1·2 가 두 커넥터에서 뒤바뀌어 있다).  ⭐ **칩을 돌리는 것 자체는 되고
+   우리 K·N 조는 이미 돌려 꽂고 있다.**
+
+#### ⏳ 다음 세션이 할 것 (권장 순서)
+
+1. ⭐ **커밋 범위를 정하고 커밋** -- 코드+시험을 따로 갈지 문서까지 묶을지.
+2. ⭐⭐ **raw 파형 한 번 뜨기** -- science ACF 에 `RAWENABLE=1` 이 **이미 켜져 있다**.
+   한 번이면 ① ADM CDS 지연 ② SW 배출창 120 ns 충분성 ③ SW↑ 과도 셋이 동시에 닫힌다.
+   ⛔ **P5 보다 이것이 먼저다.**  science 의 `SHP/SHD` 가 틀렸을 수 있다.
+3. **기준선 촬영** -- ⛔ 저장소에 **한 건도 없다**.  BIAS·고이득 암흑·평평장 3준위를
+   16 출력 각각, A 뱅크(OS1~8) 대 D 뱅크(OS9~16)로 갈라서.  ⚠️ 지난번 기존 스크립트로
+   찍어 둔 영상이 있으면 그것이 `T0` 자리를 대신한다(같은 조건이어야 한다).
+4. **사다리 재기** -- `acf/bench/README.md` 의 판정표 그대로.
+5. **BIAS/DARK 셔터 벤치 확인** -- 밝은 데서 DARK 를 찍어 빛이 안 새는지 · 주기가
+   `shutter_close_ms` 만큼 짧아졌는지.
+6. `tools/trace_clock_states.py` **8번 채널 결함 고치기** (DevNote 11.85-(8)).
+7. **P4 ①** -- guide `IMAGE6`/`FRAME6` 의 `A_LOW` → `DG_LOW` (전압 불변, 함정 제거).
+8. 오래된 이월: science **타이밍 계산 모듈** · **`CxHKDATA` 배선** · 인수인계 묶음 D·E.
+
+#### ⚠️ 이 세션에서 얻은 함정
+
+- ⛔ **`tools/trace_clock_states.py` 의 8번 채널이 안 보인다** -- 정규식이 닫는 따옴표를 먹어
+  `keep` 이 `0"` 로 읽힌다.  science 의 `D4`·`CLAMP` 가 사라진다.  ⚠️ 이 세션에서 같은
+  정규식으로 *"D4 는 클록 안 된다"* 고 **잘못 읽었다가** 따옴표를 벗기고 바로잡았다.
+- ⛔ **화소 주기는 200틱이다** -- `PixelFirst:` 만 세면 199 가 나오는데 그건 첫 화소의
+  몸체다.  `RETURN Pixel` 이 `Pixel:` 로 돌아가고 그 `RGHIGH` 한 틱이 200 을 만든다
+  (`acftiming.py:219 _PIXEL = _PIXEL_FIRST + 1`).  199 로 세면 한 행·독출·`Trr` 이
+  같이 틀리고 **`MIN_FRAME_PERIOD=13.27` 이 틀린 것처럼 보인다** (DevNote 11.85-(10)).
+- ⛔ **p.17 규격표는 `pdftotext` 로 뽑으면 Maximum 열이 한 줄 밀린다.**  `tdrt` 의 max 가
+  `0.3·toi` 로 보이는 것은 `tri`/`tfi` 의 값이다 -- **반드시 페이지 이미지로 읽을 것.**
+- ⛔ **`Ti` 는 `VerticalShift` 가 아니다** -- note 14 로 `tdrt + 3·toi + tdtr` 이라 레지스터가
+  멎은 순간부터 다시 도는 순간까지다(260.25 µs, `VerticalShift` 만 세면 160.09 로 틀린다).
+- ⛔ **시험 거르개 `'IntMS=' in t` 는 `NoIntMS=` 도 집는다.**  둘을 함께 쓰게 되면서 드러났다.
+- ⛔ **긴 마크다운·파이썬을 bash heredoc 으로 넘기면 인용부 파싱이 깨진다.**  `Write` 로
+  파일에 쓰고 `python` 으로 붙일 것 (이 세션에서 두 번 걸렸다).
+- ⚠️ **두 세션이 같은 작업 트리를 동시에 썼다** (13:37 에 `DevNote.md` 가 내 밖에서 바뀌었다).
+  `git diff --stat` 을 **작업 시작과 커밋 직전에 둘 다** 볼 것.
+- ⭐ **전수 시험은 돌리기 전에 물어본다** (`ics_archon` 7분 20초).
+
+---
+
+### ⭐⭐ 2026-09-14 마감 (35. 신호사슬 · 클램프 결정 · `MIN_FRAME_PERIOD`) — **이것이 최신 · 새 세션은 여기부터**
+
+세션 *"35"* = 34 의 이어짐(같은 세션이 자정을 넘겼다).  34 가 남긴 것을 마무리하고,
+운영자 물음(*"`CLAMP_A/B` 로 이득을 2.0 e-/DN 으로 맞출 수 있나"*)에서 **신호사슬 전수
+조사**로 번졌다.  경위는 **DevNote 11.86** 이 정본이고, 11.85-(6)·(7)을 정정했다.
+
+#### ⭐ 운영자가 내린 결정 넷 (되돌리려면 이 줄을 먼저 읽을 것)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| 1 | `MIN_FRAME_PERIOD` 13.27 -> **12.78** · `[archon] fetch_timeout` 12 -> **11** | 셔터 재설계로 BIAS 의 `NoIntMS` 가 0 이 되어 바닥이 독출 시간 그 자체가 됐다 |
+| 2 | 클램프는 **`CLAMP; X(10000)` 고정**.  `ClampTicks` 파라미터 **안 만든다** | *"줄여서 얻는 이득이 0.28초라면 그냥 X(10000)으로 하자"* |
+| 3 | **T4 는 버리지 않고 클램프 대조군으로** (`X(5999)`->`X(6000)`) | T3 과 `CLAMP` 세 줄만 다르게 만들어 통제 실험으로 |
+| 4 | 판 번호 **`R2613A`/`R2613B` 개명 기각** | `A`/`B` 가 이미 CCD 구역을 뜻하고, 과거 판이 현장·헤더에 박혀 있다 |
+
+#### ⏳ 미커밋 — 작업 트리에 있는 것 전부
+
+| 무엇 | 누가 |
+|---|---|
+| `ics_archon.ini` · `README.md` — `shutter_close_ms` 5200 | 세션 33 |
+| `tools/trace_clock_states.py` (untracked) | 세션 33 |
+| `DevNote.md` 11.84 · `icg_first_run.md` 부록 D · `SMC_CLAUDE.md` 일부 | **다른 세션** (09-13 13:37) |
+| `DevNote.md` **11.85**·**11.86** · 11.85-(6)(7) 정정 | 세션 34·35 |
+| `ics_archon/archon/{controller,backend}.py` — BIAS/DARK 셔터 재설계 | 세션 34 |
+| `ics_archon/config.py` · `ics_archon.ini` · `README.md` · `bench_test_plan.md` — `MIN_FRAME_PERIOD` 12.78 · `fetch_timeout` 11 | 세션 35 |
+| `tests/test_{backend,failures,ini_cards,vendor,ccdflush,ch10_reflection,icg_*}.py` | 세션 34·35 |
+| `acf/KMT?_GUI_*_R2621.acf` 4장 + 발췌 txt (구판 `archive/`) | 세션 34 |
+| `acf/KMT?_GUI_*_R2622.acf` 4장 + 발췌 txt — **P3**(`FlushFrame:` 119행 `DGHIGH`) | 세션 35 |
+| `acf/README.md` R2622 절 · 낡은 예약번호 R2621 -> R2624 정정 | 세션 35 |
+| `acf/bench/` (untracked) — 사다리 40장 + README | 세션 34·35 |
+
+⛔ **전수 시험을 안 돌렸다** (운영자 지시 — *"16은 아직 하지 말고"*).  마지막 통과는
+**732 passed**(세션 34, 셔터 재설계 + guide R2621 까지).  그 뒤 델타는
+**`MIN_FRAME_PERIOD` 12.78 · `fetch_timeout` 11 · 문서 · `acf/bench/`** 다.
+⭐ `tests/test_ch10_reflection.py:76` 이 그 상수를 단언하므로 **전수를 돌리면 바로 갈린다.**
+
+#### ⭐ 이 세션에서 기계로 확정한 것
+
+1. ⭐⭐ **"CLAMP" 라는 이름이 셋이고 전부 다른 층이다.**
+   `CLAMP-A/B`(선 이름, DN 무관) · `CLAMP_HIGH/LOW`(스위치 **논리준위** 5/0 V, DN 무관) ·
+   **`CLAMP_P/N`**(`MOD4` LVXBIAS 의 **아날로그 기준전압** +0.4/0 V, **오프셋을 정한다**).
+   ⇒ ADC 의 `CLAMP1~4` 에 해당하는 것은 **`CLAMP_P/N`** 이다.
+2. ⭐ **science 에는 이득 눈금이 없다.**  ADM(TYPE 17) 설정키 **0 개** — 근거 셋 중 가장 센
+   것은 **벤더 GUI 소스**(`class ADM` 의 `createUI/parseUI/setClocks` 가 빈 몸통,
+   `usesClocks()` 가 `false`).  이득은 월보드 `R31`(499 Ω) 하나뿐이다.
+3. ⭐⭐ **`Z_CCD` = 400 Ω** (CCD290-99 데이터시트 **p.9**) -> `tau` = 45.4 µs.
+   ⇒ `X(10000)`=100 µs 는 **2.20tau = 89.0%** · `X(4000)`=40 µs 는 **0.88tau = 58.6%**.
+   ⚠️ **100 µs 도 넉넉하지 않다** — `X(20000)`(200 µs, 98.8%, +0.47 s)이 후보다.
+4. **월보드 5쪽(THS3095)은 비디오가 아니라 RG·SW 클록 구동단**이다(×8).
+   `CONSTANT0` 의 주석이 같은 말을 한다 — ⇒ `RG` 실제 6.4/−3.2 V · `SW` ±5.6 V.
+5. **신규 CEU 체인의 실측 이득이 저장소에 0 건**이다.  `cam_char/results/` 의 특성표 6장이
+   전부 `CAMPAIGN=LEGACY-*`(SSO 1.665·1.666 · SAAO 1.671·1.677 · CTIO 1.876·1.877 e⁻/ADU).
+   공칭 **2.436 e⁻/DN 은 계산값**이다.
+6. ⚠️ **바이어스 둘이 데이터시트 권장 밖**이다 — `OG=−4 V`(권장 +1/+2/+5) ·
+   `RD=12 V`(권장 16/17/19).  절대최대 안이지만 **STA0284 개체 시험성적서**를 봐야 판정된다.
+   ⏳ **그 문서가 우리 손에 있는지 확인할 것.**
+7. **사다리 T1~T4 에 TG 교정·P2 가 다 들어가 있다** (ACF 에서 `keep` 모사로 검산 —
+   TGA `1^6v` · TGD `3^8v` 가 목표와 정확히 일치).
+
+#### ⏳ 다음 세션이 할 것 (권장 순서)
+
+1. ⭐ **전수 시험**(7분 20초) — 운영자가 보류시켰다.  커밋 전에 돌릴 것.
+   ⚠️ **guide R2622 가 그 뒤에 구워졌다** — `LINES` 는 122 그대로지만
+   `acftiming` 의 프레임 하한(1.2506 s)이 그대로인지 시험이 판정한다.
+2. ⭐ **커밋** — 운영자가 *"다 커밋해줘"* 로 범위를 정했다(넷 다).
+3. ⭐⭐ **플랫 쌍 + 바이어스 쌍 한 번** — 이 한 번으로 **실측 이득 · 기준선 · CDS 창 30%
+   문제 · 포화 여부**가 동시에 닫힌다.  `RAWENABLE=1`·`RAWSEL=3`·`RAWSAMPLES=8192` 가 이미
+   켜져 있어 **raw 파형이 공짜로 딸려 온다**.  도구도 있다(`cam_char/kmt_cam_char/ptc.py`).
+   ⛔ **P5 보다, 그리고 저항을 사기보다 먼저다.**
+4. **사다리 재기** — T0 vs T1(TG·P2) · T2 vs T3(`tdtr` min/typ) · **T3 vs T4(클램프)**.
+   ⛔ 채택 판이 정해지면 `MIN_FRAME_PERIOD` 가 또 움직인다(T2 -> 12.82 · T3 -> 13.06).
+5. ⛔ **"각 사이트 여섯 대에 어느 판이 깔려 있나" 한 장 만들기** — **굽기의 선행조건**이다.
+   되돌릴 목표를 모르는 채로 파형을 더 얹지 않는다.  미검증 파형 델타가 이미 둘이다.
+6. **BIAS/DARK 셔터 벤치 확인** · **BIAS 연속 주기 실측**(⛔ `buftest` 로는 못 잰다 —
+   `NoIntMS` 를 안 쓰고 슬롯이 5200 으로 올라가 있어 17.98 s 가 나온다).
+7. ⭐⭐ **`EveryFlush` 판 — 사양이 확정됐다, 굽기만 하면 된다** (DevNote 11.86-(12)).
+   운영자 결정(2026-09-14): 라벨 둘 설계 · `EveryFlush` 는 **`Exposure:` 아래**(continuous
+   경로 제외) · 둘 다 1 이어도 **막지 않음** · ACF 초기값 **둘 다 0** · ini 키는 **소문자**
+   `ccdflush_first`/`ccdflush_every`.  ⇒ science `LINES` 142->**147** ·
+   `PARAMETERS` 22->**23** · `[archon] ccdflush` **제거**.
+   ⛔ **초안대로 구우면 `FirstFlush` 가 음수로 내려간다** — 고친 설계가 11.86-(12) 에 있다.
+   ⭐ 종전 `ccdflush=true` 운용은 새 설계에서 **`ccdflush_every=1`** 이다.
+8. `tools/trace_clock_states.py` **8번 채널 결함 고치기**.
+9. 오래된 이월: science 타이밍 계산 모듈 · `CxHKDATA` 배선 · 인수인계 묶음 D·E.
+
+#### ⚠️ 규범·함정 (34 의 것에 더해서)
+
+- ⭐ **판 번호는 계열별이다.**  `R2608`~`R2612` 가 guide·science **양쪽에 다 있고 그게 정상**이다.
+  글·말에서 **반드시 계열을 붙인다**(*"guide R2613"* · *"science R2613"*).  벤치에 판을
+  지시할 때는 **파일명 전체**로.  ⛔ 종전 DevNote 의 *"R2613 이 두 계열에 생긴다"* 는 문제
+  진술이 틀렸다(이미 다섯 겹).
+- ⛔ **`P1`~`P6` 은 세션 작업 이름이다.**  문서에는 판 번호뿐이라 그냥 쓰면 안 통한다.
+  대조표는 **DevNote 11.86-(8)**.
+- ⛔ **STATE 필드를 그냥 읽으면 안 된다** — 삼조가 `값,enable,keep` 이라 **바뀌는 자리에만
+  값이 있고** 나머지는 `keep=1` 로 앞 준위가 간다.  준위를 알려면 **순서대로 모사**해야 한다.
+  (이 세션에서 한 번 걸렸다.)
+- ⛔ **"자료에 없다" 를 "알 수 없다" 로 넘겨짚지 말 것.**  `Z_CCD` 를 *"회로도에 없으니
+  모른다"* 고 적었는데 **CCD 데이터시트 p.9 에 있었다**.  월보드 5쪽도 *"봐야 한다"* 고
+  미뤘는데 **볼 필요가 없는 장**이었다.  ⭐ **"어느 문서에 있을 법한가" 를 먼저 세고 나서
+  "없다" 고 말할 것.**
+- ⛔ **결정을 못 하는 것과 결정이 틀린 것을 구별할 것.**  `Z_CCD` 를 모르던 때 T4 를
+  *"철회해야 한다"* 고 말했는데 그때 옳은 말은 **"검증 안 됐다"** 였다.
+- ⛔ **값이 바뀌지 않는 측정은 하지 않는다** — `ClampTicks` 를 만들지 않은 이유다.
+
+#### ⭐ 세션 35 가 추가로 구운 것 · 미룬 것
+
+| | |
+|---|---|
+| ✅ **guide R2622** | **P3** — `FlushFrame:` 119행 `DGLOW;` -> `DGHIGH;`.  ⭐ `Continuous:` 14행은 **그대로 뒀다**(실제 독출 직전이라 열면 전하를 버린다).  발췌 txt 가 구판과 **딱 그 한 줄만** 다르다 |
+| ⏳ **P2** (science 13행 `RGHIGH`) | **별도 실측으로 결정** (운영자 2026-09-14).  사다리 `T1`~`T4` 에 이미 들어 있어 지금 구우면 `T0` 가 기준선 노릇을 못 한다 |
+| ⏳ **P5** (SW ≡ RØ3) | **그대로 두고 나중에 재검토** (운영자).  운영자 가설은 *"CTE·출력노드 안정화를 위해 의도적으로 미리 올렸다"* 이고, ACF 로 확인되는 구조적 이유는 **수평 비닝**(`HorizontalShift:` 에 SW 상태가 없다)이다 — 둘은 양립한다.  ⛔ 진짜 미결은 **배출창이 규격 1196 ns 대 현행 120 ns** 인 것 |
+| ⏳ **P6 / `EveryFlush`** | 운영자가 설계를 지시했으나 **초안에 결함**이 있다 — DevNote 11.86-(12).  결정 셋을 받고 한 판으로 |
+
+⛔ **science 판 번호는 비어 있다** — 종전 계획이 `R2613` 을 P2 로 예약했으나 P2 를 미뤘다.
+**실제로 구운 순서가 정본**이므로 다음에 무엇을 굽든 그것이 `science R2613` 이 된다.
