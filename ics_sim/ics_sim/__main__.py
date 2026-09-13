@@ -180,10 +180,15 @@ class DailyFile(logging.Handler):
     매일 갱신하여 저장.  재실행해도 전에 파일 지우지 않고 같은 날짜 뒤에
     덧붙이는 식으로."*
 
-    ⭐ **날짜는 UTC 다.**  `HKQDATE`·`DATE-OBS`·FITS 파일명(`KMTK.20260909.…`)이
-    다 UTC 이고 사이트 배너도 *"관측일 경계 UT 날짜 그대로"* 라 적는다 --
-    로그 파일만 지역시로 끊으면 **같은 관측일의 자취가 두 파일로 갈린다**.
-    ⚠️ 그래서 `setup_logging` 이 포매터의 시각도 UTC 로 맞춘다 (아래).
+    ⭐ **날짜는 사이트별 관측일이다** (운영자 2026-09-12) -- FITS 파일명
+    (`KMTA.20260821.…`)이 쓰는 바로 그 날짜다 (`rawpair.observing_date`).
+    ⚠️ **2026-09-12 까지 UTC 였다.**  그때 근거로 적혀 있던 *"FITS 파일명도
+    UTC 다"* 는 **사실이 아니었다** -- 파일명은 2026-08-13 부터 관측일이라
+    (`state.obs_date`), 관측소에서는 로그와 자료의 날짜가 이미 갈려 있었다.
+    ⭐ 관측일 경계는 **현지 12:30**(세 사이트 공통)이라 관측 중에 지나가지
+    않는다.  KASI 는 보정이 0 이라 UT 날짜 그대로다 (관측 야간이 없다).
+    ⚠️ **줄 안의 시각은 UTC 그대로다** -- 파일 **이름**만 관측일이다.
+    `setup_logging` 이 포매터의 시각을 UTC 로 맞추는 것은 그대로 둔다.
 
     ⛔ **`logging.Handler.name` 을 가리면 안 된다** -- 그 이름은 처리기 등록부의
     키다.  그래서 파일 이름의 앞머리는 `stem` 으로 든다.
@@ -197,11 +202,14 @@ class DailyFile(logging.Handler):
     """
 
     def __init__(self, directory: str, stem: str,
-                 encoding: str = 'utf-8') -> None:
+                 encoding: str = 'utf-8', site_code: str = '') -> None:
         super().__init__()
         self.directory = directory
         self.stem = stem
         self.file_encoding = encoding
+        #: 관측일 경계를 정하는 사이트 코드.  비면 UT 날짜 그대로다
+        #: (단위 시험처럼 사이트를 모르는 자리).
+        self.site_code = site_code
         self._day: str | None = None
         self._stream = None
 
@@ -225,7 +233,7 @@ class DailyFile(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:  # noqa: D102
         try:
-            day = time.strftime('%Y%m%d', time.gmtime(record.created))
+            day = self._day_for(record.created)
             if day != self._day or self._stream is None:
                 self._open(day)
             self._stream.write(self.format(record) + '\n')
@@ -233,12 +241,30 @@ class DailyFile(logging.Handler):
         except Exception:                       # noqa: BLE001
             self.handleError(record)
 
+    def _day_for(self, created: float) -> str:
+        """이 기록이 들어갈 파일의 날짜 -- **사이트별 관측일**.
+
+        ⛔ 사이트를 모르면 UT 날짜로 떨어진다.  조용한 강등이지만, 여기서
+        기동을 세우는 것은 **로그 때문에 프로그램을 못 뜨게** 하는 것이라
+        더 나쁘다 (`handleError` 규범과 같은 판단).
+        """
+        if not self.site_code:
+            return time.strftime('%Y%m%d', time.gmtime(created))
+        from datetime import datetime, timezone
+        from . import rawpair
+        when = datetime.fromtimestamp(created, timezone.utc)
+        try:
+            return rawpair.observing_date(when, self.site_code)
+        except (KeyError, ValueError):
+            return time.strftime('%Y%m%d', time.gmtime(created))
+
     def close(self) -> None:  # noqa: D102
         self.close_stream()
         super().close()
 
 
-def _log_handler(spec: str, stem: str) -> logging.Handler | None:
+def _log_handler(spec: str, stem: str,
+                 site_code: str = '') -> logging.Handler | None:
     r"""`[logging] file` 한 줄을 처리기로 옮긴다.  비면 `None`.
 
     ⭐ **`.log` 로 끝나면 그 파일 하나, 아니면 폴더**다 (운영자 2026-09-09:
@@ -253,7 +279,7 @@ def _log_handler(spec: str, stem: str) -> logging.Handler | None:
         return None
     if spec.lower().endswith('.log'):
         return logging.FileHandler(spec, encoding='utf-8')
-    return DailyFile(spec.rstrip('/\\'), stem)
+    return DailyFile(spec.rstrip('/\\'), stem, site_code=site_code)
 
 
 #: 화면 처리기와 그 필터 -- `set_verbose()` 가 민다.  ⚠️ `setup_logging()` 을
@@ -299,7 +325,14 @@ def setup_logging(cfg: config.SimConfig, name: str = 'ics') -> None:
     screen.addFilter(_SCREEN_FILTER)
     _SCREEN = screen
     handlers: list[logging.Handler] = [screen]
-    fileh = _log_handler(cfg.logging.file, name)
+    # ⭐ 파일 **이름**의 날짜를 사이트별 관측일로 끊는다 (2026-09-12).
+    # ⛔ 사이트를 못 읽으면 UT 로 떨어진다 -- 로그가 프로그램을 세우면 안 된다.
+    try:
+        from . import rawpair
+        site_code = rawpair.site_of_observatory(cfg.node.observatory)[0]
+    except Exception:                           # noqa: BLE001
+        site_code = ''
+    fileh = _log_handler(cfg.logging.file, name, site_code)
     if fileh is not None:
         handlers.append(fileh)
     logging.basicConfig(

@@ -33,8 +33,8 @@ from ics_archon.archon.monitor import TelemetryLog, TelemetryMonitor
 #: 실기 science ACF 의 바이어스 이름표 그대로 (`KMTK_SCI_113_STA0200_R2608_MK`).
 #: **16채널이 CCD 바이어스**이고, 이름표가 없는 채널은 세지 않는다.
 ACF_BIAS = """[CONFIG]
-PARAMETER1="Exposures=1"
-PARAMETER2="IntMS=0"
+PARAMETER1="IntMS=0"
+PARAMETER2="Exposures=1"
 MOD4\\LVHC_LABEL1=OG-A
 MOD4\\LVHC_LABEL2=CLAMP_N-A
 MOD4\\LVHC_LABEL3=CLAMP_P-A
@@ -271,6 +271,14 @@ class _FakeCtrl:
 
     def parse_acf(self, path: str) -> None:
         ArchonController.parse_acf(self, path)   # 같은 코드를 그대로 쓴다
+
+    def _find_param_slots(self, path: str) -> None:
+        # ⭐ `parse_acf()` 가 끝에서 부르는 짝이다 -- 진짜 코드를 쓰기로 했으면
+        #    이것도 진짜를 써야 한다 (2026-09-12).
+        # ⚠️ **여기서는 아무것도 안 멈춘다** -- 감시는 바이어스 채널 이름을
+        #    찾으려고 ACF 를 읽을 뿐이고, 노출 규약은 `_require_param_slots()`
+        #    (= `prepare()`)의 몫이다.
+        ArchonController._find_param_slots(self, path)   # noqa: SLF001
 
     async def connect(self) -> None:             # pragma: no cover
         pass
@@ -716,7 +724,7 @@ def test_every_science_acf_declares_the_same_16_bias_channels():
     ⚠️ **guide 는 18채널이고 라벨도 다르다** -- 아래 시험이 그 사실을 못박는다.
 
     ⭐ **2026-09-11 초기화 시험 반입**으로 여섯 -> **여덟**이 됐다 --
-    `KMTK_SCI_112_STA0212_R2611_MK/NT`(KASI 둘째 상자).  그 전 증가는
+    `KMTK_SCI_112_STA0212_R2612_MK/NT`(KASI 둘째 상자).  그 전 증가는
     2026-09-03 의 `KMTS_SCI_102_STA0287`(SAAO NT, 다섯 -> 여섯)이다.
     ⚠️ 이 수는 **자산 개수**이지 규범이 아니다 -- 유닛이 늘면 여기를 올리고,
     그때 **16채널 목록이 그대로인지**가 진짜 검사다 (반입분도 정확히 같았다).
@@ -918,3 +926,24 @@ def test_frame_skip_leaves_the_buffer_state_in_the_log(tmp_path, caplog):  # noq
         assert '이미 덮였다' not in message, message
     finally:
         fake.shutdown()
+
+
+def test_the_csv_date_is_the_sites_observing_day():
+    """⭐ 감시 CSV 파일명의 날짜도 **관측일**이다 (운영자 2026-09-12).
+
+    로그(`ics.<날짜>.log`)·FITS 파일명과 같은 날짜라야 한 밤의 자취가 한
+    날짜로 모인다.  ⛔ 사이트를 모르면 UT 로 떨어진다.
+    """
+    import calendar
+
+    from ics_archon.archon.monitor import _obs_date
+
+    ts = calendar.timegm((2026, 9, 13, 17, 0, 0, 0, 0, 0))
+    assert _obs_date(ts, 'KMTC') == '20260914'      # 경계 UT 16:30 을 넘었다
+    assert _obs_date(ts, 'KMTS') == '20260913'
+    assert _obs_date(ts, 'KMTA') == '20260913'
+    assert _obs_date(ts, 'KMTK') == '20260914'      # KST 자정 경계 (UT 15:00)
+    assert _obs_date(ts, '') == '20260913'          # 빈 값 -> UT 그대로
+    # ⚠️ 오타는 UT 가 아니다 -- `normalize_site()` 가 넷 밖을 **KASI 로**
+    # 정규화하는 것이 집안 규범이라 KST 날짜로 떨어진다.
+    assert _obs_date(ts, 'NOPE') == '20260914'

@@ -58,7 +58,7 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
 | `ics_archon/archon/backend.py` 머리말 | 계약과 실기의 어긋남 3건 · 동기 접근자가 스냅샷을 읽는 이유 |
 | [README.md](README.md) "실기 첫 실행 절차" | ⭐ **science 실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
 | ⭐ [`icg_first_run.md`](icg_first_run.md) | ⭐ **guide 실기를 붙일 때 이것부터** (2026-09-03 신설) — 0~6단계 · 기록표 · 멈출 조건.  PROVISIONAL 6건이 여기서 닫힌다.  ⚠️ probe 는 **`--unit guide`** 로 부른다 |
-| ⭐ [`legacy_command_coverage.md`](legacy_command_coverage.md) | **레거시 명령 136개 전수 대조** (2026-09-06, 갱신 2026-09-12) -- 구현됨 43 · 미구현 63 · 일부러 뺐다 17 · 신설 10.  *"이 명령이 왜 없나"* 를 물을 때 여기부터.  ✅ 이 대조가 낸 결함 셋(`HOSTS` 발신 경로 · `>NODE` · 콘솔 도움말)은 **다 닫혔다**(2026-09-07) |
+| ⭐ [`legacy_command_coverage.md`](legacy_command_coverage.md) | **레거시 명령 137개 전수 대조** (2026-09-06, 갱신 2026-09-12) -- 구현됨 43 · 미구현 63 · 일부러 뺐다 17 · 신설 11.  *"이 명령이 왜 없나"* 를 물을 때 여기부터.  ✅ 이 대조가 낸 결함 셋(`HOSTS` 발신 경로 · `>NODE` · 콘솔 도움말)은 **다 닫혔다**(2026-09-07) |
 | [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
 | ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다.  ⭐ **10장 = 실기 시험 결론**(`LOCK`/`FETCH`/버퍼, 2026-09-01~02) |
 | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.30 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
@@ -1261,7 +1261,7 @@ C←RTD5_WB) **그때 limit 설정을 안 옮겼다.**  그래서 CCD 채널이 
       = 구 kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf (바이트 동일)
     __ref_archon_control/acf/…                               (원본 보관 — 넷 다)
     acf/archive/…_R2601_…_rtd9cal.acf  × 2                   (정정 **전** 판)
-    acf/acf_timing_script_{guide,science}.txt                ACF 에서 뽑은 발췌
+    acf/acf_timing_script_{guide,science}_R####.txt          ACF 에서 뽑은 발췌 (손편집 금지)
     __ref…/acf_timing_script_{guide_R210930,science_R250826}.txt   freeze 사본
 
 ⭐ **`R0827` 예외 조항이 없어졌다** — `MMDD` 라 `YYMM` 규칙에 어긋났고 숫자로
@@ -2776,7 +2776,8 @@ ics_archon 전수 통과.  ⚠️ 종전에 *"알려진 flake"* 로 적었던 `t
 - **호스트 R2613 반영**: `go n` = flush 1 + 독출 n · n장 저장(`Exposures=n`+`FirstFlush=1`, 폐기 분기 삭제) · `DATE-OBS` = **FrameShift 개시**(첫 장 = arm LOADPARAMS 왕복 중점, 그 뒤 = 완료 관측 − (transfer+독출)) · `effective_exptime` **ms 반올림** · 낯선 첫 프레임 시간 가드 · 조기 ABORT 배수 상한 · `set_exposures` 가 `FirstFlush=0` 도 · R2612 이하 ACF 에 GO 거부.  규격 10.1 개정(⭐ 10.1-3 운영자 확정 문면 개정 — 재확인 요망).
 
 **밟기 쉬운 함정 (새로 생긴 것)**
-- `FirstFlush` 는 **반드시 PARAMETER0** — LOADPARAMS 가 슬롯 순서로 적용, 유휴 루프 1 µs.  뒤 슬롯이면 첫 장이 flush 없이 나간다.
+- ⛔ **`Exposures` 는 ACF 의 맨 마지막 슬롯이어야 한다** (KMTNet ACF 규약, 운영자 2026-09-13) — `LOADPARAMS` 가 값을 **하나씩 덮어쓰는 동안 코어는 계속 돈다**(매뉴얼 p.52 Note + *"does not reset the timing cores"*), 유휴 루프 1 µs.  방아쇠가 먼저 앉으면 코어가 나머지를 **묵은 값**으로 읽는다 — `FirstFlush`(0) 면 flush 누락, `IntMS` 면 직전 노출시간.  `Exposure:` 분기가 읽는 것이 거의 전부라 *"몇 개만 앞에"* 가 아니라 **맨 뒤 하나**로 규정했다.  순서는 **슬롯 번호** 순으로 읽는다(파일 줄 순서가 아니다 — 열 개를 넘으면 둘 다 만족이 불가능).  **R2612/R2620** 이 `Exposures`↔`ContinuousExposures` 를 맞바꿔 이것을 맞췄다.  ⚠️ 2026-09-13 에 *"실측이 반증"* 이라며 한 번 걷었다가 되돌렸다 — 그 반증이 *"list 순서 = 파일 줄 순서"* 라는 **미검증 가정** 위였다.  **없는 증상은 반증이 아니다.**  DevNote 11.31 · acf/README.
+- ⭐ **번호는 규약이 아니다** — 파라미터는 **이름으로** 찾는다(11.81).  science/guide 의 번호가 같은 것은 우연.
 - ~~플래그는 설정 메모리에 남는다 — `trigger()` 가 LOADPARAMS 직후 WCONFIG 로 0 을 되쓴다~~ **닫힘(11.33, R2616)**: 설정 메모리 `FirstFlush=1` 이 상수고 호스트는 쓰지 않는다 — STOP 의 꼬리 flush 는 설계다.
 - `FRAME6`/`IMAGE6` 가 DG 를 0 V 로 내려 프레임 시프트 중 덤프가 안 된다(STA 원본부터) — 실측 뒤 R2615 후보.  **상태표는 파싱해서 볼 것**(필드 순서 level,slew,keep — 매뉴얼 3312행).  문자열만 훑으면 안 보인다(내가 먼저 틀렸다).
 - DATE-OBS 의 폴링 편향(frame_poll 0.5 s → 평균 +0.25 s)은 **아직 남아 있다** — 예측 폴링은 후속.

@@ -67,8 +67,8 @@ def cfg_name_from_acf(path: str) -> str:
 
     규격 5.5절이 못박은 형태다 (raw spec v1.8):
 
-        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2611_MK.acf
-        ->               KMTC_SCI_101_STA0284_R2611_MK
+        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2612_MK.acf
+        ->               KMTC_SCI_101_STA0284_R2612_MK
 
     경로가 비었거나 이름이 통째로 확장자면 빈 문자열을 돌려준다 -- 그러면
     부르는 쪽이 "유도 실패" 를 알아보고 손편집 값이나 백엔드 보고값에
@@ -131,14 +131,22 @@ class ArchonCfg:
     #: 컨트롤러 태그 -> ACF 경로.  **상대경로면 작업 디렉터리 기준**이다
     #: (labtest 가 여기서 가장 많이 넘어졌다 -- 경로를 못 찾으면 멈춘다).
     acf: dict[str, str] = field(default_factory=dict)
-    #: 첫 노출 준비에서 ACF 를 적용할지.  false 면 CLEARCONFIG/WCONFIG/APPLYALL
-    #: 을 건너뛰고 줄 번호만 파싱해 RCONFIG 로 대조한다 -- 컨트롤러가 설정 줄을
-    #: 들고 있어 **프로그램** 재기동이 빠르다.
-    #: ⚠️ "적용" 은 **그 세션의 APPLYALL** 이다 (매뉴얼 p.51).  컨트롤러를
-    #: REBOOT 했거나 백플레인 전원을 다시 넣었으면 RCONFIG 가 맞아도 POWERON 이
-    #: `?xx` 로 거부된다 (2026-09-01 실기, DevNote 10.2) -- 그때는 true 로.
-    apply_acf: bool = True
+    # ⛔ **`apply_acf` 눈금은 걷었다** (운영자 2026-09-12) -- ACF 는 늘 적용한다.
+    #    기동마다 컴퓨터의 파일을 읽어 컨트롤러를 재설정하므로, *"호스트가 읽은
+    #    파일"* 과 *"컨트롤러 메모리에 든 것"* 이 갈릴 자리가 없다.
+    #    ⚠️ 종전 false 갈래는 줄 번호만 대조했는데, 그 대조는 **그 세션에서
+    #    `APPLYALL` 이 됐는지를 못 가렸다** (매뉴얼 p.51 · DevNote 10.2).
     acf_retry: int = 4
+    #: ⭐ **셔터가 다 닫히는 데 걸리는 시간 [ms]** (운영자 2026-09-13).
+    #: 셔터를 여는 노출에서 `EXPTIME` 은 *"셔터가 열리기 시작 ~ 셔터가 닫히기
+    #: 시작"* 이고, 그 뒤 셔터가 다 닫힐 때까지 기다렸다가 독출해야 한다.
+    #: 그 대기는 타이밍 스크립트의 `NoIntMS` 가 만든다.
+    #: ⛔ 이 값은 그 **하한**이다 -- ACF 의 `NoIntMS` 가 더 짧으면 기동에서
+    #: **경고하고 이 값으로 올려 쓴다** (`_enforce_shutter_close_dwell`).
+    #: `0` 이면 검사하지 않는다.
+    #: ⚠️ **단위가 ms 다** -- `[timing] shutter_to_readout`(초, 시뮬 전용)과 다른
+    #: 물건이니 섞지 말 것.
+    shutter_close_ms: int = 0
     #: ⭐ **노출 전 CCD flush** (`FlushFrame:` = `Prep`+`Flush`)를 실행할지
     #: (운영자 2026-09-04).  ⭐ **설정 메모리의 `FirstFlush` 한 줄을 1/0 으로 쓰는
     #: 일이다** (`controller.set_first_flush()` -- `WCONFIG` 한 줄 + `RCONFIG`
@@ -242,18 +250,20 @@ class ArchonCfg:
     # 'PARAMETER1', 'Exposures=1')` 로 썼다.  **Config 슬롯 번호(`PARAMETERn` 의
     # n)와 파라미터 이름은 둘 다 ACF 소관**이라 다른 ACF 를 쓰면 어긋난다 --
     # 리터럴로 박아 두면 그 어긋남이 "노출이 안 걸린다" 로만 보인다.
-    param_intms_slot: str = 'PARAMETER2'
-    param_intms_name: str = 'IntMS'
-    param_exposures_slot: str = 'PARAMETER1'
+    # ⛔ **노출 파라미터의 슬롯 눈금은 걷었다** (운영자 2026-09-12).
+    #    이제 `ArchonController.parse_acf()` 가 ACF 를 읽을 때마다
+    #    **이름으로 슬롯을 찾는다** (`IntMS`·`Exposures`·`FirstFlush`).
+    #    ⭐ 이름 고정은 **KMTNet 의 ACF 규약**이고 Archon 의 제약이 아니다 --
+    #       컨트롤러는 파라미터 이름에 아무 규칙도 걸지 않는다.
+    #    ⚠️ 종전에는 ini 에 `PARAMETERn` 번호를 적었는데, ACF 를 개정하면 그
+    #       번호가 밀려 **엉뚱한 파라미터를 조용히 덮었다**.
     #: flush 플래그의 **Config 슬롯 번호**(`PARAMETERn` 의 n; science R2610+,
-    #: `CCDFLUSH` 명령).  ⛔ `Exposures` 보다 **앞 슬롯**이어야 한다 -- `LOADPARAMS`
-    #: 가 슬롯 번호 순서로 적용한다 (매뉴얼 p.52).
+    #: `CCDFLUSH` 명령).  ⛔ KMTNet ACF 규약은 **`Exposures` 를 맨 마지막 슬롯**에
+    #: 둔다 -- `LOADPARAMS` 가 값을 슬롯 번호 순으로 하나씩 덮어쓰는 동안 코어는
+    #: 계속 돌기 때문이다 (매뉴얼 p.52).  노출 준비에서 잡는다.
     #: ⚠️ **Config 줄 번호**(`WCONFIG` 의 4자리 16진 주소)와 **다른 물건**이다 --
     #: 그쪽은 ACF 파싱에서 오고 타이밍 스크립트에 줄이 늘면 함께 밀린다(R2617 이
     #: 빈 줄 둘로 +2).  슬롯 번호는 그때 안 밀린다 (DevNote 11.35).
-    param_flush_slot: str = 'PARAMETER0'
-    param_flush_name: str = 'FirstFlush'
-    param_exposures_name: str = 'Exposures'
 
     # -- 텔레메트리 ------------------------------------------------------
     #: STATUS 를 떠서 `Cn_TEMP/VOLT/CURR` 를 채울지.  **false 로 두면
@@ -676,8 +686,9 @@ def load(path: str) -> ArchonCfg:
     cfg.settle_before = _num(s, 'settle_before', cfg.settle_before, float)
     cfg.settle_after = _num(s, 'settle_after', cfg.settle_after, float)
 
-    cfg.apply_acf = _bool(s, 'apply_acf', cfg.apply_acf)
     cfg.acf_retry = _num(s, 'acf_retry', cfg.acf_retry, int)
+    cfg.shutter_close_ms = _num(s, 'shutter_close_ms', cfg.shutter_close_ms,
+                                int)
     cfg.ccdflush = _bool(s, 'ccdflush', cfg.ccdflush)
     cfg.tcs_clock_warn = _num(s, 'tcs_clock_warn', cfg.tcs_clock_warn, float)
     cfg.gauge_off_on_exposure = _bool(s, 'gauge_off_on_exposure',
@@ -698,14 +709,6 @@ def load(path: str) -> ArchonCfg:
     cfg.xis_ping_tries = _num(s, 'xis_ping_tries', cfg.xis_ping_tries, int)
     cfg.poweron_wait = _num(s, 'poweron_wait', cfg.poweron_wait, float)
 
-    cfg.param_intms_slot = _head(s, 'param_intms_slot', cfg.param_intms_slot)
-    cfg.param_intms_name = _head(s, 'param_intms_name', cfg.param_intms_name)
-    cfg.param_exposures_slot = _head(s, 'param_exposures_slot',
-                                     cfg.param_exposures_slot)
-    cfg.param_flush_slot = _head(s, 'param_flush_slot', cfg.param_flush_slot)
-    cfg.param_flush_name = _head(s, 'param_flush_name', cfg.param_flush_name)
-    cfg.param_exposures_name = _head(s, 'param_exposures_name',
-                                     cfg.param_exposures_name)
 
     cfg.telemetry = _bool(s, 'telemetry', cfg.telemetry)
     cfg.status_timeout = _num(s, 'status_timeout', cfg.status_timeout, float)
@@ -802,10 +805,22 @@ def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
             % ('/'.join(t for t in CTRLTAGS if cfg.hosts.get(t)) or '없음',
                ','.join(ccds) or '없음', cfg.n_controllers,
                (' · solo_tag=%s' % cfg.solo_tag) if cfg.solo_tag else ''))
+    # ⛔ **ACF 경로는 필수다** (운영자 2026-09-12) -- 기동마다 적용하므로
+    # 비어 있거나 파일이 없으면 **여기서 멈춘다**.  종전에는 경고 한 줄이라
+    # 첫 노출 준비에서야 죽었다.
     for tag in tags:
-        if cfg.apply_acf and not cfg.acf.get(tag):
-            notes.append('[archon] acf_%s 가 비어 있는데 apply_acf=true 다 -- '
-                         'ACF 적용을 건너뛴다' % tag.lower())
+        path = cfg.acf.get(tag, '')
+        if not path:
+            raise ArchonConfigError(
+                '[archon] acf_%s 가 비었다 -- ACF 경로를 적을 것.  ⭐ 기동마다 '
+                'ACF 를 적용하는 것이 규범이다 (건너뛰는 눈금은 없앴다)'
+                % tag.lower())
+        if not os.path.exists(os.path.expanduser(path)):
+            # ⭐ **어디를 봤는지 말한다** -- 상대경로가 가장 흔한 원인이다.
+            raise ArchonConfigError(
+                '[archon] acf_%s=%s 가 없다 -- ⚠️ 상대경로면 **작업 디렉터리 '
+                '기준**이다 (지금 작업 디렉터리: %s)'
+                % (tag.lower(), path, os.getcwd()))
     if (cfg.naxis1, cfg.naxis2) != (rawhdr.RAW_NAXIS1, rawhdr.RAW_NAXIS2):
         notes.append(
             '선언 기하가 raw spec 값과 다르다 (%dx%d != %dx%d) -- 시험용 '

@@ -237,7 +237,7 @@ DRIVER = textwrap.dedent('''
     out = {}
     acf = os.path.join(sys.argv[1], 'test.acf')
     open(acf, 'w').write('[CONFIG]\\nTRIGOUTFORCE=0\\n'
-                         'PARAMETER1="Exposures=1"\\nPARAMETER2="IntMS=0"\\n')
+                         'PARAMETER1="IntMS=0"\\nPARAMETER2="Exposures=1"\\n')
 
     ini = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        'ics_archon.ini')

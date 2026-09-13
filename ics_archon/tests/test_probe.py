@@ -29,8 +29,8 @@ NX, NY = 12, 4
 ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
 TRIGOUTLEVEL=1
-PARAMETER1="Exposures=1"
-PARAMETER2="IntMS=0"
+PARAMETER1="IntMS=0"
+PARAMETER2="Exposures=1"
 """
 
 
@@ -162,13 +162,18 @@ def test_stage2_checks_the_parameter_slots_without_writing(fake, tmp_path):  # n
 
 
 def test_stage2_flags_a_slot_the_acf_does_not_have(fake, tmp_path):  # noqa: ANN001
-    """ACF 에 그 슬롯이 없으면 노출 시간이 **조용히** 안 바뀐다 -- 문제로 낸다."""
+    """ACF 에 그 파라미터가 없으면 노출 시간이 **조용히** 안 바뀐다 -- 문제로 낸다.
+
+    ⭐ 묻는 것은 *"몇 번 슬롯이냐"* 가 아니라 **"그 이름이 있냐"** 다 (2026-09-12)
+    -- 슬롯 번호는 ACF 개정으로 밀리고, 호스트는 이름으로 찾는다.
+    """
     acf = tmp_path / 'probe.acf'
     acf.write_text('[CONFIG]\nTRIGOUTFORCE=0\n', encoding='ascii')
     rc = run(['--host', '127.0.0.1', '--port', str(fake.port),
               '--acf', str(acf)], tmp_path)
     assert rc == 1
-    assert "설정 줄 'PARAMETER2' 이 없다" in labels()
+    assert "ACF 에 파라미터 'IntMS' 가 없다" in labels()
+    assert "ACF 에 파라미터 'Exposures' 가 없다" in labels()
 
 
 def test_stage3_measures_readout_and_writes_one_readable_fits(fake, tmp_path):  # noqa: ANN001

@@ -664,7 +664,6 @@ class Sequencer:
         await self.backend.open_shutter(exptime)
 
         self.emit.ic_shutter_open(source, master)
-        await self._aux_event('open')
         await self._relay_tcs(stamp_iso_ms(st.exp_start), ExpStatus.INTEGRATING)
 
         # 헤더의 셔터 상태를 **노출 중 값**으로 갱신한다 (운영자 확정 2026-08-13).
@@ -684,7 +683,6 @@ class Sequencer:
         # `TSHSHUT` 카드는 v1.3 미기재라 헤더에는 안 실린다 (raw spec 5.10절).
         st.exp_end = utcnow()
         self.emit.ic_shutter_closed(source, master)
-        await self._aux_event('close')
 
     def _spawn_dome_read(self):  # noqa: ANN201
         """돔 방위 셋을 redis 에서 읽는 태스크 (`DSTELAZ`/`DSAZ`/`DAZERR`).
@@ -779,25 +777,6 @@ class Sequencer:
                 'IMAGETYP=%s 는 셔터를 열지 않는데 AUX 가 SHUTTER=%s 를 '
                 '보고했다 -- 광 누출이거나 셔터 고장이다. 이 프레임의 '
                 'dark/bias 값은 믿을 수 없다 (raw spec 5.8절)', st.imgtype, got)
-
-    async def _aux_event(self, which: str) -> None:
-        """셔터 개폐를 AUX control 서버에 알린다.
-
-        **DARK/BIAS 는 셔터를 열지 않으므로 여기를 지나지 않는다.**  레거시의
-        `SHOPEN`/`SHCLOSE` 도 셔터 경로에만 있으므로 같은 범위다.
-
-        실패해도 노출은 계속한다 -- AUX 는 부가 경로이고, 접속이 없으면
-        auxcontrol 이 경고만 남긴다.
-        """
-        if self.aux is None:
-            return
-        try:
-            if which == 'open':
-                await self.aux.on_shutter_open()
-            else:
-                await self.aux.on_shutter_close()
-        except Exception as exc:  # noqa: BLE001  노출을 죽이지 않는다
-            log.warning('AUX %s event failed: %s', which, exc)
 
     async def _integrate_dark(self, source: str, exptime: float) -> None:
         """셔터를 열지 않는 경로 (DARK/BIAS).

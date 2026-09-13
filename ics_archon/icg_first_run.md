@@ -101,8 +101,9 @@ python3 -u -m icg_archon 2>&1 | tee icg_boot.log
 
 ⛔ **종전 제목의 *"아직 전원은 안 켠다 — 첫 `go` 에서 켜진다"* 는 거짓이었다.**
 `ArchonController.prepare()` 끝이 `if not self.powered: await self.power_on()` 이고
-기동의 `_connect_controller()` 가 그것을 부른다.  `apply_acf = true` 이므로 기동
-한 번에 **`CLEARCONFIG` → `WCONFIG` 전량 → `APPLYALL` → `POWERON`** 이 돈다.
+기동의 `_connect_controller()` 가 그것을 부른다.  ⭐ **ACF 는 기동마다 적용한다**
+(2026-09-12, `apply_acf` 눈금은 걷었다) -- 그래서 기동 한 번에
+**`CLEARCONFIG` → `WCONFIG` 전량 → `APPLYALL` → `POWERON`** 이 돈다.
 ⚠️ 그러므로 **0·1·2단계(배선 · probe · Config 슬롯 대조)를 반드시 먼저 마칠 것** —
 슬롯 대조 전에 전원이 올라가면 되돌릴 수 없는 것은 없지만, 어긋난 줄로 `set_config`
 가 돌면 `EXPTIME` 이 조용히 안 바뀐 파일이 남는다.

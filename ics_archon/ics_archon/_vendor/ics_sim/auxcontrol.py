@@ -299,24 +299,6 @@ class AuxControlClient:
                 continue
             return body.strip()
 
-    # -- 이벤트 -----------------------------------------------------------
-
-    async def on_shutter_open(self) -> str | None:
-        """셔터가 열린 시점.  설정된 커맨드가 없으면 아무것도 안 한다."""
-        return await self._event(self.cfg.shopen_subsystem,
-                                 self.cfg.shopen_command, 'SHOPEN')
-
-    async def on_shutter_close(self) -> str | None:
-        """셔터가 닫힌 시점."""
-        return await self._event(self.cfg.shclose_subsystem,
-                                 self.cfg.shclose_command, 'SHCLOSE')
-
-    async def _event(self, subsystem: str, command: str,
-                     tag: str) -> str | None:
-        if not (self.cfg.enabled and subsystem and command):
-            return None
-        try:
-            return await self.send(subsystem, command)
-        except Exception as exc:  # noqa: BLE001  노출을 죽이지 않는다
-            log.warning('AUX %s event failed: %s', tag, exc)
-            return None
+    # ⛔ **셔터 개폐를 AUX 에 알리던 자리는 걷었다** (운영자 2026-09-12) --
+    #    FSA HW 가 그 명령을 못 받는다는 TCS 검토 결과다.  `send()` 를 직접
+    #    쓰는 `hello`(접속 인사)만 남는다.

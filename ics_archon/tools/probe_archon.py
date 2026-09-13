@@ -19,7 +19,7 @@
         -> SYSTEM · STATUS · FRAME 원문 + 해석 + 가정 대조
 
     2단계  ACF 대조 (여전히 읽기 전용)
-        python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2611_MK.acf
+        python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2612_MK.acf
         -> 파라미터 슬롯이 컨트롤러 메모리와 맞는지 (RCONFIG 로 확인만)
 
     3단계  프레임 1장  ⚠️ **전원을 켜고 CCD 를 읽어낸다**
@@ -34,7 +34,7 @@
 보고한다 (`extra [6, 7]` + `missing [1, 2, 8, 11]`).
 
     python tools/probe_archon.py --unit guide --host 10.0.0.162 \
-        --acf acf/KMTK_GUI_162_STA0201_R2619.acf
+        --acf acf/KMTK_GUI_162_STA0201_R2620.acf
 
 ⚠️ 이 도구는 파일 이름을 `probe.<...>.fits` 로 쓴다 -- 관측 번호 공간(D-016)을
 건드리지 않으려는 것이다.  아카이브에 넣을 자료를 만드는 도구가 아니다.
@@ -501,20 +501,28 @@ async def stage_acf(ctrl: ArchonController, acf: str, acfg) -> None:  # noqa: AN
     ctrl.parse_acf(acf)
     say(OK, "ACF %d줄 파싱 -- '%s'" % (len(ctrl.config), acf))
 
-    slots = (acfg.param_intms_slot, acfg.param_exposures_slot)
-    names = (acfg.param_intms_name, acfg.param_exposures_name)
-    for slot, name in zip(slots, names):
-        key = slot.upper().replace(chr(92), '/')
-        line = ctrl.configline.get(key)
-        if line is None:
-            say(BAD, "ACF 에 설정 줄 '%s' 이 없다" % slot,
-                '[archon] param_*_slot 을 이 ACF 에 맞춰야 한다')
+    # ⭐ **슬롯은 ACF 에서 이름으로 찾는다** (2026-09-12) -- ini 눈금은 걷었다.
+    #    그래서 여기서 묻는 것도 *"몇 번 슬롯이냐"* 가 아니라 *"그 이름이 있냐"* 다.
+    names = (ctrl.PARAM_INTMS, ctrl.PARAM_EXPOSURES)
+    found = ctrl.param_slots or {}
+    slots = []
+    for name in names:
+        slot = found.get(name)
+        if slot is None:
+            say(BAD, "ACF 에 파라미터 '%s' 가 없다" % name,
+                'KMTNet ACF 규약은 이 이름을 고정한다 -- 이 ACF 로는 노출을 '
+                '걸 수 없다 (⚠️ Archon 의 제약이 아니라 우리 규약이다)')
             continue
-        text = ctrl.config[key]
-        mark = OK if name in text else BAD
-        say(mark, "%s (줄 %04X) = %r" % (slot, line, text),
-            '' if name in text else "'%s' 가 이 줄에 없다 -- "
-            '[archon] param_*_name 을 확인할 것' % name)
+        slots.append(slot)
+        line = ctrl.configline.get(slot.upper().replace(chr(92), '/'))
+        if line is None:
+            say(BAD, "'%s' 가 %s 인데 설정 줄 번호를 모른다" % (name, slot),
+                'ACF 파싱이 이 줄을 못 집었다 -- 파일이 상했을 수 있다')
+            continue
+        say(OK, "%s (줄 %04X) = %r" % (slot, line, ctrl.config[
+            slot.upper().replace(chr(92), '/')]),
+            "이름 '%s' 로 찾은 자리다 -- ACF 를 개정해 번호가 밀려도 따라간다"
+            % name)
 
     # **`RCONFIG` 로 컨트롤러 메모리와 대조한다.**  세 결과를 갈라야 한다 --
     # ① 비어 있음(설정을 아직 안 올렸다) ② 다름(줄 번호가 어긋났다) ③ 같음.
@@ -542,7 +550,8 @@ async def stage_acf(ctrl: ArchonController, acf: str, acfg) -> None:  # noqa: AN
                 % (line, key, got[:40]),
                 '파일의 줄 번호가 컨트롤러 메모리와 다르다.  이대로 '
                 'set_config 를 부르면 엉뚱한 줄을 고쳐 노출 시간이 조용히 '
-                '안 바뀐다 -- apply_acf=true 로 두거나 같은 ACF 를 쓸 것')
+                '안 바뀐다 -- 같은 ACF 를 쓰거나 --no-apply-acf 를 빼고 다시 '
+                '돌릴 것 (⚠️ 본 프로그램은 기동마다 APPLYALL 한다)')
 
 
 # ---------------------------------------------------------------------------

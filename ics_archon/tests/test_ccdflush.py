@@ -11,8 +11,8 @@ Prep+Flush 가 돈다.  `LOADTIMING` 은 없다 -- 코어 리셋도, `Exposures=
 
 지키려는 것:
 
-* **되읽어 판정한다** -- 캐시가 아니라 `RCONFIG`.  `apply_acf=false` 경로에서 앞 세션이
-  켜 둔 1 을 되돌린다.
+* **되읽어 판정한다** -- 캐시가 아니라 `RCONFIG`.  앞 세션이 켜 둔 1 을
+  되돌린다 (⚠️ 캐시는 왕복 실패에도 먼저 갈아 끼워져 못 믿는다).
 * **바뀔 때만 쓴다** -- 이미 원하는 값이면 WCONFIG 없이 `False`.
 * **앉았는지 확인한다** -- 안 앉았으면 `False` 와 오류 로그 (조용히 캐시로 물러나지 않는다).
 * **슬롯 번호만 믿지 않는다** -- R2608 의 `PARAMETER0` 은 `ContinuousExposures` 다.  그
@@ -34,8 +34,8 @@ from ics_archon.archon.controller import ArchonController  # noqa: E402
 from ics_archon.config import ArchonCfg  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2611_MK.acf')
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2619.acf')
+SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2612_MK.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2620.acf')
 
 
 class Ctrl(ArchonController):
@@ -130,7 +130,7 @@ def test_turning_it_off_again_writes_zero():
     assert ctrl.flag() == 'FirstFlush=0'
 
 
-# -- 컨트롤러 메모리가 캐시와 다를 때 (apply_acf=false 경로) ---------------------
+# -- 컨트롤러 메모리가 캐시와 다를 때 ---------------------------------------
 
 
 def test_a_previous_session_left_it_on_and_the_option_off_restores_zero():
@@ -316,3 +316,253 @@ def test_a_failed_read_back_falls_back_to_the_cache():
     asyncio.run(c.raw_command('CLEARCONFIG'))
     assert asyncio.run(c.config_value('PARAMETER0')) == '"FirstFlush=1"'
     assert c.config_dirty, '실패했다고 표시를 내리면 안 된다'
+
+
+# -- 노출 파라미터 슬롯을 **이름으로** 찾는다 (운영자 2026-09-12) -----------
+#
+# ⛔⛔ **이름 고정은 KMTNet 의 ACF 규약이다** -- Archon 의 제약이 아니다.
+# 컨트롤러는 파라미터 이름에 아무 규칙도 걸지 않는다(아무 이름이나 쓸 수 있다).
+# **우리가** ACF 를 개정해도 `IntMS`·`Exposures`·`FirstFlush` 세 이름은 바꾸지
+# 않기로 정했고, 그 대가로 **슬롯 번호를 설정에서 뺐다**.
+
+def _ctrl_with_acf(tmp_path, text):  # noqa: ANN001, ANN202
+    """ACF 만 읽은 컨트롤러 (왕복 없음)."""
+    from ics_archon.archon.controller import ArchonController
+    acf = tmp_path / 'p.acf'
+    acf.write_text(text, encoding='ascii')
+    c = ArchonController.__new__(ArchonController)
+    c.tag, c.ltag = 'MK', ''
+    c.parse_acf(str(acf))
+    return c
+
+
+def test_slots_are_found_by_name_not_by_number(tmp_path):
+    """⭐ 번호가 밀려도 **이름으로** 찾는다 -- ACF 개정을 따라간다."""
+    c = _ctrl_with_acf(tmp_path, '[CONFIG]\n'
+                       'PARAMETER0="FirstFlush=0"\n'
+                       'PARAMETER1="IntMS=0"\n'
+                       'PARAMETER2="Exposures=0"\n')
+    # ⭐ 고정물이 놓은 그대로 찾는다 -- **정본 번호란 것이 없다.**
+    assert c.param_slots['IntMS'] == 'PARAMETER1'
+    assert c.param_slots['Exposures'] == 'PARAMETER2'
+
+    # 판이 밀려 번호가 통째로 달라져도 따라간다.
+    d = _ctrl_with_acf(tmp_path, '[CONFIG]\n'
+                       'PARAMETER0="FirstFlush=0"\n'
+                       'PARAMETER3="IntMS=0"\n'
+                       'PARAMETER7="Exposures=0"\n')
+    assert d.param_slots['IntMS'] == 'PARAMETER3'
+    assert d.param_slots['Exposures'] == 'PARAMETER7'
+
+
+def test_a_missing_exposure_parameter_stops_the_start(tmp_path):
+    """⛔ `IntMS`/`Exposures` 가 없으면 **노출 준비가 멈춘다**.
+
+    그 ACF 로는 노출을 걸 수가 없다 -- 그대로 두면 첫 `GO` 의 `WCONFIG` 가
+    엉뚱한 슬롯을 덮는다.
+    ⚠️ **멈추는 자리는 `parse_acf()` 가 아니다** -- 감시(바이어스 채널 찾기)와
+    `probe_archon`(진단)도 같은 길로 ACF 를 읽으므로, 파싱은 통과시키고
+    `_require_param_slots()`(= `prepare()` 가 부른다)에서 판정한다.
+    """
+    from ics_archon.archon.protocol import ArchonError
+    c = _ctrl_with_acf(tmp_path, '[CONFIG]\nPARAMETER1="Exposures=0"\n')
+    assert 'Exposures' in c.param_slots, '파싱 자체는 통과한다'
+    with pytest.raises(ArchonError) as e:
+        c._require_param_slots()      # noqa: SLF001
+    assert 'IntMS' in str(e.value)
+    # ⭐ 규약이 어디 것인지 문면이 말해야 한다 -- 벤더 제약으로 오해하면
+    #    엉뚱한 자리(Archon 매뉴얼)를 뒤진다.
+    assert 'KMTNet' in str(e.value)
+
+
+def test_firstflush_may_be_absent(tmp_path):
+    """⭐ `FirstFlush` 는 **없어도 간다** -- R2608 이하 ACF 가 그렇다.
+
+    *"flush 옵션 하나 때문에 관측을 통째로 못 하는 것이 더 나쁘다"* 는
+    `set_first_flush()` 의 판단을 그대로 따른다.
+    """
+    c = _ctrl_with_acf(tmp_path, '[CONFIG]\n'
+                       'PARAMETER1="IntMS=0"\nPARAMETER2="Exposures=0"\n')
+    assert 'FirstFlush' not in c.param_slots
+
+
+def test_exposures_must_be_the_last_slot(tmp_path):
+    """⛔ `Exposures` 가 **맨 마지막 슬롯**이 아니면 멈춘다 (매뉴얼 p.52).
+
+    `LOADPARAMS` 는 파라미터를 **하나씩 제자리에 덮어쓰고**(*"one at a time,
+    starting with the first in the parameter list"*) 그동안 **코어를 세우지
+    않는다**(*"does not reset the timing cores"*).  그래서 `Exposures` 가 먼저
+    앉으면 코어가 `Start:` 에서 `FirstFlush` 를 묵은 0 으로 읽고 **flush 없이**
+    `Exposure:` 로 뛴다 (DevNote 11.31).
+    ⭐ 벤더가 이 성질을 안다는 증거가 바로 옆에 있다 -- `PREPPARAM`/`EXTLOAD` 가
+    *"미리 채워 두었다가 신호에 한꺼번에 갈아끼우는"* 장치이고, 평범한
+    `LOADPARAMS` 에는 그것이 없다.
+
+    ⭐ **`FirstFlush` 만의 이야기가 아니다** -- `Exposures` 가 0 이 아니게 되는
+    순간 코어는 `Exposure:` 로 뛰고 거기서 **거의 모든 파라미터를 읽는다**
+    (`IntMS`·`NoIntMS`·`Lines`·`Pixels`·`AT`·`ST` …).  그래서 규칙은 *"셋만 앞에"*
+    가 아니라 **방아쇠가 맨 뒤** 하나다 (운영자 2026-09-13).
+
+    ⚠️ **2026-09-13: 이 시험을 한 번 뒤집었다가 되돌렸다.**  뒤집은 근거는
+    *"`Exposures`(줄 2번째)와 `IntMS`(13번째) 사이가 ~100 ms 인데 노출시간이 안
+    밀리니 원자적이다"* 였는데, 그 ~100 ms 가 **검증 안 한 가정**(*"list 순서 =
+    파일 줄 순서"*) 위에 서 있었다.  `PARAMETERn` 의 n 이 곧 첨자면 한 칸
+    차이다.  ⛔ **없는 증상은 반증이 아니다** -- 창이 작으면 안 보일 뿐이다.
+    """
+    from ics_archon.archon.protocol import ArchonError
+    c = _ctrl_with_acf(tmp_path, '[CONFIG]\n'
+                       'PARAMETER1="IntMS=0"\n'
+                       'PARAMETER2="Exposures=0"\n'
+                       'PARAMETER5="FirstFlush=0"\n')
+    with pytest.raises(ArchonError) as e:
+        c._require_param_slots()      # noqa: SLF001
+    assert 'FirstFlush' in str(e.value)
+
+
+def test_the_order_check_reads_slot_numbers_not_file_order(tmp_path):
+    """⭐ 순서는 **슬롯 번호**로 본다 -- ACF 파일의 줄 순서가 아니다.
+
+    ACF 는 `PARAMETER0,1,10,…,19,2,…` **사전순**으로 적히므로 파일 줄 순서와 슬롯
+    번호 순서가 다르다.  ⛔ 우리는 매뉴얼의 *"the **first** in the parameter
+    list"* 를 **번호 순**으로 읽는다 (`PARAMETERn` + `PARAMETERS=n` 은 첨자 붙은
+    배열의 모양이다).
+    ⚠️ 종전에 **두 순서를 다** 보게 짰다가 걷었다 -- 파라미터가 열 개를 넘으면
+    두 순서에서 동시에 "맨 마지막" 인 슬롯이 **존재하지 않아** 올바른 배치가
+    불가능해진다 (운영자 확정 2026-09-13).
+    """
+    # 줄 차례로는 `Exposures` 가 맨 뒤인데 **번호로는 앞**이다 -> 멈춰야 한다.
+    from ics_archon.archon.protocol import ArchonError
+    c = _ctrl_with_acf(tmp_path, '[CONFIG]\n'
+                       'PARAMETER0="FirstFlush=0"\n'
+                       'PARAMETER2="IntMS=0"\n'
+                       'PARAMETER9="Exposures=0"\n'
+                       'PARAMETER10="NoIntMS=0"\n')
+    with pytest.raises(ArchonError) as e:
+        c._require_param_slots()      # noqa: SLF001
+    assert 'NoIntMS' in str(e.value), str(e.value)
+
+
+def test_every_parameter_must_precede_exposures(tmp_path):
+    """⭐ **아무 파라미터나** `Exposures` 뒤에 있으면 멈춘다.
+
+    `Exposure:` 분기가 읽는 것이 거의 전부라, 이름을 하나하나 세는 대신 *"방아쇠가
+    맨 뒤"* 하나로 규정했다.
+    """
+    from ics_archon.archon.protocol import ArchonError
+    ok = _ctrl_with_acf(tmp_path, '[CONFIG]\n'
+                        'PARAMETER0="FirstFlush=0"\n'
+                        'PARAMETER1="ContinuousExposures=0"\n'
+                        'PARAMETER2="IntMS=0"\n'
+                        'PARAMETER3="NoIntMS=0"\n'
+                        'PARAMETER4="Exposures=0"\n')
+    ok._require_param_slots()        # 멈추지 않는다  # noqa: SLF001
+
+    bad = _ctrl_with_acf(tmp_path, '[CONFIG]\n'
+                         'PARAMETER0="FirstFlush=0"\n'
+                         'PARAMETER1="IntMS=0"\n'
+                         'PARAMETER2="Exposures=0"\n'
+                         'PARAMETER3="Lines=4700"\n')
+    with pytest.raises(ArchonError) as e:
+        bad._require_param_slots()   # noqa: SLF001
+    assert 'Lines' in str(e.value), str(e.value)
+
+
+@pytest.mark.repo_only
+def test_every_shipped_acf_keeps_the_kmtnet_names(tmp_path):
+    """⭐⭐ **저장소의 ACF 열둘이 규약을 지키나** -- 규범의 실물 검산이다.
+
+    ⛔ **슬롯 번호는 보지 않는다** -- 규약이 고정하는 것은 *이름*이다.  번호를
+    여기서 요구하면 ACF 를 개정해 번호가 밀렸을 때 **멀쩡한 ACF 가 시험을
+    깨뜨리고**, 읽는 이는 *"번호를 도로 맞춰야 한다"* 로 읽는다 -- 우리가
+    없애려던 바로 그 습관이다 (운영자 지적 2026-09-13).
+⭐ 슬롯 **순서**는 본다 -- 다만 *"몇 번이냐"* 가 아니라 *"`Exposures` 가
+    맨 마지막이냐"* 만 본다 (매뉴얼 p.52, 위 시험 참조).
+    ⚠️ science 와 guide 의 번호가 지금 같은 것은 **우연이고 규약이 아니다** --
+    두 계통은 타이밍 스크립트도 파라미터 구성도 다르다 (guide 17 · science 22,
+    `VerticalBinning`·`AT`·`ST`·`FlushLines`·`ContinuousExposures` 는 이름이
+    같은데 슬롯이 다르다).
+    """
+    import glob
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    acfs = sorted(glob.glob(os.path.join(root, 'acf', '*.acf')))
+    assert len(acfs) >= 7, acfs
+    from ics_archon.archon.controller import ArchonController
+    for path in acfs:
+        c = ArchonController.__new__(ArchonController)
+        c.tag, c.ltag = 'MK', ''
+        c.parse_acf(path)
+        c._require_param_slots()     # 규약을 어기면 여기서 ArchonError  # noqa: SLF001
+        # 이름이 있다 -- 번호가 몇이든.
+        assert c.param_slots['IntMS'].startswith('PARAMETER'), path
+        assert c.param_slots['Exposures'].startswith('PARAMETER'), path
+        assert 'FirstFlush' in c.param_slots, path
+        # ⛔ 유일한 순서 제약 -- `Exposures` 가 **맨 마지막 슬롯**이다.
+        assert (c.param_order['Exposures']
+                == max(c.param_order.values())), path
+
+
+# -- 셔터 닫힘 대기 (`NoIntMS` 의 하한) ---------------------------------------
+#
+# 운영자 규정 2026-09-13: 셔터를 여는 IMAGETYPE 에서 `EXPTIME` 은 *"셔터가 열리기
+# 시작 ~ 셔터가 닫히기 시작"* 이고, **그 뒤 셔터가 다 닫힐 때까지** 기다렸다가
+# 독출을 시작해야 한다.  그 대기를 만드는 것이 `NOINT; CALL NoIntUnit(NoIntMS)` 다.
+# ⛔ 짧으면 셔터가 닫히는 중에 독출이 시작돼 **프레임에 빛이 샌다** -- 조용하게.
+
+
+def _noint(ctrl) -> int:  # noqa: ANN001
+    slot = ctrl.param_slots['NoIntMS']
+    return int(ctrl.config[slot].split('=', 1)[1])
+
+
+def test_a_short_noint_is_raised_to_the_shutter_close_time():
+    """⛔ ACF 의 `NoIntMS` 가 짧으면 **올려서 적용한다** (경고와 함께)."""
+    ctrl = Ctrl()
+    slot = ctrl.param_slots['NoIntMS']
+    ctrl.config[slot] = 'NoIntMS=120'
+    ctrl._memory[slot] = 'NoIntMS=120'       # noqa: SLF001
+    ctrl.cfg.shutter_close_ms = 500
+
+    asyncio.run(ctrl._enforce_shutter_close_dwell())   # noqa: SLF001
+
+    assert _noint(ctrl) == 500, '하한으로 올라와야 한다'
+    # ⭐ **`WCONFIG` 한 줄**이다 -- `LOADTIMING` 도 `LOADPARAMS` 도 없다.
+    #    코어 RAM 에는 다음 노출의 LOADPARAMS 가 실어 간다.
+    assert len(ctrl.writes()) == 1, ctrl.sent
+    assert 'NoIntMS=500' in ctrl.writes()[0], ctrl.writes()
+    assert ctrl.loads() == [], ctrl.sent
+
+
+def test_a_long_enough_noint_is_left_alone():
+    """⭐ ACF 가 이미 충분하면 **아무것도 안 쓴다** -- 정본은 ACF 다."""
+    ctrl = Ctrl()
+    ctrl.cfg.shutter_close_ms = 500
+    assert _noint(ctrl) == 500, '현행 science ACF 는 500 이다'
+    asyncio.run(ctrl._enforce_shutter_close_dwell())   # noqa: SLF001
+    assert ctrl.writes() == [], ctrl.sent
+
+
+def test_zero_turns_the_check_off():
+    """⭐ `0` 이면 검사하지 않는다 -- 셔터가 없는 구성용."""
+    ctrl = Ctrl()
+    slot = ctrl.param_slots['NoIntMS']
+    ctrl.config[slot] = 'NoIntMS=0'
+    ctrl.cfg.shutter_close_ms = 0
+    asyncio.run(ctrl._enforce_shutter_close_dwell())   # noqa: SLF001
+    assert ctrl.writes() == [], ctrl.sent
+
+
+def test_the_guide_unit_never_reaches_this_check():
+    """⭐ **guide 는 이 자리를 안 지난다** -- `IcgCfg` 에 눈금이 없다 (셔터가 없다).
+
+    `ccdflush` 와 같은 방식이다: `getattr(..., 0)` 이 0 을 돌려 그냥 지나간다.
+    ⚠️ guide ACF 는 `NoIntMS=0` 이라, 강제가 걸리면 **없는 대기를 만들어** guide
+    프레임 주기를 망가뜨린다.
+    """
+    ctrl = Ctrl(GUIDE_ACF)
+    ctrl.cfg = IcgCfg()                      # guide 설정으로 갈아 끼운다
+    ctrl.cfg.acf = {'MK': GUIDE_ACF}
+    assert not hasattr(ctrl.cfg, 'shutter_close_ms')
+    asyncio.run(ctrl._enforce_shutter_close_dwell())   # noqa: SLF001
+    assert ctrl.writes() == [], ctrl.sent
+    assert _noint(ctrl) == 0, 'guide 는 NoIntMS=0 그대로여야 한다'

@@ -8,8 +8,9 @@
 두었다 -- **그래서 이 파일이 있다.**  산문으로 적힌 규칙은 다음 사람이 틀리게
 옮기기 쉽고, 아래 규칙에는 실제로 밟기 쉬운 함정이 셋 있다.
 
-    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2619.acf
+    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2620.acf
     python tools/extract_timing_script.py acf/*.acf --out acf/          # 다시 뽑기
+                                                                        #   (판 번호는 ACF 이름에서)
     python tools/extract_timing_script.py acf/*.acf --check acf/        # 대조만
 
 `tests/test_timing_script_extract.py` 가 `--check` 와 같은 대조를 건다.
@@ -113,8 +114,25 @@ def kind(bigbuf: int | None) -> str:
     return 'guide' if bigbuf == 0 else 'science'
 
 
-def _target(out_dir: str, bigbuf: int | None) -> str:
-    return os.path.join(out_dir, 'acf_timing_script_%s.txt' % kind(bigbuf))
+#: ACF 파일명에 박힌 판 번호 (`..._R2612_MK.acf` · `..._R2620.acf`).
+_REV = re.compile(r'_(R\d+)(?:[._]|$)')
+
+
+def rev(acf_name: str) -> str:
+    """ACF 파일명에서 **판 번호**를 뽑는다 -- 없으면 `ArgumentError` 대신 멈춘다.
+
+    ⭐ 발췌 txt 이름에 이 값을 넣는다 (운영자 2026-09-13) -- ACF 와 같은 규칙이라
+    *"이 발췌가 어느 판의 것인가"* 를 파일명만 보고 안다.
+    """
+    m = _REV.search(os.path.basename(acf_name))
+    if not m:
+        raise ValueError('%s: 파일명에 판 번호(_R####)가 없다' % acf_name)
+    return m.group(1)
+
+
+def _target(out_dir: str, bigbuf: int | None, revision: str) -> str:
+    return os.path.join(out_dir, 'acf_timing_script_%s_%s.txt'
+                        % (kind(bigbuf), revision))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -122,7 +140,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument('acf', nargs='+', help='ACF 파일 (여럿 가능)')
     g = ap.add_mutually_exclusive_group()
     g.add_argument('--out', metavar='DIR',
-                   help='DIR/acf_timing_script_{guide,science}.txt 로 쓴다 (LF)')
+                   help='DIR/acf_timing_script_{guide,science}_R####.txt '
+                        '로 쓴다 (LF).  판 번호는 ACF 파일명에서 가져온다')
     g.add_argument('--check', metavar='DIR',
                    help='DIR 의 같은 이름과 대조만 한다 (안 맞으면 exit 1)')
     args = ap.parse_args(argv)
@@ -148,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         written[kind(bigbuf)] = (name, text)
         if args.out:
-            dst = _target(args.out, bigbuf)
+            dst = _target(args.out, bigbuf, rev(name))
             # ⚠️ 읽기(`extract`)와 **같은 latin-1** 로 쓴다 -- 임의 바이트를
             # 손실 없이 통과시키려는 것이다.  utf-8 로 쓰면 비ASCII 가 한 줄만
             # 있어도 바이트가 늘어 `--out` -> `--check` 왕복이 영구 DIFF 가 된다.
@@ -156,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
                 fh.write(text)
             print('%-46s -> %s  (%d 줄)' % (name, dst, text.count('\n') + 1))
         elif args.check:
-            dst = _target(args.check, bigbuf)
+            dst = _target(args.check, bigbuf, rev(name))
             try:
                 with io.open(dst, encoding='latin-1', newline='') as fh:
                     got = fh.read().replace('\r\n', '\n')

@@ -231,7 +231,8 @@ class IcgCfg:
     #: 흘러들어왔다 (`기대 <01, 받음 <00`).
     settle_after: float = 2.0
     acf: dict = field(default_factory=dict)            # {'G': path}
-    apply_acf: bool = True
+    # ⛔ **`apply_acf` 눈금은 걷었다** (운영자 2026-09-12) -- ACF 는 늘 적용한다.
+    #    science 와 같은 판단이고, 같은 `ArchonController.prepare()` 를 탄다.
     #: ⛔ **4 다 -- science(`ics_archon.ini`)·labtest 와 같은 값** (2026-09-09).
     #: 종전 `1` 은 근거 없이 낮았고, 벤치에서 **첫 실패에 곧바로 `GO` 가 죽었다**
     #: (`WCONFIG` 하나의 응답이 비어 참조번호가 한 칸 밀렸다).  ⭐ 원본 labtest 는
@@ -249,17 +250,16 @@ class IcgCfg:
     #: (`24 x 0.5`) -- 운영자가 실제 이유를 게이지 예열로 확정해 이름을 맞췄다.
     #: 그 유래는 남겨 둔다 (근거가 갈리면 되짚을 자리다).
     gauge_warmup_wait: float = 12.0
-    param_intms_slot: str = 'PARAMETER2'
-    param_intms_name: str = 'IntMS'
-    param_exposures_slot: str = 'PARAMETER1'
-    param_exposures_name: str = 'Exposures'
-    #: flush 플래그의 **Config 슬롯 번호**(`PARAMETERn` 의 n; R2613+, 규격 10.1-2).
-    #: ⛔ **`PARAMETER0` 이어야 한다** -- `LOADPARAMS` 는 파라미터를 첫 슬롯부터
-    #: 슬롯 번호 순서로 적용하고(매뉴얼 p.52)
-    #: 유휴 루프가 1 µs 라, `Exposures`(PARAMETER1) 뒤에 앉으면 코어가 flush
-    #: 없이 `Exposure:` 로 먼저 뛴다 (설계 검토 blocker, DevNote 11.31).
-    param_flush_slot: str = 'PARAMETER0'
-    param_flush_name: str = 'FirstFlush'
+    # ⛔ **노출 파라미터의 슬롯 눈금은 걷었다** (운영자 2026-09-12).
+    #    이제 `ArchonController.parse_acf()` 가 ACF 를 읽을 때마다
+    #    **이름으로 슬롯을 찾는다** (`IntMS`·`Exposures`·`FirstFlush`).
+    #    ⭐ 이름 고정은 **KMTNet 의 ACF 규약**이고 Archon 의 제약이 아니다 --
+    #       컨트롤러는 파라미터 이름에 아무 규칙도 걸지 않는다.
+    #    ⚠️ 종전에는 ini 에 `PARAMETERn` 번호를 적었는데, ACF 를 개정하면 그
+    #       번호가 밀려 **엉뚱한 파라미터를 조용히 덮었다**.
+    # ⛔ KMTNet ACF 규약은 **`Exposures` 를 맨 마지막 슬롯**에 둔다 -- `LOADPARAMS`
+    #    가 값을 **슬롯 번호 순으로 하나씩** 덮어쓰는 동안 코어는 계속 돌기 때문이다
+    #    (매뉴얼 p.52 · DevNote 11.31).  `_require_exposures_last()` 가 잡는다.
     telemetry: bool = True
     status_timeout: float = 2.0
     #: ⭐ **0.2 다** (운영자 2026-09-09).  guide 독출이 1.25 s 라 0.5 면
@@ -394,7 +394,6 @@ def load(path: str) -> IcgCfg:
         cfg.connect_retry = _int(s, 'connect_retry', cfg.connect_retry)
         cfg.settle_before = _float(s, 'settle_before', cfg.settle_before)
         cfg.settle_after = _float(s, 'settle_after', cfg.settle_after)
-        cfg.apply_acf = _bool(s, 'apply_acf', cfg.apply_acf)
         cfg.acf_retry = _int(s, 'acf_retry', cfg.acf_retry)
         cfg.gauge_warmup_wait = _float(s, 'gauge_warmup_wait',
                                        cfg.gauge_warmup_wait)
@@ -405,18 +404,6 @@ def load(path: str) -> IcgCfg:
                         'gauge_warmup_wait -- the value %r is ignored',
                         s.get('poweron_wait'),
                         extra={'detail': 'ini 를 고칠 것 (2026-09-10 개명)'})
-        cfg.param_flush_slot = _head(s, 'param_flush_slot',
-                                     cfg.param_flush_slot)
-        cfg.param_flush_name = _head(s, 'param_flush_name',
-                                     cfg.param_flush_name)
-        cfg.param_intms_slot = _head(s, 'param_intms_slot',
-                                     cfg.param_intms_slot)
-        cfg.param_intms_name = _head(s, 'param_intms_name',
-                                     cfg.param_intms_name)
-        cfg.param_exposures_slot = _head(s, 'param_exposures_slot',
-                                         cfg.param_exposures_slot)
-        cfg.param_exposures_name = _head(s, 'param_exposures_name',
-                                         cfg.param_exposures_name)
         cfg.telemetry = _bool(s, 'telemetry', cfg.telemetry)
         cfg.status_timeout = _float(s, 'status_timeout', cfg.status_timeout)
         cfg.frame_poll = _float(s, 'frame_poll', cfg.frame_poll)
@@ -497,22 +484,13 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
         if not cfg.host:
             raise IcgConfigError('[icg] ctrl_host 가 없다 -- guide 컨트롤러 '
                                  'IP 를 적을 것 (시뮬 회귀는 --backend sim)')
-        # ⚠️ ACF 경로는 apply_acf 와 무관하게 필수다 -- 적용을 건너뛰어도
-        # 파라미터 줄 번호(`IntMS`·`Exposures`)를 알려면 파싱은 해야 한다.
-        # `prepare()` 는 경로가 비면 ACF 블록을 통째로 건너뛰어 첫 트리거의
-        # `set_config` 가 "설정 줄을 모른다" 로 죽는다 (DevNote 9.15-(7)).
+        # ⛔ ACF 경로는 **필수다** -- 기동마다 적용하기 때문이다 (2026-09-12).
         if not cfg.acf_path:
-            raise IcgConfigError('[icg] acf 가 없다 -- guide ACF 경로를 적을 것 '
-                                 '(apply_acf=false 여도 파라미터 줄 번호를 알기 '
-                                 '위해 파싱은 한다)')
+            raise IcgConfigError('[icg] acf 가 없다 -- guide ACF 경로를 적을 것.  '
+                                 '⭐ 기동마다 ACF 를 적용하는 것이 규범이다 '
+                                 '(건너뛰는 눈금은 없앴다)')
         if not os.path.exists(cfg.acf_path):
             raise IcgConfigError('[icg] acf=%s 가 없다' % cfg.acf_path)
-        if not cfg.apply_acf:
-            # 10.2: POWERON 은 **이 세션의 APPLYALL** 을 전제한다 (p.51).
-            warn.append('[icg] apply_acf=false -- 이 프로그램은 APPLYALL 을 하지 '
-                        '않는다.  REBOOT/설정 재업로드 뒤에는 GUI(또는 '
-                        'probe_archon --expose 0)로 Apply All 을 먼저 할 것 -- '
-                        '안 하면 POWERON 이 ?xx 로 거부된다 (DevNote 10.2)')
         if not cfg.lock_buffer and not cfg.recheck_after_fetch:
             # science `_cross_checks` 와 같은 짝 검사 (DevNote 10.6·8.4).
             warn.append('[icg] lock_buffer=false 인데 recheck_after_fetch 도 false 다 '

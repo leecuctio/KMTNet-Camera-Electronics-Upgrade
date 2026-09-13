@@ -38,9 +38,19 @@ import extract_timing_script as ets  # noqa: E402
 
 
 def _txt(kind: str) -> str:
-    """저장소의 발췌 txt -- CRLF 로 체크아웃돼 있어도 LF 로 맞춰 읽는다."""
-    path = os.path.join(ROOT, 'acf', 'acf_timing_script_%s.txt' % kind)
-    with io.open(path, encoding='latin-1', newline='') as fh:
+    """저장소의 발췌 txt -- CRLF 로 체크아웃돼 있어도 LF 로 맞춰 읽는다.
+
+    ⭐ 이름에 **판 번호**가 붙는다 (`..._science_R2612.txt`, 2026-09-13) -- 그래서
+    글롭으로 찾는다.  ⛔ 한 판만 있어야 한다: 둘이 남아 있으면 판올림에서 구판을
+    `archive/` 로 안 옮긴 것이다.
+    """
+    hits = sorted(glob.glob(os.path.join(
+        ROOT, 'acf', 'acf_timing_script_%s_R*.txt' % kind)))
+    assert len(hits) == 1, ('acf/ 의 %s 발췌가 %d개다 -- 한 판만 두어야 한다 '
+                           '(구판은 archive/): %s'
+                           % (kind, len(hits), [os.path.basename(h)
+                                                for h in hits]))
+    with io.open(hits[0], encoding='latin-1', newline='') as fh:
         return fh.read().replace('\r\n', '\n')
 
 
@@ -65,7 +75,7 @@ def test_the_two_txt_are_faithful_extracts_of_the_current_acfs():
         kind = ets.kind(bigbuf)
         seen.add(kind)
         assert text == want[kind], (
-            '%s 의 타이밍 스크립트가 acf_timing_script_%s.txt 와 다르다 -- '
+            '%s 의 타이밍 스크립트가 acf_timing_script_%s_R*.txt 와 다르다 -- '
             'ACF 를 고쳤으면 txt 를 다시 뽑아라: '
             'python tools/extract_timing_script.py acf/*.acf --out acf/'
             % (os.path.basename(path), kind))

@@ -14,18 +14,18 @@
 
 | 파일 | 유닛 | `TAPLINES` | `BIGBUF` | **저장** 픽셀/탭 × 줄 | IP | 백플레인 REV · FW |
 |---|---|---:|---:|---|---|---|
-| `KMTC_SCI_101_STA0284_R2611_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
-| `KMTC_SCI_102_STA0285_R2611_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
-| `KMTS_SCI_101_STA0286_R2611_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
-| `KMTS_SCI_102_STA0287_R2611_NT.acf` | SAAO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
-| `KMTK_SCI_112_STA0212_R2611_MK.acf` | KASI 시험 유닛 **둘째 상자** (MK) ⭐ **신규** | **32** | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
-| `KMTK_SCI_112_STA0212_R2611_NT.acf` | KASI 시험 유닛 둘째 상자 (NT) ⭐ **신규** | 33 | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
-| `KMTK_SCI_113_STA0200_R2611_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
-| `KMTK_SCI_113_STA0200_R2611_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
-| `KMTC_GUI_161_STA0290_R2619.acf` | CTIO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
-| `KMTS_GUI_161_STA0291_R2619.acf` | SAAO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
-| `KMTK_GUI_162_STA0201_R2619.acf` | KASI guide | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
-| `KMTK_GUI_162_STA0230_R2619.acf` | KASI guide **둘째 상자** ⭐ **신규** | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
+| `KMTC_SCI_101_STA0284_R2612_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
+| `KMTC_SCI_102_STA0285_R2612_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
+| `KMTS_SCI_101_STA0286_R2612_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
+| `KMTS_SCI_102_STA0287_R2612_NT.acf` | SAAO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
+| `KMTK_SCI_112_STA0212_R2612_MK.acf` | KASI 시험 유닛 **둘째 상자** (MK) ⭐ **신규** | **32** | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
+| `KMTK_SCI_112_STA0212_R2612_NT.acf` | KASI 시험 유닛 둘째 상자 (NT) ⭐ **신규** | 33 | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
+| `KMTK_SCI_113_STA0200_R2612_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
+| `KMTK_SCI_113_STA0200_R2612_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
+| `KMTC_GUI_161_STA0290_R2620.acf` | CTIO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
+| `KMTS_GUI_161_STA0291_R2620.acf` | SAAO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
+| `KMTK_GUI_162_STA0201_R2620.acf` | KASI guide | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
+| `KMTK_GUI_162_STA0230_R2620.acf` | KASI guide **둘째 상자** ⭐ **신규** | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -97,7 +97,8 @@ science 1 이 둘 다 `.101` 이다.  ⛔ **그런데 KASI guide 둘(`STA0201`·
 
 ⭐ **타이밍 스크립트는 안 바뀌었다** — 열두 장 전부 `R2611`(science `LINES=142`)
 · `R2619`(guide `LINES=122`) 의 발췌본과 **바이트 동일**하다
-(`tools/extract_timing_script.py` 로 확인).  그래서 판 번호를 안 올렸다.
+(`tools/extract_timing_script.py` 로 확인).  그래서 **그때는** 판 번호를 안 올렸다.
+⚠️ 지금 판은 `R2612`/`R2620` 이다 — 파라미터 **슬롯 순서** 때문에 올렸다(맨 아래 절).
 
 바뀐 것은 **컨트롤러가 보고한 값**과 **채널 offset** 둘이다.
 
@@ -119,6 +120,62 @@ FW 도 다른데 전부 `1000`** 이고 science 도 유닛과 무관하게 MK `1
 다른 내용은 안 된다"* 인데, `KMTK_GUI_162_STA0201_R2619` 의 `TAPLINE0/1` 이
 바뀌었다.  ⭐ 판을 안 올린 근거는 **타이밍·설정 스크립트가 그대로**라는 것이고,
 구판은 git 이력에 있다.  ⚠️ 다음에 `TAPLINE` 을 또 건드리면 그때는 판을 올릴 것.
+
+## ⛔ KMTNet ACF 규약 — **파라미터 이름 셋은 고정이다** (운영자 2026-09-12)
+
+`IntMS` · `Exposures` · `FirstFlush` — 이 세 이름은 **ACF 를 개정해도 바꾸지
+않는다.**
+
+⚠️⚠️ **이것은 Archon 의 제약이 아니라 KMTNet 의 규약이다.**  컨트롤러는 파라미터
+이름에 아무 규칙도 걸지 않는다 — 아무 이름이나 쓸 수 있고, 타이밍 스크립트가
+그 이름을 부르기만 하면 된다.  ⛔ 그래서 **매뉴얼을 뒤져도 이 규칙은 안 나온다.**
+우리가 정한 것이다.
+
+### 왜 정했나
+
+취득 SW 는 노출마다 `IntMS`(적분 길이)와 `Exposures`(장수)를 `WCONFIG` 로 쓴다.
+그 자리를 **슬롯 번호**(`PARAMETERn` 의 n)로 집으면 다음이 생긴다:
+
+* ACF 를 개정하면 **번호가 밀린다** — 실제로 R2608 의 `PARAMETER0` 은
+  `ContinuousExposures` 였고 R2613 이 그 자리를 `FirstFlush` 에 내줬다.
+* 밀린 번호로 쓰면 `WCONFIG` 도 `LOADPARAMS` 도 **성공한다.**  오류가 한 줄도
+  안 나면서 **엉뚱한 파라미터를 덮는다** — 노출 시간이 조용히 안 바뀌거나
+  기하가 망가진다.
+
+⭐ 그래서 **이름으로 찾는다** (`ArchonController._find_param_slots`).  ACF 를
+읽을 때마다(`parse_acf()`) 다시 찾으므로 판이 밀려도 따라가고, **왕복은 0회**다
+(이미 읽어 둔 `[CONFIG]` 를 한 번 훑을 뿐이다).
+⭐ 같은 사상이 타이밍 스크립트에도 서 있다 — 줄 번호가 아니라 **라벨**로 본다
+(`acftiming.blocks()`).  *"문서의 `LINEn` 은 읽는 이를 돕는 표기일 뿐이고
+판마다 밀린다."*
+
+### 어기면 어떻게 되나
+
+| 어긴 것 | 결과 |
+|---|---|
+| `IntMS` 또는 `Exposures` 가 없다 | ⛔ **기동이 멈춘다** — 그 ACF 로는 노출을 못 건다 |
+| `FirstFlush` 가 없다 | ⚠️ 경고하고 **flush 없이 간다** (R2608 이하 ACF 가 그렇다).  *"flush 옵션 하나 때문에 관측을 통째로 못 하는 것이 더 나쁘다"* |
+| `Exposures` 가 **맨 마지막 슬롯이 아니다** | ⛔ **노출 준비가 멈춘다** — `LOADPARAMS` 가 값을 슬롯 번호 순으로 하나씩 덮어쓰는 동안 코어가 계속 돌아, 방아쇠가 먼저 앉으면 나머지를 **묵은 값**으로 읽는다 (매뉴얼 p.52 · DevNote 11.31) |
+
+⭐ 셋째 줄의 제약은 **"몇 번 슬롯이냐" 가 아니라 "어느 쪽이 먼저 실리냐"** 다.
+⛔ 매뉴얼의 *"parameter list"* 가 **슬롯 번호 순**인지 **설정 메모리 줄 순**인지
+우리는 모르므로, 검사는 **둘 다 본다** — 하나라도 `FirstFlush` 가 뒤면 멈춘다.
+⚠️ 2026-09-13 에 이 검사를 *"실측이 반증했다"* 며 한 번 걷었다가 **되돌렸다** —
+그 반증이 *"list 순서 = 파일 줄 순서"* 라는 **미검증 가정** 위에 서 있었다.
+**없는 증상은 반증이 아니다**(창이 작으면 안 보일 뿐이다).  DevNote 11.31 참조.
+⛔ **고정하는 것은 이름이고, 슬롯 번호는 규약이 아니다** — 순서 제약은 이 하나뿐.
+
+### 설정에서 뺀 것
+
+⛔ ini 눈금 여섯(`param_intms_slot`·`param_intms_name`·`param_exposures_slot`·
+`param_exposures_name`·`param_flush_slot`·`param_flush_name`)을 **걷었다** —
+ICS `[archon]` 절과 ICG `[icg]` 절 양쪽에서.  ⚠️ ICG ini 에는 애초에 안 적혀
+있었고 코드 기본값만 있었다(같은 값이었다).
+⭐ 우회로가 없어지는 대신, 어긋나면 **기동에서 분명히 멈춘다** — 종전처럼
+조용히 엉뚱한 슬롯을 덮지 않는다.
+
+⚠️ **시험이 저장소의 ACF 열둘을 전수로 검산한다**
+(`tests/test_ccdflush.py` 의 `test_every_shipped_acf_keeps_the_kmtnet_names`).
 
 ## ⚠️ 읽는 픽셀 수와 **저장되는** 픽셀 수가 다르다 (2026-08-29 확인)
 
@@ -354,6 +411,93 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
 
+## science R2612 · guide R2620 -- `Exposures` 를 **맨 마지막 슬롯**으로 (2026-09-13, 운영자)
+
+    KMT?_SCI_*_R2611_*.acf  ->  ..._R2612_*.acf   (8장, 구판은 archive/)
+    KMT?_GUI_*_R2619.acf    ->  ..._R2620.acf     (4장, 구판은 archive/)
+    acf_timing_script_{science,guide}.txt  ->  ..._R2612.txt / ..._R2620.txt
+
+**파일당 딱 두 줄**이다 -- `Exposures` 와 `ContinuousExposures` 의 자리를 맞바꿨다.
+⭐ 타이밍 스크립트는 **한 글자도 안 바뀌었다** (발췌 txt 가 구판과 바이트 동일).
+
+| | 옛 (R2611/R2619) | 새 (R2612/R2620) |
+|---|---|---|
+| science | `PARAMETER1="Exposures=0"` · `PARAMETER21="ContinuousExposures=0"` | `PARAMETER1="ContinuousExposures=0"` · **`PARAMETER21="Exposures=0"`** |
+| guide | `PARAMETER1="Exposures=0"` · `PARAMETER16="ContinuousExposures=0"` | `PARAMETER1="ContinuousExposures=0"` · **`PARAMETER16="Exposures=0"`** |
+
+### ⛔ 왜 -- **방아쇠는 맨 뒤에 실려야 한다**
+
+`LOADPARAMS` 는 파라미터를 **하나씩 제자리에 덮어쓴다.**  벤더가 Note 로 못박았다
+(p.52): *"the parameters are updated system-wide **one at a time**, starting with the
+**first in the parameter list**"*, 그리고 같은 항목이 *"This does **not reset** the
+timing cores"* -- 즉 **코어는 그동안 계속 돈다**.  둘을 합치면 코어가 **일부만 바뀐
+상태를 볼 수 있다.**
+
+⭐ 벤더가 이 성질을 아는 증거가 바로 옆에 있다 -- `PREPPARAM`/`FASTPREPPARAM` 이 값을
+미리 채워 두었다가 **`EXTLOAD` 신호에 한꺼번에 갈아끼우는** 장치다.  ⚠️ 그런데 `EXTLOAD`
+는 명령이 아니라 백플레인 Sync 잭의 **LVDS 입력**이고 **외부 마스터 클록 모드**
+(`EXTCLOCK=1`)에서만 코어의 LOAD 에 걸린다 -- 우리 구성에는 그 배선도 외부 클록도 없어
+**쓸 수 없는 길**이다.
+
+`Exposures` 가 0 이 아니게 되는 순간 코어는 `Exposure:` 로 뛰고, 거기서 **거의 모든
+파라미터를 읽는다**: `IntMS` · `NoIntMS` · `PreSkipLines` · `Lines` · `PostSkipLines` ·
+`OverscanLines`, 그리고 `Line:`/`PixelFirst:` 안의 `VerticalBinning` · `Pixels` ·
+`HorizontalBinning` · `AT` · `ST`.  `Start:` 에서만 읽는 것은 `FirstFlush` 와
+`ContinuousExposures` 둘뿐이다.  ⭐ 그래서 규칙은 *"몇 개만 앞에"* 가 아니라
+**방아쇠가 맨 뒤** 하나다.
+
+틀렸을 때 무엇이 보이나 -- 확률은 대략 `두 값이 실리는 시간차 ÷ 1.05 µs`(유휴 고리 한 바퀴):
+
+| 뒤에 남은 것 | 증상 |
+|---|---|
+| `FirstFlush` | 묵은 **0** 으로 읽어 **flush 를 거른다** — 첫 장이 안 비워지고, flush 가 1·2번 프레임 **사이**에 끼어 2번 실적분이 `주기 + 1.25 s` |
+| `IntMS` | **직전 노출시간**으로 찍는다.  ⚠️ 연속 GO 사이에 노출시간이 그대로면 **틀려도 안 보인다** — `Exposures=n` 반복 노출 중 exptime 을 바꿀 때 드러난다 (운영자 지적) |
+| `Lines`·`Pixels` 등 | 기하가 직전 값으로 -- 저장 크기가 어긋난다 |
+
+### ⚠️ *"parameter list"* 는 **슬롯 번호 순**으로 읽는다
+
+ACF 파일은 `PARAMETER0,1,10,…,19,2,20,…` **사전순**으로 적혀 있어 파일 줄 순서와 슬롯
+번호 순서가 다르다.  우리는 **번호 순**을 정본으로 삼는다:
+
+1. 매뉴얼이 *"the **first** in the parameter list"* 라고 쓰는데, `PARAMETERn` +
+   `PARAMETERS=n` 은 **첨자 붙은 배열**의 모양이다 — "첫 번째" = `PARAMETER0`.
+2. 곁다리: 판올림 전 배치에서 `Exposures`(P1)와 `IntMS`(P2)는 숫자로 한 칸인데 **파일
+   줄 순서로는 열한 칸**이었다.  줄 순서가 정본이라면 묵은 `IntMS` 로 찍히는 일이 훨씬
+   잦았을 텐데 못 봤다.  **증명은 아니지만** 번호 순 쪽을 가리킨다.
+
+⛔ 그리고 파라미터가 **열 개를 넘으면** 두 순서에서 동시에 "맨 마지막" 인 슬롯이
+**존재하지 않는다** — 한때 둘 다 보게 짰다가 올바른 배치가 불가능해져서 걷었다.
+
+### 호스트가 이것을 지킨다
+
+`ArchonController._require_exposures_last()` 가 노출 준비에서 검사한다 — `Exposures` 가
+맨 마지막 슬롯이 아니면 **멈춘다**.  저장소의 ACF 열둘도 시험이 전수로 검산한다
+(`tests/test_ccdflush.py`).
+
+⏳ **다음 판 후보 (R2613/R2621)** — 타이밍 스크립트 개정.  `FlushFrame:` 을 `GOTO`
+대상에서 **`RETURN` 서브루틴**으로 바꾸고, 매 노출 flush 용 `EveryFlush` 를 `Exposure:`
+분기 안에 넣는다.  운영자 설계:
+
+    Start:
+    RESET; CALL FlushFrame(FirstFlush)
+    …
+    Exposure:
+    X; Exposures--
+    Continuous:
+    X; CALL FlushFrame(EveryFlush)
+    X; CALL IntUnit(IntMS)
+    …
+    FlushFrame:
+    X; FirstFlush--
+    X; CALL Prep
+    X; CALL Flush
+    X; RETURN FlushFrame
+
+⭐ `FirstFlush--` 가 **서브루틴 안**이라는 것이 핵심이다 -- `CALL` 의 active count(스냅샷)와
+파라미터가 **따로 세어 같은 수로 끝나** `FirstFlush=n` 이면 정확히 n 번 돈다.  (밖에서
+한 번만 깎으면 `n(n+1)/2` 번 돈다.)  그리고 `FirstFlush=0` 이면 **파라미터 0 규칙**으로
+호출 자체가 생략돼 유휴 비용이 0 이다.
+
 ## R2619 -- 이온게이지를 **꺼진 채로** 내보낸다 (2026-09-10, 운영자)
 
     KMTK_GUI_162_STA0201_R2618.acf  ->  ..._R2619.acf   (구판은 archive/)
@@ -410,8 +554,11 @@ icg_archon.ini` 의 `acf` 줄 손 수정.  안 하면 *"acf 가 없다"* 로 죽
 아예 없어진다.
 
 ⭐ **소프트웨어의 되돌림은 그대로 둔다** (`../icg_archon/backend.py` `ensure_trigger_resting`)
--- ACF 는 갈릴 수 있고 `apply_acf=false` 경로도 있다.  ACF 가 맞으면 그 되돌림은 **되읽기만
-하고 아무것도 안 쓴다** (왕복 둘, 적용 0).
+-- ACF 는 갈릴 수 있다(옛 판이 올라간 컨트롤러 · 짝이 안 맞는 파일).  ACF 가 맞으면 그
+되돌림은 **되읽기만 하고 아무것도 안 쓴다** (왕복 둘, 적용 0).
+⚠️ 종전 근거에 있던 *"`apply_acf=false` 경로"* 는 **없어졌다** (2026-09-12, 기동마다
+`APPLYALL` 한다) -- 그래도 방어를 걷지 않는 이유는 **파일이 갈릴 수 있다**는 나머지 절반이
+그대로이기 때문이다.
 
 ⛔ **science ACF 는 안 건드렸다**(그때 여섯 장) -- 거기서는 `TRIGOUTFORCE=0` 이 **셔터를 여는 모드**다
 (매뉴얼 p.15; `ArchonBackend` 가 `drives_shutter()` 로 가른다).  `TRIGOUTINVERT` 도 양쪽 다
@@ -643,11 +790,11 @@ SkipLine(PostSkipLines)` 은 인자가 0 이라 한 번도 안 돌고, R2612 부
     LINE140="X; CALL Flush"                                ; Flush: LINE27~30 = SkipLine(FlushLines=4900) + NoIntUnit(FlushPostMS)
     LINE141="X; GOTO Start"
     LINES=137 -> 142
-    PARAMETER0="ContinuousExposures=0"  ->  "FirstFlush=0"          ⛔ 반드시 슬롯 0 (R2613 절)
+    PARAMETER0="ContinuousExposures=0"  ->  "FirstFlush=0"          ⛔ `Exposures` 보다 **먼저 실려야** 한다 (비어 있던 0 을 썼다, R2613 절)
     PARAMETER21=(빈 슬롯)               ->  "ContinuousExposures=0"  · PARAMETERS=22 그대로
 
 여섯 장의 `LINE*`/`PARAMETER*` 줄은 편집 전에도 서로 같았다(md5 일치 확인) -- 같은 편집을 여섯에
-걸었고, 뽑은 타이밍 스크립트 하나(`acf_timing_script_science.txt`, 142 줄)가 여섯 모두와 맞는다.
+걸었고, 뽑은 타이밍 스크립트 하나(당시 `acf_timing_script_science.txt`, 142 줄)가 여섯 모두와 맞는다.
 
 운영자 지시(2026-09-05): *"science 는 abort 시 flush 불필요하지만 시험을 위해 CCD flush 함수를
 구현해 두자.  Timing script 와 ics 에."*
@@ -674,13 +821,14 @@ guide R2612 는 유휴 루프의 `SkipLine` 을 뺐지만(science 독출 crossta
 SkipLine"` 으로 한 줄 밀렸을 뿐이고, 빈 `LINE5` 를 써서 `LINE6`(Exposure:) 이하 번호는 안 밀렸다 --
 `set_ccdflush()` 가 보는 `LINE9`/`LINE10` 이 그대로다 (⚠️ R2610 에서 그 두 줄은 지웠다 -- 위 절).
 
-### ⛔ Config 슬롯 번호 0 · 설정 메모리 잔류
+### ⛔ Config 슬롯 **순서** · 설정 메모리 잔류
 
-> ⚠️ 잔류 규칙은 **R2610 에서 닫혔다** -- `FirstFlush` 는 `ccdflush` 옵션이 기동 때 한 번 쓰는 값이고 호스트가 프레임마다 되쓰지 않는다 (위 "science R2610" 절).  슬롯 0 은 그대로다.
+> ⚠️ 잔류 규칙은 **R2610 에서 닫혔다** -- `FirstFlush` 는 `ccdflush` 옵션이 기동 때 한 번 쓰는 값이고 호스트가 프레임마다 되쓰지 않는다 (위 "science R2610" 절).  슬롯은 지금도 0 이다.
+> ⭐ 제약은 **"0 번" 이 아니라 "`Exposures` 보다 먼저 실린다"** 이다 -- 비어 있던 0 을 쓴 것은 그것을 만족시키는 가장 간단한 배치였다.  자세한 것은 아래 "Config 슬롯 번호 순서" 절과 DevNote 11.31.
 
-guide R2613 절의 두 ⛔ 가 그대로 적용된다.  `FirstFlush` 는 **PARAMETER0** 이어야 한다 --
-LOADPARAMS 가 슬롯 순서로 적용하고(매뉴얼 p.52) 유휴 루프가 µs 라, `Exposures`(슬롯 1) 뒤에
-두면 코어가 flush 없이 `Exposure` 로 먼저 뛴다.  설정 메모리의 `FirstFlush=1` 은 호스트가 곧
+guide R2613 절의 두 ⛔ 가 그대로 적용된다.  `FirstFlush` 는 **`Exposures` 보다 먼저 실려야** 한다 --
+LOADPARAMS 가 값을 하나씩 덮어쓰는 동안 코어는 계속 돌고(매뉴얼 p.52) 유휴 루프가 µs 라,
+`Exposures` 뒤에 두면 코어가 flush 없이 `Exposure` 로 먼저 뛴다.  설정 메모리의 `FirstFlush=1` 은 호스트가 곧
 0 으로 되써야 한다(그 뒤 어떤 LOADPARAMS 도 유령 flush 를 되살린다).  `ContinuousExposures` 는
 호스트가 안 쓰는 값이라 비어 있던 슬롯 21 로 갔다 -- `tools/ics_archon_buftest.py` 는 슬롯을
 이름으로 찾으므로(`param_slots`) 영향 없다.
@@ -736,7 +884,7 @@ p.2 note 2 공식으로 5.4e-4~1.1e-3 e/px/s, 보수적 바닥값 0.01 을 두�
 
 ⏳ 고치려면 `STATE31\MOD4` ch6 을 `,1,1`(keep) 로 -- FrameShift 내내 DG 12 V 유지.
 **그러나 데이터시트 본문만으로는 DG 가 정적 레지스터를 통째로 덤프하는지(가로 인접
-덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 후속 판으로(**R2620** -- R2615 는 위 `SkipLine` DGHIGH 건, R2616 은 `FirstFlush` 상수,
+덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 후속 판으로(**R2621** -- ⚠️ 2026-09-13 에 R2620 → R2621 로 밀었다; R2620 은 파라미터 슬롯 순서 판올림이 가져갔다.  R2615 는 위 `SkipLine` DGHIGH 건, R2616 은 `FirstFlush` 상수,
 R2617 은 빈 줄, R2618 은 `TRIGOUTFORCE`, R2619 는 `DIO_POWER` 가 썼다): 암실·저온·유휴
 시험 ACF 에서 `LINE12`(R2617 의 `LINE13`)를 `DGLOW; X(1)` 로 바꿔(HorizontalShift 생략) 레지스터
 잔량이 1 행에 더해져 나오게 하고 FRAME6 ch6 을 A_LOW/keep 두 판으로 찍어 비교.
@@ -760,7 +908,7 @@ image/store 를 비워 어둠에서는 신호가 안 남는다).
     LINE118="NOCLAMP; CALL SkipLine(FlushLines)"          ; store 를 행 단위로 버린다, 2448 회 ≈ Line(1033)
     LINE119="X; GOTO Start"
     LINES=113 -> 120
-    PARAMETER0="ContinuousExposures=0"  ->  "FirstFlush=0"      ⛔ 반드시 슬롯 0
+    PARAMETER0="ContinuousExposures=0"  ->  "FirstFlush=0"      ⛔ `Exposures` 보다 **먼저 실려야** 한다 (비어 있던 0)
     PARAMETER16="ContinuousExposures=0" (신설) · PARAMETERS=16 -> 17
 
 빈 LINE5 를 써서 **LINE6 이하 번호는 밀리지 않았다** -- `acftiming` 형태 검사(`LINE11`·
@@ -785,6 +933,26 @@ image/store 를 비워 어둠에서는 신호가 안 남는다).
 증가가 정확히 1 인지 확인한다.
 
 ### ⛔ Config 슬롯 번호 순서 -- 설계 검토가 잡은 blocker
+
+> ### ⚠️ 2026-09-13 -- 한 번 걷었다가 **되돌렸다**
+>
+> 운영자 물음: *"parameter 의 슬롯 순서도 의미 없을 것 같은데?  이런 제약이 왜 있지?"*
+>
+> 파고든 결과 **제약은 선다.**  중간에 *"실측이 반증한다"* 며 검사를 걷었는데, 그
+> 반증이 **미검증 가정** 위에 서 있었다 -- *"매뉴얼의 `parameter list` 순서 = ACF
+> 파일의 줄 순서(사전순)"*.  그 가정으로는 `Exposures`(2번째)와 `IntMS`(13번째)
+> 사이가 ~100 ms 라 *"노출시간이 100 % 밀려야 하는데 안 밀린다"* 가 된다.
+> ⛔ 그런데 `PARAMETERn` 의 **n 이 곧 리스트 첨자**로 읽는 편이 더 자연스럽다
+> (`PARAMETERS=22` 로 개수까지 주는 것이 첨자 붙은 배열의 모양이다).  그러면 둘은
+> **한 칸 차이**이고 240 ms 의 대부분은 1020줄 **파싱**이니, 갱신 간격이 µs 아래여서
+> 못 봤을 수 있다.  **없는 증상은 반증이 아니다.**
+>
+> ⭐ 그래서 검사를 되살렸고, **R2612/R2620 에서 배치를 고쳤다** -- `Exposures` 를
+> **맨 마지막 슬롯**으로 (맨 위 절).  순서는 **슬롯 번호**로 읽는다.
+>
+> ⭐ 그리고 규칙이 `FirstFlush` 하나에 그치지 않는다는 것이 이때 드러났다 -- `IntMS` 도
+> `NoIntMS` 도 `Lines` 도 전부 `Exposure:` 분기가 읽는다.  그래서 *"몇 개만 앞에"* 가
+> 아니라 **방아쇠가 맨 뒤** 하나로 규정했다 (운영자 2026-09-13).
 
 `LOADPARAMS` 는 파라미터를 **첫 슬롯부터 순서대로 하나씩** 적용한다(매뉴얼 p.52).
 유휴 루프 한 바퀴가 105 틱(1.05 µs)이라, 플래그를 뒤 슬롯에 두면 `Exposures`(슬롯 1)가
@@ -1008,7 +1176,7 @@ for1110` · `R2601_for1259`) — 은 지운 것이 아니라
     git show e7653cc:ics_archon/__ref_archon_control/acf_labtest/<이름>.acf > /tmp/orig.acf
 
 ⭐ **2026-09-11 초기화 시험 반입분은 다른 폴더다** — `__ref_archon_control/acf_20260911/`(정본 열둘 + 그 왕복의 중간 판들이 든 `oldold/`).  아래 표는 **그 전에 받은 것**(`acf_labtest/`)의 기록이다.
-⛔ `oldold/` 안의 `KMTK_GUI_162_STA0201_R2619.acf` 는 **`TAPLINE` 정돈 전 판**이라 정본 `acf/` 의 같은 이름과 **내용이 다르다** — 이름만 보고 집지 말 것.
+⛔ `oldold/` 안의 `KMTK_GUI_162_STA0201_R2620.acf` 는 **`TAPLINE` 정돈 전 판**이라 정본 `acf/` 의 같은 이름과 **내용이 다르다** — 이름만 보고 집지 말 것.
 
 | 보관함 파일 (`__ref_archon_control/acf_labtest/`) | 받은 줄 끝 | 받은 바이트 | 지금(LF) |
 |---|---|---:|---:|
@@ -1038,8 +1206,8 @@ guide 쪽 넷(`R2601` 계열 둘 · `STA0291` 둘)은 정본에 없는 판이라
 
 | 보관함 파일 | 판 | 줄 | 지금(LF) | 정본 쪽 짝 |
 |---|---|---:|---:|---|
-| `acf_timing_script_guide_R210930.txt` | guide | 113 | 1,765 | `acf/acf_timing_script_guide.txt` |
-| `acf_timing_script_science_R250826.txt` | science | 137 | 2,137 | `acf/acf_timing_script_science.txt` |
+| `acf_timing_script_guide_R210930.txt` | guide | 113 | 1,765 | `acf/acf_timing_script_guide_R2620.txt` (당시 `…_guide.txt`) |
+| `acf_timing_script_science_R250826.txt` | science | 137 | 2,137 | `acf/acf_timing_script_science_R2612.txt` (당시 `…_science.txt`) |
 
 ⭐ **파일명의 `R<YYMMDD>` 는 타이밍 스크립트 자체의 최종 수정일**이다(운영자 기록)
 -- `R210930` = 2021-09-30 · `R250826` = 2025-08-26.  ⚠️ **ACF 판 번호(`R<YYMM>`)와
@@ -1078,8 +1246,8 @@ science 의 142 는 R2609 이래 그대로이고, guide 만 R2617 에서 120 →
 |---|
 | `acf/archive/KMTK_GUI_162_STA0201_R2608.acf` · 보관함 `KMTK_GUI_162_STA0201_R2608.acf` · 보관함 `kmtnet_guide_STA0201_162_R0827_for1259_rtd9cal.acf` (sha256 `d710ffae26e6`) |
 | `acf/<이름>.acf` ↔ 보관함 `<같은 이름>.acf` -- **science 여섯 전부** (정규화 뒤) |
-| `acf/acf_timing_script_guide.txt` ↔ 보관함 `acf_timing_script_guide_R210930.txt` (1,765 B) |
-| `acf/acf_timing_script_science.txt` ↔ 보관함 `acf_timing_script_science_R250826.txt` (2,137 B) |
+| `acf/acf_timing_script_guide*.txt` ↔ 보관함 `acf_timing_script_guide_R210930.txt` (1,765 B) |
+| `acf/acf_timing_script_science*.txt` ↔ 보관함 `acf_timing_script_science_R250826.txt` (2,137 B) |
 
 ⚠️ **`archive/` 는 여전히 필요하다** — 거기 있는 `R2601_…_rtd9cal` 둘은
 **limit 정정 전** 판이고, 그 내용은 `__ref_archon_control/acf_labtest/` 에 없다.  둘을

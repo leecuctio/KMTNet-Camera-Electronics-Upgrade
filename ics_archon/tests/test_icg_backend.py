@@ -32,8 +32,8 @@ ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
 TRIGOUTLEVEL=1
 PARAMETER0="FirstFlush=1"
-PARAMETER1="Exposures=1"
-PARAMETER2="IntMS=0"
+PARAMETER1="IntMS=0"
+PARAMETER2="Exposures=1"
 """
 
 INI = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),

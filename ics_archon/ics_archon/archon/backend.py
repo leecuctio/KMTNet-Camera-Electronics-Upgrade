@@ -329,7 +329,25 @@ class ArchonBackend:
         ms = int(round(max(seconds, 0.0) * 1000))
 
         async def _go(c: ArchonController) -> None:
-            await c.set_trigger_forced(not self.acfg.drives_shutter(c.tag))
+            # ⭐ **셔터를 모는 쪽과 안 모는 쪽을 노출마다 세운다**
+            # (운영자 확정 2026-09-12).
+            #
+            # | `shutter_ctrl` | 모는 쪽 | 안 모는 쪽 |
+            # |---|---|---|
+            # | `MK` | MK: `FORCE=0`·`LEVEL=0` | NT: `FORCE=1`·`LEVEL=0` |
+            # | `NT` | NT: 같음 | MK: 같음 |
+            # | `BOTH` | 둘 다 `FORCE=0`·`LEVEL=0` | -- |
+            #
+            # ⛔ **레벨을 함께 쓰는 것이 요점이다.**  종전에는
+            # `set_trigger_forced()` 로 `FORCE` 만 썼는데, 그러면 `LEVEL` 이
+            # 앞 값 그대로다 -- 앞 세션이 `SHOPEN` 중에 죽어 `LEVEL=1` 을
+            # 남겼으면 안 모는 쪽 핀이 **HIGH 로 고정**된다 (`FORCE=1` 이
+            # 그 값을 그대로 내보낸다).
+            # ⭐ 모는 쪽은 `FORCE=0` 이라 `LEVEL` 이 핀에 안 나가지만, 같이
+            # 써 두면 앞 세션 잔재가 매 노출 정리된다.  왕복은 안 는다 --
+            # `set_trigger()` 가 둘을 **한 `APPLYSYSTEM`** 으로 쓴다.
+            await c.set_trigger(
+                high=False, forced=not self.acfg.drives_shutter(c.tag))
             await c.trigger(ms, suffix=self._suffix.get(c.tag, ''))
 
         try:

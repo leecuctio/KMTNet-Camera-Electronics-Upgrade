@@ -42,8 +42,8 @@ NX, NY = 12, 4
 
 ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
-PARAMETER1="Exposures=1"
-PARAMETER2="IntMS=0"
+PARAMETER1="IntMS=0"
+PARAMETER2="Exposures=1"
 """
 
 BASE_INI = os.path.normpath(os.path.join(
@@ -454,8 +454,8 @@ def test_rdmode_is_never_inferred_from_the_acf_name(tmp_path):  # noqa: ANN001
             acfg, tuple(cfg.node.ccds), cfg) if 'rdmode' in n.lower()]
 
     # 속도 토큰이 있든 없든, ini 가 비었든 채웠든 -- rdmode 경고는 없다
-    assert not notes('KMTC_SCI_101_STA0284_R2611_MK.acf', '')
-    assert not notes('KMTC_SCI_101_STA0284_R2611_MK.acf', 'NORMAL')
+    assert not notes('KMTC_SCI_101_STA0284_R2612_MK.acf', '')
+    assert not notes('KMTC_SCI_101_STA0284_R2612_MK.acf', 'NORMAL')
     assert not notes('KMTNet_Sci_fast_med_U13.acf', 'NORMAL')
     assert not notes('KMTNet_Sci_fast_med_U13.acf', '')
 

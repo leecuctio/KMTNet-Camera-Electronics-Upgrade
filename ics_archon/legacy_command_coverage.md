@@ -44,11 +44,11 @@
 | 판정 | 수 |
 |---|---:|
 | 구현됨 | **43** |
-| 신설 | **10** |
+| 신설 | **11** |
 | 일부러 뺐다 | **17** |
 | 미구현 | **63** |
 | 기타 | **3** |
-| **합계** | **136** |
+| **합계** | **137** |
 
 추출 원표: 레거시 ICS **143** · 레거시 ICG **47** · 현행 구현 **66**.
 
@@ -126,11 +126,12 @@
 | **help / ?** | console 전용 | 없음 | 콘솔 도움말 출력 | 구현됨(console) / ⛔ 내용 낡음 — 판정은 원안대로인데 **숫자가 틀렸고 누락 범위가 더 넓어.** [검증: ① **16개가 아니라 14개**야. 층2 ICS 가 더한 새 낱말은 6(HK·HKDATA·CCDFLUSH·CCDPOWON·CCDPOWOFF·ARCHON — `cmd_go` 는 재정의라 새 낱말 아님), 층3 ICG 는 14(그 6 + GUIDEEXP·RADIONODE·EXPENABLE·HTRSET·HTRFORCE·HTRRAMP·HTRPID·VACGAUGE — `cmd_go`·`cmd_exp` 는 재정의). ICS 의 6 이 ICG 의 14 에 포함되니 합집합은 **14**야 — 원안이 괄호 안에 손으로 적은 목록도 정확히 14개였어. ② ⭐ **더 나쁜 건 기반 명령도 빠졌다는 것**: `_HELP`(:23-38)를 세어 보니 기반 29개 중 `stop`·`abort`·`datasource`·`initialize`·`erase`·`shopen`·`shclose`·`dmawait`·`bin`·`ping`·`pong` **열한 개가 없어**. 특히 `stop`/`abort` 는 노출을 세우는 비상 수단인데 도움말에 없어. ③ 세 프로그램이 같은 `Console` 을 쓰는 것 맞아 — `_HELP` 는 grep 결과 console.py 한 곳에만 정의되고 ics_archon/icg_archon 어디에도 재정의가 없어] |
 | **quit / exit** | console 전용 | 없음 | 콘솔 종료 | 구현됨(console) — 원안 맞아. [검증: :66-71] |
 
-## 신설 — 레거시에 없던 것 (10)
+## 신설 — 레거시에 없던 것 (11)
 
 | 명령 | 노드 | 인자 | 용도 | 노트 (이유·근거) |
 |---|---|---|---|---|
 | **ARCHON** | ICS·ICG | ICS `ARCHON <MK\|NT> <원문…>` / ICG `ARCHON <원문…>` | 컨트롤러 바이패스 — 명령 원문을 보내고 응답 원문을 그대로 돌려준다 | 신설 — 원안 맞아, 제한 없음도 확인했어. [검증: ics_archon/app.py:180-186 docstring 원문 *"⭐ `ARCHON` 은 **제한이 없다** (운영자 2026-09-05 \"제한 없이 모두 풀어줘\") -- 취득 중이든 다른 조작 중이든 받고, `_op_inflight` 도 잡지 않는다(`GO` 를 막지 않는다)"* 를 직접 열람. ICG 쪽도 commands.py:60-63 에 같은 취지가 적혀 있어. ⭐ 원안의 지적(레거시 CB `XMIT` 은 위험 통로로 지목돼 안 옮겼는데 이쪽은 의식적으로 열었다 — 같은 모양의 두 결정이 반대로 났다)은 문서에 그렇게 적어 둘 값어치가 있어] |
+| **C1TRIGOUT / C2TRIGOUT** | ICS | `C1TRIGOUT <ms>` · `C2TRIGOUT <ms>` | 컨트롤러 1(MK)/2(NT) 의 Trigger Out 을 `<ms>` 동안 HIGH.  `0` 이면 즉시 내림 | 신설 — 운영자 2026-09-12.  ⭐ **`shutter_ctrl` 지정 여부와 무관하게** 그 컨트롤러를 움직인다 (배선 점검·예비 유닛 시험용).  `SHOPEN`/`SHCLOSE` 는 지정된 것만 움직인다.  ⚠️ 단위가 다르다 — `SHOPEN` 은 **초**, 이쪽은 **밀리초**(ICG `TRIGOUT` 과 같은 규약).  ⭐ 내려갈 쉬는 상태가 갈린다 — 셔터를 모는 쪽은 `FORCE=0`(스크립트에 반환), 안 모는 쪽은 `FORCE=1`(붙든다).  [검증: `ics_archon/app.py` `cmd_c1trigout`/`_trigout_cmd` + 어휘 `ICS_OPS_COMMANDS` + 시험 `test_ics_ops_commands.py` 넷] |
 | **CCDFLUSH** | ICS·ICG | ICS `CCDFLUSH [MK\|NT\|ALL]` / ICG 인자 없음 | 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (프레임은 안 만든다) | 신설 — 원안 맞아. [검증: 두 핸들러 다 sweep 에 있고 어휘도 양쪽 다 등록돼(ics_archon/app.py:63 ICS_OPS_COMMANDS · icg_archon/commands.py:95 ICG_COMMANDS). app.py:71-72 의 `BUSY_TEXT` 상수 확인] |
 | **CCDPOWON / CCDPOWOFF** | ICS·ICG | ICS `[MK\|NT\|ALL]` / ICG 없음 | CCD 전원 켜기·끄기 | 신설 — 원안 맞아. [검증: 네 핸들러 다 sweep 에 있고 어휘 등록도 양쪽 확인] |
 | **EXPENABLE** | ICG (ICS 는 발신) | `EXPENABLE [ON\|TRUE\|1\|OFF\|FALSE\|0]` | 가이드 노출 잠금 조회·설정 (지속) | 신설 — 원안 맞아. [검증: `expenablectl.py` 의 `CMD` 상수 + icg_archon/commands.py 의 `cmd_expenable` 핸들러 + `ICG_COMMANDS` 어휘 셋 다 확인. ini 옵션 이름과 와이어 낱말이 다르다는 경고도 유효 — ics_archon/config.py 의 `guiexpctrl` 주석이 `EXPENABLE` 은 *"ICS 노출 전/후가 아니라 독출 앞뒤"* 라고 정정해 뒀어]. ⚠️ 위 '(어휘 전수)' 항목의 아슬아슬한 자리가 여기야 — **ICS 는 `EXPENABLE` 을 보내면서 자기 어휘(ICS_OPS_COMMANDS)에는 안 넣었어.** `emit_req` 가 validate() 를 건너뛰어서 지금은 안 울 뿐이야 |

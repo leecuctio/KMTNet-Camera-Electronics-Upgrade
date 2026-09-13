@@ -39,14 +39,15 @@ from ics_sim.impv2 import MAX_LEN
 
 NX, NY = 12, 4
 
-#: 파라미터 슬롯 셋 -- `param_flush_slot`(PARAMETER0) · `param_exposures_slot`(1) ·
-#: `param_intms_slot`(2) 의 기본값과 같은 자리다 (`config.ArchonCfg`).
+#: 파라미터 셋 -- 실물 ACF 와 같은 자리다.  ⭐ 슬롯 **번호**는 이제 설정이
+#: 아니라 **ACF 에서 이름으로 찾는다** (`controller._find_param_slots`,
+#: 2026-09-12).  그래서 여기 번호가 밀려도 코드가 따라간다.
 ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
 TRIGOUTLEVEL=0
 PARAMETER0="FirstFlush=0"
-PARAMETER1="Exposures=0"
-PARAMETER2="IntMS=0"
+PARAMETER1="IntMS=0"
+PARAMETER2="Exposures=0"
 """
 
 INI = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -668,3 +669,101 @@ def test_abort_closes_a_shutter_left_open_by_shopen(tmp_path):
 
     trace = asyncio.run(run())
     assert trace[:3] == ['LEVEL', 'FORCE', 'APPLY'], trace
+
+
+# -- C1TRIGOUT / C2TRIGOUT (운영자 2026-09-12) -----------------------------
+#
+# ⭐ `SHOPEN`/`SHCLOSE` 와 갈라 둔 까닭: 그 둘은 *"셔터를 연다"* 라 `shutter_ctrl`
+# 이 지정한 컨트롤러만 움직이는데, `CnTRIGOUT` 은 *"이 컨트롤러의 핀을 움직인다"*
+# 라서 **지정 여부와 무관**하다 -- 배선 점검과 예비 유닛 시험에 그 길이 필요하다.
+# ⚠️ 단위가 다르다 -- `SHOPEN` 은 **초**, `CnTRIGOUT` 은 **밀리초**.
+
+
+def _cfg_value(fake, key):  # noqa: ANN001, ANN202
+    """가짜의 **설정 메모리**에서 한 줄의 값 (줄 번호가 아니라 키로)."""
+    for text in fake.config.values():
+        if text.startswith(key + '='):
+            return text.split('=', 1)[1]
+    return None
+
+
+def test_cntrigout_moves_the_unit_that_does_not_drive_the_shutter(tmp_path):
+    """⭐⭐ **`shutter_ctrl` 이 안 고른 유닛도 움직인다** -- 이 명령의 존재 이유다.
+
+    배포 ini 는 `shutter_ctrl = MK` 라 `SHOPEN` 은 NT 를 안 건드리는데,
+    `C2TRIGOUT` 은 건드려야 한다.
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            be = ses.app.backend
+            # 전제: MK 만 셔터를 몬다
+            assert be.acfg.drives_shutter('MK')
+            assert not be.acfg.drives_shutter('NT')
+            n = len(ses.nt.seen)
+            ses.app.transport.feed('abc>ICS C2TRIGOUT 50')
+            await until(lambda: _trig_trace(ses.nt, n).count('APPLY') >= 1,
+                        what='C2TRIGOUT 의 적용')
+            return _trig_trace(ses.nt, n), _cfg_value(ses.nt, 'TRIGOUTLEVEL')
+
+    trace, level = asyncio.run(run())
+    # 올림은 `LEVEL=1`+`FORCE=1` 을 한 적용에 (SHOPEN 과 같은 알맹이)
+    assert trace[:3] == ['LEVEL', 'FORCE', 'APPLY'], trace
+    assert level == '1', level
+
+
+def test_cntrigout_rests_where_the_unit_belongs(tmp_path):
+    """⭐ 내려갈 **쉬는 상태가 갈린다** (운영자 규범 2026-09-12).
+
+    | | `TRIGOUTLEVEL` | `TRIGOUTFORCE` |
+    |---|---|---|
+    | 셔터를 **모는** MK | `0` | `0` (스크립트에 돌려준다) |
+    | **안 모는** NT | `0` | `1` (우리가 붙든다) |
+
+    ⛔ 안 모는 쪽을 `FORCE=0` 으로 돌려주면 그 핀이 자기 타이밍 스크립트를
+    따라가 노출마다 흔들린다.
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            for word, fake in (('C1TRIGOUT', ses.mk), ('C2TRIGOUT', ses.nt)):
+                n = len(fake.seen)
+                ses.app.transport.feed('abc>ICS %s 0' % word)
+                await until(
+                    lambda f=fake, k=n: _trig_trace(f, k).count('APPLY') >= 1,
+                    what='%s 의 적용' % word)
+            return (_cfg_value(ses.mk, 'TRIGOUTFORCE'),
+                    _cfg_value(ses.mk, 'TRIGOUTLEVEL'),
+                    _cfg_value(ses.nt, 'TRIGOUTFORCE'),
+                    _cfg_value(ses.nt, 'TRIGOUTLEVEL'))
+
+    mk_force, mk_level, nt_force, nt_level = asyncio.run(run())
+    assert (mk_force, mk_level) == ('0', '0'), (mk_force, mk_level)
+    assert (nt_force, nt_level) == ('1', '0'), (nt_force, nt_level)
+
+
+def test_cntrigout_rejects_a_bad_duration(tmp_path):
+    """⛔ 인자를 **기본값으로 떨어뜨리지 않는다** -- 없거나 이상하면 거절."""
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            out = []
+            for body in ('', ' abc', ' -1'):
+                ses.app.transport.feed('abc>ICS C1TRIGOUT%s' % body)
+                await until(lambda n=len(out): len(
+                    [m for m in ses.sent if 'ERROR' in m
+                     and 'C1TRIGOUT' in m]) > n,
+                    what='C1TRIGOUT 거절')
+                out.append(1)
+            return [m for m in ses.sent if 'ERROR' in m and 'C1TRIGOUT' in m]
+
+    errs = asyncio.run(run())
+    assert len(errs) == 3, errs
+    assert any('Missing duration' in m for m in errs), errs
+    assert sum('Invalid duration' in m for m in errs) == 2, errs
+
+
+def test_cntrigout_is_registered_in_the_ics_vocabulary():
+    """⭐ 발신 어휘에 등록돼야 `emitter.validate()` 가 안 운다."""
+    from ics_archon.app import ICS_OPS_COMMANDS
+    assert {'C1TRIGOUT', 'C2TRIGOUT'} <= ICS_OPS_COMMANDS

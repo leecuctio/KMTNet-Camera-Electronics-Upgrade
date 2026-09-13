@@ -127,8 +127,6 @@ AUX_Host    = 127.0.0.1 (Local)     # 괄호 설명은 무시된다
 AUX_Port    = 5752
 AUX_TelID   = KMTNET
 AUX_SysID   = AUX
-shopen_cmd  = FILTERS SET_SH OPEN
-shclose_cmd = FILTERS SET_SH CLOSE
 ```
 
 키 이름과 형식은 TCSAgent 의 `pctcs.kmtn*.ini` 와 같다 — **같은 AUX 서버를 가리키므로** 그쪽 설정을 그대로 복사해 넣을 수 있다. 오가는 전문은 이렇다:

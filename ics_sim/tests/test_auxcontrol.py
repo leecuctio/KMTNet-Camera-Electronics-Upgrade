@@ -117,28 +117,36 @@ def test_wire_format_matches_the_spec():
     assert line == 'KMTNET AUX 00 FILTERS SET_SH OPEN'
 
 
-def test_shutter_events_send_the_configured_commands():
+@pytest.mark.parametrize('script', ['OBJECT', 'DARK'])
+def test_the_exposure_cycle_sends_nothing_to_aux(script):
+    """⛔ **노출 사이클은 AUX 로 아무것도 안 보낸다** (2026-09-12).
+
+    종전에는 셔터 개폐마다 `FILTERS SET_SH OPEN`/`CLOSE` 가 나갔다.  그 경로는
+    **OBSAgent/TCSAgent 를 통해 AUX 에 FSA 셔터 제어 명령을 전달**하려던 것인데,
+    TCS 측 검토로 **FSA HW 에 그 명령 구현이 어렵다**고 판정돼 걷었다.
+    ⭐ 셔터를 실제로 모는 것은 컨트롤러의 Trigger Out 이고 명령은 `SHOPEN`/
+    `SHCLOSE` 다 -- AUX 는 `LIMIT_SHUT` 으로 **상태를 읽기만** 한다 (규격 4-2).
+
+    ⚠️ DARK/BIAS 는 애초에 셔터를 안 열어 종전에도 조용했다 -- 이제 **OBJECT 도**
+    같다는 것이 이 시험의 요점이다.
+    """
     server = FakeAux('OK')
-    run_with_aux(OBJECT_SCRIPT, server)
-    assert any(s.endswith('FILTERS SET_SH OPEN') for s in server.seen), \
-        server.seen
-    assert any(s.endswith('FILTERS SET_SH CLOSE') for s in server.seen), \
-        server.seen
+    run_with_aux(OBJECT_SCRIPT if script == 'OBJECT' else DARK_SCRIPT, server)
+    assert server.seen == [], server.seen
 
 
 def test_every_line_carries_telid_and_sysid():
+    """전문 접두가 `<TelID> <SysID> ` 인가 (규격 2-4).
+
+    ⚠️ 2026-09-12 까지 셔터 이벤트를 도구로 썼다.  그 경로가 걷히면서
+    **접속 인사(`hello`)** 로 갈아탔다 -- 검사하는 성질은 그대로다.
+    """
     server = FakeAux('OK')
-    run_with_aux(OBJECT_SCRIPT, server)
+    cfg = _cfg(server, hello_subsystem='ALL', hello_command='ECHO ics_sim')
+    run_with_aux(OBJECT_SCRIPT, server, cfg=cfg)
     assert server.seen
     for line in server.seen:
         assert line.startswith('KMTNET AUX '), line
-
-
-def test_dark_does_not_touch_aux():
-    """DARK/BIAS 는 셔터를 열지 않는다 -- 보낼 이벤트가 없다."""
-    server = FakeAux('OK')
-    run_with_aux(DARK_SCRIPT, server)
-    assert server.seen == []
 
 
 # -- 노출은 AUX 응답에 좌우되지 않는다 ------------------------------------
@@ -172,9 +180,13 @@ def test_exposure_completes_when_aux_is_absent():
 
 
 def test_wrong_telescope_id_times_out_rather_than_hanging():
-    """TelID 오타 -> 서버 침묵.  규격 2-4 의 가장 헷갈리는 실패 형태다."""
+    """TelID 오타 -> 서버 침묵.  규격 2-4 의 가장 헷갈리는 실패 형태다.
+
+    ⚠️ 2026-09-12 까지 셔터 이벤트를 도구로 썼다 -- **접속 인사**로 갈아탔다.
+    """
     server = FakeAux('OK', tel='KMTNET')
-    cfg = _cfg(server, telescope_id='KMTN')     # 틀린 ID
+    cfg = _cfg(server, telescope_id='KMTN',     # 틀린 ID
+               hello_subsystem='ALL', hello_command='ECHO ics_sim')
     run = run_with_aux(OBJECT_SCRIPT, server, cfg=cfg)
     assert run.count('Wrote LASTFILE=', node='OBS') == 4
     assert server.seen, '서버는 줄을 받기는 해야 한다'
@@ -183,7 +195,13 @@ def test_wrong_telescope_id_times_out_rather_than_hanging():
 
 # -- 응답 분류 -----------------------------------------------------------
 
-def test_reply_is_recorded_for_each_event():
+def test_reply_is_recorded_for_each_command():
+    """보낸 줄과 받은 답이 **짝으로** `log` 에 남나.
+
+    ⚠️ 2026-09-12 까지 이 시험은 `on_shutter_open()`/`on_shutter_close()` 를
+    도구로 썼다.  그 경로(AUX 셔터 제어)가 걷히면서 `send()` 를 직접 부르게
+    바꿨다 -- **검사하는 성질은 그대로다** (겉을 하나 덜 거칠 뿐이다).
+    """
     server = FakeAux('OK')
     async def go():
         await server.start()
@@ -192,16 +210,16 @@ def test_reply_is_recorded_for_each_event():
             await client.start()
             await asyncio.sleep(0.3)
             assert client.connected
-            assert await client.on_shutter_open() == 'OK'
-            assert await client.on_shutter_close() == 'OK'
+            assert await client.send('FILTERS', 'STATUS') == 'OK'
+            assert await client.send('ALL', 'ECHO hi') == 'OK'
             await client.stop()
             return client.log
         finally:
             await server.stop()
     log = asyncio.run(go())
     assert [r for _, r in log] == ['OK', 'OK']
-    assert log[0][0].endswith('FILTERS SET_SH OPEN')
-    assert log[1][0].endswith('FILTERS SET_SH CLOSE')
+    assert log[0][0].endswith('FILTERS STATUS')
+    assert log[1][0].endswith('ALL ECHO hi')
 
 
 @pytest.mark.parametrize('reply', ['BAD', 'WAIT'])
@@ -213,7 +231,7 @@ def test_non_ok_replies_are_returned_not_raised(reply):
             client = AuxControlClient(_cfg(server).auxcontrol)
             await client.start()
             await asyncio.sleep(0.3)
-            out = await client.on_shutter_open()
+            out = await client.send('FILTERS', 'STATUS')
             await client.stop()
             return out
         finally:
@@ -227,7 +245,7 @@ def test_disabled_client_never_connects():
     async def go():
         client = AuxControlClient(cfg)
         await client.start()
-        out = await client.on_shutter_open()
+        out = await client.send('FILTERS', 'STATUS')
         await client.stop()
         return client.connected, out
     connected, out = asyncio.run(go())

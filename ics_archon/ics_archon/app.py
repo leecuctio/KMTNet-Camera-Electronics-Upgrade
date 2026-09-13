@@ -62,7 +62,8 @@ log = logging.getLogger('ics_archon.app')
 #: `ICG_COMMANDS` 와 같은 패턴이다 -- `emitter.validate()` 가 이 표로 발신을 검사하므로
 #: 등록 없이 쓰면 응답마다 `unknown_cmdword` 위생 경고가 난다 (`emitter.py:170`).
 ICS_OPS_COMMANDS = frozenset({'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON',
-                              'HK', 'HKDATA'})
+                              'HK', 'HKDATA',
+                              'C1TRIGOUT', 'C2TRIGOUT'})
 
 #: `ARCHON` 바이패스 응답 본문의 상한 [문자].  한 메시지 상한 `impv2.MAX_LEN`(2048) 안에
 #: 머리(`src>dest DONE: ARCHON MK ` -- 노드 이름 8자씩이면 ~30) 와 잘림 꼬리(~40) 를
@@ -423,6 +424,129 @@ class IcsDispatcher(Dispatcher):
         self.app.spawn(self.release_pulse('ABORT'))
         return super().cmd_abort(msg, target)
 
+    # -- Trigger Out 을 컨트롤러별로 (운영자 2026-09-12) -------------------
+    #
+    # ⭐ **`SHOPEN`/`SHCLOSE` 와 갈라 둔 까닭**: 그 둘은 *"셔터를 연다"* 는 뜻이라
+    # `[archon] shutter_ctrl` 이 지정한 컨트롤러만 움직인다.  `CnTRIGOUT` 은
+    # *"이 컨트롤러의 핀을 움직인다"* 라서 **지정 여부와 무관**하다 -- 배선 점검과
+    # 예비 유닛 시험에 그 길이 필요하다.
+    # ⭐ ICG 의 `TRIGOUT <ms>` 와 **같은 규약**이다 (ms · `0` 이면 즉시 내림).
+    # ⚠️ `SHOPEN` 은 **초**, `CnTRIGOUT` 은 **밀리초**다 -- 눈금이 다르다.
+
+    #: `CnTRIGOUT` 의 대기 타이머 -- **컨트롤러마다 따로**다.
+    #: ⛔ `SHOPEN` 의 `_shutter_timer` 와 다른 물건이다 (그쪽은 셔터를 모는
+    #: 것들을 한 태스크가 함께 몬다).
+    _trigout_timers = None
+
+    def cmd_c1trigout(self, msg: Message, target: Target) -> Reply:
+        """C1TRIGOUT <ms> -- **컨트롤러 1(MK)** 의 Trigger Out 을 <ms> 동안 HIGH.
+
+        `0` 이면 대기 중 펄스를 끊고 **즉시** 쉬는 상태로 내린다.
+        ⭐ `[archon] shutter_ctrl` 이 무엇이든 **이 컨트롤러를 움직인다.**
+        ⚠️ 단위는 **밀리초**다 (`SHOPEN` 은 초).
+        """
+        return self._trigout_cmd('C1TRIGOUT', acfg_mod.CTRLTAGS[0], msg)
+
+    def cmd_c2trigout(self, msg: Message, target: Target) -> Reply:
+        """C2TRIGOUT <ms> -- **컨트롤러 2(NT)** 의 Trigger Out.  위와 같은 규약."""
+        return self._trigout_cmd('C2TRIGOUT', acfg_mod.CTRLTAGS[1], msg)
+
+    def _trigout_rest(self, be, tag: str) -> tuple:  # noqa: ANN001
+        """이 컨트롤러가 내려갈 **쉬는 상태** -- 셔터를 모느냐로 갈린다.
+
+        | | `TRIGOUTLEVEL` | `TRIGOUTFORCE` | 뜻 |
+        |---|---|---|---|
+        | 셔터를 **몬다** | `0` | `0` | 선을 타이밍 스크립트에 **돌려준다** |
+        | **안 몬다** | `0` | `1` | 우리가 **붙들어** LOW 로 고정 |
+
+        ⭐ 운영자 규범 그대로다 (2026-09-12) -- *"지정되지 않은 유닛은 계속
+        `trigoutforce=true`/`trigoutlevel=0` 을 유지"*.
+        ⛔ 안 모는 쪽을 `FORCE=0` 으로 돌려주면 그 핀이 **자기 타이밍 스크립트를
+        따라가** 노출마다 흔들린다.
+        """
+        if be.acfg.drives_shutter(tag):
+            return trigout_core.REST_SCIENCE       # ('0', '0') -- 스크립트에 반환
+        return trigout_core.REST_GUIDE             # ('0', '1') -- 붙든다
+
+    def _cancel_trigout_timer(self, tag: str) -> bool:
+        """그 컨트롤러의 대기 중 펄스를 끊는다.  **끊었으면 `True`.**"""
+        timers = self._trigout_timers or {}
+        timer = timers.pop(tag, None)
+        if timer is None or timer.done():
+            return False
+        timer.cancel()
+        return True
+
+    def _trigout_cmd(self, word: str, tag: str, msg: Message) -> Reply:
+        """`CnTRIGOUT` 의 알맹이 -- 둘이 태그만 다르다."""
+        be, bad = self._archon_backend(word)
+        if bad is not None:
+            return bad
+        ctrl = getattr(be, 'ctrls', {}).get(tag)
+        if ctrl is None:
+            return Reply.error(word, 'Controller %s is not available' % tag)
+        arg = msg.body.split()
+        if not arg:
+            return Reply.error(word, 'Missing duration (milliseconds)')
+        try:
+            ms = float(arg[0])
+        except ValueError:
+            return Reply.error(word, 'Invalid duration: %s' % arg[0])
+        if ms < 0:
+            return Reply.error(word, 'Invalid duration: %s' % arg[0])
+        if self._trigout_timers is None:
+            self._trigout_timers = {}
+        self._cancel_trigout_timer(tag)
+        # ⛔ **같은 컨트롤러를 `SHOPEN` 이 몰고 있으면 그 타이머도 끊는다** --
+        # 안 끊으면 옛 타이머가 나중에 깨어나 지금 세운 선을 내린다.
+        if be.acfg.drives_shutter(tag) and self._cancel_shutter_timer():
+            log.warning('%s took the line from a pending SHOPEN (%s)',
+                        word, tag,
+                        extra={'detail': '셔터를 모는 컨트롤러다 -- '
+                                         'SHOPEN 의 남은 시간은 버려진다'})
+        rest = self._trigout_rest(be, tag)
+        if ms == 0:
+            self.app.spawn(self._do_trigout_rest(msg.src, word, ctrl, rest))
+            return Reply.noop()
+        self.app.spawn(self._do_trigout_pulse(msg.src, word, tag, ctrl,
+                                              ms, rest))
+        return Reply.noop()
+
+    async def _do_trigout_rest(self, dest: str, word: str,  # noqa: ANN001
+                               ctrl, rest: tuple) -> None:
+        """선을 쉬는 상태로 -- 적용 한 번."""
+        self._warn_if_acquiring(word)
+        try:
+            await trigout_core.rest_line(ctrl, rest)
+        except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
+            self.emit.error(dest, word, 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, word, 'TrigOut=Low Ctrl=%s' % ctrl.tag)
+
+    async def _do_trigout_pulse(self, dest: str, word: str,  # noqa: ANN001
+                                tag: str, ctrl, ms: float,
+                                rest: tuple) -> None:
+        """`<ms>` 동안 HIGH -- 올림 한 적용, 시한 뒤 내림 한 적용."""
+        self._warn_if_acquiring(word)
+        try:
+            await trigout_core.raise_line(ctrl)
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, word, 'Failed: %s' % exc)
+            return
+        self._trigout_timers[tag] = asyncio.current_task()
+        try:
+            await asyncio.sleep(self.cfg.scaled(ms / 1000.0))
+        except asyncio.CancelledError:
+            raise           # ⭐ 다음 명령이 끊었다 -- 그쪽이 선을 책임진다
+        self._trigout_timers.pop(tag, None)
+        try:
+            await trigout_core.rest_line(ctrl, rest)
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, word, 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, word,
+                       'TrigOut=Low Ctrl=%s Width=%gms' % (ctrl.tag, ms))
+
     def _warn_if_acquiring(self, word: str) -> None:
         """⏳ **적분 중·독출 중 `APPLYSYSTEM`** 은 아직 실측 전이다 (11.50)."""
         seq = getattr(self.app, 'seq', None)
@@ -447,6 +571,12 @@ class IcsDispatcher(Dispatcher):
         세우는 방식으로는 에지가 안 생긴다.
         ⚠️ 끝은 `FORCE=0` -- 선을 **타이밍 스크립트에 돌려준다**.
         ⛔ 취득 중에 치면 그 프레임의 셔터를 뺏는다 (경고를 낸다, 막지는 않는다).
+
+        ⭐ **`SHOPEN 0` 은 `SHCLOSE` 와 같다** (운영자 2026-09-12) -- 대기 중인
+        타이머를 끊고 **즉시** 닫는다.  ⛔ 펄스 경로로 보내면 닫으라는 명령이
+        선을 한 번 올렸다 내려 셔터가 깜빡인다.
+        ⭐ **어느 노드로 와도 받는다** -- `>ICS` 든 `>K.IC` 든 `target.ccd` 가
+        비면 master 로 떨어진다 (운영자 확인 2026-09-12).
         """
         be, bad = self._archon_backend('SHOPEN')
         if bad is not None:
@@ -466,6 +596,13 @@ class IcsDispatcher(Dispatcher):
         source = parts[1] if len(parts) > 1 else msg.src
         ccd = target.ccd or self.cfg.node.master
         self._cancel_shutter_timer()
+        if seconds == 0:
+            # ⭐ **`SHOPEN 0` 은 `SHCLOSE` 와 같다** (운영자 2026-09-12) --
+            # *"시간이 남았어도 즉시 닫는다"*.  ICG `TRIGOUT 0` 과 같은 자리다.
+            # ⛔ 펄스 경로로 보내면 `raise_line` 이 선을 한 번 **올렸다가**
+            # 곧 내려서 셔터가 깜빡인다 -- 닫으라는 명령이 여는 에지를 만든다.
+            self.app.spawn(self._do_shutter_close(source, ccd, ctrls))
+            return Reply.noop()
         self.app.spawn(self._do_shutter_pulse(source, ccd, seconds, ctrls))
         return Reply.noop()
 
@@ -777,6 +914,11 @@ class IcsArchon(IcsSim):
                  'CCD 전원 ON -- poweron_wait 뒤에 DONE 이 온다'),
                 ('ccdpowoff [MK|NT|ALL]',
                  'CCD 전원 OFF -- 다음 go 가 다시 켠다'),
+                ('c1trigout <ms>',
+                 '컨트롤러 1(MK) 의 Trigger Out 을 <ms> 동안 HIGH. 0 이면 '
+                 '즉시 내림.  ⚠️ shutter_ctrl 과 무관하게 움직인다'),
+                ('c2trigout <ms>',
+                 '컨트롤러 2(NT) 의 Trigger Out.  위와 같은 규약'),
                 ('archon <MK|NT> <원문>',
                  '컨트롤러 바이패스 -- 응답 원문을 그대로 답한다'),
             )),
@@ -991,8 +1133,11 @@ class IcsArchon(IcsSim):
         if not ctrls:
             return
         for tag in self.backend.tags:
+            # ⭐ 사이트 코드를 넘긴다 -- 감시 CSV 파일명의 `<YYYYMMDD>` 가
+            # 로그·FITS 와 같은 **관측일**이 되게 (운영자 2026-09-12).
             mon = TelemetryMonitor(ctrls[tag], self.acfg,
-                                   expstatus=lambda: self.state.expstatus)
+                                   expstatus=lambda: self.state.expstatus,
+                                   site_code=self.state.site_code)
             self._monitors.append(mon)
             self._monitor_tasks.append(self.spawn(mon.run()))
 
@@ -1043,8 +1188,7 @@ class IcsArchon(IcsSim):
                                    for t in tags) or '없음'),
             ('ACF', ', '.join('%s=%s' % (t, os.path.basename(a.acf.get(t, '-')))
                               for t in tags) or '없음'),
-            ('ACF 적용', 'APPLYALL 수행' if a.apply_acf
-                          else '건너뜀 (줄 번호만 파싱해 대조)'),
+            ('ACF 적용', '기동마다 APPLYALL (건너뛰는 눈금 없음)'),
             ('선언 기하', '%d x %d  (%.1f MiB/파일)'
                           % (a.naxis1, a.naxis2, a.frame_bytes / (1 << 20))),
             ('텔레메트리', 'STATUS 질의 켜짐' if a.telemetry

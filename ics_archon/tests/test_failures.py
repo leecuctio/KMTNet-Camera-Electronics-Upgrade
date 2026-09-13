@@ -34,7 +34,12 @@ from ics_sim import config as simcfg
 NX, NY = 12, 4
 INI = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     os.pardir, 'ics_archon.ini'))
-ACF_TEXT = '[CONFIG]\nTRIGOUTFORCE=0\nPARAMETER1="Exposures=1"\nPARAMETER2="IntMS=0"\n'
+# ⭐ `TRIGOUTLEVEL` 도 넣는다 -- 실물 ACF 여섯 장이 다 갖고 있고
+#    (`TRIGOUTFORCE`·`TRIGOUTINVERT`·`TRIGOUTLEVEL`), `open_shutter()` 가
+#    셔터를 **안 모는** 컨트롤러의 레벨까지 세우므로 이 줄이 없으면
+#    `set_config` 가 *"설정 줄을 모른다"* 로 거절한다 (2026-09-12).
+ACF_TEXT = ('[CONFIG]\nTRIGOUTFORCE=0\nTRIGOUTLEVEL=0\n'
+            'PARAMETER1="IntMS=0"\nPARAMETER2="Exposures=1"\n')
 GO = ['OBS>ICS dark begin', 'OBS>ICS exp 1', 'OBS>ICS go']
 
 
@@ -125,23 +130,22 @@ def test_controller_not_answering_is_reported_and_survivable(tmp_path):  # noqa:
 def test_missing_acf_says_where_it_looked(tmp_path):  # noqa: ANN001
     """ACF 경로가 틀렸다 -- **상대경로가 가장 흔한 원인**이라 cwd 를 함께 알린다.
 
-    `configparser.read()` 는 없는 파일에 조용히 성공하므로 그대로 두면
-    `NoSectionError` 로 터져 원인이 화면에 안 나온다.
+    ⭐ **기동 검사에서 멈춘다** (운영자 2026-09-12).  ACF 는 기동마다 적용하므로
+    경로가 비었거나 파일이 없으면 첫 노출까지 갈 것도 없다 -- 컨트롤러에 붙지도
+    않는다.  ⚠️ 종전에는 백엔드가 첫 노출 준비에서 죽으며 이 말을 했다
+    (`Failed to initialize`), 그래서 **허브 확인도 배너도 다 지나갔다.**
     """
     cfg, acfg = cfgs(tmp_path)
     acfg.acf = {'MK': 'acf/nosuch.acf', 'NT': 'acf/nosuch.acf'}
-    mk, nt = FakeArchon(width=NX, height=NY), FakeArchon(width=NX, height=NY)
-    mk.start(); nt.start()
-    try:
-        sent, alive = asyncio.run(_drive(cfg, acfg,
-                                        {'MK': mk.port, 'NT': nt.port}))
-    finally:
-        mk.shutdown(); nt.shutdown()
-    assert any('Failed to initialize' in m for m in errors(sent)), errors(sent)
-    assert alive
+    # ⚠️ 검사는 `start()` 안이다 -- 생성자는 ini 를 보지 않는다.
+    #    ⭐ `super().start()` **앞**이라 전송도 허브도 열리기 전에 멈춘다.
+    app = IcsArchon(cfg, acfg)
+    with pytest.raises(acfg_mod.ArchonConfigError) as e:
+        asyncio.run(app.start())
+    assert 'nosuch.acf' in str(e.value)
+    # ⭐ **어디를 봤는지**가 있어야 상대경로 사고를 스스로 푼다.
+    assert os.getcwd() in str(e.value), str(e.value)
     assert not files(tmp_path)
-    # 전원을 올리기 **전에** 멈춘다 -- 설정 없이 바이어스를 걸지 않는다
-    assert 'POWERON' not in mk.seen
 
 
 def test_acf_without_config_section_is_named_not_a_traceback(tmp_path):  # noqa: ANN001

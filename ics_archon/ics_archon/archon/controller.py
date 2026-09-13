@@ -398,6 +398,229 @@ class ArchonController:
 
     # -- ACF --------------------------------------------------------------
 
+    #: ⛔⛔ **KMTNet ACF 규약이 고정한 파라미터 이름** (운영자 확정 2026-09-12).
+    #:
+    #: ⚠️ **Archon 의 제약이 아니다** -- 컨트롤러는 파라미터 이름에 아무 규칙도
+    #: 걸지 않는다(아무 이름이나 쓸 수 있다).  **우리가** ACF 를 개정해도 이 셋의
+    #: 이름은 바꾸지 않기로 정한 것이고, 그 대가로 **슬롯 번호를 설정에서 뺐다**.
+    #: ⭐ 번호가 아니라 이름으로 찾는 이유: ACF 를 개정하면 `PARAMETERn` 의 n 이
+    #: **밀린다** (R2608 의 `PARAMETER0` 은 `ContinuousExposures` 였다).  번호를
+    #: ini 에 적어 두면 그것과 ACF 가 어긋날 수 있는 **두 번째 사실**이 생기고,
+    #: 어긋나면 `WCONFIG` 도 `LOADPARAMS` 도 성공한 채 **엉뚱한 파라미터를 덮는다**.
+    #: ⭐ 같은 사상이 타이밍 스크립트에도 서 있다 -- 줄 번호가 아니라 라벨로 본다
+    #: (`acftiming.blocks()`).
+    PARAM_INTMS = 'IntMS'
+    PARAM_EXPOSURES = 'Exposures'
+    PARAM_FLUSH = 'FirstFlush'
+    PARAM_NOINT = 'NoIntMS'
+
+    #: ACF 에서 찾은 `이름 -> 슬롯 키`.  `parse_acf()` 가 채운다.
+    param_slots: dict | None = None
+
+    #: 같은 표의 `이름 -> 슬롯 **번호**` (`PARAMETERn` 의 n).
+    #: ⭐ `LOADPARAMS` 의 적용 차례가 이 번호 순이다 (매뉴얼 p.52 의 *"parameter
+    #: list"*).  ⚠️ **ACF 파일의 줄 순서가 아니다** -- 파일은 `PARAMETER0,1,10,
+    #: …,19,2,…` 사전순이라 둘이 다르다 (판단 근거는 `_require_exposures_last`).
+    param_order: dict | None = None
+
+
+    def _param_slot(self, name: str) -> str:
+        """이름으로 찾아 둔 슬롯.  ⛔ 없으면 `parse_acf()` 가 이미 멈췄어야 한다."""
+        slot = (self.param_slots or {}).get(name)
+        if slot is None:
+            raise ArchonError(
+                '%s: ACF 에서 %s 슬롯을 못 찾았다 -- ACF 를 먼저 파싱해야 한다'
+                % (self.tag, name))
+        return slot
+
+    def _find_param_slots(self, path: str) -> None:
+        """`PARAMETERn="<이름>=<값>"` 를 훑어 **이름 -> 슬롯** 표를 만든다.
+
+        ⭐ **왕복이 없다** -- 방금 읽은 `self.config` 를 한 번 훑을 뿐이다.
+        ACF 를 읽을 때마다 다시 찾으므로 **판이 밀려도 따라간다.**
+
+⛔ **여기서는 멈추지 않는다** -- 이 함수는 *"파일을 읽는"* 자리다.
+        감시(바이어스 채널 이름 찾기)와 `probe_archon`(진단)도 같은 길로 ACF 를
+        읽으므로, 노출 규약을 여기서 강제하면 **파싱만 필요한 자리까지 막힌다**.
+        ⭐ 규약 판정은 **노출 준비**(`_require_param_slots`, `prepare()` 가 부른다)
+        에서 한다.  ⚠️ 2026-09-12 에 여기서 멈추게 짰다가 감시·진단 시험이
+        깨져서 옮겼다 -- 같은 실수를 되풀이하지 말 것.
+        """
+        found: dict[str, str] = {}
+        order: dict[str, int] = {}
+        for key, raw in self.config.items():
+            if not key.startswith('PARAMETER') or key == 'PARAMETERS':
+                continue
+            name = raw.split('=', 1)[0].strip()
+            if not name:
+                continue
+            found[name] = key
+            try:
+                order[name] = int(key[len('PARAMETER'):])
+            except ValueError:
+                order[name] = -1
+        self.param_slots = found
+        self.param_order = order
+        self.acf_path_for_params = path
+
+    def _require_param_slots(self) -> None:
+        """**KMTNet ACF 규약**을 판정한다 -- 노출 준비에서 한 번.
+
+        ⛔ `IntMS`·`Exposures` 가 없으면 **멈춘다** -- 그 ACF 로는 노출을 걸 수가
+        없고, 그대로 두면 첫 `GO` 의 `WCONFIG` 가 엉뚱한 슬롯을 덮는다.
+        ⭐ `FirstFlush` 는 **없어도 간다** (경고만) -- R2608 이하 ACF 에는 없고,
+        *"flush 옵션 하나 때문에 관측을 통째로 못 하는 것이 더 나쁘다"* 는
+        `set_first_flush()` 의 판단을 그대로 따른다.
+        """
+        found = self.param_slots or {}
+        path = getattr(self, 'acf_path_for_params', self.acf_path)
+        missing = [n for n in (self.PARAM_INTMS, self.PARAM_EXPOSURES)
+                   if n not in found]
+        if missing:
+            raise ArchonError(
+                "%s: ACF 에 노출 파라미터가 없다 -- %s (%s)\n"
+                "        KMTNet ACF 규약은 이 이름들을 고정한다 -- ACF 를 "
+                "개정해도 바꾸지 않는다.\n"
+                "        ⚠️ Archon 의 제약이 아니라 우리 규약이다.\n"
+                "        찾은 파라미터: %s"
+                % (self.tag, ', '.join(missing), path,
+                   ', '.join(sorted(found)) or '(없음)'))
+
+        # ⛔⛔ **`Exposures` 가 맨 나중에 실려야 한다** -- KMTNet ACF 규약
+        # (운영자 2026-09-13).  *"동작을 시작시키는 파라미터는 나머지가 다 자리
+        # 잡은 뒤에 실린다"* -- `Exposures` 가 방아쇠이므로 맨 뒤다.
+        #
+        # **왜**: `LOADPARAMS` 는 파라미터를 **하나씩 제자리에 덮어쓴다**.  벤더가
+        # Note 로 못박았다 -- *"the parameters are updated system-wide **one at a
+        # time**, starting with the **first in the parameter list**"*, 그리고 같은
+        # 항목이 *"This does **not reset** the timing cores"*: 즉 **코어는 그동안
+        # 계속 돈다**.  둘을 합치면 코어가 **일부만 바뀐 상태를 볼 수 있다**.
+        # ⭐ 벤더가 이 성질을 안다는 증거가 바로 옆에 있다 -- `PREPPARAM`/
+        #    `FASTPREPPARAM` 이 값을 **미리 채워 두었다가 `EXTLOAD` 신호에
+        #    한꺼번에 갈아끼우는** 장치다.  ⚠️ 그런데 `EXTLOAD` 는 명령이 아니라
+        #    백플레인 Sync 잭의 **LVDS 입력**이고, **외부 마스터 클록 모드**
+        #    (`EXTCLOCK=1`)에서만 코어의 LOAD 에 연결된다 -- 우리 구성에는 그
+        #    배선도 외부 클록도 없으니 **쓸 수 없는 길**이다.
+        #
+        # 코어는 한 바퀴(`Start:`, 1.05 µs)에서 `FirstFlush`(L1) -> `Exposures`(L3)
+        # 차례로 읽고, 노출로 뛴 뒤 `IntMS`(L11)를 읽는다.  `Exposures` 가 먼저
+        # 앉으면 그 사이에 지나간 바퀴가:
+        #   * `FirstFlush` 를 **묵은 0** 으로 읽어 **flush 를 거른다** (11.31)
+        #   * `IntMS` 를 **직전 노출시간**으로 읽는다
+        # 확률은 대략 `두 값이 실리는 시간차 / 1.05 µs` 다 -- 시간차를 우리가
+        # 모르므로 0 이라고 단정할 수 없다.
+        # ⚠️ **`IntMS` 는 평상시 잘 안 드러난다** -- 연속된 GO 사이에 노출시간이
+        # 그대로면 묵은 값 = 새 값이라 틀려도 보이지 않는다.  ⭐ 운영자가 든
+        # 근거: **`Exposures=n` 반복 노출 중 exptime 을 바꾸는** 같은 경우에는
+        # 그대로 드러난다.  그래서 `IntMS` 도 `Exposures` 앞으로 규정한다 --
+        # R2612/R2620 이 `Exposures` 를 맨 마지막 슬롯으로 옮겨 이것을 맞췄다.
+        #
+        # ⚠️ **2026-09-13: 이 검사를 한 번 걷었다가 되살렸다.**  걷은 근거는
+        # *"`Exposures`(줄 2번째)와 `IntMS`(13번째) 사이가 ~100 ms 인데 노출시간이
+        # 안 밀리니 사실상 원자적이다"* 였는데, 그 ~100 ms 가 **검증 안 한 가정**
+        # (*"list 순서 = 파일 줄 순서"*) 위에 서 있었다.  `PARAMETERn` 의 n 이 곧
+        # 첨자면 한 칸 차이다.  ⛔ **없는 증상은 반증이 아니다.**
+        #
+        # ⭐ *"parameter list"* 는 **슬롯 번호 순**으로 읽는다 (운영자 확정
+        # 2026-09-13).  근거 둘:
+        #   ① 매뉴얼이 *"the **first** in the parameter list"* 라고 쓰는데,
+        #      `PARAMETERn` + `PARAMETERS=n` 은 **첨자 붙은 배열**의 모양이다 --
+        #      "첫 번째" 는 `PARAMETER0` 으로 읽는 것이 자연스럽다.
+        #   ② 곁다리: 판올림 전 배치에서 `Exposures`(P1)와 `IntMS`(P2)는 숫자로
+        #      한 칸인데 **파일 줄 순서로는 열한 칸**이었다(사전순이라).  줄
+        #      순서가 정본이라면 묵은 `IntMS` 로 찍히는 일이 훨씬 잦았을 텐데
+        #      못 봤다.  **증명은 아니지만** 숫자 순 쪽을 가리킨다.
+        # ⛔ 그리고 파라미터가 열 개를 넘으면 **두 순서를 동시에 만족하는 "맨
+        #    마지막" 슬롯이 아예 없다** -- 종전에 둘 다 보게 짰다가 올바른 배치가
+        #    불가능해져서 걷었다.
+        if self.PARAM_NOINT not in found:
+            log.warning('%sacf has no %s -- the shutter-close dwell cannot be '
+                        'enforced', self.ltag, self.PARAM_NOINT,
+                        extra={'detail': '독출이 셔터가 닫히기 전에 시작할 수 '
+                                         '있다 ([archon] shutter_close_ms)'})
+        if self.PARAM_FLUSH not in found:
+            log.warning('%sacf has no %s -- ccdflush will be unavailable',
+                        self.ltag, self.PARAM_FLUSH,
+                        extra={'detail': 'R2610+ ACF 를 쓰면 생긴다'})
+        self._require_exposures_last()
+
+    def _require_exposures_last(self) -> None:
+        """⛔ `Exposures` 가 **맨 마지막 슬롯**인지 본다 -- KMTNet ACF 규약.
+
+        *"방아쇠는 나머지가 다 자리 잡은 뒤에 당긴다."*  `Exposures` 가 0 이 아니게
+        되는 순간 코어는 `Exposure:` 로 뛰고, 거기서 **거의 모든 파라미터를 읽는다**
+        -- `IntMS`·`NoIntMS`·`PreSkipLines`·`Lines`·`PostSkipLines`·
+        `OverscanLines`, 그리고 `Line:`/`PixelFirst:` 안의 `VerticalBinning`·
+        `Pixels`·`HorizontalBinning`·`AT`·`ST` 까지.  `Start:` 에서만 읽는 것은
+        `FirstFlush` 와 `ContinuousExposures` 둘뿐이다.
+        ⭐ 그래서 *"셋만 앞에"* 가 아니라 **맨 뒤 하나**가 옳은 규칙이다
+        (운영자 2026-09-13).
+        """
+        order = self.param_order or {}
+        me = order.get(self.PARAM_EXPOSURES)
+        if me is None:
+            return                            # 없는 것은 위에서 이미 가렸다
+        after = sorted(n for n, v in order.items()
+                       if v >= me and n != self.PARAM_EXPOSURES)
+        if not after:
+            return
+        raise ArchonError(
+            '%s: ACF 의 %s 가 맨 마지막 슬롯이 아니다 (%s=PARAMETER%d, 뒤에 %s)\n'
+            '        ⛔ KMTNet ACF 규약은 **%s 를 맨 마지막**에 둔다 -- '
+            'LOADPARAMS 는 값을 슬롯 번호 순으로 하나씩 덮어쓰고 그동안\n'
+            '        코어가 계속 돌므로(매뉴얼 p.52), 방아쇠가 먼저 앉으면 '
+            '코어가 나머지를 **묵은 값**으로 읽는다.\n'
+            '        ⚠️ Archon 의 제약이 아니라 우리 규약이다 (DevNote 11.31).'
+            % (self.tag, self.PARAM_EXPOSURES, self.PARAM_EXPOSURES, me,
+               ', '.join('%s=%s' % (n, order[n]) for n in after),
+               self.PARAM_EXPOSURES))
+
+    async def _enforce_shutter_close_dwell(self) -> None:
+        """⛔ `NoIntMS` 가 **셔터 닫힘 시간**보다 짧으면 올려서 적용한다.
+
+        운영자 규정 (2026-09-13).  셔터를 여는 노출에서 `EXPTIME` 은 *"셔터가
+        열리기 시작한 시점 ~ 셔터가 닫히기 시작한 시점"* 이고, 그 뒤 **셔터가 다
+        닫힐 때까지** 기다렸다가 독출을 시작해야 한다.  그 대기를 타이밍
+        스크립트가 `NOINT; CALL NoIntUnit(NoIntMS)` 로 만든다.
+        ⛔ `NoIntMS` 가 그보다 짧으면 **셔터가 아직 닫히는 중에 독출이 시작돼**
+        프레임 위쪽에 빛이 샌다 -- 그리고 그것은 조용하다.
+
+        ⚠️ **BIAS·DARK·0초 노출에는 필요 없는 대기**지만 `NoIntMS` 는 ACF 상수라
+        모든 노출에 같이 붙는다.  그 대가는 받아들인다 (셔터를 안 여는 노출에서
+        프레임 주기가 이만큼 길어질 뿐, 데이터는 멀쩡하다).
+        ⭐ **guide 는 이 자리를 안 지난다** -- `IcgCfg` 에 이 눈금이 없다
+        (셔터가 없다).  `ccdflush` 와 같은 방식이다.
+
+        ⚠️ `WCONFIG` 한 줄만 쓴다 -- 코어 RAM 에는 다음 노출의 `LOADPARAMS` 가
+        실어 간다 (`LOADTIMING` 불필요).
+        """
+        want = int(getattr(self.cfg, 'shutter_close_ms', 0) or 0)
+        if want <= 0:
+            return                                    # 꺼 둔 것이다
+        slot = (self.param_slots or {}).get(self.PARAM_NOINT)
+        if not slot:
+            return                                    # 위에서 이미 경고했다
+        raw = self.config.get(slot, '')
+        try:
+            have = int(raw.split('=', 1)[1])
+        except (IndexError, ValueError):
+            log.warning('%scannot read %s from %r -- leaving it alone',
+                        self.ltag, self.PARAM_NOINT, raw,
+                        extra={'detail': 'ACF 의 그 줄이 `이름=값` 꼴이 아니다'})
+            return
+        if have >= want:
+            return
+        # ⭐ **화면에도 남긴다** -- 조용히 고치면 ACF 와 실제가 갈린 채로 간다.
+        log.warning('%s%s is %d ms, shorter than the shutter close time '
+                    '(%d ms) -- raising it', self.ltag, self.PARAM_NOINT,
+                    have, want,
+                    extra={'detail': 'ACF=%s · [archon] shutter_close_ms=%d.  '
+                                     '이대로 두면 셔터가 닫히는 중에 독출이 '
+                                     '시작돼 프레임에 빛이 샌다 -- ACF 를 '
+                                     '고치는 것이 정본이다'
+                                     % (self.cfg.acf.get(self.tag, '?'), want)})
+        await self.set_config(slot, '%s=%d' % (self.PARAM_NOINT, want))
+
     def parse_acf(self, path: str) -> None:
         """ACF 를 읽어 `config`/`configline` 을 만든다.  **왕복하지 않는다.**
 
@@ -448,6 +671,8 @@ class ArchonController:
             self.lines_total = int(self.config.get('LINECOUNT', '0') or 0)
         except ValueError:
             self.lines_total = 0
+        # ⭐ **슬롯을 이름으로 찾는다** -- 읽을 때마다 다시 (판이 밀려도 따라간다).
+        self._find_param_slots(path)
         log.info('%sacf parsed: %d lines', self.ltag, len(self.config),
                  extra={'detail': path})
 
@@ -549,8 +774,8 @@ class ArchonController:
         """설정 줄 하나를 다시 쓴다 (labtest `SetConfig`).
 
         **Config 줄 번호는 ACF 파싱에서 온다.**  파싱을 안 했으면 어느 줄을
-        고칠지 모른다 -- `apply_acf=false` 로 두고 이미 적용된 설정을 쓰는
-        경우에도 파일은 읽어 둔다 (`prepare()`).
+        고칠지 모른다 -- `prepare()` 가 기동마다 ACF 를 읽어 적용하므로 번호는
+        늘 그 세션의 파일에서 온다.
 
         ⭐ **번호가 둘이고 한 명령에 같이 실린다** (용어 정리, 운영자 2026-09-06):
 
@@ -591,14 +816,14 @@ class ArchonController:
 
         ⚠️ 슬롯이 없는 ACF(R2608 이하)에서는 기동을 세우지 않는다 -- 켜라고 했으면
         크게 경고하고 **flush 없이 간다** (flush 옵션 하나 때문에 관측을 통째로 못
-        하는 것이 더 나쁘다).  `apply_acf=false` 경로에서도 컨트롤러 메모리를
-        `RCONFIG` 로 되읽어 판정하므로 앞 세션이 켜 둔 값을 되돌린다.
+        하는 것이 더 나쁘다).  컨트롤러 메모리를 `RCONFIG` 로 **되읽어** 판정하므로
+        (캐시가 아니다) 앞 세션이 켜 둔 값을 되돌린다.
         """
-        fslot = getattr(self.cfg, 'param_flush_slot', None)
-        fname = getattr(self.cfg, 'param_flush_name', 'FirstFlush')
-        # ⛔ **Config 슬롯 번호(`PARAMETERn` 의 n)만 보면 안 된다** -- R2608 의
-        # `PARAMETER0` 은 `ContinuousExposures` 였다.
-        # 그 자리에 FirstFlush 를 쓰면 다른 파라미터를 덮는다.
+        # ⭐ **슬롯은 ACF 에서 이름으로 찾은 것**이다 (`_find_param_slots`).
+        # ⛔ 종전에는 ini 의 번호를 썼는데, ACF 를 개정하면 `PARAMETERn` 의 n 이
+        # 밀린다 -- R2608 의 `PARAMETER0` 은 `ContinuousExposures` 였다.
+        fname = self.PARAM_FLUSH
+        fslot = (self.param_slots or {}).get(fname)
         cur = _unquote(await self.config_value(fslot)) if fslot else ''
         if not cur.startswith(fname + '='):
             if on:
@@ -697,43 +922,11 @@ class ArchonController:
                  extra={'detail': '⚠️ 그 모듈의 VCPU 가 재시작됐다 -- '
                                   'DEWPRES 에 결측 창이 생긴다 (매뉴얼 p.86)'})
 
-    async def verify_config_lines(self, keys) -> list[str]:  # noqa: ANN001
-        """`RCONFIG` 로 줄 번호 대응이 맞는지 확인한다.  어긋난 키 목록을 돌려준다.
-
-        **`apply_acf=false` 의 안전장치 가운데 하나다.**  파일에서 얻은 줄 번호가
-        컨트롤러 메모리의 실제 배치와 다르면, `set_config('PARAMETER2',
-        'IntMS=…')` 가 **엉뚱한 줄을 고친다** -- 그러면 노출 시간이 안 바뀌는데
-        오류도 안 난다.
-
-        ⚠️ **줄이 맞아도 그 세션의 `APPLYALL` 여부는 못 가른다** -- 설정 메모리에
-        줄이 남아 있어도 이 세션에서 `APPLYALL` 이 없었으면 `POWERON` 이 `?xx`
-        로 거부된다 (매뉴얼 p.51, DevNote 10.2).  그 경우는 `power_on()` 이
-        진단 문구를 붙인다.
-        기동에서 한 번 대조해 두면 그 침묵을 없앨 수 있다.
-        """
-        bad = []
-        for key in keys:
-            k = key.upper().replace('\\', '/')
-            line = self.configline.get(k)
-            if line is None:
-                bad.append(key)
-                continue
-            try:
-                got = (await self.cmd('RCONFIG%04X' % line, timeout=T_FAST)
-                       ).decode('ascii', 'replace')
-            except ArchonError as exc:
-                log.warning('%s: RCONFIG%04X failed (%s)',
-                            self.tag, line, exc,
-                            extra={'detail': '이 키의 대조를 건너뛴다'})
-                continue
-            if not got.upper().startswith(k + '='):
-                log.error('%s: config line %04X is not %s -- got %r',
-                          self.tag, line, k, got[:60],
-                          extra={'detail': 'ACF 파일과 컨트롤러 메모리가 '
-                                           '다르다.  apply_acf 를 true 로 '
-                                           '두거나 같은 ACF 를 쓸 것'})
-                bad.append(key)
-        return bad
+    # ⛔ **`verify_config_lines()` 는 걷었다** (2026-09-12) -- `RCONFIG` 로 줄
+    # 번호 대응을 대조하던 함수다.  `apply_acf=false` 갈래의 안전장치였는데 그
+    # 갈래를 없애면서 **호출자가 하나도 남지 않았다**.
+    # ⭐ 기동마다 `APPLYALL` 을 하므로 파일과 컨트롤러 메모리가 갈릴 자리가 없다.
+    # ⚠️ 같은 대조가 필요하면 `tools/probe_archon.py` 2단계가 그 일을 한다.
 
     # -- 전원 -------------------------------------------------------------
 
@@ -770,13 +963,16 @@ class ArchonController:
                 # ⭐ 첫 관문에서 한 시간을 먹은 한 줄이다 (DevNote 10.2·10.10-6).
                 # 매뉴얼 p.51: *"An APPLYALL is required before this operation."*
                 # 설정 메모리에 줄이 있어도 **이 세션에서** APPLYALL 이 없었으면
-                # 거부한다 -- REBOOT·백플레인 전원 뒤, 또는 apply_acf=false 로
-                # 새 세션을 열었을 때가 그 경우다.
+                # 거부한다.
+                # ⚠️ 이 프로그램은 기동마다 `APPLYALL` 을 하므로 여기까지 왔다면
+                # **그 APPLYALL 이 실패했거나 그 뒤에 REBOOT/전원 재투입이
+                # 있었다는 뜻이다** -- 기동 로그의 ACF 적용 줄을 먼저 볼 것.
                 raise ArchonError(
                     '%s: POWERON 을 컨트롤러가 거부했다 (%s) -- 이 세션에서 '
-                    'APPLYALL 이 없었을 가능성이 크다 (매뉴얼 p.51).  REBOOT 나 '
-                    '전원 재투입 뒤라면 apply_acf=true 로 두거나 GUI Apply All '
-                    '을 먼저 할 것 (DevNote 10.2)' % (self.tag, exc),
+                    'APPLYALL 이 없었을 가능성이 크다 (매뉴얼 p.51).  ⚠️ 이 '
+                    '프로그램은 기동마다 APPLYALL 을 하므로, 기동 로그의 ACF '
+                    '적용 줄이 실패했는지 먼저 볼 것 (DevNote 10.2)'
+                    % (self.tag, exc),
                     cmd='POWERON', reply_error=True) from exc
             raise
         self.powered = True
@@ -990,8 +1186,8 @@ class ArchonController:
 
         ACF 에 슬롯이 없으면(R2612 이하 guide · R2608 이하 science) `ArchonError`.
         """
-        fslot = getattr(self.cfg, 'param_flush_slot', None)
-        fname = getattr(self.cfg, 'param_flush_name', 'FirstFlush')
+        fname = self.PARAM_FLUSH
+        fslot = (self.param_slots or {}).get(fname)
         cur = _unquote(await self.config_value(fslot)) if fslot else ''
         if not cur.startswith(fname + '='):        # Config 슬롯 번호만 믿지 않는다 (위 참조)
             raise ArchonError('%s: ACF has no %s parameter (slot %s) -- load an ACF '
@@ -1000,8 +1196,8 @@ class ArchonController:
         armed = cur == '%s=1' % fname
         if not armed:
             await self.set_config(fslot, '%s=1' % fname)
-        await self.set_config(self.cfg.param_exposures_slot,
-                              '%s=0' % self.cfg.param_exposures_name)
+        await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
+                              '%s=0' % self.PARAM_EXPOSURES)
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         if reset:
             await self.reset_timing()
@@ -1348,11 +1544,11 @@ class ArchonController:
         _fields = await self.query('FRAME', timeout=T_FAST)
         prev = parse.newest(_fields).frame
         before = parse.buffer_frames(_fields)
-        await self.set_config(self.cfg.param_intms_slot,
-                              '%s=%d' % (self.cfg.param_intms_name,
+        await self.set_config(self._param_slot(self.PARAM_INTMS),
+                              '%s=%d' % (self.PARAM_INTMS,
                                          max(int(exptime_ms), 0)))
-        await self.set_config(self.cfg.param_exposures_slot,
-                              '%s=%d' % (self.cfg.param_exposures_name,
+        await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
+                              '%s=%d' % (self.PARAM_EXPOSURES,
                                          max(int(exposures), 1)))
         # flush 는 설정 메모리의 `FirstFlush` 가 정한다 -- guide 는 ACF 상수 1(R2616+),
         # science 는 `ccdflush` 옵션(`set_first_flush`).  이 LOADPARAMS 가 그 값을 RAM 에
@@ -1467,8 +1663,8 @@ class ArchonController:
         `FirstFlush` 가 1 이면(guide 상수, R2616+) 이 LOADPARAMS 도 flush 한 번을
         실어 **마지막 프레임 뒤 CCD 를 비우고** 유휴로 간다 (DevNote 11.33).
         """
-        await self.set_config(self.cfg.param_exposures_slot,
-                              '%s=%d' % (self.cfg.param_exposures_name,
+        await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
+                              '%s=%d' % (self.PARAM_EXPOSURES,
                                          max(int(n), 0)))
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         log.info('%s: Exposures=%d written', self.tag, max(int(n), 0))
@@ -2024,33 +2220,28 @@ class ArchonController:
         """
         if not self.link.connected:
             await self.connect()
+        # ⭐ **ACF 는 늘 적용한다** (운영자 2026-09-12) -- 기동마다 컴퓨터의
+        # 파일을 읽어 컨트롤러를 재설정한다.
+        # ⛔ 종전에는 `apply_acf=false` 로 적용을 건너뛰고 **줄 번호만 대조**하는
+        # 갈래가 있었는데, 그 길이 *"호스트가 읽은 파일"* 과 *"컨트롤러 메모리에
+        # 실제로 든 것"* 이 갈릴 유일한 자리였다 -- 줄 대응이 맞아도 **그 세션에서
+        # `APPLYALL` 이 됐는지는 못 가렸다** (매뉴얼 p.51 · DevNote 10.2).
+        # ⚠️ 값은 `APPLYALL` 한 번이다.  운영자 판단: *"ACF applyall 적용에 시간이
+        # 그렇게 오래 걸리진 않으니 괜찮을 거 같은데."*
         acf = self.cfg.acf.get(self.tag, '')
-        if acf and not self.acf_applied:
-            if self.cfg.apply_acf:
-                await self.apply_acf(acf)
-            else:
-                # 적용은 건너뛰지만 **파싱은 한다** -- 줄 번호가 없으면
-                # 파라미터를 못 바꾼다.  그리고 그 줄 번호가 컨트롤러 메모리와
-                # 맞는지 대조한다(어긋나면 노출 시간이 조용히 안 바뀐다).
-                # ⚠️ 이 대조는 **줄 대응**만 본다 -- 그 세션에서 APPLYALL 이
-                # 됐는지는 못 가른다 (p.51, DevNote 10.2).  REBOOT 뒤라면 줄이
-                # 맞아도 아래 `power_on()` 이 `?xx` 로 거부되고, 그 진단 문구가
-                # 이 갈래를 가리킨다.
-                self.parse_acf(acf)
-                self.acf_applied = True
-                slots = [self.cfg.param_intms_slot, self.cfg.param_exposures_slot]
-                fslot = getattr(self.cfg, 'param_flush_slot', None)
-                if fslot and fslot in self.config:
-                    slots.append(fslot)
-                bad = await self.verify_config_lines(tuple(slots))
-                if bad:
-                    raise ArchonError(
-                        '%s: apply_acf=false 인데 설정 줄 대응이 어긋났다 (%s) '
-                        '-- 같은 ACF 를 쓰거나 apply_acf=true 로 두라'
-                        % (self.tag, ', '.join(bad)))
-        # ⭐ CCD flush -- ACF 를 민 **뒤에** `FirstFlush` 한 줄만 쓴다 (apply_acf=false
-        # 경로에서도 컨트롤러 메모리를 되읽어 판정하므로 앞 세션이 켜 둔 것을
-        # 되돌린다).
+        if not acf:
+            raise ArchonError(
+                '%s: ACF 경로가 비었다 -- ini 에 경로를 적을 것.\n'
+                '        ⭐ 기동마다 ACF 를 적용하는 것이 규범이다 '
+                '(운영자 2026-09-12) -- 건너뛰는 갈래는 없앴다' % self.tag)
+        if not self.acf_applied:
+            await self.apply_acf(acf)
+        # ⭐ **KMTNet ACF 규약 판정은 여기서** -- 파싱 자리가 아니라 노출 준비다
+        # (감시·진단도 같은 길로 ACF 를 읽으므로).
+        self._require_param_slots()
+        await self._enforce_shutter_close_dwell()
+        # ⭐ CCD flush -- ACF 를 민 **뒤에** `FirstFlush` 한 줄만 쓴다 (컨트롤러
+        # 메모리를 되읽어 판정하므로 앞 세션이 켜 둔 것을 되돌린다).
         # ⛔ **science 전용이다** -- `IcgCfg` 에는 이 설정이 아예 없으므로
         # guide 는 이 자리를 지나지도 않는다 (운영자 확정 2026-09-04).
         # 종전에는 `getattr(..., False)` 로 guide 도 지나며 두 줄을 되읽었는데,

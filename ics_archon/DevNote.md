@@ -2318,7 +2318,8 @@ science 12 · guide 12, 제3의 판은 없다 -- 2026-09-03 반입분 반영).  
 `HorizontalSWShift` 루틴 신설) · **픽셀 홀드값**(`X(11)`/`X(28)` vs `X(9)`/`X(24)`,
 `X(64)` vs `X(63)`) · **수직 위상수**(`IMAGE1..6` vs `IMAGE1..8`) · `Prep`/`Flush`
 서브루틴이 함께 다르다.  이제 두 파일이 나란히 있으니 근거는
-`diff acf/acf_timing_script_guide.txt acf/acf_timing_script_science.txt` 다.
+`diff acf/acf_timing_script_guide_R*.txt acf/acf_timing_script_science_R*.txt` 다
+(2026-09-13 부터 이름에 판 번호가 붙는다).
 가장 눈에 띄는 자리가 frame-transfer 다:
 
 ```
@@ -5467,6 +5468,86 @@ TEMPC 없는 Heater 묶음에만 1회 있다"* 고 같은 방향으로 말했는
 > (슬롯 1)가 먼저 앉는 순간 코어가 `IF Exposures GOTO Exposure` 로 **flush 없이** 뛰고,
 > flush 는 1·2 번 프레임 사이에 끼어 2번 프레임의 실적분이 주기 + 1.25 s 가 된다.
 
+##### ⛔ 이 blocker 는 **선다** -- 걷었다가 같은 날 되돌렸다 (2026-09-13)
+
+운영자 물음: *"parameter 의 슬롯 순서도 의미 없을 것 같은데?  이런 제약이 왜 있지?"*
+→ 파고든 결과 **제약은 유효하고**, 중간에 내가 만든 반증이 틀렸다.  왕복을 기록해 둔다 --
+같은 함정에 다시 빠지지 않으려고.
+
+**(가) 매뉴얼이 실제로 무엇을 말하나** (p.52, 세 조각이 다 필요하다)
+
+> `LOADPARAMS` — Parses the timing parameters … and applies them to the system.
+> **This does not reset the timing cores.**  *Note: the parameters are updated
+> system-wide **one at a time**, starting with the **first in the parameter list**.*
+
+| 문구 | 뜻 |
+|---|---|
+| one at a time | 값을 **하나씩 제자리에 덮어쓴다** — 한꺼번에 갈아끼우지 않는다 |
+| starting with the first in the parameter list | 덮어쓰는 **차례가 리스트 순**이다 |
+| does not reset the timing cores | 그동안 **코어는 계속 돌고 있다** |
+
+셋을 합치면 **코어가 "일부만 바뀐 상태" 를 볼 수 있다**.  ⭐ 벤더가 이 성질을 안다는
+증거가 바로 옆 항목이다 -- `PREPPARAM p` / `FASTPREPPARAM p d` 는 값을 **미리 채워
+두었다가 `EXTLOAD` 신호에 한꺼번에 갈아끼운다**(*"intended for use when synchronizing
+multiple systems"*).  원자적 갱신이 필요한 경우를 위해 **따로** 만들어 두었다는 것은,
+평범한 `LOADPARAMS` 에는 그 장치가 **없다**는 뜻이기도 하다.
+
+**(나) 내가 만든 반증과, 그것이 무너진 자리**
+
+한때 이렇게 주장했다 -- *"`LOADPARAMS` 는 240 ms 인데 설정 메모리 줄 순서로
+`Exposures` 는 2번째, `IntMS` 는 13번째다(ACF 가 `PARAMETER0,1,10,…,19,2,…` 사전순이라).
+둘 사이 ~100 ms 동안 코어가 중간을 본다면 **모든 노출이 직전 노출시간으로** 찍혀야 하는데
+그런 일이 없으니, 사실상 원자적이다."*
+
+⛔ **그 ~100 ms 가 검증 안 한 가정 위에 서 있었다** -- *"parameter list 순서 = ACF 파일의
+줄 순서"*.  `PARAMETERn` 의 **n 이 곧 리스트 첨자**로 읽는 편이 더 자연스럽다
+(`PARAMETERS=22` 로 개수까지 주는 것이 첨자 붙은 배열의 모양이다).  그러면 `Exposures`(1)
+와 `IntMS`(2)는 **한 칸 차이**이고, 240 ms 의 대부분은 1020줄짜리 설정 메모리를 **파싱**
+하는 데 쓰였을 테니 실제 갱신 사이 간격은 µs 아래일 수 있다.  그럼 코어가 그 틈에 낄 일이
+드물고 -- **우리가 못 봤다는 것이 전혀 이상하지 않다.**
+
+⚠️ **교훈 둘**
+
+1. **없는 증상은 반증이 아니다.**  창이 작으면 안 보일 뿐이다.  "100 % 터져야 한다" 는
+   말이 성립하려면 창의 크기를 알아야 하는데, 우리는 모른다.
+2. 매뉴얼 문장에서 추론을 끌어낼 때 **끌어낸 가정을 명시**하라.  여기서는 *"list 순서"*
+   가 무엇인지가 통째로 미검증인데 그것을 계산의 바닥에 깔았다.
+
+**(다) 그래서 어떻게 했나**
+
+검사를 **되살렸다**, 그리고 **규칙을 넓혔다** (`_require_exposures_last`).
+
+⭐ 파고들다 보니 제약이 `FirstFlush` 하나에 그치지 않았다 -- `Exposures` 가 0 이 아니게
+되는 순간 코어는 `Exposure:` 로 뛰고 거기서 **거의 모든 파라미터를 읽는다**
+(`IntMS`·`NoIntMS`·`PreSkipLines`·`Lines`·`PostSkipLines`·`OverscanLines`, 그리고
+`Line:`/`PixelFirst:` 안의 `VerticalBinning`·`Pixels`·`HorizontalBinning`·`AT`·`ST`).
+`Start:` 에서만 읽는 것은 `FirstFlush` 와 `ContinuousExposures` 둘뿐이다.
+=> 규칙은 **`Exposures` 가 맨 마지막 슬롯** 하나다 (운영자 확정 2026-09-13).
+
+⛔ 그리고 *"parameter list"* 는 **슬롯 번호 순**으로 읽는다.  한때 *"번호 순과 파일 줄
+순서를 둘 다 보자"* 로 짰는데, **파라미터가 열 개를 넘으면 두 순서에서 동시에 "맨
+마지막" 인 슬롯이 존재하지 않아** 올바른 배치가 불가능해진다 (ACF 는
+`PARAMETER0,1,10,…,19,2,…` 사전순이다).  번호 순을 고른 근거는 ① 매뉴얼의 *"the
+**first** in the parameter list"* 와 `PARAMETERn`+`PARAMETERS=n` 이 **첨자 붙은 배열**의
+모양이라는 것, ② 판올림 전 `Exposures`(P1)·`IntMS`(P2)가 숫자로 한 칸인데 줄 순서로는
+열한 칸이었고 묵은 `IntMS` 증상을 못 봤다는 것(증명은 아니다).
+
+ACF 는 **R2612/R2620** 으로 올렸다 -- `Exposures` ↔ `ContinuousExposures` 맞바꿈, 파일당
+두 줄.  발췌 txt 도 이름에 판 번호가 붙었다(`acf_timing_script_science_R2612.txt` 등).
+
+⭐ **이름으로 찾기와는 별개다** -- 그쪽 근거는 `WCONFIG` 가 *어느 설정 줄을 덮느냐*이고
+적용 순서와 무관하다 (R2608 의 `PARAMETER0` 이 `ContinuousExposures` 였던 실제 사례).
+⚠️ 둘을 한 덩어리로 읽지 말 것: **이름은 규약으로 고정**, **번호는 규약이 아님**,
+**순서는 `FirstFlush` → `Exposures` 하나만**.
+
+⏳ **남은 물음 -- `IntMS` 도 같은 처지다.**  현행 ACF 는 `Exposures`(1) 가 `IntMS`(2)
+보다 **먼저** 실린다.  같은 논리를 그대로 적용하면 코어가 묵은 `IntMS` 로 첫 장을 찍을
+창이 있다.  창이 얼마나 큰지 모르므로 지금 단정하지 않는다 -- **벤치에서 재 볼 것**
+(`FirstFlush` 를 일부러 뒤 슬롯에 둔 시험 ACF 로 `go 3`, 1·2번 프레임 간격만 본다).
+⭐ 재서 창이 있다고 나오면, ACF 를 **`FirstFlush` → `IntMS` → `Exposures`** 순으로
+바꾸는 것이 올바른 해다 -- *"동작을 시작시키는 파라미터는 맨 나중에 실린다"* 가 일반
+규칙이고, 지금 `FirstFlush` 만 챙긴 것은 그 규칙의 절반이다.
+
 그래서 **`FirstFlush` 가 PARAMETER0**, `ContinuousExposures`(호스트가 어디서도 안 쓴다)
 가 16 으로 갔다.  이름을 `Flush` 에서 `FirstFlush` 로 바꾼 것도 검토에서 -- science
 ccdflush 의 서브루틴 라벨 `Flush:` 와 사람이 읽을 때 두 뜻이 된다.
@@ -5983,7 +6064,7 @@ guide R2617 과 같은 관례 + **죽은 빈 줄 둘 제거**(옛 `#X; CALL Prep
 
 ICG 기동의 `_connect_controller()` → `guide.prepare()` → 그것을 부르므로, **실기
 백엔드로 띄우는 순간 `CLEARCONFIG`+`WCONFIG` 전량+`APPLYALL`+`POWERON` 이 돈다**
-(`apply_acf = true`).  `icg_first_run` 3단계 제목의 *"아직 전원은 안 켠다 — 첫 `go` 에서
+(⭐ **늘 그렇다** -- `apply_acf` 눈금은 2026-09-12 에 걷었다).  `icg_first_run` 3단계 제목의 *"아직 전원은 안 켠다 — 첫 `go` 에서
 켜진다"* 와 `bench_test_plan` 1단계의 *"전원을 올리지 않는다"* 를 **둘 다 고쳤다.**
 전원 없이 Radionode 배선만 보려면 `--backend sim` 이다.
 
@@ -7196,8 +7277,10 @@ R2617 이 치른 비용(번호 밀림 전수 수정)이 여기엔 없다.  `TRIG
 
 #### (4) 소프트웨어의 되돌림은 남긴다
 
-⭐ `GuideBackend.ensure_trigger_resting()` 을 지우지 않았다 -- ACF 는 갈릴 수 있고
-`apply_acf=false` 경로도 있다.  ACF 가 맞으면 그것은 **되읽기만 하고 아무것도 안 쓴다**
+⭐ `GuideBackend.ensure_trigger_resting()` 을 지우지 않았다 -- ACF 는 갈릴 수 있다
+(옛 판이 올라간 컨트롤러 · 짝이 안 맞는 파일).  ⚠️ 근거의 나머지 절반이던
+*"`apply_acf=false` 경로"* 는 2026-09-12 에 없어졌지만, 위 절반은 그대로다.
+ACF 가 맞으면 그것은 **되읽기만 하고 아무것도 안 쓴다**
 (왕복 둘, 적용 0).  ⚠️ **파일이 정본이 됐다고 코드의 방어를 걷으면**, 다음에 누가 옛 ACF 를
 올렸을 때 아무도 안 알려 준다.
 
@@ -8948,11 +9031,20 @@ CH2=습도(%) 이고(운영자 확인 2026-09-08) 전장박스는 온도만 쓰�
 ⚠️ **1대는 CCD 가 둘뿐이라 OBSAgent 규약을 못 만족한다** (`Acquisition Complete.`/
 `Wrote` 가 4회가 아니라 2회) -- 실험실 단독 취득용이다.
 
-##### `[archon] apply_acf = false` 의 뜻
-`CLEARCONFIG`/`WCONFIG`/`APPLYALL` 을 건너뛰고 **줄 번호만 파싱해 `RCONFIG` 로 대조**
-한다.  어긋나면 기동에서 거부한다(안 그러면 노출 시간이 조용히 안 바뀐다).
-⚠️ **줄이 맞아도 그 세션에서 `APPLYALL` 이 없었으면 `POWERON` 이 `?xx` 로 거부된다**
-(매뉴얼 p.51, 2026-09-01 실기 -- DevNote 10.2).  `REBOOT`·전원 재투입 뒤에는 `true` 로.
+##### ~~`[archon] apply_acf = false` 의 뜻~~ → **눈금을 걷었다 (운영자 2026-09-12)**
+
+⭐ **ACF 는 늘 적용한다** -- 기동마다 컴퓨터의 파일을 읽어 컨트롤러를 재설정한다
+(`CLEARCONFIG`+`WCONFIG`+`APPLYALL`).  운영자 판단: *"ACF applyall 적용에 시간이 그렇게
+오래 걸리진 않으니 괜찮을 거 같은데."*  그리고 **`acf_mk`/`acf_nt` 는 필수**가 됐다 --
+비었거나 파일이 없으면 기동 검사(`config.validate()`)에서 멈춘다.
+
+⛔ **왜 걷었나**: false 갈래는 적용을 건너뛰고 **줄 번호만 `RCONFIG` 로 대조**했는데,
+그 대조는 *"줄이 제자리에 있나"* 만 볼 뿐 **그 세션에서 `APPLYALL` 이 됐는지는 못 가렸다**
+(매뉴얼 p.51, 2026-09-01 실기 -- 10.2).  즉 *"호스트가 읽은 파일"* 과 *"컨트롤러 메모리에
+실제로 든 것"* 이 갈릴 수 있는 **유일한 자리**였다.  갈래를 없애니 그 틈이 사라졌다.
+⚠️ 함께 걷은 것: `ArchonController.verify_config_lines()`(호출자가 없어졌다) ·
+ICG 의 `apply_acf=false` 경고 · 배너의 "건너뜀" 줄.  같은 대조가 필요하면
+`tools/probe_archon.py` 2단계가 그 일을 한다(도구의 `--no-apply-acf` 스위치는 남겼다).
 
 ##### `[archon] full_flush_on_erase = false`
 ⛔ **끈 것이 기본이다** (운영자 확정 2026-08-29) -- clock 을 개선해 **별도 erase 없이 바로
@@ -9654,3 +9746,202 @@ docstring 에 남아 있으면** *"안 없어졌다"* 로 읽혀 진짜 파손�
 
 이번 변경에 돌리면 **고칠 자리 2건**(둘 다 무해한 주석·설명 열)이고,
 `--all` 이면 23건이다 — 그 차이가 이 도구가 쓰이거나 무시되는 차이다.
+
+
+### 11.81 ⛔ 파라미터를 **이름으로** 찾는다 -- KMTNet ACF 규약 (2026-09-12, 운영자)
+
+운영자 메모: *"acf 변경 시 슬롯번호가 밀릴 수 있으므로, parameter 이름으로 찾아서 적용
+필요."*  맞는 판단이었고, 그대로 세웠다.
+
+#### (1) 무엇이 문제였나
+
+취득 SW 는 노출마다 `IntMS`(적분 길이)와 `Exposures`(장수)를 `WCONFIG` 로 쓴다.  그
+자리를 **슬롯 번호**(`PARAMETERn` 의 n)로 집으면:
+
+* ACF 를 개정하면 **번호가 밀린다** -- 실제로 R2608 의 `PARAMETER0` 은
+  `ContinuousExposures` 였고 R2613 이 그 자리를 `FirstFlush` 에 내줬다.
+* 밀린 번호로 써도 `WCONFIG` 도 `LOADPARAMS` 도 **성공한다.**  오류가 한 줄도 안 나면서
+  **엉뚱한 파라미터를 덮는다** -- 노출 시간이 조용히 안 바뀌거나 기하가 망가진다.
+
+⚠️ 종전에는 그 번호가 **ini 눈금 여섯**(`param_intms_slot`·`param_intms_name` …)이었다.
+ICG ini 에는 아예 안 적혀 있었고 코드 기본값만 있었다(값은 같았다).
+
+#### (2) 무엇을 했나
+
+`ArchonController._find_param_slots()` 가 ACF 를 읽을 때마다(`parse_acf()` 끝) `[CONFIG]`
+를 **한 번 훑어** `이름 -> 슬롯` 표를 만든다.  **왕복 0회**다 -- 이미 읽어 둔 사전을 도는
+것뿐이다.  판이 밀려도 따라간다.  ini 눈금 여섯은 양쪽에서 걷었다.
+
+⭐ 같은 사상이 타이밍 스크립트에 이미 서 있었다 -- 줄 번호가 아니라 **라벨**로 본다
+(`acftiming.blocks()`).  *"문서의 `LINEn` 은 읽는 이를 돕는 표기일 뿐이고 판마다 밀린다."*
+
+⛔ **판정 자리를 한 번 잘못 골랐다.**  처음에 `parse_acf()` 안에서 멈추게 짰더니 **감시**
+(바이어스 채널 이름 찾기)와 **`probe_archon`**(진단)이 깨졌다 -- 둘 다 *"노출을 걸 생각이
+없는데 ACF 는 읽어야 하는"* 자리다.  그래서 **파일 읽기**(`_find_param_slots`)와 **규약
+판정**(`_require_param_slots`, `prepare()` 가 부른다)을 갈랐다.
+
+#### (3) ⚠️ 이것은 **Archon 의 제약이 아니라 우리 규약이다**
+
+컨트롤러는 파라미터 이름에 아무 규칙도 걸지 않는다 -- 아무 이름이나 쓸 수 있고 타이밍
+스크립트가 그 이름을 부르기만 하면 된다.  ⛔ **그래서 매뉴얼을 뒤져도 이 규칙은 안 나온다.**
+문면마다 그 출처를 밝혀 두었다(오류 메시지에 `KMTNet` 이 들어가는 것을 시험이 본다) --
+벤더 제약으로 오해하면 엉뚱한 자리를 뒤진다.
+
+| 어긴 것 | 결과 |
+|---|---|
+| `IntMS` 또는 `Exposures` 가 없다 | ⛔ 노출 준비가 **멈춘다** |
+| `FirstFlush` 가 없다 | ⚠️ 경고하고 **flush 없이 간다** (R2608 이하 ACF) |
+| 슬롯 **번호**가 밀렸다 | ⭐ 아무 일도 없다 -- 이름으로 찾으니까 |
+
+⛔ **슬롯 번호는 규약이 아니다** -- 순서 제약은 하나뿐이다: **`Exposures` 가 맨
+마지막 슬롯**(11.31).
+science 와 guide 가 지금 `FirstFlush`=0 ·
+`Exposures`=1 · `IntMS`=2 로 같은 것은 **우연이다** -- 두 계통은 파라미터 수도(guide 17 ·
+science 22) 구성도 다르고, `VerticalBinning`·`AT`·`ST`·`FlushLines`·`ContinuousExposures`
+는 **이름이 같은데 슬롯이 다르다**.  맞춰 두려고 애쓸 이유가 없다.
+⚠️ 시험이 저장소의 ACF 열둘을 전수로 검산하되 **이름만** 본다
+(`test_every_shipped_acf_keeps_the_kmtnet_names`) -- 번호를 단언하면 멀쩡한 개정이 시험을
+깨뜨리고, 읽는 이는 *"번호를 도로 맞춰야 한다"* 로 읽는다 (운영자 지적 2026-09-13).
+
+### 11.82 ⭐ ACF 는 **늘 적용한다** -- `apply_acf` 눈금을 걷었다 (2026-09-12, 운영자)
+
+운영자 지시: *"이건 항상 true 로 하고, ini 에서 없애는 게 어떨까?  그리고 acf_mk, acf_nt
+가 공란이거나 파일이 없으면 멈추도록 하고.  즉 항상 가동 시 컴퓨터에 있는 ACF 를 읽어서
+컨트롤러를 재설정 하는 거지."*  그리고 값에 대해: *"ACF applyall 적용에 시간이 그렇게
+오래 걸리진 않으니 괜찮을 거 같은데."*
+
+#### (1) 왜 갈래가 위험했나
+
+`apply_acf=false` 는 `CLEARCONFIG`/`WCONFIG`/`APPLYALL` 을 건너뛰고 **줄 번호만 파싱해
+`RCONFIG` 로 대조**했다.  그 대조는 *"줄이 제자리에 있나"* 만 본다 -- **그 세션에서
+`APPLYALL` 이 됐는지는 못 가른다** (매뉴얼 p.51 · 2026-09-01 실기, 10.2).
+즉 *"호스트가 읽은 파일"* 과 *"컨트롤러 메모리에 실제로 든 것"* 이 갈릴 수 있는 **유일한
+자리**였다.  갈래를 없애니 그 틈이 통째로 사라졌다.
+
+#### (2) 무엇이 바뀌었나
+
+* `prepare()` 의 else 갈래 삭제 -- ACF 경로가 비면 거기서 `ArchonError`.
+* **`acf_mk`/`acf_nt` 는 필수** -- 비었거나 **파일이 없으면** `config.validate()` 가 멈춘다.
+  ⭐ 문면에 **지금 작업 디렉터리**를 싣는다 (상대경로가 가장 흔한 원인이다).
+  ⚠️ 그래서 검사가 **첫 노출에서 기동 검사로 앞당겨졌다** -- 종전에는 허브 확인도 배너도
+  다 지나가고 `Failed to initialize` 로 죽었다.
+* ICG 도 같다 -- 같은 `ArchonController.prepare()` 를 타고, guide 타이밍 스크립트도
+  `FirstFlush`/`Exposures`/`IntMS` 세 이름을 그대로 쓴다(확인함).  ICG 의
+  `apply_acf=false` 경고도 걷었다.
+* ⛔ **`verify_config_lines()` 삭제** -- 그 갈래의 안전장치였는데 호출자가 하나도 안 남았다.
+  같은 대조가 필요하면 `tools/probe_archon.py` 2단계가 한다(도구의 `--no-apply-acf`
+  스위치는 진단용이라 남겼다).
+
+⚠️ **값**: 기동마다 `APPLYALL` 한 번(1020줄).  운영자가 받아들이기로 한 비용이다.
+
+
+### 11.83 셔터 닫힘 대기를 `NoIntMS` 의 하한으로 · IMAGETYPE 감사 (2026-09-13, 운영자)
+
+#### (1) 무엇을 정했나
+
+운영자 규정: 셔터를 여는 IMAGETYPE 에서 `EXPTIME` 의 경계는 **"셔터가 열리기 시작 ~
+셔터가 닫히기 시작"**(= `CALL IntUnit(IntMS)` 완료 시점)이고, **그 뒤 셔터가 다 닫힐
+때까지 기다렸다가** 독출을 시작해야 한다.  그 대기를 만드는 것이 타이밍 스크립트의
+`NOINT; CALL NoIntUnit(NoIntMS)` 다.
+
+그래서 ini 에 **하한**을 두었다:
+
+    [archon] shutter_close_ms = 500      # 셔터가 다 닫히는 데 걸리는 시간 [ms]
+
+노출 준비에서 `_enforce_shutter_close_dwell()` 이 ACF 의 `NoIntMS` 와 대조해, 더 짧으면
+**경고를 남기고 이 값으로 올려서 적용**한다 (`WCONFIG` 한 줄; 코어 RAM 에는 다음 노출의
+`LOADPARAMS` 가 실어 간다).  ⭐ **정본은 ACF 다** -- 경고가 뜨면 ACF 를 고친다.
+`0` 이면 검사하지 않는다.
+
+⏳ **500 은 미실측이다** -- 현행 ACF 의 `NoIntMS` 와 같은 값을 그대로 놓았을 뿐이다.
+벤치에서 FSA 셔터 닫힘 시간을 재고 고쳐야 한다 (bench 항목).
+
+⚠️ BIAS·DARK·0초 노출에는 필요 없는 대기지만 `NoIntMS` 는 **ACF 상수**라 모든 노출에
+같이 붙는다.  데이터는 멀쩡하고 프레임 주기만 그만큼 길어진다 -- 그 대가는 받아들였다.
+
+#### (2) ⚠️ `[timing] shutter_to_readout` 은 **그 역할이 아니었다**
+
+운영자 물음: *"지금 INI 에 `shutter_to_readout` 로 들어가 있는데 이 설정이 그 역할을
+하는지 모르겠네."*  → **아니다.**  그것은 `[timing]` 절의 **시뮬 전용** 눈금(6.00 **초**)
+으로, `ics_sim/sequencer.py` 가 셔터 노출 뒤 READOUT 앞에 자는 시간이다(레거시 IC XIS
+로그 실측).  archon 백엔드는 **이 값을 보지 않는다** -- 실기에서 같은 일을 하는 것은
+컨트롤러 안의 `NoIntMS` 다.  ⭐ 이름을 바꾸는 대신 **정체를 ini 주석에 못박고** 새
+눈금을 `[archon]` 에 따로 두었다 (단위도 초 ↔ ms 로 다르다).
+
+⭐ 다만 **조건 판정은 시뮬이 이미 옳게 하고 있었다**:
+
+    if st.opens_shutter and exptime > 0:
+        await asyncio.sleep(cfg.scaled(cfg.timing.shutter_to_readout))
+
+셔터를 여는 IMAGETYPE 이고 `EXPTIME > 0` 일 때만 기다린다 -- 운영자 규정 그대로다.
+
+#### (3) IMAGETYPE 별 셔터 -- **감사 결과 이상 없음**
+
+| `IMAGETYPE` | 셔터 | 적분 | 근거 |
+|---|---|---|---|
+| `BIAS` | 안 연다 | **0 으로 강제** | `NO_SHUTTER` · `effective_exptime` |
+| `DARK` | 안 연다 | 요청값 | `NO_SHUTTER` |
+| `OBJECT`·`FLAT`·`SKY`·`DOMEFLAT` | 연다 | 요청값 | `NO_SHUTTER` 밖 |
+
+`ics_sim/state.py` 의 `NO_SHUTTER = {'BIAS', 'DARK'}` 와 `IMAGE_TYPES` 여섯이 정본이고,
+후자는 raw spec 5.4절 `IMAGETYP` 통제 어휘와 **같아야 한다**(`test_raw_header.py` 가
+대조한다).  ⚠️ 값을 늘릴 일이 생기면 규격과 이 목록을 **함께** 고친다.
+
+#### (4) 타이밍 스크립트 문법 -- 운영자 물음에서 정리 (매뉴얼 p.64~66)
+
+| 꼴 | 뜻 |
+|---|---|
+| `CALL Sub(n)` (상수) | n 번 실행.  ⛔ **상수 0 은 금지**다 (*"Constants must be non-zero"*) -- count 가 0 인 채로 `RETURN` 이 깎으면 20비트 언더플로(≈1,048,575회)가 난다 ⚠️ 이 결과는 **추론**이고 매뉴얼 문면이 아니다 |
+| `CALL Sub(Param)` (파라미터) | 값이 **0 이면 호출 자체를 안 한다** (한 틱만 쓴다).  ⭐ guide 의 `NoIntMS=0` + `CALL NoIntUnit(NoIntMS)` 가 이 규칙을 쓰고 있다 |
+| `CALL Sub` (인자 없음) | **한 번** 실행 (count=1).  매뉴얼 예제 `Idle; CALL BlackPixel` · 우리 `X; CALL Prep` |
+| `IF P CALL Sub(n)` | 조건부 호출 -- 조건은 *"another parameter"* 를 쓰라는 뜻이다.  같은 파라미터를 조건과 count 에 둘 다 쓰면 **중복**이다 |
+| `GOTO Label` | 스택을 **안 쌓는다** · count 를 안 바꾼다 · **안 돌아온다** |
+| `State; State(n)` | 암묵 서브루틴 -- **n+1 틱**이다 (`AllClocksHigh(99)` = 100 cycles).  `acftiming` 도 `1 + n` 으로 센다 |
+
+⛔ **짝을 지켜야 한다**: `GOTO` 로 들어가는 라벨은 `GOTO` 로 끝나고, `CALL` 로 들어가는
+라벨은 `RETURN` 으로 끝난다.  섞으면 그 `RETURN` 이 **남의 복귀 주소를 pop** 한다
+(스택 16칸).  현행 스크립트는 이 짝이 맞다 -- `FlushFrame:`/`Exposure:` 는 `GOTO Start`,
+`Prep:`/`Flush:`/`IntUnit:` 은 `RETURN`.
+
+#### (5) ⏳ 다음 판 후보 (R2613/R2621) -- 타이밍 스크립트 개정
+
+운영자 설계.  `FlushFrame:` 을 **`RETURN` 서브루틴**으로 바꾸고, 매 노출 flush 용
+`EveryFlush` 를 `Exposure:` 분기 안에 넣는다:
+
+    Start:
+    RESET; CALL FlushFrame(FirstFlush)
+    X; IF ContinuousExposures GOTO Continuous
+    X; IF Exposures GOTO Exposure
+    X; CALL SkipLine
+    X; GOTO Start
+
+    Exposure:
+    X; Exposures--
+    Continuous:
+    X; CALL FlushFrame(EveryFlush)
+    X; CALL IntUnit(IntMS)
+    …
+    FlushFrame:
+    X; FirstFlush--
+    X; CALL Prep
+    X; CALL Flush
+    X; RETURN FlushFrame
+
+⭐ **`FirstFlush--` 가 서브루틴 안이라는 것이 핵심이다.**  `CALL` 의 active count(스냅샷)와
+파라미터가 **따로 세면서 같은 수로 끝나** `FirstFlush=n` 이면 정확히 n 번 돈다.
+⛔ 밖에서(`CALL` 다음 줄) 한 번만 깎으면 `n + (n-1) + … + 1 = n(n+1)/2` 번 돈다 --
+내가 처음에 그렇게 제안했고 운영자가 잡았다.
+⭐ 그리고 `FirstFlush=0` 이면 **파라미터 0 규칙**으로 호출 자체가 생략돼 유휴 비용이 0 이다.
+
+**들어가기 전에 정할 것:**
+
+* `EveryFlush` 이름 -- `FirstFlush` 와 *언제*가 대비되고(`First`↔`Every`),
+  `Flush:`/`FlushFrame:` 라벨이나 `FlushLines`/`FlushPostMS` 와 안 겹친다.
+  ⛔ `FirstFlush` 의 **뜻을 바꾸면 안 된다** -- 같은 이름이 판마다 다른 뜻이면 옛 ACF 를
+  물렸을 때 호스트가 조용히 다른 일을 한다.
+* 슬롯 -- `Exposures` 보다 **앞 번호**면 된다 (11.31 의 규약).
+* `Continuous:` **아래**에 두면 continuous 경로도 flush 를 탄다 (`ics_archon_buftest.py`
+  가 그 모드를 쓴다).  `Exposure:` 바로 밑으로 올리면 빠진다 -- 의도를 확정할 것.
+* 둘 다 1 이면 한 노출 앞에 flush 가 **두 번**(2.5 s) 돈다 -- 배타로 쓸 거면 막을 것.
+* 호스트 영향: `acftiming` 의 `to_frameshift`·`flush_duration`, `backend._flush_capable`
+  (지금 **`FirstFlush` 값이 1인가**를 본다), 규격 10.1 의 flush 문면.

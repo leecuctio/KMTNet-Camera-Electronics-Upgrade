@@ -453,20 +453,12 @@ class AuxControlCfg:
     hello_subsystem: str = ''
     hello_command: str = ''
 
-    #: 셔터 개방·폐쇄 시 보낼 <SUBSYSTEM> <COMMAND> (2026-08-05 지정):
-    #:     KMTNET AUX 00 FILTERS SET_SH OPEN
-    #:     KMTNET AUX 00 FILTERS SET_SH CLOSE
-    #:
-    #: **이 경로는 하드웨어 트리거의 시뮬레이션용 대체물이다.**  실제 시스템에는
-    #: 셔터를 여닫는 SW 명령이 없다 -- HE 박스의 TTL 신호가 그 역할을 하고,
-    #: AUX 는 `LIMIT_SHUT` 으로 상태를 읽기만 한다(규격 4-2).  `SET_SH` 는
-    #: 하드웨어 없이 시험하려고 AUX 쪽에 새로 넣은 명령이라 v20140908 문서에
-    #: 없다.  실기(archon 백엔드)로 넘어가면 TTL 이 이 자리를 대신하므로
-    #: `enabled = false` 로 꺼야 한다.
-    shopen_subsystem: str = 'FILTERS'
-    shopen_command: str = 'SET_SH OPEN'
-    shclose_subsystem: str = 'FILTERS'
-    shclose_command: str = 'SET_SH CLOSE'
+    # ⛔ **AUX 셔터 제어(`SET_SH`) 경로는 걷었다** (운영자 2026-09-12).
+    #    목적은 OBSAgent/TCSAgent 를 통해 AUX 에 **FSA 셔터 제어 명령**을
+    #    전달하는 것이었는데, TCS 측 검토로 **FSA HW 에 그 명령 구현이
+    #    어렵다**고 판정됐다.  실현되지 않을 경로라 남기지 않는다.
+    #    ⭐ 셔터를 실제로 모는 것은 우리 컨트롤러의 Trigger Out 이고,
+    #       명령은 `SHOPEN`/`SHCLOSE` 다 (그 둘과 **다른 것**이었다).
 
 
 @dataclass
@@ -1013,7 +1005,7 @@ def load(path: str | None = None) -> SimConfig:
         a.reconnect_sec = s.getfloat('reconnect_sec', a.reconnect_sec)
         a.reconnect_max_sec = s.getfloat('reconnect_max_sec',
                                          a.reconnect_max_sec)
-        for key in ('hello', 'shopen', 'shclose'):
+        for key in ('hello',):
             raw = s.get(f'{key}_cmd', '').strip()
             if not raw:
                 continue

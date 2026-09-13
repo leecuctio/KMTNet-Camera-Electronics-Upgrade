@@ -94,8 +94,22 @@ def _utc_stamp(when: float) -> str:
     return dt.strftime('%Y-%m-%dT%H:%M:%S.') + '%03dZ' % (dt.microsecond // 1000)
 
 
-def _utc_date(when: float) -> str:
-    return datetime.fromtimestamp(when, timezone.utc).strftime('%Y%m%d')
+def _obs_date(when: float, site_code: str = '') -> str:
+    """감시 CSV 파일명의 `<YYYYMMDD>` -- **사이트별 관측일**.
+
+    ⭐ 운영자 2026-09-12.  로그(`ics.<날짜>.log`)·FITS 파일명과 같은 날짜를
+    쓴다 -- 셋이 갈리면 한 밤의 자취를 모으는 데 날짜 환산이 낀다.
+    ⛔ 사이트를 모르면 UT 날짜다 (조용한 강등이지만 감시가 프로그램을 세우면
+    안 된다).  KASI 는 보정이 0 이라 어차피 UT 날짜와 같다.
+    """
+    dt = datetime.fromtimestamp(when, timezone.utc)
+    if site_code:
+        try:
+            from ics_sim import rawpair
+            return rawpair.observing_date(dt, site_code)
+        except (KeyError, ValueError, ImportError):
+            pass
+    return dt.strftime('%Y%m%d')
 
 
 def _fmt(value, digits: int) -> str:
@@ -113,8 +127,11 @@ class TelemetryLog:
     자료와 함께 굴러가 아카이브 정책에 걸린다.
     """
 
-    def __init__(self, tag: str, log_dir: str, columns: list[str]) -> None:
+    def __init__(self, tag: str, log_dir: str, columns: list[str],
+                 site_code: str = '') -> None:
         self.tag = tag
+        #: 관측일 경계를 정하는 사이트 코드 (`_obs_date`).
+        self.site_code = site_code
         self.log_dir = log_dir
         self.columns = columns
         self._date = ''
@@ -179,7 +196,7 @@ class TelemetryLog:
         ⚠️ 실패해도 예외를 올리지 않는다 -- 기록은 취득의 부산물이고, 디스크가
         가득 찼다고 관측을 세우는 것은 손해가 훨씬 크다.
         """
-        date = _utc_date(when)
+        date = _obs_date(when, self.site_code)
         try:
             if self._writer is None or date != self._date:
                 self._open(date)
@@ -209,9 +226,13 @@ class TelemetryMonitor:
     `app.py` 가 `IcsSim.spawn()` 으로 띄운다 -- **`ics_sim` 은 무수정**이다.
     """
 
-    def __init__(self, ctrl, acfg, expstatus=None) -> None:  # noqa: ANN001
+    def __init__(self, ctrl, acfg, expstatus=None,  # noqa: ANN001
+                 site_code: str = '') -> None:
         self.ctrl = ctrl
         self.acfg = acfg
+        #: 감시 CSV 파일명의 날짜를 끊는 관측일 경계 (`_obs_date`).
+        #: ⛔ 비면 UT 날짜다 -- 단위 시험처럼 사이트를 모르는 자리.
+        self.site_code = site_code
         #: 지금 `EXPSTATUS` 를 돌려주는 콜백 (규칙 4).  없으면 `NC`.
         self._expstatus = expstatus
         self._stop = asyncio.Event()
@@ -441,7 +462,8 @@ class TelemetryMonitor:
             log.info('%s: monitoring %d bias channels -- %s', self.ctrl.tag,
                      len(self.channels),
                      ', '.join(label for _p, label in self.channels))
-        self.log = TelemetryLog(self.ctrl.tag, directory, self.columns())
+        self.log = TelemetryLog(self.ctrl.tag, directory, self.columns(),
+                                site_code=self.site_code)
         log.info('%s: telemetry monitor at %.0fs interval, logging to %s',
                  self.ctrl.tag, self.acfg.monitor_interval, directory)
         return True

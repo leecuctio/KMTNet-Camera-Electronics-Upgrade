@@ -40,8 +40,8 @@ ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
 TRIGOUTLEVEL=1
 LINECOUNT=4
-PARAMETER1="Exposures=1"
-PARAMETER2="IntMS=0"
+PARAMETER1="IntMS=0"
+PARAMETER2="Exposures=1"
 MOD5\\PREAMPGAIN=0
 """
 
@@ -511,7 +511,7 @@ def test_status_timeout_does_not_lose_the_frame(tmp_path):  # noqa: ANN001
 
 
 
-def test_ini_validate_halts_when_no_controller_is_defined():
+def test_ini_validate_halts_when_no_controller_is_defined(tmp_path):  # noqa: ANN001
     """⛔ 컨트롤러 정의가 없으면 **기동을 멈춘다** (운영자 2026-09-12).
 
     ⚠️ 배포 ini 는 `ctrl_*_host` 가 빈 채로 나간다 -- 종전처럼 경고만 내면
@@ -530,7 +530,11 @@ def test_ini_validate_halts_when_no_controller_is_defined():
         acfg_mod.validate(cfg, ('N', 'T'))
     assert 'ccds' in str(e2.value) and 'MK' in str(e2.value)
     # 한쪽만 있는 정상 배치는 그대로 뜬다.
-    cfg.acf = {'MK': 'x.acf'}
+    # ⚠️ ACF 는 **실재해야 한다** -- 기동마다 적용하므로 없는 파일이면 멈춘다
+    #    (운영자 2026-09-12).  여기서 보려는 것은 그게 아니라 태그 셈이다.
+    real = tmp_path / 'x.acf'
+    real.write_text('[CONFIG]\n', encoding='ascii')
+    cfg.acf = {'MK': str(real)}
     assert cfg.active_tags(('K', 'M', 'T', 'N')) == ('MK',)
     assert cfg.index_of('MK') == 1 and cfg.index_of('NT') == 2
     acfg_mod.validate(cfg, ('K', 'M', 'T', 'N'))

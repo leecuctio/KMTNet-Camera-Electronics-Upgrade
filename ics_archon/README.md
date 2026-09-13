@@ -35,10 +35,10 @@ ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
 | [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (약 5분). 배치본은 `-m "not repo_only"`.  ⛔ **항목 수를 여기 적지 않는다** -- `python -m pytest --collect-only -q` 꼬리가 정본이고, 적어 두면 커밋마다 밀린다 (2026-09-09 에 300/244 가 실제 656/598 과 어긋난 것을 걷어냈다).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/ics_archon_buftest.py`](tools/ics_archon_buftest.py) | **`LOCK`/`FETCH` 2x2 회귀 시험** — 엔진 라인 속도를 `idle`·`lock`·`fetch`·`nolock` 넷으로 견준다 (본편 무수정). 2026-09-01 실기 결론은 [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) |
-| [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}.txt` 의 절차 정본. `--check` 로 대조, `--out` 으로 재추출.  ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
+| [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}_R####.txt` 의 절차 정본 — **판 번호는 ACF 파일명에서 가져온다**. `--check` 로 대조, `--out` 으로 재추출.  ⛔ txt 는 **손으로 고치지 않는다**; ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
-| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 **12개** = science 8 + guide 4 — 2026-09-11 초기화 시험 반입분, `archive/` 에 판올림한 구판, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  목록·주의는 [`acf/README.md`](acf/README.md) |
+| [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 **12개** = science 8 + guide 4 — 2026-09-11 초기화 시험 반입분, `archive/` 에 판올림한 구판, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  ⛔ **파라미터 이름 셋(`IntMS`·`Exposures`·`FirstFlush`)은 KMTNet 규약으로 고정**이다 — ACF 를 개정해도 안 바꾼다 (Archon 의 제약이 아니다).  목록·규약·주의는 [`acf/README.md`](acf/README.md) |
 | [`scr_labtest/README_labtest.md`](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** — 돌리기 전에 손볼 자리 · 첫 실행 점검 · 경고의 뜻 · 변경 내역 · 판 이력 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.bigbuf.py) | ✅ **현행 실험실 취득 스크립트** (`v1.3.4`, science 유닛).  유닛별 사본 셋(`KMTC-102`·`KMTC-113`·`KMTS-101`)이 나란히 있고 `tests/test_labtest_spec_copy.py` 가 표류를 막는다 |
 | [`scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py`](scr_labtest/archon_kmtnet_labtest_v1.3.smallbuf.py) | **small buffer 주소 지정 참고 코드** (`v1.3.4`) — 그 자체는 science 스크립트다.  guide 를 세울 때 본다 |
@@ -1226,6 +1226,44 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 
 ⛔ **감추지 않고 거절한다** — `ERROR: <명령> Not supported on this node`.
 ⚠️ 시뮬(`ics_sim`)에는 그대로 남는다(레거시 흐름을 흉내내는 것이 시뮬의 몫이다).
+
+### ⭐ 노출 시간의 경계와 **셔터 닫힘 대기** (운영자 확정 2026-09-13)
+
+셔터를 여는 IMAGETYPE 에서 `EXPTIME` 의 경계는 이렇다:
+
+    셔터가 열리기 시작 ───── EXPTIME ─────▶ 셔터가 닫히기 시작 ──┐
+                                          (= CALL IntUnit(IntMS) 완료)
+                                                                 │ 셔터 닫힘 대기
+                                                                 │ (= NoIntMS)
+                                                                 ▼
+                                                              독출 시작
+
+⛔ **셔터가 다 닫히기 전에 독출을 시작하면 프레임에 빛이 샌다** — 그리고 그것은
+조용하다(오류도 경고도 없다).  그 대기를 만드는 것이 ACF 의 `NoIntMS` 이고
+(`NOINT; CALL NoIntUnit(NoIntMS)`), 그 **하한**을 ini 가 지킨다:
+
+    [archon]
+    shutter_close_ms = 500      # 셔터가 다 닫히는 데 걸리는 시간 [ms]
+
+기동에서 ACF 의 `NoIntMS` 가 이보다 짧으면 **경고를 남기고 이 값으로 올려서 적용**한다.
+⭐ **정본은 ACF 다** — 경고가 뜨면 ACF 를 고치는 것이 맞다.  `0` 이면 검사하지 않는다.
+
+⏳ **500 은 아직 미실측이다** — 현행 ACF 의 `NoIntMS` 와 같은 값일 뿐이다.  벤치에서 FSA
+셔터의 닫힘 시간을 재고 고쳐야 한다.
+
+⚠️ `[timing] shutter_to_readout`(6.00 **초**)와 **다른 물건**이다 — 그쪽은 `--backend sim`
+전용이고 실기는 안 본다.
+
+### IMAGETYPE 별 셔터
+
+| `IMAGETYPE` | 셔터 | 적분 | 셔터 닫힘 대기 |
+|---|---|---|---|
+| `BIAS` | **안 연다** | 0 초로 강제 | 필요 없다 |
+| `DARK` | **안 연다** | 요청한 `EXPTIME` | 필요 없다 |
+| `OBJECT` · `FLAT` · `SKY` · `DOMEFLAT` | **연다** | 요청한 `EXPTIME` | **필요하다** |
+
+⚠️ 셔터를 안 여는 노출에도 `NoIntMS` 대기는 **똑같이 붙는다** — ACF 상수라 노출마다
+같은 값이 실리기 때문이다.  데이터는 멀쩡하고 **프레임 주기만 그만큼 길어진다.**
 
 ## 관련 문서
 
