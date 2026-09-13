@@ -14,14 +14,14 @@
 
 | 파일 | 유닛 | `TAPLINES` | `BIGBUF` | **저장** 픽셀/탭 × 줄 | IP | 백플레인 REV · FW |
 |---|---|---:|---:|---|---|---|
-| `KMTC_SCI_101_STA0284_R2612_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
-| `KMTC_SCI_102_STA0285_R2612_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
-| `KMTS_SCI_101_STA0286_R2612_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
-| `KMTS_SCI_102_STA0287_R2612_NT.acf` | SAAO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
-| `KMTK_SCI_112_STA0212_R2612_MK.acf` | KASI 시험 유닛 **둘째 상자** (MK) ⭐ **신규** | **32** | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
-| `KMTK_SCI_112_STA0212_R2612_NT.acf` | KASI 시험 유닛 둘째 상자 (NT) ⭐ **신규** | 33 | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
-| `KMTK_SCI_113_STA0200_R2612_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
-| `KMTK_SCI_113_STA0200_R2612_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
+| `KMTC_SCI_101_STA0284_R2613_MK.acf` | CTIO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
+| `KMTC_SCI_102_STA0285_R2613_NT.acf` | CTIO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
+| `KMTS_SCI_101_STA0286_R2613_MK.acf` | SAAO science 1 (MK) | 33 | 1 | **1200** × 4700 | `.101` | 7 · 1.0.1271 |
+| `KMTS_SCI_102_STA0287_R2613_NT.acf` | SAAO science 2 (NT) | 33 | 1 | **1200** × 4700 | `.102` | 7 · 1.0.1271 |
+| `KMTK_SCI_112_STA0212_R2613_MK.acf` | KASI 시험 유닛 **둘째 상자** (MK) ⭐ **신규** | **32** | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
+| `KMTK_SCI_112_STA0212_R2613_NT.acf` | KASI 시험 유닛 둘째 상자 (NT) ⭐ **신규** | 33 | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
+| `KMTK_SCI_113_STA0200_R2613_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
+| `KMTK_SCI_113_STA0200_R2613_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
 | `KMTC_GUI_161_STA0290_R2622.acf` | CTIO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
 | `KMTS_GUI_161_STA0291_R2622.acf` | SAAO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
 | `KMTK_GUI_162_STA0201_R2622.acf` | KASI guide | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
@@ -98,7 +98,7 @@ science 1 이 둘 다 `.101` 이다.  ⛔ **그런데 KASI guide 둘(`STA0201`·
 ⭐ **타이밍 스크립트는 안 바뀌었다** — 열두 장 전부 `R2611`(science `LINES=142`)
 · `R2619`(guide `LINES=122`) 의 발췌본과 **바이트 동일**하다
 (`tools/extract_timing_script.py` 로 확인).  그래서 **그때는** 판 번호를 안 올렸다.
-⚠️ 지금 판은 `R2612`/`R2620` 이다 — 파라미터 **슬롯 순서** 때문에 올렸다(맨 아래 절).
+⚠️ 지금 판은 **`R2613`/`R2622`** 다 (science/guide).  판 번호는 **계열별**이라 같은 수가 양쪽에 있을 수 있다.
 
 바뀐 것은 **컨트롤러가 보고한 값**과 **채널 offset** 둘이다.
 
@@ -410,6 +410,86 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
+
+## science R2613 — `EveryFlush` 신설 + `FlushFrame:` 을 서브루틴으로 (2026-09-14, 운영자)
+
+    KMT?_SCI_*_R2612_*.acf  ->  ..._R2613_*.acf     (8장, 구판은 archive/)
+    LINES       142 -> 143        PARAMETERS  22 -> 23
+    PARAMETER21="EveryFlush=0"    (신설, `Exposures` **앞** 슬롯 -- 맨 뒤 규약)
+    PARAMETER22="Exposures=0"     (한 칸 밀림)
+
+세션 작업 이름으로는 **P6**.  경위·검증은 [DevNote 11.86-(12)](../DevNote.md).
+
+### 스크립트 (바뀐 자리만)
+
+```diff
+  Start:
+- RESET; IF FirstFlush GOTO FlushFrame
++ RESET; CALL FlushFrame(FirstFlush)
+
+  Exposure:
+  X; Exposures--
++ X; CALL FlushFrame(EveryFlush)      ← ⭐ Continuous: **앞**
+  Continuous:
+
+  FlushFrame:
+  X; FirstFlush--
+  X; CALL Prep
+  X; CALL Flush
+- X; GOTO Start
++ RESET; RETURN FlushFrame
+```
+
+### 왜 이 꼴인가 — 셋 다 이유가 있다
+
+| 자리 | 왜 |
+|---|---|
+| **라벨 하나** (`FlushFrame:` 만) | ⭐ **스크립트 단순화** (운영자 2026-09-14).  한때 `FirstFlushFrame:` 껍데기를 덧대려 했으나 **얽힘이 실제로는 물지 않는다** -- `Start:` 가 `Exposure:` 보다 **먼저** 돌며 `FirstFlush` 를 0 으로 다 비우므로, `EveryFlush` 경로의 `FirstFlush--` 는 **늘 0 에서 헛돈다**(매뉴얼 p.64 *"Decrementing a parameter that's already at zero has no effect."*) |
+| ⭐ **`FirstFlush--` 를 남겨 둔다** | 두 몫을 한다. ① `Exposures=n` 묶음에서 *"첫 장만"* 을 만든다 ② ⭐ **마지막 프레임 독출 뒤 유휴로 돌아갈 때 또 flush 하지 않게 막는다** -- `GOTO Start` 로 되밟는 `Start:` 에서 `FirstFlush` 가 이미 0 이라 호출이 생략된다. 이것이 *"STOP 뒤 flush 없음"* 의 기전이다 |
+| **`EveryFlush` 가 `Exposure:` 아래** | ⭐ **continuous 경로가 flush 를 안 탄다**.  `tools/ics_archon_buftest.py` 가 유일한 `ContinuousExposures=1` 소비자라 **그 도구 거동이 안 바뀐다** (운영자 결정) |
+| ⛔ **`RESET; RETURN`** (`X;` 가 아니다) | `STATE0`(RESET)은 `CONTROL="0,0"` 인데 `STATE1`(X)은 전부 keep 이다.  flush 끝 실제 상태는 RG=LOW·CLAMP=LOW 라 `X; RETURN` 이면 **반대로 선 채 적분에 들어간다**.  종전 `GOTO Start` 는 `Start:` 의 `RESET;` 을 반드시 지났는데 **RETURN 은 CALL 다음 줄로 오니 그 줄을 건너뛴다** |
+
+### 셈이 맞나 — 전수 조사가 확인한 것
+
+* `CALL Sub(param)` 은 **param 회 반복**, 0 이면 호출 자체가 없고 **1틱만** 쓴다 (p.64·p.65).
+* ⭐ 반복 카운트는 **호출 시점 스냅샷**이라 몸통이 파라미터를 깎아도 바퀴 수가 안 변한다.
+  ⇒ `FirstFlush=3` 이면 **정확히 3바퀴**, 끝나면 `FirstFlush` 는 **정확히 0**.
+* 스택 최대 **6단** (한계 16).
+* 틱: **유휴 한 바퀴 Δ=0**, 노출 경로만 **+1틱(10 ns)**.  ⇒ **파형·주기 변경 0.**
+
+### ini 가 바뀐다
+
+    [archon]
+    ccdflush        = false     ← ⛔ **없앴다**
+    ccdflush_first  =           ← ACF `FirstFlush` 덮어쓰기
+    ccdflush_every  =           ← ACF `EveryFlush` 덮어쓰기
+
+⭐ **비우면 ACF 값을 그대로 따른다**(`None`).  ⛔ `0` 과 *"비어 있음"* 은 **다르다** --
+`0` 은 *"ACF 가 뭐라 하든 끈다"*, 비어 있음은 *"ACF 를 따른다"* 다.
+⭐ **종전 `ccdflush = true` 는 이제 `ccdflush_every = 1` 이다** -- 그 눈금이 이름과 달리
+사실상 *"매 노출"* 이었다(설정 메모리에 쓰면 노출마다 `LOADPARAMS` 가 다시 실어 갔다).
+
+### ⛔ guide 는 안 건드린다
+
+`icg_archon/acftiming.py` 의 `_SHAPE` 가 `Start` 에서
+`IF\s+FirstFlush\s+GOTO\s+FlushFrame` 를 **요구**하는데 그것은 **guide 전용 형태표**다.
+guide 스크립트(`R2622`)는 그 꼴 그대로이므로 **건드리면 안 된다** -- 고치면 guide ACF 가
+형태검사에 걸려 `timing=None` 으로 물러나는데 `_flush_capable` 은 형태검사 **앞**이라
+GO 는 계속 열린다.  ⇒ DevNote 11.84-(5) 의 *"같은 커밋에서 `acftiming.py:171` 도 고쳐라"*
+지시는 **폐기했다**.
+
+### 함께 고친 자리
+
+`ics_archon/config.py`(설정 둘 + 로더) · `ics_archon/archon/controller.py`(`PARAM_EVERY` ·
+`set_first_flush`→`set_flush_param` · `apply_flush_overrides` 신설 · `flush_now` 복원값 ·
+산문 12) · `ics_archon.ini` · `ics_archon/gaugectl.py` · 시험
+(`test_ccdflush` 대수술 · `test_timing_script_extract` **LINES 143** ·
+`test_ch10_reflection` · 판 번호 인용 다섯) · `tools/` 둘.
+
+⏳ **벤치에서 확인할 것**: `RESETTIMING` 이 **호출 스택(SP)까지 지우는가** -- 매뉴얼이
+말이 없다.  절차는 `bench_test_plan.md`.
+
+⛔ **벤치 호스트는 `git pull` 만으로 안 간다** — `~/AIC/Config/acf/` 복사 + ini 경로 수정.
 
 ## guide R2622 — `FlushFrame:` 의 수평 이송을 **DG 열고** 돈다 (2026-09-14, 운영자)
 

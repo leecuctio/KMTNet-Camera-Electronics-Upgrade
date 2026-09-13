@@ -114,7 +114,7 @@ def kind(bigbuf: int | None) -> str:
     return 'guide' if bigbuf == 0 else 'science'
 
 
-#: ACF 파일명에 박힌 판 번호 (`..._R2612_MK.acf` · `..._R2622.acf`).
+#: ACF 파일명에 박힌 판 번호 (`..._R2613_MK.acf` · `..._R2622.acf`).
 _REV = re.compile(r'_(R\d+)(?:[._]|$)')
 
 

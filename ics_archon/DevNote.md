@@ -10613,7 +10613,19 @@ recommended settings will be supplied with each science-grade sensor"* (p.12 주
 ⛔ **판 번호를 비워 둔다.**  종전 계획이 `science R2613` 으로 예약해 두었으나, **실제로 구운
 순서가 정본**이므로 다음에 무엇을 굽든 그것이 R2613 이 된다.
 
-#### (12) ⛔ P6 초안에 결함이 있다 -- `FirstFlush` 가 음수로 내려간다
+#### (12) ⭐ P6 을 구웠다 -- `EveryFlush` 신설 (science R2613)
+
+⛔⛔ **이 절의 애초 근거는 틀렸다** (2026-09-14 전수 조사가 잡았다).  나는 초안이
+*"`FirstFlush` 를 음수로 내려보낸다"* 고 적었는데, **Archon 매뉴얼 p.64 가 정반대다**:
+*"Decrementing a parameter that's already at zero has **no effect**."*  ⇒ 음수로 안 간다.
+
+⭐ **그래서 결국 라벨 하나로 갔다** (운영자 2026-09-14, *"스크립트 단순화를 위해 원래대로"*).
+한때 `FirstFlushFrame:` 껍데기를 덧댔다가 되돌린 것이고, **얽힘이 실제로는 물지 않는다**:
+`Start:` 가 `Exposure:` 보다 **먼저** 돌며 `FirstFlush` 를 0 으로 다 비우므로
+`EveryFlush` 경로의 `FirstFlush--` 는 **늘 0 에서 헛돈다**.
+
+⛔ **실수의 꼴을 적어 둔다**: *"이럴 것이다"* 로 결함을 선언하고 **매뉴얼을 안 열었다.**
+파라미터 감산의 하한은 한 줄이면 확인됐다.
 
 운영자가 *"guide 는 `EveryFlush` 없이, science 는 `EveryFlush` 를 ACF 파라미터로 추가"* 를
 지시해 설계를 다시 보다가 찾았다.  11.84-(5) 의 초안은 `FlushFrame:` **하나**를 두 곳에서
@@ -10625,27 +10637,29 @@ recommended settings will be supplied with each science-grade sensor"* (p.12 주
     X; FirstFlush--        <- ⛔ EveryFlush 로 불러도 이것이 돈다
     ...
 
-⇒ `EveryFlush=1` · `FirstFlush=0` 이라는 **흔한 구성**에서 노출마다 `FirstFlush` 가
-−1, −2, −3 … 으로 내려간다.  `IF FirstFlush` 는 0 이 아니면 참이므로 **언젠가 엉뚱하게
-flush 가 돈다.**
+⛔ 내가 적었던 것: *"`EveryFlush=1`·`FirstFlush=0` 에서 노출마다 `FirstFlush` 가
+−1, −2, −3 … 으로 내려간다"*.  **두 겹으로 틀렸다** -- ① 매뉴얼 p.64 가 0 에서 더 깎여도
+아무 일 없다고 못박고 ② **애초에 그 자리에 닿지도 않는다**: `Start:` 가 `Exposure:` 보다
+먼저 돌며 `FirstFlush` 를 0 으로 다 비우므로 `EveryFlush` 경로의 `--` 는 늘 헛돈다.
 
-⭐ **`FirstFlush--` 를 없앨 수도 없다** -- `Exposures=n` 은 **한 번의 `LOADPARAMS` 로 n 장**을
-찍고 코어가 `Start:` 를 n 번 지나므로, `--` 가 없으면 매번 flush 해서 *"First"* 가 아니게 된다.
+⭐ **`FirstFlush--` 는 그대로 둔다** -- 두 몫을 한다:
+① `Exposures=n` 묶음에서 *"첫 장만"* 을 만든다 (`--` 가 없으면 `Start:` 를 n 번 지나며
+매번 flush 한다) ② ⭐ **마지막 프레임 독출 뒤 유휴로 돌아갈 때 또 flush 하지 않게 막는다**
+-- `GOTO Start` 로 되밟는 `Start:` 에서 `FirstFlush` 가 0 이라 호출이 생략된다.
+**이것이 *"STOP 뒤 flush 없음"* 의 기전이다.**
 
-**⭐ 고친 설계 -- 라벨을 둘로** (스택 3단, 한계 16):
+**⭐ 최종 설계 -- 라벨 하나** (운영자 2026-09-14, 스크립트 단순화):
 
     Start:
-    RESET; CALL FirstFlushFrame(FirstFlush)
+    RESET; CALL FlushFrame(FirstFlush)
     ...
-    Continuous:
+    Exposure:
+    X; Exposures--
     X; CALL FlushFrame(EveryFlush)
+    Continuous:
     ...
-    FirstFlushFrame:
-    X; FirstFlush--
-    X; CALL FlushFrame(1)
-    X; RETURN FirstFlushFrame
-
     FlushFrame:
+    X; FirstFlush--
     X; CALL Prep
     X; CALL Flush
     RESET; RETURN FlushFrame
@@ -10654,7 +10668,7 @@ flush 가 돈다.**
 
 | # | 물음 | ✅ 결정 |
 |---|---|---|
-| 1 | "라벨 둘" 설계로 갈까 | ✅ **간다** (위 diff 그대로) |
+| 1 | 라벨을 둘로 갈까 | ⛔ **아니다 -- 라벨 하나**.  한때 둘로 갔다가 **스크립트 단순화**로 되돌렸다 (운영자 2026-09-14) |
 | 2 | `EveryFlush` 자리 | ✅ **`Exposure:` 아래** (`X; Exposures--` 다음, `Continuous:` 앞) -- ⇒ **continuous 경로는 flush 를 안 탄다**.  `ics_archon_buftest.py` 가 그 모드를 쓰므로 **도구 거동이 안 바뀐다** |
 | 3 | 둘 다 1 일 때 | ✅ **막지 않는다** -- ini 검사를 넣지 않는다.  ⚠️ 그 구성이면 한 노출 앞에 flush 가 **두 번**(+11 s) 돈다는 것만 주석에 적는다 |
 | 4 | ACF 초기값 | ✅ **`FirstFlush=0` · `EveryFlush=0`** 둘 다 0.  (`FirstFlush=0` 은 현행 `PARAMETER0` 그대로다 -- `EveryFlush=0` 만 새로 넣는다) |
@@ -10665,7 +10679,7 @@ flush 가 돈다.**
     PARAMETER21="EveryFlush=0"     <- 신설.  ⭐ `Exposures` **앞** 슬롯 (맨 뒤 규약)
     PARAMETER22="Exposures=0"      <- 한 칸 밀림
     PARAMETERS=23                  <- 22 에서
-    LINES=147                      <- 142 에서 (+5: EveryFlush 호출 1 · FirstFlushFrame 블록 4)
+    LINES=143                      <- 142 에서 (+1: `EveryFlush` 호출 한 줄뿐)
 
 **`[archon]` ini:**
 
@@ -10684,6 +10698,36 @@ flush 가 돈다.**
 ⚠️ **콘솔 `ccdflush` 명령은 남아야 한다**(일회성 flush).  다만 *"되돌릴 값"* 이 지금은
 `cfg.ccdflush` 인데 새 설계에서는 **"ini 덮어쓴 값 또는 ACF 값"** 이 된다.
 
-⏳ **운영자 요청의 나머지**(`[archon] CCDFLUSH_EVERY`/`CCDFLUSH_FIRST` 신설 -- 비어 있으면
-ACF 를 따르고 값이 있으면 ACF 업로드 때 고쳐 apply · 기존 `ccdflush` 제거)는 **위 셋이
-정해진 뒤에** 한 판으로 간다.
+✅ **구웠다 (2026-09-14, science R2613)** -- `LINES` 142→143 · `PARAMETERS` 22→23 ·
+`[archon] ccdflush` 제거 + `ccdflush_first`/`ccdflush_every` 신설.
+
+**전수 조사가 확인해 준 것** (매뉴얼 + 실기 교차):
+
+| # | 확인 |
+|---|---|
+| 1 | `CALL Sub(param)` 은 **param 회 반복**, 0 이면 호출 자체가 없고 **1틱만** 쓴다 (p.64·p.65).  실기 방증: `SkipLine(PostSkipLines)`·`Line(OverscanLines)` 가 파라미터 0 으로 매 프레임 그냥 지나간다 |
+| 2 | ⭐ `CALL` 의 반복 카운트는 **호출 시점 스냅샷**이다 -- 몸통이 파라미터를 깎아도 그 바퀴 수는 안 변한다.  실기 방증이 더 세다: `CALL Line(Lines)` 안에서 `CALL PixelFirst(Pixels)` 가 4700행 내내 도는데, 활성카운트가 파라미터 자체였다면 2행부터 0화소였을 것 |
+| 3 | ⇒ `FirstFlush=3` 이면 **정확히 3바퀴** 돌고 `FirstFlush` 는 **정확히 0** 으로 끝난다 |
+| 4 | ⛔ **`RESET; RETURN FlushFrame` 은 필수**다.  `STATE0`(RESET)은 `CONTROL="0,0"` 인데 `STATE1`(X)은 전부 keep 이다.  flush 끝 실제 상태는 RG=LOW·CLAMP=LOW 라 `X; RETURN` 으로 두면 **반대로 선 채 적분에 들어간다**.  종전 `GOTO Start` 는 `Start:` 의 `RESET;` 을 반드시 지났는데 **RETURN 은 CALL 다음 줄로 오니 그 줄을 건너뛴다** |
+| 5 | 스택 최대 **6단**(한계 16).  `EveryFlush` 경로는 `Exposure:` 가 GOTO 진입이라 5단 |
+| 6 | ⭐ continuous 경로는 flush 를 **안 탄다** -- `tools/ics_archon_buftest.py` 가 유일한 `ContinuousExposures=1` 소비자라 그 도구 거동이 안 바뀐다 |
+| 7 | 틱: **유휴 한 바퀴 Δ=0**, 노출 경로만 **+1틱(10 ns)**.  파형·주기 변경 0 |
+
+**⏳ 남은 미지 하나 -- 벤치에서 확인할 것:**
+
+⛔ **`RESETTIMING` 이 호출 스택(SP)까지 지우는가 -- 모른다.**  매뉴얼 p.52 도 p.64 도
+스택을 한 마디도 안 적는다.  abort 가 독출 한복판(최대 4단)에 떨어지면 새 구조의 6단이
+그 위에 얹힐 여지가 있다.  ⇒ **절차**: `go 5` 를 걸고 독출 중 ABORT 를 **연속 4회**,
+그 뒤 `go 1` 이 정상 프레임을 내면 지워지는 것이고 코어가 멎으면 안 지워지는 것이다.
+⚠️ 차단 조건은 아니다 -- 벤치 항목으로만.
+
+⛔⛔ **`icg_archon/acftiming.py` 의 `_SHAPE` 는 건드리지 마라.**  DevNote 11.84-(5) 가
+*"같은 커밋에서 `acftiming.py:171` 을 `CALL FlushFrame(FirstFlush)` 로 고쳐야 한다"* 고
+적어 두었는데, 그 형태표는 **guide 전용**이고 guide 는 안 바꾸기로 확정됐다(2026-09-14).
+고치면 guide ACF 가 형태검사에 걸려 `timing=None` 으로 물러나는데 `_flush_capable` 은
+형태검사 **앞**이라 GO 는 계속 열린다 -- *"조용히 틀리는 가장 나쁜 모양"* 그 자체다.
+⇒ **그 지시는 폐기한다.**
+
+⚠️ 그리고 이 절이 적었던 *"되돌릴 값이 지금은 `cfg.ccdflush`"* 도 **간접적으로만 맞았다** --
+`flush_now()` 는 `cfg` 를 아예 안 읽고 **리터럴 0** 을 썼다.  기동 때 그 값이 설정 메모리에
+앉아 있어서 결과가 같았을 뿐이다.  이번에 **읽어 둔 값 그대로 복원**으로 고쳤다.

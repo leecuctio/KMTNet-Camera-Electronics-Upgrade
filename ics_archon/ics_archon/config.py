@@ -67,8 +67,8 @@ def cfg_name_from_acf(path: str) -> str:
 
     규격 5.5절이 못박은 형태다 (raw spec v1.8):
 
-        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2612_MK.acf
-        ->               KMTC_SCI_101_STA0284_R2612_MK
+        ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2613_MK.acf
+        ->               KMTC_SCI_101_STA0284_R2613_MK
 
     경로가 비었거나 이름이 통째로 확장자면 빈 문자열을 돌려준다 -- 그러면
     부르는 쪽이 "유도 실패" 를 알아보고 손편집 값이나 백엔드 보고값에
@@ -147,26 +147,33 @@ class ArchonCfg:
     #: ⚠️ **단위가 ms 다** -- `[timing] shutter_to_readout`(초, 시뮬 전용)과 다른
     #: 물건이니 섞지 말 것.
     shutter_close_ms: int = 0
-    #: ⭐ **노출 전 CCD flush** (`FlushFrame:` = `Prep`+`Flush`)를 실행할지
-    #: (운영자 2026-09-04).  ⭐ **설정 메모리의 `FirstFlush` 한 줄을 1/0 으로 쓰는
-    #: 일이다** (`controller.set_first_flush()` -- `WCONFIG` 한 줄 + `RCONFIG`
-    #: 되읽기, **`LOADTIMING` 없음**).  1 이면 노출마다 나가는 `LOADPARAMS` 가 그
-    #: 값을 RAM 에 실어 코어가 **매 노출 전** `FlushFrame` 을 한 번 돌고
-    #: `FirstFlush--` 로 소비한다.  ⚠️ `Flush` 가
-    #: `SkipLine(FlushLines)` 라 **프레임 주기가 늘어난다** -- `MIN_FRAME_PERIOD`
-    #: 와 10장 실측(13.27 s)은 **flush 를 끈 상태의 값**이다.
-    #: (종전 R2609 까지는 타이밍 스크립트 두 줄의 `#` 를 여닫고 `LOADTIMING` 을
-    #: 냈다 -- R2610 에서 사라진 기제다.  `acf/README.md` 의 "science R2610" 절.)
-    #: ⛔ **science 전용이다** -- guide 는 ACF 가 `PARAMETER0="FirstFlush=1"` **상수**
-    #: 로 두어 호스트가 건드릴 것이 없고, 그래서 `IcgCfg` 에는 이 설정 자체를 두지
-    #: 않는다 (운영자 확정 2026-09-04).  컨트롤러 층은 이 속성이 **없으면 아예
-    #: 건너뛴다**.
-    #: ⭐ **기본은 꺼짐**이다 (운영자 정정 2026-09-04: *"보통은 `ccdflush=false`
-    #: 로 해놓을 건데 아주 가끔 `true`"*).  `true`/`on`/`1` 과
-    #: `false`/`off`/`0` 을 같게 받는다.
-    #: ⭐ 그래서 10장 실측(독출 12.77 s · 주기 13.27 s)과 `MIN_FRAME_PERIOD` 는
-    #: **기본 구성의 값이 맞다** -- 켤 때만 그보다 길어진다.
-    ccdflush: bool = False
+    #: ⭐ **노출 전 CCD flush 를 몇 번 돌릴지** -- ACF 파라미터를 덮어쓰는 눈금이다
+    #: (운영자 2026-09-14, DevNote 11.86-(12)).
+    #:
+    #:   `ccdflush_first` -> ACF `FirstFlush` -- 한 `LOADPARAMS` 묶음의 **첫 장 앞에만**
+    #:   `ccdflush_every` -> ACF `EveryFlush` -- **매 노출 앞에**
+    #:
+    #: ⛔ **비워 두면 ACF 값을 그대로 따른다**(`None`).  값을 적으면 **ACF 를 올린 뒤**
+    #: 그 슬롯 한 줄만 고쳐 apply 한다 (`WCONFIG` 한 줄 + `RCONFIG` 되읽기,
+    #: **`LOADTIMING` 없음**).  science R2613 의 ACF 초기값은 **둘 다 0** 이다.
+    #:
+    #: ⭐ `EveryFlush` 는 `Exposure:` 블록 아래에 있다 -- **`ContinuousExposures`
+    #: 경로는 flush 를 안 탄다**(`tools/ics_archon_buftest.py` 가 그 모드를 쓴다).
+    #:
+    #: ⚠️ `Flush` 가 `SkipLine(FlushLines)` 라 **프레임 주기가 늘어난다**(+5.54 s) --
+    #: `MIN_FRAME_PERIOD` 와 10장 실측은 **flush 를 끈 상태의 값**이다.
+    #: ⚠️ 둘 다 1 이면 한 노출 앞에 flush 가 **두 번** 돈다 -- ⭐ **막지 않는다**
+    #: (운영자 결정 2026-09-14).
+    #:
+    #: ⛔ **science 전용이다** -- guide 는 ACF 가 `FirstFlush` 를 상수로 두어 호스트가
+    #: 건드릴 것이 없고 `IcgCfg` 에는 이 설정 자체가 없다.  컨트롤러 층은 속성이
+    #: **없으면 아예 건너뛴다**.
+    #:
+    #: ⭐ **종전 `ccdflush = true` 는 새 설계에서 `ccdflush_every = 1` 이다.**  그
+    #: 눈금은 이름과 달리 사실상 *"매 노출"* 이었다 -- 설정 메모리에 쓰면 노출마다
+    #: `LOADPARAMS` 가 그 값을 다시 실어 갔기 때문이다.  2026-09-14 에 없앴다.
+    ccdflush_first: int | None = None
+    ccdflush_every: int | None = None
 
     # -- TCS 시각 비교 (운영자 지시 2026-09-04) ---------------------------
     #: `TCSQDATE` 로 TC 시계와 우리 시계를 견주는 문턱 [s].  **0 이면 끈다.**
@@ -204,7 +211,7 @@ class ArchonCfg:
     gauge_reply_timeout: float = 10.0
     #: ⭐ **켜져 있어서 껐을 때** 노출을 시작하기까지 기다리는 시간 [s]
     #: (운영자 지시 2026-09-04).  ⛔ `VACGAUGE OFF` 는 즉시가 아니다 --
-    #: `APPLYDIO09` 가 MOD10 VCPU 를 재시작하므로, `ccdflush = true` 면 그
+    #: `APPLYDIO09` 가 MOD10 VCPU 를 재시작하므로, `ccdflush_every` 가 켜져 있으면 그
     #: 사이에 `Prep`+`Flush` 가 **필라멘트가 켜진 채로** 돈다.
     #: ⭐ 연속 촬영은 노출이 1~2분이라 둘째 장부터 게이지가 이미 꺼져 있고,
     #: 그때는 명령도 이 대기도 **없다**.  0 이면 안 기다린다.
@@ -237,7 +244,7 @@ class ArchonCfg:
     #: POWERON 뒤 CCD flush 를 기다리는 시간 [s] (labtest: 24 x 0.5).
     #: `POWERON` 뒤 **추가** 정착 대기 [s].  ⭐ **0 이 기본이다**
     #: (운영자 확정 2026-09-10) -- science CCD 는 기다릴 이유가 없다:
-    #: ① 다른 절차 때문에 첫 노출까지 어차피 시간이 흐르고 ② `ccdflush`
+    #: ① 다른 절차 때문에 첫 노출까지 어차피 시간이 흐르고 ② `ccdflush_every`
     #: 면 노출 전에 flush 를 하며 ③ ⭐ **빠른 스캔은 CCD 를 다 못 비운다**
     #: -- 실제로 비우는 것은 독출이다 (실험 영상 관측).
     #: ⚠️ `POWER=4` **확인은 이 값과 무관하게 늘 한다** (`T_POWER_CONFIRM`)
@@ -691,7 +698,9 @@ def load(path: str) -> ArchonCfg:
     cfg.acf_retry = _num(s, 'acf_retry', cfg.acf_retry, int)
     cfg.shutter_close_ms = _num(s, 'shutter_close_ms', cfg.shutter_close_ms,
                                 int)
-    cfg.ccdflush = _bool(s, 'ccdflush', cfg.ccdflush)
+    # ⭐ 비어 있으면 `None` -- *"ACF 값을 그대로 따른다"* 는 뜻이다.
+    cfg.ccdflush_first = _num(s, 'ccdflush_first', cfg.ccdflush_first, int)
+    cfg.ccdflush_every = _num(s, 'ccdflush_every', cfg.ccdflush_every, int)
     cfg.tcs_clock_warn = _num(s, 'tcs_clock_warn', cfg.tcs_clock_warn, float)
     cfg.gauge_off_on_exposure = _bool(s, 'gauge_off_on_exposure',
                                       cfg.gauge_off_on_exposure)

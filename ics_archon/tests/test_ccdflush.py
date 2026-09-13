@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""`[archon] ccdflush` -- 노출 전 CCD flush (운영자 지시 2026-09-04 · 기제 단순화 2026-09-05, DevNote 11.33).
+"""`[archon] ccdflush_first`/`ccdflush_every` -- 노출 전 CCD flush
+(운영자 2026-09-04 · 기제 단순화 2026-09-05 · 둘로 가름 2026-09-14, DevNote 11.33 · 11.86-(12)).
 
 science R2610+ 부터 flush 는 타이밍 스크립트의 `FlushFrame`(Prep+Flush)이고, 켜고 끄는 일은
 **설정 메모리의 `FirstFlush` 한 줄**(`PARAMETER0`)이다.  science 는 노출마다 `LOADPARAMS` 를
@@ -23,6 +24,7 @@ Prep+Flush 가 돈다.  `LOADTIMING` 은 없다 -- 코어 리셋도, `Exposures=
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 
 import pytest
@@ -34,7 +36,7 @@ from ics_archon.archon.controller import ArchonController  # noqa: E402
 from ics_archon.config import ArchonCfg  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2612_MK.acf')
+SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2613_MK.acf')
 GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2622.acf')
 
 
@@ -91,7 +93,7 @@ def test_turning_it_on_writes_one_line_and_no_loadtiming():
     """⭐ WCONFIG **한 줄** -- `PARAMETER0=FirstFlush=1`.  `LOADTIMING`/`LOADPARAMS` 는 없다."""
     ctrl = Ctrl()
     assert ctrl.flag() == 'FirstFlush=0', 'science ACF 원문은 0 이어야 한다'
-    assert asyncio.run(ctrl.set_first_flush(True)) is True
+    assert asyncio.run(ctrl.set_flush_param('FirstFlush', 1)) is True
     assert ctrl.writes() == [_slot_write(ctrl, 'FirstFlush=1')], ctrl.sent
     assert ctrl.loads() == [], ctrl.sent
     assert ctrl.flag() == 'FirstFlush=1'
@@ -102,7 +104,7 @@ def test_it_reads_back_before_and_after_writing():
     """되읽기 둘 -- 쓰기 전(판정)과 뒤(앉았나).  `set_config` 는 캐시를 먼저 바꾸므로
     뒤의 되읽기가 없으면 *"보냈다"* 를 *"앉았다"* 로 착각한다 (11.13 F5)."""
     ctrl = Ctrl()
-    asyncio.run(ctrl.set_first_flush(True))
+    asyncio.run(ctrl.set_flush_param('FirstFlush', 1))
     reads = [i for i, c in enumerate(ctrl.sent) if c.startswith('RCONFIG')]
     write = ctrl.sent.index(ctrl.writes()[0])
     assert len(reads) == 2 and reads[0] < write < reads[1], ctrl.sent
@@ -110,22 +112,22 @@ def test_it_reads_back_before_and_after_writing():
 
 def test_already_on_writes_nothing():
     ctrl = Ctrl()
-    asyncio.run(ctrl.set_first_flush(True))
-    assert asyncio.run(ctrl.set_first_flush(True)) is False
+    asyncio.run(ctrl.set_flush_param('FirstFlush', 1))
+    assert asyncio.run(ctrl.set_flush_param('FirstFlush', 1)) is False
     assert len(ctrl.writes()) == 1, ctrl.writes()
 
 
 def test_the_default_science_acf_is_off_so_off_writes_nothing():
     ctrl = Ctrl()
-    assert asyncio.run(ctrl.set_first_flush(False)) is False
+    assert asyncio.run(ctrl.set_flush_param('FirstFlush', 0)) is False
     assert ctrl.writes() == []
     assert ctrl.loads() == []
 
 
 def test_turning_it_off_again_writes_zero():
     ctrl = Ctrl()
-    asyncio.run(ctrl.set_first_flush(True))
-    assert asyncio.run(ctrl.set_first_flush(False)) is True
+    asyncio.run(ctrl.set_flush_param('FirstFlush', 1))
+    assert asyncio.run(ctrl.set_flush_param('FirstFlush', 0)) is True
     assert ctrl.writes()[-1] == _slot_write(ctrl, 'FirstFlush=0')
     assert ctrl.flag() == 'FirstFlush=0'
 
@@ -137,7 +139,7 @@ def test_a_previous_session_left_it_on_and_the_option_off_restores_zero():
     """캐시(ACF 파일)는 0 인데 컨트롤러 메모리는 앞 세션의 1 -- 되읽어 알고 0 을 쓴다."""
     ctrl = Ctrl()
     ctrl._memory['PARAMETER0'] = 'FirstFlush=1'    # noqa: SLF001
-    assert asyncio.run(ctrl.set_first_flush(False)) is True
+    assert asyncio.run(ctrl.set_flush_param('FirstFlush', 0)) is True
     assert ctrl.writes() == [_slot_write(ctrl, 'FirstFlush=0')]
     assert ctrl.flag() == 'FirstFlush=0'
 
@@ -145,7 +147,7 @@ def test_a_previous_session_left_it_on_and_the_option_off_restores_zero():
 def test_controller_already_on_syncs_the_cache_without_writing():
     ctrl = Ctrl()
     ctrl._memory['PARAMETER0'] = 'FirstFlush=1'    # noqa: SLF001
-    assert asyncio.run(ctrl.set_first_flush(True)) is False
+    assert asyncio.run(ctrl.set_flush_param('FirstFlush', 1)) is False
     assert ctrl.writes() == []
     assert ctrl.config['PARAMETER0'] == 'FirstFlush=1', '캐시를 컨트롤러 값에 맞춘다'
 
@@ -157,7 +159,7 @@ def test_a_write_that_did_not_land_is_reported(caplog):  # noqa: ANN001
     """⛔ 되읽은 값이 다르면 `False` + 오류 로그.  캐시로 물러나 *됐다* 고 하지 않는다."""
     ctrl = Ctrl(stuck=True)
     with caplog.at_level('ERROR'):
-        assert asyncio.run(ctrl.set_first_flush(True)) is False
+        assert asyncio.run(ctrl.set_flush_param('FirstFlush', 1)) is False
     assert ctrl.flag() == 'FirstFlush=0'
     assert any('did not land' in r.getMessage()
                for r in caplog.records), caplog.text
@@ -174,22 +176,21 @@ def test_an_acf_whose_slot_zero_is_another_parameter_is_left_alone(tmp_path, cap
                                 'PARAMETER0="ContinuousExposures=0"\n'), encoding='ascii')
     ctrl = Ctrl(str(old))
     with caplog.at_level('WARNING'):
-        assert asyncio.run(ctrl.set_first_flush(True)) is False
+        assert asyncio.run(ctrl.set_flush_param('FirstFlush', 1)) is False
     assert ctrl.writes() == [] and ctrl.loads() == [], ctrl.sent
     assert any('continuing without flush' in r.getMessage()
                for r in caplog.records), caplog.text
     caplog.clear()
     with caplog.at_level('WARNING'):
-        assert asyncio.run(ctrl.set_first_flush(False)) is False
+        assert asyncio.run(ctrl.set_flush_param('FirstFlush', 0)) is False
     assert not [r for r in caplog.records if r.levelname == 'WARNING'], caplog.text
 
 
 def test_guide_has_no_option_so_its_constant_is_never_touched():
-    """guide 의 `FirstFlush=1` 은 **ACF 상수**다 (R2616).  `IcgCfg` 에 `ccdflush` 가 없어
-    `prepare()` 가 `set_first_flush` 를 부르지 않는다 -- 그 판정은 `getattr(cfg, 'ccdflush',
-    None) is not None` 이다."""
-    assert getattr(IcgCfg(), 'ccdflush', None) is None
-    assert ArchonCfg().ccdflush is False
+    """guide 의 `FirstFlush` 는 **ACF 상수**다.  `IcgCfg` 에 이 설정이 없어
+    `apply_flush_overrides()` 가 `getattr` 에서 `None` 을 받아 그냥 지나간다."""
+    for attr in ('ccdflush_first', 'ccdflush_every'):
+        assert getattr(IcgCfg(), attr, None) is None, attr
     ctrl = Ctrl(GUIDE_ACF)
     assert ctrl.flag() == 'FirstFlush=1'
 
@@ -197,60 +198,85 @@ def test_guide_has_no_option_so_its_constant_is_never_touched():
 # -- ini ---------------------------------------------------------------------
 
 
-def test_the_ini_default_is_off():
-    """⭐ **기본은 꺼짐**이다 (운영자 정정 2026-09-04: *"보통은 false, 가끔 true"*).
+def test_the_ini_default_is_follow_the_acf():
+    """⭐ **기본은 `None`** -- *"ACF 값을 그대로 따른다"* 는 뜻이다 (운영자 2026-09-14).
 
-    ⭐ 그래서 10장 실측(독출 12.77 s · 주기 13.27 s)과 `MIN_FRAME_PERIOD` 는
-    **기본 구성의 값이 맞다** -- 켤 때만 `SkipLine(FlushLines)` 만큼 길어진다.
-    ⚠️ 켠 채로 운영할 거면 주기를 다시 재야 한다.  ⭐ 다만 `MIN_FRAME_PERIOD`
-    는 두 안전검사에서 **하한**으로만 쓰이므로(잠금이 주기를 넘는지 · 버퍼 수가
-    충분한지) 실제 주기가 더 길면 검사는 **보수적인 쪽으로** 틀린다 -- 위험한
-    방향이 아니다.
+    ⛔ 종전 `ccdflush: bool = False` 를 대신한다.  `False` 는 *"0 을 써 넣는다"* 로
+    읽힐 여지가 있었는데, `None` 은 **아무것도 안 쓴다**가 분명하다.
+    ⭐ 그래서 10장 실측(독출 12.77 s)과 `MIN_FRAME_PERIOD` 는 **기본 구성의 값이
+    맞다** -- 켤 때만 `SkipLine(FlushLines)` 만큼 길어진다.
     """
-    assert ArchonCfg().ccdflush is False
+    assert ArchonCfg().ccdflush_first is None
+    assert ArchonCfg().ccdflush_every is None
 
 
-@pytest.mark.parametrize('word, want', [
-    ('true', True), ('TRUE', True), ('on', True), ('ON', True), ('1', True),
-    ('false', False), ('FALSE', False), ('off', False), ('Off', False),
-    ('0', False),
-])
-def test_the_ini_takes_all_six_words_in_any_case(tmp_path, word, want):  # noqa: ANN001
-    """⭐ `true`/`on`/`1` 과 `false`/`off`/`0` 을 **같게** 받는다 (운영자 2026-09-04).
-
-    ini 키·값 모두 **대소문자를 안 가린다**.
-    """
+def _ini_with(tmp_path, **kv):  # noqa: ANN001, ANN003
     import configparser
-
-    from ics_archon import config as acfg_mod
 
     cp = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
     cp.read(os.path.join(ROOT, 'ics_archon.ini'), encoding='utf-8')
-    cp['archon']['ccdflush'] = word
+    for k, v in kv.items():
+        cp['archon'][k] = v
     path = tmp_path / 'ics.ini'
     with open(path, 'w', encoding='utf-8') as fh:
         cp.write(fh)
-    assert acfg_mod.load(str(path)).ccdflush is want
+    return str(path)
 
 
-def test_an_unrecognized_word_is_refused(tmp_path):  # noqa: ANN001
-    """⛔ **모르는 값은 모른다고 말한다** -- 조용히 거짓으로 떨어뜨리지 않는다.
-
-    `ture` 같은 오타 하나가 기능을 소리 없이 끄면 안 된다.
-    """
-    import configparser
-
+@pytest.mark.parametrize('key', ['ccdflush_first', 'ccdflush_every'])
+def test_an_empty_value_means_follow_the_acf(tmp_path, key):  # noqa: ANN001
+    """⭐ **비워 두면 ACF 를 따른다** -- 배포 ini 가 그 꼴이다."""
     from ics_archon import config as acfg_mod
 
-    cp = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
-    cp.read(os.path.join(ROOT, 'ics_archon.ini'), encoding='utf-8')
-    cp['archon']['ccdflush'] = 'ture'
-    path = tmp_path / 'ics.ini'
-    with open(path, 'w', encoding='utf-8') as fh:
-        cp.write(fh)
+    assert getattr(acfg_mod.load(_ini_with(tmp_path, **{key: ''})), key) is None
+
+
+@pytest.mark.parametrize('key', ['ccdflush_first', 'ccdflush_every'])
+@pytest.mark.parametrize('word, want', [('0', 0), ('1', 1), ('3', 3)])
+def test_a_number_overrides_the_acf(tmp_path, key, word, want):  # noqa: ANN001
+    """⭐ 값이 있으면 그 수를 ACF 슬롯에 써 넣는다.
+
+    ⛔ `0` 과 *"비어 있음"* 은 **다르다** -- `0` 은 *"ACF 가 뭐라 하든 끈다"* 이고
+    비어 있음은 *"ACF 를 따른다"* 다.
+    """
+    from ics_archon import config as acfg_mod
+
+    assert getattr(acfg_mod.load(_ini_with(tmp_path, **{key: word})),
+                   key) == want
+
+
+@pytest.mark.parametrize('key', ['ccdflush_first', 'ccdflush_every'])
+def test_a_non_number_is_refused(tmp_path, key):  # noqa: ANN001
+    """⛔ **모르는 값은 모른다고 말한다** -- 조용히 꺼지지 않는다.
+
+    종전에는 `true`/`false` 낱말을 받았다.  ⚠️ **옛 ini 의 `ccdflush = true` 를
+    새 키에 그대로 옮겨 적으면 여기서 걸린다** -- 새 설계에서 그것은
+    `ccdflush_every = 1` 이다.
+    """
+    from ics_archon import config as acfg_mod
+
     with pytest.raises(acfg_mod.ArchonConfigError) as exc:
-        acfg_mod.load(str(path))
-    assert 'ccdflush' in str(exc.value)
+        acfg_mod.load(_ini_with(tmp_path, **{key: 'true'}))
+    assert key in str(exc.value)
+
+
+def test_the_shipped_ini_leaves_both_empty():
+    """⭐ 배포 ini 는 둘 다 비워 둔다 -- ACF(둘 다 0)를 따른다."""
+    from ics_archon import config as acfg_mod
+
+    acfg = acfg_mod.load(os.path.join(ROOT, 'ics_archon.ini'))
+    assert acfg.ccdflush_first is None
+    assert acfg.ccdflush_every is None
+
+
+def test_the_old_boolean_key_is_gone():
+    """⛔ `ccdflush` 는 **없앴다** (2026-09-14).  남아 있으면 두 기제가 공존한다."""
+    assert not hasattr(ArchonCfg(), 'ccdflush')
+    ini = io.open(os.path.join(ROOT, 'ics_archon.ini'),
+                  encoding='utf-8').read()
+    for line in ini.splitlines():
+        head = line.split('=')[0].strip()
+        assert head != 'ccdflush', '배포 ini 에 옛 키가 남아 있다: %r' % line
 
 
 # -- ARCHON 바이패스가 캐시를 갈라놓는다 (2026-09-08, 운영자) ----------------

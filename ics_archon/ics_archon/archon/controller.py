@@ -431,6 +431,7 @@ class ArchonController:
     PARAM_INTMS = 'IntMS'
     PARAM_EXPOSURES = 'Exposures'
     PARAM_FLUSH = 'FirstFlush'
+    PARAM_EVERY = 'EveryFlush'
     PARAM_NOINT = 'NoIntMS'
 
     #: ACF 에서 찾은 `이름 -> 슬롯 키`.  `parse_acf()` 가 채운다.
@@ -489,7 +490,7 @@ class ArchonController:
         없고, 그대로 두면 첫 `GO` 의 `WCONFIG` 가 엉뚱한 슬롯을 덮는다.
         ⭐ `FirstFlush` 는 **없어도 간다** (경고만) -- R2608 이하 ACF 에는 없고,
         *"flush 옵션 하나 때문에 관측을 통째로 못 하는 것이 더 나쁘다"* 는
-        `set_first_flush()` 의 판단을 그대로 따른다.
+        `set_flush_param()` 의 판단을 그대로 따른다.
         """
         found = self.param_slots or {}
         path = getattr(self, 'acf_path_for_params', self.acf_path)
@@ -558,7 +559,7 @@ class ArchonController:
                         extra={'detail': '독출이 셔터가 닫히기 전에 시작할 수 '
                                          '있다 ([archon] shutter_close_ms)'})
         if self.PARAM_FLUSH not in found:
-            log.warning('%sacf has no %s -- ccdflush will be unavailable',
+            log.warning('%sacf has no %s -- ccdflush_first will be unavailable',
                         self.ltag, self.PARAM_FLUSH,
                         extra={'detail': 'R2610+ ACF 를 쓰면 생긴다'})
         self._require_exposures_last()
@@ -611,7 +612,7 @@ class ArchonController:
         여기 남는 몫은 두 가지다: ① ACF 기본값이 짧다는 **경고**(정본은 ACF다)
         ② `noint_ms` 를 안 싣는 옛 경로에 대한 **바닥값**.
         ⭐ **guide 는 이 자리를 안 지난다** -- `IcgCfg` 에 이 눈금이 없다
-        (셔터가 없다).  `ccdflush` 와 같은 방식이다.
+        (셔터가 없다).  `ccdflush_first`/`ccdflush_every` 와 같은 방식이다.
 
         ⚠️ `WCONFIG` 한 줄만 쓴다 -- 코어 RAM 에는 다음 노출의 `LOADPARAMS` 가
         실어 간다 (`LOADTIMING` 불필요).
@@ -822,8 +823,8 @@ class ArchonController:
         self.config[k] = value
         await self.cmd('WCONFIG%04X%s=%s' % (line, k, value), timeout=T_FAST)
 
-    async def set_first_flush(self, on: bool) -> bool:
-        """노출 전 CCD flush(`FlushFrame` = `Prep`+`Flush`)를 켜고 끈다.  바꿨으면 `True`.
+    async def set_flush_param(self, fname: str, value: int) -> bool:
+        """flush 파라미터(`FirstFlush`/`EveryFlush`) 한 줄을 쓴다.  바꿨으면 `True`.
 
         ⭐ **설정 메모리의 `FirstFlush` 한 줄을 쓰는 일이다** (science R2610+, DevNote
         11.33).  science 는 노출마다 `LOADPARAMS` 를 내므로 메모리가 1 이면 코어가
@@ -844,21 +845,20 @@ class ArchonController:
         # ⭐ **슬롯은 ACF 에서 이름으로 찾은 것**이다 (`_find_param_slots`).
         # ⛔ 종전에는 ini 의 번호를 썼는데, ACF 를 개정하면 `PARAMETERn` 의 n 이
         # 밀린다 -- R2608 의 `PARAMETER0` 은 `ContinuousExposures` 였다.
-        fname = self.PARAM_FLUSH
         fslot = (self.param_slots or {}).get(fname)
         cur = _unquote(await self.config_value(fslot)) if fslot else ''
         if not cur.startswith(fname + '='):
-            if on:
-                log.warning('%s: ccdflush requested but acf slot %s has '
+            if value:
+                log.warning('%s: flush param requested but acf slot %s has '
                             'no %s (%r) -- continuing without flush',
                             self.tag, fslot or '?', fname, cur[:30],
                             extra={'detail': '⛔ science R2610+ ACF 를 쓸 것'})
             return False
-        want = '%s=%d' % (fname, 1 if on else 0)
+        want = '%s=%d' % (fname, int(value))
         try:
             got = await self.read_config(fslot)
         except ArchonError as exc:
-            log.error('%s: ccdflush -- cannot read back %s (%s)',
+            log.error('%s: flush param -- cannot read back %s (%s)',
                       self.tag, fslot, exc,
                       extra={'detail': '⛔ 쓰지 않는다'})
             return False
@@ -871,21 +871,39 @@ class ArchonController:
         try:
             back = await self.read_config(fslot)
         except ArchonError as exc:
-            log.error('%s: ccdflush -- cannot read back %s after writing '
+            log.error('%s: flush param -- cannot read back %s after writing '
                       'it (%s)', self.tag, fslot, exc,
                       extra={'detail': '⛔ 앉았는지 확인할 수 없다'})
             return False
         if _unquote(back) != want:
-            log.error('%s: ccdflush -- %s did not land (sent %r, read '
+            log.error('%s: flush param -- %s did not land (sent %r, read '
                       'back %r)', self.tag, fslot, want, back,
                       extra={'detail': '⛔ 되읽은 값이 보낸 값과 다르다'})
             return False
-        log.info('%s: ccdflush %s -- %s=%s%s', self.tag,
-                 'on' if on else 'off', fslot, want,
-                 ' (the frame period grows by the flush)' if on else '',
+        log.info('%s: flush param %s -- %s=%s%s', self.tag,
+                 'on' if value else 'off', fslot, want,
+                 ' (the frame period grows by the flush)' if value else '',
                  extra={'detail': 'flush 는 매 노출 전 Prep+Flush 다.'
                                   '  ⚠️ 켜면 프레임 주기가 그만큼 늘어난다'})
         return True
+
+    async def apply_flush_overrides(self) -> None:
+        """ini 의 `ccdflush_first`/`ccdflush_every` 를 ACF 슬롯에 덮어쓴다.
+
+        ⭐ **비어 있으면(`None`) 아무것도 안 한다** -- *"ACF 값을 그대로 따른다"* 는
+        뜻이다 (운영자 2026-09-14, DevNote 11.86-(12)).  값이 있으면 ACF 를 민
+        **뒤에** 그 한 줄만 `WCONFIG` 로 고치고 되읽어 확인한다.
+
+        ⛔ **science 전용이다** -- `IcgCfg` 에는 이 설정이 아예 없으므로 guide 는
+        `getattr` 에서 `None` 을 받아 그냥 지나간다.  슬롯이 없는 ACF 는
+        `set_flush_param()` 이 경고만 하고 넘어간다.
+        """
+        for attr, pname in (('ccdflush_first', self.PARAM_FLUSH),
+                            ('ccdflush_every', self.PARAM_EVERY)):
+            want = getattr(self.cfg, attr, None)
+            if want is None:
+                continue
+            await self.set_flush_param(pname, int(want))
 
     async def read_config(self, key: str) -> str:
         """설정 줄 하나를 **컨트롤러에서 되읽는다** (`RCONFIG`).
@@ -1021,7 +1039,7 @@ class ArchonController:
         # 걸리고 밖에서는 "취득 실패" 로만 보인다.
         # ⭐ science 는 운영자 확정으로 대기가 **0** 이다 (아래 근거 셋):
         #   ① 다른 절차 때문에 첫 노출까지 어차피 시간이 흐른다
-        #   ② `ccdflush=true` 면 노출 전에 flush 를 한다
+        #   ② `ccdflush_every` 가 켜져 있으면 노출 전에 flush 를 한다
         #   ③ ⭐ **빠른 스캔은 CCD 를 다 못 비운다** -- 실제로 비우는 것은
         #      독출이다 (운영자, 실험 영상 관측).
         if delay > 0:
@@ -1158,7 +1176,7 @@ class ArchonController:
         if word.startswith('WCONFIG') or word == 'CLEARCONFIG':
             # ⛔ **여기가 캐시와 컨트롤러가 갈리는 유일한 경로다.**  바이패스는
             # `set_config` 를 안 지나므로 설정 메모리만 바뀌고 `self.config` 는
-            # 옛 값을 든다.  그 뒤 `set_first_flush`/`flush_now` 가 캐시를 믿고
+            # 옛 값을 든다.  그 뒤 `set_flush_param`/`flush_now` 가 캐시를 믿고
             # *"그 슬롯에 FirstFlush 가 있다"* 로 판단하면 **엉뚱한 슬롯을 덮는다**.
             # ⭐ 그래서 값을 흉내내 고치지 않고 **못 믿는다고 표시만** 한다 --
             # 원문을 우리가 파싱하면 그 파싱이 또 하나의 진실이 된다.
@@ -1177,7 +1195,7 @@ class ArchonController:
         `WCONFIG`/`CLEARCONFIG` 를 보낸 뒤라면 캐시가 옛 값이므로 **`RCONFIG` 로
         되읽어** 캐시를 고치고 준다 (`config_dirty`).
         ⚠️ 되읽기가 실패하면 **캐시로 물러나되 표시는 남긴다** -- 여기서 죽으면
-        운영자 바이패스 한 번이 다음 `ccdflush` 를 통째로 막는다.
+        운영자 바이패스 한 번이 다음 `CCDFLUSH` 명령을 통째로 막는다.
         """
         if not self.config_dirty:
             return str(self.config.get(key, ''))
@@ -1198,8 +1216,13 @@ class ArchonController:
         `Exposures=0` 을 `LOADPARAMS` 로 걸면 코어가 `Start:` 첫 줄에서 RAM 의
         `FirstFlush` 를 보고 `FlushFrame` 으로 뛴다 (guide R2616: FrameShift +
         SkipLine x FlushLines, science R2610: Prep + Flush).  프레임은 만들지 않는다.
-        설정 메모리의 `FirstFlush` 가 1 이 아니면(science `ccdflush=false`) 잠시 1 로
-        올렸다가 되돌린다 -- guide 는 ACF 상수가 1 이라 쓸 것이 없다 (DevNote 11.33).
+        설정 메모리의 `FirstFlush` 가 1 이 아니면 잠시 1 로 올렸다가 **읽어 둔 값
+        그대로** 되돌린다 -- guide 는 ACF 상수가 1 이라 쓸 것이 없다 (DevNote 11.33).
+        ⛔ 종전에는 `0` 으로 고정 복원했는데, 새 설계에서 `FirstFlush` 는 **개수**라
+        (`CALL FlushFrame(FirstFlush)`) 2 이상인 구성을 조용히 깎았다 (11.86-(12)).
+        ⭐ **`EveryFlush` 는 여기서 건드릴 필요가 없다** -- 일회성 flush 는 `Exposures=0`
+        의 **유휴 경로**인데 `CALL FlushFrame(EveryFlush)` 는 `Exposure:` 블록 아래라
+        유휴 코어가 그 줄에 닿지 않는다.
 
         `reset=True` 면 LOADPARAMS 뒤 **`RESETTIMING`** 으로 진행 중 사이클을 끊고 곧바로
         flush 로 들어간다 -- abort/EXPENABLE=0 경로.  LOADPARAMS 가 파라미터 RAM 과 설정
@@ -1224,7 +1247,9 @@ class ArchonController:
         if reset:
             await self.reset_timing()
         if not armed:
-            await self.set_config(fslot, '%s=0' % fname)
+            # ⭐ **원래 값으로 되돌린다** -- 0 으로 고정하면 `ccdflush_first`
+            # 가 1 보다 큰 구성에서 그 값을 조용히 지운다.
+            await self.set_config(fslot, cur)
         log.info('%sccd flush %s', self.ltag,
                  'after RESETTIMING (abort)' if reset else 'from idle')
 
@@ -1601,7 +1626,11 @@ class ArchonController:
                               '%s=%d' % (self.PARAM_EXPOSURES,
                                          max(int(exposures), 1)))
         # flush 는 설정 메모리의 `FirstFlush` 가 정한다 -- guide 는 ACF 상수 1(R2616+),
-        # science 는 `ccdflush` 옵션(`set_first_flush`).  이 LOADPARAMS 가 그 값을 RAM 에
+        # science 는 `ccdflush_first`/`ccdflush_every`(`apply_flush_overrides`).
+        # ⭐ `EveryFlush` 는 **새 기능이 아니라** `FirstFlush` 의 뜻을 *"첫 장만"*
+        # 으로 되돌리는 것이다 -- 종전 `ccdflush=true` 가 이름과 달리 사실상
+        # *"매 노출"* 이었다 (11.86-(12)).
+        # 이 LOADPARAMS 가 그 값을 RAM 에
         # 실어 코어가 `FlushFrame` 한 번을 돌고 `FirstFlush--` 로 소비한다.  호스트가
         # 프레임마다 쓰고 되쓰는 플래그는 없다 (DevNote 11.33).
         # 취소가 여기서 걸리면 `_locked_thread` 가 스레드를 끝까지 기다리므로
@@ -1744,7 +1773,7 @@ class ArchonController:
         ⚠️ 진행 중이던 프레임은 미완료로 남고 그 표는 버려진다 -- ABORT 는
         저장하지 않으므로 맞는 거동이다 (`reset_timing`).
         ⚠️ 설정 메모리의 `FirstFlush` 가 1 이면 `Start:` 가 `FlushFrame` 으로
-        뛴다 -- 끊긴 전하를 비우므로 해롭지 않다.  science 는 `ccdflush` 가
+        뛴다 -- 끊긴 전하를 비우므로 해롭지 않다.  science 는 `ccdflush_first` 가
         정한다 (운영자: *"science 는 abort 뒤 flush 가 필요 없다"* -- 필요 없을
         뿐 해가 되지는 않는다).
         """
@@ -2308,9 +2337,7 @@ class ArchonController:
         # guide 는 이 자리를 지나지도 않는다 (운영자 확정 2026-09-04).
         # 종전에는 `getattr(..., False)` 로 guide 도 지나며 두 줄을 되읽었는데,
         # 그것은 필요 없는 왕복이고 *"guide 도 대상"* 으로 읽히는 자리였다.
-        want_flush = getattr(self.cfg, 'ccdflush', None)
-        if want_flush is not None:
-            await self.set_first_flush(bool(want_flush))
+        await self.apply_flush_overrides()
         # ⭐ **전원 앞에서 곁다리를 먼저 돌린다** -- 위 docstring 참조.
         if after_config is not None:
             try:

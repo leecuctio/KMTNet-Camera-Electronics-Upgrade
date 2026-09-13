@@ -21,7 +21,7 @@ from ics_archon.archon import parse  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2622.acf')
-SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2612_MK.acf')
+SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2613_MK.acf')
 
 
 # ---------------------------------------------------------------------------

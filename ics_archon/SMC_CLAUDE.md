@@ -4451,6 +4451,26 @@ for f in ~/AIC/bin/*; do printf '%-12s %s
 했다** (`tests/test_fitswrite.py` · `ics_sim/tests/test_raw_draft.py`).
 자세한 것은 위 "raw spec v1.5 반영" 절. 합류 방식은 `--no-ff` 거품 머지.
 
+### 🗑️ 지운 지역 브랜치 (2026-09-14, 운영자 지시)
+
+지역에만 있던 **백업/검토 브랜치 둘**을 지웠다.  ⭐ **지우기 전에 내용이 원격에
+살아 있음을 확인했다.**
+
+| 브랜치 | 끝 커밋 | 왜 안전했나 |
+|---|---|---|
+| `presquash-20260909-icg` | `faa14ae` | squash **전** 이력 백업.  내용은 `7046b43`(2026-09-09, *"HKDATA 두 갈래(폴링/NOW) + 날짜별 로그 파일"*) 등으로 `origin/ics-archon-v1.0-build` 에 들어갔다 |
+| `raw-fits-spec-v1-review` | `67b4cfa` | 고유 커밋 **0개** -- `origin/main`·`origin/ics-archon-v1.0-build`·`origin/archongui-study` 에 **완전히 포함**된 이름표였다 |
+
+⭐ `presquash-20260909-icg` 의 고유 커밋 넷 (되살릴 일이 생기면 reflog 로 ~90일):
+
+    faa14ae  Radionode 재조회 기준을 ini 눈금으로 + NOW 가 주기 기준을 민다
+    d1383b9  HKDATA NOW = HK 한 바퀴를 지금 + 주기 바퀴는 왕복을 비켜 준다
+    e910369  인수인계 -- 2026-09-09 세션 마감 상태
+    4dc5ad1  HKDATA 두 갈래(폴링/NOW) + 날짜별 로그 파일
+
+⛔ **손대지 않은 것**: `archongui-study` 와 `main` 은 **다른 워크트리에 체크아웃돼
+있다** (`KMTNet-CEU-archongui` · `KMTNet-CEU-main`).
+
 ## Archon 매뉴얼이 말하는 것 — ✅실측 확인 / ⚠️미확인 (`__ref_archon_control/`)
 
 본편에서 다시 찾지 않도록 적어 둔다. 근거는 매뉴얼(**2021-02-23**)·ZTF Readout
@@ -5028,13 +5048,19 @@ flush 119행의 `DGLOW` 는 **완전한 no-op** 이다(`Start:` 의 `RESET` 이 
    되돌릴 목표를 모르는 채로 파형을 더 얹지 않는다.  미검증 파형 델타가 이미 둘이다.
 6. **BIAS/DARK 셔터 벤치 확인** · **BIAS 연속 주기 실측**(⛔ `buftest` 로는 못 잰다 —
    `NoIntMS` 를 안 쓰고 슬롯이 5200 으로 올라가 있어 17.98 s 가 나온다).
-7. ⭐⭐ **`EveryFlush` 판 — 사양이 확정됐다, 굽기만 하면 된다** (DevNote 11.86-(12)).
-   운영자 결정(2026-09-14): 라벨 둘 설계 · `EveryFlush` 는 **`Exposure:` 아래**(continuous
+7. ✅✅ **`EveryFlush` 판을 구웠다** — science **R2613** (DevNote 11.86-(12)).
+   운영자 결정(2026-09-14): **라벨 하나**(스크립트 단순화) · `EveryFlush` 는 **`Exposure:` 아래**(continuous
    경로 제외) · 둘 다 1 이어도 **막지 않음** · ACF 초기값 **둘 다 0** · ini 키는 **소문자**
-   `ccdflush_first`/`ccdflush_every`.  ⇒ science `LINES` 142->**147** ·
+   `ccdflush_first`/`ccdflush_every`.  ⇒ science `LINES` 142->**143** ·
    `PARAMETERS` 22->**23** · `[archon] ccdflush` **제거**.
-   ⛔ **초안대로 구우면 `FirstFlush` 가 음수로 내려간다** — 고친 설계가 11.86-(12) 에 있다.
+   ⛔ **애초 근거였던 *"음수로 내려간다"* 는 틀렸다** — 매뉴얼 p.64 가 *"0 에서 더 깎아도
+   아무 일도 없다"* 고 못박고, 게다가 **그 자리에 닿지도 않는다**(`Start:` 가 먼저 돌며
+   `FirstFlush` 를 비운다).  ⇒ 껍데기 라벨을 덧댔다가 **되돌렸다.**
+   ⭐ **`FirstFlush--` 가 *"STOP 뒤 flush 없음"* 의 기전이다** — 마지막 프레임 독출 뒤
+   `GOTO Start` 로 되밟는 `Start:` 에서 0 이라 호출이 생략된다.
    ⭐ 종전 `ccdflush=true` 운용은 새 설계에서 **`ccdflush_every=1`** 이다.
+   ⏳ 남은 미지: **`RESETTIMING` 이 호출 스택을 지우는가** (벤치 계획서에 절차를 넣었다).
+   ⛔ **`icg_archon/acftiming.py` 의 `_SHAPE` 는 건드리지 마라** — guide 전용 형태표다.
 8. `tools/trace_clock_states.py` **8번 채널 결함 고치기**.
 9. 오래된 이월: science 타이밍 계산 모듈 · `CxHKDATA` 배선 · 인수인계 묶음 D·E.
 

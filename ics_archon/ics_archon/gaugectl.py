@@ -137,7 +137,7 @@ class GaugeControl:
         """방금 끈 게이지가 **실제로 꺼질 때까지** 기다린다 (운영자 2026-09-04).
 
         ⛔ **`VACGAUGE OFF` 는 즉시가 아니다** -- ICG 가 `APPLYDIO09` 를 내고
-        그것이 MOD10 의 VCPU 를 재시작한다.  그 사이에 `ccdflush = true` 의
+        그것이 MOD10 의 VCPU 를 재시작한다.  그 사이에 `ccdflush_every` 의
         `Prep`+`Flush` 가 돌면 **필라멘트가 켜진 채로 flush** 하고, 그 오염은
         science 자료에 그대로 남는다 (이 기능이 막으려던 바로 그 상태).
         ⚠️ 응답(`DONE: VACGAUGE …`)을 기다리는 것이 더 정확하지만, 그 답은

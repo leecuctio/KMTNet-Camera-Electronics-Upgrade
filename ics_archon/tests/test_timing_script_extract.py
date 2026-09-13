@@ -85,7 +85,7 @@ def test_the_two_txt_are_faithful_extracts_of_the_current_acfs():
 
 @pytest.mark.repo_only
 def test_declared_lines_matches_the_extracted_and_txt_line_counts():
-    """`LINES=` == 뽑은 줄 수 == txt 줄 수 (guide 122 · science 142).
+    """`LINES=` == 뽑은 줄 수 == txt 줄 수 (guide 122 · science 143).
 
     guide 는 R2613 에서 113 -> 120 (FlushFrame 7줄 신설, 11.31), R2617 에서 120 -> 122
     (`Exposure:`·`FlushFrame:` 앞 빈 줄, 운영자 2026-09-06 -- 11.34).
@@ -96,7 +96,7 @@ def test_declared_lines_matches_the_extracted_and_txt_line_counts():
     위 시험이 깨진다.
     """
     counts = {k: _txt(k).count('\n') + 1 for k in ('guide', 'science')}
-    assert counts == {'guide': 122, 'science': 142}   # guide: +FlushFrame 7줄(R2613) +빈 줄 2(R2617) · science: +FlushFrame 5줄(R2609)
+    assert counts == {'guide': 122, 'science': 143}   # guide: +FlushFrame 7줄(R2613) +빈 줄 2(R2617) · science: +FlushFrame 5줄(R2609) +EveryFlush 호출 1줄(R2613)
     for path in _current_acfs():
         text, declared, bigbuf = ets.extract(path)
         assert declared is not None, '%s 에 LINES= 가 없다' % path
