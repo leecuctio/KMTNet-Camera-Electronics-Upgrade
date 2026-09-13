@@ -35,7 +35,7 @@ from ics_archon.config import ArchonCfg  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCI_ACF = os.path.join(ROOT, 'acf', 'KMTC_SCI_101_STA0284_R2612_MK.acf')
-GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2620.acf')
+GUIDE_ACF = os.path.join(ROOT, 'acf', 'KMTK_GUI_162_STA0201_R2622.acf')
 
 
 class Ctrl(ArchonController):

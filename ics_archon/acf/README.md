@@ -22,10 +22,10 @@
 | `KMTK_SCI_112_STA0212_R2612_NT.acf` | KASI 시험 유닛 둘째 상자 (NT) ⭐ **신규** | 33 | 1 | **1200** × 4700 | `.112` | 5 · 1.0.1252 |
 | `KMTK_SCI_113_STA0200_R2612_MK.acf` | KASI 시험 유닛 (MK) | **32** | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
 | `KMTK_SCI_113_STA0200_R2612_NT.acf` | KASI 시험 유닛 (NT) | 33 | 1 | **1200** × 4700 | `.113` | 5 · 1.0.1252 |
-| `KMTC_GUI_161_STA0290_R2620.acf` | CTIO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
-| `KMTS_GUI_161_STA0291_R2620.acf` | SAAO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
-| `KMTK_GUI_162_STA0201_R2620.acf` | KASI guide | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
-| `KMTK_GUI_162_STA0230_R2620.acf` | KASI guide **둘째 상자** ⭐ **신규** | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
+| `KMTC_GUI_161_STA0290_R2622.acf` | CTIO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
+| `KMTS_GUI_161_STA0291_R2622.acf` | SAAO guide ⭐ **신규** | 9 | **0** | **528** × 1033 | `.161` | 7 · 1.0.1271 |
+| `KMTK_GUI_162_STA0201_R2622.acf` | KASI guide | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
+| `KMTK_GUI_162_STA0230_R2622.acf` | KASI guide **둘째 상자** ⭐ **신규** | 9 | **0** | **528** × 1033 | `.162` | 5 · 1.0.1252 |
 
 ⚠️ **이 열은 `PIXELCOUNT` × `LINECOUNT` 다 -- 타이밍 파라미터가 아니다.**
 바로 아래 절이 그 둘을 가른다.  ⚠️ **v1.7 까지 이 열은 타이밍 쪽 값
@@ -410,6 +410,124 @@ science X overscan 패턴(`RRRRLLLL`, side varies)과 같은 부류**다 -- scie
 
 ⭐ 그리고 **`AMPNAX1`/`AMPNAX2` 가 곧 `PIXELCOUNT`/`LINECOUNT` 다** (1200 / 4700).
 규격이 이미 프레임 버퍼 값을 쓰고 있었다 -- 틀렸던 것은 이 표뿐이다.
+
+## guide R2622 — `FlushFrame:` 의 수평 이송을 **DG 열고** 돈다 (2026-09-14, 운영자)
+
+    KMT?_GUI_*_R2621.acf  ->  ..._R2622.acf     (4장, 구판은 archive/)
+    119행 (LINE118, `FlushFrame:` 블록):
+        DGLOW; CALL HorizontalShift(600)   ->   DGHIGH; CALL HorizontalShift(600)
+    acf_timing_script_guide_R2621.txt  ->  ..._R2622.txt   (**딱 그 한 줄만 다르다**)
+
+세션 작업 이름으로는 **P3**, 판정 근거는 [DevNote 11.84-(1) 제안 2](../DevNote.md) (채택).
+
+### 무엇을 바꾸나
+
+`FlushFrame:` 은 **첫 노출 전에 한 번** 도는 비우기 루틴이다(`FirstFlush=1` 로 진입).
+그 안의 `CALL HorizontalShift(600)` 은 직렬 레지스터를 600회 밀어내는데, 종전에는 그동안
+`DG`(덤프 게이트)가 **닫혀 있었다**(`DGLOW`).  ⇒ 전하가 **출력단으로 나갔다.**
+`DGHIGH` 로 열면 레지스터가 **덤프 드레인으로 통째로 빠진다** — 비우는 것이 목적인 자리에서
+제 일을 하게 된다.
+
+⭐ **같은 루틴 안의 `SkipLine:`(55행)은 이미 `DGHIGH`** 였다.  곧 이 판은 **두 비우기 경로의
+어긋남을 맞추는 것**이다.
+
+### ⛔ 안 건드린 자리 둘 — 여기가 함정이다
+
+같은 문면 `DGLOW; CALL HorizontalShift(600)` 이 **`Continuous:` 블록 14행(LINE13)에도** 있다.
+
+| 줄 | 블록 | DG | 그대로 두는 이유 |
+|---|---|---|---|
+| 14 (LINE13) | `Continuous:` | **`DGLOW`** | ⛔ **실제 독출 직전**이다.  여기서 열면 찍을 전하를 버린다 |
+| 55 (LINE54) | `SkipLine:` | `DGHIGH` | 이미 맞다 |
+| **119 (LINE118)** | **`FlushFrame:`** | `DGLOW` -> **`DGHIGH`** | ⭐ **이 판이 고치는 자리** |
+
+스크립트가 `LINE118` 만 짚어 바꾸고, 바꾼 뒤 `LINE13` 이 그대로인지 **단언으로 확인**한다.
+
+### 함께 고친 자리
+
+`icg_archon.ini:80` · 시험 **다섯**(`test_ccdflush:38` · `test_ch10_reflection:23` ·
+`test_icg_heater_gauge:38` · `test_icg_hk:70` · `test_icg_timing:21`) ·
+도구 사용법 둘(`extract_timing_script.py` 2자리 · `probe_archon.py:37`) · 이 파일 목록 표 4행.
+
+⚠️ **`LINES` 는 안 바뀐다**(122 그대로) — 상태 이름만 바꾼 것이라 틱 수가 같다.
+그래서 `icg_archon/acftiming.py` 가 내는 프레임 하한(**1.2506 s**)도 그대로여야 한다.
+⛔ **전수 시험이 판정한다** (2026-09-14 마감 시점에 아직 안 돌렸다).
+
+⚠️ **`CTRL1CFG` 헤더 값이 바뀐다** — `..._R2621` -> `..._R2622` (규격 5.5절).
+
+### ⚠️ 예약 번호를 또 밀었다
+
+| 판 | 무엇 | 상태 |
+|---|---|---|
+| guide R2621 | `IMAGE6`·`FRAME6` DG 상수 이름 (전압 불변) | ✅ 구움 (09-13) |
+| **guide R2622** | **`FlushFrame:` 119행 `DGHIGH` (P3)** | ✅ **구움 (09-14)** |
+| guide R2623 | `Line:` 머리 44행 `X;` -> `DGLOW;` (자물쇠) | ⏳ 확정, 미구움 |
+| guide R2624 | `FRAME6`(STATE31) ch6 -> keep | ⏳ 조건부 (벤치 Δ_D 뒤) |
+| guide R2625 | `FlushFrame:` RETURN 전환 (P6) | ⏳ 조건부 |
+
+⛔ 이 파일과 `bench_test_plan.md` 가 *"FRAME6 후속 판 = R2621"* 로 적고 있던 것을
+**R2624** 로 고쳤다 (2026-09-14).
+
+⭐ **판 번호는 계열별이다** — `R2608`~`R2612` 가 guide·science 양쪽에 다 있고 그게 정상이다.
+글·말에서는 반드시 계열을 붙일 것 (*"guide R2622"*), 벤치 지시는 **파일명 전체**로.
+
+⛔ **벤치 호스트는 `git pull` 만으로 안 간다** — `~/AIC/Config/acf/` 에 새 파일을 복사하고
+`~/AIC/Config/icg_archon.ini` 의 `acf` 줄도 손으로 고쳐야 한다.
+
+## guide R2621 -- `IMAGE6`·`FRAME6` 의 DG 상수를 `DG_LOW` 로 (2026-09-13, 운영자)
+
+    KMT?_GUI_*_R2620.acf  ->  ..._R2621.acf     (4장, 구판은 archive/)
+    STATE25\MOD4 (IMAGE6) ch6:  A_LOW,1,0  ->  DG_LOW,1,0
+    STATE31\MOD4 (FRAME6) ch6:  A_LOW,1,0  ->  DG_LOW,1,0
+    acf_timing_script_guide_R2620.txt  ->  ..._R2621.txt   (**내용 바이트 동일**)
+
+⭐ **전압이 한 자도 안 바뀐다** -- `A_LOW=0` 이고 `DG_LOW=0` 이다(상수표로 확인, 스크립트가
+바꾸기 전에 두 값이 같은지 단언한다).  **거동 변화 0** 이고 타이밍 스크립트도 무변경
+(`LINES=122` 그대로, 발췌 txt 가 구판과 바이트 동일 -- R2619->R2620 과 같은 꼴이다).
+
+### 왜 -- 상수 교차표가 보여준 단 하나의 예외
+
+운영자 지적: *"확률로 결정하지 말고 확실한 근거로 결정하자."*  그래서 **어느 채널이 어느
+상수를 받나**를 전수로 세었다 (guide):
+
+    0 (리터럴)  : TP17, TP18, TP19, TP20, TP21      <- 상관없는 채널엔 리터럴을 쓴다
+    A_HIGH (12) : I1, I2, I3, S1, S2, S3
+    A_LOW  (0)  : I1, I2, I3, S1, S2, S3, **DG**    <- DG 가 이 집합의 유일한 이방인
+    DG_HIGH(12) : DG            DG_LOW (0) : DG
+    RG_HIGH(12) : RGR/RGL       RG_LOW (0) : RGR/RGL
+    S_HIGH (10) : R1, R2, R3    S_LOW  (1) : R1, R2, R3
+
+DG 채널만 보면 `DG_HIGH`(DGHIGH) · `DG_LOW`(RESET·DGLOW) · **`A_LOW`(IMAGE6·FRAME6)** 셋을
+받는다.  ⭐ **guide·science 통틀어 제 이름 짝 밖의 상수를 받는 채널은 DG 하나뿐**이고,
+STA 는 *"상관없는 0"* 에는 리터럴 `0` 을 쓴다(TP 다섯).  곧 `A_LOW` 를 **범용 0 으로 쓰는
+습관이 없다.**
+
+⛔ **그래도 이것이 "오기다" 를 증명하지는 않는다.**  증명되는 것은 둘뿐이다 --
+① 오늘 전기적으로 같다 ② **결합이 존재한다**(`A_LOW` 를 건드리면 DG 저준위가 따라 움직인다).
+판단 기준은 *"오기냐"* 가 아니라 **"그 결합을 원하냐"** 이고, 물리적으로는 아니다 -- DG 는
+CCD47-20 p.5 note 12 가 *"비덤프 준위 0 V, 덤프 시 12±2 V 펄스"* 로 따로 규정하는 게이트라
+이미지 클록 스윙과 묶일 근거가 없다.  ⇒ **끊는다.**
+
+### ⛔ `IMAGE6` 의 DG 를 keep 으로 바꾸는 것과는 **다른 일이다**
+
+이 판은 **상수 이름만** 바꾼다.  `IMAGE6`(STATE25)의 DG←0 V 는 `Line:`·`SkipLine:` 양쪽이
+쓰는 **매 행 덤프 게이트 자물쇠**라 keep 으로 바꾸면 안 된다 (DevNote 11.84-(2)).
+`FRAME6`(STATE31) 만 keep 으로 바꾸는 건은 **벤치 Δ_D 뒤**의 별개 판이다
+(DevNote 11.85-(6) 의 guide R2623).
+
+### 함께 고친 자리
+
+`icg_archon.ini:80` · 시험 **다섯**(`test_ccdflush` · `test_ch10_reflection` ·
+`test_icg_heater_gauge` · **`test_icg_hk:70`** · `test_icg_timing`) ·
+도구 사용법 둘(`extract_timing_script.py` · `probe_archon.py`).
+⭐ **`test_icg_hk.py:70` 은 DevNote 11.84-(8) 의 목록에 빠져 있던 여섯째 자리다** -- 이번에
+전수 grep 으로 찾았다.
+
+⛔ **벤치는 `git pull` 만으로 안 간다** -- `~/AIC/Config/acf/` 에 새 파일을 복사하고
+`~/AIC/Config/icg_archon.ini` 의 `acf` 줄도 손으로 고쳐야 한다.
+
+⚠️ **`CTRL1CFG` 헤더 값이 바뀐다** -- `KMTK_GUI_162_STA0201_R2620` -> `..._R2621`
+(규격 5.5절, `cfg_name_from_acf`).  자료에 보이는 변경이다.
 
 ## science R2612 · guide R2620 -- `Exposures` 를 **맨 마지막 슬롯**으로 (2026-09-13, 운영자)
 
@@ -884,7 +1002,7 @@ p.2 note 2 공식으로 5.4e-4~1.1e-3 e/px/s, 보수적 바닥값 0.01 을 두�
 
 ⏳ 고치려면 `STATE31\MOD4` ch6 을 `,1,1`(keep) 로 -- FrameShift 내내 DG 12 V 유지.
 **그러나 데이터시트 본문만으로는 DG 가 정적 레지스터를 통째로 덤프하는지(가로 인접
-덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 후속 판으로(**R2621** -- ⚠️ 2026-09-13 에 R2620 → R2621 로 밀었다; R2620 은 파라미터 슬롯 순서 판올림이 가져갔다.  R2615 는 위 `SkipLine` DGHIGH 건, R2616 은 `FirstFlush` 상수,
+덤프 게이트) R 클록 동반이 필요한지 못 가린다.**  실측 뒤 후속 판으로(**R2624** -- ⚠️ 2026-09-14 에 R2621 → R2624 로 다시 밀었다.  R2621 은 DG 상수 이름 판이, R2622 는 `FlushFrame` DGHIGH 판(P3)이 가져갔고 R2623 은 `Line:` 머리 자물쇠가 예약돼 있다 (DevNote 11.85-(6)); R2620 은 파라미터 슬롯 순서 판올림이 가져갔다.  R2615 는 위 `SkipLine` DGHIGH 건, R2616 은 `FirstFlush` 상수,
 R2617 은 빈 줄, R2618 은 `TRIGOUTFORCE`, R2619 는 `DIO_POWER` 가 썼다): 암실·저온·유휴
 시험 ACF 에서 `LINE12`(R2617 의 `LINE13`)를 `DGLOW; X(1)` 로 바꿔(HorizontalShift 생략) 레지스터
 잔량이 1 행에 더해져 나오게 하고 FRAME6 ch6 을 A_LOW/keep 두 판으로 찍어 비교.

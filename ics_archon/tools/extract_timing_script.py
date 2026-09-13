@@ -8,7 +8,7 @@
 두었다 -- **그래서 이 파일이 있다.**  산문으로 적힌 규칙은 다음 사람이 틀리게
 옮기기 쉽고, 아래 규칙에는 실제로 밟기 쉬운 함정이 셋 있다.
 
-    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2620.acf
+    python tools/extract_timing_script.py acf/KMTK_GUI_162_STA0201_R2622.acf
     python tools/extract_timing_script.py acf/*.acf --out acf/          # 다시 뽑기
                                                                         #   (판 번호는 ACF 이름에서)
     python tools/extract_timing_script.py acf/*.acf --check acf/        # 대조만
@@ -114,7 +114,7 @@ def kind(bigbuf: int | None) -> str:
     return 'guide' if bigbuf == 0 else 'science'
 
 
-#: ACF 파일명에 박힌 판 번호 (`..._R2612_MK.acf` · `..._R2620.acf`).
+#: ACF 파일명에 박힌 판 번호 (`..._R2612_MK.acf` · `..._R2622.acf`).
 _REV = re.compile(r'_(R\d+)(?:[._]|$)')
 
 
