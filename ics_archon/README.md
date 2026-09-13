@@ -679,7 +679,7 @@ fetch_buffers = 2                   # 호스트 수신·저장 버퍼 (컨트롤
 wrote_window  = 25.0                # OBSAgent force_fitssaved 창 [s] -- 선언값
 full_flush_on_erase = false         # clock 개선으로 별도 erase 를 하지 않는다
 lock_buffer   = true                # fetch 중 프레임 버퍼를 LOCKn 으로 잠근다
-fetch_timeout = 10                  # FETCH 상한 = 잠금 상한 -- 주기(13.27초) 아래 (DevNote 10.6)
+fetch_timeout = 11                  # FETCH 상한 = 잠금 상한 -- 주기(12.78초) 아래 (DevNote 10.6)
 recheck_after_fetch = true          # fetch 뒤에 덮이지 않았는지 한 번 더 대조
 
 [controllers]
@@ -1243,13 +1243,25 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 (`NOINT; CALL NoIntUnit(NoIntMS)`), 그 **하한**을 ini 가 지킨다:
 
     [archon]
-    shutter_close_ms = 500      # 셔터가 다 닫히는 데 걸리는 시간 [ms]
+    shutter_close_ms = 5200     # 셔터가 다 닫히는 데 걸리는 시간 [ms]
 
 기동에서 ACF 의 `NoIntMS` 가 이보다 짧으면 **경고를 남기고 이 값으로 올려서 적용**한다.
 ⭐ **정본은 ACF 다** — 경고가 뜨면 ACF 를 고치는 것이 맞다.  `0` 이면 검사하지 않는다.
 
-⏳ **500 은 아직 미실측이다** — 현행 ACF 의 `NoIntMS` 와 같은 값일 뿐이다.  벤치에서 FSA
-셔터의 닫힘 시간을 재고 고쳐야 한다.
+⭐ **5200 은 블레이드 주행 ~5초**에서 온 값이다 (운영자 2026-09-13).  같은 크기가 두 자리에
+이미 있었다 — `ics_sim/sequencer.py` 의 *"실기의 블레이드 주행은 ~5초"* 와 시뮬의 레거시 실측
+`shutter_to_readout = 6.00 s`.
+
+⛔ **현행 ACF 열둘은 `NoIntMS=500` 이라, 기동마다 이 경고가 뜬다:**
+
+    MK: NoIntMS is 500 ms, shorter than the shutter close time (5200 ms) -- raising it
+
+호스트가 5200 으로 올려 쓰므로 **관측은 정상으로 돈다.**  그래도 **정본은 ACF** 이니 다음
+판올림에서 `NoIntMS=5200` 으로 고쳐야 한다.  ⏳ 정밀값은 미실측 — 벤치 절차는
+[`bench_test_plan.md`](bench_test_plan.md) 3단계.
+
+⚠️ **프레임 주기가 그만큼 길어진다** — 종전 `NoIntMS=500` 대비 **+4.7 s** 다.  셔터를 안 여는
+BIAS·DARK 에도 똑같이 붙는다 (ACF 상수라서).
 
 ⚠️ `[timing] shutter_to_readout`(6.00 **초**)와 **다른 물건**이다 — 그쪽은 `--backend sim`
 전용이고 실기는 안 본다.

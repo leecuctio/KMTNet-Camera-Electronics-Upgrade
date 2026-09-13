@@ -236,8 +236,12 @@ DRIVER = textwrap.dedent('''
     NX, NY = 12, 4
     out = {}
     acf = os.path.join(sys.argv[1], 'test.acf')
-    open(acf, 'w').write('[CONFIG]\\nTRIGOUTFORCE=0\\n'
-                         'PARAMETER1="IntMS=0"\\nPARAMETER2="Exposures=1"\\n')
+    # `TRIGOUTLEVEL`·`NoIntMS` 도 넣는다 -- 셔터를 안 여는 노출이 레벨을 함께
+    # 세우고 적분을 `NoIntMS` 에 싣는다 (2026-09-13).  `NoIntMS` 슬롯은
+    # `Exposures` 앞이어야 한다 (KMTNet ACF 규약).
+    open(acf, 'w').write('[CONFIG]\\nTRIGOUTFORCE=0\\nTRIGOUTLEVEL=0\\n'
+                         'PARAMETER1="IntMS=0"\\nPARAMETER2="NoIntMS=0"\\n'
+                         'PARAMETER3="Exposures=1"\\n')
 
     ini = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        'ics_archon.ini')

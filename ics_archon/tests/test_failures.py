@@ -38,8 +38,11 @@ INI = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 #    (`TRIGOUTFORCE`·`TRIGOUTINVERT`·`TRIGOUTLEVEL`), `open_shutter()` 가
 #    셔터를 **안 모는** 컨트롤러의 레벨까지 세우므로 이 줄이 없으면
 #    `set_config` 가 *"설정 줄을 모른다"* 로 거절한다 (2026-09-12).
+# ⭐ `NoIntMS` 도 넣는다 (2026-09-13) -- 셔터를 안 여는 노출은 적분을 여기
+#    싣는다(`IntMS=0`).  ⛔ 슬롯은 `Exposures` **앞**이어야 한다 (ACF 규약).
 ACF_TEXT = ('[CONFIG]\nTRIGOUTFORCE=0\nTRIGOUTLEVEL=0\n'
-            'PARAMETER1="IntMS=0"\nPARAMETER2="Exposures=1"\n')
+            'PARAMETER1="IntMS=0"\nPARAMETER2="NoIntMS=0"\n'
+            'PARAMETER3="Exposures=1"\n')
 GO = ['OBS>ICS dark begin', 'OBS>ICS exp 1', 'OBS>ICS go']
 
 

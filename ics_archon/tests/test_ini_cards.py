@@ -40,10 +40,18 @@ from ics_sim import config as simcfg
 
 NX, NY = 12, 4
 
+# ⭐ `TRIGOUTLEVEL` 과 `NoIntMS` 도 넣는다 -- 실물 ACF 열둘이 다 갖고 있다.
+# * `TRIGOUTLEVEL`: 셔터를 안 여는 노출(BIAS·DARK)도 이제 **레벨까지 함께**
+#   세운다 (2026-09-13) -- 없으면 `set_config` 가 *"설정 줄을 모른다"* 로
+#   거절한다.  `test_failures.py` 가 2026-09-12 에 같은 이유로 먼저 넣었다.
+# * `NoIntMS`: 셔터를 안 여는 노출의 **적분이 여기 실린다**.  ⛔ 슬롯은
+#   `Exposures` **앞**이어야 한다 (KMTNet ACF 규약).
 ACF_TEXT = """[CONFIG]
 TRIGOUTFORCE=0
+TRIGOUTLEVEL=0
 PARAMETER1="IntMS=0"
-PARAMETER2="Exposures=1"
+PARAMETER2="NoIntMS=0"
+PARAMETER3="Exposures=1"
 """
 
 BASE_INI = os.path.normpath(os.path.join(

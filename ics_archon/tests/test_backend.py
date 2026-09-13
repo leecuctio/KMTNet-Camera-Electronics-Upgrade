@@ -41,9 +41,13 @@ TRIGOUTFORCE=0
 TRIGOUTLEVEL=1
 LINECOUNT=4
 PARAMETER1="IntMS=0"
-PARAMETER2="Exposures=1"
+PARAMETER2="NoIntMS=0"
+PARAMETER3="Exposures=1"
 MOD5\\PREAMPGAIN=0
 """
+#: ⭐ `NoIntMS` 를 넣는 이유 -- 셔터를 안 여는 노출(BIAS·DARK)은 **적분을 여기
+#: 싣고**(`IntMS=0`), 셔터 노출은 **셔터 닫힘 대기**를 여기 싣는다
+#: (2026-09-13).  ⛔ 슬롯은 `Exposures` **앞**이어야 한다 (KMTNet ACF 규약).
 
 INI = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     os.pardir, 'ics_archon.ini'))
@@ -944,31 +948,58 @@ def test_a_cancelled_frame_does_not_poison_the_next_one(tmp_path, fakes):  # noq
     assert len(ctrl._queue) == 1             # noqa: SLF001
 
 
-def test_dark_exposure_time_reaches_the_controller(tmp_path, fakes):  # noqa: ANN001
-    """⚠️ **DARK 의 적분 시간이 컨트롤러에 전달된다** (labtest 방식).
+def _param(fake, name):  # noqa: ANN001
+    """가짜 컨트롤러가 받은 그 파라미터의 값 (`이름=값` 꼴).
 
-    labtest 는 DARK 에도 `IntMS=<적분시간>` 을 넣어 **컨트롤러가** 적분을 잰다.
+    ⛔ `'IntMS=' in t` 로 거르면 **`NoIntMS=` 도 걸린다** -- 둘을 함께 쓰게 된
+    2026-09-13 부터는 앞자리까지 맞춰야 한다.
+    ⚠️ 가짜의 `config` 값은 **`PARAMETERn=이름=값`** 한 줄 통째다 -- 슬롯 번호를
+    떼고 나서 이름을 본다.
+    """
+    out = []
+    for line in fake.config.values():
+        body = line.split('=', 1)[1] if '=' in line else ''
+        if body.startswith(name + '='):
+            out.append(body)
+    return out
+
+
+def test_dark_exposure_time_reaches_the_controller(tmp_path, fakes):  # noqa: ANN001
+    """⚠️ **DARK 의 적분 시간이 컨트롤러에 전달된다** -- 단 `NoIntMS` 로.
+
     v0.0 은 `IntMS=0` 으로 곧바로 읽어내 적분을 **호스트 카운트다운**이 재게
     했고, 그러면 `time_scale`·이벤트 루프 지연·`erase` 소요가 섞여 들어가는데
     헤더 `EXPTIME` 은 요청값이라 **조용히 어긋났다** (2026-08-24 blocker).
-
     계약에 `begin_exposure()` 훅을 넣어 시퀀서가 알려 준다.
+
+    ⭐ **싣는 자리가 `IntMS` → `NoIntMS` 로 바뀌었다** (운영자 설계 2026-09-13).
+    `IntMS>0` 이면 타이밍 스크립트가 `IntUnit:` 을 돌며 `INT`
+    (`STATEn\\CONTROL` 비트0 = 1)로 들어가 **셔터를 열려고 한다** -- 종전에는
+    그것을 `TRIGOUTFORCE=1` **하나**로만 막고 있었다.  `IntMS=0` 이면 파라미터
+    0 규칙으로 그 호출 자체가 생략되고, 적분을 지는 `NoIntUnit` 은
+    `NOINT`(비트0 = 0)로 들어간다 ⇒ **스크립트가 스스로 선을 내린 채 돈다.**
+    ⭐ 지켜지는 불변식은 그대로다 -- **컨트롤러가 잰다.**
     """
     drive(tmp_path, fakes,
           ['OBS>ICS dark begin', 'OBS>ICS exp 3', 'OBS>ICS go'])
-    # 가짜 컨트롤러가 마지막으로 받은 IntMS -- flush(0) 뒤에 노출(3000) 이 온다
-    wrote = [t for t in fakes.mk.config.values() if 'IntMS=' in t]
-    assert wrote, fakes.mk.config
-    assert wrote[-1].endswith('IntMS=3000'), (
-        'DARK 의 적분 시간이 컨트롤러에 안 갔다 -- %r' % wrote)
+    dwell = _param(fakes.mk, 'NoIntMS')
+    assert dwell, fakes.mk.config
+    assert dwell[-1] == 'NoIntMS=3000', (
+        'DARK 의 적분 시간이 컨트롤러에 안 갔다 -- %r' % dwell)
+    # ⛔ 그리고 `IntMS` 는 0 이어야 한다 -- 그래야 `INT` 를 안 지난다
+    assert _param(fakes.mk, 'IntMS')[-1] == 'IntMS=0', _param(fakes.mk, 'IntMS')
 
 
 def test_shutter_exposure_still_carries_its_time(tmp_path, fakes):  # noqa: ANN001
-    """셔터 노출은 종전대로 `open_shutter(seconds)` 가 적분을 건다."""
+    """셔터 노출은 종전대로 `open_shutter(seconds)` 가 적분을 건다.
+
+    ⭐ 그리고 **셔터 닫힘 대기도 같은 `LOADPARAMS` 에 실린다** (2026-09-13) --
+    안 실으면 앞 노출(DARK)의 `NoIntMS` 가 남아 셔터가 닫히기 전에 독출이
+    시작된다.
+    """
     drive(tmp_path, fakes,
           ['OBS>ICS object M31', 'OBS>ICS exp 2', 'OBS>ICS go'])
-    wrote = [t for t in fakes.mk.config.values() if 'IntMS=' in t]
-    assert wrote[-1].endswith('IntMS=2000'), wrote
+    assert _param(fakes.mk, 'IntMS')[-1] == 'IntMS=2000', fakes.mk.config
 
 
 def test_bias_is_zero_seconds_not_a_missing_hook(tmp_path, fakes, caplog):  # noqa: ANN001
@@ -988,9 +1019,14 @@ def test_bias_is_zero_seconds_not_a_missing_hook(tmp_path, fakes, caplog):  # no
         drive(tmp_path, fakes,
               ['OBS>ICS bias begin', 'OBS>ICS exp 0', 'OBS>ICS go'])
 
-    # ① BIAS 는 IntMS=0 이 맞는 값이다 -- 컨트롤러가 곧바로 읽어낸다
-    wrote = [t for t in fakes.mk.config.values() if 'IntMS=' in t]
-    assert wrote and wrote[-1].endswith('IntMS=0'), wrote
+    # ① BIAS 는 적분이 0 이 맞는 값이다 -- 컨트롤러가 곧바로 읽어낸다.
+    #    ⭐ 2026-09-13 부터 **둘 다** 0 이다 (`IntMS` 는 셔터를 안 열려고,
+    #    `NoIntMS` 는 잴 적분이 없어서).  ⛔ 앞자리까지 맞춰 거른다 --
+    #    `'IntMS=' in t` 는 `NoIntMS=` 도 집는다.
+    wrote = _param(fakes.mk, 'IntMS')
+    assert wrote and wrote[-1] == 'IntMS=0', wrote
+    dwell = _param(fakes.mk, 'NoIntMS')
+    assert dwell and dwell[-1] == 'NoIntMS=0', dwell
 
     # ② 그런데 그것을 결측으로 경고하면 안 된다
     noise = [r.getMessage() for r in caplog.records

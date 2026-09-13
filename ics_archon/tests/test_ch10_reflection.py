@@ -62,12 +62,18 @@ def test_controller_learns_linecount_from_the_acf():
 
 
 # ---------------------------------------------------------------------------
-# 10.4  주기 13.27 s · 10.6  잠금은 주기보다 짧아야 한다
+# 10.4  주기(실측 13.27 s) · 10.6  잠금은 주기보다 짧아야 한다
 # ---------------------------------------------------------------------------
 
 def test_min_frame_period_is_the_measured_one():
-    """12.0(labtest 11.3 초 유래) -> **13.27** (두 유닛 실측, IntMS=0·NoIntMS=500)."""
-    assert acfg_mod.MIN_FRAME_PERIOD == 13.27
+    """12.0 -> 13.27(실측) -> **12.78**.
+
+    ⭐ 2026-09-13 셔터 재설계로 **BIAS 의 사강이 0** 이 되어 바닥이 독출
+    시간 그 자체가 됐다 (DevNote 11.85-(3)).  13.27 은 `NoIntMS=500` 이던
+    때의 두 유닛 실측이고 **그 조건에서는 참이다**.
+    ⚠️ 12.78 은 **계산값**이다 -- 벤치에서 BIAS 주기를 다시 잴 것.
+    """
+    assert acfg_mod.MIN_FRAME_PERIOD == 12.78
 
 
 def test_fetch_timeout_above_the_period_is_flagged_when_locking(tmp_path):
@@ -91,7 +97,7 @@ def test_fetch_timeout_above_the_period_is_flagged_when_locking(tmp_path):
                 if '다음 장이 덮인다' in n]
 
     assert notes(0.0, True), '344초 유도 상한이 주기를 넘는데 조용하다'
-    assert notes(30.0, True), '종전 값 30초도 주기 13.27초를 넘는다'
+    assert notes(30.0, True), '종전 값 30초도 주기 12.78초를 넘는다'
     assert not notes(10.0, True)
     # 잠그지 않으면 이 위험은 없다 (대신 recheck_after_fetch 가 짝이다)
     assert not notes(0.0, False)

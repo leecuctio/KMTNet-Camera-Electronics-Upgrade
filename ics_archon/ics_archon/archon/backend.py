@@ -348,7 +348,15 @@ class ArchonBackend:
             # `set_trigger()` 가 둘을 **한 `APPLYSYSTEM`** 으로 쓴다.
             await c.set_trigger(
                 high=False, forced=not self.acfg.drives_shutter(c.tag))
-            await c.trigger(ms, suffix=self._suffix.get(c.tag, ''))
+            # ⭐ **셔터 닫힘 대기도 노출마다 싣는다** (2026-09-13).  안 실으면
+            # 앞 노출의 `NoIntMS` 가 남는데, 셔터를 안 여는 노출이 그 값을 제
+            # 적분시간으로 쓰게 되면서(아래 `_readout_stream`) **앞 DARK 의 값이
+            # 남아 셔터가 닫히기 전에 독출이 시작될** 수 있다.
+            # ⛔ `0` 이면 안 싣는다 -- 그건 "검사를 꺼 둔 것" 이고, 그때는 ACF
+            # 값이 정본이다 (`_enforce_shutter_close_dwell`).
+            dwell = int(getattr(self.acfg, 'shutter_close_ms', 0) or 0)
+            await c.trigger(ms, noint_ms=dwell if dwell > 0 else None,
+                            suffix=self._suffix.get(c.tag, ''))
 
         try:
             await self._all(_go, 'exposure command')
@@ -422,7 +430,15 @@ class ArchonBackend:
                                      'EXPTIME 은 요청값이다'})
         for c in still:
             try:
-                await c.set_trigger_forced(True)
+                # ⛔ **레벨을 함께 쓴다** (2026-09-13).  종전에는
+                # `set_trigger_forced(True)` 로 `FORCE` 만 썼는데, 그러면
+                # `TRIGOUTLEVEL` 이 앞 값 그대로다 -- 앞 세션이 `SHOPEN` 중에
+                # 죽어 `LEVEL=1` 을 남겼으면 **빛을 끊으려는 이 함수가 핀을
+                # HIGH 로 고정해 셔터를 연다.**  `open_shutter()` 는 같은
+                # 이유로 2026-09-12 에 이미 고쳤고 여기가 남아 있었다.
+                # ⭐ 왕복은 안 는다 -- `set_trigger()` 가 둘을 한
+                # `APPLYSYSTEM` 으로 쓴다.
+                await c.set_trigger(high=False, forced=True)
             except (ArchonError, TimeoutError, OSError) as exc:
                 log.error('%s: forced shutter close failed -- %s',
                           c.tag, exc)
@@ -513,23 +529,42 @@ class ArchonBackend:
             # 세면 정상 노출마다 경고가 뜨고, 그 소음이 진짜 결측을 덮는다.
             missing = self._dark_seconds is None
             ms = int(round((self._dark_seconds or 0.0) * 1000))
-            log.info('exposure without the shutter -- triggering IntMS=%d '
+            log.info('exposure without the shutter -- triggering NoIntMS=%d '
                      'at readout (%s)',
-                     ms, ', '.join(c.tag for c in pending))
+                     ms, ', '.join(c.tag for c in pending),
+                     extra={'detail': '적분을 `IntMS` 가 아니라 `NoIntMS` 에 '
+                                      '싣는다 -- `NoIntUnit` 은 `NOINT` 로 '
+                                      '들어가 트리거 선을 내린 채 돌므로 '
+                                      '셔터가 열리지 않는다'})
             if missing:
                 log.warning('no integration time for an exposure without '
                             'the shutter -- reading out right away with '
-                            'IntMS=0',
+                            'NoIntMS=0',
                             extra={'detail':
                                    '호스트가 적분을 잰 셈이다.  '
                                    '`begin_exposure()` 훅이 이 노출에서 '
                                    '불리지 않았다 -- 시퀀서가 그것을 부르는지 '
                                    '볼 것 (`sequencer._integrate_dark`)'})
             try:
+                # ⭐ **셔터를 두 겹으로 막는다** (2026-09-13, 운영자 설계).
+                #
+                # ① `IntMS=0` -- 파라미터 0 규칙으로 `X; CALL IntUnit(IntMS)`
+                #    가 **호출 자체를 안 하므로** `INT`(CONTROL 비트0 = 1)를
+                #    한 번도 안 지난다.  적분은 `NoIntMS` 가 지고, 그쪽은
+                #    `NOINT`(비트0 = 0)로 들어간다 ⇒ **타이밍 스크립트가
+                #    스스로 트리거 선을 내린 채 돈다.**
+                # ② 그래도 `FORCE=1`·`LEVEL=0` 으로 핀을 눌러 둔다 -- ①이
+                #    깨져도(옛 ACF·파라미터 오적재) 빛이 안 샌다.
+                #
+                # ⛔ **레벨을 함께 쓰는 것이 요점이다** -- 종전에는
+                # `set_trigger_forced(True)` 로 `FORCE` 만 썼는데, 앞 세션이
+                # `SHOPEN` 중에 죽어 `LEVEL=1` 을 남겼으면 `FORCE=1`+`LEVEL=1`
+                # 이 되어 **DARK 내내 셔터가 열린 채**로 돈다.
                 for c in pending:
-                    await c.set_trigger_forced(True)
+                    await c.set_trigger(high=False, forced=True)
                 await asyncio.gather(*(
-                    c.trigger(ms, suffix=self._suffix.get(c.tag, ''))
+                    c.trigger(0, noint_ms=ms,
+                              suffix=self._suffix.get(c.tag, ''))
                     for c in pending))
             except (ArchonError, TimeoutError, OSError) as exc:
                 raise BackendError(_dma_cause(ccd, exc),

@@ -32,7 +32,15 @@ before this operation"*, 실기 `?02` 거부로 확인 2026-09-01, DevNote 10.2)
 | 노출 | 시작 자리 | 이유 |
 |---|---|---|
 | 셔터 노출 (OBJECT/FLAT/SKY/DOMEFLAT) | `open_shutter()` | 시퀀서가 여기서 셔터를 열라고 한다.  `IntMS` = 노출시간 |
-| DARK / BIAS | `readout()` | 시퀀서가 `_integrate_dark` 에서 백엔드를 아예 부르지 않는다.  적분 시간은 `begin_exposure()` 훅으로 미리 받아 두고 여기서 `IntMS` 에 실어 건다 -- **컨트롤러가 잰다** (훅이 없으면 `IntMS=0` 으로 곧바로 읽어내고 경고를 남긴다) |
+| DARK / BIAS | `readout()` | 시퀀서가 `_integrate_dark` 에서 백엔드를 아예 부르지 않는다.  적분 시간은 `begin_exposure()` 훅으로 미리 받아 두고 여기서 **`NoIntMS`** 에 실어 건다 -- **컨트롤러가 잰다** (훅이 없으면 `NoIntMS=0` 으로 곧바로 읽어내고 경고를 남긴다) |
+
+⭐ **셔터를 안 여는 노출은 `IntMS=0` + `NoIntMS=<적분시간>` 이다** (운영자 설계
+2026-09-13).  `IntMS=0` 이면 파라미터 0 규칙으로 `X; CALL IntUnit(IntMS)` 가
+호출조차 안 되어 `INT`(`STATEn\\CONTROL` 비트0 = 1)를 한 번도 안 지나고,
+적분을 지는 `NoIntUnit` 은 `NOINT`(비트0 = 0)로 들어간다 -- 곧 **타이밍
+스크립트가 스스로 트리거 선을 내린 채 돈다.**  종전에는 DARK 가
+`IntMS=<적분시간>` 으로 들어가 스크립트가 셔터를 **열려고** 했고, 그것을
+`TRIGOUTFORCE=1` **하나**로만 막고 있었다.
 
 ⚠️ **STOP(적분 조기 종료)은 컨트롤러의 적분을 자르지 못한다.**  타이밍
 스크립트가 이미 `IntMS` 만큼 세고 있으므로, 할 수 있는 것은 `TRIGOUTFORCE=1`
@@ -92,7 +100,18 @@ class FrameTicket:
     #: 덮는다 (이 클래스가 있는 이유 그대로다).
     prev_frames: tuple[int, ...] = ()
     #: 적분 종료 예상 시각 (monotonic).  `None` 이면 즉시 독출(`IntMS=0`).
+    #: ⭐ **빛이 끊기는 시각**이다 -- `close_shutter()` 가 "조기 종료인가" 를
+    #: 이 값으로 잰다.
     int_until: float | None = None
+    #: **독출이 열리는 시각** (monotonic) = `IntMS + NoIntMS`.
+    #:
+    #: ⛔ `int_until` 과 **가른다**.  셔터를 여는 노출은 빛이 `IntMS` 에 끊기고
+    #: 그 뒤 `NoIntMS`(셔터 닫힘 대기)가 더 붙으며, **DARK 는 적분 자체가
+    #: `NoIntMS` 에 실린다**(`INT` 를 안 지나므로 셔터가 안 열린다).  그래서
+    #: 프레임 시한은 이쪽을 기준으로 세야 한다 -- `int_until` 로 세면 600초
+    #: dark 가 `IntMS=0` 이라 **곧바로 시한에 걸린다**.
+    #: `None` 이면 부르는 쪽이 `NoIntMS` 를 안 실은 것이다(옛 경로).
+    dwell_until: float | None = None
     #: 완료가 확인된 프레임.  `wait_frame()` 이 채운다.
     ready: parse.FrameStatus | None = None
     #: arm 의 `LOADPARAMS` 왕복 -- 송신 직전과 응답 직후의 **중점**(monotonic /
@@ -585,9 +604,12 @@ class ArchonController:
         ⛔ `NoIntMS` 가 그보다 짧으면 **셔터가 아직 닫히는 중에 독출이 시작돼**
         프레임 위쪽에 빛이 샌다 -- 그리고 그것은 조용하다.
 
-        ⚠️ **BIAS·DARK·0초 노출에는 필요 없는 대기**지만 `NoIntMS` 는 ACF 상수라
-        모든 노출에 같이 붙는다.  그 대가는 받아들인다 (셔터를 안 여는 노출에서
-        프레임 주기가 이만큼 길어질 뿐, 데이터는 멀쩡하다).
+        ⭐ **이것은 이제 ACF 기본값 검사다** (2026-09-13 개정).  실제로 적용되는
+        값은 `trigger(noint_ms=...)` 가 **노출마다** 쓴다 -- 셔터를 여는 노출에는
+        `shutter_close_ms`, DARK 에는 적분시간, BIAS 에는 0.  그래서 종전의
+        *"BIAS·DARK 에도 필요 없는 대기가 같이 붙는다"* 는 대가는 **없어졌다**.
+        여기 남는 몫은 두 가지다: ① ACF 기본값이 짧다는 **경고**(정본은 ACF다)
+        ② `noint_ms` 를 안 싣는 옛 경로에 대한 **바닥값**.
         ⭐ **guide 는 이 자리를 안 지난다** -- `IcgCfg` 에 이 눈금이 없다
         (셔터가 없다).  `ccdflush` 와 같은 방식이다.
 
@@ -1519,12 +1541,17 @@ class ArchonController:
     # **프레임의 것은 프레임이 정하고, 나중에 다시 읽지 않는다.**
 
     async def trigger(self, exptime_ms: int, *, queue: bool = True,
-                      suffix: str = '', exposures: int = 1) -> FrameTicket:
+                      suffix: str = '', exposures: int = 1,
+                      noint_ms: int | None = None) -> FrameTicket:
         """노출을 걸고 곧바로 돌아온다 (적분·독출은 컨트롤러가 몬다).
 
         순서는 labtest 그대로다 -- **프레임 번호를 먼저 읽고** `IntMS`,
-        `Exposures`, `LOADPARAMS`.  번호를 먼저 읽는 이유는 그 값이 "새
-        프레임이 나왔나" 의 기준이기 때문이다.
+        (`NoIntMS`,) `Exposures`, `LOADPARAMS`.  번호를 먼저 읽는 이유는 그
+        값이 "새 프레임이 나왔나" 의 기준이기 때문이다.
+
+        ⭐ **셋을 한 `LOADPARAMS` 로 묶는 것이 규범이다** (2026-09-13).  `NoIntMS`
+        를 노출마다 안 쓰면 **앞 노출의 값이 남는다** -- 셔터 노출에 DARK 의
+        값이 남으면 셔터가 닫히기 전에 독출이 시작된다.
 
         Args:
             queue: 저장 대기열에 넣을지.  flush 는 **버리는 프레임**이라
@@ -1537,6 +1564,12 @@ class ArchonController:
                 로 표만 잇는다(왕복에 `LOADPARAMS` 가 없다).  타이밍
                 스크립트가 `GOTO Start` 뒤 `Exposures` 가 남아 있으면 곧바로
                 `Exposure:` 로 되돌아가는 것이 근거다.
+            noint_ms: `NoIntMS` -- `NOINT; CALL NoIntUnit(NoIntMS)` 가 만드는
+                **사강**.  셔터를 여는 노출에서는 **셔터 닫힘 대기**이고,
+                셔터를 안 여는 노출(DARK)에서는 **적분 그 자체**다 --
+                `NoIntUnit` 은 `NOINT`(CONTROL 비트0 = 0)로 들어가므로
+                **트리거 선이 안 서고 셔터가 안 열린다**.  `None` 이면 안
+                쓴다(설정 메모리의 ACF 값이 그대로 간다).
         """
         # **한 번의 `FRAME` 으로 둘을 뽑는다** -- 프레임 번호(기준값)와 세
         # 버퍼의 번호(기준선).  왕복은 종전과 같다.
@@ -1547,6 +1580,23 @@ class ArchonController:
         await self.set_config(self._param_slot(self.PARAM_INTMS),
                               '%s=%d' % (self.PARAM_INTMS,
                                          max(int(exptime_ms), 0)))
+        if noint_ms is not None:
+            # ⛔ **`Exposures` 앞이어야 한다** (KMTNet ACF 규약) -- LOADPARAMS 가
+            # 값을 하나씩 덮는 동안 코어는 계속 돌기 때문이다.  `Exposures` 를
+            # 마지막에 쓰는 아래 줄과 순서를 바꾸지 말 것.
+            slot = (self.param_slots or {}).get(self.PARAM_NOINT)
+            if slot:
+                await self.set_config(slot, '%s=%d'
+                                      % (self.PARAM_NOINT,
+                                         max(int(noint_ms), 0)))
+            else:
+                # 옛 ACF 에는 이 파라미터가 없다 -- 기동 검사가 이미 경고했다.
+                log.warning('%sacf has no %s -- the dwell cannot be set per '
+                            'exposure', self.ltag, self.PARAM_NOINT,
+                            extra={'detail': '셔터를 안 여는 노출의 적분과 '
+                                             '셔터 닫힘 대기가 둘 다 ACF '
+                                             '상수에 묶인다'})
+                noint_ms = None
         await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
                               '%s=%d' % (self.PARAM_EXPOSURES,
                                          max(int(exposures), 1)))
@@ -1559,12 +1609,19 @@ class ArchonController:
         self.loadparams_sent = True
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         timing = getattr(self, 'last_cmd_timing', None)
+        # ⭐ **한 시각에서 둘을 뽑는다** -- `time.monotonic()` 을 두 번 부르면
+        # 두 값이 미세하게 어긋나 되짚을 때 헷갈린다.
+        _now = time.monotonic()
+        _dwell_ms = max(int(exptime_ms), 0) + max(int(noint_ms or 0), 0)
         ticket = FrameTicket(
             suffix=suffix,
             prev_frame=prev,
             prev_frames=before,
-            int_until=(time.monotonic() + exptime_ms / 1000.0
-                       if exptime_ms > 0 else None))
+            int_until=(_now + exptime_ms / 1000.0
+                       if exptime_ms > 0 else None),
+            dwell_until=(_now + _dwell_ms / 1000.0
+                         if (noint_ms is not None and _dwell_ms > 0)
+                         else None))
         if timing is not None:
             t_s, t_r, u_s = timing
             ticket.armed_mono = (t_s + t_r) / 2.0
@@ -1593,8 +1650,10 @@ class ArchonController:
             self._queue.append(ticket)
         # ⭐ **기준선 세 버퍼를 함께 남긴다** (2026-09-11) -- `prev` 하나만으로는
         # 나중에 번호가 어긋났을 때 *"그때 버퍼가 어땠나"* 를 되짚을 수 없다.
-        log.info('%sexposure armed: IntMS=%d Exposures=%d after frame %d%s',
-                 self.ltag, int(exptime_ms), max(int(exposures), 1), prev,
+        log.info('%sexposure armed: IntMS=%d%s Exposures=%d after frame %d%s',
+                 self.ltag, int(exptime_ms),
+                 '' if noint_ms is None else ' NoIntMS=%d' % max(int(noint_ms), 0),
+                 max(int(exposures), 1), prev,
                  '' if queue else ' (discard)',
                  extra={'detail': 'bufs %s'
                                   % ('/'.join(str(x) for x in before) or '?')})
@@ -1853,8 +1912,11 @@ class ArchonController:
         # 중에 `DMA WAIT TIMEOUT` 이 났다.  labtest 도 같은 계산이다
         # (`deadline = exptime/1000 + FRAME_WAIT_MAX`, v1.3.4).
         deadline = None
+        # ⭐ **`dwell_until` 을 먼저 본다** -- DARK 는 적분이 `NoIntMS` 에 실려
+        # `IntMS=0` 이라, `int_until` 로 세면 600초 dark 가 곧바로 걸린다.
+        _until = ticket.dwell_until or ticket.int_until or 0.0
         if limit > 0:
-            deadline = max(started, ticket.int_until or 0.0) + limit
+            deadline = max(started, _until) + limit
         # 프레임 대기 중 주기 덤프 -- 취득이 안 끝날 때 "노출이 안 걸렸나 /
         # 독출이 안 끝나나" 를 가르는 계측이다 (labtest `FRAME_DUMP_ENABLE`).
         # **정상 취득이 도는 동안은 꺼 둔다**(기본 0) -- 왕복이 셋 늘어난다.
@@ -1882,7 +1944,7 @@ class ArchonController:
                     'LOADPARAMS·클록, 그리고 **Sync In 결선과 상대 유닛**을 '
                     '보라.  [archon] frame_timeout 으로 상한을 조정한다'
                     % (self.tag, prev + 1, limit,
-                       max((ticket.int_until or started) - started, 0.0)),
+                       max((_until or started) - started, 0.0)),
                     cmd='FRAME')
             fields = await self.query('FRAME', timeout=T_FAST)
             # **"내 다음 프레임" 을 찾는다** -- "최신 프레임" 이 아니다.  저장이
@@ -2078,7 +2140,7 @@ class ArchonController:
             # 상한은 크기에서 뽑는다 -- 1 GB/s 를 밑도는 어떤 링크라도 넉넉하고,
             # 그러면서 "영구히 멈춤" 은 막는다.  이 유도값은 `[archon]
             # fetch_timeout` 이 0 일 때만 쓰인다 -- 실측(99~107 MiB/s, DevNote
-            # 10.4)으로 ini 는 10초다.  ⚠️ 잠금 상한이기도 하다: 주기(13.27초)
+            # 10.4)으로 ini 는 11초다.  ⚠️ 잠금 상한이기도 하다: 주기(12.78초)
             # 를 넘으면 다음 장이 덮인다(10.6) -- `config` 기동 검사가 알린다.
             # `frame_timeout` 과 **별개의 상한**이라 한쪽만 조여도 다른 쪽은
             # 그대로다.
@@ -2090,7 +2152,7 @@ class ArchonController:
             # **프레임을 잃는다.**  잠근 채 기다리면 컨트롤러는 다른 버퍼를
             # 쓰므로 **한 프레임만** 더 간다 -- 그 다음 경계부터는 엔진이 쓰던
             # 버퍼를 재사용해 **앞 장을 덮는다** (DevNote 10.4, `--hold 20`).
-            # 우리 프레임은 지켜지지만, 이 대기가 프레임 주기(13.27초)를 넘으면
+            # 우리 프레임은 지켜지지만, 이 대기가 프레임 주기(12.78초)를 넘으면
             # 다음 장을 잃는다.  ⏳ 이 대기에는 상한이 없다 -- `fetch_timeout`
             # 은 전송만 잰다.  호스트 버퍼 고갈은 `buf_waits` 경고로 드러나고,
             # 상한을 둘지는 첫 운용 실측 뒤 판단 (DevNote 9.15).
@@ -2109,7 +2171,7 @@ class ArchonController:
             #
             # 앞의 대조는 fetch **직전 한 순간**만 본다.  fetch 자체가 수 초
             # 걸리므로(실측 3.2~3.5초, DevNote 10.4) **그 사이에 덮이는 창**은
-            # 아무도 안 본다 -- 주기 13.27초에 경계가 걸릴 확률 ≈26% 다 (10.6) --
+            # 아무도 안 본다 -- 주기 12.78초에 경계가 걸릴 확률 ≈27% 다 (10.6) --
             # `lock_buffer=true` 면 그 창을 `LOCKn` 이 막지만, **끄면 막는 것이
             # 아무것도 없다.**  그래서 이 재대조가 `lock_buffer=false` 의 짝이다.
             #
