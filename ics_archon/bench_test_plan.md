@@ -12,6 +12,70 @@
 
 ---
 
+## ▶ 벤치 첫날 순서 (2026-09-15 정리 — 커밋 `a0b2773` 기준)
+
+이번 주 변경(2026-09-12~15)은 **전부 실기 미검증**이다 — 시험 782 는 문면·구조를 지킬 뿐이다.
+첫날은 *"돌아가나"* 를 짧은 것부터 확인해 되돌릴 자리를 하나씩 좁힌다.  ⛔ **한 번에 하나만
+바꾼다** — 판·ini·프로그램을 같이 바꾸면 갈렸을 때 원인이 안 갈린다.
+
+⭐ 실행은 `python -m ics_archon` / `python -m icg_archon` **그대로** — `--backend archon` 은 필요
+없다(둘 다 실기가 기본, `--backend sim` 만 뜻이 있다).  벤치에서는 `~/AIC/bin/ics_archon` 래퍼가
+`-c ~/AIC/Config/ics_archon.ini` 를 붙여 준다 (README "실행 래퍼") — 직접 띄우면 ini 는 **실행 디렉터리
+기준** `ics_archon.ini` 라 `-c` 로 벤치 ini 를 줄 것 (아래 (c) 3번).
+
+### 준비 (운영자, 프로그램 띄우기 전)
+
+| # | 무엇 | 왜 |
+|---|---|---|
+| P1 | 벤치 `~/AIC/Config/ics_archon.ini`: `hk_latest`·`hk_stale_after` **삭제**, `hk_query_timeout = 2.0` · `icg_node = ICG` 확인 | HK 가 **와이어**로 바뀌었다 (DevNote 11.90).  옛 키는 조용히 무시되지만 헷갈린다 |
+| P2 | 벤치 `icg_archon.ini`: `[hk] latest_name` **삭제** | ICG 가 `hk_latest.G.json` 을 더 안 만든다.  남은 파일은 지워도 된다 |
+| P3 | 양쪽 `[transport] xis_host` 가 **같은 허브**(`127.0.0.1:6660`), ICG `bind_port 6601`, ICS `require_xis` | ICS→ICG 명령 셋(`VACGAUGE`·`EXPENABLE`·`HKDATA`)이 허브로만 간다 — 한쪽만 다르면 **조용히 사라진다** |
+| P4 | ACF: `~/AIC/Config/acf/` 에 **`KMTK_SCI_113_STA0200_R2613_{MK,NT}.acf`** · **`KMTK_GUI_162_STA0201_R2622.acf`**(또는 `STA0230`) 복사, ini `acf_mk`/`acf_nt`/`[icg] acf` 경로 | ⛔ 파일명 전체로 (`acf/README.md` 규칙 셋).  ⚠️ 첫날 연동만 볼 거면 현행 `R2611`/`R2619` 그대로 두고 **판은 D3 앞에서** 올려도 된다 |
+| P5 | [`acf/deployment_ledger.md`](acf/deployment_ledger.md) ⏳ 셋 — 벤치 ini 실값 · 관측소 상자 위치 · SSO 신원 | 되돌릴 목표.  P4 로 판을 바꾸면 **이력에 한 줄** |
+| P6 | Radionode `[radionode]` KEY/SECRET·MAC (0단계 (a)) — 없으면 `backend = off` 로 두고 진행 | 없어도 첫날은 된다 (`HEBOX`/`FSATEMP`/`FSAHUM` 만 sentinel) |
+
+### D1 — ICG 단독 (30분) [ICG]
+
+| # | 하는 것 | 보는 것 | 닫히는 것 |
+|---|---|---|---|
+| 1 | `python -m icg_archon` 기동, 배너 `hk : every 60s -> … (ICS asks HKDATA NOW on GO)` | 기동 검사 경고 0 · `ion gauge … state=` 낱말 | P2 · 11.90 (3) |
+| 2 | 콘솔 `hkdata` → `hkdata now` | 둘 다 `HKSTALE=n VACGAUGE=<낱말> …`.  `DEWPRES` 가 낱말 규칙대로(OFF/WARMUP 없음 · ON 값 · ON+결측 `9.99e-9`) | 11.89 (3) |
+| 3 | `vacgauge on` → 12 s 안에 `hkdata` → 13 s 뒤 `hkdata` | 전자는 직전 바퀴(`OFF`, DEWPRES 없음) · 후자는 예열 끝 자동 바퀴 뒤 `ON`+값 | 11.89 (4) · 11.70 둘째 |
+| 4 | `vacgauge off` → 곧 `hkdata` → `hkdata now` | 전자는 `ON`+값 그대로(바퀴 전) · 후자는 `OFF`, 없음.  로그의 다음 주기 바퀴가 `NOW`+60 s 인지 | ⭐ 운영자 시간표 (11.89) |
+| 5 | `go 3` (guide R2622 면) | 프레임 3장 · 주기 ≈ 1.25 s · `FRAME` 증가 3 | guide R2622 첫 실기 |
+
+### D2 — ICS 기동 + 연동 (1시간) [공통]  ⭐ **와이어 첫 왕복**
+
+| # | 하는 것 | 보는 것 | 닫히는 것 |
+|---|---|---|---|
+| 1 | `python -m ics_archon` 기동 | 기동 검사: `MIN_FRAME_PERIOD` 대사 줄(`frame timing from acf … floor 12.7762 s`, 경고 없음) · `icg_node` 경고 없음 · 허브 확인 통과 | 11.88 배선 |
+| 2 | ICS 콘솔 `hkdata` | `HKDATA <- ICG  HKQDATE=… HKSTALE=…` 한 줄 | **와이어 자체** (11.12 F1) |
+| 3 | ICG 에서 `vacgauge on`(예열 끝까지 13 s) → ICS `dark begin` · `exp 1` · **`go 1`** | ICS 로그: `ICS>ICG HKDATA NOW` → 답 → `ICG reports the gauge ON although we tracked … -- sending VACGAUGE OFF` → `settling 5.0s` → 노출.  헤더 `CCDTEMP`·`DEWPRES`·`HKUDATE`·`HTRSET` 실값 | ⭐ 11.90 흐름 전부 |
+| 4 | 곧바로 `go 2` | `HKDATA NOW` 는 나가되 답이 `VACGAUGE=OFF` 라 **`VACGAUGE OFF` 가 안 나가고** settle 없이 시작.  두 장 헤더의 HK 가 같은 값 | 11.90 (1) "OFF 면 안 보냄" |
+| 5 | 그 사이 ICG 로그 | 프레임마다 `EXPENABLE 0`(독출 2 s 전) → `EXPENABLE 1`(독출 뒤).  guide 가 돌고 있었으면 `Aborted=1` | `expenablectl` |
+| 6 | ICG 를 잠깐 내리고 `go 1` | 2 s 뒤 `no HKDATA reply from ICG within 2.00s` · `no HKDATA from ICG for this acquisition` · 노출은 진행 · 헤더 sentinel(`-999.99`/`9.99e-9`/`NC`) | 11.90 F3 데드맨 |
+| 7 | ICG 다시 띄우고 마지막 `go` 뒤 **10 분** 기다림 (또는 ICS ini `gauge_reenable_after = 60` 으로 잠깐) | `VACGAUGE ON` 이 나가고 ICG `hkdata` 가 `WARMUP` → `ON` | 되켜기 타이머 |
+
+⛔ **3 에서 `HKDATA NOW` 답이 2 s 안에 안 오면 멈추고 본다** — 허브 배치(`xis_host`)·`icg_node` 이름·ICG 의 `register`.
+그때는 6 의 거동(진행 + sentinel)이 나와야 하고, 그것이 곧 P3 가 틀렸다는 신호다.
+
+### D3 — science 판·주기 (1시간) [ICS]
+
+| # | 하는 것 | 보는 것 | 닫히는 것 |
+|---|---|---|---|
+| 1 | `bias begin` · `go 5` (science R2613, `ccdflush_*` 비움) | 프레임 간격 ≥ **12.776 s**(계산 바닥) — 몇 % 길면 정상, **짧으면** 셈법 오류 | `MIN_FRAME_PERIOD` 12.78 (11.88) |
+| 2 | ini `ccdflush_every = 1` 로 `go 2` | 간격 **+5.54 s** · 프레임 수 = 요청 수 | science R2613 `EveryFlush` (11.86-(12)) |
+| 3 | `ccdflush_first = 2` 로 `go 3` | 첫 장 앞만 flush 2회, 둘째부터 없음 · `RCONFIG` 되읽기 값 그대로 | `FirstFlush` 개수 의미 |
+| 4 | `go 5` 걸고 독출 중 `abort` **연속 4회** → `go 1` | 정상 프레임이면 `RESETTIMING` 이 스택을 지운다 | 3단계 "RESETTIMING 스택" ⏳ |
+| 5 | `object`·`exp 3`·`go 1` (셔터) | 3단계 "셔터 닫힘 시간 실측" 절차 | `shutter_close_ms` 5200 |
+
+### D4 — 기록 (30분)
+
+- 실측값을 이 문서의 해당 절과 [`acf/deployment_ledger.md`](acf/deployment_ledger.md) 이력에.  경위는 DevNote.
+- ⏳ 로 남은 것: FW `1.0.1271` 재실측(3단계) · 사다리 T0~T4(`acf/bench/`) · P2 실측 · 플랫+바이어스 쌍(11.86-(9)) — **둘째 날**.
+
+---
+
 ## 0단계 — 시작 전 준비물 ⚠️ **없으면 1단계가 막힌다**
 
 ### (a) RADIONODE 자격증명 — ⛔ **운영자만 할 수 있다** (콘솔 접근)
