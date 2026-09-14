@@ -24,6 +24,17 @@ R2613 위에 굽는다(`EveryFlush` 포함).
 ⛔ **판을 부를 때는 파일명 전체로** (`acf/README.md` 머리의 규칙 셋).  꼬리표만 말하면
 (*"T2 깔아 줘"*) MK/NT 짝과 유닛이 갈리지 않는다.
 
+⭐ **사다리의 주기는 기계로 셈한다** (2026-09-14, `ics_archon/archon/acftiming.py`):
+
+    python -m ics_archon.archon.acftiming acf/bench/KMTC_SCI_101_STA0284_R2612_MK_T*.acf
+    T0/T1  행 2718.14 us · 독출 12.7753 s · 바닥 12.7762 s
+    T2     행 2728.15 us · 독출 12.8223 s · 바닥 12.8232 s   (MIN_FRAME_PERIOD -> 12.82)
+    T3     행 2778.15 us · 독출 13.0573 s · 바닥 13.0582 s   (MIN_FRAME_PERIOD -> 13.06)
+    T4     행 2718.15 us · 독출 12.7753 s · 바닥 12.7762 s   (클램프 -60 us 가 정착 +60 us 를 상쇄)
+
+채택 판을 `acf/` 에 올리면 **기동이 `MIN_FRAME_PERIOD` 와 대사해 알린다** -- 상수를 손으로
+다시 셀 일은 없고, `tests/test_acftiming_science.py` 의 사다리 시험도 같은 수를 못박는다.
+
 ⭐ `MK`/`NT` 두 계열을 **같은 꼬리표로 짝 맞춰** 쓸 것.  섞으면 두 CCD 가 다른 파형으로 돈다.
 
 ---

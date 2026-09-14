@@ -454,6 +454,11 @@ Rev F(KASI, `1.0.1252`)는 판이 안 바뀌었으므로 **대조군으로만** 
 ⚠️ **주기 항은 이 도구로 못 잰다** -- `buftest` 는 `NoIntMS` 를 읽기만 하고,
 기동에서 그 슬롯이 `shutter_close_ms`(5200)로 올라가 있어 약 **17.98 s** 가 나온다.
 ⭐ 주기는 **본편의 BIAS 연속 촬영**(`IntMS=0`+`NoIntMS=0`)으로 잰다 -- DevNote 11.85-(3).
+⭐ **대조할 계산값이 생겼다** (2026-09-14, `ics_archon/archon/acftiming.py`): science R2613 의
+주기 바닥 **12.7762 s** (독출 12.7753 + 쓸기 0.93 ms) · `ccdflush_every=1` 이면 **+5.542 s**.
+실측이 이보다 몇 % 길게 나오는 것은 정상이다(명령 왕복·버퍼 전환이 스크립트 밖이다) --
+**짧게** 나오면 셈법이 틀린 것이니 DevNote 11.88 을 다시 볼 것.  `python -m
+ics_archon.archon.acftiming <acf>` 로 어느 판이든 찍어 볼 수 있다.
 
 ---
 

@@ -63,8 +63,8 @@ from ics_sim import rawhdr, rawpair                     # noqa: E402
 from ics_sim.hardware.base import BackendError           # noqa: E402
 from ics_sim.state import stamp_iso                      # noqa: E402
 
-from ..config import CTRLTAGS, cfg_name_from_acf         # noqa: E402
-from . import fitswrite, parse                           # noqa: E402
+from ..config import CTRLTAGS, MIN_FRAME_PERIOD, cfg_name_from_acf  # noqa: E402
+from . import acftiming, fitswrite, parse                # noqa: E402
 from .controller import ArchonController                 # noqa: E402
 from .protocol import ArchonError                        # noqa: E402
 
@@ -179,8 +179,62 @@ class ArchonBackend:
                  '%dx%d (%.1f MiB/file)',
                  ', '.join(self.tags) or 'none', acfg.naxis1, acfg.naxis2,
                  acfg.frame_bytes / (1 << 20))
+        #: 태그 -> ACF 에서 셈한 프레임 타이밍 (`acftiming.frame_timing`).  기동에서
+        #: 한 번, 왕복 없음.  `MIN_FRAME_PERIOD` 와의 대사가 목적이다.
+        self.timing: dict[str, dict] = self._read_timing()
 
     # -- 내부 -------------------------------------------------------------
+
+    def _read_timing(self) -> dict[str, dict]:
+        """science ACF 의 프레임 주기를 **기동에서** 셈해 `MIN_FRAME_PERIOD` 와 대사한다.
+
+        guide 의 `IcgBackend._read_timing()` 과 같은 자리다.  파일만 읽는다 -- 컨트롤러
+        왕복도, `prepare()` 의 파싱과도 무관하다 (그쪽은 슬롯 찾기가 목적이다).
+
+        ⛔ **상수가 바닥보다 길면 위험하다** -- `fetch_timeout < MIN_FRAME_PERIOD` 를
+        통과한 잠금이 실제 주기를 넘어 다음 장을 덮고(DevNote 10.6), `wrote_window`
+        의 `need` 가 모자라게 나온다.  그쪽은 `error`, 반대는 `warning`
+        (`acftiming.check_min_frame_period`).  종전에는 이 상수를 사람이 세어 넣었고
+        ACF 판이 바뀌어도 아무것도 알리지 않았다 (DevNote 11.88).
+
+        ACF 경로가 비었거나 파일이 없으면 조용히 건너뛴다 -- `prepare()` 가 어차피
+        세운다.  두 컨트롤러의 바닥이 다르면 `error` -- MK/NT ACF 는 IP·`TAPLINE` 만
+        달라야 한다 (`acf/README.md`).
+        """
+        out: dict[str, dict] = {}
+        for tag in self.tags:
+            path = self.acfg.acf.get(tag, '')
+            if not path or not os.path.isfile(path):
+                continue
+            try:
+                t = acftiming.frame_timing(acftiming.read_acf(path))
+            except (acftiming.TimingError, OSError, ValueError) as exc:
+                log.warning('%s: acf frame timing not computed -- %s', tag, exc,
+                            extra={'detail': os.path.basename(path)})
+                continue
+            out[tag] = t
+            log.info('%s: frame timing from acf (PROVISIONAL): floor %.4f s, '
+                     'readout %.4f s, flush %s',
+                     tag, t['floor'], t['readout'],
+                     ('%.3f s' % t['flush']) if t.get('flush') else 'n/a',
+                     extra={'detail': '%s -- %s'
+                            % (os.path.basename(path), acftiming.describe(t))})
+            verdict = acftiming.check_min_frame_period(t, MIN_FRAME_PERIOD)
+            if verdict is not None:
+                level, why = verdict
+                getattr(log, level)(
+                    '%s: acf frame floor %.4f s vs MIN_FRAME_PERIOD %.2f s -- '
+                    'constant is %s', tag, t['floor'], MIN_FRAME_PERIOD,
+                    'too long (UNSAFE)' if level == 'error' else 'stale',
+                    extra={'detail': why})
+        floors = {tag: round(t['floor'], 6) for tag, t in out.items()}
+        if len(set(floors.values())) > 1:
+            log.error('controllers disagree on the acf frame floor: %s',
+                      ', '.join('%s=%.4f s' % kv for kv in sorted(floors.items())),
+                      extra={'detail': 'MK/NT ACF 의 타이밍 스크립트나 파라미터가 '
+                                       '다르다 -- 두 CCD 가 다른 주기로 돈다.  '
+                                       'IP·TAPLINE 만 달라야 한다 (acf/README.md)'})
+        return out
 
     def _tag_of(self, ccd: str) -> str:
         tag = CHIP_TAG.get(ccd.upper())

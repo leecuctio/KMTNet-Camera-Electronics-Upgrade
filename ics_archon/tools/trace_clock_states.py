@@ -4,7 +4,13 @@
 ⛔ 손추론 금지 -- ACF 의 `STATEn\\MODm` 을 읽어 `level,slew,keep` 에서 keep=0 만 set.
 서브루틴은 알짜 효과(마지막 set)로 접는다.
 
-용법:  python trace_path.py <acf> <채널,채널> <시작라벨>[,<이어붙일라벨>...]
+용법:  python tools/trace_clock_states.py <acf> <채널,채널> <시작라벨>[,<이어붙일라벨>...]
+      예)  python tools/trace_clock_states.py acf/KMTC_SCI_101_STA0284_R2613_MK.acf D4,CLAMP Start,Exposure
+
+⚠️ `STATEn\\MODm` 의 값은 **따옴표로 싸여 있다** (`",1,1,,1,1,…,CLAMP_HIGH,1,0"`).
+   따옴표를 벗기지 않으면 마지막 채널(8번)의 keep 이 `0"` 로 읽혀 영영 안 잡히고
+   첫 채널의 준위엔 `"` 가 붙는다 -- science 의 `D4`·`CLAMP` 가 화면에서 사라졌던 결함
+   (DevNote 11.85-(8), 2026-09-14 정정).  `LINEn` 과 같은 꼴(`="?(.*?)"?$`)로 읽는다.
 """
 import io
 import re
@@ -26,7 +32,7 @@ def load(path):
     states = {}
     for nm, idx in idx_of.items():
         eff = {}
-        for mm in re.finditer('^STATE%s%sMOD(\\d+)=(\\S*)$' % (idx, BS),
+        for mm in re.finditer('^STATE%s%sMOD(\\d+)="?(.*?)"?$' % (idx, BS),
                               s, re.M):
             mod, parts = mm.group(1), mm.group(2).split(',')
             for k in range(len(parts) // 3):
@@ -128,4 +134,5 @@ def main():
                 cur.update(net(c.group(1), script, at, states, params))
 
 
-main()
+if __name__ == '__main__':          # 시험이 `load()` 를 import 한다
+    main()

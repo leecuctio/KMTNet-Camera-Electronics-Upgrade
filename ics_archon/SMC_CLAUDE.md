@@ -1428,7 +1428,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | raw spec | **v1.13** — 발행 커밋 `ae3fbfe`, 태그 `raw-spec-v1.13`.  ⚠️ `main` 의 **끝**이 아니다 (Leecu 의 `cam_char` 작업이 그 뒤로 붙는다) — 판을 확인할 때는 커밋이 아니라 **태그**를 볼 것.  ⭐ 태그는 **최신 판 하나만** 둔다 — 팀은 `git fetch --tags --prune --prune-tags` 가 필요하다 |
 | guide ACF | 저장소 현행 **`KMT?_GUI_*_R2622.acf`** **4장** (`LINES=122` · `PARAMETERS=17`) — CTIO `STA0290` · SAAO `STA0291` · KASI `STA0201`·`STA0230`.  ⚠️ KASI 두 상자가 같은 `.162` 다.  ⛔ **현장에 마지막으로 확인된 판은 `R2619`** (2026-09-11) — `acf/deployment_ledger.md` |
 | science ACF | 저장소 현행 **`KMT?_SCI_*_R2613_{MK,NT}.acf`** **8장** (`LINES=143` · `PARAMETERS=23`, `EveryFlush`) — CTIO 2 · SAAO 2 · KASI 4(`STA0200`·`STA0212` 각 MK/NT).  ⛔ **현장 마지막 확인은 `R2611`** (2026-09-11).  ⏳ SSO(`KMTA_*`) 는 아직 없다 |
-| 시험 | `ics_archon` **733** (2026-09-14 실측, 세션 35 · 6분 38초) · `ics_sim` **395** (2026-09-10 실측) — **전수 통과** (deselect 없음).  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
+| 시험 | `ics_archon` **764** (2026-09-14 실측, 세션 36 후반 · 6분 43초 · 763 통과 + flake 1) · `ics_sim` **395** (2026-09-10 실측).  ⚠️ **알려진 flake 하나** — `test_ics_ops_commands.py::test_abort_cuts_the_integration_at_the_controller` 가 단독으로도 **HEAD `bdbe204` 에서 8회 중 2회** 실패(*"ABORT 의 RESETTIMING 이 2s 안에 안 왔다"*, 실패 때 4.2 s).  회귀가 아니라 하네스의 2 s 창 문제 — ⏳ 원인 미상, 아래 36 절.  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
 | 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `5543234`(v1.13) 까지.  ⏳ `main` 소관 잔여는 규격 10.6절 `OI-27` 문면.  ⚠️ **원격 `0dc3f8c` 보다 앞선 커밋 6개 + 이 세션 문서가 푸시 대기** (아래 36) |
 
 #### 오늘 확정된 규약 (어기기 쉬운 것들)
@@ -5121,27 +5121,41 @@ flush 119행의 `DGLOW` 는 **완전한 no-op** 이다(`Start:` 의 `RESET` 이 
 acf/README 는 고쳤는데 **운영 문서 README 의 flush 절은 빠졌다**.  `find_stale_quotes.py` 가 못
 잡는 부류(키 이름이 산문 속).  ⭐ 키 이름을 바꾸면 **`grep -rn '옛키' *.md`** 를 한 번 더.
 
+#### ✅ 이어서 한 것 — 타이밍 줄기 둘 (같은 세션, 문서 커밋 `bdbe204` 뒤)
+
+| 무엇 | 자리 |
+|---|---|
+| ⛔ **추적기 8번 채널 결함** — `STATEn\\MODm` 값의 따옴표를 안 벗겨 마지막 채널 keep 이 `0"` → science `D4`·`CLAMP` 가 안 보이던 것.  정규식 한 줄 + `__main__` 가드 + 시험 4 | `tools/trace_clock_states.py` · `tests/test_trace_clock_states.py` |
+| ⭐ **science 타이밍 해석기** — ACF `LINEn` 을 틱 단위로 돌려 화소·행·독출·주기 바닥·flush 를 낸다.  R2613: 행 2718.14 µs · 독출 **12.7753** · 바닥 **12.7762** · flush **5.542**.  사다리 T2 **12.82** · T3 **13.06** 재현.  guide 모듈과 **11틱** 안에서 일치(교차 검증) | `ics_archon/archon/acftiming.py` (신설) |
+| 기동에서 `MIN_FRAME_PERIOD` 와 대사 — 바닥 < 상수−0.05 `error` · > +0.05 `warning` · MK/NT 불일치 `error` · 못 읽으면 경고 한 줄 | `archon/backend.py` `_read_timing()` |
+| 시험 27 + 손 도구 `python -m ics_archon.archon.acftiming <acf>` | `tests/test_acftiming_science.py` |
+| 문서 — README 모듈표 2행 · `config.py` 상수 주석 · bench README 사다리 셈표 · 계획서 BIAS 주기 대조값 · **DevNote 11.88** | |
+
+⛔ **상수는 안 건드렸다** — 12.78 이 바닥 12.7762 보다 4 ms 길지만 두 자리 반올림이고 허용 차(0.05) 안.
+운영자 결정(2026-09-13) 값 그대로.  ⭐ 종전 손셈 12.7753 은 **독출만** 센 수였다 — 바닥은 쓸기 0.93 ms 가 더 든다.
+
 #### 상태
 
 | 것 | 값 |
 |---|---|
-| 로컬 HEAD | `7e5d8c9` + **이 세션 문서 미커밋** (8개, 코드 변경 없음) |
-| 원격 | `origin/ics-archon-v1.0-build` = `0dc3f8c` — 로컬이 **6 커밋 앞** (`6cb7fbe`·`982ebe5`·`dbaa353`·`00b6b45`·`bc2bfe7`·`7e5d8c9`).  세션 35 가 *"푸시할까?"* 에서 끝났고 **답이 없었다** — 이 세션도 안 밀었다 |
-| 시험 | **733 passed** (세션 35, `7e5d8c9` 뒤).  이 세션은 문서만 바꿨다 — 시험은 문서를 파싱하지 않는다(`grep` 으로 확인: 시험이 md 를 여는 자리 없음) |
+| 로컬 HEAD | `bdbe204`(문서 8개, 푸시됨) + **타이밍 둘 미커밋** (해석기 · 추적기 · 시험 2파일 · 문서 5) |
+| 원격 | `origin/ics-archon-v1.0-build` = `bdbe204` (세션 32~35 커밋 6개 + 문서 커밋 푸시 완료, 2026-09-14) |
+| 시험 | ✅ **전수 764 = 763 passed + 1 flake** (6분 43초, 2026-09-14).  flake 는 `test_abort_cuts_the_integration_at_the_controller` — ⛔ **회귀 아님**: 내 변경을 stash 한 HEAD 에서도 단독 8회 중 2회 실패, 변경본에서 5회 중 1회.  실패 때 4.2 s(= 2 s `until` 창을 다 쓴다).  ⏳ 원인은 안 팠다 — `go 2` 뒤 0.3 s 에 ABORT 를 넣는데 `prepare()`(ACF 적용·POWERON)가 그 안에 안 끝나면 ABORT 가 노출 밖에서 떨어져 `RESETTIMING` 이 안 나가는 것으로 보인다(가설) |
 | 현장 vs 저장소 | ⛔ **다섯 판** — science `R2611`→`R2613` · guide `R2619`→`R2622`.  현장 반영 기록 0 |
 
 #### ⏳ 다음 세션이 할 것 (권장 순서)
 
-1. ⭐ **커밋 + 푸시** — 이 세션 문서 8개를 한 커밋으로(*"판 번호 계열 명문화 · ACF 설치 대장 · 낡은 참조 정리"*),
-   그 뒤 6+1 커밋 푸시.  ⚠️ 푸시 전 세션 35 의 경고를 다시 읽을 것: **guide R2622 · science R2613 ·
-   `MIN_FRAME_PERIOD` 12.78 은 실기 미검증** — 다만 `acf/` 커밋이 현장을 바꾸지는 않는다.
+1. ~~⭐ 커밋 + 푸시~~ ✅ 문서 8개 `bdbe204` 커밋·푸시 완료.  ⏳ **타이밍 둘(해석기·추적기)은 전수
+   시험 뒤 커밋** — 운영자에게 물어보고 돌릴 것(7분).
 2. ⭐ **설치 대장 ⏳ 셋 채우기** (운영자) — 벤치 호스트 ini 실값(`grep -n '^acf' ~/AIC/Config/*.ini` ·
    `ls ~/AIC/Config/acf/`) · 관측소 상자 여섯의 현재 위치 · SSO 신원.  **사다리보다 먼저.**
 3. ⭐⭐ **플랫 쌍 + 바이어스 쌍 한 번** (35 의 3번 그대로) — 실측 이득 · 기준선 · CDS 창 30% · 포화.
 4. **사다리 재기** — ⛔ 되돌릴 곳은 대장의 "마지막 확인" 열(`R2611`)이지 저장소 현행이 아니다.
    사다리 도는 동안 `ccdflush_every` 는 비워 둔다(슬롯 없음).
 5. **BIAS/DARK 셔터 벤치 확인** · **`RESETTIMING` 이 호출 스택을 지우는가** (계획서 절차).
-6. `tools/trace_clock_states.py` 8번 채널 결함 · 오래된 이월(science 타이밍 계산 모듈 · `CxHKDATA` · 묶음 D·E).
+6. ~~`tools/trace_clock_states.py` 8번 채널 결함 · science 타이밍 계산 모듈~~ ✅ 둘 다 했다 (DevNote 11.88).
+   남은 이월: `CxHKDATA` 배선 · 묶음 D·E · **science 시퀀서 pacing(호스트 vs `Exposures=n`, DevNote
+   9.x-(6)) — 운영자 판단** · guide STOP 꼬리 flush 1회(`FASTLOADPARAM` 실측이 되면 한 줄).
 7. ⏳ 예약 번호 표가 또 밀리면 그때 **정본 한 곳(11.85-(6)) + 포인터**로 바꾼다 (11.87-(4)).
 
 #### ⚠️ 규범·함정 (35 의 것에 더해서)

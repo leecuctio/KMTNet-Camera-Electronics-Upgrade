@@ -36,6 +36,7 @@ ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/ics_archon_buftest.py`](tools/ics_archon_buftest.py) | **`LOCK`/`FETCH` 2x2 회귀 시험** — 엔진 라인 속도를 `idle`·`lock`·`fetch`·`nolock` 넷으로 견준다 (본편 무수정). 2026-09-01 실기 결론은 [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) |
 | [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}_R####.txt` 의 절차 정본 — **판 번호는 ACF 파일명에서 가져온다**. `--check` 로 대조, `--out` 으로 재추출.  ⛔ txt 는 **손으로 고치지 않는다**; ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
+| [`tools/trace_clock_states.py`](tools/trace_clock_states.py) | **클록 채널 추적기** — 경로(`Start,Exposure`)를 따라가며 각 줄에서 지정 채널(`D4,CLAMP`)이 실제로 무슨 준위인지 ACF 의 `STATEn\MODm`(`값,slew,keep`)에서 계산한다.  ⛔ 손추론 금지 자리.  (2026-09-14 정정: 값의 따옴표를 안 벗겨 **8번 채널이 안 보이던** 결함 — `tests/test_trace_clock_states.py`) |
 | [`tools/sync_vendor.py`](tools/sync_vendor.py) | **`ics_sim` 내장본 동기화** — `ics_archon` 만으로 돌게 만드는 자리. `--check` 로 확인만 |
 | `ics_archon/_vendor/ics_sim/` | **내장본** (원천의 사본 + `MANIFEST.sha256`). 손으로 고치지 말고 `sync_vendor.py` 로 갱신한다 |
 | [`acf/`](acf/) | **Archon 설정 파일 정본** (현행 **12개** = science 8 + guide 4 — 2026-09-11 초기화 시험 반입분, `archive/` 에 판올림한 구판, 타이밍 스크립트 발췌 txt 2장) — 컨트롤러에 그대로 밀어 넣는 설정·타이밍. `BIGBUF` 가 science(1)/guide(0)를 가른다.  ⛔ **파라미터 이름 셋(`IntMS`·`Exposures`·`FirstFlush`)은 KMTNet 규약으로 고정**이다 — ACF 를 개정해도 안 바꾼다 (Archon 의 제약이 아니다).  목록·규약·주의는 [`acf/README.md`](acf/README.md) |
@@ -102,7 +103,8 @@ ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
 | `archon/controller.py` | 컨트롤러 한 대의 제어 시퀀스 — ACF · 전원 · 노출 · 독출 · FETCH (asyncio) |
 | `archon/monitor.py` | 텔레메트리 주기 감시·기록 (층 1·2) — CSV, `~/AIC/Logs/` |
 | `archon/fitswrite.py` | raw pair 바이트 기록 — 견본 v1.0 이 정본, 데이터부 2880B 패딩 |
-| `archon/backend.py` | `ics_sim` `DetectorBackend` 구현 (D-012) |
+| `archon/backend.py` | `ics_sim` `DetectorBackend` 구현 (D-012).  기동에서 `acftiming` 으로 ACF 프레임 주기를 셈해 `MIN_FRAME_PERIOD` 와 대사한다 |
+| `archon/acftiming.py` | ⭐ **science 타이밍 스크립트 해석기** (2026-09-14) — ACF 의 `LINEn` 을 틱 단위로 돌려 화소·행·독출·주기 바닥·flush 를 낸다 (R2613: 행 2718.14 µs · 독출 12.7753 s · 바닥 12.7762 s · flush 5.542 s).  `python -m ics_archon.archon.acftiming acf/…acf` 로 사다리 판도 셈한다 (T2 12.82 · T3 13.06).  guide 는 `icg_archon/acftiming.py` 가 정본 — 시험이 둘을 교차 검증한다 |
 | `app.py` · `__main__.py` | `ics_sim.IcsSim` 에 백엔드를 끼우고 `ICSBUILD`/`RDMODE`/`CTRLnCFG`/종료를 갈아낀다 |
 | `config.py` | `[archon]` 절 |
 
