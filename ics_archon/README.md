@@ -669,7 +669,7 @@ expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 [archon]
 n_controllers = 1                   # 유닛 한 대만 돌릴 때.  2대면 2
 ctrl_mk_host = 10.0.0.13
-acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2611_MK.acf
+acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2613_MK.acf
 monitor      = true                 # 텔레메트리 주기 감시·기록 (위 절)
                                     #   ⚠️ 접속은 이 값과 무관하다 -- 본편이
                                     #   기동에서 붙는다.  이 스위치는 CSV 기록과
@@ -745,8 +745,8 @@ file         = ~/AIC/Logs/ics_archon.log
 > **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29 v1.8 확정, 현행 규격 v1.9 5.5절).
 > `[controllers] ctrlN_cfg` 를 **비워 두면** `[archon] acf_mk`/`acf_nt` 에서
 > **폴더와 확장자(`.acf`/`.cfg`)를 뗀 이름**이 실린다 —
-> `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2611_MK.acf` →
-> `'KMTC_SCI_101_STA0284_R2611_MK'`.  적어 두면 **그 값이 이기고**, 파생값과
+> `~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2613_MK.acf` →
+> `'KMTC_SCI_101_STA0284_R2613_MK'`.  적어 두면 **그 값이 이기고**, 파생값과
 > 다르면 기동에서 경고한다(헤더가 주장하는 설정 파일과 실제로 올리는 파일이
 > 갈린 자료는 나중에 봐도 드러나지 않는다).  `RDMODE` 와 같은 규칙이다.
 
@@ -888,7 +888,7 @@ python tools/probe_archon.py --host 10.0.0.13
 ### 2단계 — ACF 대조 (여전히 읽기 전용)
 
 ```bash
-python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2611_MK.acf
+python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2613_MK.acf
 ```
 
 `[archon] param_intms_slot`/`param_exposures_slot` 이 그 ACF 에 있는지, 컨트롤러
@@ -919,7 +919,7 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 
 #### ✅ `LOADTIMING` 이 노출을 시작한다 — 스크립트로 확정 (2026-09-04)
 
-⛔ **`ccdflush` 를 토글하면 프레임 한 장이 유령으로 돌 수 있다.**  근거가 셋이고
+⛔ **flush 설정(구 `ccdflush`)을 `LOADTIMING` 으로 토글하면 프레임 한 장이 유령으로 돌 수 있다.**  근거가 셋이고
 서로 맞물린다:
 
 1. **매뉴얼 p.51** -- `LOADTIMING` 은 *"Parses and compiles the timing script
@@ -928,7 +928,7 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 2. **매뉴얼 p.52** -- 코어 리셋은 *"starting all timing cores from the first
    line of the timing script"* 이다 (`RESETTIMING` 항).
 3. ⭐ **실물 타이밍 스크립트의 `Start:` 블록이 그 관문이다**
-   (`acf/KMTC_SCI_101_STA0284_R2611_MK.acf`.  ⛔ 줄 번호로 적지 않는다 -- 판마다
+   (`acf/KMTC_SCI_101_STA0284_R2613_MK.acf`.  ⛔ 줄 번호로 적지 않는다 -- 판마다
    밀린다, DevNote 11.35):
 
    ```
@@ -955,14 +955,14 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 RAM** 에서만 줄어든다 -- **설정 메모리 텍스트는 `1` 로 남는다.**  그래서 **첫
 노출 뒤로는 계속 위험 구간**이다.
 
-⭐ **처방 (R2610, 2026-09-05)**: `ccdflush` 는 이제 **`LOADTIMING` 을 내지 않는다** --
-`set_first_flush()` 가 설정 메모리의 `FirstFlush` 한 줄만 쓰고(되읽어 확인), 다음 노출의
-`LOADPARAMS`(코어 리셋 없음)가 그것을 실어 간다.  그래서 이 유령 독출 경로는 **운영 중에
+⭐ **처방 (science R2610, 2026-09-05)**: flush 설정은 이제 **`LOADTIMING` 을 내지 않는다** --
+`set_flush_param()`(구 `set_first_flush()`)이 설정 메모리의 `FirstFlush`/`EveryFlush` 한 줄만
+쓰고(되읽어 확인), 다음 노출의 `LOADPARAMS`(코어 리셋 없음)가 그것을 실어 간다.  그래서 이 유령 독출 경로는 **운영 중에
 열리지 않는다**.  남는 위험은 벤더 GUI 의 "Load Timing" 같은 수동 `LOADTIMING` 뿐이다 --
 그때는 먼저 `Exposures=0` 을 써 둘 것.  (종전 처방 -- `set_ccdflush()` 가 `LOADTIMING` 앞에
 `Exposures=0` 을 눌러 두고 되읽던 것 -- 은 기제와 함께 걷혔다, DevNote 11.33.)
 
-⏳ **첫 구동에서 확인만 하면 되는 것 하나** -- `ccdflush=true` 로 찍은 프레임 수가 요청 수와
+⏳ **첫 구동에서 확인만 하면 되는 것 하나** -- `ccdflush_every = 1` 로 찍은 프레임 수가 요청 수와
 같아야 한다(flush 는 프레임을 만들지 않는다).  `probe` 3단계 로그의 프레임 수로 본다.
 
 > 참고 — 매뉴얼이 가르는 셋 (p.51-52):
@@ -987,7 +987,7 @@ ctrl1_id = KMTA-SCI-101    # **선언한 쪽이 그 한 대다** (색인 1 = MK)
 [archon]
 n_controllers = 1          # 1 또는 2.  그 밖은 기동 거부
 ctrl_mk_host = 10.0.0.13
-acf_mk       = acf/KMTC_SCI_101_STA0284_R2611_MK.acf
+acf_mk       = acf/KMTC_SCI_101_STA0284_R2613_MK.acf
 ```
 
 > `n_controllers = 1` 이면 `[controllers] ctrl1_id`(→`MK`) / `ctrl2_id`(→`NT`)
@@ -1063,11 +1063,13 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 * ⚠️ `ARCHON` 은 원문을 **그대로**(대소문자 유지) 보낸다 — 컨트롤러는 모르는 명령에 무응답이라 소문자
   이름은 시한 초과로 끝난다.  위생 검사가 없는 운영자 도구다.  긴 응답(`STATUS`)은 1800 B 에서 잘리고
   전문은 `*.cmd` 로그에 남는다.  빈 ack(`WCONFIG`·`LOADPARAMS`·`APPLY*`)는 `(accepted, empty reply)`.
-* guide 의 flush 는 `FlushFrame`(R2613+: FrameShift + SkipLine×FlushLines, 프레임 없음), science 의 flush 는
-  `Prep`+`Flush`(R2609+) 다.  ACF 가 구판이면 `Failed: … ACF has no FirstFlush …` 로 거부된다.
-  ⭐ **R2616(guide)/R2610(science) 부터 flush 는 ACF 설정 메모리의 `FirstFlush` 가 싣는다** — guide 는 상수 1(모든
-  `LOADPARAMS` 가 flush 한 번을 싣고, `STOP` 뒤에도 꼬리 flush 한 번), science 는 `[archon] ccdflush` 옵션이 기동
-  때 1/0 을 쓴다(1 이면 **매 노출 전** Prep+Flush).  호스트가 프레임마다 쓰는 플래그는 없다 (DevNote 11.33).
+* guide 의 flush 는 `FlushFrame`(guide R2613+: FrameShift + SkipLine×FlushLines, 프레임 없음), science 의 flush 는
+  `Prep`+`Flush`(science R2609+) 다.  ACF 가 구판이면 `Failed: … ACF has no FirstFlush …` 로 거부된다.
+  ⭐ **guide R2616 / science R2610 부터 flush 는 ACF 설정 메모리의 파라미터가 싣는다** — guide 는 상수
+  `FirstFlush=1`(모든 `LOADPARAMS` 가 flush 한 번을 싣고, `STOP` 뒤에도 꼬리 flush 한 번), science 는
+  **`FirstFlush`(묶음의 첫 장 앞)·`EveryFlush`(매 노출 앞, science R2613+)** 둘이고 ini `[archon]
+  ccdflush_first`/`ccdflush_every` 가 기동 때 그 슬롯을 덮어쓴다(비우면 ACF 값).  호스트가 프레임마다 쓰는
+  플래그는 없다 (DevNote 11.33 · 11.86-(12)).
 * `sim` 백엔드에서는 `ARCHON` 이 `SIM (no controller): <원문>` 을 돌려준다 — 배선 확인용.
 
 ## 콘솔 (운영자 지시 2026-09-07)
@@ -1166,22 +1168,28 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 
 | | ABORT 뒤 | 유휴(idle) 상태 |
 |---|---|---|
-| **science** | readout **없이** 곧바로 유휴 (flush 는 `ccdflush` 가 정한다 — 아래) | `SkipLine` 을 계속 돌려 **CCD 를 계속 비운다** |
+| **science** | readout **없이** 곧바로 유휴 (flush 는 `ccdflush_first` 가 정한다 — 아래) | `SkipLine` 을 계속 돌려 **CCD 를 계속 비운다** |
 | **guide** | **flush 한 번**(`abort_flush()` — `RESETTIMING` + flush) | `SkipLine` 을 안 돌린다 — **CCD clocking 을 멈춘다** |
 
-#### science 의 CCD flush 는 **기본이 꺼짐**이고 ini 가 정한다
+#### science 의 CCD flush 는 **기본이 꺼짐**이고 ACF 파라미터 둘 + ini 가 정한다 (science R2613+)
 
-`ics_archon.ini` 의 `[archon] ccdflush` 가 기본 **`false`** 다. 켜면(`true`) 설정
-메모리의 `FirstFlush` 가 `1` 이 되고, 코어는 `Start:` 첫 줄에서 `FlushFrame`
-(Prep + Flush)으로 뛴다 — 그래서 **`true` 면 flush 가 두 자리에서 한 번씩 돈다**:
+ACF 파라미터가 **둘**이다 — `FirstFlush`(한 `LOADPARAMS` 묶음의 **첫 장 앞에만**,
+`Start:` 의 `CALL FlushFrame(FirstFlush)`) · `EveryFlush`(**매 노출 앞에**, `Exposure:` 의
+`CALL FlushFrame(EveryFlush)`).  ACF 초기값은 둘 다 **0** 이고, `ics_archon.ini` 의
+`[archon] ccdflush_first` / `ccdflush_every` 가 기동(첫 `GO` 의 `prepare()`) 때 그 슬롯을
+덮어쓴다 — **비우면 ACF 값을 그대로 따른다** (⛔ `0` 과 *"비어 있음"* 은 다르다).
 
-| 언제 | 왜 도나 |
-|---|---|
-| **매 노출 전** | science 는 노출마다 `LOADPARAMS` 를 내고, 그때 코어가 `Start:` 를 지난다 |
-| **`ABORT` 뒤 한 번** | `abort_now()` 의 `RESETTIMING` 이 코어를 `Start:` 로 되돌린다 |
+| 언제 | 누가 켜나 | 왜 도나 |
+|---|---|---|
+| **묶음 첫 장 앞** | `FirstFlush ≥ 1` | 코어가 `Start:` 를 지나며 `FirstFlush` 회 flush 하고 `FirstFlush--` 로 다 소비한다 |
+| **매 노출 앞** | `EveryFlush ≥ 1` | `Exposure:` 블록이 노출마다 `FlushFrame` 을 `EveryFlush` 회 돈다.  ⚠️ **continuous 경로는 안 탄다** (`ics_archon_buftest.py` 거동 불변) |
+| **`ABORT` 뒤 한 번** | `FirstFlush ≥ 1` | `abort_now()` 의 `RESETTIMING` 이 코어를 `Start:` 로 되돌린다 |
 
-⚠️ `false`(기본)면 두 자리 모두 flush 가 없다 — 유휴의 `SkipLine` 이 CCD 를 계속
-비우기 때문이다. ⛔ guide 는 다르다: ACF 상수가 `FirstFlush=1` 이라 **항상** 돈다.
+⚠️ 둘 다 0(기본)이면 세 자리 모두 flush 가 없다 — 유휴의 `SkipLine` 이 CCD 를 계속
+비우기 때문이다.  ⭐ **종전 `ccdflush = true` 운용은 `ccdflush_every = 1` 이다** (그 눈금이
+이름과 달리 사실상 매 노출이었다).  ⚠️ 둘 다 1 이면 첫 노출 앞에 flush 가 **두 번**(+5.5 s) —
+막지 않는다.  ⛔ guide 는 다르다: `EveryFlush` 가 없고 ACF 상수가 `FirstFlush=1` 이라 **항상** 돈다.
+경위는 DevNote 11.86-(12) · `acf/README.md` "science R2613" 절.
 
 ⚠️ **셔터를 즉시 끊는 경로는 `ArchonBackend.close_shutter()`** 이고
 (`TRIGOUTFORCE=1` + `TRIGOUTLEVEL=0` 으로 선을 **붙든다**), 적분 자체는 남은
@@ -1209,7 +1217,7 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 `TRIGOUT 0` 도 시한 만료도 `TRIGOUTFORCE=1` 을 유지한다. guide 에서 `0` 은
 *"타이밍 스크립트가 몬다"* 이고, guide 는 `IntMS = EXPTIME − 기본 노출시간` 으로
 넣어 `INT` 가 실제로 서므로 **노출마다 LED 선이 흔들린다**. 그래서 ACF 출고값도
-`TRIGOUTFORCE=1` 로 올렸고(**R2618**), `GuideBackend.prepare()` 가 띄울 때마다
+`TRIGOUTFORCE=1` 로 올렸고(**guide R2618**), `GuideBackend.prepare()` 가 띄울 때마다
 되읽어 확인한다.
 
 ⚠️ 이 명령들은 모두 `WCONFIG` + `APPLYSYSTEM` 이다. **적분 중·독출 중
