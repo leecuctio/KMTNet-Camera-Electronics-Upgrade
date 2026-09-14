@@ -18,8 +18,23 @@
   획득한 시각**(가장 낡은 표본).
 * ⭐ **`HKUDATE` 는 HK 루프의 생존 신호다** -- 응답은 오는데 두 바퀴 넘게 그 값이
   그대로면 루프가 멈춘 것이고, 그것은 링크 장애와 구별된다.
-* **`HKSTALE` = 낡아서 뺀 계약 키 수.**  완전성 검사가 `실린 계약키 + HKSTALE = 10`
-  이므로 **낡은 키는 싣지 않는다** -- 값을 sentinel 로 채우면 그 셈이 깨진다.
+* **`HKSTALE` = 값이 결측인 계약 키 수.**  아홉 키는 결측이면 **싣지 않는다** -- 값을
+  sentinel 로 채우면 `실값 키 + HKSTALE = 10` 셈이 깨진다.
+* ⭐ **`DEWPRES` 의 셋 (운영자 확정 2026-09-14, DevNote 11.89)**:
+
+      VACGAUGE=OFF                       -> DEWPRES 를 **뺀다** (게이지가 꺼져 있으면 잴 것이 없다)
+      VACGAUGE=ON/WARMUP/UNKNOWN + 값     -> 그 값
+      VACGAUGE=ON/WARMUP/UNKNOWN + 결측   -> **sentinel `9.99e-9`** (켜져 있는데 못 읽은 것)
+
+  결측에는 못 읽음·예열 중·와이어에 못 올릴 값(공백)이 다 든다.  ⚠️ 뺀 경우도 sentinel 인
+  경우도 **`HKSTALE` 에 센다** -- 받는 쪽 셈은 *"실값 키 + HKSTALE = 10"* 이고 둘 다 실값이
+  아니다.
+* ⭐ **`VACGAUGE`·`DEWPRES` 는 마지막 HK 바퀴의 표본이다** (운영자 2026-09-14).  `VACGAUGE
+  OFF`/`ON` 명령은 `DEWPRES` 를 **건드리지 않는다** -- 마지막으로 잰 값을 그대로 들고 있다가
+  **`[hk] interval` 의 다음 바퀴**가 그때의 게이지 상태를 보고 싣거나 뺀다.  **`HKDATA NOW`
+  는 그 바퀴를 지금 돌리니 즉시**이고, 그 뒤 주기 바퀴는 `NOW` 시각 + `interval` 이다.
+  ⛔ 낱말을 live 로 내지 않는다 -- 그러면 `VACGAUGE=OFF DEWPRES=<실측값>` 이 생긴다
+  (11.70 이 잡았던 어긋남).  한 줄이 통째로 같은 바퀴의 것이라 어긋날 수 없다.
 * ⛔ **따옴표를 안 붙인다** (11.14-(1-c) -- `quote_always()` 를 뒤집은 결정).  같은
   프로그램의 `HK` 가 이미 안 붙이고, 값에 공백이 생길 구조가 없다.  대신 조립 때
   `hkwire.wire_safe()` 가 공백·따옴표를 **거부**한다: *"공백이 없다"* 를 가정이
@@ -47,6 +62,7 @@ from ics_archon import _simpath
 
 _simpath.ensure()
 
+from ics_sim.rawhdr import DEWPRES_NC                       # noqa: E402
 from ics_sim.state import stamp_iso, stamp_iso_ms, utcnow  # noqa: E402
 
 from ics_archon import hkwire  # noqa: E402
@@ -170,15 +186,29 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
         # `sensors()` 는 `stamp_iso`(19자)로 만든다 -- 그대로 쓴다.
         pairs.append(('HKUDATE', udate))
 
-    # ⭐ **낡은 키는 싣지 않고 세어서 알린다** -- sentinel 로 채우면 완전성 셈이 깨진다.
-    carried = [k for k in CONTRACT_KEYS if vals.get(k) is not None]
+    # ⭐ **결측 키는 세어서 알린다** -- 아홉은 싣지 않고, `DEWPRES` 는 게이지
+    # 상태에 따라 빼거나 sentinel 로 자리를 지키되 어느 쪽이든 결측으로 센다 (머리말).
+    word = vals.get('gauge')                # 마지막 바퀴의 낱말 -- live 가 아니다
+    dew = vals.get('dewpres')
+    if dew is not None and not hkwire.wire_safe('DEWPRES', str(dew)):
+        dew = None                          # 공백·따옴표 -- 자르지 말고 결측으로
+    if word == 'OFF':
+        dew_wire = None                     # 꺼져 있으면 잴 것이 없다 -- 뺀다
+    else:
+        dew_wire = dew if dew is not None else DEWPRES_NC   # 켜져 있는데 결측 -- sentinel
+    carried = [k for k in CONTRACT_KEYS
+               if k != 'dewpres' and vals.get(k) is not None]
+    if dew is not None and word != 'OFF':
+        carried.append('dewpres')
     pairs.append(('HKSTALE', len(CONTRACT_KEYS) - len(carried)))
 
     # 진공 -- 상태 낱말 바로 뒤에 압력 (운영자 지시).
-    gauge = getattr(app, 'gauge', None) or getattr(hk, 'gauge', None)
-    pairs.append(('VACGAUGE', getattr(gauge, 'word', None) if gauge else None))
-    dew = vals.get('dewpres')
-    pairs.append(('DEWPRES', dew if dew is not None else None))
+    # ⭐ **둘 다 마지막 바퀴의 표본**이다 (운영자 2026-09-14): 낱말은 `_tick` 이
+    # `_sample['gauge']` 에 담은 것, 값은 같은 바퀴의 `dewpres`.  ⛔ `gauge.word`
+    # 를 여기서 live 로 읽지 않는다 -- 그러면 끈 뒤 다음 바퀴까지 `VACGAUGE=OFF
+    # DEWPRES=<실측값>` 이 나간다.  바퀴가 아직 없으면(기동 직후) 낱말도 없다.
+    pairs.append(('VACGAUGE', word))
+    pairs.append(('DEWPRES', dew_wire))
 
     # 히터 넷 -- ⛔ `FORCELEVEL` 은 안 싣는다.
     #

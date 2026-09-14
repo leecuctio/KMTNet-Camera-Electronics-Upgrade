@@ -367,8 +367,10 @@ class HkMonitor:
         self.telem = telem
         self._expstatus = expstatus
         self.radionode = None              # app 이 붙인다
-        #: 이온게이지 상태 (`gauge.GaugeState`) -- app 이 붙인다.  ⭐ 꺼진 것을
-        #: 아는 동안 `dewpres` 를 **싣지 않기 위해** 본다 (`_tick` 주석).
+        #: 이온게이지 상태 (`gauge.GaugeState`) -- app 이 붙인다.  ⭐ 바퀴마다
+        #: 낱말을 표본에 담고(`_sample['gauge']`), 꺼진 것을 아는 동안은
+        #: `dewpres` 를 **싣지 않는다** (`_tick` 주석).  판정은 바퀴에서만 --
+        #: `sensors()` 는 마지막 바퀴를 그대로 낸다 (운영자 2026-09-14).
         self.gauge = None
         self._dew = DewpresDecoder()
         #: ⛔ 되먹임 센서 과열 차단 (운영자 지시 2026-09-06).  한계는
@@ -437,19 +439,16 @@ class HkMonitor:
         # 키를 `_sample` 에서 빼기** 때문이다 -- 그 짝이 깨지면 안 늙는다.
         own = (self.radionode.all_keys()
                if self.radionode is not None else frozenset())
-        # ⛔⛔ **게이지 판정은 읽는 자리에서도 한다** (2026-09-11).  `_tick` 이
-        # 표본을 지우는 것만으로는 **주기(60초)만큼 늦는다** -- `VACGAUGE OFF`
-        # 를 친 순간 낱말은 즉시 `OFF` 인데 `_sample` 에는 직전 압력이 그대로
-        # 남아, 다음 바퀴까지 `VACGAUGE=OFF DEWPRES=<실측값>` 이 나갔다.
-        # ⛔ 그것이 바로 `gauge.py` 가 존재하는 이유(*"끈 동안 DEWPRES 를
-        # 실으면 안 된다"*)를 깨는 창이다 -- 헤더도 같은 창을 탄다.
-        # ⚠️ `_tick` 의 지우기는 **그대로 둔다** -- 그쪽은 CSV 진단(Conductron
-        # 값)까지 갈라 적는 자리라 역할이 다르다.
-        gate = self.gauge is not None and self.gauge.blocks_dewpres
+        # ⭐ **여기서는 게이지 판정을 하지 않는다** (운영자 2026-09-14 -- 종전
+        # 2026-09-11 의 즉시 가림을 **되돌렸다**).  이 스냅샷은 *"마지막 바퀴가
+        # 본 상태"* 이고, 게이지를 끄면 **다음 바퀴**(`_tick` 이 `dewpres` 를
+        # 지운다)에서 사라진다 -- `HKDATA` 는 주기값, `HKDATA NOW` 는 새 바퀴를
+        # 돌리니 그쪽은 즉시다.  ⛔ 종전 즉시 가림이 막던 *"`VACGAUGE=OFF
+        # DEWPRES=<실측값>` 한 줄"* 은 **낱말도 표본으로** 내는 것으로 막는다
+        # (`_sample['gauge']`, 아래 `_tick`) -- 한 줄이 통째로 같은 바퀴의
+        # 것이라 어긋날 수가 없다 (DevNote 11.89).
         oldest: float | None = None
         for key, (val, when) in self._sample.items():
-            if key == 'dewpres' and gate:
-                continue
             if key in own:
                 # ⭐ **Radionode 는 `stale_after` 검사만 받는다** (운영자
                 # 2026-09-08) -- 폴러가 자기 창으로 이미 걸렀으므로 여기서 또
@@ -827,16 +826,23 @@ class HkMonitor:
             # 인정 범위 [1e-8, 1e+3] 를 **그냥 통과한다** -- 즉 실제 1e-6 인데
             # 헤더에 `1.00e-4` 같은 **정상으로 보이는 틀린 값**이 실린다.
             # ⭐ 운영자 확정: 게이지 Off 중 DEWPRES 는 sentinel `9.99e-9`.
-            # ⚠️ 직전 표본도 **즉시 버린다** -- `sensors()` 의 신선도 창이
-            # interval*3(기본 180초)이라, 안 버리면 껐는데도 3분간 옛 값이
-            # 헤더로 나간다.
+            # ⚠️ 직전 표본도 **이 바퀴에서 버린다** -- `sensors()` 의 신선도
+            # 창이 interval*3(기본 180초)이라, 안 버리면 껐는데도 3분간 옛
+            # 값이 헤더로 나간다.  ⭐ 이것이 **유일한** 가림 자리다 (운영자
+            # 2026-09-14): 끈 뒤 다음 바퀴까지는 직전 실측값이 그대로 남고,
+            # 그것은 Conductron 값이 아니라 **켜져 있을 때 잰 마지막 값**이다.
             self._sample.pop('dewpres', None)
-            row['gauge'] = 'OFF'
             if dew is not None:
                 # 진단으로만 남긴다 -- CSV 에는 있고 헤더로는 안 간다.
                 row['dewpres_conductron'] = dew
             dew = None
-        elif gauge is not None:
+        if gauge is not None:
+            # ⭐ **낱말도 표본이다** (2026-09-14) -- `HKDATA` 의 `VACGAUGE` 는
+            # 이 값을 낸다.  live 낱말을 쓰면 끈 뒤 다음 바퀴까지 `VACGAUGE=OFF
+            # DEWPRES=<실측값>` 한 줄이 나가 어긋난다 (11.70 이 잡았던 것).
+            # 같은 바퀴의 낱말과 값이면 어긋날 수 없다.  ⚠️ 예열 중은 `WARMUP`
+            # 그대로 적는다 -- 종전엔 `OFF` 로 적어 CSV 가 틀렸다.
+            self._sample['gauge'] = (gauge.word, now)
             row['gauge'] = gauge.word
         if dew is not None:
             self._sample['dewpres'] = (dew, now)

@@ -10900,3 +10900,78 @@ CLAMP 상태가 8번 하나만 세우는지 · 준위에 따옴표가 없는지)
 `POWERON`)가 안 끝나면 ABORT 가 노출 **밖**에서 떨어져 `RESETTIMING` 을 낼 일이 없다 -- 그러면
 시험이 재는 것은 ABORT 의 순서가 아니라 하네스의 0.3 s 다.  고치려면 *"노출이 걸렸다"* 를 기다린
 뒤 ABORT 를 넣어야 한다 (`until(lambda: 'LOADPARAMS' in fake.seen[n:])` 같은 것).
+
+### 11.89 게이지 낱말·`DEWPRES` 는 **바퀴의 표본**이다 -- 11.70 의 즉시 가림을 되돌렸다 (2026-09-14, 운영자)
+
+운영자 물음에서 시작했다: *"VACGAUGE OFF 상태에서 DEWPRES 가 사라지게 되어 있고, 켜져 있다가
+OFF 하면 즉시 사라지나?"* → 확인해 보니 ICG 안에서는 **즉시**였다(11.70 의 `sensors()` 가림).
+운영자 결정은 그 반대였다:
+
+> *"결측 시 바뀌는 것은 **hk interval 경과 후**.  HKDATA NOW 는 즉각 현 상태로 업데이트하니
+> 그 명령을 받은 경우에는 바로."*  그리고 정정: *"VACGAUGE OFF 시 DEWPRES 를 sentinel 로 표시하자고
+> 했는데 정정할게 -- **DEWPRES 빼줘**.  sentinel 로 표시하는 경우는 **VACGAUGE ON 인데 결측**
+> 되었을 때.  VACGAUGE OFF/ON 에서 DEWPRES 를 건드리지 않고, **HK 측정 시** VACGAUGE 상태에 따라
+> 표시 여부를 결정.  HKDATA NOW 로 측정(갱신)한 경우 `[hk] interval` 타이머가 초기화."*
+
+운영자 시간표 (`interval` 100 s):
+
+    02:00 HKDATA NOW · 02:05 VACGAUGE OFF · 02:10 HKDATA → DEWPRES 표시 · 03:00 HKDATA → 표시
+    03:40 HK 주기측정 · 03:41 HKDATA → DEWPRES 없음
+    02:00 HKDATA NOW · 02:05 VACGAUGE OFF · 02:10 HKDATA → 표시
+    03:00 HKDATA NOW → 측정, VACGAUGE=OFF 이므로 DEWPRES 없어짐 · 03:41 HKDATA → 없음
+    04:40 HK 주기측정 (= 03:00 + 100 s)
+
+#### (1) 모형 -- `HKDATA` = 마지막 바퀴, `HKDATA NOW` = 새 바퀴
+
+이것이 이미 `HKDATA` 의 규약이었다(11.52 · README *"HKDATA 는 두 갈래"*): 응답은 폴링값이고
+`NOW` 만 바퀴를 돌린다.  11.70 의 *"읽는 자리에서도 판정"* 은 그 모형 밖의 예외였다 --
+`DEWPRES` 한 키만 **지금 상태**로 내고 나머지 아홉은 **마지막 바퀴**로 냈다.  운영자 결정은
+그 예외를 없애는 것이다.  게이지 상태도 다른 값과 같이 **바퀴 단위**로 움직인다.
+
+#### (2) ⛔ 되돌리면 11.70 의 어긋남이 돌아온다 -- 그래서 낱말을 표본으로
+
+11.70 이 막은 것은 `VACGAUGE=OFF DEWPRES=<실측값>` 한 줄이었다.  원인은 **낱말은 live, 값은
+표본**이라는 비대칭이었고, 11.70 은 값 쪽을 즉시로 당겨 맞췄다.  이번엔 값을 표본으로 되돌리니
+**낱말도 표본으로** 보내야 맞는다 -- `_tick` 이 바퀴마다 `_sample['gauge'] = gauge.word` 를
+담고 `hkdata.body()` 가 `vals['gauge']` 를 낸다.  한 줄이 통째로 같은 바퀴의 것이라 어긋날
+수 없다.  ⚠️ 부수 정정: 예열 중 바퀴의 CSV `gauge` 열이 `OFF` 로 적히던 것을 `WARMUP` 으로.
+`VACGAUGE` **단독 조회 명령**은 그대로 live 다 -- 그것은 설정 조회지 표본이 아니다.
+
+#### (3) `DEWPRES` 의 셋 -- 꺼져 있으면 뺀다 · 켜져 있는데 결측이면 sentinel
+
+`HKDATA` 의 결측 규약은 *"싣지 않고 `HKSTALE` 로 센다"* 였다(11.14).  `DEWPRES` 는 **마지막
+바퀴의 게이지 낱말**로 갈린다:
+
+    VACGAUGE=OFF                       -> DEWPRES 없음  (꺼져 있으면 잴 것이 없다)
+    VACGAUGE=ON/WARMUP/UNKNOWN + 값     -> 그 값
+    VACGAUGE=ON/WARMUP/UNKNOWN + 결측   -> DEWPRES=9.99e-9  (켜져 있는데 못 읽은 것 -- 헤더와 같은 sentinel)
+
+결측에는 못 읽음·예열 중·공백 든 값(와이어에 못 올린다)이 든다.  ⚠️ 뺀 경우도 sentinel 도
+**`HKSTALE` 에 센다** -- 받는 쪽 셈은 *"실값 키 + HKSTALE = 10"* 이고 둘 다 실값이 아니다.
+⚠️ 첫 판은 *"OFF 여도 sentinel"* 로 적었다가 운영자가 정정했다 -- OFF 는 결측이 아니라 **잴
+것이 없는 상태**라 자리를 비운다.  guide FITS 헤더는 카드라 자리가 곧 항목이므로 그쪽은 어느
+경우든 `format_dewpres(None)` 의 sentinel 이다 -- 와이어와 다르고 그것이 맞다(11.14 의
+*"카드는 자리를 채우고 와이어는 이름이 붙어 있어 빠져도 된다"*).  CSV 는 그대로(빈 칸 + `gauge`
+열 + Conductron 진단 열).
+
+#### (4) 무엇이 언제 바뀌나 (정리)
+
+| 사건 | `HKDATA` (주기) | `HKDATA NOW` | guide 헤더 |
+|---|---|---|---|
+| `VACGAUGE OFF` | 다음 바퀴(`interval`)에 `VACGAUGE=OFF`, `DEWPRES` 없음.  그 전엔 직전 바퀴의 `ON`·실측 그대로 | 즉시 (바퀴를 돌린다 · 주기 타이머는 `NOW`+`interval` 로) | 다음 바퀴 |
+| `VACGAUGE ON` | 다음 바퀴에 `WARMUP`·sentinel → 예열 끝 바퀴(`schedule_warmup_refresh`, 12.5 s)에 `ON`·값 | 즉시(예열 중이면 `WARMUP`·sentinel) | 같음 |
+| 켜져 있는데 못 읽음 | `DEWPRES=9.99e-9` · `HKSTALE`+1 | 같음 | sentinel |
+
+⚠️ **예열 끝 자동 바퀴**(11.70 고침 둘째)는 그대로 뒀다 -- `VACGAUGE ON` 뒤 12.5 s 에 바퀴를 한 번
+더 돌려 낱말 `ON` 과 값이 같이 온다.  운영자 모형(*"명령은 건드리지 않고 측정 시 판정"*)에서
+보면 이것은 **측정을 하나 더 거는** 것이지 값을 손대는 것이 아니다.  ✅ 운영자 확정(2026-09-15):
+*"꼭 HKDATA NOW 가 아니어도, 자동 바퀴 측정이어도 주기를 밀고, 그게 더 좋아."*  ⇒ 규칙은
+**측정이면 무엇이든(주기 · `NOW` · 예열 끝 자동 바퀴) 주기 타이머를 그 시각 + `interval` 로 민다**
+-- `refresh_now()` 하나가 그 셋을 다 지나므로 코드 변경 없음.
+
+⛔ **되돌린 것**: `hk.sensors()` 의 `dewpres` 즉시 가림(11.70 고침 첫째).  11.70 고침 둘째
+(예열 끝 바퀴 예약)와 셋째(종료 때 이미 꺼진 게이지 안 건드림)는 그대로다.
+
+시험: `test_icg_hk.py::test_dewpres_and_the_gauge_word_change_at_the_next_round`(바퀴 전 그대로 ·
+바퀴에서 값 빠짐+낱말 · WARMUP · 복귀 · 다른 키 무사) · `test_icg_hkdata.py` 셋(sentinel+HKSTALE ·
+낱말은 표본 · 공백 값 → sentinel).

@@ -808,7 +808,7 @@ def test_the_sleeper_follows_a_deadline_that_moved(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 이온게이지와 `DEWPRES` -- **낱말과 값이 같이 움직인다** (2026-09-11)
+# 이온게이지와 `DEWPRES` -- **낱말과 값이 같은 바퀴에서 같이 움직인다** (2026-09-14)
 # ---------------------------------------------------------------------------
 
 def _mon_with_gauge(tmp_path, warmup=0.2):  # noqa: ANN001
@@ -826,36 +826,50 @@ def _mon_with_gauge(tmp_path, warmup=0.2):  # noqa: ANN001
     return mon, gauge
 
 
-def test_sensors_drops_dewpres_the_moment_the_gauge_is_blocked(tmp_path):
-    """⛔ **끈 순간 값이 사라져야 한다 -- 다음 바퀴가 아니라.**
+def test_dewpres_and_the_gauge_word_change_at_the_next_round(tmp_path):
+    """⭐ **끄면 다음 바퀴에서 사라진다 -- 그 자리에서가 아니라** (운영자 2026-09-14).
 
-    `_tick` 의 지우기만으로는 **주기(60초)만큼 늦는다**: `VACGAUGE OFF` 를 친
-    순간 낱말은 즉시 `OFF` 인데 표본에는 직전 압력이 남아, 다음 바퀴까지
-    `VACGAUGE=OFF DEWPRES=<실측값>` 이 나갔다.  ⛔ 그것이 `gauge.py` 가
-    존재하는 이유를 정면으로 깨는 창이다 (DevNote 11.70).
+    `sensors()` 는 *"마지막 바퀴가 본 상태"* 다.  `VACGAUGE OFF` 를 쳐도 바퀴가
+    돌기 전에는 직전 실측값(켜져 있을 때 잰 것)이 그대로이고, 바퀴가 돌면 값이
+    빠지고 **낱말도 같은 바퀴의 것**(`gauge` 표본)으로 바뀐다 -- 그래서 `HKDATA`
+    한 줄 안에서 `VACGAUGE=OFF DEWPRES=<실측값>` 이 생길 수 없다 (11.70 이 잡았던
+    어긋남을 낱말 쪽에서 막는다).  `HKDATA NOW` 는 바퀴를 돌리니 즉시다.
+    ⛔ 2026-09-11 의 *"읽는 자리에서도 판정"* 은 되돌렸다 (DevNote 11.89).
     """
     mon, gauge = _mon_with_gauge(tmp_path)
 
-    # ① 모름 -- **막지 않는다** (모름을 결측으로 치면 평상 운영에서 사라진다).
+    # ① 모름 -- 막지 않는다.  아직 바퀴가 없어 낱말 표본도 없다.
     assert gauge.on is None
     assert mon.sensors().get('dewpres') is not None
+    assert 'gauge' not in mon.sensors()
 
-    # ② 껐다 -- 그 자리에서 사라진다 (바퀴를 안 돌렸는데도).
+    # ② 껐다 -- **바퀴 전에는 그대로다** (직전 실측값).
     gauge.on = False
-    assert 'dewpres' not in mon.sensors()
+    assert mon.sensors().get('dewpres') == 1.02e-6
 
-    # ③ 예열 중 -- 역시 막는다 (켜졌지만 값이 아직 안 미덥다).
+    # ③ 바퀴가 돌면 값이 빠지고 낱말이 같이 실린다.
+    asyncio.run(mon._tick(0.0))                       # noqa: SLF001
+    vals = mon.sensors()
+    assert 'dewpres' not in vals
+    assert vals['gauge'] == 'OFF'
+
+    # ④ 예열 중 -- 바퀴가 돌면 `WARMUP` 으로 적히고 값은 여전히 없다.
     gauge.on, gauge.on_at = True, time.monotonic()
-    assert gauge.word == 'WARMUP'
-    assert 'dewpres' not in mon.sensors()
+    mon._sample['dewpres'] = (1.02e-6, time.time())   # noqa: SLF001  (해독됐다 치고)
+    asyncio.run(mon._tick(0.0))                       # noqa: SLF001
+    vals = mon.sensors()
+    assert vals['gauge'] == 'WARMUP' and 'dewpres' not in vals
 
-    # ④ 예열이 끝나면 돌아온다 -- 낱말과 값이 같이 뒤집힌다.
+    # ⑤ 예열이 끝난 바퀴 -- 낱말 `ON` 과 값이 같은 바퀴에서 돌아온다.
     gauge.on_at = time.monotonic() - gauge.warmup - 1.0
-    assert gauge.word == 'ON'
-    assert mon.sensors().get('dewpres') is not None
+    mon._sample['dewpres'] = (1.02e-6, time.time())   # noqa: SLF001
+    asyncio.run(mon._tick(0.0))                       # noqa: SLF001
+    vals = mon.sensors()
+    assert vals['gauge'] == 'ON' and vals['dewpres'] == 1.02e-6
 
-    # ⚠️ 막힌 동안에도 **다른 키는 그대로다** -- 통째로 접으면 안 된다.
+    # ⚠️ 막힌 바퀴에도 **다른 키는 그대로다** -- 통째로 접으면 안 된다.
     gauge.on = False
+    asyncio.run(mon._tick(0.0))                       # noqa: SLF001
     assert mon.sensors().get('ccdtemp') == -100.0
 
 

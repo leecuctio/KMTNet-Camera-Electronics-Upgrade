@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import time
 
+import pytest
+
 import ics_archon  # noqa: F401
 
 from icg_archon import hkdata  # noqa: E402
@@ -101,16 +103,52 @@ def test_nothing_is_quoted():
     assert "'" not in body and '"' not in body
 
 
-def test_a_value_with_a_space_is_refused():
-    """⛔ 공백이 든 값은 **뺀다** -- 따옴표가 없으므로 파서가 조용히 자른다.
+def test_a_value_with_a_space_becomes_the_sentinel():
+    """⛔ 공백이 든 값은 **와이어에 못 올린다** -- 따옴표가 없으므로 파서가 조용히 자른다.
 
     `DEWPRES=6.93 e-04` 가 `'6.93'` 이 되면 sentinel 이 아니라 **그럴듯한 틀린
-    값**으로 카드에 실린다.
+    값**으로 카드에 실린다.  ⭐ 게이지가 꺼진 것이 아니므로(낱말 없음/ON) 결측 --
+    sentinel 이 서고 `HKSTALE` 에 센다 (2026-09-14).
     """
     vals = dict(FULL)
     vals['dewpres'] = '6.93 e-04'
     kv = _kv(_body(vals))
+    assert kv['DEWPRES'] == '9.99e-9'
+    assert kv['HKSTALE'] == '1'
+
+
+def test_dewpres_is_omitted_when_the_gauge_is_off():
+    """⭐ **`VACGAUGE=OFF` 면 `DEWPRES` 를 뺀다** (운영자 정정 2026-09-14) -- 꺼져 있으면
+    잴 것이 없다.  `HKSTALE` 에는 센다 (실값이 아니다)."""
+    vals = dict(FULL)
+    del vals['dewpres']
+    vals['gauge'] = 'OFF'
+    kv = _kv(_body(vals))
     assert 'DEWPRES' not in kv
+    assert kv['VACGAUGE'] == 'OFF'
+    assert kv['HKSTALE'] == '1'
+    # ⚠️ 표본에 값이 남아 있어도(같은 바퀴에서 `_tick` 이 지우므로 실제론 없다) 낱말이
+    # OFF 면 안 싣는다 -- `VACGAUGE=OFF DEWPRES=<값>` 은 어떤 경로로도 안 나간다.
+    vals['dewpres'] = '6.93e-04'
+    kv = _kv(_body(vals))
+    assert 'DEWPRES' not in kv and kv['HKSTALE'] == '1'
+
+
+@pytest.mark.parametrize('word', ['ON', 'WARMUP', 'UNKNOWN', None])
+def test_dewpres_is_the_sentinel_when_the_gauge_is_not_off_but_the_value_is_missing(word):
+    """⭐ **켜져 있는데(또는 모르는데) 결측이면 sentinel `9.99e-9`** -- 자리가 사라지지
+    않는다 (운영자 2026-09-14).  예열 중(`WARMUP`)도 켜진 쪽이다."""
+    vals = dict(FULL)
+    del vals['dewpres']
+    if word is not None:
+        vals['gauge'] = word
+    kv = _kv(_body(vals))
+    assert kv['DEWPRES'] == '9.99e-9'
+    assert kv['HKSTALE'] == '1'
+    if word is not None:
+        assert kv['VACGAUGE'] == word
+        body = _body(vals)
+        assert body.index('VACGAUGE=') < body.index('DEWPRES=')
 
 
 def test_unreadable_heater_fields_are_omitted_not_guessed():
@@ -124,18 +162,29 @@ def test_unreadable_heater_fields_are_omitted_not_guessed():
         assert k not in kv, k
 
 
-def test_the_gauge_word_is_carried_when_known():
-    """⭐ 불린은 낱말이다 -- `VACGAUGE` 는 `ON`/`OFF`/`UNKNOWN`."""
-    app = _App(FULL)
+def test_the_gauge_word_comes_from_the_sample_not_live():
+    """⭐ 불린은 낱말이다 -- `VACGAUGE` 는 `ON`/`OFF`/`WARMUP`/`UNKNOWN`.
+
+    ⛔ **live 낱말이 아니라 마지막 바퀴의 표본**이다 (운영자 2026-09-14).  live 로
+    내면 끈 뒤 다음 바퀴까지 `VACGAUGE=OFF DEWPRES=<실측값>` 한 줄이 나간다
+    (DevNote 11.70 이 잡았던 어긋남) -- 같은 바퀴의 낱말과 값이면 어긋날 수 없다.
+    """
+    vals = dict(FULL)
+    vals['gauge'] = 'ON'
+    app = _App(vals)
 
     class _G:
-        word = 'ON'
+        word = 'OFF'                    # 방금 껐다 -- 아직 바퀴 전이다
     app.gauge = _G()
     kv = _kv(asyncio.run(hkdata.body(app)))
-    assert kv['VACGAUGE'] == 'ON'
+    assert kv['VACGAUGE'] == 'ON'       # 표본의 낱말 -- 값(6.93e-04)과 같은 바퀴
+    assert kv['DEWPRES'] == '6.93e-04'
     # ⭐ 운영자 지시 -- 압력은 상태 낱말 **바로 뒤**다.
     body = asyncio.run(hkdata.body(app))
     assert body.index('VACGAUGE=') < body.index('DEWPRES=')
+    # 바퀴가 아직 없으면(기동 직후) 낱말도 없다 -- 추측하지 않는다.
+    kv = _kv(_body(FULL))
+    assert 'VACGAUGE' not in kv
 
 
 def test_htrout_is_unsigned_with_three_decimals():

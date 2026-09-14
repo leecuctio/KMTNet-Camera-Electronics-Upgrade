@@ -5134,6 +5134,26 @@ acf/README 는 고쳤는데 **운영 문서 README 의 flush 절은 빠졌다**.
 ⛔ **상수는 안 건드렸다** — 12.78 이 바닥 12.7762 보다 4 ms 길지만 두 자리 반올림이고 허용 차(0.05) 안.
 운영자 결정(2026-09-13) 값 그대로.  ⭐ 종전 손셈 12.7753 은 **독출만** 센 수였다 — 바닥은 쓸기 0.93 ms 가 더 든다.
 
+#### ✅ 이어서 한 것 — 게이지 낱말·`DEWPRES` 를 **바퀴의 표본**으로 (운영자 결정 2026-09-14, DevNote 11.89)
+
+운영자 물음 *"OFF 하면 DEWPRES 가 즉시 사라지나?"* → 즉시였다(11.70) → 결정(정정 포함): `VACGAUGE
+OFF`/`ON` 명령은 `DEWPRES` 를 **건드리지 않고**, **`[hk] interval` 의 다음 바퀴**가 그때의 게이지
+상태로 판정 — **OFF 면 뺀다 · 켜져 있는데 결측이면 sentinel `9.99e-9`**.  `HKDATA NOW` 는 바퀴를
+지금 돌리니 즉시이고 주기 타이머는 `NOW`+`interval`.  운영자 시간표는 DevNote 11.89.
+
+| 무엇 | 자리 |
+|---|---|
+| `sensors()` 의 `dewpres` 즉시 가림(11.70 고침 첫째) **되돌림** — 가림은 `_tick` 한 곳 | `icg_archon/hk.py` |
+| ⭐ 바퀴마다 **낱말도 표본**에 (`_sample['gauge']`) — `HKDATA` 의 `VACGAUGE` 는 이것.  live 로 내면 `VACGAUGE=OFF DEWPRES=<실측>` 이 되살아난다.  CSV 예열 중 `OFF`→`WARMUP` 정정 | `hk.py` `_tick` · `hkdata.py` |
+| `HKDATA` 의 `DEWPRES` 셋 — `VACGAUGE=OFF` 면 **뺀다** · 켜져 있고(예열·모름 포함) 결측이면 **`9.99e-9`**(공백 든 값 포함) · 둘 다 `HKSTALE` 에 센다 | `hkdata.py` |
+| 시험 — hk 1 재작성 · hkdata 4(OFF 면 없음 · ON/WARMUP/UNKNOWN/없음 + 결측 → sentinel · 공백 값 · 낱말은 표본) | `tests/test_icg_hk.py` · `tests/test_icg_hkdata.py` |
+| README "HKDATA 는 두 갈래" 절 · `gauge.py` 문구 · DevNote 11.89 | |
+
+⚠️ **11.70 과 정반대 결정**이다 — 11.70 은 값 쪽을 즉시로 당겨 어긋남을 막았고, 이번엔 값을 표본으로
+되돌리고 낱말 쪽을 표본으로 맞췄다.  둘 다 "한 줄 안에서 안 어긋남" 을 지키는 길이고, 이번 것이
+`HKDATA`=폴링값 규약(11.52)과 맞는다.  ⏳ 규격 쪽(`HKDATA` 문면, `HKSTALE` 셈에 `DEWPRES` sentinel 예외)은
+**main 라운드 이월**.
+
 #### 상태
 
 | 것 | 값 |
