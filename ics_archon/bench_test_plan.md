@@ -142,7 +142,7 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 |---|---|---|
 | `radionode.stale_after` | **4000 초기값 → `device_interval` x3** | 응답이 전송주기를 알려 주므로 **읽은 뒤 키별로** 잡힌다 (실물 60s→180 · 600s→**1800**) |
 | `hk.sensors()` 지평선 | `[hk] interval` x3 = 180 s | ⭐ **Radionode 는 면제**다 -- 폴러가 자기 창으로 이미 걸렀다.  안 면제하면 주기가 긴 장치는 늘 sentinel |
-| science `hk_stale_after` | **2000 s** (종전 300) | ⛔ 300 의 근거 *"icg 주기 60s 의 5배"* 가 **Radionode 를 안 셌다** |
+| science `hk_stale_after` | ~~2000 s~~ **없앴다** (2026-09-15) | science 는 파일을 안 읽는다 — `GO` 때 `HKDATA NOW` 로 받고 신선도는 ICG 의 `HKSTALE` 이 말한다 |
 
 ⭐ **`stale_after` 가 재는 것도 바뀌었다** -- 종전에는 `_store()` 가 그 자리에서 찍어 *폴링
 받은 시각*을 쟀고, 그래서 잡는 것이 *장치 침묵*이 아니라 *폴링 실패*뿐이었다.  이제는 응답의

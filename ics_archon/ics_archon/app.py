@@ -42,6 +42,7 @@ from .archon.monitor import TelemetryMonitor              # noqa: E402
 from .archon import trigout as trigout_core               # noqa: E402
 from .archon.protocol import ArchonError                  # noqa: E402
 from .gaugectl import CMD as GAUGE_CMD, GaugeControl      # noqa: E402
+from . import hkwire                                     # noqa: E402
 from .expenablectl import CMD as EXPENABLE_CMD, ExpEnableControl  # noqa: E402
 from .tcsclock import ClockWatch, watch_tc_queries
 from .xischeck import XIS_ID, XisGate         # noqa: E402
@@ -214,26 +215,22 @@ class IcsDispatcher(Dispatcher):
             return bad
         gauge = getattr(self.app, 'gauge', None)
         if gauge is not None:
-            # ⭐ **super() 앞에서** 끈다 -- 뒤에 두면 첫 프레임의 앞부분을
-            # 필라멘트가 켜진 채로 찍는다.
-            gauge.before_exposure()
+            # ⭐ 되켜기 타이머는 **여기서** 푼다 -- 아래 태스크가 답을 기다리는
+            # 사이에 만료되면 노출 도중에 켜진다.  끌지 말지는 태스크가 정한다.
+            gauge.cancel_reenable('노출이 시작된다')
         reply = super().cmd_go(msg, target)
-        busy = bool(getattr(getattr(self.app, 'seq', None), 'busy', False))
-        if (gauge is not None and reply is not None
-                and reply.kind is ReplyKind.ERROR and not busy):
-            # ⛔ **GO 가 거절됐다** -- 취득이 시작되지 않았으므로 "끝났다" 도
-            # 안 온다.  자가 치유로 되켜기 타이머를 건다.  안 그러면 게이지가
-            # 다음 취득이 끝날 때까지(또는 영영) 꺼진 채로 남는다.
-            #
-            # ⛔⛔ **취득 중의 거절은 예외다** (운영자 지시 2026-09-04).
-            # 취득 중에 들어온 `GO` 는 *"Data acquisition already in
-            # progress!"* 로 거절되는데 그것도 `ERROR` 라, 여기서 타이머를
-            # 걸면 **돌고 있는 취득 중에** 10분이 시작된다 -- 남은 노출이
-            # 10분을 넘으면 **노출 도중에 게이지가 켜진다**.  ⭐ `seq.busy` 로
-            # 그 갈래를 가른다: 취득 중이면 아무것도 안 하고, 타이머는 진짜
-            # 독출이 끝날 때 `_watch_acquisition` 이 건다 (10분의 기준은
-            # **독출 완료**다).
-            gauge.after_acquisition()
+        if reply is not None and reply.kind is ReplyKind.ERROR:
+            # ⛔ **GO 가 거절됐다** -- 취득이 시작되지 않았으므로 아무것도 안
+            # 한다 (게이지도 안 건드렸다).  ⚠️ 취득 중 거절도 여기로 온다 --
+            # 돌고 있는 취득의 타이머는 `_watch_acquisition` 이 독출 완료 때
+            # 건다 (운영자 지시 2026-09-04).  ⭐ 종전의 *"거절되면 되켜기
+            # 타이머를 건다"* 자가 치유는 필요가 없어졌다 -- 끄기 전에 거절된다.
+            return reply
+        # ⭐ **HKDATA 를 묻고, 그 답으로 게이지를 끈다** (운영자 2026-09-15).
+        # 시퀀서 태스크는 `super().cmd_go` 가 만들었지만 이 동기 흐름이 끝나야
+        # 돈다 -- 그래서 여기서 띄운 태스크가 첫 프레임의 `initialize()` 보다
+        # 먼저 백엔드에 걸린다 (`backend.hk_task`).
+        self.app.begin_go()
         return reply
 
     # -- 운영자 명령 넷 (2026-09-05) -- 공통 -----------------------------------
@@ -815,6 +812,10 @@ class IcsArchon(IcsSim):
                         extra={'detail': '실기로 돌리려면 archon 으로 두거나 '
                                          '--backend archon 을 주라'})
         self.acfg = acfg
+        #: `fetch_icg_hk()` 가 기다리는 Future -- `_on_hkdata` 가 푼다.
+        self._hk_future: asyncio.Future | None = None
+        #: 마지막으로 받은 `HKDATA` 원문 (콘솔 `hkdata` 의 표시용).
+        self.hk_wire: dict | None = None
         super().__init__(cfg)
 
         # `ICSBUILD` -- 이 프로그램의 것으로.
@@ -885,18 +886,82 @@ class IcsArchon(IcsSim):
         ⭐ **받아 적고 출력만 한다 -- 답하지 않는다.**  보고에 답하면 두 노드가
         서로 보고를 주고받는 고리가 생긴다 (`register_report` 주석).
 
-        ⚠️ 값을 헤더로 흘리지는 **아직** 않는다 -- 5.6절 카드의 현행 원천은
-        `[archon] hk_latest` 스냅샷 파일이고, 그 원천을 와이어로 바꾸는 것은
-        별개 결정이다 (SMC_CLAUDE *"HK 를 파일에서 와이어로"*).  여기서는
-        경로가 살아 있음을 보이고 마지막 응답을 남겨 둔다.
+        ⭐ **`GO` 의 질의가 기다리고 있으면 그 Future 를 푼다** (`fetch_icg_hk`,
+        2026-09-15) -- 그것이 헤더 5.6절 카드의 원천이다.  기다리는 이가 없으면
+        (운영자가 콘솔에서 친 `hkdata`) 마지막 응답만 남긴다.
+        ⚠️ 응답이 아닌 본문(*"no fresh HK sample yet"*)은 `parse_hkdata` 가 `None`
+        으로 접는다 -- 그때는 Future 를 **안 푼다** (F9: 값 없음으로 굳히지 않고
+        시한까지 기다린다.  ICG 가 곧 다시 답할 수 있다).
         """
         body = (msg.payload or '').strip()
         self.hk_wire = {'when': utcnow(), 'src': msg.src, 'body': body}
         log.info('ICG HK received -- %s', body)
+        parsed = hkwire.parse_hkdata(body)
+        fut = self._hk_future
+        if parsed is not None and fut is not None and not fut.done():
+            fut.set_result(parsed)
         try:
             print('HKDATA <- %s  %s' % (msg.src, body), flush=True)
         except Exception:                   # noqa: BLE001
             pass
+
+    async def fetch_icg_hk(self) -> dict | None:
+        """`ICS>ICG HKDATA NOW` 를 보내고 답(소문자 키 dict)을 기다린다.
+
+        ⭐ **왜 `NOW` 인가** -- 답의 `VACGAUGE` 로 게이지를 끌지 정하는데, 주기값의
+        낱말은 방금 바뀐 것을(≤ `[hk] interval`) 모른다.  `NOW` 는 ICG 가 바퀴를 지금
+        돌려 답하므로 낱말도 값도 **지금** 것이다 (실측 중앙 7.7 ms, DevNote 11.55).
+        ⚠️ 시한(`[archon] hk_query_timeout`, `time_scale` 로 접는다) 안에 답이 없으면
+        `None` -- 카드는 sentinel, 게이지는 추적 상태로 판단, **노출은 간다**.  관측을
+        HK 하나 때문에 막지 않는다 (F3: 데드맨은 여기 한 곳).
+        ⛔ 한 번에 하나만 기다린다 -- 겹치면 앞 것을 `None` 으로 끝낸다.
+        """
+        dest = self.acfg.icg_node
+        if not dest:
+            return None
+        loop = asyncio.get_running_loop()
+        prev = self._hk_future
+        if prev is not None and not prev.done():
+            prev.set_result(None)
+        fut: asyncio.Future = loop.create_future()
+        self._hk_future = fut
+        timeout = self.cfg.scaled(self.acfg.hk_query_timeout)
+        try:
+            self.emit.emit_req(dest, 'HKDATA', 'NOW')
+            return await asyncio.wait_for(fut, timeout)
+        except asyncio.TimeoutError:
+            log.warning('no HKDATA reply from %s within %.2fs', dest, timeout,
+                        extra={'detail': 'ICG 가 떠 있는지 · 허브(XIS)가 붙어 '
+                                         '있는지 · [archon] icg_node 를 볼 것.  '
+                                         '5.6절 카드는 sentinel, 게이지는 추적 '
+                                         '상태로 판단하고 노출은 간다'})
+            return None
+        finally:
+            if self._hk_future is fut:
+                self._hk_future = None
+
+    async def _hk_before_exposure(self) -> dict | None:
+        """`GO` 마다 한 번 -- HKDATA 를 받고 그 낱말로 게이지를 끈다 (운영자 2026-09-15)."""
+        hk = await self.fetch_icg_hk()
+        word = (hk or {}).get('vacgauge')
+        gauge = getattr(self, 'gauge', None)
+        if gauge is not None:
+            gauge.before_exposure(word)
+        backend = getattr(self, 'backend', None)
+        if backend is not None and hasattr(backend, 'set_hk'):
+            backend.set_hk(hk)
+        return hk
+
+    def begin_go(self) -> None:
+        """`GO` 가 받아들여진 직후 -- HK 질의 + 게이지 판단 태스크를 띄우고 백엔드에 건다.
+
+        `--backend sim` 에도 뜬다(게이지 배선은 백엔드와 무관하다) -- 그때는 기다리는
+        `initialize()` 가 없어 답이 오는 대로 끄기만 한다.
+        """
+        task = self.spawn(self._hk_before_exposure())
+        backend = getattr(self, 'backend', None)
+        if backend is not None and hasattr(backend, 'hk_task'):
+            backend.hk_task = task
 
     # -- 콘솔 도움말 ------------------------------------------------------
 

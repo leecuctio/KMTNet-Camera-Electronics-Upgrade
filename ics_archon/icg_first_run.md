@@ -42,7 +42,7 @@
 | guide 컨트롤러 IP | `[icg] ctrl_host` | **`10.0.0.162`** — 정본은 ACF 안의 `IP=` 키다 (`APPLYALL` 이 심는 값).  호스트는 `10.0.0.201`(np0)/`10.0.0.202`(np1) |
 | ACF 경로 | `[icg] acf` | 저장소 현행 `acf/KMTK_GUI_162_STA0201_R2622.acf` (⛔ 파일명 전체로 — `acf/README.md` 머리의 규칙 셋.  벤치에 깔린 판은 [`acf/deployment_ledger.md`](acf/deployment_ledger.md)).  ⚠️ **유일본이 아니다** — 2026-09-11 반입으로 guide ACF 가 넉 장이고 (CTIO `STA0290` · SAAO `STA0291` · KASI `STA0201`·`STA0230`), KASI 두 상자는 **같은 `.162`** 를 쓴다.  벤치에 놓인 상자의 `BACKPLANE_ID` 를 보고 고를 것 |
 | 사이트 | `[node] observatory` | **`KASI`** — `TESTBED` 면 기동을 거부한다 (D-017) |
-| HK 스냅샷 짝 | `[hk] log_dir`+`latest_name` ↔ science `[archon] hk_latest` | **같은 파일**을 가리켜야 한다. 한쪽만 바꾸면 science 5.6절 HK 카드가 조용히 전부 sentinel 이 된다 |
+| HK 전달 | `[archon] icg_node` (science) · `[transport] xis_host` (둘 다) | ⭐ **파일이 아니라 와이어다** (2026-09-15) — science 가 `GO` 때 `HKDATA NOW` 를 묻는다.  둘이 같은 허브에 붙어 있어야 답이 온다.  ⛔ 종전 `[hk] latest_name` ↔ `[archon] hk_latest` 파일 짝은 없앴다 — 벤치 ini 에 남아 있으면 지울 것 |
 | 포트 | `[transport] bind_port` | **`6601`**(ICG 몫, 2026-09-03 배정).  ICS 는 6600 이고 `ics_sim` 기본값도 6600 이라 **비워 두면 같은 값으로 떨어져** 한 호스트에서 둘 다 못 뜬다 — 기동 검사가 알린다.  배정표는 [INSTALL.md](INSTALL.md).  ⭐ 레거시는 ICG 가 **Guide server**(`.108`, `TC`·`ABC` 와 같은 호스트)에서 돌고 ICS·XIS 는 **Science server**(`.109`)라 포트가 같아도 호스트가 달랐다 (icg_legacy_report 3절) |
 | **XIS 허브에 붙나** | `[transport] xis_host` | ⭐ **icg 도 XIS 와 통신한다** — `IcsSim` 의 전송 계층을 그대로 물려받아, 값을 적으면 **모든 발신이 허브로** 가고 비우면 direct-reply(허브 없이 콘솔로 도는 모드)다.  **첫 구동은 비운 채로** 한다 — 취득 경로만 먼저 가른다.  기동에서 `register()` 가 수신하려는 ID **전부**(`ICG`·`G.IC`·`G.CB`)로 PING 을 보내 등록한다 |
 | 허브에 붙일 때 | `[transport] bind_host` | 기본 `127.0.0.1` 이라 붙지 않는다 — 허브·`TC`·`ABC` 가 다른 호스트이므로 **`0.0.0.0`** 으로 |
@@ -113,7 +113,7 @@ python3 -u -m icg_archon 2>&1 | tee icg_boot.log
 |---|---|---|
 | 기동 검사 | `[icg] FETCH 상한 … 가 프레임 하한 … 이상이다` 경고가 **없어야** 한다 (`fetch_timeout=1.0` < 하한 1.251 s) | |
 | ⭐ ACF 하한 | `acftiming` 이 타이밍 스크립트에서 읽은 하한 = **1.251 s**. 못 읽으면 ini 대체값 2.0 으로 내려가며 경고가 붙는다 — 그러면 4단계 수치의 뜻이 달라진다 | |
-| HK 루프 | 1분마다 `~/AIC/Logs/hk.G.<YYYYMMDD>.csv` 에 한 행 + `hk_latest.G.json` 갱신 | |
+| HK 루프 | 1분마다 `~/AIC/Logs/hk.G.<YYYYMMDD>.csv` 에 한 행 (⛔ `hk_latest.G.json` 은 더 이상 안 만든다 — 2026-09-15) | |
 | 콘솔 `hk` | 값 한 줄. `HEBOX`/`FSATEMP`/`FSAHUM` 은 안 실린다(=sentinel, Radionode off) | |
 | 콘솔 `radionode status` | `off` | |
 | `age_ms`/`lag_ms` | 첫 감시 로그에서 어떤 값인가 — `monitor_interval` 기본값의 근거 | |

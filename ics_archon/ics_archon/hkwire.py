@@ -284,3 +284,44 @@ def ctrl_body(*, prefix: str, labels, rails, unit,     # noqa: ANN001
             if raw is not None:
                 state.append((field, str(raw).strip()))
     return pairs_to_body(head + state + slots), stale
+
+# ---------------------------------------------------------------------------
+# 받는 쪽 -- `ICG>ICS DONE: HKDATA …` 본문 해석 (ICS 헤더의 5.6절 원천)
+# ---------------------------------------------------------------------------
+
+#: 문자열로 두는 키 -- 시각 둘 · 낱말 셋 · 지수 표기 원문 · ICG 가 덧붙이는 국면.
+_STRING_KEYS = frozenset(('hkqdate', 'hkudate', 'vacgauge', 'htren', 'htrforce',
+                          'dewpres', 'expstatus'))
+
+
+def parse_hkdata(body: str) -> dict | None:
+    """`DONE: HKDATA …` 본문 -> **소문자 키** dict.  응답이 아니면 `None`.
+
+    ⭐ **HK 를 파일에서 와이어로** (운영자 지시 2026-09-03 · 구현 2026-09-15, DevNote
+    11.12 의 결함 목록을 따른다):
+
+    * F7 -- 와이어는 대문자, 계약키(`sensors()`·`thermal_header`)는 소문자.  여기서
+      `lower()` 한다.  안 접으면 10장 전부 sentinel 인데 경고가 한 줄도 안 뜬다.
+    * F9 -- `HKSTALE` 이 없는 본문(빈 본문 · *"no fresh HK sample yet"*)은 **응답이
+      아니다** -> `None`.  받은 것으로 치면 값을 즉시 잃는다.
+    * F10 -- ICG 의 `emit.done()` 이 끝에 ` EXPSTATUS=<국면>` 을 붙인다.  키를 세지
+      않고 **이름으로** 고르므로 상관없다 -- 그대로 문자열로 둔다.
+    * 온도·습도·`HTROUT`·`HTRSET` 은 수치로, `DEWPRES` 는 지수 표기 **원문**(문자열)으로
+      -- `rawhdr.format_dewpres` 가 범위·sentinel 을 판정한다 (`9.99e-9` 도 그대로).
+    * 수치가 아닌 수치 키는 **빼고** 경고한다 -- 그럴듯한 틀린 값을 만들지 않는다.
+    """
+    from ics_sim import impv2
+    kv = impv2.parse_kv(body or '')
+    low = {str(k).lower(): str(v) for k, v in kv.items()}
+    if 'hkstale' not in low:
+        return None
+    out: dict[str, object] = {}
+    for key, val in low.items():
+        if key in _STRING_KEYS:
+            out[key] = val
+            continue
+        try:
+            out[key] = int(val) if key == 'hkstale' else float(val)
+        except ValueError:
+            log.warning('HKDATA field is not numeric -- dropped: %s=%r', key, val)
+    return out

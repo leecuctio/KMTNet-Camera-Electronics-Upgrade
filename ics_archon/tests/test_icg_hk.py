@@ -15,6 +15,7 @@ import asyncio
 import csv
 import datetime
 import json
+import logging
 import os
 import time
 
@@ -179,8 +180,9 @@ def test_ctrl_unit_follows_the_guide_slot_table():
     assert ctrl_unit(status) == {}
 
 
-def test_monitor_writes_csv_and_atomic_latest(tmp_path):
-    """한 바퀴 -- CSV 한 행(즉시 flush) + 원자적 스냅샷 + 신선도."""
+def test_monitor_writes_csv_and_serves_fresh_sensors(tmp_path):
+    """한 바퀴 -- CSV 한 행(즉시 flush) + 신선도.  ⛔ 파일 스냅샷은 없다 (2026-09-15) --
+    ICS 는 `HKDATA NOW` 로 받는다."""
     icfg = IcgCfg()
     icfg.hk.log_dir = str(tmp_path)
     icfg.hk.query_aux = False
@@ -212,11 +214,8 @@ def test_monitor_writes_csv_and_atomic_latest(tmp_path):
     assert len(rows) == 1
     assert rows[0]['hebox'] == '33.2'
     assert rows[0]['ccdtemp'] == ''       # 컨트롤러 없음 -> 결측
-
-    snap = json.loads((tmp_path / icfg.hk.latest_name).read_text())
-    assert snap['values']['fsahum'] == 12.3
-    assert 'ccdtemp' not in snap['values']
-    assert abs(snap['written'] - time.time()) < 60
+    # ⛔ 스냅샷 파일을 남기지 않는다 -- CSV 뿐이다.
+    assert sorted(os.listdir(tmp_path)) == csvs
 
     # sensors() 는 신선한 것만 -- 라디오노드 몫 + (없는) 컨트롤러 몫.
     vals = mon.sensors()
@@ -228,12 +227,14 @@ def test_monitor_writes_csv_and_atomic_latest(tmp_path):
     assert 'ccdtemp' not in mon.sensors()
 
 
-def test_radionode_sample_time_survives_into_the_snapshot(tmp_path):
-    """⭐ 폴러의 **진짜 표본시각**이 스냅샷까지 살아가야 한다.
+def test_radionode_sample_time_survives_into_the_sample(tmp_path):
+    """⭐ 폴러의 **진짜 표본시각**이 표본까지 살아가야 한다.
 
     HK 틱 시각으로 다시 도장을 찍으면 500초 묵은 값이 "방금 잰 값" 이 되어
-    읽는 쪽 `hk_stale_after` 가 영영 안 걸린다 (2026-08-31 교차검토 --
-    DevNote 9.6 이 막겠다고 한 바로 그 경로였다).
+    `HKUDATE` 셈과 폴러의 `stale_after` 면제가 거짓이 된다 (2026-08-31 교차검토 --
+    DevNote 9.6 이 막겠다고 한 바로 그 경로).  ⛔ 종전엔 파일 스냅샷의 `sampled` 로
+    science 가 다시 걸렀는데 그 경로는 없앴다(2026-09-15) -- 이제 신선도 판정은
+    ICG 안에서 끝나고 ICS 는 `HKSTALE` 로만 안다.
     """
     from icg_archon.config import RadionodeCfg, RadionodeDevice
     from icg_archon.radionode import RadionodeClient
@@ -251,20 +252,10 @@ def test_radionode_sample_time_survives_into_the_snapshot(tmp_path):
     mon.radionode = rn
     asyncio.run(mon._tick(0.0))
 
-    snap = json.loads((tmp_path / icfg.hk.latest_name).read_text())
-    age = snap['written'] - snap['sampled']['hebox']
+    age = time.time() - mon._sample['hebox'][1]              # noqa: SLF001
     assert 450 < age < 550, '표본 나이가 사라졌다 (age=%.1f)' % age
-
-    # science 쪽 한도(300)를 대면 걸러져야 한다.
-    import types
-
-    from ics_archon.archon.backend import ArchonBackend
-    be = object.__new__(ArchonBackend)
-    be.acfg = types.SimpleNamespace(
-        hk_latest=str(tmp_path / icfg.hk.latest_name), hk_stale_after=300.0)
-    be._warned_sensors = False
-    be._warned_stale = False
-    assert 'hebox' not in be.sensors('MK', ('M', 'K'))
+    # 폴러 소관 키라 공용 지평선 면제 -- 값은 그대로 나가고 `HKUDATE` 셈에는 안 든다.
+    assert mon.sensors()['hebox'] == 33.2
 
 
 def test_sim_radionode_values_never_reach_the_header(tmp_path):
@@ -288,47 +279,40 @@ def test_sim_radionode_values_never_reach_the_header(tmp_path):
     mon = HkMonitor(None, icfg)
     mon.radionode = rn
     asyncio.run(mon._tick(0.0))
-    snap = json.loads((tmp_path / icfg.hk.latest_name).read_text())
-    assert 'hebox' not in snap['values']
+    assert 'hebox' not in mon._sample                          # noqa: SLF001
     assert 'hebox' not in mon.sensors()
 
 
-def test_science_backend_reads_the_icg_snapshot(tmp_path):
-    """(icg -> ics) 소비 계약 -- `ArchonBackend.sensors()` 가 스냅샷을 읽고
-    **신선도는 읽는 쪽이 판정**한다 (표본시각이 값과 함께 실려 있다)."""
+def test_science_backend_uses_the_hkdata_reply(caplog):  # noqa: ANN001
+    """(icg -> ics) 소비 계약 -- `ArchonBackend.sensors()` 는 `GO` 때 받은 `HKDATA NOW`
+    응답(`set_hk`)을 낸다 (운영자 지시 2026-09-03 · 구현 2026-09-15).  ⛔ 파일은 안 읽는다.
+    낡은 키는 ICG 가 이미 빼고 `HKSTALE` 로 셌으므로 여기서 다시 거르지 않는다."""
+    from ics_archon import hkwire
     from ics_archon.archon.backend import ArchonBackend
 
-    snap_path = tmp_path / 'hk_latest.G.json'
-    now = time.time()
-    snap = {'written': now, 'utc': 'x',
-            'values': {'ccdtemp': -101.23, 'dewpres': '6.93e-04',
-                       'hebox': 33.2, 'wallbrd': 16.8},
-            'sampled': {'ccdtemp': now, 'dewpres': now,
-                        'hebox': now, 'wallbrd': now - 3600.0}}
-    snap_path.write_text(json.dumps(snap), encoding='utf-8')
-
-    import types
+    body = ('HKQDATE=2026-09-15T01:02:03.123 HKUDATE=2026-09-15T01:02:00 HKSTALE=1 '
+            'VACGAUGE=ON DEWPRES=6.93e-04 HTREN=OFF HTRSET=-95.00 HTROUT=3.512 '
+            'HTRFORCE=OFF CCDTEMP=-101.23 HEBOX=33.20 FSAHUM=17.80 EXPSTATUS=IDLE')
     be = object.__new__(ArchonBackend)
-    be.acfg = types.SimpleNamespace(hk_latest=str(snap_path),
-                                    hk_stale_after=300.0)
-    be._warned_sensors = False
-    be._warned_stale = False
+    be._hk, be._hk_warned = None, False                       # noqa: SLF001
+    be.set_hk(hkwire.parse_hkdata(body))
 
     got = be.sensors('MK', ('M', 'K'))
     assert got['ccdtemp'] == -101.23
     assert got['dewpres'] == '6.93e-04'
     assert got['hebox'] == 33.2
-    assert 'wallbrd' not in got          # 1시간 낡음 -> 버린다
+    assert got['hkudate'] == '2026-09-15T01:02:00'           # ICG 가 준 획득 시각 그대로
+    assert got['htren'] == 'OFF' and got['htrset'] == -95.0 and got['htrout'] == 3.512
+    assert 'wallbrd' not in got                                # ICG 가 이미 뺀 키(HKSTALE=1)
+    for meta in ('hkqdate', 'hkstale', 'vacgauge', 'expstatus'):
+        assert meta not in got                                 # 카드 아닌 것은 안 낸다
 
-    # 경로가 비면 결측 + (한 번의) 경고 -- 종전 거동.
-    be.acfg = types.SimpleNamespace(hk_latest='', hk_stale_after=300.0)
+    # 답이 없었으면 결측 + 취득당 한 번의 경고 -- 노출은 간다.
+    caplog.set_level(logging.WARNING, logger='ics_archon.hw')
+    be.set_hk(None)
     assert be.sensors('MK', ('M', 'K')) == {}
-
-    # 파일이 없으면 결측 -- icg 가 안 도는 배치도 기동은 된다.
-    be.acfg = types.SimpleNamespace(hk_latest=str(tmp_path / 'none.json'),
-                                    hk_stale_after=300.0)
-    be._warned_sensors = False
     assert be.sensors('MK', ('M', 'K')) == {}
+    assert sum('no HKDATA' in r.getMessage() for r in caplog.records) == 1
 
 
 def test_csv_columns_are_stable():
@@ -411,9 +395,6 @@ def test_htrout_is_sampled_from_mod10_heateraoutput(tmp_path, caplog):
     asyncio.run(mon._tick(0.0))
     assert mon._sample['htrout'][0] == 3.512
     assert mon.sensors()['htrout'] == 3.512
-    snap = json.loads((tmp_path / icfg.hk.latest_name).read_text())
-    assert snap['values']['htrout'] == 3.512
-    assert 'htrout' in snap['sampled']
     # 계약 키 셈에는 안 들어간다 -- 10개 밖 (hkwire 의 HKSTALE 규칙과 같다).
     assert 'htrout' not in dict(hk_mod.RTD_FIELDS).values()
 

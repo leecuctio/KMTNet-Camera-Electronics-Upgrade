@@ -117,27 +117,28 @@ def test_a_value_with_a_space_becomes_the_sentinel():
     assert kv['HKSTALE'] == '1'
 
 
-def test_dewpres_is_omitted_when_the_gauge_is_off():
-    """⭐ **`VACGAUGE=OFF` 면 `DEWPRES` 를 뺀다** (운영자 정정 2026-09-14) -- 꺼져 있으면
-    잴 것이 없다.  `HKSTALE` 에는 센다 (실값이 아니다)."""
+@pytest.mark.parametrize('word', ['OFF', 'WARMUP'])
+def test_dewpres_is_omitted_when_the_gauge_is_off_or_warming(word):
+    """⭐ **`VACGAUGE=OFF`·`WARMUP` 이면 `DEWPRES` 를 뺀다** (운영자 정정 2026-09-14~15) --
+    꺼져 있거나 예열 중이면 잴 것이 없다.  `HKSTALE` 에는 센다 (실값이 아니다)."""
     vals = dict(FULL)
     del vals['dewpres']
-    vals['gauge'] = 'OFF'
+    vals['gauge'] = word
     kv = _kv(_body(vals))
     assert 'DEWPRES' not in kv
-    assert kv['VACGAUGE'] == 'OFF'
+    assert kv['VACGAUGE'] == word
     assert kv['HKSTALE'] == '1'
     # ⚠️ 표본에 값이 남아 있어도(같은 바퀴에서 `_tick` 이 지우므로 실제론 없다) 낱말이
-    # OFF 면 안 싣는다 -- `VACGAUGE=OFF DEWPRES=<값>` 은 어떤 경로로도 안 나간다.
+    # OFF/WARMUP 이면 안 싣는다 -- `VACGAUGE=OFF DEWPRES=<값>` 은 어떤 경로로도 안 나간다.
     vals['dewpres'] = '6.93e-04'
     kv = _kv(_body(vals))
     assert 'DEWPRES' not in kv and kv['HKSTALE'] == '1'
 
 
-@pytest.mark.parametrize('word', ['ON', 'WARMUP', 'UNKNOWN', None])
-def test_dewpres_is_the_sentinel_when_the_gauge_is_not_off_but_the_value_is_missing(word):
+@pytest.mark.parametrize('word', ['ON', 'UNKNOWN', None])
+def test_dewpres_is_the_sentinel_when_the_gauge_is_on_but_the_value_is_missing(word):
     """⭐ **켜져 있는데(또는 모르는데) 결측이면 sentinel `9.99e-9`** -- 자리가 사라지지
-    않는다 (운영자 2026-09-14).  예열 중(`WARMUP`)도 켜진 쪽이다."""
+    않는다 (운영자 2026-09-14).  ⛔ 예열 중(`WARMUP`)은 `OFF` 쪽이다 (2026-09-15 정정)."""
     vals = dict(FULL)
     del vals['dewpres']
     if word is not None:

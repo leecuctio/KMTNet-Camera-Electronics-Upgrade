@@ -302,18 +302,16 @@ class ArchonCfg:
     #: 정책에 걸린다.  `~` 는 읽을 때 펼친다(안 펼치면 **cwd 아래 `~` 폴더**가
     #: 조용히 생기고 오류도 안 난다).
     monitor_log: str = '~/AIC/Logs'
-    #: **듀어·환경 HK 의 원천** -- `icg_archon` 이 남기는 원자적 최신 스냅샷
-    #: (`hk_latest.G.json`).  비우면 5.6절 HK 카드가 sentinel 로 실린다.
-    #: 물리 원천(guide 유닛 RTD·진공 · Radionode)은 접속자 규칙상 icg 만
-    #: 읽을 수 있어, science 는 이 파일을 통해 받는다 (운영자 확정 2026-08-31).
-    hk_latest: str = ''
-    #: 스냅샷 표본의 신선도 한도 [s] -- 이보다 낡은 키는 버린다.  낡은 값이
-    #: 새 값처럼 실리는 것이 결측보다 나쁘다.
-    #: ⭐ **300 -> 2000** (운영자 2026-09-08).  ⛔ 300 의 근거였던 *"icg HK
-    #: 주기 60s 의 5배"* 는 이 스냅샷에 **Radionode 세 키**도 실린다는 것을
-    #: 안 셌다 -- 그 장치의 전송주기가 최대 600s 라(실물) 300s 창에서는
-    #: `HEBOX`/`FSATEMP`/`FSAHUM` 이 거의 늘 sentinel 이었다.
-    hk_stale_after: float = 2000.0
+    #: **듀어·환경 HK 의 원천은 와이어다** (운영자 지시 2026-09-03 · 구현 2026-09-15,
+    #: DevNote 11.90) -- `GO` 마다 ICG 에 `HKDATA NOW` 를 묻고 그 답이 그 취득의
+    #: 5.6절 카드가 된다.  물리 원천(guide 유닛 RTD·진공 · Radionode)은 접속자
+    #: 규칙상 icg 만 읽을 수 있다.  ⛔ 종전 파일 스냅샷 경로(`hk_latest` ·
+    #: `hk_stale_after`, 2026-08-31~)는 없앴다 -- ini 에 남아 있어도 읽지 않는다(무시).
+    #: 답을 기다리는 시한 [s].  ⚠️ `time_scale` 로 접는다(시험).  넘기면 카드는
+    #: sentinel, 게이지는 추적 상태로 판단하고 **노출은 간다** -- HK 하나 때문에
+    #: 관측을 막지 않는다.  실측 왕복은 중앙 7.7 ms · 최악 108 ms (11.55) 라
+    #: 2 초는 넉넉하다.
+    hk_query_timeout: float = 2.0
     #: 전원 레일의 정상 범위 [V].  **`None` 이면 매뉴얼 p.41 기본값**
     #: (`archon.parse.RAIL_LIMITS`).
     #:
@@ -732,9 +730,8 @@ def load(path: str) -> ArchonCfg:
     # 쌓이는 것이 드러나지 않는다 (`ics_sim config.py` 의 2026-08-23 실측).
     raw_log = _text(s, 'monitor_log', cfg.monitor_log)
     cfg.monitor_log = os.path.expanduser(raw_log) if raw_log else ''
-    raw_hk = _text(s, 'hk_latest', cfg.hk_latest)
-    cfg.hk_latest = os.path.expanduser(raw_hk) if raw_hk else ''
-    cfg.hk_stale_after = _num(s, 'hk_stale_after', cfg.hk_stale_after, float)
+    cfg.hk_query_timeout = _num(s, 'hk_query_timeout', cfg.hk_query_timeout,
+                                float)
     cfg.rail_limits = _rail_limits(cp)
 
     cfg.shutter_ctrl = _head(s, 'shutter_ctrl', cfg.shutter_ctrl).upper()
@@ -1076,42 +1073,16 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
     if sim_cfg is None:
         return notes
 
-    # ⚠️ **듀어·환경 HK 의 원천이 실제로 있나** (2026-08-31 신설).
-    #
-    # 이 경로가 비었거나 틀리면 5.6절 HK 카드 **전부**가 sentinel 로 실린다.
-    # 첫 프레임에 경고 한 줄이 나가긴 하지만 그 뒤로는 조용하므로, 자료를
-    # 찍기 전에 기동에서 알린다 -- `icg_archon` 이 안 떠 있는 배치가 흔하다.
-    hk_latest = getattr(cfg, 'hk_latest', '')
-    if not hk_latest:
-        notes.append(
-            '[archon] hk_latest 가 비어 있다 -- CCDTEMP·DEWPRES 등 5.6절 HK '
-            '카드가 전부 sentinel 로 실린다.  icg_archon 의 [hk] log_dir + '
-            'latest_name 이 가리키는 파일 경로를 적을 것')
-    else:
-        path = os.path.expanduser(hk_latest)
-        if not os.path.exists(path):
-            notes.append(
-                '[archon] hk_latest 파일이 없다 -- %r.  icg_archon 이 아직 안 '
-                '떴거나 두 ini 의 경로가 어긋났다(icg [hk] log_dir/'
-                'latest_name).  지금 상태로는 5.6절 HK 카드가 전부 sentinel '
-                '이다' % path)
-        else:
-            try:
-                import json as _json
-                with open(path, encoding='utf-8') as _fh:
-                    _age = time.time() - float(
-                        _json.load(_fh).get('written', 0.0))
-                if _age > max(cfg.hk_stale_after, 1.0):
-                    notes.append(
-                        '[archon] hk_latest 스냅샷이 %.0f초 묵었다 (한도 '
-                        '%.0f초) -- icg_archon 이 돌고 있는지 확인할 것'
-                        % (_age, cfg.hk_stale_after))
-            except (OSError, ValueError, TypeError):
-                notes.append('[archon] hk_latest 를 읽지 못했다 -- %r' % path)
-    if cfg.hk_stale_after <= 0:
+    # ⚠️ **듀어·환경 HK 는 와이어로 받는다** (2026-09-15) -- `GO` 마다 ICG 에 묻는다.
+    # 시한이 0 이하면 매번 곧바로 포기해 카드가 전부 sentinel 이다.
+    if cfg.hk_query_timeout <= 0:
         raise ArchonConfigError(
-            '[archon] hk_stale_after 는 0 보다 커야 한다 -- 0 이하면 모든 '
-            'HK 표본이 낡은 것으로 버려진다')
+            '[archon] hk_query_timeout 은 0 보다 커야 한다 -- 0 이하면 HKDATA '
+            '답을 기다리지 않아 5.6절 HK 카드가 전부 sentinel 이다')
+    if not cfg.icg_node:
+        notes.append(
+            '[archon] icg_node 가 비어 있다 -- HKDATA 를 물을 상대가 없어 '
+            'CCDTEMP·DEWPRES 등 5.6절 HK 카드가 전부 sentinel 로 실린다')
 
     # ⚠️ **헤더가 주장하는 설정 파일과 실제로 올리는 파일이 갈릴 수 있다.**
     #

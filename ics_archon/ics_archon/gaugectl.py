@@ -107,8 +107,17 @@ class GaugeControl:
 
     # -- 바깥에서 부르는 자리 ---------------------------------------------
 
-    def before_exposure(self) -> bool:
-        """`GO` 처리 **앞에서** 부른다.  명령을 실제로 보냈으면 `True`.
+    def before_exposure(self, word: str | None = None) -> bool:
+        """노출 시퀀스 **앞에서** 부른다.  명령을 실제로 보냈으면 `True`.
+
+        ⭐ **`word` 가 판단의 정본이다** (운영자 2026-09-15) -- `GO` 때 ICG 에 물은
+        `HKDATA NOW` 의 `VACGAUGE` 낱말.  종전에는 우리가 추적한 상태(`self.state`)
+        로만 판단했는데, ICG 콘솔에서 누가 켰거나 ICG 가 재기동하면 그 추적이
+        어긋난다 -- ICG 가 방금 잰 낱말이 있으면 그것을 믿는다:
+
+            OFF                      -> 안 보낸다 (상태만 OFF 로)
+            ON · WARMUP · UNKNOWN    -> 보낸다 (추적 상태가 OFF 라 해도 -- 어긋남을 로그에)
+            None (답이 없었다)        -> 종전대로 추적 상태로 판단
 
         ⭐ **어느 갈래든 상태는 `OFF` 로 간다** -- 켜짐대기에서 왔으면 게이지는
         이미 꺼져 있으므로 명령은 안 보내지만, **상태를 안 옮기면 만료 판정이
@@ -119,19 +128,38 @@ class GaugeControl:
         if not self.enabled:
             return False
         self._cancel_timer('노출이 시작된다')
-        if self.state in _DARK:
+        w = (word or '').strip().upper() or None
+        if w == 'OFF' or (w is None and self.state in _DARK):
             # 게이지는 이미 꺼져 있다 -- `APPLYDIO` 가 `DEWPRES` 결측 창을
             # 만드므로 되풀이하지 않는다.  ⭐ 상태만 `OFF` 로 굳힌다.
             if self.state != OFF:
-                log.info('cancelling PENDING_ON and going back to OFF '
-                         '(new exposure)')
+                log.info('gauge already dark (%s) -- going to OFF without '
+                         'sending (new exposure)',
+                         w or self.state,
+                         extra={'detail': 'ICG 낱말 %s · 추적 상태 %s'
+                                          % (w or '(없음)', self.state)})
             self.state = OFF
             return False
+        if w is not None and self.state in _DARK:
+            log.warning('ICG reports the gauge %s although we tracked %s -- '
+                        'sending VACGAUGE OFF', w, self.state,
+                        extra={'detail': 'ICG 콘솔에서 켰거나 ICG 가 재기동한 '
+                                         '것이다.  HKDATA 낱말이 정본'})
         self._send(False)
         # ⭐ **켜져 있어서 방금 껐다** -- 실제로 꺼질 때까지 기다려야 한다.
         if self.settle_after > 0:
             self._settle_until = time.monotonic() + self.settle_after
         return True
+
+    def cancel_reenable(self, why: str) -> None:
+        """되켜기 타이머만 해제한다 -- `GO` 가 받아들여진 순간에 (2026-09-15).
+
+        끌지 말지는 뒤에 오는 `HKDATA NOW` 답으로 정하는데(`before_exposure(word)`),
+        그 답을 기다리는 사이에 타이머가 만료되면 **노출 도중에 켜진다** -- 그래서
+        타이머는 판단보다 먼저 푼다.  `before_exposure()` 도 또 푼다(멱등).
+        """
+        if self.enabled:
+            self._cancel_timer(why)
 
     async def settle(self) -> None:
         """방금 끈 게이지가 **실제로 꺼질 때까지** 기다린다 (운영자 2026-09-04).

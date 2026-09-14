@@ -10942,11 +10942,13 @@ OFF 하면 즉시 사라지나?"* → 확인해 보니 ICG 안에서는 **즉시
 `HKDATA` 의 결측 규약은 *"싣지 않고 `HKSTALE` 로 센다"* 였다(11.14).  `DEWPRES` 는 **마지막
 바퀴의 게이지 낱말**로 갈린다:
 
-    VACGAUGE=OFF                       -> DEWPRES 없음  (꺼져 있으면 잴 것이 없다)
-    VACGAUGE=ON/WARMUP/UNKNOWN + 값     -> 그 값
-    VACGAUGE=ON/WARMUP/UNKNOWN + 결측   -> DEWPRES=9.99e-9  (켜져 있는데 못 읽은 것 -- 헤더와 같은 sentinel)
+    VACGAUGE=OFF · WARMUP          -> DEWPRES 없음  (꺼져 있거나 예열 중이면 잴 것이 없다)
+    VACGAUGE=ON/UNKNOWN + 값        -> 그 값
+    VACGAUGE=ON/UNKNOWN + 결측      -> DEWPRES=9.99e-9  (켜져 있는데 못 읽은 것 -- 헤더와 같은 sentinel)
 
-결측에는 못 읽음·예열 중·공백 든 값(와이어에 못 올린다)이 든다.  ⚠️ 뺀 경우도 sentinel 도
+⭐ **`WARMUP` 은 `OFF` 쪽이다** (운영자 정정 2026-09-15: *"측정 시 WARMUP 일 때는 OFF 일 때와
+마찬가지로 DEWPRES 빼줘"*) -- 첫 판은 켜진 쪽으로 쳐서 sentinel 을 세웠다.  결측(sentinel)에는
+못 읽음·공백 든 값(와이어에 못 올린다)이 든다.  ⚠️ 뺀 경우도 sentinel 도
 **`HKSTALE` 에 센다** -- 받는 쪽 셈은 *"실값 키 + HKSTALE = 10"* 이고 둘 다 실값이 아니다.
 ⚠️ 첫 판은 *"OFF 여도 sentinel"* 로 적었다가 운영자가 정정했다 -- OFF 는 결측이 아니라 **잴
 것이 없는 상태**라 자리를 비운다.  guide FITS 헤더는 카드라 자리가 곧 항목이므로 그쪽은 어느
@@ -10959,7 +10961,7 @@ OFF 하면 즉시 사라지나?"* → 확인해 보니 ICG 안에서는 **즉시
 | 사건 | `HKDATA` (주기) | `HKDATA NOW` | guide 헤더 |
 |---|---|---|---|
 | `VACGAUGE OFF` | 다음 바퀴(`interval`)에 `VACGAUGE=OFF`, `DEWPRES` 없음.  그 전엔 직전 바퀴의 `ON`·실측 그대로 | 즉시 (바퀴를 돌린다 · 주기 타이머는 `NOW`+`interval` 로) | 다음 바퀴 |
-| `VACGAUGE ON` | 다음 바퀴에 `WARMUP`·sentinel → 예열 끝 바퀴(`schedule_warmup_refresh`, 12.5 s)에 `ON`·값 | 즉시(예열 중이면 `WARMUP`·sentinel) | 같음 |
+| `VACGAUGE ON` | 다음 바퀴에 `WARMUP`, `DEWPRES` 없음 → 예열 끝 바퀴(`schedule_warmup_refresh`, 12.5 s)에 `ON`·값 | 즉시(예열 중이면 `WARMUP`, 없음) | 같음 |
 | 켜져 있는데 못 읽음 | `DEWPRES=9.99e-9` · `HKSTALE`+1 | 같음 | sentinel |
 
 ⚠️ **예열 끝 자동 바퀴**(11.70 고침 둘째)는 그대로 뒀다 -- `VACGAUGE ON` 뒤 12.5 s 에 바퀴를 한 번
@@ -10975,3 +10977,68 @@ OFF 하면 즉시 사라지나?"* → 확인해 보니 ICG 안에서는 **즉시
 시험: `test_icg_hk.py::test_dewpres_and_the_gauge_word_change_at_the_next_round`(바퀴 전 그대로 ·
 바퀴에서 값 빠짐+낱말 · WARMUP · 복귀 · 다른 키 무사) · `test_icg_hkdata.py` 셋(sentinel+HKSTALE ·
 낱말은 표본 · 공백 값 → sentinel).
+
+### 11.90 HK 를 파일에서 와이어로 -- `GO` 마다 `HKDATA NOW`, 그 답으로 게이지와 헤더 (2026-09-15, 운영자)
+
+운영자 지시 (2026-09-15): *"ICS 에서 ICG HKDATA 를 노출 시퀀스 시작하기 전에 읽어오도록.  파일로
+읽는 게 아니라 명령어로 가져오고, 파일로 전달받는 것은 없애.  `hk_latest` 파일 저장도 없애고 INI
+설정도 지워.  GO 받으면 HKDATA 가져오고, GAUGE 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 안 보내.
+FITS 헤더에 GO 뒤 받아온 HKDATA 를 넣어."*  그리고: *"받은 딕셔너리를 그대로 쓰되 키가 없으면
+sentinel."*
+
+11.12(2026-09-03 설계 검증, F1~F10)가 적어 둔 그 일이다 -- 그때 *"코드는 0줄"* 이었고 F1(수신
+경로)만 2026-09-06 에 열려 있었다.  이번에 나머지를 닫았다.
+
+#### (1) 흐름
+
+    OBS>ICS GO n
+      cmd_go: 되켜기 타이머 해제(cancel_reenable) -> super().cmd_go (시퀀서 태스크 생성)
+              -> 받아들여졌으면 app.begin_go(): "HKDATA 묻고 게이지 판단" 태스크를 띄워 backend.hk_task 에
+    ICS>ICG HKDATA NOW                       (fetch_icg_hk -- Future, 시한 [archon] hk_query_timeout)
+    ICG>ICS DONE: HKDATA …                   (_on_hkdata 가 parse_hkdata 로 접어 Future 를 푼다)
+      gauge.before_exposure(word)            (OFF -> 안 보냄 · ON/WARMUP/UNKNOWN -> VACGAUGE OFF · None -> 추적 상태)
+      backend.set_hk(dict)                   (이 GO 의 n 장 전부의 원천)
+    첫 프레임 initialize(): await backend.hk_task -> await gauge.settle() -> prepare()
+    헤더: sequencer 가 프레임마다 backend.sensors() -> 그 dict -> rawhdr.thermal_header (없는 키는 sentinel)
+
+⭐ **왜 `cmd_go` 안에서 안 기다리나** -- `cmd_go` 는 `Reply` 를 돌려주는 **동기** 메서드다.  태스크를
+띄우고 백엔드의 첫 호출(`initialize`)이 기다리게 하면 순서가 지켜진다: `super().cmd_go` 가 만든
+시퀀서 태스크는 이 동기 흐름이 끝나야 돌므로 `begin_go()` 가 먼저 백엔드에 걸린다.
+⭐ **왜 `NOW` 인가** -- 게이지를 끌지는 답의 `VACGAUGE` 로 정하는데(운영자), 11.89 뒤로 주기값의
+낱말은 마지막 바퀴의 것이라 방금 바뀐 것을 모른다(≤ `interval`).  `NOW` 는 바퀴를 지금 돌린다.
+실측 왕복은 중앙 7.7 ms · 최악 108 ms (11.55).
+⭐ **거절된 GO 는 게이지를 안 건드린다** -- 종전엔 `super()` 앞에서 껐다가 거절되면 되켜기 타이머를
+거는 자가 치유가 있었는데, 끄기가 수락 뒤로 갔으니 그 갈래가 없어졌다.  ⚠️ 타이머 해제만은
+수락 전에 한다 -- 답을 기다리는 사이 만료되면 노출 도중에 켜진다.
+
+#### (2) 11.12 의 결함 목록을 어떻게 닫았나
+
+| # | 처방 |
+|---|---|
+| F1 | `register_report('DONE','HKDATA')` (2026-09-06) + `_on_hkdata` 가 Future 를 푼다 |
+| F2 | 시각은 ICG 의 `HKUDATE`(가장 낡은 표본) 하나를 그대로 싣는다 -- 키별 시각은 안 실린다.  신선도 판정은 **ICG 안에서 끝나고** ICS 는 `HKSTALE` 로만 안다 (운영자: *"딕셔너리 그대로, 없으면 sentinel"*) |
+| F3 | 데드맨 = `hk_query_timeout` 한 곳.  넘기면 `None` -> 카드 sentinel · 경고 · 노출은 간다.  **캐시가 없다** -- GO 마다 새로 받으므로 밤새 낡은 값이 실릴 길이 없다 |
+| F4 | 병합이 없다 -- 답 하나가 그 GO 의 원천이고, 빠진 키는 sentinel |
+| F5 | 시한을 `time_scale` 로 접는다(`cfg.scaled`) -- 하네스(0.02)는 0.04 s.  ICG 없는 시험 ~50개가 그대로 돈다 (`xis_host` 주입 없이) |
+| F6 | 두 번 묻지 않는다 -- 한 번, 겹치면 앞 Future 를 `None` 으로 끝낸다 |
+| F7 | `parse_hkdata` 가 키를 `lower()` |
+| F8 | 따옴표 없음이 규약이라 값에 공백이 없다 -- ICG 가 `wire_safe` 로 지킨다 (11.89: `DEWPRES` 공백 값은 sentinel) |
+| F9 | `HKSTALE` 없는 본문은 `None` -> Future 를 안 푼다(시한까지 기다린다) |
+| F10 | 키를 세지 않고 이름으로 고른다 -- `EXPSTATUS` 꼬리는 문자열로 두고 카드엔 안 낸다 |
+
+#### (3) 없앤 것
+
+* ICG: `HkMonitor._write_latest`(원자적 스냅샷 `hk_latest.G.json`) · `[hk] latest_name` · 배너 문구.
+  CSV 는 그대로.
+* ICS: `[archon] hk_latest`·`hk_stale_after` · `backend.sensors()` 의 파일 읽기·신선도 판정·래치 셋 ·
+  `config._cross_checks` 의 파일 존재·나이 검사.  대신 `hk_query_timeout`(>0 강제) · `icg_node` 빈값
+  경고.
+* ⚠️ **벤치 ini 에 남은 옛 키는 조용히 무시된다** -- 로더가 모르는 키를 세지 않는다.  운영자가
+  `~/AIC/Config/*.ini` 에서 지울 것 (`INSTALL.md`).  `~/AIC/Logs/hk_latest.G.json` 도 더는 안 갱신된다.
+* `test_icg_hk.py` 의 스냅샷 시험 다섯을 표본·와이어 기준으로 다시 썼다.
+
+#### (4) 시험 `tests/test_hk_wire.py` (9)
+
+해석기 셋(소문자·형 · 비응답 · 수치 아님) · 설정 둘(파일 키 없음 · 시한 0 거부) · 흐름 넷 --
+`GO` -> `HKDATA NOW` -> 답(`VACGAUGE=ON`) -> `VACGAUGE OFF` + 헤더 `CCDTEMP=-101.23`·`DEWPRES=6.93e-4`·
+`HKUDATE` · 답이 `OFF` 면 안 보냄 · 무응답이면 sentinel+경고+노출 진행 · 비응답 본문 뒤 진짜 답.

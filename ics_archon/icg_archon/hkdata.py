@@ -22,12 +22,13 @@
   sentinel 로 채우면 `실값 키 + HKSTALE = 10` 셈이 깨진다.
 * ⭐ **`DEWPRES` 의 셋 (운영자 확정 2026-09-14, DevNote 11.89)**:
 
-      VACGAUGE=OFF                       -> DEWPRES 를 **뺀다** (게이지가 꺼져 있으면 잴 것이 없다)
-      VACGAUGE=ON/WARMUP/UNKNOWN + 값     -> 그 값
-      VACGAUGE=ON/WARMUP/UNKNOWN + 결측   -> **sentinel `9.99e-9`** (켜져 있는데 못 읽은 것)
+      VACGAUGE=OFF · WARMUP          -> DEWPRES 를 **뺀다** (꺼져 있거나 예열 중이면 잴 것이 없다)
+      VACGAUGE=ON/UNKNOWN + 값        -> 그 값
+      VACGAUGE=ON/UNKNOWN + 결측      -> **sentinel `9.99e-9`** (켜져 있는데 못 읽은 것)
 
-  결측에는 못 읽음·예열 중·와이어에 못 올릴 값(공백)이 다 든다.  ⚠️ 뺀 경우도 sentinel 인
-  경우도 **`HKSTALE` 에 센다** -- 받는 쪽 셈은 *"실값 키 + HKSTALE = 10"* 이고 둘 다 실값이
+  ⭐ **`WARMUP` 은 `OFF` 와 같이 뺀다** (운영자 정정 2026-09-15) -- 켜져 있어도 측정이 아직
+  아니다.  결측(sentinel)에는 못 읽음·와이어에 못 올릴 값(공백)이 든다.  ⚠️ 뺀 경우도 sentinel
+  인 경우도 **`HKSTALE` 에 센다** -- 받는 쪽 셈은 *"실값 키 + HKSTALE = 10"* 이고 둘 다 실값이
   아니다.
 * ⭐ **`VACGAUGE`·`DEWPRES` 는 마지막 HK 바퀴의 표본이다** (운영자 2026-09-14).  `VACGAUGE
   OFF`/`ON` 명령은 `DEWPRES` 를 **건드리지 않는다** -- 마지막으로 잰 값을 그대로 들고 있다가
@@ -192,13 +193,14 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
     dew = vals.get('dewpres')
     if dew is not None and not hkwire.wire_safe('DEWPRES', str(dew)):
         dew = None                          # 공백·따옴표 -- 자르지 말고 결측으로
-    if word == 'OFF':
-        dew_wire = None                     # 꺼져 있으면 잴 것이 없다 -- 뺀다
+    dark = word in ('OFF', 'WARMUP')       # 꺼져 있거나 예열 중 -- 잴 것이 없다 (운영자 2026-09-15)
+    if dark:
+        dew_wire = None                     # 뺀다
     else:
         dew_wire = dew if dew is not None else DEWPRES_NC   # 켜져 있는데 결측 -- sentinel
     carried = [k for k in CONTRACT_KEYS
                if k != 'dewpres' and vals.get(k) is not None]
-    if dew is not None and word != 'OFF':
+    if dew is not None and not dark:
         carried.append('dewpres')
     pairs.append(('HKSTALE', len(CONTRACT_KEYS) - len(carried)))
 

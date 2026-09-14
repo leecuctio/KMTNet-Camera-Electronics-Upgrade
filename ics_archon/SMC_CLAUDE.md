@@ -5145,28 +5145,52 @@ OFF`/`ON` 명령은 `DEWPRES` 를 **건드리지 않고**, **`[hk] interval` 의
 |---|---|
 | `sensors()` 의 `dewpres` 즉시 가림(11.70 고침 첫째) **되돌림** — 가림은 `_tick` 한 곳 | `icg_archon/hk.py` |
 | ⭐ 바퀴마다 **낱말도 표본**에 (`_sample['gauge']`) — `HKDATA` 의 `VACGAUGE` 는 이것.  live 로 내면 `VACGAUGE=OFF DEWPRES=<실측>` 이 되살아난다.  CSV 예열 중 `OFF`→`WARMUP` 정정 | `hk.py` `_tick` · `hkdata.py` |
-| `HKDATA` 의 `DEWPRES` 셋 — `VACGAUGE=OFF` 면 **뺀다** · 켜져 있고(예열·모름 포함) 결측이면 **`9.99e-9`**(공백 든 값 포함) · 둘 다 `HKSTALE` 에 센다 | `hkdata.py` |
-| 시험 — hk 1 재작성 · hkdata 4(OFF 면 없음 · ON/WARMUP/UNKNOWN/없음 + 결측 → sentinel · 공백 값 · 낱말은 표본) | `tests/test_icg_hk.py` · `tests/test_icg_hkdata.py` |
+| `HKDATA` 의 `DEWPRES` 셋 — `VACGAUGE=OFF`·**`WARMUP`** 이면 **뺀다** · `ON`(모름 포함)인데 결측이면 **`9.99e-9`**(공백 든 값 포함) · 둘 다 `HKSTALE` 에 센다 | `hkdata.py` |
+| 시험 — hk 1 재작성 · hkdata 4(OFF/WARMUP 면 없음 · ON/UNKNOWN/없음 + 결측 → sentinel · 공백 값 · 낱말은 표본) | `tests/test_icg_hk.py` · `tests/test_icg_hkdata.py` |
 | README "HKDATA 는 두 갈래" 절 · `gauge.py` 문구 · DevNote 11.89 | |
 
 ⚠️ **11.70 과 정반대 결정**이다 — 11.70 은 값 쪽을 즉시로 당겨 어긋남을 막았고, 이번엔 값을 표본으로
 되돌리고 낱말 쪽을 표본으로 맞췄다.  둘 다 "한 줄 안에서 안 어긋남" 을 지키는 길이고, 이번 것이
 `HKDATA`=폴링값 규약(11.52)과 맞는다.  ⏳ 규격 쪽(`HKDATA` 문면, `HKSTALE` 셈에 `DEWPRES` sentinel 예외)은
-**main 라운드 이월**.
+**main 라운드 이월**.  ✅ 커밋 `635c6b3`.
+
+#### ✅ 이어서 한 것 — **HK 를 파일에서 와이어로** (운영자 지시 2026-09-15, DevNote 11.90)
+
+11.12 가 설계·결함 목록(F1~F10)만 적어 두고 *"코드는 0줄"* 이던 그 일.  운영자 지시: *"GO 받으면
+HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 안 보내고, 헤더에 그 HKDATA 를 넣어.
+파일 경로·`hk_latest`·ini 설정은 없애."*
+
+| 무엇 | 자리 |
+|---|---|
+| `GO` 수락 직후 `begin_go()` → 태스크: `HKDATA NOW` 질의(`fetch_icg_hk`, Future + 시한) → 답의 `VACGAUGE` 로 `gauge.before_exposure(word)` → `backend.set_hk(dict)` | `ics_archon/app.py` |
+| `_on_hkdata` 가 `hkwire.parse_hkdata`(소문자 키 · 형 · 비응답 `None`)로 접어 Future 를 푼다 | `app.py` · `hkwire.py` |
+| `sensors()` = 그 GO 의 dict (메타 넷 제외) · 없으면 `{}`+경고 1회 → `rawhdr` 가 없는 키를 sentinel 로 | `archon/backend.py` |
+| `initialize()` 가 `hk_task` 를 기다린 뒤 `gauge.settle()` → `prepare()` | `backend.py` |
+| `before_exposure(word)` — OFF 안 보냄 · ON/WARMUP/UNKNOWN 보냄(추적과 어긋나면 경고) · None 은 추적 상태.  `cancel_reenable()` 신설 | `gaugectl.py` |
+| **없앰**: ICG `_write_latest`·`[hk] latest_name` · ICS `[archon] hk_latest`·`hk_stale_after` + 기동 검사.  **신설**: `[archon] hk_query_timeout = 2.0`(`time_scale` 로 접음, 0 이하 거부) | `hk.py` · `config.py` 둘 · ini 둘 |
+| 시험 — `tests/test_hk_wire.py` 9 신설 · `test_icg_hk.py` 스냅샷 시험 5 재작성 | |
+| 문서 — README(와이어 절 신설 · 파일 표) · `icg_first_run.md` 0단계·HK 루프 · `bench_test_plan.md` · `legacy_command_coverage.md` · DevNote 11.90 | |
+
+⛔ **벤치 ini 정리는 운영자 몫** — `~/AIC/Config/ics_archon.ini` 의 `hk_latest`·`hk_stale_after`,
+`icg_archon.ini` 의 `latest_name` 을 지울 것(남아 있어도 읽지 않지만 헷갈린다).  `~/AIC/Logs/hk_latest.G.json`
+은 더 안 갱신된다.  ⚠️ **실기 미검증** — 허브를 거친 `HKDATA NOW` 왕복과 `GO` 첫 프레임의 대기(시한 2 s)는
+벤치에서 봐야 한다.  ⏳ 규격: 5.6절 원천 문면(*"icg 스냅샷 파일"*)이 있다면 `main` 라운드에서 와이어로.
 
 #### 상태
 
 | 것 | 값 |
 |---|---|
-| 로컬 HEAD | `bdbe204`(문서 8개, 푸시됨) + **타이밍 둘 미커밋** (해석기 · 추적기 · 시험 2파일 · 문서 5) |
-| 원격 | `origin/ics-archon-v1.0-build` = `bdbe204` (세션 32~35 커밋 6개 + 문서 커밋 푸시 완료, 2026-09-14) |
+| 로컬 HEAD | 커밋 넷 — `bdbe204`(문서 8개) · `86c7e65`(타이밍 해석기·추적기) · `635c6b3`(게이지 낱말·DEWPRES 표본) · **커밋 ②**(HK 와이어 + WARMUP 정정, 2026-09-15) |
+| 원격 | `origin/ics-archon-v1.0-build` = `86c7e65` — `635c6b3` 과 커밋 ② **푸시 대기** (운영자에게 물을 것) |
 | 시험 | ✅ **전수 764 = 763 passed + 1 flake** (6분 43초, 2026-09-14).  flake 는 `test_abort_cuts_the_integration_at_the_controller` — ⛔ **회귀 아님**: 내 변경을 stash 한 HEAD 에서도 단독 8회 중 2회 실패, 변경본에서 5회 중 1회.  실패 때 4.2 s(= 2 s `until` 창을 다 쓴다).  ⏳ 원인은 안 팠다 — `go 2` 뒤 0.3 s 에 ABORT 를 넣는데 `prepare()`(ACF 적용·POWERON)가 그 안에 안 끝나면 ABORT 가 노출 밖에서 떨어져 `RESETTIMING` 이 안 나가는 것으로 보인다(가설) |
 | 현장 vs 저장소 | ⛔ **다섯 판** — science `R2611`→`R2613` · guide `R2619`→`R2622`.  현장 반영 기록 0 |
 
 #### ⏳ 다음 세션이 할 것 (권장 순서)
 
-1. ~~⭐ 커밋 + 푸시~~ ✅ 문서 8개 `bdbe204` 커밋·푸시 완료.  ⏳ **타이밍 둘(해석기·추적기)은 전수
-   시험 뒤 커밋** — 운영자에게 물어보고 돌릴 것(7분).
+1. ~~⭐ 커밋 + 푸시~~ ✅ `bdbe204`·`86c7e65` 푸시 완료.  ⏳ **`635c6b3` + 커밋 ②(HK 와이어) 푸시** —
+   운영자에게 물을 것.  ⭐ **벤치 ini 정리**(운영자): `~/AIC/Config/ics_archon.ini` 의 `hk_latest`·
+   `hk_stale_after` → `hk_query_timeout = 2.0`, `icg_archon.ini` 의 `latest_name` 삭제.  **와이어 왕복은
+   실기 미검증** — 벤치에서 `GO` 뒤 `ICS>ICG HKDATA NOW` 와 답, 첫 프레임 대기, `VACGAUGE OFF` 판단을 볼 것.
 2. ⭐ **설치 대장 ⏳ 셋 채우기** (운영자) — 벤치 호스트 ini 실값(`grep -n '^acf' ~/AIC/Config/*.ini` ·
    `ls ~/AIC/Config/acf/`) · 관측소 상자 여섯의 현재 위치 · SSO 신원.  **사다리보다 먼저.**
 3. ⭐⭐ **플랫 쌍 + 바이어스 쌍 한 번** (35 의 3번 그대로) — 실측 이득 · 기준선 · CDS 창 30% · 포화.

@@ -27,7 +27,7 @@ ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
 | 파일 | 정체 |
 |---|---|
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
-| [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다.  **`hk_latest`** 가 icg 의 HK 스냅샷 경로(5.6절 HK 카드의 원천)다 |
+| [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다.  5.6절 HK 카드의 원천은 **와이어**(`GO` 때 ICG 에 `HKDATA NOW`, 시한 `hk_query_timeout`)다 — 파일 스냅샷 경로는 없다 (2026-09-15) |
 | [`icg_archon/`](icg_archon/) | ✅ **실기 ICG** (`v0.0.0`, 2026-08-31 신설) — guide 유닛 취득(raw spec v1.9 **9·10장**: `<SITE>.<날짜>.<번호>.G.fits`, frame-transfer 의미론) + **HK 취득·로깅**(1분 — Ctrl·진공·RTD·Radionode·AUX).  `python -m icg_archon` / `--backend sim`.  경위·판단은 [DevNote 9장](DevNote.md) |
 | [`icg_archon.ini`](icg_archon.ini) | icg 설정 — `[icg]` 가 guide 컨트롤러 배선, `[hk]` 가 로깅, `[radionode]` 가 Tapaculo365 Open API 접속(콘솔의 "OPENAPI 매뉴얼" 값을 옮겨 적는다) |
 | [`tools/gen_guidecards.py`](tools/gen_guidecards.py) | guide 견본 헤더 → `icg_archon/guidecards.py` 생성기 — 견본이 개정되면(v1.1 승격) 다시 돌린다.  `--diff` 는 science 폭 대조만 |
@@ -241,6 +241,26 @@ HK / HK NOW     ← 같은 본문
 ⭐ 기본이 폴링값인 것의 가장 큰 이득은 **FITS 헤더와 `HKDATA` 가 같은 원천을 보는 것**
 이다 — 같은 순간에 둘이 다른 값을 낼 수 없다.
 
+## ⭐ science 헤더의 HK 는 **와이어**로 받는다 (운영자 지시 2026-09-03 · 구현 2026-09-15)
+
+```
+OBS>ICS GO n
+ICS>ICG HKDATA NOW              ← GO 가 받아들여진 직후 (시한 [archon] hk_query_timeout, 기본 2 s)
+ICG>ICS DONE: HKDATA …          ← 답의 값이 이 GO 의 n 장 전부의 5.6절 카드 (키가 없으면 sentinel)
+ICS>ICG VACGAUGE OFF            ← 답의 VACGAUGE 가 ON/WARMUP/UNKNOWN 일 때만.  OFF 면 안 보낸다
+```
+
+* ⛔ **파일 스냅샷은 없다** — 종전 `[archon] hk_latest`·`hk_stale_after` 와 ICG 의
+  `hk_latest.G.json`·`[hk] latest_name` 은 없앴다.  벤치 ini 에 남아 있어도 읽지 않는다
+  (지울 것).  ICG 의 CSV 로그는 그대로다.
+* **`NOW` 인 이유** — 게이지를 끌지는 답의 `VACGAUGE` 로 정하는데 주기값의 낱말은 방금 바뀐
+  것을 모른다.  `NOW` 는 바퀴를 지금 돌려 답하므로 낱말도 값도 지금 것이다.
+* **답이 없으면** — 경고 한 줄, 카드는 sentinel, 게이지는 ICS 가 추적한 상태로 판단하고
+  **노출은 간다**.  관측을 HK 하나 때문에 막지 않는다.  *"no fresh HK sample yet"* 같은
+  비응답 본문은 답으로 치지 않는다.
+* ⭐ **게이지 판단의 정본은 ICG 의 낱말**이다 — ICG 콘솔에서 누가 켰거나 ICG 를 재기동해
+  ICS 의 추적 상태가 어긋나도 `HKDATA NOW` 가 잡는다 (경고를 남기고 끈다).
+
 ⭐ **이온게이지도 같은 규칙이다** (운영자 확정 2026-09-14, DevNote 11.89) — `VACGAUGE` 낱말과
 `DEWPRES` 는 **마지막 HK 바퀴의 표본**이다.  `VACGAUGE OFF`/`ON` 명령은 `DEWPRES` 를 **건드리지
 않는다** — 마지막으로 잰 값을 들고 있다가 **`[hk] interval` 의 다음 바퀴**가 그때의 게이지
@@ -254,9 +274,9 @@ HK / HK NOW     ← 같은 본문
     02:00 HKDATA NOW · 02:05 VACGAUGE OFF · 03:00 HKDATA NOW → 바퀴가 돌고 OFF 라 DEWPRES 없음
     04:40 주기 바퀴 (03:00 + 100 s)
 
-⭐ **`DEWPRES` 의 셋** — `VACGAUGE=OFF` 면 **뺀다**(잴 것이 없다) · 켜져 있고(예열 포함) 값이
-있으면 그 값 · 켜져 있는데(또는 모르는데) 결측이면 **`9.99e-9`**(헤더와 같은 sentinel).  뺀
-경우도 sentinel 도 `HKSTALE` 에 센다.  다른 아홉 키는 종전대로 결측이면 빠진다.
+⭐ **`DEWPRES` 의 셋** — `VACGAUGE=OFF`·**`WARMUP`** 이면 **뺀다**(꺼져 있거나 예열 중이면 잴 것이
+없다) · `ON` 이고 값이 있으면 그 값 · `ON`(또는 모름)인데 결측이면 **`9.99e-9`**(헤더와 같은
+sentinel).  뺀 경우도 sentinel 도 `HKSTALE` 에 센다.  다른 아홉 키는 종전대로 결측이면 빠진다.
 ⛔ 낱말을 live 로 내면 `VACGAUGE=OFF DEWPRES=<실측값>` 한 줄이 생긴다 — 2026-09-11 에 그
 어긋남을 *값 쪽*을 즉시 가려서 막았었는데, 되돌리고 *낱말 쪽*을 바퀴의 표본으로 맞췄다.
 
@@ -1046,8 +1066,8 @@ python -m ics_archon
 
 **요약** — LED 프로젝터 배선 · binning · 바이어스 측정값의 헤더 수록(로그만
 있다).  ~~듀어·환경 HK~~ 와 ~~guide 계통~~ 은 **2026-08-31 `icg_archon` 신설**로
-경로가 생겼다 — HK 는 `[archon] hk_latest` 로 icg 스냅샷을 읽고(icg 가 꺼져
-있으면 종전대로 sentinel), guide 취득은 `icg_archon/` 이 맡는다 (실기 미검증).
+경로가 생겼다 — HK 는 **`GO` 마다 ICG 에 `HKDATA NOW` 를 물어** 그 답을 싣고(2026-09-15,
+답이 없으면 sentinel), guide 취득은 `icg_archon/` 이 맡는다 (실기 미검증).
 
 ⚠️ **각 항목의 근거와 착수 조건은 [SMC_CLAUDE.md](SMC_CLAUDE.md) 에 있다** —
 여기 두면 "쓰는 법" 과 "남은 일" 이 섞인다.

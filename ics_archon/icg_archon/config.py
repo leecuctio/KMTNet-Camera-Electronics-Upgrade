@@ -198,10 +198,10 @@ class HkCfg:
     #: 주기 [s].  운영 확정값은 60 -- 로그가 곧 `ics_archon` 헤더의 원천이라
     #: 이보다 성기면 science 헤더의 HK 나이가 그만큼 낡는다.
     interval: float = 60.0
-    #: CSV·스냅샷 자리.  ⚠️ data_dir 밑에 두지 말 것 (아카이브 오염).
+    #: CSV 자리.  ⚠️ data_dir 밑에 두지 말 것 (아카이브 오염).
+    #: ⛔ 종전 `latest_name`(`hk_latest.G.json` 스냅샷)은 없앴다 (2026-09-15) --
+    #: ICS 는 와이어(`HKDATA NOW`)로 받는다.  ini 에 남아 있어도 읽지 않는다(무시).
     log_dir: str = '~/AIC/Logs'
-    #: 원자적 최신 스냅샷 파일 이름 (`log_dir` 안).  `ics_archon` 이 읽는다.
-    latest_name: str = 'hk_latest.G.json'
     #: AUX(`ENS1~7`)도 주기마다 TC 에 물어 로그에 싣나.  노출 사이클과 별개의
     #: 질의라 TC 부하가 늘어난다 -- 레거시 ICG 는 노출당 1페어였다 (§5.3).
     query_aux: bool = True
@@ -436,7 +436,6 @@ def load(path: str) -> IcgCfg:
         s = cp['hk']
         cfg.hk.interval = _float(s, 'interval', cfg.hk.interval)
         cfg.hk.log_dir = _path(s, 'log_dir', cfg.hk.log_dir)
-        cfg.hk.latest_name = _text(s, 'latest_name', cfg.hk.latest_name)
         cfg.hk.query_aux = _bool(s, 'query_aux', cfg.hk.query_aux)
 
     if cp.has_section('radionode'):

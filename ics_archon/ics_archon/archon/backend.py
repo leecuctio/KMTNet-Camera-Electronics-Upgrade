@@ -150,10 +150,12 @@ class ArchonBackend:
         self._prep_locks = {tag: asyncio.Lock() for tag in self.tags}
         self._led_ms = 0
         self._warned_sensors = False
-        #: 직전에 통보한 **낡은 키 집합** -- 불리언 래치면 새로 낡아지는
-        #: 센서를 놓친다 (2026-08-31 교차검토).
-        self._warned_stale: frozenset = frozenset()
-        self._warned_future = False
+        #: `GO` 때 ICG 에서 받은 `HKDATA` (`set_hk`) -- 이 취득의 5.6절 원천.
+        self._hk: dict | None = None
+        self._hk_warned = False
+        #: `GO` 가 띄운 *"HKDATA 묻고 게이지 끄기"* 태스크 (`IcsArchon.begin_go`).
+        #: 첫 프레임의 `initialize()` 가 이것을 **기다린 뒤** 컨트롤러를 준비한다.
+        self.hk_task = None
         #: 태그 -> 이번 프레임의 이름.  `initialize()` 가 받아 두고 `trigger()`
         #: 와 `write_frame()` 이 저장 표를 맞추는 데 쓴다 (blocker B).
         self._suffix: dict[str, str] = {}
@@ -327,6 +329,19 @@ class ArchonBackend:
         # ⚠️ 락 **밖**이다 -- 두 컨트롤러가 같은 마감을 함께 기다린다(대기는
         # 마감 시각 기준이라 멱등이다).  안 그러면 한 대가 자는 동안 다른 대의
         # 준비가 막힌다.  ⭐ 게이지가 이미 꺼져 있던 프레임에서는 **0초**다.
+        # ⭐ **`GO` 의 HK 질의 + 게이지 판단을 먼저 기다린다** (운영자 2026-09-15).
+        # `begin_go()` 가 띄운 태스크가 ICG 에 `HKDATA NOW` 를 묻고 그 답의
+        # `VACGAUGE` 로 끌지 말지를 정한다 -- 여기가 프레임의 첫 백엔드 호출이라
+        # 이 뒤에야 `VACGAUGE OFF` 의 안정화(`gauge.settle`)도 뜻이 있다.
+        # ⚠️ 락 밖이다 -- 두 컨트롤러·네 chip 이 같은 태스크를 기다린다(멱등).
+        # ⚠️ 태스크가 죽어도 노출은 간다 -- 카드가 sentinel 이 될 뿐이다.
+        task = self.hk_task
+        if task is not None:
+            try:
+                await task
+            except Exception as exc:  # noqa: BLE001
+                log.warning('HKDATA/gauge step before the exposure failed -- %s',
+                            exc, extra={'detail': '5.6절 카드는 sentinel 로 간다'})
         gauge = getattr(self, 'gauge', None)
         if gauge is not None:
             await gauge.settle()
@@ -920,106 +935,41 @@ class ArchonBackend:
             out.append(parse.telemetry_of(ctrl.status if ctrl else None))
         return out
 
-    def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
-        """5.6절 듀어·환경 HK -- **원천은 `icg_archon` 의 HK 스냅샷이다**
-        (운영자 확정 2026-08-31).
+    def set_hk(self, hk: dict | None) -> None:
+        """`GO` 때 ICG 에서 받은 `HKDATA` 를 이 취득의 5.6절 원천으로 둔다.
 
-        공급 3계통(ICG RTD · Radionode)의 물리 원천은 **guide 유닛과
-        Radionode 클라우드**이고, 접속자는 컨트롤러당 하나라 science 쪽이
-        직접 읽을 수 없다.  `icg_archon` 이 1분 주기로 남기는 원자적 스냅샷
-        (`hk_latest.G.json` -- 값 + 표본시각)을 읽는 것이 계약이다:
-
-        * `[archon] hk_latest` 가 그 파일 경로다.  비우면 종전대로 전 키
-          결측(sentinel)이고 경고 한 줄이 남는다.
-        * **신선도 판정은 읽는 쪽 몫이다** -- 표본이 `hk_stale_after` 보다
-          낡으면 그 키를 버린다 (낡은 값이 새 값처럼 실리는 것이
-          결측보다 나쁘다 -- 진공 Alive 규칙과 같은 정신).
-        * 파일이 없거나 깨져 있으면 결측 + 경고 (한 번씩만).
-
-        키 이름·형은 계약(`base.py`) 그대로 -- 스냅샷의 `values` 가 이미
-        그 키로 담겨 있다 (`icg_archon/hk.py`).
+        ⭐ **`GO n` 의 n 장이 같은 값을 본다** -- 노출 시퀀스 **직전** 상태다 (운영자
+        2026-09-15).  `None` 이면 답이 없었던 것이고 카드는 sentinel 로 실린다.
         """
-        path = getattr(self.acfg, 'hk_latest', '')
-        if not path:
-            if not self._warned_sensors:
-                self._warned_sensors = True
-                log.warning('no dewar/environment HK source configured -- '
-                            'those cards stay at the sentinel',
-                            extra={'detail':
-                                   '[archon] hk_latest 에 icg_archon 스냅샷 '
-                                   '경로를 주면 CCDTEMP 등 5.6절 카드가 '
-                                   '실값으로 실린다'})
+        self._hk = dict(hk) if hk else None
+        self._hk_warned = False
+
+    def sensors(self, controller: str, chips: tuple[str, ...]) -> dict:
+        """chip 온도 + 듀어·환경 센서 (계약 `base.py`).  ⭐ **원천은 `GO` 때 ICG 에
+        물어 받은 `HKDATA NOW` 응답**이다 (운영자 지시 2026-09-03 *"ICS 가 ICG 로그파일을
+        읽지 않는다.  ICIMACS 통신으로 받는다"* · 구현 2026-09-15, DevNote 11.90).
+
+        종전(2026-08-31~) 에는 `icg_archon` 이 남기는 파일 스냅샷(`hk_latest.G.json`)을
+        읽었다 -- 그 경로는 없앴다 (`[archon] hk_latest`·`hk_stale_after` 도).
+
+        * 키는 이미 소문자 계약키다 (`hkwire.parse_hkdata` 가 접는다).  `DEWPRES` 는
+          지수 표기 원문 그대로 -- `rawhdr.format_dewpres` 가 판정한다.
+        * `hkudate` 는 ICG 가 준 **자료 획득 시각**(19자) 그대로 -- 파일 때처럼 여기서
+          표본시각으로 다시 세지 않는다 (신선도는 ICG 가 `HKSTALE` 로 이미 걸렀다).
+        * 답이 없었으면(시한 초과 · ICG 부재) **빈 dict** -- 호출측이 sentinel 로 채운다.
+          경고는 취득당 한 번.
+        """
+        if self._hk is None:
+            if not self._hk_warned:
+                self._hk_warned = True
+                log.warning('no HKDATA from ICG for this acquisition -- the '
+                            'dewar/environment cards stay at the sentinel',
+                            extra={'detail': 'GO 때 ICG 에 HKDATA NOW 를 물었는데 '
+                                             '답이 없었다 -- ICG 가 떠 있는지, '
+                                             '[archon] icg_node 가 맞는지 볼 것'})
             return {}
-        try:
-            with open(os.path.expanduser(path), encoding='utf-8') as fh:
-                snap = json.load(fh)
-        except (OSError, ValueError) as exc:
-            if not self._warned_sensors:
-                self._warned_sensors = True
-                log.warning('could not read the icg HK snapshot %s -- %s',
-                            path, exc,
-                            extra={'detail':
-                                   '5.6절 카드가 sentinel 로 실린다 -- '
-                                   'icg_archon 이 돌고 있는지 볼 것'})
-            return {}
-        self._warned_sensors = False       # 회복하면 다음 결측 때 다시 경고
-        now = time.time()
-        horizon = float(getattr(self.acfg, 'hk_stale_after', 300.0))
-        values = snap.get('values') or {}
-        sampled = snap.get('sampled') or {}
-        out: dict = {}
-        stale: list[str] = []
-        future: list[str] = []
-        for key, val in values.items():
-            age = now - float(sampled.get(key, snap.get('written', 0.0)))
-            if age < -1.0:
-                # 표본시각이 미래다 -- 두 호스트의 시계가 어긋났다.  그대로
-                # 두면 age 가 음수라 **신선도 판정이 통째로 무력해진다**
-                # (아무리 낡아도 통과한다).  버리는 쪽이 안전하다.
-                future.append('%s(%+.0fs)' % (key, -age))
-                continue
-            if age <= horizon:
-                out[key] = val
-            else:
-                stale.append('%s(%.0fs)' % (key, age))
-        # **래치는 집합으로 든다** -- 불리언이면 한 센서가 영구히 죽었을 때
-        # 그 뒤에 새로 낡아지는 센서를 영영 안 알린다 (2026-08-31 교차검토).
-        now_stale = frozenset(s.split('(')[0] for s in stale)
-        if now_stale and now_stale != self._warned_stale:
-            log.warning('icg HK samples are stale -- %s (limit %.0fs)',
-                        ', '.join(stale), horizon,
-                        extra={'detail': '해당 카드는 sentinel 로 실린다'})
-        self._warned_stale = now_stale
-        if future and not self._warned_future:
-            self._warned_future = True
-            log.error('icg HK snapshot sample times are in the future '
-                      '-- %s', ', '.join(future),
-                      extra={'detail': '두 호스트의 시계를 확인하라(NTP).  '
-                                       '그 키는 버린다'})
-        elif not future:
-            self._warned_future = False
-        # ⭐ `HKUDATE` -- 이 블록 값들의 취득 시각 (raw spec 5.6절, v1.10).
-        #
-        # **가장 낡은 표본시각**을 준다.  카드는 하나인데 키마다 표본시각이
-        # 다르므로, 어느 하나를 고르면 나머지에 대해 거짓말이 된다 -- 가장
-        # 낡은 것을 실어야 이 카드가 **실제보다 신선하다고 말하지 않는다**
-        # (`hk_stale_after` 가 낡은 값을 버리는 것과 같은 정신).
-        #
-        # ⚠️ 살아남은 키가 없으면 싣지 않는다 -- 호출측이 sentinel `'NC'`
-        # 로 채운다.  빈 블록에 시각만 붙으면 "쟀는데 다 결측" 으로 읽힌다.
-        #
-        # ⛔ **`Radionode` 세 키는 이 셈에서 뺀다** (raw spec 5.6절, 운영자
-        # 확정 2026-09-08) -- guide 창구(`icg_archon/hk.py`)가 하는 것과 같은
-        # 규칙이다.  전송주기가 장치마다 달라(60 s · 600 s) 섞으면 600 s 장치
-        # 하나가 블록 전체의 취득 시각을 끌고 간다.  ⚠️ 그래서 이 카드는
-        # `HEBOX`·`FSATEMP`·`FSAHUM` 의 나이를 말하지 않는다 -- 값 자체는
-        # 그대로 싣고 시각 셈에서만 뺀다.
-        own = [k for k in out if k not in rawhdr.RADIONODE_KEYS]
-        if own:
-            oldest = min(float(sampled.get(k, snap.get('written', 0.0)))
-                         for k in own)
-            out['hkudate'] = stamp_iso(
-                datetime.datetime.fromtimestamp(oldest, datetime.timezone.utc))
+        out = {k: v for k, v in self._hk.items()
+               if k not in ('hkqdate', 'hkstale', 'vacgauge', 'expstatus')}
         return out
 
     def status(self, ccd: str) -> dict:

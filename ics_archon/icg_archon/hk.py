@@ -11,13 +11,13 @@
 * **Radionode** `HEBOX` `FSATEMP` `FSAHUM` -- 클라우드 폴러 (`radionode.py`)
 * **AUX**       `ENS1~7` -- TC `AUXSTATUS` 질의
 
-산출물 둘 -- **둘 다 지연 없이** 쓴다 (`ics_archon` 이 실시간으로 읽는다):
+산출물 -- `hk.G.<YYYYMMDD>.csv` (일자별 CSV, 행마다 flush.  다른 프로세스가
+읽는 중에도 이어 쓴다 · 열 구성이 바뀌면 `monitor.py` 처럼 파일을 가른다).
 
-* `hk.G.<YYYYMMDD>.csv` -- 일자별 CSV, 행마다 flush.  다른 프로세스가 읽는
-  중에도 이어 쓴다 (열 구성이 바뀌면 `monitor.py` 처럼 파일을 가른다).
-* `hk_latest.G.json` -- **원자적**(tmp + `os.replace`) 최신 스냅샷.
-  `ics_archon` 의 `sensors()` 가 이것 하나만 읽으면 된다 -- 값 + 표본시각
-  (epoch) 이 실려 있어 **신선도 판정이 읽는 쪽에서 된다.**
+⭐ **`ics_archon` 은 이 파일들을 읽지 않는다** (운영자 지시 2026-09-03 · 구현
+2026-09-15, DevNote 11.90) -- `GO` 마다 와이어로 `HKDATA NOW` 를 물어 그 답을
+헤더에 싣는다.  ⛔ 종전(2026-08-31~) 의 원자적 스냅샷 `hk_latest.G.json` 은
+**없앴다** -- ICS 가 그것을 읽던 경로와 `[hk] latest_name` 도 함께.
 
 해독 규칙의 정본은 `ics_archon/SMC_CLAUDE.md` "층 3" 절들 (실측 확정 --
 재조사 금지):
@@ -886,7 +886,6 @@ class HkMonitor:
         # ⭐ `note` 는 **왜 이 바퀴가 돌았나** 다 (`hkdata_now`).  ⛔ 과열 차단
         # 사건이 있으면 그것이 먼저다 -- 사건을 표시로 덮으면 안 된다.
         self._write_row(row, event=event or note)
-        self._write_latest(now)
 
     # -- 산출물 ---------------------------------------------------------------
 
@@ -920,33 +919,3 @@ class HkMonitor:
             self._csv.flush()
         except OSError as exc:
             log.error('hk: CSV write failed -- %s', exc)
-
-    def _write_latest(self, now: float) -> None:
-        """원자적 최신 스냅샷 -- `ics_archon.sensors()` 의 소비 창구.
-
-        tmp + `os.replace` 라 읽는 쪽이 반쪽 파일을 볼 수 없다.  값마다
-        표본시각(epoch)을 함께 실어 **신선도 판정을 읽는 쪽에 넘긴다.**
-
-        ⚠️ **`sampled` 에 기록 시각을 찍지 않는다.**  `_sample` 이 이미
-        키마다 진짜 표본시각을 들고 있고(RTD·진공은 그 바퀴의 측정 시각,
-        Radionode 는 폴러의 시각), 여기서 `now` 로 덮으면 읽는 쪽의
-        `hk_stale_after` 가 영원히 안 걸린다 (DevNote 9.6 · ics_archon.ini
-        의 "이보다 낡은 표본은 버린다" 가 그 셋에만 거짓말이 됐다).
-        """
-        snap = {'written': now, 'utc': stamp_iso_ms(utcnow()),
-                'values': {}, 'sampled': {}}
-        for key, (val, when) in sorted(self._sample.items()):
-            snap['values'][key] = val
-            snap['sampled'][key] = when
-        path = os.path.join(self._log_dir(), self.cfg.hk.latest_name)
-        tmp = path + '.tmp'
-        try:
-            with open(tmp, 'w', encoding='utf-8') as fh:
-                json.dump(snap, fh)
-            os.replace(tmp, path)
-        except OSError as exc:
-            log.error('hk: snapshot write failed -- %s', exc)
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass

@@ -426,3 +426,59 @@ def test_a_broken_busy_hook_is_treated_as_busy():
 
     state, words = asyncio.run(run())
     assert state == gc.PENDING_ON and 'ON' not in words, (state, words)
+
+
+# -- HKDATA 의 낱말로 판단한다 (운영자 2026-09-15, DevNote 11.90) ------------------
+
+def test_the_icg_word_decides_off_is_not_resent():
+    """`VACGAUGE=OFF` 라 답하면 추적 상태가 무엇이든 안 보낸다 -- 상태만 OFF 로."""
+    async def run():  # noqa: ANN202
+        h = Harness()
+        assert h.gauge.before_exposure('OFF') is False
+        assert h.sent == [] and h.gauge.state == gc.OFF
+        await h.gauge.close()
+    asyncio.run(run())
+
+
+def test_the_icg_word_on_overrides_our_tracking(caplog):  # noqa: ANN001
+    """우리는 껐다고 아는데 ICG 가 `ON`(누가 켰다 · ICG 재기동) -- 낱말이 정본이라 끈다, 경고와 함께."""
+    caplog.set_level(logging.WARNING, logger='ics_archon.gaugectl')
+
+    async def run():  # noqa: ANN202
+        h = Harness()
+        h.gauge.before_exposure()               # 첫 GO -- 껐다 (추적 OFF)
+        assert h.words == ['OFF']
+        for word in ('ON', 'WARMUP', 'UNKNOWN'):
+            h.sent.clear()
+            assert h.gauge.before_exposure(word) is True
+            assert h.words == ['OFF'], word
+        assert sum('although we tracked' in r.getMessage() for r in caplog.records) == 3
+        await h.gauge.close()
+    asyncio.run(run())
+
+
+def test_no_word_falls_back_to_our_tracking():
+    """답이 없었으면(`None`) 종전대로 -- 처음엔 보내고, 껐다고 아는 동안엔 안 보낸다."""
+    async def run():  # noqa: ANN202
+        h = Harness()
+        assert h.gauge.before_exposure(None) is True
+        assert h.gauge.before_exposure(None) is False
+        assert h.words == ['OFF']
+        await h.gauge.close()
+    asyncio.run(run())
+
+
+def test_cancel_reenable_only_drops_the_timer():
+    """`GO` 수락 직후 -- 판단 전에 타이머만 푼다.  상태는 그대로(켜짐대기)다."""
+    async def run():  # noqa: ANN202
+        # ⚠️ 데드맨 시한을 길게 -- 이 하네스는 답을 안 하므로, 짧게 두면 무응답이
+        # 상태를 UNKNOWN 으로 바꿔 타이머와 무관한 이유로 갈린다.
+        h = Harness(reenable_after=0.05, reply_timeout=5.0)
+        h.gauge.before_exposure()
+        h.gauge.after_acquisition()
+        assert h.gauge.state == gc.PENDING_ON
+        h.gauge.cancel_reenable('시험')
+        await h.settle()                        # 만료 시각을 지나도 안 켠다
+        assert h.words == ['OFF'] and h.gauge.state == gc.PENDING_ON
+        await h.gauge.close()
+    asyncio.run(run())

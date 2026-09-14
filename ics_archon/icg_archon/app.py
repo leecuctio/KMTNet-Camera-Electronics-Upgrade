@@ -395,8 +395,8 @@ class IcgArchon(IcsSim):
                 i.host or '(미설정)', i.port, TAG, i.acf_path or '(없음)'),
             'geometry     : %dx%d (%.2f MiB/frame)  exptime_min=%.1fs' % (
                 i.naxis1, i.naxis2, i.frame_bytes / (1 << 20), i.exptime_min),
-            'hk           : every %.0fs -> %s (latest: %s)' % (
-                i.hk.interval, i.hk.log_dir, i.hk.latest_name),
+            'hk           : every %.0fs -> %s (ICS asks HKDATA NOW on GO)' % (
+                i.hk.interval, i.hk.log_dir),
             # ⭐ 어느 키로 게이지를 끄는지 배너에 남긴다 -- 둘의 대가가 달라서
             # (diopower 는 압력 읽기까지 죽는다) 나중 로그만 보고 판단할 수
             # 있어야 한다.
