@@ -1020,15 +1020,16 @@ class IcsArchon(IcsSim):
         """
         body = (msg.payload or '').strip()
         self.hk_wire = {'when': utcnow(), 'src': msg.src, 'body': body}
-        log.info('ICG HK received -- %s', body)
+        # ⛔ **`print()` 로 내지 않는다** (벤치 2026-09-15: `hk` 뒤 프롬프트가 사라졌다).
+        # 맨 `print` 는 `PromptSafeStream` 을 안 지나 입력 줄을 지우고 프롬프트를
+        # 다시 안 그린다.  그리고 같은 본문이 이미 와이어 줄(`ICG>ICS DONE: HKDATA …`,
+        # 전송층이 찍는다)로 화면에 있으므로 여기서는 **DEBUG 한 줄**만 남긴다 --
+        # 종전엔 셋(와이어 · `ICG HK received` · `HKDATA <-`)이 같은 줄이었다.
+        log.debug('ICG HK received -- %s', body)
         parsed = hkwire.parse_hkdata(body)
         fut = self._hk_future
         if parsed is not None and fut is not None and not fut.done():
             fut.set_result(parsed)
-        try:
-            print('HKDATA <- %s  %s' % (msg.src, body), flush=True)
-        except Exception:                   # noqa: BLE001
-            pass
 
     async def fetch_icg_hk(self) -> dict | None:
         """`ICS>ICG HKDATA NOW` 를 보내고 답(소문자 키 dict)을 기다린다.

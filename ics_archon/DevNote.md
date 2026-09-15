@@ -11230,6 +11230,7 @@ flush 를 한 번 만들기 때문(11.93; 하네스엔 ICG 가 없어 추적 상
 | i | `ICG% hk` 답에 `FSATEMP`/`FSAHUM` 이 없다 | 결함 아님 -- 벤치 ini 가 `[radionode] backend = off`(저장소 기본값) 라 Radionode 셋이 결측(`HKSTALE=4` = 셋 + OFF 라 뺀 `DEWPRES`) |
 | j | *"`[radionode] backend = openapi` 로 기본값을 바꿔줘"* | 배포 ini 를 `openapi` 로 (코드 기본 `RadionodeCfg.backend='off'` 는 그대로 -- ini 줄이 없을 때의 값).  ⭐ 그러면서 자격증명 없는 설치본이 못 뜨면 안 되므로 `validate()` 의 *"api_key/api_secret 없으면 `IcgConfigError`"* 를 **경고 + `off` 로 내림**으로 바꿨다 -- HEBOX/FSATEMP/FSAHUM sentinel 을 크게 알린다.  벤치 ini 엔 KEY/SECRET/MAC 을 적어야 실린다 (P6) |
 | k | `K.IC>ICS STATUS: GO PCTREAD=` 두 줄씩 → (1)-5 | |
+| l | *"ICS `hk` 명령 이후 프롬프트가 사라져"* | `_on_hkdata` 의 맨 `print('HKDATA <- …')` -- `PromptSafeStream` 을 안 지나 프롬프트를 다시 안 그렸다.  print 를 없애고(같은 본문이 와이어 줄로 이미 화면에 있다) `ICG HK received` 는 DEBUG 로 -- 한 답에 세 줄이던 것이 한 줄 |
 
 #### (3) 그 밖에 로그가 말한 것 (고칠 것 없음)
 

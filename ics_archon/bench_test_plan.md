@@ -49,7 +49,7 @@
 | # | 하는 것 | 보는 것 | 닫히는 것 |
 |---|---|---|---|
 | 1 | `python -m ics_archon` 기동 | 기동 검사: `MIN_FRAME_PERIOD` 대사 줄(`frame timing from acf … floor 12.7762 s`, 경고 없음) · `icg_node` 경고 없음 · 허브 확인 통과 | 11.88 배선 |
-| 2 | ICS 콘솔 `hkdata` | `HKDATA <- ICG  HKQDATE=… HKSTALE=…` 한 줄 | **와이어 자체** (11.12 F1) |
+| 2 | ICS 콘솔 `hkdata` | `ICG>ICS DONE: HKDATA HKQDATE=… HKSTALE=…` 한 줄(와이어 줄 그대로 — 2026-09-15 첫 왕복 5 ms ✅) | **와이어 자체** (11.12 F1) |
 | 3 | ICG 에서 `vacgauge on`(예열 끝까지 13 s) → ICS `dark begin` · `exp 1` · **`go 1`** | ICS 로그: `ICS>ICG HKDATA NOW` → 답 → `ICG reports the gauge ON although we tracked … -- sending VACGAUGE OFF` → `settling 5.0s` → **`gauge was on -- FirstFlush 0 -> 1 for this frame only`** → 노출(첫 장 앞 flush 라 프레임 주기 +5.5 s).  헤더 `CCDTEMP`·`DEWPRES`·`HKUDATE`·`HTRSET` 실값 | ⭐ 11.90 흐름 전부 · 11.93 첫 장 flush |
 | 4 | 곧바로 `go 2` | `HKDATA NOW` 는 나가되 답이 `VACGAUGE=OFF` 라 **`VACGAUGE OFF` 가 안 나가고** settle 없이, **FirstFlush 줄도 없이** 시작(ini/ACF 설정대로).  두 장 헤더의 HK 가 같은 값 | 11.90 (1) "OFF 면 안 보냄" · 11.93 |
 | 5 | 그 사이 ICG 로그 | 프레임마다 `EXPENABLE 0`(독출 2 s 전) → `EXPENABLE 1`(독출 뒤).  guide 가 돌고 있었으면 `Aborted=1` | `expenablectl` |

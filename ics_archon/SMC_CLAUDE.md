@@ -5284,6 +5284,7 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
 | verbose off 화면에서 **양끝이 다 우리 노드**인 줄 제외 (`ICS>K.IC …`), `Wrote`·키보드 줄은 남김 — `essential_wire(raw, ours)` | `ics_sim/transport.py` |
 | 콘솔이 끝날 때 이유 한 줄 + 명령 예외로 콘솔 안 죽음 (`imagetyp` 무언 종료 건 — ⏳ 원인 미확인, 벤치 로그 꼬리 볼 것) | `ics_sim/console.py` |
 | 별칭 `hknow`(ICS·ICG) · `c1hknow`/`c2hknow`(ICS) · `c1hknow`(ICG) — 인자 거절 | `app.py` · `icg_archon/commands.py` |
+| ⛔ ICS `hk` 뒤 프롬프트 사라짐 → `_on_hkdata` 의 맨 `print` 제거(와이어 줄이 이미 보인다), `ICG HK received` DEBUG 로 | `app.py` |
 | 돔 방위 카드 **소수 2자리** (`DSAZ`/`DSTELAZ` `%.2f` · `DAZERR` `%+.2f`, 계산 갈래도) — *"원문 그대로"* 는 이 셋에서 걷음 | `ics_sim/domeaz.py` · `telemetry.py` |
 | 배포 ini `[radionode] backend = openapi` (코드 기본은 `off` 그대로) — 자격증명 없으면 `validate()` 가 **경고 + off** (종전 `IcgConfigError`) | `icg_archon.ini` · `icg_archon/config.py` |
 | 시험 +10 · `test_ics_ops_commands` ccdflush 둘 차분으로 · `ics_sim` dome/telemetry 시험 2자리로 · `sync_vendor` | |
