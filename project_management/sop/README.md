@@ -20,5 +20,6 @@
 | --- | --- | --- |
 | [`SOP_MEF_CONVERTER_RUN.md`](SOP_MEF_CONVERTER_RUN.md) | Archon MK/NT raw → L0 64-amp MEF 변환 실행 | 확정 (v2.4.0 / PRODVER v2.1.1 기준) |
 | [`SOP_SITE_DEPLOYMENT.md`](SOP_SITE_DEPLOYMENT.md) | SSO/CTIO/SAAO 현장 전자부 배포 절차 | **[DRAFT]** — SSO 시행 전 계획 문서 기반, 실제 작업 후 개정 예정 |
+| [`SOP_CAMCHAR_CALIBRATION.md`](SOP_CAMCHAR_CALIBRATION.md) | cam_char 카메라 특성 측정(GAIN/RDNOISE/SATURAT/LINMAX) 캠페인 실행 | 확정 (LEGACY 32-amp 캠페인 재현 기준, 명령 실행 검증) |
 
 작성된 SOP가 생기면 위 표에 항목을 추가한다.
