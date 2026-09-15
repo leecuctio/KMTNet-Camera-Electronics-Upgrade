@@ -11042,3 +11042,80 @@ sentinel."*
 해석기 셋(소문자·형 · 비응답 · 수치 아님) · 설정 둘(파일 키 없음 · 시한 0 거부) · 흐름 넷 --
 `GO` -> `HKDATA NOW` -> 답(`VACGAUGE=ON`) -> `VACGAUGE OFF` + 헤더 `CCDTEMP=-101.23`·`DEWPRES=6.93e-4`·
 `HKUDATE` · 답이 `OFF` 면 안 보냄 · 무응답이면 sentinel+경고+노출 진행 · 비응답 본문 뒤 진짜 답.
+
+### 11.91 `CxHKDATA` 구현 · 묶음 D(코드 문면의 규격 인용 정리) (2026-09-15, 운영자 지시)
+
+#### (1) `C1HKDATA`/`C2HKDATA` -- 11.26-(7) 의 포맷 층에 드디어 소비자가 붙었다
+
+운영자 확정 문면(2026-09-04)대로: 명령 넷 중 `HKDATA` 는 11.90 으로 헤더 원천이 됐고, 남은
+`C1HKDATA`·`C2HKDATA`(guide 도 `C1HKDATA`)를 이번에 배선했다.  조립은 `hkwire.ctrl_body` 위에 얹은
+**`hkwire.ctrl_hkdata_body()` 한 함수**를 ICS·ICG 가 같이 부른다 -- 두 곳에서 조립하면 반드시 갈린다
+(11.26 의 판단 그대로).
+
+    ICS  cmd_c1hkdata / cmd_c2hkdata  -> ctrls[MK|NT].status_live (감시 스냅샷, 왕복 없음)
+                                        NOW -> refresh_status_live() 한 번
+                                        자리 표 = rawhdr.TEMP_MOD_LABELS(10) · VOLT_RAILS(7)
+                                        D4 규칙 = parse.telemetry_of (VALID=0 -> 전 자리 결측)
+    ICG  cmd_c1hkdata                 -> guide.ctrl.status_live · hk.ctrl_unit (8 · 8, HEATER -> HTR_V/HTR_I)
+
+본문: `CnQDATE`(23자 지금) · `CnUDATE`(19자 표본시각, 표본 없으면 빠짐) · `CnSTALE`(결측 자리 수) ·
+`CTRLnID=BACKPLANE_ID` · `VALID`/`POWER`/`POWERGOOD` · 온도 · 레일 V/I.  결측 자리는 sentinel 로
+채우지 않고 **빠진다** -- `HKDATA` 의 아홉 키와 같은 규칙(11.14).  ⚠️ ICS 하네스는 `monitor=false`
+라 인자 없는 갈래가 전 자리 결측(`C1STALE=24`)이고 `NOW` 가 실값이다 -- 배포 ini 는 `monitor=true`
+(20 s)라 인자 없이도 20 s 안의 값이 나온다.  sim 백엔드(컨트롤러 없음)는 다른 조작 명령처럼 `ERROR`.
+
+시험 `test_hk_wire.py` 둘(ICS 두 갈래 + 사용법 오류 · ICG 자리 표/결측/컨트롤러 없음), 콘솔 도움말
+대사(`test_console`).  ⏳ 실기: 벤치에서 `c1hkdata now` 한 번 -- `CnSTALE=0` 이고 24 자리가 다
+부호 달고 오는지.
+
+#### (2) 묶음 D -- 2026-09-12 인수인계가 미뤄 둔 코드 문면 정리 (규격 v1.13 추종)
+
+헤더 값에는 영향이 없고 **다음 사람이 닫힌 물음을 열린 것으로 읽게 하던 자리**들이다.
+
+| 항목 | 자리 | 무엇을 |
+|---|---|---|
+| D1·D2 | `app.py`·`hk.py`·`icg/backend.py` | 규격 **행 번호**(`v1.12 767행`)·판 번호 인용 → **절 번호**(10.4절 · 5.5절).  행은 판마다 밀린다 |
+| D3 | `guidehdr.py` ×2 · `hkdata.py` · `rawhdr.py` · `state.py` · `test_icg_cards.py` · `test_ini_cards.py` | ⏳ *"main 라운드 이월"* 일곱 → ✅ (v1.13 이 닫았다: OI-20 `PRESCNX=16` · OI-24 의 `INSTRUME`/`FPAID` · FSA 2자리 · `RDMODE` `UNKNOWN`(v1.12) · `OBSTYPE` 계통 식별 · 5.3.1 KASI 좌표 = INI 만).  ⚠️ `guidehdr` 의 것은 OI-24 를 **통째로 닫지 않고** 잔여 둘을 남겼다 |
+| D4 | `domeaz.py`·`config.py`·`telemetry.py` (ics_sim) | 걷힌 어휘 `TCS relay or REDIS` → **`REDIS (dome control)`**, 5.7절 → **5.7.3절**.  *"규격이 처음부터 이 길을 열어 두었다"* 서사도 버렸다 -- 규격이 그 갈래를 지운 이유가 *"두 갈래면 헤더만 보고 못 가린다"* 라서 |
+| D5 | `rawhdr.py` `CAMVER` | 범프 사유 ① 하나 → **셋**(포장 · `Cn_*` 자리 · 듀어 RTD 배치).  ③이 요점 -- 헤더에 자취를 안 남기는 변경이라 주석이 안 말하면 아무도 범프를 안 한다 |
+| D5b·D6 | `sim.py` · `rawhdr.py` | *"다섯 키를 아직 안 담는다(OI-25)"* → 종결 · `RDMODE` *"등재 대기"* → ✅ v1.12 |
+| D17 | `hardware/base.py` `sensors()` | 계약 docstring 에 **Radionode 셋을 `hkudate` 셈에서 뺀다** 규범 + 정본 `rawhdr.RADIONODE_KEYS` |
+| D18 | `sequencer.py` ×2 · `state.py` | *"P1 규범 ①"* 옆에 규격 인용 **D-022 · 2.3절 8항 · 5.4.1절** |
+| D8 | `acf/README.md` | 선두 16 의 귀속 `OVRSCNX=16` → **`PRESCNX=16` · `OVRSCNX=0`** · *"다음 판올림 때 갱신"* 이월 문구와 *"P-k 가 귀속을 뒷받침"* 인과를 걷었다 |
+
+`ics_sim/` 을 고쳤으므로 `tools/sync_vendor.py` 를 돌렸다 (24 파일, `test_vendor` 통과).
+
+### 11.92 OI-24 잔여 둘 종결 -- guide `CAMVER`·`IMAGETYP` 는 science 와 같다 · `BIAS` = 최소 노출 (2026-09-15, 운영자)
+
+규격 10.6절 OI-24 가 남겼던 *"다른 값을 써야 하는가"* 둘에 운영자가 답했다:
+
+> ① `CAMVER` 는 science 와 같게.  필요하면 ini 에서 설정하면 되니까 그대로.
+> ② `IMAGETYP` 는 science 와 같은 어휘.  다만 **`BIAS` 로 설정하면 최소 노출**이 들어가야 하고,
+> 나머지는 셔터 제어 개념이 없으니 모두 동일하게.  **기본값은 `OBJECT`**, **기본 `EXPTIME` 은 2 초.**
+
+| 항목 | 코드 |
+|---|---|
+| ① `CAMVER` | 변경 없음 -- `rawhdr.CAMVER` 기본 + `[camera] camver` ini (guide 도 같은 줄) |
+| ② 어휘 | 변경 없음 -- 기반(`ics_sim`)의 `BIAS`/`DARK`/`OBJECT`/`FLAT`/`SKY`/`DOMEFLAT`/`STANDARD` 그대로 |
+| ② `BIAS` = 최소 노출 | `IcgDispatcher._image_type`: `BIAS` 면 `EXPTIME` 을 `_min_exptime()`(= `effective_exptime(0)`, 기본 노출시간 위의 `exptime_min` 실현값 -- 대역은 1.3)로 둔다.  `EXP`/`GUIEXP` 는 부모처럼 **거부** (`Cannot change EXPTIME for ImgType=BIAS`).  다른 국면으로 옮기면 풀린다 |
+| ② 나머지 동일 | `DARK`·`OBJECT`·… 는 `EXPTIME` 을 안 건드린다 (부모 그대로) |
+| ② 기본값 | `IMAGETYP` 은 기반 상태 기본 `OBJECT` 그대로 · **`[icg] exptime_default = 2.0`** 신설, 기동 때 `state.exptime` 에 넣는다 (종전 0 → 첫 `GO` 가 하한으로 접혔다) |
+
+⛔ **2026-08-31 판을 걷었다** -- 그때 guide `_image_type` 은 *"노출시간을 0 으로 만들지 않는다"*
+로 `BIAS` 에서도 주기를 그대로 뒀고 `EXP` 도 받았다.  이유는 당시 `go` 가 하한 아래를 **거부**해
+`BIAS` 한 번에 가이딩이 잠겼기 때문인데, 하한 아래를 접게 된 뒤(운영자 2026-08-31, 9.15)로는
+그 이유가 없다.  이제 `BIAS` 는 science 와 같은 뜻(최소 노출)이고 헤더 `EXPTIME` 은 실현값이다.
+
+⚠️ `BIAS` 응답의 `EXP=` 는 부모(0)와 달리 **실현값**(대역 1.3, 실기 R2622 면 1.3 = `exptime_min`)
+을 낸다 -- 헤더에 실릴 값이 그것이라서.
+
+시험 `tests/test_icg_imagetype.py` 3 (기동 기본값 · `BIAS` 고정+거부 · 나머지 국면 무변경+핀 해제).
+⏳ 규격: 10.6절 OI-24 종결 표시 · 10.3절 `IMAGETYP`/`EXPTIME` 기본값 문면은 다음 `main` 라운드.
+
+#### 곁들여 -- 바이어스 측정값의 헤더 수록(층 2)은 **로그 유지 쪽** (운영자 의견 2026-09-15)
+
+운영자: *"현행대로 로그에만 넣어도 될 것 같은데, 카드로 넣기로 했었나?"* → 카드로 넣기로 **확정한
+적은 없다**.  2026-08-27 의 *"헤더에도 적절히 넣을 계획, 일단은 로그부터"* 가 전부이고, 규격 v1.13 엔
+바이어스 카드가 없다(10.4절 끝의 D3 설계 메모 한 줄뿐).  대가는 인수인계 "층 2" 절에 적혀 있다
+(32값이라 pair 8~12장 신설 · `CAMVER`/`CTRLnCFG` 범프 결합 · `POWER≠4` 표시).  ⏳ **로그 유지로
+확정할지는 운영자 한마디** -- 확정되면 인수인계 "층 2" 를 보류로 표시한다.

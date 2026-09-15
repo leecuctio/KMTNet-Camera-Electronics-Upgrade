@@ -266,9 +266,8 @@ class SimBackend:
             # 호출측이 값을 버린다 (2026-08-27 계약 정리).
             'fsatemp': 23.4, 'fsahum': 12.3,       # Radionode (raw spec 5.8절)
             # v1.10 신설 5장 -- 시각과 듀어 히터 넷 (raw spec 5.6.2절).
-            # ⭐ 시뮬은 실값을 낸다.  실기 경로는 `icg_archon` HK 스냅샷이
-            #    원천인데 **아직 이 다섯 키를 담지 않는다**(raw spec OI-25)
-            #    -- 그동안 실기에서는 sentinel 로 실린다.
+            # ⭐ 시뮬은 실값을 낸다.  실기 경로는 ICG 의 `HKDATA` 응답이 원천이고
+            #    다섯 키 다 실기 원천에 닿았다 (raw spec OI-25 종결 2026-09-09).
             'hkudate': stamp_iso(utcnow()),
             'htren': 'ON', 'htrset': -100.10,
             'htrout': 3.512, 'htrforce': 'OFF',

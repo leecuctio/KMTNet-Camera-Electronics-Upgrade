@@ -44,8 +44,9 @@ log = logging.getLogger('icg_archon.guidehdr')
 #: ⛔ **자리가 뜻이다**: converter 는 `DETSEC`/`DATASEC` 을 prescan/overscan
 #: **위치**로 셈하므로, 16 이 왼쪽(pre)이냐 오른쪽(over)이냐가 **영상 좌표를
 #: 뒤집는다** -- 합만 맞고 좌표가 조용히 틀리는 부류다.
-#: ⏳ 규격(10.3절)·견본 헤더·converter 파급은 **CU 와 상의 후** 정한다
-#: (운영자 2026-09-08) -- 지금은 코드만 맞춘다.
+#: ✅ 규격 v1.13 이 귀속을 확정했다 (10.3절 · OI-20 종결, CU 협의 완료 2026-09-08) --
+#: 선두 16 은 CCD 의 dark reference columns 라 **`PRESCNX=16` · `OVRSCNX=0`** 이고
+#: 견본 헤더도 같은 판에서 맞췄다.
 AMPNAX1, AMPNAX2 = 528, 1033
 IMAGEX, IMAGEY = 512, 1024
 PRESCNX, PRESCNY = 16, 0
@@ -128,8 +129,10 @@ def instrument_header(site_code: str,
     `INSTRUME` 기본은 `'<SITE코드> Guide CCDs'` 이고, **guide CCD 도 FPA 조립체에
     들어간다**.  견본 v0.0 의 `'KMTA 18k CCD'` 는 science 잔재로 등재된 대사
     항목이라 따르지 않는다 (10.2절 "규격이 이긴다").
-    ⏳ 규격 10.3·10.6절 문면 갱신은 **다음 `main` 라운드**로 (브랜치에서 규격을
-    고치지 않는다) -- OI-27 과 같은 차례다.
+    ✅ 규격 v1.13 이 10.3절에 수록했다(`INSTRUME` 어휘 · `FPAID` 사이트 유도).  ✅ 잔여 둘도
+    운영자가 정했다 (2026-09-15, DevNote 11.92): guide `CAMVER` 는 **science 와 같다**(ini 로
+    바꿀 수 있다) · `IMAGETYP` 어휘도 **science 와 같다** (`BIAS` = 최소 노출 · 기본 `OBJECT`).
+    ⏳ 규격 10.6절 OI-24 의 종결 표시는 다음 `main` 라운드.
     """
     cam = dict(cfg_camera or {})
     out: dict[str, object] = {

@@ -32,7 +32,7 @@ DSSTAT=NC 관례와 같은 방식이다.
 ## ⭐ 세 번째 원천 -- 돔 방위는 redis 에서 온다 (2026-09-11)
 
 `DSTELAZ`·`DSAZ`·`DAZERR` 는 **TC 가 아니라 돔 제어 프로그램**이 redis 에
-실어 두는 값이다 (`domeaz.py`, 규격 5.7절의 `TCS relay or REDIS`).
+실어 두는 값이다 (`domeaz.py`, 규격 5.7.3절 -- 출처 어휘 `REDIS (dome control)`).
 `query_dome()` 이 `TCSSTATUS` 질의와 **나란히** 돌고, 받은 값은
 `fits_header_dict()` 가 그 세 카드에 **덮어 쓴다**.
 

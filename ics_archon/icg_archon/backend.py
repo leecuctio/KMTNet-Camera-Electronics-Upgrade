@@ -615,7 +615,7 @@ class GuideBackend:
     def _cfg_name(self) -> str:
         """`CTRL1CFG` 값 -- **ini 가 이기고, 비면 적용 ACF 파일명**.
 
-        규격 v1.12 5.5절(그리고 10.3절이 *"5.5절과 같은 규칙"* 이라 못박는다):
+        규격 5.5절(그리고 10.3절이 *"5.5절과 같은 규칙"* 이라 못박는다):
         *"INI 에 정의돼 있으면 그 값, 비어 있으면 적용 ACF 파일에서, 어느
         쪽이든 경로·폴더명과 확장자를 뗀 파일명만"*.
 
@@ -631,7 +631,7 @@ class GuideBackend:
         return cfg_name_from_acf(self.ctrl.acf_path or self.icfg.acf_path)
 
     def rdmode(self) -> str:
-        """`RDMODE` -- **ini 로만** 정하고, 비면 `UNKNOWN` (규격 v1.12 5.5절).
+        """`RDMODE` -- **ini 로만** 정하고, 비면 `UNKNOWN` (규격 5.5절).
 
         ⛔ **ACF 이름에서 유도하지 않는다** (운영자 확정 2026-09-06).  종전
         단계였던 `fast`/`comp`/`slow` 토큰 찾기는 현행 ACF 이름에 그 토큰이

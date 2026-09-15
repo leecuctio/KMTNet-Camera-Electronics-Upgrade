@@ -197,3 +197,56 @@ def test_a_non_reply_body_does_not_count_as_the_answer(tmp_path):  # noqa: ANN00
     asyncio.run(run())
     h = _headers(tmp_path)[max(_headers(tmp_path))]
     assert h['CCDTEMP'].strip() == '-101.23'
+
+
+# ---------------------------------------------------------------------------
+# CxHKDATA -- 컨트롤러 텔레메트리의 와이어 판 (운영자 확정 2026-09-04 · 구현 2026-09-15)
+# ---------------------------------------------------------------------------
+
+def _kv(body: str) -> dict:
+    return dict(p.split('=', 1) for p in body.split() if '=' in p)
+
+
+def test_c1hkdata_and_c2hkdata_answer_the_controller_telemetry(tmp_path):  # noqa: ANN001
+    """ICS -- 자리 표는 헤더의 `Cn_*` 와 같다 (온도 10 · 레일 7×V/I).  `CTRLnID` 는 `BACKPLANE_ID`."""
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()                       # STATUS 스냅샷이 서 있게
+            a = await ses.reply('abc>ICS c1hkdata', 'C1HKDATA')
+            b = await ses.reply('abc>ICS c2hkdata now', 'C2HKDATA')
+            bad = await ses.reply('abc>ICS c1hkdata later', 'C1HKDATA')
+            return a, b, bad
+
+    a, b, bad = asyncio.run(run())
+    # ① 인자 없음 = 감시 스냅샷.  하네스는 `monitor = false` 라 표본이 없다 -> 전 자리 결측,
+    #    `C1UDATE` 없음.  ⭐ 결측을 sentinel 로 채우지 않고 `C1STALE` 로 센다.
+    assert ' DONE: C1HKDATA ' in a, a
+    kv = _kv(a.split(' DONE: C1HKDATA ', 1)[1])
+    assert kv['C1STALE'] == '24' and 'C1UDATE' not in kv and kv['CTRL1ID'] == '0024498A715E301C'
+    # ② `NOW` = 지금 STATUS 를 읽는다 -> 전 자리 실값.
+    assert ' DONE: C2HKDATA ' in b, b
+    kv = _kv(b.split(' DONE: C2HKDATA ', 1)[1])
+    assert kv['C2STALE'] == '0', kv
+    assert kv['CTRL2ID'] == '0024498A715E301C'
+    assert kv['VALID'] == '1' and len(kv['C2QDATE']) == 23 and len(kv['C2UDATE']) == 19
+    temps = [k for k in kv if k.endswith('_TEMP')]
+    assert len(temps) == 10 and kv['BP_TEMP'].startswith(('+', '-'))
+    assert len([k for k in kv if k.endswith('_V')]) == 7 and kv['P2V5_V'].startswith(('+', '-'))
+    assert len([k for k in kv if k.endswith('_I')]) == 7
+    assert "'" not in b and '"' not in b
+    assert ' ERROR: C1HKDATA ' in bad and 'Usage' in bad
+
+
+def test_c1hkdata_on_the_guide_side_uses_the_guide_slots(tmp_path):  # noqa: ANN001
+    """ICG -- 같은 함수, guide 자리 표(온도 8 · 레일 8, `HEATER` 는 `HTR_V`/`HTR_I`).
+    하네스의 가짜 컨트롤러엔 STATUS 표본이 없어 **전 자리 결측**(`C1STALE=24`)이고
+    `C1UDATE` 가 없다.  컨트롤러 자체가 없으면(sim) 다른 명령처럼 `ERROR`."""
+    from test_icg_ops_commands import _drive, _trig, _about
+    _calls, sent = _trig(tmp_path, ['abc>ICG C1HKDATA', 'abc>ICG C1HKDATA NOWW'])
+    done = [s for s in _about(sent, 'C1HKDATA') if 'DONE:' in s]
+    assert len(done) == 1, sent
+    kv = _kv(done[0].split(' DONE: C1HKDATA ', 1)[1])
+    assert kv['C1STALE'] == '24' and 'C1UDATE' not in kv and len(kv['C1QDATE']) == 23
+    assert any('ERROR: C1HKDATA' in s and 'Usage' in s for s in sent)
+    _app, sent = _drive(tmp_path, ['abc>ICG C1HKDATA'])
+    assert any('ERROR: C1HKDATA' in s for s in sent)      # 컨트롤러 없음 -- 조용히 성공하지 않는다

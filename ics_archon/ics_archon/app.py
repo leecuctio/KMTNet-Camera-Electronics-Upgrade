@@ -38,6 +38,8 @@ from ics_sim.app import IcsSim                            # noqa: E402
 from ics_sim.hardware import register_backend             # noqa: E402
 
 from .archon.backend import ArchonBackend                 # noqa: E402
+from .archon import parse                                  # noqa: E402
+from .config import CTRLTAGS                                # noqa: E402
 from .archon.monitor import TelemetryMonitor              # noqa: E402
 from .archon import trigout as trigout_core               # noqa: E402
 from .archon.protocol import ArchonError                  # noqa: E402
@@ -47,6 +49,7 @@ from .expenablectl import CMD as EXPENABLE_CMD, ExpEnableControl  # noqa: E402
 from .tcsclock import ClockWatch, watch_tc_queries
 from .xischeck import XIS_ID, XisGate         # noqa: E402
 from ics_sim import console, emitter                       # noqa: E402
+from ics_sim import rawhdr                                  # noqa: E402
 from ics_sim.commands import Dispatcher, Reply, ReplyKind  # noqa: E402
 from ics_sim.hardware.base import BackendError             # noqa: E402
 from ics_sim.impv2 import Message                          # noqa: E402
@@ -63,7 +66,7 @@ log = logging.getLogger('ics_archon.app')
 #: `ICG_COMMANDS` 와 같은 패턴이다 -- `emitter.validate()` 가 이 표로 발신을 검사하므로
 #: 등록 없이 쓰면 응답마다 `unknown_cmdword` 위생 경고가 난다 (`emitter.py:170`).
 ICS_OPS_COMMANDS = frozenset({'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON',
-                              'HK', 'HKDATA',
+                              'HK', 'HKDATA', 'C1HKDATA', 'C2HKDATA',
                               'C1TRIGOUT', 'C2TRIGOUT'})
 
 #: `ARCHON` 바이패스 응답 본문의 상한 [문자].  한 메시지 상한 `impv2.MAX_LEN`(2048) 안에
@@ -116,7 +119,7 @@ class _OpError(Exception):
     """운영자 명령이 **정해진 문구로** 실패했다 -- 본문은 이미 와이어용이다."""
 
 #: ACF 경로에서 헤더 값을 뽑는 규칙 둘은 **`config.py` 에 함께 있다** --
-#: `cfg_name_from_acf()`(`CTRLnCFG`).  ⛔ `RDMODE` 는 ini 전용이다 (규격 v1.12 5.5절) -- 유도하지 않는다.
+#: `cfg_name_from_acf()`(`CTRLnCFG`).  ⛔ `RDMODE` 는 ini 전용이다 (규격 5.5절) -- 유도하지 않는다.
 #: 같은 입력에서 나오는 값들이라 한 곳에 두었고, `config._cross_checks()` 가
 #: 둘의 어긋남을 기동에서 본다.
 #: **둘의 자르기 규칙이 다르다**: `RDMODE` 는 토큰을 찾을 뿐이라 `splitext`
@@ -317,7 +320,7 @@ class IcsDispatcher(Dispatcher):
     def cmd_hkdata(self, msg: Message, target: Target) -> Reply:
         """HKDATA -- ⭐ **ICS 는 이 값을 만들지 않는다.  ICG 에 묻는다.**
 
-        게이지·히터·듀어 RTD 는 **ICG 만** 만지므로(규격 v1.12 767행) ICS 가
+        게이지·히터·듀어 RTD 는 **ICG 만** 만지므로(규격 10.4절) ICS 가
         자기 헤더의 5.6절 HK 카드를 채우려면 물어보는 수밖에 없다.
 
         ⚠️ **답은 이 응답이 아니라 뒤따르는 보고로 온다** -- `ICG>ICS DONE:
@@ -326,6 +329,61 @@ class IcsDispatcher(Dispatcher):
         조용할 때 ICS 명령 처리부가 함께 멈춘다.
         """
         return self._ask_icg('HKDATA')
+
+    def cmd_c1hkdata(self, msg: Message, target: Target) -> Reply:
+        """C1HKDATA [NOW] -- 컨트롤러 1(MK) 의 텔레메트리 한 줄 (5.6절 `C1_*` 의 와이어 판)."""
+        return self._cx_hkdata(msg, 1)
+
+    def cmd_c2hkdata(self, msg: Message, target: Target) -> Reply:
+        """C2HKDATA [NOW] -- 컨트롤러 2(NT).  `C1HKDATA` 와 같은 규약."""
+        return self._cx_hkdata(msg, 2)
+
+    def _cx_hkdata(self, msg: Message, n: int) -> Reply:
+        """`CnHKDATA [NOW]` -- science 컨트롤러 n 의 `STATUS` 텔레메트리를 와이어로 낸다
+        (운영자 확정 2026-09-04 · 구현 2026-09-15, DevNote 11.91).  포맷은 `hkwire.ctrl_body`.
+
+        * 인자 없음 -> **감시 스냅샷**(`status_live`, `[archon] monitor_interval` 주기, 왕복 없음).
+          `monitor = false` 면 표본이 없어 전 자리 결측이다 -- 그때는 `NOW`.
+        * `NOW` -> `refresh_status_live()` 로 **지금** 한 번 읽는다 (왕복 하나, 락 대기 포함).
+        * ⭐ 헤더의 `Cn_*` 와 같은 자리 표(`rawhdr.TEMP_MOD_LABELS` 10 · `VOLT_RAILS` 7)와 같은
+          D4 규칙(`VALID=0` 이면 전 자리 결측)이다 -- `parse.telemetry_of`.
+        * ⚠️ **늦은 `DONE`** 이다 (`HKDATA` 와 같다).  컨트롤러 자리가 없으면 곧바로 `ERROR`.
+        """
+        word = 'C%dHKDATA' % n
+        be, bad = self._archon_backend(word)
+        if bad is not None:
+            return bad
+        tag = CTRLTAGS[n - 1]
+        ctrl = getattr(be, 'ctrls', {}).get(tag)
+        if ctrl is None:
+            return Reply.error(word, 'Controller %d (%s) is not configured' % (n, tag))
+        arg = msg.body.split()
+        if len(arg) > 1 or (arg and arg[0].upper() != 'NOW'):
+            return Reply.error(word, "Usage: %s [NOW] -- got '%s'" % (word, msg.body.strip()))
+        self.app.spawn(self._do_cx_hkdata(msg.src, word, n, ctrl, now=bool(arg)))
+        return Reply.noop()
+
+    async def _do_cx_hkdata(self, dest: str, word: str, n: int, ctrl,  # noqa: ANN001
+                            now: bool) -> None:
+        try:
+            if now:
+                try:
+                    await ctrl.refresh_status_live()
+                except (ArchonError, TimeoutError, OSError) as exc:
+                    # ⚠️ 실패해도 답은 낸다 -- 감시 스냅샷이 그대로 나가고 `CnUDATE` 가 그 나이를 말한다.
+                    log.warning('%s NOW: STATUS read failed -- %s.  answering with '
+                                'the monitor snapshot', word, exc)
+            status = dict(getattr(ctrl, 'status_live', None) or {})
+            unit = parse.telemetry_of(status)
+            ident = parse.unit_identity(getattr(ctrl, 'system', None) or {}).get('sn')
+            body = hkwire.ctrl_hkdata_body(
+                n=n, labels=rawhdr.TEMP_MOD_LABELS, rails=rawhdr.VOLT_RAILS,
+                unit=unit, status=status, ident=ident,
+                sampled_at=float(getattr(ctrl, 'status_live_at', 0.0) or 0.0))
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, word, 'Failed: %s' % _fail_text(exc))
+            return
+        self.emit.done(dest, word, body)
 
     def _ask_icg(self, cmdword: str) -> Reply:
         """ICG 에 질의 한 줄.  ⚠️ 답은 **보고 경로**로 온다."""
@@ -990,6 +1048,11 @@ class IcsArchon(IcsSim):
             ('House Keeping (ICG 에 묻는다)', (
                 ('hk', 'HK 한 줄 -- HKDATA 와 같은 본문'),
                 ('hkdata', '헤더용 HK -- 답은 ICG 가 준다'),
+            )),
+            ('컨트롤러 텔레메트리 (5.6절 Cn_* 의 와이어 판)', (
+                ('c1hkdata [now]',
+                 '컨트롤러 1(MK) 온도 10·전압/전류 7 -- now 면 STATUS 를 지금 읽는다'),
+                ('c2hkdata [now]', '컨트롤러 2(NT).  같은 규약'),
             )),
             # ⛔ **science 에 없는 기반 명령** (운영자 2026-09-09) -- 점검용 LED
             # 프로젝터 명령 둘.  실기 백엔드의 `flash_led()` 는 `_NOT_YET` 이라

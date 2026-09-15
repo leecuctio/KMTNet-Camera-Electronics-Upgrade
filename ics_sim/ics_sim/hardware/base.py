@@ -196,9 +196,14 @@ class DetectorBackend(Protocol):
 
         ⭐ **구현은 계약 키 밖의 것을 함께 낼 수 있다** -- `hkudate`(이 블록
         값들의 취득 시각, raw spec 5.6절 v1.10 신설)를 두 계통이 다 싣는다
-        (science 는 `ics_archon/archon/backend.py`, guide 는
-        `icg_archon/hk.py`).  ⛔ 그래도 **계약 키 수는 안 흔들린다** -- 위
+        (guide 는 `icg_archon/hk.py` 가 셈하고, science 는 ICG 의 `HKDATA` 응답에
+        실린 값을 그대로 받는다).  ⛔ 그래도 **계약 키 수는 안 흔들린다** -- 위
         완전성 검사가 교집합으로 세기 때문이다.
+        ⭐ **`hkudate` 셈에서 Radionode 세 키(`hebox`·`fsatemp`·`fsahum`)는 뺀다**
+        (raw spec 5.6절, 운영자 확정 2026-09-08) -- 장치 전송주기(60~600 s)가
+        길어 섞으면 그 하나가 블록 전체의 취득 시각을 끌고 간다.  값은 싣되
+        시각 셈에서만 뺀다.  집합의 정본은 `rawhdr.RADIONODE_KEYS` 하나다 --
+        구현마다 따로 적으면 세 번째 백엔드가 붙을 때 갈린다.
         ⚠️ v1.10 이 함께 신설한 히터 넷(`HTREN`·`HTRSET`·`HTROUT`·`HTRFORCE`)은
         **이 계약이 아니라 ICG 소관**이다 (guide 유닛의 듀어 히터).
 

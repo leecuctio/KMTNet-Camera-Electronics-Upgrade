@@ -296,7 +296,8 @@ def test_the_code_still_refuses_to_invent_coordinates(tmp_path):  # noqa: ANN001
     *"모른다"* 가 남아야 한다 -- 아무 좌표나 채우면 시험 산출물이 실제 관측처럼
     보인다.  정본은 `ics_sim/rawhdr.py` 의 `VERIFIED_SITES['KMTK']` 로,
     `telescop`/`fpaid` 만 있고 측지값은 없다.
-    ⏳ 그 표까지 채울지(그리고 규격 5.3.1절·D-017 항목 6 문면)는 다음 `main` 라운드.
+    ✅ 규격 v1.13 이 5.3.1절에 못박았다 -- KASI 측지값은 **배포 INI 만**, 코드 기본값표는
+    비운 것이 **설계**다(빠뜨린 것이 아니다).  그래서 이 시험이 지키는 *"모른다"* 가 규범이다.
     """
     over = _kasi_overrides()
     over['site.kasi'] = {'telescop': '', 'latitude': '', 'longitud': '',

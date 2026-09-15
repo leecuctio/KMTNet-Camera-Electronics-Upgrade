@@ -166,7 +166,7 @@ def test_resolve_guide_number_bumps_on_collision(tmp_path):
 # **guide CCD 도 FPA 조립체에 들어간다** -- 그래서 `FPAID` 는 science 와 같은
 # 사이트 유도를 탄다.  ⚠️ 이 자리는 판마다 뜻이 달랐다: ~2026-09-06 공백 18자
 # -> 09-06 `'NC'`(귀속 미결) -> 09-07 유도.  옛 파일로 판을 가늠하지 말 것.
-# ⏳ 규격 10.3·10.6절 문면 갱신은 다음 `main` 라운드.
+# ✅ 규격 v1.13 이 10.3절에 수록했다 (OI-24 의 `INSTRUME`·`FPAID` 항목 종결).
 
 
 def test_instrume_default_is_the_guide_vocabulary():

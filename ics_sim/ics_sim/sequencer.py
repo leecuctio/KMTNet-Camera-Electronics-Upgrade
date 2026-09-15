@@ -301,7 +301,8 @@ class Sequencer:
             log.warning('exposure cancelled')
             st.expstatus = ExpStatus.IDLE
             if self._aborted_by is not None:
-                # ⭐ **P1 규범 ①** (운영자 확정 2026-09-07) -- `ABORT` 는 번호를
+                # ⭐ **P1 규범 ①** (운영자 확정 2026-09-07 · 규격 **D-022 · 2.3절 8항 ·
+                # 5.4.1절**, v1.13) -- `ABORT` 는 번호를
                 # 안 먹는다.  같은 프로세스는 `advance()` 를 건너뛰어 이미
                 # 재사용하므로, 기록도 그에 맞춰 되감아 **재시작도 같은 번호**
                 # 부터 가게 한다 (DevNote 11.40).  ⛔ `save=True` 면 그 프레임의

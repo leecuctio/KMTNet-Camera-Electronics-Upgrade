@@ -190,7 +190,8 @@ class IcsState:
     #: 두 카드를 갈랐다: `IMAGETYP` 는 프레임의 종류(`OBJECT`/`BIAS`/…),
     #: `OBSTYPE` 는 **어느 계통이 찍었나**다.
     #: ⛔ 그래서 규격 5.4절의 *"`IMAGETYP` 과 동일 어휘"* 조항이 **낡았다** --
-    #: `SCIENCE`/`GUIDE` 는 그 어휘에 없다.  ⏳ 규격 갱신은 `main` 소관이다.
+    #: `SCIENCE`/`GUIDE` 는 그 어휘에 없다.  ✅ 규격 v1.13 이 5.4절을 그렇게 고쳤다
+    #: (`OBSTYPE` = 계통 식별, `IMAGETYP` 사본이 아니다).
     obstype: str = 'SCIENCE'
     #: 6자리 파일 일련번호.  레거시 IC 는 4자리였고 그 불일치를 INITIALIZE 로
     #: 우회했다(ics_legacy_report 3.4절).  신규는 애초에 6자리로 통일한다.
@@ -379,7 +380,8 @@ class IcsState:
                  last, self.expnum, path)
 
     def rewind_expnum(self) -> bool:
-        """ABORT 로 **쓰이지 못한** 번호를 기록에서 되감는다 (P1 규범 ①).
+        """ABORT 로 **쓰이지 못한** 번호를 기록에서 되감는다 (P1 규범 ① = 규격 D-022 ·
+        2.3절 8항 · 5.4.1절, v1.13).
 
         운영자 확정 2026-09-07: *"`ABORT` 는 번호를 안 먹는다"* -- 같은 프로세스
         거동(`advance()` 를 건너뛰어 번호가 **재사용**된다)을 정본으로 삼고,

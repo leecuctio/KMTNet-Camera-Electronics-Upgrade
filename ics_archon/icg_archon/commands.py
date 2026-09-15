@@ -94,7 +94,7 @@ log = logging.getLogger('icg_archon.cmd')
 #: emitter 의 커맨드워드 어휘에 icg 몫을 더한다 -- `validate()` 가 이 표로
 #: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다
 #: (`unknown_cmdword` -- `emit.violations` 에 쌓이고 경고 로그가 난다).
-ICG_COMMANDS = frozenset({'GUIEXP', 'HK', 'HKDATA', 'RADIONODE', 'EXPENABLE',
+ICG_COMMANDS = frozenset({'GUIEXP', 'HK', 'HKDATA', 'C1HKDATA', 'RADIONODE', 'EXPENABLE',
                           'TRIGOUT', 'TRIGOUTFORCE', 'TRIGOUTLEVEL',
                           'HTRSET', 'HTRFORCE', 'HTRRAMP',
                           'HTRPID', 'VACGAUGE',
@@ -147,39 +147,53 @@ class IcgDispatcher(sim_commands.Dispatcher):
         #: 이것으로 막는다 -- 시퀀서 `busy` 는 취득만 알고 이 왕복은 모른다.
         self._op_in_flight = ''
 
+    def _min_exptime(self) -> float:
+        """guide 의 **최소 노출** [s] -- `BIAS` 가 쓰는 값.  실현값(`effective_exptime(0)`,
+        기본 노출시간·`exptime_min` 중 긴 쪽)이고, 대역엔 그 셈이 없으면 `exptime_min`."""
+        be = getattr(self.app, 'guide', None)
+        fn = getattr(be, 'effective_exptime', None)
+        if callable(fn):
+            try:
+                return float(fn(0.0))
+            except Exception:  # noqa: BLE001
+                pass
+        return float(getattr(getattr(self.app, 'icfg', None), 'exptime_min', 1.3))
+
     def _image_type(self, msg: Message, imgtype: str) -> Reply:
-        """`BIAS`/`DARK`/… -- **guide 는 노출시간을 0 으로 만들지 않는다.**
+        """`BIAS`/`DARK`/`OBJECT`/… -- **science 와 같은 어휘** (운영자 확정 2026-09-15, OI-24 ② 종결).
 
-        부모는 `BIAS` 에서 `exptime = 0` 으로 두고 `EXP` 도 거부한다(레거시
-        실측 규약).  그런데 guide 에서 `EXPTIME` 은 셔터 노출이 아니라
-        **독출 개시 간격**이라(raw spec 10.1절) 0 이 실현 불가능한 값이고,
-        그 상태가 되면 `go` 가 거부되는데 `EXP` 로 되돌릴 수도 없어
-        **가이딩이 명령 하나로 잠긴다** (2026-08-31 교차검토).
+        * **`BIAS` = 최소 노출** -- `EXPTIME` 을 guide 의 최소 노출(`_min_exptime`: 기본
+          노출시간 위의 `exptime_min`, 실현값)로 둔다.  ⛔ 부모처럼 0 으로 두지 않는다 --
+          guide 의 `EXPTIME` 은 셔터 노출이 아니라 **독출 개시 간격**이라(raw spec 10.1절)
+          0 은 실현 불가능한 값이고, `GO` 가 어차피 그 값으로 접는다.  미리 실현값으로
+          두어 `EXP`/`GUIEXP` 조회와 이 응답이 헤더에 실릴 값을 말하게 한다.
+        * **나머지는 전부 같다** -- guide 엔 셔터 제어 개념이 없어 `DARK`·`OBJECT`·`FLAT`·… 가
+          똑같이 동작한다.  국면 이름만 헤더 `IMAGETYP` 으로 간다.  기본값은 **`OBJECT`**.
+        * `BIAS` 에서는 `EXP`/`GUIEXP` 가 거부된다 (부모의 레거시 규약을 guide 도 따른다) --
+          바꾸려면 다른 국면으로 옮긴 뒤.
 
-        그래서 국면 이름만 바꾸고 주기는 건드리지 않는다.  ⏳ guide 의
-        `IMAGETYP` 어휘 자체는 아직 미확정이다 (guide OI-24).
+        (종전 2026-08-31 판은 *"guide 는 노출시간을 0 으로 만들지 않는다"* 로 주기를 그대로
+        뒀다 -- 그때는 `go` 가 하한 아래를 거부했고 `EXP` 로도 못 되돌려 가이딩이 잠겼기
+        때문이다.  하한 아래를 접게 된 뒤(운영자 2026-08-31)로는 그 이유가 없다.)
         """
         st = self.state
-        keep = st.exptime
         reply = super()._image_type(msg, imgtype)
-        if st.exptime != keep:
-            log.info('guide keeps the cadence for %s -- EXPTIME stays %g s',
-                     imgtype, keep,
-                     extra={'detail': 'EXPTIME 은 독출 개시 간격이라 0 이 될 수 '
-                                      '없다'})
-            st.exptime = keep
+        if imgtype == 'BIAS':
+            st.exptime = self._min_exptime()
+            log.info('BIAS -- EXPTIME set to the guide minimum %.3f s', st.exptime,
+                     extra={'detail': '기본 노출시간 위의 exptime_min (실현값)'})
+            return Reply.done(imgtype, 'ImageType=%s ObjectName=%s EXP=%g'
+                              % (imgtype, sim_commands.quote_always(st.objname),
+                                 st.exptime))
         return reply
 
     def cmd_exp(self, msg: Message, target: Target) -> Reply:
-        """EXP -- guide 는 `BIAS` 에서도 받는다 (위 `_image_type` 과 같은 이유)."""
-        st = self.state
-        arg = msg.body.strip()
-        if arg:
-            try:
-                st.exptime = float(arg)
-            except ValueError:
-                return Reply.error('EXP', 'Invalid exposure time: %s' % arg)
-        return Reply.done('EXP', 'ExpTime=%g seconds.' % st.exptime)
+        """EXP -- 노출시간(독출 개시 간격).  `BIAS` 에서는 부모처럼 거부한다 (2026-09-15).
+
+        ⚠️ `EXP` 를 남겨 두는 것은 **초점조절 유틸리티(gmon)가 그것을 쓰기** 때문이다 --
+        `GUIEXP` 와 같은 상태 필드다.
+        """
+        return super().cmd_exp(msg, target)
 
     def cmd_guiexp(self, msg: Message, target: Target) -> Reply:
         """GUIEXP <초> -- 가이드 노출시간(독출 개시 간격) 설정.
@@ -197,6 +211,10 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if not arg:
             return Reply.done('GUIEXP',
                               'GuiExp=%g seconds.' % self.state.exptime)
+        if self.state.imgtype.upper() == 'BIAS':
+            # `EXP` 와 같은 규약 -- BIAS 는 최소 노출로 고정이다 (2026-09-15).
+            return Reply.error('GUIEXP', 'Cannot change EXPTIME for ImgType=%s'
+                               % self.state.imgtype)
         try:
             seconds = float(arg)
         except ValueError:
@@ -318,6 +336,50 @@ class IcgDispatcher(sim_commands.Dispatcher):
         if t0 is not None:
             self._log_latency(cmdword + (' NOW' if now else ''), t0)
         self.emit.done(dest, cmdword, body or 'no fresh HK sample yet')
+
+    def cmd_c1hkdata(self, msg: Message, target: Target) -> Reply:
+        """C1HKDATA [NOW] -- guide 컨트롤러의 텔레메트리 한 줄 (10.4절 `C1_*` 의 와이어 판).
+
+        ⭐ **guide 도 `C1HKDATA` 다** (운영자 확정 2026-09-04) -- 그래서 `CTRL1ID=<BACKPLANE_ID>`
+        가 장식이 아니다: 같은 이름이 노드에 따라 다른 상자를 가리키고, 받은 쪽이 *"어느
+        상자가 답했나"* 를 아는 수단이 그 필드뿐이다.  포맷은 `hkwire.ctrl_body`(ICS 와 같은
+        함수), 자리 표는 guide 판(`guidehdr.TEMP_MOD_LABELS` 8 · `VOLT_RAILS` 8 -- `HEATER` 레일은
+        `HTR_V`/`HTR_I`).
+        * 인자 없음 -> HK 폴러가 마지막 바퀴에서 읽어 둔 `STATUS` (왕복 없음).
+        * `NOW` -> `refresh_status_live()` 로 지금 한 번 (왕복 하나).
+        """
+        ctrl, bad = self._ctrl('C1HKDATA')      # sim 백엔드·하네스에는 컨트롤러가 없다
+        if bad is not None:
+            return bad
+        arg = msg.body.split()
+        if len(arg) > 1 or (arg and arg[0].upper() != 'NOW'):
+            return Reply.error('C1HKDATA',
+                               "Usage: C1HKDATA [NOW] -- got '%s'" % msg.body.strip())
+        self.app.spawn(self._do_c1hkdata(msg.src, ctrl, now=bool(arg)))
+        return Reply.noop()
+
+    async def _do_c1hkdata(self, dest: str, ctrl, now: bool) -> None:  # noqa: ANN001
+        from ics_archon import hkwire
+        from ics_archon.archon import parse as _parse
+        from . import guidehdr, hk as hk_mod
+        try:
+            if now:
+                try:
+                    await ctrl.refresh_status_live()
+                except (ArchonError, TimeoutError, OSError) as exc:
+                    log.warning('C1HKDATA NOW: STATUS read failed -- %s.  answering '
+                                'with the polled snapshot', exc)
+            status = dict(getattr(ctrl, 'status_live', None) or {})
+            unit = hk_mod.ctrl_unit(status)
+            ident = _parse.unit_identity(getattr(ctrl, 'system', None) or {}).get('sn')
+            body = hkwire.ctrl_hkdata_body(
+                n=1, labels=guidehdr.TEMP_MOD_LABELS, rails=guidehdr.VOLT_RAILS,
+                unit=unit, status=status, ident=ident,
+                sampled_at=float(getattr(ctrl, 'status_live_at', 0.0) or 0.0))
+        except Exception as exc:  # noqa: BLE001
+            self.emit.error(dest, 'C1HKDATA', 'Failed: %s' % exc)
+            return
+        self.emit.done(dest, 'C1HKDATA', body)
 
     def cmd_radionode(self, msg: Message, target: Target) -> Reply:
         """RADIONODE [STATUS | CONNECT | DISCONNECT | RECONNECT | EN/DISABLE].

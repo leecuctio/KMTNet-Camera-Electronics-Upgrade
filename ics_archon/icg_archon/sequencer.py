@@ -447,7 +447,8 @@ class GuideSequencer:
             log.error('fatal: guide cycle failed -- %s', exc)
             clean = await self._settle(armed, clean, ticket, intms,
                                        '사이클 실패', drain=True)
-            # ⭐ **P1 규범은 `ABORT` 보다 넓다** (운영자 확대 2026-09-07,
+            # ⭐ **P1 규범은 `ABORT` 보다 넓다** (운영자 확대 2026-09-07 · 규격 D-022 ·
+            # 2.3절 8항 -- 되감는 자리 넷을 거기 적었다,
             # DevNote 11.41) -- 사이클이 실패하면 그 프레임은 안 나오므로
             # 번호를 먹을 이유가 없다.  ⛔ `_settle` **뒤에** 부른다 -- 그것이
             # 살아 있는 저장을 마저 소화하고, 그 프레임들은 이미 `advance()`

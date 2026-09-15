@@ -63,6 +63,9 @@ class IcgArchon(IcsSim):
         # ⚠️ **명령이 이걸 덮는다** (`OBSTYPE`/`OBSERVER`) -- 기본값일 뿐이다.
         self.state.obstype = 'GUIDE'
         self.state.observer = 'KMTNetOp'
+        # ⭐ 기본 `EXPTIME` 2 s · 기본 `IMAGETYP` OBJECT (운영자 확정 2026-09-15).
+        # OBJECT 는 기반 상태의 기본값 그대로이고, EXPTIME 만 ini 로 둔다.
+        self.state.exptime = float(icfg.exptime_default)
         # ⛔ **백엔드를 만들기 전에 검사한다** (2026-09-08, 벤치 실측).
         # 종전에는 `start()` 에서 했는데, 그때는 `GuideBackend.__init__` 이 이미
         # ACF 를 읽어 본 뒤라 **경고가 치명적 오류보다 먼저** 찍혔다:
@@ -165,6 +168,8 @@ class IcgArchon(IcsSim):
             ('House Keeping', (
                 ('hk', 'HK 한 줄 -- HKDATA 와 같은 본문'),
                 ('hkdata', 'ICS 가 헤더를 채우려고 묻는 것'),
+                ('c1hkdata [now]',
+                 'guide 컨트롤러 온도 8·전압/전류 8 한 줄 -- now 면 STATUS 를 지금 읽는다'),
                 ('vacgauge [on|off]', '이온게이지 -- 인자 없으면 조회'),
                 ('radionode [<하위명령> [장치]]',
                  'status | connect | disconnect | reconnect | enable | '

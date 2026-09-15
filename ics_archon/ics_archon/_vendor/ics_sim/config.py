@@ -466,8 +466,8 @@ class DomeCfg:
     """돔 방위 셋의 원천 -- `DSTELAZ`·`DSAZ`·`DAZERR` (domeaz.py).
 
     돔 제어 프로그램이 redis 에 실어 두는 값을 노출 개시 때 읽는다 (운영자
-    확정 2026-09-11).  ⭐ raw spec 5.7절이 이 카드들의 출처를
-    `TCS relay or REDIS` 로 이미 적어 둔 그 `REDIS` 다.
+    확정 2026-09-11).  ⭐ raw spec 의 출처 어휘 **`REDIS (dome control)`**, 규약은
+    **5.7.3절** (v1.13 · D-021).
 
     ⭐ **`[node]` 가 아니라 여기 둔다** -- ICS(science)와 ICG(guide)가 같은
     돔을 보므로 두 ini 가 같은 값을 적게 되고, 그래야 나란히 놓고 비교할 수

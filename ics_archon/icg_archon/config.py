@@ -305,6 +305,10 @@ class IcgCfg:
     #: ACF 계산이 없을 때(스크립트 없는 시험 ACF · 대역)는 이 값이 기본 노출시간 노릇을
     #: 겸한다 (종전 1.0 은 근거 없는 잠정값이었다 -- DevNote 9.10·9.15).
     exptime_min: float = 1.3
+    #: ⭐ **기동 때의 `EXPTIME` 기본값** [s] (운영자 확정 2026-09-15: **2 초**).  종전엔 기반
+    #: 상태의 0 이라 첫 `GO` 가 하한으로 접혔다.  `GUIEXP`/`EXP` 로 바꾼 값은 재기동하면
+    #: 이 값으로 돌아온다.  `exptime_min` 보다 작게 두면 접힌다.
+    exptime_default: float = 2.0
     #: 저장 태스크 드레인 상한 [s] (종료 시).
     shutdown_drain: float = 15.0
     #: 노출 잠금(`EXPENABLE`) 기록 파일.  비우면 **ini 옆**
@@ -418,6 +422,7 @@ def load(path: str) -> IcgCfg:
         cfg.recheck_after_fetch = _bool(s, 'recheck_after_fetch',
                                         cfg.recheck_after_fetch)
         cfg.exptime_min = _float(s, 'exptime_min', cfg.exptime_min)
+        cfg.exptime_default = _float(s, 'exptime_default', cfg.exptime_default)
         cfg.shutdown_drain = _float(s, 'shutdown_drain', cfg.shutdown_drain)
         cfg.expenable_file = _path(s, 'expenable_file',
                                    cfg.expenable_file)

@@ -1677,7 +1677,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 
 ⚠️ **C 안에서 `sync_vendor.py` 를 두 번 돌린다** — R1(rawcards) 뒤 한 번, R3(rawhdr) 뒤 한 번.
 
-##### ⏳ 묶음 D — 코드 문면 추종 · 묶음 E — 문서 라운드 (**아직 안 했다 — 그대로 유효**)
+##### ✅ 묶음 D — **끝났다** (2026-09-15, DevNote 11.91-(2)) · ⏳ 묶음 E — 문서 라운드 (그대로)
 
 머지해도 안 빨개지고 규격을 어기지도 않는다.  다만 **다음 사람이 끝난 일을 다시 하거나 닫힌
 물음을 열린 것으로 읽게** 만드는 자리들이다.
@@ -1736,7 +1736,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | **`validate()` 설정 경고 42곳** 영문화 | ⭐ *운영자가 ini 를 고치며 기동 화면에서 읽는 진단*이라 **영문화가 맞는지 자체가 판단 사항**이다.  ⚠️ 시험 여섯 파일이 그 문구를 본다 |
 | **`format_ens` 개명**(`format_radionode` 등) | **별건으로.** 이름이 폐기된 유추(ENS)를 가리켜 오도하는 건 맞지만, R3 에 섞으면 **바이트 대사 커밋에 개명 잡음이 낀다**.  ⛔ 반대 논거 — 따로 빼면 영영 안 하게 된다 |
 | **`Radionode stale_after` 기본값** | **코드 4000 + INSTALL 의 push 예시 1800.**  두 경로가 성격이 다르다(openapi 는 `device_interval×3` 를 배우고, push 는 못 배워 ini 값이 영구 창).  ⛔ 반대 논거 — 4000 은 60 s 장치에 헐거워 push 를 실제로 쓰면 낡은 값이 새 값처럼 실린다 |
-| **OI-24 잔여 둘**(guide `CAMVER`·`IMAGETYP` 기본 어휘) | 규격이 *"규정이 없다 가 아니라 **다른 값을 써야 하는가**"* 로 좁혔으니 **현행 유지**가 기본값 |
+| ~~**OI-24 잔여 둘**(guide `CAMVER`·`IMAGETYP` 기본 어휘)~~ | ✅ **운영자 확정 2026-09-15** (DevNote 11.92) -- 둘 다 science 와 같다.  `BIAS` = 최소 노출(`EXP`/`GUIEXP` 거부) · 기본 `OBJECT` · 기동 `EXPTIME` 2 s(`[icg] exptime_default`).  ⏳ 규격 10.6절 종결 표시는 `main` 라운드 |
 | **OI-32 `PROJID` 기본값** | 견본·레거시·코드 셋이 `'ENG'` 고 규격 표 하나만 `'OBS'` 다 → **규격을 고치는 쪽** 추천.  ⛔ 반대 논거 — *"규격이 먼저 서고 코드가 따른다"* 는 순서를 뒤집는 전례가 된다 |
 | **회고 문면을 어디까지 손대나** | ⛔ 날짜 붙은 절(`DevNote` 11.x · 이 문서의 *"⚠️ 위 절이 더 최신"* 블록 · `recovered_session_*`)은 **안 고친다**.  살아 있는 것만 — *"지금 상태"* 표 · *"⏳ 남은 것"* 목록 · 벤치 계획서 · ini/코드 주석 |
 
@@ -5175,6 +5175,28 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
 `icg_archon.ini` 의 `latest_name` 을 지울 것(남아 있어도 읽지 않지만 헷갈린다).  `~/AIC/Logs/hk_latest.G.json`
 은 더 안 갱신된다.  ⚠️ **실기 미검증** — 허브를 거친 `HKDATA NOW` 왕복과 `GO` 첫 프레임의 대기(시한 2 s)는
 벤치에서 봐야 한다.  ⏳ 규격: 5.6절 원천 문면(*"icg 스냅샷 파일"*)이 있다면 `main` 라운드에서 와이어로.
+✅ 커밋 `a0b2773`.
+
+#### ✅ 이어서 한 것 — `CxHKDATA` 배선 · 묶음 D (운영자 지시 2026-09-15, DevNote 11.91)
+
+| 무엇 | 자리 |
+|---|---|
+| `C1HKDATA`/`C2HKDATA [NOW]` (ICS) · `C1HKDATA [NOW]` (ICG) — `hkwire.ctrl_hkdata_body()` 한 함수를 둘이 쓴다.  인자 없으면 감시 스냅샷, `NOW` 면 `STATUS` 지금 읽기.  결측 자리는 빠지고 `CnSTALE` 로 센다 | `app.py` · `icg_archon/commands.py` · `hkwire.py` · 콘솔 도움말 둘 · README 명령표 · 명령 대조표 |
+| 묶음 D — 규격 인용 정리 9항목(D1·2·3·4·5·5b·6·8·17·18), `ics_sim` 7파일 + `sync_vendor` | DevNote 11.91-(2) 표 |
+| 시험 — `test_hk_wire` +2 (11) | |
+
+⏳ 실기: 벤치 `c1hkdata now` 한 번(`CnSTALE=0`, 24 자리 부호).  ⏳ 묶음 E(문서 라운드 · CR-003 · OI 자리)는 그대로.
+
+#### ✅ 이어서 한 것 — OI-24 잔여 둘 종결 · guide `BIAS` = 최소 노출 · 기본 `EXPTIME` 2 s (운영자 2026-09-15, DevNote 11.92)
+
+| 무엇 | 자리 |
+|---|---|
+| guide `CAMVER`·`IMAGETYP` 어휘는 science 와 같다 — 코드 변경 없음 | (규격 10.6절 종결 표시만 `main` 라운드) |
+| `BIAS` → `EXPTIME` = 최소 노출(`effective_exptime(0)`), `EXP`/`GUIEXP` 거부.  나머지 국면은 `EXPTIME` 안 건드림.  ⛔ 2026-08-31 의 "guide 는 0 으로 안 만든다" 판을 걷었다 | `icg_archon/commands.py` |
+| 기동 `EXPTIME` 2 s — `[icg] exptime_default` 신설 | `icg_archon/config.py` · `app.py` · ini |
+| 시험 3 | `tests/test_icg_imagetype.py` |
+
+⏳ 바이어스 측정값 헤더 수록(층 2): 운영자 의견은 **로그 유지** — 확정 한마디 대기 (11.92 곁들여).
 
 #### 상태
 

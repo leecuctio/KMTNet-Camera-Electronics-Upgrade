@@ -285,6 +285,28 @@ def ctrl_body(*, prefix: str, labels, rails, unit,     # noqa: ANN001
                 state.append((field, str(raw).strip()))
     return pairs_to_body(head + state + slots), stale
 
+def ctrl_hkdata_body(*, n: int, labels, rails, unit, status=None,   # noqa: ANN001
+                     ident=None, sampled_at: float = 0.0) -> str:
+    """`CnHKDATA` 응답 본문 -- ICS(n=1 MK · n=2 NT)와 ICG(n=1, guide) 가 **같은 함수**로
+    만든다 (운영자 확정 2026-09-04 · 구현 2026-09-15, DevNote 11.91).
+
+        CnQDATE=<23자 지금> CnUDATE=<19자 표본시각> CnSTALE=<결측 자리 수> CTRLnID=<BACKPLANE_ID>
+        VALID=1 POWER=4 POWERGOOD=1 BP_TEMP=+40.1 M1_LVDS_TEMP=… P2V5_V=+2.503 P2V5_I=+0.120 …
+
+    * `sampled_at` 은 그 `STATUS` 를 뜬 epoch -- 0 이면 표본이 없어 `CnUDATE` 가 빠진다.
+    * `unit` 이 빈 dict 이면(무응답 · `VALID=0`) **전 자리 결측** -- `CnSTALE` 이 자리 수 전부다.
+    """
+    import datetime as _dt
+    qdate = stamp_iso_ms(_dt.datetime.now(_dt.timezone.utc))
+    udate = (stamp_iso(_dt.datetime.fromtimestamp(sampled_at, _dt.timezone.utc))
+             if sampled_at else None)
+    body, _stale = ctrl_body(prefix='C%d' % n, labels=labels, rails=rails,
+                             unit=unit or {}, status=status,
+                             ident_key='CTRL%dID' % n, ident=ident,
+                             qdate=qdate, udate=udate)
+    return body
+
+
 # ---------------------------------------------------------------------------
 # 받는 쪽 -- `ICG>ICS DONE: HKDATA …` 본문 해석 (ICS 헤더의 5.6절 원천)
 # ---------------------------------------------------------------------------
