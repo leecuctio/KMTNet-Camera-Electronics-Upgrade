@@ -48,6 +48,7 @@
 ### 3. Wallboard 교체 / 진공 펌핑 / 냉각 시작
 
 - 핵심 작업. 진공 작업 전 O-ring/flange/feedthrough 상태를 확인한다.
+- 듀어 진공 해제(Venting)·재조립 후 펌핑(Pump-down)의 상세 절차, 부품/Spare 목록, 체크리스트는 [`SOP_DEWAR_VACUUM_VENTING_PUMPING.md`](SOP_DEWAR_VACUUM_VENTING_PUMPING.md)를 그대로 따른다.
 - 문제 발생 시 Recovery Level 2(Wallboard/cable) 또는 Level 3(진공/냉각)을 적용한다 ([`operations/RECOVERY_ROLLBACK_PLAN.md`](../operations/RECOVERY_ROLLBACK_PLAN.md)).
 
 ### 4. HE Box 컨트롤러 재구성 + 제어 컴퓨터 셋업
@@ -136,3 +137,4 @@
 | --- | --- |
 | 2026-09-15 | 최초 작성. SSO 출국 전 계획(SITE_PLAN.md, SITE_UPGRADE_MILESTONES.md) 및 관련 운영 문서를 기준으로 3사이트 공통 절차 정리 |
 | 2026-09-15 | CTIO/SAAO 출장 일정 변경 반영: CTIO 출발 하루 앞당김(11-12→11-11)·온스카이 4박→5박, SAAO 온스카이 3박→4박·복귀 하루 연장(12-20→12-21) |
+| 2026-09-15 | 3단계에 `SOP_DEWAR_VACUUM_VENTING_PUMPING.md` 링크 추가 (Dewar 진공 해제/펌핑 상세 절차 신설) |
