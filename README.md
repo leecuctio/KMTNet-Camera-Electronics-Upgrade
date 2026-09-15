@@ -63,8 +63,8 @@ KMTNet 광시야 탐사 카메라의 기존 **OSU 전자부**를 **STA Archon �
 | 사이트 | 역할 | 목표 일정 |
 | --- | --- | --- |
 | SSO | Prototype Site | 2026-10-19 ~ 11-01 |
-| CTIO | Second Site | 2026-11-12 ~ 11-26 |
-| SAAO | Final Site | 2026-12-06 ~ 12-20 |
+| CTIO | Second Site | 2026-11-11 ~ 11-26 |
+| SAAO | Final Site | 2026-12-06 ~ 12-21 |
 
 상세 마일스톤·Gate 기준: [schedule/SITE_UPGRADE_MILESTONES.md](project_management/schedule/SITE_UPGRADE_MILESTONES.md)
 

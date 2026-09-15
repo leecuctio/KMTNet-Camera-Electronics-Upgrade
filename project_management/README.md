@@ -67,6 +67,7 @@ MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행
 | `configuration/` | configuration baseline, software freeze, 변경 통제 |
 | `science/` | science verification, calibration 추적 |
 | `operations/` | recovery/rollback, 회의/커뮤니케이션 운영 |
+| `sop/` | 주요작업 표준운영절차(SOP) 모음 |
 | `meetings/` | 개별 회의 아젠다·회의록 (예: 2026-09-01 월보드 교체 종합 검토) |
 | `release/` | converter/release package 점검 |
 | `documents/` | 외부 유입 원본문서와 문서 인벤토리 |
@@ -96,6 +97,7 @@ MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행
 | `science/SCIENCE_VERIFICATION_PLAN.md` | 과학 검증 항목과 합격 기준 |
 | `operations/RECOVERY_ROLLBACK_PLAN.md` | 장애 단계별 복구/rollback 절차 |
 | `operations/SAFETY_HANDLING_PLAN.md` | 현장 안전과 카메라 취급 기준 |
+| `sop/README.md` | 주요작업 SOP 인덱스와 작성 원칙 |
 | `release/RELEASE_CHECKLIST.md` | 버전 릴리스 전 점검 절차 |
 | `documents/SOURCE_DOCUMENTS.md` | 외부 유입 문서, 원본 위치, 해시, 내용 요약 |
 | `documents/DOCUMENTATION_PLAN.md` | QA 기록, site report, closeout 문서 관리 |

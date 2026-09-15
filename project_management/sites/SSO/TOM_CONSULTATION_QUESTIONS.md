@@ -156,7 +156,7 @@
 
 ## Part C — 계약 산출물 연계 (10-30)
 
-- **Lessons-learned + CTIO/SAAO 권고사항 서면 보고서** (계약 deliverable): 위 TQ 답변 중 절차·수치 확정분을 반영해 CTIO(11-12~)·SAAO(12-06~) SOP 갱신의 입력으로 사용.
+- **Lessons-learned + CTIO/SAAO 권고사항 서면 보고서** (계약 deliverable): 위 TQ 답변 중 절차·수치 확정분을 반영해 CTIO(11-11~)·SAAO(12-06~) SOP 갱신의 입력으로 사용.
 - 답변 기록 담당을 지정하고(권장: 작업 리더와 분리), 각 세션 종료 시 값·수치를 당일 site work log에 기록한다.
 
 ## 진행 관리
