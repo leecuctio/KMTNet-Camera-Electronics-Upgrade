@@ -5097,7 +5097,7 @@ flush 119행의 `DGLOW` 는 **완전한 no-op** 이다(`Start:` 의 `RESET` 이 
 **실제로 구운 순서가 정본**이므로 다음에 무엇을 굽든 그것이 `science R2613` 이 된다.
 → ✅ 같은 날 **P6 가 science R2613** 을 가져갔다 (`7e5d8c9`, DevNote 11.86-(12)).  P2 는 번호 미정.
 
-### ⭐⭐ 2026-09-14 마감 (36. 판 번호 계열 명문화 · ACF 설치 대장 · 낡은 참조 정리) — **이것이 최신 · 새 세션은 여기부터**
+### 2026-09-14 마감 (36. 판 번호 계열 명문화 · ACF 설치 대장 · 낡은 참조 정리) — ⚠️ **최신은 아래 37 이다**
 
 세션 *"36"* = 35 의 후속.  35 가 *"R2613A/B 개명 기각"* 뒤에 남긴 **막는 자리 셋**(acf/README
 계열별 표+규칙 · 설치 대장 · 벤치 절차서의 파일명 지시)을 마무리하는 세션이었다.  ⚠️ 첫 세션 36
@@ -5248,3 +5248,30 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
 - ⛔ **키 이름을 바꾸면 산문도 인용처다** — 시험이 안 깨져도 README 가 옛 키를 가르친다.
 - ⚠️ **세션이 워크플로 결과를 기다리다 끊기면 아무것도 안 남는다** — 이번 36 이 그랬다.  긴 조사를
   띄웠으면 **그 사이 확정된 것부터 파일에 쓴다**.
+
+### ⭐⭐ 2026-09-15 (37. ICS/ICG 연동시험 + 디버깅 — 벤치 첫날) — **이것이 최신 · 새 세션은 여기부터**
+
+세션 *"37"* = 벤치 첫날.  운영자가 벤치에서 돌리고 나는 여기(윈도우)서 고친다 — 벤치 저장소는
+**푸시된 것만** 받는다(`fetch + reset --hard`).  경위·판단은 **DevNote 11.93** 이 정본.
+
+#### ✅ 벤치가 짚은 것 하나 → 고침 둘 (DevNote 11.93)
+
+| 무엇 | 자리 |
+|---|---|
+| ⛔ D1-3: `vacgauge on` 뒤 `hkdata` 가 `WARMUP` 이 아니라 `OFF` — 11.89-(2) *"낱말도 표본"* 이 원인 → **번복**.  `HKDATA` 의 `VACGAUGE` 는 **live 설정**(`app.gauge.word`), `DEWPRES` 는 **바퀴 표본**.  끈 직후 `VACGAUGE=OFF DEWPRES=<마지막 측정값>` 은 이제 **의도한 표시**.  뺄지/sentinel 판정은 여전히 바퀴 시점 낱말 | `icg_archon/hkdata.py` · `hk.py` 주석 |
+| ⭐ **껐으면 첫 장 앞 flush 한 번** (운영자 신규): `VACGAUGE OFF` 를 실제로 보낸 GO 만, settle 뒤 설정 메모리 `FirstFlush` 가 **0 이면 첫 프레임 LOADPARAMS 에만 1** 로 싣고 곧바로 원래 값으로.  > 0 이면 그대로.  `EveryFlush` 는 안 본다(운영자: *"무조건"* — `GO n` 을 컨트롤러 시퀀서로 옮길 계획).  이미 OFF 였으면 안 보내고·안 기다리고·안 올림 | `gaugectl.take_flush_request` · `backend._first_flush_for_this_frame` · `controller.trigger(first_flush)`/`_raise_first_flush` |
+| 운영자 확정: ICS 는 **OFF 가 아니면 보낸다**(ON·WARMUP·UNKNOWN) · 답 없으면 추적 상태 — 코드 변경 없음 | |
+| 시험 — `tests/test_gauge_first_flush.py` **11 신설** · `test_icg_hkdata.py` 3 재작성(20) · `test_icg_hk.py` docstring | |
+| 문서 — README(와이어 절 규칙 둘 · `HKDATA` 게이지 절 다시 씀 + 시간표 셋) · `bench_test_plan.md` D1-3·4 · D2-3·4 · DevNote 11.93 | |
+
+관련 스위트 통과: `test_gauge_first_flush`·`test_gaugectl`·`test_ccdflush`·`test_hk_wire`·`test_backend`·
+`test_controllers` **145** · `test_icg_hk`·`test_icg_hkdata` **54**.  ⏳ 두 스위트 전수는 벤치 뒤(36 의
+3번 그대로 — `ab34b07` 분도 미실행).
+
+#### ⏳ 진행 중 — 벤치 첫날 나머지
+
+- 이 고침을 **커밋·푸시**해야 벤치가 받는다 (⚠️ 로컬에 `7992a0e` 인수인계 커밋이 원격보다 앞서 있다 —
+  같이 올라간다).  벤치: `git fetch origin && git reset --hard origin/ics-archon-v1.0-build`.
+- 벤치에서 볼 것(11.93): D1-3 `WARMUP` 즉시 · D1-4 `OFF`+마지막 값 → 바퀴 뒤 없음 · D2-3 `gauge was on --
+  FirstFlush 0 -> 1 for this frame only` + 첫 장 주기 +5.5 s · D2-4 그 줄 없음.
+- 그 다음은 36 의 "벤치 첫날 순서" 그대로 (D2 나머지 → D3 → D4).

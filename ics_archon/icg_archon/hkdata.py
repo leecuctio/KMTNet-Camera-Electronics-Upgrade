@@ -30,12 +30,16 @@
   아니다.  결측(sentinel)에는 못 읽음·와이어에 못 올릴 값(공백)이 든다.  ⚠️ 뺀 경우도 sentinel
   인 경우도 **`HKSTALE` 에 센다** -- 받는 쪽 셈은 *"실값 키 + HKSTALE = 10"* 이고 둘 다 실값이
   아니다.
-* ⭐ **`VACGAUGE`·`DEWPRES` 는 마지막 HK 바퀴의 표본이다** (운영자 2026-09-14).  `VACGAUGE
-  OFF`/`ON` 명령은 `DEWPRES` 를 **건드리지 않는다** -- 마지막으로 잰 값을 그대로 들고 있다가
-  **`[hk] interval` 의 다음 바퀴**가 그때의 게이지 상태를 보고 싣거나 뺀다.  **`HKDATA NOW`
-  는 그 바퀴를 지금 돌리니 즉시**이고, 그 뒤 주기 바퀴는 `NOW` 시각 + `interval` 이다.
-  ⛔ 낱말을 live 로 내지 않는다 -- 그러면 `VACGAUGE=OFF DEWPRES=<실측값>` 이 생긴다
-  (11.70 이 잡았던 어긋남).  한 줄이 통째로 같은 바퀴의 것이라 어긋날 수 없다.
+* ⭐ **`VACGAUGE` 는 지금 설정(live) · `DEWPRES` 는 마지막 HK 바퀴의 표본** (운영자
+  2026-09-15, DevNote 11.93).  `VACGAUGE OFF`/`ON` 명령은 낱말을 **그 자리에서** 바꾸지만
+  `DEWPRES` 는 **건드리지 않는다** -- 마지막으로 잰 값을 그대로 들고 있다가 **`[hk] interval`
+  의 다음 바퀴**(또는 `HKDATA NOW` · 예열 끝 자동 바퀴)가 그때의 게이지 상태를 보고 싣거나
+  뺀다.  그래서 끈 직후에는 `VACGAUGE=OFF DEWPRES=<마지막 측정값>` 이 **의도한 표시**다 --
+  *"켜져 있을 때 잰 마지막 값"* 이고 그 시각은 `HKUDATE` 가 말한다.  켠 직후는
+  `VACGAUGE=WARMUP` 에 `DEWPRES` 없음, 예열 끝 바퀴 뒤 `ON` + 값.
+  ⚠️ 11.89-(2) 의 *"낱말도 표본"* 을 **번복**한 것이다 -- 그때는 그 한 줄을 어긋남으로 봤고,
+  지금은 낱말 = 설정 / 값 = 측정으로 갈라 읽는다.  `DEWPRES` 를 **뺄지 sentinel 로 둘지**는
+  여전히 **바퀴 시점의 낱말**(표본 `gauge`)로 가른다 -- 아래 셋.
 * ⛔ **따옴표를 안 붙인다** (11.14-(1-c) -- `quote_always()` 를 뒤집은 결정).  같은
   프로그램의 `HK` 가 이미 안 붙이고, 값에 공백이 생길 구조가 없다.  대신 조립 때
   `hkwire.wire_safe()` 가 공백·따옴표를 **거부**한다: *"공백이 없다"* 를 가정이
@@ -189,7 +193,7 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
 
     # ⭐ **결측 키는 세어서 알린다** -- 아홉은 싣지 않고, `DEWPRES` 는 게이지
     # 상태에 따라 빼거나 sentinel 로 자리를 지키되 어느 쪽이든 결측으로 센다 (머리말).
-    word = vals.get('gauge')                # 마지막 바퀴의 낱말 -- live 가 아니다
+    word = vals.get('gauge')                # 마지막 바퀴의 낱말 -- DEWPRES 판정용
     dew = vals.get('dewpres')
     if dew is not None and not hkwire.wire_safe('DEWPRES', str(dew)):
         dew = None                          # 공백·따옴표 -- 자르지 말고 결측으로
@@ -205,11 +209,14 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
     pairs.append(('HKSTALE', len(CONTRACT_KEYS) - len(carried)))
 
     # 진공 -- 상태 낱말 바로 뒤에 압력 (운영자 지시).
-    # ⭐ **둘 다 마지막 바퀴의 표본**이다 (운영자 2026-09-14): 낱말은 `_tick` 이
-    # `_sample['gauge']` 에 담은 것, 값은 같은 바퀴의 `dewpres`.  ⛔ `gauge.word`
-    # 를 여기서 live 로 읽지 않는다 -- 그러면 끈 뒤 다음 바퀴까지 `VACGAUGE=OFF
-    # DEWPRES=<실측값>` 이 나간다.  바퀴가 아직 없으면(기동 직후) 낱말도 없다.
-    pairs.append(('VACGAUGE', word))
+    # ⭐ **낱말은 live, 값은 표본** (운영자 2026-09-15, 머리말): `VACGAUGE` 는
+    # 지금 설정(`gauge.word` -- 명령 직후 곧바로 `OFF`/`WARMUP`, 예열이 끝나면
+    # `ON`)이고 `DEWPRES` 는 마지막 바퀴의 `dewpres` 다.  뺄지 sentinel 로 둘지는
+    # 위에서 **바퀴 시점의 낱말**로 갈랐다.  게이지 제어가 없으면(`app.gauge`
+    # 없음) 표본 낱말로 물러나고, 그것도 없으면(기동 직후) 낱말이 빠진다.
+    gauge = getattr(app, 'gauge', None)
+    live = getattr(gauge, 'word', None) if gauge is not None else None
+    pairs.append(('VACGAUGE', live if live is not None else word))
     pairs.append(('DEWPRES', dew_wire))
 
     # 히터 넷 -- ⛔ `FORCELEVEL` 은 안 싣는다.

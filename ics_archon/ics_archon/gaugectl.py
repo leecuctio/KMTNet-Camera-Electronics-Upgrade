@@ -101,6 +101,11 @@ class GaugeControl:
         self.settle_after = float(settle_after)
         #: 그 대기가 끝나는 시각 (monotonic).  `None` 이면 기다릴 것이 없다.
         self._settle_until: float | None = None
+        #: ⭐ **껐으면 첫 장 앞에 flush 한 번** (운영자 지시 2026-09-15) -- 필라멘트가
+        #: 켜져 있던 동안 쌓인 전하를 첫 노출 앞에서 비운다.  `before_exposure()` 가
+        #: 명령을 실제로 보냈을 때만 서고, 그 GO 의 첫 프레임이 `take_flush_request()`
+        #: 로 한 번 가져간다.  이미 꺼져 있던 GO 는 `False` -- ini/ACF 설정대로 간다.
+        self._flush_wanted = False
         #: 진단용 셈.
         self.sent_off = 0
         self.sent_on = 0
@@ -128,6 +133,8 @@ class GaugeControl:
         if not self.enabled:
             return False
         self._cancel_timer('노출이 시작된다')
+        # GO 마다 새로 판단한다 -- 앞 GO 가 프레임 없이 죽어 남긴 요청은 여기서 지운다.
+        self._flush_wanted = False
         w = (word or '').strip().upper() or None
         if w == 'OFF' or (w is None and self.state in _DARK):
             # 게이지는 이미 꺼져 있다 -- `APPLYDIO` 가 `DEWPRES` 결측 창을
@@ -146,10 +153,24 @@ class GaugeControl:
                         extra={'detail': 'ICG 콘솔에서 켰거나 ICG 가 재기동한 '
                                          '것이다.  HKDATA 낱말이 정본'})
         self._send(False)
-        # ⭐ **켜져 있어서 방금 껐다** -- 실제로 꺼질 때까지 기다려야 한다.
+        # ⭐ **켜져 있어서 방금 껐다** -- 실제로 꺼질 때까지 기다려야 하고, 첫 장
+        # 앞에는 flush 한 번이 있어야 한다 (운영자 2026-09-15).
         if self.settle_after > 0:
             self._settle_until = time.monotonic() + self.settle_after
+        self._flush_wanted = True
         return True
+
+    def take_flush_request(self) -> bool:
+        """이 GO 의 **첫 프레임**이 가져간다 -- 방금 껐으면 `True`, 한 번만.
+
+        운영자 지시 2026-09-15: *"GO 로 `VACGAUGE OFF` 를 보낸 경우, settle 뒤 ACF/ini 의
+        `FirstFlush` 가 0 이면 1 로 노출 시퀀스 시작.  이미 OFF 였으면 기존 설정대로."*
+        올리는 일 자체는 컨트롤러 층이 한다 (`ArchonController.trigger(first_flush=1)`
+        -- 그 LOADPARAMS 한 번만 싣고 되돌린다).  ⚠️ 프레임마다 불리므로 둘째 장부터는
+        `False` 다 -- 그래서 *"첫 장 앞에만"* 이 된다.
+        """
+        wanted, self._flush_wanted = self._flush_wanted, False
+        return wanted
 
     def cancel_reenable(self, why: str) -> None:
         """되켜기 타이머만 해제한다 -- `GO` 가 받아들여진 순간에 (2026-09-15).

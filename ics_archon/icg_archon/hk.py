@@ -369,8 +369,10 @@ class HkMonitor:
         self.radionode = None              # app 이 붙인다
         #: 이온게이지 상태 (`gauge.GaugeState`) -- app 이 붙인다.  ⭐ 바퀴마다
         #: 낱말을 표본에 담고(`_sample['gauge']`), 꺼진 것을 아는 동안은
-        #: `dewpres` 를 **싣지 않는다** (`_tick` 주석).  판정은 바퀴에서만 --
-        #: `sensors()` 는 마지막 바퀴를 그대로 낸다 (운영자 2026-09-14).
+        #: `dewpres` 를 **싣지 않는다** (`_tick` 주석).  값의 판정은 바퀴에서만 --
+        #: `sensors()` 는 마지막 바퀴를 그대로 낸다 (운영자 2026-09-14).  ⚠️
+        #: `HKDATA` 의 `VACGAUGE` 낱말은 이 표본이 아니라 **live** 다 (운영자
+        #: 2026-09-15, `hkdata.body`) -- 표본 낱말은 `DEWPRES` 판정과 CSV 몫이다.
         self.gauge = None
         self._dew = DewpresDecoder()
         #: ⛔ 되먹임 센서 과열 차단 (운영자 지시 2026-09-06).  한계는
@@ -443,10 +445,11 @@ class HkMonitor:
         # 2026-09-11 의 즉시 가림을 **되돌렸다**).  이 스냅샷은 *"마지막 바퀴가
         # 본 상태"* 이고, 게이지를 끄면 **다음 바퀴**(`_tick` 이 `dewpres` 를
         # 지운다)에서 사라진다 -- `HKDATA` 는 주기값, `HKDATA NOW` 는 새 바퀴를
-        # 돌리니 그쪽은 즉시다.  ⛔ 종전 즉시 가림이 막던 *"`VACGAUGE=OFF
-        # DEWPRES=<실측값>` 한 줄"* 은 **낱말도 표본으로** 내는 것으로 막는다
-        # (`_sample['gauge']`, 아래 `_tick`) -- 한 줄이 통째로 같은 바퀴의
-        # 것이라 어긋날 수가 없다 (DevNote 11.89).
+        # 돌리니 그쪽은 즉시다.  ⭐ 그래서 끈 직후 `HKDATA` 는 `VACGAUGE=OFF
+        # DEWPRES=<마지막 측정값>` 이다 -- 낱말은 live 설정, 값은 표본 (운영자
+        # 2026-09-15, DevNote 11.93; 11.89 의 *"낱말도 표본"* 은 번복됐다).
+        # 표본 낱말(`_sample['gauge']`, 아래 `_tick`)은 `DEWPRES` 를 뺄지
+        # sentinel 로 둘지 가르는 **바퀴 시점의 상태**다.
         oldest: float | None = None
         for key, (val, when) in self._sample.items():
             if key in own:
@@ -837,11 +840,13 @@ class HkMonitor:
                 row['dewpres_conductron'] = dew
             dew = None
         if gauge is not None:
-            # ⭐ **낱말도 표본이다** (2026-09-14) -- `HKDATA` 의 `VACGAUGE` 는
-            # 이 값을 낸다.  live 낱말을 쓰면 끈 뒤 다음 바퀴까지 `VACGAUGE=OFF
-            # DEWPRES=<실측값>` 한 줄이 나가 어긋난다 (11.70 이 잡았던 것).
-            # 같은 바퀴의 낱말과 값이면 어긋날 수 없다.  ⚠️ 예열 중은 `WARMUP`
-            # 그대로 적는다 -- 종전엔 `OFF` 로 적어 CSV 가 틀렸다.
+            # ⭐ **바퀴 시점의 낱말도 표본에** (2026-09-14) -- `hkdata.body()` 가
+            # 이것으로 `DEWPRES` 를 뺄지(OFF·WARMUP) sentinel 로 둘지(ON·UNKNOWN
+            # + 결측) 가른다.  ⚠️ `HKDATA` 의 `VACGAUGE` 자리는 이 표본이 아니라
+            # **live** 다 (운영자 2026-09-15, DevNote 11.93) -- 끈 직후에도 `OFF`,
+            # 켠 직후에도 `WARMUP` 이 보이고, 값은 다음 바퀴까지 마지막 측정값.
+            # ⚠️ 예열 중은 `WARMUP` 그대로 적는다 -- 종전엔 `OFF` 로 적어 CSV 가
+            # 틀렸다.
             self._sample['gauge'] = (gauge.word, now)
             row['gauge'] = gauge.word
         if dew is not None:

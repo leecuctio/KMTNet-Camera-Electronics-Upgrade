@@ -11119,3 +11119,67 @@ sentinel."*
 바이어스 카드가 없다(10.4절 끝의 D3 설계 메모 한 줄뿐).  대가는 인수인계 "층 2" 절에 적혀 있다
 (32값이라 pair 8~12장 신설 · `CAMVER`/`CTRLnCFG` 범프 결합 · `POWER≠4` 표시).  ⏳ **로그 유지로
 확정할지는 운영자 한마디** -- 확정되면 인수인계 "층 2" 를 보류로 표시한다.
+
+### 11.93 게이지 낱말은 live · 값은 표본 -- 11.89 번복 · 껐으면 첫 장 앞 flush 한 번 (2026-09-15, 운영자 · 벤치 첫날)
+
+벤치 D1-3 에서 운영자가 바로 짚었다: *"icg 에서 `vacgauge on` 후 HK 에서 `WARMUP` 으로 표시되지
+않고 `OFF` 로 표시되어 있어."*  11.89-(2) 가 낱말을 바퀴의 표본으로 만들어서, 켠 뒤 다음 바퀴
+(= 예열 끝 자동 바퀴 12.5 s)까지 `HKDATA` 가 직전 바퀴의 `OFF` 를 냈다 -- 시험은 그 거동을
+그대로 지키고 있었고(`test_the_gauge_word_comes_from_the_sample_not_live`), 실기에서 사람이 보니
+틀린 것이었다.
+
+#### (1) 운영자 정리 (문면 그대로 · 검토 결과)
+
+> `vacgauge off` 의 경우에도 `hkdata now` 뿐 아니라 **`hkdata` 에서도 `VACGAUGE` 만은 바로 `OFF`**
+> 로.  단 타이머 주기로 재측정하기 전까지 `hkdata` 는 **`DEWPRES` 를 계속 표시**.
+>
+> (주기 100 s) 02:00 `HKDATA NOW` → 타이머 리셋 · 02:05 `VACGAUGE OFF` → `VACGAUGE=OFF` · 02:10 `HKDATA`
+> → `OFF DEWPRES=<마지막측정값>` · 03:00 같음 · 03:40 주기 측정 → OFF 라 DEWPRES 없어짐 · 03:41 없음.
+> 02:00 NOW · 02:05 OFF · 02:10 OFF+값 · 03:00 `HKDATA NOW` → 측정, 없어짐 · 03:41 없음 · 04:40 주기.
+> (꺼진 채) 02:00 NOW → 없음, 리셋 · 02:05 없음 · 02:10 `VACGAUGE ON` → `WARMUP`, 없음 · 02:15 같음 ·
+> 02:22 예열 완료 → `ON`, DEWPRES 측정, 타이머 리셋 · 02:25 `ON`+값 · 04:02 주기 측정.
+>
+> ICS: `go` 받으면 바로 `VACGAUGE OFF` -- OFF 상태면 안 보내고 (ON·WARMUP·UNKNOWN 이면 보냄 --
+> *"OFF 가 아니면 보낸다"*).  보낸 경우 `gauge_settle_after` 대기 뒤 **ini/ACF 의 `FirstFlush` 가 0 이면
+> 1 로** 노출 시퀀스 시작, > 0 이면 기존대로.  이미 OFF 였으면 안 보내고 안 기다리고 `FirstFlush` 도
+> 기존대로.  독출 완료 시 `gauge_reenable_after` 타이머, 돌던 것이 있으면 시작점으로 리셋.
+
+검토에서 문면과 코드가 어긋난 자리 하나 -- *"ON 인 경우에만 전달"* 은 코드가 **OFF 만 안 보내고
+나머지(ON·WARMUP·UNKNOWN)는 보내는** 것이었고 운영자가 그쪽으로 확정했다(*"OFF 가 아닌 경우에는
+보낸다"*).  답이 없으면(2 s) 추적 상태로 -- 꺼져 있다고 알면 안 보낸다(종전 그대로).
+`EveryFlush` 는 **보지 않는다**(운영자: *"무조건 올려줘.  `GO n` 은 컨트롤러 시퀀서로 돌리도록
+바꿀 계획"*) -- 그 전환 뒤엔 `FirstFlush` = 묶음 첫 장, `EveryFlush` = 매 장으로 뜻이 갈리므로
+둘을 독립으로 두는 것이 맞다.
+
+#### (2) ICG -- 낱말은 설정(live), 값은 측정(표본)
+
+11.89-(2) 의 *"낱말도 표본"* 을 **번복**했다.  그때 어긋남으로 본 `VACGAUGE=OFF DEWPRES=<값>` 한
+줄은 이제 의도한 표시다 -- *낱말 = 지금 설정, 값 = 켜져 있을 때 잰 마지막 값(시각은 `HKUDATE`)*.
+`hkdata.body()` 가 `VACGAUGE` 자리에 `app.gauge.word` 를 내고(게이지 제어가 없으면 표본 낱말,
+그것도 없으면 빠짐), **`DEWPRES` 를 뺄지 sentinel 로 둘지는 여전히 바퀴 시점의 낱말**(표본
+`gauge`)로 가른다 -- 11.89-(3) 의 셋은 그대로다.  `_tick` 의 `_sample['gauge']` 는 그 판정과 CSV
+몫으로 남는다.  ⚠️ 시계상 예열이 끝난 02:22.0 부터 자동 바퀴가 앉는 02:22.5(빈손이면 +3 s ×2)
+까지 `VACGAUGE=ON` 인데 `DEWPRES` 없음(sentinel 아님)이 몇 초 보인다 -- "켜졌는데 아직 안 쟀다"
+그대로라 그냥 둔다.  `VACGAUGE ON`/`OFF` 명령 자체는 바퀴를 안 돌리므로 주기 타이머를 안 민다
+(운영자 표의 04:02 = 02:22 + 100 이 그 뜻).
+
+#### (3) ICS -- 껐으면 첫 장 앞에 flush 한 번
+
+세 층: `gaugectl.before_exposure()` 가 **명령을 실제로 보냈을 때만** `_flush_wanted` 를 세우고
+(GO 마다 먼저 지운다 -- 앞 GO 가 프레임 없이 죽어 남긴 요청이 새지 않게), `take_flush_request()`
+가 한 번 내준다 → `backend._first_flush_for_this_frame()` 이 프레임마다 한 번 물어 두 컨트롤러에
+같은 값(`1` 또는 `None`)을 준다 → `ArchonController.trigger(first_flush=1)` 이
+`_raise_first_flush()` 로 설정 메모리의 `FirstFlush` 를 보고 **0 이면 1 로 WCONFIG → LOADPARAMS →
+원래 값으로 WCONFIG**(`flush_now()` 방식).  ⭐ 되돌리는 이유: science 는 프레임마다 LOADPARAMS 라
+설정값을 남기면 **매 장** flush 가 된다.  이미 > 0 이면 안 건드린다(*"기존 설정대로"*).  슬롯이
+없는 ACF(R2608 이하)는 경고 한 줄, flush 없이 노출.  셔터 노출(`open_shutter`)과 셔터 없는
+노출(`_readout_stream` 의 DARK/BIAS 트리거) 둘 다 같은 자리를 지난다.
+`settle()` 이 먼저 끝난 뒤(`initialize()`) 트리거가 걸리므로 순서는 *settle → flush → 노출* 이다.
+
+로그: `gauge was on -- FirstFlush 0 -> 1 for this frame only (flush before the first exposure)`.
+벤치 D2-3 에서 이 줄과 첫 프레임 주기 +5.5 s 를 본다.
+
+시험: `tests/test_gauge_first_flush.py` 11 (요청 한 번 · 새 GO 가 지움 · disabled · 0→1→0 순서 ·
+요청 없으면 안 건드림 · ini 2 는 그대로 · `EveryFlush=1` 이어도 올림 · guide 상수 1 · 슬롯 없는
+ACF 경고 · 백엔드 배선 · 시그니처) · `test_icg_hkdata.py` 3 재작성(낱말 live + 값 표본 · `WARMUP`
+즉시 · 게이지 없으면 표본).  문서: README 두 절 · `bench_test_plan.md` D1-3·4 · D2-3·4.

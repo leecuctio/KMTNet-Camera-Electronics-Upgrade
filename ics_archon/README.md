@@ -247,7 +247,8 @@ HK / HK NOW     ← 같은 본문
 OBS>ICS GO n
 ICS>ICG HKDATA NOW              ← GO 가 받아들여진 직후 (시한 [archon] hk_query_timeout, 기본 2 s)
 ICG>ICS DONE: HKDATA …          ← 답의 값이 이 GO 의 n 장 전부의 5.6절 카드 (키가 없으면 sentinel)
-ICS>ICG VACGAUGE OFF            ← 답의 VACGAUGE 가 ON/WARMUP/UNKNOWN 일 때만.  OFF 면 안 보낸다
+ICS>ICG VACGAUGE OFF            ← 답의 VACGAUGE 가 OFF 가 아니면(ON/WARMUP/UNKNOWN).  OFF 면 안 보낸다
+                                   (답이 없으면 ICS 가 추적한 상태로 -- 꺼져 있다고 알면 안 보낸다)
 ```
 
 * ⛔ **파일 스냅샷은 없다** — 종전 `[archon] hk_latest`·`hk_stale_after` 와 ICG 의
@@ -260,25 +261,43 @@ ICS>ICG VACGAUGE OFF            ← 답의 VACGAUGE 가 ON/WARMUP/UNKNOWN 일 �
   비응답 본문은 답으로 치지 않는다.
 * ⭐ **게이지 판단의 정본은 ICG 의 낱말**이다 — ICG 콘솔에서 누가 켰거나 ICG 를 재기동해
   ICS 의 추적 상태가 어긋나도 `HKDATA NOW` 가 잡는다 (경고를 남기고 끈다).
+* ⭐ **껐으면 settle 뒤 첫 장 앞에 flush 한 번** (운영자 지시 2026-09-15, DevNote 11.93) —
+  `VACGAUGE OFF` 를 **실제로 보낸** GO 는 `gauge_settle_after`(5 s) 를 기다린 뒤, 설정 메모리의
+  `FirstFlush`(ini `ccdflush_first` → 없으면 ACF 값)가 **0 이면 그 GO 의 첫 프레임 LOADPARAMS
+  에만 1 로** 실어 필라멘트가 켜져 있던 동안 쌓인 전하를 비우고 곧바로 원래 값으로 되돌린다
+  (둘째 장부터, 그리고 다음 GO 는 ini/ACF 설정대로).  이미 **> 0** 이면 그대로.  `EveryFlush`
+  는 보지 않는다(운영자: *"무조건"*) — 그쪽이 1 이면 첫 장 앞에 flush 가 둘이다.
+  이미 꺼져 있던 GO 는 **보내지도, 기다리지도, 올리지도 않는다**.  로그
+  `gauge was on -- FirstFlush 0 -> 1 for this frame only`.
+* **독출이 끝나면** 되켜기 타이머(`gauge_reenable_after`, 600 s) — 돌던 타이머가 있으면
+  그 자리에서 다시 센다.  만료 때 취득 중이면 켜지 않고 다음 독출 완료부터 다시 센다.
 
-⭐ **이온게이지도 같은 규칙이다** (운영자 확정 2026-09-14, DevNote 11.89) — `VACGAUGE` 낱말과
-`DEWPRES` 는 **마지막 HK 바퀴의 표본**이다.  `VACGAUGE OFF`/`ON` 명령은 `DEWPRES` 를 **건드리지
-않는다** — 마지막으로 잰 값을 들고 있다가 **`[hk] interval` 의 다음 바퀴**가 그때의 게이지
-상태를 보고 싣거나 뺀다.  **`HKDATA NOW` 는 그 바퀴를 지금 돌리니 즉시**이고, 그 뒤 주기 바퀴는
-`NOW` 시각 + `interval` 이다.  ⭐ **측정이면 무엇이든 주기를 민다** (운영자 2026-09-15) — `NOW`
-든 `VACGAUGE ON` 뒤 예열 끝 자동 바퀴든, 그 시각 + `interval` 이 다음 주기 바퀴다.
-운영자가 적은 시간표 (`interval` 100 s, `mm:ss`):
+⭐ **이온게이지 — `VACGAUGE` 는 지금 설정, `DEWPRES` 는 마지막 바퀴의 표본** (운영자 확정
+2026-09-15, DevNote 11.93).  `VACGAUGE OFF`/`ON` 명령은 `HKDATA` 의 낱말을 **그 자리에서**
+바꾸지만(`OFF` / 예열 중 `WARMUP` / 예열 끝 `ON`) `DEWPRES` 는 **건드리지 않는다** — 마지막으로
+잰 값을 들고 있다가 **`[hk] interval` 의 다음 바퀴**가 그때의 게이지 상태를 보고 싣거나 뺀다.
+그래서 끈 직후 `HKDATA` 는 `VACGAUGE=OFF DEWPRES=<마지막 측정값>` 이다 — *"켜져 있을 때 잰
+마지막 값"* 이고 시각은 `HKUDATE`.  **`HKDATA NOW` 는 그 바퀴를 지금 돌리니 값도 즉시**이고,
+그 뒤 주기 바퀴는 `NOW` 시각 + `interval` 이다.  ⭐ **측정이면 무엇이든 주기를 민다** (운영자
+2026-09-15) — `NOW` 든 `VACGAUGE ON` 뒤 예열 끝 자동 바퀴든, 그 시각 + `interval` 이 다음 주기
+바퀴다.  운영자가 적은 시간표 (`interval` 100 s, `mm:ss`):
 
-    02:00 HKDATA NOW · 02:05 VACGAUGE OFF · 02:10 HKDATA → DEWPRES 표시 · 03:00 HKDATA → 표시
-    03:40 주기 바퀴 · 03:41 HKDATA → DEWPRES 없음
+    02:00 HKDATA NOW · 02:05 VACGAUGE OFF → 곧바로 VACGAUGE=OFF · 02:10 HKDATA → OFF, DEWPRES=<마지막 측정값>
+    03:00 HKDATA → 같음 · 03:40 주기 바퀴 → OFF 라 DEWPRES 없어짐 · 03:41 HKDATA → 없음
     02:00 HKDATA NOW · 02:05 VACGAUGE OFF · 03:00 HKDATA NOW → 바퀴가 돌고 OFF 라 DEWPRES 없음
     04:40 주기 바퀴 (03:00 + 100 s)
+    (꺼진 채) 02:00 HKDATA NOW → DEWPRES 없음 · 02:10 VACGAUGE ON → 곧바로 WARMUP, 없음 · 02:15 HKDATA → 같음
+    02:22 예열 끝(12 s + 여유 0.5 s) 자동 바퀴 → ON + DEWPRES, 주기 타이머 리셋 · 02:25 HKDATA → ON + 값
+    04:02 주기 바퀴 (02:22 + 100 s)
 
-⭐ **`DEWPRES` 의 셋** — `VACGAUGE=OFF`·**`WARMUP`** 이면 **뺀다**(꺼져 있거나 예열 중이면 잴 것이
-없다) · `ON` 이고 값이 있으면 그 값 · `ON`(또는 모름)인데 결측이면 **`9.99e-9`**(헤더와 같은
-sentinel).  뺀 경우도 sentinel 도 `HKSTALE` 에 센다.  다른 아홉 키는 종전대로 결측이면 빠진다.
-⛔ 낱말을 live 로 내면 `VACGAUGE=OFF DEWPRES=<실측값>` 한 줄이 생긴다 — 2026-09-11 에 그
-어긋남을 *값 쪽*을 즉시 가려서 막았었는데, 되돌리고 *낱말 쪽*을 바퀴의 표본으로 맞췄다.
+⭐ **`DEWPRES` 의 셋** — 판정은 **바퀴 시점의 낱말**(표본)로: 그 바퀴에 `OFF`·**`WARMUP`** 이었으면
+**뺀다**(꺼져 있거나 예열 중이면 잴 것이 없다) · `ON` 이고 값이 있으면 그 값 · `ON`(또는 모름)
+인데 결측이면 **`9.99e-9`**(헤더와 같은 sentinel).  뺀 경우도 sentinel 도 `HKSTALE` 에 센다.  다른
+아홉 키는 종전대로 결측이면 빠진다.
+⚠️ 예열 끝 자동 바퀴가 빈손이면(`APPLYDIO09` 로 MOD10 VCPU 재시작 → 첫 바퀴 결측) 3 s 뒤 최대
+2번 더 돈다 — 그 사이 몇 초는 `VACGAUGE=ON` 인데 `DEWPRES` 가 없다(sentinel 아님, 바퀴 시점엔
+꺼져 있었다).  ⚠️ 2026-09-14 의 *"낱말도 표본"*(11.89) 은 **번복**됐다 — 그때는 `VACGAUGE=OFF
+DEWPRES=<값>` 을 어긋남으로 봤고, 지금은 낱말 = 설정 / 값 = 측정으로 갈라 읽는다.
 
 ⭐ **주기 바퀴(60초)는 왕복이 도는 중이면 비켜 준다** — 최대 1초.  ⛔ 상한이 있는 것이
 요점이다: guide 는 연속 취득이라 *"안 바쁠 때까지"* 를 곧이곧대로 쓰면 HK 가 영영 안

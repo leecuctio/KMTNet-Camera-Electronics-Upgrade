@@ -425,13 +425,32 @@ class ArchonBackend:
             # 값이 정본이다 (`_enforce_shutter_close_dwell`).
             dwell = int(getattr(self.acfg, 'shutter_close_ms', 0) or 0)
             await c.trigger(ms, noint_ms=dwell if dwell > 0 else None,
-                            suffix=self._suffix.get(c.tag, ''))
+                            suffix=self._suffix.get(c.tag, ''),
+                            first_flush=first_flush)
 
+        # ⭐ 방금 끈 게이지면 이 프레임(GO 의 첫 장)에만 flush 를 싣는다 -- 한 번
+        # 가져와 두 컨트롤러에 같이 준다 (`_first_flush_for_this_frame`).
+        first_flush = self._first_flush_for_this_frame()
         try:
             await self._all(_go, 'exposure command')
         except (ArchonError, TimeoutError, OSError) as exc:
             raise BackendError(
                 'Failed to Start acquisition on one or more ICs') from exc
+
+    def _first_flush_for_this_frame(self) -> int | None:
+        """이 프레임의 LOADPARAMS 에 실을 `FirstFlush` 하한 -- `1` 또는 `None`.
+
+        ⭐ **GO 로 `VACGAUGE OFF` 를 보낸 경우에만** (운영자 지시 2026-09-15) -- 게이지
+        제어가 그 사실을 한 번 내주고(`take_flush_request`), 그것이 곧 이 GO 의 첫
+        프레임이다.  둘째 장부터, 그리고 이미 꺼져 있던 GO 는 `None` -- ini/ACF 설정대로.
+        올릴지 말지(설정 메모리가 이미 > 0 이면 그대로)는 컨트롤러 층이 정한다
+        (`ArchonController._raise_first_flush`).  `EveryFlush` 와는 무관하다.
+        """
+        gauge = getattr(self, 'gauge', None)
+        take = getattr(gauge, 'take_flush_request', None)
+        if take is None:
+            return None
+        return 1 if take() else None
 
     async def abort_now(self) -> None:
         """ABORT -- **적분을 지금 끊는다** (`Exposures=0` -> `RESETTIMING`).
@@ -631,9 +650,12 @@ class ArchonBackend:
                 # 이 되어 **DARK 내내 셔터가 열린 채**로 돈다.
                 for c in pending:
                     await c.set_trigger(high=False, forced=True)
+                # ⭐ 셔터 없는 노출(DARK/BIAS)도 같은 규칙 -- 방금 껐으면 첫 장 앞 flush.
+                first_flush = self._first_flush_for_this_frame()
                 await asyncio.gather(*(
                     c.trigger(0, noint_ms=ms,
-                              suffix=self._suffix.get(c.tag, ''))
+                              suffix=self._suffix.get(c.tag, ''),
+                              first_flush=first_flush)
                     for c in pending))
             except (ArchonError, TimeoutError, OSError) as exc:
                 raise BackendError(_dma_cause(ccd, exc),

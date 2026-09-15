@@ -1567,7 +1567,8 @@ class ArchonController:
 
     async def trigger(self, exptime_ms: int, *, queue: bool = True,
                       suffix: str = '', exposures: int = 1,
-                      noint_ms: int | None = None) -> FrameTicket:
+                      noint_ms: int | None = None,
+                      first_flush: int | None = None) -> FrameTicket:
         """노출을 걸고 곧바로 돌아온다 (적분·독출은 컨트롤러가 몬다).
 
         순서는 labtest 그대로다 -- **프레임 번호를 먼저 읽고** `IntMS`,
@@ -1595,6 +1596,14 @@ class ArchonController:
                 `NoIntUnit` 은 `NOINT`(CONTROL 비트0 = 0)로 들어가므로
                 **트리거 선이 안 서고 셔터가 안 열린다**.  `None` 이면 안
                 쓴다(설정 메모리의 ACF 값이 그대로 간다).
+            first_flush: ⭐ **이 LOADPARAMS 에만** `FirstFlush` 를 적어도 이만큼
+                싣는다 -- 방금 끈 진공게이지의 잔류 전하를 첫 장 앞에서 비우는
+                자리 (운영자 2026-09-15, `gaugectl.take_flush_request`).  설정
+                메모리의 값이 이미 그 이상이면 손대지 않고, 올렸으면 LOADPARAMS
+                뒤 **원래 값으로 되돌린다** (`flush_now()` 와 같은 방식) -- science
+                는 프레임마다 LOADPARAMS 라 설정값을 남겨 두면 **매 장** flush 가
+                된다.  `EveryFlush` 는 보지 않는다(운영자: *"무조건 올려"*).  `None`
+                이면 안 건드린다.
         """
         # **한 번의 `FRAME` 으로 둘을 뽑는다** -- 프레임 번호(기준값)와 세
         # 버퍼의 번호(기준선).  왕복은 종전과 같다.
@@ -1602,6 +1611,9 @@ class ArchonController:
         _fields = await self.query('FRAME', timeout=T_FAST)
         prev = parse.newest(_fields).frame
         before = parse.buffer_frames(_fields)
+        # ⭐ 첫 장 앞 flush -- 올렸으면 `(슬롯, 원래 값)` 을 받아 LOADPARAMS 뒤 되돌린다.
+        restore = (await self._raise_first_flush(int(first_flush))
+                   if first_flush is not None else None)
         await self.set_config(self._param_slot(self.PARAM_INTMS),
                               '%s=%d' % (self.PARAM_INTMS,
                                          max(int(exptime_ms), 0)))
@@ -1638,6 +1650,10 @@ class ArchonController:
         self.loadparams_sent = True
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         timing = getattr(self, 'last_cmd_timing', None)
+        if restore is not None:
+            # ⭐ **원래 값으로** -- RAM 에는 이미 실렸고, 설정 메모리는 다음 LOADPARAMS
+            # 가 읽는 것이라 여기서 되돌려야 둘째 장부터 ini/ACF 설정대로 간다.
+            await self.set_config(*restore)
         # ⭐ **한 시각에서 둘을 뽑는다** -- `time.monotonic()` 을 두 번 부르면
         # 두 값이 미세하게 어긋나 되짚을 때 헷갈린다.
         _now = time.monotonic()
@@ -1742,6 +1758,45 @@ class ArchonController:
     async def newest_frame(self) -> int:
         """`FRAME` 한 번 -- 지금 완료돼 있는 가장 새 프레임 번호 (-1 = 없음)."""
         return parse.newest(await self.query('FRAME', timeout=T_FAST)).frame
+
+    async def _raise_first_flush(self, want: int):  # noqa: ANN202
+        """설정 메모리의 `FirstFlush` 가 `want` 보다 작으면 올린다.  `(슬롯, 원래 값)` 또는 `None`.
+
+        ⭐ **방금 끈 게이지의 잔류 전하를 첫 장 앞에서 비우는 자리**다 (운영자 지시
+        2026-09-15): *"ACF 또는 ini 설정에서 FirstFlush=0 이면 1 로 노출 시퀀스 시작,
+        > 0 이면 기존 설정대로."*  설정 메모리의 값이 곧 *"ACF 또는 ini"* 다 --
+        `apply_flush_overrides()` 가 ini 값을 그 자리에 앉혀 두므로 따로 가를 것이 없다.
+
+        ⭐ **`EveryFlush` 는 보지 않는다** (운영자 확정 2026-09-15: *"무조건 올려"*).
+        `EveryFlush` 가 1 이상이면 첫 장 앞에 flush 가 둘(FirstFlush + EveryFlush, +5.5 s)
+        도는데, 그것을 받아들인 결정이다 -- `GO n` 을 컨트롤러 시퀀서(`Exposures=n` 한
+        LOADPARAMS)로 옮기면 `FirstFlush` 는 묶음의 첫 장, `EveryFlush` 는 매 장으로 뜻이
+        갈리므로 둘을 독립으로 두는 것이 맞다 (⏳ 그 전환은 운영자 계획).
+
+        ⚠️ 슬롯이 없는 ACF(R2608 이하)면 경고만 하고 `None` -- flush 없이 간다
+        (`set_flush_param()` 과 같은 태도: flush 하나 때문에 노출을 막지 않는다).
+        """
+        fname = self.PARAM_FLUSH
+        fslot = (self.param_slots or {}).get(fname)
+        cur = _unquote(await self.config_value(fslot)) if fslot else ''
+        if not cur.startswith(fname + '='):
+            log.warning('%sgauge was on but the acf has no %s -- no flush before '
+                        'the first frame', self.ltag, fname,
+                        extra={'detail': '⛔ science R2610+ ACF 를 쓸 것'})
+            return None
+        try:
+            have = int(cur.split('=', 1)[1])
+        except ValueError:
+            have = 0
+        if have >= want:
+            return None                       # 기존 설정대로 -- 이미 flush 가 든다
+        await self.set_config(fslot, '%s=%d' % (fname, want))
+        log.info('%sgauge was on -- %s %d -> %d for this frame only (flush before '
+                 'the first exposure)', self.ltag, fname, have, want,
+                 extra={'detail': '필라멘트가 켜져 있던 동안 쌓인 전하를 비운다.  '
+                                  'LOADPARAMS 뒤 설정 메모리는 %s 로 되돌린다 -- '
+                                  '둘째 장부터 ini/ACF 설정대로' % cur})
+        return (fslot, cur)
 
     async def set_exposures(self, n: int) -> None:
         """남은 연속 노출 수를 바꾼다 (`0` 이면 현재 프레임까지만).

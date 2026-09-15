@@ -119,17 +119,18 @@ def test_a_value_with_a_space_becomes_the_sentinel():
 
 @pytest.mark.parametrize('word', ['OFF', 'WARMUP'])
 def test_dewpres_is_omitted_when_the_gauge_is_off_or_warming(word):
-    """⭐ **`VACGAUGE=OFF`·`WARMUP` 이면 `DEWPRES` 를 뺀다** (운영자 정정 2026-09-14~15) --
-    꺼져 있거나 예열 중이면 잴 것이 없다.  `HKSTALE` 에는 센다 (실값이 아니다)."""
+    """⭐ **바퀴 시점의 낱말이 `OFF`·`WARMUP` 이면 `DEWPRES` 를 뺀다** (운영자 정정
+    2026-09-14~15) -- 꺼져 있거나 예열 중이면 잴 것이 없다.  `HKSTALE` 에는 센다 (실값이
+    아니다).  ⭐ 판정은 **표본 낱말**(`vals['gauge']`)로 한다 -- live 낱말이 아니다."""
     vals = dict(FULL)
     del vals['dewpres']
     vals['gauge'] = word
     kv = _kv(_body(vals))
     assert 'DEWPRES' not in kv
-    assert kv['VACGAUGE'] == word
+    assert kv['VACGAUGE'] == word           # 게이지 제어가 없으면 표본 낱말로 물러난다
     assert kv['HKSTALE'] == '1'
-    # ⚠️ 표본에 값이 남아 있어도(같은 바퀴에서 `_tick` 이 지우므로 실제론 없다) 낱말이
-    # OFF/WARMUP 이면 안 싣는다 -- `VACGAUGE=OFF DEWPRES=<값>` 은 어떤 경로로도 안 나간다.
+    # ⚠️ 표본에 값이 남아 있어도(같은 바퀴에서 `_tick` 이 지우므로 실제론 없다) 바퀴
+    # 낱말이 OFF/WARMUP 이면 안 싣는다.
     vals['dewpres'] = '6.93e-04'
     kv = _kv(_body(vals))
     assert 'DEWPRES' not in kv and kv['HKSTALE'] == '1'
@@ -163,27 +164,66 @@ def test_unreadable_heater_fields_are_omitted_not_guessed():
         assert k not in kv, k
 
 
-def test_the_gauge_word_comes_from_the_sample_not_live():
-    """⭐ 불린은 낱말이다 -- `VACGAUGE` 는 `ON`/`OFF`/`WARMUP`/`UNKNOWN`.
+class _G:
+    """`gauge.GaugeState` 의 `word` 만 -- 조립기가 보는 것이 그것뿐이다."""
 
-    ⛔ **live 낱말이 아니라 마지막 바퀴의 표본**이다 (운영자 2026-09-14).  live 로
-    내면 끈 뒤 다음 바퀴까지 `VACGAUGE=OFF DEWPRES=<실측값>` 한 줄이 나간다
-    (DevNote 11.70 이 잡았던 어긋남) -- 같은 바퀴의 낱말과 값이면 어긋날 수 없다.
+    def __init__(self, word: str) -> None:
+        self.word = word
+
+
+def test_the_gauge_word_is_live_and_dewpres_is_the_sample():
+    """⭐ **`VACGAUGE` 는 지금 설정(live), `DEWPRES` 는 마지막 바퀴의 표본** (운영자
+    2026-09-15, DevNote 11.93).  불린은 낱말이다 -- `ON`/`OFF`/`WARMUP`/`UNKNOWN`.
+
+    운영자 시간표(주기 100 s): `02:00 HKDATA NOW` · `02:05 VACGAUGE OFF` · `02:10 HKDATA`
+    → **`VACGAUGE=OFF DEWPRES=<마지막 측정값>`** -- 끈 것은 그 자리에서 보이고, 값은 다음
+    바퀴까지 *"켜져 있을 때 잰 마지막 값"* 으로 남는다.  ⚠️ 11.89-(2) 의 *"낱말도 표본"*
+    을 번복한 것이다.
     """
     vals = dict(FULL)
-    vals['gauge'] = 'ON'
+    vals['gauge'] = 'ON'                # 02:00 바퀴 -- 켜져 있었고 값이 있다
     app = _App(vals)
-
-    class _G:
-        word = 'OFF'                    # 방금 껐다 -- 아직 바퀴 전이다
-    app.gauge = _G()
+    app.gauge = _G('OFF')               # 02:05 에 껐다 -- 아직 바퀴 전이다
     kv = _kv(asyncio.run(hkdata.body(app)))
-    assert kv['VACGAUGE'] == 'ON'       # 표본의 낱말 -- 값(6.93e-04)과 같은 바퀴
-    assert kv['DEWPRES'] == '6.93e-04'
+    assert kv['VACGAUGE'] == 'OFF'      # 설정은 지금 것
+    assert kv['DEWPRES'] == '6.93e-04'  # 값은 02:00 바퀴 것
+    assert kv['HKSTALE'] == '0'         # 실값이 실렸다
     # ⭐ 운영자 지시 -- 압력은 상태 낱말 **바로 뒤**다.
     body = asyncio.run(hkdata.body(app))
     assert body.index('VACGAUGE=') < body.index('DEWPRES=')
-    # 바퀴가 아직 없으면(기동 직후) 낱말도 없다 -- 추측하지 않는다.
+
+
+def test_warmup_shows_at_once_after_vacgauge_on_and_dewpres_waits_for_a_round():
+    """⭐ `vacgauge on` 뒤 `hkdata` 는 **곧바로 `WARMUP`** 이고 값은 없다 (벤치 2026-09-15:
+    종전엔 다음 바퀴까지 `OFF` 로 남았다).  예열 끝 바퀴가 `ON` 과 값을 같이 가져온다."""
+    vals = dict(FULL)
+    del vals['dewpres']
+    vals['gauge'] = 'OFF'               # 마지막 바퀴는 꺼진 채였다 -- 값 없음
+    app = _App(vals)
+    app.gauge = _G('WARMUP')            # 방금 켰다
+    kv = _kv(asyncio.run(hkdata.body(app)))
+    assert kv['VACGAUGE'] == 'WARMUP' and 'DEWPRES' not in kv
+    assert kv['HKSTALE'] == '1'
+    # 시계상 예열이 끝났는데 바퀴가 아직이면 -- `ON` 에 값 없음 (sentinel 아님: 바퀴
+    # 시점엔 꺼져 있었다).  예열 끝 자동 바퀴(0.5 s 여유)가 곧 채운다.
+    app.gauge = _G('ON')
+    kv = _kv(asyncio.run(hkdata.body(app)))
+    assert kv['VACGAUGE'] == 'ON' and 'DEWPRES' not in kv
+    # 그 바퀴가 돌면 값이 따라온다.
+    vals['gauge'] = 'ON'
+    vals['dewpres'] = '1.02e-06'
+    app.hk._vals = vals
+    kv = _kv(asyncio.run(hkdata.body(app)))
+    assert kv['VACGAUGE'] == 'ON' and kv['DEWPRES'] == '1.02e-06'
+
+
+def test_the_gauge_word_falls_back_to_the_sample_without_gauge_control():
+    """게이지 제어가 없으면(`app.gauge` 없음) 표본 낱말, 그것도 없으면(기동 직후) 낱말이
+    빠진다 -- 추측하지 않는다."""
+    vals = dict(FULL)
+    vals['gauge'] = 'ON'
+    kv = _kv(_body(vals))
+    assert kv['VACGAUGE'] == 'ON'
     kv = _kv(_body(FULL))
     assert 'VACGAUGE' not in kv
 

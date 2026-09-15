@@ -812,9 +812,10 @@ def test_dewpres_and_the_gauge_word_change_at_the_next_round(tmp_path):
 
     `sensors()` 는 *"마지막 바퀴가 본 상태"* 다.  `VACGAUGE OFF` 를 쳐도 바퀴가
     돌기 전에는 직전 실측값(켜져 있을 때 잰 것)이 그대로이고, 바퀴가 돌면 값이
-    빠지고 **낱말도 같은 바퀴의 것**(`gauge` 표본)으로 바뀐다 -- 그래서 `HKDATA`
-    한 줄 안에서 `VACGAUGE=OFF DEWPRES=<실측값>` 이 생길 수 없다 (11.70 이 잡았던
-    어긋남을 낱말 쪽에서 막는다).  `HKDATA NOW` 는 바퀴를 돌리니 즉시다.
+    빠지고 **바퀴 시점의 낱말**(`gauge` 표본)이 같이 실린다 -- `hkdata.body()` 는
+    이 표본 낱말로 `DEWPRES` 를 뺄지 sentinel 로 둘지 가르고, `VACGAUGE` 자리에는
+    **live 낱말**을 낸다 (운영자 2026-09-15, DevNote 11.93 -- 11.89 의 *"낱말도
+    표본"* 번복).  `HKDATA NOW` 는 바퀴를 돌리니 값도 즉시다.
     ⛔ 2026-09-11 의 *"읽는 자리에서도 판정"* 은 되돌렸다 (DevNote 11.89).
     """
     mon, gauge = _mon_with_gauge(tmp_path)
