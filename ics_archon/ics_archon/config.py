@@ -697,8 +697,16 @@ def load(path: str) -> ArchonCfg:
     cfg.shutter_close_ms = _num(s, 'shutter_close_ms', cfg.shutter_close_ms,
                                 int)
     # ⭐ 비어 있으면 `None` -- *"ACF 값을 그대로 따른다"* 는 뜻이다.
-    cfg.ccdflush_first = _num(s, 'ccdflush_first', cfg.ccdflush_first, int)
-    cfg.ccdflush_every = _num(s, 'ccdflush_every', cfg.ccdflush_every, int)
+    # ⛔ 옛 낱말(`true`/`false`)은 거절한다 -- 벤치 2026-09-15 에 `ccdflush_first = false`
+    #    로 기동이 섰다.  무엇을 적어야 하는지를 오류 문면에 싣는다.
+    for _key in ('ccdflush_first', 'ccdflush_every'):
+        try:
+            setattr(cfg, _key, _num(s, _key, getattr(cfg, _key), int))
+        except ArchonConfigError as exc:
+            raise ArchonConfigError(
+                '%s\n        ⭐ 이 키는 flush **횟수**다 -- 비우면 ACF 값(R2613 은 0), '
+                '아니면 0·1·2… 를 적을 것.\n        옛 `ccdflush = true` 는 '
+                '`ccdflush_every = 1`, `false` 는 **비움**이다' % exc) from None
     cfg.tcs_clock_warn = _num(s, 'tcs_clock_warn', cfg.tcs_clock_warn, float)
     cfg.gauge_off_on_exposure = _bool(s, 'gauge_off_on_exposure',
                                       cfg.gauge_off_on_exposure)

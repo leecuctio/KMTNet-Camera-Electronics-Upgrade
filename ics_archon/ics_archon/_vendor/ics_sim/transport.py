@@ -66,12 +66,35 @@ def wire_command(raw: str) -> str:
     return word.rstrip(':').upper()
 
 
-def essential_wire(raw: str) -> bool:
+def essential_wire(raw: str, ours=()) -> bool:  # noqa: ANN001
     """이 와이어 줄을 **화면에 낼까** (`verbose = off` 일 때).
 
-    ⭐ 판정은 커맨드워드 하나다 -- `CHATTER_WORDS` 에 들면 잡음이다.
+    ⭐ 판정 둘: 커맨드워드가 `CHATTER_WORDS` 에 들면 잡음이고, **양끝이 다 우리
+    노드**(`ours` -- ICS + 레거시 가상 IC/CB 노드)인 줄도 잡음이다 (운영자 2026-09-15
+    벤치: *"verbose off 면 K/M/T/N.IC 같은 가상 노드와 통신하는 메시지는 안 보이게"*).
+    `ICS>K.IC GO` · `K.IC>ICS DONE: GO` 가 그것 -- 통합 프로그램 안에서 자기끼리
+    도는 레거시 흉내라 사람이 그것으로 아는 것이 없다.
+
+    ⛔ **한쪽이 남이면 남긴다** -- `K.IC>OBS DONE: GO Wrote …`·`Acquisition Complete.`
+    는 OBSAgent 가 보는 줄이라 운영자도 봐야 한다 (운영자: *"Wrote 는 다 보여줘야"*).
+    ⛔ 키보드 줄(`ICS>ICS …`)도 남긴다 -- 콘솔 명령의 답이다 (`_trim_keyboard`).
     """
-    return wire_command(raw) not in CHATTER_WORDS
+    if wire_command(raw) in CHATTER_WORDS:
+        return False
+    return not internal_wire(raw, ours)
+
+
+def internal_wire(raw: str, ours=()) -> bool:  # noqa: ANN001
+    """양끝이 **다 우리 노드**이고 서로 다른 줄인가 (`ICS>K.IC …`·`K.IC>ICS …`)."""
+    if not ours:
+        return False
+    src, _, rest = raw.partition('>')
+    dst = rest.split(' ', 1)[0] if rest else ''
+    src, dst = src.strip().upper(), dst.strip().upper()
+    if not src or not dst or src == dst:
+        return False
+    mine = {n.upper() for n in ours}
+    return src in mine and dst in mine
 
 Addr = tuple[str, int]
 MessageHandler = Callable[[Message, Addr], None]
@@ -151,15 +174,32 @@ class UdpEndpoint:
         self._last_sender = addr
         self._peers[msg.src.upper()] = (addr, time.monotonic())
         self.recv_log.append(msg.raw)
-        if self.cfg.logging.wire and not self._keyboard_line(msg.raw):
-            # ⛔ **키보드 에코는 안 찍는다** (운영자 2026-09-08).  콘솔 명령의
-            # 응답은 우리 자신에게 나갔다가 되돌아와 `_on_message` 가 버리는데
-            # (self-echo), 그것까지 찍으면 **한 메시지가 두 줄로 보인다**.
+        if self.cfg.logging.wire and not self._self_echo(msg):
+            # ⛔ **자기 에코는 안 찍는다**.  우리 노드 이름으로 나간 줄은 허브를
+            # 돌아 우리에게 되돌아오고 `_on_message` 가 버리는데(self-echo),
+            # 그것까지 찍으면 **한 메시지가 두 줄로 보인다** -- 2026-09-08 은
+            # 키보드 줄(`ICS>ICS`)만 걸렀고, 벤치 2026-09-15 에 `K.IC>ICS STATUS:
+            # GO PCTREAD=41` 이 1 ms 간격으로 **두 줄씩** 찍혀 가상 노드 발신
+            # 전부로 넓혔다 (발신 때 이미 한 줄 찍었다).
             # ⭐ 방향 표시(`<<<`)도 뗐다 -- `SRC>DST` 가 이미 방향을 말한다
             # (목적지가 우리면 들어온 것).
             log.info('%s', msg.raw,
-                     extra={'essential': essential_wire(msg.raw)})
+                     extra={'essential': essential_wire(msg.raw, self._ours())})
         self._on_message(msg, addr)
+
+    def _self_echo(self, msg: Message) -> bool:
+        """**우리 노드 이름으로** 보낸 줄이 되돌아온 것인가 (키보드 줄 포함)."""
+        src = (msg.src or '').strip().upper()
+        if not src:
+            return False
+        if self._keyboard_line(msg.raw):
+            return True
+        return src in {n.upper() for n in self._ours()}
+
+    def _ours(self) -> tuple[str, ...]:
+        """우리 노드 이름 전부 (ICS + 가상 IC/CB) -- `essential_wire` 의 안쪽 판정용."""
+        node = getattr(self.cfg, 'node', None)
+        return tuple(getattr(node, 'all_node_ids', ()) or ())
 
     def _keyboard_line(self, raw: str) -> bool:
         """`ICG>ICG …` 처럼 **우리가 우리에게** 보낸 줄인가.
@@ -198,7 +238,7 @@ class UdpEndpoint:
             # ⭐ **키보드 줄은 노드 표기까지 뗀다** -- `ICG>ICG DONE: …` 의
             # 앞 여덟 자는 *"내가 나에게"* 라 아무것도 안 알린다.
             log.info('%s', self._trim_keyboard(line),
-                     extra={'essential': essential_wire(line)})
+                     extra={'essential': essential_wire(line, self._ours())})
         self._queue.put_nowait((payload, self.route_for(dest_node), dest_node))
 
     def route_for(self, dest_node: str) -> Addr | None:

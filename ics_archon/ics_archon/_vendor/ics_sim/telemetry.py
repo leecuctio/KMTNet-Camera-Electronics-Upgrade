@@ -203,7 +203,8 @@ def _sync_error_az(dome: object, tel: object) -> str:
         diff = float(str(dome)) - float(str(tel))
     except (TypeError, ValueError):
         return 'NC'
-    return f'{(diff + 180.0) % 360.0 - 180.0:+.1f}'
+    # ⭐ 소수 2자리 -- redis 가 준 `DAZERR` 와 같은 자리수 (운영자 2026-09-15).
+    return f'{(diff + 180.0) % 360.0 - 180.0:+.2f}'
 
 
 class TelemetryRelay:

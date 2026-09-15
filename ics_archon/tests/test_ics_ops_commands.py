@@ -180,12 +180,16 @@ def test_ccdflush_flushes_both_and_rewinds_the_flag(tmp_path):  # noqa: ANN001
     async def body():  # noqa: ANN202
         async with Session(tmp_path) as s:
             await s.warmup()
-            assert getattr(s.mk, 'flushes', 0) == 0, 'GO 가 flush 를 만들었다 -- 전제가 깨졌다'
+            # ⭐ 예열 GO 가 flush 를 **한 번** 만든다 (2026-09-15, DevNote 11.93): 하네스에는
+            # ICG 가 없어 HKDATA 답이 없고 추적 상태가 UNKNOWN 이라 `VACGAUGE OFF` 를 보내며,
+            # 그러면 첫 장 앞에 FirstFlush 1 이 실린다.  그래서 **차분**으로 센다.
+            mk0, nt0 = getattr(s.mk, 'flushes', 0), getattr(s.nt, 'flushes', 0)
+            assert mk0 == nt0 == 1, '예열 GO 의 첫 장 flush 가 한 번이어야 한다'
             line = await s.reply('OBS>ICS CCDFLUSH', 'CCDFLUSH')
             assert line.endswith('DONE: CCDFLUSH Flushed=MK,NT'), line
             # flush 프레임은 독출 시간만큼 걸린다 -- DONE 뒤에 완료된다.
-            await until(lambda: getattr(s.mk, 'flushes', 0) == 1
-                        and getattr(s.nt, 'flushes', 0) == 1, what='flushes')
+            await until(lambda: getattr(s.mk, 'flushes', 0) == mk0 + 1
+                        and getattr(s.nt, 'flushes', 0) == nt0 + 1, what='flushes')
             assert flush_flag(s.mk) == 'PARAMETER0=FirstFlush=0', s.mk.config
             assert flush_flag(s.nt) == 'PARAMETER0=FirstFlush=0', s.nt.config
             # 프레임은 만들지 않는다
@@ -200,11 +204,12 @@ def test_ccdflush_one_controller_only(tmp_path):  # noqa: ANN001
     async def body():  # noqa: ANN202
         async with Session(tmp_path) as s:
             await s.warmup()
+            mk0, nt0 = getattr(s.mk, 'flushes', 0), getattr(s.nt, 'flushes', 0)
             line = await s.reply('OBS>ICS CCDFLUSH nt', 'CCDFLUSH')
             assert line.endswith('DONE: CCDFLUSH Flushed=NT'), line
-            await until(lambda: getattr(s.nt, 'flushes', 0) == 1, what='NT flush')
+            await until(lambda: getattr(s.nt, 'flushes', 0) == nt0 + 1, what='NT flush')
             await asyncio.sleep(0.2)
-            assert getattr(s.mk, 'flushes', 0) == 0, 'MK 도 비웠다'
+            assert getattr(s.mk, 'flushes', 0) == mk0, 'MK 도 비웠다'
     run(body())
 
 

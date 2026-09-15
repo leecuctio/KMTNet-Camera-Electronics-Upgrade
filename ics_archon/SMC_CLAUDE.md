@@ -5268,6 +5268,29 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
 `test_controllers` **145** · `test_icg_hk`·`test_icg_hkdata` **54**.  ⏳ 두 스위트 전수는 벤치 뒤(36 의
 3번 그대로 — `ab34b07` 분도 미실행).
 
+#### ✅ 이어서 — 첫 기동 로그가 짚은 결함 넷 + 운영자 손질 여섯 (DevNote 11.94)
+
+| 무엇 | 자리 |
+|---|---|
+| ⛔ `hkdata now` 가 `NOW` 를 안 넘김 → `_ask_icg(cmdword, body)` (`NOW` 만, 나머지 `ERROR`) | `app.py` |
+| ⛔ HK 답의 `VACGAUGE=ON` 을 게이지 답으로 오인(데드맨 풀림) → `_is_reply_to()` 커맨드워드+타입 | `app.py` |
+| ⛔ 기동 20 s 뒤 `POWER=1 Not Configured` 오경보 → `health_problems(configured=acf_applied)` | `archon/parse.py` · `controller.py` |
+| 응답 본문의 `DONE:` (`type_in_body`) → 문구 | `app.py` |
+| ⛔ `K.IC>ICS STATUS: GO PCTREAD=` **두 줄씩** → 자기 에코(우리 노드 이름으로 돌아온 줄)는 받는 쪽에서 안 찍음 | `ics_sim/transport.py` |
+| `ccdflush_first = false` 거절 문면에 힌트 | `config.py` |
+| 감시 첫 표본을 **기동 즉시** (`C1STALE=24` 건, 원인 확정은 답 한 줄 보고) | `archon/monitor.py` |
+| 별칭 `C1HK`/`C2HK`(ICS) · `C1HK`(ICG) — 답 커맨드워드는 받은 그대로 | `app.py` · `icg_archon/commands.py` |
+| `IMAGETYPE`=`IMAGETYP`=`IMGTYP` **조회만** — 기반 `ics_sim` `Dispatcher` (ICS·ICG·sim) · `KNOWN_COMMANDS` · 도움말 | `ics_sim/commands.py` · `emitter.py` · `console.py` |
+| verbose off 화면에서 **양끝이 다 우리 노드**인 줄 제외 (`ICS>K.IC …`), `Wrote`·키보드 줄은 남김 — `essential_wire(raw, ours)` | `ics_sim/transport.py` |
+| 콘솔이 끝날 때 이유 한 줄 + 명령 예외로 콘솔 안 죽음 (`imagetyp` 무언 종료 건 — ⏳ 원인 미확인, 벤치 로그 꼬리 볼 것) | `ics_sim/console.py` |
+| 별칭 `hknow`(ICS·ICG) · `c1hknow`/`c2hknow`(ICS) · `c1hknow`(ICG) — 인자 거절 | `app.py` · `icg_archon/commands.py` |
+| 돔 방위 카드 **소수 2자리** (`DSAZ`/`DSTELAZ` `%.2f` · `DAZERR` `%+.2f`, 계산 갈래도) — *"원문 그대로"* 는 이 셋에서 걷음 | `ics_sim/domeaz.py` · `telemetry.py` |
+| 배포 ini `[radionode] backend = openapi` (코드 기본은 `off` 그대로) — 자격증명 없으면 `validate()` 가 **경고 + off** (종전 `IcgConfigError`) | `icg_archon.ini` · `icg_archon/config.py` |
+| 시험 +10 · `test_ics_ops_commands` ccdflush 둘 차분으로 · `ics_sim` dome/telemetry 시험 2자리로 · `sync_vendor` | |
+
+⏳ 운영자 몫: 벤치 ini `[node] emit_node_mode = merged`(`ICS>K.IC observer …` ×4 안 나감) · `[archon] progress_step`
+10~20 · `[behavior] verbose = off`.  ⏳ *"KMTN 중복 하나만"* 은 verbose off 의 `go 1` 화면을 받아 보고.
+
 #### ⏳ 진행 중 — 벤치 첫날 나머지
 
 - 이 고침을 **커밋·푸시**해야 벤치가 받는다 (⚠️ 로컬에 `7992a0e` 인수인계 커밋이 원격보다 앞서 있다 —

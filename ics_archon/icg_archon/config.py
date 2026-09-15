@@ -134,7 +134,7 @@ class RadionodeCfg:
     #: 2026-09-04: **그 결측은 받아들일 수 없다** -- 그래서 `local_lns` 가
     #: 대비책이고, 그것은 게이트웨이를 우리 안쪽 LNS(ChirpStack)로 돌려
     #: **클라우드 없이** 받는 길이다 (DevNote 9.7 경로 2 · 11.22).
-    backend: str = 'off'
+    backend: str = 'off'              # ⚠️ 코드 기본은 off (ini 줄이 없을 때).  **배포 ini 는 openapi** (운영자 2026-09-15)
     poll_period: float = 60.0
     timeout: float = 10.0
     #: API 서버 origin.  실기값 `https://oa.radionode365.com`.
@@ -543,9 +543,15 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
                                   ('api_key', r.api_key),
                                   ('api_secret', r.api_secret)) if not v]
         if missing:
-            raise IcgConfigError(
-                '[radionode] openapi 백엔드에 %s 가 없다 -- Tapaculo365 콘솔의 '
-                '"OPENAPI 매뉴얼" 에서 옮겨 적을 것' % ', '.join(missing))
+            # ⭐ **기동은 세우지 않는다** (2026-09-15) -- `openapi` 가 기본값이 되면서
+            # 자격증명 없는 설치본(저장소 ini 그대로)도 떠야 한다.  폴러는 `off` 로
+            # 내리고 크게 알린다: HEBOX/FSATEMP/FSAHUM 은 sentinel 이다.  종전(기본
+            # `off`)에는 여기서 `IcgConfigError` 로 세웠다.
+            warn.append('[radionode] backend=openapi 인데 %s 가 없다 -- 폴링을 **off**'
+                        ' 로 내린다.  HEBOX/FSATEMP/FSAHUM 은 sentinel.  Tapaculo365 '
+                        '콘솔의 "OPENAPI 매뉴얼" 에서 옮겨 적고 재기동하거나 '
+                        '`RADIONODE CONNECT`' % ', '.join(missing))
+            r.backend = 'off'
         if not r.devices:
             warn.append('[radionode.*] 장치 절이 없다 -- HEBOX/FSATEMP/FSAHUM '
                         '이 전부 sentinel 로 실린다')

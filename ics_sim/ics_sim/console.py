@@ -126,6 +126,7 @@ BASE_HELP_BODY: tuple[Section, ...] = (
         ('obstype <word>', '헤더 OBSTYPE 카드 값 (헤더 전용)'),
         ('object|dark|bias|flat|sky|domeflat <objname>',
          '이미지 종류 + 대상 이름'),
+        ('imagetype|imagetyp|imgtyp', '지금 이미지 종류 조회 -- 설정은 위 명령으로'),
         ('exp <sec>', '노출시간 [s]'),
         ('expnum [<n>]', '파일 일련번호 조회/설정'),
         ('ledflash <ms>', '노출 중 LED 점등 시간'),
@@ -384,6 +385,10 @@ class Console:
         prompt = self.prompt() if tty else ''
         if tty:
             self._load_history()
+        # ⛔ **왜 끝났는지 말한다** (벤치 2026-09-15: 콘솔이 *"아무 메시지 없이"*
+        # 끝나 프로그램이 내려갔다).  루프를 빠져나가는 길은 넷 -- 종료 명령·EOF·
+        # 입력 예외·중단 -- 이고 어느 길이든 로그에 한 줄은 남아야 원인을 좇는다.
+        why = 'stop requested'
         while not self._stop.is_set():
             try:
                 if tty:
@@ -392,15 +397,26 @@ class Console:
                 else:
                     raw = await loop.run_in_executor(None, sys.stdin.readline)
                     if not raw:
+                        why = 'stdin EOF'
                         break                       # EOF
                     line = raw
             except EOFError:                        # Ctrl-D
+                why = 'EOF (Ctrl-D)'
                 break
-            except (RuntimeError, ValueError):
+            except (RuntimeError, ValueError) as exc:
+                why = 'input failed: %s: %s' % (type(exc).__name__, exc)
                 break
             # ⚠️ 빈 줄은 **EOF 가 아니다** -- `input()` 은 그냥 Enter 에도 `''`
             # 를 준다.  `feed('')` 가 조용히 되돌아가므로 다시 묻는다.
-            self.feed(line.strip())
+            # ⛔ 명령 하나가 던진 예외로 콘솔(과 프로그램)이 죽지 않는다 -- 원문과
+            # 스택을 남기고 다음 줄을 받는다.
+            try:
+                self.feed(line.strip())
+            except Exception:                       # noqa: BLE001
+                log.exception('console command failed -- %r', line.strip())
+        if self._stop.is_set() and why == 'stop requested':
+            why = 'quit'
+        log.info('console closed (%s) -- the program shuts down', why)
         self._save_history()
 
     def stop(self) -> None:

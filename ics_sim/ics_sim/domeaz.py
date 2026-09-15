@@ -264,15 +264,17 @@ class DomeRedis:
             if not text:
                 continue
             try:
-                float(text)
+                num = float(text)
             except ValueError:
                 # ⛔ 수치가 아닌 것을 방위 카드에 싣지 않는다.  ⚠️ 값을
                 # **고치지는 않는다** -- 버리고 원문을 로그에 남긴다.
                 self._fault('%s is not a number: %r' % (name, text))
                 continue
-            # ⭐ **원문 그대로 싣는다** -- 자리수를 우리가 다시 맞추지 않는다.
-            # 다른 중계 카드(`DSALT`·`DSTELALT`)도 보내온 문자열 그대로다.
-            out[card] = text
+            # ⭐ **소수 2자리로 접는다** (운영자 지시 2026-09-15 벤치: redis 원문이
+            # `239.8291459064219`·`-0.28622777451002435` 로 실려 카드가 넘쳤다).
+            # `DAZERR` 는 부호를 붙인다 -- 계산 갈래(`telemetry._sync_error_az`)와
+            # 같은 모양.  ⛔ 종전 *"원문 그대로"* 규범은 이 셋에서 걷었다.
+            out[card] = f'{num:+.2f}' if name == 'del_az' else f'{num:.2f}'
         if out and not self._ever_ok:
             self._ever_ok = True
             log.info('dome redis connected -- %d of %d keys present',

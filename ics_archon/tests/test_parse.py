@@ -389,3 +389,21 @@ def test_fake_controller_status_uses_the_real_field_names():
         assert parse.power_good(srv.status) is True
     finally:
         srv.shutdown()
+
+
+def test_not_configured_is_normal_until_we_apply_the_acf():
+    """⭐ 벤치 2026-09-15 오경보: science 기동 20 s 뒤 감시 첫 바퀴가 `POWER=1 Not Configured`
+    를 울었다 -- ACF 는 첫 `GO` 에서 미니 그 전엔 부팅 그대로의 정상 상태다.  민 뒤에 이
+    값이면(설정을 잃었다) 이상이고, `Off`/`Standby` 는 종전대로 `powered` 가 가른다."""
+    nc = dict(DEFAULT_STATUS, POWER='1')
+    assert parse.health_problems(nc, powered=False, configured=False) == []
+    assert any('POWER=1' in m
+               for m in parse.health_problems(nc, powered=False, configured=True))
+    assert any('POWER=1' in m for m in parse.health_problems(nc))
+    off = dict(DEFAULT_STATUS, POWER='2')
+    assert parse.health_problems(off, powered=False, configured=False) == []
+    assert any('POWER=2' in m for m in parse.health_problems(off, configured=False))
+    # `Intermediate`·`Unknown` 은 어느 단계든 이상이다.
+    for bad in ('0', '3'):
+        assert parse.health_problems(dict(DEFAULT_STATUS, POWER=bad),
+                                     powered=False, configured=False)

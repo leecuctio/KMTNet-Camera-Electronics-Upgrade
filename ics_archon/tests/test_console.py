@@ -147,6 +147,32 @@ def test_wire_chatter_is_classified_by_command_word():
     assert essential_wire('쓰레기')
 
 
+def test_internal_relays_between_our_own_nodes_are_chatter():
+    """⭐ 운영자 2026-09-15 벤치: verbose off 면 **가상 노드(K/M/T/N.IC·CB)와 자기끼리**
+    도는 줄은 안 보인다 -- `ICS>K.IC exp 2` · `K.IC>ICS DONE: …`.  ⛔ 한쪽이 남이면
+    남는다: `K.IC>OBS DONE: GO Wrote …` (*"Wrote 는 다 보여줘야"*) · `OBS>K.IC …`.
+    키보드 줄 `ICS>ICS` 도 남는다."""
+    from ics_sim.transport import essential_wire, internal_wire
+    ours = ('ICS', 'K.IC', 'M.IC', 'T.IC', 'N.IC', 'K.CB', 'M.CB', 'T.CB', 'N.CB')
+    assert internal_wire('ICS>K.IC exp 2', ours)
+    assert internal_wire('ICS>M.IC observer SMC', ours)
+    assert internal_wire('K.IC>ICS DONE: INITIALIZE', ours)
+    assert not essential_wire('ICS>K.IC GO', ours)
+    assert not essential_wire('ICS>K.IC INITIALIZE 20260915.000001', ours)
+    # 남이 한쪽이면 그대로 보인다.
+    assert essential_wire('K.IC>OBS DONE: GO Wrote LASTFILE=/x/KMTNk.20260915.000001.fits', ours)
+    assert essential_wire('K.IC>OBS DONE: GO Acquisition Complete.', ours)
+    assert essential_wire('OBS>K.IC dmawait 1', ours)
+    assert essential_wire('ICS>ICG HKDATA NOW', ours)
+    assert essential_wire('ICG>ICS DONE: HKDATA HKSTALE=0', ours)
+    # 키보드 줄과 자기 알림은 남는다.
+    assert essential_wire('ICS>ICS DONE: HKDATA Queried ICG', ours)
+    assert essential_wire('ICS>ICS STATUS: EXPSTATUS=INTEGRATING', ours)
+    # `ours` 를 안 주면(ICG 처럼 가상 노드가 없거나 단위 시험) 종전 판정 그대로.
+    assert essential_wire('ICS>K.IC GO')
+    assert not essential_wire('K.IC>AL PING', ours)
+
+
 def test_detail_is_dropped_only_on_the_concise_screen():
     """⭐ 같은 기록 하나가 **화면에서는 짧고 파일에서는 온전하다.**"""
     rec = _record('fetch frame 12: 8.3 MiB in 0.1s',
@@ -279,3 +305,27 @@ def test_the_prompt_flag_is_cleared_even_when_input_raises():
         assert console_mod.ACTIVE_PROMPT == ''
     finally:
         builtins.input = real
+
+
+def test_our_own_echo_is_not_logged_twice(tmp_path, caplog):  # noqa: ANN001
+    """⛔ 벤치 2026-09-15: `K.IC>ICS STATUS: GO PCTREAD=41` 이 **두 줄씩** -- 발신 때 한 줄,
+    허브를 돌아온 자기 에코를 받을 때 또 한 줄.  우리 노드 이름(ICS·가상 IC/CB)으로 온
+    줄은 받는 쪽에서 안 찍는다.  남이 보낸 줄은 그대로 찍는다."""
+    import logging
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+    from test_ics_ops_commands import make_cfgs
+    from ics_sim.transport import UdpEndpoint
+    cfg, _acfg = make_cfgs(tmp_path, 4242)
+    cfg.logging.wire = True                       # 하네스 ini 는 꺼 둔다
+    ep = UdpEndpoint(cfg, lambda msg, addr: None)
+    caplog.set_level(logging.INFO, logger='ics_sim.transport')
+    ep.feed('K.IC>ICS STATUS: GO PCTREAD=41')
+    ep.feed('ICS>K.IC GO')
+    ep.feed('ICS>ICS DONE: HKDATA Queried ICG')
+    ep.feed('ICG>ICS DONE: HKDATA HKSTALE=0')
+    ep.feed('abc>ICS go 1')
+    lines = [r.getMessage() for r in caplog.records]
+    assert 'ICG>ICS DONE: HKDATA HKSTALE=0' in lines
+    assert 'abc>ICS go 1' in lines
+    assert not [ln for ln in lines if 'PCTREAD=41' in ln or ln == 'ICS>K.IC GO'
+                or 'Queried ICG' in ln], lines

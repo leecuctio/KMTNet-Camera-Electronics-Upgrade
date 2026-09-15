@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 import os
 
 from datetime import timedelta
@@ -66,7 +67,8 @@ log = logging.getLogger('ics_archon.app')
 #: `ICG_COMMANDS` 와 같은 패턴이다 -- `emitter.validate()` 가 이 표로 발신을 검사하므로
 #: 등록 없이 쓰면 응답마다 `unknown_cmdword` 위생 경고가 난다 (`emitter.py:170`).
 ICS_OPS_COMMANDS = frozenset({'CCDFLUSH', 'CCDPOWON', 'CCDPOWOFF', 'ARCHON',
-                              'HK', 'HKDATA', 'C1HKDATA', 'C2HKDATA',
+                              'HK', 'HKDATA', 'HKNOW', 'C1HKDATA', 'C2HKDATA',
+                              'C1HK', 'C2HK', 'C1HKNOW', 'C2HKNOW',
                               'C1TRIGOUT', 'C2TRIGOUT'})
 
 #: `ARCHON` 바이패스 응답 본문의 상한 [문자].  한 메시지 상한 `impv2.MAX_LEN`(2048) 안에
@@ -314,11 +316,19 @@ class IcsDispatcher(Dispatcher):
     # -- CCDFLUSH ----------------------------------------------------------------
 
     def cmd_hk(self, msg: Message, target: Target) -> Reply:
-        """HK -- `HKDATA` 와 같다 (운영자 확정 2026-09-06).  ICG 에 묻는다."""
-        return self._ask_icg('HK')
+        """HK [NOW] -- `HKDATA` 와 같다 (운영자 확정 2026-09-06).  ICG 에 묻는다."""
+        return self._ask_icg('HK', msg.body)
+
+    def cmd_hknow(self, msg: Message, target: Target) -> Reply:
+        """HKNOW -- `HK NOW` 의 별칭 (운영자 지시 2026-09-15).  ICG 에는 `HK NOW` 로
+        나간다 -- 답이 `DONE: HK …` 로 와야 `register_report` 가 받아 적는다."""
+        if msg.body.strip():
+            return Reply.error('HKNOW', "Takes no argument -- got '%s'"
+                               % msg.body.strip())
+        return self._ask_icg('HK', 'NOW', reply_as='HKNOW')
 
     def cmd_hkdata(self, msg: Message, target: Target) -> Reply:
-        """HKDATA -- ⭐ **ICS 는 이 값을 만들지 않는다.  ICG 에 묻는다.**
+        """HKDATA [NOW] -- ⭐ **ICS 는 이 값을 만들지 않는다.  ICG 에 묻는다.**
 
         게이지·히터·듀어 RTD 는 **ICG 만** 만지므로(규격 10.4절) ICS 가
         자기 헤더의 5.6절 HK 카드를 채우려면 물어보는 수밖에 없다.
@@ -327,8 +337,12 @@ class IcsDispatcher(Dispatcher):
         HKDATA …` 가 도착하면 `register_report` 로 걸어 둔 조치가 받아 적고
         콘솔에 출력한다.  여기서 기다리지 않는 것이 의도다: 기다리면 ICG 가
         조용할 때 ICS 명령 처리부가 함께 멈춘다.
+
+        ⭐ **`NOW` 는 그대로 넘긴다** (2026-09-15 벤치: 콘솔 `hkdata now` 가
+        `HKDATA` 로 나가 ICG 가 폴링값을 답했다 -- `HKUDATE` 가 안 움직였다).
+        ICG 쪽 규약과 같이 `NOW` 만 받고 다른 인자는 거절한다.
         """
-        return self._ask_icg('HKDATA')
+        return self._ask_icg('HKDATA', msg.body)
 
     def cmd_c1hkdata(self, msg: Message, target: Target) -> Reply:
         """C1HKDATA [NOW] -- 컨트롤러 1(MK) 의 텔레메트리 한 줄 (5.6절 `C1_*` 의 와이어 판)."""
@@ -337,6 +351,31 @@ class IcsDispatcher(Dispatcher):
     def cmd_c2hkdata(self, msg: Message, target: Target) -> Reply:
         """C2HKDATA [NOW] -- 컨트롤러 2(NT).  `C1HKDATA` 와 같은 규약."""
         return self._cx_hkdata(msg, 2)
+
+    # ⭐ 별칭 `C1HK`/`C2HK` (운영자 지시 2026-09-15) -- `HK`/`HKDATA` 짝과 같은 규약:
+    # **같은 본문, 커맨드워드만 다르다** (답은 `DONE: C1HK …`).
+    def cmd_c1hk(self, msg: Message, target: Target) -> Reply:
+        """C1HK [NOW] -- `C1HKDATA` 와 같다."""
+        return self._cx_hkdata(msg, 1)
+
+    def cmd_c2hk(self, msg: Message, target: Target) -> Reply:
+        """C2HK [NOW] -- `C2HKDATA` 와 같다."""
+        return self._cx_hkdata(msg, 2)
+
+    def cmd_c1hknow(self, msg: Message, target: Target) -> Reply:
+        """C1HKNOW -- `C1HK NOW` (= `C1HKDATA NOW`) 의 별칭.  인자는 안 받는다."""
+        return self._cx_hknow(msg, 1)
+
+    def cmd_c2hknow(self, msg: Message, target: Target) -> Reply:
+        """C2HKNOW -- `C2HK NOW` 의 별칭."""
+        return self._cx_hknow(msg, 2)
+
+    def _cx_hknow(self, msg: Message, n: int) -> Reply:
+        word = (msg.cmdword or '').upper() or 'C%dHKNOW' % n
+        if msg.body.strip():
+            return Reply.error(word, "Takes no argument -- got '%s'"
+                               % msg.body.strip())
+        return self._cx_hkdata(replace(msg, body='NOW'), n)
 
     def _cx_hkdata(self, msg: Message, n: int) -> Reply:
         """`CnHKDATA [NOW]` -- science 컨트롤러 n 의 `STATUS` 텔레메트리를 와이어로 낸다
@@ -349,7 +388,8 @@ class IcsDispatcher(Dispatcher):
           D4 규칙(`VALID=0` 이면 전 자리 결측)이다 -- `parse.telemetry_of`.
         * ⚠️ **늦은 `DONE`** 이다 (`HKDATA` 와 같다).  컨트롤러 자리가 없으면 곧바로 `ERROR`.
         """
-        word = 'C%dHKDATA' % n
+        # 답의 커맨드워드는 **받은 그대로** (`C1HKDATA` 또는 별칭 `C1HK`).
+        word = (msg.cmdword or '').upper() or 'C%dHKDATA' % n
         be, bad = self._archon_backend(word)
         if bad is not None:
             return bad
@@ -385,15 +425,29 @@ class IcsDispatcher(Dispatcher):
             return
         self.emit.done(dest, word, body)
 
-    def _ask_icg(self, cmdword: str) -> Reply:
-        """ICG 에 질의 한 줄.  ⚠️ 답은 **보고 경로**로 온다."""
+    def _ask_icg(self, cmdword: str, body: str = '',
+                 reply_as: str | None = None) -> Reply:
+        """ICG 에 질의 한 줄.  ⚠️ 답은 **보고 경로**로 온다.
+
+        `body` 는 `NOW` 하나만 받는다 (대소문자 무관) -- ICG 의 `HKDATA`/`HK` 규약과
+        같다.  ⛔ 응답 본문에 `DONE:` 을 적지 않는다 -- 타입 낱말이 본문에 들면
+        `emitter.validate()` 의 `type_in_body` 가 경고를 낸다 (2026-09-15 벤치).
+        `reply_as` 는 우리 즉답의 커맨드워드(별칭 `HKNOW` 가 쓴다) -- 와이어로는
+        `cmdword` 가 나간다.
+        """
         dest = self.app.acfg.icg_node
+        mine = reply_as or cmdword
         if not dest:
-            return Reply.error(cmdword, '[archon] icg_node 가 비어 있다')
-        self.emit.emit_req(dest, cmdword)
-        return Reply.done(cmdword,
-                          'Queried %s -- the reply arrives as a separate '
-                          'DONE: %s report' % (dest, cmdword))
+            return Reply.error(mine, '[archon] icg_node 가 비어 있다')
+        arg = (body or '').strip()
+        if arg and arg.upper() != 'NOW':
+            return Reply.error(mine, 'Unknown argument %r -- use %s [NOW]'
+                               % (arg, cmdword))
+        arg = 'NOW' if arg else ''
+        self.emit.emit_req(dest, cmdword, arg)
+        return Reply.done(mine,
+                          'Queried %s%s -- its %s report follows separately'
+                          % (dest, ' now' if arg else '', cmdword))
 
     #: ⛔ **science 에 없는 기반 명령** (운영자 2026-09-09).
     #:
@@ -853,6 +907,19 @@ class IcsDispatcher(Dispatcher):
         return '%s %s' % (tag, body or '<empty reply>')
 
 
+def _is_reply_to(msg, word: str) -> bool:  # noqa: ANN001
+    """`msg` 가 `word` 명령에 대한 **답**(`DONE:`/`ERROR:`)인가.
+
+    ⛔ **원문 부분 문자열로 보지 않는다** (2026-09-15 벤치): `HKDATA` 답 본문에
+    `VACGAUGE=ON` 이 실리므로 *"`VACGAUGE` 가 원문에 있나"* 로 보면 **HK 답마다
+    게이지 데드맨이 풀리고** `vacuum gauge reply` 가 찍힌다 -- 진짜 `VACGAUGE` 가
+    답을 못 받았을 때 그 사실이 묻힌다.  커맨드워드와 타입으로 가른다.
+    `EXEC:`(진행 중)는 답이 아니다.
+    """
+    return (msg.mtype in ('DONE', 'ERROR', 'FATAL')
+            and (msg.cmdword or '').upper() == word.upper())
+
+
 class IcsArchon(IcsSim):
     """실기 ICS -- `ics_sim` 본체 + Archon 백엔드."""
 
@@ -1046,13 +1113,16 @@ class IcsArchon(IcsSim):
                  '컨트롤러 바이패스 -- 응답 원문을 그대로 답한다'),
             )),
             ('House Keeping (ICG 에 묻는다)', (
-                ('hk', 'HK 한 줄 -- HKDATA 와 같은 본문'),
-                ('hkdata', '헤더용 HK -- 답은 ICG 가 준다'),
+                ('hk [now]', 'HK 한 줄 -- HKDATA 와 같은 본문'),
+                ('hkdata [now]', '헤더용 HK -- 답은 ICG 가 준다.  now 면 ICG 가 한 바퀴 지금'),
+                ('hknow', '`hk now` 의 별칭'),
             )),
             ('컨트롤러 텔레메트리 (5.6절 Cn_* 의 와이어 판)', (
                 ('c1hkdata [now]',
                  '컨트롤러 1(MK) 온도 10·전압/전류 7 -- now 면 STATUS 를 지금 읽는다'),
                 ('c2hkdata [now]', '컨트롤러 2(NT).  같은 규약'),
+                ('c1hk|c2hk [now]', '위 둘의 별칭 -- 같은 본문'),
+                ('c1hknow|c2hknow', '`c1hk now` · `c2hk now` 의 별칭'),
             )),
             # ⛔ **science 에 없는 기반 명령** (운영자 2026-09-09) -- 점검용 LED
             # 프로젝터 명령 둘.  실기 백엔드의 `flash_led()` 는 `_NOT_YET` 이라
@@ -1155,11 +1225,11 @@ class IcsArchon(IcsSim):
         gate = getattr(self, 'xis_gate', None)
         if gate is not None:
             gate.note_message(msg)
-        raw = (msg.raw or '').upper()
         for ctl, word in ((getattr(self, 'gauge', None), GAUGE_CMD),
                           (getattr(self, 'expenable', None), EXPENABLE_CMD)):
             if (ctl is not None and ctl.enabled
-                    and msg.src.upper() == ctl.node.upper() and word in raw):
+                    and msg.src.upper() == ctl.node.upper()
+                    and _is_reply_to(msg, word)):
                 ctl.note_reply(msg.raw)
         super()._on_message(msg, addr)
 

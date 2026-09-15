@@ -170,6 +170,8 @@ class IcgArchon(IcsSim):
                 ('hkdata', 'ICS 가 헤더를 채우려고 묻는 것'),
                 ('c1hkdata [now]',
                  'guide 컨트롤러 온도 8·전압/전류 8 한 줄 -- now 면 STATUS 를 지금 읽는다'),
+                ('c1hk [now]', '위의 별칭 -- 같은 본문'),
+                ('hknow|c1hknow', '`hk now` · `c1hk now` 의 별칭'),
                 ('vacgauge [on|off]', '이온게이지 -- 인자 없으면 조회'),
                 ('radionode [<하위명령> [장치]]',
                  'status | connect | disconnect | reconnect | enable | '

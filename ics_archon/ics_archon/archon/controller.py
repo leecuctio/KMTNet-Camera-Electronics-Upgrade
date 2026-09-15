@@ -1416,9 +1416,12 @@ class ArchonController:
         보였다.
         """
         # ⚠️ **아직 안 켰으면 `POWER=Off` 는 이상이 아니다** -- `powered` 를
-        # 넘겨 그 판정만 접는다 (2026-09-08 벤치 오경보).
+        # 넘겨 그 판정만 접는다 (2026-09-08 벤치 오경보).  ⭐ **ACF 를 아직 안
+        # 밀었으면 `Not Configured` 도 이상이 아니다** (2026-09-15 벤치 오경보 --
+        # science 는 첫 `GO` 에서 미는데 감시가 20 s 뒤에 먼저 돈다).
         bad = parse.health_problems(self.status if status is None
-                                    else status, powered=self.powered)
+                                    else status, powered=self.powered,
+                                    configured=self.acf_applied)
         if not bad:
             self._health_bad = False
             return

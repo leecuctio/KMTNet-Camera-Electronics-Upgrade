@@ -250,3 +250,165 @@ def test_c1hkdata_on_the_guide_side_uses_the_guide_slots(tmp_path):  # noqa: ANN
     assert any('ERROR: C1HKDATA' in s and 'Usage' in s for s in sent)
     _app, sent = _drive(tmp_path, ['abc>ICG C1HKDATA'])
     assert any('ERROR: C1HKDATA' in s for s in sent)      # 컨트롤러 없음 -- 조용히 성공하지 않는다
+
+
+# ---------------------------------------------------------------------------
+# 벤치 첫날 (2026-09-15) 이 짚은 넷 -- DevNote 11.94
+# ---------------------------------------------------------------------------
+
+def test_console_hkdata_now_forwards_now_and_rejects_other_words(tmp_path):  # noqa: ANN001
+    """⛔ 벤치: 콘솔 `hkdata now` 가 `ICS>ICG HKDATA` 로 나가 ICG 가 폴링값을 답했다
+    (`HKUDATE` 가 안 움직였다).  `NOW` 는 넘기고, 모르는 인자는 거절한다.  응답 본문에
+    `DONE:` 을 적지 않는다 (`type_in_body` 경고)."""
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            n = len(ses.sent)
+            a = await ses.reply('abc>ICS hkdata now', 'HKDATA')
+            b = await ses.reply('abc>ICS hkdata', 'HKDATA')
+            c = await ses.reply('abc>ICS hk NOW', 'HK')
+            bad = await ses.reply('abc>ICS hkdata later', 'HKDATA')
+            return ses.sent[n:], a, b, c, bad
+
+    sent, a, b, c, bad = asyncio.run(run())
+    assert [s for s in sent if s.endswith('ICS>ICG HKDATA NOW')], sent
+    assert [s for s in sent if s.endswith('ICS>ICG HKDATA')], sent
+    assert [s for s in sent if s.endswith('ICS>ICG HK NOW')], sent
+    assert ' DONE: HKDATA' in a and 'DONE:' not in a.split(' DONE: HKDATA', 1)[1]
+    assert ' DONE: HKDATA' in b and ' DONE: HK ' in c
+    assert ' ERROR: HKDATA' in bad and 'later' in bad
+    assert not [s for s in sent if 'ICG HKDATA LATER' in s.upper()]
+
+
+def test_an_hkdata_reply_is_not_mistaken_for_a_vacgauge_reply(tmp_path, caplog):  # noqa: ANN001
+    """⛔ 벤치: `ICG>ICS DONE: HKDATA … VACGAUGE=ON …` 이 `vacuum gauge reply` 로 찍혔다 --
+    원문 부분 문자열로 엿들어서.  답은 **커맨드워드**로 가른다: HKDATA 답은 데드맨을
+    안 풀고, `DONE: VACGAUGE` 는 푼다."""
+    caplog.set_level(logging.INFO, logger='ics_archon.gaugectl')
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            g = ses.app.gauge
+            g._replied = False                                   # noqa: SLF001
+            ses.app.transport.feed('ICG>ICS DONE: HKDATA ' + REPLY % 'ON')
+            await asyncio.sleep(0.05)
+            hk_replied = g._replied                              # noqa: SLF001
+            ses.app.transport.feed('ICG>ICS EXEC: VACGAUGE')
+            await asyncio.sleep(0.05)
+            exec_replied = g._replied                            # noqa: SLF001
+            ses.app.transport.feed('ICG>ICS DONE: VACGAUGE Gauge=OFF')
+            await asyncio.sleep(0.05)
+            return hk_replied, exec_replied, g._replied          # noqa: SLF001
+
+    hk_replied, exec_replied, done_replied = asyncio.run(run())
+    assert hk_replied is False and exec_replied is False and done_replied is True
+    msgs = [r.getMessage() for r in caplog.records if 'vacuum gauge reply' in r.getMessage()]
+    assert len(msgs) == 1 and 'DONE: VACGAUGE' in msgs[0], msgs
+
+
+def test_c1hk_and_c2hk_are_aliases_with_the_same_body(tmp_path):  # noqa: ANN001
+    """⭐ 별칭 (운영자 지시 2026-09-15): `C1HK` = `C1HKDATA`, `C2HK` = `C2HKDATA` --
+    `HK`/`HKDATA` 짝처럼 **같은 본문, 커맨드워드만 다르다**.  ICG 도 `C1HK`."""
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            a = await ses.reply('abc>ICS c1hk', 'C1HK')
+            b = await ses.reply('abc>ICS c1hkdata', 'C1HKDATA')
+            c = await ses.reply('abc>ICS c2hk now', 'C2HK')
+            bad = await ses.reply('abc>ICS c2hk later', 'C2HK')
+            return a, b, c, bad, ses.app.emit.violations
+
+    a, b, c, bad, violations = asyncio.run(run())
+    ka = _kv(a.split(' DONE: C1HK ', 1)[1])
+    kb = _kv(b.split(' DONE: C1HKDATA ', 1)[1])
+    assert set(ka) == set(kb) and ka['C1STALE'] == kb['C1STALE']
+    assert ' DONE: C2HK ' in c and _kv(c.split(' DONE: C2HK ', 1)[1])['C2STALE'] is not None
+    assert ' ERROR: C2HK ' in bad and 'Usage: C2HK' in bad
+    assert violations == [], violations              # 어휘에 등록됐다
+
+    from test_icg_ops_commands import _trig, _about
+    _calls, sent = _trig(tmp_path, ['abc>ICG c1hk', 'abc>ICG C1HK NOWW'])
+    done = [s for s in _about(sent, 'C1HK') if 'DONE:' in s]
+    assert len(done) == 1 and 'C1STALE=' in done[0], sent
+    assert any('ERROR: C1HK' in s and 'Usage: C1HK' in s for s in sent)
+
+
+def test_imagetype_is_a_query_with_three_spellings(tmp_path):  # noqa: ANN001
+    """⭐ `IMAGETYPE`/`IMAGETYP`/`IMGTYP` -- **조회만** (운영자 지시 2026-09-15 벤치: 종전엔
+    *"Didn't understand"*).  설정은 종전대로 `OBJECT`/`BIAS`/… 이고 인자가 오면 거절한다.
+    ICS 와 ICG 둘 다."""
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.reply('abc>ICS dark M31', 'DARK')
+            a = await ses.reply('abc>ICS imagetype', 'IMAGETYPE')
+            b = await ses.reply('abc>ICS imagetyp', 'IMAGETYP')
+            c = await ses.reply('abc>ICS imgtyp', 'IMGTYP')
+            bad = await ses.reply('abc>ICS imagetype bias', 'IMAGETYPE')
+            return a, b, c, bad, ses.app.emit.violations
+
+    a, b, c, bad, violations = asyncio.run(run())
+    for line, word in ((a, 'IMAGETYPE'), (b, 'IMAGETYP'), (c, 'IMGTYP')):
+        assert (" DONE: %s ImageType=DARK ObjectName='M31' EXP=" % word) in line, line
+    assert ' ERROR: IMAGETYPE ' in bad and 'Query only' in bad
+    assert violations == [], violations
+
+    from test_icg_ops_commands import _drive, _about
+    _app, sent = _drive(tmp_path, ['abc>ICG object NGC1', 'abc>ICG imgtyp'])
+    done = [s for s in _about(sent, 'IMGTYP') if 'DONE:' in s]
+    assert len(done) == 1 and 'ImageType=OBJECT' in done[0], sent
+
+
+def test_hknow_and_cxhknow_are_now_aliases(tmp_path):  # noqa: ANN001
+    """⭐ 운영자 지시 2026-09-15: `hknow` = `hk now`, `c1hknow` = `c1hk now` = `c1hkdata now`
+    (ICS 는 `c2hknow` 도).  ICS 의 `hknow` 는 와이어로 `HK NOW` 가 나간다 -- 답이 `DONE: HK`
+    로 와야 받아 적으니까.  인자는 거절."""
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            n = len(ses.sent)
+            a = await ses.reply('abc>ICS hknow', 'HKNOW')
+            bad = await ses.reply('abc>ICS hknow x', 'HKNOW')
+            c1 = await ses.reply('abc>ICS c1hknow', 'C1HKNOW')
+            c2 = await ses.reply('abc>ICS c2hknow', 'C2HKNOW')
+            return ses.sent[n:], a, bad, c1, c2, ses.app.emit.violations
+
+    sent, a, bad, c1, c2, violations = asyncio.run(run())
+    assert [s for s in sent if s.endswith('ICS>ICG HK NOW')], sent
+    assert ' DONE: HKNOW Queried ICG now' in a
+    assert ' ERROR: HKNOW ' in bad and 'no argument' in bad
+    assert ' DONE: C1HKNOW ' in c1 and 'C1STALE=' in c1
+    assert ' DONE: C2HKNOW ' in c2 and 'C2STALE=' in c2
+    assert violations == [], violations
+
+    from test_icg_ops_commands import _Rec, _trig, _about
+
+    class _RecNow(_Rec):
+        """`NOW` 갈래가 부르는 `refresh_status_live` 를 가진 가짜 -- 표본은 없다."""
+        status_live: dict = {}
+        status_live_at = 0.0
+
+        async def refresh_status_live(self) -> bool:
+            return True
+
+    import test_icg_ops_commands as ops
+    orig = ops._Rec
+    ops._Rec = _RecNow
+    try:
+        _calls, sent = _trig(tmp_path, ['abc>ICG hknow', 'abc>ICG c1hknow',
+                                        'abc>ICG c1hknow x'])
+    finally:
+        ops._Rec = orig
+    assert [s for s in _about(sent, 'HKNOW') if 'DONE: HKNOW HKQDATE=' in s], sent
+    assert [s for s in _about(sent, 'C1HKNOW') if 'DONE: C1HKNOW C1QDATE=' in s], sent
+    assert any('ERROR: C1HKNOW' in s and 'no argument' in s for s in sent)
+
+
+def test_openapi_is_the_default_and_missing_credentials_only_warn():
+    """⭐ `[radionode] backend = openapi` 가 기본 (운영자 2026-09-15).  자격증명이 없으면
+    **기동을 세우지 않고** 경고 + off 로 내린다 -- 저장소 ini 그대로도 떠야 한다."""
+    from icg_archon import config as icfg_mod
+    cfg = icfg_mod.IcgCfg()
+    cfg.radionode.backend = 'openapi'         # 배포 ini 의 값 -- 자격증명은 없다
+    warn = icfg_mod.validate(cfg, 'sim')
+    assert any('backend=openapi' in w and 'off' in w for w in warn), warn
+    assert cfg.radionode.backend == 'off'
+    ini = open(os.path.join(ROOT, 'icg_archon.ini'), encoding='utf-8').read()
+    line = [ln for ln in ini.splitlines() if ln.split('#')[0].strip().startswith('backend')]
+    assert line and line[0].split('#')[0].split('=')[1].strip() == 'openapi', line

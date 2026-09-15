@@ -340,7 +340,10 @@ class TelemetryMonitor:
             return
         interval = max(float(self.acfg.monitor_interval), 1.0)
         self._emit(time.time(), event='start')
-        next_at = time.monotonic() + interval
+        # ⭐ **첫 표본은 지금** (운영자 지시 2026-09-15 벤치) -- 종전에는 첫 바퀴가
+        # `interval` 뒤라 기동 뒤 20 s 동안 `status_live` 가 비어 `CnHKDATA` 가
+        # 전 자리 결측(`CnSTALE=24`)이고 헤더용 감시값도 없었다.
+        next_at = time.monotonic()
         try:
             while True:
                 try:

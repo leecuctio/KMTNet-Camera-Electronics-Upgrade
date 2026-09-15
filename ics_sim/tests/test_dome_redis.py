@@ -178,19 +178,23 @@ def test_three_keys_land_in_three_cards():
         assert await relay.query_dome() is True
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
     h = _run(FULL, body)
-    assert h[TEL] == '12.1'
-    assert h[AZ] == '12.3'
-    assert h[ERR] == '+0.2'
+    assert h[TEL] == '12.10'
+    assert h[AZ] == '12.30'
+    assert h[ERR] == '+0.20'
 
 
-def test_values_are_carried_verbatim():
-    """⭐ 자리수를 우리가 다시 맞추지 않는다 -- 다른 중계 카드와 같은 규범."""
+def test_values_are_rounded_to_two_decimals():
+    """⭐ **소수 2자리로 접는다** (운영자 2026-09-15 벤치 -- redis 원문 `239.8291459064219`
+    가 카드에 그대로 실렸다).  `DAZERR` 는 부호 붙임.  ⛔ 종전 *"원문 그대로"* 는 걷었다."""
     async def body(relay, fake):
         await relay.query_dome()
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
+    h = _run({'dome_tel_az': '240.11537368093192', 'dome_az': '239.8291459064219',
+              'dome_del_az': '-0.28622777451002435'}, body)
+    assert h[TEL] == '240.12' and h[AZ] == '239.83' and h[ERR] == '-0.29'
     h = _run({'dome_tel_az': '123.456', 'dome_az': '7.8',
-              'dome_del_az': '-0.75'}, body)
-    assert h[TEL] == '123.456' and h[AZ] == '7.8' and h[ERR] == '-0.75'
+              'dome_del_az': '0.75'}, body)
+    assert h[TEL] == '123.46' and h[AZ] == '7.80' and h[ERR] == '+0.75'
 
 
 def test_the_wire_command_is_a_single_mget():
@@ -210,7 +214,7 @@ def test_key_names_come_from_the_ini():
     cmds, h = _run({'a': '1.0', 'b': '2.0', 'c': '3.0'}, body,
                    key_tel_az='a', key_az='b', key_del_az='c')
     assert cmds == [['MGET', 'a', 'b', 'c']]
-    assert h[TEL] == '1.0' and h[AZ] == '2.0' and h[ERR] == '3.0'
+    assert h[TEL] == '1.00' and h[AZ] == '2.00' and h[ERR] == '+3.00'
 
 
 # ---------------------------------------------------------------------------
@@ -235,8 +239,8 @@ def test_del_az_alone_is_recomputed_from_the_other_two():
         await relay.query_dome()
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
     h = _run({'dome_tel_az': '12.1', 'dome_az': '12.3'}, body)
-    assert h[TEL] == '12.1' and h[AZ] == '12.3'
-    assert h[ERR] == '+0.2'
+    assert h[TEL] == '12.10' and h[AZ] == '12.30'
+    assert h[ERR] == '+0.20'
 
 
 def test_recomputed_del_az_folds_to_plus_minus_180():
@@ -245,7 +249,7 @@ def test_recomputed_del_az_folds_to_plus_minus_180():
         await relay.query_dome()
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
     h = _run({'dome_tel_az': '10.0', 'dome_az': '280.0'}, body)
-    assert h[ERR] == '-90.0'
+    assert h[ERR] == '-90.00'
 
 
 def test_one_missing_operand_leaves_del_az_nc():
@@ -254,7 +258,7 @@ def test_one_missing_operand_leaves_del_az_nc():
         await relay.query_dome()
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
     h = _run({'dome_az': '12.3'}, body)
-    assert h[AZ] == '12.3'
+    assert h[AZ] == '12.30'
     assert h[TEL] == 'NC' and h[ERR] == 'NC'
 
 
@@ -264,7 +268,7 @@ def test_an_empty_value_counts_as_missing():
         await relay.query_dome()
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
     h = _run({'dome_tel_az': '', 'dome_az': '12.3', 'dome_del_az': ''}, body)
-    assert h[TEL] == 'NC' and h[AZ] == '12.3' and h[ERR] == 'NC'
+    assert h[TEL] == 'NC' and h[AZ] == '12.30' and h[ERR] == 'NC'
 
 
 def test_a_non_numeric_value_is_refused_not_relayed():
@@ -275,7 +279,7 @@ def test_a_non_numeric_value_is_refused_not_relayed():
     h = _run({'dome_tel_az': 'ERROR', 'dome_az': '12.3',
               'dome_del_az': '+0.2'}, body)
     assert h[TEL] == 'NC'
-    assert h[AZ] == '12.3' and h[ERR] == '+0.2'
+    assert h[AZ] == '12.30' and h[ERR] == '+0.20'
 
 
 def test_a_stale_snapshot_is_never_carried_forward():
@@ -291,7 +295,7 @@ def test_a_stale_snapshot_is_never_carried_forward():
         await relay.query_dome()
         return first, relay.fits_header_dict('2026-09-11T00:00:01.000')
     first, second = _run(FULL, body)
-    assert first[AZ] == '12.3'
+    assert first[AZ] == '12.30'
     assert second[TEL] == 'NC' and second[AZ] == 'NC' and second[ERR] == 'NC'
 
 
@@ -347,7 +351,7 @@ def test_the_read_recovers_after_a_failure():
         assert await relay.query_dome() is True
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
     h = _run(FULL, body)
-    assert h[AZ] == '12.3'
+    assert h[AZ] == '12.30'
 
 
 def test_a_failure_is_logged_once_per_reason(caplog):
@@ -379,7 +383,7 @@ def test_redis_is_the_only_source_when_it_is_on():
         await relay.query_dome()
         return relay.fits_header_dict('2026-09-11T00:00:00.000')
     h = _run(FULL, body)
-    assert h[TEL] == '12.1' and h[AZ] == '12.3' and h[ERR] == '+0.2'
+    assert h[TEL] == '12.10' and h[AZ] == '12.30' and h[ERR] == '+0.20'
 
 
 def test_a_missing_key_beats_a_wire_value():
@@ -404,8 +408,8 @@ def test_source_off_keeps_the_legacy_wire_path():
     relay.tcs_fields = [('DSAZ', '12.3'), ('DSTELAZ', '12.1')]
     relay.last_tcs_ok = True
     h = relay.fits_header_dict('2026-09-11T00:00:00.000')
-    assert h[AZ] == '12.3' and h[TEL] == '12.1'
-    assert h[ERR] == '+0.2'         # ICS calculation
+    assert h[AZ] == '12.3' and h[TEL] == '12.1'      # 레거시 중계는 원문 그대로
+    assert h[ERR] == '+0.20'        # ICS calculation -- 2자리
 
 
 def test_an_unknown_source_word_is_off_and_warns():
@@ -436,7 +440,7 @@ def test_dalterr_is_altitude_and_never_takes_a_dome_azimuth():
     h = _run({'dome_tel_az': '12.1', 'dome_az': '12.3',
               'dome_del_az': '+0.2'}, body)
     assert h['DALTERR'] == '-0.4', '고도 어긋남이 방위값으로 덮였다'
-    assert h[ERR] == '+0.2'
+    assert h[ERR] == '+0.20'
 
 
 def test_dome_cards_are_exactly_three():

@@ -434,6 +434,12 @@ POWER_ON = 4
 #: 여기 들지 않는다: 일부 모듈만 올라온 상태는 언제나 문제다.
 POWER_OFF = 2
 POWER_STANDBY = 5
+#: ⭐ **ACF 를 아직 안 민 컨트롤러의 정상 상태** (2026-09-15 벤치 오경보) -- 부팅 뒤
+#: `APPLYALL` 전에는 늘 이 값이다.  science 는 ACF 를 **첫 `GO`**(`prepare()`)에서
+#: 미니 기동~첫 `GO` 사이의 감시 바퀴가 이것을 "상태 이상" 으로 울면 **켤 때마다
+#: 오경보**다.  ⛔ 우리가 이 세션에 ACF 를 민 **뒤에** 이 값이면 진짜 이상이다
+#: (컨트롤러가 재부팅해 설정을 잃었다) -- `configured` 인자가 그 둘을 가른다.
+POWER_NOT_CONFIGURED = 1
 
 
 def power_state(status: dict[str, str] | None) -> int | None:
@@ -456,8 +462,12 @@ def overheating(status: dict[str, str] | None) -> bool:
 
 
 def health_problems(status: dict[str, str] | None, *,
-                    powered: bool = True) -> list[str]:
+                    powered: bool = True,
+                    configured: bool = True) -> list[str]:
     """전원·과열 이상을 사람이 읽을 문장으로 (없으면 빈 목록).
+
+    `powered` -- 우리가 `POWERON` 을 냈나 (아니면 `Off`/`Standby` 는 정상).
+    `configured` -- 우리가 이 세션에 ACF 를 밀었나 (아니면 `Not Configured` 는 정상).
 
     **취득 경로가 이것을 한 번도 안 봤다** (2026-08-24 검토, F2).  전원 레일이
     죽거나 모듈이 과열해도 밖에서는 "취득 실패" 로만 보였고, 원인을 가르려면
@@ -489,9 +499,16 @@ def health_problems(status: dict[str, str] | None, *,
         # 기동 중 첫 `STATUS` 가 `POWERON` 보다 먼저 도는데, 거기서 "상태 이상"
         # 을 울면 **켤 때마다 오경보**가 뜬다 -- 그 줄을 무시하는 버릇이 들면
         # 진짜 전원 이상이 왔을 때 아무도 안 본다 (2026-08-27 오경보와 같은 부류).
-        # ⛔ `Intermediate`(일부 모듈만)·`Unknown`·`Not Configured` 는 **켜기
-        # 전이라도 이상**이다 -- 그것들은 그대로 올린다.
-        if powered or state not in (POWER_OFF, POWER_STANDBY):
+        # ⛔ `Intermediate`(일부 모듈만)·`Unknown` 은 **켜기 전이라도 이상**이다 --
+        # 그것들은 그대로 올린다.  `Not Configured` 는 **ACF 를 밀기 전에는 정상**
+        # (2026-09-15 벤치: science 기동 20 s 뒤 감시 첫 바퀴가 `POWER=1` 을 울었다 --
+        # ACF 는 첫 `GO` 에서 민다).  민 뒤에 이 값이면 설정을 잃은 것이라 이상이다.
+        quiet: set[int] = set()
+        if not powered:
+            quiet |= {POWER_OFF, POWER_STANDBY}
+        if not configured:
+            quiet.add(POWER_NOT_CONFIGURED)
+        if state not in quiet:
             bad.append('POWER=%d %s' % (state, POWER_STATES.get(state, '?')))
     return bad
 

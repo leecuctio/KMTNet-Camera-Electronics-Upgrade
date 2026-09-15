@@ -65,11 +65,12 @@ def test_azimuth_error_folds_into_plus_minus_180():
     ⛔ 방위는 순환이라 그냥 빼면 반대 방향이 큰 값으로 보인다.
     """
     from ics_sim.telemetry import _sync_error_az as az
-    assert az('270', '0') == '-90.0'
-    assert az('0', '270') == '+90.0'
-    assert az('10.5', '3.0') == '+7.5'
-    assert az('359', '1') == '-2.0'
-    assert az('1', '359') == '+2.0'
+    # 소수 2자리 -- redis 가 준 `DAZERR` 와 같은 자리수 (운영자 2026-09-15)
+    assert az('270', '0') == '-90.00'
+    assert az('0', '270') == '+90.00'
+    assert az('10.5', '3.0') == '+7.50'
+    assert az('359', '1') == '-2.00'
+    assert az('1', '359') == '+2.00'
     assert az(None, '3') == 'NC'
     assert az('x', '3') == 'NC'
 

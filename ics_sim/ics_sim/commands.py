@@ -350,6 +350,33 @@ class Dispatcher:
                           f'ImageType={imgtype} ObjectName={quote_always(st.objname)} '
                           f'EXP={st.effective_exptime:g}')
 
+    def _image_type_query(self, msg: Message) -> Reply:
+        """IMAGETYPE / IMAGETYP / IMGTYP -- **조회만** (운영자 지시 2026-09-15 벤치).
+
+        설정은 종전대로 `BIAS`/`DARK`/`OBJECT`/… 다 -- 인자가 오면 거절하고 그쪽을
+        가리킨다.  본문은 그 명령들의 응답과 같은 모양(`ImageType= ObjectName= EXP=`)
+        이고, 답의 커맨드워드는 **받은 그대로**(세 별칭).  ICG 도 이 핸들러를 물려받는다.
+        """
+        word = (msg.cmdword or 'IMAGETYPE').upper()
+        st = self.state
+        arg = msg.body.strip()
+        if arg:
+            return Reply.error(
+                word, 'Query only -- set the image type with %s'
+                      % '/'.join(IMAGE_TYPES))
+        return Reply.done(word,
+                          f'ImageType={st.imgtype} ObjectName={quote_always(st.objname)} '
+                          f'EXP={st.effective_exptime:g}')
+
+    def cmd_imagetype(self, msg, target):  # noqa: ANN001, ANN201, D102
+        return self._image_type_query(msg)
+
+    def cmd_imagetyp(self, msg, target):  # noqa: ANN001, ANN201, D102
+        return self._image_type_query(msg)
+
+    def cmd_imgtyp(self, msg, target):  # noqa: ANN001, ANN201, D102
+        return self._image_type_query(msg)
+
     def cmd_bias(self, msg, target):  # noqa: ANN001, ANN201, D102
         return self._image_type(msg, 'BIAS')
 

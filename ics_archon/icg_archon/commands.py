@@ -71,6 +71,7 @@ first`) -- 히터·게이지와 반대다.  그쪽은 결측 창 하나가 대�
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from ics_archon import _simpath
 
@@ -94,7 +95,8 @@ log = logging.getLogger('icg_archon.cmd')
 #: emitter 의 커맨드워드 어휘에 icg 몫을 더한다 -- `validate()` 가 이 표로
 #: 발신을 검사하므로, 등록 없이 새 커맨드워드를 쓰면 위생 검사가 운다
 #: (`unknown_cmdword` -- `emit.violations` 에 쌓이고 경고 로그가 난다).
-ICG_COMMANDS = frozenset({'GUIEXP', 'HK', 'HKDATA', 'C1HKDATA', 'RADIONODE', 'EXPENABLE',
+ICG_COMMANDS = frozenset({'GUIEXP', 'HK', 'HKDATA', 'HKNOW', 'C1HKDATA', 'C1HK', 'C1HKNOW',
+                          'RADIONODE', 'EXPENABLE',
                           'TRIGOUT', 'TRIGOUTFORCE', 'TRIGOUTLEVEL',
                           'HTRSET', 'HTRFORCE', 'HTRRAMP',
                           'HTRPID', 'VACGAUGE',
@@ -236,6 +238,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         return self._hk_reply(msg, 'HK')
 
+    def cmd_hknow(self, msg: Message, target: Target) -> Reply:
+        """HKNOW -- `HK NOW` 의 별칭 (운영자 지시 2026-09-15).  인자는 안 받는다."""
+        if msg.body.strip():
+            return Reply.error('HKNOW', "Takes no argument -- got '%s'"
+                               % msg.body.strip())
+        return self._hk_reply(replace(msg, body='NOW'), 'HKNOW')
+
     def cmd_hkdata(self, msg: Message, target: Target) -> Reply:
         """HKDATA [NOW] -- ICS 가 **자기 헤더를 채우려고** 묻는 것.
 
@@ -348,17 +357,31 @@ class IcgDispatcher(sim_commands.Dispatcher):
         * 인자 없음 -> HK 폴러가 마지막 바퀴에서 읽어 둔 `STATUS` (왕복 없음).
         * `NOW` -> `refresh_status_live()` 로 지금 한 번 (왕복 하나).
         """
-        ctrl, bad = self._ctrl('C1HKDATA')      # sim 백엔드·하네스에는 컨트롤러가 없다
+        # 답의 커맨드워드는 **받은 그대로** (`C1HKDATA` 또는 별칭 `C1HK`, 2026-09-15).
+        word = (msg.cmdword or '').upper() or 'C1HKDATA'
+        ctrl, bad = self._ctrl(word)            # sim 백엔드·하네스에는 컨트롤러가 없다
         if bad is not None:
             return bad
         arg = msg.body.split()
         if len(arg) > 1 or (arg and arg[0].upper() != 'NOW'):
-            return Reply.error('C1HKDATA',
-                               "Usage: C1HKDATA [NOW] -- got '%s'" % msg.body.strip())
-        self.app.spawn(self._do_c1hkdata(msg.src, ctrl, now=bool(arg)))
+            return Reply.error(word,
+                               "Usage: %s [NOW] -- got '%s'" % (word, msg.body.strip()))
+        self.app.spawn(self._do_c1hkdata(msg.src, ctrl, now=bool(arg), word=word))
         return Reply.noop()
 
-    async def _do_c1hkdata(self, dest: str, ctrl, now: bool) -> None:  # noqa: ANN001
+    def cmd_c1hk(self, msg: Message, target: Target) -> Reply:
+        """C1HK [NOW] -- `C1HKDATA` 의 별칭 (운영자 지시 2026-09-15).  같은 본문."""
+        return self.cmd_c1hkdata(msg, target)
+
+    def cmd_c1hknow(self, msg: Message, target: Target) -> Reply:
+        """C1HKNOW -- `C1HK NOW` (= `C1HKDATA NOW`) 의 별칭.  인자는 안 받는다."""
+        if msg.body.strip():
+            return Reply.error('C1HKNOW', "Takes no argument -- got '%s'"
+                               % msg.body.strip())
+        return self.cmd_c1hkdata(replace(msg, body='NOW'), target)
+
+    async def _do_c1hkdata(self, dest: str, ctrl, now: bool,  # noqa: ANN001
+                           word: str = 'C1HKDATA') -> None:
         from ics_archon import hkwire
         from ics_archon.archon import parse as _parse
         from . import guidehdr, hk as hk_mod
@@ -377,9 +400,9 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 unit=unit, status=status, ident=ident,
                 sampled_at=float(getattr(ctrl, 'status_live_at', 0.0) or 0.0))
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'C1HKDATA', 'Failed: %s' % exc)
+            self.emit.error(dest, word, 'Failed: %s' % exc)
             return
-        self.emit.done(dest, 'C1HKDATA', body)
+        self.emit.done(dest, word, body)
 
     def cmd_radionode(self, msg: Message, target: Target) -> Reply:
         """RADIONODE [STATUS | CONNECT | DISCONNECT | RECONNECT | EN/DISABLE].

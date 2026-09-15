@@ -11183,3 +11183,63 @@ sentinel."*
 요청 없으면 안 건드림 · ini 2 는 그대로 · `EveryFlush=1` 이어도 올림 · guide 상수 1 · 슬롯 없는
 ACF 경고 · 백엔드 배선 · 시그니처) · `test_icg_hkdata.py` 3 재작성(낱말 live + 값 표본 · `WARMUP`
 즉시 · 게이지 없으면 표본).  문서: README 두 절 · `bench_test_plan.md` D1-3·4 · D2-3·4.
+
+### 11.94 벤치 첫날 -- 기동 로그가 짚은 결함 다섯 + 운영자 손질 여섯 (2026-09-15, 운영자)
+
+ICS 첫 기동(`02:55`, science R2613 · 벤치 ini)과 첫 `hkdata`/`hkdata now` 왕복 로그에서.  **와이어
+자체는 됐다** (`ICS>ICG HKDATA` → 5 ms 뒤 `ICG>ICS DONE: HKDATA … HKSTALE=3 VACGAUGE=ON DEWPRES=2.78E-01
+…` -- `HKSTALE=3` 은 Radionode 셋, P6 미설정).  기동 검사도 됐다 -- `frame timing from acf … floor
+12.7762 s` 두 줄, `MIN_FRAME_PERIOD` 경고 없음.
+
+#### (1) 결함 다섯 -- 고쳤다
+
+| # | 로그 | 원인 | 고침 |
+|---|---|---|---|
+| 1 | `ICS% hkdata now` → `ICS>ICG HKDATA` (NOW 없음) → 답의 `HKUDATE` 가 `02:55:25` 그대로 | `cmd_hkdata` 가 인자를 버렸다 (`_ask_icg('HKDATA')`) | `_ask_icg(cmdword, body)` -- `NOW` 만 받아 넘기고 다른 인자는 `ERROR`.  `HK [NOW]` 도 같다 |
+| 2 | `vacuum gauge reply -- ICG>ICS DONE: HKDATA … VACGAUGE=ON …` | `_on_message` 가 원문에 `VACGAUGE` 가 **들어 있으면** 게이지 답으로 봤다 -- HK 답 본문의 `VACGAUGE=ON` 에 걸려 **데드맨이 풀린다**(진짜 `VACGAUGE` 가 답을 못 받아도 조용) | `_is_reply_to(msg, word)` -- `msg.cmdword` 와 `mtype`(DONE/ERROR/FATAL) 으로.  `EXEC:` 는 답이 아니다 |
+| 3 | 기동 20 s 뒤 `Error: MK: controller state is bad -- POWER=1 Not Configured` (NT 도) | 감시 첫 바퀴가 부팅 그대로의 컨트롤러를 봤다 -- science 는 ACF 를 **첫 `GO`** 에서 민다.  `health_problems` 가 `Not Configured` 를 *"켜기 전이라도 이상"* 으로 쳤다 | `health_problems(configured=)` 신설 -- `acf_applied` 가 서기 전엔 `Not Configured` 정상, 선 뒤엔 이상(설정을 잃었다).  `Off`/`Standby` 는 종전대로 `powered` 가 가른다 |
+| 4 | `Warning: message hygiene violation ['type_in_body']: … DONE: HKDATA Queried ICG -- the reply arrives as a separate DONE: HKDATA report` | 우리 응답 본문에 `DONE:` 낱말 | `Queried ICG -- its HKDATA report follows separately` |
+
+| 5 | `K.IC>ICS STATUS: GO PCTREAD=41` 이 1 ms 간격으로 **두 줄씩** | 발신 때 한 줄 + 허브를 돌아온 **자기 에코**를 받을 때 또 한 줄.  2026-09-08 의 걸름은 키보드 줄(`ICS>ICS`)뿐이었다 | `transport._self_echo()` -- 우리 노드 이름(ICS·가상 IC/CB)으로 온 줄은 받는 쪽에서 안 찍는다 |
+
+곁들여 `ccdflush_first = false` 로 기동이 선 것(운영자가 옛 낱말을 옮겨 적었다) -- 거절은 맞지만 무엇을
+적어야 하는지 문면이 없었다 → 오류에 힌트 두 줄(횟수 · 옛 `true`→`ccdflush_every = 1`, `false`→비움).
+그리고 `hkdata now` 시험이 `test_ics_ops_commands` 의 `ccdflush` 둘을 깨뜨렸다 -- 예열 GO 가 이제 첫 장
+flush 를 한 번 만들기 때문(11.93; 하네스엔 ICG 가 없어 추적 상태 UNKNOWN → OFF 를 보낸다) → 차분으로.
+
+#### (2) 운영자 손질 여섯
+
+| # | 지시 | 한 것 |
+|---|---|---|
+| a | *"`c1hkdata` 가 `C1STALE=24`.  기동 후 타이머 돌릴 때 한번 측정하도록"* | 감시 첫 표본을 **지금**(`monitor.run` 의 `next_at = monotonic()`).  종전엔 `interval`(20 s) 뒤라 그동안 `status_live` 가 비었다.  ⚠️ 그 `24` 가 20 s 안이었는지, `Not Configured` 상자가 MOD 필드를 안 주는 것인지는 **답 한 줄(`C1UDATE`·`VALID`·`POWER`)을 봐야** 가른다 -- ⏳ 벤치 |
+| b | *"`c1hkdata = c1hk`, `c2hkdata = c2hk` 별칭"* | ICS `cmd_c1hk`/`cmd_c2hk` · ICG `cmd_c1hk` -- 답의 커맨드워드는 **받은 그대로**(`HK`/`HKDATA` 짝 규약).  어휘 표 셋에 등록 |
+| c | *"`imagetype` 명령 -- 지금 종류 보여만 주기.  `imgtyp`=`imagetyp`=`imagetype`, ICG 도"* | 기반 `Dispatcher._image_type_query` (세 이름) -- `ImageType= ObjectName= EXP=`.  인자는 거절(설정은 `OBJECT`/…).  `KNOWN_COMMANDS` · 기반 도움말 |
+| d | *"`imagetyp` 입력하니 ICS 가 아무 메시지 없이 종료"* | ⏳ **원인 미확인** -- 하네스에선 `ERROR: IMAGETYP Didn't understand …` 답만 난다.  콘솔 루프가 조용히 끝나는 길(EOF · `input()` 의 RuntimeError/ValueError)이 있어서 **끝날 때 이유를 한 줄 남기게**(`console closed (…) -- the program shuts down`) 하고, 명령 하나의 예외로 콘솔이 죽지 않게 `feed()` 를 감쌌다.  벤치 로그 `~/AIC/Logs/ics.20260915.log` 꼬리를 볼 것 |
+| e | *"`ICS>K.IC observer SMC` 같은 건 의미 없다"* · *"verbose off 면 K/M/T/N.IC 가상 노드와 통신하는 메시지는 안 보이게 -- 단 `Wrote` 는 다 보여야"* | `transport.essential_wire(raw, ours)` -- **양끝이 다 우리 노드**인 줄(`ICS>K.IC …`·`K.IC>ICS DONE: …`)은 verbose off 화면에서 뺀다.  한쪽이 남이면(`K.IC>OBS DONE: GO Wrote …`·`Acquisition Complete.`) 그대로, 키보드 줄(`ICS>ICS`)도 그대로.  ⭐ `ICS>K.IC observer SMC` ×4 자체는 `[node] emit_node_mode = legacy` 의 `_propagate` -- 골든 대조용.  벤치 ini 를 `merged` 로 두면 아예 안 나간다 (OBSAgent 필터는 둘 다 통과, DevNote 3.2) -- ⏳ 운영자 선택 |
+| f | *"ICS 는 `PCTREAD` 를 ICG 처럼 자주 보여줄 필요가 없다 -- 주기를 어디서?"* | `[archon] progress_step` (기본 5 %) -- 벤치 ini 에서 10~20 으로.  코드 변경 없음 |
+
+⚠️ *"어떤 건 KMTN 이 중복이라 하나만"* -- 어느 줄인지 verbose off 화면의 `go 1` 한 벌을 받아 본 뒤에
+(⏳).  `Wrote` 넷은 OBSAgent 규약(4회 → `FitsSaved`)이라 와이어에서 줄일 수 없고, 줄인다면 **화면만**이다.
+
+#### (2b) 이어진 지시 다섯 (같은 날 오후)
+
+| # | 지시 | 한 것 |
+|---|---|---|
+| g | *"`hknow` = `hk now`"* · *"`c1hknow` = `c1hk now` = `c1hkdata now`"* | ICG `cmd_hknow`/`cmd_c1hknow` · ICS `cmd_hknow`(와이어로는 `HK NOW` -- 답이 `DONE: HK` 로 와야 `register_report` 가 받아 적는다)/`cmd_c1hknow`/`cmd_c2hknow`.  인자는 거절.  ⚠️ 거절 문면에 커맨드워드를 앞세우면 `stacked_cmdword` 위생 경고 -- *"Takes no argument"* |
+| h | 헤더 `DSAZ = '239.8291459064219'` … *"AZ 값 소수점 두자리까지만"* | `domeaz._read_once` 가 `DSAZ`/`DSTELAZ` 를 `%.2f`, `DAZERR` 를 `%+.2f` 로 접는다(종전 *"원문 그대로"* 규범은 이 셋에서 걷음).  계산 갈래 `telemetry._sync_error_az` 도 `%+.2f`.  `DALTERR`(고도, TC 중계)는 그대로 -- 지시가 AZ 뿐 |
+| i | `ICG% hk` 답에 `FSATEMP`/`FSAHUM` 이 없다 | 결함 아님 -- 벤치 ini 가 `[radionode] backend = off`(저장소 기본값) 라 Radionode 셋이 결측(`HKSTALE=4` = 셋 + OFF 라 뺀 `DEWPRES`) |
+| j | *"`[radionode] backend = openapi` 로 기본값을 바꿔줘"* | 배포 ini 를 `openapi` 로 (코드 기본 `RadionodeCfg.backend='off'` 는 그대로 -- ini 줄이 없을 때의 값).  ⭐ 그러면서 자격증명 없는 설치본이 못 뜨면 안 되므로 `validate()` 의 *"api_key/api_secret 없으면 `IcgConfigError`"* 를 **경고 + `off` 로 내림**으로 바꿨다 -- HEBOX/FSATEMP/FSAHUM sentinel 을 크게 알린다.  벤치 ini 엔 KEY/SECRET/MAC 을 적어야 실린다 (P6) |
+| k | `K.IC>ICS STATUS: GO PCTREAD=` 두 줄씩 → (1)-5 | |
+
+#### (3) 그 밖에 로그가 말한 것 (고칠 것 없음)
+
+* PING 폭풍(~135줄): 9개 ID 등록(`register`) + XIS 가 AL 브로드캐스트를 슬롯마다 되돌림(8부) + 여섯 노드의
+  PONG × 9.  설계대로이고 `PING`/`PONG` 은 이미 `CHATTER_WORDS` -- 벤치 ini 가 `verbose = on` 이었다.
+* `GO` 가 전원을 켠다 -- 첫 `GO` 의 `prepare()` = `APPLYALL` → 규약 검사 → flush 설정 → `POWERON`(`POWER=4`
+  확인).  매뉴얼 p.51 대로 `APPLYALL` 뒤 CCD 전원이 꺼지므로 그 순서가 뜻이고, 세션 안에서 다시 안 민다
+  (`acf_applied`).  손으로 apply/`CCDPOWON` 할 필요 없다.  ICG 는 기동에서 한다.
+* `PT30N2=-201.41 CHARCOAL=-273.15` -- 벤치 듀어의 빈 채널(실온 `CCDTEMP=+25.35`).  `DEWPRES=2.78E-01` 도 벤치.
+
+시험: `test_hk_wire` +4 (`hkdata now` 전달·거절 · HK 답은 게이지 답이 아님 · 별칭 · IMAGETYPE 셋) ·
+`test_parse` +1 (`Not Configured` 관용) · `test_console` +1 (안쪽 왕복은 잡음) · `test_ics_ops_commands`
+ccdflush 둘 차분으로.  `ics_sim` 쪽 변경(commands·emitter·console·transport)은 `sync_vendor`.
