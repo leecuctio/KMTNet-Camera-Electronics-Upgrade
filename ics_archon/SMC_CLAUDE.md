@@ -5198,12 +5198,25 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
 
 ⏳ 바이어스 측정값 헤더 수록(층 2): 운영자 의견은 **로그 유지** — 확정 한마디 대기 (11.92 곁들여).
 
+#### ▶ 다음 세션은 **벤치**다 — ICS/ICG 연동 시험 + ICS 실기 (운영자 2026-09-15)
+
+1. ⭐ [`bench_test_plan.md`](bench_test_plan.md) 머리 **"벤치 첫날 순서"** — 준비 P1~P6(벤치 ini 옛 키
+   삭제·`hk_query_timeout`·허브·ACF 복사·설치 대장) → D1 ICG 단독 → **D2 ICS 연동(와이어 첫 왕복)** →
+   D3 science 판·주기 → D4 기록.  `--backend archon` 은 필요 없다.
+2. 벤치에서 새로 볼 것(이 세션 몫): `HKDATA NOW` 왕복과 `GO` 첫 프레임 대기 · `VACGAUGE OFF` 판단(낱말) ·
+   헤더 `CCDTEMP`·`DEWPRES`·`HKUDATE` 실값 · `c1hkdata now`(`CnSTALE=0`) · guide `bias` 뒤 `EXP=1.3`
+   고정과 `guiexp` 기본 2 s · `MIN_FRAME_PERIOD` 대사 줄.
+3. 벤치가 끝나면 **두 스위트 전수**(ics_sim 4분 · ics_archon 7분) — `ab34b07` 이 미실행분이다.
+4. 실측·로그를 주면 계획서 실측 칸·설치 대장 이력·DevNote 에 적는다.  ⛔ 되돌릴 목표는 설치 대장의
+   "마지막 확인" 열(`R2611`/`R2619`)이다.
+
 #### 상태
 
 | 것 | 값 |
 |---|---|
-| 로컬 HEAD | 커밋 넷 — `bdbe204`(문서 8개) · `86c7e65`(타이밍 해석기·추적기) · `635c6b3`(게이지 낱말·DEWPRES 표본) · **커밋 ②**(HK 와이어 + WARMUP 정정, 2026-09-15) |
-| 원격 | `origin/ics-archon-v1.0-build` = `86c7e65` — `635c6b3` 과 커밋 ② **푸시 대기** (운영자에게 물을 것) |
+| 로컬 HEAD | **`ab34b07`** — 세션 36 커밋 다섯: `bdbe204`(문서 8) · `86c7e65`(타이밍 해석기·추적기) · `635c6b3`(게이지 표본) · `a0b2773`(HK 와이어) · `3dab496`(벤치 첫날 순서) · `ab34b07`(CxHKDATA · 묶음 D · OI-24) |
+| 원격 | `origin/ics-archon-v1.0-build` = **`ab34b07`** (전부 푸시됨, 2026-09-15) |
+| ⚠️ 시험 | `a0b2773` 까지는 전수 782 통과.  **`ab34b07` 은 전수를 안 돌렸다**(운영자 지시 *"지금 상태로 커밋"*, 벤치 우선) — 관련 스위트만(ICG 134 · vendor/console/cards/ini/wire 108 · ics_sim 헤더 111 · imagetype 3).  ⏳ 두 스위트 전수는 벤치 뒤 |
 | 시험 | ✅ **전수 764 = 763 passed + 1 flake** (6분 43초, 2026-09-14).  flake 는 `test_abort_cuts_the_integration_at_the_controller` — ⛔ **회귀 아님**: 내 변경을 stash 한 HEAD 에서도 단독 8회 중 2회 실패, 변경본에서 5회 중 1회.  실패 때 4.2 s(= 2 s `until` 창을 다 쓴다).  ⏳ 원인은 안 팠다 — `go 2` 뒤 0.3 s 에 ABORT 를 넣는데 `prepare()`(ACF 적용·POWERON)가 그 안에 안 끝나면 ABORT 가 노출 밖에서 떨어져 `RESETTIMING` 이 안 나가는 것으로 보인다(가설) |
 | 현장 vs 저장소 | ⛔ **다섯 판** — science `R2611`→`R2613` · guide `R2619`→`R2622`.  현장 반영 기록 0 |
 
