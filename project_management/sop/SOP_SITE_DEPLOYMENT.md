@@ -1,6 +1,6 @@
 [DRAFT] SOP: 현장 배포 (신규 전자부 사이트 적용)
 
-최종 갱신일: 2026-09-15
+최종 갱신일: 2026-09-16
 
 > **[DRAFT]**: SSO 현장 적용(2026-10-19~11-01)이 아직 시작되지 않은 시점에 계획 문서(`SITE_PLAN.md`, `SITE_UPGRADE_MILESTONES.md` 등) 기준으로 작성했다. SSO 실제 작업 후 절차 순서/소요/문제점을 반영해 초안 표기를 해제한다.
 
@@ -69,7 +69,7 @@
 ### 7. 시험관측 / 캘리브레이션
 
 - Gain/Read Noise/Crosstalk 등 항목별로 Science Verification Lead의 검토를 받는다 ([`science/SCIENCE_VERIFICATION_PLAN.md`](../science/SCIENCE_VERIFICATION_PLAN.md) Verification Matrix).
-- CTIO/SAAO는 온스카이 시험관측을 포함한다 — 박수와 순서는 사이트별 SITE_PLAN.md를 따른다(CTIO 5박, SAAO 4박; 날씨 여유 확보 목적, 2026-09-15 각 1박 연장). SSO는 온스카이 없이 기능시험까지만 수행한다.
+- CTIO/SAAO는 온스카이 시험관측을 포함한다 — 박수와 순서는 사이트별 SITE_PLAN.md를 따른다(CTIO 5박, SAAO 5박; 날씨 여유 확보 목적). SSO는 온스카이 없이 기능시험까지만 수행한다.
 
 ### 8. Acceptance 판정 (Gate)
 
@@ -138,3 +138,4 @@
 | 2026-09-15 | 최초 작성. SSO 출국 전 계획(SITE_PLAN.md, SITE_UPGRADE_MILESTONES.md) 및 관련 운영 문서를 기준으로 3사이트 공통 절차 정리 |
 | 2026-09-15 | CTIO/SAAO 출장 일정 변경 반영: CTIO 출발 하루 앞당김(11-12→11-11)·온스카이 4박→5박, SAAO 온스카이 3박→4박·복귀 하루 연장(12-20→12-21) |
 | 2026-09-15 | 3단계에 `SOP_DEWAR_VACUUM_VENTING_PUMPING.md` 링크 추가 (Dewar 진공 해제/펌핑 상세 절차 신설) |
+| 2026-09-16 | SAAO 온스카이 4박→5박 재정의 반영(마지막 온스카이일에 마무리·판정 결합, CTIO와 동일 구성) |
