@@ -3,7 +3,7 @@
 최종 갱신일: 2026-09-21 (전문가 검토 반영)
 
 **기준 문서:** `Wall Board 현장 교체 절차 (Rev.7.1)`
-**전문가 검토:** 진호 교수(경희대학교), 2026-09-18 15:00~17:20, 이원철홀 320호 및 빛마름동 — 참석: 진호, 이충욱, 이동주, 차상목, 이용석, 이상민, 김동진, 홍성욱. 시험용 카메라로 진공 해제/재펌핑 절차·안전교육을 실시하고 본 SOP를 단계별로 검토함 (`전문가활용 결과보고서(진호)`)
+**전문가 검토:** 진호 교수(경희대학교), 2026-09-18 15:00~17:20, 이원철홀 320호 및 빛마름동 — 참석: 진호, 이충욱, 이동주, 차상목, 이용석, 이상민, 홍성욱. 시험용 카메라로 진공 해제/재펌핑 절차·안전교육을 실시하고 본 SOP를 단계별로 검토함 (`전문가활용 결과보고서(진호)`)
 **목적:** Wallboard 교체 과정에서 필요한 듀어 진공 해제(Venting), 재펌핑(Pump-down), 진공 관련 부품 및 현장 준비사항을 한 문서로 정리
 
 이 SOP는 [`SOP_SITE_DEPLOYMENT.md`](SOP_SITE_DEPLOYMENT.md) 3단계("Wallboard 교체 / 진공 펌핑 / 냉각 시작")의 세부 절차서다. 진공/냉각 이상 발생 시 대응은 [`operations/RECOVERY_ROLLBACK_PLAN.md`](../operations/RECOVERY_ROLLBACK_PLAN.md) Recovery Level 3, 취급 일반 원칙은 [`operations/SAFETY_HANDLING_PLAN.md`](../operations/SAFETY_HANDLING_PLAN.md)을 따른다.
