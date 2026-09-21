@@ -94,6 +94,7 @@
 
 ### 11. 다음 사이트 반영
 
+- **(SSO 한정) 진공 작업 정량 기준 확정** — Venting 속도, Pump-down 완료 진공도, Leak Test 합격기준을 SSO 첫 작업의 실측값으로 기록해 [`SOP_DEWAR_VACUUM_VENTING_PUMPING.md`](SOP_DEWAR_VACUUM_VENTING_PUMPING.md) §11.2·11.4·11.5에 채운 뒤 CTIO에 적용한다 (2026-09-18 전문가 검토 권고).
 - 이번 사이트에서 발견한 문제, 누락 품목, 절차 개선사항을 정리해 다음 사이트 출발 전 아래에 반영한다:
   - 본 SOP(개정 이력에 기록)
   - [`logistics/EQUIPMENT_TRACKER.md`](../logistics/EQUIPMENT_TRACKER.md) / [`logistics/LOGISTICS_PLAN.md`](../logistics/LOGISTICS_PLAN.md) 보완 품목

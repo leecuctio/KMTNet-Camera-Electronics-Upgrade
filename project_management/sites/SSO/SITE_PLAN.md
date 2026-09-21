@@ -50,4 +50,5 @@
 - [ ] 10-29 GO/NOGO 결정 및 김재우 science acceptance 통과 (Gate 3)
 - [ ] 실제 HE박스 망원경 설치 완료
 - [ ] Work log, photo archive, configuration log, site report 작성
+- [ ] 진공 작업 실측값 기록 — Venting 속도, Pump-down 완료 진공도, Leak Test 결과 (CTIO 전 `sop/SOP_DEWAR_VACUUM_VENTING_PUMPING.md` §11 정량 기준 확정용, 2026-09-18 전문가 검토 권고)
 - [ ] CTIO 전 SOP 반영용 교훈·개선사항 정리
