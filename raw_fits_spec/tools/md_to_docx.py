@@ -5,11 +5,14 @@
     python tools/md_to_docx.py <입력.md> <출력.docx>
 
 **왜 있나.** 운영자 검토는 docx 왕복으로 돈다(`__review/` — 전달본을 주면
-`*_revision.docx` 로 돌아온다). 개정판마다 전달본을 만들어야 하는데(운영자
-지시 2026-08-21), pandoc 없는 환경에서도 돌도록 python-docx 로 직접 만든다.
+`*_revision.docx` 로 돌아온다). 전달본은 **검토 사이클이 열릴 때만** 만들고
+`__review/` 도 그때만 여는 임시 왕복함이다(운영자 확정 2026-08-22 —
+2026-08-21 의 "개정판마다" 지시를 대체했다. `SMC_CLAUDE.md` 개정 워크플로).
+pandoc 없는 환경에서도 돌도록 python-docx 로 직접 만든다.
 
 **다루는 markdown.** 이 저장소 규격 문서가 실제로 쓰는 부분집합만이다 —
-제목(#~####), 표(| 셀 |, 셀 안 `<br>` 줄바꿈, 백틱 안 `|` 보호), 인용(>),
+제목(#~####), 표(| 셀 |, 셀 안 `<br>` 줄바꿈, 백틱 안 `|` 보호, 이스케이프
+`\\|` → `|`), 인용(>),
 목록(-, 1.), 코드 펜스, 인라인 **굵게**/`코드`/~~취소~~/*기울임*.
 그 밖의 문법은 평문으로 떨어진다 — 조용히 깨지는 것보다 낫다.
 """
@@ -87,17 +90,36 @@ def _rich_nested(par, text, *, bold=False, size=None):
 # ---------------------------------------------------------------- 표
 
 def _split_row(line):
-    """`|` 로 셀을 가른다 -- 백틱 코드 스팬 안의 `|` 는 보호한다."""
-    cells, buf, in_code = [], [], False
-    for ch in line.strip().strip('|') + '|':
-        if ch == '`':
-            in_code = not in_code
-            buf.append(ch)
-        elif ch == '|' and not in_code:
+    """`|` 로 셀을 가른다 -- 백틱 코드 스팬 안의 `|` 는 보호한다.
+
+    `\\|` 는 셀 구분자가 아니라 글자 `|` 다 -- 백틱 안팎 모두 백슬래시를 떼고
+    `|` 로 되돌린다(GFM 표와 같은 규칙).  규격 문서의 표가 실제로 쓴다
+    (`<chip><A\\|D><nn>` · guide 파일명 정규식 `^(KMTC\\|KMTS\\|…)` 등).
+    """
+    s = line.strip()
+    cells, buf, in_code, after_sep = [], [], False, False
+    i, n = 0, len(s)
+    while i < n:
+        ch = s[i]
+        if ch == '\\' and i + 1 < n and s[i + 1] == '|':
+            buf.append('|')
+            after_sep = False
+            i += 2
+            continue
+        if ch == '|' and not in_code:
             cells.append(''.join(buf).strip())
             buf = []
+            after_sep = True
         else:
+            if ch == '`':
+                in_code = not in_code
             buf.append(ch)
+            after_sep = False
+        i += 1
+    if not after_sep:
+        cells.append(''.join(buf).strip())
+    if s.startswith('|') and cells:
+        cells = cells[1:]                   # 여는 `|` 앞의 빈 조각
     return cells
 
 
