@@ -71,7 +71,9 @@ The raw pair filename prefix is a **4-letter uppercase site code**, replacing th
 | `KMTA` | SSO | `SSO` | `kmta` |
 | `KMTK` | KASI (lab, demonstration, full rehearsal) | `KASI` | `kmtk` |
 
-**Changed in v4.2 (D-017):** the fourth site code `KMTT`/`TESTBED` is retired and replaced by `KMTK`/`KASI`. The testbed is a purpose, not a place - the place is KASI, and `ORIGIN` already used `KASI`; `KMTT`'s trailing `T` also read like the T chip next to channel labels. No data was ever produced under the `KMTT` code. Site codes outside the four are normalized to `KMTK` with a warning on the acquisition side (DECISION_LOG D-017).
+**Changed in v4.2 (D-017):** the fourth site code `KMTT`/`TESTBED` is retired and replaced by `KMTK`/`KASI`. The testbed is a purpose, not a place - the place is KASI, and `ORIGIN` already used `KASI`; `KMTT`'s trailing `T` also read like the T chip next to channel labels. No data was ever produced under the `KMTT` code.
+
+**Changed in v4.3 (D-020):** a site code outside the four is **not** normalized. v4.2 stated that such values are "normalized to `KMTK` with a warning on the acquisition side" (D-017 item 3); DECISION_LOG **D-020** (2026-08-24, later than D-017 and superseding D-015) settled the opposite and raw spec v1.13 section 2.2 carries it: the effective site is set by the ICS configuration line `[node] observatory`, whose vocabulary is the same four values as `OBSERVAT` (`CTIO`, `SSO`, `SAAO`, `KASI`), and **a value outside them refuses to start** rather than falling back. The reason is that the site drags the filename `<SITE>`, the site coordinates, `ORIGIN` and the observing-night boundary with it, so one typo would change the identity of the data wholesale. The TC-supplied `TELID` is used for a cross-check warning only and never influences the filename.
 
 - `<YYYYMMDD>`: 8 digits, observing-night date.
 - `<NNNNNN>`: exposure sequence number, **6 digits, zero-padded**, identical on both pair members.
