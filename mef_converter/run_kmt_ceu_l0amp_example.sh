@@ -6,11 +6,18 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
-# Sample MK/NT raw inputs and the output live at the repo root; override via $1/$2.
-INPUT="${1:-$ROOT/raw/KMTA.20260116.000001.MK.fits}"
-OUTPUT="${2:-$ROOT/kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits}"
+# Verification sample that actually exists in the tree; override via $1/$2.
+# The old default (raw/KMTA.20260116.000001.MK.fits) used a pre-D-011 prefix
+# and was not present, so this script could not run as shipped.
+INPUT="${1:-$ROOT/raw/science/archon+header/KMTK.20260915.000034.MK.fits}"
+# Leave $2 empty to let the converter derive the name from the filename site
+# code (KMTK -> kmtk), cross-checked against OBSERVAT (D-011, D-017).
+OUTPUT="${2:-}"
 
-python3 "$HERE/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py" \
-  "$INPUT" \
-  -o "$OUTPUT" \
-  -f --gzip
+if [ -n "$OUTPUT" ]; then
+  python3 "$HERE/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py" \
+    "$INPUT" -o "$OUTPUT" -f --gzip
+else
+  python3 "$HERE/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py" \
+    "$INPUT" -d "$ROOT" -f --gzip
+fi

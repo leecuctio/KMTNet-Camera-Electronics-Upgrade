@@ -17,11 +17,11 @@
 
 ```bash
 python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
-  KMTA.20260116.000001.MK.fits \
-  -o kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits \
+  raw/science/archon+header/KMTK.20260915.000034.MK.fits \
+  -o kmtk.20260915.000034.ceu.l0amp.mef.fits \
   -f --gzip
 # D-011(2026-08-10) 이전에 만든 샘플 raw(KMTN.*)를 쓸 때는 pair 양쪽을
-# 사이트 코드 이름(KMTA.* — 샘플의 OBSERVAT=SSO 기준)으로 개명해서 쓴다.
+# 사이트 코드 이름(KMTC/KMTS/KMTA/KMTK — 샘플의 OBSERVAT 기준)으로 개명해서 쓴다.
 ```
 
 확인 항목:
@@ -29,6 +29,8 @@ python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 - [ ] MK input만 지정해도 NT counterpart를 찾는다.
 - [ ] Output `.fits`가 생성된다.
 - [ ] Output `.fits.summary.txt`가 생성된다.
+- [ ] Output `.fits.hdu_verify.txt`가 생성된다 (v2.2.0 신설 — 구조 검증 결과를
+      산출물에서 읽어 적는다. §3·§4 점검의 상당 부분이 여기 이미 들어 있다).
 - [ ] `--gzip` 사용 시 `.fits.gz`가 생성된다.
 - [ ] `.fits.gz.sha256.txt`가 생성된다.
 

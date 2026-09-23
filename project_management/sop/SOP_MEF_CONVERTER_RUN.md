@@ -40,10 +40,14 @@ python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 
 ```bash
 python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
-  raw/science/KMTN.20260116.000001.MK.fits \
-  -o kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits \
+  raw/science/archon+header/KMTK.20260915.000034.MK.fits \
+  -o kmtk.20260915.000034.ceu.l0amp.mef.fits \
   -f --gzip
 ```
+
+`-o` 를 생략하면 같은 이름이 자동으로 나온다 — 파일명 사이트 코드(`KMTK`)에서
+접두어(`kmtk`)를 끌어내고 `OBSERVAT`(`KASI`)와 교차검증한다 (D-011 · D-017).
+어긋나면 변환이 실패한다.
 
 또는 예제 스크립트(입력/출력 기본값은 repo 루트 기준, 인자로 override 가능):
 
@@ -95,7 +99,7 @@ amp extension header와 `AMPINFO` 테이블 양쪽에 반영되고, 값이 없�
 python3 - <<'PY'
 from astropy.io import fits
 
-path = "kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits"
+path = "kmtk.20260915.000034.ceu.l0amp.mef.fits"
 with fits.open(path, memmap=False) as hdul:
     hdul.verify("exception")
     print("verify ok")
@@ -121,7 +125,7 @@ PY
 `--gzip`을 지정했다면 압축본도 점검한다:
 
 ```bash
-gzip -t kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits.gz && echo "gzip -t = ok"
+gzip -t kmtk.20260915.000034.ceu.l0amp.mef.fits.gz && echo "gzip -t = ok"
 ```
 
 ### 5. 산출물 정리
@@ -157,3 +161,4 @@ gzip -t kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits.gz && echo "gzip -t = ok"
 | --- | --- |
 | 2026-09-15 | 최초 작성 (v2.4.0 / PRODVER v2.1.1 기준) |
 | 2026-09-23 | v2.5.0 / PRODVER v2.2.0 반영 (D-023) — 버전표·`VOLTINFO rows` 9 → 37·`.hdu_verify.txt` sidecar |
+| 2026-09-23 | 예제 샘플을 트리에 실재하는 `KMTK.20260915.000034` 로 교체 (구 `KMTN.20260116.000001` 은 D-011 이전 접두어이고 파일도 없었다) |
