@@ -870,11 +870,16 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 영향:
 
-- ⛔ **문서 셋이 이 결정과 함께 갱신되어야 한다** (미착수):
-  - `release/RELEASE_CHECKLIST.md` **§4 대표 값 검증** — *"`VOLTINFO` row count가 9이다"* 가 이제 **37** 이다. 고치기 전까지 게이트가 헛되이 실패한다. 그리고 **§3 FITS 구조 검증** 의 *"Astropy FITS verification이 통과한다"* 옆에 **`fitsverify` 통과**를 더할 것 — 위 근거대로 그 한 줄만으로는 129개 오류를 놓쳤다.
-  - `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` — **§4.4** 가 `UNIQNAME` 을 싣는데 공급원이 없다(8ⓓ) · **§5.2** 가 `CHANNEL` 을 `1` to `8` 로 적는데 CCD 출력 채널은 chip 당 16개다(8ⓔ) · **§6** `AMPINFO` 컬럼표(8ⓑ) · 신규 키워드군.
-  - `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md` §12 — placeholder 를 *"raw 가 실측 텔레메트리를 주지 않을 때"* 로 한정하는데 raw 5.6 절이 이제 준다(C-18).
-  - `sop/SOP_MEF_CONVERTER_RUN.md` 버전표 — software v2.5.0 · `PRODVER` v2.2.0.
+- ✅ **문서 갱신 완료 (2026-09-23)**:
+  - `release/RELEASE_CHECKLIST.md` **§4** `VOLTINFO` row count 9 → 37 (`NVOLT` 대조로 점검), **§3** 에 `fitsverify` 0 error 추가.
+  - `sop/SOP_MEF_CONVERTER_RUN.md` 버전표 v2.5.0 / `PRODVER` v2.2.0, `.hdu_verify.txt` sidecar, 검증 스니펫 기대값.
+  - `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` → **v1.1**: §4.7 신설(seed WCS 상태·`WCSSKY`·`CHMAPOK`), §5.5 전면 개정, §5.2 채널 정체(C-11, `CHANNEL` 1–16), §6 `AMPINFO` 40 → 52 컬럼, §8 `VOLTINFO` 9 → 37행, `PIXSCALE` `0.400` → **`0.395`**(규격에 남아 있던 실제 오류), `UNIQNAME` 폐지 명시.
+  - `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md` → **v4.3**: §7.1·§7.2 신설(하위절로 넣어 §8~§13 번호를 밀지 않았다 — 이 원장과 raw spec 이 "ICD §7·§12" 를 인용한다), §4 에 `CD` 무반전 주석, §9·§12 재작성, 폐지된 `Pair_Spec_v1.2` 참조 정정.
+  - 구판 둘은 `mef_fits_spec/archive/` 로. 파일명을 참조하던 트리 내 9개 파일 갱신.
+- ⏳ **남은 것 — 이 저장소에서 닫을 수 없다**:
+  - **`.docx` 배포본 미생성.** `python-docx` 가 없어 `md_to_docx.py` 를 돌리지 못했다. 현행 배포본이 없는 상태이고 명령은 `mef_fits_spec/README.md` 에 적어 두었다.
+  - **`raw_fits_spec/__reference/` 의 Keywords v1.0 바이트 동일 사본**이 v1.1 판올림으로 어긋난다. `__` 접두 폴더는 읽기 전용(운영자 확정 2026-08-22)이라 ICS 쪽 몫이다. ICD 국문본(`…_v4.1_KO.md`, 그쪽 유일본)도 v4.3 기준 두 판 뒤처진다.
+  - **ICD §2.1 의 사이트 코드 정규화 문구는 손대지 않았다.** D-017 항목 3 은 넷 밖의 값을 `KMTK` 로 정규화한다고 하고, raw spec v1.13 §2.2(D-020, 더 나중)는 **기동을 거부한다**고 한다. 두 결정이 맞부딪히므로 운영자가 한쪽으로 정해야 한다 — 이 판올림에서 임의로 고르지 않았다.
 - **하류 호환은 유지된다.** `WCSSKY` 카드가 없는 옛 L0 는 `True` 로 읽어 종전 동작 그대로다. `AMPINFO` 신규 컬럼은 **끝에 덧붙여** 기존 색인이 불변이고, `VOLTINFO`/`TELEMETRY` 는 전처리가 **존재만 확인**하므로 행 수 변화가 안전하다. `RADECSYS` 는 `steps/assemble.py` 가 **이름으로** 복사하므로 폐기 철자를 그대로 두고 `RADESYS` 를 병기했다.
 - **seed 우선순위는 바뀌지 않았다.** `pipeline.py` 는 여전히 per-chip 템플릿(`data/astrom_template.json`, 평균 SIP 왜곡 포함)을 L0 seed 보다 **우선**하고 L0 는 템플릿·포인팅이 없을 때의 **대체 경로**다. 템플릿이 왜곡을 싣고 L0 TAN seed 는 못 실으므로 그 순서가 맞다 — 이번에 고친 것은 **그 대체 경로가 실제로는 동작하지 않던 것**이다.
 - ⏳ **`WCSCAL` 이라는 이름을 쓴 중간본이 있었다** — 2번으로 폐기했다. 되살리지 말 것.

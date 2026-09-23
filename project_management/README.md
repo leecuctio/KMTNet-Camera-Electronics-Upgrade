@@ -12,7 +12,7 @@
 - `mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py`
 - `mef_converter/README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md`
 - `mef_converter/KMT_CEU_L0AmpRaw_Work_Summary_v1.0.md`
-- `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`
+- `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.1.md`
 - `KMT_CEU_L0AmpRaw_Converter_v2.1.1_release.zip`
 
 MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행/구버전 기준은 `mef_fits_spec/README.md`를 따른다.
@@ -27,7 +27,7 @@ MEF FITS keyword 정의서와 ICD는 `mef_fits_spec/`에서 관리하며, 현행
 | Software/Product version | `v2.1.1` |
 | Geometry version | `CEU-L0AMP-v2.1` |
 | ICD 기준 | `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` (docx 동본) |
-| Keyword 기준 | `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` |
+| Keyword 기준 | `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.1.md` |
 | Raw 파일명 | `<SITE>.<YYYYMMDD>.<NNNNNN>.<MK\|NT>.fits`, `<SITE>` ∈ {KMTC, KMTS, KMTA, KMTK} (D-011, 2026-08-10 · 넷째 코드 **D-017**, 2026-08-25) |
 | 검증 raw | `KMTN.20260116.000001.MK.fits`, `KMTN.20260116.000001.NT.fits` (D-011 이전 명명의 검증 기록) |
 | 검증 output | `kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits.gz` |

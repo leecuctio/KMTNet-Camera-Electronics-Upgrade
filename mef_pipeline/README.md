@@ -6,7 +6,7 @@
 
 이 디렉토리는 **L0 64-amplifier raw MEF**(`../mef_converter/` 산출물)를 amp 단위 교정 후
 CCD 단위로 조립한 **L1 CCD-level calibrated MEF**로 변환하는 전처리 파이프라인이다.
-처리 순서는 keyword 규격 §12(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`)를 따르고,
+처리 순서는 keyword 규격 §12(`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.1.md`)를 따르고,
 v1.6에서 대형 서베이(Rubin/DES/HSC/ZTF/PS1) 표준 전처리 단계(fringe, illumination,
 CR 플래그, sky 모델, 근사 photometric ZP)를 추가했다.
 
