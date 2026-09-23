@@ -1268,10 +1268,22 @@ def primary_cards(mk_hdr: dict, mk_path: Path, nt_path: Path,
     cards.append(card("HISTORY", "  from %s" % mk_path.name))
     cards.append(card("HISTORY", "  and  %s" % nt_path.name))
     cards.append(card("HISTORY", "  at %s UTC" % now))
-    cards.append(card("HISTORY", "WCS is the TCS-pointing seed for the L1 "
-                                 "Gaia fit (WCSAPPRX=T,"))
-    cards.append(card("HISTORY", "  WCSSOLVE=F); it has not been fitted to "
-                                 "stars at this stage"))
+    # Say what this file actually is. The unconditional version claimed a
+    # TCS-pointing seed on BIAS/DARK/DOMEFLAT products that carry no WCS at
+    # all - a plausible-but-false statement of exactly the kind D-023 exists
+    # to remove.
+    if wcs_written:
+        cards.append(card("HISTORY", "WCS is the TCS-pointing seed for the L1 "
+                                     "Gaia fit (WCSAPPRX=T,"))
+        cards.append(card("HISTORY", "  WCSSOLVE=F); it has not been fitted to "
+                                     "stars at this stage"))
+    elif not sky:
+        cards.append(card("HISTORY", "No sky WCS: IMAGETYP=%s sees no sky, so the"
+                          % (str(v("IMAGETYP", "")).strip() or "?")))
+        cards.append(card("HISTORY", "  L1 Gaia fit does not apply (WCSSKY=F)"))
+    else:
+        cards.append(card("HISTORY", "No sky WCS: the TCS pointing did not parse,"))
+        cards.append(card("HISTORY", "  so every WCS card was omitted (WCSOMIT=T)"))
     # One message per card, split so the value we actually assumed survives:
     # card() truncates the finished line at 80, so a prefix plus a long
     # message silently loses its tail - which is the only number a reader
