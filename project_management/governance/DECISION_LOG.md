@@ -845,7 +845,7 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 
 날짜: 2026-09-23 (운영자 확정)
 관련: **D-003**(CHIPFLP/orientation) · **D-004**(software/product/geometry 버전 분리) · **D-005**(placeholder ≠ calibration) · **D-013**(레거시 keyword 판정 · C-항목을 LEECU 몫으로 남김) · **D-016**·**D-019**(`UNIQNAME` 폐지, 정체는 `FILENAME`+`EXPID`) · 변경점 **C-5 · C-11 · C-12 · C-13 · C-17 · C-18** · raw spec **4.3절**(포장 순서 규범) · **5.0절**(sentinel 금지) · **5.4절**(`IMAGETYP` 어휘) · **5.6.1절**(`Cn_*` 자리) · **5.9절**(pair 일관성) · `mef_fits_spec` Main Keywords **§5.5** · ICD **v4.2 §7·§12** · `Detector_Ch_to_AmpID_Map_v1.1` · 구현 커밋 `3e82467`(converter) · `ef2d834`(preproc)
-상태: **Accepted** — ⚠️ 구현은 브랜치 `mef-converter-v2.5.0-wcs-seed` 에 있고 **`main` 합류 대기**다(`3e82467` · `ef2d834`). ⏳ 영향 첫 항목의 **문서 갱신 넷(RELEASE_CHECKLIST §3·§4 · Main Keywords §4.4·§5.2·§6 · ICD §12 · SOP 버전표)은 미착수**다 — 그중 `VOLTINFO` 행 수는 고치기 전까지 릴리스 게이트가 헛되이 실패한다. ⏳ 항목 3 의 `BORESIGHT_X` 는 **미결로 남긴다** — seed 로서는 무해하므로 릴리스를 막지 않고, Gaia 매칭 실관측 1장으로 닫는다.
+상태: **Accepted** — ✅ **`main` 합류 완료** (2026-09-23: PR #15 `cb6fbca` 구현·규격, PR #16 `cec2016` §2.1 D-020 정리). 영향 첫 항목의 문서 갱신도 완료다. ⏳ 남은 셋은 이 저장소에서 닫을 수 없다 — `.docx` 배포본(`python-docx` 부재) · `raw_fits_spec/__reference/` 의 바이트 동일 사본(읽기 전용, ICS 몫) · 항목 3 의 `BORESIGHT_X`(seed 로서는 무해하므로 릴리스를 막지 않고, Gaia 매칭 실관측 1장으로 닫는다).
 
 결정:
 
