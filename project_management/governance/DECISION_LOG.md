@@ -1,6 +1,6 @@
 # KMTNet-CEU Decision Log
 
-최종 갱신일: 2026-09-12
+최종 갱신일: 2026-09-23
 
 > ⚠️ **`ics_archon` 은 `main` 에 아직 없다.**  실기 ICS 는
 > **`ics-archon-v1.0-build` 브랜치에서 진행 중**이고 **추후 `main` 합류
@@ -838,3 +838,44 @@ KMTC.20260807.012345.MK.fits 저장 시   (물리 파일명 표기는 D-011 반�
 - **하류(아카이브·DTS·색인)** — 노출 번호의 구멍은 **정상 상태가 아니다**. 다만 ⛔ **연속성을 무결성 판정의 근거로 삼지는 않는다** — 구멍의 뜻은 그때의 취득 SW 로그가 정하고, 파일 쪽 유일 키는 여전히 `FILENAME` 이다 (D-016).
 - **guide 도 같다** — 카운터 기록이 설정파일 이름을 따라 갈리므로 science 와 독립이고(raw spec 9.2절), 규범은 양쪽에 같이 걸린다.
 - ⚠️ **벤치 계획서의 기대값이 뒤집혔다** — 옛 계획서로 재면 "틀렸다" 로 읽는다.
+
+---
+
+## D-023: L0 MEF 의 sky WCS 는 Gaia 측성의 **seed** 다 — 산출 WCS 가 아니다
+
+날짜: 2026-09-23 (운영자 확정)
+관련: **D-003**(CHIPFLP/orientation) · **D-004**(software/product/geometry 버전 분리) · **D-005**(placeholder ≠ calibration) · **D-013**(레거시 keyword 판정 · C-항목을 LEECU 몫으로 남김) · **D-016**·**D-019**(`UNIQNAME` 폐지, 정체는 `FILENAME`+`EXPID`) · 변경점 **C-5 · C-11 · C-12 · C-13 · C-17 · C-18** · raw spec **4.3절**(포장 순서 규범) · **5.0절**(sentinel 금지) · **5.4절**(`IMAGETYP` 어휘) · **5.6.1절**(`Cn_*` 자리) · **5.9절**(pair 일관성) · `mef_fits_spec` Main Keywords **§5.5** · ICD **v4.2 §7·§12** · `Detector_Ch_to_AmpID_Map_v1.1` · 구현 커밋 `3e82467`(converter) · `ef2d834`(preproc)
+상태: **Accepted** — ⚠️ 구현은 브랜치 `mef-converter-v2.5.0-wcs-seed` 에 있고 **`main` 합류 대기**다(`3e82467` · `ef2d834`). ⏳ 영향 첫 항목의 **문서 갱신 넷(RELEASE_CHECKLIST §3·§4 · Main Keywords §4.4·§5.2·§6 · ICD §12 · SOP 버전표)은 미착수**다 — 그중 `VOLTINFO` 행 수는 고치기 전까지 릴리스 게이트가 헛되이 실패한다. ⏳ 항목 3 의 `BORESIGHT_X` 는 **미결로 남긴다** — seed 로서는 무해하므로 릴리스를 막지 않고, Gaia 매칭 실관측 1장으로 닫는다.
+
+결정:
+
+1. **L0 amp extension 의 sky WCS 는 L1 Gaia 측성의 초기값으로만 존재한다.** 산출 WCS 가 아니므로 ⛔ **이것으로 좌표를 재지 않는다** — 위치는 해가 풀린 L1 WCS 에서만 나온다. Main Keywords §5.5 가 이 카드군을 *"placeholder 성격"* 이라 부른 것을 v2.4.0 은 **`CRVAL=CRPIX=0.0` 으로 문자 그대로** 구현했고, `CTYPE`/`CD` 는 유효했으므로 모든 L0 가 오류 없이 **춘분점 근방(RA≈359.93 · Dec≈+0.25)** 으로 풀렸다. 그것은 placeholder 가 아니라 raw spec 5.0 절이 금지한 *"형식만 유효한 틀린 값"* 이다.
+2. **상태 어휘는 새로 만들지 않고 파이프라인 것을 그대로 쓴다.** L0 가 `WCSNAME='TCS-SEED'` · **`WCSAPPRX=T`** · **`WCSSOLVE=F`** 를 *"아직 아님"* 값으로 미리 싣고, L1 측성 단계는 카드를 **만드는 것이 아니라 값만 뒤집는다** — 성공하면 `WCSAPPRX=F`·`WCSSOLVE=T` + `WCSRMS`/`WCSNSTAR`/`WCSNREF`/`WCSNMAT`(카탈로그는 primary `WCSCAT`, 해 성공 CCD 수는 `WCSNSOLV`), 실패하면 seed 를 그대로 두고 `WCSSOLVE=F` + 사유 `WCSFAIL`. ⛔ **`WCSCAL` 같은 L0 전용 이름을 두지 않는다** — 같은 사실에 두 어휘가 생기면 하류가 어느 쪽을 봐야 할지 알 수 없다.
+3. **tangent point 는 망원경 boresight 하나이고 64개 extension 이 같은 `CRVAL` 을 공유한다.** amp 별 어긋남은 전부 `CRPIX` 가 진다. boresight 는 DETSIZE 모자이크 픽셀 **(9418.0, 9699.0)** 이고 primary `BOREPIXX`/`BOREPIXY` 로 공개한다. overscan 이 왼쪽인 strip 5–8 은 `CRPIX1` 에 **+48**. ⏳ **미결**: `BORESIGHT_X=9418.0` 은 기하학적 모자이크 중심 9446.5 에서 **28.5 px(11.3″) 벗어나 있고 Y 만 정확히 중심**이다 — 레거시가 27열 prescan 을 이중으로 뺀 자국일 수 있다. seed 로서는 무해하나(아래 근거) **Gaia 매칭 실관측 1장이면 닫힌다.**
+4. **`CD` 행렬은 64 amp 전부 동일하고 amp 별 부호 반전을 하지 않는다.** serial 독출 방향(strip 1–4 ↔ 5–8) · TOP/BOT · e2v image section(A/D) 이 chip 마다 갈리지만 ⛔ **그 중 어느 것도 저장 순서에는 닿지 않는다** — raw spec 4.3 절이 raw 프레임을 두 축 모두 CCD 좌표 오름차순으로 저장하도록 **요구**하고(관찰이 아니라 요구사항이다), K·N 의 180° 장착은 채널→타일 순서가 이미 흡수한다. ⚠️ ICD §4 의 *"chip-dependent flip 을 적용하지 않는다"*(D-003)만 읽으면 *"그러면 회전이 픽셀에 남아 있으니 K·N 의 CD 를 뒤집어야 한다"* 로 읽히는데 **그 독해는 틀렸고, 뒤집으면 64 중 32 amp 가 어긋난다.**
+5. **포인팅이 파싱되지 않으면 WCS 카드를 하나도 쓰지 않는다** (`WCSOMIT=T`). ⛔ **기본 좌표로 메우지 않는다** — `CTYPE` 만 있고 `CRVAL` 이 없으면 리더가 `CRVAL=0` 을 기본값으로 삼아 1번의 버그가 그대로 되살아난다. `WCSDIM` 도 함께 뺀다(Main Keywords §5.5 의 필수 목록에서 벗어나는 자리라 `WCSOMIT` 으로 기계 판별을 남긴다).
+6. **하늘을 보지 않는 프레임에는 seed 를 쓰지 않는다** — `IMAGETYP` ∈ {`BIAS`, `DARK`, `DOMEFLAT`} 이면 `WCSSKY=F` · `WCSOMIT=T` 이고, L1 은 측성을 **시도하지 않고** 사유를 `NOT_SKY_FRAME` 으로 남긴다. ⛔ **이것은 실패가 아니다.** `OBJECT`·`SKY`(박명 플랫)·`FLAT` 은 `WCSSKY=T` 로 seed 를 싣는다 — `SKY` 는 대체로 별이 보이고, `FLAT` 은 어휘가 돔/박명을 가르지 않으므로(별도 `DOMEFLAT` 이 있다) **시도하는 쪽**에 둔다. ⭐ **`LTV`/`LTM`·`DTV`/`DTM`·`ATV`/`ATM` 은 프레임 종류와 무관하게 항상 싣는다** — 검출기 좌표지 하늘 좌표가 아니고, 마스터 프레임 조립에 필요하다.
+7. **L0 의 seed 상태 카드는 L1 primary 로 넘기지 않는다.** `WCSNAME`·`WCSAPPRX`·`WCSSOLVE`·`WCSOMIT`·`BOREPIXX`·`BOREPIXY` 를 `io_l1.CARRY_EXCLUDE` 에 넣는다. L1 primary 는 L0 primary 를 통째로 물려받으므로, 그대로 두면 **Gaia 로 푼 SCI 위에서 primary 가 "안 풀렸음" 을 선언한다.** 살아 있는 상태는 SCI 별 `WCSSOLVE`/`WCSAPPRX`/`WCSRMS` 와 primary 의 `WCSCAT`/`WCSNSOLV` 다.
+8. **`PRODVER` 를 `v2.1.1` → `v2.2.0` 으로 올리고 `GEOMVER` 는 유지한다** (D-004 적용 — amp 순서·구간·배치가 바뀌지 않았다). 범프를 부르는 포맷 변경은 ⓐ 신규 키워드군(WCS seed · IRAF 변환 · amp 정체 · 프레임 종류) ⓑ **`AMPINFO` 컬럼 40 → 52**(끝에 덧붙여 기존 색인 불변) ⓒ **`VOLTINFO` 행 9 → 37**(C-18: 컨트롤러 레일 실측 28행 추가) ⓓ `UNIQNAME` 폐지(D-016/D-019 의 귀결 — 공급원이 사라져 항상 빈 카드였다) ⓔ `CHANNEL` 값 범위 1–8 → **1–16**(C-11: CCD 출력 채널은 chip 당 16개다).
+
+근거:
+
+- **조용히 틀리는 쪽이 비어 있는 쪽보다 위험하다.** 원장 13장이 이미 *"조용히 **틀린 값**이 들어가는 쪽이 더 위험하다 — `DATE-OBS`(변환 시각) · **`RA`/`DEC`(그럴듯한 좌표)**"* 라고 적어 두었다. v2.4.0 의 `CRVAL=0` 은 정확히 그 목록의 사례였고, **오류를 내지 않았기 때문에** 아무도 걸러내지 못했다. 5번(전면 생략)과 6번(프레임 종류)은 같은 원칙의 적용이다 — 하늘을 안 본 프레임에 하늘 좌표를 박아 두는 것도 같은 부류의 거짓이다.
+- **어휘를 새로 만들지 않은 이유는 인계가 이미 설계돼 있었기 때문이다.** `astrometry.py` 머리말이 *"Starting from the approximate WCS inherited from L0"* 라 적고, `steps/assemble.py::ccd_wcs_cards()` 는 복사한 카드에 문자 그대로 `"approximate WCS from L0"` 주석을 달고 `WCSAPPRX=True` 를 붙인다. **받는 쪽 규약이 먼저 있었고 L0 가 그것을 안 채웠던 것**이지, 규약이 없던 것이 아니다.
+- **`BORESIGHT` 는 지어낸 값이 아니라 복원한 값이다.** 운용 중인 레거시 32-extension 파일에서 `CRPIX1 − LTV1 + (DETSEC.x1−1)` 이 **CTIO(2026)·SSO(2017) 두 사이트 32개 extension 전부에서 9418.0**, Y 는 9699.0(= DETSIZE 중심 (1+19397)/2)으로 나온다. CEU 참조 변환기(`kmt_ceu_legacy32_to_l0amp_mef_v2.py`)의 mock64 산출물도 같은 값을 재현한다. ⭐ **seed 로서 11.3″ 는 무해하다** — 검증에서 **28″ 어긋난 seed 로도 수렴**했으므로 solver 의 capture radius 안이고, 그래서 이 미결이 릴리스를 막지 않는다.
+- **4번은 규격이 요구사항으로 못박은 사실에 기댄다.** raw spec 4.3 절은 *"raw 프레임은 검출기 공간 순서로 완전 정렬되어 저장된다 … 이것은 관찰이 아니라 **요구사항**이다"* 라고 적는다. 즉 독출 방향은 overscan 이 타일의 어느 쪽에 붙는지만 정하고 픽셀 순서는 건드리지 않는다. ⏳ 단 그 조항의 준수 시험(flat/star 수열, raw spec **OI-3**)은 아직 돌지 않았고 K·N 180° 장착(**OI-17 ③**)도 열려 있다 — **4.3 절이 실기에서 깨지면 그 32 amp 는 `CD` 부호와 `CRPIX` 대칭 이동이 함께 필요하다**(부호만 뒤집는 것은 틀린 수정이다).
+- **6번의 값어치는 QA 가독성이다.** 플래그가 없으면 하룻밤 바이어스 20장이 각각 `WCSSOLVE=F` + `WCSFAIL` 을 남겨 **실패 20건처럼 읽힌다** — 실제로는 해당 없음이다. 별 검출이 돌지 않으므로 처리 시간도 준다.
+- **릴리스 게이트가 못 잡던 것이 있었다.** `fits_value()` 가 문자열 값을 free format 으로 써서 `XTENSION= 'IMAGE'` 가 고정형식 규칙을 어겼는데, RELEASE_CHECKLIST §3 이 요구하는 `astropy.verify('exception')` 은 **통과**시켰고 **fitsverify 는 129개 오류로 거부**했다(64 image HDU × 2 + `EQUINOX`). 값 필드를 20자로 채워 지금은 0 error 다. 같은 경로에서 69자 이상 문자열의 **닫는 따옴표 누락**과, `ENDID` 카드를 `END` 로 오인해 헤더 리더가 세 카드 만에 멈추던 것도 함께 닫혔다.
+- **끝까지 확인했다.** 별밭 OBJECT raw pair 를 만들어(`mef_converter/tools/make_starfield_raw.py`, 별 6000개 · TCS 포인팅 오차 +26″/−19″ · 회전 0.18° · 스케일 1.003) L0 → L1 전 구간을 돌렸다: **4개 CCD 전부 해 성공**(`WCSNSOLV=4`, RMS 0.028–0.035″), 해가 **진짜 하늘과 중앙값 0.002–0.004″** 로 일치, L1 primary 에 L0 seed 카드 0장. 같은 raw 를 v2.4.0 으로 변환해 같은 조건에 넣으면 별은 789개 똑같이 검출하면서 **매칭 0건 · `NO_SEED_ZONE`** 으로 시작조차 못 한다. ⭐ 이 결과는 **converter 의 amp 패킹·구간 기하가 픽셀 단위로 맞다는 독립 검증**이기도 하다 — 64 amp 중 하나라도 자리가 틀렸으면 그 amp 의 별이 계통적으로 어긋나 잔차가 터진다.
+
+영향:
+
+- ⛔ **문서 셋이 이 결정과 함께 갱신되어야 한다** (미착수):
+  - `release/RELEASE_CHECKLIST.md` **§4 대표 값 검증** — *"`VOLTINFO` row count가 9이다"* 가 이제 **37** 이다. 고치기 전까지 게이트가 헛되이 실패한다. 그리고 **§3 FITS 구조 검증** 의 *"Astropy FITS verification이 통과한다"* 옆에 **`fitsverify` 통과**를 더할 것 — 위 근거대로 그 한 줄만으로는 129개 오류를 놓쳤다.
+  - `mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md` — **§4.4** 가 `UNIQNAME` 을 싣는데 공급원이 없다(8ⓓ) · **§5.2** 가 `CHANNEL` 을 `1` to `8` 로 적는데 CCD 출력 채널은 chip 당 16개다(8ⓔ) · **§6** `AMPINFO` 컬럼표(8ⓑ) · 신규 키워드군.
+  - `mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.2.md` §12 — placeholder 를 *"raw 가 실측 텔레메트리를 주지 않을 때"* 로 한정하는데 raw 5.6 절이 이제 준다(C-18).
+  - `sop/SOP_MEF_CONVERTER_RUN.md` 버전표 — software v2.5.0 · `PRODVER` v2.2.0.
+- **하류 호환은 유지된다.** `WCSSKY` 카드가 없는 옛 L0 는 `True` 로 읽어 종전 동작 그대로다. `AMPINFO` 신규 컬럼은 **끝에 덧붙여** 기존 색인이 불변이고, `VOLTINFO`/`TELEMETRY` 는 전처리가 **존재만 확인**하므로 행 수 변화가 안전하다. `RADECSYS` 는 `steps/assemble.py` 가 **이름으로** 복사하므로 폐기 철자를 그대로 두고 `RADESYS` 를 병기했다.
+- **seed 우선순위는 바뀌지 않았다.** `pipeline.py` 는 여전히 per-chip 템플릿(`data/astrom_template.json`, 평균 SIP 왜곡 포함)을 L0 seed 보다 **우선**하고 L0 는 템플릿·포인팅이 없을 때의 **대체 경로**다. 템플릿이 왜곡을 싣고 L0 TAN seed 는 못 실으므로 그 순서가 맞다 — 이번에 고친 것은 **그 대체 경로가 실제로는 동작하지 않던 것**이다.
+- ⏳ **`WCSCAL` 이라는 이름을 쓴 중간본이 있었다** — 2번으로 폐기했다. 되살리지 말 것.
+- ⚠️ **견본 `KMTK.20260915.000034` 는 `IMAGETYP='BIAS'` 다** — 6번에 따라 그 MEF 에는 이제 sky WCS 가 없다. seed 를 보려면 `IMAGETYP` 을 `OBJECT` 로 바꾼 사본이나 위 별밭 생성기를 쓴다.
