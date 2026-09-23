@@ -574,7 +574,24 @@ def default_output_name(mk_path: Path, outdir: Path, mk_hdr: dict):
                 % (m.group(1), obs))
         root = f"{m.group(2)}.{m.group(3)}"
     else:
+        # The filename does not follow the D-011 grammar. D-020 settled that a
+        # site outside the four is never quietly normalized - the site drags
+        # the filename, the coordinates, ORIGIN and the observing-night
+        # boundary with it, so one typo changes the identity of the data. We
+        # still convert (the pixels are fine and the operator can always pass
+        # -o), but the degraded prefix is said out loud instead of appearing
+        # in a filename nobody looks at twice.
         prefix = obs_prefix or "kmt"
+        if obs_prefix is None:
+            _warn("%s: filename does not match <SITE>.<YYYYMMDD>.<NNNNNN>.MK.fits "
+                  "and OBSERVAT=%r is not one of CTIO/SSO/SAAO/KASI; the output "
+                  "prefix falls back to %r. Pass -o to name it yourself (D-011, "
+                  "D-020)." % (mk_path.name, obs, prefix))
+        else:
+            _warn("%s: filename does not match the D-011 grammar "
+                  "<SITE>.<YYYYMMDD>.<NNNNNN>.MK.fits; the output prefix %r is "
+                  "taken from OBSERVAT=%r instead of the filename."
+                  % (mk_path.name, prefix, obs))
         root = mk_path.stem.replace(".MK", "")
     return outdir / f"{prefix}.{root}.ceu.l0amp.mef.fits"
 
