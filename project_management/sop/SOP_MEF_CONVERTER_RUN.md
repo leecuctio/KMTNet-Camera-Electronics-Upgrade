@@ -1,6 +1,6 @@
 # SOP: MEF Converter 실행 (Archon MK/NT → L0 64-amp MEF)
 
-최종 갱신일: 2026-09-15
+최종 갱신일: 2026-09-23
 
 ## 목적
 
@@ -9,10 +9,11 @@ KMT-CEU Archon MK/NT raw FITS 쌍을 L0 64-amplifier raw MEF로 변환하는 표
 
 | 항목 | 값 |
 | --- | --- |
-| Software version | v2.4.0 |
-| Product version (`PRODVER`) | v2.1.1 |
-| Geometry version (`GEOMVER`) | `CEU-L0AMP-v2.1` |
+| Software version | v2.5.0 |
+| Product version (`PRODVER`) | v2.2.0 |
+| Geometry version (`GEOMVER`) | `CEU-L0AMP-v2.1` (불변 — amp 순서·구간·배치 변화 없음, D-004) |
 | 출력 HDU 구성 | PRIMARY + 64 amp image + `AMPINFO`/`XTALKINFO`/`VOLTINFO`/`TELEMETRY` = 69 |
+| Sidecar | `.summary.txt` · `.hdu_verify.txt` · (`--gzip` 시) `.fits.gz` + `.fits.gz.sha256.txt` |
 
 세부 옵션/배경은 [`mef_converter/README.md`](../../mef_converter/README.md)와 [`README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md`](../../mef_converter/README_KMT_CEU_L0AmpRaw_Converter_v2.1.1.md) 참조. 이 SOP는 "무엇을 어떤 순서로 실행/점검하는가"만 다룬다.
 
@@ -109,7 +110,11 @@ with fits.open(path, memmap=False) as hdul:
 PY
 ```
 
-기대값: `verify ok`, `HDU count = 69`, `M01T shape = (4616, 1200)`, `AMPINFO rows = 64`, `XTALKINFO rows = 4096`, `VOLTINFO rows = 9`, `TELEMETRY rows = 2`.
+기대값: `verify ok`, `HDU count = 69`, `M01T shape = (4616, 1200)`, `AMPINFO rows = 64`, `XTALKINFO rows = 4096`, `VOLTINFO rows = 37`, `TELEMETRY rows = 2`.
+
+⚠️ `VOLTINFO rows`는 v2.2.0에서 9 → 37로 늘었다 (CCD bias/clock placeholder 9 + 컨트롤러 레일 실측 28). 고정값이 아니므로 `VOLTINFO` 헤더의 `NVOLT`와 대조하는 것이 정확하다 (C-18, D-023).
+
+변환기가 함께 내는 `.hdu_verify.txt`는 위 점검을 이미 수행한 결과다 — HDU 수·amp 수·`CHECKSUM`/`DATASUM`·WCS 상태(`WCSNAME`/`WCSAPPRX`/`WCSSOLVE`, seed 생략 시 사유)·`CHMAPOK`·raw 교차확인을 **산출물에서 읽어** 적는다. 위 스니펫은 그것과 독립적으로 한 번 더 보는 용도다.
 
 스케일 키워드(`BZERO`/`BSCALE`) 때문에 image data를 다시 읽을 때는 항상 `memmap=False` 또는 `do_not_scale_image_data=True`를 사용한다.
 
@@ -151,3 +156,4 @@ gzip -t kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits.gz && echo "gzip -t = ok"
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-09-15 | 최초 작성 (v2.4.0 / PRODVER v2.1.1 기준) |
+| 2026-09-23 | v2.5.0 / PRODVER v2.2.0 반영 (D-023) — 버전표·`VOLTINFO rows` 9 → 37·`.hdu_verify.txt` sidecar |

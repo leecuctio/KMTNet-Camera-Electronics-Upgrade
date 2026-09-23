@@ -35,6 +35,10 @@ python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 ## 3. FITS 구조 검증
 
 - [ ] Astropy FITS verification이 통과한다.
+- [ ] `fitsverify`가 0 error로 통과한다. ⚠️ Astropy 쪽만으로는 부족하다 —
+      v2.4.0까지 문자열 값이 free format이라 `XTENSION= 'IMAGE'`가 고정형식
+      규칙을 어겼는데 Astropy는 통과시켰고 `fitsverify`는 129 error로 거부했다
+      (D-023). 두 검사는 겹치지 않는다.
 - [ ] HDU count가 69이다.
 - [ ] 첫 HDU가 `PRIMARY`이다.
 - [ ] Amp image HDU가 64개이다.
@@ -47,7 +51,10 @@ python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 - [ ] `M01T` shape가 `(4616, 1200)`이다.
 - [ ] `AMPINFO` row count가 64이다.
 - [ ] `XTALKINFO` row count가 4096이다.
-- [ ] `VOLTINFO` row count가 9이다.
+- [ ] `VOLTINFO` row count가 37이다 (CCD bias/clock placeholder 9 +
+      컨트롤러 레일 실측 28 = `C1`/`C2` × 7 rail × 전압·전류). ⚠️ 이 값은
+      고정이 아니다 — 레일·컨트롤러 구성이 바뀌면 달라지므로 `VOLTINFO`
+      헤더의 `NVOLT`와 실제 row count가 일치하는지로 점검한다 (C-18, D-023).
 - [ ] `TELEMETRY` row count가 2이다.
 - [ ] `RAWNAX1=19200`, `RAWNAX2=9400`이다.
 - [ ] `RAWXTILE=1200`, `AMPDATA=1152`, `OVERSCNX=48`, `MIDOVSCY=168`이다.
