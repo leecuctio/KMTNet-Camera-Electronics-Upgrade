@@ -162,6 +162,9 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
         refcat_fail = "NO_REFCAT"
         wcscat_name = ""
         pointing = parse_pointing(primary)
+        # L0 says whether this frame type can be solved at all. Default True
+        # so L0 products written before WCSSKY existed behave as before.
+        sky_frame = bool(primary.get("WCSSKY", True))
         if config.refcat:
             try:
                 refcat = load_refcat(config.refcat)
@@ -362,7 +365,13 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     ref = geoms[0]
                     wcs_cards = ccd_wcs_cards(ref, exp.hdul[ref.extname].header)
                     init_src = None
-                    if refcat is None:
+                    if not sky_frame:
+                        # BIAS/DARK/DOMEFLAT saw no sky (L0 WCSSKY=F). Not
+                        # attempting is the correct outcome, not a failure -
+                        # otherwise every calibration frame of the night
+                        # reports a WCSFAIL that nobody should act on.
+                        astro = AstrometryResult(False, reason="NOT_SKY_FRAME")
+                    elif refcat is None:
                         astro = AstrometryResult(False, reason=refcat_fail)
                     else:
                         whdr = None
@@ -538,6 +547,8 @@ def process_exposure(l0_path, caldb, outdir, config: PipelineConfig | None = Non
                     extras += planes["wcs"]
                     # solved WCS cards come last so they override the approximate ones
                     extras += astro.cards
+                    extras.append(("WCSSKY", sky_frame,
+                                   "frame sees sky; astrometry is applicable"))
                     extras.append(("WCSSOLVE", astro.solved,
                                    "astrometric solution succeeded"))
                     if astro.solved:

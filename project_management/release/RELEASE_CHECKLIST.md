@@ -17,11 +17,11 @@
 
 ```bash
 python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
-  KMTA.20260116.000001.MK.fits \
-  -o kmta.20260116.000001.ceu.l0amp.v2_1_1.mef.fits \
+  raw/science/archon+header/KMTK.20260915.000034.MK.fits \
+  -o kmtk.20260915.000034.ceu.l0amp.mef.fits \
   -f --gzip
 # D-011(2026-08-10) 이전에 만든 샘플 raw(KMTN.*)를 쓸 때는 pair 양쪽을
-# 사이트 코드 이름(KMTA.* — 샘플의 OBSERVAT=SSO 기준)으로 개명해서 쓴다.
+# 사이트 코드 이름(KMTC/KMTS/KMTA/KMTK — 샘플의 OBSERVAT 기준)으로 개명해서 쓴다.
 ```
 
 확인 항목:
@@ -29,12 +29,18 @@ python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 - [ ] MK input만 지정해도 NT counterpart를 찾는다.
 - [ ] Output `.fits`가 생성된다.
 - [ ] Output `.fits.summary.txt`가 생성된다.
+- [ ] Output `.fits.hdu_verify.txt`가 생성된다 (v2.2.0 신설 — 구조 검증 결과를
+      산출물에서 읽어 적는다. §3·§4 점검의 상당 부분이 여기 이미 들어 있다).
 - [ ] `--gzip` 사용 시 `.fits.gz`가 생성된다.
 - [ ] `.fits.gz.sha256.txt`가 생성된다.
 
 ## 3. FITS 구조 검증
 
 - [ ] Astropy FITS verification이 통과한다.
+- [ ] `fitsverify`가 0 error로 통과한다. ⚠️ Astropy 쪽만으로는 부족하다 —
+      v2.4.0까지 문자열 값이 free format이라 `XTENSION= 'IMAGE'`가 고정형식
+      규칙을 어겼는데 Astropy는 통과시켰고 `fitsverify`는 129 error로 거부했다
+      (D-023). 두 검사는 겹치지 않는다.
 - [ ] HDU count가 69이다.
 - [ ] 첫 HDU가 `PRIMARY`이다.
 - [ ] Amp image HDU가 64개이다.
@@ -47,7 +53,10 @@ python3 mef_converter/kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py \
 - [ ] `M01T` shape가 `(4616, 1200)`이다.
 - [ ] `AMPINFO` row count가 64이다.
 - [ ] `XTALKINFO` row count가 4096이다.
-- [ ] `VOLTINFO` row count가 9이다.
+- [ ] `VOLTINFO` row count가 37이다 (CCD bias/clock placeholder 9 +
+      컨트롤러 레일 실측 28 = `C1`/`C2` × 7 rail × 전압·전류). ⚠️ 이 값은
+      고정이 아니다 — 레일·컨트롤러 구성이 바뀌면 달라지므로 `VOLTINFO`
+      헤더의 `NVOLT`와 실제 row count가 일치하는지로 점검한다 (C-18, D-023).
 - [ ] `TELEMETRY` row count가 2이다.
 - [ ] `RAWNAX1=19200`, `RAWNAX2=9400`이다.
 - [ ] `RAWXTILE=1200`, `AMPDATA=1152`, `OVERSCNX=48`, `MIDOVSCY=168`이다.

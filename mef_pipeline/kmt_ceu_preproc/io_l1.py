@@ -75,6 +75,14 @@ CARRY_EXCLUDE = frozenset((
     "MIDOVSCY", "TOPROWS", "BOTROWS", "AMPPACK", "CHIPFLP",
     # total amp count: would collide with the per-SCI NAMPS (amps assembled)
     "NAMPS",
+    # L0 seed-WCS state: the L0 primary says WCSNAME='TCS-SEED', WCSAPPRX=T,
+    # WCSSOLVE=F because at L0 the WCS is only the initial guess for this
+    # step. Carrying those onto the L1 primary would announce "not solved"
+    # over SCI extensions this step has just solved against Gaia. The live
+    # state is per-SCI (WCSSOLVE/WCSAPPRX/WCSRMS) plus WCSCAT/WCSNSOLV here.
+    "WCSNAME", "WCSAPPRX", "WCSSOLVE", "WCSOMIT",
+    # boresight in L0 mosaic pixels; that pixel frame does not exist at L1
+    "BOREPIXX", "BOREPIXY",
 ))
 
 

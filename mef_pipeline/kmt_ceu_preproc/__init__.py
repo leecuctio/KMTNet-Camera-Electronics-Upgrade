@@ -9,7 +9,7 @@ Output: L1 CCD-level calibrated MEF
         by default; --with-var re-enables it. MASK planes go to a separate
         .mask.mef.fits file, produced only with --mask-file (D-007).
 
-Processing order follows KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md section 12,
+Processing order follows KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.1.md section 12,
 extended in v1.6 with the survey-standard optional detrending steps:
 overscan -> bias -> (dark) -> linearity/saturation -> crosstalk -> gain ->
 flat -> fringe -> illumination -> bad pixel mask -> amp-boundary match

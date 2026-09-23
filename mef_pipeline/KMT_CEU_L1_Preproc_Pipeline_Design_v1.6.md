@@ -3,7 +3,7 @@
 최종 갱신일: 2026-07-23 (v1.6)
 
 관련 항목: BACKLOG `KMT-010` (L1 pipeline), `KMT-011` (Operations), `KMT-012` (Provenance),
-keyword 규격 §12 "L1 Product 생성 시 주의" (`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md`),
+keyword 규격 §12 "L1 Product 생성 시 주의" (`../mef_fits_spec/KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.1.md`),
 결정 기록 D-006~D-008 (`../project_management/governance/DECISION_LOG.md`)
 
 ## 1. 목적과 범위

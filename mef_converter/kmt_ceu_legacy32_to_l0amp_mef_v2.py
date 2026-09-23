@@ -9,8 +9,8 @@ with 16 amplifiers = 8 vertical strips x 2 readout ends (TOP/BOT), producing the
 64-amplifier L0 "amp raw" MEF product defined by
 
     kmt_ceu_archon_mknt_to_l0_amp_mef_v2_1.py  (v2.1.1, authoritative converter)
-    KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.0.md
-    KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0.docx
+    KMT_CEU_MEF_FITS_Main_Keywords_Final_v1.1.md
+    KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.3.md
 
 Until real 64-amp Archon frames exist, pipeline development needs many mock
 64-amp MEF images. This tool manufactures them from *real* legacy data: a legacy
@@ -129,7 +129,7 @@ NA = "na"                 # string sentinel for un-fillable keywords
 NA_INT = -1               # numeric sentinel for un-fillable integer columns
 
 # --------------------------------------------------------------------------- #
-# CEU 64-amp geometry (per KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.0)
+# CEU 64-amp geometry (per KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.3)
 # --------------------------------------------------------------------------- #
 CCD_COLS = 9216
 CCD_ROWS = 9232
