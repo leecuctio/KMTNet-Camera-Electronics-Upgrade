@@ -5292,10 +5292,71 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
 ⏳ 운영자 몫: 벤치 ini `[node] emit_node_mode = merged`(`ICS>K.IC observer …` ×4 안 나감) · `[archon] progress_step`
 10~20 · `[behavior] verbose = off`.  ⏳ *"KMTN 중복 하나만"* 은 verbose off 의 `go 1` 화면을 받아 보고.
 
-#### ⏳ 진행 중 — 벤치 첫날 나머지
+#### 상태 (37 마감)
 
-- 이 고침을 **커밋·푸시**해야 벤치가 받는다 (⚠️ 로컬에 `7992a0e` 인수인계 커밋이 원격보다 앞서 있다 —
-  같이 올라간다).  벤치: `git fetch origin && git reset --hard origin/ics-archon-v1.0-build`.
-- 벤치에서 볼 것(11.93): D1-3 `WARMUP` 즉시 · D1-4 `OFF`+마지막 값 → 바퀴 뒤 없음 · D2-3 `gauge was on --
-  FirstFlush 0 -> 1 for this frame only` + 첫 장 주기 +5.5 s · D2-4 그 줄 없음.
-- 그 다음은 36 의 "벤치 첫날 순서" 그대로 (D2 나머지 → D3 → D4).
+| 것 | 값 |
+|---|---|
+| 로컬 = 원격 | **`960e8e4`** — 세션 37 커밋 셋: `a30e15c`(게이지 낱말·첫 장 flush) · `6801f21`(벤치 첫날 결함 다섯 + 손질 열하나) · `960e8e4`(`hk` 뒤 프롬프트).  앞 세션의 `7992a0e`(인수인계)도 이때 함께 올라갔다 |
+| 워킹트리 | 깨끗 — **미커밋·미푸시 0**.  세 브랜치(`ics-archon-v1.0-build`·`main`·`archongui-study`) 다 원격과 같다 |
+| ⚠️ 시험 | **전수는 여전히 안 돌렸다** — `ab34b07` 부터 `960e8e4` 까지 넉 장이 미실행분이다.  이번 세션은 관련 스위트만(최대 392 통과, 마지막 확인 `test_hk_wire` 17) |
+| 저장소 ACF | science `KMT?_SCI_*_R2613_{MK,NT}.acf` · guide `KMT?_GUI_*_R2622.acf`.  벤치 호스트는 **science R2613 을 깔았다**(2026-09-15, `~/AIC/Config/acf/`) — ⏳ 설치 대장 이력에 아직 안 적었다 |
+| 벤치 실기 | ICS·ICG 둘 다 **기동 성공**.  `frame timing from acf … floor 12.7762 s` 두 줄 · `MIN_FRAME_PERIOD` 경고 0 · **HK 와이어 첫 왕복 성공**(`hkdata` → 5 ms 뒤 답).  ⛔ **`GO` 는 아직 한 번도 안 걸었다** |
+
+#### ⭐⭐ 다음 세션이 할 것 (권장 순서)
+
+1. ⭐ **두 스위트 전수** — 넉 장이 미실행이다.  ⛔ **따로** 돌린다(루트가 둘이라 같이 돌리면 수집이 깨진다):
+   `cd ics_sim && python -m pytest -q` (4분) · `cd ics_archon && python -m pytest -q` (7분).
+   ⚠️ 알려진 flake 하나: `test_ics_ops_commands::test_abort_cuts_the_integration_at_the_controller`
+   (**회귀 아님** — HEAD 에서도 8회 중 2회, 단독 재실행은 통과).  ⛔ `-m "not repo_only"` 금지.
+2. ⭐ **벤치 재기동 + 새 코드 확인** — 벤치는 `git fetch origin && git reset --hard origin/ics-archon-v1.0-build`
+   뒤 **ICS·ICG 둘 다** 다시 띄운다.  볼 것:
+
+   | 무엇 | 기대 | 근거 |
+   |---|---|---|
+   | ICG `vacgauge on` → `hkdata` | 곧바로 `VACGAUGE=WARMUP`, `DEWPRES` 없음 (⛔ 첫 벤치엔 `OFF` 였다) | 11.93 · D1-3 |
+   | ICG `vacgauge off` → `hkdata` | `VACGAUGE=OFF DEWPRES=<마지막 측정값>` → 다음 바퀴에 `DEWPRES` 사라짐 | 11.93 · D1-4 |
+   | ICS `hkdata now` | 와이어에 **`HKDATA NOW`** 가 나가고 답의 `HKUDATE` 가 움직인다 | 11.94-(1)-1 |
+   | ICS `hk` 뒤 | **프롬프트가 남는다** · 한 답에 와이어 줄 **한 줄**만 | 11.94-l |
+   | ICS `c1hk` / `c1hknow` | `C1UDATE` 가 있고 `C1STALE` 이 24 가 아니다 (기동 20 s 안에도) | 11.94-(2)-a |
+   | 기동 20 s 뒤 | `POWER=1 Not Configured` **오경보 없음** | 11.94-(1)-3 |
+   | `go 1` (게이지 켜진 채) | `gauge was on -- FirstFlush 0 -> 1 for this frame only` + 첫 장 주기 **+5.5 s** · 곧이어 `go 2` 엔 그 줄 없음 | 11.93-(3) · D2-3·4 |
+   | verbose off 로 `go 1` | `ICS>K.IC …` 안 보이고 `K.IC>OBS … Wrote`·`Acquisition Complete.` 는 보인다 · `PCTREAD` 가 한 줄씩 | 11.94-(2)-e·(1)-5 |
+
+   ⏳ 그때 함께 받을 것: **verbose off 의 `go 1` 화면 한 벌** (*"KMTN 중복 하나만"* 을 그걸 보고 짚는다) ·
+   `imagetyp` 을 다시 쳐서 죽는지 (죽으면 `tail -40 ~/AIC/Logs/ics.<날짜>.log` 의 `console closed (…)` 줄).
+3. **벤치 첫날 순서 나머지** — [`bench_test_plan.md`](bench_test_plan.md) 머리: D2 5~7(프레임마다 `EXPENABLE`
+   0/1 · ICG 내리고 `go 1` → 데드맨 2 s + sentinel · 되켜기 타이머) → **D3 science 판·주기**(간격 ≥ 12.776 s ·
+   `ccdflush_every = 1` 이면 +5.54 s · `ccdflush_first = 2` · `abort` 4연속 뒤 `RESETTIMING` · 셔터 닫힘 실측) → D4 기록.
+4. **설치 대장** [`acf/deployment_ledger.md`](acf/deployment_ledger.md) — ⏳ 셋(벤치 ini 실값 · 관측소 상자 위치 ·
+   SSO 신원) + **2026-09-15 벤치에 science R2613 을 깐 것**을 이력에 한 줄.  ⛔ 사다리보다 먼저.
+5. **플랫 쌍 + 바이어스 쌍 한 번** (실측 이득 · 기준선 · CDS 창 30% · 포화) → **사다리 T0~T4** (`acf/bench/`).
+   ⛔ 사다리 도는 동안 `ccdflush_every` 는 비워 둔다(슬롯 없음).
+6. **`main` 라운드** — 묶음 E(문서) · CR-003 · 규격 이월들: 5.6절 `HKDATA` 원천 문면(*"icg 스냅샷 파일"* → 와이어) ·
+   `HKSTALE` 셈의 `DEWPRES` sentinel 예외 · 10.6절 OI-24 종결 표시 · 5.7절 `DAZERR = ICS calculation`.
+
+#### ⏳ 운영자 몫 (벤치 ini · 판단)
+
+| 무엇 | 자리 |
+|---|---|
+| `[node] emit_node_mode = merged` — `ICS>K.IC observer …` ×4 가 아예 안 나간다 (OBSAgent 필터는 둘 다 통과, ics_sim DevNote 3.2) | `~/AIC/Config/ics_archon.ini` |
+| `[archon] progress_step` **10~20** — `PCTREAD` 개수.  ⛔ `frame_poll`(0.2)은 **다른 눈금**이다: 프레임 완료 판정 지연이라 올리면 FETCH 가 늦고 D3 주기 실측에 잡음이 붙는다 | 〃 |
+| `[behavior] verbose = off` (`VERBOSE OFF` 명령으로도) | 〃 |
+| `[radionode] api_key`·`api_secret` + `[radionode.hebox]`/`[radionode.fsa]` 의 `mac` — ⭐ 배포 ini 기본이 이제 `backend = openapi` 라, **이것들이 비면 기동에서 경고하고 `off` 로 내려가고** `HEBOX`/`FSATEMP`/`FSAHUM` 이 sentinel 이다 (첫 벤치의 `HKSTALE=3`·`4` 가 그것) | `~/AIC/Config/icg_archon.ini` |
+| 옛 키 삭제 — ICS `hk_latest`·`hk_stale_after`, ICG `[hk] latest_name` (읽지 않지만 헷갈린다) | 둘 다 |
+| ⏳ **판단 대기 둘** — ① 바이어스 측정값 헤더 수록(층 2): 의견은 *"로그 유지"*, 확정 한마디 대기 ② science 시퀀서 pacing: 호스트 vs `Exposures=n` — *"`GO n` 을 컨트롤러 시퀀서로 돌리도록 바꿀 계획"* (2026-09-15).  ⭐ 그 전환이 서면 `FirstFlush`(묶음 첫 장)와 `EveryFlush`(매 장)의 뜻이 갈리고, 지금 *"무조건 올림"* 판정도 다시 본다 | |
+
+#### ⚠️ 이 세션이 남긴 함정·규범
+
+- ⛔ **`print()` 로 화면에 쓰지 않는다** — 콘솔이 떠 있으면 `PromptSafeStream` 을 안 지나 **프롬프트가 사라진다**
+  (`hk` 건).  사람에게 보일 것은 `log.info`, 같은 내용이 와이어 줄로 이미 보이면 `log.debug`.
+- ⛔ **답을 원문 부분 문자열로 가리지 않는다** — `HKDATA` 답 본문에 `VACGAUGE=ON` 이 실려 게이지 데드맨이
+  풀렸다.  `msg.cmdword` + `mtype` 으로 (`_is_reply_to`).
+- ⛔ **거절 문면에 커맨드워드를 앞세우면** `emitter.validate()` 의 `stacked_cmdword` 가 운다 — *"Takes no argument"*.
+- ⭐ **별칭은 답의 커맨드워드를 받은 그대로** 낸다 (`HK`/`HKDATA` 짝 규약) — `c1hk`·`hknow`·`c1hknow` 다 그렇다.
+  ⚠️ 단 ICS 의 `hknow` 는 **와이어로 `HK NOW`** 가 나간다: 답이 `DONE: HK …` 로 와야 `register_report` 가 받는다.
+- ⭐ **도움말 한 줄에 별칭을 `|` 로 묶는다** — `test_console.py` 가 도움말↔dispatcher 를 양방향 대조하므로
+  새 `cmd_*` 를 만들면 도움말에도 이름이 있어야 한다.
+- ⚠️ **`ics_sim` 을 고치면 `python tools/sync_vendor.py`** — 이번에 `commands`·`emitter`·`console`·`transport`·
+  `domeaz`·`telemetry` 여섯이 그랬다.
+- ⭐ **예열 GO 가 이제 flush 를 한 번 만든다** — 하네스엔 ICG 가 없어 추적 상태가 `UNKNOWN` 이라 `VACGAUGE OFF`
+  를 보내고, 그러면 첫 장 앞 `FirstFlush=1` 이 실린다.  `flushes` 를 세는 시험은 **차분**으로 (ccdflush 둘이 그래서 깨졌다).

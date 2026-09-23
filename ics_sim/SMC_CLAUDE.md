@@ -25,6 +25,25 @@
 | [../ics_legacy/ics_legacy_report.md](../ics_legacy/ics_legacy_report.md) | 레거시 원본 동작이 궁금할 때 |
 | [../OBSAgent/obsagent_report.md](../OBSAgent/obsagent_report.md) | OBSAgent 쪽 사정이 궁금할 때 |
 
+## ⭐ 2026-09-15 — **벤치 첫날이 이 폴더를 여섯 파일 고쳤다** (경위는 `ics_archon/DevNote.md` **11.94**)
+
+ICS/ICG 실기 벤치에서 나온 지시·결함이라 판단 근거는 저쪽 노트에 있지만, **코드는 여기가 원천**이다
+(`ics_archon/_vendor/` 는 사본 — 고치면 반드시 `python ../ics_archon/tools/sync_vendor.py`).
+
+| 파일 | 무엇 |
+|---|---|
+| `commands.py` | ⭐ **`IMAGETYPE` = `IMAGETYP` = `IMGTYP` 신설 — 지금 이미지 종류 *조회만*** (`_image_type_query`).  설정은 종전대로 `OBJECT`/`BIAS`/`DARK`/… 이고 **인자가 오면 거절**한다.  본문은 설정 명령들과 같은 모양(`ImageType= ObjectName= EXP=`), 답의 커맨드워드는 **받은 그대로** |
+| `emitter.py` | `KNOWN_COMMANDS` 에 위 셋 |
+| `console.py` | 도움말 한 줄(`imagetype｜imagetyp｜imgtyp`) · ⭐ **콘솔이 끝날 때 이유를 남긴다** (`console closed (…) -- the program shuts down`) · **명령 하나가 던진 예외로 콘솔이 안 죽는다**(`feed()` 를 감쌌다) |
+| `transport.py` | ⭐ **`essential_wire(raw, ours)`** — `verbose = off` 화면에서 **양끝이 다 우리 노드**인 줄(`ICS>K.IC …`·`K.IC>ICS DONE: …`)을 뺀다.  ⛔ 한쪽이 남이면 남긴다(`K.IC>OBS … Wrote`·`Acquisition Complete.` · 키보드 줄).  ⭐ **`_self_echo()`** — 우리 이름으로 나갔다 허브를 돌아온 줄은 받는 쪽에서 **안 찍는다**(`PCTREAD` 가 두 줄씩 찍히던 것) |
+| `domeaz.py` | ⭐ 돔 방위 셋을 **소수 2자리**로 — `DSAZ`/`DSTELAZ` `%.2f` · `DAZERR` `%+.2f`.  ⛔ 종전 *"원문 그대로 싣는다"* 규범은 **이 셋에서 걷었다**(redis 가 `239.8291459064219` 를 준다).  ⚠️ `DALTERR`(고도, TC 중계)는 그대로 |
+| `telemetry.py` | 계산 갈래 `_sync_error_az` 도 `%+.2f` (redis 값과 자리수를 맞춘다) |
+
+⚠️ 시험도 같이 옮겼다 — `tests/test_dome_redis.py`·`test_telemetry.py` 의 기대값이 2자리다.
+⭐ **`print()` 로 화면에 쓰지 않는다**는 규범이 여기서 나왔다 — 콘솔이 떠 있으면 `PromptSafeStream` 을
+안 지나 **프롬프트가 사라진다**(실기 `hk` 명령에서 났다).  사람에게 보일 것은 `log.info`, 같은 내용이
+와이어 줄로 이미 보이면 `log.debug`.
+
 ## ⚠️ 기동 배너에 앱이 갈아 끼울 자리를 냈다 (2026-09-08) — 경위는 `ics_archon/DevNote.md` **11.46**
 
 `log_identity_banner()` 가 **science 를 박아 두고** 있었다 (`rawpair.CONTROLLERS[0][0]`=`MK`)
