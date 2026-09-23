@@ -1606,7 +1606,7 @@ def bintable_bytes(extname: str, columns, rows, extra_cards=None):
 
 
 def ampinfo_rows(mk_path: Path, nt_path: Path, chmap: dict,
-                 ampchar: dict | None = None):
+                 wcs_written: bool = True, ampchar: dict | None = None):
     rows = []
     rawfile_by_chip = {"M": mk_path.name, "K": mk_path.name, "N": nt_path.name, "T": nt_path.name}
     for chip in CHIP_ORDER:
@@ -1619,7 +1619,15 @@ def ampinfo_rows(mk_path: Path, nt_path: Path, chmap: dict,
             dx1, dx2, dy1, dy2 = detsec(chip, amp)
             ident = chmap.get((chip, amp), {})
             ltv1, ltv2, dtv1, dtv2 = iraf_transforms(chip, amp)
-            cp1, cp2 = crpix_for(chip, amp)
+            # CRPIX is the boresight position in this amp's frame. With no
+            # seed WCS there is no boresight - the primary withholds
+            # BOREPIXX/BOREPIXY and no amp header carries CRVAL - so a number
+            # here would be a reference pixel pointing at nothing, and a
+            # consumer building a WCS from AMPINFO alone would pair it with a
+            # defaulted CRVAL=0. That is the failure this release removed.
+            # LTV/DTV stay: they are detector geometry, true for any frame.
+            cp1, cp2 = crpix_for(chip, amp) if wcs_written else (
+                HK_REAL_SENTINEL, HK_REAL_SENTINEL)
             rows.append({
                 "EXTNAME": ext,
                 "AMPID": AMP_BASE[chip] + amp,
@@ -1859,6 +1867,7 @@ def convert(mk_path: Path, nt_path: Path, out_path: Path,
     pointing = wcs_pointing(mk_hdr)
     # A seed WCS only earns its place on a frame that can be solved.
     sky = sees_sky(mk_hdr)
+    wcs_written = bool(sky and pointing[0] is not None)
     if not sky:
         print("%s: IMAGETYP=%s sees no sky; writing no seed WCS "
               "(L1 astrometry is not applicable, not failed)"
@@ -1896,7 +1905,8 @@ def convert(mk_path: Path, nt_path: Path, out_path: Path,
                                   chmap, pointing, sky, ampchar)
             amp_cols, xtalk_cols, volt_cols, tel_cols = table_defs()
             fout.write(bintable_bytes("AMPINFO", amp_cols,
-                                      ampinfo_rows(mk_path, nt_path, chmap, ampchar), [
+                                      ampinfo_rows(mk_path, nt_path, chmap,
+                                                   wcs_written, ampchar), [
                 card("NAMP", 64, "number of amplifier rows"),
                 card("GEOMVER", GEOMETRY_VERSION, "geometry definition version"),
                 card("RAWGROUP", "MKNT", "raw grouping"),
