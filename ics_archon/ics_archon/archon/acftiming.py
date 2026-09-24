@@ -357,8 +357,10 @@ def script_matches(ts: TimingScript) -> list[str]:
     bad: list[str] = []
     for label, sub in _REQUIRED:
         i = ts.labels.get(label)
+        # ⚠️ 문구는 영문이다 -- guide `icg_archon/acftiming.py` 의 같은 목록과 같은 꼴이고,
+        # `TimingError` 를 거쳐 기동의 영문 경고 줄(`backend._read_timing`)에 실린다.
         if i is None:
-            bad.append('%s: 라벨이 없다' % label)
+            bad.append('%s: label missing' % label)
             continue
         ok = False
         for st in ts.stmts[i + 1:]:
@@ -368,7 +370,7 @@ def script_matches(ts: TimingScript) -> list[str]:
                 ok = True
                 break
         if not ok:
-            bad.append('%s: CALL %s 가 없다' % (label, sub))
+            bad.append('%s: no CALL %s' % (label, sub))
     return bad
 
 

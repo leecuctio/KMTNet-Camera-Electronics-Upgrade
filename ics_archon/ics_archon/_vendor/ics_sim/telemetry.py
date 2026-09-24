@@ -19,9 +19,13 @@ ICS 는 TC(TCS Agent)에 텔레메트리를 질의해서 과학 CCD 들에게 �
 
 그래서 사이트별 필드 테이블을 두지 않고 **받은 key=value 를 순서 그대로 보존해
 역순으로 되돌려 보낸다**(pass-through).  ICS 가 알아야 할 것은 "어디까지가 TC
-필드이고 어디부터 내가 붙이는 꼬리인지"뿐이다.  FITS 헤더 생성에 특정 필드가
-필요한데 없으면 sentinel(수치 0, 문자열 NC)로 채운다 -- 레거시의 GBUILD=(빈 값),
-DSSTAT=NC 관례와 같은 방식이다.
+필드이고 어디부터 내가 붙이는 꼬리인지"뿐이다.  없는 필드를 채우는 sentinel 은
+**계층마다 다르다** (C-9):
+
+* FITS 헤더(`fits_header_dict()`) -- 없는 중계 카드를 문자열 sentinel `NC` 로
+  채운다.  실수형 카드(`EQUINOX` 하나)만 `-999.0` 이다 (raw spec 5.0절).
+* 메시지 계층(`header_dict()`) -- 수치 `0`, 문자열 `NC`.  레거시의
+  GBUILD=(빈 값), DSSTAT=NC 관례를 재현하는 쪽이다.
 
 타이밍 (ics_legacy_report 5.3절):
   * AUXSTATUS 는 ERASE 를 내리는 시점에 질의하고 **곧바로** 중계한다.
@@ -53,6 +57,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 
 from . import domeaz, impv2, rawcards
 from .config import SimConfig
@@ -63,16 +68,19 @@ log = logging.getLogger('ics_sim.telemetry')
 #: ICS 가 AUXSTATUS 중계 끝에 덧붙이는 꼬리 필드 순서.
 AUX_TAIL = ('KBUILD', 'MBUILD', 'TBUILD', 'NBUILD', 'GBUILD', 'ICSBUILD')
 
-#: 없을 때 sentinel 을 넣어줄 필드 (FITS 헤더가 기대하는 것들).
+#: 없을 때 sentinel 을 넣어줄 필드 (`header_dict()` 전용 -- FITS 카드 목록은
+#: `rawcards.RELAY_CARDS` 다).
 #:
 #: **sentinel 은 계층에 따라 다르다** (C-9):
-#:   - 레거시 **메시지 계층**(`ICS>*.IC STATUS: AUXSTATUS …`)은 `'0'` -- 레거시
-#:     관례를 그대로 재현한다 (DevNote 4.3, 11.2).  아래 두 집합은 그쪽
-#:     (`header_dict()`) 전용이다.
+#:   - 레거시 **메시지 계층**의 관례는 `'0'` 이다 (DevNote 4.3, 11.2).  아래
+#:     두 집합은 그 관례를 재현하는 `header_dict()` 전용이다.  ⚠️ 실제 중계
+#:     본문(`ICS>*.IC STATUS: AUXSTATUS …`, `aux_body()`/`tcs_body()`)은 받은
+#:     필드를 그대로 되돌리고 sentinel 을 넣지 않는다.
 #:   - **FITS 카드**는 raw spec 5.7절이 전부 문자열 형으로 정했으므로 문자열
 #:     공통 `'NC'` 하나다 (`fits_header_dict()` -- 카드 목록은
 #:     `rawcards.RELAY_CARDS`).  `0` 을 값-없음으로 쓰면 `SECZ=0` 같은 값이
-#:     유효값처럼 남아 조용한 오염이 된다.
+#:     유효값처럼 남아 조용한 오염이 된다.  ⭐ 예외: `EQUINOX` 는 실수형
+#:     카드라 sentinel 이 `-999.0` 이다 (2026-09-23, `_FITS_REAL`).
 _SENTINEL_INT = frozenset({
     'FALIMS', 'FALIME', 'FALIMW',   # 액추에이터 리밋 코드
     'MCPOS',                        # 주경 커버 개방률 %
@@ -115,9 +123,11 @@ _SENTINEL_STR = frozenset({
     'AUXARC', 'AUXLINK', 'TELID', 'TIMESYS',
     'TCSDRIVE', 'TCSLIMIT', 'TELMOVE', 'TCSARC', 'TCSLINK', 'EXECODE',
     'RA', 'DEC', 'HA', 'ST',
-    # 질의/갱신 시각.  **TC 가 답하지 않아도 카드를 남긴다** -- raw spec
-    # 5장 전 카드가 원칙적으로 필수다.  카드가 아예 없으면 이 규격을
-    # 모르는 취득 SW 가 쓴 파일과 구분되지 않는다.
+    # 질의/갱신 시각.  여기 든 것은 `header_dict()` 몫이다 -- ⚠️ FITS 카드를
+    # 남기는 것은 이 집합이 아니라 `rawcards.RELAY_CARDS` 다.  **TC 가 답하지
+    # 않아도 FITS 카드는 남는다** -- raw spec 5장 전 카드가 원칙적으로
+    # 필수다.  카드가 아예 없으면 이 규격을 모르는 취득 SW 가 쓴 파일과
+    # 구분되지 않는다.
     'AUXQDATE', 'AUXUDATE', 'TCSQDATE', 'TCSUDATE',
 })
 
@@ -177,9 +187,19 @@ CANNED_TCS_VALUES = {
 }
 
 
-def _sync_error(dome: object, tel: object) -> str:
-    """`DALTERR`/`DAZERR` -- 돔·망원경 지향차, 부호 포함 소수 1자리 문자열.
+#: TC 중계 카드 가운데 **실수형**으로 싣는 것 (`rawcards.CARDS` 의 형 `'R'`).
+#: ⭐ `EQUINOX` -- 운영자 2026-09-23: 종전 `EQUINOX = '2000.000          '` 을
+#: `EQUINOX = 2000.0` 으로.  ⚠️ 규격 5.7절·견본은 아직 문자열이다
+#: (`rawcards.SPEC_PENDING`).  나머지 중계 카드는 전부 문자열 그대로다.
+_FITS_REAL = tuple(k for k, kind, _w, _c in rawcards.CARDS
+                   if kind == 'R' and k in rawcards.RELAY_CARDS)
 
+
+def _sync_error(dome: object, tel: object) -> str:
+    """`DALTERR` -- 돔·망원경 **고도**차, 부호 포함 소수 1자리 문자열.
+
+    방위차 `DAZERR` 는 이 함수가 아니라 `_sync_error_az()` 가 만든다
+    (±180 접기 · 소수 2자리).
     견본 v1.0: `DSALT='87.7'` − `DSTELALT='88.1'` -> `DALTERR='-0.4'`.
     피연산 값이 없거나 수치가 아니면 `'NC'` -- 계산값을 지어내지 않는다.
     """
@@ -245,6 +265,12 @@ class TelemetryRelay:
         #: 그러면 사람이 경고를 무시하는 것을 학습한다.  그건 검사가 없는 것보다
         #: 나쁘다.
         self._telid_warned: set[str] = set()
+        #: 이미 경고한 실수형 중계 카드의 `(카드, 값)` (`_as_real`).  위
+        #: `_telid_warned` 와 같은 규칙 -- **서로 다른 값마다 한 번**이다.
+        #: ⚠️ 이쪽은 더 급하다: `fits_header_dict()` 는 **프레임마다** 불리고
+        #: (guide 는 1.3 s 마다) 그동안 `TCSSTATUS` 스냅샷은 같은 값이라, 매번
+        #: 경고하면 한 시간에 2천 줄을 넘는다.
+        self._real_warned: set[tuple[str, str]] = set()
 
     # -- TC 질의 ----------------------------------------------------------
 
@@ -428,7 +454,10 @@ class TelemetryRelay:
 
         ⚠️ **FITS 헤더에는 이걸 쓰지 않는다** -- `fits_header_dict()` 를 쓴다.
         수치 sentinel 이 `'0'` 이라 `SECZ=0`/`ALT=0` 이 유효값처럼 남는다
-        (C-9 / raw_fits_spec OI-6).  레거시 재현이 필요한 중계 본문 전용이다.
+        (C-9 / raw_fits_spec OI-6).
+        ⚠️ **런타임 호출처가 없다** -- 중계 본문(`aux_body()`/`tcs_body()`)은
+        받은 필드를 그대로 되돌리고 sentinel 을 채우지 않는다.  C-9 분리를
+        보이는 시험(`tests/test_raw_pair.py`)만 부른다.
         """
         out: dict[str, str] = {}
         for k, v in self.aux_fields:
@@ -443,6 +472,37 @@ class TelemetryRelay:
         if date_obs:
             out['DATE-OBS'] = date_obs
         return out
+
+    def _as_real(self, key: str, value: object) -> float:
+        """중계 값 하나를 실수로.  쓸 수 없는 값이면 실수형 sentinel `-999.0`.
+
+        ⛔ TC 가 안 보낸 것(`NC`·빈 값)은 조용히 sentinel 이다 -- 우리 결함이
+        아니다.  **보냈는데 쓸 수 없는 것**만 경고한다 -- 그 값은 헤더에서
+        사라지므로 알려야 한다:
+
+        * 수치가 아닌 것 -- 예: `J2000`.
+        * **유한하지 않은 것** -- `nan`·`inf`·`1e999`.  ⚠️ `float()` 은 이들을
+          받아 주지만 FITS 실수 카드가 못 된다(`EQUINOX = nan` 이 나온다).
+
+        ⭐ **서로 다른 `(카드, 값)` 마다 한 번** 경고한다 (`_real_warned`) --
+        `check_telid()` 와 같은 규칙이다.  이 함수는 프레임마다 불린다.
+        """
+        text = '' if value is None else str(value).strip()
+        try:
+            real = float(text)
+        except ValueError:
+            real = None
+        if real is not None and math.isfinite(real):
+            return real
+        if text and text != 'NC' and (key, text) not in self._real_warned:
+            self._real_warned.add((key, text))
+            log.warning('%s value %r from TCS is not a finite number -- '
+                        'writing sentinel', key, text,
+                        extra={'detail': '실수형 카드라 수치가 아니거나 유한하지 '
+                                         '않은 값은 못 싣는다 (raw spec 5.0절 '
+                                         'sentinel -999.0).  같은 값은 다시 '
+                                         '알리지 않는다'})
+        return float(rawcards.SENTINEL['R'])
 
     def _apply_dome(self, out: dict[str, object]) -> None:
         """돔 방위 세 카드를 확정한다 -- `[dome] source` 가 켜져 있을 때만.
@@ -478,7 +538,9 @@ class TelemetryRelay:
         카드 목록의 정본은 `rawcards.RELAY_CARDS`(TCS 27 + AUX 33 에서
         Radionode 2장 제외)다.  와이어에서 받은 값은 그대로 두고, 없는 카드만
         sentinel `'NC'` 로 채운다 -- **TC 중계 카드는 전부 문자열**이다
-        (raw spec 5.7절 "TCS 중계값은 문자열로 싣는다", 레거시 계승).  구판의
+        (raw spec 5.7절 "TCS 중계값은 문자열로 싣는다", 레거시 계승).
+        ⭐ **예외 하나: `EQUINOX` 는 실수**다 (운영자 2026-09-23, `_FITS_REAL`)
+        -- 결측이면 실수형 sentinel `-999.0`.  규격은 아직 문자열이다.  구판의
         수치 sentinel(`-1`/`-999.0`)은 카드가 문자열 형으로 통일되면서 문자열
         공통 sentinel 로 접혔다.  메시지 계층(`header_dict()`, sentinel `'0'`)
         과는 계속 분리다 (C-9).
@@ -534,10 +596,17 @@ class TelemetryRelay:
                        _sync_error_az(out.get('DSAZ'), out.get('DSTELAZ')))
         for k in rawcards.RELAY_CARDS:
             out.setdefault(k, 'NC')
+        # ⭐ 실수형 중계 카드 (`EQUINOX`, 운영자 2026-09-23) -- 와이어 문자열을
+        # 실수로.  없거나(`NC`) 수치가 아니거나 유한하지 않으면 실수형 sentinel
+        # `-999.0` (5.0절).
+        for k in _FITS_REAL:
+            out[k] = self._as_real(k, out.get(k))
         if date_obs:
             out['DATE-OBS'] = date_obs
         else:
-            log.error('DATE-OBS 가 비어 있다 -- ICS 가 노출 개시 시각을 찍지 '
-                      '못했다는 뜻이고 우리 결함이다 (raw spec 5.4절). 카드를 '
-                      '비워 두어 converter 가 이 노출을 거부하게 한다')
+            log.error('DATE-OBS is empty -- leaving the card out',
+                      extra={'detail': 'ICS 가 노출 개시 시각을 찍지 못했다는 '
+                                       '뜻이고 우리 결함이다 (raw spec 5.4절). '
+                                       '카드를 비워 두어 converter 가 이 노출을 '
+                                       '거부하게 한다'})
         return out

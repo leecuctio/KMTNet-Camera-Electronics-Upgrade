@@ -11244,3 +11244,102 @@ flush 를 한 번 만들기 때문(11.93; 하네스엔 ICG 가 없어 추적 상
 시험: `test_hk_wire` +4 (`hkdata now` 전달·거절 · HK 답은 게이지 답이 아님 · 별칭 · IMAGETYPE 셋) ·
 `test_parse` +1 (`Not Configured` 관용) · `test_console` +1 (안쪽 왕복은 잡음) · `test_ics_ops_commands`
 ccdflush 둘 차분으로.  `ics_sim` 쪽 변경(commands·emitter·console·transport)은 `sync_vendor`.
+
+### 11.95 전수 시험(넉 장 미실행분) · `EQUINOX` 실수형 (2026-09-23, 운영자)
+
+#### (1) 전수 시험 -- `32b002d` 에서, 고치기 전
+
+`ics_sim` **428 통과 · 3 실패** (4분 22초) · `ics_archon` **808 통과 · 1 실패** (6분 44초, 알려진 flake 는 이번엔
+안 났다).  ⛔ 실패 넷은 **원인이 하나**다 -- 11.94-h 가 돔 방위 카드를 소수 2자리로 바꾸면서 그 값을 인용하는
+시험을 같은 커밋에서 안 고쳤다(`test_raw_draft` 둘 · `test_dalterr_…` · `test_dome_wiring`).  코드는 지시대로다.
+⚠️ 그중 바이트 대사 둘은 **규격 견본이 아직 `+0.2`** 라서 생긴 것 -- 아래 (2) 의 "견본보다 앞선 카드" 표로 받는다.
+
+#### (2) `EQUINOX` 를 실수로 (운영자 지시)
+
+종전 `EQUINOX = '2000.000          '` (TC 중계 문자열 그대로, 규격 5.7절) → **`EQUINOX = 2000.0`**.
+
+| 무엇 | 자리 |
+|---|---|
+| 템플릿 형 `'S'`,18 → **`'R'`,0** -- science·guide 둘 다 | `ics_sim/rawcards.py` · `icg_archon/guidecards.py` |
+| 와이어 문자열 → 실수.  없거나 `NC` 면 실수형 sentinel **`-999.0`**(조용히), 보냈는데 수치가 아니거나 유한하지 않으면(`nan`·`inf`) sentinel + 경고 -- 경고는 **(카드, 값)마다 한 번** (ICG 는 프레임마다 부른다) | `ics_sim/telemetry.py` `_FITS_REAL`·`_as_real` |
+| ⭐ **`SPEC_PENDING` 을 science 에도** -- guide 에만 있던 "견본과 일부러 갈라 둔 카드" 장치(`apply_pending`).  대조 시험이 이 목록만 견본 쪽을 올려 견주고 나머지 표류는 그대로 잡는다 | `rawcards.SPEC_PENDING` · `guidecards.SPEC_PENDING`(같은 목록이어야 한다 -- 시험) |
+| 바이트 대사의 예외 `_ahead_of_sample(tag)` -- `EQUINOX`(템플릿) · `DAZERR`(소수 2자리, 계산 카드라 값 형식만 갈림).  값은 견본에서 만든다 | `ics_sim/tests/test_raw_draft.py` |
+| labtest 사본은 **규격을 따른다** -- 안 고쳤다.  대조는 `apply_pending(labtest)` == `CARDS` | `tests/test_labtest_spec_copy.py` |
+
+⚠️ **규격이 따라잡을 때 할 것** (운영자가 raw spec 을 고친 뒤): 두 `SPEC_PENDING` 비우기 · `_ahead_of_sample()`
+에서 둘 지우기 (⭐ 견본이 따라잡으면 `test_the_sample_has_not_caught_up_yet` 가 먼저 알린다) · `test_only_equinox_runs_ahead_of_the_sample` 을 `== ()` 로 · `gen_guidecards.py` 재실행(⚠️ 지금
+돌리면 guide `EQUINOX` 가 `'S'` 로 돌아간다) · labtest 다섯 사본의 `RAWCARDS` 와 TCS 결측값(`'NC'` → `-999.0`).
+converter 는 둘 다 `hval`/`nv` 로 읽어 실수를 그대로 받는다(기본 `2000.0`) -- 손댈 것 없다.
+
+시험: `test_equinox_is_a_real_card`(science) · `test_guide_equinox_is_a_real_card` ·
+`test_ahead_of_sample_matches_the_pending_list` 신설, `test_the_sample_has_caught_up_…` → `test_only_equinox_runs_ahead_…`.
+
+### 11.96 전반 재검토 · 결함 정리 -- FirstFlush 되돌림 · `note_reply` · 펄스 안전 (2026-09-23~24, 운영자 지시)
+
+운영자 지시 *"다시 한 번 전반적으로 검토 및 보완 · FirstFlush·note_reply 결함 둘도 고치고 같이 커밋"*.
+재검토 = 여덟 갈래(답 판정 · 설정 되돌림 · ICG · 공유층 · 살아 있는 문서 · ini 키 · 인수인계 · 시험) 108건 →
+반박 검증 → 운영자 판단이 필요 없는 것을 파일 묶음별로 세 차례 고치고 묶음마다 독립 검토.
+⚠️ 반박 검증이 108건을 **한 건도 기각하지 않았다** -- 그래서 코드 결함은 내가 원문을 열어 다시 갈랐다.
+
+#### (1) 운영자가 짚은 둘
+
+| 무엇 | 고친 것 | 자리 |
+|---|---|---|
+| ⛔ **FirstFlush 되돌림이 `finally` 가 아니었다** (11.93) -- 올림과 LOADPARAMS 사이 실패·ABORT 면 설정 메모리에 `FirstFlush=1` 이 남아 **그 세션 science 매 장 flush**(+5.5 s) | `_raise_first_flush` → **`_plan_first_flush`**(판정만) · 올림~LOADPARAMS 를 `try/finally` · 되돌림은 `_put_back`(`asyncio.shield`, 원래 예외를 안 가림).  되돌림마저 실패하면 `_pending_restore` 에 남기고 **다음 LOADPARAMS 앞**(`_retry_pending_restore`)에서 다시 쓴다 -- RCONFIG 로 되읽어(`_memory_holds`, 셋 답) 이미 원래 값이면 지운다.  STOP/ABORT(`set_exposures`·`abort_now`·`flush_now(reset=True)`)는 멈춘 **뒤** 느슨하게.  ACF 적용 성공 · `ARCHON` 바이패스 `WCONFIG`(같은 줄만) · `CLEARCONFIG` 가 지운다.  LOADPARAMS 가 나간 뒤 되돌림만 실패하면 **노출은 간다**(표를 먼저 만든다).  `flush_now` 도 같은 틀 | `archon/controller.py` |
+| ⛔ **`note_reply` 가 원문에 `ERROR` 가 있는지로 봤다** -- `FATAL` 이 성공으로 | `note_reply(msg)` -- `msg.mtype in ('ERROR','FATAL')` 가 거절.  `_is_reply_to` docstring 에 FATAL | `gaugectl.py` · `expenablectl.py` · `app.py` |
+
+#### (2) 재검토가 짚은 코드 결함 (고쳤다)
+
+| 무엇 | 자리 |
+|---|---|
+| ⛔ **거절된 `GO` 가 게이지 되켜기 타이머를 버렸다**(`a0b2773` 퇴행) -- `cancel_reenable` 을 수락 **뒤**로 | `app.py cmd_go` |
+| ICG 가 `HKDATA` 를 `ERROR`/`FATAL` 로 답하면 GO 가 시한(2 s)을 헛기다리고 틀린 진단 → `_on_hk_refused`: **`HKDATA` 거절만** GO 대기를 곧바로 끝낸다(`HK` 거절은 경고만) | `app.py` |
+| ⛔ **ABORT·종료가 `C1TRIGOUT`/`C2TRIGOUT` 펄스를 안 끊었다**(셔터 선이 강제 HIGH 로 남는다) → `release_pulse` 가 둘 다 끊고 각 쉬는 상태로 · `SHOPEN`/`SHCLOSE` 가 셔터 컨트롤러의 대기 중 `CnTRIGOUT` 을 가져간다(`_take_from_trigout`) · `shutter_ctrl = both` 에서 `CnTRIGOUT` 이 `SHOPEN` 을 끊으면 다른 쪽도 내린다 | `app.py` |
+| 펄스 핸들을 올림 **뒤**에 등록해 그 창의 ABORT·종료가 못 봤다 → spawn 자리에서 등록 · 내림이 끝난 뒤 `finally` 에서 (자기 것일 때만) 놓는다 -- ICS·ICG 둘 다 | `app.py` · `icg_archon/commands.py` |
+| ⛔ **올림 실패가 선을 안 내렸다**(시한 초과면 이미 HIGH) → ICS `_rest_each`(올렸거나 올리려 한 컨트롤러 전부, 하나 실패해도 나머지) · ICG 한 번 내림 | 〃 |
+| ⛔ **종료 도중 온 올림**이 내릴 이 없는 펄스를 띄웠다 → `stopping` 이 서면 `ERROR: <WORD> Shutting down -- not raised` (ICS `IcsArchon.stopping` · ICG `IcgDispatcher.stopping`) | 〃 |
+| ⛔ `SHOPEN nan`·`CnTRIGOUT inf`·`TRIGOUT nan` 이 통과해 선이 안 내려왔다 → `math.isfinite` 거절 | 〃 |
+| ICG `TRIGOUT <ms>` 가 올림 도중 끊기면 답이 없었다 → 끝 응답 **하나**(`Cut before the raise was confirmed (MS=…) -- …`) · 시한 내림 실패는 `Auto lower failed after <ms> ms: …`(부르지 않은 통보) | `icg_archon/commands.py` |
+| ⛔ DARK/BIAS 의 `NoIntMS` 가 다음 셔터 노출로 샜다(`shutter_close_ms = 0` 이면) → `shutter_dwell_ms`(ACF 적용 직후 한 번, max(ACF, 하한)) 를 셔터 노출마다 · `_enforce_shutter_close_dwell` 은 적용 직후 한 번만(BIAS 뒤마다 뜨던 거짓 경고도 사라짐) · ERASE flush 는 `NoIntMS=0` | `archon/controller.py` · `backend.py` |
+| ACF 적용이 깨진 링크에 `POLLON` 을 보내 원인을 덮었다 → 멀쩡한 흐름에서만 · 마지막엔 새 연결로 한 번 | `archon/controller.py` |
+| `set_trigger` 가 취소·답 유실(적용됐을 수 있음)에 HIGH 를 안 적었다 → guide `TRIGOUT` 카드 과소 보고 방지 | 〃 |
+| POWERON 거절 와이어 문면에 한글 예외 원문 → 거절 코드만 | 〃 |
+| ICG 게이지 `set()` 이 APPLYDIO09 **시한 초과**에도 직전 상태로 되돌렸다 → 확실히 안 된 경우만 되돌리고 나머지는 `UNKNOWN`(ICS 가 끄게) · 호출끼리 `_lock` · 거부 뒤 한 번 되쓰기 | `icg_archon/gauge.py` |
+| ICG `IMAGETYPE` 이 BIAS 뒤 `EXP=0`(최소 노출이 맞다) → `IcgDispatcher._image_type_query` | `icg_archon/commands.py` |
+| Radionode: `local_lns` 에서 `ENABLE/DISABLE` 불가 · uplink 오류를 `ok` 로 가림 · CONNECT 답의 ini 문면 · 재기동 안내(CONNECT 는 ini 를 다시 안 읽는다) | `icg_archon/radionode.py` · `commands.py` · `config.py` |
+| HK CSV 열 구성이 바뀌어도 이어 썼다 → `.2.csv` 로 가른다(ICG `hk.py`) · science 감시 CSV 는 UTF-8 아닌 파일에 태스크가 죽었다 · 0바이트 파일을 갈랐다 | `icg_archon/hk.py` · `archon/monitor.py` |
+| `EQUINOX` 경고가 프레임마다 · `nan`/`inf` 통과 → (카드, 값)마다 한 번 · sentinel | `ics_sim/telemetry.py` |
+| verbose off 콘솔에서 `>TC TCSSTATUS` 가 아무것도 안 보였다 · `input()` 의 `OSError` 에 종료 이유 없음 · AUX `print()` | `ics_sim/console.py` · `auxcontrol.py` |
+| `[archon]` 참거짓 낱말이 정본 사본이 아니었다 · 옛 `[logging] verbose` 무언 무시 → 경고 | `config.py` · `ics_sim/config.py` |
+| 와이어 한글(`icg_node 가 비어 있다`) · ICG·ICS `Failed: <한글>` → ASCII(`_fail_text`) · 영문 로그 규약 잔여 | 여러 곳 |
+| probe 가 `EQUINOX` 에 `NC` 를 넣어 거짓 ERROR · XIS `PONG` 부분 문자열 | `tools/probe_archon.py` · `xischeck.py` |
+
+#### (3) 문서
+
+README · INSTALL · bench_test_plan · icg_first_run · legacy_command_coverage(신설 13 · 전체 139) · acf/README ·
+acf/bench/README · 설치 대장(2026-09-15 벤치 science R2613 줄, 상자 ⏳) · 두 ini 주석 · `SMC_CLAUDE` 둘(시작점 ·
+상태 표 · 닫힌 ⏳) · ics_sim DevNote 7장 참조표.  낡은 것: 옛 ini 키 · HK 파일→와이어 · 게이지 낱말 live ·
+ACF 적용 시점(science 는 **첫 GO**) · 로그 파일명 날짜(관측일, KASI 는 KST) · Radionode 경로 · 지연 로그 영문 ·
+돔 방위 2자리 · `EQUINOX` 실수.
+
+#### (4) ⏳ 운영자 판단 대기 (고치지 않았다)
+
+| 무엇 | 선택지 |
+|---|---|
+| ICS 기동 첫 틱·매 독출 뒤 `EXPENABLE 1` 이 ICG 콘솔의 수동 `EXPENABLE OFF` 를 푼다 | ICS 가 막은 경우만 푼다 / 지금대로 + 문서 |
+| 게이지 끈 GO 가 첫 장 전에 실패하면 첫 장 flush 요청이 사라진다 | 요청을 *"flush 빚"* 으로 / 운영 절차(`ccdflush ALL`) |
+| verbose off 에서 콘솔 `>K.IC status` 의 답이 안 보인다(양끝이 우리 노드) | 콘솔 명령의 답만 남긴다 / 지금대로 |
+| 걷어 낸 ini 키(`ccdflush`·`hk_*`·`param_*`)를 조용히 무시 -- 옛 `ccdflush = true` 가 flush 없음이 된다 | 기동 경고 / 거절 / 지금대로 |
+| ICS 펄스가 남에게 끊기면 제 답이 없고 ICG `TRIGOUT` 은 `Cut …` 을 낸다 | 맞출지 |
+| 배포 ini `write_fits = true` 가 archon 기동마다 *"보지 않는 설정"* 경고 | `false` 로 / 줄 삭제 |
+| `[timing] shutter_to_readout` 이 실기에서도 6 s 잔다(호스트 대기) | 실기에서 건너뛸지 |
+| ics_sim 공유층 로그 한글 약 56곳 · `validate()` 경고 한글 | 영문화 여부 |
+| `ABORT` 가 `CnTRIGOUT` 도 끊는다 (이번에 넣었다 -- README·ICG 규약에 맞췄다) | 확인 |
+
+시험: 커밋 내용으로 전수 **ics_sim 469 · ics_archon 975 전부 통과** (2026-09-24).  첫 전수에서 둘이 났다 --
+POWERON 거절 문면을 ASCII 로 바꾸며 그 문면(`(see log)`)을 인용하던 시험을 안 고쳤다(고쳤다 -- 문면 변경은
+인용 시험과 같은 커밋에서) · 알려진 flake `test_abort_cuts_…`(단독 5/5 통과).
+
+⏳ 남긴 작은 것: 설정 로드 중 경고가 로그 설정 **전**이라 파일에 안 남는다 · ICG `_settle_gauge`/`stop` 의 *"이미
+맞다"* 판정이 게이지 락 밖 · 콘솔 `hk` 의 `DONE` 도 GO 의 `HKDATA NOW` 대기를 푼다(~8 ms 창) · `acftiming`
+`TimingError` 문면 한글 · APPLYMOD09 가 DIO 를 다시 싣는지 미실측(게이지 되쓰기 경로).

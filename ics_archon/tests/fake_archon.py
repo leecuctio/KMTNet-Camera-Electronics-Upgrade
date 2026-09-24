@@ -161,6 +161,8 @@ class FakeArchon(threading.Thread):
         self.accepts = 0
         #: 받은 명령 이름 순서 -- 시퀀스 검증용.
         self.seen: list[str] = []
+        #: 받은 명령 **원문** 순서 -- 값까지 보는 시험용 (`seen` 은 `=` 앞 20자만 남긴다).
+        self.commands: list[str] = []
         self._lock = threading.Lock()
 
         # 프레임 버퍼 -- **여러 개다.**  BIGBUF=1 이면 2개, 기본은 3개
@@ -267,6 +269,7 @@ class FakeArchon(threading.Thread):
         name = cmd.split('=')[0][:12]
         with self._lock:
             self.seen.append(cmd.split('=')[0][:20])
+            self.commands.append(cmd)
 
         if cmd.startswith(self.unknown) and self.unknown:
             return                              # 무응답 (p.45)

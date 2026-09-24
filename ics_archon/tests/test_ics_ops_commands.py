@@ -278,15 +278,17 @@ def test_ccdpowon_refused_by_the_controller_is_an_error_in_ascii(tmp_path):  # n
     """⚠️ 실기는 이 세션에 `APPLYALL` 이 없으면 `POWERON` 을 `?xx` 로 거부한다 (매뉴얼
     p.51, DevNote 10.2).  가짜 `applied=False` 가 그 상태다.
 
-    `controller.power_on()` 의 진단 문구는 한글이라 와이어에서는 `?` 가 된다 -- 그래도
-    **ASCII 한 줄**이어야 하고 `(see log)` 로 원문이 로그에 있음을 알린다.
+    ⭐ `controller.power_on()` 의 진단 문구는 **ASCII 영문**이고 예외 원문(`protocol` 의
+    한글 문면)은 싣지 않는다 -- 거절 코드(`reply ?xx`)만 싣는다 (DevNote 11.96).  종전에는
+    원문이 끼어 와이어에서 `?` 로 뭉개지고 `(see log)` 가 붙었다.
     """
     async def body():  # noqa: ANN202
         async with Session(tmp_path, applied=False) as s:
             line = await s.reply('OBS>ICS CCDPOWON', 'CCDPOWON')
             assert ' ERROR: CCDPOWON Failed: ' in line, line
             assert line.isascii(), line
-            assert '(see log)' in line, line
+            assert 'refused POWERON (reply ?' in line, line
+            assert '(see log)' not in line, '진단 문면에 비ASCII 가 새 들어왔다: %s' % line
             assert not s.mk.powered
     run(body())
 
@@ -608,7 +610,9 @@ def test_shclose_hands_the_line_back_in_one_apply(tmp_path):
     ⚠️ **적분 중이면 셔터가 안 닫힌다** -- 스크립트가 그 선을 HIGH 로 몰고
     있기 때문이고, 그것이 운영자가 고른 동작이다 (2026-09-09): 노출 중
     `SHCLOSE` 가 자료를 끊지 않는다.
-    ⛔ 조기 차단은 `STOP`/`ABORT` 의 `close_shutter()` 몫이다 (`FORCE=1` 로 붙든다).
+    ⛔ 적분을 끊는 것은 `ABORT` 의 `abort_now()`(`Exposures=0` -> `RESETTIMING`)다 --
+    `STOP` 은 안 끊는다.  `close_shutter()` 의 `FORCE=1`+`LEVEL=0` 은 호스트 카운트다운이
+    먼저 끝났을 때 빛만 끊는다.
     """
     async def run():  # noqa: ANN202
         async with Session(tmp_path) as ses:
@@ -772,3 +776,425 @@ def test_cntrigout_is_registered_in_the_ics_vocabulary():
     """⭐ 발신 어휘에 등록돼야 `emitter.validate()` 가 안 운다."""
     from ics_archon.app import ICS_OPS_COMMANDS
     assert {'C1TRIGOUT', 'C2TRIGOUT'} <= ICS_OPS_COMMANDS
+
+
+# -- 펄스를 끊는 자리 (DevNote 11.96) --------------------------------------
+#
+# ⭐ **끊는 쪽이 선을 책임진다** -- `ABORT`·종료(`release_pulse`), 다음 명령, 그리고
+# 셔터를 모는 컨트롤러에서는 `SHOPEN`/`SHCLOSE` 와 `CnTRIGOUT` 이 서로를.
+# ⚠️ 하네스 `time_scale` 은 0.02 다 -- `C1TRIGOUT 500000` 은 10 s, `SHOPEN 500` 도 10 s.
+
+
+def _rest_values(fake):  # noqa: ANN001, ANN202
+    return _cfg_value(fake, 'TRIGOUTLEVEL'), _cfg_value(fake, 'TRIGOUTFORCE')
+
+
+def test_shutdown_rests_a_running_cntrigout_pulse(tmp_path):
+    """⛔ **종료가 `C1TRIGOUT`/`C2TRIGOUT` 펄스를 끊고 쉬는 상태로 내린다**.
+
+    종전 `release_pulse` 는 `SHOPEN` 타이머만 봐서, `CnTRIGOUT` 중에 종료하면
+    `super().stop()` 의 취소가 내림을 건너뛰어 `TRIGOUTLEVEL=1`·`FORCE=1` 이 설정 메모리에
+    남았다 -- 셔터를 모는 MK 면 사람 없는 채로 **셔터가 열린 채** 끝난다.
+    ⭐ 각자 **자기 쉬는 상태**로 간다: 셔터를 모는 MK `('0','0')`, 안 모는 NT `('0','1')`.
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            for word, fake in (('C1TRIGOUT', ses.mk), ('C2TRIGOUT', ses.nt)):
+                n = len(fake.seen)
+                ses.app.transport.feed('abc>ICS %s 500000' % word)
+                await until(lambda f=fake, k=n: _trig_trace(f, k).count('APPLY') >= 1,
+                            what='%s 의 올림' % word)
+            raised = (_rest_values(ses.mk), _rest_values(ses.nt))
+        # `__aexit__` 가 `app.stop()` -> `release_pulse('shutdown')` 을 지났다.
+        return raised, _rest_values(ses.mk), _rest_values(ses.nt)
+
+    raised, mk, nt = asyncio.run(run())
+    assert raised == (('1', '1'), ('1', '1')), raised
+    assert mk == ('0', '0'), 'MK 가 쉬는 상태로 안 내려갔다: %r' % (mk,)
+    assert nt == ('0', '1'), 'NT 가 쉬는 상태로 안 내려갔다: %r' % (nt,)
+
+
+def test_abort_rests_a_running_cntrigout_pulse(tmp_path):
+    """⭐ `ABORT` 도 `CnTRIGOUT` 펄스를 끊는다 -- ICG `TRIGOUT` 과 같은 규약이다.
+
+    유휴 중 `ABORT` 는 컨트롤러를 안 만지므로(기반 `No acquisition in progress`) NT 에
+    오는 적용은 `release_pulse` 의 내림 하나뿐이다.
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            n = len(ses.nt.seen)
+            ses.app.transport.feed('abc>ICS C2TRIGOUT 500000')
+            await until(lambda: _trig_trace(ses.nt, n).count('APPLY') >= 1,
+                        what='C2TRIGOUT 의 올림')
+            k = len(ses.nt.seen)
+            ses.app.transport.feed('abc>ICS abort')
+            await until(lambda: _trig_trace(ses.nt, k).count('APPLY') >= 1,
+                        what='ABORT 의 내림')
+            return _rest_values(ses.nt), dict(ses.app.dispatch._trigout_timers or {})  # noqa: SLF001
+
+    nt, timers = asyncio.run(run())
+    assert nt == ('0', '1'), nt
+    assert not timers, '끊은 펄스의 핸들이 남았다: %r' % timers
+
+
+def test_shopen_takes_the_line_from_a_pending_cntrigout(tmp_path):
+    """⛔ `SHOPEN` 이 셔터를 모는 컨트롤러의 **대기 중 `CnTRIGOUT` 을 끊는다**.
+
+    안 끊으면 `CnTRIGOUT` 의 옛 타이머가 깨어나 선을 `FORCE=0` 으로 돌려 **`SHOPEN` 이
+    열겠다던 셔터가 도중에 스크립트로 넘어간다** (`_trigout_cmd` 가 반대 방향을 끊는
+    것과 짝이다).
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            fake = _shutter_fake(ses)
+            word = 'C1TRIGOUT' if fake is ses.mk else 'C2TRIGOUT'
+            n = len(fake.seen)
+            ses.app.transport.feed('abc>ICS %s 10000' % word)         # 0.2 s
+            await until(lambda: _trig_trace(fake, n).count('APPLY') >= 1,
+                        what='%s 의 올림' % word)
+            k = len(fake.seen)
+            ses.app.transport.feed('abc>ICS SHOPEN 100')             # 2.0 s
+            await until(lambda: _trig_trace(fake, k).count('APPLY') >= 1,
+                        what='SHOPEN 의 올림')
+            await asyncio.sleep(0.5)             # `CnTRIGOUT` 의 시한(0.2 s)을 넘긴다
+            return _trig_trace(fake, k), _rest_values(fake)
+
+    trace, now = asyncio.run(run())
+    assert trace == ['LEVEL', 'FORCE', 'APPLY'], '옛 CnTRIGOUT 타이머가 선을 내렸다: %r' % trace
+    assert now == ('1', '1'), now
+
+
+def test_abort_in_the_raise_window_still_rests_the_shutter(tmp_path, monkeypatch):  # noqa: ANN001
+    """⛔ **올림 도중에 온 `ABORT` 도 `SHOPEN` 을 끊는다** (DevNote 11.96).
+
+    종전에는 핸들을 올림(`raise_line` -- `WCONFIG` 둘 + `APPLYSYSTEM`) **뒤에** 태스크
+    안에서 적어서, 그 창에 온 `ABORT`·종료가 펄스를 못 봤다 -- 올림이 끝나면 셔터가
+    강제로 열린 채 `<초>` 동안 남았다.  ⭐ 지금은 `spawn` 하는 자리에서 적는다.
+    올림을 0.3 s 늦춰 그 창에 `ABORT` 를 넣는다.
+    """
+    from ics_archon.archon import trigout as trig_mod
+    real = trig_mod.raise_line
+
+    async def slow_raise(ctrl):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0.3)
+        await real(ctrl)
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            monkeypatch.setattr(trig_mod, 'raise_line', slow_raise)
+            fake = _shutter_fake(ses)
+            n = len(ses.sent)
+            ses.app.transport.feed('abc>ICS SHOPEN 500')
+            await asyncio.sleep(0.05)                    # 늦춘 올림의 창 안
+            ses.app.transport.feed('abc>ICS abort')
+            await asyncio.sleep(0.6)                     # 늦춘 올림이 끝났을 시각을 넘긴다
+            opened = [s for s in ses.sent[n:] if 'Shutter=Open' in s]
+            return _cfg_value(fake, 'TRIGOUTLEVEL'), opened
+
+    level, opened = asyncio.run(run())
+    assert level == '0', '창 안의 ABORT 를 놓쳐 셔터가 열린 채 남았다'
+    assert opened == [], opened
+
+
+@pytest.mark.parametrize('line, fake_name, rest', [
+    ('SHOPEN 0.01', 'mk', ('0', '0')),       # 배포 ini 는 MK 가 셔터를 몬다 -- 스크립트에 반환
+    ('C2TRIGOUT 10', 'nt', ('0', '1')),      # 안 모는 NT -- 붙든다
+])
+def test_shutdown_in_the_rest_window_still_rests_the_line(tmp_path, monkeypatch, caplog,  # noqa: ANN001
+                                                          line, fake_name, rest):
+    """⛔ **내림 도중에 온 종료도 펄스를 끊고 선을 내린다** (DevNote 11.96).
+
+    종전에는 펄스 태스크가 핸들을 내림(`rest_line`) **앞에서** 지워서, 그 한 적용 동안
+    `release_pulse('shutdown')` 이 펄스를 못 봤다 -- 이어지는 `super().stop()` 이 그
+    태스크를 취소하면 내림이 끊겨 선이 `LEVEL=1`·`FORCE=1` 로 남는다.  ⭐ 지금은 핸들을
+    내림 **뒤에** `finally` 에서 지운다.  내림을 0.3 s 늦춰 그 창에서 세션을 닫는다.
+    ⚠️ `ABORT` 로는 이 결함이 안 보인다 -- 태스크가 안 취소되니 제 내림이 끝까지 간다.
+    """
+    from ics_archon.archon import trigout as trig_mod
+    real = trig_mod.rest_line
+    caplog.set_level(logging.WARNING, logger='ics_archon.app')
+
+    async def slow_rest(ctrl, how):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0.3)
+        await real(ctrl, how)
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            fake = getattr(ses, fake_name)
+            monkeypatch.setattr(trig_mod, 'rest_line', slow_rest)
+            n = len(fake.seen)
+            ses.app.transport.feed('abc>ICS %s' % line)
+            await until(lambda: _trig_trace(fake, n).count('APPLY') >= 1,
+                        what='%s 의 올림' % line)
+            # 시한(0.2 ms)은 지났고 늦춘 내림(0.3 s)의 창 안이다.
+            await asyncio.sleep(0.05)
+            d = ses.app.dispatch
+            held = (d._shutter_timer if line.startswith('SHOPEN')          # noqa: SLF001
+                    else (d._trigout_timers or {}).get('NT'))              # noqa: SLF001
+            in_window = (held is not None and not held.done(),
+                         _rest_values(fake))
+        # `__aexit__` 가 `app.stop()` -> `release_pulse('shutdown')` 을 지났다.
+        return in_window, _rest_values(fake)
+
+    (alive, during), after = asyncio.run(run())
+    assert alive, '내림 창에서 핸들이 이미 지워졌다 -- 종료가 이 펄스를 못 본다'
+    assert during == ('1', '1'), during
+    assert after == rest, '내림 창의 종료가 선을 HIGH 로 남겼다: %r' % (after,)
+    assert any('shutdown -- cutting the running pulse' in r.getMessage()
+               for r in caplog.records), [r.getMessage() for r in caplog.records]
+
+
+def test_cntrigout_taking_a_both_shopen_rests_the_other_controller(tmp_path):
+    """⛔ **`shutter_ctrl = both` 에서 `CnTRIGOUT` 이 `SHOPEN` 을 끊으면 다른 쪽도 내린다**
+    (DevNote 11.96).
+
+    `SHOPEN` 은 두 대를 다 올리는데 끊긴 `SHOPEN` 은 내림을 안 돌리고, `C1TRIGOUT` 은 MK 만
+    만진다 -- 종전에는 NT 가 `TRIGOUTLEVEL=1`·`FORCE=1` 인 채 **핸들 없이** 남아 `ABORT`·
+    종료도 못 찾았다 (셔터가 열린 채).  ⭐ NT 는 `SHOPEN` 의 쉬는 상태 `('0','0')` 로 가고,
+    그 내림의 핸들은 끝나면 지워진다.  종료는 MK 의 `C1TRIGOUT` 을 끊어 `('0','0')` 로 내린다.
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            # ⚠️ 배포 ini 는 `shutter_ctrl = MK` -- 두 대가 다 셔터를 모는 배선으로 바꾼다.
+            # 백엔드·컨트롤러가 같은 `acfg` 객체를 들고 있어 곧바로 먹는다.
+            ses.app.acfg.shutter_ctrl = 'BOTH'
+            await ses.warmup()
+            be, d = ses.app.backend, ses.app.dispatch
+            assert be.acfg.drives_shutter('MK') and be.acfg.drives_shutter('NT')
+            m, n = len(ses.mk.seen), len(ses.nt.seen)
+            ses.app.transport.feed('abc>ICS SHOPEN 500')                 # 10 s
+            await until(lambda: _trig_trace(ses.mk, m).count('APPLY') >= 1
+                        and _trig_trace(ses.nt, n).count('APPLY') >= 1,
+                        what='SHOPEN 의 두 대 올림')
+            opened = (_rest_values(ses.mk), _rest_values(ses.nt))
+            m, n = len(ses.mk.seen), len(ses.nt.seen)
+            ses.app.transport.feed('abc>ICS C1TRIGOUT 500000')           # 10 s
+            await until(lambda: _trig_trace(ses.mk, m).count('APPLY') >= 1
+                        and _trig_trace(ses.nt, n).count('APPLY') >= 1,
+                        what='C1TRIGOUT 의 MK 올림과 NT 내림')
+            await until(lambda: 'NT' not in (d._trigout_timers or {}),     # noqa: SLF001
+                        what='NT 내림 핸들 정리')
+            during = (_rest_values(ses.mk), _rest_values(ses.nt))
+            shopen_gone = d._shutter_timer is None                         # noqa: SLF001
+        return opened, during, shopen_gone, _rest_values(ses.mk), _rest_values(ses.nt)
+
+    opened, during, shopen_gone, mk, nt = asyncio.run(run())
+    assert opened == (('1', '1'), ('1', '1')), opened
+    assert during == (('1', '1'), ('0', '0')), 'NT 가 SHOPEN 의 HIGH 로 남았다: %r' % (during,)
+    assert shopen_gone
+    assert mk == ('0', '0'), '종료가 MK 의 C1TRIGOUT 을 안 내렸다: %r' % (mk,)
+    assert nt == ('0', '0'), nt
+
+
+@pytest.mark.parametrize('line, word', [('SHOPEN 5', 'SHOPEN'),
+                                        ('C2TRIGOUT 50', 'C2TRIGOUT')])
+def test_a_trigger_line_failure_is_ascii_on_the_wire_and_raw_in_the_log(  # noqa: ANN001
+        tmp_path, monkeypatch, caplog, line, word):
+    """⛔ **한글 예외가 와이어에서 `?` 로만 남지 않는다** (DevNote 11.96).
+
+    종전 `'Failed: %s' % exc` 는 컨트롤러 층의 한글 문구를 그대로 실어 와이어에서
+    `?????` 가 됐고, 원문은 어디에도 없었다.  ⭐ 지금은 `_emit_failed` 가 **원문을 로그 오류
+    한 줄에 먼저** 남기고, 와이어에는 ASCII 로 접은 문구 + `(see log)` 가 나간다.
+    """
+    from ics_archon.archon import trigout as trig_mod
+    from ics_archon.archon.protocol import ArchonError
+    caplog.set_level(logging.ERROR, logger='ics_archon.app')
+
+    async def broken(ctrl):  # noqa: ANN001, ANN202
+        raise ArchonError('%s: 연결이 끊겼다' % ctrl.tag)
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            monkeypatch.setattr(trig_mod, 'raise_line', broken)
+            return await ses.reply('abc>ICS %s' % line, word)
+
+    got = asyncio.run(run())
+    assert got.isascii(), got
+    assert (' ERROR: %s Failed: ' % word) in got and got.endswith('(see log)'), got
+    raw = [r for r in caplog.records if '연결이 끊겼다' in r.getMessage()]
+    assert raw and raw[0].levelno == logging.ERROR, [r.getMessage() for r in caplog.records]
+    assert raw[0].getMessage().startswith('%s: raising the ' % word), raw[0].getMessage()
+
+
+# -- 올림이 실패해도 · 종료 중이어도 선이 HIGH 로 남지 않는다 (DevNote 11.96) ----
+#
+# ⛔ 펄스 태스크는 올림이 실패하면 `finally` 에서 핸들을 지운다 -- 그때 선이 HIGH 면
+# `ABORT`·종료도 못 찾는다.  그래서 올림 실패 가지에서 **올렸거나 올리려 한** 컨트롤러를
+# 내려 본 뒤 답한다.  종료 쪽은 `stop()` 의 깃발(`stopping`)이 새 올림을 거절한다.
+
+
+@pytest.mark.parametrize('sent_first', [False, True])
+def test_a_failed_both_shopen_rests_what_it_raised(tmp_path, monkeypatch,  # noqa: ANN001
+                                                   sent_first):
+    """⛔ **`shutter_ctrl = both` 에서 NT 올림이 실패하면 올려 둔 MK 를 내린다**.
+
+    종전에는 올림 고리가 NT 에서 예외로 빠져 곧바로 답하고 끝났다 -- MK 는
+    `TRIGOUTLEVEL=1`·`FORCE=1` 인 채 핸들이 `finally` 에서 지워져 `ABORT`·종료도 못
+    찾았다 (셔터가 강제로 열린 채).  ⭐ `sent_first` 는 `APPLYSYSTEM` 이 나간 뒤 시한을
+    넘긴 꼴이다 -- NT 도 HIGH 라 **올리려 한** NT 까지 내린다.  내림은 답보다 앞이다.
+    """
+    from ics_archon.archon import trigout as trig_mod
+    real = trig_mod.raise_line
+
+    async def nt_fails(ctrl):  # noqa: ANN001, ANN202
+        if ctrl.tag == 'NT':
+            if sent_first:
+                await real(ctrl)                 # 적용은 나갔는데 답을 못 받은 꼴
+            raise TimeoutError('NT: APPLYSYSTEM 응답이 없다')
+        await real(ctrl)
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            ses.app.acfg.shutter_ctrl = 'BOTH'
+            await ses.warmup()
+            monkeypatch.setattr(trig_mod, 'raise_line', nt_fails)
+            n = len(ses.sent)
+            got = await ses.reply('abc>ICS SHOPEN 500', 'SHOPEN')
+            # ⭐ 답이 나온 **그 시점**의 값 -- 내림이 답보다 앞이어야 한다.
+            at_reply = (_rest_values(ses.mk), _rest_values(ses.nt))
+            opened = [s for s in ses.sent[n:] if 'Shutter=Open' in s]
+            handle = ses.app.dispatch._shutter_timer                      # noqa: SLF001
+        return got, at_reply, opened, handle
+
+    got, (mk, nt), opened, handle = asyncio.run(run())
+    assert ' ERROR: SHOPEN Failed: ' in got and got.isascii(), got
+    assert mk == ('0', '0'), '올림이 실패한 SHOPEN 이 MK 를 HIGH 로 남겼다: %r' % (mk,)
+    assert nt == ('0', '0'), '올리려 한 NT 를 안 내렸다: %r' % (nt,)
+    assert opened == [], opened
+    assert handle is None
+
+
+def test_a_failed_cntrigout_raise_rests_the_line(tmp_path, monkeypatch):  # noqa: ANN001
+    """⛔ `CnTRIGOUT` 도 같다 -- `APPLYSYSTEM` 이 나간 뒤 시한을 넘기면 선이 HIGH 인 채
+    핸들이 지워진다.  ⭐ 그 컨트롤러의 쉬는 상태로 내린 뒤 답한다 (안 모는 NT `('0','1')`)."""
+    from ics_archon.archon import trigout as trig_mod
+    real = trig_mod.raise_line
+
+    async def sent_then_timeout(ctrl):  # noqa: ANN001, ANN202
+        await real(ctrl)
+        raise TimeoutError('%s: APPLYSYSTEM 응답이 없다' % ctrl.tag)
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            monkeypatch.setattr(trig_mod, 'raise_line', sent_then_timeout)
+            got = await ses.reply('abc>ICS C2TRIGOUT 500000', 'C2TRIGOUT')
+            at_reply = _rest_values(ses.nt)
+            timers = dict(ses.app.dispatch._trigout_timers or {})          # noqa: SLF001
+        return got, at_reply, timers
+
+    got, nt, timers = asyncio.run(run())
+    assert ' ERROR: C2TRIGOUT Failed: ' in got, got
+    assert nt == ('0', '1'), '올림이 실패한 C2TRIGOUT 이 NT 를 HIGH 로 남겼다: %r' % (nt,)
+    assert 'NT' not in timers, timers
+
+
+def test_shclose_rests_every_controller_even_when_one_fails(tmp_path, monkeypatch,  # noqa: ANN001
+                                                            caplog):
+    """⛔ **내림 고리는 하나가 실패해도 나머지를 다 내린다** -- 첫 실패는 다 돈 뒤에 답한다.
+
+    종전에는 고리 전체가 한 `try` 라 MK 내림이 실패하면 NT 는 시도조차 안 됐다
+    (`shutter_ctrl = both` 에서 NT 셔터가 열린 채).  실패한 MK 는 로그 오류 줄에 이름이 남는다.
+    """
+    from ics_archon.archon import trigout as trig_mod
+    from ics_archon.archon.protocol import ArchonError
+    real = trig_mod.rest_line
+    caplog.set_level(logging.ERROR, logger='ics_archon.app')
+
+    async def mk_fails(ctrl, how):  # noqa: ANN001, ANN202
+        if ctrl.tag == 'MK':
+            raise ArchonError('MK: 연결이 끊겼다')
+        await real(ctrl, how)
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            ses.app.acfg.shutter_ctrl = 'BOTH'
+            await ses.warmup()
+            m, n = len(ses.mk.seen), len(ses.nt.seen)
+            ses.app.transport.feed('abc>ICS SHOPEN 500')                 # 10 s
+            await until(lambda: _trig_trace(ses.mk, m).count('APPLY') >= 1
+                        and _trig_trace(ses.nt, n).count('APPLY') >= 1,
+                        what='SHOPEN 의 두 대 올림')
+            monkeypatch.setattr(trig_mod, 'rest_line', mk_fails)
+            got = await ses.reply('abc>ICS SHCLOSE', 'SHCLOSE')
+            return got, _rest_values(ses.mk), _rest_values(ses.nt)
+
+    got, mk, nt = asyncio.run(run())
+    assert ' ERROR: SHCLOSE Failed: ' in got, got
+    assert nt == ('0', '0'), 'MK 실패 뒤에 NT 를 안 내렸다: %r' % (nt,)
+    assert mk == ('1', '1'), mk                       # 실패한 쪽은 그대로 -- 답이 그것을 알린다
+    assert any(r.getMessage().startswith('SHCLOSE: could not rest the MK trigger line')
+               for r in caplog.records), [r.getMessage() for r in caplog.records]
+
+
+def test_a_raise_after_the_shutdown_released_the_pulses_is_refused(tmp_path,  # noqa: ANN001
+                                                                   monkeypatch):
+    """⛔ **종료가 펄스를 내린 뒤 온 `SHOPEN`·`CnTRIGOUT` 은 선을 올리지 않는다**.
+
+    종전에는 `release_pulse('shutdown')` 과 전송 닫기 사이에 온 올림이 새 펄스를 띄웠고,
+    `super().stop()` 이 그 태스크를 내림 없이 취소했다 -- 선이 HIGH(MK 면 셔터가 열린 채)로
+    남는다.  ⭐ `stop()` 이 첫 줄에서 `stopping` 을 세우고 명령 처리부가 ASCII 로 거절한다.
+    `release_pulse` 를 감싸 **그 직후**에 명령을 넣는다 -- 실제 종료 순서 그대로다.
+    """
+    mark = {}
+
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            d = ses.app.dispatch
+            real_release = d.release_pulse
+
+            async def release_then_race(why):  # noqa: ANN001, ANN202
+                cut = await real_release(why)
+                mark['stopping'] = ses.app.stopping
+                mark['mk'], mark['nt'] = len(ses.mk.seen), len(ses.nt.seen)
+                mark['sent'] = len(ses.sent)
+                ses.app.transport.feed('abc>ICS SHOPEN 5')
+                ses.app.transport.feed('abc>ICS C2TRIGOUT 5000')
+                return cut
+
+            monkeypatch.setattr(d, 'release_pulse', release_then_race)
+            assert ses.app.stopping is False
+        # `__aexit__` 가 `app.stop()` 을 지났다 -- 그 안에서 위 두 명령이 왔다.
+        return (ses.sent[mark['sent']:], _trig_trace(ses.mk, mark['mk']),
+                _trig_trace(ses.nt, mark['nt']))
+
+    sent, mk_trace, nt_trace = asyncio.run(run())
+    assert mark['stopping'] is True
+    for word in ('SHOPEN', 'C2TRIGOUT'):
+        assert any(' ERROR: %s Shutting down -- not raised' % word in s for s in sent), sent
+    assert all(s.isascii() for s in sent), sent
+    assert mk_trace == [], '종료 중 SHOPEN 이 MK 를 올렸다: %r' % mk_trace
+    assert nt_trace == [], '종료 중 C2TRIGOUT 이 NT 를 올렸다: %r' % nt_trace
+
+
+def test_nan_and_inf_durations_never_raise_a_line(tmp_path):  # noqa: ANN001
+    """⛔ `nan`·`inf` 는 거절한다 -- `float()` 은 받아 주지만 선을 올린 채 못 내린다.
+
+    `nan` 은 `< 0` 비교를 빠져나가 펄스를 띄우고 `asyncio.sleep(nan)` 이 안 깨어 선이
+    **HIGH 로 남는다**(`SHOPEN` 이면 셔터가 강제로 열린 채).  `inf` 는 영영 안 내린다
+    (DevNote 11.96).
+    """
+    async def run():  # noqa: ANN202
+        async with Session(tmp_path) as ses:
+            await ses.warmup()
+            mk0, nt0 = len(ses.mk.seen), len(ses.nt.seen)
+            n0 = len(ses.sent)
+            for line in ('abc>ICS SHOPEN nan', 'abc>ICS SHOPEN inf',
+                         'abc>ICS C1TRIGOUT nan', 'abc>ICS C2TRIGOUT inf'):
+                ses.app.transport.feed(line)
+            await until(lambda: len([m for m in ses.sent[n0:] if ' ERROR: ' in m]) >= 4,
+                        what='nan/inf 거절 넷')
+            await asyncio.sleep(0.2)
+            return (ses.sent[n0:], _trig_trace(ses.mk, mk0), _trig_trace(ses.nt, nt0))
+
+    sent, mk_trace, nt_trace = asyncio.run(run())
+    assert sum('ERROR: SHOPEN Invalid exposure time' in s for s in sent) == 2, sent
+    assert sum('Invalid duration' in s and 'TRIGOUT' in s for s in sent) == 2, sent
+    assert mk_trace == [] and nt_trace == [], (mk_trace, nt_trace)

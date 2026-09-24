@@ -151,8 +151,12 @@ TGD 가 닫히는 `IMAGE7` 에 D4 도 이미 낮다(`IMAGE6`) — 되돌아갈 �
 
 ⭐ **P2 는 ACF 를 안 굽고도 가를 수 있다** — `IntMS=0` **이면서** `NoIntMS=0` 이면 11·12행
 `CALL` 이 파라미터 0 규칙으로 통째 생략돼 `RESET` 의 `RG_HIGH` 가 살아남는다.  곧 현행 판
-그대로 P2 경로가 재현된다.  ⚠️ `_enforce_shutter_close_dwell()` 이 `NoIntMS` 를 도로 올리므로
-그 강제를 잠시 꺼야 한다.
+그대로 P2 경로가 재현된다.  ⭐ **`BIAS` 가 바로 그 길이다 — 아무것도 끌 필요가 없다**: 호스트가
+BIAS 노출마다 `IntMS=0`·`NoIntMS=0` 을 싣는다(`ArchonBackend._readout_stream` →
+`trigger(0, noint_ms=0)`, DevNote 11.85).  `_enforce_shutter_close_dwell()` 은 ACF 를 민 직후의
+첫 `prepare()`(세션 첫 `GO`)에만 돌고, 거기서 슬롯을 올려 두어도 BIAS 가 노출마다 0 으로 덮는다
+(셔터 노출만 `shutter_dwell_ms` 를 싣는다).  ⚠️ 종전 문면 *"그 강제를 잠시 꺼야 한다"* 는 `NoIntMS`
+가 ACF 상수이던 때(2026-09-13 셔터 재설계 전) 이야기다.
 
 ### (다) 정착 — `VerticalShift` 끝에 죽은 상태 한 줄 (T2·T3·T4)
 
@@ -250,7 +254,9 @@ typically 400 Ω"*.  (⛔ 2026-09-13 정정 -- 한때 이 자리에 *"지배항�
 ## 쓰는 법
 
 `ics_archon.ini` 의 `[archon] acf_mk`/`acf_nt` 를 해당 판으로 돌리고 재기동.
-ACF 는 기동마다 적용되므로(`apply_acf` 눈금은 2026-09-12 에 없앴다) 그것으로 끝이다.
+⭐ science 는 **재기동한 뒤 첫 `GO` 의 `prepare()`** 에서 그 판을 민다 (guide 는 기동에서.
+`apply_acf` 눈금은 2026-09-12 에 없앴다).  ⚠️ 그래서 **첫 `GO` 전 컨트롤러 메모리는 앞 판**이다
+(전원을 재투입했으면 빈 메모리) — 사다리의 판을 확인하는 것은 첫 `GO` 뒤다.
 
     acf_mk = .../ics_archon/acf/bench/KMTC_SCI_101_STA0284_R2612_MK_T0.acf
     acf_nt = .../ics_archon/acf/bench/KMTC_SCI_102_STA0285_R2612_NT_T0.acf

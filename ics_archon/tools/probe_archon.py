@@ -128,8 +128,10 @@ class UnitProfile:
     telemetry_cards: Callable[[dict], dict]
     #: 카드 키 -> comment (폭 판정에 쓴다)
     card_comments: Callable[[], dict]
-    #: TC 중계 카드 키 (probe 는 TCS·AUX 에 안 붙으므로 전부 `NC`)
-    relay_cards: Callable[[], tuple]
+    #: TC 중계 카드 키 -> **형별 sentinel** (probe 는 TCS·AUX 에 안 붙는다 --
+    #: 문자열 카드는 `NC`, 실수형 `EQUINOX` 는 `-999.0`).  ⚠️ 전부 `'NC'` 로
+    #: 넣으면 실수 카드에서 `render()` 가 `float('NC')` 에 걸려 거짓 ERROR 를 낸다.
+    relay_sentinels: Callable[[], dict]
     #: 헤더 카드 전량
     make_cards: Callable[..., list]
     #: 자리 표가 실린 절 -- 화면 문구
@@ -194,7 +196,9 @@ def science_profile() -> UnitProfile:
         telemetry_of=parse.telemetry_of,
         telemetry_cards=lambda unit: rawhdr.ctrl_telemetry_header([unit, {}]),
         card_comments=lambda: {k: c for k, _t, _w, c in rawcards.CARDS},
-        relay_cards=lambda: rawcards.RELAY_CARDS,
+        relay_sentinels=lambda: {k: rawcards.SENTINEL[t]
+                                 for k, t, _w, _c in rawcards.CARDS
+                                 if k in rawcards.RELAY_CARDS},
         make_cards=_science_cards, section='규격 5.6.1절')
 
 
@@ -211,7 +215,9 @@ def guide_profile() -> UnitProfile:
         telemetry_of=hk.ctrl_unit,
         telemetry_cards=guidehdr.ctrl_telemetry_header,
         card_comments=lambda: {k: c for k, _t, _w, c in guidecards.CARDS},
-        relay_cards=lambda: guidecards.RELAY_CARDS,
+        relay_sentinels=lambda: {k: guidecards.SENTINEL[t]
+                                 for k, t, _w, _c in guidecards.CARDS
+                                 if k in guidecards.RELAY_CARDS},
         make_cards=_guide_cards, section='규격 10.4절')
 
 
@@ -551,7 +557,8 @@ async def stage_acf(ctrl: ArchonController, acf: str, acfg) -> None:  # noqa: AN
                 '파일의 줄 번호가 컨트롤러 메모리와 다르다.  이대로 '
                 'set_config 를 부르면 엉뚱한 줄을 고쳐 노출 시간이 조용히 '
                 '안 바뀐다 -- 같은 ACF 를 쓰거나 --no-apply-acf 를 빼고 다시 '
-                '돌릴 것 (⚠️ 본 프로그램은 기동마다 APPLYALL 한다)')
+                '돌릴 것 (⚠️ 본 프로그램은 세션마다 한 번 APPLYALL 한다 -- guide 는 '
+                '기동에서, science 는 첫 GO 에서)')
 
 
 # ---------------------------------------------------------------------------
@@ -663,11 +670,12 @@ def _write_probe_fits(raw, fs, ctrl, acfg, args,  # noqa: ANN001
     """규격 헤더(science 5장 / guide 10장)를 **본편과 같은 경로로** 만들어
     파일 1장을 쓴다.
 
-    TC 중계 카드는 전부 `'NC'` 다 (이 도구는 TCS·AUX 에 붙지 않는다).  즉
-    확인할 수 있는 것은 **기하 · 구조 카드 · 컨트롤러 유래 카드 · 정렬**이고,
-    관측 카드의 실값은 본편에서 본다.
+    TC 중계 카드는 전부 형별 sentinel 이다 -- 문자열은 `'NC'`, 실수형
+    `EQUINOX` 는 `-999.0` (이 도구는 TCS·AUX 에 붙지 않는다).  즉 확인할 수
+    있는 것은 **기하 · 구조 카드 · 컨트롤러 유래 카드 · 정렬**이고, 관측 카드의
+    실값은 본편에서 본다.
     """
-    telem = {k: 'NC' for k in prof.relay_cards()}
+    telem = dict(prof.relay_sentinels())
     stem = 'probe.%s.%s' % (time.strftime('%Y%m%dT%H%M%S', time.gmtime()),
                             ctrl.tag)
     cards = prof.make_cards(

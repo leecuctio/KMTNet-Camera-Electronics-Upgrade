@@ -33,6 +33,7 @@ from . import _simpath
 
 _simpath.ensure()
 
+from ics_sim import config as _sim_config    # noqa: E402
 from ics_sim import rawhdr, rawpair          # noqa: E402
 from ics_sim.config import ControllersCfg    # noqa: E402
 
@@ -41,14 +42,10 @@ log = logging.getLogger('ics_archon.config')
 #: 컨트롤러 태그 (`rawpair.CONTROLLERS` 의 색인 순서 = 1:MK, 2:NT)
 CTRLTAGS = tuple(tag for tag, _ in rawpair.CONTROLLERS)
 
-#: ACF 이름에 들어 있는 독출 모드 토큰 -> FITS `RDMODE`.  labtest 의 유도
-#: 규칙 그대로다 (`KMTNet_Sci_fast_med_U13.acf` -> `FAST`).
-#:
-#: ⚠️ **현행 ACF 이름 규칙에는 이 토큰이 없다** (`acf/README.md` — 일곱 전부
-#: `<SITE>_<역할>_<유닛>_<시리얼>_<ACF판>[_<조>]`).  그래서 실기에서 이 유도는
-#: 늘 빈손이고, `RDMODE` 는 **ini 에 적은 값**이 정본이다 (현행 전부 `NORMAL`,
-#: 운영자 확정 2026-08-29).  규칙을 남겨 둔 것은 속도별 ACF 가 다시 올 때를
-#: 위한 것이고, `_cross_checks()` 가 **양방향으로** 어긋남을 본다.
+# `RDMODE` 는 ini 전용이다 (규격 5.5절, 비면 `UNKNOWN`) -- ACF 이름에서 유도하지
+# 않는다.  (유도 규칙 `rdmode_from_acf()` 와 그 양방향 대조는 2026-09-06
+# `46aad59` 에서 걷었다.)
+
 #: `CTRLnCFG` 값에서 떼는 설정 파일 확장자.  **이 둘만 뗀다** (운영자 확정
 #: 2026-08-29).
 #:
@@ -132,8 +129,10 @@ class ArchonCfg:
     #: (labtest 가 여기서 가장 많이 넘어졌다 -- 경로를 못 찾으면 멈춘다).
     acf: dict[str, str] = field(default_factory=dict)
     # ⛔ **`apply_acf` 눈금은 걷었다** (운영자 2026-09-12) -- ACF 는 늘 적용한다.
-    #    기동마다 컴퓨터의 파일을 읽어 컨트롤러를 재설정하므로, *"호스트가 읽은
-    #    파일"* 과 *"컨트롤러 메모리에 든 것"* 이 갈릴 자리가 없다.
+    #    세션마다 한 번(science 는 첫 GO 의 `prepare()`, guide 는 기동에서) 컴퓨터의
+    #    파일을 읽어 컨트롤러를 재설정하므로, *"호스트가 읽은 파일"* 과 *"컨트롤러
+    #    메모리에 든 것"* 이 갈릴 자리는 ICS 가 떠 있는 동안의 컨트롤러 REBOOT·전원
+    #    재투입뿐이다 -- 그때는 ICS 를 다시 띄운다.
     #    ⚠️ 종전 false 갈래는 줄 번호만 대조했는데, 그 대조는 **그 세션에서
     #    `APPLYALL` 이 됐는지를 못 가렸다** (매뉴얼 p.51 · DevNote 10.2).
     acf_retry: int = 4
@@ -141,11 +140,16 @@ class ArchonCfg:
     #: 셔터를 여는 노출에서 `EXPTIME` 은 *"셔터가 열리기 시작 ~ 셔터가 닫히기
     #: 시작"* 이고, 그 뒤 셔터가 다 닫힐 때까지 기다렸다가 독출해야 한다.
     #: 그 대기는 타이밍 스크립트의 `NoIntMS` 가 만든다.
-    #: ⛔ 이 값은 그 **하한**이다 -- ACF 의 `NoIntMS` 가 더 짧으면 기동에서
-    #: **경고하고 이 값으로 올려 쓴다** (`_enforce_shutter_close_dwell`).
-    #: `0` 이면 검사하지 않는다.
-    #: ⚠️ **단위가 ms 다** -- `[timing] shutter_to_readout`(초, 시뮬 전용)과 다른
-    #: 물건이니 섞지 말 것.
+    #: ⛔ 이 값은 그 **하한**이다 -- 셔터 노출은 **노출마다** `NoIntMS` 로
+    #: `shutter_dwell_ms` 를 싣는다 (`ArchonBackend.open_shutter` ->
+    #: `trigger(noint_ms=…)`).  그 값은 ACF 를 민 직후(science 는 첫 GO 의
+    #: `prepare()`) **한 번** 정한다 -- max(ACF `NoIntMS`, 이 값)이고, `0` 이면
+    #: 검사 없이 ACF 값 그대로다 (`ArchonController._enforce_shutter_close_dwell`).
+    #: ACF 값이 이보다 짧으면 그때 **경고**한다 -- 정본은 ACF 다.
+    #: ⚠️ **단위가 ms 다** -- `[timing] shutter_to_readout`(초)과 다른 물건이니
+    #: 섞지 말 것.  그쪽은 공유 시퀀서가 셔터 노출의 적분 뒤 READOUT 통지까지
+    #: **호스트에서** 자는 시간이라 실기(archon)에서도 돈다 -- 셔터 닫힘을 실제로
+    #: 기다리는 것은 컨트롤러의 `NoIntMS`(이 값이 정하는 하한)다.
     shutter_close_ms: int = 0
     #: ⭐ **노출 전 CCD flush 를 몇 번 돌릴지** -- ACF 파라미터를 덮어쓰는 눈금이다
     #: (운영자 2026-09-14, DevNote 11.86-(12)).
@@ -241,7 +245,6 @@ class ArchonCfg:
     #: 국면 감시 간격 [s].  ⚠️ `guiexp_lead` 보다 **충분히 작아야** 한다 --
     #: 틱이 성기면 "2초 전" 을 지나쳐 독출이 시작된 뒤에 막는다.
     phase_poll: float = 0.25
-    #: POWERON 뒤 CCD flush 를 기다리는 시간 [s] (labtest: 24 x 0.5).
     #: `POWERON` 뒤 **추가** 정착 대기 [s].  ⭐ **0 이 기본이다**
     #: (운영자 확정 2026-09-10) -- science CCD 는 기다릴 이유가 없다:
     #: ① 다른 절차 때문에 첫 노출까지 어차피 시간이 흐르고 ② `ccdflush_every`
@@ -264,13 +267,14 @@ class ArchonCfg:
     #       컨트롤러는 파라미터 이름에 아무 규칙도 걸지 않는다.
     #    ⚠️ 종전에는 ini 에 `PARAMETERn` 번호를 적었는데, ACF 를 개정하면 그
     #       번호가 밀려 **엉뚱한 파라미터를 조용히 덮었다**.
-    #: flush 플래그의 **Config 슬롯 번호**(`PARAMETERn` 의 n; science R2610+,
-    #: `CCDFLUSH` 명령).  ⛔ KMTNet ACF 규약은 **`Exposures` 를 맨 마지막 슬롯**에
-    #: 둔다 -- `LOADPARAMS` 가 값을 슬롯 번호 순으로 하나씩 덮어쓰는 동안 코어는
-    #: 계속 돌기 때문이다 (매뉴얼 p.52).  노출 준비에서 잡는다.
-    #: ⚠️ **Config 줄 번호**(`WCONFIG` 의 4자리 16진 주소)와 **다른 물건**이다 --
-    #: 그쪽은 ACF 파싱에서 오고 타이밍 스크립트에 줄이 늘면 함께 밀린다(R2617 이
-    #: 빈 줄 둘로 +2).  슬롯 번호는 그때 안 밀린다 (DevNote 11.35).
+    #    ⛔ KMTNet ACF 규약은 **`Exposures` 를 맨 마지막 슬롯**에 둔다 --
+    #       `LOADPARAMS` 가 값을 슬롯 번호 순으로 하나씩 덮어쓰는 동안 코어는
+    #       계속 돌기 때문이다 (매뉴얼 p.52).  어기면 ACF 를 읽을 때 거부한다
+    #       (`ArchonController._require_exposures_last`).
+    #    ⚠️ 슬롯 번호(`PARAMETERn` 의 n)는 **Config 줄 번호**(`WCONFIG` 의
+    #       4자리 16진 주소)와 **다른 물건**이다 -- 그쪽은 ACF 파싱에서 오고 타이밍
+    #       스크립트에 줄이 늘면 함께 밀린다(R2617 이 빈 줄 둘로 +2).  슬롯 번호는
+    #       그때 안 밀린다 (DevNote 11.35).
 
     # -- 텔레메트리 ------------------------------------------------------
     #: STATUS 를 떠서 `Cn_TEMP/VOLT/CURR` 를 채울지.  **false 로 두면
@@ -334,8 +338,12 @@ class ArchonCfg:
     #: 개선해서 별도 erase 를 하지 않고 바로 노출을 시작한다"*.  종전 기본값
     #: `True` 는 **clock 개선 전의 전제**였다.
     #:
-    #: ⚠️ **켜면 노출마다 독출 1회분(실측 12.77초 -- 사강 `NoIntMS` 0.5 가 붙으면
-    #: 13.27초, DevNote 10.4)이 더 붙는다** -- 실기 ERASE 는 전체 독출이기 때문이다.  labtest 도 1년 실사용을 `bFullFlush=False` 로
+    #: ⚠️ **켜면 노출마다 BIAS 한 장 몫이 더 붙는다** -- 실기 ERASE 는 `IntMS=0`·
+    #: `NoIntMS=0` 노출 하나를 읽어 버리는 전체 독출이기 때문이다
+    #: (`ArchonController.flush`).  그 바닥이 BIAS 주기 `MIN_FRAME_PERIOD` 12.78초
+    #: (계산값, 독출 실측 12.77초)다.  ⚠️ 종전 문면의 13.27초는 BIAS 에도 사강
+    #: `NoIntMS` 0.5 가 붙던 때(2026-09-13 셔터 재설계 전, DevNote 10.4)의 값이다.
+    #: labtest 도 1년 실사용을 `bFullFlush=False` 로
     #: 했고(`GetDataset(..., False, False, ...)`), 그 자료가 근거다.
     full_flush_on_erase: bool = False
     #: fetch 하는 동안 프레임 버퍼를 `LOCKn` 으로 잠글지 (매뉴얼 p.50).
@@ -399,7 +407,10 @@ class ArchonCfg:
     #: 그 증상은 간헐이라(가동 시간이 길어지면 재발했다) 평소 덤프를 꺼 두면
     #: 정작 재발했을 때 증거가 없다.
     frame_dump: float = 0.0
-    #: 노출 지시부터 프레임 완료까지의 상한 [s].  0 이면 무한 대기.
+    #: 적분이 **끝난 뒤부터** 프레임 완료까지의 상한 [s] (DARK 는 적분이
+    #: `NoIntMS` 에 실리므로 그 끝부터).  0 이면 무한 대기.  ⚠️ 노출 지시부터가
+    #: 아니다 -- `ArchonController` 가 `dwell_until or int_until` 에 이 값을 더한다
+    #: (ini `frame_timeout` 주석과 같은 뜻).
     #:
     #: **없으면 조용히 멈춘다.**  labtest 는 `while True` 로 프레임 번호가
     #: 바뀔 때까지 돌았고 사람이 화면을 보고 있었다.  본편은 OBSAgent 가
@@ -408,8 +419,8 @@ class ArchonCfg:
     #: 화면이 멈추고 `force_idle` 타임아웃으로 `opause` 에 빠진다.
     #: 상한을 넘기면 레거시와 같은 오류 경로를 탄다 -- `DMA WAIT TIMEOUT.
     #: EXPOSURES ABORTED.` (base.py `BackendError` docstring).
-    #: 기본 300초는 실측 독출 12.77초 · 프레임 주기 13.27초(2026-09-01, DevNote
-    #: 10.4)의 20배가 넘는다 -- 조일 대상이다 (예 60초).  ⚠️ `fetch_timeout` 과는
+    #: 기본 300초는 실측 독출 12.77초(2026-09-01, DevNote 10.4) · BIAS 주기
+    #: `MIN_FRAME_PERIOD` 12.78초의 20배가 넘는다 -- 조일 대상이다 (예 60초).  ⚠️ `fetch_timeout` 과는
     #: 별개 상한이다.
     frame_timeout: float = 300.0
     #: `FETCH` 한 프레임의 상한 [s].  ⚠️ **`lock_buffer=true` 에서는 잠금 상한이기도
@@ -557,16 +568,27 @@ def _num(sec, key: str, default, cast):  # noqa: ANN001, ANN201
             '[archon] %s 를 숫자로 읽을 수 없다: %r' % (key, raw)) from None
 
 
-def _bool(sec, key: str, default: bool) -> bool:
+#: ini 의 참/거짓 낱말 -- ⛔ **정본은 `ics_sim.config`** 이고 여기는 가리킴만
+#: 이다 (`icg_archon.config` 와 같다).  ⚠️ 2026-09-23 까지 이 절만 좁은 사본
+#: (`true/yes/on/1`)을 따로 들고 있어서, `enable`/`high` 를 `[behavior]` 는 받고
+#: `[archon]` 은 기동 거부했다 (DevNote 11.74 가 사본을 걷을 때 빠진 자리).
+_TRUE_WORDS = _sim_config.TRUE_WORDS
+_FALSE_WORDS = _sim_config.FALSE_WORDS
+
+
+def _bool(sec, key: str, default: bool) -> bool:  # noqa: ANN001
+    """⛔ **모르는 값을 조용히 거짓으로 떨어뜨리지 않는다** -- 기동을 거부한다."""
     raw = _head(sec, key, '').lower()
     if not raw:
         return default
-    if raw in ('true', 'yes', 'on', '1'):
+    if raw in _TRUE_WORDS:
         return True
-    if raw in ('false', 'no', 'off', '0'):
+    if raw in _FALSE_WORDS:
         return False
     raise ArchonConfigError(
-        '[archon] %s 는 true/false 여야 한다: %r' % (key, raw))
+        '[archon] %s=%r 를 참/거짓으로 읽을 수 없다 -- %s 가운데 하나여야 한다 '
+        '(대소문자는 안 가린다)'
+        % (key, raw, ' | '.join(_TRUE_WORDS + _FALSE_WORDS)))
 
 
 def _solo_tag(cp: configparser.ConfigParser, n_controllers: int) -> str:
@@ -821,15 +843,16 @@ def validate(cfg: ArchonCfg, ccds: tuple[str, ...],
             % ('/'.join(t for t in CTRLTAGS if cfg.hosts.get(t)) or '없음',
                ','.join(ccds) or '없음', cfg.n_controllers,
                (' · solo_tag=%s' % cfg.solo_tag) if cfg.solo_tag else ''))
-    # ⛔ **ACF 경로는 필수다** (운영자 2026-09-12) -- 기동마다 적용하므로
-    # 비어 있거나 파일이 없으면 **여기서 멈춘다**.  종전에는 경고 한 줄이라
-    # 첫 노출 준비에서야 죽었다.
+    # ⛔ **ACF 경로는 필수다** (운영자 2026-09-12) -- 세션마다 적용하므로(science 는
+    # 첫 GO 의 `prepare()`, guide 는 기동에서) 비어 있거나 파일이 없으면 **기동 검사인
+    # 여기서 멈춘다**.  종전에는 경고 한 줄이라 첫 노출 준비에서야 죽었다.
     for tag in tags:
         path = cfg.acf.get(tag, '')
         if not path:
             raise ArchonConfigError(
-                '[archon] acf_%s 가 비었다 -- ACF 경로를 적을 것.  ⭐ 기동마다 '
-                'ACF 를 적용하는 것이 규범이다 (건너뛰는 눈금은 없앴다)'
+                '[archon] acf_%s 가 비었다 -- ACF 경로를 적을 것.  ⭐ 세션마다 '
+                'ACF 를 적용하는 것이 규범이다 -- science 는 첫 GO 에서 '
+                '(건너뛰는 눈금은 없앴다)'
                 % tag.lower())
         if not os.path.exists(os.path.expanduser(path)):
             # ⭐ **어디를 봤는지 말한다** -- 상대경로가 가장 흔한 원인이다.
@@ -977,9 +1000,10 @@ def _ascii_checks(sim_cfg) -> list[str]:  # noqa: ANN001
 #:
 #: ⛔ **다시 잴 때 `tools/ics_archon_buftest.py` 를 그대로 쓰면 안 된다** --
 #: 그 도구는 `IntMS`·`ContinuousExposures` 만 쓰고 **`NoIntMS` 는 읽기만 한다**.
-#: 게다가 `_enforce_shutter_close_dwell()` 이 기동에서 ACF 슬롯을
-#: `shutter_close_ms`(5200)로 올려 놓으므로, 그 도구로 재면 12.78 이 아니라
-#: **약 17.98초**가 나온다.  ⭐ **본편의 BIAS 경로**(`IMAGETYPE=BIAS`, 즉
+#: 게다가 그 슬롯에는 **마지막 노출이 쓴 값**이 들어 있다 -- 셔터 노출은 노출마다
+#: `shutter_dwell_ms`(예: 5200)를 싣고, 짧은 ACF 값은 첫 `GO` 의 `prepare()` 가
+#: 한 번 올려 둔다(`_enforce_shutter_close_dwell`).  그래서 그 도구로 재면 12.78 이
+#: 아니라 **약 17.98초**가 나온다.  ⭐ **본편의 BIAS 경로**(`IMAGETYPE=BIAS`, 즉
 #: `IntMS=0`+`NoIntMS=0`)로 연속 촬영해 프레임 간격을 재는 것이 맞다.
 #:
 #: ⛔ **셔터를 여는 노출은 이보다 훨씬 길다** -- `NoIntMS = shutter_close_ms`
@@ -1171,8 +1195,11 @@ def _cross_checks(cfg: ArchonCfg, sim_cfg) -> list[str]:  # noqa: ANN001
             '실린다.  실기는 1.0 이어야 한다' % scale)
 
     if getattr(getattr(sim_cfg, 'auxcontrol', None), 'enabled', False):
+        # ⚠️ AUX 셔터 통지(SET_SH)는 2026-09-12 에 걷었다 -- 종전 문면의
+        # "셔터에 구동원이 둘" 은 철거 전 이야기다.
         notes.append('[auxcontrol] enabled=true 인데 backend=archon 이다 -- '
-                     '셔터에 구동원이 둘 생긴다 (DevNote 9.2.2).  false 로 둘 것')
+                     '실기에서 AUX 접속이 하는 일이 없다(셔터 통지는 2026-09-12 '
+                     '에 걷었다).  서버가 없으면 재접속 경고만 쌓인다.  false 로 둘 것')
 
     if getattr(sim_cfg.behavior, 'inject', ()):
         notes.append('[behavior] inject 가 켜져 있다 -- 결함 주입은 시뮬 '

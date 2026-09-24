@@ -9,17 +9,20 @@
 
 여기서 지키려는 것:
 
-1. 전문이 규격대로 조립되는가 (셔터 개폐 시 `FILTERS SET_SH OPEN|CLOSE`).
+1. 전문이 규격대로 조립되는가 (접속 인사 `hello` 로 본다 -- 셔터 개폐 통지
+   `FILTERS SET_SH OPEN|CLOSE` 는 2026-09-12 에 걷었다).
 2. **AUX 가 무슨 응답을 하든, 또는 아무 응답도 안 하든 노출이 끝까지 간다.**
    AUX 는 부가 경로이므로 관측을 막으면 안 된다(사용자 결정 2026-08-05).
 3. 규격 2-4 의 침묵 -- TelID/SysID 가 틀리면 서버가 응답하지 않는다.  이때
    무한 대기하지 않고 타임아웃으로 빠져나오는가.
-4. DARK/BIAS 는 셔터를 열지 않으므로 AUX 로 아무것도 보내지 않는가.
+4. 노출 사이클(OBJECT 포함)은 AUX 로 아무것도 보내지 않는가.
+5. 응답 등급이 **로그로만** 나가는가 -- `print()` 없이, 이유는 detail 로.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 from conftest import DARK_SCRIPT, OBJECT_SCRIPT, drive, make_config
@@ -112,9 +115,15 @@ def run_with_aux(script, server: FakeAux, cfg=None, settle: float = 0.6):
 # -- 전문 조립 -----------------------------------------------------------
 
 def test_wire_format_matches_the_spec():
+    """규격 1-4 의 보기(`ALL ECHO`)로 조립을 본다.
+
+    ⚠️ 2026-09-23 까지 보기가 `FILTERS SET_SH OPEN` 이었다 -- 2026-09-12 에 걷은
+    셔터 개폐 통지다.  지금 실제로 나가는 것은 접속 인사(`hello_cmd`)뿐이라 그
+    꼴로 바꿨다 (검사하는 성질은 그대로다).
+    """
     client = AuxControlClient(make_config().auxcontrol)
-    line = client.format('FILTERS', 'SET_SH OPEN', '00')
-    assert line == 'KMTNET AUX 00 FILTERS SET_SH OPEN'
+    line = client.format('ALL', 'ECHO check_message', '123')
+    assert line == 'KMTNET AUX 123 ALL ECHO check_message'
 
 
 @pytest.mark.parametrize('script', ['OBJECT', 'DARK'])
@@ -147,6 +156,59 @@ def test_every_line_carries_telid_and_sysid():
     assert server.seen
     for line in server.seen:
         assert line.startswith('KMTNET AUX '), line
+
+
+class _HangUpAux(FakeAux):
+    """한 줄 받아 답하고 **바로 끊는** 서버 -- 클라이언트의 재접속을 일으킨다."""
+
+    async def _serve(self, reader, writer) -> None:  # noqa: ANN001
+        try:
+            raw = await reader.readline()
+            if raw:
+                line = raw.decode('ascii', 'replace').strip()
+                self.seen.append(line)
+                tel, sysid, pid, _rest = line.split(' ', 3)
+                writer.write(f'{tel} {sysid} {pid} {self.reply}\n'
+                             .encode('ascii'))
+                await writer.drain()
+        except (ConnectionError, asyncio.CancelledError, ValueError):
+            pass
+        finally:
+            try:
+                writer.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def test_hello_goes_out_on_every_reconnect():
+    """⭐ `hello_cmd` 는 **(재)접속할 때마다** 붙은 직후 한 줄 나간다.
+
+    `AuxControlClient._connect_once` 가 접속마다 보내므로 서버가 끊어 다시
+    붙어도 또 나간다 -- ics_sim DevNote 7장 `[auxcontrol]` 표의 `hello_cmd`
+    줄이 이 성질을 적는다.
+    """
+    server = _HangUpAux('OK')
+
+    async def go():
+        await server.start()
+        try:
+            cfg = _cfg(server, hello_subsystem='ALL',
+                       hello_command='ECHO ics_sim')
+            client = AuxControlClient(cfg.auxcontrol)
+            await client.start()
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 5.0
+            while len(server.seen) < 2 and loop.time() < deadline:
+                await asyncio.sleep(0.05)
+            await client.stop()
+        finally:
+            await server.stop()
+
+    asyncio.run(go())
+    assert len(server.seen) >= 2, server.seen
+    assert all(s.endswith(' ALL ECHO ics_sim') for s in server.seen), server.seen
+    # 접속마다 새 packet ID 다 -- 같은 줄을 되보낸 것이 아니다.
+    assert server.seen[0].split()[2] != server.seen[1].split()[2], server.seen
 
 
 # -- 노출은 AUX 응답에 좌우되지 않는다 ------------------------------------
@@ -237,6 +299,65 @@ def test_non_ok_replies_are_returned_not_raised(reply):
         finally:
             await server.stop()
     assert asyncio.run(go()) == reply
+
+
+def _one_reply(server: FakeAux, **over):  # noqa: ANN202
+    """가짜 서버에 `FILTERS STATUS` 한 줄을 보내고 돌려받은 값."""
+    async def go():
+        await server.start()
+        try:
+            client = AuxControlClient(_cfg(server, **over).auxcontrol)
+            await client.start()
+            await asyncio.sleep(0.3)
+            out = await client.send('FILTERS', 'STATUS')
+            await client.stop()
+            return out
+        finally:
+            await server.stop()
+    return asyncio.run(go())
+
+
+def _aux_records(caplog):  # noqa: ANN001, ANN202
+    return [r for r in caplog.records if r.name == 'ics_sim.aux'
+            and 'FILTERS STATUS' in r.getMessage()]
+
+
+@pytest.mark.parametrize('reply, silent', [('BAD', False), ('WAIT', False),
+                                           (None, True)])
+def test_non_ok_is_a_warning_log_with_a_detail_not_a_print(reply, silent,  # noqa: ANN001
+                                                           caplog, capsys):
+    """⛔ **`print()` 를 안 쓴다** -- 종전에는 로그와 별도로 색을 입혀 콘솔에 또
+    찍었다(같은 내용 두 줄 · 입력 중인 프롬프트를 덮음).  이제 등급은 로그 수준이,
+    이유(점검할 곳·거부 아님)는 `extra detail` 이 말한다."""
+    server = FakeAux(reply or 'OK', silent=silent)
+    with caplog.at_level(logging.INFO, logger='ics_sim.aux'):
+        assert _one_reply(server) == reply
+    hits = _aux_records(caplog)
+    assert len(hits) == 1, [r.getMessage() for r in hits]
+    assert hits[0].levelno == logging.WARNING
+    assert getattr(hits[0], 'detail', ''), '이유는 extra detail 로'
+    assert capsys.readouterr().out == ''
+
+
+@pytest.mark.parametrize('reply', ['OK', 'ics_sim'])
+@pytest.mark.parametrize('verbose', [False, True])
+def test_ok_is_always_logged_and_verbose_only_picks_the_concise_screen(verbose,  # noqa: ANN001
+                                                                        reply,
+                                                                        caplog, capsys):
+    """`OK` 는 **늘 INFO 로 남는다**(로그 파일은 언제나 전부) -- `[auxcontrol]
+    verbose` 는 간결 화면에 낼지만 정한다 (`essential`, `EssentialOnly` 가 본다).
+
+    ⭐ 값 응답도 같다 -- `ECHO` 는 `OK` 가 아니라 **보낸 문자열을 되울린다**(규격
+    1-4, `ALL ECHO ics_sim` -> `ics_sim`).  ⛔ 2026-09-23 까지 그 갈래에는
+    `essential` 표시가 없어 간결 화면에도 늘 나갔다.
+    """
+    server = FakeAux(reply)
+    with caplog.at_level(logging.INFO, logger='ics_sim.aux'):
+        assert _one_reply(server, verbose=verbose) == reply
+    hits = _aux_records(caplog)
+    assert len(hits) == 1 and hits[0].levelno == logging.INFO
+    assert hits[0].essential is verbose
+    assert capsys.readouterr().out == ''
 
 
 def test_disabled_client_never_connects():

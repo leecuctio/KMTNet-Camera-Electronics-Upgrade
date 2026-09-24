@@ -113,6 +113,39 @@ def test_connect_is_refused_when_the_credentials_are_missing():
     for key in ('base_url', 'api_key', 'api_secret'):
         assert key in str(exc.value), str(exc.value)
     assert rn.cfg.backend == 'off' and not rn.polling
+    # ⛔ **재기동하라고 말한다** (2026-09-23) -- `CONNECT` 는 ini 를 다시 읽지 않으므로
+    # 기동 뒤 ini 에 적은 값은 재기동해야 들어간다.  안 대면 *"방금 적은 값이 안
+    # 먹는다"* 로 오진한다.  ⚠️ 와이어로 나가는 문구라 ASCII 여야 한다.
+    assert 'restart ICG' in str(exc.value), str(exc.value)
+    assert 'does not re-read the ini' in str(exc.value), str(exc.value)
+    str(exc.value).encode('ascii')
+
+
+def test_connect_after_disconnect_names_the_ini_backend_not_the_runtime_one():
+    """⛔ ini 가 `openapi` 인데 `DISCONNECT` 뒤 `CONNECT` 하면 **"ini 가 off"** 라고 하면 안 된다.
+
+    종전 응답 꼬리는 런타임 값(`DISCONNECT` 가 `off` 로 바꾼 것)을 찍어 *"the ini still
+    says backend=off"* 가 나갔다 -- 운영자는 ini 를 고쳐야 하는 줄 안다 (2026-09-23).
+    """
+    async def run():  # noqa: ANN202
+        tasks = []
+        rn = _client(backend='openapi', **CREDS)    # ini 가 openapi -- 기동에서 폴링
+        rn.start(_spawn_in(tasks))
+        assert rn.polling
+        await rn.disconnect()
+        assert rn.cfg.backend == 'off' and not rn.polling
+        note = rn.connect()
+        await rn.stop()
+        return note
+    note = asyncio.run(run())
+    assert 'backend=off' not in note, note
+    assert 'ini backend=openapi' in note, note
+    # ⛔ *"runtime only"* 를 붙이면 안 된다 -- ini 가 openapi 라 재기동해도 폴링한다
+    # (종전 꼬리 `runtime only -- ini backend=openapi, a restart polls too` 는 한 괄호
+    # 안에서 제 말을 뒤집었다, 2026-09-23).
+    assert 'runtime only' not in note, note
+    assert '(ini backend=openapi -- a restart polls too)' in note, note
+    note.encode('ascii')
 
 
 def test_connect_is_refused_on_the_sim_backend():
@@ -240,14 +273,13 @@ def test_status_separates_the_backend_from_the_loop():
     assert 'Polling=no' in rn.status_text(), '루프는 아직 안 떴다'
 
 
-# -- ⏳ local_lns -- 자리만 있다 (2026-09-04) --------------------------------
+# -- local_lns -- 설정 경고 --------------------------------------------------
 #
 # ⛔ **인터넷이 끊기면 세 카드가 결측이고, 운영자는 그것을 받아들이지 않는다**
-# (2026-09-04 확정).  그런데 자료가 들어오는 길이 클라우드 하나뿐이라 코드로는
-# 못 막는다 -- 실제로 막는 길은 게이트웨이를 안쪽 LNS 로 돌리는 것이고, 그것은
-# 운영자 액션 둘(게이트웨이 관리 접근 · 장치 가입 키)이 선행이다.
-# ⭐ 그래서 **자리만 정식으로** 열어 둔다: ini 에 그 뜻을 적을 수 있고, 기동이
-# 무엇이 모자란지 크게 알린다.
+# (2026-09-04 확정).  `openapi` 만 쓰면 코드로는 못 막는다 -- 클라우드 없이 받는
+# 길이 `local_lns`(게이트웨이 내장 NS 의 HTTP integration 수신)다.  ✅ 수신은
+# 구현됐고(아래 "실제 수신" 절) ⏳ 실기는 미검증이다.
+# ⭐ 여기서는 설정이 **조용히 아무것도 안 받는 상태**를 기동이 크게 알리는지 본다.
 
 
 def test_the_local_lns_config_warns_about_what_would_silently_drop():
@@ -434,11 +466,103 @@ def test_disconnecting_the_listener_sends_the_values_to_sentinel():
     asyncio.run(run())
 
 
+HEBOX_UPLINK = {'deviceInfo': {'devEui': 'AC1F09FFFE1F5001'},
+                'object': {'temperature': 21.5, 'humidity': 44.0}}
+
+
+def test_disable_and_enable_work_on_the_lns_listener():
+    """⭐ `local_lns` 수신기가 **`enabled` 표를 따른다** -- `set_enabled` 를 직접 부른다.
+
+    끄면 그 장치의 uplink 는 200 으로 받되 **값으로 안 남기고**(끄면서 물린 값도 안
+    되살아난다), 켜면 다시 받는다.  ⚠️ 여기는 **수신 쪽**만 본다 -- 명령 갈래
+    (`RADIONODE DISABLE/ENABLE <별칭>` 이 `local_lns` 에서도 `set_enabled` 까지 닿는 것,
+    2026-09-23 고침)는 `test_icg_app.test_radionode_device_branch_works_on_local_lns` 가 본다.
+    """
+    rn = _listening()
+    try:
+        addr = rn._listener.address                          # noqa: SLF001
+        assert _post(addr, '/uplink', HEBOX_UPLINK) == 200
+        assert rn.values().get('hebox') == 21.5
+        assert rn.set_enabled('hebox', False)
+        assert 'hebox' not in rn.values(), '끄면서 물린 값이 남았다'
+        assert _post(addr, '/uplink', HEBOX_UPLINK) == 200
+        assert 'hebox' not in rn.values(), '끈 장치의 uplink 가 값이 됐다'
+        assert 'hebox=disabled' in rn.status_text(), rn.status_text()
+        assert rn.set_enabled('hebox', True)
+        assert _post(addr, '/uplink', HEBOX_UPLINK) == 200
+        assert rn.values().get('hebox') == 21.5
+    finally:
+        rn._listener.stop()                                 # noqa: SLF001
+
+
+def test_a_disable_racing_the_receiver_does_not_bring_the_value_back():
+    """⛔ 수신 스레드가 `enabled` 를 본 **뒤에** 끈 경우 -- 값이 되살아나면 안 된다.
+
+    `take_uplink` 의 앞쪽 확인을 지난 뒤 루프 스레드의 `DISABLE` 이 키를 지우면, 종전에는
+    수신 스레드가 그 키를 다시 적었다.  ⭐ 이제 `_store` 가 **담는 잠금 안에서 다시**
+    보고 `None`(담지 않음)을 돌려준다 -- 여기서는 그 순서를 직접 만든다.
+    """
+    rn = _client(backend='local_lns', devices=DEVICES_EUI)
+    dev = DEVICES_EUI[0]
+    assert rn.set_enabled('hebox', False)               # 앞쪽 확인 뒤에 꺼졌다고 친다
+    assert rn._store(dev, {'temperature': 9.0}) is None  # noqa: SLF001
+    assert 'hebox' not in rn._latest                     # noqa: SLF001
+    assert rn.set_enabled('hebox', True)
+    assert rn._store(dev, {'temperature': 9.0}) is True  # noqa: SLF001
+
+
+def test_an_uplink_without_usable_fields_shows_as_an_error():
+    """⛔ `object` 는 있는데 온도·습도가 없는 uplink -- `STATUS` 가 `ok` 로 가리면 안 된다.
+
+    종전 `take_uplink` 는 `_store` 결과를 안 보고 `ok` 를 적어 `hebox=ok 0s ago` 가
+    나갔다 -- 헤더는 sentinel 인데 화면은 멀쩡했다 (2026-09-23).  openapi 의
+    `_store_channels` 와 같은 모양으로 맞췄다: 좋은 것 뒤 나쁜 것은 `ok …/ err:`, 나쁜 것
+    뒤 좋은 것은 오류가 걷힌다.
+    """
+    bad = {'deviceInfo': {'devEui': 'AC1F09FFFE1F5001'}, 'object': {'battery': 90}}
+    rn = _listening()
+    try:
+        addr = rn._listener.address                          # noqa: SLF001
+        assert _post(addr, '/uplink', bad) == 200
+        assert rn.values() == {}
+        said = rn.status_text()
+        assert 'hebox=err:' in said and 'no usable fields' in said, said
+        assert _post(addr, '/uplink', HEBOX_UPLINK) == 200
+        said = rn.status_text()
+        assert 'hebox=ok' in said and 'err' not in said.split('hebox=', 1)[1].split(' fsa=')[0], said
+        assert _post(addr, '/uplink', bad) == 200
+        said = rn.status_text()
+        assert '/ err: no usable fields' in said, said
+    finally:
+        rn._listener.stop()                                 # noqa: SLF001
+
+
+def test_an_openapi_poll_does_not_store_a_device_disabled_while_fetching():
+    """⚠️ 받는 동안 `DISABLE` 된 장치는 이 바퀴가 **담지 않는다** (2026-09-23).
+
+    폴링은 `to_thread` 로 받는 동안 이벤트 루프를 놓는다 -- 그 틈의 `DISABLE` 이 키를
+    물려도, 종전에는 바퀴가 받아 온 행으로 그 키를 **다시 적었다**.
+    """
+    async def run():  # noqa: ANN202
+        rn = _client(backend='openapi', **CREDS)
+
+        def fetch():  # noqa: ANN202
+            rn.set_enabled('hebox', False)      # 받는 도중에 꺼졌다
+            return _rows()
+
+        rn._fetch_channel_list = fetch                       # noqa: SLF001
+        await rn.poll_now()
+        return rn.values()
+    vals = asyncio.run(run())
+    assert 'hebox' not in vals, vals
+    assert vals.get('fsatemp') == 23.5, vals
+
+
 # -- ⛔ mac 이 빈 장치 (1단계 오진 경로) -----------------------------------
 #
 # `bench_test_plan.md` 1단계 "멈출 조건" 이 경고하는 자리다: **3(`CONNECT`)은
 # 통과하는데 4(`HK`)에서 값이 계속 sentinel** 로 남아, 원인을 *"인터넷/계정
-# 등급"* 으로 오진하기 쉽다.  자격증명 넷과 **별개**이기 때문이다.
+# 등급"* 으로 오진하기 쉽다.  자격증명과 **별개**이기 때문이다.
 # ⭐ `local_lns` 의 `deveui` 경고와 짝이 되게 세 자리에서 말하게 했다 --
 # 기동 경고(`validate`) · `STATUS` · `CONNECT` 응답.  그리고 폴링은 그 장치를
 # **건너뛴다**(빈 `{mac}` 으로 API 를 치면 쿼터만 깎이고 오진을 부른다).

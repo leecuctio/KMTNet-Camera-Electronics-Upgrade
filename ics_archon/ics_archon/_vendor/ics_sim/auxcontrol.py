@@ -24,21 +24,22 @@
 응답 문자열(문서 1-0): `OK`(ACK) · `BAD`(NACK) · `WAIT` · `ERROR` ·
 `SUCCESS`/`FAILURE`(CONNECT) · 그 외 조회 명령의 값들.
 
-**이 경로가 무엇을 대신하는지가 중요하다.**  실제 시스템에는 카메라 셔터를
-여닫는 SW 명령이 없다 -- HE 박스에서 나오는 **TTL 트리거 신호**가 셔터를
-구동하고, AUX 는 `FILTERS LIMIT_SHUT` 으로 블레이드 리밋을 읽기만 한다
-(규격 4-2).  여기서 쓰는 `FILTERS SET_SH OPEN|CLOSE` 는 **하드웨어 없이
-시험하려고 AUX 쪽에 새로 추가한 명령**이고, 그래서 v20140908 문서에 없다.
+**지금 이 클라이언트가 하는 일은 접속 유지와 접속 인사(`hello`) 한 줄뿐이다.**
+⛔ 셔터 개폐 통지(`FILTERS SET_SH OPEN|CLOSE`)는 2026-09-12 에 걷었다 -- FSA HW
+가 그 명령을 못 받는다는 TCS 측 검토 결과다 (운영자).  ⭐ 셔터는 컨트롤러의
+Trigger Out 이 몰고 명령은 `SHOPEN`/`SHCLOSE` 다.  AUX 는 `FILTERS LIMIT_SHUT`
+으로 블레이드 리밋을 **읽기만** 한다 (규격 4-2).
 
-→ 실기 단계(`[hardware] backend = archon`)로 넘어가면 TTL 이 이 자리를
-대신하므로 `[auxcontrol] enabled = false` 로 꺼야 한다.  켜 둔 채로 실기를
-돌리면 셔터에 두 개의 구동원이 생긴다.
+→ 실기(`[hardware] backend = archon`)에서는 이 접속이 할 일이 없다.  서버가 없으면
+재접속 경고만 쌓이므로 `[auxcontrol] enabled = false` 로 둔다 (설정 검증이 경고한다).
 
 설계 방침 (사용자 결정, 2026-08-05):
   * ack 를 기다리되 `ack_timeout` 이 지나면 경고만 남기고 진행한다.
   * 접속이 없어도 **노출은 계속한다** -- AUX 는 부가 경로다.
   * 재접속은 백그라운드에서 계속 시도한다.
-  * 응답 등급: `OK` 통과 / `BAD` 빨강 경고 / `WAIT` 청록 경고.
+  * 응답 등급: `OK` 통과(INFO) / `BAD`·무응답·`WAIT` 는 경고 로그 (`_report`).
+    ⚠️ 종전의 콘솔 색 표시(빨강·청록)는 `print()` 였고 로그와 겹쳐 찍혀서 걷었다
+    -- 등급은 로그 수준과 detail 이 말한다.
 """
 
 from __future__ import annotations
@@ -47,8 +48,6 @@ import asyncio
 import collections
 import itertools
 import logging
-import os
-import sys
 
 log = logging.getLogger('ics_sim.aux')
 
@@ -62,35 +61,9 @@ REJECTED = frozenset({'BAD', 'FAILURE', 'ERROR'})
 #: 아직 못 한다는 뜻.  호출측이 판단한다.
 BUSY = 'WAIT'
 
-_RED = '\033[91m'
-_CYAN = '\033[96m'
-_DIM = '\033[2m'
-_OFF = '\033[0m'
-
-
-def _color_ok() -> bool:
-    """ANSI 색을 써도 되는 상황인가."""
-    if os.environ.get('NO_COLOR'):
-        return False
-    try:
-        return sys.stdout.isatty()
-    except Exception:  # noqa: BLE001  리다이렉트된 stdout 등
-        return False
-
-
-def _shout(color: str, text: str) -> None:
-    """콘솔에 눈에 띄게 한 줄 찍는다.  로그와 별개다."""
-    try:
-        if _color_ok():
-            print(f'{color}{text}{_OFF}', flush=True)
-        else:
-            print(text, flush=True)
-    except Exception:  # noqa: BLE001  출력 실패가 노출을 죽이면 안 된다
-        pass
-
 
 class AuxControlClient:
-    """AUX 서버에 상주 접속을 유지하고 이벤트마다 커맨드를 보낸다.
+    """AUX 서버에 상주 접속을 유지하고, 붙을 때마다 접속 인사(`hello`)를 보낸다.
 
     이 클래스는 **절대 예외를 밖으로 내보내지 않는다.**  노출 시퀀스가 AUX
     때문에 죽으면 안 되기 때문이다.  실패는 전부 반환값과 로그로 표현한다.
@@ -106,8 +79,10 @@ class AuxControlClient:
         self._packet = itertools.count(1)
         #: 진단용 -- 보낸 것과 받은 것을 그대로 남긴다.  테스트가 이걸 본다.
         #:
-        #: **상한을 둔다.**  하룻밤 관측이면 노출당 2건씩 수천 건이 쌓이는데,
-        #: 이 목록은 진단용이라 최근 것만 있으면 된다.  영구 기록은 로거가 맡는다.
+        #: **상한을 둔다.**  지금은 재접속마다 `hello` 한 건이라 적게 쌓이지만,
+        #: `send()` 를 부르는 자리가 늘면 하룻밤에 수천 건이 될 수 있다(셔터
+        #: 통지가 있던 2026-09-12 까지는 노출당 2건이었다).  이 목록은 진단용이라
+        #: 최근 것만 있으면 된다.  영구 기록은 로거가 맡는다.
         self.log: collections.deque[tuple[str, str | None]] = collections.deque(
             maxlen=LOG_KEEP)
 
@@ -238,33 +213,45 @@ class AuxControlClient:
         return reply
 
     def _report(self, line: str, reply: str | None) -> None:
-        """응답 등급에 따라 로그와 콘솔에 알린다.
+        """응답 등급을 로그로 알린다 -- ⛔ `print()` 는 안 쓴다.
 
         등급은 사용자 지시(2026-08-05)를 따른다:
-          * `OK`/`SUCCESS` -- 통과.  조용히 지나간다.
-          * `BAD`/`FAILURE`/`ERROR` -- 경고, **빨강**.
-          * `WAIT` -- 경고, **청록**.  거부는 아니고 "아직 못 한다"는 뜻이다.
-          * 무응답 -- 경고, 빨강.  규격 2-4 상 ID/System 오타여도 침묵이므로
-            설정 문제일 수 있다는 점을 함께 알린다.
+          * `OK`/`SUCCESS` -- 통과.  INFO 한 줄이고, 간결 화면(`[behavior]
+            verbose = off`)에 낼지는 `[auxcontrol] verbose` 가 정한다
+            (`essential`).  ⭐ 로그 파일에는 늘 남는다.
+          * 그 밖의 값 -- 조회 명령의 값이나 `ECHO` 의 되울림(규격 1-4: 답이
+            `OK` 가 아니라 보낸 문자열 그대로다).  거부가 아니므로 `OK` 와 같게
+            다룬다 -- ⚠️ 2026-09-23 까지는 `essential` 표시가 없어 **간결 화면에도
+            늘 나갔다**(접속 인사 `hello_cmd = ALL ECHO …` 의 답이 이 갈래다).
+          * `BAD`/`FAILURE`/`ERROR` -- 경고.  명시적 거부다.
+          * `WAIT` -- 경고.  거부는 아니고 "아직 못 한다"는 뜻이다.
+          * 무응답 -- 경고.  규격 2-4 상 ID/System 오타여도 침묵이므로
+            설정 문제일 수 있다는 점을 detail 로 함께 알린다.
+
+        ⚠️ 종전에는 로그와 **별도로** 콘솔에 색을 입혀 한 번 더 찍었다
+        (`print`).  같은 내용이 두 줄로 보였고 입력 중인 프롬프트를 덮었다.
         """
         if reply is None:
             log.warning('AUX no reply within %.1fs for %r',
-                        self.cfg.ack_timeout, line)
-            _shout(_RED, f'  [AUX] 무응답 ({self.cfg.ack_timeout:g}s): {line}'
-                         f'  -- AUX_TelID/AUX_SysID 와 서버 주소를 확인할 것')
+                        self.cfg.ack_timeout, line,
+                        extra={'detail': 'AUX_TelID/AUX_SysID 와 서버 주소를 '
+                                         '확인할 것 -- 규격 2-4 상 틀리면 서버가 '
+                                         '침묵한다'})
         elif reply in REJECTED:
-            log.warning('AUX rejected %r -> %s', line, reply)
-            _shout(_RED, f'  [AUX] {reply}: {line}')
+            log.warning('AUX rejected %r -> %s', line, reply,
+                        extra={'detail': '명시적 거부다 -- 다시 보내도 소용없다 '
+                                         '(문서 1-0)'})
         elif reply == BUSY:
-            log.warning('AUX busy for %r -> WAIT', line)
-            _shout(_CYAN, f'  [AUX] WAIT (이전 동작이 안 끝났다): {line}')
+            log.warning('AUX busy for %r -> WAIT', line,
+                        extra={'detail': '이전 동작이 안 끝났다 (거부 아님)'})
         elif reply in ACCEPTED:
-            log.info('AUX %s -> %s', line, reply)
-            if self.cfg.verbose:
-                _shout(_DIM, f'  [AUX] {reply}: {line}')
+            log.info('AUX %s -> %s', line, reply,
+                     extra={'essential': bool(self.cfg.verbose)})
         else:
-            # 조회 명령의 값 등.  거부가 아니므로 정보로만 남긴다.
-            log.info('AUX %s -> %s', line, reply)
+            # 조회 명령의 값 · `ECHO` 의 되울림.  거부가 아니므로 `OK` 와 같게
+            # 정보로 남기고, 간결 화면에 낼지는 `[auxcontrol] verbose` 가 정한다.
+            log.info('AUX %s -> %s', line, reply,
+                     extra={'essential': bool(self.cfg.verbose)})
 
     async def _await_reply(self, packet: str) -> str | None:
         """우리 packet ID 가 붙은 응답 줄을 골라 본문만 돌려준다."""

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import sys
 
@@ -176,17 +177,28 @@ def test_stage2_flags_a_slot_the_acf_does_not_have(fake, tmp_path):  # noqa: ANN
     assert "ACF 에 파라미터 'Exposures' 가 없다" in labels()
 
 
-def test_stage3_measures_readout_and_writes_one_readable_fits(fake, tmp_path):  # noqa: ANN001
+def _render_errors(caplog):  # noqa: ANN001, ANN202
+    """카드 조립기(science·guide)가 남긴 ERROR 줄."""
+    return [r.getMessage() for r in caplog.records
+            if r.levelno >= logging.ERROR
+            and r.name in ('ics_sim.rawcards', 'icg_archon.guidecards')]
+
+
+def test_stage3_measures_readout_and_writes_one_readable_fits(fake, tmp_path, caplog):  # noqa: ANN001
     """3단계 -- 전원 ON · 독출 시간 실측 · FETCH 속도 · FITS 1장.
 
     **`--expose` 를 줘야만 돈다**, 그리고 끝나면 반드시 `POWEROFF` 다.
     """
     acf = tmp_path / 'probe.acf'
     acf.write_text(ACF_TEXT, encoding='ascii')
+    caplog.set_level(logging.ERROR)
     rc = run(['--host', '127.0.0.1', '--port', str(fake.port),
               '--acf', str(acf), '--expose', '0', '--write',
               '--poll', '0.01', '--poweron-wait', '0'], tmp_path)
     assert rc == 0, labels()
+    # ⛔ 중계 카드에 형별 sentinel 을 넣는다 -- 전부 'NC' 면 실수형 `EQUINOX`
+    # 에서 `render()` 가 거짓 ERROR 를 낸다 (2026-09-23 EQUINOX 실수화 뒤).
+    assert not _render_errors(caplog), _render_errors(caplog)
 
     assert 'CLEARCONFIG' in fake.seen and 'APPLYALL' in fake.seen
     assert fake.seen.index('POWERON') < fake.seen.index('LOADPARAMS')
@@ -216,6 +228,8 @@ def test_stage3_measures_readout_and_writes_one_readable_fits(fake, tmp_path):  
         # 관측 카드는 이 도구가 채우지 않는다 (TC 에 붙지 않는다)
         assert h['OBJECT'].strip() == 'PROBE'
         assert h['RA'].strip() == 'NC'
+        # 실수형 중계 카드는 실수형 sentinel 이다 (규격 5.0절)
+        assert h['EQUINOX'] == -999.0 and isinstance(h['EQUINOX'], float)
 
 
 def test_stage3_powers_off_even_when_the_frame_fails(fake, tmp_path):  # noqa: ANN001
@@ -429,14 +443,16 @@ def test_science_profile_on_a_guide_unit_is_the_false_alarm(guide_fake, tmp_path
     assert '온도 슬롯' in text and 'MOD1/TEMP' in text
 
 
-def test_guide_stage3_writes_a_guide_header(guide_fake, tmp_path):  # noqa: ANN001
+def test_guide_stage3_writes_a_guide_header(guide_fake, tmp_path, caplog):  # noqa: ANN001
     """3단계 -- guide 카드 표로 파일 한 장.  `ICGBUILD` · 8자리 · `CTRL2*` 없음."""
     acf = tmp_path / 'guide.acf'
     acf.write_text(ACF_TEXT, encoding='ascii')
+    caplog.set_level(logging.ERROR)
     rc = run_guide(['--host', '127.0.0.1', '--port', str(guide_fake.port),
                     '--acf', str(acf), '--expose', '0', '--write',
                     '--poll', '0.01', '--poweron-wait', '0'], tmp_path)
     assert rc == 0, labels()
+    assert not _render_errors(caplog), _render_errors(caplog)
     assert guide_fake.seen[-1] == 'POWEROFF', guide_fake.seen[-6:]
 
     made = glob.glob(str(tmp_path / 'probe.*.G.fits'))
@@ -456,6 +472,8 @@ def test_guide_stage3_writes_a_guide_header(guide_fake, tmp_path):  # noqa: ANN0
         assert h['CTRL1SN'].strip() == '000000001A99369B'
         # 실물 백엔드로 적는다 -- 시뮬로 오인되면 규격 5.5절 방어가 무의미해진다
         assert h['DATASRC'].strip() == 'ARCHON_GUIDE'
+        # 실수형 중계 카드는 실수형 sentinel 이다 (guide 도 `EQUINOX` 가 'R')
+        assert h['EQUINOX'] == -999.0 and isinstance(h['EQUINOX'], float)
 
 
 def test_guide_rejects_a_science_tag(guide_fake, tmp_path):  # noqa: ANN001

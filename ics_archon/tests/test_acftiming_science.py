@@ -192,7 +192,7 @@ def test_r2613_numbers_match_devnote(r2613):
 
 
 def test_r2613_flush_matches_the_ini_comment(r2613):
-    """`ics_archon.ini` 주석: 켜면 프레임 주기가 **+5.54 s** (Prep 0.200 + Flush 5.342 +
+    """`ics_archon.ini` 주석: 켜면 프레임 주기가 **+5.54 s** (Prep 0.200 + Flush 5.332 +
     FlushPostMS 0.010)."""
     _cfg, _p, t = r2613
     assert round(t['flush'], 2) == 5.54

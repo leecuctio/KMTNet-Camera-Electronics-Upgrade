@@ -33,6 +33,7 @@ import ics_archon  # noqa: F401
 
 from icg_archon.config import IcgCfg  # noqa: E402
 from ics_archon.archon.controller import ArchonController  # noqa: E402
+from ics_archon.archon.protocol import ArchonError  # noqa: E402
 from ics_archon.config import ArchonCfg  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -47,22 +48,43 @@ class Ctrl(ArchonController):
     **전부 실제 코드**를 지난다.  ⭐ 컨트롤러 메모리(`_memory`)를 캐시(`config`)와
     **따로** 둔다 -- `WCONFIG` 가 앉은 것과 캐시가 바뀐 것을 가르기 위해서다
     (`stuck=True` 면 `WCONFIG` 가 앉지 않는 컨트롤러).
+
+    ⭐ **실패를 넣을 수 있다** (DevNote 11.96) -- `fail_on` 글자(하나 또는 여럿)가
+    든 명령을 모두 합쳐 `fail_times` 번 실패시킨다(`fail_exc`, 기본 `ArchonError`).
+    `land=True` 면
+    `WCONFIG` 를 **메모리에 앉힌 뒤** 던진다 -- 시한 초과(앉았는데 답만 잃었다)와,
+    `_locked_thread` 가 스레드를 끝까지 기다린 뒤 올리는 취소가 그 꼴이다.
+    ⚠️ `'=IntMS='` 처럼 `=` 로 감싸 맞출 것 -- `'IntMS'` 는 `NoIntMS` 에도 걸린다.
     """
 
-    def __init__(self, acf: str = SCI_ACF, *, stuck: bool = False) -> None:
+    def __init__(self, acf: str = SCI_ACF, *, stuck: bool = False,
+                 fail_on=(), fail_times: int = 1, fail_exc=None,  # noqa: ANN001
+                 land: bool = False) -> None:
         cfg = ArchonCfg()
         cfg.acf = {'MK': acf}
         super().__init__('MK', cfg)
         self.parse_acf(acf)
         self.sent: list[str] = []
         self.stuck = stuck
+        self.fail_on = (fail_on,) if isinstance(fail_on, str) else tuple(fail_on)
+        self.fail_times = fail_times
+        self.fail_exc = fail_exc or ArchonError
+        self.land = land
         self._memory: dict[str, str] = dict(self.config)
 
     async def cmd(self, command: str, timeout: float = 0.0) -> bytes:  # noqa: ANN001
         self.sent.append(command)
+        failing = (self.fail_times > 0
+                   and any(s and s in command for s in self.fail_on))
+        if failing:
+            self.fail_times -= 1
+            if not self.land:
+                raise self.fail_exc('시험이 일부러 실패시킨 명령 -- %s' % command)
         if command.startswith('WCONFIG') and not self.stuck:
             key, _, val = command[11:].partition('=')
             self._memory[key] = val
+        if failing:
+            raise self.fail_exc('시험이 일부러 실패시킨 명령(앉은 뒤) -- %s' % command)
         if command.startswith('RCONFIG'):
             line = int(command[7:11], 16)
             for key, val in self._memory.items():
@@ -293,7 +315,11 @@ class _Ctrl:
     def __init__(self, cached, on_wire):  # noqa: ANN001
         from ics_archon.archon.controller import ArchonController
         self.config = dict(cached)
+        #: 줄 번호 -- 캐시 순서대로 (바이패스 `WCONFIGnnnn` 이 어느 줄인지 가를 때 쓴다).
+        self.configline = {k: i for i, k in enumerate(self.config)}
         self.config_dirty = False
+        #: 못 되돌린 임시 줄 -- 바이패스가 설정 메모리를 쓰면 비운다 (`raw_command`).
+        self._pending_restore = {}
         self._wire = dict(on_wire)
         self.reads = []
         self.tag = 'G'
@@ -342,6 +368,188 @@ def test_a_failed_read_back_falls_back_to_the_cache():
     asyncio.run(c.raw_command('CLEARCONFIG'))
     assert asyncio.run(c.config_value('PARAMETER0')) == '"FirstFlush=1"'
     assert c.config_dirty, '실패했다고 표시를 내리면 안 된다'
+
+
+def test_a_bypass_config_write_hands_the_pending_put_back_to_the_operator(caplog):  # noqa: ANN001
+    """⭐ 바이패스가 설정 메모리를 쓰면 **못 되돌린 임시 줄을 비운다** (DevNote 11.96) --
+    그 뒤로 메모리는 운영자 몫이라, 다음 LOADPARAMS 앞의 되쓰기(`_retry_pending_restore`)가
+    운영자가 쓴 값을 덮으면 안 된다.  조회(`STATUS`)는 표시를 건드리지 않는다."""
+    c = _Ctrl({'PARAMETER0': 'FirstFlush=0'}, {})
+    c._pending_restore['PARAMETER0'] = 'FirstFlush=0'          # noqa: SLF001
+    asyncio.run(c.raw_command('STATUS'))
+    assert c._pending_restore == {'PARAMETER0': 'FirstFlush=0'}   # noqa: SLF001
+    with caplog.at_level('WARNING'):
+        asyncio.run(c.raw_command('WCONFIG0000PARAMETER0=FirstFlush=2'))
+    assert c._pending_restore == {}                             # noqa: SLF001
+    assert any('dropping the pending put-back' in r.getMessage()
+               for r in caplog.records), caplog.text
+
+
+@pytest.mark.parametrize('bypass, left', [
+    ('WCONFIG0001PARAMETER1=IntMS=5', {'PARAMETER0': 'FirstFlush=0'}),   # 그 줄만
+    ('CLEARCONFIG', {}),                                                 # 전부
+    ('WCONFIGZZZZPARAMETER1=IntMS=5', {}),         # 줄 번호를 못 읽었다 -- 전부로 본다
+])
+def test_a_bypass_hands_over_only_the_lines_it_touched(bypass, left):  # noqa: ANN001
+    """⭐ `WCONFIG` 는 **그 줄의** 표시만 비우고, `CLEARCONFIG` 는 전부 비운다 -- 다른 줄의 못
+    되돌린 값(`FirstFlush=1`)까지 비우면 science 가 세션 내내 매 장 flush 를 돈다."""
+    c = _Ctrl({'PARAMETER0': 'FirstFlush=0', 'PARAMETER1': 'IntMS=0'}, {})
+    c._pending_restore.update({'PARAMETER0': 'FirstFlush=0',     # noqa: SLF001
+                               'PARAMETER1': 'IntMS=0'})
+    asyncio.run(c.raw_command(bypass))
+    assert c._pending_restore == left                           # noqa: SLF001
+
+
+def test_a_refused_bypass_write_keeps_the_pending_put_back():
+    """⚠️ 거부(`?NN`)된 바이패스는 메모리를 안 바꿨다 -- 표시를 남긴다."""
+    class _Refusing(_Ctrl):
+        async def cmd(self, text, timeout=None):  # noqa: ANN001, ANN202
+            raise ArchonError('시험이 일부러 거부한 명령 -- %s' % text, cmd=text,
+                              reply_error=True)
+
+    c = _Refusing({'PARAMETER0': 'FirstFlush=0'}, {})
+    c._pending_restore['PARAMETER0'] = 'FirstFlush=0'          # noqa: SLF001
+    with pytest.raises(ArchonError):
+        asyncio.run(c.raw_command('WCONFIG0000PARAMETER0=FirstFlush=2'))
+    assert c._pending_restore == {'PARAMETER0': 'FirstFlush=0'}   # noqa: SLF001
+
+
+# -- `flush_now()` 는 오류·취소에도 `FirstFlush` 를 되돌린다 (DevNote 11.96) ------
+#
+# ⛔ 종전에는 되돌림이 `finally` 밖이라 `Exposures=0`·`LOADPARAMS`·`RESETTIMING` 가운데
+# 하나만 깨져도 설정 메모리에 `FirstFlush=1` 이 남았다.  캐시도 `set_config` 가 먼저 1 로
+# 바꿔 둬서 다음 `flush_now` 는 *"이미 켜져 있다"* 로 보고 되돌리지 않았고, science 는 그
+# 세션 내내 **매 장** flush 를 돌았다(+5.5 s).
+
+
+def _flag_writes(ctrl: Ctrl) -> list[str]:
+    return [c for c in ctrl.writes() if 'PARAMETER0=' in c]
+
+
+@pytest.mark.parametrize('fail_on, reset, land', [
+    ('=Exposures=', False, False),
+    ('=Exposures=', False, True),
+    ('LOADPARAMS', False, False),
+    ('RESETTIMING', True, False),
+    ('FirstFlush=1', False, False),          # 올림 쓰기 자체가 깨졌다 (앉지 않았다)
+    ('FirstFlush=1', False, True),           # 앉았는데 답을 잃었다 (시한 초과 꼴)
+])
+def test_flush_now_puts_the_flag_back_when_a_step_fails(fail_on, reset, land):  # noqa: ANN001
+    """⭐ 어느 걸음이 깨져도 **메모리와 캐시가 둘 다** 원래 값(0)으로 끝나고, 원래 예외가
+    그대로 올라온다."""
+    ctrl = Ctrl(fail_on=fail_on, land=land)
+    with pytest.raises(ArchonError) as exc:
+        asyncio.run(ctrl.flush_now(reset=reset))
+    assert fail_on.strip('=') in str(exc.value), '원래 예외가 가려졌다: %s' % exc.value
+    assert ctrl.flag() == 'FirstFlush=0', ctrl.sent
+    assert ctrl.config['PARAMETER0'] == 'FirstFlush=0'
+    assert _flag_writes(ctrl)[-1] == _slot_write(ctrl, 'FirstFlush=0'), ctrl.sent
+    assert ctrl._pending_restore == {}           # noqa: SLF001  되돌림은 성공했다
+
+
+def test_flush_now_restores_a_count_above_one_on_failure():
+    """⛔ 되돌리는 값은 0 고정이 아니라 **읽어 둔 값**이다 -- `ccdflush_first=2` 면 2."""
+    ctrl = Ctrl()
+    asyncio.run(ctrl.set_flush_param('FirstFlush', 2))
+    ctrl.fail_on, ctrl.fail_times = ('LOADPARAMS',), 1
+    with pytest.raises(ArchonError):
+        asyncio.run(ctrl.flush_now())
+    assert ctrl.flag() == 'FirstFlush=2', ctrl.sent
+    assert ctrl.config['PARAMETER0'] == 'FirstFlush=2'
+
+
+def test_a_failed_put_back_after_the_flush_is_retried_next_time(caplog):  # noqa: ANN001
+    """되돌림 **만** 실패 -- flush 는 돌았으니 명령은 성공으로 끝나고, 오류 한 줄 +
+    `config_dirty` + `_pending_restore` 가 남는다.  다음 `flush_now` 가 **판정 전에**
+    먼저 되쓴다 -- 안 그러면 되읽은 1 을 *"이미 켜져 있다"* 로 보고 영구히 남긴다."""
+    ctrl = Ctrl(fail_on='FirstFlush=0')
+    with caplog.at_level('ERROR'):
+        asyncio.run(ctrl.flush_now())
+    errs = [r for r in caplog.records if 'could not be put back' in r.getMessage()]
+    assert errs, caplog.text
+    # ⭐ 오류 줄의 사정은 **부르는 쪽이 준다** -- 노출 이야기가 아니라 flush 가 걸렸다는 것.
+    assert '일회성 flush 는 걸렸다' in errs[0].detail, errs[0].detail
+    assert '노출' not in errs[0].detail, errs[0].detail
+    assert ctrl.flag() == 'FirstFlush=1', '가짜가 되돌림을 거절했으니 메모리는 1 이다'
+    assert ctrl.config_dirty is True
+    assert ctrl._pending_restore == {'PARAMETER0': 'FirstFlush=0'}   # noqa: SLF001
+
+    ctrl.sent.clear()
+    asyncio.run(ctrl.flush_now())
+    assert ctrl.sent[0] == _slot_write(ctrl, 'FirstFlush=0'), '판정보다 먼저 되써야 한다'
+    assert ctrl.loads() == ['LOADPARAMS'], ctrl.sent
+    assert ctrl.flag() == 'FirstFlush=0', ctrl.sent
+    assert ctrl._pending_restore == {}           # noqa: SLF001
+
+
+@pytest.mark.parametrize('step, context', [
+    ('LOADPARAMS', '일회성 flush 가 걸렸는지 모른다'),    # 나갔는데 깨졌다
+    ('=Exposures=', '일회성 flush 는 걸지 않았다'),       # LOADPARAMS 전에 깨졌다
+])
+def test_the_put_back_error_line_says_how_far_the_flush_got(caplog, step, context):  # noqa: ANN001
+    """그 걸음도 깨지고 되돌림도 깨진다 -- 올라오는 것은 그 걸음의 예외이고, 오류 줄의 사정은
+    **flush 가 어디까지 갔나**다 (DevNote 11.96)."""
+    ctrl = Ctrl(fail_on=(step, 'FirstFlush=0'), fail_times=2)
+    with caplog.at_level('ERROR'):
+        with pytest.raises(ArchonError) as got:
+            asyncio.run(ctrl.flush_now())
+    assert step.strip('=') in str(got.value), got.value
+    errs = [r for r in caplog.records if 'could not be put back' in r.getMessage()]
+    assert errs and context in errs[0].detail, [r.__dict__.get('detail') for r in errs]
+    assert ctrl._pending_restore == {'PARAMETER0': 'FirstFlush=0'}   # noqa: SLF001
+
+
+@pytest.mark.parametrize('retry_fails', [True, False])
+def test_the_abort_flush_resets_timing_before_the_retry(caplog, retry_fails):  # noqa: ANN001
+    """⭐ `flush_now(reset=True)`(guide ABORT/EXPENABLE=0)는 **멈춤이 먼저다** -- 앞서 못
+    되돌린 줄은 `RESETTIMING` **뒤에** `strict=False` 로 되쓴다(`abort_now` 와 같다).
+    ⛔ 종전에는 판정 전에 엄격히 되써서, 그 되쓰기가 깨지면 `RESETTIMING` 이 아예 안 나갔다.
+    깨지면 경고만 하고 표시는 남는다(다음 GO·CCDFLUSH 가 엄격히 쓴다)."""
+    ctrl = Ctrl(fail_on='FirstFlush=0', fail_times=5 if retry_fails else 0)
+    ctrl._memory['PARAMETER0'] = 'FirstFlush=1'                   # noqa: SLF001  남은 1
+    ctrl._pending_restore['PARAMETER0'] = 'FirstFlush=0'          # noqa: SLF001
+    ctrl.config_dirty = True
+    with caplog.at_level('WARNING'):
+        asyncio.run(ctrl.flush_now(reset=True))                   # 올라오지 않는다
+    assert 'RESETTIMING' in ctrl.sent, ctrl.sent
+    retry = ctrl.sent.index(_slot_write(ctrl, 'FirstFlush=0'))
+    assert ctrl.sent.index('RESETTIMING') < retry, ctrl.sent
+    if retry_fails:
+        assert ctrl.flag() == 'FirstFlush=1'
+        assert ctrl._pending_restore == {'PARAMETER0': 'FirstFlush=0'}   # noqa: SLF001
+        assert any('the stop went out anyway' in r.getMessage()
+                   for r in caplog.records), caplog.text
+    else:
+        assert ctrl.flag() == 'FirstFlush=0', ctrl.sent
+        assert ctrl._pending_restore == {}                          # noqa: SLF001
+
+
+@pytest.mark.parametrize('reread_fails, says', [
+    (False, 'RCONFIG 로 되읽어도 원래 값이 아니다'),
+    (True, '원래 값임을 확인하지 못했다'),
+])
+def test_a_strict_retry_failure_says_what_the_read_back_found(caplog, reread_fails,  # noqa: ANN001
+                                                              says):
+    """⭐ 되읽기의 답은 셋이다 (`_memory_holds`) -- **되읽기마저 깨졌으면** 오류 줄의 사정이
+    *"원래 값이 아니다"* 라고 하면 안 된다.  어느 쪽이든 LOADPARAMS 는 안 나간다."""
+    ctrl = Ctrl(fail_on=('FirstFlush=0', 'RCONFIG') if reread_fails else 'FirstFlush=0',
+                fail_times=2 if reread_fails else 1)
+    ctrl._memory['PARAMETER0'] = 'FirstFlush=1'                   # noqa: SLF001
+    ctrl._pending_restore['PARAMETER0'] = 'FirstFlush=0'          # noqa: SLF001
+    with caplog.at_level('ERROR'):
+        with pytest.raises(ArchonError):
+            asyncio.run(ctrl.flush_now())
+    errs = [r for r in caplog.records if 'still cannot be put back' in r.getMessage()]
+    assert errs and says in errs[0].detail, [r.__dict__.get('detail') for r in errs]
+    assert ctrl.loads() == [], ctrl.sent
+    assert ctrl._pending_restore == {'PARAMETER0': 'FirstFlush=0'}   # noqa: SLF001
+
+
+def test_the_flush_now_put_back_is_in_a_finally():
+    """소스 수준 확인 -- 되돌림이 `finally` 안에 있다 (ACF 적용의 `POLLON` 과 같은 규범)."""
+    import inspect
+    src = inspect.getsource(ArchonController.flush_now)
+    assert src.index('finally:') < src.index('self._put_back(fslot, cur'), src
 
 
 # -- 노출 파라미터 슬롯을 **이름으로** 찾는다 (운영자 2026-09-12) -----------
@@ -579,9 +787,10 @@ def test_zero_turns_the_check_off():
 
 
 def test_the_guide_unit_never_reaches_this_check():
-    """⭐ **guide 는 이 자리를 안 지난다** -- `IcgCfg` 에 눈금이 없다 (셔터가 없다).
+    """⭐ **guide 에는 이 눈금이 없다** -- `IcgCfg` 에 `shutter_close_ms` 가 없다 (셔터가 없다).
 
-    `ccdflush` 와 같은 방식이다: `getattr(..., 0)` 이 0 을 돌려 그냥 지나간다.
+    `ccdflush` 와 같은 방식이다: `getattr(..., 0)` 이 0 을 돌려 검사도 바닥값도 없이
+    지나간다(ACF 값을 `shutter_dwell_ms` 에 적어 둘 뿐 -- guide 백엔드는 안 읽는다).
     ⚠️ guide ACF 는 `NoIntMS=0` 이라, 강제가 걸리면 **없는 대기를 만들어** guide
     프레임 주기를 망가뜨린다.
     """
@@ -592,3 +801,54 @@ def test_the_guide_unit_never_reaches_this_check():
     asyncio.run(ctrl._enforce_shutter_close_dwell())   # noqa: SLF001
     assert ctrl.writes() == [], ctrl.sent
     assert _noint(ctrl) == 0, 'guide 는 NoIntMS=0 그대로여야 한다'
+
+
+# -- 셔터 노출이 노출마다 싣는 값 (`shutter_dwell_ms`, DevNote 11.96) --------------
+#
+# ⛔ 종전에는 셔터 노출이 `shutter_close_ms` 를 그대로 싣고 `0` 이면 **안 실었다**.
+# 그러면 *"0 이면 ACF 값이 정본"* 이 아니라 앞 DARK/BIAS 가 쓴 값이 갔고(BIAS 뒤면 0),
+# ACF 가 `shutter_close_ms` 보다 길면 하한이어야 할 눈금이 ACF 값을 **깎았다**.
+
+
+@pytest.mark.parametrize('acf, close_ms, want, writes', [
+    (None, 0, 500, 0),        # 검사를 꺼 뒀다 -- ACF 값 그대로
+    (None, 200, 500, 0),      # ACF 가 더 길다 -- 깎지 않는다 (하한이다)
+    (None, 500, 500, 0),
+    (None, 5200, 5200, 1),    # ACF 가 짧다 -- 올리고 한 줄 쓴다
+    # ⭐ ACF 값을 못 읽는다(`이름=값` 꼴이 아니다) -- 슬롯은 안 건드리되 **바닥값은
+    #    노출마다 나간다** (DevNote 11.96).  종전에는 `None` 으로 끝나 바닥값이 빠졌다.
+    ('NoIntMS=?', 5200, 5200, 0),
+    ('NoIntMS=?', 0, None, 0),    # 바닥값도 꺼 뒀다 -- 셀 기준이 없다
+])
+def test_the_shutter_dwell_is_the_longer_of_the_acf_and_the_floor(acf, close_ms,  # noqa: ANN001
+                                                                   want, writes):
+    ctrl = Ctrl()
+    assert _noint(ctrl) == 500, '현행 science ACF 는 500 이다'
+    if acf is not None:
+        ctrl.config[ctrl.param_slots['NoIntMS']] = acf
+    ctrl.cfg.shutter_close_ms = close_ms
+    asyncio.run(ctrl._enforce_shutter_close_dwell())   # noqa: SLF001
+    assert ctrl.shutter_dwell_ms == want
+    assert len(ctrl.writes()) == writes, ctrl.sent
+
+
+def test_an_acf_without_noint_leaves_the_shutter_dwell_unset(tmp_path):  # noqa: ANN001
+    """슬롯이 없으면 `None` -- 셔터 노출은 `NoIntMS` 를 안 싣는다 (기동 검사가 이미 경고)."""
+    acf = tmp_path / 'old.acf'
+    acf.write_text('[CONFIG]\nPARAMETER1="IntMS=0"\nPARAMETER2="Exposures=0"\n',
+                   encoding='ascii')
+    ctrl = Ctrl(str(acf))
+    ctrl.cfg.shutter_close_ms = 5200
+    asyncio.run(ctrl._enforce_shutter_close_dwell())   # noqa: SLF001
+    assert ctrl.shutter_dwell_ms is None
+    assert ctrl.writes() == [], ctrl.sent
+
+
+def test_prepare_decides_the_dwell_only_right_after_the_acf_apply():
+    """⛔ `prepare()` 는 프레임마다 불린다 -- 그 사이 DARK/BIAS 가 `NoIntMS` 슬롯을 덮으므로
+    ACF 를 민 직후에만 판정해야 한다 (소스 수준 확인)."""
+    import inspect
+    src = inspect.getsource(ArchonController.prepare)
+    assert 'fresh = not self.acf_applied' in src
+    body = src[src.index('self._require_param_slots()'):]
+    assert body.index('if fresh:') < body.index('self._enforce_shutter_close_dwell()'), body

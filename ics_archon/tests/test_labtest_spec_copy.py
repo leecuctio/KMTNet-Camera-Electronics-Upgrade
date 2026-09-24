@@ -95,7 +95,10 @@ def test_labtest_rawcards_matches_the_template():
     """
     from ics_sim import rawcards
 
-    got = [tuple(c) for c in _literal('RAWCARDS')]
+    # ⭐ labtest 는 **규격(견본)을 따른다** -- ICS 가 규격보다 앞서 간 자리
+    # (`rawcards.SPEC_PENDING`, 지금은 `EQUINOX` 실수형)는 올려서 견준다.
+    # 규격이 따라잡으면 labtest 사본도 그때 함께 고친다.
+    got = [tuple(c) for c in rawcards.apply_pending(_literal('RAWCARDS'))]
     want = [tuple(c) for c in rawcards.CARDS]
     assert len(got) == len(want), (
         f'카드 수가 다르다 -- labtest {len(got)} vs 템플릿 {len(want)}.  '
@@ -343,7 +346,7 @@ def test_smallbuf_copy_differs_only_in_buffer_addressing():
 def test_smallbuf_rawcards_matches_the_template():
     """smallbuf 의 `RAWCARDS` 도 `ics_sim.rawcards.CARDS` 그대로여야 한다."""
     from ics_sim import rawcards
-    got = _literal('RAWCARDS', path=SMALLBUF)
+    got = rawcards.apply_pending(_literal('RAWCARDS', path=SMALLBUF))
     assert tuple(tuple(c) for c in got) == rawcards.CARDS
 
 

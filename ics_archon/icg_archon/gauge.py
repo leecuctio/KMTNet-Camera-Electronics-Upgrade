@@ -50,6 +50,7 @@ Conductron 은 고진공에서 바닥값을 내고, ⛔ **그 바닥값이 `rawh
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 log = logging.getLogger('icg_archon.gauge')
@@ -77,9 +78,11 @@ class GaugeState:
     """이온게이지의 **우리가 아는** 켜짐 상태.
 
     `on` 은 셋 가운데 하나다 -- `True`(켬) · `False`(끔) · `None`(**모름**).
-    ⭐ `None` 은 *"끄라는 명령을 받은 적이 없다"* 는 뜻이고, 그때는 `DEWPRES`
-    를 **막지 않는다** -- 모름을 결측으로 치면 평상 운영에서 진공값이 조용히
-    사라진다.
+    ⭐ `None` 은 *"믿을 만한 상태를 아직 못 세웠다"* 는 뜻이다 -- 되읽기 전,
+    되읽기 실패(`load()`), **적용됐는지 모르는 명령 실패**(`set()` 의
+    `APPLYDIO09` 응답 유실, 2026-09-23), 또는 **거부된 `APPLYDIO09` 뒤 되쓰기
+    실패**(`_put_back` -- 설정 메모리에 새 값이 남았을 수 있다, 2026-09-24).  그때는 `DEWPRES` 를 **막지 않는다**
+    -- 모름을 결측으로 치면 평상 운영에서 진공값이 조용히 사라진다.
 
     ⭐ **켠 직후에는 `WARMUP` 이다** (운영자 지시 2026-09-10).  이온게이지는
     **전원을 넣고 `warmup` 초가 지나야 측정이 미덥다** -- 그동안은 켜져 있어도
@@ -110,13 +113,16 @@ class GaugeState:
                              % ('|'.join(sorted(METHODS)), method))
         self.method = method
         self.on: bool | None = None
-        #: `'unset'`(아직 안 읽음) | `'failed'`(읽다 실패) | `'rconfig'` | `'command'`
+        #: `'unset'`(아직 안 읽음) | `'failed'`(되읽기 실패 · 적용 여부를 모르는
+        #: `set()` 실패 · 거부 뒤 되쓰기 실패) | `'rconfig'` | `'command'`
         self.origin = 'unset'
         #: 켠 뒤 측정이 미더워지기까지 [s] (운영자 확정 2026-09-10: 12초).
         self.warmup = float(warmup)
         #: **우리가 켠** 시각 (monotonic).  `None` 이면 예열 중이 아니다 --
         #: 껐거나, 되읽어서 이미 켜져 있음을 알게 된 경우다.
         self.on_at: float | None = None
+        #: ⭐ `set()`·`load()` 를 **한 줄로 세우는 락** (2026-09-24, `set()` 머리말).
+        self._lock = asyncio.Lock()
 
     # -- 상태 ---------------------------------------------------------------
 
@@ -181,7 +187,16 @@ class GaugeState:
         적용하므로, ACF 적용 직후에 읽은 `ON` 은 **막 켜진 것**이고 예열 중이다.
         ⛔ `fresh=False`(기본)면 언제 켜졌는지 모르는 것이므로 **예열이 끝난
         것으로 본다** -- 모르는 것을 예열 중이라 적으면 그것대로 거짓이다.
+
+        ⭐ **`set()` 과 같은 락(`_lock`)을 쥔다** (2026-09-24) -- 기동 중에
+        `VACGAUGE` 가 들어와 `set()` 이 도는 동안 되읽은 값이 그 선반영을
+        덮으면 안 된다 (`set()` 머리말).
         """
+        async with self._lock:
+            await self._load_locked(ctrl, fresh=fresh)
+
+    async def _load_locked(self, ctrl, *, fresh: bool) -> None:  # noqa: ANN001
+        """`load()` 의 몸통 -- ⛔ `_lock` 을 쥔 채로만 부른다."""
         key, on_val, _off = METHODS[self.method]
         try:
             got = (await ctrl.read_config(key)).strip()
@@ -207,9 +222,65 @@ class GaugeState:
         ⭐ **상태를 먼저 올린다** -- `WCONFIG`/`APPLYDIO` 왕복 동안 HK 주기가
         끼어들 수 있고, 그때 `DEWPRES` 가 이미 Conductron 값일 수 있기
         때문이다 (`EXPENABLE OFF` 가 플래그를 먼저 올리는 것과 같은 이유).
-        ⚠️ 그래서 왕복이 실패하면 **상태를 모름으로 되돌린다** -- 성공한
-        것처럼 남겨 두면 반대 방향으로 거짓말한다.
+        ⚠️ 그래서 왕복이 실패하면 상태를 고쳐 놓는데, **적용이 안 된 것이
+        확실한가**로 갈래가 둘이다 (2026-09-23):
+
+        | 실패한 자리 | 물리 상태 | 남기는 상태 |
+        |---|---|---|
+        | `WCONFIG` (예외 종류 무관) | 직전 그대로 -- `APPLYDIO09` 를 안 보냈다 | **직전 상태로 되돌린다** (`on`·`origin`·`on_at` 셋 다) |
+        | `APPLYDIO09` 를 컨트롤러가 `?xx` 로 거부 (`reply_error=True`) | 직전 그대로 -- 거부는 미적용이다 | 〃 + 설정 메모리에 **직전 값을 되쓴다** (`WCONFIG` 한 번, 아래 *"새 값이 남는다"* 문단).  되쓰기가 실패하면 **모름** |
+        | `APPLYDIO09` 의 시한 초과·링크 끊김·취소 (`reply_error` 없는 `ArchonError` · `TimeoutError` · `OSError` …) | **모른다** -- 컨트롤러가 받아 적용한 뒤 응답만 잃었을 수 있다 | **모름** -- `on=None` · `origin='failed'` · `on_at=None` (낱말 `UNKNOWN`) |
+
+        ⭐ 되돌리는 근거: 켜려다 실패했으면 여전히 꺼진 것으로 보고 `DEWPRES`
+        를 막는다.  성공한 것처럼 남겨 두면 반대 방향으로 거짓말한다.
+        ⛔ 모름으로 두는 근거: 켜려다 응답을 잃었는데 직전 `OFF` 로 되돌리면,
+        **실제로는 켜졌을 수 있는** 게이지를 `OFF` 라 적는다 -- ICS 는 `GO` 때
+        받은 `HKDATA NOW` 의 `VACGAUGE=OFF` 를 보면 `VACGAUGE OFF` 를
+        **건너뛰므로**(`ics_archon/gaugectl.py` `before_exposure`) 필라멘트가
+        켜진 채 science 노출이 나간다.  `UNKNOWN` 이면 ICS 가 다음 science 노출
+        전에 `OFF` 를 보낸다.
+        ⚠️ 모름은 `DEWPRES` 를 막지 않는다(`blocks_dewpres`) -- 끄려다 응답을
+        잃었는데 실제로 꺼졌다면 `ionen` 갈래에서는 Conductron 값이 실릴 수
+        있다 (`diopower` 는 읽기까지 죽어 실을 값이 없다).  `vacgauge on`/
+        `vacgauge off` 로 다시 맞추면 풀린다.
+        ⚠️ **`WCONFIG` 는 앉고 `APPLYDIO09` 가 거부되면 설정 메모리(와 우리 캐시
+        `ctrl.config`)에 새 값이 남는다** -- 적용이 안 됐으므로 물리 상태는 직전
+        그대로인데, 같은 세션에서 뒤에 오는 **히터 쪽 `APPLYMOD09`** 가 그 값을
+        적용할 수 있다: 히터 명령 `HTRSET`·`HTRFORCE`·`HTRRAMP`·`HTRPID`
+        (`heater._write_and_apply`)와 과열 차단(`heater.OverTempGuard` →
+        `heater.shutdown`).  (⏳ `APPLYMOD` 가 DIO 줄까지 싣는지는 매뉴얼이 말하지
+        않고 실측도 없다 -- p.86 은 VCPU 를 싣는다고만 적었다.)  ⭐ 그래서 그
+        갈래는 **직전 값을 `WCONFIG` 로 한 번 되쓴다** (2026-09-24, `_put_back`).
+        직전 상태가 모름(`None`)이면 되쓸 값을 모르므로 쓰지 않는다 -- 상태는
+        되돌린 그대로 `UNKNOWN` 이다.  ⛔ 되쓰기도 실패하면 **모름**으로 둔다 --
+        메모리에 새 값이 남았을 수 있어 뒤의 `APPLYMOD09` 가 게이지를 바꿀 수
+        있다.  ⭐ 어느 쪽이든 올리는 예외는 **원래 것**(`APPLYDIO09` 거부)이다.
+        ⚠️ `WCONFIG` 자체가 응답만 잃은 경우는 되쓰지 않는다 (위 표 첫 줄 --
+        직전 상태로 되돌린다) -- 그때도 메모리에 새 값이 앉았을 수 있다.  ICG
+        재기동은 ACF 를 다시 적용하므로(`CLEARCONFIG` → `WCONFIG` → `APPLYALL`)
+        남은 값을 집지 않는다.  ⚠️ 다만 같은 세션에서는 위 히터 쪽 `APPLYMOD09`
+        들이나, 운영자가 바이패스로 치는 `archon APPLYALL`·`archon APPLYDIO09`
+        가 그 값을 적용할 수 있다 -- 그때는 `vacgauge` 로 다시 맞출 것.
+
+        ⭐ **호출을 한 줄로 세운다** (`_lock`, 2026-09-24).  `VACGAUGE` 는 명령마다
+        태스크를 띄우고(`commands._do_vacgauge`) 기동의 `_settle_gauge`·종료도 이
+        함수를 부르므로 두 호출이 겹칠 수 있다.  ⛔ 겹치면 뒤 호출이 뜬 직전
+        상태가 **앞 호출의 미확정 선반영 값**이 된다 -- 켜진 게이지를 끄려던 앞
+        호출이 `APPLYDIO09` 응답을 잃어 `UNKNOWN` 으로 둔 뒤, 켜려던 뒤 호출의
+        `WCONFIG` 가 실패하면 그 선반영 값 `OFF` 로 되돌려 **필라멘트가 켜져 있을
+        수 있는데 `OFF` 라 적는다** (ICS 가 `VACGAUGE OFF` 를 건너뛴다).  그래서
+        직전 상태 뜨기 · 선반영 · 왕복 · 실패 처리를 **통째로** 락 안에서 한다.
+        ⚠️ 락을 기다리는 동안은 선반영도 없다 -- HK 바퀴는 앞 호출이 남긴 상태를
+        본다.
+        ⚠️ **부르는 쪽의 *"이미 맞다"* 판정은 락 밖이다** -- `app._settle_gauge` 의
+        `gauge.on is want` 와 `app.stop()` 의 `gauge.on is False` 는 도는 호출의 선반영
+        값을 볼 수 있다(⏳ 락 안에서 판정하는 `ensure()` 로 옮길지는 다음 라운드).
         """
+        async with self._lock:
+            return await self._set_locked(ctrl, on)
+
+    async def _set_locked(self, ctrl, on: bool) -> str:  # noqa: ANN001
+        """`set()` 의 몸통 -- ⛔ `_lock` 을 쥔 채로만 부른다."""
         import time
         key, on_val, off_val = METHODS[self.method]
         prev, prev_origin, prev_at = self.on, self.origin, self.on_at
@@ -217,13 +288,69 @@ class GaugeState:
         # ⭐ **켤 때마다 예열 시계를 다시 세운다** (운영자 2026-09-10).
         # ⛔ 끌 때는 지운다 -- 꺼진 것에 예열은 뜻이 없다.
         self.on_at = time.monotonic() if on else None
+        applying = False                    # `APPLYDIO09` 를 내보냈나
         try:
             await ctrl.set_config(key, on_val if on else off_val)
+            applying = True
             await ctrl.apply_module(10, dio=True)      # ⭐ APPLYDIO09
-        except Exception:
-            self.on, self.origin, self.on_at = prev, prev_origin, prev_at
+        except BaseException as exc:
+            # ⚠️ 취소(`CancelledError`)도 잡는다 -- `APPLYDIO09` 가 나간 뒤
+            # 끊기면 역시 적용 여부를 모른다.  어느 갈래든 예외는 그대로 올린다.
+            if not applying:
+                # `WCONFIG` 에서 멈췄다 -- `APPLYDIO09` 를 안 보냈으니 직전 상태로.
+                self.on, self.origin, self.on_at = prev, prev_origin, prev_at
+            elif getattr(exc, 'reply_error', False) is True:
+                # `APPLYDIO09` 거부 -- 미적용이 확실하다.  ⚠️ 그런데 `WCONFIG` 는
+                # 앉았으므로 메모리의 새 값을 직전 값으로 되쓴다 (머리말의
+                # *"새 값이 남는다"* 문단).
+                self.on, self.origin, self.on_at = prev, prev_origin, prev_at
+                await self._put_back(ctrl, key, prev, on_val if on else off_val)
+            else:
+                self.on, self.origin, self.on_at = None, 'failed', None
+                log.warning('ion gauge %s: the APPLYDIO09 round trip broke -- '
+                            'state is now UNKNOWN', 'ON' if on else 'OFF',
+                            extra={'detail': '컨트롤러가 적용했는지 모른다 '
+                                             '(%s).  직전 상태로 되돌리면 켜졌을 '
+                                             '수 있는 게이지를 OFF 라 적어 ICS 가 '
+                                             'VACGAUGE OFF 를 건너뛴다 -- '
+                                             'UNKNOWN 이면 다음 science 노출 '
+                                             '전에 OFF 를 보낸다'
+                                             % (type(exc).__name__,)})
             raise
         log.info('ion gauge %s', self.word,
                  extra={'detail': '%s, method %s -- ⚠️ %s'
                                   % (key, self.method, VCPU_NOTE)})
         return VCPU_NOTE if on else '%s (%s)' % (CONDUCTRON_NOTE, VCPU_NOTE)
+
+    async def _put_back(self, ctrl, key: str, prev: bool | None,  # noqa: ANN001
+                        new: str) -> None:
+        """거부된 `APPLYDIO09` 뒤 설정 메모리의 새 값 `new` 를 **직전 값으로 되쓴다**.
+
+        `set()` 머리말의 *"새 값이 남는다"* 문단이 이 갈래다 -- 부르기 전에 상태는
+        이미 직전으로 되돌렸다.
+        ⭐ **한 번만** 시도한다.  직전 상태가 모름(`prev is None`)이면 되쓸 값을
+        모르므로 쓰지 않는다 (상태는 되돌린 그대로 `UNKNOWN`).
+        ⛔ **원래 예외를 가리지 않는다** -- 되쓰기의 실패(`Exception`)는 삼키고
+        상태를 모름으로 둔 뒤 돌아간다.  원래 예외(`APPLYDIO09` 거부)는 부른
+        쪽이 그대로 올린다.  ⚠️ 취소만은 막지 않는다 -- 모름으로 두고 그대로
+        올린다 (원래 예외는 그 `__context__` 에 남는다).
+        """
+        if prev is None:
+            return
+        _key, on_val, off_val = METHODS[self.method]
+        back = on_val if prev else off_val
+        try:
+            await ctrl.set_config(key, back)
+        except BaseException as exc:
+            self.on, self.origin, self.on_at = None, 'failed', None
+            log.warning('ion gauge: could not put %s back to %s after the '
+                        'refused APPLYDIO09 -- state is now UNKNOWN', key, back,
+                        extra={'detail': '설정 메모리에 새 값(%s)이 남았을 수 '
+                                         '있다 (%s: %s).  뒤의 히터 쪽 '
+                                         'APPLYMOD09(HTR* 명령 · 과열 차단)가 '
+                                         '그 값을 적용할 수 있어 직전 상태를 '
+                                         '단정하지 않는다 -- vacgauge on/off 로 '
+                                         '다시 맞출 것'
+                                         % (new, type(exc).__name__, exc)})
+            if not isinstance(exc, Exception):
+                raise

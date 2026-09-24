@@ -2,9 +2,14 @@
 # -*- coding: utf-8 -*-
 """raw spec 5장 헤더 카드 템플릿 — 초안 헤더 v1.0 pair 의 기계 사본.
 
-**5장의 판 근거는 v1.9 다.**  v1.9 는 guide 장 신설·`Radionode` 개명과 함께
+**5장의 판 근거는 현행 raw spec 이다** (`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v<판>.md`
+-- 판 번호는 여기 박지 않는다, 판올림마다 낡는다).  ⚠️ 아래는 **v1.9 까지의
+과거 연혁**이다 -- 그 뒤 판이 5장을 고친 자리는 해당 카드 주석(`rawhdr.py`)과
+DevNote 에 있다.
+
+v1.9 는 guide 장 신설·`Radionode` 개명과 함께
 견본 3장의 `CCDTEMP` comment 에서 `M` 을 뗐다(2026-08-30 운영자 지시 조기 실행
--- 이 사본의 107행이 그 동반 개정이다).  v1.8 이 `CTRLnCFG` 를 **폴더 경로와 확장자를 뗀
+-- 이 사본의 `CCDTEMP` 카드 comment 가 그 동반 개정이다).  v1.8 이 `CTRLnCFG` 를 **폴더 경로와 확장자를 뗀
 이름**으로 못박으면서 그 두 카드의 **폭이 24 -> 29 · comment 가 `Controller n
 Configuration`** 이 됐다(견본 pair 동반 개정).  v1.7 은 파일명 넷째 필드를
 `<DETID>` 로 명명했을 뿐 **5장 카드는 안 건드렸다**.  v1.5 가 5장 검토 라운드를 마감하며 값 카드를
@@ -15,11 +20,13 @@ Configuration`** 이 됐다(견본 pair 동반 개정).  v1.7 은 파일명 넷�
 고쳤으며, `Cn_*` 나열 카드의 구분자를 파이프로·결측 자리 sentinel 을 `NC` 로
 했다.
 
-정본은 [`raw_fits_spec/header_samples/KMTA.20260821.123456.MK.fits.header.v1.11.txt`] (·NT) --
-**카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다 (raw spec 5장
-머리말).  이 모듈의 `CARDS` 는 그 견본에서 기계 추출한 것이고, 추출 규칙은
-`tests/test_raw_draft.py` 가 견본 파일을 다시 파싱해 대사한다 -- 견본이
-개정되면 그 시험이 어긋난 자리를 가리킨다.
+정본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v<판>.txt`
+(현행판 한 벌 -- 시험은 경로를 박지 않고 glob 으로 찾는다, `tests/test_raw_draft.py`
+`_find_draft`) -- **카드 순서·comment·문자열 패딩까지 바이트 단위 기준**이다
+(raw spec 5장 머리말).  이 모듈의 `CARDS` 는 그 견본에서 기계 추출한 것이고
+(⚠️ 단 `SPEC_PENDING` 에 올린 카드는 운영자 결정으로 견본보다 앞서 간다),
+추출 규칙은 `tests/test_raw_draft.py` 가 견본 파일을 다시 파싱해 대사한다 --
+견본이 개정되면 그 시험이 어긋난 자리를 가리킨다.
 
 **여기는 틀만 있다.**  값의 의미(출처·sentinel·형 변환)는 `rawhdr.py` 가
 공급하는 값 풀(pool)의 몫이고, 이 모듈의 `render()` 는 풀에서 템플릿 순서대로
@@ -136,7 +143,9 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('RADECSYS', 'S', 18, 'Telescope Coordinate System'),
     ('RA', 'S', 18, 'Telescope RA'),
     ('DEC', 'S', 18, 'Telescope DEC'),
-    ('EQUINOX', 'S', 18, 'Coordinate System Equinox'),
+    # ⭐ **실수형** (운영자 2026-09-23) -- 견본은 아직 문자열 `'2000.000'` 이다.
+    # 규격이 따라잡을 때까지 `SPEC_PENDING` 에 올려 둔다.
+    ('EQUINOX', 'R', 0, 'Coordinate System Equinox'),
     ('HA', 'S', 18, 'Hour Angle at start of obs'),
     ('ST', 'S', 18, 'Local Sidereal Time at start of obs'),
     ('SECZ', 'S', 18, 'Secant of ZD (Airmass) at start of obs'),
@@ -193,6 +202,39 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('FSATEMP', 'S', 18, 'FSA internal temperature in degree C'),
     ('FSAHUM', 'S', 18, 'FSA internal humidity in percent RH'),
 )
+
+#: ⭐ **견본과 일부러 갈라 둔 카드** -- 운영자가 카드를 정하고 규격·견본 갱신을
+#: 나중으로 미룬 자리 (guide 의 `guidecards.SPEC_PENDING` 과 같은 장치).
+#: **템플릿**(키·형·패딩 폭·comment) 대조 시험(`tests/test_raw_draft.py` ·
+#: labtest 사본 대조)은 이 목록의 카드만 견본 쪽을 현행으로 올려서 견주고,
+#: 나머지 표류는 그대로 잡는다.
+#: ⚠️ **카드 이미지 바이트 대사는 이 목록 밖의 카드도 하나 면제한다** --
+#: `tests/test_raw_draft.py` 의 `_ahead_of_sample()` 이 `DAZERR` 를 현행
+#: 이미지(소수 2자리, 운영자 2026-09-15)로 견준다.  그 카드는 템플릿이 견본과
+#: 같고 **값 서식만** 앞서 가서 이 목록에 안 올린다.
+#: ⛔ 채운 채로 오래 두지 말 것 -- 규격이 따라잡으면 곧바로 비운다.
+#: ⭐ 따라잡은 때는 시험이 알린다 (`tests/test_raw_draft.py`
+#: `test_the_sample_has_not_caught_up_yet` -- 견본 카드가 현행과 같아지면 빨개진다).
+#:
+#: 꼴: `(견본 키, 현행 카드 또는 None)`.  `None` 은 삭제.
+#:
+#: * `EQUINOX` -- 문자열 `'2000.000'` -> 실수 `2000.0` (운영자 2026-09-23).
+#:   값은 TC 중계 문자열을 `telemetry.fits_header_dict()` 가 실수로 바꾼다.
+SPEC_PENDING: tuple[tuple[str, tuple | None], ...] = (
+    ('EQUINOX', ('EQUINOX', 'R', 0, 'Coordinate System Equinox')),
+)
+
+
+def apply_pending(cards) -> list:  # noqa: ANN001
+    """견본(또는 견본을 따르는 사본)의 카드 목록에 `SPEC_PENDING` 을 적용한다."""
+    swap = dict(SPEC_PENDING)
+    out = []
+    for card in cards:
+        rep = swap.get(card[0], card) if card[0] in swap else card
+        if rep is not None:
+            out.append(rep)
+    return out
+
 
 #: 구조 카드 -- astropy 가 데이터에서 만든다 (`fitsout._as_unsigned16`).
 #: `render()` 는 이들을 내지 않고, `fitsout` 이 comment 만 템플릿대로 맞춘다.

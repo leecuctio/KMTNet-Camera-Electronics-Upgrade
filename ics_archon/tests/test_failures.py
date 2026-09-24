@@ -133,8 +133,8 @@ def test_controller_not_answering_is_reported_and_survivable(tmp_path):  # noqa:
 def test_missing_acf_says_where_it_looked(tmp_path):  # noqa: ANN001
     """ACF 경로가 틀렸다 -- **상대경로가 가장 흔한 원인**이라 cwd 를 함께 알린다.
 
-    ⭐ **기동 검사에서 멈춘다** (운영자 2026-09-12).  ACF 는 기동마다 적용하므로
-    경로가 비었거나 파일이 없으면 첫 노출까지 갈 것도 없다 -- 컨트롤러에 붙지도
+    ⭐ **기동 검사에서 멈춘다** (운영자 2026-09-12).  ACF 는 세션마다(science 는 첫 GO)
+    적용하므로 경로가 비었거나 파일이 없으면 첫 노출까지 갈 것도 없다 -- 컨트롤러에 붙지도
     않는다.  ⚠️ 종전에는 백엔드가 첫 노출 준비에서 죽으며 이 말을 했다
     (`Failed to initialize`), 그래서 **허브 확인도 배너도 다 지나갔다.**
     """
@@ -698,7 +698,8 @@ def test_time_scale_other_than_one_is_flagged_for_archon(tmp_path):  # noqa: ANN
 
 
 def test_aux_and_inject_are_flagged_for_archon(tmp_path):  # noqa: ANN001
-    """실기에서 켜 두면 안 되는 두 가지 -- 셔터 구동원 이중화와 결함 주입."""
+    """실기에서 켜 두면 안 되는 두 가지 -- AUX 접속(할 일이 없다: 셔터 통지 철거,
+    2026-09-12)과 결함 주입."""
     cfg, acfg = cfgs(tmp_path)
     cfg.timing.time_scale = 1.0
     cfg.auxcontrol.enabled = True
@@ -998,6 +999,8 @@ def test_pollon_is_restored_even_when_the_write_fails():
 
     ⛔ 적용은 중간에 깨질 수 있고(그래서 `acf_retry` 가 있다), 그때 폴링을
     안 켜면 그 뒤의 모든 HK 값이 조용히 옛것이 된다.
+    ⚠️ 단 **깨진 스트림에는 그 자리에서 보내지 않는다** (DevNote 11.96) -- 그
+    경우는 아래 행동 시험 둘이 본다(재수립한 새 연결 위에서 켠다).
     """
     import io as _io
     import os as _os
@@ -1008,6 +1011,132 @@ def test_pollon_is_restored_even_when_the_write_fails():
     body = body[:body.index('await self._locked_thread(_push)')]
     assert 'finally:' in body
     assert body.index('finally:') < body.index("'POLLON'")
+
+
+class _ConnFake(FakeArchon):
+    """받은 명령을 **연결별로** 적고, `late` 로 시작하는 명령 하나는 `delay` 초 늦게 답한다.
+
+    ⭐ 늦은 답은 *"시한을 넘긴 뒤에야 오는 답"* 이다 -- 같은 소켓에 다음 명령을 보내면
+    그 명령이 이 늦은 답을 먼저 받거나(머리 어긋남) 답을 못 받고 또 시한에 걸린다.
+    """
+
+    def __init__(self, *, late: str = '', delay: float = 0.0, **kw) -> None:  # noqa: ANN003
+        super().__init__(**kw)
+        self.late, self.delay = late, delay
+        self.by_conn: list[tuple[int, str]] = []
+
+    def _handle(self, conn, ref: bytes, cmd: str) -> None:  # noqa: ANN001
+        self.by_conn.append((id(conn), cmd.split('=')[0][:20]))
+        if self.late and cmd.startswith(self.late):
+            self.late = ''                          # 한 번만
+            import time as _time
+            _time.sleep(self.delay)
+        super()._handle(conn, ref, cmd)
+
+
+def _apply_once(tmp_path, srv, monkeypatch, *, pending=None):  # noqa: ANN001, ANN202
+    """`apply_acf()` 한 번 (`acf_retry=1`, 진정 시간 0, `T_APPLY` 0.3 s).  `(예외, ctrl)`."""
+    from ics_archon.archon import controller as ctl
+    from ics_archon.archon.controller import ArchonController
+
+    monkeypatch.setattr(ctl, 'T_APPLY', 0.3)
+    _cfg, acfg = cfgs(tmp_path, acf_retry=1, settle_before=0.0, settle_after=0.0)
+    del _cfg
+
+    async def run():  # noqa: ANN202
+        ctrl = ArchonController('MK', acfg)
+        ctrl.link.port = srv.port
+        if pending:
+            ctrl._pending_restore.update(pending)   # noqa: SLF001
+        await ctrl.connect()
+        try:
+            await ctrl.apply_acf(acfg.acf['MK'])
+        except ArchonError as exc:
+            return exc, ctrl
+        finally:
+            await ctrl.close()
+        return None, ctrl
+
+    return asyncio.run(run())
+
+
+def test_a_timed_out_acf_write_is_reported_as_itself_and_polling_comes_back(tmp_path,  # noqa: ANN001
+                                                                           monkeypatch):
+    """⛔ 시한을 넘긴 `WCONFIG` 뒤 **같은 소켓**으로 `POLLON` 을 보내지 않는다.
+
+    종전에는 `finally` 가 곧바로 `POLLON` 을 보냈다 -- 늦은 답에 머리가 어긋나거나 또
+    시한에 걸려 **그 실패가 원래 예외(어느 줄이 왜)를 덮었고**, 마지막 시도였으면 새
+    연결 위로는 아무도 `POLLON` 을 안 보내 폴링이 꺼진 채 남았다.
+    """
+    srv = _ConnFake(width=NX, height=NY, late='WCONFIG0001', delay=1.0)
+    srv.start()
+    try:
+        err, _ctrl = _apply_once(tmp_path, srv, monkeypatch)
+    finally:
+        srv.shutdown()
+    assert err is not None
+    assert 'WCONFIG0001' in str(err) and 'POLLON' not in str(err), str(err)
+    first = srv.by_conn[0][0]
+    polls = [(c, w) for c, w in srv.by_conn if w == 'POLLON']
+    assert polls, srv.by_conn
+    assert all(c != first for c, _w in polls), '깨진 연결로 POLLON 을 보냈다: %r' % srv.by_conn
+
+
+def test_a_rejected_acf_write_still_turns_polling_back_on(tmp_path, monkeypatch):  # noqa: ANN001
+    """거부(`?NN`)는 스트림이 멀쩡하다 -- 그 자리(`finally`)에서 `POLLON` 을 보내고,
+    올라오는 것은 **거부**다(재시도하지 않는다)."""
+    srv = _ConnFake(width=NX, height=NY, reject=('WCONFIG0001',))
+    srv.start()
+    try:
+        err, _ctrl = _apply_once(tmp_path, srv, monkeypatch)
+    finally:
+        srv.shutdown()
+    assert err is not None and err.reply_error, err
+    words = [w for _c, w in srv.by_conn]
+    assert words.index('POLLON') > words.index('WCONFIG0001TRIGOUTLE'), words
+    assert len({c for c, _w in srv.by_conn}) == 1, '거부에 재접속하면 안 된다'
+
+
+def test_a_rejected_acf_write_whose_pollon_breaks_the_stream_reconnects(tmp_path,  # noqa: ANN001
+                                                                        monkeypatch, caplog):
+    """⚠️ 거부 뒤의 `POLLON` 이 **거부가 아니라 스트림을 깨뜨리면**(여기서는 시한 초과) 그
+    자리(`_push`, 락 안)에서 연결을 새로 연다 (DevNote 11.96).  거부는 재시도·재접속 없이
+    곧바로 올라가므로 안 열면 깨진 소켓이 다음 명령까지 남는다.  ⭐ 올라오는 것은 여전히
+    **거부**이고, 경고 한 줄이 남는다.
+    ⭐ **새 연결 위에서 `POLLON` 을 한 번 더 보낸다** -- 안 보내면 폴링이 꺼진 채 남는다
+    (`POLLOFF` 는 컨트롤러 전역 상태다)."""
+    import logging
+    srv = _ConnFake(width=NX, height=NY, reject=('WCONFIG0001',), late='POLLON', delay=1.0)
+    srv.start()
+    try:
+        with caplog.at_level(logging.WARNING, logger='ics_archon.ctrl'):
+            err, ctrl = _apply_once(tmp_path, srv, monkeypatch)
+    finally:
+        srv.shutdown()
+    assert err is not None and err.reply_error, err
+    assert 'POLLON' not in str(err), '거부 사유가 POLLON 실패에 가려졌다: %s' % err
+    assert ctrl.link.resyncs == 1, '깨진 스트림을 그대로 뒀다'
+    assert srv.accepts == 2, srv.accepts
+    assert any('cannot turn polling back on after the rejected acf write' in r.getMessage()
+               for r in caplog.records), caplog.text
+    first = srv.by_conn[0][0]
+    again = [w for c, w in srv.by_conn if c != first]
+    assert again == ['POLLON'], '새 연결 위에서 POLLON 을 안 켰다: %r' % srv.by_conn
+    assert not any('over the new connection either' in r.getMessage()
+                   for r in caplog.records), caplog.text
+
+
+def test_a_successful_acf_apply_clears_the_pending_put_back(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ `APPLYALL` 뒤 설정 메모리는 통째로 파일 값이다 -- 못 되돌린 임시 줄도 풀렸다."""
+    srv = _ConnFake(width=NX, height=NY)
+    srv.start()
+    try:
+        err, ctrl = _apply_once(tmp_path, srv, monkeypatch,
+                                pending={'PARAMETER1': 'IntMS=0'})
+    finally:
+        srv.shutdown()
+    assert err is None, err
+    assert ctrl._pending_restore == {}           # noqa: SLF001
 
 
 def test_wconfig_goes_one_round_trip_at_a_time():

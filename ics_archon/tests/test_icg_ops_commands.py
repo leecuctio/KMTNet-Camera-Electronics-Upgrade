@@ -18,7 +18,7 @@ import logging
 import ics_archon  # noqa: F401
 
 from ics_sim import emitter  # noqa: E402
-from ics_sim.impv2 import MAX_LEN  # noqa: E402
+from ics_sim.impv2 import MAX_LEN, parse_line  # noqa: E402
 
 from ics_archon.archon.protocol import ArchonError  # noqa: E402
 
@@ -849,16 +849,17 @@ def test_trigout_pulse_width_does_not_inherit_the_startup_delay(tmp_path, caplog
     assert len(calls) == 2, calls              # 올림 한 번 · 내림 한 번
 
     text = caplog.text
-    assert 'TRIGOUT 올림 지연' in text, text
-    assert 'TRIGOUT 내림 지연' in text, text
+    # ⭐ 로그 한 줄은 영문이다 (2026-09-23 -- 종전 `TRIGOUT 올림 지연 -- 수신→완료`).
+    assert 'TRIGOUT raise latency' in text, text
+    assert 'TRIGOUT lower latency' in text, text
 
     # ⭐ 올림은 대역한 대기(150 ms)만큼 밀렸다.
-    up = re.search(r'TRIGOUT 올림 지연 -- 수신→완료 ([0-9.]+) ms', text)
+    up = re.search(r'TRIGOUT raise latency -- recv->done ([0-9.]+) ms', text)
     assert up is not None and float(up.group(1)) >= 140.0, text
 
     # ⭐ 그런데 **폭 오차는 그 밀림을 안 물려받는다** -- 남는 것은 내림 쪽
     # 대기뿐이라 대역값 언저리지, 그 두 배가 아니다.
-    err = re.search(r'폭오차 ([+-][0-9.]+) ms', text)
+    err = re.search(r'width error ([+-][0-9.]+) ms', text)
     assert err is not None, text
     assert 0.0 <= float(err.group(1)) < 250.0, text
 
@@ -904,7 +905,9 @@ def test_hkdata_logs_its_latency(tmp_path):
         lg.removeHandler(h)
         lg.setLevel(old)
 
-    assert any('HKDATA 지연' in m for m in seen), seen
+    assert any('HKDATA latency' in m for m in seen), seen
+    # ⭐ 영문 한 줄 규약 (DevNote 11.72) -- 형식 문자열이 변수라 AST 검사가 못 잡는 자리다.
+    assert all(m.isascii() for m in seen if 'latency' in m), seen
 
 
 def test_trigout_latency_is_logged_even_under_a_high_threshold(tmp_path, caplog):
@@ -940,8 +943,8 @@ def test_trigout_latency_is_logged_even_under_a_high_threshold(tmp_path, caplog)
 
     caplog.set_level(logging.INFO, logger='icg_archon.cmd')
     asyncio.run(run())
-    assert 'TRIGOUT 올림 지연' in caplog.text, caplog.text
-    assert 'TRIGOUT 내림 지연' in caplog.text, caplog.text
+    assert 'TRIGOUT raise latency' in caplog.text, caplog.text
+    assert 'TRIGOUT lower latency' in caplog.text, caplog.text
 
 
 def test_trigout_subtracts_the_lowering_apply_from_the_pulse(tmp_path, caplog):
@@ -968,12 +971,12 @@ def test_trigout_subtracts_the_lowering_apply_from_the_pulse(tmp_path, caplog):
                               settle=1.0, held=dict(RESTING))
     assert len(calls) == 2, calls
 
-    err = re.search(r'폭오차 ([+-][0-9.]+) ms', caplog.text)
+    err = re.search(r'width error ([+-][0-9.]+) ms', caplog.text)
     assert err is not None, caplog.text
     got = float(err.group(1))
     # ⭐ 보정 전이면 +100 ms 다 -- 그 절반보다 작아야 보정이 먹은 것이다.
     assert abs(got) < 50.0, (got, caplog.text)
-    assert '보정 -' in caplog.text, caplog.text
+    assert 'compensation -' in caplog.text, caplog.text
 
 
 def test_hkdata_rejects_an_argument_it_does_not_know(tmp_path):
@@ -987,3 +990,511 @@ def test_hkdata_rejects_an_argument_it_does_not_know(tmp_path):
     bad = [s for s in sent if 'HKDATA' in s]
     assert any('ERROR' in s for s in bad), bad
     assert not any('DONE: HKDATA HKQDATE' in s for s in bad), bad
+
+
+def test_every_latency_line_is_ascii_english(tmp_path, caplog):
+    """⭐ 지연 로그 한 줄은 **영문**이다 (로그 규약 DevNote 11.72, 2026-09-23 정정).
+
+    ⛔ 종전 `_log_latency` 는 형식 문자열·국면 낱말(`취득중`/`한가`)·호출 쪽 낱말
+    (`TRIGOUT 올림`·`%s 쓰기`·`폭오차 …`)이 전부 한글이었다 -- 형식 문자열을 **변수로**
+    넘겨 `log.*` 첫 인자만 보는 AST 검사에 안 걸렸다.  여기서는 세 갈래
+    (`TRIGOUT <ms>` 올림·내림 · `TRIGOUT 0` 쓰기)의 줄을 실제로 찍어 본다.
+    """
+    caplog.set_level(logging.INFO, logger='icg_archon.cmd')
+    _calls, _sent = _trig_slow(tmp_path, ['abc>ICG TRIGOUT 2000', 'abc>ICG TRIGOUT 0'],
+                               delay=0.0, settle=0.3, held=dict(RESTING))
+    lines = [r.getMessage() for r in caplog.records if 'latency --' in r.getMessage()]
+    assert any(m.startswith('TRIGOUT raise latency -- recv->done ') for m in lines), lines
+    assert any(m.startswith('TRIGOUT write latency -- recv->done ') for m in lines), lines
+    assert all(m.isascii() for m in lines), lines
+    assert all(m.split('(', 1)[1].split(')', 1)[0] in ('idle', 'acquiring')
+               for m in lines), lines
+
+
+def test_a_korean_failure_reason_goes_out_as_ascii_and_stays_in_the_log(tmp_path, caplog):
+    """⭐ 늦은 `ERROR … Failed:` 는 **ASCII 한 줄 + `(see log)`**, 원문은 로그에 (2026-09-23).
+
+    ⛔ 종전 ICG 는 `str(exc)` 를 그대로 실었다 -- 컨트롤러 층·`heater` 의 raise 문구는
+    대개 한글이라 와이어에는 `????` 만 가고, 이 갈래엔 `log` 호출도 없어 **원문이 어디에도
+    안 남았다**.  ICS 는 `_fail_text` 로 이미 그렇게 하고 있었다.
+    """
+    class _Broken(_Rec):
+        async def read_config(self, key):  # noqa: ANN001, ANN202
+            raise RuntimeError('RCONFIG 응답이 없다\r\n두 번째 줄')
+
+    rec = _Broken()
+    caplog.set_level(logging.INFO, logger='icg_archon.cmd')
+
+    async def run():  # noqa: ANN202
+        cfg, icfg = make_cfgs(tmp_path)
+        icfg.expenable_file = str(tmp_path / 'icg.expenable')
+        icfg.expnum_file = str(tmp_path / 'icg.expnum')
+        app = IcgArchon(cfg, icfg, backend='sim')
+        app.guide.ctrl = rec
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUTLEVEL')
+            await asyncio.sleep(0.15)
+        finally:
+            await app.stop()
+        return app, [str(s) for s in app.transport.sent_log]
+
+    app, sent = asyncio.run(run())
+    said = [s for s in sent if 'ERROR: TRIGOUTLEVEL' in s]
+    assert len(said) == 1, sent[-3:]
+    line = said[0]
+    assert line.isascii(), line
+    assert 'Failed: RCONFIG' in line and line.endswith('(see log)'), line
+    assert '\r' not in line and '\n' not in line, repr(line)
+    assert 'RCONFIG 응답이 없다' in caplog.text, '원문이 로그에 없다 -- (see log) 가 거짓 안내다'
+    assert app.emit.violations == [], app.emit.violations
+    # ASCII 원문은 손대지 않는다 (`(see log)` 도 안 붙는다).
+    assert icg_commands._fail_text(RuntimeError('RCONFIG timeout')) == 'RCONFIG timeout'
+    assert icg_commands._fail_text(RuntimeError('')) == 'RuntimeError'
+
+
+# -- 펄스 핸들은 올림 **전에** 등록된다 (2026-09-23) --------------------------
+#
+# ⛔ 종전에는 펄스 태스크가 올림(`WCONFIG` 둘 + `APPLYSYSTEM`, 실기 약 235 ms)을 마친
+# 뒤에야 `_trigout_timer` 에 자기를 적었다.  그 창에 온 `ABORT`·종료·새 `TRIGOUT` 은
+# 펄스를 못 봤다 -- 종료면 선이 **HIGH 로 남고**, 새 `TRIGOUT` 이면 옛 태스크가 고아가 돼
+# 나중에 깨어나 새 펄스를 일찍 자른다.
+
+
+class _ApplyingRec(_Rec):
+    """적용 하나가 `delay` 초 걸리고, **취소돼도 그 적용을 끝까지 보내는** 가짜.
+
+    ⭐ 실기 `ArchonController._locked_thread` 대역이다 -- 취소가 와도 스레드 왕복이 끝날
+    때까지 락을 쥐고 그 뒤에 `CancelledError` 를 올린다.  그래서 올림 도중에 끊겨도
+    **선은 올라가고**, 끊은 쪽의 내림은 그 **뒤에** 선다.  ⚠️ `_SlowRec` 는 취소에 적용을
+    버리므로 이 경주를 못 본다.
+    """
+
+    def __init__(self, delay, **kw):  # noqa: ANN001, ANN204
+        super().__init__(**kw)
+        self.delay = delay
+        self._lock = None
+
+    async def _apply(self, high, forced):  # noqa: ANN001, ANN202
+        await asyncio.sleep(self.delay)
+        await _Rec.set_trigger(self, high=high, forced=forced)
+
+    async def set_trigger(self, *, high=None, forced=None):  # noqa: ANN001, ANN202
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            fut = asyncio.ensure_future(self._apply(high, forced))
+            try:
+                await asyncio.shield(fut)
+            except asyncio.CancelledError:
+                await fut                   # 왕복은 끝까지 -- 그 뒤에 취소를 올린다
+                raise
+
+
+RAISE = (('TRIGOUTLEVEL', True), ('TRIGOUTFORCE', True))
+REST = (('TRIGOUTLEVEL', False), ('TRIGOUTFORCE', True))
+
+
+def _pulse_app(tmp_path, rec):  # noqa: ANN001, ANN202
+    cfg, icfg = make_cfgs(tmp_path)
+    icfg.expenable_file = str(tmp_path / 'icg.expenable')
+    icfg.expnum_file = str(tmp_path / 'icg.expnum')
+    app = IcgArchon(cfg, icfg, backend='sim')
+    app.guide.ctrl = rec
+    return app
+
+
+#: 올림을 마치기 전에 끊긴 `TRIGOUT <ms>` 의 끝 응답 본문 (2026-09-23 · 문면 2026-09-24).
+#: ⭐ 꼬리가 둘이다 -- 끊은 쪽이 쉬는 상태로 내리는 중(`CUT`) · 새 `TRIGOUT` 이 선을
+#: 가져갔다(`CUT_TAKEN`).  종전 *"Cut before the pulse started"* 는 올림 적용이 취소에도
+#: 끝까지 가서 선이 이미 섰을 수 있어 거짓일 수 있었다.
+CUT = 'Cut before the raise was confirmed (MS=%s) -- the line is being rested'
+CUT_TAKEN = 'Cut before the raise was confirmed (MS=%s) -- a new TRIGOUT took the line'
+
+#: 종료 중(`IcgDispatcher.stopping`)에 온 `TRIGOUT <ms>` 의 거절 본문 (2026-09-24).
+REFUSED = 'Shutting down -- not raised'
+
+
+def _trigout_replies(sent):  # noqa: ANN001, ANN202
+    """발신 중 **`TRIGOUT` 의 끝 응답** `(mtype, body)` -- 커맨드워드와 타입으로 가른다.
+
+    ⚠️ 부르지 않은 통보 둘은 뺀다 -- 시한 내림의 `DONE … (auto after <ms> ms)` 와 그
+    내림의 실패 `ERROR … Auto lower failed after <ms> ms: …`.  명령 한 건의 끝 응답은
+    올림 `DONE` · 실패 `ERROR` · 끊김 `ERROR` · 종료 중 거절 `ERROR` 중 **하나**다.
+    """
+    out = []
+    for line in sent:
+        m = parse_line(line)
+        if m is None or m.cmdword.upper() != 'TRIGOUT' or m.mtype not in ('DONE', 'ERROR'):
+            continue
+        if m.mtype == 'DONE' and '(auto after' in m.body:
+            continue
+        if m.mtype == 'ERROR' and m.body.startswith('Auto lower failed after '):
+            continue
+        out.append((m.mtype, m.body))
+    return out
+
+
+def test_shutdown_during_the_raise_still_rests_the_line(tmp_path):
+    """⛔ **올리는 중에 종료가 와도 선은 쉬는 상태로 끝난다.**
+
+    종전: 종료의 `release_pulse` 가 핸들을 못 보고 지나가고, 뒤이은 태스크 취소는
+    올림이 선 **뒤에** 빠져나와 선이 `FORCE=1`·`LEVEL=1` 로 남았다 (LED 가 켜진 채 종료).
+    ⭐ 그 명령도 **끝 응답을 하나** 받는다 -- `ERROR: TRIGOUT Cut before …` (2026-09-23 --
+    종전에는 `DONE` 도 `ERROR` 도 없었다).  `release_pulse` 는 소켓을 닫기 전이라 나간다.
+    """
+    rec = _ApplyingRec(0.3, held=dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        app.transport.feed('abc>ICG TRIGOUT 20000')
+        await asyncio.sleep(0.05)               # 올림 적용(0.3 s)이 도는 중
+        assert rec.calls == [], '시험 전제가 깨졌다 -- 올림이 벌써 끝났다'
+        await app.stop()
+        return list(rec.calls), [str(s) for s in app.transport.sent_log]
+
+    calls, sent = asyncio.run(run())
+    assert calls == [RAISE, REST], calls
+    assert _trigout_replies(sent) == [('ERROR', CUT % 20000)], sent[-5:]
+
+
+def test_abort_during_the_raise_rests_the_line_right_after_it(tmp_path):
+    """⛔ **올리는 중의 `ABORT` 도 펄스를 끊는다** -- 올림 뒤 곧바로 내린다.
+
+    종전에는 핸들이 없어 `ABORT` 가 아무것도 못 끊었고, 선은 `<ms>` 가 다 될 때까지
+    섰다.  ⚠️ 그래서 **시한 전에** 본다 (`TRIGOUT 100000` = 축척 0.02 에서 2 s).
+    ⭐ 끊긴 `TRIGOUT` 의 끝 응답은 `ERROR … Cut before …` **하나**다 -- 올림 `DONE` 은 없다.
+    """
+    rec = _ApplyingRec(0.2, held=dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUT 100000')
+            await asyncio.sleep(0.05)           # 올림 적용(0.2 s)이 도는 중
+            app.transport.feed('abc>ICG ABORT')
+            await asyncio.sleep(0.7)            # 올림 0.2 + 내림 0.2 -- 시한(2 s) 한참 전
+            return list(rec.calls), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    calls, sent = asyncio.run(run())
+    assert calls == [RAISE, REST], calls
+    assert _trigout_replies(sent) == [('ERROR', CUT % 100000)], sent[-5:]
+
+
+def test_expenable_off_during_the_raise_cuts_with_one_reply(tmp_path):
+    """⛔ 올리는 중의 `EXPENABLE OFF` 도 `ABORT` 와 같다 -- 올림 뒤 곧바로 내리고, 끊긴
+    `TRIGOUT` 은 끝 응답으로 `ERROR … Cut before …` **하나**만 받는다 (2026-09-23).
+
+    ⚠️ 끊는 다섯(`ABORT`·`EXPENABLE OFF`·새 `TRIGOUT`·`TRIGOUT 0`·종료) 중 이 자리만 시험이
+    없었다 -- `cmd_expenable` 이 `release_pulse` 를 따로 부르므로 따로 본다.
+    """
+    rec = _ApplyingRec(0.2, held=dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUT 100000')
+            await asyncio.sleep(0.05)           # 올림 적용(0.2 s)이 도는 중
+            app.transport.feed('abc>ICG EXPENABLE OFF')
+            await asyncio.sleep(0.7)            # 올림 0.2 + 내림 0.2 -- 시한(2 s) 한참 전
+            return list(rec.calls), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    calls, sent = asyncio.run(run())
+    assert calls == [RAISE, REST], calls
+    assert _trigout_replies(sent) == [('ERROR', CUT % 100000)], sent[-5:]
+
+
+def test_a_second_trigout_during_the_raise_leaves_no_orphan_timer(tmp_path):
+    """⛔ 올리는 중에 새 `TRIGOUT` 이 와도 **옛 태스크가 고아로 남지 않는다.**
+
+    종전: 옛 태스크가 올림 뒤 자기를 적고 새 태스크가 그것을 덮어써, 옛 것이 제
+    시한에 깨어나 **새 펄스를 일찍 잘랐다** (내림이 둘 -- 적용 넷).  이제는 새
+    `TRIGOUT` 이 옛 것을 올림 중에 끊으므로 적용은 셋(올림 · 올림 · 내림)이다.
+    ⭐ 명령 **하나에 끝 응답 하나** -- 옛 것은 `ERROR … Cut before …`, 새 것은 올림
+    `DONE`.  시한 내림 통보(`auto after`)는 새 것의 것 하나뿐이다.
+    ⭐ 옛 것의 꼬리는 *"새 `TRIGOUT` 이 가져갔다"* 다 (2026-09-24) -- *"쉬는 상태로 내리는
+    중"* 이라 답하면 곧이어 오는 새 것의 `DONE … TRIGOUTLEVEL=1` 과 어긋난다.
+    """
+    rec = _ApplyingRec(0.1, held=dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUT 20000')
+            await asyncio.sleep(0.05)           # 첫 올림이 도는 중
+            app.transport.feed('abc>ICG TRIGOUT 20000')
+            await asyncio.sleep(1.0)            # 둘째 펄스의 시한(0.4 s)과 내림까지
+            return list(rec.calls), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    calls, sent = asyncio.run(run())
+    assert calls == [RAISE, RAISE, REST], calls
+    assert _trigout_replies(sent) == [
+        ('ERROR', CUT_TAKEN % 20000),
+        ('DONE', 'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 MS=20000')], sent[-6:]
+    assert sum('(auto after 20000 ms)' in s for s in sent) == 1, sent[-6:]
+
+
+def test_a_trigout_cut_before_its_first_step_still_gets_one_reply(tmp_path):
+    """⛔ **첫 스텝도 돌기 전에** 끊긴 `TRIGOUT <ms>` 도 끝 응답을 **하나** 받는다 (2026-09-23).
+
+    같은 루프 틱에 `TRIGOUT 0` 이 오면 펄스 태스크는 코루틴이 한 줄도 안 돌아 자기
+    `except CancelledError` 에 못 닿는다 -- 종전에는 그 명령이 `DONE` 도 `ERROR` 도 없이
+    사라졌다.  ⭐ `cmd_trigout` 의 done-callback 이 `ERROR … Cut before …` 를 낸다.
+    ⚠️ 선은 한 번도 안 올라갔다 -- 적용은 `TRIGOUT 0` 의 내림 하나뿐이다.
+    ⚠️ 차례는 안 본다 -- 가짜 컨트롤러가 즉시 답해 `TRIGOUT 0` 의 `DONE` 이 callback 보다
+    먼저 나간다 (실기는 왕복이 있어 `ERROR` 가 먼저다).
+    """
+    rec = _Rec(dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUT 20000')
+            app.transport.feed('abc>ICG TRIGOUT 0')     # ⭐ 같은 틱 -- 사이에 await 없음
+            await asyncio.sleep(0.2)
+            return list(rec.calls), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    calls, sent = asyncio.run(run())
+    assert calls == [REST], calls
+    assert sorted(_trigout_replies(sent)) == [
+        ('DONE', 'TRIGOUTLEVEL=0 TRIGOUTFORCE=1'),
+        ('ERROR', CUT % 20000)], sent[-5:]
+
+
+def test_shutdown_before_the_first_step_answers_and_rests(tmp_path):
+    """⛔ 받자마자 종료해도(첫 스텝 전) 명령은 `ERROR … Cut before …` 를 받고 선은 쉰다.
+
+    `app.stop()` 의 `release_pulse` 가 소켓을 닫기 **전**에 끊으므로 응답이 나간다.
+    ⚠️ 선은 안 올라갔지만 `release_pulse` 는 끊었으면 늘 내린다 -- 적용은 그 하나다.
+    """
+    rec = _Rec(dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        app.transport.feed('abc>ICG TRIGOUT 20000')
+        await app.stop()                                # ⭐ 사이에 틱이 없다
+        return list(rec.calls), [str(s) for s in app.transport.sent_log]
+
+    calls, sent = asyncio.run(run())
+    assert calls == [REST], calls
+    assert _trigout_replies(sent) == [('ERROR', CUT % 20000)], sent[-5:]
+
+
+def test_a_cut_after_the_link_closed_sends_nothing(tmp_path, caplog):
+    """⛔ **발신 길이 닫힌 뒤에** 끊긴 것이면 `ERROR` 를 싣지 않는다 -- 로그에만 남긴다.
+
+    종료 막바지(`transport.stop()` 뒤)에 끊긴 펄스가 `ERROR` 를 내면 와이어 로그에
+    *"보냈다"* 는 줄만 남고 실제로는 안 나간다.  ⚠️ 표시(`sent`)는 세운다 -- 뒤이어
+    done-callback 이 또 부르더라도 두 번 말하지 않는다.
+    """
+    rec = _Rec(dict(RESTING))
+    caplog.set_level(logging.INFO, logger='icg_archon.cmd')
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        opened = app.dispatch._wire_open()             # noqa: SLF001
+        await app.stop()
+        closed = not app.dispatch._wire_open()         # noqa: SLF001
+        n = len(app.transport.sent_log)
+        answered = icg_commands._Answered()            # noqa: SLF001
+        app.dispatch._trigout_cut('abc', 20000.0, answered)   # noqa: SLF001
+        app.dispatch._trigout_cut('abc', 20000.0, answered)   # noqa: SLF001
+        return opened, closed, answered.sent, app.transport.sent_log[n:]
+
+    opened, closed, flagged, late = asyncio.run(run())
+    assert opened and closed, (opened, closed)
+    assert flagged
+    assert late == [], late
+    assert caplog.text.count('the link is closed, no reply') == 1, caplog.text
+
+
+def test_the_pulse_task_answers_its_own_cut_mid_raise(tmp_path):
+    """⭐ 펄스 태스크를 **홀로** 돌려 올림 도중에 끊는다 -- 태스크 안 `except CancelledError`
+    갈래가 스스로 끝 응답을 **하나** 낸다 (2026-09-24).
+
+    ⚠️ 앱 경로의 시험들은 `cmd_trigout` 의 done-callback 이 함께 붙어 있어, 태스크 안
+    갈래가 답을 안 내도 callback 이 대신 내면 통과한다 -- 여기는 callback 이 없다.
+    ⚠️ 끊은 쪽이 `release_pulse` 가 아니므로 내림은 없다 -- 선은 끊은 쪽이 맡는다.
+    """
+    rec = _ApplyingRec(0.3, held=dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            answered = icg_commands._Answered()                 # noqa: SLF001
+            task = asyncio.ensure_future(
+                app.dispatch._do_trigout_pulse('abc', 20000.0, None, answered))  # noqa: SLF001
+            await asyncio.sleep(0.05)                           # 올림 적용(0.3 s)이 도는 중
+            assert rec.calls == [], '시험 전제가 깨졌다 -- 올림이 벌써 끝났다'
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            assert task.cancelled(), '태스크가 취소를 삼켰다 -- 잠·내림으로 갔을 수 있다'
+            return answered.sent, list(rec.calls), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    flagged, calls, sent = asyncio.run(run())
+    assert flagged is True
+    assert calls == [RAISE], calls
+    assert _trigout_replies(sent) == [('ERROR', CUT % 20000)], sent[-5:]
+
+
+def test_a_trigout_during_shutdown_is_refused_and_the_line_stays_at_rest(tmp_path):
+    """⛔ **종료 중에 온 `TRIGOUT <ms>` 는 올리지 않는다** (2026-09-24).
+
+    종전: `app.stop()` 의 `release_pulse('shutdown')` 뒤에도 소켓은 `super().stop()` 까지
+    열려 있어, 그 창(HK·radionode 정지·저장 소화)에 온 `TRIGOUT <ms>` 가 선을 올리고
+    `DONE` 을 낸 뒤 태스크 취소에 **내림 없이** 죽었다 -- LED 가 켜진 채 종료.
+    ⭐ 그 창을 `hk.stop()` 안에서 명령을 먹여 만든다.  이제는 `stopping` 이 거절한다 --
+    적용은 없고, 끝 응답은 `ERROR: TRIGOUT Shutting down -- not raised` **하나**다.
+    """
+    rec = _Rec(dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        real_stop = app.hk.stop
+
+        async def stop_with_a_late_trigout():  # noqa: ANN202
+            app.transport.feed('abc>ICG TRIGOUT 20000')     # release_pulse 뒤 · 소켓은 열림
+            await asyncio.sleep(0.05)                       # 종전이면 올림이 여기서 끝난다
+            await real_stop()
+
+        app.hk.stop = stop_with_a_late_trigout
+        await app.stop()
+        return list(rec.calls), dict(rec.config), [str(s) for s in app.transport.sent_log]
+
+    calls, held, sent = asyncio.run(run())
+    assert calls == [], calls
+    assert (held['TRIGOUTLEVEL'], held['TRIGOUTFORCE']) == ('0', '1'), held
+    assert _trigout_replies(sent) == [('ERROR', REFUSED)], sent[-5:]
+
+
+def test_trigout_zero_is_still_taken_while_shutting_down(tmp_path):
+    """⭐ 종료 중에도 **`TRIGOUT 0` 은 받는다** -- 내리는 것이라 막을 까닭이 없다."""
+    rec = _Rec(dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            app.dispatch.stopping = True
+            app.transport.feed('abc>ICG TRIGOUT 0')
+            await asyncio.sleep(0.1)
+            return list(rec.calls), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    calls, sent = asyncio.run(run())
+    assert calls == [REST], calls
+    assert _trigout_replies(sent) == [('DONE', 'TRIGOUTLEVEL=0 TRIGOUTFORCE=1')], sent[-5:]
+
+
+def test_a_failed_auto_lower_is_a_notice_not_a_raise_failure(tmp_path, caplog):
+    """⭐ 시한 내림의 실패는 **올림 실패와 다른 본문**이다 (2026-09-24).
+
+    종전에는 `ERROR: TRIGOUT Failed: …` 로 올림 실패와 똑같아, 올림 `DONE` 을 이미 받은
+    쪽이 *"올리지 못했다"* 로 읽었다.  ⭐ 이제 `Auto lower failed after <ms> ms: <이유>` --
+    `(auto after …)` 와 같은 **부르지 않은 통보**이고 끝 응답은 올림 `DONE` 하나다.
+    ⚠️ 와이어 문구라 ASCII 이고, 원문은 로그에 남는다.
+    """
+    class _LowerFails(_Rec):
+        async def set_trigger(self, *, high=None, forced=None):  # noqa: ANN001, ANN202
+            if high is False:
+                raise RuntimeError('WCONFIG 응답이 없다')
+            await super().set_trigger(high=high, forced=forced)
+
+    rec = _LowerFails(dict(RESTING))
+    caplog.set_level(logging.INFO, logger='icg_archon.cmd')
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUT 2000')      # 축척 0.02 -- 0.04 s
+            await asyncio.sleep(0.3)
+            return list(rec.calls), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    calls, sent = asyncio.run(run())
+    assert calls == [RAISE], calls
+    assert _trigout_replies(sent) == [('DONE', 'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 MS=2000')], sent[-5:]
+    notes = [s for s in sent if 'ERROR: TRIGOUT Auto lower failed after 2000 ms: ' in s]
+    assert len(notes) == 1, sent[-5:]
+    assert notes[0].isascii() and notes[0].endswith('(see log)'), notes
+    assert not any('ERROR: TRIGOUT Failed:' in s for s in sent), sent[-5:]
+    assert 'WCONFIG 응답이 없다' in caplog.text, '원문이 로그에 없다 -- (see log) 가 거짓 안내다'
+
+
+def test_trigout_refuses_nan_and_inf(tmp_path):
+    """⛔ `TRIGOUT nan`·`inf` 는 거절한다 -- 선을 올린 채 못 내린다 (DevNote 11.96)."""
+    calls, sent = _trig(tmp_path, ['abc>ICG TRIGOUT nan', 'abc>ICG TRIGOUT inf',
+                                   'abc>ICG TRIGOUT -inf'],
+                        held=dict(RESTING), settle=0.3)
+    assert calls == [], '거절하고도 선을 건드렸다: %r' % calls
+    assert sum('ERROR: TRIGOUT Invalid duration' in s for s in sent) == 3, sent[-5:]
+
+
+class _RaiseTimesOut(_Rec):
+    """첫 올림이 **컨트롤러에 닿은 뒤** 답만 시한을 넘기는 가짜 (핀은 이미 HIGH)."""
+
+    def __init__(self, **kw):  # noqa: ANN003, ANN204
+        super().__init__(**kw)
+        self.failed = False
+
+    async def set_trigger(self, *, high=None, forced=None):  # noqa: ANN001, ANN202
+        await _Rec.set_trigger(self, high=high, forced=forced)
+        if high and not self.failed:
+            self.failed = True
+            raise TimeoutError('APPLYSYSTEM reply lost')
+
+
+def test_a_failed_raise_is_rested_right_away(tmp_path):
+    """⛔ **올림이 실패해도 한 번 내린다** (DevNote 11.96).
+
+    `APPLYSYSTEM` 이 나간 뒤 답만 잃으면 핀은 HIGH 다.  이 태스크가 곧 끝나므로
+    `release_pulse`(ABORT·종료)는 끝난 태스크를 보고 안 내린다 -- 그래서 실패 갈래가 스스로
+    쉬는 상태로 되돌린다.  답은 여전히 올림 실패 **하나**다.
+    """
+    rec = _RaiseTimesOut(held=dict(RESTING))
+
+    async def run():  # noqa: ANN202
+        app = _pulse_app(tmp_path, rec)
+        await app.start()
+        try:
+            app.transport.feed('abc>ICG TRIGOUT 20000')
+            for _ in range(40):
+                await asyncio.sleep(0.05)
+                if len(rec.calls) >= 2:
+                    break
+            await asyncio.sleep(0.1)
+            return list(rec.calls), dict(rec.config), [str(s) for s in app.transport.sent_log]
+        finally:
+            await app.stop()
+
+    calls, held, sent = asyncio.run(run())
+    assert calls[:2] == [RAISE, REST], calls
+    assert held['TRIGOUTLEVEL'] == '0', held
+    replies = _trigout_replies(sent)
+    assert len(replies) == 1 and replies[0][0] == 'ERROR', replies
+    assert replies[0][1].startswith('Failed: '), replies

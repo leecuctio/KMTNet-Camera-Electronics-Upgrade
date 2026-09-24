@@ -63,8 +63,8 @@ def test_canned_fallback_never_invents_the_two_stamps(key, q, u):
     `ics_archon/tcsclock.py` 가 이 표본을 따로 걸러야 했던 이유가 그것이다.
 
     ⭐ 이제 **원본을 보존한다**: 직전 실응답 값이 있으면 그대로 두고, 없으면
-    아예 안 싣는다.  카드 자체는 사라지지 않는다 -- `_SENTINEL_STR` 에 네
-    이름이 있어 `fits_header_dict()` 가 `'NC'` 로 채운다(규격 5.0절).
+    아예 안 싣는다.  카드 자체는 사라지지 않는다 -- `rawcards.RELAY_CARDS` 에
+    네 이름이 있어 `fits_header_dict()` 가 `'NC'` 로 채운다(규격 5.0절).
     """
     cfg = SimConfig()
     cfg.timing.tc_timeout_mode = 'canned'

@@ -33,19 +33,26 @@ exp 30
 go
 ```
 
-송수신 메시지가 그대로 출력된다:
+송수신 메시지가 한 줄에 하나씩, UTC 시각 태그를 달고 출력된다 (`[logging] wire = true`):
 
 ```
->>> ICS>OBS STATUS: EXPSTATUS=INITIALIZING
->>> ICS>K.IC INITIALIZE 20260803.000001
->>> K.IC>ICS DONE: INITIALIZE Initialization Complete.
->>> ICS>OBS STATUS: EXPSTATUS=ERASE
+[2026-08-03T10:36:34.120] STATUS: EXPSTATUS=INITIALIZING
+[2026-08-03T10:36:34.124] ICS>K.IC INITIALIZE 20260803.000001
+[2026-08-03T10:36:34.152] K.IC>ICS DONE: INITIALIZE Initialization Complete.
+[2026-08-03T10:36:34.168] STATUS: EXPSTATUS=ERASE
 ...
->>> K.IC>OBS STATUS: GO PCTREAD=6
->>> K.IC>OBS STATUS: GO PCTREAD=100 Acquisition Complete. Disk Transfer Starting.
->>> ICS>OBS DONE: EXPSTATUS=IDLE
->>> ICS>OBS STATUS: Wrote LASTFILE=./icsdata/KMTNk.20260803.000001.fits RATE=1064218 KB/sec
+[2026-08-03T10:36:38.340] K.IC>ICS STATUS: GO PCTREAD=6
+[2026-08-03T10:36:41.257] K.IC>ICS STATUS: GO PCTREAD=100 Acquisition Complete. Disk Transfer Starting.
+[2026-08-03T10:36:41.289] DONE: EXPSTATUS=IDLE
+[2026-08-03T10:36:41.665] STATUS: Wrote LASTFILE=./icsdata/KMTNk.20260803.000001.fits RATE=1064218 KB/sec
 ```
+
+- 방향 표시(`>>>`/`<<<`)는 없다 — `SRC>DST` 가 이미 방향을 말한다.
+- 콘솔에서 친 명령의 답은 **`ICS>ICS ` 머리를 떼고** 찍는다(위의 `STATUS: …`·`DONE: …`).
+  같은 노출을 OBSAgent 가 시키면 `ICS>OBS STATUS: EXPSTATUS=…`·`K.IC>OBS STATUS: GO PCTREAD=…` 꼴이다.
+- `[behavior] verbose = false`(또는 콘솔 `verbose off`)면 **화면만** 간결해진다 — 양끝이 다
+  우리 노드인 줄(`ICS>K.IC …`·`K.IC>ICS …`)과 잡음(`TCSSTATUS`·`AUXSTATUS`·`PING`·`PONG`)이
+  빠지고, 로그 파일에는 늘 전부 남는다.
 
 `go 5` 로 다중 노출, `help` 로 도움말, `quit` 로 종료.
 
@@ -55,6 +62,9 @@ go
 설정돼 있으면 허브가 받아 그 노드에 전달한다. ⭐ **친 문면을 그대로 싣는다**
 (`EXEC:` 를 우리가 붙이지 않는다) — 남의 노드의 어휘를 감싸면 뜻이 달라진다.
 ⛔ 와이어는 ASCII 전용이라 한글은 보내기 전에 거절한다.
+보낸 줄은 **화면에 한 줄** 남는다 — 와이어 로그가 그 줄을 화면에 내면 그것이고, 못 내면
+(와이어 로그가 꺼졌거나, 간결 화면이 `>TC TCSSTATUS`·`>XIS PING` 같은 잡음 줄을 거르면)
+콘솔이 `  ICS>TC TCSSTATUS` 처럼 직접 한 줄 찍는다.
 
 ---
 
@@ -118,7 +128,7 @@ python -m ics_sim --bug-compat
 
 ### AUX control 서버 연동
 
-셔터 개폐 때 KMTNet AUX control software 에 TCP 로 커맨드를 보낸다. `ics_sim.ini` 에서 켠다:
+KMTNet AUX control software 에 TCP 로 **상주 접속**하고, `hello_cmd` 를 채워 두었으면 붙을 때마다 접속 인사 한 줄을 보낸다 — 지금 이 경로가 하는 일은 그것뿐이다. ⚠️ `hello_cmd` 의 기본값은 **비어 있고**, 그러면 접속만 유지하고 아무것도 보내지 않는다. `ics_sim.ini` 에서 켠다:
 
 ```ini
 [auxcontrol]
@@ -129,20 +139,18 @@ AUX_TelID   = KMTNET
 AUX_SysID   = AUX
 ```
 
-키 이름과 형식은 TCSAgent 의 `pctcs.kmtn*.ini` 와 같다 — **같은 AUX 서버를 가리키므로** 그쪽 설정을 그대로 복사해 넣을 수 있다. 오가는 전문은 이렇다:
+키 이름과 형식은 TCSAgent 의 `pctcs.kmtn*.ini` 와 같다 — **같은 AUX 서버를 가리키므로** 그쪽 설정을 그대로 복사해 넣을 수 있다. 오가는 전문은 이렇다 (`hello_cmd = ALL ECHO ics_sim` 일 때):
 
 ```
-셔터 열림  →  KMTNET AUX ICS1 FILTERS SET_SH OPEN
-              KMTNET AUX ICS1 OK
-셔터 닫힘  →  KMTNET AUX ICS2 FILTERS SET_SH CLOSE
-              KMTNET AUX ICS2 OK
+접속 직후  →  KMTNET AUX ICS1 ALL ECHO ics_sim
+              KMTNET AUX ICS1 ics_sim
 ```
 
-`OK` 는 통과, `BAD` 는 빨강 경고, `WAIT` 는 청록 경고, **무응답도 빨강 경고**다. 규격상 `AUX_TelID`/`AUX_SysID` 가 틀리면 서버가 **응답 자체를 하지 않으므로**, 조용한 실패를 눈에 띄게 만들었다. 어느 경우든 **노출은 끝까지 진행한다.**
+⭐ `ECHO` 의 답은 `OK` 가 아니라 **보낸 문자열 그대로**다 (규격 1-4).
 
-DARK/BIAS 는 셔터를 열지 않으므로 아무것도 보내지 않는다.
+응답은 **로그로** 알린다: `OK`·`SUCCESS` 와 값 응답(`ECHO` 의 되울림 같은 것)은 INFO 한 줄(간결 화면에도 낼지는 `[auxcontrol] verbose`, 로그 파일에는 늘 남는다), `BAD`·`WAIT`·**무응답**은 경고다. 규격상 `AUX_TelID`/`AUX_SysID` 가 틀리면 서버가 **응답 자체를 하지 않으므로**, 무응답 경고에 그 점검 안내를 detail 로 붙였다. 어느 경우든 **노출은 끝까지 진행한다.**
 
-> ⚠️ **이 경로는 하드웨어 트리거의 시뮬레이션용 대체물이다.** 실제 시스템에는 셔터를 여닫는 SW 명령이 없고 HE 박스의 TTL 신호가 그 역할을 한다. `--backend archon` 으로 실기를 돌릴 때는 `enabled = false` 로 꺼야 구동원이 겹치지 않는다(설정 검증이 경고한다). 자세한 내용은 [DevNote 9.2.2](DevNote.md).
+> ⛔ **셔터 개폐 통지(`FILTERS SET_SH OPEN|CLOSE`)는 걷었다** (운영자 2026-09-12) — FSA HW 가 그 명령을 못 받는다는 TCS 측 검토 결과다. 노출 사이클은 AUX 로 아무것도 보내지 않는다. 셔터는 컨트롤러의 Trigger Out 이 몰고 명령은 `SHOPEN`/`SHCLOSE` 다. `--backend archon` 으로 실기를 돌릴 때는 이 접속이 할 일이 없으니 `enabled = false` 로 둔다(설정 검증이 경고한다). 철거 전 설계는 [DevNote 9.2.2](DevNote.md) 에 있다.
 
 ### 결함 주입
 
@@ -304,7 +312,7 @@ ics_sim/
 ├── rawpair.py      파일명 · 노출 번호 · 충돌 처리 (D-011/D-016)
 ├── rawhdr.py       규격 5장 헤더의 값 공급
 ├── fitsout.py      FITS 생성 (헤더는 실기와 같은 경로)
-├── auxcontrol.py   AUX control 서버 TCP 연동 (셔터 개폐 통보)
+├── auxcontrol.py   AUX control 서버 TCP 연동 (상주 접속 · 접속 인사 -- 셔터 개폐 통지는 2026-09-12 철거)
 ├── console.py      로컬 키보드 인터페이스
 ├── obsagent_model.py   OBSAgent CamStatus 모델 (테스트용 재구현)
 └── hardware/       base.py 계약 · sim.py (현재) / archon.py (다음 단계)

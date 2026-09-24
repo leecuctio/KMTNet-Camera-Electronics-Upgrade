@@ -52,6 +52,9 @@ BLOCKED, ALLOWED, UNKNOWN = 'BLOCKED', 'ALLOWED', 'UNKNOWN'
 #: 독출이 끝났다고 보는 국면들 -- `FETCH` 는 `READOUT` 안이므로 그 다음이다.
 _DONE_PHASES = ('WRITING', 'IDLE')
 
+#: ICG 가 **거절했다**고 보는 응답 타입 (`msg.mtype`).  ⛔ 원문 부분 문자열로 보지 않는다.
+_REFUSED = ('ERROR', 'FATAL')
+
 
 class ExpEnableControl:
     """science 독출 구간에 맞춰 `EXPENABLE` 을 여닫는다."""
@@ -122,15 +125,22 @@ class ExpEnableControl:
                         self.node, CMD, word, self.reply_timeout)
             self.state = UNKNOWN
 
-    def note_reply(self, line: str) -> None:
-        """ICG 의 `EXPENABLE` 응답을 봤다."""
+    def note_reply(self, msg) -> None:  # noqa: ANN001
+        """ICG 의 `EXPENABLE` 응답(`impv2.Message`)을 봤다.
+
+        ⭐ **거절은 응답 타입으로 가른다** -- `msg.mtype` 이 `ERROR`·`FATAL` 이면 거절이다
+        (DevNote 11.96, `gaugectl.note_reply` 와 같은 규칙).  ⛔ 원문에 `ERROR` 낱말이
+        들었나로 보면 `FATAL` 이 정상 답으로 지나가 *"막았다고 믿는"* 상태가 남는다.
+        """
         self._replied = True
-        if 'ERROR' in line.upper():
-            log.warning('the guide exposure-lock command was refused -- %s',
-                        line.strip())
+        line = (msg.raw or '').strip()
+        if (msg.mtype or '').upper() in _REFUSED:
+            log.warning('the guide exposure-lock command was refused -- %s', line,
+                        extra={'detail': '⛔ guide 가 science 독출 구간에 노출할 수 '
+                                         '있다 -- 잠금 상태를 모른다'})
             self.state = UNKNOWN
         else:
-            log.debug('guide exposure-lock reply -- %s', line.strip())
+            log.debug('guide exposure-lock reply -- %s', line)
 
     async def close(self) -> None:
         """종료 -- 데드맨만 세운다.

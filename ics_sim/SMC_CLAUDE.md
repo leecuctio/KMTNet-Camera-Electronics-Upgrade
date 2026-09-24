@@ -7,8 +7,8 @@
 **신규 Python ICS 의 첫 실행 산출물.** 레거시 조사(3부작 보고서)가 끝난 뒤 실제로 만든 첫 코드다.
 
 - 지금은 **시뮬레이터** — 카메라 하드웨어 없이 레거시와 호환되는 메시지를 낸다.
-- **`ics_archon` v0.0 이 나왔다 (2026-08-23, DevNote 11.23).** 실기 프로그램은 [`../ics_archon/`](../ics_archon/README.md) 에 있고 **이 폴더를 사본 없이 그대로 가져다 쓴다** — 시퀀서·명령 처리부·메시지 규약은 **무개정**이다. 이 폴더에 늘어난 것은 `hardware/__init__.py` 의 `register_backend()` **6줄뿐**이고, 그것이 원래 확장점이다. 시험 318개는 한 줄도 안 고치고 통과한다.
-  - **그래서 이 폴더를 고칠 때 상대가 하나 늘었다.** 헤더 층(`rawcards`/`rawhdr`/`rawpair`)·백엔드 계약(`hardware/base.py`)·시퀀서의 백엔드 호출 자리를 바꾸면 `ics_archon` 이 곧바로 깨진다. 바꿀 일이 있으면 `ics_archon/tests` (46항목)도 함께 돌린다.
+- **`ics_archon` 이 이 폴더를 공유층으로 쓴다** (v0.0 2026-08-23, DevNote 11.23). 실기 프로그램은 [`../ics_archon/`](../ics_archon/README.md) 에 있다 — 저장소에서는 형제 원천을 그대로 읽고, 배포용으로는 사본 `ics_archon/ics_archon/_vendor/ics_sim/` 을 함께 들고 다닌다. ⛔ **그래서 이 폴더를 고치면 반드시 `python ../ics_archon/tools/sync_vendor.py`** 를 돌린다(안 돌리면 `ics_archon/tests/test_vendor.py` 가 빨개진다). v0.0 때는 확장점 `register_backend()` 만 늘어난 무개정이었지만, 그 뒤 운영자 지시로 시퀀서·콘솔·transport·명령 처리부·헤더 층을 여러 차례 열었다 — 무엇을 왜 고쳤는지는 아래 날짜 절과 `git log -- ics_sim/ics_sim` 에 있다.
+  - **그래서 이 폴더를 고칠 때 상대가 하나 늘었다.** 헤더 층(`rawcards`/`rawhdr`/`rawpair`)·백엔드 계약(`hardware/base.py`)·시퀀서의 백엔드 호출 자리를 바꾸면 `ics_archon` 이 곧바로 깨진다. 바꿀 일이 있으면 두 스위트(`ics_sim/tests` · `ics_archon/tests`)를 **따로** 전수로 돌린다(수는 `pytest --collect-only` 가 정본).
   - **규약을 건드려야 할 것 같으면 그것 자체가 재검토 신호다.** 결정·검토사항 목록은 [`../ics_archon/SMC_CLAUDE.md`](../ics_archon/SMC_CLAUDE.md).
 - 최종적으로 `ics` 로 개명해 운영 배포.
 

@@ -242,6 +242,55 @@ def test_log_splits_when_the_column_set_changes(tmp_path):  # noqa: ANN001
                      'telemetry.MK.20260817.2.csv'}, files
 
 
+def test_log_splits_instead_of_dying_on_a_non_utf8_file(tmp_path, caplog):  # noqa: ANN001
+    """⛔ 첫 줄이 UTF-8 이 아닌 옛 파일 -- 종전에는 `UnicodeDecodeError` 가 `write()` 를 뚫고
+    올라가 **감시 태스크가 죽었다**(`write()` 는 `OSError` 만 잡는다).  열 구성을 모르는 파일로
+    치고 가르며, 옛 파일은 그대로 둔다."""
+    when = 1787000000.0
+    old = tmp_path / 'telemetry.MK.20260817.csv'
+    old.write_bytes(b'utc,\xff\xfe,event\r\nt0,1,\r\n')
+    log = TelemetryLog('MK', str(tmp_path), ['utc', 'a', 'event'])
+    with caplog.at_level('WARNING'):
+        log.write(['t1', '1', ''], when)             # 올라오지 않는다
+    log.close()
+    assert old.read_bytes() == b'utc,\xff\xfe,event\r\nt0,1,\r\n', '옛 파일을 건드렸다'
+    new = tmp_path / 'telemetry.MK.20260817.2.csv'
+    rows = list(csv.reader(open(new, encoding='utf-8')))
+    assert rows == [['utc', 'a', 'event'], ['t1', '1', '']], rows
+    assert any('cannot read the header' in r.getMessage() for r in caplog.records), caplog.text
+
+
+def test_log_appends_when_only_a_later_row_is_not_utf8(tmp_path):  # noqa: ANN001
+    """⭐ **첫 줄만** 본다 -- 헤더가 같으면 뒤 행 하나가 깨졌어도 이어 쓴다(가르지 않는다)."""
+    when = 1787000000.0
+    old = tmp_path / 'telemetry.MK.20260817.csv'
+    old.write_bytes(b'utc,a,event\r\nt0,\xff,\r\n')
+    log = TelemetryLog('MK', str(tmp_path), ['utc', 'a', 'event'])
+    log.write(['t1', '1', ''], when)
+    log.close()
+    assert os.listdir(tmp_path) == ['telemetry.MK.20260817.csv']
+    assert old.read_bytes().endswith(b't1,1,\r\n'), old.read_bytes()
+
+
+def test_a_zero_byte_log_gets_a_header_instead_of_a_split(tmp_path, caplog):  # noqa: ANN001
+    """⭐ **0바이트 파일은 없는 파일처럼** -- 헤더를 쓰고 이어 쓴다 (DevNote 11.96).
+
+    `'a'` 로 열고 첫 행 뒤에야 flush 하므로 그 사이에 죽으면 빈 파일이 남는다.  종전에는
+    그것을 *"열 구성이 다르다"* 로 읽어 `.2.csv` 로 가르고 빈 파일을 남겼다.
+    """
+    when = 1787000000.0
+    old = tmp_path / 'telemetry.MK.20260817.csv'
+    old.write_bytes(b'')
+    log = TelemetryLog('MK', str(tmp_path), ['utc', 'a', 'event'])
+    with caplog.at_level('WARNING'):
+        log.write(['t1', '1', ''], when)
+    log.close()
+    assert os.listdir(tmp_path) == ['telemetry.MK.20260817.csv']
+    rows = list(csv.reader(open(old, encoding='utf-8')))
+    assert rows == [['utc', 'a', 'event'], ['t1', '1', '']], rows
+    assert not any('different column layout' in r.getMessage() for r in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # 감시 태스크
 # ---------------------------------------------------------------------------
@@ -337,6 +386,38 @@ def test_monitor_writes_fixed_columns_with_units(tmp_path):  # noqa: ANN001
     assert sample[head.index('T1_Backplane[C]')] == '31.5'
     assert sample[head.index('B_OG-A_V[V]')] == '-3.900'
     assert rows[-1][head.index('event')] == 'stop'
+
+
+def test_the_first_sample_is_taken_at_start(tmp_path):  # noqa: ANN001
+    """⭐ **첫 표본은 기동 즉시** (운영자 지시 2026-09-15, DevNote 11.94-a).
+
+    종전에는 첫 바퀴가 `interval` 뒤라 기동 뒤 20 s 동안 `status_live` 가 비어
+    `CnHKDATA` 가 전 자리 결측(`CnSTALE=24`)이었다.  ⚠️ 다른 감시 시험은 `interval=1.0`
+    에 시한 없이 기다리므로 옛 거동으로 돌아가도 못 잡는다 -- 여기서는 간격을 30 s 로
+    벌리고 0.5 s 안에 표본이 있는지 본다.
+    """
+    cfg = _cfg(tmp_path, monitor_interval=30.0)
+    ctrl = _FakeCtrl()
+    mon = TelemetryMonitor(ctrl, cfg)
+    mon._stop = asyncio.Event()
+
+    async def go():  # noqa: ANN202
+        task = asyncio.ensure_future(mon.run())
+        deadline = time.monotonic() + 0.5
+        while ctrl.polls < 1 and not task.done() and time.monotonic() < deadline:
+            await asyncio.sleep(0.01)
+        polls = ctrl.polls
+        mon.stop()
+        await asyncio.wait_for(task, timeout=5)
+        return polls
+    polls = asyncio.run(go())
+    assert polls >= 1, 'first sample must be taken at start, not after interval'
+
+    head, *rows = _rows(mon.log.path)
+    events = [r[head.index('event')] for r in rows]
+    assert events[0] == 'start'
+    assert events[1] == '', '둘째 행이 첫 표본이어야 한다: %r' % events
+    assert events[-1] == 'stop'
 
 
 def test_monitor_keeps_invalid_samples(tmp_path):  # noqa: ANN001

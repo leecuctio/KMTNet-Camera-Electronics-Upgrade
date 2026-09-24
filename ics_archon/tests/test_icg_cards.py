@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 """guide 카드 템플릿·이름 규칙 검증.
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md` 9·10장.
-정본: guide 견본 헤더 v1.10 (값 128 + COMMENT 8 + END 1 + 공백 7 = 144
-레코드 = 11,520 B) -- science 의 `test_raw_draft.py` 와 같은 정신으로
-**바이트 단위 재현**을 대사한다.
+규격: 현행 raw spec(`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v<판>.md`) 9·10장.
+정본: 현행판 guide 견본 헤더(`raw_fits_spec/header_samples/KMT?.*.G.fits.header.v<판>.txt`,
+값 128 + COMMENT 8 + END 1 + 공백 7 = 144 레코드 = 11,520 B -- v1.13 기준) --
+science 의 `test_raw_draft.py` 와 같은 정신으로 **바이트 단위 재현**을 대사한다.
+⚠️ `guidecards.SPEC_PENDING` 에 올린 카드는 운영자 결정으로 견본보다 앞서 간다
+(지금은 `EQUINOX` 실수형) -- 따라잡은 때는 `test_the_guide_sample_has_not_caught_up_yet`
+가 알린다.
 """
 
 from __future__ import annotations
@@ -53,7 +56,7 @@ def test_template_matches_the_sample_generator():
     """
     cards, _values = gen.parse()
     # ⭐ **일부러 갈라 둔 자리는 먼저 적용한다** (`guidecards.SPEC_PENDING`,
-    # 지금은 비어 있어 no-op 이다).  ⛔ 그 목록 밖의 갈림은 여기서 그대로
+    # 지금은 `EQUINOX` 한 장).  ⛔ 그 목록 밖의 갈림은 여기서 그대로
     # 걸린다 -- 견본이 개정되면 `tools/gen_guidecards.py` 를 다시 돌린다.
     assert tuple(guidecards.apply_pending(cards)) == tuple(guidecards.CARDS), (
         'guidecards.CARDS 가 견본과 갈렸다 (SPEC_PENDING 밖의 차이) -- '
@@ -64,14 +67,14 @@ def test_template_matches_the_sample_generator():
 def test_sample_bytes_are_reproduced():
     """견본 값을 넣으면 견본이 **바이트 단위로** 재현돼야 한다.
 
-    카드 순서·형·폭·comment·패딩(공백 12 레코드 포함)이 전부 이 한 판에
+    카드 순서·형·폭·comment·패딩(`END` 뒤 공백 7 레코드 포함)이 전부 이 한 판에
     걸린다 -- guide 저장 경로(`fitswrite.header_bytes` + `WIDTHS`)의 대사다.
     """
     for path in _samples():
         cards, values = gen.parse(path)
         # ⭐ **견본의 템플릿으로** 재현한다 -- `CARDS` 가 `SPEC_PENDING` 만큼
-        # 앞서는 국면에서도 이 대사가 성립하게 하려는 것이다 (지금은 목록이
-        # 비어 둘이 같다).  갈린 자리는 바로 위 시험이 따로 못박는다.
+        # 앞서는 국면에서도 이 대사가 성립하게 하려는 것이다 (지금은
+        # `EQUINOX` 한 장이 갈린다).  갈린 자리는 바로 위 시험이 따로 못박는다.
         widths = {k: w for k, _t, w, _c in cards if k != 'COMMENT'}
         rendered = guidecards.render(values, cards=cards)
         blob = fitswrite.header_bytes(rendered, 4224, 1033, widths=widths)
@@ -320,14 +323,70 @@ def test_science_keeps_ledflash_and_has_no_trigout():
     assert 'TRIGOUT' not in sci
 
 
-def test_the_sample_has_caught_up_and_nothing_diverges():
-    """✅ 견본이 규격 v1.13 에서 따라잡았다 -- 갈림은 **없다**.
+def test_only_equinox_runs_ahead_of_the_sample():
+    """갈림은 **`EQUINOX` 한 장**이다 (실수형, 운영자 2026-09-23).
 
-    ⛔ 목록이 다시 차면 규격·견본 갱신이 밀린 자리가 생겼다는 뜻이다.
-    그 국면은 정상이지만 **오래 두면 안 된다** -- 다음 `main` 라운드에서
-    견본을 고치고 비운다.
+    ⛔ 목록은 규격·견본 갱신이 밀린 자리다.  그 국면은 정상이지만 **오래
+    두면 안 된다**.  science 쪽(`rawcards.SPEC_PENDING`)과 같은 목록이어야 한다.
+    ⭐ 견본이 `EQUINOX = 2000.0` 으로 따라잡은 때는 바로 아래
+    `test_the_guide_sample_has_not_caught_up_yet` 가 빨개져 알린다 -- 그때 목록을
+    비우고 이 시험을 `== ()` 로 되돌린다 (이 시험은 목록 내용만 못박을 뿐 견본을
+    안 본다).
     """
-    assert guidecards.SPEC_PENDING == ()
+    from ics_sim import rawcards
+    assert [k for k, _ in guidecards.SPEC_PENDING] == ['EQUINOX']
+    assert guidecards.SPEC_PENDING == rawcards.SPEC_PENDING
+
+
+@pytest.mark.repo_only
+def test_the_guide_sample_has_not_caught_up_yet():
+    """⛔ **견본이 따라잡으면 `guidecards.SPEC_PENDING` 을 비운다** -- 그 시점을 이 시험이 알린다.
+
+    science 의 `ics_sim/tests/test_raw_draft.py` `test_the_sample_has_not_caught_up_yet`
+    와 짝이다.  대사 시험(`test_template_matches_the_sample_generator` 는
+    `apply_pending` 을 먼저 적용한다)은 따라잡은 견본에서도 **초록으로 지나간다**
+    (같은 카드를 같은 카드로 바꿔 끼우는 셈이라서).  그래서 반대로 단정한다:
+    앞서 간 카드는 **견본 템플릿에 옛 꼴로 아직 있고, 현행 카드와 달라야** 한다.
+    삭제(`None`)면 그 키가 견본에 아직 있어야 한다.
+    """
+    for path in _samples():
+        cards, _values = gen.parse(path)
+        sample = {c[0]: tuple(c) for c in cards if c[0] != 'COMMENT'}
+        name = os.path.basename(path)
+        for old, new in guidecards.SPEC_PENDING:
+            assert old in sample, f'{name} {old}: 견본에 그 카드가 없다'
+            assert new is None or sample[old] != tuple(new), (
+                f'{name} {old}: 견본이 따라잡았다 -- `guidecards/rawcards.'
+                'SPEC_PENDING` 에서 지우고 science 의 `_ahead_of_sample` 도 볼 것')
+
+
+def test_guide_camver_defaults_to_the_science_constant():
+    """⭐ ini 가 비면 guide `CAMVER` 는 **science 상수 그대로**다 (`rawhdr.CAMVER`,
+    운영자 2026-09-15 -- guide `CAMVER` 는 science 와 같다).
+
+    ⛔ 종전엔 같은 값을 `guidehdr` 에 리터럴로 한 번 더 적어, science 쪽을
+    올리면 guide 만 옛 값에 남을 자리였다 -- 그 회귀를 여기서 막는다.
+    """
+    from ics_sim import rawhdr
+    assert guidehdr.instrument_header('KMTC', {})['CAMVER'] == rawhdr.CAMVER
+    assert guidehdr.instrument_header('KMTC', None)['CAMVER'] == rawhdr.CAMVER
+
+
+def test_guide_equinox_is_a_real_card():
+    """TC 중계 문자열 `'2000.000'` -> 실수 카드 `2000.0` (운영자 2026-09-23)."""
+    from ics_sim.config import SimConfig
+    from ics_sim.telemetry import TelemetryRelay
+    relay = TelemetryRelay(SimConfig(), lambda *a, **k: None)
+    relay.tcs_fields = [('EQUINOX', '2000.000')]
+    pool = relay.fits_header_dict('2026-09-23T00:00:00.000')
+    cards = dict((k, v) for k, v, _c in guidecards.render(pool)
+                 if k != 'COMMENT')
+    assert cards['EQUINOX'] == 2000.0
+    assert isinstance(cards['EQUINOX'], float)
+    image = fitswrite.card_image('EQUINOX', cards['EQUINOX'],
+                                 'Coordinate System Equinox',
+                                 widths=guidecards.WIDTHS)
+    assert image.startswith('EQUINOX =               2000.0 / ')
 
 
 def test_the_card_says_unknown_when_nobody_knows():

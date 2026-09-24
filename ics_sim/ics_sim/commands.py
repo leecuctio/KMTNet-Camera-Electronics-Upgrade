@@ -355,7 +355,12 @@ class Dispatcher:
 
         설정은 종전대로 `BIAS`/`DARK`/`OBJECT`/… 다 -- 인자가 오면 거절하고 그쪽을
         가리킨다.  본문은 그 명령들의 응답과 같은 모양(`ImageType= ObjectName= EXP=`)
-        이고, 답의 커맨드워드는 **받은 그대로**(세 별칭).  ICG 도 이 핸들러를 물려받는다.
+        이고, 답의 커맨드워드는 **받은 그대로**(세 별칭).
+        ⚠️ ICG 는 **`EXP=` 자리를 덮어쓴다** (`icg_archon` 의
+        `IcgDispatcher._image_type_query`) -- 여기 `EXP=` 는 `effective_exptime` 이라
+        `BIAS` 면 0 인데, guide 의 `BIAS` 는 **최소 노출**이라 `st.exptime` 을 싣는다.
+        인자가 온 조회의 거절은 이 핸들러에 넘기고, 답의 커맨드워드를 받은 그대로
+        쓰는 것도 같다.
         """
         word = (msg.cmdword or 'IMAGETYPE').upper()
         st = self.state
@@ -420,7 +425,7 @@ class Dispatcher:
 
         ⭐ **로그 파일은 이 명령을 안 탄다** -- 언제나 전부 적는다 (운영자
         2026-09-11).  ⚠️ 그래서 화면에서 안 보인 줄이 파일에는 있다.
-        ⭐ ini `[logging] verbose` 가 기동값이고, 이 명령은 **재기동 없이**
+        ⭐ ini `[behavior] verbose` 가 기동값이고, 이 명령은 **재기동 없이**
         그것을 민다 -- 벤치에서 화면이 시끄러울 때 그 자리에서 끄고, 뭔가
         이상할 때 그 자리에서 켜라고 둔 창구다.
         ⛔ 어휘 밖은 기본값으로 떨어뜨리지 않고 **거부**한다.

@@ -48,7 +48,7 @@
 | 허브에 붙일 때 | `[transport] bind_host` | 기본 `127.0.0.1` 이라 붙지 않는다 — 허브·`TC`·`ABC` 가 다른 호스트이므로 **`0.0.0.0`** 으로 |
 | ⭐ **`guide_ic_id` 를 비웠나** | `[node] guide_ic_id` | **빈 값이어야 한다.**  기본값 `G.IC` 를 안 지우면 라우터가 **자기 IC 를 "범위 밖 guide" 로 무시한다**(`nodes.Role.GUIDE`).  설정 검사가 수신 노드 ID 와의 겹침을 잡는다 |
 | ICS 쪽 한 줄 | `ics_archon.ini` `[behavior] send_guide_init` | **`false` 유지.**  켜면 science 노출마다 ICG 안으로 `INITIALIZE` 가 들어가 남의 상태를 건드린다 — 그 노드를 이제 `icg_archon` 이 진짜로 수신 등록한다 (2026-08-31) |
-| 환경센서 | `[radionode] backend` | **`off`** 로 둔다 — 값이 없으면 `HEBOX`/`FSATEMP`/`FSAHUM` 이 sentinel 로 정직하게 남는다. `sim` 은 헤더로 안 나가지만 조합 경고가 붙는다 |
+| 환경센서 | `[radionode] backend` | **`off`** 로 둔다 — 값이 없으면 `HEBOX`/`FSATEMP`/`FSAHUM` 이 sentinel 로 정직하게 남는다. `sim` 은 헤더로 안 나가지만 조합 경고가 붙는다.  ⚠️ 배포 ini 는 `openapi` 다(2026-09-15) — 그대로 두고 자격증명이 비어 있으면 기동이 경고하고 `off` 로 내린다 |
 | 텔레메트리 | `[icg] telemetry` | `true` 유지 — 실기에서 원인을 가르는 첫 수단이다 |
 | **Apply All** | `ArchonGUI` (또는 `probe --expose`) | 이 세션에 `APPLYALL` 이 없으면 **`POWERON` 이 `?xx` 로 거부된다** (매뉴얼 p.51, DevNote 10.2). `REBOOT`·설정 재업로드 뒤에는 반드시 다시 |
 
@@ -82,11 +82,12 @@ python3 -u tools/probe_archon.py --unit guide --host 10.0.0.162 --acf acf/KMTK_G
 
 **통과 기준**: 요약에 `문제 0건`.
 
-## 2단계 — 파라미터의 Config 슬롯 번호 대조 (여전히 읽기 전용)
+## 2단계 — 파라미터의 Config 슬롯 대조 (여전히 읽기 전용)
 
-1단계 명령에 `--acf` 를 이미 줬으므로 같은 로그에 함께 찍힌다. `PARAMETER1`
-(`Exposures`) · `PARAMETER2`(`IntMS`) 가 그 ACF 에 있고 컨트롤러 메모리의
-같은 줄 번호가 그 키인지 `RCONFIG` 로 확인만 한다.
+1단계 명령에 `--acf` 를 이미 줬으므로 같은 로그에 함께 찍힌다.  probe 가 ACF 에서
+**이름**(`IntMS`·`Exposures`)으로 찾은 슬롯과 설정 줄 번호를 찍고, 컨트롤러 메모리의
+같은 줄이 그 키인지 `RCONFIG` 로 확인만 한다.  ⛔ 슬롯 번호로 대조하지 않는다 — 판마다
+밀린다(R2622 guide 는 `Exposures`=`PARAMETER16` · `IntMS`=`PARAMETER2`).
 
 **통과**: 두 슬롯 다 `OK`, 또는 `컨트롤러의 설정 줄 …가 비어 있다`(아직 안
 올린 상태 — 정상). ⛔ `설정 줄 …가 … 가 아니다` 가 나오면 **여기서 멈춘다** —
@@ -113,7 +114,7 @@ python3 -u -m icg_archon 2>&1 | tee icg_boot.log
 |---|---|---|
 | 기동 검사 | `[icg] FETCH 상한 … 가 프레임 하한 … 이상이다` 경고가 **없어야** 한다 (`fetch_timeout=1.0` < 하한 1.251 s) | |
 | ⭐ ACF 하한 | `acftiming` 이 타이밍 스크립트에서 읽은 하한 = **1.251 s**. 못 읽으면 ini 대체값 2.0 으로 내려가며 경고가 붙는다 — 그러면 4단계 수치의 뜻이 달라진다 | |
-| HK 루프 | 1분마다 `~/AIC/Logs/hk.G.<YYYYMMDD>.csv` 에 한 행 (⛔ `hk_latest.G.json` 은 더 이상 안 만든다 — 2026-09-15) | |
+| HK 루프 | 1분마다 `~/AIC/Logs/hk.G.<YYYYMMDD>.csv` 에 한 행 — ⚠️ 그날 파일이 **열 배치가 다른 옛 판**이면 `hk.G.<YYYYMMDD>.2.csv`(또 다르면 `.3` …)로 가르고 경고 `hk: … has a different column layout -- writing to …` 를 남긴다 (⛔ `hk_latest.G.json` 은 더 이상 안 만든다 — 2026-09-15) | |
 | 콘솔 `hk` | 값 한 줄. `HEBOX`/`FSATEMP`/`FSAHUM` 은 안 실린다(=sentinel, Radionode off) | |
 | 콘솔 `radionode status` | `off` | |
 | `age_ms`/`lag_ms` | 첫 감시 로그에서 어떤 값인가 — `monitor_interval` 기본값의 근거 | |
@@ -127,7 +128,7 @@ python3 -u -m icg_archon 2>&1 | tee icg_boot.log
 
 | 항목 | 기대 | 실측 |
 |---|---|---|
-| `CCDPOWON` | `DONE: CCDPOWON Power=ON` 이 **`poweron_wait`(12 s) 뒤**에 온다. 그 사이 `go` 는 `ERROR: GO Busy with CCDPOWON -- wait for its DONE` | |
+| `CCDPOWON` | `DONE: CCDPOWON Power=ON` 이 **`gauge_warmup_wait`(12 s, 이온게이지 예열) 뒤**에 온다. 그 사이 `go` 는 `ERROR: GO Busy with CCDPOWON -- wait for its DONE` | |
 | `CCDFLUSH` | `DONE: CCDFLUSH Flushed=1`. `FRAME` 의 `BUFnFRAME` 이 **안 는다**(flush 는 프레임을 안 만든다, R2613+). `RCONFIG` 로 `FirstFlush=1` 이 **그대로**인가 (R2616 상수 — 호스트가 안 쓴다) | |
 | ⭐ flush 소요 | `DONE` 까지 ≈ 기본 노출시간 1.2506 s — 4단계 주기 실측의 예고편 (규격 OI-26 ①) | |
 | `ARCHON STATUS` | `DONE: ARCHON POWERGOOD=1 …` 원문. 1800 B 넘으면 `...(+N bytes truncated, see log)` 가 붙고 전문은 `icg_archon.cmd` 로그에. ⭐ **이 응답 원문을 파일로 남긴다** — guide `.162` 의 STATUS 실물이 저장소에 한 번도 없다(11.30) | |
@@ -149,7 +150,8 @@ go 20
 
 > `dark` 의 인자는 `OBJECT` 카드가 된다. guide 는 `bias`/`dark` 에서도
 > **주기를 0 으로 만들지 않는다** — `EXPTIME` 이 셔터 노출이 아니라 **독출
-> 개시 간격**이라 0 이 실현 불가능한 값이기 때문이다. `go n` 은 n장이고,
+> 개시 간격**이라 0 이 실현 불가능한 값이기 때문이다.  (`bias` 는 `EXPTIME` 을
+> **최소 노출**로 고정하고 그동안 `EXP`/`GUIEXP` 를 거부한다 — 2026-09-15, DevNote 11.92.) `go n` 은 n장이고,
 > R2613+: 앞에 **flush 1회**가 붙는다 -- 프레임을 만들지 않는다 (`Exposures=n` 을 한 LOADPARAMS 로 — flush 는 ACF 상수 `FirstFlush=1` 이 싣는다, R2616).
 
 | `EXPTIME` 지시 | 실현 주기 (중앙값) | `간격이 밀렸다` 경고 | FETCH 초 | 저장 파일 수 |
@@ -185,11 +187,13 @@ go 20
 
 ```ini
 [icg]
-latency_warn_ms = 0          ; ⭐ 실측용 -- 전부 남긴다 (끝나면 운용값으로)
+latency_warn_ms = 0          # ⭐ 실측용 -- 전부 남긴다 (끝나면 운용값 150 으로)
 
 [logging]
-file = ~/AIC/Logs/icg_archon.log     ; 주석을 푼다 -- 나중에 grep 하려면 필요
+file = ~/AIC/Logs            # 배포 ini 그대로 -- 날마다 icg.<YYYYMMDD>.log (이름 날짜는 사이트 관측일 = FITS 파일명 날짜, 줄 시각은 UTC).  비우면 파일이 없어 grep 을 못 한다
 ```
+
+⚠️ ini 의 주석 문자는 **`#` 하나다** — `;` 를 쓰면 주석이 아니라 값의 일부가 된다.
 
 ⚠️ `TRIGOUT` 은 이 눈금을 **안 탄다**(늘 남는다) — `0` 으로 두는 것은 `HKDATA` 때문이다.
 
@@ -224,18 +228,20 @@ Enter** 를 되풀이하면 빠르다.
 ### 읽기
 
 ```bash
-grep -E '지연 --' ~/AIC/Logs/icg_archon.log
+grep -h 'latency --' ~/AIC/Logs/icg.*.log
 ```
 
-이런 줄이 나온다:
+이런 줄이 나온다 (꼴 `<what> latency -- recv->done <ms> ms (acquiring|idle)[ <extra>]` — 영문
+로그 규약.  2026-09-09 실측 때는 한글 줄 `… 지연 -- 수신→완료 … (취득중)` 이었다):
 
 ```
-[2026-09-09T..] HKDATA 지연 -- 수신→완료 88.1 ms (취득중)
-[2026-09-09T..] TRIGOUT 올림 지연 -- 수신→완료 92.4 ms (취득중) Sec=2
-[2026-09-09T..] TRIGOUT 내림 지연 -- 수신→완료 2095.1 ms (취득중) 폭오차 +2.7 ms (요청 2s)
+HKDATA latency -- recv->done 88.1 ms (acquiring)
+TRIGOUT raise latency -- recv->done 233.8 ms (acquiring) MS=2000
+TRIGOUT lower latency -- recv->done 2236.1 ms (acquiring) width error +1.2 ms (requested 2000 ms, compensation -234 ms)
 ```
 
-`(한가)`/`(취득중)` 이 붙으므로 **두 무리를 갈라서** 최댓값·중앙값을 적으면 된다.
+`(idle)`/`(acquiring)` 이 붙으므로 **두 무리를 갈라서** 최댓값·중앙값을 적으면 된다 (아래 표의
+"한가"/"취득중" 이 그 둘이다).
 
 | 항목 | 기대 | ✅ 실측 (2026-09-09) |
 |---|---|---|
@@ -248,8 +254,9 @@ grep -E '지연 --' ~/AIC/Logs/icg_archon.log
 | 프레임 주기 | `trigout` 친 프레임이 튀지 않나 | ✅ `간격이 밀렸다` 8건은 **명령과 무관** (넷은 명령보다 **먼저** 났다) |
 | 링크 | 재동기 0회 | ✅ **0회** (11.54 고침 뒤) |
 
-⏳ **남은 확인 하나**: 보정을 넣은 뒤 `trigout 2000` 을 쳐서 **폭오차가 0 근처로 떨어지는지**
-로그로 본다 (`폭오차 +x.x ms (요청 2000 ms, 보정 -234 ms)`).  ⚠️ **눈금이 ms 로 바뀌었다** (2026-09-09 저녁).
+✅ **보정 뒤 확인** — `trigout 2000` 을 쳐서 **폭오차가 0 근처로 떨어지는지** 로그로 본다
+(`width error +x.x ms (requested 2000 ms, compensation -234 ms)`).  2026-09-09 저녁 실측이 아래 표다.
+⚠️ **눈금이 ms 로 바뀌었다** (2026-09-09 저녁).
 
 | 상황 | 기대 | ✅ 실측 (2026-09-09, `…003.log`) |
 |---|---|---|
@@ -265,16 +272,16 @@ grep -E '지연 --' ~/AIC/Logs/icg_archon.log
 평균 0 근처여야 한다.  ⛔ **한쪽으로 치우쳐 크게 나오면** `ctrl.last_cmd_timing` 으로
 락 대기를 뺀 순수 적용시간을 쓰도록 다듬는다 (DevNote 11.55).
 
-### 이 실측으로 정할 것
+### 이 실측으로 정한 것
 
-1. ⭐ **`HKDATA` 의 히터 셋**을 (갑) 지금대로 `RCONFIG` 3회 · (을) 폴링값 ·
-   (병) `config_value()`(캐시 + `config_dirty` 때만 되읽기) 중 무엇으로 둘지.
-   ⚠️ 운영자 판단은 *"히터를 빈번히 켜고 끌 일이 없고 trigout 도 모니터링할 필요
-   없으면 폴링값"* 이고, ⭐ `HTRSET`·`HTRFORCE`·`TRIGOUT*` 은 **인자 없이 치면 즉시
-   되읽기 조회**라 확인 경로가 따로 있다는 것이 그 판단의 근거다.
-2. ⏳ **운용 임계 `latency_warn_ms`** — 기본 50 은 한가할 때 기준선의 8배로 잡은
-   임시값이다.  ⛔ 취득 중 정상 지연이 늘 50 을 넘으면 그 값은 *"이상"* 이 아니라
-   **소음**이 된다.  **실측 최악값 위**로 다시 잡는다.
+1. ✅ **`HKDATA` 의 히터 셋 — (을) 폴링값 + `HKDATA NOW`** 로 확정 (DevNote 11.56).
+   기본은 HK 바퀴가 `RCONFIG` 로 `_sample` 에 담아 둔 값(헤더와 같은 원천)이고, 방금 바꾼
+   값은 `HKDATA NOW`(HK 한 바퀴를 지금)로 본다.  ⭐ `HTRSET`·`HTRFORCE`·`TRIGOUT*` 은
+   **인자 없이 치면 즉시 되읽기 조회**라 확인 경로가 따로 있다 — 운영자 판단(*"히터를 빈번히
+   켜고 끌 일이 없고 trigout 도 모니터링할 필요 없으면 폴링값"*)의 근거다.
+2. ✅ **운용 임계 `latency_warn_ms` = 150 ms** (DevNote 11.55-(5)) — 취득 중 최악 108 ms 보다
+   위라 평시 조용하고, 그 위로 튀면 진짜 이상이다.  ⛔ 종전 임시값 50 은 취득 중 14 % 가
+   넘어 **소음**이 됐다.
 
 ## 5단계 — `STOP` / `ABORT` 뒤 꼬리 (⏳ 미결 하나를 닫는다)
 

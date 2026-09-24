@@ -185,8 +185,9 @@ class DailyFile(logging.Handler):
     ⚠️ **2026-09-12 까지 UTC 였다.**  그때 근거로 적혀 있던 *"FITS 파일명도
     UTC 다"* 는 **사실이 아니었다** -- 파일명은 2026-08-13 부터 관측일이라
     (`state.obs_date`), 관측소에서는 로그와 자료의 날짜가 이미 갈려 있었다.
-    ⭐ 관측일 경계는 **현지 12:30**(세 사이트 공통)이라 관측 중에 지나가지
-    않는다.  KASI 는 보정이 0 이라 UT 날짜 그대로다 (관측 야간이 없다).
+    ⭐ 관측일 경계는 세 관측소가 **현지 12:30** 이라 관측 중에 지나가지
+    않는다.  KASI(`KMTK`)는 **KST 자정**이라 한국 날짜다 (2026-09-12 까지는
+    보정 0 · UT 날짜였다 -- `rawpair.OBSDATE_SHIFT_MIN`).
     ⚠️ **줄 안의 시각은 UTC 그대로다** -- 파일 **이름**만 관측일이다.
     `setup_logging` 이 포매터의 시각을 UTC 로 맞추는 것은 그대로 둔다.
 
@@ -391,4 +392,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == '__main__':
+    # ⛔ **`python -m ics_sim` 이면 이 파일이 `__main__` 이라는 이름으로 돈다** --
+    # 그때 `from .__main__ import …`(`commands.cmd_verbose` ·
+    # `console._wire_line_shown`)는 `ics_sim.__main__` 을 **새로 한 벌 더**
+    # 읽어, `setup_logging()` 이 채운 `_SCREEN_FILTER` 가 빈(`None`) 사본을 본다
+    # -- `VERBOSE OFF` 가 아무것도 안 바꾸고 조회는 늘 `ON` 이었다 (2026-09-23
+    # 발견).  돌고 있는 이 모듈을 그 이름으로도 올려 두어 한 벌만 있게 한다.
+    # ⚠️ `ics_archon`·`icg_archon` 은 이 파일을 보통 모듈로 들이므로 해당 없다.
+    sys.modules.setdefault('%s.__main__' % __package__, sys.modules[__name__])
     raise SystemExit(main())

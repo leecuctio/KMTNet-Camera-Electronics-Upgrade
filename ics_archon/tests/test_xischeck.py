@@ -11,17 +11,24 @@
 from __future__ import annotations
 
 import asyncio
-import types
 
 import pytest
 
 import ics_archon  # noqa: F401
 
 from ics_archon.xischeck import XIS_ID, XisGate, XisUnreachable  # noqa: E402
+from ics_sim.impv2 import parse_line  # noqa: E402
 
 
-def _msg(src: str, raw: str):  # noqa: ANN202
-    return types.SimpleNamespace(src=src, raw=raw)
+def _msg(raw: str):  # noqa: ANN202
+    """**진짜 파서**로 푼 `Message` -- 게이트는 `src`·`cmdword`·`mtype` 을 본다 (2026-09-23).
+
+    ⚠️ 종전 하네스는 `src`·`raw` 만 든 가짜였다 -- 게이트가 원문 부분 문자열로 판정할
+    때는 그것으로 돌았지만, 커맨드워드로 가르는 지금은 파서가 만든 값이어야 한다.
+    """
+    msg = parse_line(raw)
+    assert msg is not None, raw
+    return msg
 
 
 def _gate(**over):  # noqa: ANN003, ANN202
@@ -39,7 +46,7 @@ def test_a_pong_from_the_hub_lets_the_startup_through():
 
         def ping():  # noqa: ANN202
             sent.append(XIS_ID)
-            gate.note_message(_msg('XIS', 'XIS>ICS PONG'))
+            gate.note_message(_msg('XIS>ICS PONG'))
 
         await gate.check(ping)
         return sent, gate.answered_on
@@ -71,13 +78,47 @@ def test_a_pong_from_another_node_does_not_count():
         gate = _gate(tries=1)
 
         def ping():  # noqa: ANN202
-            gate.note_message(_msg('ICG', 'ICG>ICS PONG'))
-            gate.note_message(_msg('TC', 'TC>ICS PONG'))
+            gate.note_message(_msg('ICG>ICS PONG'))
+            gate.note_message(_msg('TC>ICS PONG'))
 
         with pytest.raises(XisUnreachable):
             await gate.check(ping)
 
     asyncio.run(run())
+
+
+def test_pong_only_in_the_body_does_not_count():
+    """⛔ **커맨드워드 + 타입으로 가른다** -- 허브가 보낸 줄이라도 `PONG` 이 본문에만
+    있으면 답이 아니다 (2026-09-23 검토 -- 원문 부분 문자열로 보던 판은 이것을 통과시켰다).
+    ⛔ 커맨드워드가 `PONG` 이어도 `ERROR:` 는 허브의 **거절**이라 답이 아니다.
+    ⭐ 대소문자는 안 가린다 (레거시 `strcasecmp` 관례)."""
+    async def run():  # noqa: ANN202
+        gate = _gate(tries=1)
+
+        def ping():  # noqa: ANN202
+            gate.note_message(_msg('XIS>ICS ERROR: FOO PONG'))
+            gate.note_message(_msg('XIS>ICS DONE: STATUS last=PONG'))
+            gate.note_message(_msg('XIS>ICS ERROR: PONG x'))
+
+        with pytest.raises(XisUnreachable):
+            await gate.check(ping)
+
+        lower = _gate(tries=1)
+        await lower.check(lambda: lower.note_message(_msg('xis>ICS pong')))
+        return lower.answered_on
+
+    assert asyncio.run(run()) == 1
+
+
+@pytest.mark.parametrize('raw', ['XIS>ICS PONG', 'XIS>ICS DONE: PONG'])
+def test_pong_counts_as_an_implicit_req_or_a_done(raw):  # noqa: ANN001
+    """⭐ 받는 타입은 둘 -- 허브의 표준 답(타입 토큰 없음 = 암묵 `REQ`)과 `DONE: PONG`."""
+    async def run():  # noqa: ANN202
+        gate = _gate(tries=1)
+        await gate.check(lambda: gate.note_message(_msg(raw)))
+        return gate.answered_on
+
+    assert asyncio.run(run()) == 1
 
 
 def test_an_empty_xis_host_is_refused_with_the_key_name():

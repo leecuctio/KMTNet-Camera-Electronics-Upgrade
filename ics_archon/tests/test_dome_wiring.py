@@ -228,9 +228,10 @@ def test_a_science_exposure_writes_the_redis_dome_values(tmp_path):
     heads, redis = _run_science(tmp_path, DOME)
     assert set(heads) == {'MK', 'NT'}, list(heads)
     for tag, head in sorted(heads.items()):
-        assert head['DSTELAZ'].strip() == '12.1', tag
-        assert head['DSAZ'].strip() == '12.3', tag
-        assert head['DAZERR'].strip() == '+0.2', tag
+        # ⭐ 소수 2자리 (운영자 2026-09-15, DevNote 11.94-h)
+        assert head['DSTELAZ'].strip() == '12.10', tag
+        assert head['DSAZ'].strip() == '12.30', tag
+        assert head['DAZERR'].strip() == '+0.20', tag
     assert redis.mgets >= 1, '노출이 redis 를 읽지 않았다'
 
 

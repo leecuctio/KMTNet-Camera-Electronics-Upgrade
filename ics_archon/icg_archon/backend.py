@@ -224,7 +224,7 @@ class GuideBackend:
         # R2613+: flush 를 걸 수 있는 판인가 -- 형태 검사(`_SHAPE` 의 `Start:` flush 분기·
         # 통과했고 `FirstFlush`·`FlushLines` 가 있어야 한다.  없으면 `arm_sequence` 가
         # GO 를 거부한다 -- `Exposures=n` 으로 걸면 첫 장이 flush 없이 저장되니까.
-        log.info('frame timing from acf (PROVISIONAL): %s · flush %s',
+        log.info('frame timing from acf (PROVISIONAL): %s; flush %s',
                  acftiming.describe(t),
                  ('%.4f s' % t['flush']) if t.get('flush')
                  else '(none -- R2612 or older)')

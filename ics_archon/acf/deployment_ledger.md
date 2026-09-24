@@ -11,8 +11,9 @@
 
 ## "깔려 있다" 의 뜻
 
-Archon 은 설정을 **비휘발로 갖고 있지 않다.**  호스트(`ics_archon`/`icg_archon`)가 **기동마다**
-ini 가 가리키는 ACF 를 `CLEARCONFIG → WCONFIG → APPLYALL` 로 밀어 넣는다 (`apply_acf` 눈금은
+Archon 은 설정을 **비휘발로 갖고 있지 않다.**  호스트가 **세션마다 한 번** ini 가 가리키는 ACF 를
+`CLEARCONFIG → WCONFIG → APPLYALL` 로 밀어 넣는다 — guide(`icg_archon`)는 **기동에서**, science
+(`ics_archon`)는 기동 뒤 **첫 `GO` 의 `prepare()`** 에서다 (DevNote 11.94.  `apply_acf` 눈금은
 2026-09-12 에 걷었다 — DevNote 11.82).  그래서
 
     깔린 판  =  그 사이트 호스트의 ~/AIC/Config/acf/ 에 있는 파일 중
@@ -20,7 +21,8 @@ ini 가 가리키는 ACF 를 `CLEARCONFIG → WCONFIG → APPLYALL` 로 밀어 �
                 ~/AIC/Config/icg_archon.ini  [icg] acf
                 가 가리키는 것
 
-이지, 컨트롤러 메모리에 지금 앉아 있는 것이 아니다 (그것은 다음 기동에서 덮인다).
+이지, 컨트롤러 메모리에 지금 앉아 있는 것이 아니다 (그것은 guide 는 다음 기동, science 는 다음
+기동 뒤 첫 `GO` 에서 덮인다 — ⚠️ 그래서 science 는 기동~첫 `GO` 사이에 앞 세션의 설정, 전원을 재투입했으면 빈 메모리가 앉아 있다).
 ⭐ **확인하는 법 둘**: ① 그 호스트 ini 의 위 세 줄 ② 그 호스트가 찍은 프레임의 `CTRLnCFG`
 헤더 — 파일명이 폴더·확장자만 뗀 채 그대로 찍힌다 (`config.cfg_name_from_acf`, 규격 5.5절).
 ⛔ **저장소를 `git pull` 해도 현장은 안 바뀐다** — `~/AIC/Config/acf/` 로 복사하고 ini 줄을
@@ -61,8 +63,8 @@ ACF 의 `BACKPLANE_ID`·`BACKPLANE_REV`·`BACKPLANE_VERSION`·`IP` 에서 그대
 | SAAO SCI-101 | `KMTS_SCI_101_STA0286_R2613_MK.acf` | `KMTS_SCI_101_STA0286_R2611_MK.acf` | 〃 | science 2판 |
 | SAAO SCI-102 | `KMTS_SCI_102_STA0287_R2613_NT.acf` | `KMTS_SCI_102_STA0287_R2611_NT.acf` | 〃 | science 2판 |
 | SAAO GUI-161 | `KMTS_GUI_161_STA0291_R2622.acf` | `KMTS_GUI_161_STA0291_R2619.acf` | 〃 | guide 3판 |
-| KASI SCI-113 | `KMTK_SCI_113_STA0200_R2613_{MK,NT}.acf` | `KMTK_SCI_113_STA0200_R2611_{MK,NT}.acf` | 〃 · ⏳ 벤치 ini 실값 미확인 ② | science 2판 |
-| KASI SCI-112 | `KMTK_SCI_112_STA0212_R2613_{MK,NT}.acf` | `KMTK_SCI_112_STA0212_R2611_{MK,NT}.acf` | 〃 | science 2판 |
+| KASI SCI-113 | `KMTK_SCI_113_STA0200_R2613_{MK,NT}.acf` | `KMTK_SCI_113_STA0200_R2611_{MK,NT}.acf` | 〃 · ⏳ 벤치 ini 실값 미확인 ② | science 2판 · ⚠️ 2026-09-15 science R2613 설치 — 상자 ⏳ (이력 끝줄) |
+| KASI SCI-112 | `KMTK_SCI_112_STA0212_R2613_{MK,NT}.acf` | `KMTK_SCI_112_STA0212_R2611_{MK,NT}.acf` | 〃 | science 2판 · ⚠️ 2026-09-15 science R2613 설치 — 상자 ⏳ (이력 끝줄) |
 | KASI GUI-162 (STA0201) | `KMTK_GUI_162_STA0201_R2622.acf` | `KMTK_GUI_162_STA0201_R2619.acf` | 〃 · ⏳ ② | guide 3판 |
 | KASI GUI-162 (STA0230) | `KMTK_GUI_162_STA0230_R2622.acf` | `KMTK_GUI_162_STA0230_R2619.acf` | 〃 | guide 3판 |
 | SSO 셋 | — (ACF 없음) | — | — | — |
@@ -76,10 +78,12 @@ ACF 의 `BACKPLANE_ID`·`BACKPLANE_REV`·`BACKPLANE_VERSION`·`IP` 에서 그대
 저장소 `icg_archon.ini` 의 `[icg] acf` 는 `…_STA0201_R2622.acf` 를 가리키지만 **그것은 저장소
 쪽 기본값**이지 벤치에 복사됐다는 뜻이 아니다.  ⏳ **운영자 기입**.
 
-### ⛔ 읽는 법 — 현장과 저장소가 **다섯 판** 벌어져 있다
+### ⛔ 읽는 법 — 관측소 상자는 저장소와 **다섯 판** 벌어져 있다
 
 2026-09-11 이후 저장소는 science 둘(`R2612`·`R2613`) · guide 셋(`R2620`·`R2621`·`R2622`)을 더
-구웠고 **현장에 깐 기록은 0건**이다.  그 다섯 판이 무엇을 바꿨는지는 `README.md` 의 각 절.
+구웠다.  **현장에 깐 기록은 KASI 벤치 science 한 건뿐**이다 — 2026-09-15 science `R2613`(이력 끝줄,
+⏳ 어느 상자인지·파일명 전체는 운영자 확인).  관측소 상자 여섯과 guide 는 **0건**이다.
+그 다섯 판이 무엇을 바꿨는지는 `README.md` 의 각 절.
 ⭐ 그중 **파형이 바뀐 것**은 `guide R2622`(`FlushFrame:` 119행 `DGHIGH`) 하나이고, 나머지 넷은
 파라미터 슬롯 순서·상수 이름·제어 흐름이다.  ⚠️ 그 전에도 **`guide R2614`·`R2615` 의 파형
 델타는 벤치 확인 기록이 없다** (DevNote 11.84-(6)) — 2026-09-11 반입분(`R2619`)에 **이미 들어
@@ -87,15 +91,16 @@ ACF 의 `BACKPLANE_ID`·`BACKPLANE_REV`·`BACKPLANE_VERSION`·`IP` 에서 그대
 
 ⛔ **되돌릴 목표는 이 표의 "마지막으로 확인된" 열**이다.  벤치에서 사다리(`acf/bench/`)를 올리다
 멈추면 돌아갈 곳은 *"저장소 현행"* 이 아니라 **그 상자에 마지막으로 깔렸던 파일**이다 —
-사다리 `T0` 가 `R2612` 내용인데 벤치 상자는 `R2611` 로 기록돼 있으니, 사다리를 시작하기 전에
-② 를 먼저 채울 것.
+사다리 `T0` 가 `R2612` 내용인데 벤치 science 상자는 2026-09-11 에 `R2611` 로 확인됐고 2026-09-15 에
+`R2613` 이 깔렸지만 **어느 상자인지 ⏳** 이니, 사다리를 시작하기 전에 ② 와 아래 ⏳ 1 을 먼저 채울 것.
 
-## 이력 (덧붙이기만 한다 — 위 표는 이 이력의 마지막 줄이다)
+## 이력 (덧붙이기만 한다 — 위 판 표는 이 이력의 마지막 줄이다.  단 2026-09-15 줄은 상자 ⏳ 라 판 표의 "마지막으로 확인된" 열에 아직 안 올렸다)
 
 | 날짜 | 어디 | 무엇을 깔았나 (파일명 전체) | 누가 · 근거 |
 |---|---|---|---|
 | 2026-09-11 | CTIO 3 · SAAO 3 · KASI 6 (열두 장) | `KMT?_SCI_*_R2611_{MK,NT}.acf` 8장 · `KMT?_GUI_*_R2619.acf` 4장 | 운영자 · 각 유닛 초기화 시험, `acf_20260911/` 반입.  관측소 상자 FW `1.0.1261`→`1.0.1271` 도 이때 |
 | 2026-09-12~14 | (저장소만) | science `R2612`·`R2613` · guide `R2620`·`R2621`·`R2622` 구움 | 세션 32~35 · **현장 반영 0** |
+| 2026-09-15 | KASI 벤치 호스트 `~/AIC/Config/acf/` | science `KMTK_SCI_11?_STA02??_R2613_{MK,NT}.acf` — ⏳ 상자(113 `STA0200` / 112 `STA0212`)·파일명 전체는 운영자 확인 · guide 는 ⏳ 미확인 | 운영자 · ICS 첫 기동 로그 (`frame timing from acf … floor 12.7762 s` 두 줄), DevNote 11.94 · ⛔ GO 전이라 `CTRLnCFG` 근거 없음 |
 
 ## 갱신 절차
 
@@ -108,5 +113,8 @@ ACF 의 `BACKPLANE_ID`·`BACKPLANE_REV`·`BACKPLANE_VERSION`·`IP` 에서 그대
 
 1. ② — 벤치 호스트 `~/AIC/Config/ics_archon.ini`·`icg_archon.ini` 의 `acf` 세 줄 실값과
    `~/AIC/Config/acf/` 목록 (`ls ~/AIC/Config/acf/ && grep -n '^acf' ~/AIC/Config/*.ini`).
+   ⭐ 특히 **2026-09-15 에 깐 science 파일의 파일명 전체와 상자**(113 `STA0200` / 112 `STA0212` —
+   `BACKPLANE_ID` 로 가린다), 그리고 ICG `[icg] acf` 가 그날 무엇을 가리켰는지 — 채우면 위 판 표의
+   "마지막으로 확인된" 열과 이력 끝줄의 ⏳ 를 함께 닫는다.
 2. 관측소 상자 여섯이 **지금 어디 있나** (KASI 조립장 / 사이트) — 초기화 시험을 어디서 했는지.
 3. SSO 세 상자의 `BACKPLANE_ID`·REV·FW — ACF 가 반입되면 이 표와 `README.md` 목록을 함께 채운다.

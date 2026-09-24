@@ -11,10 +11,11 @@
 
 **실기 ICG(`icg_archon/`)도 이 폴더에 산다** (2026-08-31 v0 신설, 작업 D).
 guide 유닛 취득(raw spec v1.9 9·10장 — 견본 바이트 재현 검증) + HK 취득·
-로깅(1분 — Ctrl·진공·RTD·Radionode·AUX)이고, `ics_archon` 은 그 HK 스냅샷
-(`[archon] hk_latest`)을 읽어 5.6절 HK 카드를 실값으로 채운다.  구조·판단·
-PROVISIONAL 목록은 **[DevNote 9장](DevNote.md)**, 시험은
-`tests/test_icg_*.py` 19개.  ⚠️ **실기 왕복 미검증** — 노출 pacing·Radionode Open API
+로깅(1분 — Ctrl·진공·RTD·Radionode·AUX)이고, `ics_archon` 은 GO 마다 ICG 에
+`HKDATA NOW` 를 물어(와이어 — `[archon] icg_node`·`hk_query_timeout`, DevNote 11.90)
+그 답으로 5.6절 HK 카드를 실값으로 채운다 (⛔ 종전 파일 스냅샷 `[archon] hk_latest`
+는 없앴다).  구조·판단·PROVISIONAL 목록은 **[DevNote 9장](DevNote.md)**, 시험은
+`tests/test_icg_*.py`.  ⚠️ **실기 왕복 미검증** — 노출 pacing·Radionode Open API
 endpoint 가 첫 구동/콘솔 확인 대기다 (`HEATER` 레일 필드명은 `HEATER_V`/`HEATER_I` 로
 확정 — 매뉴얼 p.47 + FW 1.0.1252, DevNote 11.30).
 
@@ -46,8 +47,9 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
 
 | 문서 | 언제 |
 |---|---|
-| 이 문서 **"▶ 인수인계"** | ⭐⭐ **새 세션이면 여기부터.** 이 세션이 한 것 · 어디까지 됐나 · **밟기 쉬운 함정** · 알려진 flake · **다음 세션이 할 것(권장 순서)** |
-| 이 문서 **"▶ 다음 세션 작업 지시"** | 그 바로 아래 — 일감 목록(작업 B~D) + 운영자 몫 + 착수 전 승인이 필요한 것 |
+| 이 문서 **맨 끝의 ⭐⭐ 절** (제목에 *"이것이 최신 · 새 세션은 여기부터"* 가 붙은 절 — 파일 끝, `## 관련 문서` 아래) | ⭐⭐ **새 세션이면 여기부터.** 그 세션이 한 것 · 상태 표 · **밟기 쉬운 함정** · **다음 세션이 할 것(권장 순서)**.  그 위 절들은 날짜순 회고이고, 제목의 *"⚠️ 최신은 아래 N"* 을 따라가면 끝에 닿는다 |
+| 이 문서 **"▶ 인수인계"** (2026-09-04~) | 그 무렵의 상태 표·함정·감사 이월.  ⚠️ 최신 일감은 위 맨 끝 절 |
+| 이 문서 **"▶ 다음 세션 작업 지시"** | 2026-08-28 마감 일감 목록(작업 B~D) — ⚠️ 낡음.  최신 일감은 맨 끝 절의 *"다음 세션이 할 것"* |
 | 이 문서 **"참고 자료 재검토"** | ⭐ `__ref_archon_control/` 을 열기 전에. **옮기지 않은 것 셋의 근거**가 거기 있다 — 없으면 같은 것을 "빠졌다" 로 읽는다 |
 | 이 문서 **"미해결 목록"** | F1~F12 · P1. 작업 2 의 일감이고, **앞 세션 워크플로 결과를 근거로 쓰지 말라는 경고**가 붙어 있다 |
 | [README.md](README.md) | 폴더 구성 · 실행법 · 모듈 표 · 계약 어긋남 3건 · v0.0 에 없는 것 |
@@ -59,7 +61,7 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
 | `ics_archon/archon/backend.py` 머리말 | 계약과 실기의 어긋남 3건 · 동기 접근자가 스냅샷을 읽는 이유 |
 | [README.md](README.md) "실기 첫 실행 절차" | ⭐ **science 실기를 붙이기 전에 이것부터.** `tools/probe_archon.py` 1~3단계 · 실험실 1유닛 설정 |
 | ⭐ [`icg_first_run.md`](icg_first_run.md) | ⭐ **guide 실기를 붙일 때 이것부터** (2026-09-03 신설) — 0~6단계 · 기록표 · 멈출 조건.  PROVISIONAL 6건이 여기서 닫힌다.  ⚠️ probe 는 **`--unit guide`** 로 부른다 |
-| ⭐ [`legacy_command_coverage.md`](legacy_command_coverage.md) | **레거시 명령 137개 전수 대조** (2026-09-06, 갱신 2026-09-12) -- 구현됨 43 · 미구현 63 · 일부러 뺐다 17 · 신설 11.  *"이 명령이 왜 없나"* 를 물을 때 여기부터.  ✅ 이 대조가 낸 결함 셋(`HOSTS` 발신 경로 · `>NODE` · 콘솔 도움말)은 **다 닫혔다**(2026-09-07) |
+| ⭐ [`legacy_command_coverage.md`](legacy_command_coverage.md) | **레거시 명령 전수 대조** (2026-09-06, 갱신 2026-09-24) -- 구현됨 43 · 미구현 63 · 일부러 뺐다 17 · 신설 13 · 합 139.  *"이 명령이 왜 없나"* 를 물을 때 여기부터.  ✅ 이 대조가 낸 결함 셋(`HOSTS` 발신 경로 · `>NODE` · 콘솔 도움말)은 **다 닫혔다**(2026-09-07) |
 | [README_labtest.md](scr_labtest/README_labtest.md) | ⭐ **실험실 취득 스크립트에 관한 모든 것** (별개 도구) |
 | ⭐ [`DevNote.md`](DevNote.md) | **이 폴더의 개발 노트** — 왜 그렇게 정했나(과정·판단·시사점). 2026-08-29 작업분부터 여기다.  ⭐ **10장 = 실기 시험 결론**(`LOCK`/`FETCH`/버퍼, 2026-09-01~02) |
 | [`../ics_sim/DevNote.md`](../ics_sim/DevNote.md) 11.22~11.30 | 그 이전의 `ics_archon` 이력 · `ics_sim` 층의 경위. 11.19~11.25 는 합본 판단 (11.25 = 커밋 + 병렬 독출 계획 검토). 9장은 하드웨어 확장점, 3장은 OBSAgent 규약 |
@@ -78,17 +80,21 @@ store 가 빌 때까지 못 와서**다 (DevNote 9.13).
    `python tools/sync_vendor.py` 를 돌린다. 안 돌리면 `tests/test_vendor.py` 가
    실패한다(`--check` 로 미리 본다).
 2. **`ics_sim` 의 규약을 고치지 않는다.** 시퀀서·명령 처리부·OBSAgent 규약은
-   시험 318개가 묶어 두고 있다. 합본은 **백엔드 층을 채우는 일**이고, 규약을
+   `ics_sim` 시험이 묶어 두고 있다. 합본은 **백엔드 층을 채우는 일**이고, 규약을
    건드려야 할 것 같으면 그것 자체가 재검토 신호다. v0.0 이 `ics_sim` 에 넣은
    변경은 **확장점 3개**(`register_backend()` · `DetectorBackend.writes_files` ·
    `begin_exposure()`)와 **결함 4건**(D-016 게이트 · `~` 확장 · `\#` 탈출 ·
    expnum fsync)이고, **규약 자체는 한 줄도 안 고쳤다**(커밋 `ecf3487`).
    ⚠️ **2026-08-24 에 처음으로 그 규약을 열었다** (목 지시, 작업 1) — 확장점
-   `readout_events()` 와 `[readout] acq_per_frame`/`acq_skew_warn`, 그리고
-   `Sequencer.drain_writers()`.  **기본값이 꺼짐이라 거동은 종전과 같다**:
-   `acq_per_frame=false` 면 `Acquisition Complete.` 4개가 여전히 같은 틱에
-   나간다.  **켜면 그 4개의 산포가 두 컨트롤러의 실제 시차가 되어 1.8초 창
-   (DevNote 3.3)의 구조적 보장이 없어진다** — 실기 시차 실측 전에는 켜지 말 것.
+   `readout_events()` · `[readout] acq_skew_warn` · `Sequencer.drain_writers()`.
+   ⛔ 그때 함께 넣은 `[readout] acq_per_frame` 스위치는 2026-09-04 에 없앴다
+   (커밋 `036976a`) — 프레임별 `Acquisition Complete.` 발신이 유일한 거동이라
+   4개의 산포가 두 컨트롤러의 실제 시차다.  1.8초 창(DevNote 3.3)의 구조적
+   보장은 없고 남은 안전장치는 `acq_skew_warn` 하나다(⏳ 첫 실기 시차 실측).
+   그 뒤로도 목 지시로 여러 번 열었다 — ABORT 번호 되감기 · EXPSTATUS
+   `ERASE`/`FETCH`/`WRITING` · `VERBOSE` · 참거짓 낱말 표 · `IMAGETYPE` 조회 ·
+   transport 자기 에코/`essential_wire`.  날짜별 목록은 `../ics_sim/SMC_CLAUDE.md`
+   머리 절들이다.
    여는 것과 어기는 것은 다르다: 커밋에 **연 것임**을 명시한다.
 3. **`ArchonLink.command(cmd, timeout=None)` 의 기본값을 바꾸지 말 것.**
    `APPLYALL` 처럼 오래 걸리는 명령이 있어 무한 대기가 기본이어야 한다. 상한은
@@ -1406,9 +1412,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
   (위 매뉴얼 사실). 종전에 "12레일이므로 늘려야 한다" 고 적었던 검토는 **철회**
   한다.
 
-## ▶ 인수인계 (2026-09-04 마감 — ⭐ 새 세션이면 **여기부터**)
+## ▶ 인수인계 (2026-09-04 마감 — ⚠️ 최신 인수인계는 **파일 맨 끝** ⭐⭐ 절)
 
-### ⭐⭐ 다음 세션은 여기서 시작한다 (2026-09-06 마감)
+### 2026-09-06 마감 — ⚠️ 낡았다.  최신은 파일 맨 끝 ⭐⭐ 절
 
 **첫 항목은 `RADIONODE` 자료획득 시험**이다 (운영자 지시 2026-09-06).  절차·준비물·판정 기준은
 👉 **[`bench_test_plan.md`](bench_test_plan.md)** 에 있다 — **그 문서를 먼저 열 것.**
@@ -1418,7 +1424,7 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 장치 SEND INTERVAL).  운영자에게 확인하고 시작한다.  ⛔ KEY/SECRET 실값은 **저장소 ini 에 적지 않는다**
 — 벤치 설치본 `~/AIC/Config/icg_archon.ini` 에만.  `stale_after` 는 SEND INTERVAL 의 3배로 함께 맞춘다.
 
-#### 지금 상태 (2026-09-14 갱신)
+#### 지금 상태 (2026-09-24 갱신)
 
 ⚠️ 이 표는 **판·수가 자주 밀리는 자리**다.  고칠 때 아래 넷을 함께 볼 것 — 규격 판과 태그는
 `main` 워크트리에서, 시험 수는 두 스위트 실측으로, ACF 는 `acf/` 파일명으로.
@@ -1427,9 +1433,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 |---|---|
 | raw spec | **v1.13** — 발행 커밋 `ae3fbfe`, 태그 `raw-spec-v1.13`.  ⚠️ `main` 의 **끝**이 아니다 (Leecu 의 `cam_char` 작업이 그 뒤로 붙는다) — 판을 확인할 때는 커밋이 아니라 **태그**를 볼 것.  ⭐ 태그는 **최신 판 하나만** 둔다 — 팀은 `git fetch --tags --prune --prune-tags` 가 필요하다 |
 | guide ACF | 저장소 현행 **`KMT?_GUI_*_R2622.acf`** **4장** (`LINES=122` · `PARAMETERS=17`) — CTIO `STA0290` · SAAO `STA0291` · KASI `STA0201`·`STA0230`.  ⚠️ KASI 두 상자가 같은 `.162` 다.  ⛔ **현장에 마지막으로 확인된 판은 `R2619`** (2026-09-11) — `acf/deployment_ledger.md` |
-| science ACF | 저장소 현행 **`KMT?_SCI_*_R2613_{MK,NT}.acf`** **8장** (`LINES=143` · `PARAMETERS=23`, `EveryFlush`) — CTIO 2 · SAAO 2 · KASI 4(`STA0200`·`STA0212` 각 MK/NT).  ⛔ **현장 마지막 확인은 `R2611`** (2026-09-11).  ⏳ SSO(`KMTA_*`) 는 아직 없다 |
-| 시험 | `ics_archon` **764** (2026-09-14 실측, 세션 36 후반 · 6분 43초 · 763 통과 + flake 1) · `ics_sim` **395** (2026-09-10 실측).  ⚠️ **알려진 flake 하나** — `test_ics_ops_commands.py::test_abort_cuts_the_integration_at_the_controller` 가 단독으로도 **HEAD `bdbe204` 에서 8회 중 2회** 실패(*"ABORT 의 RESETTIMING 이 2s 안에 안 왔다"*, 실패 때 4.2 s).  회귀가 아니라 하네스의 2 s 창 문제 — ⏳ 원인 미상, 아래 36 절.  ⛔ **알려진 flake 는 없다** — 종전 표의 *"flake 1 deselect"* 는 둘 다 사실이 아니었고(회귀였다, `8664e92` 에서 고쳤다 · 오기 철회 `086bb4e`), `deselect` 장치는 저장소에 없다 |
-| 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `5543234`(v1.13) 까지.  ⏳ `main` 소관 잔여는 규격 10.6절 `OI-27` 문면.  ⚠️ **원격 `0dc3f8c` 보다 앞선 커밋 6개 + 이 세션 문서가 푸시 대기** (아래 36) |
+| science ACF | 저장소 현행 **`KMT?_SCI_*_R2613_{MK,NT}.acf`** **8장** (`LINES=143` · `PARAMETERS=23`, `EveryFlush`) — CTIO 2 · SAAO 2 · KASI 4(`STA0200`·`STA0212` 각 MK/NT).  ⛔ **관측소 마지막 확인은 `R2611`** (2026-09-11) · KASI 벤치는 **`R2613` 을 깔았다**(2026-09-15, 상자 ⏳ — 설치 대장 이력).  ⏳ SSO(`KMTA_*`) 는 아직 없다 |
+| 시험 | `ics_archon` **975** · `ics_sim` **469** (2026-09-24 실측, 38 절 커밋 내용으로 전수 -- ics_sim 4분 19초 · ics_archon 7분 47초, 둘 다 전부 통과).  ⚠️ **알려진 flake 하나** — `test_ics_ops_commands.py::test_abort_cuts_the_integration_at_the_controller` (회귀 아님 · 하네스의 2 s 창 문제, 원인 미상 · 단독 재실행은 통과, 36·37·38 절).  ⛔ `-m "not repo_only"` 금지 · 두 스위트는 **따로** |
+| 브랜치 | `ics-archon-v1.0-build` · `main` 합류는 `5543234`(v1.13) 까지.  원격 동기·미푸시 여부는 **맨 끝 절의 상태 표**를 본다(이 칸에 해시·개수를 적지 않는다).  ⏳ `main` 소관 잔여(운영자가 raw spec 을 고칠 때): 5.6절 `HKDATA` 원천 문면(파일 → 와이어) · `HKSTALE` 셈의 `DEWPRES` sentinel 예외 · 10.6절 OI-24 종결 표시 · 10.3절 guide `IMAGETYP`/`EXPTIME` 기본값(DevNote 11.92) · 5.7.3절 돔 방위 소수 2자리와 견본(11.94-h) · 5.7절 `EQUINOX` 실수형(11.95, `SPEC_PENDING`) |
 
 #### 오늘 확정된 규약 (어기기 쉬운 것들)
 
@@ -1444,14 +1450,15 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 5. **Config 슬롯 번호**(`PARAMETERn` 의 n, LOADPARAMS 순서) vs **Config 줄 번호**(`WCONFIG` 4자리 16진)
    — 스크립트에 줄이 늘면 **줄 번호만** 밀린다.
 
-#### ⏳ 운영자에게 물어야 할 것
+#### ✅ 운영자에게 물어야 할 것 — 없음
 
-- **백업 태그 `main-presquash-20260906`** — 2026-09-05~06 의 main 구커밋 14개를 붙잡고 있다.
-  운영자 확정: **5일쯤 두고 지운다** → **2026-09-11 이후에 다시 물을 것.**
+- ~~**백업 태그 `main-presquash-20260906`**~~ — **지워졌다** (2026-09-23 확인: 로컬 `git tag -l` ·
+  원격 `git ls-remote --tags origin` 모두 `raw-spec-v1.13` 하나뿐).  당시 기록:
+  2026-09-05~06 의 main 구커밋 14개를 붙잡고 있었고, 운영자 확정은 *5일쯤 두고 지운다* 였다.
   (지우는 명령: `git tag -d main-presquash-20260906`.  `git lg` 별칭이나 `--branches --remotes` 로
   보면 지금도 안 보인다 — `--all` 로 볼 때만 보인다.)
 
-#### ⏳ 두 워크트리 전수 정합 검토 (15차원)
+#### ✅ 두 워크트리 전수 정합 검토 (15차원) — 확인분은 닫혔다 (미검증 203건은 아래대로 남는다)
 
 이 세션에서 돌렸다.  **`med` 는 이 세션에서 고치고 `low` 는 목록으로 넘긴다**(운영자 2026-09-06).
 남은 `low` 목록과 미검증분은 아래 "검토 결과" 절에 남긴다.  ⭐ 새로 넣은 `linenum-drift` 차원이
@@ -1477,8 +1484,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 | `HKUDATE` 출처 열이 `ICG RTD` 한 계통 → **계통 셋(파생)** | 규격 5.6 표 |
 | README 의 「현재 기준선」이 **v1.9** 를 현행이라 함(그 파일은 `archive/`) | `raw_fits_spec/README.md` |
 
-**⏳ 다음 세션으로 넘긴 것 — 확인분 16건** (운영자 결정 2026-09-06: *med 만 고치고 low 는 목록으로*.
-아래는 확인분 중 남은 것이고, 성격이 **문서 셈·문서 간 대사**라 실기 일정과 무관하다):
+**✅ 넘긴 것 — 확인분 16건, 전부 닫혔다** (브랜치 소관 여섯 #13~#17·#24 와 `#22` 는 2026-09-09 —
+아래 「2026-09-09 저녁 추가분」 · `main` 소관 아홉은 `main` 라운드 — 「✅ `main` 라운드로 넘겼던 것」 절).
+(아래는 당시 목록 — 운영자 결정 2026-09-06: *med 만 고치고 low 는 목록으로*):
 
 | # | 심각 | 자리 | 왜 |
 |---|---|---|---|
@@ -1504,9 +1512,9 @@ RTD 채널 대응(`MOD10\SENSORBLABEL=RTD8_CCD` 등)을 정하는 것은 **가�
 있다 — ⚠️ 세션이 지나면 스크래치패드는 사라지므로, 다시 필요하면 **검토를 다시 돌리는 편이 빠르다**
 (스크립트는 `scratchpad/audit_x2_r2617.js`, 2개씩 순차 · 약 3시간).
 
-⛔ **남은 것 중 하나만 성격이 다르다** — `#22`(규격 5.0절이 sentinel 을 **금지한** 카드 열 개에
-`rawcards` 가 sentinel 을 넣을 수 있다)는 문서가 아니라 **코드 경로**다.  고치려면 금지 집합을
-`rawcards` 에 명시하고 두 갈래를 다 막아야 해서 손이 크다 — 다음 세션에서 따로 볼 것.
+✅ **`#22` 는 닫혔다** (2026-09-09) — 규격 5.0절이 sentinel 을 금지한 카드 열 개의 집합을
+`ics_sim.rawcards.NO_SENTINEL` 로 명시했고 science·guide 가 같이 쓴다(`guidecards` 는 수입).
+두 갈래(값 풀에 없음 · 형 변환 실패) 다 **카드를 비운다**.
 
 
 
@@ -5249,7 +5257,7 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
 - ⚠️ **세션이 워크플로 결과를 기다리다 끊기면 아무것도 안 남는다** — 이번 36 이 그랬다.  긴 조사를
   띄웠으면 **그 사이 확정된 것부터 파일에 쓴다**.
 
-### ⭐⭐ 2026-09-15 (37. ICS/ICG 연동시험 + 디버깅 — 벤치 첫날) — **이것이 최신 · 새 세션은 여기부터**
+### 2026-09-15 (37. ICS/ICG 연동시험 + 디버깅 — 벤치 첫날) — ⚠️ **최신은 아래 38 이다**
 
 세션 *"37"* = 벤치 첫날.  운영자가 벤치에서 돌리고 나는 여기(윈도우)서 고친다 — 벤치 저장소는
 **푸시된 것만** 받는다(`fetch + reset --hard`).  경위·판단은 **DevNote 11.93** 이 정본.
@@ -5360,3 +5368,57 @@ HKDATA 가져오고, 게이지 켜져 있으면 VACGAUGE OFF, 꺼져 있으면 �
   `domeaz`·`telemetry` 여섯이 그랬다.
 - ⭐ **예열 GO 가 이제 flush 를 한 번 만든다** — 하네스엔 ICG 가 없어 추적 상태가 `UNKNOWN` 이라 `VACGAUGE OFF`
   를 보내고, 그러면 첫 장 앞 `FirstFlush=1` 이 실린다.  `flushes` 를 세는 시험은 **차분**으로 (ccdflush 둘이 그래서 깨졌다).
+
+### ⭐⭐ 2026-09-23~24 (38. 전수 시험 · `EQUINOX` 실수형 · 전반 재검토와 결함 정리) — **이것이 최신 · 새 세션은 여기부터**
+
+운영자 지시 셋: ① 인수인계 검토 + 자료 전반 검토 · ② ICS/ICG 헤더 `EQUINOX` 를 실수형으로(raw spec 은 운영자가
+나중에) · ③ 전수 시험.  이어서 ④ *"다시 한 번 전반 검토·보완, FirstFlush·note_reply 결함 둘도 고치고 같이
+커밋"*.  경위·표는 **DevNote 11.95**(전수 · EQUINOX) · **11.96**(재검토 · 결함 정리)이 정본.
+
+#### 상태 (38 마감)
+
+| 것 | 값 |
+|---|---|
+| 커밋 | 이 절이 든 커밋 하나(`32b002d` 위) — ⛔ **푸시 안 했다**(운영자 지시는 커밋까지) |
+| 시험 | 고치기 전 `32b002d` 전수: ics_sim 428 + **3 실패** · ics_archon 808 + **1 실패** — 넷 다 11.94-h(돔 방위 2자리)가 인용 시험을 안 고친 것.  커밋 내용 전수: **ics_sim 469 · ics_archon 975 전부 통과** (첫 전수에서 난 실패 둘 -- POWERON 문면을 인용하던 시험 1(고쳤다) · 알려진 flake 1 -- 뒤 다시 돌린 ics_archon 전수) |
+| `EQUINOX` | science·guide 둘 다 `EQUINOX = 2000.0`(결측 `-999.0`).  ⭐ 규격이 아직 문자열이라 **`SPEC_PENDING`** 에 올려 뒀다 -- science 에도 이 장치를 새로 만들었다(`rawcards`) |
+| 벤치 | 37 절 그대로 — ⛔ `GO` 는 아직 한 번도 안 걸었다 |
+
+#### ⭐⭐ 다음 세션이 할 것 (권장 순서)
+
+1. **벤치 재기동 + 새 코드 확인** — 37 절 2번 표 그대로 + 이번에 바뀐 것:
+   | 무엇 | 기대 |
+   |---|---|
+   | 헤더 `EQUINOX` | `EQUINOX =               2000.0` (TC 끊기면 `-999.0`) |
+   | `vacgauge` 가 실패한 뒤(ICG) | 시한 초과면 `Gauge=UNKNOWN` 이 답에 실린다(`Failed: … (Gauge=…)`) → ICS 가 다음 GO 에 끈다 |
+   | `abort` · `quit` 중 `c1trigout <ms>` | 선이 쉬는 상태로 내려간다 |
+   | 종료 도중 `shopen`/`trigout` | `ERROR: … Shutting down -- not raised` |
+   | CSV 열 구성이 바뀐 날 재기동 | `…<날짜>.2.csv` 로 갈라진다 (ICG HK · science 감시) |
+2. **벤치 첫날 순서 나머지** — [`bench_test_plan.md`](bench_test_plan.md) D2 5~7 → D3 science 판·주기 → D4.
+3. **설치 대장** — 2026-09-15 science R2613 줄은 넣었다.  ⏳ **어느 상자(113 `STA0200` / 112 `STA0212`)·파일명
+   전체**와 ICG `[icg] acf` 를 운영자에게 받아 판 표의 *"마지막으로 확인된"* 칸을 올린다.
+4. **플랫+바이어스 쌍 → 사다리 T0~T4** (37 절 5번).
+5. **`main` 라운드** — 규격 이월(위 *"지금 상태"* 표의 브랜치 칸).  ⭐ **규격이 `EQUINOX`·`DAZERR` 를
+   따라잡으면**: 두 `SPEC_PENDING` 비우기 · `tests/test_raw_draft.py` `_ahead_of_sample()` 정리 ·
+   `gen_guidecards.py` 재실행(⚠️ 지금 돌리면 guide `EQUINOX` 가 `'S'` 로 돌아간다) · labtest 다섯 사본의
+   `RAWCARDS`·TCS 결측값.  `test_the_sample_has_not_caught_up_yet`(science·guide)가 그때를 먼저 알린다.
+
+#### ⏳ 운영자 판단 대기 — DevNote 11.96-(4) 표가 정본
+
+`EXPENABLE 1` 이 수동 잠금을 푸는 것 · 첫 장 flush 요청 유실 · verbose off 콘솔 `>K.IC` 답 · 걷어 낸 ini 키
+무언 무시(옛 `ccdflush = true`) · ICS/ICG 펄스 끊김 응답 차이 · `write_fits = true` 경고 · `shutter_to_readout`
+실기 대기 · ics_sim 로그 한글 · **`ABORT` 가 `CnTRIGOUT` 도 끊는 것**(이번에 넣었다 -- 확인만).
+
+#### ⚠️ 이 세션이 남긴 함정·규범
+
+- ⛔ **문면을 바꾸면 인용하는 시험도 같은 커밋에서** — 11.94-h 가 넷을, 이 세션의 POWERON 문면이 하나를
+  또 깨뜨렸다(전수가 잡았다).  [[impact-sweep-before-commit]]
+- ⭐ **견본보다 앞선 카드는 `SPEC_PENDING`(템플릿)과 `_ahead_of_sample()`(값 형식)** — 대조 시험이 그 목록만
+  면제하고 나머지 표류는 그대로 잡는다.  ⛔ 채운 채로 오래 두지 말 것.
+- ⭐ **컨트롤러 설정을 잠깐 바꾸면 `try/finally` + `_put_back`** — 되돌림 실패는 원래 예외를 안 가리고
+  `_pending_restore` 로 넘긴다.  새로 그런 자리를 만들면 이 틀을 쓴다.
+- ⭐ **펄스 핸들은 spawn 자리에서 등록하고 내림이 끝난 뒤 놓는다** — 그 사이 어느 창에서 끊겨도 끊은 쪽이
+  선을 맡는다.  올림이 실패해도 내린다 · 종료 중 올림은 거절 · `nan`/`inf` 거절.
+- ⚠️ **워크플로 반박 검증이 108건을 전부 통과시켰다** — 너그러웠다.  코드 결함은 원문을 열어 다시 가른다.
+- ⚠️ 세션 한도로 수정 에이전트가 중간에 끊기면 **작업 트리에 반쯤 된 편집이 남는다** — 다시 돌릴 때
+  *"이미 된 것은 확인만"* 을 붙인다.

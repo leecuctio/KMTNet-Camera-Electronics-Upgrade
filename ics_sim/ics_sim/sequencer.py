@@ -70,7 +70,8 @@ class Sequencer:
         self.router = router
         self.telem = telem
         self.backend = backend
-        #: AUX control 연동 (auxcontrol.py).  None 이면 이벤트를 건너뛴다.
+        #: AUX control 연동 (auxcontrol.py) -- 쓰지 않는 자리다 (2026-09-12 셔터
+        #: 통지 철거 뒤 남은 인자, 호출부 호환용).
         self.aux = aux
         self._task: asyncio.Task | None = None
         self._writers: list[asyncio.Task] = []

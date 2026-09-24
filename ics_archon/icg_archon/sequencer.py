@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""guide 노출 상태기 -- frame-transfer 연속 독출 (raw spec v1.9 10.1절).
+"""guide 노출 상태기 -- frame-transfer 연속 독출 (raw spec v1.13 10.1절).
 
 science `ics_sim.sequencer.Sequencer` 를 상속하지 않는다 -- 그쪽은
 INITIALIZING→ERASE→INTEGRATING(셔터/암)→READOUT→저장(pair) 상태기이고,
@@ -445,8 +445,10 @@ class GuideSequencer:
             self.emit.idle_done(self._aborted_by or source)
         except GuideBackendError as exc:
             log.error('fatal: guide cycle failed -- %s', exc)
+            # ⚠️ 사유는 **영문**이다 -- `_disarm` 의 영문 로그 줄에 그대로 박힌다
+            # (DevNote 11.80 의 간접 문자열 부류).
             clean = await self._settle(armed, clean, ticket, intms,
-                                       '사이클 실패', drain=True)
+                                       'cycle failed', drain=True)
             # ⭐ **P1 규범은 `ABORT` 보다 넓다** (운영자 확대 2026-09-07 · 규격 D-022 ·
             # 2.3절 8항 -- 되감는 자리 넷을 거기 적었다,
             # DevNote 11.41) -- 사이클이 실패하면 그 프레임은 안 나오므로
@@ -463,7 +465,7 @@ class GuideSequencer:
             # (2.3절 2항, 9.2절 준용).  문구는 ASCII 고정(원문은 한글).
             log.error('%s', exc)
             clean = await self._settle(armed, clean, ticket, intms,
-                                       '번호 고갈', drain=True)
+                                       'number space exhausted', drain=True)
             st.expstatus = ExpStatus.ERROR
             self.emit.error(source, 'GO',
                             'Exposure number space exhausted -- not saving '
@@ -501,7 +503,7 @@ class GuideSequencer:
             # 가이딩 클라이언트가 영원히 기다린다.
             log.exception('fatal: guide cycle died on an unexpected exception')
             clean = await self._settle(armed, clean, ticket, intms,
-                                       '내부 오류', drain=True)
+                                       'internal error', drain=True)
             st.expstatus = ExpStatus.ERROR
             self.emit.error(source, 'GO', 'Internal error in guide sequencer',
                             st.expstatus)

@@ -129,7 +129,9 @@ CARDS: tuple[tuple[str, str, int, str], ...] = (
     ('RADECSYS', 'S', 18, 'Telescope Coordinate System'),
     ('RA', 'S', 18, 'Telescope RA'),
     ('DEC', 'S', 18, 'Telescope DEC'),
-    ('EQUINOX', 'S', 18, 'Coordinate System Equinox'),
+    # ⭐ 실수형 (운영자 2026-09-23) -- 견본은 아직 문자열이라 `SPEC_PENDING` 에
+    # 올려 뒀다.  ⚠️ `gen_guidecards.py` 를 다시 돌리면 이 줄이 'S' 로 돌아간다.
+    ('EQUINOX', 'R', 0, 'Coordinate System Equinox'),
     ('HA', 'S', 18, 'Hour Angle at start of obs'),
     ('ST', 'S', 18, 'Local Sidereal Time at start of obs'),
     ('SECZ', 'S', 18, 'Secant of ZD (Airmass) at start of obs'),
@@ -194,16 +196,21 @@ STRUCTURAL = frozenset(
 
 #: keyword -> 문자열 패딩 폭 — `fitswrite.card_image(widths=...)` 에 꽂는 표.
 #: science `_WIDTH` 를 쓰면 공유 키 8장이 견본과 어긋난다 (모듈 docstring).
-#: ✅ **견본과 갈라 둔 자리 -- 지금은 없다.**  규격 v1.13 이 `LEDFLASH` ->
-#: `TRIGOUT` 교체를 실으면서 견본이 따라잡았다 (2026-09-12).
+#: ⭐ **견본과 갈라 둔 자리 -- 지금 하나** (`EQUINOX`, 2026-09-23).  앞선
+#: 한 건(`LEDFLASH` -> `TRIGOUT`)은 규격 v1.13 이 따라잡아 비웠다 (2026-09-12).
 #:
-#: ⭐ **장치를 남겨 두는 이유**: 운영자가 카드를 정하고 규격·견본 갱신을
-#: 나중으로 미루는 국면이 또 온다.  그때 `CARDS` 가 견본보다 앞서므로
+#: ⭐ **장치를 두는 이유**: 운영자가 카드를 정하고 규격·견본 갱신을
+#: 나중으로 미루는 국면.  그때 `CARDS` 가 견본보다 앞서므로
 #: 여기에 적어 두면 대조 시험이 그 하나만 면제하고 **나머지 표류는 그대로
 #: 걸린다**.  ⛔ 채운 채로 두지 말 것 -- 규격이 따라잡으면 곧바로 비운다.
 #:
 #: 꼴: `(견본 키, 현행 카드 또는 None)`.  `None` 은 삭제.
-SPEC_PENDING: tuple[tuple[str, tuple | None], ...] = ()
+#:
+#: * `EQUINOX` -- 문자열 `'2000.000'` -> 실수 `2000.0` (운영자 2026-09-23,
+#:   science `rawcards.SPEC_PENDING` 과 같은 건).
+SPEC_PENDING: tuple[tuple[str, tuple | None], ...] = (
+    ('EQUINOX', ('EQUINOX', 'R', 0, 'Coordinate System Equinox')),
+)
 
 
 def apply_pending(cards) -> list:  # noqa: ANN001
@@ -256,8 +263,8 @@ def render(pool: dict[str, object],
 
     ⭐ `cards` 를 주면 **그 템플릿으로** 조립한다 -- 기본은 `CARDS` 다.
     ⚠️ 있는 이유는 하나뿐이다: 견본이 현행보다 뒤처진 국면(`SPEC_PENDING`)
-    에서 시험이 **견본의 템플릿으로** 견본 바이트를 재현해야 한다.  ⭐ 지금은
-    그 목록이 비어 있어 둘이 같다.  ⛔ 운영 경로에서는 쓰지 말 것 -- 헤더
+    에서 시험이 **견본의 템플릿으로** 견본 바이트를 재현해야 한다 (지금은
+    `EQUINOX` 한 장이 갈려 있다).  ⛔ 운영 경로에서는 쓰지 말 것 -- 헤더
     템플릿이 둘이 되면 그 순간 정본이 사라진다.
 
     규칙·귀결은 `ics_sim.rawcards.render()` 와 같다 (그쪽 docstring 참조):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""guide raw FITS 헤더의 **값 공급** -- raw spec v1.9 9·10장.
+"""guide raw FITS 헤더의 **값 공급** -- raw spec v1.13 9·10장.
 
 science 쪽 `ics_sim.rawhdr` 를 최대한 **그대로 부른다** -- 관측소 상수
 (`observatory_header`)·노출 블록(`exposure_header`)·HK 포맷(`thermal_header`
@@ -124,7 +124,8 @@ def instrument_header(site_code: str,
     """Instrument·Detector 블록 (10.3절) -- 값 카드 21장 몫.
 
     `cfg_camera` 는 `[camera]` 절 (`SimConfig.camera.as_dict()` 꼴) --
-    `instrume`/`camver`/`fpaid` 를 ini 로 덮을 수 있다 (5.0절 "ICS INI 카드").
+    `detector`/`instrume`/`camver`/`fpaid` 넷을 ini 로 덮을 수 있다 (5.0절
+    "ICS INI 카드", `CameraCfg.as_dict()` 가 넘기는 키와 같다).
     ⭐ **OI-24 의 답** (운영자 2026-09-07) -- 어휘와 귀속이 둘 다 정해졌다:
     `INSTRUME` 기본은 `'<SITE코드> Guide CCDs'` 이고, **guide CCD 도 FPA 조립체에
     들어간다**.  견본 v0.0 의 `'KMTA 18k CCD'` 는 science 잔재로 등재된 대사
@@ -137,7 +138,10 @@ def instrument_header(site_code: str,
     cam = dict(cfg_camera or {})
     out: dict[str, object] = {
         'INSTRUME': cam.get('instrume') or f'{site_code.upper()} Guide CCDs',
-        'CAMVER': cam.get('camver', 'CEU-v2.1'),
+        # ⭐ 기본은 **science 상수 그대로** (`rawhdr.CAMVER`, 운영자 2026-09-15:
+        # guide `CAMVER` 는 science 와 같다).  ⛔ 종전엔 같은 값을 리터럴로 한
+        # 번 더 적어서, science 쪽을 올리면 guide 만 옛 값에 남을 자리였다.
+        'CAMVER': cam.get('camver') or rawhdr.CAMVER,
         # ⭐ **OI-24 가 닫혔다** (운영자 2026-09-07): *"guide CCD 도 FPA 조립체에
         # 들어가 있다"* -- 그래서 **science 와 같은 유도**를 태운다
         # (`CTIO=FPA#2 SSO=FPA#1 SAAO=FPA#3 KASI=FPA#0`, 5.3.1절 · D-017 항목 6).
@@ -153,7 +157,11 @@ def instrument_header(site_code: str,
         'DETECTOR': cam.get('detector') or DETECTOR,
         'DETID': 'G',
         'PIXSIZE': PIXSIZE,
-        'PIXSCALE': cam.get('pixscale', PIXSCALE),
+        # ⛔ **ini 로 못 덮는다** -- `CameraCfg.as_dict()` 가 넘기는 키는 넷
+        # (`detector`·`camver`·`instrume`·`fpaid`)뿐이라 종전의
+        # `cam.get('pixscale', …)` 은 늘 상수로 떨어지는 죽은 조회였다.  ini 로
+        # 열지는 OI-22 가 정한다 -- 열려면 `CameraCfg` 필드·로더부터 더할 것.
+        'PIXSCALE': PIXSCALE,
         'CCDXBIN': 1, 'CCDYBIN': 1,          # 1x1 전용 (9.3절)
         'NAMPDET': NAMPDET, 'NAMPRAW': NAMPRAW,
         'AMPNAX1': AMPNAX1, 'AMPNAX2': AMPNAX2,

@@ -12,7 +12,8 @@
     ICS>ICG VACGAUGE ON         노출이 끝나고 `reenable_after` 뒤
 
 **언제.**  ⭐ **스크립트 관측이든 콘솔에서 직접 친 `GO` 든 같은 자리**를 지난다
-(`Dispatcher.cmd_go`) -- 그래서 거기 한 곳에서 끈다.
+(`IcsDispatcher.cmd_go` -> 수락되면 `begin_go()` -> `HKDATA NOW` 답 -> `before_exposure`)
+-- 그래서 거기 한 곳에서 끈다.
 
 ⭐ **상태 넷을 명시한다** (운영자 정정 2026-09-04):
 
@@ -37,8 +38,11 @@
 ⛔ **끄는 것은 공짜가 아니다** -- `VACGAUGE` 가 `APPLYDIO09` 를 부르고 그것이
 MOD10 의 VCPU 를 재시작해 **`DEWPRES` 에 결측 창**을 만든다 (DevNote 11.18).
 그래서 **이미 꺼져 있다고 아는 동안에는 다시 보내지 않는다** -- 되풀이하면 창만
-늘어난다.  ⚠️ ICG 가 재기동해도 그 상태는 컨트롤러 설정에 남아 있고 ICG 가
-`RCONFIG` 로 되읽으므로(gauge.load), 우리가 아는 값과 어긋나지 않는다.
+늘어난다.  ⚠️ **ICG 가 재기동하면 우리가 아는 값과 어긋날 수 있다** -- 재기동이 ACF 를
+다시 적용해(설정 메모리가 파일 값으로 덮인다) 앞 상태가 남지 않고, 그 뒤 게이지는
+`[icg] gauge_on_start`(기본 `off`)가 정한다.  ⭐ 그래서 판단의 정본은 우리 추적 상태가
+아니라 **`GO` 마다 묻는 `HKDATA NOW` 의 `VACGAUGE` 낱말**이다 (`before_exposure(word)`)
+-- 답이 없을 때만 추적 상태로 판단한다.
 
 ⚠️ **답이 안 와도 우리는 모른다** -- `DONE: VACGAUGE …` 는 ICS 의 명령 처리부가
 쓰지 않는 메시지라 조용히 버려진다.  그래서 보낸 뒤 `reply_timeout` 안에 답이
@@ -62,6 +66,9 @@ OFF, PENDING_ON, ON, UNKNOWN = 'OFF', 'PENDING_ON', 'ON', 'UNKNOWN'
 
 #: 게이지가 **실제로 꺼져 있다고 아는** 상태들.
 _DARK = (OFF, PENDING_ON)
+
+#: ICG 가 **거절했다**고 보는 응답 타입 (`msg.mtype`).  ⛔ 원문 부분 문자열로 보지 않는다.
+_REFUSED = ('ERROR', 'FATAL')
 
 
 class GaugeControl:
@@ -132,7 +139,7 @@ class GaugeControl:
         """
         if not self.enabled:
             return False
-        self._cancel_timer('노출이 시작된다')
+        self._cancel_timer('exposure starting')
         # GO 마다 새로 판단한다 -- 앞 GO 가 프레임 없이 죽어 남긴 요청은 여기서 지운다.
         self._flush_wanted = False
         w = (word or '').strip().upper() or None
@@ -178,6 +185,9 @@ class GaugeControl:
         끌지 말지는 뒤에 오는 `HKDATA NOW` 답으로 정하는데(`before_exposure(word)`),
         그 답을 기다리는 사이에 타이머가 만료되면 **노출 도중에 켜진다** -- 그래서
         타이머는 판단보다 먼저 푼다.  `before_exposure()` 도 또 푼다(멱등).
+        ⛔ **거절된 `GO` 에서는 부르지 않는다** (DevNote 11.96) -- 취득이 안 서서 독출
+        완료(`after_acquisition`)도 안 오므로, 여기서 풀면 켜짐대기 타이머를 다시 걸
+        사람이 없다.  거절이면 타이머가 그대로 흐른다 (`IcsDispatcher.cmd_go`).
         """
         if self.enabled:
             self._cancel_timer(why)
@@ -228,34 +238,43 @@ class GaugeControl:
         """
         if not self.enabled or self.state not in _DARK:
             return
-        self._cancel_timer('새 타이머를 건다')
+        self._cancel_timer('rearming')
         self.state = PENDING_ON
         log.info('acquisition done -- PENDING_ON, gauge back on in %.0fs',
                  self.reenable_after)
         self._timer = self._spawn(self._reenable_later())
 
-    def note_reply(self, line: str) -> None:
-        """ICG 가 보낸 `VACGAUGE` 응답을 봤다고 알린다 (데드맨 해제)."""
+    def note_reply(self, msg) -> None:  # noqa: ANN001
+        """ICG 가 보낸 `VACGAUGE` 응답(`impv2.Message`)을 봤다고 알린다 (데드맨 해제).
+
+        ⭐ **거절은 응답 타입으로 가른다** -- `msg.mtype` 이 `ERROR`·`FATAL` 이면 거절이다
+        (DevNote 11.96).  ⛔ 종전에는 원문에 `ERROR` 낱말이 들었나로 봤다: 그러면
+        `FATAL` 이 정상 답으로 지나가 *"껐다고 믿는"* 상태가 남고, 거꾸로 본문에 `error`
+        가 든 `DONE` 은 거절로 읽힌다.  커맨드워드는 부르는 쪽(`app._is_reply_to`)이 이미 봤다.
+        """
         self._replied = True
-        if 'ERROR' in line.upper():
+        line = (msg.raw or '').strip()
+        if (msg.mtype or '').upper() in _REFUSED:
             # ⛔ 껐다고 믿는 채로 science 를 찍는 것이 막으려던 상태다.
-            log.warning('the vacuum gauge command was refused -- %s',
-                        line.strip(),
+            log.warning('the vacuum gauge command was refused -- %s', line,
                         extra={'detail': '⛔ 게이지가 안 꺼진 채 노출이 돌 수 '
                                          '있다'})
             # ⚠️ 모르는 상태에서 켜짐대기 타이머를 남기면 **모르는 채로 켠다**.
-            self._cancel_timer('상태를 모르게 됐다')
+            self._cancel_timer('state unknown')
             self.state = UNKNOWN
         else:
-            log.info('vacuum gauge reply -- %s', line.strip())
+            log.info('vacuum gauge reply -- %s', line)
 
     async def close(self) -> None:
         """종료 -- 타이머를 세운다.  ⚠️ 게이지를 켜지는 않는다.
 
-        ⭐ 프로그램이 내려간다고 필라멘트를 켤 이유가 없다.  다음 기동이
-        상태를 `RCONFIG` 로 되읽으므로 잃는 것도 없다.
+        ⭐ 프로그램이 내려간다고 필라멘트를 켤 이유가 없다.  상태를 잃는 것도 없다
+        -- 다음 기동의 추적 상태는 `UNKNOWN` 에서 시작하고, 첫 `GO` 의 `HKDATA NOW`
+        낱말이 실제 상태를 알려 준다 (`before_exposure(word)`).
+        ⚠️ 켜짐대기(`PENDING_ON`)에서 내려가면 게이지는 꺼진 채 남는다 -- 다시 켜는
+        것은 다음 기동의 취득 종료 타이머거나 ICG 콘솔의 `vacgauge on` 이다.
         """
-        self._cancel_timer('프로그램이 내려간다')
+        self._cancel_timer('shutting down')
         self._cancel(self._deadman)
         self._deadman = None
 
@@ -286,7 +305,7 @@ class GaugeControl:
                         self.reply_timeout,
                         extra={'detail': 'ICG 가 떠 있는지, 허브가 이 이름을 '
                                          '아는지 볼 것'})
-            self._cancel_timer('상태를 모르게 됐다')
+            self._cancel_timer('state unknown')
             self.state = UNKNOWN
 
     async def _reenable_later(self) -> None:
@@ -340,6 +359,8 @@ class GaugeControl:
             return True
 
     def _cancel_timer(self, why: str) -> None:
+        """⚠️ `why` 는 **영문 짧은 낱말**로 준다 -- 영문 로그 줄의 `%s` 자리에 그대로 박힌다
+        (DevNote 11.80 의 간접 문자열 규칙)."""
         if self._timer is not None:
             log.info('cancelling the re-enable timer (%s)', why)
             self._cancel(self._timer)

@@ -30,6 +30,7 @@ import ics_archon  # noqa: F401
 
 from ics_archon import expenablectl as ge  # noqa: E402
 from ics_archon.expenablectl import ExpEnableControl  # noqa: E402
+from ics_sim.impv2 import parse_line  # noqa: E402
 
 INF = float('inf')
 
@@ -154,15 +155,31 @@ def test_a_missing_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
     assert any('did not answer' in r.message for r in caplog.records)
 
 
-def test_an_error_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
+@pytest.mark.parametrize('mtype', ['ERROR', 'FATAL'])
+def test_a_refusal_makes_the_state_unknown(caplog, mtype):  # noqa: ANN001
+    """⛔ `ERROR`·`FATAL` 둘 다 거절이다 (DevNote 11.96) -- 원문에 `ERROR` 낱말이
+    있나로 보던 판은 `FATAL` 을 정상 답으로 흘려 *"막았다고 믿는"* 상태가 남았다."""
     caplog.set_level(logging.WARNING)
 
     def script(h):  # noqa: ANN001, ANN202
         h.ctl.on_phase('READOUT', 0.0)
-        h.ctl.note_reply('ICG>ICS ERROR: EXPENABLE Exposure lock is not available')
+        h.ctl.note_reply(parse_line('ICG>ICS %s: EXPENABLE Exposure lock is not '
+                                    'available' % mtype))
     h = _run(script)
     assert h.ctl.state == ge.UNKNOWN
     assert any('was refused' in r.message for r in caplog.records)
+
+
+def test_a_done_whose_body_says_error_is_not_a_refusal(caplog):  # noqa: ANN001
+    """⛔ 거절은 **타입**으로 가른다 -- 본문에 `error` 낱말이 든 `DONE` 은 정상 답이다."""
+    caplog.set_level(logging.WARNING, logger='ics_archon.expenablectl')
+
+    def script(h):  # noqa: ANN001, ANN202
+        h.ctl.on_phase('READOUT', 0.0)
+        h.ctl.note_reply(parse_line('ICG>ICS DONE: EXPENABLE ExpEnable=0 LastError=none'))
+    h = _run(script)
+    assert h.ctl.state == ge.BLOCKED
+    assert not any('was refused' in r.getMessage() for r in caplog.records)
 
 
 def test_closing_does_not_release_the_lock():

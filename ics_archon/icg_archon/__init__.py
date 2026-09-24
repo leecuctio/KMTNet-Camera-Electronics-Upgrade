@@ -6,14 +6,16 @@
 Archon 계층(`archon/protocol·parse·controller·fitswrite`)을 **그대로 가져다
 쓰고**, guide 에만 있는 것을 이 패키지가 채운다:
 
-* guide raw FITS (raw spec v1.9 **9·10장**) -- 파일 1개/프레임,
-  `<SITE>.<YYYYMMDD>.<NNNNNN>.G.fits`, 4224x1033, 값 카드 123장
-* frame-transfer 노출 의미론 (10.1절) -- 셔터 없음, **첫 프레임 폐기**,
-  `go n` = flush 1 + 독출 n · n 저장 (R2613+), `EXPTIME` = 독출 개시 간격,
+* guide raw FITS (raw spec v1.13 **9·10장**) -- 파일 1개/프레임,
+  `<SITE>.<YYYYMMDD>.<NNNNNN>.G.fits`, 4224x1033, 값 카드 128장
+  (`guidecards.py` 머리말과 같은 수)
+* frame-transfer 노출 의미론 (10.1절) -- 셔터 없음, `go n` = flush 1 +
+  독출 n · n 저장 (R2613+, 폐기분 없음), `EXPTIME` = 독출 개시 간격,
   `DATE-OBS` = 직전 독출 개시
 * HK 취득·로깅 (1분 주기) -- Ctrl(`C1_*`) · DIO(`DEWPRES`) ·
   RTD(`CCDTEMP` 등 6장) · Radionode(`HEBOX`/`FSATEMP`/`FSAHUM`) ·
-  AUX(`ENS1~7`).  `ics_archon` 이 이 로그를 읽어 science 헤더를 채운다.
+  AUX(`ENS1~7`).  HK CSV 는 기록용이다 -- ICS 는 `GO` 마다 `HKDATA NOW`
+  로 물어 그 답을 science 헤더에 싣는다 (DevNote 11.90).
 
 레거시 대응은 `ics_legacy/icg_legacy_report.md` 9장 -- 신규 `icg` 는 레거시
 `ICG` + `G.IC` + `G.CB` 3노드의 통합이고, 내부 UDP 경계는 함수 호출로
@@ -32,7 +34,7 @@ from ics_sim import build_id as _sim_build_id   # noqa: E402
 
 #: 손으로 올리는 판 -- 소스를 고치면 `__build_date__` 도 같이 올린다.
 __version__ = '0.0.0'
-__build_date__ = '2026-08-31T10:00Z'
+__build_date__ = '2026-09-24T00:00Z'
 
 
 def build_id() -> str:

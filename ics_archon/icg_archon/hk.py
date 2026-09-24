@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""HK 취득·로깅 (층 3 + guide 층 1) -- 1분 주기, `ics_archon` 이 소비한다.
+"""HK 취득·로깅 (층 3 + guide 층 1) -- 1분 주기, ICS 는 와이어(`HKDATA NOW`)로 받는다.
 
 한 바퀴에 모으는 것 (운영자 확정 그룹):
 
@@ -12,7 +12,10 @@
 * **AUX**       `ENS1~7` -- TC `AUXSTATUS` 질의
 
 산출물 -- `hk.G.<YYYYMMDD>.csv` (일자별 CSV, 행마다 flush.  다른 프로세스가
-읽는 중에도 이어 쓴다 · 열 구성이 바뀌면 `monitor.py` 처럼 파일을 가른다).
+읽는 중에도 이어 쓴다 · 열 구성이 바뀌거나 첫 줄을 못 읽으면
+`hk.G.<YYYYMMDD>.2.csv` 로 가른다 -- `archon/monitor.py` 의 가르기 규칙을
+따르되 빈 파일·못 읽는 파일을 어떻게 다루는지는 이 모듈이 따로 정한다.
+정본은 `HkMonitor._existing_header` 머리말 표, 가르는 흐름은 `HkMonitor._open_csv`).
 
 ⭐ **`ics_archon` 은 이 파일들을 읽지 않는다** (운영자 지시 2026-09-03 · 구현
 2026-09-15, DevNote 11.90) -- `GO` 마다 와이어로 `HKDATA NOW` 를 물어 그 답을
@@ -23,8 +26,10 @@
 재조사 금지):
 
 * 단위는 **섭씨다** (매뉴얼 p.48 "in K" 는 오기 -- 273.15 변환 금지).
-* RTD 결측 판정은 값이 아니라 **ACF `SENSORx{LOWER,UPPER}LIMIT` 범위**로
-  한다 -- 미연결 채널이 그럴듯한 값(-196.9 등)을 낼 수 있다.
+* RTD 는 **STATUS 값을 그대로 싣는다** -- 결측은 장치가 값을 안 준 것뿐이다
+  (운영자 2026-09-06, `decode_rtd`).  ACF `SENSORx{LOWER,UPPER}LIMIT` 밖은
+  버리지 않고 `out_of_limit()` 로 **경고만** 한다 -- 미연결 채널도 그럴듯한
+  값(-196.9 등)을 낼 수 있어서, 어느 쪽인지 가르는 것은 사람 몫이다.
 * `DEWPRES` 신선도는 **`OUTREG15`(Alive) 증가**로만 안다 -- 응답이 짧으면
   옛 글자가 남고 Alive 도 안 오른다.  두 번 연속 불변이면 결측 처리.
 """
@@ -34,7 +39,6 @@ from __future__ import annotations
 import asyncio
 import csv
 import datetime
-import json
 import logging
 import os
 import sys
@@ -72,8 +76,9 @@ RTD_FIELDS = (
 #: 실기 미확인(규격 OI-28) -- 첫 구동 FORCE 실험이 닫는다.
 #:
 #: 계약 키 10개 **밖**이다 -- `HKDATA` 완전성 셈(계약키 교집합 + HKSTALE)에
-#: 들어가지 않고, 스냅샷 `values` 로만 `ics_archon.sensors()` 에 흘러간다
-#: (`rawhdr.thermal_header()` 가 `htrout` 을 `format_htrout()` 로 싣는다).
+#: 들어가지 않고, `HKDATA` 본문의 `HTROUT`(ICS 는 `hkwire.parse_hkdata` 로
+#: 받는다)과 guide 헤더(`sensors()` → `rawhdr.thermal_header()` 의
+#: `format_htrout()`)로 간다.
 HEATER_OUTPUT_FIELD = 'MOD%d/HEATER%sOUTPUT' % (heater.SLOT, heater.CH)
 
 
@@ -93,9 +98,9 @@ def _limit_keys(field: str) -> tuple[str, str]:
     ⚠️ **구분자는 `/` 다.**  ACF 원문은 `MOD7\\SENSORALOWERLIMIT` 처럼
     역슬래시인데 `controller.parse_acf()` 가 읽으면서 `/` 로 정규화한다
     (`controller.py` -- `key.upper().replace('\\', '/')`).  역슬래시로
-    조회하면 **한 채널도 안 맞아 한계 판정이 통째로 죽고**, 미연결 채널의
-    그럴듯한 값(-196.9 등)이 그대로 헤더에 실린다.  값 판정이 아니라 이
-    한계 판정이 결측 판별의 전부라 조용히 틀린 값이 된다 (층 3 규칙).
+    조회하면 **한 채널도 안 맞아 한계 밖 경고(`out_of_limit`)가 통째로
+    죽고**, 미연결 채널이나 과열이 알림 없이 지나간다.  ⚠️ 값은 한계와
+    상관없이 늘 실린다 (`decode_rtd`) -- 이 키를 쓰는 곳은 경고뿐이다.
     """
     mod, tail = field.split('/')          # 'MOD7', 'TEMPA'
     ch = tail[-1]                          # 'A'|'B'|'C'
@@ -339,7 +344,8 @@ _COLUMNS = (
        'ccdtemp', 'dmptemp', 'pt30n1', 'pt30n2', 'charcoal',
        'wallbrd', 'hebox', 'fsatemp', 'fsahum',
        # v1.10 -- `HTROUT` 원천 (`MOD10/HEATERAOUTPUT`, 11.30).  ⚠️ 열이 늘었다:
-       # 이전 판 CSV 에 이어 쓰면 헤더와 어긋나니 새 파일에서 시작할 것.
+       # 옛 판 CSV 와 헤더가 다르면 `_open_csv` 가 `.2.csv` 로 가른다 --
+       # 사람이 손으로 새 파일을 시작할 일은 없다.
        'htrout']
     + ['ens%d' % n for n in range(1, 8)]
     + ['event'])
@@ -348,8 +354,11 @@ _COLUMNS = (
 class HkMonitor:
     """1분 주기 HK 루프 -- 값의 단일 창구.
 
-    `latest()` 가 백엔드 `sensors()` 의 원천이고(메모리 최신값 -- 운영자
-    확정), CSV·스냅샷 파일이 `ics_archon` 쪽 소비 창구다.
+    `sensors()` 는 guide 헤더(`sequencer`)와 `HKDATA` 본문(`hkdata.body`)의
+    원천이고, `ctrl_telemetry()` 는 guide 헤더 `C1_*` 카드의 원천이다 (둘 다
+    메모리 최신값 -- 운영자 확정).  ICS 는 파일을 읽지 않고 와이어(`HKDATA
+    NOW`)로 받는다 -- CSV 는 기록용이다.  ⚠️ `C1HKDATA` 는 이 창구를 거치지
+    않는다 (`commands._do_c1hkdata` 가 `ctrl.status_live` 를 직접 쓴다).
     """
 
     def __init__(self, ctrl, cfg: IcgCfg, *, telem=None,  # noqa: ANN001
@@ -382,11 +391,15 @@ class HkMonitor:
         #: ACF 한계 밖이라고 **이미 알린** RTD 키 -- 경고를 매 바퀴 되풀이하지
         #: 않으려는 래치일 뿐이고, **값은 언제나 그대로 실린다**.
         self._warned_oor: set = set()
-        #: 마지막 표본 -- key -> (값, epoch).  `sensors()`/스냅샷의 원천.
+        #: 마지막 표본 -- key -> (값, epoch).  `sensors()` 의 원천 (CSV 행은
+        #: `_tick` 이 바퀴마다 따로 모은 `row` 다).
         self._sample: dict[str, tuple[object, float]] = {}
         self._ctrl_unit: dict = {}
         self._stop = asyncio.Event()
-        self._csv_path = ''
+        #: 지금 열린 CSV 의 날짜 (`stamp_compact`).  ⭐ 다시 열지는 **경로가
+        #: 아니라 날짜로** 가른다 -- `.2.csv` 로 가른 뒤에는 기본 경로와 늘
+        #: 어긋나서, 경로로 비교하면 매 행 다시 열고 경고도 매번 낸다.
+        self._csv_date = ''
         self._csv = None
         self._writer = None
         self._spawn = spawn
@@ -508,8 +521,10 @@ class HkMonitor:
         **뒤로만** 미는 것을 전제로 짜여 있어(깨움 신호를 일부러 안 뒀다),
         앞당기려면 그 전제를 깨야 한다.  대신 `refresh_now()`(= `HKDATA NOW`
         와 같은 함수)를 한 번 부른다 -- 그 함수가 주기 기준도 알아서 민다.
-        ⚠️ **켤 때만 부른다** -- 끄는 쪽은 `sensors()` 의 문이 그 자리에서
-        막으므로 기다릴 것이 없다.
+        ⚠️ **켤 때만 부른다** -- 끄는 쪽은 `VACGAUGE` 낱말이 live 라 곧바로
+        `OFF` 가 되고, `DEWPRES` 는 다음 바퀴(`_tick`)가 지울 때까지 켜져 있을
+        때 잰 마지막 값이다.  운영자가 정한 표시라서(DevNote 11.93) 바퀴를 따로
+        돌리지 않는다.
         """
         if self._spawn is None:
             return                          # 단위 시험 등 -- 띄울 자리가 없다
@@ -682,7 +697,7 @@ class HkMonitor:
         부류였다.
         ⭐ 그래서 **폴링 값도 함께 갱신된다** -- 다음 FITS 헤더도 이 값을 본다.
 
-        ⚠️ **Radionode 는 충분히 낡았을 때만 다시 친다** (`RADIONODE_NOW_MIN_AGE`)
+        ⚠️ **Radionode 는 충분히 낡았을 때만 다시 친다** (`[radionode] now_min_age`)
         -- 쿼터가 분당 10회고, 즉시 조회해도 더 신선해지지 않기 때문이다.
         ⚠️ **CSV 행은 남기되 `hkdata_now` 로 표시한다** -- 실측을 버리지 않으면서
         주기 행과 구별된다 (`lag_ms` 는 주기 실현 지연이라 이 행에서는 뜻이 없다).
@@ -750,9 +765,10 @@ class HkMonitor:
         row['valid'] = status.get('VALID', '')
         row['alive'] = status.get('MOD10/VCPU_OUTREG15', '')
         # ⛔ **되먹임 센서 과열 차단** -- 상한을 넘었으면 히터를 끈다.
-        # ⚠️ **STATUS 원값으로 판정한다**: 아래 `decode_rtd` 는 한계 밖을
-        # 안 내므로(미연결 노이즈를 거르는 규칙) 과열이 `_sample` 에서는
-        # 결측으로만 보인다 -- 거기서 보면 영영 안 걸린다.
+        # ⚠️ **STATUS 원값으로 판정한다** -- `decode_rtd` 는 2026-09-06 부터
+        # 한계 밖도 그대로 내므로 `_sample` 로도 보이지만, 차단은 `_sample`
+        # 갱신보다 먼저 이 바퀴의 STATUS 를 직접 본다 (`heater.OverTempGuard`
+        # 머리말).
         # ⚠️ 여기서 끄는 것은 컨트롤러 왕복이라 취득과 락을 다툰다.  그래도
         # 과열 쪽이 먼저다 (운영자 지시 2026-09-06).
         event = ''
@@ -775,7 +791,7 @@ class HkMonitor:
             for r, v in zip(guidehdr.VOLT_RAILS, vals):
                 row['%s_%s' % (prefix, r.lower())] = '' if v is None else v
 
-        # 층 3 -- RTD (ACF 한계 판정) · DIO (진공).
+        # 층 3 -- RTD (원값 그대로, ACF 한계 밖은 경고만) · DIO (진공).
         acf_cfg = getattr(self.ctrl, 'config', {}) or {}
         rtd = decode_rtd(status)
         for key, val in rtd.items():
@@ -901,26 +917,128 @@ class HkMonitor:
 
     def _write_row(self, row: dict, event: str = '') -> None:
         try:
-            path = os.path.join(self._log_dir(),
-                                'hk.G.%s.csv' % stamp_compact())
-            if path != self._csv_path:
-                if self._csv is not None:
-                    self._csv.close()
-                new = not os.path.exists(path)
-                # newline='' -- csv 모듈 규약.  이어 쓰기(a) -- 재기동이 같은
-                # 날짜 파일에 이어 붙는다.
-                self._csv = open(path, 'a', encoding='utf-8', newline='')
-                self._writer = csv.DictWriter(self._csv, fieldnames=_COLUMNS,
-                                              extrasaction='ignore')
-                if new:
-                    self._writer.writeheader()
-                self._csv_path = path
+            date = stamp_compact()
+            # ⭐ **날짜가 바뀌었거나 닫혀 있으면** 연다 -- 경로가 아니라 날짜로
+            # 가른다 (`_csv_date` 주석).  ⚠️ 닫힘도 본다: `run()` 이 끝나며
+            # 닫은 뒤 다시 `start()` 하면 닫힌 파일에 쓸 뻔했다.
+            if self._csv is None or date != self._csv_date:
+                self._open_csv(date)
             out = {'utc': stamp_iso_ms(utcnow()),
                    'expstatus': self._expstatus(), 'event': event}
             out.update({k: row.get(k, '') for k in _COLUMNS
                         if k not in out})
             self._writer.writerow(out)
-            # **행마다 flush** -- `ics_archon` 이 지연 없이 읽는다는 요구.
+            # **행마다 flush** -- 사람·도구가 tail 로 지연 없이 읽는다 (ICS 는
+            # 파일을 안 읽는다, DevNote 11.90).
             self._csv.flush()
         except OSError as exc:
             log.error('hk: CSV write failed -- %s', exc)
+
+    def _open_csv(self, date: str) -> None:
+        """그 날짜의 CSV 를 연다.  **열 구성이 다르면 새 파일로 가른다.**
+
+        ⭐ `archon/monitor.py` `TelemetryLog._open` 의 가르기 규칙을 따른다.  열은
+        코드 판이 정하므로(`_COLUMNS`) 판을 올려 **같은 날** 재기동하면 열 구성이
+        달라질 수 있다 -- v1.10 의 `htrout` 추가가 실례다.  그때 같은 파일에 이어
+        쓰면 새 행이 옛 헤더 밑에 쌓여 `DictReader` 가 **열을 밀어 조용히
+        오독한다** (열 이름이 첫 줄 하나뿐이라 어디서 바뀌었는지 모른다).  그래서
+        헤더가 `_COLUMNS` 와 다르거나 첫 줄을 못 읽으면 `hk.G.<YYYYMMDD>.2.csv` ·
+        `.3.csv` … 중 헤더가 맞거나 아직 없는 첫 파일로 옮기고, 건너뛴 파일마다
+        **경고를 한 줄** 남긴다 (행마다가 아니다 -- 파일은 처음 쓸 때와 날짜가
+        바뀔 때, 그리고 닫힌 뒤에만 연다).
+        ⭐ **경고는 `open()` 이 성공한 뒤에** 낸다 -- 열기가 실패하면
+        `_write_row` 가 `CSV write failed` 를 남기고 다음 행이 다시 여는데, 그
+        앞에서 경고를 내면 **실패한 행마다 같은 경고가 되풀이된다**.
+        ⭐ 못 읽은 파일(`_UNREADABLE`)과 헤더가 다른 파일은 **문구를 가른다** --
+        앞의 것은 판올림이 아니라 파일 손상·다른 도구의 산물일 수 있어 볼 곳이
+        다르다.
+        ⚠️ 빈 파일·못 읽는 파일의 규칙은 이 모듈이 따로 정한다 -- 정본은
+        `_existing_header` 머리말 표다.  요점 둘: **0바이트 파일은 가르지 않고**
+        헤더를 써서 이어 쓴다 (가를 행이 없고, 헤더만 쓰다 죽은 자리를 매번
+        건너뛰면 번호만 는다).  ⛔ 비어 있지 않은데 첫 줄이 빈 파일, 첫 줄이
+        UTF-8 이 아닌 파일은 가른다.
+        ⛔ 옛 파일은 건드리지 않는다 -- 실측 기록이다.
+        """
+        if self._csv is not None:
+            self._csv.close()
+            self._csv = None
+        cols = list(_COLUMNS)
+        base = os.path.join(self._log_dir(), 'hk.G.%s' % date)
+        path = base + '.csv'
+        seq = 1
+        skipped: list[tuple[str, str]] = []     # (건너뛴 파일 이름, 못 읽은 까닭)
+        while True:
+            head, why = self._existing_header(path)
+            if not head or head == cols:
+                break
+            skipped.append((os.path.basename(path), why))
+            seq += 1
+            path = '%s.%d.csv' % (base, seq)
+        # ⭐ 없거나(`None`) 0바이트(`[]`)면 헤더를 쓴다 -- 헤더가 맞는 파일에는 안 쓴다.
+        fresh = not head
+        # newline='' -- csv 모듈 규약.  이어 쓰기(a) -- 재기동이 같은 날짜·같은
+        # 열 구성의 파일에 이어 붙는다.
+        self._csv = open(path, 'a', encoding='utf-8', newline='')
+        self._writer = csv.DictWriter(self._csv, fieldnames=_COLUMNS,
+                                      extrasaction='ignore')
+        if fresh:
+            self._writer.writeheader()
+        self._csv_date = date
+        # ⭐ 여기까지 왔으면 열렸다 -- 이제 알린다 (머리말).
+        for name, why in skipped:
+            if why:
+                log.warning('hk: cannot read the header of %s -- writing to %s '
+                            'instead of appending', name,
+                            os.path.basename(path),
+                            extra={'detail': '%s.  열 구성을 모르는 파일에 이어 '
+                                             '쓰지 않는다 -- 옛 파일은 그대로 '
+                                             '둔다' % why})
+            else:
+                log.warning('hk: %s has a different column layout -- writing to '
+                            '%s instead of appending', name,
+                            os.path.basename(path),
+                            extra={'detail': '코드 판이 바뀌어 HK CSV 열 구성이 '
+                                             '달라졌다.  옛 파일은 그대로 둔다'})
+
+    #: 첫 줄을 못 읽은 파일의 헤더 자리표 -- 열 구성을 모르므로 **다르다고** 친다.
+    _UNREADABLE = ['<unreadable>']
+
+    @classmethod
+    def _existing_header(cls, path: str) -> tuple[list[str] | None, str]:
+        """이미 있는 CSV 의 첫 줄과, 못 읽었으면 그 까닭 -- `(헤더, 까닭)`.
+
+        | 파일 | 헤더 | 까닭 |
+        |---|---|---|
+        | 없음 | `None` | `''` |
+        | **0바이트** (`os.path.getsize`) | `[]` -- 헤더를 써서 이어 쓴다 | `''` |
+        | 첫 줄이 빈 줄 (0바이트가 아니다) | `_UNREADABLE` -- 가른다 | 빈 첫 줄 |
+        | 첫 줄이 UTF-8 이 아니다 · 읽기 실패 | `_UNREADABLE` -- 가른다 | 예외 문구 |
+        | 그 밖 | 첫 줄을 CSV 로 나눈 것 | `''` |
+
+        ⭐ **비었는지는 크기로 가른다** -- `csv.reader` 의 첫 행으로 보면 0바이트
+        파일과 첫 줄이 빈 파일이 **똑같이** `[]` 라서, 둘을 섞으면 **행이 든
+        파일**에 헤더를 한 번 더 써 옛 행 밑에 붙인다.
+        ⭐ **첫 줄만 바이트로 읽어 푼다** -- 텍스트 모드로 열면 첫 덩어리(8 KiB)를
+        통째로 풀어서, 헤더는 멀쩡한데 그 뒤 행 하나가 깨진 파일까지 못 읽음으로
+        친다.
+        ⚠️ 못 읽으면 `_UNREADABLE` -- 열 구성을 모르는 파일에 헤더를 또 쓰거나
+        옛 헤더 밑에 쌓느니 가르는 쪽이 낫다.  ⚠️ 여기서는 **로그를 안 낸다** --
+        `_open_csv` 가 파일을 연 뒤에 까닭과 함께 한 번 낸다.
+        ⭐ `archon/monitor.py` 의 `TelemetryLog._existing_header` 를 가져다 쓰지
+        않는다 -- 위 표가 **이 모듈의 규칙**이고, 까닭 문구까지 돌려줘야
+        `_open_csv` 가 경고에 실을 수 있다.  ⚠️ 그쪽이 같은 규칙이라고 가정하지
+        않는다 -- 두 함수는 따로 고쳐진다.  대조가 필요하면 그 함수를 직접 볼 것.
+        """
+        if not os.path.isfile(path):
+            return None, ''
+        try:
+            if os.path.getsize(path) == 0:
+                return [], ''
+            with open(path, 'rb') as fh:
+                raw = fh.readline()
+            text = raw.decode('utf-8').rstrip('\r\n')
+            if not text.strip():
+                return list(cls._UNREADABLE), '첫 줄이 비어 있다 (헤더가 없다)'
+            return next(csv.reader([text])), ''
+        except (OSError, UnicodeDecodeError, csv.Error) as exc:
+            return list(cls._UNREADABLE), '%s: %s' % (type(exc).__name__, exc)

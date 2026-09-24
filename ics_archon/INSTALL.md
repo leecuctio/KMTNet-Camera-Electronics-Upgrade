@@ -1,6 +1,6 @@
 # 벤치 설치 — `~/AIC` 한 벌 세우기
 
-리눅스 기계(**AIC**)에 관측 계통 전체를 처음부터 세우는 절차다.  다섯 프로그램이
+리눅스 기계(**AIC**)에 관측 계통 전체를 처음부터 세우는 절차다.  여섯 프로그램이
 같은 설치 루트 `~/AIC` 를 공유한다.
 
 | 프로그램 | 정체 | 언어 | 설치 방식 |
@@ -9,7 +9,8 @@
 | **OBSAgent** (`obstool`) | 관측자 콘솔 | C | 빌드 후 **손으로** `bin/` 에 복사 |
 | **TCSAgent** (`pctcs`) | 망원경·AUX 제어 | C | 〃 |
 | **`ics_sim`** | 카메라 통합제어 (시뮬) | Python | 설치 없음 — 체크아웃에서 실행 |
-| **`ics_archon`** | 카메라 통합제어 (실기) | Python | 〃 |
+| **`ics_archon`** | 카메라 통합제어 (실기, science) | Python | 〃 |
+| **`icg_archon`** | guide 통합제어 (실기) + HK 취득 — ICS 가 `GO` 마다 `HKDATA NOW` 를 묻는 상대 | Python | 〃 |
 
 > **이미 `~/AICS` 로 돌고 있는 기계**는 아래 [기존 설치 이전](#기존-설치-이전) 으로.
 
@@ -55,7 +56,7 @@ SSH 키를 쓰는 기계라면 `git@github.com:leecuctio/KMTNet-Camera-Electroni
 ## 2. 자리 만들기
 
 ```bash
-mkdir -p ~/AIC/{src,bin,Config/acf,Logs,data,osc,log}
+mkdir -p ~/AIC/{src,bin,Config/acf,Logs,data,osc}
 ```
 
 `~/AIC/data` 를 다른 디스크로 보내려면 실제 디렉터리 대신 링크를 둔다:
@@ -74,17 +75,18 @@ mkdir -p /mnt/bigdisk/data && ln -s /mnt/bigdisk/data ~/AIC/data
 | `build/` | **전부 생성물** | ✅ 언제든 |
 | `bin/` | 설치된 실행 파일 | ✅ 다시 만들면 됨 |
 | `Config/` | 설정 + **`*.expnum`(노출 번호 카운터)** | ❌ **절대 금지** |
-| `Logs/` · `data/` | 로그 · 취득 자료 | ❌ |
-| `log/` | **텔레메트리 감시 기록**(`telemetry.<MK\|NT>.<YYYYMMDD>.csv`) | ⚠️ 아래 |
+| `Logs/` | **로그·감시 기록** — `telemetry.<MK\|NT>.<YYYYMMDD>.csv`(`[archon] monitor_log`) · `hk.G.<YYYYMMDD>[.N].csv`(ICG `[hk] log_dir` — 열 배치가 다른 옛 파일이 있으면 `.2`·`.3` … 로 가른다) · `ics.<YYYYMMDD>.log`/`icg.<YYYYMMDD>.log`(`[logging] file`) · 레거시 C 로그(obstool·XIS) | ❌ (⚠️ 아래) |
+| `data/` | 취득 자료 | ❌ |
 | `osc/` | 관측 스크립트(`.osc`) — 저장소에서 복사해 둔다 | ✅ 다시 복사하면 됨 |
 
-⚠️ **`log/` 와 `Logs/` 는 다른 것이다** (대소문자만 다르다 — 리눅스에서는
-갈리지만 눈으로는 안 갈린다).  `Logs/` 는 레거시 C 계통(obstool·XIS)의 자리이고
-`log/` 는 `ics_archon` 의 텔레메트리 CSV 다.  **`data/` 밑에 두지 않은 것이
-요구사항이다** — 자료와 함께 굴러가면 아카이브 정책에 걸린다 (운영자 확정
-2026-08-27).  지워도 프로그램은 돌지만, **센서 표류를 되짚을 유일한 기록**이라
-자료와 같은 기간 보존하는 편이 맞다.  자리는 `[archon] monitor_log` 로 옮길 수
-있다.
+⚠️ **텔레메트리·HK CSV 는 `Logs/` 에 쌓인다** (2026-09-07 에 `log` → `Logs` 로
+통일했다).  옛 설치에 `~/AIC/log` 가 남아 있으면 **안의 CSV 를 `Logs/` 로 옮긴 뒤** 빈 폴더를
+지운다 — 센서 기록이라 버리지 않는다 (`mv -n ~/AIC/log/*.csv ~/AIC/Logs/ && rmdir ~/AIC/log`,
+`rmdir` 는 비어 있을 때만 지운다).  **`data/` 밑에
+두지 않는 것이 요구사항이다** — 자료와 함께 굴러가면 아카이브 정책에 걸린다 (운영자
+확정 2026-08-27).  지워도 프로그램은 돌지만, **센서 표류를 되짚을 유일한 기록**이라
+자료와 같은 기간 보존하는 편이 맞다.  자리는 `[archon] monitor_log`(science)·`[hk]
+log_dir`(ICG) 로 옮길 수 있다.
 
 ## 3. C 프로그램 셋 빌드
 
@@ -115,10 +117,32 @@ bash ./TCSAgent/build-local.sh --site kmtna
 ## 4. Python 계통 설정
 
 ```bash
-cp ics_sim/ics_sim.ini       ~/AIC/Config/ics_sim.ini
-cp ics_archon/ics_archon.ini ~/AIC/Config/ics_archon.ini
-cp <어딘가>/KMTNet_Sci_*.acf ~/AIC/Config/acf/
+cp -n ics_sim/ics_sim.ini       ~/AIC/Config/ics_sim.ini       # -n: 이미 있는 설치본은 덮지 않는다
+cp -n ics_archon/ics_archon.ini ~/AIC/Config/ics_archon.ini
+cp -n ics_archon/icg_archon.ini ~/AIC/Config/icg_archon.ini
+cp ics_archon/acf/KMTK_SCI_113_STA0200_R2613_{MK,NT}.acf \
+   ics_archon/acf/KMTK_GUI_162_STA0201_R2622.acf ~/AIC/Config/acf/
 ```
+
+- ⭐ ini 셋은 **`cp -n`** 이다 — 처음 설치면 그대로 복사되고, 설치본이 이미 있으면(벤치 실값·
+  KEY/SECRET 을 적어 둔 것) 건드리지 않는다.  그때는 아래 "기존 설치본을 갱신할 때" 로 손으로 고친다.
+- ACF 는 **파일명 전체로** 고른다 (`acf/README.md` 머리의 규칙 셋) — 위는 KASI 벤치 상자 예시이고,
+  둘째 상자면 science `STA0212` · guide `STA0230` 이다.  어느 상자인지는 `BACKPLANE_ID` 로 가린다.
+  깔았으면 [`acf/deployment_ledger.md`](acf/deployment_ledger.md) 이력에 한 줄.
+- ⛔ **KEY/SECRET 을 적어 둔 `~/AIC/Config/icg_archon.ini` 가 이미 있으면 덮지 말 것** — 자격증명은
+  설치본에만 적는다 (README "Radionode").
+
+⭐ **기존 설치본을 갱신할 때**(ini 를 덮지 않는 경우) — 없앤 키는 조용히 무시되므로 지운다:
+ICS `[archon] hk_latest`·`hk_stale_after`, ICG `[hk] latest_name` (HK 는 와이어다, 2026-09-15).
+옛 `[archon] ccdflush = true` 는 `ccdflush_every = 1` 로, `false` 는 비움으로 바꾼다 — 옛 키도 읽지
+않고 무시된다.  절차는 [`bench_test_plan.md`](bench_test_plan.md) 준비 P1·P2.
+
+이름이 바뀐 키 둘도 옮겨 적는다:
+
+| 옛 키 | 새 키 | 옛 키가 남아 있으면 |
+|---|---|---|
+| ICG `[icg] poweron_wait` | `[icg] gauge_warmup_wait` (이온게이지 예열 대기, 기본 12 s — 2026-09-10) | **값은 무시**되고 기동이 경고한다 (`[icg] poweron_wait was renamed to gauge_warmup_wait -- the value … is ignored`).  ⚠️ science `[archon] poweron_wait` 는 개명하지 않았다 |
+| ICS·ICG `[logging] verbose` | `[behavior] verbose` (화면 간결 눈금 — 2026-09-11) | **값은 무시**되고 기동이 경고 한 줄(`[logging] verbose is ignored -- …`)을 낸다 — `[behavior] verbose` 가 없으면 코드 기본값 `on` 이다 (배포 ini 는 ICS `off` · ICG `on`).  ⚠️ 그 경고는 로그 설정 **전에** 나와 화면(stderr)에만 뜨고 로그 파일에는 안 남는다 |
 
 관측 스크립트(`.osc`)는 `~/AIC/osc/` 에 둔다 — obstool 이 절대경로로 읽는다:
 
@@ -472,8 +496,19 @@ keys         = fsatemp, fsahum
 python -m icg_archon --backend sim        # 배너에 radionode 줄
 ```
 
-돌고 있는 프로그램에서는 명령으로 본다 — `RADIONODE STATUS` ·
-`RADIONODE CONNECT`(수신기 기동) · `RADIONODE DISCONNECT` · `HK`.
+⚠️ **ini 를 고쳤으면 ICG 를 재기동한다** — `RADIONODE CONNECT` 는 ini 를 다시 읽지 않는다
+(`backend`·`deveui`·`lns_*` 는 기동에서만 읽는다).  ✅ 수신기는 코드에 있고 ⏳ 실기는 미검증이다.
+
+돌고 있는 프로그램에서는 명령으로 본다 (`local_lns` 일 때):
+
+| 명령 | 하는 것 |
+|---|---|
+| `RADIONODE STATUS` | `Backend=local_lns Listening=<주소> Path=/uplink` · 장치별 상태 — `NoDevEUI=`(ini 에 `deveui` 가 빈 장치) · `UnknownEUI=`(등록 안 된 DevEUI 로 온 uplink 수) |
+| `RADIONODE CONNECT` | 수신기 기동 (`deveui` 가 하나도 없으면 거절 — 다 버려질 것이라서) |
+| `RADIONODE DISCONNECT` | 수신기 정지 — 세 카드는 곧바로 sentinel, 백엔드는 `local_lns` 그대로 |
+| `RADIONODE ENABLE`/`DISABLE <별칭>` | 그 장치의 uplink 를 받아들일지 (`hebox`·`fsa`) |
+| `RADIONODE RECONNECT` | ⛔ **`openapi` 전용** — push 라 칠 곳이 없어 `ERROR` |
+| `HK` | `HEBOX`/`FSATEMP`/`FSAHUM` 이 실려 나오는지 |
 
 ### 7.6 적어 올 값 (⭐ 빈칸을 먼저 채운다)
 

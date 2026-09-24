@@ -534,7 +534,7 @@ def test_ini_validate_halts_when_no_controller_is_defined(tmp_path):  # noqa: AN
         acfg_mod.validate(cfg, ('N', 'T'))
     assert 'ccds' in str(e2.value) and 'MK' in str(e2.value)
     # 한쪽만 있는 정상 배치는 그대로 뜬다.
-    # ⚠️ ACF 는 **실재해야 한다** -- 기동마다 적용하므로 없는 파일이면 멈춘다
+    # ⚠️ ACF 는 **실재해야 한다** -- 세션마다(첫 GO) 적용하므로 없는 파일이면 기동 검사가 멈춘다
     #    (운영자 2026-09-12).  여기서 보려는 것은 그게 아니라 태그 셈이다.
     real = tmp_path / 'x.acf'
     real.write_text('[CONFIG]\n', encoding='ascii')
@@ -1000,6 +1000,110 @@ def test_shutter_exposure_still_carries_its_time(tmp_path, fakes):  # noqa: ANN0
     drive(tmp_path, fakes,
           ['OBS>ICS object M31', 'OBS>ICS exp 2', 'OBS>ICS go'])
     assert _param(fakes.mk, 'IntMS')[-1] == 'IntMS=2000', fakes.mk.config
+    # ⭐ 싣는 값은 ACF 를 민 `prepare()`(첫 GO)에서 정한 `shutter_dwell_ms` -- 시험 ACF 는
+    #    `NoIntMS=0` 이라 ini 의 `shutter_close_ms` 가 이긴다.
+    want = max(int(acfg_mod.load(INI).shutter_close_ms or 0), 0)
+    assert _param(fakes.mk, 'NoIntMS')[-1] == 'NoIntMS=%d' % want, fakes.mk.config
+
+
+# -- 셔터 노출은 앞 DARK/BIAS 의 `NoIntMS` 를 물려받지 않는다 (DevNote 11.96) -----
+
+
+async def _drive_phases(cfg, acfg, nt_port, phases, probe):  # noqa: ANN001, ANN202
+    """GO 를 **차례로** 여러 번 -- 한 세션 안에서.  국면마다 끝난 뒤 `probe()` 를 적는다."""
+    app = IcsArchon(cfg, acfg)
+    app.backend.ctrls['NT'].link.port = nt_port
+    seen = []
+    await app.start()
+    try:
+        for script in phases:
+            for line in script:
+                app.transport.feed(line)
+                await asyncio.sleep(0.02)
+            await app.seq.wait()
+            await asyncio.sleep(0.3)
+            seen.append(probe())
+        return seen
+    finally:
+        await app.stop()
+
+
+DARK3 = ['OBS>ICS dark begin', 'OBS>ICS exp 3', 'OBS>ICS go']
+BIAS0 = ['OBS>ICS bias begin', 'OBS>ICS exp 0', 'OBS>ICS go']
+OBJECT1 = ['OBS>ICS object M31', 'OBS>ICS exp 1', 'OBS>ICS go']
+
+
+def test_with_the_check_off_a_shutter_exposure_puts_the_acf_dwell_back(tmp_path, fakes):  # noqa: ANN001
+    """⛔ `shutter_close_ms=0`("검사를 꺼 둔 것")에서 셔터 노출은 **ACF 값**을 싣는다.
+
+    종전에는 `0` 이면 `NoIntMS` 를 **안 실어서** 앞 DARK 의 적분시간(3000)이 그대로
+    갔다 -- 셔터 노출의 독출이 그만큼 늦게 열리고, 표에 `dwell_until` 이 없어 긴
+    DARK 뒤라면 프레임 시한에 걸린다.  BIAS 뒤라면 0 이라 셔터가 닫히는 중에 독출한다.
+    """
+    cfg, acfg, nt_port = make_cfgs(tmp_path, fakes.mk, fakes.nt)
+    acfg.shutter_close_ms = 0
+    seen = asyncio.run(_drive_phases(
+        cfg, acfg, nt_port, [DARK3, OBJECT1],
+        lambda: _param(fakes.mk, 'NoIntMS')[-1]))
+    assert seen == ['NoIntMS=3000', 'NoIntMS=0'], seen      # 시험 ACF 값이 0 이다
+
+
+def test_an_acf_dwell_longer_than_the_floor_is_not_cut(tmp_path, fakes):  # noqa: ANN001
+    """⛔ `shutter_close_ms` 는 **하한**이다 -- ACF 가 더 길면 ACF 값을 싣는다 (종전에는
+    노출마다 `shutter_close_ms` 를 써서 ACF 값을 깎았다)."""
+    cfg, acfg, nt_port = make_cfgs(tmp_path, fakes.mk, fakes.nt)
+    (tmp_path / 'test.acf').write_text(ACF_TEXT.replace('NoIntMS=0', 'NoIntMS=6000'),
+                                       encoding='ascii')
+    acfg.shutter_close_ms = 5200
+    seen = asyncio.run(_drive_phases(
+        cfg, acfg, nt_port, [OBJECT1],
+        lambda: _param(fakes.mk, 'NoIntMS')[-1]))
+    assert seen == ['NoIntMS=6000'], seen
+
+
+def test_a_bias_does_not_make_the_next_frame_cry_short_acf(tmp_path, fakes, caplog):  # noqa: ANN001
+    """⛔ *"ACF 의 NoIntMS 가 짧다"* 경고는 **ACF 를 민 `prepare()`(첫 GO)에서 한 번**이다.
+
+    `prepare()` 는 프레임마다 불리는데, 종전에는 그때마다 캐시를 다시 봤다 -- BIAS 가
+    그 슬롯을 0 으로 덮은 뒤라 다음 프레임마다 *"0 ms, shorter than the shutter close
+    time"* 과 *"ACF 를 고치는 것이 정본"* 이 거짓으로 떴다.
+    """
+    import logging
+    cfg, acfg, nt_port = make_cfgs(tmp_path, fakes.mk, fakes.nt)
+    acfg.shutter_close_ms = 5200                     # 시험 ACF 는 0 -- 첫 GO 에서 한 번 짧다
+    with caplog.at_level(logging.WARNING, logger='ics_archon.ctrl'):
+        seen = asyncio.run(_drive_phases(
+            cfg, acfg, nt_port, [BIAS0, OBJECT1],
+            lambda: _param(fakes.mk, 'NoIntMS')[-1]))
+    assert seen == ['NoIntMS=0', 'NoIntMS=5200'], seen
+    cries = [r.getMessage() for r in caplog.records
+             if 'shorter than the shutter close time' in r.getMessage()]
+    assert len(cries) == 2, cries                    # MK · NT 한 번씩
+
+
+def test_the_erase_flush_after_a_dark_carries_noint_zero(tmp_path, fakes):  # noqa: ANN001
+    """⭐ ERASE 의 flush(`ArchonController.flush`)는 **자기 LOADPARAMS 앞에 `NoIntMS=0`** 을
+    싣는다 (DevNote 11.96).
+
+    안 실으면 앞 DARK 의 적분시간(여기서는 3000)이 설정 메모리에 남아 flush 의 독출이 그만큼
+    늦게 열린다 -- 600 s DARK 뒤라면 `frame_timeout` 에 걸린다.  ⚠️ 첫 GO 의 flush 는 ACF 값
+    (0) 위라 이 결함을 못 보인다 -- **DARK 뒤의 GO** 라야 한다.
+    """
+    cfg, acfg, nt_port = make_cfgs(tmp_path, fakes.mk, fakes.nt)
+    acfg.full_flush_on_erase = True
+    seen = asyncio.run(_drive_phases(
+        cfg, acfg, nt_port, [DARK3, DARK3],
+        lambda: (len(fakes.mk.commands), _param(fakes.mk, 'NoIntMS')[-1])))
+    (mark, after_first), _second = seen
+    assert after_first == 'NoIntMS=3000', '전제: 첫 DARK 가 3000 을 남겼다 -- %r' % (seen,)
+    # 둘째 GO 의 첫 LOADPARAMS 가 ERASE 의 flush 다 (준비는 LOADPARAMS 를 안 낸다).
+    later = fakes.mk.commands[mark:]
+    load = later.index('LOADPARAMS')
+    noint = [c.split('=', 1)[1] for c in later[:load] if '=NoIntMS=' in c]
+    assert noint and noint[-1] == 'NoIntMS=0', later[:load + 1]
+    # 그리고 그 뒤의 DARK 는 제 적분시간을 다시 싣는다.
+    assert [c.split('=', 1)[1] for c in later[load:] if '=NoIntMS=' in c][-1] == \
+        'NoIntMS=3000', later[load:]
 
 
 def test_bias_is_zero_seconds_not_a_missing_hook(tmp_path, fakes, caplog):  # noqa: ANN001

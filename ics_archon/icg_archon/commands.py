@@ -71,6 +71,7 @@ first`) -- 히터·게이지와 반대다.  그쪽은 결측 창 하나가 대�
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import replace
 
 from ics_archon import _simpath
@@ -132,6 +133,49 @@ def _unknown(word: str) -> str:
             % (word, '|'.join(sorted(ONOFF, key=str.lower))))
 
 
+def _fail_text(exc: BaseException) -> str:
+    """예외를 늦은 `ERROR … Failed:` 뒤에 붙일 **와이어 문구**로 -- ASCII 한 줄.
+
+    ICS `ics_archon/app.py` 의 `_fail_text` 와 **같은 규칙**이다 (2026-09-23 -- 종전 ICG 는
+    `str(exc)` 를 그대로 실었다).  ⚠️ 컨트롤러 층·`heater` 의 raise 문구는 대개 한글이라
+    전송 계층(`impv2.format` 의 `encode('ascii', 'replace')`)에서 `?` 로 뭉개진다 -- 그때는
+    ` (see log)` 를 붙여 **원문이 로그에 있음**을 알린다.  개행·제어문자는 메시지를 깨므로
+    (`impv2.parse` 가 malformed 로 버린다) 공백으로 접는다.
+    ⛔ **이 함수를 쓰는 자리는 먼저 `log.error` 로 원문을 남긴다** -- 안 남기면
+    `(see log)` 가 거짓 안내가 된다.
+    ⏳ ICS 와 한 모듈로 모을 자리다 (지금은 ICS 쪽이 `app.py` 안에 있어 ICG 가 끌어오면
+    ICS 앱 전체가 딸려 온다).
+    """
+    raw = str(exc) or type(exc).__name__
+    out = []
+    for ch in raw:
+        o = ord(ch)
+        if o < 32 or o == 127:
+            out.append(' ')
+        elif o > 126:
+            out.append('?')
+        else:
+            out.append(ch)
+    text = ' '.join(''.join(out).split())
+    if any(ord(ch) > 126 for ch in raw):
+        text += ' (see log)'
+    return text
+
+
+class _Answered:
+    """`TRIGOUT <ms>` 한 건이 **끝 응답(`DONE`/`ERROR`)을 냈나** -- 펄스 태스크와 그
+    done-callback 이 함께 보는 표시다 (`IcgDispatcher.cmd_trigout`).
+
+    ⭐ 끝 응답은 **꼭 하나**다 (2026-09-23).  없으면 보낸 쪽이 시한까지 기다리고,
+    둘이면 뒤의 것을 다음 명령의 답으로 읽는다.
+    """
+
+    __slots__ = ('sent',)
+
+    def __init__(self) -> None:
+        self.sent = False
+
+
 def extend_vocabulary() -> None:
     """모듈 상수(frozenset)를 합집합으로 갈아 끼운다 -- 한 번이면 된다."""
     if not ICG_COMMANDS <= emitter.KNOWN_COMMANDS:
@@ -168,11 +212,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
           노출시간 위의 `exptime_min`, 실현값)로 둔다.  ⛔ 부모처럼 0 으로 두지 않는다 --
           guide 의 `EXPTIME` 은 셔터 노출이 아니라 **독출 개시 간격**이라(raw spec 10.1절)
           0 은 실현 불가능한 값이고, `GO` 가 어차피 그 값으로 접는다.  미리 실현값으로
-          두어 `EXP`/`GUIEXP` 조회와 이 응답이 헤더에 실릴 값을 말하게 한다.
+          두어 `EXP`/`GUIEXP`/`IMAGETYPE` 조회와 이 응답이 헤더에 실릴 값을 말하게 한다.
         * **나머지는 전부 같다** -- guide 엔 셔터 제어 개념이 없어 `DARK`·`OBJECT`·`FLAT`·… 가
           똑같이 동작한다.  국면 이름만 헤더 `IMAGETYP` 으로 간다.  기본값은 **`OBJECT`**.
         * `BIAS` 에서는 `EXP`/`GUIEXP` 가 거부된다 (부모의 레거시 규약을 guide 도 따른다) --
           바꾸려면 다른 국면으로 옮긴 뒤.
+        * ⭐ `IMAGETYPE` 조회도 같은 값을 말한다 -- `_image_type_query` 가 부모의
+          `effective_exptime`(BIAS 면 0) 대신 `st.exptime` 을 싣는다 (2026-09-23).
 
         (종전 2026-08-31 판은 *"guide 는 노출시간을 0 으로 만들지 않는다"* 로 주기를 그대로
         뒀다 -- 그때는 `go` 가 하한 아래를 거부했고 `EXP` 로도 못 되돌려 가이딩이 잠겼기
@@ -189,6 +235,24 @@ class IcgDispatcher(sim_commands.Dispatcher):
                                  st.exptime))
         return reply
 
+    def _image_type_query(self, msg: Message) -> Reply:
+        """`IMAGETYPE`/`IMAGETYP`/`IMGTYP` 조회 -- 부모와 같되 **`EXP=` 는 `st.exptime`** 이다.
+
+        ⛔ 부모는 `st.effective_exptime` 을 싣는데 그 값은 `BIAS` 면 늘 0 이다 (science 의
+        BIAS 는 셔터를 안 여는 0초 노출이다).  guide 의 `BIAS` 는 **최소 노출**(`_image_type`)
+        이라 그대로 물려받으면 `BIAS` 뒤 조회가 `EXP=0` 을 말해, 같은 상태를 두고 `BIAS`
+        응답·`EXP`/`GUIEXP` 조회·헤더 `EXPTIME`(최소 노출 실현값)과 어긋났다 (2026-09-23).
+        `BIAS` 가 아닐 때는 두 값이 같아 다른 국면의 답은 바뀌지 않는다.
+        ⭐ 인자가 오면 거절하는 것은 부모 그대로다 (조회 전용).
+        """
+        if msg.body.strip():
+            return super()._image_type_query(msg)
+        st = self.state
+        word = (msg.cmdword or 'IMAGETYPE').upper()     # 답의 커맨드워드는 받은 그대로
+        return Reply.done(word, 'ImageType=%s ObjectName=%s EXP=%g'
+                          % (st.imgtype, sim_commands.quote_always(st.objname),
+                             st.exptime))
+
     def cmd_exp(self, msg: Message, target: Target) -> Reply:
         """EXP -- 노출시간(독출 개시 간격).  `BIAS` 에서는 부모처럼 거부한다 (2026-09-15).
 
@@ -202,8 +266,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
 
         ⭐ **낱말을 `GUIDEEXP` 에서 줄였다** (운영자 2026-09-08).  값 의미는
         `EXPTIME` = 독출 개시 간격이다 (raw spec 10.1절) -- `EXP` 와 **같은
-        상태 필드**를 채우므로 어느 쪽으로 설정해도 같다 (guide 는 `EXP` 의
-        `BIAS` 가드도 풀어 뒀다 -- `cmd_exp`).
+        상태 필드**를 채우므로 어느 쪽으로 설정해도 같다 (`BIAS` 에서는 `EXP` 와
+        같이 거부한다 -- `BIAS` = 최소 노출 고정, 2026-09-15).
         ⚠️ `EXP` 를 남겨 두는 것은 **초점조절 유틸리티(gmon)가 그것을 쓰기**
         때문이다 (운영자) -- 아니었으면 `GUIEXP` 하나만 뒀다.
         ⛔ 레거시 실측 낱말은 `GUIDEEXP` 였다(icg_legacy_report 5.2절) --
@@ -248,9 +312,12 @@ class IcgDispatcher(sim_commands.Dispatcher):
     def cmd_hkdata(self, msg: Message, target: Target) -> Reply:
         """HKDATA [NOW] -- ICS 가 **자기 헤더를 채우려고** 묻는 것.
 
-        ⭐ **인자가 없으면 폴링값** (60초 주기, 왕복 없음), **`NOW` 면 즉시
-        되읽기** (운영자 확정 2026-09-09).  ⛔ 갈리는 것은 **히터 설정 셋**
-        (`HTREN`·`HTRSET`·`HTRFORCE`) 하나뿐이다 -- 나머지는 원래부터 폴링값이다.
+        ⭐ **인자가 없으면 폴링값** (60초 주기, 왕복 없음), **`NOW` 면 HK 한 바퀴를
+        지금 돌린다** (운영자 확정 2026-09-09, `hk.refresh_now()`) -- `STATUS`(RTD·진공·
+        `HTROUT`) + `RCONFIG` 셋(히터 설정 `HTREN`·`HTRSET`·`HTRFORCE`) + Radionode(충분히
+        낡았을 때만, `[radionode] now_min_age`).  주기 바퀴와 같은 함수라 폴링값도 함께
+        갱신된다 (`hkdata.body`).  ⚠️ 종전 이 자리의 *"`NOW` 는 히터 설정 셋만 되읽는다"*
+        는 낡은 문면이었다.
         ⚠️ 낡음은 `HKUDATE`·`HKSTALE` 이 그대로 알린다.
 
         문면은 DevNote 11.14-(1) 운영자 확정이고 조립은 `hkdata.py` 다.
@@ -272,19 +339,24 @@ class IcgDispatcher(sim_commands.Dispatcher):
         * `always=True` -- **`TRIGOUT` 계열**.  운영자가 칠 때만 나가는 드문
           명령이라 로그를 덮을 수가 없고, ⭐ 그 지연 자체가 진단 값이다.
         * `always=False` -- **`HKDATA`/`HK`**.  ⚠️ 이쪽만 임계를 탄다
-          (`[icg] latency_warn_ms`, 기본 50 ms): 우리 프로그램은 이 명령을
-          **스스로 보내지 않지만**, 바깥 감시 계통이 초 단위로 물어 올 수는
-          있어서다.  임계 아래는 `DEBUG` 로 내린다.
+          (`[icg] latency_warn_ms`, 기본 150 ms -- 취득 중 실측 최악 107.8 ms 위,
+          DevNote 11.55): 우리 프로그램은 이 명령을 **스스로 보내지 않지만**,
+          바깥 감시 계통이 초 단위로 물어 올 수는 있어서다.  임계 아래는 `DEBUG`
+          로 내린다.
 
         ⛔ **종전에 적어 둔 근거 *"`HKDATA` 는 프레임마다 온다"* 는 틀렸다**
         (2026-09-09 정정).  `ics_archon/app.py` 의 `_ask_icg('HKDATA')` 를
         부르는 곳은 **명령 처리기 둘뿐**이고 주기 발신자가 없다 -- 빈도를
         정하는 것은 바깥이다.
 
-        ⏳ **실측 뒤에 임계를 다시 정한다** -- 취득 중 정상 지연이 50 ms 를
-        늘 넘으면 그 기본값은 *"이상"* 이 아니라 **소음**이 된다.
+        ✅ **실측으로 150 ms 로 정했다** (2026-09-09): 옛 임시값 50 이면 취득 중
+        `HKDATA` 의 14 % 가 늘 `INFO` 라 *"이상"* 이 아니라 **소음**이었다.
         ⭐ **벤치에서는 `latency_warn_ms = 0` 으로 두어 전부 남긴다** -- 그것이
         이 눈금의 시험용 자리다.
+
+        ⭐ 로그 한 줄은 **영문**이다 (로그 규약, DevNote 11.72): ``<what> latency --
+        recv->done <ms> ms (acquiring|idle)[ <extra>]``.  ``<what>`` 은 `HKDATA`·
+        `HKDATA NOW`·`HK`·`<낱말> write`·`TRIGOUT raise`·`TRIGOUT lower` 다.
 
         ⛔ 이 값은 **락 대기 + 왕복 처리**를 합친 것이다 -- 둘을 가르지
         않는다.  가르려면 `_locked_thread` 안팎에 각각 시각을 찍어야 하는데,
@@ -292,15 +364,20 @@ class IcgDispatcher(sim_commands.Dispatcher):
         나중에 얻을 수 있다.
         """
         import time
+
+        from .config import IcgCfg
         ms = (time.monotonic() - t0) * 1000.0
         seq = getattr(self.app, 'seq', None)
-        busy = '취득중' if (seq is not None and seq.busy) else '한가'
+        busy = 'acquiring' if (seq is not None and seq.busy) else 'idle'
         # ⛔ **`self.cfg` 가 아니라 `app.icfg` 다** -- 앞은 ics_sim 설정이라
-        # 이 눈금이 없고, 그러면 벤치에서 `0` 으로 낮춰도 기본값 50 이 살아
+        # 이 눈금이 없고, 그러면 벤치에서 `0` 으로 낮춰도 대체 기본값이 살아
         # **재려던 줄이 `DEBUG` 로 숨는다** (2026-09-09 시험이 잡았다).
+        # ⭐ 대체값은 **정본(`IcgCfg`)을 가리킨다** -- 종전 리터럴 50 은 기본값이
+        # 150 으로 바뀐 뒤에도 남아 있었다 (2026-09-23).
         icfg = getattr(self.app, 'icfg', None)
-        cap = float(getattr(icfg, 'latency_warn_ms', 50.0) or 0.0)
-        line = '%s 지연 -- 수신→완료 %.1f ms (%s)%s'
+        cap = float(getattr(icfg, 'latency_warn_ms', IcgCfg.latency_warn_ms)
+                    or 0.0)
+        line = '%s latency -- recv->done %.1f ms (%s)%s'
         args = (what, ms, busy, (' %s' % extra) if extra else '')
         if always or ms >= cap:
             log.info(line, *args)
@@ -313,7 +390,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
 
         ⚠️ **늦은 `DONE`** 이다.  ⭐ 기본 갈래는 왕복이 없어 동기로도 답할 수
         있지만 **한 경로로 둔다** -- 갈래마다 응답 방식이 다르면 받는 쪽이 두
-        가지를 다뤄야 한다.  `NOW` 는 `RCONFIG` 셋이라 어차피 늦은 `DONE` 이다.
+        가지를 다뤄야 한다.  `NOW` 는 HK 한 바퀴(`hk.refresh_now()` -- `STATUS` +
+        `RCONFIG` 셋 + 낡았으면 Radionode)라 어차피 늦은 `DONE` 이다.
         ⛔ **모르는 인자는 거절한다** -- `HKDATA NOWW` 를 조용히 폴링값으로
         답하면 운영자가 *"즉시 읽었는데 옛 값이 온다"* 로 읽는다.
         """
@@ -334,13 +412,15 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """본문을 만들어 늦은 `DONE` 으로 답한다.
 
         ⏳ `t0`(수신 monotonic)가 있으면 **지연을 로그로 남긴다** -- 연속
-        노출 중 `RCONFIG` 셋이 FETCH 락 뒤에 얼마나 밀리는지가 관측 대상이다
-        (`_log_latency`, DevNote 11.53).
+        노출 중 `NOW` 의 왕복(`STATUS` + `RCONFIG` 셋)이 FETCH 락 뒤에 얼마나
+        밀리는지가 관측 대상이다 (`_log_latency`, DevNote 11.53).  ⚠️ Radionode 를
+        실제로 친 바퀴면 인터넷 왕복이 섞인다 (`hk.refresh_now`).
         """
         try:
             body = await hkdata.body(self.app, now=now)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, cmdword, 'Failed: %s' % exc)
+            log.error('%s failed -- %s', cmdword, exc)
+            self.emit.error(dest, cmdword, 'Failed: %s' % _fail_text(exc))
             return
         if t0 is not None:
             self._log_latency(cmdword + (' NOW' if now else ''), t0)
@@ -400,7 +480,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 unit=unit, status=status, ident=ident,
                 sampled_at=float(getattr(ctrl, 'status_live_at', 0.0) or 0.0))
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, word, 'Failed: %s' % exc)
+            log.error('%s failed -- %s', word, exc)
+            self.emit.error(dest, word, 'Failed: %s' % _fail_text(exc))
             return
         self.emit.done(dest, word, body)
 
@@ -411,7 +492,11 @@ class IcgDispatcher(sim_commands.Dispatcher):
         없으면 **폴링 자체**를, 있으면 **그 장치 하나**를 켜고 끈다.  운영자
         지시가 *"디바이스 2개 접속상태를 알려주고 connect/disconnect 명령"*
         이라 둘 다 필요한데, 한 낱말이 두 뜻이라 **응답에 어느 뜻으로 했는지**
-        를 적는다 (`Polling=on …` 대 `hebox connected`).
+        를 적는다 (`Polling=on …` 대 `Device=hebox enabled`).
+
+        ⭐ 장치 갈래(`ENABLE`/`DISABLE <별칭>`)는 `openapi` 와 `local_lns` 둘 다 받는다 --
+        `local_lns` 에서는 그 장치의 uplink 를 받아들일지다.  `RECONNECT` 는 `openapi`
+        전용이다 (`local_lns` 는 push 라 칠 곳이 없다).
         """
         rn = getattr(self.app, 'radionode', None)
         if rn is None:
@@ -433,11 +518,17 @@ class IcgDispatcher(sim_commands.Dispatcher):
             self.app.spawn(self._do_rn_disconnect(msg.src, rn))
             return Reply.noop()
         if sub == 'RECONNECT':
-            if rn.cfg.backend != 'openapi':
+            if rn.cfg.backend == 'local_lns':
+                # ⭐ push 라 칠 곳이 없다 -- 게이트웨이가 올릴 때 들어온다.
+                # ⛔ `Polling now` 로 답하면 거짓이다 (`_poll_all` 이 openapi 가
+                # 아니면 그냥 빠진다).  CONNECT 안내도 틀린 길이라 안 붙인다.
                 return Reply.error('RADIONODE',
-                                   'Backend is %s -- nothing to poll (use '
-                                   'RADIONODE CONNECT first)'
-                                   % rn.cfg.backend)
+                                   'Backend is local_lns -- uplinks are pushed '
+                                   'by the gateway, nothing to poll')
+            if rn.cfg.backend != 'openapi':
+                return Reply.error('RADIONODE', 'Backend is %s -- nothing to '
+                                   'poll %s' % (rn.cfg.backend,
+                                                self._rn_how_to_enable(rn)))
             # 즉시 한 바퀴 -- 결과는 다음 STATUS 로 본다 (질의는 블로킹이라
             # 백그라운드로 던진다).
             self.app.spawn(rn.poll_now())
@@ -446,13 +537,16 @@ class IcgDispatcher(sim_commands.Dispatcher):
             if len(args) < 2:
                 return Reply.error('RADIONODE', 'Usage: RADIONODE %s <alias>'
                                    % sub)
-            if rn.cfg.backend != 'openapi':
-                # 폴러가 없는데 "껐다/켰다" 고 답하면 운영자가 상태를 잘못
-                # 믿는다 -- 실제로 바뀌는 것이 없다.
-                return Reply.error('RADIONODE',
-                                   'Backend is %s -- nothing to enable or '
-                                   'disable (use RADIONODE CONNECT first)'
-                                   % rn.cfg.backend)
+            if rn.cfg.backend not in ('openapi', 'local_lns'):
+                # 받는 길(폴러·수신기)이 없는데 "껐다/켰다" 고 답하면 운영자가
+                # 상태를 잘못 믿는다 -- 실제로 바뀌는 것이 없다.
+                # ⭐ `local_lns` 는 연다 (2026-09-23) -- 수신 경로(`take_uplink`)가
+                # `enabled` 표를 보는데 종전에는 이 갈래가 openapi 만 받아 그 표를
+                # 바꿀 명령이 없었다 (안내대로 CONNECT 해도 backend 는 그대로라
+                # 같은 거절이 되풀이됐다).
+                return Reply.error('RADIONODE', 'Backend is %s -- nothing to '
+                                   'enable or disable %s'
+                                   % (rn.cfg.backend, self._rn_how_to_enable(rn)))
             alias = args[1]
             on = sub in ('ENABLE', 'CONNECT')
             if not rn.set_enabled(alias, on):
@@ -463,12 +557,31 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 alias, 'enabled' if on else 'disabled'))
         return Reply.error('RADIONODE', "Didn't understand %s ?" % sub)
 
+    @staticmethod
+    def _rn_how_to_enable(rn) -> str:  # noqa: ANN001
+        """받는 길이 없는 백엔드(`off`/`sim`)의 거절 문구 꼬리 -- **맞는 길**을 댄다.
+
+        ⛔ `sim` 에 *"CONNECT 부터"* 는 틀린 안내다 -- `connect()` 가 sim 을 거절한다.
+        ⛔ **자격증명이 없는 `off` 에도 틀린 안내다** (2026-09-23) -- `connect()` 가
+        `Missing ini values` 로 거절하고, ini 를 다시 읽지 않으므로 **재기동**해야
+        들어간다.  배포 ini 는 `openapi` 인데 키가 비어 기동이 `off` 로 내리므로(`validate()`)
+        이것이 첫 구동에서 실제로 만나는 갈래다.
+        ⚠️ 두 문구 다 **재기동**을 댄다 -- `backend`·자격증명은 기동에서만 읽는다.
+        """
+        if rn.cfg.backend == 'sim':
+            return ('(fixed values -- edit [radionode] backend in the ini and '
+                    'restart ICG)')
+        if rn.missing_credentials():
+            return '(credentials missing -- add them to the ini and restart ICG)'
+        return '(use RADIONODE CONNECT first)'
+
     async def _do_rn_disconnect(self, dest: str, rn) -> None:  # noqa: ANN001
         """폴링 정지는 루프 태스크를 취소하므로 코루틴이다 -- 늦은 `DONE`."""
         try:
             note = await rn.disconnect()
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'RADIONODE', 'Failed: %s' % exc)
+            log.error('RADIONODE DISCONNECT failed -- %s', exc)
+            self.emit.error(dest, 'RADIONODE', 'Failed: %s' % _fail_text(exc))
             return
         self.emit.done(dest, 'RADIONODE', note)
 
@@ -636,7 +749,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             value, note = await heater.set_target(ctrl, on, celsius)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'HTRSET', 'Failed: %s' % exc)
+            log.error('HTRSET failed -- %s', exc)
+            self.emit.error(dest, 'HTRSET', 'Failed: %s' % _fail_text(exc))
             return
         self._finish(dest, 'HTRSET', 'Enable=%d Target=%.2f' % (int(on), value),
                      ' '.join(x for x in (busy, note) if x))
@@ -653,7 +767,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             body = await heater.read_group(ctrl, cmdword)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, cmdword, 'Readback failed: %s' % exc)
+            log.error('%s readback failed -- %s', cmdword, exc)
+            self.emit.error(dest, cmdword, 'Readback failed: %s' % _fail_text(exc))
             return
         self.emit.done(dest, cmdword, body)
 
@@ -689,7 +804,13 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             note = await state.set(ctrl, on)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'VACGAUGE', 'Failed: %s' % exc)
+            log.error('VACGAUGE failed -- %s', exc,
+                      extra={'detail': '남은 게이지 상태 %s' % state.word})
+            # ⭐ **남은 상태 낱말을 붙인다** (2026-09-24) -- `set()` 은 실패한 자리에 따라
+            # 직전 상태로 되돌리거나 모름(`UNKNOWN`)으로 둔다 (`gauge.set` 머리말 표).
+            # 둘은 할 일이 다르다 -- 되돌렸으면 다시 치면 되고, 모르면 게이지가 켜졌을 수 있다.
+            self.emit.error(dest, 'VACGAUGE', 'Failed: %s (Gauge=%s)'
+                            % (_fail_text(exc), state.word))
             return
         if on:
             # ⭐ **예열이 끝나는 시각에 HK 한 바퀴** (2026-09-11).  안 그러면
@@ -759,7 +880,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             note = await heater.set_force(ctrl, on, level)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'HTRFORCE', 'Failed: %s' % exc)
+            log.error('HTRFORCE failed -- %s', exc)
+            self.emit.error(dest, 'HTRFORCE', 'Failed: %s' % _fail_text(exc))
             return
         self._finish(dest, 'HTRFORCE', 'Force=%d Level=%g' % (int(on), level),
                      ' '.join(x for x in (busy, note) if x))
@@ -797,7 +919,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             note = await heater.set_ramp(ctrl, on, rate)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'HTRRAMP', 'Failed: %s' % exc)
+            log.error('HTRRAMP failed -- %s', exc)
+            self.emit.error(dest, 'HTRRAMP', 'Failed: %s' % _fail_text(exc))
             return
         self._finish(dest, 'HTRRAMP', 'Ramp=%d RampRate=%d' % (int(on), rate),
                      ' '.join(x for x in (busy, note) if x))
@@ -834,7 +957,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             note = await heater.set_pid(ctrl, *gains)
         except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'HTRPID', 'Failed: %s' % exc)
+            log.error('HTRPID failed -- %s', exc)
+            self.emit.error(dest, 'HTRPID', 'Failed: %s' % _fail_text(exc))
             return
         self._finish(dest, 'HTRPID', 'P=%g I=%g D=%g' % tuple(gains),
                      ' '.join(x for x in (busy, note) if x))
@@ -925,7 +1049,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 await be.flush_ccd()
             except Exception as exc:  # noqa: BLE001
                 log.error('CCDFLUSH failed -- %s', exc)
-                self.emit.error(dest, 'CCDFLUSH', 'Failed: %s' % exc)
+                self.emit.error(dest, 'CCDFLUSH', 'Failed: %s' % _fail_text(exc))
                 return
             self._finish(dest, 'CCDFLUSH', 'Flushed=1', note)
         finally:
@@ -1009,7 +1133,8 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             held = (await self.app.guide.ctrl.read_config(key)).strip()
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
-            self.emit.error(dest, word, 'Failed: %s' % exc)
+            log.error('%s readback failed -- %s', word, exc)
+            self.emit.error(dest, word, 'Failed: %s' % _fail_text(exc))
             return
         self.emit.done(dest, word, '%s=%s' % (key, held))
 
@@ -1037,10 +1162,11 @@ class IcgDispatcher(sim_commands.Dispatcher):
         try:
             await self._write_trigout(ctrl, high=high, forced=forced)
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
-            self.emit.error(dest, word, 'Failed: %s' % exc)
+            log.error('%s failed -- %s', word, exc)
+            self.emit.error(dest, word, 'Failed: %s' % _fail_text(exc))
             return
         if t0 is not None:
-            self._log_latency('%s 쓰기' % word, t0, always=True)
+            self._log_latency('%s write' % word, t0, always=True)
         self.emit.done(dest, word, self._trigout_words(high=high, forced=forced))
 
     def cmd_trigoutforce(self, msg: Message, target: Target) -> Reply:
@@ -1062,10 +1188,21 @@ class IcgDispatcher(sim_commands.Dispatcher):
         """
         return self._trigout(msg, 'TRIGOUTLEVEL', 'TRIGOUTLEVEL')
 
-    #: `TRIGOUT <ms>` 가 띄운 자동 내림 타이머.  ⭐ 하나만 산다 -- 새 `TRIGOUT`
-    #: 이 오면 앞의 것을 끊는다 (안 끊으면 옛 타이머가 나중에 깨어나 **방금
-    #: 세운 선을 내린다**).
+    #: `TRIGOUT <ms>` 가 띄운 펄스 태스크(올림 -> 잠 -> 자동 내림).  ⭐ 하나만 산다 --
+    #: 새 `TRIGOUT` 이 오면 앞의 것을 끊는다 (안 끊으면 옛 타이머가 나중에 깨어나
+    #: **방금 세운 선을 내린다**).
+    #: ⛔ **`spawn` 하는 그 자리에서 등록한다 -- 올림 전이다** (2026-09-23).  종전에는
+    #: 태스크가 올림(`WCONFIG` 둘 + `APPLYSYSTEM`, 약 235 ms · FETCH 뒤라면 더)을 마친
+    #: 뒤에야 자기를 적어, 그 창에 온 `ABORT`·`EXPENABLE OFF`·종료가 펄스를 못 보고
+    #: 지나갔다 -- 종료라면 올림이 끝난 선이 **HIGH 로 남았다**.
     _trigout_timer = None
+
+    #: ⛔ **종료가 시작됐나** -- `app.stop()` 이 `release_pulse('shutdown')` **앞에서** 세운다
+    #: (2026-09-24).  종전에는 그 뒤 창(HK·radionode 정지·저장 소화 -- 소켓은
+    #: `super().stop()` 까지 열려 있다)에 온 `TRIGOUT <ms>` 가 받아들여져 선을 올리고,
+    #: 뒤이은 태스크 취소에 **내림 없이** 죽었다 -- LED 가 켜진 채 끝났다.  서 있으면
+    #: `cmd_trigout` 이 `<ms>` > 0 을 거절한다 (`TRIGOUT 0` 은 내리는 것이라 받는다).
+    stopping = False
 
     #: 취득 중 `APPLYSYSTEM` 경고를 한 번만 낸다 (아래 `_do_trigout_pulse`).
     _warned_busy_apply = False
@@ -1088,6 +1225,14 @@ class IcgDispatcher(sim_commands.Dispatcher):
         | `<ms>` > 0 | 무장(`LEVEL=0`+`FORCE=1`) -> `LEVEL=1`, `<ms>` 뒤 자동 내림 | 1~2회 |
         | `0` | 즉시 `LEVEL=0` + `FORCE=1` (대기 중 타이머도 끊는다) | 1회 |
 
+        ⭐ **`<ms>` 의 끝 응답은 꼭 하나다** (2026-09-23) -- 올림 뒤 `DONE … MS=<ms>` ·
+        올림 실패 `ERROR … Failed:` · 올림이 확인되기 전에 끊기면(`ABORT`·`EXPENABLE OFF`·
+        새 `TRIGOUT`·`TRIGOUT 0`·종료) `ERROR: TRIGOUT Cut before the raise was confirmed
+        (MS=<ms>) -- …` (꼬리는 `_trigout_cut`) · 종료 중이면 `ERROR: TRIGOUT Shutting
+        down -- not raised` (`stopping`, 2026-09-24).  ⚠️ 시한 내림의 `DONE … (auto after
+        <ms> ms)` 와 그 내림의 실패 `ERROR … Auto lower failed after <ms> ms: <이유>` 는
+        **부르지 않은 통보**다 -- 끝 응답(올림 `DONE`)이 이미 나간 뒤에 온다.
+
         ⭐ **둘을 한 적용에 같이 세운다** (`archon.trigout.raise_line`) -- 무장을
         앞세우면 그 한 적용 동안 핀이 강제 LOW 라 science 에서 노출 중 셔터가
         잠깐 닫힌다.  두 계통이 같은 알맹이를 쓰므로 여기도 같은 규범이다.
@@ -1108,8 +1253,18 @@ class IcgDispatcher(sim_commands.Dispatcher):
             ms = float(arg[0])
         except ValueError:
             return Reply.error('TRIGOUT', 'Invalid duration: %s' % arg[0])
-        if ms < 0:
+        # ⛔ `nan`·`inf` 도 거절한다 -- `float()` 은 받아 주지만 `nan` 은 아래 비교를 전부
+        # 빠져나가 선을 올리고, `asyncio.sleep(nan)` 이 영영 안 깨어 **선이 HIGH 로 남는다**
+        # (DevNote 11.96).
+        if not math.isfinite(ms) or ms < 0:
             return Reply.error('TRIGOUT', 'Invalid duration: %s' % arg[0])
+        if ms > 0 and self.stopping:
+            # ⛔ 종료 중에는 올리지 않는다 (`stopping` 주석).  ⚠️ 핸들(`_trigout_timer`)은
+            # 안 건드린다 -- 도는 펄스를 끊고 내리는 것은 `release_pulse('shutdown')` 몫이다.
+            log.warning('TRIGOUT %g ms refused -- ICG is shutting down', ms,
+                        extra={'detail': '종료 중 올린 선은 태스크 취소에 내림 없이 '
+                                         'HIGH 로 남는다'})
+            return Reply.error('TRIGOUT', 'Shutting down -- not raised')
         ctrl = getattr(getattr(self.app, 'guide', None), 'ctrl', None)
         if ctrl is None:
             return Reply.error('TRIGOUT', 'Controller is not available')
@@ -1121,11 +1276,93 @@ class IcgDispatcher(sim_commands.Dispatcher):
             self.app.spawn(self._do_trigout(msg.src, 'TRIGOUT',
                                             high=False, forced=True, t0=t0))
             return Reply.noop()
-        self.app.spawn(self._do_trigout_pulse(msg.src, ms, t0))
+        # ⛔ **태스크 안이 아니라 여기서 등록한다** (`_trigout_timer` 주석) -- 첫 스텝을
+        # 돌기도 전에 같은 루프 틱에서 `TRIGOUT 0`/`ABORT` 가 와도 이 핸들을 본다.
+        # 시작 전에 취소된 태스크는 한 줄도 안 돈다.
+        # ⭐ **그래서 끝 응답을 done-callback 이 챙긴다** (2026-09-23) -- 한 줄도 안 돈
+        # 태스크는 자기 `except CancelledError` 에도 못 닿아, 이 명령이 `DONE` 도 `ERROR`
+        # 도 없이 사라졌다.  `answered` 를 태스크와 callback 이 함께 봐서 **하나만** 낸다.
+        answered = _Answered()
+        dest = msg.src
+        task = self.app.spawn(self._do_trigout_pulse(dest, ms, t0, answered))
+        task.add_done_callback(
+            lambda t: self._answer_unstarted_cut(t, dest, ms, answered))
+        self._trigout_timer = task
         return Reply.noop()
 
+    def _answer_unstarted_cut(self, task, dest: str, ms: float,  # noqa: ANN001
+                              answered: _Answered) -> None:
+        """펄스 태스크의 done-callback -- **첫 스텝 전에 끊긴** `TRIGOUT <ms>` 의 끝 응답.
+
+        ⚠️ 끊겼을 때만 낸다 -- 정상 종료·예외 종료는 태스크가 이미 답했고, 올림 도중에
+        끊긴 것은 태스크의 `except CancelledError` 가 답했다 (`answered.sent`).
+        ⛔ **여기서 던지지 않는다** -- callback 의 예외는 루프 로그에 소음으로만 남는다.
+        """
+        if not task.cancelled():
+            return
+        try:
+            self._trigout_cut(dest, ms, answered)
+        except Exception as exc:  # noqa: BLE001 -- callback 이다
+            log.error('TRIGOUT cut reply failed -- %s', exc,
+                      extra={'detail': '⚠️ 이 TRIGOUT 은 끝 응답 없이 끝났다'})
+
+    def _trigout_cut(self, dest: str, ms: float, answered: _Answered) -> None:
+        """올림을 마치기 전에 끊긴 `TRIGOUT <ms>` 의 끝 응답 -- **한 번만** 낸다.
+
+        부르는 자리가 둘이다: 펄스 태스크의 `except CancelledError`(올림 도중) · 위
+        done-callback(첫 스텝 전).  끊는 쪽은 `ABORT` · `EXPENABLE OFF` · 새 `TRIGOUT` ·
+        `TRIGOUT 0` · 종료이고, ⭐ **선은 끊은 쪽이 맡는다** -- `release_pulse`·`TRIGOUT 0`
+        은 쉬는 상태로 내리고, 새 `TRIGOUT` 은 제 펄스로 이어받는다.  여기는 응답만 맡는다.
+        ⛔ **발신 길이 이미 닫혔으면 싣지 않는다** (`_wire_open`) -- 종료 막바지
+        (`transport.stop()` 뒤)에 끊긴 것이면 와이어 로그에 보낸 줄만 남고 실제로는 안
+        나간다.  그때는 우리 로그에만 남긴다.  ⚠️ `app.stop()` 의 `release_pulse` 는
+        소켓을 닫기 **전**이라 그 자리에서 끊긴 명령은 `ERROR` 를 받는다.
+
+        ⭐ **문면은 "올림이 확인되기 전"이다** (2026-09-24) -- 종전 *"펄스가 시작되기 전"*
+        은 거짓일 수 있었다: 올림 적용은 취소가 닿아도 끝까지 가므로(`_locked_thread`)
+        선은 이미 섰을 수 있다.  ⭐ 꼬리는 **선을 맡은 쪽**을 댄다 --
+        살아 있는 남의 펄스가 핸들을 쥐었으면 새 `TRIGOUT` 이 가져간 것이고, 아니면 끊은
+        쪽이 쉬는 상태로 내리는 중이다 (⚠️ *"내렸다"* 가 아니다 -- 올림 도중에 끊긴 갈래는
+        그 내림이 이 응답 **뒤에** 락을 잡는다).
+        """
+        import asyncio
+        if answered.sent:
+            return
+        answered.sent = True
+        if not self._wire_open():
+            log.info('TRIGOUT %g ms cut at shutdown -- the link is closed, no reply', ms,
+                     extra={'detail': '발신 길이 닫힌 뒤라 ERROR 를 싣지 않았다'})
+            return
+        timer = self._trigout_timer
+        taken = (timer is not None and not timer.done()
+                 and timer is not asyncio.current_task())
+        log.info('TRIGOUT %g ms cut before the raise was confirmed', ms,
+                 extra={'detail': '선은 끊은 쪽이 맡는다 -- ABORT·EXPENABLE OFF·'
+                                  '종료·TRIGOUT 0 은 쉬는 상태로, 새 TRIGOUT 은 '
+                                  '제 펄스로'})
+        tail = 'a new TRIGOUT took the line' if taken else 'the line is being rested'
+        self.emit.error(dest, 'TRIGOUT', 'Cut before the raise was confirmed (MS=%g) -- %s'
+                        % (ms, tail))
+
+    def _wire_open(self) -> bool:
+        """발신 길이 아직 열려 있나 -- 늦은 응답을 실어도 되나.
+
+        ⚠️ `UdpEndpoint` 에 공개 판정이 없어 그 안의 asyncio 전송(`_transport`)을 본다 --
+        `stop()` 이 닫고 `None` 으로 비운다.  ⭐ 그 칸이 없는 대역(가짜 전송)은 **열린
+        것으로 본다** -- 모르면 싣는다 (응답이 없는 쪽이 더 나쁘다).
+        """
+        ep = getattr(self.app, 'transport', None)
+        if ep is None or not hasattr(ep, '_transport'):
+            return True
+        sock = ep._transport  # noqa: SLF001 -- 공개 판정이 없다 (위)
+        return sock is not None and not sock.is_closing()
+
     def _cancel_trigout_timer(self) -> bool:
-        """대기 중 펄스를 끊는다.  **끊었으면 `True`** (선이 아직 HIGH 다)."""
+        """진행 중 펄스를 끊는다.  **끊었으면 `True`** (선이 HIGH 이거나 올리는 중이다).
+
+        ⭐ 올리는 중에 끊어도 순서는 맞다 -- `_locked_thread` 가 그 왕복을 끝낸 뒤에야
+        락을 놓으므로, 부르는 쪽의 `rest_line` 은 올림 **뒤에** 선다.
+        """
         timer, self._trigout_timer = self._trigout_timer, None
         if timer is None or timer.done():
             return False
@@ -1183,8 +1420,15 @@ class IcgDispatcher(sim_commands.Dispatcher):
                                   '줄을 함께 볼 것'})
 
     async def _do_trigout_pulse(self, dest: str, ms: float,
-                                t0: float | None = None) -> None:
+                                t0: float | None = None,
+                                answered: _Answered | None = None) -> None:
         r"""세우고 -> 기다리고 -> 내린다.  ⛔ 내림은 **취소돼도 안 흘린다**.
+
+        ⭐ **끝 응답은 하나다** (2026-09-23) -- 올림 `DONE` · 올림 실패 `ERROR` · 올림 도중
+        끊김 `ERROR`(`_trigout_cut`) 중 하나.  `answered` 는 `cmd_trigout` 의 done-callback
+        과 함께 보는 표시다 (첫 스텝 전에 끊기면 그쪽이 답한다).  ⚠️ 시한 내림의
+        `DONE … (auto after <ms> ms)` 와 그 실패 `ERROR … Auto lower failed after <ms> ms:
+        <이유>` 는 부르지 않은 통보라 이 셈에 안 든다.
 
         ⏳ **여기가 지연 실측 자리다** (운영자 2026-09-09).  연속 노출 중에는
         `_locked_thread` 가 모든 왕복을 한 줄로 세우므로 이 명령의 `WCONFIG`
@@ -1207,22 +1451,47 @@ class IcgDispatcher(sim_commands.Dispatcher):
         # ⭐ **바깥 눈금은 ms, 안쪽 셈은 초다** -- `cfg.scaled()` 도
         # `asyncio.sleep()` 도 초를 받는다.  경계에서 한 번만 나눈다.
         seconds = ms / 1000.0
+        if answered is None:
+            answered = _Answered()
         ctrl = self.app.guide.ctrl
         self._warn_if_acquiring()
         raise_at = time.monotonic()
         try:
             await trigout_core.raise_line(ctrl)
+        except asyncio.CancelledError:
+            # ⛔ **올림 도중에 끊겼다** -- 핸들을 spawn 자리에서 적으므로(`_trigout_timer`)
+            # 이 창의 `ABORT`·`EXPENABLE OFF`·새 `TRIGOUT`·`TRIGOUT 0`·종료가 여기로 온다.
+            # 종전에는 이 명령이 `DONE` 도 `ERROR` 도 없이 사라졌다 (2026-09-23).
+            # ⚠️ **알리고 다시 올린다** -- 삼키면 끊긴 줄 모르고 잠·내림으로 간다.
+            self._trigout_cut(dest, ms, answered)
+            raise
         except Exception as exc:  # noqa: BLE001 -- 한 명령이 노드를 못 죽인다
-            self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
+            log.error('TRIGOUT raise failed -- %s', exc,
+                      extra={'detail': '올림 적용이 나간 뒤 답만 잃었다면 선이 올라가 '
+                                       '있을 수 있다 -- 곧바로 내린다'})
+            # ⛔ **실패해도 한 번 내린다** (DevNote 11.96) -- `APPLYSYSTEM` 이 나간 뒤
+            # 답만 시한을 넘기면 핀은 이미 HIGH 다.  그런데 이 태스크가 곧 끝나므로
+            # `release_pulse`(ABORT·종료)는 끝난 태스크를 보고 **내리지 않는다**.
+            # ICS `SHOPEN`/`CnTRIGOUT` 의 `_rest_each` 와 같은 규칙이다.
+            # ⚠️ 내림 실패는 로그만 -- 올림 실패가 답이다(가리면 안 된다).
+            try:
+                await trigout_core.rest_line(ctrl, self._TRIGOUT_REST)
+            except Exception as exc2:  # noqa: BLE001
+                log.error('TRIGOUT rest after the failed raise failed -- %s', exc2,
+                          extra={'detail': '⚠️ LED 선이 HIGH 로 남았을 수 있다 -- '
+                                           'TRIGOUT 0 으로 다시 내릴 것'})
+            answered.sent = True
+            self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % _fail_text(exc))
             return
         high_at = time.monotonic()
         apply_cost = high_at - raise_at
         if t0 is not None:
-            self._log_latency('TRIGOUT 올림', t0, 'MS=%g' % ms,
+            self._log_latency('TRIGOUT raise', t0, 'MS=%g' % ms,
                               always=True)
+        answered.sent = True
         self.emit.done(dest, 'TRIGOUT',
                        'TRIGOUTLEVEL=1 TRIGOUTFORCE=1 MS=%g' % ms)
-        self._trigout_timer = asyncio.current_task()
+        # ⚠️ 핸들은 `cmd_trigout` 이 spawn 할 때 이미 적었다 (올림 전).
         # ⭐ **내림에 걸릴 시간을 미리 뺀다** (2026-09-09 실측).
         #
         # ⛔ 종전에는 `sleep(<초>)` 만 하고 그 뒤에 내림 왕복을 보냈다 -- 그래서
@@ -1264,21 +1533,37 @@ class IcgDispatcher(sim_commands.Dispatcher):
         except asyncio.CancelledError:
             # ⭐ 새 `TRIGOUT` 이 끊었다 -- 그쪽이 선을 책임진다.
             raise
-        self._trigout_timer = None
         try:
-            # ⭐ **시한 내림은 강제를 유지한다** -- guide 는 쉬는 상태가 곧
-            # 그것이라 `TRIGOUT 0` 과 같은 값이지만, 뜻이 다른 자리라 함수를
-            # 나눠 부른다 (science 에서는 실제로 갈린다).
-            await trigout_core.rest_line(ctrl, self._TRIGOUT_REST)
-        except Exception as exc:  # noqa: BLE001
-            self.emit.error(dest, 'TRIGOUT', 'Failed: %s' % exc)
-            return
+            try:
+                # ⭐ **시한 내림은 강제를 유지한다** -- guide 는 쉬는 상태가 곧
+                # 그것이라 `TRIGOUT 0` 과 같은 값이지만, 뜻이 다른 자리라 함수를
+                # 나눠 부른다 (science 에서는 실제로 갈린다).
+                await trigout_core.rest_line(ctrl, self._TRIGOUT_REST)
+            except Exception as exc:  # noqa: BLE001
+                log.error('TRIGOUT lower failed -- %s', exc,
+                          extra={'detail': '⚠️ 선이 HIGH 로 남을 수 있다'})
+                # ⭐ **올림 실패와 다른 본문이다** (2026-09-24) -- 끝 응답(올림 `DONE`)은
+                # 이미 나갔으므로 이것은 `(auto after …)` 와 같은 부르지 않은 통보다.  종전
+                # `Failed: …` 는 올림 실패 `ERROR` 와 똑같아 받는 쪽이 *"올리지 못했다"* 로 읽었다.
+                self.emit.error(dest, 'TRIGOUT', 'Auto lower failed after %g ms: %s'
+                                % (ms, _fail_text(exc)))
+                return
+        finally:
+            # ⛔ **핸들은 내림이 끝난 뒤에 놓는다** (DevNote 11.96) -- 종전에는 내림 **앞**에서
+            # 지워, 그 내림 한 적용(~235 ms) 동안 `ABORT`·`EXPENABLE OFF`·종료의
+            # `release_pulse` 가 이 펄스를 못 봤다 (ICS 펄스와 같은 규칙).
+            # ⛔ **자기 핸들일 때만 지운다** -- 새 `TRIGOUT` 의 핸들을 지우면 그 뒤
+            # `ABORT`·종료가 새 펄스를 못 찾는다.
+            if self._trigout_timer is asyncio.current_task():
+                self._trigout_timer = None
         # ⭐ **폭 오차** -- 실제 HIGH 지속 - 요청.  ⚠️ 이제 보정이 들어갔으므로
         # **0 근처여야 한다** -- 종전의 +235 ms 가 그대로면 보정이 안 먹은 것이다.
+        # `compensation` 은 잠들 시간에서 뺀 올림 비용(`apply_cost`)이다.
         wide_ms = (time.monotonic() - high_at - want) * 1000.0
         if t0 is not None:
-            self._log_latency('TRIGOUT 내림', t0,
-                              '폭오차 %+.1f ms (요청 %g ms, 보정 -%.0f ms)'
+            self._log_latency('TRIGOUT lower', t0,
+                              'width error %+.1f ms (requested %g ms, '
+                              'compensation -%.0f ms)'
                               % (wide_ms, ms, apply_cost * 1000),
                               always=True)
         # ⚠️ 부르지 않은 `DONE` 이다 -- 시한이 다 됐다는 통보다.
@@ -1334,7 +1619,7 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 await be.power_ccd(on)
             except Exception as exc:  # noqa: BLE001
                 log.error('%s failed -- %s', cmdword, exc)
-                self.emit.error(dest, cmdword, 'Failed: %s' % exc)
+                self.emit.error(dest, cmdword, 'Failed: %s' % _fail_text(exc))
                 return
             ctrl = getattr(be, 'ctrl', None)
             if not on and ctrl is not None and getattr(ctrl, 'powered', False):
@@ -1391,11 +1676,11 @@ class IcgDispatcher(sim_commands.Dispatcher):
                 self.emit.error(dest, 'ARCHON', 'rejected: %s' % text)
                 return
             log.error('ARCHON %r failed -- %s', text, exc)
-            self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
+            self.emit.error(dest, 'ARCHON', 'Failed: %s' % _fail_text(exc))
             return
         except Exception as exc:  # noqa: BLE001
             log.error('ARCHON %r failed -- %s', text, exc)
-            self.emit.error(dest, 'ARCHON', 'Failed: %s' % exc)
+            self.emit.error(dest, 'ARCHON', 'Failed: %s' % _fail_text(exc))
             return
         # ⭐ 전문은 로그에 -- 응답이 잘려도 여기서 다 볼 수 있다.
         log.info('ARCHON %r -> %d bytes: %s', text, len(reply), reply)

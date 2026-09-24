@@ -37,7 +37,7 @@ log = logging.getLogger('ics_sim.transport')
 #: (`PING`/`PONG`).
 #:
 #: ⛔ **자취가 지워지는 것이 아니다** -- 로그 파일에는 그대로 남는다.  화면에만
-#: 안 낸다 (`[logging] verbose`).
+#: 안 낸다 (`[behavior] verbose`).
 #: ⚠️ 목록을 늘릴 때는 *"이것이 없으면 사람이 무엇을 못 아나"* 를 먼저 볼 것.
 #: 명령과 그 응답은 **여기 들어오면 안 된다** -- ABC/OBSAgent 가 무엇을
 #: 시켰는지가 화면에서 사라진다.

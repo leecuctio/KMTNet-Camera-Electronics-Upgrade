@@ -19,7 +19,10 @@ ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
 
 > **현재 판 `v0.0.0` — 실기 왕복은 한 번도 돌리지 않았다.**  가짜 컨트롤러
 > (`tests/fake_archon.py`)로 전 경로가 돌고 견본 헤더와 바이트 단위로 일치하지만,
-> 실물 Archon 과의 왕복·독출 시간·픽셀 배치는 미검증이다.  잠정인 자리는
+> 실물 Archon 과의 왕복·독출 시간·픽셀 배치는 미검증이다.  ⚠️ 예외 한 장: `EQUINOX`
+> 카드는 **실수 `2000.0`**(결측 sentinel `-999.0`)이라 견본·raw spec(아직 문자열
+> `'2000.000'`)보다 앞서 간다 (운영자 2026-09-23, `ics_sim` `rawcards.SPEC_PENDING` —
+> 규격 갱신 ⏳).  잠정인 자리는
 > 코드에 `PROVISIONAL` 로 표시했고 목록은 [SMC_CLAUDE.md](SMC_CLAUDE.md) 에 있다.
 
 ## 파일 구성
@@ -29,10 +32,10 @@ ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
 | [`ics_archon/`](ics_archon/) | ✅ **실기 취득 프로그램** (`v0.0.0`) — `ics_sim` 을 가져다 쓰고 그 아래 Archon 층을 채운다 |
 | [`ics_archon.ini`](ics_archon.ini) | 설정 — `[archon]` 절이 컨트롤러 배선이다.  5.6절 HK 카드의 원천은 **와이어**(`GO` 때 ICG 에 `HKDATA NOW`, 시한 `hk_query_timeout`)다 — 파일 스냅샷 경로는 없다 (2026-09-15) |
 | [`icg_archon/`](icg_archon/) | ✅ **실기 ICG** (`v0.0.0`, 2026-08-31 신설) — guide 유닛 취득(raw spec v1.9 **9·10장**: `<SITE>.<날짜>.<번호>.G.fits`, frame-transfer 의미론) + **HK 취득·로깅**(1분 — Ctrl·진공·RTD·Radionode·AUX).  `python -m icg_archon` / `--backend sim`.  경위·판단은 [DevNote 9장](DevNote.md) |
-| [`icg_archon.ini`](icg_archon.ini) | icg 설정 — `[icg]` 가 guide 컨트롤러 배선, `[hk]` 가 로깅, `[radionode]` 가 Tapaculo365 Open API 접속(콘솔의 "OPENAPI 매뉴얼" 값을 옮겨 적는다) |
+| [`icg_archon.ini`](icg_archon.ini) | icg 설정 — `[icg]` 가 guide 컨트롤러 배선, `[hk]` 가 로깅, `[radionode]` 가 Radionode 수신 — `openapi`(Tapaculo365 클라우드 폴링, 옮겨 적는 것은 `api_key`·`api_secret` 둘) 또는 `local_lns`(게이트웨이 내장 NS 가 밀어 주는 uplink 수신, ⏳ 실기 미검증).  아래 "Radionode 자격증명" 절 |
 | [`tools/gen_guidecards.py`](tools/gen_guidecards.py) | guide 견본 헤더 → `icg_archon/guidecards.py` 생성기 — 견본이 개정되면(v1.1 승격) 다시 돌린다.  `--diff` 는 science 폭 대조만 |
 | [`INSTALL.md`](INSTALL.md) | ⭐ **벤치 설치 문서** — `~/AIC` 한 벌 세우기(XIS·OBSAgent·TCSAgent·ICS) · 기존 설치 이전 · 이상할 때 |
-| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (약 5분). 배치본은 `-m "not repo_only"`.  ⛔ **항목 수를 여기 적지 않는다** -- `python -m pytest --collect-only -q` 꼬리가 정본이고, 적어 두면 커밋마다 밀린다 (2026-09-09 에 300/244 가 실제 656/598 과 어긋난 것을 걷어냈다).  ⚠️ `ics_sim` 스위트와 **동시에 돌리지 말 것** — 부하로 `test_shutdown_waits_for_frames…` 가 간헐 실패한다 |
+| [`tests/`](tests/) | **실기 없이 돌리는 검증** — `python -m pytest tests` (약 7분). 배치본은 `-m "not repo_only"`.  ⛔ **항목 수를 여기 적지 않는다** -- `python -m pytest --collect-only -q` 꼬리가 정본이고, 적어 두면 커밋마다 밀린다 (2026-09-09 에 300/244 가 실제 656/598 과 어긋난 것을 걷어냈다).  ⚠️ `ics_sim` 스위트와 **한 pytest 호출로 묶지 말 것** — 시험 루트가 둘이라(`conftest.py`·`test_console.py` 이름이 겹친다) 수집이 깨진다.  각 폴더에서 따로 돌린다.  알려진 flake 하나: `test_ics_ops_commands::test_abort_cuts_the_integration_at_the_controller`(회귀 아님 — 단독 재실행은 통과한다) |
 | [`tools/probe_archon.py`](tools/probe_archon.py) | ⭐ **실기 첫 실행 도구** — 미검증 3자리를 컨트롤러에 직접 물어본다 (1단계는 전원을 켜지 않는다) |
 | [`tools/ics_archon_buftest.py`](tools/ics_archon_buftest.py) | **`LOCK`/`FETCH` 2x2 회귀 시험** — 엔진 라인 속도를 `idle`·`lock`·`fetch`·`nolock` 넷으로 견준다 (본편 무수정). 2026-09-01 실기 결론은 [`archon_lock_fetch_report.md`](archon_lock_fetch_report.md) |
 | [`tools/extract_timing_script.py`](tools/extract_timing_script.py) | **ACF 의 타이밍 스크립트를 뽑는다** — `acf/acf_timing_script_{guide,science}_R####.txt` 의 절차 정본 — **판 번호는 ACF 파일명에서 가져온다**. `--check` 로 대조, `--out` 으로 재추출.  ⛔ txt 는 **손으로 고치지 않는다**; ACF 를 고쳤으면 반드시 다시 뽑는다 (`tests/test_timing_script_extract.py` 가 지킨다) |
@@ -117,8 +120,9 @@ ini 가 `[hardware] backend` 를 안 적어도 실기로 붙는다
 | 노출을 걸 자리가 없다 | `IntMS` + `LOADPARAMS` | 셔터 노출은 `open_shutter()`, DARK/BIAS 는 `readout()` 첫머리 |
 
 **적분은 컨트롤러가 잰다.**  시퀀서의 카운트다운은 관측자 알림이고 하드웨어를
-몰지 않는다.  그래서 `STOP` 은 적분을 자르지 못하고 셔터만 강제로 닫는다 —
-근거와 한계는 `archon/controller.py` 머리말에 있다.
+몰지 않는다.  `STOP` 은 적분도 셔터도 건드리지 않는다 — 지금 노출을 저장까지 마치고
+**다음을 안 건다**(`Sequencer.stop_integration`, 운영자 확정 2026-09-04).  적분을 끊는 것은
+`ABORT` 의 `abort_now()`(`Exposures=0` → `RESETTIMING`)다 — 아래 "`STOP` · `ABORT` 와의 관계".
 
 ## 텔레메트리 감시·기록 (층 1·2)
 
@@ -188,7 +192,7 @@ monitor_log      = ~/AIC/Logs
 | | 원천 | 왕복 |
 |---|---|---|
 | **guide 유닛** 측정값(RTD·진공·`HTROUT`) | 폴러의 최근 값(60초) | 왕복 없음 |
-| **guide 유닛** 설정값(`HTREN`·`HTRSET`·`HTRFORCE`) | ⏳ **검토 중** — 지금은 명령마다 `RCONFIG` | ⭐ 3회가 **6 ms** (한가할 때 실측) |
+| **guide 유닛** 설정값(`HTREN`·`HTRSET`·`HTRFORCE`) | HK 바퀴마다 `RCONFIG` 3회로 표본(`_sample`)에 담은 값 — 헤더와 같은 원천.  즉시값은 `HKDATA NOW`, 또는 인자 없는 `HTRSET`/`HTRFORCE` | 명령 때는 없음 (바퀴의 `RCONFIG` 3회가 **6 ms**, 한가할 때 실측) |
 | **Radionode**(`HEBOX`·`FSATEMP`·`FSAHUM`) | 폴러의 최근 값 | 왕복 없음 |
 
 ⭐ **즉시 조회해도 더 신선해지지 않는 것**이 핵심 이유다 — 장치가 60초마다
@@ -198,7 +202,7 @@ monitor_log      = ~/AIC/Logs
 ⚠️ 낡음은 숨기지 않는다 — `stale_after`(= 전송주기 ×3 = 180초)를 넘으면
 sentinel 이고, `HKUDATE` 는 **guide 유닛 측정값만** 기준으로 한다.
 
-### ✅ guide 유닛 **설정값**도 명령마다 되읽는다 (실측으로 정함 2026-09-09)
+### ✅ guide 유닛 **설정값**은 바퀴 표본 + `NOW` 두 갈래다 (실측으로 정함 2026-09-09, DevNote 11.56)
 
 ⭐ **갈리는 것은 왕복 시간이 아니라 "어떤 값이냐" 였다** (운영자: *"히터나 trigger
 출력의 실시간 반영이 문제로구나"*).
@@ -206,15 +210,12 @@ sentinel 이고, `HKUDATE` 는 **guide 유닛 측정값만** 기준으로 한다
 | | 60초에 얼마나 변하나 | 폴링값으로 되나 |
 |---|---|---|
 | 측정값 (RTD 4·진공·`HTROUT`·Radionode 3) | 서서히 | ✅ 된다 — 낡음은 `HKUDATE`·`HKSTALE` 이 알린다 |
-| 설정값 (`HTREN`·`HTRSET`·`HTRFORCE`) | ⚠️ **운영자가 방금 바꾼다** | ⛔ 안 된다 — `htrset 1 -95` 바로 뒤 `hkdata` 가 옛 값을 낸다 |
+| 설정값 (`HTREN`·`HTRSET`·`HTRFORCE`) | ⚠️ **운영자가 방금 바꾼다** | ⚠️ 바퀴 표본만으로는 모자란다 — `htrset 1 -95` 바로 뒤 `hkdata` 는 다음 바퀴 전까지 옛 값을 낸다 |
 
-⭐ **결론: 지금대로 명령마다 `RCONFIG` 3회 를 유지한다.**  근거는 실측이다 —
-**취득 중에도 `HKDATA` 전체가 중앙 7.7 ms · 최악 108 ms** 라 왕복 셋을 없애 벌 것이
-없다 (아래 결과표).
-
-⚠️ 남는 것 하나: **헤더와 `HKDATA` 의 원천이 갈려 있다** — 헤더는 HK 폴링값(`_sample`,
-60초), `HKDATA` 는 명령마다 `RCONFIG`.  ⭐ 값은 같고 신선도만 다르며 **둘 다 맞다** —
-헤더는 그 프레임 시각의 값이 맞고 `HKDATA` 는 지금 값이 맞다.
+⭐ **결론: 두 갈래를 둔다.**  기본(`HKDATA`)은 HK 바퀴가 `RCONFIG` 3회로 `_sample` 에 담아
+둔 값이라 **헤더와 같은 원천**이고 명령 때 왕복이 없다.  방금 바꾼 값이 필요하면
+`HKDATA NOW` — **HK 한 바퀴를 지금 돌린다**(아래 절).  `NOW` 의 왕복이 부담이 없다는 근거는
+실측이다 — **취득 중에도 `HKDATA` 전체가 중앙 7.7 ms · 최악 108 ms** (아래 결과표).
 
 ⭐ 그리고 확인하는 길이 따로 있다 — `HTRSET`·`HTRFORCE`·`TRIGOUTFORCE`·`TRIGOUTLEVEL`
 은 **인자 없이 치면 조회**고 그 갈래는 `RCONFIG` 즉시 되읽기다.
@@ -223,9 +224,11 @@ sentinel 이고, `HKUDATE` 는 **guide 유닛 측정값만** 기준으로 한다
 
 ```
 HKDATA          ← 폴링값 (60초 주기).  왕복 없음
-HKDATA NOW      ← 히터 설정 셋만 RCONFIG 즉시 되읽기
+HKDATA NOW      ← HK 한 바퀴를 지금 돌린다 (RTD·진공·HTROUT·히터 설정·Radionode*)
 HK / HK NOW     ← 같은 본문
+HKNOW           ← HK NOW 의 별칭 (인자를 거절한다, 2026-09-15)
 ```
+(* Radionode 는 `now_min_age` 제동 — 아래)
 
 ⭐ **`NOW` 는 HK 한 바퀴를 지금 돌린다** — RTD·진공·`HTROUT`·히터 설정·Radionode 가
 다 갱신되고, **폴링 값(그리고 다음 FITS 헤더)도 그 값이 된다**.
@@ -256,9 +259,22 @@ ICS>ICG VACGAUGE OFF            ← 답의 VACGAUGE 가 OFF 가 아니면(ON/WAR
   (지울 것).  ICG 의 CSV 로그는 그대로다.
 * **`NOW` 인 이유** — 게이지를 끌지는 답의 `VACGAUGE` 로 정하는데 주기값의 낱말은 방금 바뀐
   것을 모른다.  `NOW` 는 바퀴를 지금 돌려 답하므로 낱말도 값도 지금 것이다.
-* **답이 없으면** — 경고 한 줄, 카드는 sentinel, 게이지는 ICS 가 추적한 상태로 판단하고
-  **노출은 간다**.  관측을 HK 하나 때문에 막지 않는다.  *"no fresh HK sample yet"* 같은
-  비응답 본문은 답으로 치지 않는다.
+* **답이 없으면** — 시한 뒤 경고 한 줄(`no HKDATA reply from ICG within 2.00s`), 카드는
+  sentinel, 게이지는 ICS 가 추적한 상태로 판단하고 **노출은 간다**.  관측을 HK 하나 때문에
+  막지 않는다.  *"no fresh HK sample yet"* 같은 비응답 본문은 답으로 치지 않는다(시한까지 기다린다).
+* ⭐ **ICG 가 `HKDATA` 에 `ERROR:`/`FATAL:` 로 답하면**(커맨드워드 `HKDATA` + 메시지 종류로
+  가른다 — 예: `HK monitor is not running` · 본문 조립 실패 · 구판 ICG 의 `Didn't understand`)
+  **시한(`hk_query_timeout`)을 기다리지 않고** 그 답에서 곧바로 이 `GO` 의 질의를 끝낸다
+  (`IcsArchon._on_hk_refused`) — 카드는 sentinel, 게이지는 추적 상태로 판단, 노출은 간다.
+  경고 한 줄 `ICG refused HKDATA (ERROR) -- <ICG 가 댄 사유>` 가 남는다 (*"ICG 가 떠 있는지"*
+  같은 시한 진단은 안 나온다 — ICG 는 떠 있고 답도 했다).  ⭐ **거절 가운데 대기를 끝내는 것은
+  커맨드워드 `HKDATA` 의 거절뿐이다** — `GO` 의 질의가 `HKDATA NOW` 라 그 거절도 커맨드워드
+  `HKDATA` 로 온다 (`_on_hk_refused` 의 `ends_wait`).
+  ⚠️ `HK` 거절(콘솔에서 친 `hk`/`hknow` 의 답)은 **경고 한 줄뿐**이고 `GO` 의 질의에 안 닿는다
+  (그 거절로는 안 끝난다 — 제 `HKDATA` 답이나 거절, 또는 시한까지 기다린다).  콘솔 `hkdata` 의 거절은 `GO` 의 질의와 커맨드워드가
+  같아 못 가른다 — 그때 `GO` 가 기다리고 있었으면 그 질의도 함께 끝난다.
+  ⚠️ `DONE` 은 다르다 — `DONE: HK …` 도 `DONE: HKDATA …` 와 같은 처리(`_on_hkdata`)로 가고
+  본문이 같아서, 기다리던 `GO` 가 있으면 그 값으로 대기가 끝난다.
 * ⭐ **게이지 판단의 정본은 ICG 의 낱말**이다 — ICG 콘솔에서 누가 켰거나 ICG 를 재기동해
   ICS 의 추적 상태가 어긋나도 `HKDATA NOW` 가 잡는다 (경고를 남기고 끈다).
 * ⭐ **껐으면 settle 뒤 첫 장 앞에 flush 한 번** (운영자 지시 2026-09-15, DevNote 11.93) —
@@ -269,8 +285,16 @@ ICS>ICG VACGAUGE OFF            ← 답의 VACGAUGE 가 OFF 가 아니면(ON/WAR
   는 보지 않는다(운영자: *"무조건"*) — 그쪽이 1 이면 첫 장 앞에 flush 가 둘이다.
   이미 꺼져 있던 GO 는 **보내지도, 기다리지도, 올리지도 않는다**.  로그
   `gauge was on -- FirstFlush 0 -> 1 for this frame only`.
+  ⭐ 올린 `FirstFlush` 는 **오류·취소(`ABORT`·종료)에도** 되돌린다(`trigger()` 의 `finally` →
+  `_put_back`, 되돌림의 실패가 원래 오류를 가리지 않는다) — 되돌림이 실패하거나 취소에 끊기면
+  다음 `LOADPARAMS` 앞에서 다시 쓴다(`_retry_pending_restore` — 되쓰기가 또 깨지면 `RCONFIG` 로
+  되읽어 이미 원래 값이면 그대로 가고, 아니면 그 `GO`·`CCDFLUSH` 가 노출을 걸지 않고 실패한다).
+  눈으로 볼 때는 설정 메모리의 `FirstFlush` 줄을 `ARCHON <MK|NT> RCONFIGnnnn`(설정 줄 번호,
+  4자리 16진)으로 되읽는다.
 * **독출이 끝나면** 되켜기 타이머(`gauge_reenable_after`, 600 s) — 돌던 타이머가 있으면
   그 자리에서 다시 센다.  만료 때 취득 중이면 켜지 않고 다음 독출 완료부터 다시 센다.
+  ⭐ **거절된 `GO` 는 돌던 되켜기 타이머를 건드리지 않는다** (게이지를 끄지도 않았으니 켤
+  시각도 그대로다).
 
 ⭐ **이온게이지 — `VACGAUGE` 는 지금 설정, `DEWPRES` 는 마지막 바퀴의 표본** (운영자 확정
 2026-09-15, DevNote 11.93).  `VACGAUGE OFF`/`ON` 명령은 `HKDATA` 의 낱말을 **그 자리에서**
@@ -311,20 +335,23 @@ DEWPRES=<값>` 을 어긋남으로 봤고, 지금은 낱말 = 설정 / 값 = 측
 
 ```ini
 [logging]
-file        = ~/AIC/Logs        ; 폴더 → icg.<YYYYMMDD>.log
+file        = ~/AIC/Logs        # 폴더 → icg.<YYYYMMDD>.log
 ```
 
 ⭐ **`.log` 로 끝나면 그 파일 하나, 아니면 폴더**다 (옛 설정은 그대로 돈다).
-재실행해도 지우지 않고 **덧붙인다**.  날짜는 **UTC** — `HKQDATE`·`DATE-OBS`·FITS
-파일명과 같은 경계를 쓴다.
-⚠️ 로그 시각도 UTC 로 고정했다 — 종전에는 지역시라 한국시 기계에서 +9 시간 어긋났다
-(벤치가 UTC 라 안 드러났던 자리).
+재실행해도 지우지 않고 **덧붙인다**.  ⭐ 파일 **이름**의 날짜는 **사이트 관측일**이다
+(2026-09-12 부터 — `rawpair.observing_date`, FITS 파일명 `KMTA.<YYYYMMDD>.…` 과 같은 날짜).
+관측 3사이트는 **현지 12:30** 에 넘어가 관측 중에 안 바뀌고, KASI(`KMTK`)는 **KST 자정**
+(= 한국 날짜)이다.  ⚠️ 2026-09-12 까지는 UTC 날짜였다 — 그 전 로그는 UT 날짜 이름이다.
+사이트를 못 읽으면 UT 날짜로 떨어진다 (로그 때문에 기동을 세우지 않는다).
+⚠️ **줄 안의 시각은 UTC** 다 (`HKQDATE`·`DATE-OBS` 와 같은 시계) — 종전에는 지역시라 한국시
+기계에서 +9 시간 어긋났다 (벤치가 UTC 라 안 드러났던 자리).
 
 ### 화면을 조용하게 — `verbose` (운영자 지시 2026-09-11)
 
 ```ini
 [behavior]
-verbose     = on        ; off 면 화면만 간결.  on|true|yes|1|enable|high 와 그 반대편
+verbose     = on        # off 면 화면만 간결.  on|true|yes|1|enable|high 와 그 반대편
 ```
 
 ⚠️ **`[behavior]` 다** (2026-09-11 에 `[logging]` 에서 옮겼다) -- 이 눈금은
@@ -346,9 +373,10 @@ DONE: VERBOSE Verbose=OFF
 
 | 빠진다 | 남는다 |
 |---|---|
-| `AUXSTATUS`/`TCSSTATUS` 자동 왕복 | 명령과 그 응답 (`EXEC:` · `DONE:` · `ERROR:`) |
-| `PING`/`PONG` 핸드셰이킹 | `EXPSTATUS=…` · `PCTREAD=…` · `Wrote …` |
+| `AUXSTATUS`/`TCSSTATUS` 자동 왕복 | **한쪽이 남인** 명령과 그 응답 (`OBS>K.IC …` · `K.IC>OBS DONE: GO Wrote …` · `Acquisition Complete.`) · 키보드 줄(`ICS>ICS …`) |
+| `PING`/`PONG` 핸드셰이킹 | **OBS 로 가는** `EXPSTATUS=…` · `PCTREAD=…` · `Wrote …` 줄 (`K.IC>OBS STATUS: GO PCTREAD=…` · `K.IC>OBS DONE: GO Wrote …`) — 같은 낱말이라도 우리 노드끼리 도는 줄은 빠진다 (왼쪽 칸 넷째 줄) |
 | 매번 같은 값인 `LOADPARAMS` 왕복 경고 | 경고·오류 전부 (딸린 한글 설명만 떨어진다) |
+| **양끝이 다 우리 노드인 줄** — ICS 와 가상 K/M/T/N.IC·CB(ICG 는 G.IC·G.CB)끼리 도는 `ICS>K.IC GO` · `K.IC>ICS DONE: GO` (운영자 2026-09-15) | |
 
 ⚠️ **`wire = off` 와 다른 물건이다** — 그쪽은 와이어 줄을 **아예 안 남긴다**(파일에도
 없다).  자취를 지우는 눈금이라 운영에서는 켜 둔다.
@@ -470,22 +498,30 @@ hkdata         ← 연속 노출 중에 20회 이상 (락 경합이 14 % 라 적
 로그(`icg_archon.cmd`)에 이런 줄이 남는다:
 
 ```
-HKDATA 지연 -- 수신→완료 96.5 ms (취득중)
-TRIGOUT 올림 지연 -- 수신→완료 233.8 ms (취득중) Sec=2
-TRIGOUT 내림 지연 -- 수신→완료 2236.1 ms (취득중) 폭오차 +1.2 ms (요청 2s, 보정 -234 ms)
+HKDATA latency -- recv->done 96.5 ms (acquiring)
+TRIGOUT raise latency -- recv->done 233.8 ms (acquiring) MS=2000
+TRIGOUT lower latency -- recv->done 2236.1 ms (acquiring) width error +1.2 ms (requested 2000 ms, compensation -234 ms)
 ```
 
-⭐ **가장 중요한 값은 폭오차다** — 시작이 밀려도 폭이 맞으면 광원 노출량은 맞는다.
+꼴은 `<what> latency -- recv->done <ms> ms (acquiring|idle)[ <extra>]` 한 줄이다 (영문 로그 규약 —
+2026-09-09 실측 때는 한글 줄 `… 지연 -- 수신→완료 … (취득중)` 이었다).  `<what>` 은 `HKDATA`·`HK`
+(`NOW` 면 뒤에 ` NOW`) · `TRIGOUT raise` · `TRIGOUT lower` · `TRIGOUT write`(`TRIGOUT 0`) 이고, 찾을
+때는 `grep 'latency --'`.  `(acquiring)`/`(idle)` 로 두 무리를 가른다.
+
+⭐ **가장 중요한 값은 폭오차(`width error`)다** — 시작이 밀려도 폭이 맞으면 광원 노출량은 맞는다.
 보정이 들어갔으므로 **0 근처여야 한다**; +235 ms 가 그대로면 보정이 안 먹은 것이다.
 ⛔ 이 지연은 **락 대기 + 왕복 처리**를 합친 값이라 둘을 가르지 않는다.
 
 ## Radionode 자격증명 — Tapaculo365 Open API (운영자 지시 2026-09-03)
 
 `HEBOX`·`FSATEMP`·`FSAHUM` 세 카드의 원천이다.  ⚠️ **장치(RN320-BTH)는
-LoRaWAN 이라 LAN 폴링이 안 된다** — IP 스택이 없어 LoRa 게이트웨이를 거쳐
-클라우드로만 간다.  그래서 접근은 **Tapaculo365 Open API 폴링** 하나뿐이고,
-endpoint 상세가 콘솔 로그인 뒤의 문서에만 있어 **URL·경로·인증 헤더 이름까지
-ini 소관**이다 (코드에 박으면 계정이 바뀔 때 코드를 고쳐야 한다).
+LoRaWAN 이라 LAN 폴링이 안 된다** — IP 스택이 없어 LoRa 게이트웨이를 거친다.  그래서
+받는 길은 **둘**이다: 게이트웨이가 올린 클라우드(Tapaculo365)를 **Open API 로 폴링**하는
+`openapi`(이 절)와, 게이트웨이 내장 NS 가 **밀어 주는 uplink 를 받는** `local_lns`(아래
+"인터넷이 안 되는 사이트" 절).  `openapi` 의 인증은 **POST 본문 파라미터**(`api_key`·
+`api_secret`)이고, 주소는 `base_url` 만 ini 에 있고 endpoint(`channel/get_lst`)는 코드가
+안다 (공개 매뉴얼 `oa.radionode365.com/apidoc/kr/`, 2026-09-08 · DevNote 11.44 — 종전의
+*"URL·경로·인증 헤더 이름까지 ini 소관"* 은 매뉴얼을 보기 전 가정이었다).
 
 ### 옮겨 적을 값 **둘** (+ 장치 MAC 둘)
 
@@ -513,48 +549,69 @@ ini 에 남아 있으면 **기동이 경고한다.**
 `icg_archon.ini` 는 **저장소에 있는 배포본**이다.  KEY/SECRET 은 벤치의
 설치본(`~/AIC/Config/icg_archon.ini`)에만 적고, 저장소 쪽은 **주석인 채로 둔다.**
 ⚠️ 한 번 커밋되면 이력 재작성 없이는 못 뺀다.
+⛔ **적은 값은 ICG 를 재기동해야 들어간다** — `RADIONODE CONNECT` 는 ini 를 **다시 읽지 않는다**
+(기동 때 읽은 값만 쓴다).
 
-### 확인 절차
+### 확인 절차 — 기동 때 ini 가 무엇이었나로 **두 갈래**다
+
+⚠️ **`CONNECT` 는 ini 를 고치지도, 다시 읽지도 않는다** — 재기동하면 ini 값으로 돌아가고, 기동
+뒤에 ini 에 적은 자격증명은 `CONNECT` 로는 안 들어간다.  ⭐ `CONNECT` 는 *"기동 때 읽은 값으로
+지금 켜 보는"* 자리다.
+
+**(가) ini 가 `backend = off` 이고 자격증명은 적혀 있었다** — `CONNECT` 로 런타임에 켠다:
 
 ```
-RADIONODE STATUS      # Backend=off Polling=no Credentials=... missing
-RADIONODE CONNECT     # ⭐ 런타임에 폴링을 켠다 (자격증명이 모자라면 이름을 댄다)
+RADIONODE STATUS      # Backend=off Polling=no Credentials=ok
+RADIONODE CONNECT     # Polling=on Period=60s Devices=2 (runtime only -- the ini still says backend=off)
 RADIONODE STATUS      # Backend=openapi Polling=yes hebox=ok 3s ago ...
-RADIONODE RECONNECT   # 주기를 안 기다리고 즉시 한 바퀴
+RADIONODE RECONNECT   # Polling now -- 주기를 안 기다리고 즉시 한 바퀴 (openapi 전용)
 HK                    # HEBOX/FSATEMP/FSAHUM 이 실려 나오는지
 ```
 
-⚠️ **`CONNECT` 는 ini 를 고치지 않는다** — 재기동하면 ini 값으로 돌아간다.
-상시로 쓰려면 `[radionode] backend = openapi` 를 적어야 하고, 그때는 기동에서
-바로 폴링이 돈다.  ⭐ `CONNECT` 는 *"값을 넣고 지금 되는지 보는"* 자리다.
+**(나) ini 가 `backend = openapi`(배포 ini 기본, 2026-09-15)인데 자격증명이 비어 있었다** — 기동이
+`[radionode] backend=openapi 인데 … 가 없다 -- 폴링을 **off** 로 내린다` 경고를 남기고 `off` 로
+돈다.  ⛔ 이때는 `CONNECT` 가 **늘 거절된다**:
+
+```
+RADIONODE STATUS      # Backend=off Polling=no Credentials=api_key,api_secret missing
+RADIONODE CONNECT     # ERROR: RADIONODE Missing ini values: api_key,api_secret -- ... add them to the ini and restart ICG (CONNECT does not re-read the ini)
+```
+
+→ 설치본에 `api_key`·`api_secret`(과 장치 절의 `mac` — 응답의 `device_mac`)을 적고 **ICG 를
+재기동**한다.  그러면 기동에서 바로 폴링이 돌고 `RADIONODE STATUS` 가 `Backend=openapi Polling=yes`
+다 (그다음은 (가)의 `RECONNECT`·`HK` 와 같다).
 
 ⚠️ **`sim` 은 배선 확인용**이라 그 값은 **헤더 경로로 안 나간다** (고정 상수가
 실측처럼 아카이브에 남으면 파일만 보고 못 가른다).  `sim` 에서는 `CONNECT` 를
 거부한다.
 
-### ⛔ 인터넷이 안 되는 사이트 — `local_lns` (⏳ 자리만 있다)
+### ⛔ 인터넷이 안 되는 사이트 — `local_lns` (✅ 코드 있음 · ⏳ 실기 미검증)
 
 `openapi` 는 **클라우드 경로라 인터넷이 있어야 한다.**  끊기면 세 카드가 그동안
 sentinel 이고, ⛔ **운영자는 그 결측을 받아들이지 않는다** (2026-09-04 확정).
 
-⚠️ 그런데 **코드로는 못 막는다** — 자료가 들어오는 길이 클라우드 하나뿐이라
-끊기면 값이 물리적으로 안 온다.  `stale_after` 를 늘려 옛 값을 계속 싣는 것은
-결측을 없애는 것이 아니라 **틀릴 수 있는 값으로 덮는 것**이라 규격 5.0절
-sentinel 의 정신에 어긋난다.
+⚠️ `openapi` 만으로는 **코드로 못 막는다** — 그 길로는 끊기면 값이 물리적으로 안 온다.
+`stale_after` 를 늘려 옛 값을 계속 싣는 것은 결측을 없애는 것이 아니라 **틀릴 수 있는
+값으로 덮는 것**이라 규격 5.0절 sentinel 의 정신에 어긋난다.
 
-⭐ **실제로 막는 유일한 길**은 LoRa 게이트웨이를 **안쪽 LNS**(ChirpStack)로
-돌려 클라우드 없이 받는 것이다.  센서 자체는 LoRaWAN(KR920)이라 IP 스택이 없어
-LAN 으로 직접 못 받지만, **게이트웨이 아래로는 로컬로 받을 수 있다.**
+⭐ **실제로 막는 길**은 클라우드를 안 거치고 **게이트웨이 아래에서 로컬로 받는 것**이다.
+센서 자체는 LoRaWAN(KR920)이라 IP 스택이 없어 LAN 으로 직접 못 받지만, 실험실 게이트웨이
+(`RAK7268CV2`)는 **안에 네트워크 서버(ChirpStack 계열)가 들어 있어** 그 NS 의 **HTTP
+integration** 이 장치가 올릴 때마다 우리에게 POST 한다 — 별도 서버를 세우지 않는다.
+✅ 그 수신기가 `local_lns` 다 (`icg_archon/radionode.py` `UplinkListener`·`take_uplink`, 표준
+라이브러리만 — localhost 시험까지).  ⏳ **실기는 미검증**이고, 남은 선행은 **운영자 액션**이다:
 
 | 선행 조건 | 왜 |
 |---|---|
-| ① LoRa 게이트웨이 **기종과 관리 접근** | LNS 주소를 바꿀 수 있어야 한다 (지금은 Tapaculo365 를 본다) |
-| ② 장치 **가입 키** (DevEUI · JoinEUI · AppKey) | ⛔ 없으면 장치가 우리 서버에 **안 붙는다**.  Tapaculo365 에 프로비저닝돼 있으면 콘솔에서 꺼내거나 재등록해야 한다 |
-| ③ 페이로드 코덱 | ✅ 공식 `rn320bth.js` 가 공개돼 있다 |
+| ① LoRa 게이트웨이 **관리 접근** (INSTALL 7.1~7.3) | Work Mode 를 내장 NS 로 바꾸고 integration 을 걸 수 있어야 한다 (지금은 Packet Forwarder 로 Tapaculo365 에 올린다 — 2026-09-04 판정) |
+| ② 장치 **DevEUI** (게이트웨이 NS 의 장치 목록 — INSTALL 7.4) | ⛔ ini 장치 절 `deveui` 에 없으면 uplink 가 와도 **어느 장치인지 못 붙여 버린다**(`RADIONODE STATUS` 가 `NoDevEUI=`·`UnknownEUI=` 로 센다) |
+| ③ 페이로드 코덱 | ✅ 공식 `rn320bth.js` 가 공개돼 있다 — ⚠️ 게이트웨이에 올라가 있어야 한다(해석은 게이트웨이가 한다) |
 
-`[radionode] backend = local_lns` 를 적어 두면 *"이 사이트는 클라우드를 안
-쓴다"* 는 뜻이 ini 에 남고, 기동이 **무엇이 먼저인지** 크게 알린다.  ⏳ 수집
-구현은 위 ①②가 채워진 뒤다 (DevNote 11.22).
+ini 는 INSTALL 7.5 (`lns_bind`·`lns_path`·장치 `deveui`, `lns_token` 은 선택).  명령:
+`RADIONODE CONNECT` = 수신기 기동 · `DISCONNECT` = 수신기 정지(백엔드는 `local_lns` 그대로) ·
+`ENABLE`/`DISABLE <별칭>` = 그 장치의 uplink 를 받아들일지 · ⛔ `RECONNECT` 는 **`openapi` 전용**
+(push 라 칠 곳이 없어 `ERROR` 다).  ⚠️ `CONNECT` 는 여기서도 ini 를 다시 읽지 않는다 — `deveui`
+등을 고쳤으면 ICG 를 재기동한다.  경위는 DevNote 11.22·11.23.
 
 ## 프레임이 안 나올 때 — `Sync In` 부터 본다
 
@@ -615,7 +672,7 @@ ERROR ... 프레임 대기 시한 초과 -- RBUF=0 WBUF=0  FRAME=0/0/0  COMPLETE
     │   ├── ics_archon.ini        ← 배포본 사본을 고쳐 쓴다
     │   ├── ics_archon.expnum     ← 노출 번호 (ini 옆으로 자동 결정)
     │   └── acf/                  ← Archon 설정 파일
-    ├── Logs/ics_archon.log
+    ├── Logs/                     ← ics.<YYYYMMDD>.log (날마다, [logging] file) · 감시 CSV
     └── data/                     ← raw pair. 실제 디렉터리든 심볼릭 링크든 된다
 ```
 
@@ -703,9 +760,14 @@ git describe --tags
 ### 4. 설정
 
 ```bash
-cp ~/AIC/src/ics_archon/ics_archon.ini ~/AIC/Config/ics_archon.ini
-cp <어딘가>/KMTNet_Sci_*.acf            ~/AIC/Config/acf/
+cp -n ~/AIC/src/ics_archon/ics_archon.ini ~/AIC/Config/ics_archon.ini   # -n: 고쳐 둔 설치본을 덮지 않는다
+cp ~/AIC/src/ics_archon/acf/KMTK_SCI_113_STA0200_R2613_MK.acf ~/AIC/Config/acf/
 ```
+
+ACF 는 **그 사이트·상자의 파일명 전체**로 고른다 — 위와 아래 ini 예시는 **KASI 벤치 상자
+`KMTK-SCI-113`(STA0200) 한 대**다 (INSTALL 4절과 같은 파일, 둘째 상자면 `KMTK_SCI_112_STA0212_…`,
+사이트면 그 사이트의 `KMTC_`/`KMTS_` 파일).  목록은 [`acf/README.md`](acf/README.md), 깔린 판은
+[`acf/deployment_ledger.md`](acf/deployment_ledger.md).
 
 고칠 것 — **`[archon]` 이 컨트롤러 배선이다**:
 
@@ -728,8 +790,8 @@ expnum_file  =                      # 비우면 ini 옆 ics_archon.expnum
 
 [archon]
 n_controllers = 1                   # 유닛 한 대만 돌릴 때.  2대면 2
-ctrl_mk_host = 10.0.0.13
-acf_mk       = ~/AIC/Config/acf/KMTC_SCI_101_STA0284_R2613_MK.acf
+ctrl_mk_host = 10.0.0.113           # KASI 벤치 KMTK-SCI-113 (정본은 ACF 의 IP= 키)
+acf_mk       = ~/AIC/Config/acf/KMTK_SCI_113_STA0200_R2613_MK.acf
 monitor      = true                 # 텔레메트리 주기 감시·기록 (위 절)
                                     #   ⚠️ 접속은 이 값과 무관하다 -- 본편이
                                     #   기동에서 붙는다.  이 스위치는 CSV 기록과
@@ -743,8 +805,8 @@ fetch_timeout = 11                  # FETCH 상한 = 잠금 상한 -- 주기(12.
 recheck_after_fetch = true          # fetch 뒤에 덮이지 않았는지 한 번 더 대조
 
 [controllers]
-ctrl1_id     = KMTA-SCI-101         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
-ctrl1_sn     = STA-0288
+ctrl1_id     = KMTK-SCI-113         # 비우면 컨트롤러 보고값(BACKPLANE_ID)
+ctrl1_sn     = STA-0200
 ctrl1_cfg    =                      # 비우면 [archon] acf_mk 에서 파생 (아래)
 
 [dome]                              # 돔 방위 -- DSTELAZ/DSAZ/DAZERR (→ 11.79)
@@ -754,7 +816,8 @@ port         = 6379
 timeout      = 0.3                  # 왕복 상한 [s].  ⚠️ 키 TTL 보다 크게 잡지 말 것
 
 [logging]
-file         = ~/AIC/Logs/ics_archon.log
+file         = ~/AIC/Logs           # 폴더 → 날마다 ics.<YYYYMMDD>.log (이름 날짜 = 사이트 관측일,
+                                    #   줄 시각은 UTC).  `.log` 로 끝나면 그 파일 하나 (위 "로그 파일" 절)
 ```
 
 > ⭐ **돔 방위 셋은 redis 에서 온다** (2026-09-11, D-021). 돔 제어 프로그램이
@@ -799,8 +862,8 @@ file         = ~/AIC/Logs/ics_archon.log
 
 > ⛔ **`full_flush_on_erase` 기본값은 `false` 다** (운영자 확정 2026-08-29) —
 > *"clock 을 개선해서 별도 erase 를 하지 않고 바로 노출을 시작한다"*. ⚠️ 켜면
-> 노출마다 **독출 1회분(실측 12.77초 — 사강 `NoIntMS` 0.5 가 붙으면 13.27초, DevNote 10.4)**
-> 이 더 붙어 주기가 13.27 → 약 26초가 된다 (추정).
+> 노출마다 **독출 1회분(실측 12.77초, DevNote 10.4)** 이 더 붙어 BIAS 주기가 바닥
+> 12.78 → 약 25.6초가 된다 (추정 — 종전 13.27 바닥은 BIAS 에도 `NoIntMS` 0.5 가 붙던 때 값).
 
 > **`CTRL1CFG`/`CTRL2CFG` 는 ACF 경로에서 나온다** (2026-08-29 v1.8 확정, 현행 규격 v1.9 5.5절).
 > `[controllers] ctrlN_cfg` 를 **비워 두면** `[archon] acf_mk`/`acf_nt` 에서
@@ -886,7 +949,7 @@ python3 -m pytest tests -q -m "not repo_only"      # 배치본 -- 실패 0
 |---|---|
 | 형제 `ics_sim/` 원천 | `test_vendor.py`(벤더 표류) · `test_labtest_spec_copy.py`(labtest 규격 사본 — 같은 파일의 배포 ini 대조는 표식이 없다.  **상수 대조만이 아니라 카드 절단 규범·나열 자리 채움 같은 동작도 본다**, v1.6) |
 | `raw_fits_spec/` 견본·규격 | `test_fitswrite.py`(견본 pair 바이트 재현) · `test_icg_cards.py`(guide 견본) · `test_ch10_reflection.py`(규격 10장 문면) |
-| 저장소 `acf/` 실물 | `test_icg_timing.py` · `test_timing_script_extract.py` · `test_monitor.py` · `test_icg_app.py` |
+| 저장소 `acf/` 실물 | `test_icg_timing.py` · `test_timing_script_extract.py` · `test_monitor.py` · `test_icg_app.py` · `test_ccdflush.py`(배포 ACF 열둘이 파라미터 이름 규약을 지키나) |
 
 **배치본의 기대값은 `-m "not repo_only"` 가 수집한 수 전량 통과 · 실패 0** 이다.  그 밖의 실패는 정상이 아니다.  ⛔ 기대 수를 여기 박아 두지 않는다 — 2026-08-31 실측이라던 *223* 이 그 뒤로 두 배 넘게 벌어져 있었다.
 
@@ -951,9 +1014,10 @@ python tools/probe_archon.py --host 10.0.0.13
 python tools/probe_archon.py --host 10.0.0.13 --acf acf/KMTC_SCI_101_STA0284_R2613_MK.acf
 ```
 
-`[archon] param_intms_slot`/`param_exposures_slot` 이 그 ACF 에 있는지, 컨트롤러
-메모리의 같은 줄 번호가 그 키인지 `RCONFIG` 로 확인만 한다. **어긋난 채로
-돌리면 노출 시간이 조용히 안 바뀐다.**
+ACF 에 파라미터 `IntMS`·`Exposures` 가 **이름으로** 있는지(probe 가 이름으로 찾은 슬롯과
+설정 줄 번호를 찍는다 — ini 눈금 `param_*_slot` 은 걷었다), 컨트롤러 메모리의 그 줄이 그
+키인지 `RCONFIG` 로 확인만 한다.  ⛔ 슬롯 번호로 대조하지 않는다 — 판마다 밀린다.
+**어긋난 채로 돌리면 노출 시간이 조용히 안 바뀐다.**
 
 ### 3단계 — 프레임 1장 ⚠️ 전원 ON
 
@@ -966,13 +1030,15 @@ python tools/probe_archon.py --host 10.0.0.13 --acf acf/... --expose 0 --write
 독출 실측 시간 · 진행률 보고 횟수 · FETCH MiB/s · FITS 1장(`probe.*.fits`,
 관측 번호 공간을 건드리지 않는다).
 
-⭐ **`POWERON` 로그도 여기서 처음 본다** (2026-08-28 추가) — flush 대기
-(`poweron_wait`, 기본 12초) **안에서** `STATUS` 를 되물어 `POWER=4` 를
-확인하고 `POWER=4 (On) 확인 -- N초` 를 남긴다.  **`N` 이 실측 램프 시간**이라
-12초가 충분한지의 근거가 된다.  4 에 못 닿으면 `ERROR` 한 줄이 나가지만
-**막지는 않는다** — 값이 아직 실기 미검증이라 오독으로 관측을 세우는 쪽이 더
-나쁘다.  ⚠️ 대기 시간 자체는 램프가 아니라 **CCD flush** 를 기다리는 것이라
-`POWER=4` 를 봤다고 줄이지 말 것.
+⭐ **`POWERON` 로그도 여기서 처음 본다** (2026-08-28 추가) — probe 의 flush 대기
+(**`--poweron-wait`**, probe 기본 12초) **안에서** `STATUS` 를 되물어 `POWER=4` 를
+확인하고 `power on confirmed (POWER=4) in N.Ns` 를 남긴다.  **`N` 이 실측 램프 시간**이다.
+4 에 못 닿으면 `ERROR` 한 줄이 나가지만 **막지는 않는다** — 값이 아직 실기 미검증이라
+오독으로 관측을 세우는 쪽이 더 나쁘다.  ⚠️ 이 12초는 probe 의 값이다 — **ICS 본편은
+`[archon] poweron_wait = 0`**(운영자 확정 2026-09-10, DevNote 11.65)이고 `POWER=4` 확인은
+대기와 따로 **늘 한다**(도달하면 곧바로 빠진다, 실측 약 1초 — 단 `[archon] telemetry = true`
+일 때다.  false 면 확인 없이 대기만 한다, `ArchonController.power_on`).  probe 에서 대기를
+줄이려면 `--poweron-wait 0` 이다.
 
 > 실측한 독출 시간을 `[timing]` 에 넣고, `write_delay + FETCH + 저장`이
 > **25초 창**(`[obsagent] force_fitssaved`)에 들어가는지 확인한다.
@@ -1099,12 +1165,12 @@ ICS(`ics_archon`)·ICG(`icg_archon`) 둘 다 받는다.  ICS 는 컨트롤러가
 | ICS 명령 | 하는 일 | 응답 |
 |---|---|---|
 | `CCDFLUSH [MK\|NT\|ALL]` | 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 (science ACF R2610+, Prep+Flush). 프레임은 안 만든다. ⚠️ **첫 `GO` 뒤에만** 된다(ACF 줄 번호는 `prepare()` 가 파싱한다) — 그 전엔 `Failed: ACF not loaded … run GO once first` | `DONE: CCDFLUSH Flushed=MK,NT` |
-| `CCDPOWON [MK\|NT\|ALL]` | `POWERON` + flush 대기(`poweron_wait`, 기본 12 s) | `DONE: CCDPOWON Power=ON Controllers=MK,NT` |
+| `CCDPOWON [MK\|NT\|ALL]` | `POWERON` + `POWER=4` 확인(`telemetry = true` 일 때, 최대 15 s, 실측 약 1 s) + 추가 정착 대기 `poweron_wait`(기본 0 s) | `DONE: CCDPOWON Power=ON Controllers=MK,NT` |
 | `CCDPOWOFF [MK\|NT\|ALL]` | `POWEROFF`. 다음 `GO` 가 다시 켠다. 안 앉았으면 `Failed: POWEROFF not confirmed` | `DONE: CCDPOWOFF Power=OFF Controllers=MK,NT` |
 | `ARCHON <MK\|NT> <원문…>` | 바이패스 — 원문을 그대로 보내고 응답 원문을 돌려준다. ⛔ 위생 검사 없음(`RESETTIMING`·`WCONFIG` 도 나간다). 1800자 넘으면 잘리고 전문은 로그에 | `DONE: ARCHON MK <응답>` / 거부 `ERROR: ARCHON MK rejected: <원문>` / 빈 ack `<empty reply>` |
-| `HKDATA [NOW]` · `HK [NOW]` | ICG 에 묻는다 — 답은 `ICG>ICS DONE: HKDATA …` 보고로 따로 온다.  `NOW` 를 그대로 넘긴다(ICG 가 한 바퀴 지금).  ⛔ 2026-09-15 벤치까지 `NOW` 가 안 넘어갔다 | `DONE: HKDATA Queried ICG now -- its HKDATA report follows separately` |
-| `IMAGETYPE` = `IMAGETYP` = `IMGTYP` | 지금 이미지 종류 **조회만** (운영자 2026-09-15).  설정은 종전대로 `OBJECT`/`BIAS`/`DARK`/… — 인자가 오면 거절.  ICG 도 같다 (기반 `ics_sim` 에 있다) | `DONE: IMAGETYPE ImageType=OBJECT ObjectName='M31' EXP=2` |
-| `C1HKDATA [NOW]` · `C2HKDATA [NOW]` (별칭 **`C1HK`** · **`C2HK`**, 2026-09-15 — 같은 본문, 커맨드워드만 다르다) | 컨트롤러 1(MK)/2(NT) 의 텔레메트리 한 줄 — 헤더 `Cn_TEMP/VOLT/CURR` 의 **와이어 판** (온도 10 · 레일 7×V/I, 부호 붙임 · 따옴표 없음).  인자 없으면 감시 스냅샷(`monitor_interval` 주기, 왕복 없음 — `monitor=false` 면 전 자리 결측), `NOW` 면 `STATUS` 를 지금 읽는다.  낡은 자리는 안 싣고 `CnSTALE` 로 센다.  ICG 도 같은 이름 `C1HKDATA` 를 내므로 **`CTRLnID`(BACKPLANE_ID)로 상자를 가린다** (운영자 확정 2026-09-04 · 구현 2026-09-15) | `DONE: C1HKDATA C1QDATE=… C1UDATE=… C1STALE=0 CTRL1ID=… VALID=1 POWER=4 POWERGOOD=1 BP_TEMP=+31.5 … P2V5_V=+2.503 P2V5_I=+0.120 …` |
+| `HKDATA [NOW]` · `HK [NOW]` · `HKNOW`(= `HK NOW`, 인자 거절 — 와이어로는 `HK NOW` 가 나가야 답 `DONE: HK …` 를 `register_report` 가 받는다) | ICG 에 묻는다 — 답은 `ICG>ICS DONE: HKDATA …` 보고로 따로 온다.  `NOW` 를 그대로 넘긴다(ICG 가 한 바퀴 지금).  ⛔ 2026-09-15 벤치까지 `NOW` 가 안 넘어갔다 | `DONE: HKDATA Queried ICG now -- its HKDATA report follows separately` |
+| `IMAGETYPE` = `IMAGETYP` = `IMGTYP` | 지금 이미지 종류 **조회만** (운영자 2026-09-15).  설정은 종전대로 `OBJECT`/`BIAS`/`DARK`/… — 인자가 오면 거절.  ICG 도 같다 (기반 `ics_sim` 에 있다) — ⭐ 단 ICG 는 `BIAS` 뒤에도 `EXP=` 가 **guide 최소 노출**(`BIAS` = 최소 노출, 0 이 아니다 — `IcgDispatcher._image_type_query`, 2026-09-23)이라 `BIAS` 응답·`EXP` 조회·헤더 `EXPTIME` 과 같은 값이다 | `DONE: IMAGETYPE ImageType=OBJECT ObjectName='M31' EXP=2` |
+| `C1HKDATA [NOW]` · `C2HKDATA [NOW]` (별칭 **`C1HK`** · **`C2HK`** [NOW], **`C1HKNOW`** · **`C2HKNOW`** = `CnHK NOW`(인자 거절), 2026-09-15 — 같은 본문, 커맨드워드만 다르다.  ICG 는 `C1HKDATA`·`C1HK`·`C1HKNOW` 셋) | 컨트롤러 1(MK)/2(NT) 의 텔레메트리 한 줄 — 헤더 `Cn_TEMP/VOLT/CURR` 의 **와이어 판** (온도 10 · 레일 7×V/I, 부호 붙임 · 따옴표 없음).  인자 없으면 감시 스냅샷(`monitor_interval` 주기, 왕복 없음 — `monitor=false` 면 전 자리 결측), `NOW` 면 `STATUS` 를 지금 읽는다.  낡은 자리는 안 싣고 `CnSTALE` 로 센다.  ICG 도 같은 이름 `C1HKDATA` 를 내므로 **`CTRLnID`(BACKPLANE_ID)로 상자를 가린다** (운영자 확정 2026-09-04 · 구현 2026-09-15) | `DONE: C1HKDATA C1QDATE=… C1UDATE=… C1STALE=0 CTRL1ID=… VALID=1 POWER=4 POWERGOOD=1 BP_TEMP=+31.5 … P2V5_V=+2.503 P2V5_I=+0.120 …` |
 
 ICS 에서도 운영자 명령이 도는 중의 `GO` 는 `ERROR: GO Operator command in progress (CCDPOWON) -- retry when it is DONE` 으로 거부된다.  `--backend sim` 이면 넷 다 `Controller is not available (no hardware backend)`.
 
@@ -1112,14 +1178,14 @@ ICG 는 컨트롤러가 하나라 인자가 없다:
 
 ```
 CCDFLUSH              # 유휴 CCD 를 FlushFrame 한 바퀴로 비운다 -> DONE: CCDFLUSH Flushed=1 (프레임 없음)
-CCDPOWON / CCDPOWOFF  # POWERON/POWEROFF -> Power=ON|OFF  (ON 은 poweron_wait 초 뒤에 DONE)
+CCDPOWON / CCDPOWOFF  # POWERON/POWEROFF -> Power=ON|OFF  (ON 은 gauge_warmup_wait 초(기본 12 s, 이온게이지 예열) 뒤에 DONE)
 ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문>  (거부는 ERROR: ARCHON rejected: <원문>)
 ```
 
 * ⛔ 앞의 셋(`CCDFLUSH`·`CCDPOWON`·`CCDPOWOFF`)은 **취득 중이면 거부**한다 (`Exposure in progress -- ABORT
   first`) — 진행 중 노출 위의 `LOADPARAMS`/`POWEROFF` 는 그 프레임을 망친다.  셋은 서로도, `GO` 도 막는다
-  (`Busy with <CMD>`) — `POWERON` ack 뒤 `poweron_wait`(12 s) 동안 들어온 `GO` 가 flush 안 끝난 CCD 를
-  arm 하는 구멍 때문이다.  `EXPENABLE OFF` 는 막지 않고 응답에 `(ExpEnable=OFF)` 를 붙인다.
+  (`Busy with <CMD>`) — `POWERON` ack 뒤의 대기(ICG `gauge_warmup_wait` 12 s · ICS `POWER=4` 확인 창)
+  동안 들어온 `GO` 가 준비 안 끝난 CCD 를 arm 하는 구멍 때문이다.  `EXPENABLE OFF` 는 막지 않고 응답에 `(ExpEnable=OFF)` 를 붙인다.
 * ⭐ `ARCHON` 은 **제한이 없다** (운영자 2026-09-05 *"제한 없이 모두 풀어줘"*) — 취득 중이든 다른 조작이 도는
   중이든 받고, `GO` 도 막지 않는다.  진행 중 노출 위의 `RESETTIMING` 이 프레임을 망치는 것은 운영자 몫이다
   (로그에는 남는다).
@@ -1183,23 +1249,30 @@ ARCHON <command>      # 컨트롤러 바이패스 -> DONE: ARCHON <응답 원문
 
 | | science | guide |
 |---|---|---|
-| `SHOPEN <초>` / `TRIGOUT <초>` | `TRIGOUTLEVEL=1` + `TRIGOUTFORCE=1` | 같음 |
+| `SHOPEN <초>` / `TRIGOUT <ms>` | `TRIGOUTLEVEL=1` + `TRIGOUTFORCE=1` | 같음 |
+| 시한 만료 · `SHCLOSE` / `TRIGOUT 0` | `TRIGOUTLEVEL=0` + **`TRIGOUTFORCE=0`** | `TRIGOUTLEVEL=0` + **`TRIGOUTFORCE=1`** |
 
-⚠️ **`TRIGOUT <초>` 의 실현 최소 폭은 ≈235 ms 다** (2026-09-09 실측).  선을 세우고
+⚠️ **`TRIGOUT <ms>` 의 실현 최소 폭은 ≈235 ms 다** (2026-09-09 실측).  선을 세우고
 내리는 수단이 `WCONFIG`+`APPLYSYSTEM` 인데 **적용 하나가 ≈233 ms** 걸리기 때문이다.
-⭐ 그 시간이 폭에 더해지지 않도록 **잠들 시간에서 미리 뺀다** — 그래서 요청한 `<초>` 가
-실제 폭이 된다.  ⛔ `<초>` 가 235 ms 보다 짧으면 만들 수 없어 0 으로 눌러 담고 경고를
+⭐ 그 시간이 폭에 더해지지 않도록 **잠들 시간에서 미리 뺀다** — 그래서 요청한 `<ms>` 가
+실제 폭이 된다.  ⛔ `<ms>` 가 235 ms 보다 짧으면 만들 수 없어 0 으로 눌러 담고 경고를
 남긴다.  그보다 짧은 펄스가 필요하면 **타이밍 스크립트(ACF)로 몰아야** 한다.
-⏳ 자세한 실측은 「연속 노출 중 명령 지연」 절.
-| `<초>` 만료 · `SHCLOSE` / `TRIGOUT 0` | `TRIGOUTLEVEL=0` + **`TRIGOUTFORCE=0`** | `TRIGOUTLEVEL=0` + **`TRIGOUTFORCE=1`** |
+⏳ 자세한 실측은 「연속 노출 중 명령 지연」 절.  (⚠️ 단위: `SHOPEN` 은 **초**, `TRIGOUT`·
+`CnTRIGOUT` 은 **ms** 다.)
 
 * 올림은 두 계통이 **완전히 같고**, 내림은 돌아갈 `TRIGOUTFORCE` 만 다르다.
 * **시한 만료와 명시적 내림이 같은 동작**이다. 새 `SHOPEN`/`TRIGOUT` 은 앞 타이머를 끊는다.
+  ⭐ ICS 의 `SHOPEN`/`SHCLOSE` 는 **셔터를 모는 컨트롤러의 대기 중 `CnTRIGOUT` 펄스**도 끊고
+  선을 가져간다 (경고 `SHOPEN took the line from a pending CnTRIGOUT pulse (MK)`, 2026-09-23) —
+  안 끊으면 `CnTRIGOUT` 의 옛 타이머가 나중에 깨어나 `SHOPEN` 이 세운 선을 내린다.
+  거꾸로 셔터를 모는 컨트롤러의 `CnTRIGOUT` 도 도는 `SHOPEN` 을 끊는다(`shutter_ctrl = both`
+  면 `SHOPEN` 이 함께 올린 다른 컨트롤러도 쉬는 상태로 내린다).
 * `TRIGOUTFORCE`/`TRIGOUTLEVEL` 은 조회·설정 명령으로 **따로 남아 있다**.
 * ⭐ **science 는 노출을 걸 때마다 `TRIGOUTFORCE` 를 되돌린다** —
-  `ArchonBackend.open_shutter()` 가 `set_trigger_forced(not drives_shutter(tag))`
+  `ArchonBackend.open_shutter()` 가 `set_trigger(high=False, forced=not drives_shutter(tag))`
   를 쓴다. 그래서 `SHOPEN` 이나 즉시 차단이 선을 붙든 채 끝나도 **다음 `GO` 가
-  쉬는 상태(`FORCE=0`)로 되돌린다**.
+  컨트롤러마다 제 쉬는 상태로 되돌린다** — 셔터를 모는 쪽은 `FORCE=0`·`LEVEL=0`,
+  안 모는 쪽은 `FORCE=1`·`LEVEL=0`.
 
 ### ⛔ `SHCLOSE` 는 "닫는다" 가 아니라 "내 강제를 놓는다"
 
@@ -1256,9 +1329,11 @@ ACF 파라미터가 **둘**이다 — `FirstFlush`(한 `LOADPARAMS` 묶음의 **
 
 ⚠️ **셔터를 즉시 끊는 경로는 `ArchonBackend.close_shutter()`** 이고
 (`TRIGOUTFORCE=1` + `TRIGOUTLEVEL=0` 으로 선을 **붙든다**), 적분 자체는 남은
-시간을 다 센다. ⏳ 다만 **현재 `ABORT` 는 이 함수를 안 지난다** — 시퀀서가
-태스크만 취소하므로 science 는 컨트롤러의 적분이 물리적으로 끝까지 가고 셔터는
-`NoIntMS` 에 닫힌다(프레임만 안 쓴다). 미결 항목이다 (DevNote 11.50).
+시간을 다 센다.  `ABORT` 는 이 함수를 안 지난다 — 대신 **`abort_now()` 가 `Exposures=0`
+을 건 뒤 `RESETTIMING` 을 보내 적분 자체를 끊는다**.  코어가 `Start:` 로 가면 첫 줄 상태
+`RESET` 이 INT 비트를 0 으로 몰아서, `TRIGOUTFORCE=0` 이면 셔터 선이 LOW 로 떨어진다.
+`SHOPEN`/`C1TRIGOUT`/`C2TRIGOUT` 펄스가 도는 중이면(`FORCE=1`) 그 펄스도 끊는다 — 아래 표.
+프레임은 저장하지 않는다 (2026-09-09 해결, DevNote 11.50).
 
 | | 강제 | 적분 중 셔터 |
 |---|---|---|
@@ -1268,11 +1343,33 @@ ACF 파라미터가 **둘**이다 — `FirstFlush`(한 `LOADPARAMS` 묶음의 **
 | `close_shutter()` (즉시 차단 경로) | **붙든다** (`FORCE=1`, `LEVEL=0`) | **즉시** 닫힘 |
 
 ⭐ **진행 중인 `SHOPEN`/`TRIGOUT` 펄스를 끊는 자리가 셋이다** — `ABORT` ·
-`EXPENABLE OFF`(ICG) · **종료(`quit`)**. `RESETTIMING` 은 타이밍 코어만
-되돌리는데 펄스 중에는 `TRIGOUTFORCE=1` 이라 핀이 코어를 안 따라가기 때문이다 —
-안 끊으면 **셔터가(guide 는 LED 가) 열린 채 남는다**.
+`EXPENABLE OFF`(ICG) · **종료(`quit`)**.  ICS 에서는 `ABORT`·종료가 도는 `SHOPEN` 과
+`C1TRIGOUT`/`C2TRIGOUT` 펄스를 **다** 끊고(`IcsDispatcher.release_pulse`, 2026-09-23) 각 선을
+**그 컨트롤러의 쉬는 상태**로 내린다 — 셔터를 모는 쪽은 `FORCE=0`(스크립트에 반환), 안 모는
+쪽은 `FORCE=1`·`LEVEL=0`(붙든다).  `RESETTIMING` 은 타이밍 코어만 되돌리는데 펄스 중에는
+`TRIGOUTFORCE=1` 이라 핀이 코어를 안 따라가기 때문이다 — 안 끊으면 **셔터가(guide 는 LED 가)
+열린 채 남는다**.
 ⛔ **종료가 특히 그렇다**: 펄스는 백그라운드 태스크로 도는데 종료가 그것을
 취소하므로 내림이 **영영 안 돈다**. ⚠️ 펄스가 없었으면 아무것도 안 쓴다.
+⭐ **종료가 시작된 뒤의 올림은 거절한다** (2026-09-24) — ICG `TRIGOUT <ms>` · ICS `SHOPEN <초>`·
+`CnTRIGOUT <ms>` 가 `ERROR: <커맨드워드> Shutting down -- not raised` 다 (종료가 펄스를 이미
+내린 뒤라, 새로 올리면 내릴 이가 없다).  내리는 명령(`TRIGOUT 0`·`SHCLOSE`·`SHOPEN 0`·`CnTRIGOUT 0`)은
+받는다.
+⭐ **올림이 실패하면 내려 본다** — ICS `SHOPEN` 은 **올렸거나 올리려 한** 컨트롤러를 모두
+(`shutter_ctrl = both` 에서 MK 가 올랐는데 NT 가 실패하면 둘 다), `CnTRIGOUT` 은 그 한 대를, ICG
+`TRIGOUT <ms>` 는 guide 선을 각 쉬는 상태로 내린 뒤 `ERROR: <커맨드워드> Failed: …` 로 답한다
+(적용이 나간 뒤의 시한 초과면 선은 이미 HIGH 인데 핸들이 지워져 `ABORT`·종료도 못 찾는다).
+ICS 는 한 대의 내림이 실패해도 나머지를 다 내린다(`_rest_each`).  그 내림의 실패는 로그 오류
+줄이고 답은 올림 실패 그대로다 (내림 실패가 올림 실패를 가리지 않는다).
+⭐ 펄스는 **올림 앞에서부터 내림이 끝날 때까지** 핸들을 쥐고 있어 어느 창에서 끊겨도 끊은
+쪽이 선을 맡는다.  **응답의 모양은 계통마다 다르다** (⚠️ 알려진 차이 — 맞추지 않았다):
+
+| | 부른 명령의 끝 응답 | 부르지 않은 통보 | 남이 끊으면 |
+|---|---|---|---|
+| ICG `TRIGOUT <ms>` | ⭐ **꼭 하나** — 올림 뒤 `DONE: TRIGOUT TRIGOUTLEVEL=1 TRIGOUTFORCE=1 MS=<ms>` · 올림 실패 `ERROR: TRIGOUT Failed: …` · 올림이 확인되기 전에 끊김 `ERROR: TRIGOUT Cut before the raise was confirmed (MS=<ms>) -- <선을 맡은 쪽>` (꼬리는 `the line is being rested` 또는 `a new TRIGOUT took the line`) · 종료 중 `ERROR: TRIGOUT Shutting down -- not raised` | 시한 내림 `DONE: TRIGOUT TRIGOUTLEVEL=0 TRIGOUTFORCE=1 (auto after <ms> ms)` · 그 내림의 실패 `ERROR: TRIGOUT Auto lower failed after <ms> ms: …` — 둘 다 끝 응답 **뒤에** 온다 | 올림 전·도중이면 위 `Cut …` 한 줄.  올림 뒤 대기 중이면 끝 응답은 이미 나갔고 `(auto after …)` 가 안 온다.  종료 막바지라 발신 길이 닫혔으면 로그에만 남는다 |
+| ICS `SHOPEN <초>` | 올림 뒤 `Shutter=Open` · 시한 내림 뒤 `Shutter=Closed …` (IC 상태 통보 모양) · 실패 `ERROR: SHOPEN Failed: …`(내림 실패는 `ERROR: SHCLOSE Failed: …`) · 종료 중 `ERROR: SHOPEN Shutting down -- not raised` | — | ⚠️ 제 몫의 응답이 **없다** — 올림 전·도중이면 `Shutter=Open` 이, 대기 중이면 `Shutter=Closed` 가 안 나간다.  답은 끊은 명령(`ABORT`·`SHCLOSE`·새 `SHOPEN`/`CnTRIGOUT`)이 제 응답으로 낸다 (종료면 답이 없다) |
+| ICS `CnTRIGOUT <ms>` | 내림 **뒤에** 하나 — `DONE: CnTRIGOUT TrigOut=Low Ctrl=<MK\|NT> Width=<ms>ms` · 실패(올림 또는 내림) `ERROR: CnTRIGOUT Failed: …` · 종료 중 `ERROR: CnTRIGOUT Shutting down -- not raised` | — | ⚠️ 제 몫의 응답이 **없다** (올림 전·도중·대기 중 어디서 끊겨도 `DONE` 이 안 나간다) — 답은 끊은 명령이 제 응답으로 낸다 |
+
 ⛔ **`STOP` 은 안 끊는다** — *"다음을 안 건다"* 라 펄스와 무관하다.
 
 ### guide 는 선을 놓지 않는다
@@ -1316,37 +1413,47 @@ ACF 파라미터가 **둘**이다 — `FirstFlush`(한 `LOADPARAMS` 묶음의 **
     [archon]
     shutter_close_ms = 5200     # 셔터가 다 닫히는 데 걸리는 시간 [ms]
 
-기동에서 ACF 의 `NoIntMS` 가 이보다 짧으면 **경고를 남기고 이 값으로 올려서 적용**한다.
-⭐ **정본은 ACF 다** — 경고가 뜨면 ACF 를 고치는 것이 맞다.  `0` 이면 검사하지 않는다.
+⭐ **셔터를 여는 노출은 노출마다 `NoIntMS` 를 새로 싣는다** — 싣는 값 `shutter_dwell_ms` 는
+ACF 를 민 직후(기동 뒤 첫 `GO` 의 `prepare()`, 세션마다 한 번 — `_enforce_shutter_close_dwell`)
+**한 번 정한다**: `max(ACF 의 NoIntMS, shutter_close_ms)` — ACF 가 더 길면 깎지 않는다(이 눈금은
+**하한**이다).  ACF 값이 이보다 짧으면 그때 **경고를 한 번** 남긴다.
+⭐ **정본은 ACF 다** — 경고가 뜨면 ACF 를 고치는 것이 맞다.  ⛔ `0` 이면 검사하지 않고 셔터
+노출은 **ACF 값**을 싣는다.  (셔터를 안 여는 BIAS·DARK 는 아래 표 — 이 값을 안 싣는다.)
 
 ⭐ **5200 은 블레이드 주행 ~5초**에서 온 값이다 (운영자 2026-09-13).  같은 크기가 두 자리에
 이미 있었다 — `ics_sim/sequencer.py` 의 *"실기의 블레이드 주행은 ~5초"* 와 시뮬의 레거시 실측
 `shutter_to_readout = 6.00 s`.
 
-⛔ **현행 ACF 열둘은 `NoIntMS=500` 이라, 기동마다 이 경고가 뜬다:**
+⛔ **현행 science ACF 여덟은 `NoIntMS=500` 이라(guide 넷은 `0` — 셔터가 없다), 세션마다(첫 `GO`) 이 경고가 뜬다:**
 
     MK: NoIntMS is 500 ms, shorter than the shutter close time (5200 ms) -- raising it
 
-호스트가 5200 으로 올려 쓰므로 **관측은 정상으로 돈다.**  그래도 **정본은 ACF** 이니 다음
+호스트가 셔터 노출마다 5200 을 실으므로 **관측은 정상으로 돈다.**  그래도 **정본은 ACF** 이니 다음
 판올림에서 `NoIntMS=5200` 으로 고쳐야 한다.  ⏳ 정밀값은 미실측 — 벤치 절차는
 [`bench_test_plan.md`](bench_test_plan.md) 3단계.
 
-⚠️ **프레임 주기가 그만큼 길어진다** — 종전 `NoIntMS=500` 대비 **+4.7 s** 다.  셔터를 안 여는
-BIAS·DARK 에도 똑같이 붙는다 (ACF 상수라서).
+⚠️ **셔터를 여는 노출의 프레임 주기가 그만큼 길어진다** — 종전 `NoIntMS=500` 대비 **+4.7 s** 다.
+셔터를 안 여는 BIAS·DARK 에는 안 붙는다 — 호스트가 `NoIntMS` 를 노출마다 새로 싣기 때문이다
+(`trigger(noint_ms=…)`: BIAS 0 · DARK 적분시간, DevNote 11.85).  그래서 BIAS 주기 바닥은 독출
+그 자체(**12.78 s**, `MIN_FRAME_PERIOD`)다.
 
-⚠️ `[timing] shutter_to_readout`(6.00 **초**)와 **다른 물건**이다 — 그쪽은 `--backend sim`
-전용이고 실기는 안 본다.
+⚠️ `[timing] shutter_to_readout`(6.00 **초**)와 **다른 물건**이다 — ⛔ 그쪽은 시뮬 전용이
+**아니다**: 공유 시퀀서(`ics_sim` `Sequencer`)가 셔터 노출의 적분 뒤 `READOUT` 통지 앞에서 이만큼
+**호스트 쪽에서** 자고, 실기(`archon` 백엔드)에서도 같이 돈다.  실제로 셔터 닫힘을 기다리는 것은
+컨트롤러의 `NoIntMS` 이고, 이 잠은 그와 나란히 흐르는 **통지 지연**이다.  ini 에서 줄을 지워도
+코드 기본값 6.00 이 쓰인다.
 
 ### IMAGETYPE 별 셔터
 
 | `IMAGETYPE` | 셔터 | 적분 | 셔터 닫힘 대기 |
 |---|---|---|---|
-| `BIAS` | **안 연다** | 0 초로 강제 | 필요 없다 |
-| `DARK` | **안 연다** | 요청한 `EXPTIME` | 필요 없다 |
-| `OBJECT` · `FLAT` · `SKY` · `DOMEFLAT` | **연다** | 요청한 `EXPTIME` | **필요하다** |
+| `BIAS` | **안 연다** | 0 초로 강제 | 안 싣는다 (`NoIntMS=0`) |
+| `DARK` | **안 연다** | 요청한 `EXPTIME` | 안 싣는다 (`NoIntMS`=적분시간) |
+| `OBJECT` · `FLAT` · `SKY` · `DOMEFLAT` | **연다** | 요청한 `EXPTIME` | **싣는다** (`NoIntMS`=`shutter_dwell_ms` = `shutter_close_ms`, ACF 값이 더 길면 그 값, `shutter_close_ms=0` 이면 ACF 값) |
 
-⚠️ 셔터를 안 여는 노출에도 `NoIntMS` 대기는 **똑같이 붙는다** — ACF 상수라 노출마다
-같은 값이 실리기 때문이다.  데이터는 멀쩡하고 **프레임 주기만 그만큼 길어진다.**
+⭐ 셔터를 안 여는 노출에는 셔터 닫힘 대기가 **안 실린다** — `NoIntMS` 를 노출마다 쓰므로
+BIAS 는 `NoIntMS=0`, DARK 는 `NoIntMS=EXPTIME`(적분 그 자체 — 트리거 선이 안 선다)이다.
+셔터 닫힘 대기(`shutter_close_ms`)는 셔터를 여는 노출에만 붙는다 (2026-09-13, DevNote 11.85).
 
 ## 관련 문서
 

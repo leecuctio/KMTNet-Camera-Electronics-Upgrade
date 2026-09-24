@@ -3,15 +3,17 @@
 """Radionode RN320-BTH 측정값 -- `HEBOX` · `FSATEMP`/`FSAHUM` 의 원천.
 
 **장치는 LoRaWAN 이라 LAN 폴링이 불가하다** (RN320 은 IP 스택이 없다 --
-LoRa 게이트웨이를 거쳐 Tapaculo365 클라우드로만 간다).  그래서 접근은
-클라우드 **Open API 폴링**이고, endpoint 상세가 콘솔 로그인 뒤의
-"OPENAPI 매뉴얼" 에만 있어 **URL·경로·인증 헤더 이름까지 ini 소관**이다
-(`config.RadionodeCfg`).  조사 경위·대안(사설 LoRaWAN 서버)은 DevNote 9장.
+LoRa 게이트웨이를 거쳐야 한다).  그래서 받는 길은 **둘**이다: Tapaculo365
+클라우드 **Open API 폴링**(`openapi`)과, 게이트웨이 내장 NS 의 **HTTP
+integration 수신**(`local_lns`).  `openapi` 의 인증은 **POST 본문 파라미터**
+(`api_key`/`api_secret`)이고 endpoint 는 코드가 안다 -- 헤더 칸은 폐기됐다
+(DevNote 11.44, `config.RadionodeCfg`).  조사 경위는 DevNote 9장.
 
 ## ⭐ 확정: **폴링값으로 답한다 -- 즉시 조회하지 않는다** (운영자 2026-09-09)
 
 `HKDATA`/`HK` 응답도, FITS 헤더도 **이 폴러가 받아 둔 값**을 쓴다.  명령이 올 때
-클라우드를 다시 치지 않는다.  ⛔ **네 가지 이유 중 둘째가 결정적이다**:
+클라우드를 다시 치지 않는다 (예외는 아래 `HKDATA NOW` 하나).  ⛔ **네 가지 이유 중
+둘째가 결정적이다**:
 
 1. 인터넷 왕복이라 **수백 ms~초** 급이다 (guide 유닛은 로컬 TCP 라 왕복 2 ms).
 2. ⭐ **즉시 조회해도 더 신선해지지 않는다** -- 장치가 `device_interval`(60초)
@@ -21,34 +23,44 @@ LoRa 게이트웨이를 거쳐 Tapaculo365 클라우드로만 간다).  그래�
    이벤트 루프를 막는다.
 
 ⚠️ 이 확정은 **Radionode 에만** 걸린다.  ⭐ guide 유닛의 **설정값**
-(`HTREN`·`HTRSET`·`HTRFORCE`)은 **명령마다 되읽는다** -- 거기서는 이유 ②가
-성립하지 않는다(**운영자가 방금 바꾼 값**이라 즉시 되읽으면 실제로
-신선해진다).  ⭐ 실측이 그 값을 뒷받침한다: 취득 중에도 `HKDATA` 전체가
-중앙 **7.7 ms** · 최악 **108 ms** 라, 왕복 셋을 없애 벌 것이 없다
-(2026-09-09 벤치, DevNote 11.55).
+(`HTREN`·`HTRSET`·`HTRFORCE`)은 **HK 바퀴마다 `RCONFIG` 로 되읽고**
+(`hk.HkMonitor._read_heater_settings`), **`HKDATA NOW` 면 그 바퀴를 즉시
+돌린다** (`hk.refresh_now()`) -- 거기서는 이유 ②가 성립하지 않는다(**운영자가
+방금 바꾼 값**이라 즉시 되읽으면 실제로 신선해진다).  ⚠️ 인자 없는 `HKDATA` 는
+그 설정값도 폴링값이다.  ⭐ 실측이 되읽기의 값을 뒷받침한다: 취득 중에도
+`HKDATA` 전체가 중앙 **7.7 ms** · 최악 **108 ms** 라, 왕복 셋을 없애 벌 것이
+없다 (2026-09-09 벤치, DevNote 11.55).
+⭐ 같은 `NOW` 에서 Radionode 도 다시 치기는 한다 -- 단 **충분히 낡았을 때만**
+(`[radionode] now_min_age`, `hk.HkMonitor._radionode_is_old`) -- 이유 ②·③ 때문이다.
 
-⚠️ 대신 **낡음을 숨기지 않는다**: `stale_after`(= `device_interval` x3 = 180초)를
-넘으면 sentinel 로 싣고, `HKUDATE`(가장 오래된 측정시각) 셈에서도 빠진다
-(운영자 확정 -- 그 값은 **guide 유닛 측정값**만 기준으로 한다).
+⚠️ 대신 **낡음을 숨기지 않는다**: 신선도 창을 넘으면 sentinel 로 싣고,
+`HKUDATE`(가장 오래된 측정시각) 셈에서도 빠진다 (운영자 확정 -- 그 값은
+**guide 유닛 측정값**만 기준으로 한다).  창은 `openapi` 가 응답에서 배운
+`device_interval` x3(60s→180 · 600s→1800)이고, 배우기 전에는 ini `stale_after`
+(초기값 4000) 다.  ⚠️ `local_lns` 는 못 배우므로 **ini 값이 영구 창**이다.
 
 백엔드 넷:
 
-* `off`     -- 아무것도 안 한다 (전 키 결측 -> 헤더 sentinel).  **기본값**.
+* `off`     -- 아무것도 안 한다 (전 키 결측 -> 헤더 sentinel).  **코드 기본값**
+  (ini 줄이 없을 때 -- 배포 ini 는 `openapi`, 운영자 2026-09-15).
 * `openapi` -- Tapaculo365 를 `poll_period` 마다 폴링한다.  ⛔ **인터넷이
   있어야 한다.**
 * `sim`     -- **코드 상수** 고정값 (ini 로 못 바꾼다).  ⚠️ 그 값은
   `sim_values()` 로만 나가고 **헤더 경로로는 안 나간다** -- 상수가 실측처럼
   아카이브에 남으면 나중에 파일만 보고 가릴 수 없다 (규격 5.6·5.8 은 이
   3장을 실측 계통으로 규정한다).  배선 확인용이다.
-* ⏳ `local_lns` -- 사설 LoRaWAN 서버(ChirpStack)에서 받는다.  **자리만 있고
-  구현은 없다.**
+* `local_lns` -- 게이트웨이 내장 NS(ChirpStack 계열)의 HTTP integration 이
+  밀어 주는 uplink 를 받는다 (`UplinkListener` · `take_uplink`).  ✅ 코드와
+  localhost 시험은 됐고 ⏳ **실기는 미검증**이다.  MQTT 만 내주는 게이트웨이는
+  ⏳ (DevNote 11.23).
 
 ⛔⛔ **인터넷이 끊기면 세 카드가 결측이고, 운영자는 그것을 받아들이지 않는다**
-(2026-09-04 확정).  ⚠️ 그런데 지금 자료가 들어오는 길이 클라우드 하나뿐이라
-**코드로는 못 막는다** -- `stale_after` 를 늘려 옛 값을 계속 싣는 것은 결측을
-없애는 것이 아니라 **틀릴 수 있는 값으로 덮는 것**이라 규격 5.0절 sentinel 의
-정신에 어긋난다.  ⭐ 실제로 막는 유일한 길이 `local_lns` 이고, 그것은 **운영자
-액션 둘**(게이트웨이 관리 접근 · 장치 가입 키)이 선행이다 (DevNote 11.22).
+(2026-09-04 확정).  ⚠️ `openapi` 만 쓰면 **코드로는 못 막는다** --
+`stale_after` 를 늘려 옛 값을 계속 싣는 것은 결측을 없애는 것이 아니라
+**틀릴 수 있는 값으로 덮는 것**이라 규격 5.0절 sentinel 의 정신에 어긋난다.
+⭐ 클라우드 없이 받는 길이 `local_lns` 이고 코드는 준비됐다 -- 남은 선행은
+**운영자 액션**이다: 게이트웨이 관리 접근(INSTALL 7.3)과 웹 UI 확인 넷(Work Mode ·
+장치 DevEUI · 코덱 · HTTP integration, INSTALL 7.4 · DevNote 11.22).
 
 **신선도가 값의 일부다.**  마지막 표본이 `stale_after` 보다 낡으면
 `values()` 가 그 키를 **내지 않는다** -- 호출측(`rawhdr.thermal_header`)이
@@ -76,8 +88,10 @@ from .config import RadionodeCfg
 
 log = logging.getLogger('icg_archon.radionode')
 
-#: `openapi` 로 켜려면 **반드시 있어야 하는** ini 값 넷.  ⭐ 운영자가 콘솔의
-#: "OPENAPI 매뉴얼" 에서 옮겨 적는 것이 이 넷이다 (README "Radionode 자격증명").
+#: `openapi` 로 켜려면 **반드시 있어야 하는** ini 값 셋.  ⭐ 그중 운영자가 옮겨
+#: 적는 것은 `api_key`·`api_secret` 둘이다 (`s2.radionode365.com` → 고객사
+#: 정보변경 → API Key/Secret) -- `base_url` 은 배포 ini 에 실값이 있다 (README
+#: "Radionode 자격증명").
 REQUIRED_KEYS = ('base_url', 'api_key', 'api_secret')
 
 
@@ -288,6 +302,12 @@ class RadionodeClient:
 
     def __init__(self, cfg: RadionodeCfg) -> None:
         self.cfg = cfg
+        #: 기동 때의 `backend` -- **ini 가 말하는 값**의 대역이다 (`CONNECT` 응답이 쓴다).
+        #: ⭐ `cfg.backend` 는 런타임에 바뀌므로(`DISCONNECT` 가 `off` 로) 그것으로는
+        #: *"ini 가 뭐라고 적었나"* 를 말할 수 없다 (2026-09-23).  ⚠️ `validate()` 가
+        #: 자격증명 부족으로 `openapi` 를 `off` 로 내린 뒤에 만들어지므로 그 경우엔
+        #: `off` 인데, 그때는 `CONNECT` 가 어차피 거절되니 응답에 쓰일 일이 없다.
+        self._boot_backend = cfg.backend
         #: key(소문자) -> (값, 표본시각 monotonic).  `values()` 가 신선도를
         #: 대조한다.
         self._latest: dict[str, tuple[object, float]] = {}
@@ -303,7 +323,10 @@ class RadionodeClient:
         #: `stale_after` 는 그때까지의 초기값일 뿐이다.  장치마다 주기가
         #: 다를 수 있어(실물 60초·600초) **하나로는 못 맞춘다**.
         self._window: dict[str, float] = {}
-        #: 장치 별칭 -> 폴링 활성 (RADIONODE DISCONNECT 명령이 끈다).
+        #: 장치 별칭 -> 값 반영 활성 -- `openapi` 는 그 장치를 폴링하고, `local_lns` 는
+        #: 그 장치의 uplink 를 받아들인다 (`RADIONODE DISABLE <별칭>` /
+        #: `DISCONNECT <별칭>` 이 끈다).  ⚠️ 수신 스레드도 읽으므로 **`_lock` 안에서**
+        #: 바꾼다 (`set_enabled`).
         self.enabled: dict[str, bool] = {
             d.alias: True for d in cfg.devices}
         #: 장치 별칭 -> 마지막 성공/실패 기록 (RADIONODE STATUS 가 보여 준다).
@@ -425,7 +448,7 @@ class RadionodeClient:
     def devices_without_mac(self) -> list[str]:
         """`mac` 이 빈 장치의 alias -- `openapi` 로는 **못 묻는 장치**다.
 
-        ⛔ **자격증명과 별개다.**  넷이 다 있어도 `[radionode.hebox]`·
+        ⛔ **자격증명과 별개다.**  자격증명이 다 있어도 `[radionode.hebox]`·
         `[radionode.fsa]` 의 `mac` 이 비면 그 카드는 계속 sentinel 이고,
         그 실패가 *"인터넷/계정 등급"* 으로 보여 오진하기 쉽다
         (`bench_test_plan.md` 1단계 "멈출 조건").  그래서 `STATUS` 와
@@ -537,9 +560,15 @@ class RadionodeClient:
 
         ⚠️ **ini 를 고치지 않는다** -- 재기동하면 ini 값으로 돌아간다.
         상시로 켜 두려면 `[radionode] backend = openapi` 를 적어야 하고,
-        응답이 그 사실을 말한다.  (`EXPENABLE` 과 달리 지속시키지 않는 것이
-        의도다: 자격증명이 ini 에 있어야 켜지는데, 그 상태면 `backend` 도
-        거기 적는 것이 정본이다.)
+        응답이 그 사실을 말한다.  ⭐ ini 가 **이미 `openapi`** 면(`DISCONNECT` 뒤
+        다시 켠 경우) 응답이 그렇다고 말한다 -- 종전에는 런타임 값(`off`)을 찍어
+        *"ini 가 아직 off 라고 한다"* 는 거짓이 나갔다 (2026-09-23, `_boot_backend`).
+        (`EXPENABLE` 과 달리 지속시키지 않는 것이 의도다: 자격증명이 ini 에
+        있어야 켜지는데, 그 상태면 `backend` 도 거기 적는 것이 정본이다.)
+
+        ⛔ **ini 를 다시 읽지 않는다** -- 기동 뒤 ini 에 적은 자격증명은 **재기동**해야
+        들어간다.  그래서 거절 문구가 그 길을 댄다 (안 대면 운영자가 *"방금 적은 값이
+        안 먹는다"* 로 오진한다).
         """
         if self.cfg.backend == 'sim':
             raise RadionodeError(
@@ -556,10 +585,13 @@ class RadionodeClient:
         if miss:
             # ⛔ **문구는 ASCII 로** -- 이 응답은 ICIMACS 와이어로 나가고,
             # 한글을 넣으면 '?' 로 깨져 운영자가 못 읽는다 (2026-09-08 실측).
+            # ⛔ 재기동 안내를 뺄 수 없다 -- `CONNECT` 는 ini 를 다시 읽지 않는다.
             raise RadionodeError(
                 'Missing ini values: %s -- issue them at s2.radionode365.com '
                 '[Customer Info -> API Key/Secret]  manual: '
-                'oa.radionode365.com/apidoc/kr/' % ','.join(miss))
+                'oa.radionode365.com/apidoc/kr/ -- add them to the ini and '
+                'restart ICG (CONNECT does not re-read the ini)'
+                % ','.join(miss))
         if self._spawn is None:
             raise RadionodeError('Poller is not started yet')
         was = self.cfg.backend
@@ -571,9 +603,17 @@ class RadionodeClient:
                      'period %.0fs, %d device(s))', was,
                      self.cfg.poll_period, len(self.cfg.devices),
                      extra={'detail': '⚠️ ini 는 안 고쳤다'})
-            body = ('Polling=on Period=%.0fs Devices=%d (runtime only -- '
-                    'the ini still says backend=%s)'
-                    % (self.cfg.poll_period, len(self.cfg.devices), was))
+            # ⭐ 꼬리는 **ini 값**(`_boot_backend`)으로 만든다 -- `was` 는 런타임 전이라
+            # `DISCONNECT` 뒤면 ini 가 openapi 여도 `off` 다.
+            # ⛔ ini 가 openapi 면 *"runtime only"* 를 붙이지 않는다 -- 재기동해도 폴링하므로
+            # 런타임에만 켜진 것이 아니다 (종전 꼬리는 한 괄호 안에서 제 말을 뒤집었다).
+            if self._boot_backend == 'openapi':
+                tail = 'ini backend=openapi -- a restart polls too'
+            else:
+                tail = ('runtime only -- the ini still says backend=%s'
+                        % self._boot_backend)
+            body = ('Polling=on Period=%.0fs Devices=%d (%s)'
+                    % (self.cfg.poll_period, len(self.cfg.devices), tail))
             no_mac = self.devices_without_mac()
             if no_mac:
                 # ⛔ 켜지기는 한다 -- 그런데 이 장치들은 계속 sentinel 이다.
@@ -617,16 +657,25 @@ class RadionodeClient:
 
 
     def set_enabled(self, alias: str, on: bool) -> bool:
+        """`RADIONODE ENABLE|DISABLE <별칭>` -- 그 장치 하나의 값 반영을 켜고 끈다.
+
+        ⚠️ **`_lock` 안에서 바꾼다** (2026-09-23) -- `local_lns` 는 수신 스레드가
+        `enabled` 를 보고 `_latest` 에 쓰므로, 잠금 없이 끄면 *"수신 스레드가 켜진
+        것을 봄 → 여기서 키를 지움 → 수신 스레드가 값을 다시 적음"* 순서로 **끈
+        장치의 값이 되살아나** 창이 닫힐 때까지 헤더로 나간다.  `_store` 가 같은
+        잠금 안에서 다시 확인한다.
+        """
         if alias not in self.enabled:
             return False
-        self.enabled[alias] = on
-        if not on:
-            # 끄면서 그 장치의 키를 물린다 -- 낡은 값이 남는 것보다 결측이
-            # 정직하다.
-            for dev in self.cfg.devices:
-                if dev.alias == alias:
-                    for k in dev.keys:
-                        self._latest.pop(k, None)
+        with self._lock:
+            self.enabled[alias] = on
+            if not on:
+                # 끄면서 그 장치의 키를 물린다 -- 낡은 값이 남는 것보다 결측이
+                # 정직하다.
+                for dev in self.cfg.devices:
+                    if dev.alias == alias:
+                        for k in dev.keys:
+                            self._latest.pop(k, None)
         return True
 
     async def poll_now(self) -> None:
@@ -718,6 +767,10 @@ class RadionodeClient:
                     by_mac.setdefault(str(row.get('device_mac', '')), []
                                       ).append(row)
             for dev in wanted:
+                if not self.enabled.get(dev.alias, False):
+                    # ⚠️ 받는 동안 `DISABLE` 됐다 -- 담으면 끈 장치의 값이 되살아난다
+                    # (`set_enabled` 가 방금 물린 키를 이 바퀴가 다시 적는다).
+                    continue
                 mine = by_mac.get(dev.mac, [])
                 if not mine:
                     # ⛔ 응답은 왔는데 그 장치가 없다 -- MAC 오타이거나 그
@@ -863,18 +916,19 @@ class RadionodeClient:
                      'device_splrate'):
             if rows and name in rows[0]:
                 extras[name] = rows[0][name]
-        # ⭐ **전송주기를 API 가 알려 준다** -- 계획서 0단계가 운영자에게 물어
-        # `stale_after` 를 3배로 맞추라던 그 값이다.  ⛔ 장치마다 다를 수 있어
+        # ⭐ **전송주기를 API 가 알려 준다** -- `bench_test_plan.md` 0단계가 운영자에게
+        # 물어 `stale_after` 를 3배로 맞추라던 그 값이다.  ⛔ 장치마다 다를 수 있어
         # (실물: 60초 · 600초) **하나의 `stale_after` 로는 둘을 다 못 맞춘다**.
-        # 여기서 고치지 않고 알리기만 한다 -- 문턱은 운영 판단이다.
+        # ⭐ 그래서 **여기서 키별 창(`_window`)을 그 값의 3배로 고친다** -- ini 의
+        # `stale_after` 는 첫 응답까지의 초기값일 뿐이다 (알림은 주기가 바뀔 때 한 번).
         try:
             interval = float(str(extras.get('device_interval', '')).strip())
         except (TypeError, ValueError):
             interval = 0.0
         if interval > 0:
             # ⭐ **읽은 뒤에 창이 정해진다** (운영자 2026-09-08).  손으로 맞추던
-            # 값(계획서 0단계 (a) 4번)을 API 가 알려 주므로, 콘솔에서 주기를
-            # 바꾸면 다음 바퀴에 따라온다.
+            # 값(`bench_test_plan.md` 0단계 (a) 5번 *SEND INTERVAL*)을 API 가 알려
+            # 주므로, 콘솔에서 주기를 바꾸면 다음 바퀴에 따라온다.
             new = interval * 3
             for key in dev.keys:
                 self._window[key] = new
@@ -927,7 +981,7 @@ class RadionodeClient:
                             extra={'detail': '[radionode.<별칭>] deveui 를 적을 것'})
             return
         if not self.enabled.get(dev.alias, True):
-            return                              # RADIONODE DISABLE 된 장치
+            return                              # RADIONODE DISABLE 된 장치 (빠른 길)
         obj = uplink_object(msg)
         if obj is None:
             self.last_err[dev.alias] = 'no decoded object (codec on the NS?)'
@@ -937,16 +991,33 @@ class RadionodeClient:
                                          '올라가 있는지 볼 것.  ⛔ 원문 base64 를 '
                                          '우리가 짐작으로 자르지 않는다'})
             return
-        self._store(dev, obj)
-        self.last_ok[dev.alias] = time.monotonic()
-        self._last_try[dev.alias] = 'ok'
+        stored = self._store(dev, obj)
+        if stored is None:
+            return                              # 그새 DISABLE 됐다 (`_store` 주석)
+        # ⭐ **결과대로 적는다** (2026-09-23) -- 종전에는 `_store` 가 아무것도 못
+        # 담아도 `ok` 로 적어 `STATUS` 가 `ok 0s ago` 를 보이고 이유를 가렸다.
+        # openapi 의 `_store_channels` 와 같은 모양이다.
+        if stored:
+            self.last_ok[dev.alias] = time.monotonic()
+            self._last_try[dev.alias] = 'ok'
+        else:
+            self._last_try[dev.alias] = 'err'
 
-    def _store(self, dev, sample: dict) -> None:  # noqa: ANN001
+    def _store(self, dev, sample: dict) -> bool | None:  # noqa: ANN001
+        """uplink 의 복호 값(`object`)을 `_latest` 에 담는다 -- `take_uplink` 전용.
+
+        담았으면 `True`(옛 `last_err` 를 지운다), 쓸 필드가 없으면 `False`(이유를
+        `last_err` 에), ⚠️ **그새 `DISABLE` 됐으면 `None`** 이다 -- `enabled` 를
+        **담는 잠금 안에서 다시 본다** (`set_enabled` 주석의 경주).  부분 필드
+        (온도만 있음)는 성공으로 친다 (openapi 와 같은 규칙).
+        """
         now = time.monotonic()
         temp = self._pick(sample, ('temperature', 'temp', 'ch1', 'value1'))
         hum = self._pick(sample, ('humidity', 'hum', 'ch2', 'value2'))
         got = []
-        with self._lock:                    # ⚠️ 수신 스레드에서도 불린다
+        with self._lock:                    # ⚠️ 수신 스레드에서 불린다
+            if not self.enabled.get(dev.alias, True):
+                return None
             for key in dev.keys:
                 val = hum if key.endswith('hum') else temp
                 if val is None:
@@ -954,8 +1025,13 @@ class RadionodeClient:
                 self._latest[key] = (val, now)
                 got.append(key)
         if not got:
-            self.last_err[dev.alias] = 'no usable fields in response'
-            log.warning('radionode %s: no temperature/humidity in the reply '
-                        '-- keys: %s', dev.alias,
+            self.last_err[dev.alias] = 'no usable fields in the uplink object'
+            log.warning('lns uplink %s has no temperature/humidity -- keys: %s',
+                        dev.alias,
                         ', '.join(list(sample)[:8]) if isinstance(sample, dict)
-                        else type(sample).__name__)
+                        else type(sample).__name__,
+                        extra={'detail': '게이트웨이 NS 코덱 출력의 필드 이름을 '
+                                         '볼 것'})
+            return False
+        self.last_err.pop(dev.alias, None)
+        return True

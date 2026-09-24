@@ -90,7 +90,7 @@ def test_help_renders(sections):
 
 
 # ---------------------------------------------------------------------------
-# `[logging] verbose` -- 화면만 간결, **파일은 언제나 전부** (2026-09-11)
+# `[behavior] verbose` -- 화면만 간결, **파일은 언제나 전부** (2026-09-11)
 # ---------------------------------------------------------------------------
 
 def _fmt(record, *, with_detail):  # noqa: ANN001, ANN202
@@ -329,3 +329,35 @@ def test_our_own_echo_is_not_logged_twice(tmp_path, caplog):  # noqa: ANN001
     assert 'abc>ICS go 1' in lines
     assert not [ln for ln in lines if 'PCTREAD=41' in ln or ln == 'ICS>K.IC GO'
                 or 'Queried ICG' in ln], lines
+
+
+def test_the_send_path_marks_our_internal_lines_as_chatter(tmp_path, caplog):  # noqa: ANN001
+    """⭐ verbose off 화면을 실제로 가르는 것은 **발신 로그 레코드의 `essential`** 이다.
+
+    `essential_wire()` 는 순수 함수라 위 시험이 `ours` 를 손으로 넘긴다.  ⛔ 그런데
+    발신 경로(`UdpEndpoint.send`)는 `ours` 를 `cfg.node.all_node_ids` 에서
+    **`getattr` 로** 가져와서, 그 배선이 끊기면 조용히 `()` 로 떨어지고
+    `ICS>K.IC GO` 같은 우리끼리 도는 줄이 간결 화면에 되살아난다.  수신 경로는
+    우리 노드가 보낸 줄을 자기 에코로 먼저 거르므로 `ours` 가 효과를 내는 곳은
+    **발신 경로뿐**이다 -- 여기서 그 배선을 못박는다.
+    """
+    import logging
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+    from test_ics_ops_commands import make_cfgs
+    from ics_sim.transport import UdpEndpoint
+    cfg, _acfg = make_cfgs(tmp_path, 4242)
+    cfg.logging.wire = True                       # 하네스 ini 는 꺼 둔다
+    assert cfg.node.all_node_ids, '배선의 원천이 비어 있으면 이 시험이 뜻이 없다'
+    ep = UdpEndpoint(cfg, lambda msg, addr: None)
+    caplog.set_level(logging.INFO, logger='ics_sim.transport')
+    ep.send(b'ICS>K.IC GO\r', 'K.IC')
+    ep.send(b'K.IC>OBS DONE: GO Wrote LASTFILE=/x.fits\r', 'OBS')
+    ep.send(b'ICS>ICG HKDATA NOW\r', 'ICG')
+    ep.send(b'ICS>ICS DONE: HKDATA Queried ICG\r', 'ICS')
+    got = {r.getMessage(): r.essential for r in caplog.records
+           if r.name == 'ics_sim.transport'}
+    assert got['ICS>K.IC GO'] is False, got              # 우리끼리 -- 잡음
+    assert got['K.IC>OBS DONE: GO Wrote LASTFILE=/x.fits'] is True, got
+    assert got['ICS>ICG HKDATA NOW'] is True, got
+    # 키보드 줄은 `_trim_keyboard` 가 앞머리를 떼고 남긴다
+    assert got['DONE: HKDATA Queried ICG'] is True, got

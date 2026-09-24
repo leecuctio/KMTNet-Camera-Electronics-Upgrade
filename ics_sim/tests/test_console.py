@@ -16,8 +16,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
+
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -163,6 +166,148 @@ def test_remote_needs_a_body():
     assert not con.app.transport.sent
 
 
+def test_remote_is_one_line_on_screen_when_the_wire_log_is_on(capsys):  # noqa: ANN001
+    """⛔ **한 메시지는 화면에 한 줄** -- 와이어 로그가 켜져 있으면 `transport.send`
+    가 이미 그 줄을 냈으므로 콘솔은 **아무것도 안 찍는다** (종전에는 `  >>> …` 를
+    또 찍어 두 줄이 됐다)."""
+    import logging
+    con, _app = _console()
+    capsys.readouterr()                           # 조립 중 출력은 버린다
+    con.app.cfg.logging.wire = True
+    logger = logging.getLogger('ics_sim.transport')
+    saved = logger.level
+    logger.setLevel(logging.INFO)
+    try:
+        assert con.send_remote('TC', 'status') == 'ICS>TC status'
+    finally:
+        logger.setLevel(saved)
+    assert capsys.readouterr().out == ''
+
+
+def test_remote_prints_one_plain_line_when_the_wire_log_is_off(capsys):  # noqa: ANN001
+    """와이어 로그가 꺼져 있으면 발신 확인이 화면에 하나도 없으므로 콘솔이 한 줄
+    낸다 -- ⛔ 방향 표시(`>>>`) 없이 (운영자 2026-09-08)."""
+    con, _app = _console()
+    capsys.readouterr()                           # 조립 중 출력은 버린다
+    con.app.cfg.logging.wire = False
+    assert con.send_remote('TC', 'status') == 'ICS>TC status'
+    out = capsys.readouterr().out
+    assert out.strip() == 'ICS>TC status', out
+    assert '>>>' not in out
+
+
+class _Screen(logging.Handler):
+    """화면 처리기 흉내 -- `EssentialOnly` 필터를 지나 **화면에 나갈** 로그 줄을 모은다."""
+
+    def __init__(self, flt) -> None:  # noqa: ANN001
+        super().__init__(logging.INFO)
+        self.addFilter(flt)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:  # noqa: D102
+        self.lines.append(record.getMessage())
+
+
+@pytest.mark.parametrize('dest, rest, verbose', [
+    ('TC', 'TCSSTATUS', False),
+    ('TC', 'AUXSTATUS', False),
+    ('XIS', 'PING', False),
+    ('TC', 'status', False),                 # 함축 줄 -- 와이어 로그가 한 줄 낸다
+    ('TC', 'TCSSTATUS', True),               # 자세한 화면 -- 와이어 로그가 한 줄 낸다
+])
+def test_remote_is_one_line_on_screen_whatever_the_verbosity(  # noqa: ANN001
+        monkeypatch, capsys, dest, rest, verbose):
+    """⛔ **간결한 화면에서 잡음 줄을 보내도 화면에 한 줄은 남는다** (2026-09-23 발견).
+
+    출하값 `[behavior] verbose = off` + `[logging] wire = true` 에서 콘솔의
+    `>TC TCSSTATUS`·`>TC AUXSTATUS`·`>XIS PING` 이 화면에 **아무것도 안 남겼다** --
+    와이어 로그 줄은 잡음(`CHATTER_WORDS`)이라 화면 필터가 막고, 콘솔은 *"와이어
+    로그가 이미 찍었다"* 고 보고 제 줄을 건너뛰었다.
+    ⭐ 여기서는 운영자가 친 꼴 그대로(`>TC TCSSTATUS`) **`Console.feed`** 에 넣고,
+    **진짜 `UdpEndpoint.send`** 가 로그를 낸다.  화면 필터(`EssentialOnly`)를 지난
+    로그 줄과 콘솔의 stdout 을 **합쳐** 정확히 한 줄인지 본다.
+    """
+    from ics_sim import __main__ as sim_main
+
+    app = IcsSim(make_config(transport__xis_host='127.0.0.1'))
+    app.cfg.logging.wire = True
+    con = console.Console(app)
+    flt = sim_main.EssentialOnly()
+    flt.enabled = not verbose
+    monkeypatch.setattr(sim_main, '_SCREEN_FILTER', flt)
+    screen = _Screen(flt)
+    logger = logging.getLogger('ics_sim.transport')
+    saved = logger.level
+    logger.setLevel(logging.INFO)
+    logger.addHandler(screen)
+    capsys.readouterr()                           # 조립 중 출력은 버린다
+    try:
+        con.feed('>%s %s' % (dest, rest))
+    finally:
+        logger.removeHandler(screen)
+        logger.setLevel(saved)
+    want = 'ICS>%s %s' % (dest, rest)
+    assert app.transport.sent_log == [want]
+    printed = [s.strip() for s in capsys.readouterr().out.splitlines() if s.strip()]
+    assert len(screen.lines) + len(printed) == 1, (screen.lines, printed)
+    assert (screen.lines + printed) == [want], (screen.lines, printed)
+
+
+def test_python_dash_m_keeps_one_copy_of_the_main_module():
+    """⛔ `python -m ics_sim` 에서 `ics_sim.__main__` 이 **한 벌만** 있어야 한다 (2026-09-23).
+
+    `-m` 으로 띄우면 `__main__.py` 는 `__main__` 이라는 이름으로 돈다.  그때
+    `from .__main__ import verbose_state`(`commands.cmd_verbose` ·
+    `Console._wire_line_shown`)가 그 파일을 **새로 한 벌 더** 읽으면, 그 사본의
+    `_SCREEN_FILTER` 는 빈 값이라 `VERBOSE OFF` 가 아무것도 안 바꾸고 콘솔은 늘
+    *"자세한 화면"* 으로 본다.  ⭐ 돌고 있는 모듈이 그 이름으로도 올라가 있는지 본다.
+    """
+    import subprocess
+    code = (
+        'import contextlib, io, runpy, sys\n'
+        "sys.argv = ['ics_sim', '--help']\n"
+        'try:\n'
+        '    with contextlib.redirect_stdout(io.StringIO()):\n'
+        "        runpy.run_module('ics_sim', run_name='__main__', alter_sys=True)\n"
+        'except SystemExit:\n'
+        '    pass\n'
+        "print(sys.modules['ics_sim.__main__'].__name__)\n")
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    run = subprocess.run([sys.executable, '-c', code], cwd=root,
+                         capture_output=True, text=True, timeout=120)
+    assert run.stdout.strip() == '__main__', (run.stdout, run.stderr)
+
+
+def test_the_old_logging_verbose_key_is_warned_not_read(tmp_path, caplog):  # noqa: ANN001
+    """⚠️ 옛 자리(`[logging] verbose`)의 값은 **안 읽고, 불러 올 때 한 번 알린다**.
+
+    2026-09-11 에 `[behavior] verbose` 로 옮겼다.  ⛔ 조용히 지나가면 `off` 로
+    적어 둔 운영자가 켜진 화면을 본다 -- `[node]` 의 옛 키(`site`/`telid`/
+    `site_from_ip`)와 같은 대접이다 (`config.load`).
+    """
+    from ics_sim import config
+
+    def load(text):  # noqa: ANN001, ANN202
+        path = tmp_path / 'v.ini'
+        path.write_text(text, encoding='utf-8')
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='ics_sim.config'):
+            cfg = config.load(str(path))
+        hits = [r for r in caplog.records
+                if r.name == 'ics_sim.config'
+                and '[logging] verbose' in r.getMessage()]
+        return cfg, hits
+
+    cfg, hits = load('[logging]\nverbose = off\n')
+    assert cfg.behavior.verbose is True          # 옛 자리의 `off` 는 안 먹는다
+    assert len(hits) == 1, [r.getMessage() for r in caplog.records]
+    assert '[behavior] verbose' in hits[0].getMessage()
+    assert '2026-09-11' in hits[0].detail
+    # 새 자리에만 적으면 조용하다.
+    cfg, hits = load('[behavior]\nverbose = off\n\n[logging]\nwire = true\n')
+    assert cfg.behavior.verbose is False and not hits
+
+
 def test_bare_gt_is_rejected():
     con, _app = _console()
     con.feed('>')
@@ -260,26 +405,36 @@ class _Loop(console.Console):
             self.stop()
 
 
-def _drive(monkeypatch, lines, tty):  # noqa: ANN001, ANN202
-    """`lines` 를 콘솔에 먹이고 (본 줄, 프롬프트들) 을 돌려준다."""
+def _drive(monkeypatch, lines, tty, cls=None):  # noqa: ANN001, ANN202
+    """`lines` 를 콘솔에 먹이고 (본 줄, 프롬프트들) 을 돌려준다.
+
+    `lines` 에 **예외 객체**가 오면 그 차례에 입력 쪽이 그것을 던진다 -- 입력
+    실패 갈래(`input failed: …`)를 흉내 낸다.  `cls` 는 `_Loop` 의 하위 클래스.
+    """
     left = list(lines)
     prompts = []
+
+    def _next():  # noqa: ANN202
+        item = left.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
 
     def _input(prompt=''):  # noqa: ANN001, ANN202
         prompts.append(prompt)
         if not left:
             raise EOFError
-        return left.pop(0)
+        return _next()
 
     def _readline():  # noqa: ANN202
-        return left.pop(0) if left else ''
+        return _next() if left else ''
 
     monkeypatch.setattr('builtins.input', _input)
     monkeypatch.setattr(console.sys.stdin, 'isatty', lambda: tty,
                         raising=False)
     monkeypatch.setattr(console.sys.stdin, 'readline', _readline,
                         raising=False)
-    con = _Loop()
+    con = (cls or _Loop)()
     asyncio.run(con.run())
     return con.seen, prompts
 
@@ -319,6 +474,79 @@ def test_the_active_prompt_is_cleared_when_not_waiting(monkeypatch):
     """
     _drive(monkeypatch, ['quit'], tty=True)
     assert console.ACTIVE_PROMPT == '', console.ACTIVE_PROMPT
+
+
+# ⭐ **왜 끝났는지 말한다** (벤치 2026-09-15: 콘솔이 *"아무 메시지 없이"* 끝나
+# 프로그램이 내려갔다 -- imagetyp 무언 종료).  원인을 좇는 단서가 종료 사유 한 줄
+# `console closed (…)` 뿐이라, 그 줄의 사유 넷과 "명령 하나의 예외로 안 죽는다" 를
+# 여기서 못박는다.  ⚠️ 이 문면은 인수인계 문서가 운영자에게 보라고 인용한다.
+
+class _Boom(_Loop):
+    """`boom` 에서 예외를 던지는 콘솔 -- 명령 하나의 실패를 흉내 낸다."""
+
+    def feed(self, line: str) -> None:
+        if line == 'boom':
+            self.seen.append(line)
+            raise RuntimeError('boom')
+        super().feed(line)
+
+
+def _closed_reasons(caplog):  # noqa: ANN001, ANN202
+    return [r.getMessage() for r in caplog.records
+            if r.name == 'ics_sim.console'
+            and r.getMessage().startswith('console closed (')]
+
+
+def test_one_failing_command_does_not_end_the_console(monkeypatch, caplog):  # noqa: ANN001
+    """⛔ 명령 하나가 던진 예외로 콘솔(과 프로그램)이 죽지 않는다 -- 원문과 스택을
+    ERROR 로 남기고 다음 줄을 받는다."""
+    import logging
+    with caplog.at_level(logging.INFO, logger='ics_sim.console'):
+        seen, _prompts = _drive(monkeypatch, ['boom', 'hk', 'quit'], tty=True,
+                                cls=_Boom)
+    assert seen == ['boom', 'hk', 'quit'], seen
+    failed = [r for r in caplog.records
+              if r.name == 'ics_sim.console' and r.levelno == logging.ERROR
+              and "console command failed -- 'boom'" in r.getMessage()]
+    assert len(failed) == 1, [r.getMessage() for r in caplog.records]
+    assert failed[0].exc_info, '스택이 남아야 원인을 좇는다'
+    assert _closed_reasons(caplog) == [
+        'console closed (quit) -- the program shuts down']
+
+
+@pytest.mark.parametrize('lines, tty, why', [
+    (['hk'], True, 'EOF (Ctrl-D)'),
+    (['hk\n'], False, 'stdin EOF'),
+    (['quit'], True, 'quit'),
+    (['exit'], True, 'quit'),
+    (['QUIT'], True, 'quit'),
+    (['EXIT\n'], False, 'quit'),
+    ([RuntimeError('lost sys.stdin')], True,
+     'input failed: RuntimeError: lost sys.stdin'),
+    ([ValueError('I/O operation on closed file')], False,
+     'input failed: ValueError: I/O operation on closed file'),
+    ([OSError(5, 'Input/output error')], True,
+     'input failed: OSError: [Errno 5] Input/output error'),
+    ([OSError(9, 'Bad file descriptor')], False,
+     'input failed: OSError: [Errno 9] Bad file descriptor'),
+])
+def test_the_console_says_why_it_closed(monkeypatch, caplog, lines, tty, why):  # noqa: ANN001
+    """종료 사유 한 줄 -- 종료 명령 · EOF(TTY 는 Ctrl-D, 파이프는 빈 읽기) · 입력 예외.
+
+    ⭐ 종료 낱말은 **진짜 `Console.feed`** 가 처리한다 -- 대소문자를 안 가리는
+    판정(`low in ('quit', 'exit')`)과 `stop()` 까지가 시험 대상이다.
+    """
+    class _Exit(_Loop):
+        def feed(self, line: str) -> None:
+            self.seen.append(line)
+            if line.lower() in ('quit', 'exit'):
+                console.Console.feed(self, line)
+
+    with caplog.at_level(logging.INFO, logger='ics_sim.console'):
+        _drive(monkeypatch, lines, tty=tty, cls=_Exit)
+    assert _closed_reasons(caplog) == [
+        'console closed (%s) -- the program shuts down' % why], (
+        [r.getMessage() for r in caplog.records])
 
 
 # -- 로그 한 줄의 꼴 -------------------------------------------------------

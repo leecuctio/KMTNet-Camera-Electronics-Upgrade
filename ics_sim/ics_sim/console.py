@@ -41,6 +41,7 @@ except ImportError:            # pragma: no cover -- Windows 기본 파이썬엔
 
 from . import impv2
 from .impv2 import parse_line
+from .transport import essential_wire
 
 log = logging.getLogger('ics_sim.console')
 
@@ -386,9 +387,13 @@ class Console:
         if tty:
             self._load_history()
         # ⛔ **왜 끝났는지 말한다** (벤치 2026-09-15: 콘솔이 *"아무 메시지 없이"*
-        # 끝나 프로그램이 내려갔다).  루프를 빠져나가는 길은 넷 -- 종료 명령·EOF·
-        # 입력 예외·중단 -- 이고 어느 길이든 로그에 한 줄은 남아야 원인을 좇는다.
-        why = 'stop requested'
+        # 끝나 프로그램이 내려갔다).  루프가 스스로 끝나는 길은 셋 -- 종료 명령·
+        # EOF·입력 예외 -- 이고 어느 길이든 로그에 한 줄은 남아야 원인을 좇는다.
+        # ⚠️ 중단(`KeyboardInterrupt`·태스크 취소)은 이 줄 없이 밖으로 나간다
+        # (지금은 부른 쪽 `__main__.amain` 도 조용히 삼킨다).
+        # ⭐ 시작값이 `quit` 인 이유: `stop()` 을 부르는 곳이 `feed()` 의 종료
+        # 명령 하나뿐이다 -- 바깥 호출자가 생기면 여기서 사유를 가른다.
+        why = 'quit'
         while not self._stop.is_set():
             try:
                 if tty:
@@ -403,7 +408,10 @@ class Console:
             except EOFError:                        # Ctrl-D
                 why = 'EOF (Ctrl-D)'
                 break
-            except (RuntimeError, ValueError) as exc:
+            except (RuntimeError, ValueError, OSError) as exc:
+                # ⚠️ `OSError` 도 여기다 -- 단말이 끊기거나(`EIO`) 표준 입력 핸들이
+                # 무효가 되면 `input()`·`readline()` 이 그것을 던진다.  안 잡으면
+                # 종료 사유 줄 없이 콘솔 태스크가 죽는다.
                 why = 'input failed: %s: %s' % (type(exc).__name__, exc)
                 break
             # ⚠️ 빈 줄은 **EOF 가 아니다** -- `input()` 은 그냥 Enter 에도 `''`
@@ -414,8 +422,6 @@ class Console:
                 self.feed(line.strip())
             except Exception:                       # noqa: BLE001
                 log.exception('console command failed -- %r', line.strip())
-        if self._stop.is_set() and why == 'stop requested':
-            why = 'quit'
         log.info('console closed (%s) -- the program shuts down', why)
         self._save_history()
 
@@ -499,5 +505,36 @@ class Console:
                   % dest)
             return ''
         self.app.transport.send(payload, dest)
-        print('  >>> %s' % line)
+        # ⭐ **한 메시지는 화면에 한 줄** -- 와이어 로그가 켜져 있으면
+        # `transport.send` 가 이미 그 줄을 냈다(여기서 또 찍으면 두 줄이 된다 --
+        # DevNote 11.94-l 의 `_on_hkdata` 와 같은 원칙).  방향 표시(`>>>`)도 안
+        # 쓴다 (운영자 2026-09-08, DevNote 11.45(5)).
+        # ⚠️ 와이어 로그가 꺼져 있거나, `[logging] level` 이 INFO 를 막거나,
+        # 간결한 화면이 그 줄을 잡음으로 거르면 화면에 발신 확인이 하나도 안
+        # 남으므로, 그때만 여기서 한 줄 낸다.
+        if not self._wire_line_shown(line):
+            print('  %s' % line)
         return line
+
+    def _wire_line_shown(self, line: str) -> bool:
+        """`transport.send` 가 낸 와이어 로그 줄 `line` 이 **화면에 실제로 나가는가**.
+
+        ⭐ 셋이 다 맞아야 나간다 -- 와이어 로그가 켜져 있고(`[logging] wire`),
+        `ics_sim.transport` 로거가 INFO 를 내고, 간결한 화면(`verbose = off`)이면
+        그 줄이 함축 메시지여야 한다(`transport.essential_wire`).
+        ⛔ 셋째를 안 보면 `>TC TCSSTATUS`·`>TC AUXSTATUS`·`>XIS PING` 이 화면에
+        **아무것도 안 남긴다** -- 와이어 줄은 잡음이라 화면 필터(`EssentialOnly`)가
+        막고, 콘솔은 *"이미 찍혔다"* 고 보고 제 줄을 건너뛴다 (2026-09-23 발견).
+        ⚠️ 간결한 화면인지는 `__main__.verbose_state()` 에 묻는다 -- `VERBOSE`
+        명령(`commands.cmd_verbose`)이 미는 바로 그 스위치다.
+        """
+        wire = getattr(getattr(self.app.cfg, 'logging', None), 'wire', False)
+        if not (bool(wire) and logging.getLogger(
+                'ics_sim.transport').isEnabledFor(logging.INFO)):
+            return False
+        from .__main__ import verbose_state
+        if verbose_state():
+            return True
+        ours = tuple(getattr(getattr(self.app.cfg, 'node', None),
+                             'all_node_ids', ()) or ())
+        return essential_wire(line, ours)

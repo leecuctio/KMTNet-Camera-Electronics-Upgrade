@@ -536,6 +536,36 @@ def test_the_gauge_query_says_where_the_answer_came_from(tmp_path):  # noqa: ANN
     assert any('Origin=' in s and 'Method=diopower' in s for s in said), said
 
 
+@pytest.mark.parametrize('reply_error, left', [
+    (True, 'OFF'),          # `?xx` 거부 -- 적용 안 됨이 확실 -> 직전 상태로 되돌렸다
+    (False, 'UNKNOWN'),     # 응답 유실 -- 적용했는지 모른다
+])
+def test_a_failed_vacgauge_says_which_state_it_left(tmp_path, reply_error, left):  # noqa: ANN001
+    """⭐ 실패 응답이 **남은 상태 낱말**을 댄다 -- `Failed: <이유> (Gauge=<낱말>)` (2026-09-24).
+
+    `gauge.set()` 은 실패한 자리에 따라 직전 상태로 되돌리거나 모름으로 둔다 -- 둘은 할
+    일이 다르다 (되돌렸으면 다시 치면 되고, 모르면 게이지가 켜졌을 수 있다).  종전
+    `Failed: <이유>` 만으로는 ICS·운영자가 그 둘을 못 갈랐다.
+    ⚠️ 와이어 문구라 ASCII 다 (가짜의 한글 사유는 `?` + `(see log)` 로 나간다).
+    """
+    from test_icg_heater_gauge import RecordingCtrl
+
+    ctrl = RecordingCtrl()
+    ctrl.fail_on, ctrl.fail_reply_error = 'APPLYDIO', reply_error
+
+    def before(app):  # noqa: ANN001, ANN202
+        app.guide.ctrl = ctrl
+        app.hk.ctrl = None
+        app.gauge.on, app.gauge.origin = False, 'rconfig'   # 되읽어 꺼진 것을 안다
+
+    _app, sent = _drive_lines(tmp_path, ['abc>ICG VACGAUGE ON'], before=before)
+    said = [s for s in sent if 'ERROR: VACGAUGE' in s]
+    assert len(said) == 1, sent[-4:]
+    assert said[0].isascii(), said
+    assert ' ERROR: VACGAUGE Failed: ' in said[0], said
+    assert said[0].endswith('(Gauge=%s)' % left), said
+
+
 def test_the_new_heater_commands_check_their_argument_count(tmp_path):  # noqa: ANN001
     """⛔ 모자란 것도 남는 것도 **거부한다** -- 조용히 버리지 않는다.
 
@@ -609,6 +639,8 @@ def test_radionode_connect_names_what_is_missing(tmp_path):  # noqa: ANN001
         assert any(key in s for s in said), (key, said)
     # base_url 은 ini 가 이미 채운다 -- "없는 것" 목록에 나오면 안 된다.
     assert not any('base_url' in s for s in said), said
+    # ⛔ **재기동하라고 말한다** (2026-09-23) -- `CONNECT` 는 ini 를 다시 읽지 않는다.
+    assert any('restart ICG' in s for s in said), said
     for line in said:
         line.encode('ascii')            # 깨지면 여기서 UnicodeEncodeError
 
@@ -616,12 +648,16 @@ def test_radionode_connect_names_what_is_missing(tmp_path):  # noqa: ANN001
 def test_radionode_connect_with_an_alias_is_the_device_branch(tmp_path):  # noqa: ANN001
     """⭐ **인자 유무로 뜻이 갈린다** -- 있으면 그 장치 하나다.
 
-    ⚠️ 한 낱말이 두 뜻이라 응답이 어느 쪽인지 말해야 한다.  ini 기본이
-    `backend=off` 라 장치 갈래는 *"먼저 CONNECT 하라"* 로 거절된다.
+    ⚠️ 한 낱말이 두 뜻이라 응답이 어느 쪽인지 말해야 한다 -- 거절 문구가 장치 갈래의
+    것(*"nothing to enable or disable"*)이어야 한다.  배포 ini 는 `openapi` 인데 키가
+    비어 기동이 `off` 로 내리므로 꼬리는 **재기동 안내**다 (2026-09-23 -- 종전
+    *"먼저 CONNECT 하라"* 는 이 상태에서 `CONNECT` 가 늘 거절되는 틀린 길이었다).
     """
     _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE CONNECT hebox'])
     said = [s for s in sent if 'RADIONODE' in s]
-    assert any('ERROR' in s and 'CONNECT first' in s for s in said), said
+    assert any('ERROR' in s and 'nothing to enable or disable' in s
+               and 'credentials missing' in s for s in said), said
+    assert not any('CONNECT first' in s for s in said), said
 
 
 def test_radionode_status_says_why_nothing_is_coming_in(tmp_path):  # noqa: ANN001
@@ -632,11 +668,86 @@ def test_radionode_status_says_why_nothing_is_coming_in(tmp_path):  # noqa: ANN0
     assert any('missing' in s for s in said), said
 
 
+def _with_credentials(app):  # noqa: ANN001, ANN202
+    """`before` -- 자격증명이 **있는** `off` (ini 에 키를 적고 `backend = off` 로 둔 설치본)."""
+    app.radionode.cfg.api_key = 'KEY'
+    app.radionode.cfg.api_secret = 'SECRET'
+    assert app.radionode.cfg.backend == 'off' and not app.radionode.missing_credentials()
+
+
 def test_radionode_reconnect_points_at_connect(tmp_path):  # noqa: ANN001
-    """`RECONNECT` 는 **주기를 안 기다리는 것**이지 켜는 것이 아니다."""
-    _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE RECONNECT'])
+    """`RECONNECT` 는 **주기를 안 기다리는 것**이지 켜는 것이 아니다.
+
+    ⭐ 자격증명이 있는 `off` 라야 *"먼저 CONNECT"* 가 맞는 길이다 -- 없으면 아래 시험.
+    """
+    _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE RECONNECT'],
+                              before=_with_credentials)
     said = [s for s in sent if 'RADIONODE' in s]
-    assert any('ERROR' in s and 'RADIONODE CONNECT' in s for s in said), said
+    assert any('ERROR' in s and 'use RADIONODE CONNECT first' in s for s in said), said
+
+
+def test_radionode_off_without_credentials_points_at_the_ini(tmp_path):  # noqa: ANN001
+    """⛔ 자격증명이 없는 `off` 에 *"먼저 CONNECT"* 는 **틀린 안내다** (2026-09-23).
+
+    `connect()` 가 `Missing ini values` 로 거절하고 ini 를 다시 읽지 않으므로, 안내대로
+    `CONNECT` 해도 같은 자리를 돈다.  맞는 길은 **ini 에 적고 재기동**이다.  ⭐ 배포 ini
+    (`openapi`, 키 빈 칸)가 기동에서 `off` 로 내려가 첫 구동에서 실제로 만나는 갈래다.
+    ⚠️ 와이어로 나가는 문구라 ASCII 여야 한다.
+    """
+    app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE RECONNECT',
+                                        'abc>ICG RADIONODE DISABLE hebox'])
+    assert app.radionode.cfg.backend == 'off' and app.radionode.missing_credentials()
+    said = [s for s in sent if 'ERROR: RADIONODE' in s]
+    assert len(said) == 2, sent
+    assert all(s.endswith('(credentials missing -- add them to the ini and '
+                          'restart ICG)') for s in said), said
+    assert not any('CONNECT first' in s for s in said), said
+    for line in said:
+        line.encode('ascii')
+    assert app.radionode.enabled['hebox'] is True, '거절했는데 장치를 껐다'
+
+
+def _as_backend(name):  # noqa: ANN001, ANN202
+    """기동 뒤 radionode 백엔드를 갈아 끼우는 `before` -- 명령 갈래만 본다 (수신기는 안 띄운다)."""
+    def before(app):  # noqa: ANN001, ANN202
+        app.radionode.cfg.backend = name
+    return before
+
+
+def test_radionode_device_branch_works_on_local_lns(tmp_path):  # noqa: ANN001
+    """⭐ `local_lns` 에서도 `DISABLE`/`ENABLE <별칭>` 이 **먹는다** (2026-09-23).
+
+    ⛔ 종전에는 이 갈래가 openapi 만 받아 *"CONNECT 부터"* 로 거절했는데, `local_lns` 의
+    `CONNECT` 는 수신기만 띄우고 backend 를 그대로 두므로 안내대로 해도 같은 거절이
+    되풀이됐다 -- 수신 경로가 보는 `enabled` 표를 바꿀 길이 없었다.
+    ⛔ `RECONNECT` 는 push 라 칠 곳이 없다 -- `Polling now` 도, CONNECT 안내도 거짓이다.
+    """
+    app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE DISABLE hebox',
+                                        'abc>ICG RADIONODE RECONNECT'],
+                             before=_as_backend('local_lns'))
+    said = [s for s in sent if 'RADIONODE' in s]
+    assert any(s.endswith('DONE: RADIONODE Device=hebox disabled') for s in said), said
+    assert app.radionode.enabled['hebox'] is False
+    rec = [s for s in said if 'ERROR' in s and 'local_lns' in s]
+    assert rec and 'pushed by the gateway' in rec[-1], said
+    assert not any('CONNECT first' in s or 'Polling now' in s for s in said), said
+    assert app.emit.violations == [], app.emit.violations
+
+
+def test_radionode_on_sim_does_not_point_at_connect(tmp_path):  # noqa: ANN001
+    """⛔ `sim` 에 *"CONNECT 부터"* 는 틀린 안내다 -- `connect()` 가 sim 을 거절한다.
+
+    고정값 백엔드라 바꾸는 길은 ini 의 `backend` 하나다 -- 거절 문구가 그 길을 댄다.
+    """
+    _app, sent = _drive_lines(tmp_path, ['abc>ICG RADIONODE DISABLE hebox',
+                                         'abc>ICG RADIONODE RECONNECT'],
+                              before=_as_backend('sim'))
+    said = [s for s in sent if 'ERROR: RADIONODE' in s]
+    assert len(said) == 2, sent
+    assert all('edit [radionode] backend in the ini' in s for s in said), said
+    # ⭐ 재기동도 댄다 -- `backend` 는 기동에서만 읽는다 (2026-09-23).
+    assert all(s.endswith('and restart ICG)') for s in said), said
+    assert not any('CONNECT first' in s for s in said), said
 
 
 def test_the_startup_banner_shows_a_guide_filename(tmp_path):

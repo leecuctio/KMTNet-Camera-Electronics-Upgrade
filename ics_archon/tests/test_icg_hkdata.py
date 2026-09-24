@@ -333,3 +333,22 @@ def test_the_heater_three_are_omitted_when_the_poll_has_nothing():
     got = _kv(_body(dict(FULL)))
     for k in ('HTREN', 'HTRSET', 'HTRFORCE'):
         assert k not in got, (k, got)
+
+
+def test_the_console_help_shows_that_hk_and_hkdata_take_now():
+    """⭐ ICG 콘솔 도움말이 `hk [now]`·`hkdata [now]` 를 보여야 한다.
+
+    두 명령은 `NOW` 를 받고(`commands._hk_reply`), `HKDATA NOW` 는 ICS 가 `GO`
+    마다 보내는 바로 그 형식이다.  ⛔ 종전 도움말은 `hk`·`hkdata` 만 적어서,
+    `bench_test_plan.md` 가 ICG 콘솔에서 치라고 시키는 `hkdata now` 가 표에
+    안 보였다 -- 바로 아래 `c1hkdata [now]`·`c1hk [now]` 와도 표기가 어긋났다.
+    ⚠️ `tests/test_console.py` 의 명령표 대조는 **첫 토큰만** 보므로 이 누락을
+    못 잡는다 -- 그래서 표기 전체를 여기서 본다.
+    """
+    from icg_archon.app import IcgArchon
+
+    rows = {syntax.split()[0]: syntax
+            for _title, entries in IcgArchon.console_help(None)
+            for syntax, _desc in entries}
+    assert rows['hk'] == 'hk [now]', rows['hk']
+    assert rows['hkdata'] == 'hkdata [now]', rows['hkdata']

@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """Raw FITS pair — 이름·번호·충돌 처리 (D-010/D-011/D-012/**D-016**/**D-019**).
 
-규격: `raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v1.9.md` 2장,
-`mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v4.1.md` 2.1·3절.
+규격: 현행 raw spec(`raw_fits_spec/KMT_CEU_Raw_FITS_Specification_v<판>.md`) 2장,
+현행 L0 MEF ICD(`mef_fits_spec/KMT_CEU_Science_MEF_ICD_L0AmpRaw_v<판>.md`) 2.1·3절.
 
 **한 노출이 만드는 것**
 
@@ -352,7 +352,9 @@ def test_expnum_wraps_at_the_number_space():
 # -- sentinel (raw spec 5.0절) ----------------------------------------------
 
 def test_fits_sentinels_follow_the_spec_not_the_message_layer():
-    """FITS 쪽 TC 중계 카드는 전부 문자열이고 결측은 `'NC'` 다.
+    """FITS 쪽 TC 중계 카드는 문자열이고 결측은 `'NC'` 다 -- ⭐ 예외는 `EQUINOX`
+    하나로, 실수형이라 결측이 `-999.0` 이다 (운영자 2026-09-23,
+    `telemetry._FITS_REAL` · `rawcards.SPEC_PENDING`).
 
     메시지 계층은 `'0'` 을 그대로 쓴다 -- 레거시 재현이 필요한 쪽이라
     분리해 두었다 (DevNote 11.2, C-9).
@@ -361,16 +363,22 @@ def test_fits_sentinels_follow_the_spec_not_the_message_layer():
     msg = telem.header_dict()
     hdr = telem.fits_header_dict('2026-08-11T12:00:00.000')
 
-    # 메시지 계층: 레거시 관례 그대로
+    # 메시지 계층: 레거시 관례 그대로 -- EQUINOX 실수화의 영향을 안 받는다
     assert msg['SECZ'] == '0' and msg['ALT'] == '0'
-    # FITS 카드: 문자열 sentinel 하나로 통일 (형이 문자열이므로)
+    assert msg['EQUINOX'] == '0'
+    # FITS 카드: 문자열 카드는 sentinel 'NC' 하나 (EQUINOX 만 실수형 -999.0)
     assert hdr['SECZ'] == 'NC'
     assert hdr['MCPOS'] == 'NC'
     assert hdr['DSSTAT'] == 'NC'
     assert hdr['TCSLINK'] == 'Down'       # 질의 성패에서 유도
-    from ics_sim.rawcards import RELAY_CARDS
-    for key in RELAY_CARDS:
+    assert hdr['EQUINOX'] == -999.0 and isinstance(hdr['EQUINOX'], float)
+    from ics_sim import rawcards
+    kinds = {k: t for k, t, _w, _c in rawcards.CARDS}
+    for key in rawcards.RELAY_CARDS:
         assert key in hdr, f'{key} 카드 몫이 빠졌다'
+        # 실수형 중계 카드가 늘면 여기서 같이 잡힌다 -- 형이 'R' 이면 실수다.
+        if kinds.get(key) == 'R':
+            assert isinstance(hdr[key], float), (key, hdr[key])
 
 
 def test_date_obs_is_always_written(tmp_path):

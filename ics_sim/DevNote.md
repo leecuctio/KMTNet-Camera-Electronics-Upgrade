@@ -1085,6 +1085,7 @@ ELSEIF ICHOST = "ICG" AND AcquisitionCompleteCounter > 0 THEN   ' CCD 1개
 | `bug_compat` | `false` | 레거시 커맨드워드 오염 재현 (5.4-6) |
 | `send_guide_init` | `true` | `ICS>G.IC INITIALIZE` 발신 여부 |
 | `console` | `true` | stdin 키보드 인터페이스 |
+| `verbose` | `true` | `false` 면 **화면에** 함축 메시지(essential message)만 낸다 — 자동 왕복(`AUXSTATUS`·`TCSSTATUS`·`PING`/`PONG`)과 우리 노드끼리의 줄(`ICS>K.IC GO`)이 빠지고(판정 `transport.essential_wire`), 딸린 세부(`detail`)는 떼어 낸다(`__main__._TailModule`). **로그 파일은 이 값과 무관하게 늘 전부** 받는다. `VERBOSE ON\|OFF` 명령이 **재기동 없이** 바꾼다(`__main__.set_verbose`). ⚠️ 옛 자리 `[logging] verbose`(2026-09-11 에 `[behavior]` 로 옮기기 전 자리)는 읽지 않고 기동에서 경고한다 |
 | `inject` | (빈 값) | 결함 주입: `init_fail`, `acq_short`, `wrote_drop`, `dma_timeout`, `shopen_corrupt`, `tc_timeout` |
 
 ### `[auxcontrol]` — AUX control 서버 (9.2.2)
@@ -1100,13 +1101,13 @@ ELSEIF ICHOST = "ICG" AND AcquisitionCompleteCounter > 0 THEN   ' CCD 1개
 | `AUX_SysID` | `AUX` | 규격상 고정 |
 | `packet_prefix` | `ICS` | 패킷 ID 접두어 → `ICS1`, `ICS2`, … |
 | `packet_id` | (빈 값) | 채우면 고정 사용(예: `00`). 응답 대조가 느슨해진다 |
-| `verbose` | `false` | `true` 면 성공(`OK`)도 콘솔에 표시 |
+| `verbose` | `false` | `true` 면 통과 줄(`OK`·`SUCCESS`, `ECHO` 되울림 같은 값 응답)도 **간결 화면**(`[behavior] verbose = off`)에 낸다. 로그 파일에는 이 값과 무관하게 늘 남는다 |
 | `ack_timeout` | `1.0` | 응답 대기. 넘으면 경고만 남기고 노출은 진행 |
 | `connect_timeout` | `3.0` | |
 | `reconnect_sec` / `reconnect_max_sec` | `2.0` / `30.0` | 재접속 간격(실패할수록 2배씩) |
-| `hello_cmd` | (빈 값) | 접속 직후 1회. 예: `ALL ECHO ics_sim` |
-| `shopen_cmd` | `FILTERS SET_SH OPEN` | 셔터 개방 시 |
-| `shclose_cmd` | `FILTERS SET_SH CLOSE` | 셔터 폐쇄 시 |
+| `hello_cmd` | (빈 값) | 채워 두면 **(재)접속할 때마다** 붙은 직후 한 줄 보낸다 — 서버가 끊어 다시 붙어도 또 나간다(`AuxControlClient._connect_once`). 형식 `<SUBSYSTEM> <COMMAND>`, 예: `ALL ECHO ics_sim`. 비우면 접속만 유지하고 아무것도 안 보낸다 |
+| ~~`shopen_cmd`~~ | (없음) | **걷었다** (운영자 2026-09-12) — 셔터 개폐 통지(`FILTERS SET_SH OPEN`) 철거. FSA HW 가 그 명령을 못 받는다. ini 에 남아 있어도 읽지 않는다 |
+| ~~`shclose_cmd`~~ | (없음) | **걷었다** (운영자 2026-09-12) — `FILTERS SET_SH CLOSE`, 위와 같다. 셔터는 컨트롤러 Trigger Out 이 몰고 명령은 `SHOPEN`/`SHCLOSE` 다 |
 
 ### `[hardware]` / `[logging]`
 
@@ -1281,6 +1282,8 @@ def cmd_abort(self, msg, target) -> Reply:
 
 ### 9.2.2 AUX control 연동 — HW 트리거의 시뮬레이션용 대체물 (2026-08-05)
 
+> ⚠️ **이 절은 셔터 개폐 통지(`FILTERS SET_SH OPEN|CLOSE`)를 걷기(운영자 2026-09-12) 전의 설계다.** 지금 동작(상주 접속 + `hello_cmd` 접속 인사뿐)은 [README](README.md) 의 "AUX control 서버 연동" 과 `ics_sim/auxcontrol.py` 머리 docstring 에 있다.
+
 **레거시에는 없는 경로다.** IC(`\KMTS`)·ICS(`\KMTX`) 소스 어디에도 외부 TCP 발신이 없다 — CEU 에서 새로 붙는다.
 
 규격: `TCSAgent/__reference/KMTNet AUX control remote commands(v20140908).pdf` (Rev.20140908, Sang-Mok Cha, KASI)
@@ -1294,7 +1297,7 @@ def cmd_abort(self, msg, target) -> Reply:
 
 **실제 시스템에는 카메라 셔터를 여닫는 SW 명령이 없다.** HE 박스에서 나오는 **TTL 트리거 신호**가 셔터를 구동하고, AUX 는 `FILTERS LIMIT_SHUT` 으로 블레이드 리밋을 **읽기만** 한다(규격 4-2 주석). 여기서 쓰는 `FILTERS SET_SH OPEN|CLOSE` 는 **하드웨어 없이 시험하려고 AUX 쪽에 새로 넣은 명령**이고, 그래서 v20140908 문서에 없다.
 
-→ **실기(`[hardware] backend = archon`)로 넘어가면 `[auxcontrol] enabled = false` 로 꺼야 한다.** 켜 둔 채로 돌리면 셔터에 구동원이 둘 생긴다. `config.validate()` 가 이 조합을 경고한다.
+→ **실기(`[hardware] backend = archon`)로 넘어가면 `[auxcontrol] enabled = false` 로 둔다.** 철거 전에는 켜 둔 채로 돌리면 셔터에 구동원이 둘 생겼다. `config.validate()` 가 이 조합을 경고한다 — ⚠️ 셔터 개폐 통지를 걷은 뒤(운영자 2026-09-12)로 경고의 이유는 *"실기에서 AUX 접속이 하는 일이 없다(접속 인사뿐) · 서버가 없으면 재접속 경고만 쌓인다"* 다.
 
 #### 설정 — `pctcs.kmtn*.ini` 와 키 이름을 맞췄다
 

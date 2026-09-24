@@ -30,9 +30,9 @@
 | P1 | 벤치 `~/AIC/Config/ics_archon.ini`: `hk_latest`·`hk_stale_after` **삭제**, `hk_query_timeout = 2.0` · `icg_node = ICG` 확인 | HK 가 **와이어**로 바뀌었다 (DevNote 11.90).  옛 키는 조용히 무시되지만 헷갈린다 |
 | P2 | 벤치 `icg_archon.ini`: `[hk] latest_name` **삭제** | ICG 가 `hk_latest.G.json` 을 더 안 만든다.  남은 파일은 지워도 된다 |
 | P3 | 양쪽 `[transport] xis_host` 가 **같은 허브**(`127.0.0.1:6660`), ICG `bind_port 6601`, ICS `require_xis` | ICS→ICG 명령 셋(`VACGAUGE`·`EXPENABLE`·`HKDATA`)이 허브로만 간다 — 한쪽만 다르면 **조용히 사라진다** |
-| P4 | ACF: `~/AIC/Config/acf/` 에 **`KMTK_SCI_113_STA0200_R2613_{MK,NT}.acf`** · **`KMTK_GUI_162_STA0201_R2622.acf`**(또는 `STA0230`) 복사, ini `acf_mk`/`acf_nt`/`[icg] acf` 경로 | ⛔ 파일명 전체로 (`acf/README.md` 규칙 셋).  ⚠️ 첫날 연동만 볼 거면 현행 `R2611`/`R2619` 그대로 두고 **판은 D3 앞에서** 올려도 된다 |
+| P4 | ACF: `~/AIC/Config/acf/` 에 **`KMTK_SCI_113_STA0200_R2613_{MK,NT}.acf`** · **`KMTK_GUI_162_STA0201_R2622.acf`**(또는 `STA0230`) 복사, ini `acf_mk`/`acf_nt`/`[icg] acf` 경로 | ⛔ 파일명 전체로 (`acf/README.md` 규칙 셋).  ⭐ **science `R2613` 은 2026-09-15 벤치에 이미 깔렸다** (상자 113/112 는 ⏳ — 설치 대장 이력 2026-09-15 줄).  ⚠️ 첫날 연동만 볼 거면 **guide 만** 벤치에 마지막으로 확인된 `R2619`(설치 대장 판 표) 그대로 두고 `R2619`→`R2622` 는 **D3 앞에서** 올려도 된다 — science 는 이미 `R2613` 이라 미룰 것이 없다 |
 | P5 | [`acf/deployment_ledger.md`](acf/deployment_ledger.md) ⏳ 셋 — 벤치 ini 실값 · 관측소 상자 위치 · SSO 신원 | 되돌릴 목표.  P4 로 판을 바꾸면 **이력에 한 줄** |
-| P6 | Radionode `[radionode]` KEY/SECRET·MAC (0단계 (a)) — 없으면 `backend = off` 로 두고 진행 | 없어도 첫날은 된다 (`HEBOX`/`FSATEMP`/`FSAHUM` 만 sentinel) |
+| P6 | Radionode `[radionode]` KEY/SECRET·MAC (0단계 (a)) — 없으면 그대로 둬도 된다(배포 ini 가 `openapi` 라 기동이 경고하고 `off` 로 내린다).  경고가 싫으면 `backend = off` | 없어도 첫날은 된다 (`HEBOX`/`FSATEMP`/`FSAHUM` 만 sentinel) |
 
 ### D1 — ICG 단독 (30분) [ICG]
 
@@ -50,8 +50,9 @@
 |---|---|---|---|
 | 1 | `python -m ics_archon` 기동 | 기동 검사: `MIN_FRAME_PERIOD` 대사 줄(`frame timing from acf … floor 12.7762 s`, 경고 없음) · `icg_node` 경고 없음 · 허브 확인 통과 | 11.88 배선 |
 | 2 | ICS 콘솔 `hkdata` | `ICG>ICS DONE: HKDATA HKQDATE=… HKSTALE=…` 한 줄(와이어 줄 그대로 — 2026-09-15 첫 왕복 5 ms ✅) | **와이어 자체** (11.12 F1) |
-| 3 | ICG 에서 `vacgauge on`(예열 끝까지 13 s) → ICS `dark begin` · `exp 1` · **`go 1`** | ICS 로그: `ICS>ICG HKDATA NOW` → 답 → `ICG reports the gauge ON although we tracked … -- sending VACGAUGE OFF` → `settling 5.0s` → **`gauge was on -- FirstFlush 0 -> 1 for this frame only`** → 노출(첫 장 앞 flush 라 프레임 주기 +5.5 s).  헤더 `CCDTEMP`·`DEWPRES`·`HKUDATE`·`HTRSET` 실값 | ⭐ 11.90 흐름 전부 · 11.93 첫 장 flush |
+| 3 | ICG 에서 `vacgauge on`(예열 끝까지 13 s) → ICS `dark begin` · `exp 1` · **`go 1`** | ICS 로그: `ICS>ICG HKDATA NOW` → 답(`VACGAUGE=ON`) → `ICS>ICG VACGAUGE OFF` → `vacuum gauge off -- settling 5.0s …` → **`gauge was on -- FirstFlush 0 -> 1 for this frame only`** → 노출(첫 장 앞 flush 라 프레임 주기 +5.5 s).  ⚠️ 기동 뒤 첫 `GO` 라 ICS 의 추적 상태가 `UNKNOWN` 이어서 `although we tracked …` 어긋남 경고는 **안 난다**(그것은 4b).  헤더 `CCDTEMP`·`DEWPRES`·`HKUDATE`·`HTRSET` 실값 | ⭐ 11.90 흐름 전부 · 11.93 첫 장 flush |
 | 4 | 곧바로 `go 2` | `HKDATA NOW` 는 나가되 답이 `VACGAUGE=OFF` 라 **`VACGAUGE OFF` 가 안 나가고** settle 없이, **FirstFlush 줄도 없이** 시작(ini/ACF 설정대로).  두 장 헤더의 HK 가 같은 값 | 11.90 (1) "OFF 면 안 보냄" · 11.93 |
+| 4b | 4 의 독출이 끝난 뒤(ICS 추적 상태 `PENDING_ON`) ICG `vacgauge on` → ICS `go 1` | `ICG reports the gauge ON (또는 WARMUP) although we tracked PENDING_ON -- sending VACGAUGE OFF` → settle → FirstFlush 줄 | ⭐ 게이지 판단의 정본이 ICG 낱말 (11.90) |
 | 5 | 그 사이 ICG 로그 | 프레임마다 `EXPENABLE 0`(독출 2 s 전) → `EXPENABLE 1`(독출 뒤).  guide 가 돌고 있었으면 `Aborted=1` | `expenablectl` |
 | 6 | ICG 를 잠깐 내리고 `go 1` | 2 s 뒤 `no HKDATA reply from ICG within 2.00s` · `no HKDATA from ICG for this acquisition` · 노출은 진행 · 헤더 sentinel(`-999.99`/`9.99e-9`/`NC`) | 11.90 F3 데드맨 |
 | 7 | ICG 다시 띄우고 마지막 `go` 뒤 **10 분** 기다림 (또는 ICS ini `gauge_reenable_after = 60` 으로 잠깐) | `VACGAUGE ON` 이 나가고 ICG `hkdata` 가 `WARMUP` → `ON` | 되켜기 타이머 |
@@ -88,7 +89,7 @@
 | 1 | **계정 등급** — Open API 를 쓸 수 있는 유료회원사인가 | Radionode365 콘솔 | ✅ 확인됨 (`get_lst` 가 돈다) |
 | 2 | **API KEY / SECRET** | `s2.radionode365.com` → 고객사 정보변경 → API Key/Secret | ⏳ 벤치 ini 에 적을 것 |
 | 3 | **장치 `device_mac` 둘** | `channel/get_lst` 응답 (아래) | ⏳ 벤치 ini 에 적을 것 |
-| 4 | ~~**base URL · 경로 · 헤더 이름**~~ | — | ✅ **필요 없다** — 코드가 안다 |
+| 4 | ~~**base URL · 경로 · 헤더 이름**~~ | — | ✅ **필요 없다** — `base_url` 은 배포 ini 에 실값이 있고 endpoint(`channel/get_lst`)는 코드가 안다.  인증은 헤더가 아니라 POST 본문(`api_key`·`api_secret`) |
 | 5 | ~~**SEND INTERVAL** 결정~~ | — | ✅ **필요 없다** — 응답의 `device_interval` 로 신선도 창이 잡힌다 |
 | 6 | **사이트 LoRa 게이트웨이 기종** | 현장 확인 | ⏳ `local_lns` 갈래를 볼 때만 |
 
@@ -110,11 +111,10 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
 못 뺀다.  **벤치 설치본 `~/AIC/Config/icg_archon.ini` 에만** 적는다.  절차는 `README.md` 의
 "Radionode 자격증명" 절.
 
-⛔ **`stale_after` 가 재는 것은 장치의 표본시각이 아니라 우리가 폴링을 받은 시각이다** (2026-09-06 확인) -- `_store()` 가 그 자리에서 `time.monotonic()` 을 찍고, 응답의 시각 필드를 읽는 코드가 없다.  그래서 이 값이 잡는 것은 **장치 침묵이 아니라 폴링 실패**(인터넷·API 장애)뿐이고, `HKUDATE` 도 측정시각이 아니라 **마지막 폴링 성공 시각**이다.
-✅ **세 문턱이 이제 서로 맞는다** (운영자 2026-09-08 · DevNote 11.44): `radionode.stale_after` **4000 초기값 → `device_interval` x3**(60s→180 · 600s→1800) → `hk.sensors()` 180 s 지평선은 **Radionode 면제** → science `hk_stale_after` **2000**.  ⛔ `HKUDATE` 는 **guide 유닛 측정값만** 기준이다 (Radionode 는 값만 싣고 시각 셈에서 빠진다).
+⭐ **`stale_after` 는 이제 응답의 `ch_timestamp`(장치가 잰 시각) 기준이다** — 종전(2026-09-06 확인)의 *"폴링을 받은 시각"* 은 지나갔다.  아래 1단계 "신선도 문턱" 표 뒤 ⭐ 문단 참조.
+✅ **신선도 문턱이 서로 맞는다** (운영자 2026-09-08 · DevNote 11.44): `radionode.stale_after` **4000 초기값 → `device_interval` x3**(60s→180 · 600s→1800) → `hk.sensors()` 180 s 지평선은 **Radionode 면제**.  science 쪽 `hk_stale_after` 는 **없앴다**(2026-09-15 — HK 는 와이어 `HKDATA NOW`, 신선도는 ICG 의 `HKSTALE`).  ⛔ `HKUDATE` 는 **guide 유닛 측정값만** 기준이다 (Radionode 는 값만 싣고 시각 셈에서 빠진다).
 
-⭐ `stale_after` 는 **SEND INTERVAL 의 약 3배**로 맞춘다 (현재 600 s = 3분 간격 전제 -- ⚠️ 3×180 s = 540 이지 600 이 아니다).  ④를 정하면
-이 값도 함께 고친다 — 안 고치면 멀쩡한 표본을 낡았다고 버리거나, 낡은 값을 헤더에 싣는다.
+⭐ `openapi` 는 `device_interval` x3 을 **스스로 배운다** — 손으로 맞출 것은 `local_lns`(push)의 `stale_after` 뿐이다(그쪽은 주기를 못 배워 ini 값이 영구 창이다, INSTALL 7.5).
 
 ### (b) 그 밖
 
@@ -128,7 +128,8 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
 - science 저장소 현행은 **`KMT?_SCI_*_R2613_{MK,NT}.acf`** 8장, guide 는 **`KMT?_GUI_*_R2622.acf`**
   4장.  ⛔ **현장·벤치에 무엇이 깔려 있나는 다른 문서다** —
   [`acf/deployment_ledger.md`](acf/deployment_ledger.md) (설치 대장, 2026-09-14 신설).  거기
-  적힌 마지막 확인은 science `R2611` · guide `R2619` (2026-09-11 초기화 시험) 이고, 벤치 ini 실값은
+  적힌 마지막 확인은 science `R2611` · guide `R2619` (2026-09-11 초기화 시험) 이고 — 2026-09-15 벤치
+  science `R2613` 설치는 이력 끝줄에 있으나 상자가 ⏳ 라 그 열에 아직 안 올렸다 — 벤치 ini 실값은
   ⏳ 운영자 기입 대기다.  **시험을 시작하기 전에 그 대장부터 채운다** — 되돌릴 목표다.
 - ⭐ **장치 MAC / 시리얼** — 벤치 ini 의 `[radionode.hebox]`·`[radionode.fsa]` 에 적을 값.
   ⚠️ 자격증명과 **별개**다.  이것이 비면 3(`CONNECT`)은 통과하는데 4(`HK`)에서 값이
@@ -137,7 +138,8 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
   `NoMAC=… (those cards stay sentinel)`, 그리고 **폴링이 그 장치를 아예 건너뛴다**
   (빈 `{mac}` URL 로 API 를 치면 쿼터만 깎이고 오진을 부른다).
   ⛔ **배포 ini 는 지금 둘 다 비어 있다** — 예행으로 확인했다.
-- **`stale_after`** = 장치 SEND INTERVAL 의 **3배** 로 맞춘다 (0단계 (a) 4번에서 정한 값).
+- **`stale_after`** — `openapi` 는 응답의 `device_interval` x3 을 스스로 배우므로 손댈 것이 없다.
+  손으로 맞출 것은 `local_lns`(push)뿐이다 (INSTALL 7.5 — 그쪽은 이 값이 영구 창이다).
 
 ### (c) ⛔ 배포 ini 그대로면 **ICS 가 기동에서 멈춘다** (2026-09-06 전수 검토)
 
@@ -169,23 +171,27 @@ curl -d "api_key=<KEY>&api_secret=<SECRET>" -X POST \
 (FSA 내부 온·습도).  규격 5.8절이 이 셋을 **실측 계통**으로 규정한다.
 
 ⛔ **왜 클라우드를 거치나** — 장치(RN320-BTH)는 **LoRaWAN 이라 IP 스택이 없다.**
-LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapaculo365 클라우드로만 간다.
-그래서 접근이 **Open API 폴링**이고, endpoint 상세가 콘솔 로그인 뒤의 "OPENAPI 매뉴얼"
-에만 있어 **URL·경로·인증 헤더 이름까지 ini 소관**이다.
+LAN 폴링이 원천적으로 불가하고, 지금은 LoRa 게이트웨이를 거쳐 Tapaculo365 클라우드로 간다.
+그래서 이번 시험의 접근이 **Open API 폴링**(`openapi`)이다 — 인증은 **POST 본문**(`api_key`·
+`api_secret`, `s2.radionode365.com` → 고객사 정보변경), `base_url` 은 ini 에 있고 endpoint
+(`channel/get_lst`)는 코드가 안다 (공개 매뉴얼 `oa.radionode365.com/apidoc/kr/`, 2026-09-08 ·
+DevNote 11.44 — 종전의 *"URL·경로·인증 헤더 이름까지 ini 소관"* 은 매뉴얼을 보기 전 가정이었다).
+클라우드를 안 거치는 길은 게이트웨이 내장 NS 가 밀어 주는 uplink 를 받는 `local_lns` 다 (아래 표).
 
 | 백엔드 | 상태 | 무엇 |
 |---|---|---|
-| `off` | ✅ **기본값** | 아무것도 안 한다 — 세 키 결측 → 헤더 sentinel |
-| `openapi` | ✅ 코드 완성 · ⏳ **실기 미검증** | Tapaculo365 를 `poll_period` 마다 폴링.  ⛔ 인터넷 필수.  **이번 시험의 대상** |
+| `off` | ✅ 코드 기본값(ini 에 `backend` 줄이 없을 때) · ⭐ `openapi` 인데 자격증명이 비면 기동이 여기로 내린다 | 아무것도 안 한다 — 세 키 결측 → 헤더 sentinel |
+| `openapi` | ✅ 코드 완성 · ⏳ **실기 미검증** · ⭐ **배포 ini 기본** (2026-09-15) | Tapaculo365 를 `poll_period` 마다 폴링.  ⛔ 인터넷 필수.  **이번 시험의 대상** |
 | `sim` | ✅ 됨 | 코드 상수 고정값.  ⭐ **헤더 경로로는 안 나간다** — 상수가 실측처럼 아카이브에 남으면 나중에 파일만 보고 못 가린다.  배선 확인용 |
-| `local_lns` | ⏳ **자리만 있고 구현 없음** | 사설 LoRaWAN 서버(ChirpStack).  선행이 **운영자 액션 둘** — 게이트웨이 관리 접근 · 장치 가입 키(DevEUI/JoinEUI/AppKey) |
+| `local_lns` | ✅ **코드 있음** · ⏳ **실기 미검증** — 선행은 운영자 액션(게이트웨이 접근 · DevEUI) | 게이트웨이(`RAK7268CV2`) 내장 NS(ChirpStack 계열)의 HTTP integration 이 uplink 마다 POST 하는 것을 받는다(`UplinkListener`, 인터넷 불필요).  ini 는 INSTALL 7.5 (`lns_bind`·`lns_path`·장치 `deveui`, `lns_token` 선택) |
 
 **이미 선 것**
-- 폴러·캐시·신선도 판정 (`icg_archon/radionode.py`, 708줄) — `values_with_time()` 이
+- 폴러·캐시·신선도 판정 (`icg_archon/radionode.py`) — `values_with_time()` 이
   표본시각을 함께 내므로 하류가 낡은 값을 낡은 것으로 판정한다
 - 런타임 명령 `RADIONODE [status｜connect｜disconnect｜reconnect｜enable｜disable] [장치]`
   — ⭐ **인자 유무로 뜻이 갈린다**: 인자 없으면 **폴링 자체**, 장치 이름이 붙으면 **그 장치**
-- HK 루프 배선 — `hk.py` 가 주기마다 `_sample` 에 담고 CSV·스냅샷·헤더로 흘린다
+- HK 루프 배선 — `hk.py` 가 주기마다 `_sample` 에 담고 CSV·헤더로 흘린다 (ICS 에는 `HKDATA`
+  와이어로 — 종전 스냅샷 파일 `hk_latest.G.json` 은 2026-09-15 에 없앴다)
 - 시험 `tests/test_icg_radionode.py`
 
 **⛔ 안 선 것 — 그래서 이번 시험이 필요하다**
@@ -195,10 +201,15 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 - **실기 응답 모양을 아무도 못 봤다** — `radionode.py` 스스로 PROVISIONAL 이라 적어 뒀다.
   원값 포맷(소수 자리·부호·단위)이 규격 `OI-16` 의 답이다
 - **값 폐기 자리 넷** — 아래 "실험하면서 함께 볼 것"
-- ⏳ `local_lns` — 인터넷이 끊기면 세 카드가 결측인데 **운영자는 그것을 받아들이지 않는다**
-  (2026-09-04 확정).  ⚠️ 지금 길이 클라우드 하나뿐이라 **코드로는 못 막는다** —
-  `stale_after` 를 늘리는 것은 결측을 없애는 게 아니라 **틀릴 수 있는 값으로 덮는 것**이라
-  규격 5.0절 sentinel 의 정신에 어긋난다
+- `local_lns` (✅ 수신 구현 · ⏳ 실기 미검증) — 인터넷이 끊기면 `openapi` 의 세 카드가 결측인데
+  **운영자는 그것을 받아들이지 않는다** (2026-09-04 확정).  ⚠️ `openapi` 만으로는 **코드로
+  못 막는다** — `stale_after` 를 늘리는 것은 결측을 없애는 게 아니라 **틀릴 수 있는 값으로
+  덮는 것**이라 규격 5.0절 sentinel 의 정신에 어긋난다.  막는 길이 `local_lns` 이고 남은 선행은
+  **운영자 액션**이다 — 게이트웨이 관리 접근(INSTALL 7.1~7.3) · 장치 **DevEUI**(INSTALL 7.4).
+  명령은 `RADIONODE CONNECT`(수신기 기동) · `DISCONNECT`(정지, 백엔드는 그대로) ·
+  `ENABLE`/`DISABLE <별칭>`(그 장치 uplink 를 받을지).  ⛔ `RECONNECT` 는 `openapi` 전용이다
+  (push 라 칠 곳이 없어 `ERROR`).  ⚠️ `CONNECT` 는 ini 를 다시 읽지 않는다 — `deveui` 등을
+  고쳤으면 ICG 를 재기동한다.  경위는 README "인터넷이 안 되는 사이트" 절
 
 **✅ 신선도 문턱 셋 -- 이제 맞는다** (2026-09-08 개정 · DevNote 11.44)
 
@@ -243,7 +254,7 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 
 | # | 하는 것 | 기대 | 실측 |
 |---|---|---|---|
-| 1 | 벤치 ini 에 자격증명 4개를 적고 ICG 기동 | 기동 로그에 Radionode 폴러가 뜬다 | |
+| 1 | 벤치 ini 에 자격증명 둘(`api_key`·`api_secret`)과 장치 절 `mac` 둘을 적고 ICG 기동 (⚠️ 이미 떠 있었으면 **재기동** — `CONNECT` 는 ini 를 다시 읽지 않는다) | 기동 로그에 Radionode 폴러가 뜬다 | |
 | 2 | `RADIONODE STATUS` | 폴링 상태 + 장치 둘(`hebox`·`fsa`)의 접속 상태 | |
 | 3 | (ini 가 `off` 였다면) `RADIONODE CONNECT` | `off` → `openapi` 로 올라가고 폴링 루프가 뜬다. ⚠️ 자격증명이 모자라면 **무엇이 없는지 대고 거절**한다 | |
 | 4 | 1~2 폴링 주기 기다린 뒤 `HK` | `HEBOX=` `FSATEMP=` `FSAHUM=` 이 **실값**으로 보인다 (sim 고정 상수가 아님) | |
@@ -255,10 +266,15 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 - **멈출 조건**
   - 3 에서 자격증명 거절 → 0단계 (a) 로 돌아간다.
   - ⭐ **3 은 통과했는데 4 가 계속 sentinel** → 0단계 (a) 로 통째로 돌아가지 말 것.
-    장치 **MAC/시리얼**이 ini 의 `[radionode.hebox]`/`[radionode.fsa]` 와 맞는지,
-    `stale_after` 가 **SEND INTERVAL 의 3배**인지부터 본다 (그 둘이 준비물 표에 없어
-    실제로 여기서 막힌다).
-  - 폴링이 아예 안 뜨면 `RADIONODE STATUS` 의 `backend=` 를 본다 — 기본이 `off` 다.
+    장치 **MAC/시리얼**이 ini 의 `[radionode.hebox]`/`[radionode.fsa]` 와 맞는지부터 본다
+    (`RADIONODE STATUS` 의 `NoMAC=`).  신선도 창은 기동 뒤 `freshness window set to …s`
+    로그로 확인한다 (`device_interval` x3 을 배운 값).
+  - 폴링이 아예 안 뜨면 먼저 기동 로그에서 `[radionode] backend=openapi 인데 … 가 없다 --
+    폴링을 **off** 로 내린다` 줄을 찾는다 — 배포 ini 는 `openapi`(2026-09-15)지만 `base_url`·
+    `api_key`·`api_secret` 중 하나라도 비면 기동이 경고하고 `off` 로 내린다(배포 ini 에
+    `base_url` 실값이 있으니 보통 key/secret 둘이다).  ⛔ 그때는 ini 를 고치고 **ICG 를
+    재기동**한다 — `RADIONODE CONNECT` 는 ini 를 다시 읽지 않는다.  그다음 `RADIONODE STATUS`
+    의 `backend=` 를 본다.
 
 ### ⏳ 실험하면서 함께 볼 것 -- Radionode 가 값을 버리는 자리 넷
 
@@ -317,7 +333,7 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 |---|---|---|---|
 | 1 | 기동 배너 | `돔 방위` 줄이 `redis …:6379` 다 | |
 | 2 | `redis-cli mget dome_tel_az dome_az dome_del_az` | 셋 다 값이 있다.  ⚠️ **TTL 이 수백 ms** 라 돔이 멈춰 있으면 `(nil)` 이 정상이다 (`ttl dome_az` 로 확인) | |
-| 3 | `go 1` 뒤 FITS 헤더 | `DSTELAZ`·`DSAZ`·`DAZERR` 이 **2번에서 본 값 그대로** (자리수도 그대로 -- 우리가 다시 맞추지 않는다) | |
+| 3 | `go 1` 뒤 FITS 헤더 | `DSTELAZ`·`DSAZ` 는 2번에서 본 값을 **소수 2자리로 반올림**(`%.2f`), `DAZERR` 는 **부호 붙은 2자리**(`%+.2f`, 예 `-0.28622777…` → `-0.29`) (2026-09-15 운영자 지시 -- 종전 *"원문 그대로"* 는 이 셋에서 걷었다, DevNote 11.94-h).  ⚠️ 2번과 3번은 읽은 시각이 달라 돔이 돌고 있으면 끝자리가 조금 어긋날 수 있다 | |
 | 4 | ⭐ **`DALTERR` 는 따로다** | 고도 어긋남(`DSALT` − `DSTELALT`)이고 `AUXSTATUS` 에서 온다.  ⛔ 방위값이 여기 들어와 있으면 **결함**이다 | |
 | 5 | 돔 제어 프로그램을 멈춘다 (또는 `redis-cli del dome_az`) | 그 카드가 **다음 노출에서 `NC`** 다.  ⛔ 옛 값이 계속 실리면 결함이다 | |
 | 6 | redis 를 내린다 (`systemctl stop redis`) | 세 카드가 `NC` 이고 **노출은 정상으로 끝난다**.  로그에 `dome redis unavailable -- …` 이 **한 번만** 뜬다 (프레임마다 뜨면 결함) | |
@@ -328,8 +344,10 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 - **통과**: 3 이 실값, 5·6 이 `NC` 로 정확히 떨어지고, 7 에서 프레임마다 읽는다.
 - **멈출 조건**: 3 이 `NC` 인데 2 는 값이 있으면 **키 이름**부터 본다
   (`[dome] key_*` vs 돔 프로그램이 쓰는 이름).  그다음이 `db` 번호다.
-- ⚠️ `DAZERR` 는 `dome_del_az` 가 없을 때 **나머지 둘로 계산**된다 -- 3 에서 값이
-  맞는데 redis 의 `dome_del_az` 와 다르면 그 키가 만료된 것이다.
+- ⚠️ `DAZERR` 는 `dome_del_az` 가 없을 때 **나머지 둘(이미 2자리로 접은 값)의 차를
+  -180~+180 으로 접어** 계산된다 -- 2번에서 `dome_del_az` 가 `(nil)` 이면 계산 갈래다.
+  값이 있는데 3 의 `DAZERR` 가 그 값을 `%+.2f` 로 접은 것과 다르면(0.01 안팎이면 계산
+  갈래일 수 있다) 읽는 순간 그 키가 만료된 것이다.
 
 ---
 
@@ -343,8 +361,8 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 | `RESETTIMING` 뒤 파라미터 RAM 보존 | ICG | `abort` 한 번 | abort 뒤 flush 가 **정확히 한 번** 돌면 RAM 이 보존된 것 | DevNote 11.32-(1) ⏳ |
 | `go 1` 뒤 FRAME 카운터 +1 | ICG | `go 1` | 카운터 증가분이 **1** (flush 는 프레임을 안 만든다) | `OI-26` |
 | **STOP 뒤 꼬리 flush** | ICG | `go 5` 중 `stop` | 마지막 저장 뒤 `FRAME` 불변 + **≈1.25 s 클록** 한 번 | DevNote 11.33-(1) ⏳ |
-| 기본 노출시간 실측 | ICG | ⛔ **`guideexp 1.3` 으로는 못 잰다** -- 벤치 ini 의 `[icg] exptime_min` 을 **1.0** 으로 내리고 `guideexp 1.0` | ⭐ 그때 `IntMS=0` 이라 **주기가 곧 기본 노출시간**이다.  `1.2506 s` 계산값과 몇 % 안에 드나 | `acftiming` PROVISIONAL 해제 |
-| `intms_for` 산식 검증 | ICG | `guideexp 1.3` 연속 | 주기 중앙값 **1.300 s** (= 1.2506 + 49 ms).  ⚠️ 종전 문서가 이 값을 1.2506 과 견주라 해서 **3.9 % 어긋난 것을 결함으로 오독**하게 돼 있었다 (2026-09-06 정정) | -- |
+| 기본 노출시간 실측 | ICG | ⛔ **`guiexp 1.3` 으로는 못 잰다** -- 벤치 ini 의 `[icg] exptime_min` 을 **1.0** 으로 내리고 `guiexp 1.0` | ⭐ 그때 `IntMS=0` 이라 **주기가 곧 기본 노출시간**이다.  `1.2506 s` 계산값과 몇 % 안에 드나 | `acftiming` PROVISIONAL 해제 |
+| `intms_for` 산식 검증 | ICG | `guiexp 1.3` 연속 | 주기 중앙값 **1.300 s** (= 1.2506 + 49 ms).  ⚠️ 종전 문서가 이 값을 1.2506 과 견주라 해서 **3.9 % 어긋난 것을 결함으로 오독**하게 돼 있었다 (2026-09-06 정정) | -- |
 | `FlushLines`=2448 실측 | ICG | flush 소요 계측 | 본 독출(1.2439 s)과 같은가 | `OI-26` |
 | guide `STATUS` 원문 확보 | ICG | `archon STATUS` | 응답 원문을 **파일로 저장소에** 남긴다 (한 번도 남은 적이 없다) | `OI-25` 전제 |
 | `HTROUT` 이 측정값인가 명령값인가 | ICG 원천 | ⚠️ **아래 "히터 강제 출력 — 안전 봉투" 의 A(무부하) 절차대로만** -- ⭐ 히터 미연결이라 **지금 할 수 있다** | `2.000` 딱이면 명령값, `1.9xx` 로 어긋나면 측정값 | `OI-28` |
@@ -470,7 +488,7 @@ LAN 폴링이 원천적으로 불가하고, LoRa 게이트웨이를 거쳐 Tapac
 
 | 항목 | 준비물 | 판정 | 닫히는 것 |
 |---|---|---|---|
-| `ccdflush=true` 주기 | 벤치 ini 에서 켜고 한 장 | 주기가 `SkipLine(FlushLines)` 만큼 늘어난다 (10장 실측 13.27 s 는 **끈 상태** 값) | DevNote 11.33-(2) ⏳ |
+| `ccdflush_every = 1` 주기 (▶ **D3-2 와 같은 항목**) | 벤치 ini `ccdflush_every = 1` 로 `go 2` 이상 | 간격이 **+5.54 s**(Prep 0.200 + Flush 5.332 + FlushPostMS 0.010, `acftiming` 예측) 늘어난다.  끈 상태 바닥은 **12.776 s**(science R2613 — 옛 13.27 s 는 BIAS 에도 `NoIntMS` 0.5 가 붙던 때 값) | DevNote 11.33-(2) · 11.86-(12) ⏳ |
 | 행 순서·독출 방향 | flat/star sequence | amp 별 물리 독출 방향 → 4.5절 표에 열 추가 | `OI-3` |
 | 중앙 168행 분배 | bias 통계 | 84/84 인가 | `OI-4` |
 | 셔터 상태 반영 지연 | `SHOPEN` + 1초 재질의 | AUX 상태기계가 넘어가 있나 | `OI-13` |
@@ -528,8 +546,11 @@ ics_archon.archon.acftiming <acf>` 로 어느 판이든 찍어 볼 수 있다.
 
 ### ⏳ **셔터 닫힘 시간 실측** — `[archon] shutter_close_ms` 의 근거 (2026-09-13 신설)
 
-⛔ **지금 값 500 ms 는 미실측이다** — 현행 ACF 의 `NoIntMS` 와 같은 값을 그대로 놓았을
-뿐이고, FSA 셔터가 실제로 닫히는 데 걸리는 시간을 잰 적이 없다.
+⛔ **지금 셔터 닫힘 대기의 바닥은 `[archon] shutter_close_ms` = 5200 ms 이고, 미실측이다** —
+블레이드 주행 ~5초에서 잡은 값(운영자 2026-09-13)이고, FSA 셔터가 실제로 닫히는 데 걸리는 시간을
+잰 적이 없다.  현행 science ACF 의 `NoIntMS` 는 여전히 500 이라, 세션 첫 `GO`(ACF 적용) 때
+`NoIntMS is 500 ms, shorter than the shutter close time (5200 ms) -- raising it` 경고와 함께
+5200 으로 올라간다 (README "셔터 닫힘 대기" 절).
 
 **왜 재야 하나.**  셔터를 여는 노출에서 `EXPTIME` 은 *"셔터가 열리기 시작 ~ 셔터가
 닫히기 시작"* 이고, 그 뒤 **셔터가 다 닫힐 때까지** 기다렸다가 독출해야 한다.  그 대기가
@@ -538,15 +559,21 @@ ics_archon.archon.acftiming <acf>` 로 어느 판이든 찍어 볼 수 있다.
 
 **절차 (안).**
 
-1. 균일광 아래에서 `EXPTIME` 을 같게 두고 `NoIntMS` 를 **줄여 가며** 한 장씩 찍는다
-   (500 → 400 → 300 → 200 → 100 ms).  ⚠️ ACF 를 고치지 말고 `probe_archon` 이나
-   `WCONFIG` 한 줄로 바꾼다 — 정본 ACF 는 건드리지 않는다.
+1. 균일광 아래에서 `EXPTIME` 을 같게 두고 셔터 닫힘 대기를 **줄여 가며** 한 장씩 찍는다.
+   ⛔ **손으로 친 `ARCHON <MK|NT> WCONFIG…` 로 `NoIntMS` 를 바꾸면 안 먹는다** — 호스트가
+   셔터 노출마다 `NoIntMS` 를 `shutter_dwell_ms`(= `max(ACF 값, shutter_close_ms)`, ACF 적용
+   직후 한 번 정한다)로 새로 쓰므로(`trigger(noint_ms=…)`) 다음 `GO` 에서 덮인다.
+   ⭐ **벤치 ini 의 `[archon] shutter_close_ms` 를 바꾸고 ICS 를 재기동하며** 잰다.
+   ⛔ **`0` 을 스캔값으로 쓰지 말 것** — `0` 은 *"검사하지 않는다 = ACF 값(500)을 싣는다"* 라는
+   뜻이다.  ⚠️ ACF 값(500 ms) 아래로는 이 길로 못 내린다.  정본 ACF 는 건드리지 않는다.
+   ⚠️ `probe_archon` 으로는 못 잰다 — 셔터를 열지 않는다(`TRIGOUTFORCE=1`).
+   ⏳ 스캔 범위·걸음은 운영자가 정한다.
 2. 프레임의 **먼저 독출되는 쪽**(셔터가 아직 열려 있던 쪽)에 밝기 기울기가 생기는
    지점을 찾는다.
-3. 기울기가 처음 보이는 `NoIntMS` 가 **셔터 닫힘 시간의 하한**이다.  여유를 얹어
+3. 기울기가 처음 보이는 값이 **셔터 닫힘 시간의 하한**이다.  여유를 얹어
    `[archon] shutter_close_ms` 와 ACF 의 `NoIntMS` 를 함께 고친다.
 
-**판정**: 기울기가 안 보이는 최소 `NoIntMS` 를 찾았다.  ⚠️ 못 찾으면(500 에서도 기울기)
+**판정**: 기울기가 안 보이는 최소 대기를 찾았다.  ⚠️ 못 찾으면(스캔의 가장 긴 대기에서도 기울기)
 셔터 자체를 의심한다 — 그때는 값을 올리기 전에 FSA 쪽과 상의한다.
 
 ---
@@ -582,7 +609,7 @@ Archon 명령표에 없다.
 
 | # | 하는 것 | 기대 | 실측 |
 |---|---|---|---|
-| P2-1 | `guideexp 2.0` → `go 5`, 3장째 독출 중에 `stop` | 진행 중 프레임까지 **저장**되고 그 뒤로 새 프레임이 안 걸린다.  ⭐ ICG 는 여기에 **꼬리 flush 1회(≈1.25 s)** 가 붙는다 (guide R2616 상수, DevNote 11.33) | |
+| P2-1 | `guiexp 2.0`(ICS 에서 돌리면 `exp 2.0`) → `go 5`, 3장째 독출 중에 `stop` | 진행 중 프레임까지 **저장**되고 그 뒤로 새 프레임이 안 걸린다.  ⭐ ICG 는 여기에 **꼬리 flush 1회(≈1.25 s)** 가 붙는다 (guide R2616 상수, DevNote 11.33) | |
 | P2-2 | 저장된 마지막 파일의 헤더 | `EXPTIME` = 요청값(2.000).  ⛔ **그리고 그것이 참이어야 한다** — 직전 프레임과의 `DATE-OBS` 간격이 주기와 같으면 적분이 안 잘린 것이다 | |
 | P2-3 | `go 1` 중에 `stop` | **아무 일도 안 일어난다** — 그 장은 그대로 저장된다.  ⚠️ 응답은 `DONE: STOP` 이다(거부가 아니다) | |
 | P2-4 | 노출 중이 아닐 때 `stop` | `ERROR: STOP No integration in progress. Nothing to stop.` (레거시 문구 그대로) | |
@@ -678,7 +705,7 @@ raw spec 9.2절 "카운터 독립").  ⭐ **`EXPENABLE OFF` 도 같은 되감기
 | 항목 | 쪽 | 내용 |
 |---|---|---|
 | 예측 폴링 | ICG | `DATE-OBS` 폴링 편향(평균 +0.25 s) 제거 — `icg_archon/sequencer.py` |
-| `HTREN`·`HTRSET`·`HTRFORCE` 표본 배선 | ICG 원천 | `hk.py` 의 `_sample`/`_COLUMNS` 에 없다.  되읽기 함수는 `heater.py` 에 있다 → `OI-25` 잔여 |
+| `HTREN`·`HTRSET`·`HTRFORCE` CSV 열 | ICG 원천 | 표본(`_sample`)에는 **이미 담긴다** — HK 바퀴마다 `RCONFIG` 로 읽는다(11.52-(2)).  남은 것은 HK CSV 열(`hk.py` `_COLUMNS`)에 셋이 없다는 것뿐이다 → CSV 에 넣을지 ⏳ (`OI-25` 잔여인지와 함께 운영자 확인) |
 | `BUFnTIMESTAMP` + TIMER↔UT 상관 | 공통 | `ics_archon/archon/parse.py` |
 
 ⛔ **종전 이 표에 있던 *"flake — `test_shutdown_waits_for_frames_that_are_still_being_saved`"*

@@ -14,10 +14,13 @@
 * ⛔ **이미 꺼져 있으면 다시 안 보낸다** -- `APPLYDIO` 가 `DEWPRES` 결측 창을
   만든다 (11.18).  되풀이하면 창만 늘어난다.
 * ⭐ **새 노출이 오면 되켜기 타이머를 취소한다** -- 안 그러면 노출 중에 켜진다.
-* ⭐ **`GO` 가 거절되면 자가 치유**한다 -- 취득이 시작 안 됐으니 "끝났다" 도
-  안 온다.  그대로 두면 게이지가 영영 꺼진 채 남는다.
+* ⭐ **거절된 `GO` 는 켜짐대기 타이머를 안 건드린다** -- 취득이 안 서니 "끝났다"
+  도 안 온다.  거기서 타이머를 풀면 게이지가 영영 꺼진 채 남는다.  디스패처 층의
+  일이라 시험은 `test_hk_wire.py` 의 `test_a_rejected_go_keeps_the_reenable_timer` 에 있다.
 * ⚠️ **답이 없으면 알린다** -- `DONE: VACGAUGE …` 는 ICS 가 안 쓰는 메시지라
   조용히 버려진다.  "안 꺼진 채 찍는" 상태가 소리 없이 지나가면 안 된다.
+* ⛔ **거절은 응답 타입(`ERROR`·`FATAL`)으로 가른다** -- 원문 부분 문자열이 아니다
+  (DevNote 11.96).  그래서 `note_reply` 에는 원문이 아니라 `Message` 를 넘긴다.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ import ics_archon  # noqa: F401
 
 from ics_archon import gaugectl as gc  # noqa: E402
 from ics_archon.gaugectl import GaugeControl  # noqa: E402
+from ics_sim.impv2 import parse_line  # noqa: E402
 
 
 class Harness:
@@ -136,20 +140,6 @@ def test_a_new_exposure_cancels_the_pending_timer():
     asyncio.run(run())
 
 
-def test_a_rejected_go_heals_itself():
-    """⭐ `GO` 가 거절되면 취득 종료가 안 온다 -- 그대로 두면 영영 꺼져 있다."""
-    async def run():  # noqa: ANN202
-        # ⚠️ 데드맨을 길게 -- 이 하네스는 답을 안 하므로 짧으면 상태가 모름이
-        # 되고, 그러면 타이머가 만료돼도 켜지 않는다(그게 맞는 거동이다).
-        h = Harness(reenable_after=0.05, reply_timeout=5.0)
-        h.gauge.before_exposure()
-        h.gauge.after_acquisition()        # 디스패처가 거절을 보고 부르는 자리
-        await h.settle(0.15)
-        assert h.words == ['OFF', 'ON'], h.sent
-        await h.gauge.close()
-    asyncio.run(run())
-
-
 def test_closing_does_not_light_the_filament():
     """⭐ 프로그램이 내려간다고 필라멘트를 켤 이유가 없다."""
     async def run():  # noqa: ANN202
@@ -186,28 +176,52 @@ def test_a_reply_clears_the_deadman(caplog):  # noqa: ANN001
     async def run():  # noqa: ANN202
         h = Harness(reply_timeout=0.05)
         h.gauge.before_exposure()
-        h.gauge.note_reply('ICG>ICS DONE: VACGAUGE Gauge=OFF')
+        h.gauge.note_reply(parse_line('ICG>ICS DONE: VACGAUGE Gauge=OFF'))
         await h.settle(0.12)
         await h.gauge.close()
     asyncio.run(run())
     assert not any('did not answer' in r.message for r in caplog.records)
 
 
-def test_an_error_reply_makes_the_state_unknown(caplog):  # noqa: ANN001
-    """⛔ 거절당했으면 **껐다고 믿으면 안 된다** -- 다음 `GO` 가 다시 보낸다."""
+@pytest.mark.parametrize('mtype', ['ERROR', 'FATAL'])
+def test_a_refusal_makes_the_state_unknown(caplog, mtype):  # noqa: ANN001
+    """⛔ 거절당했으면 **껐다고 믿으면 안 된다** -- 다음 `GO` 가 다시 보낸다.
+
+    ⭐ `FATAL` 도 거절이다 (DevNote 11.96) -- 원문에 `ERROR` 낱말이 있나로 보던 판은
+    `FATAL` 을 정상 답으로 흘려 상태가 `OFF` 로 남았다.
+    """
     caplog.set_level(logging.WARNING)
 
     async def run():  # noqa: ANN202
         h = Harness()
         h.gauge.before_exposure()
-        h.gauge.note_reply('ICG>ICS ERROR: VACGAUGE Gauge control not available')
-        assert h.gauge.wanted is None
+        h.gauge.note_reply(parse_line('ICG>ICS %s: VACGAUGE Gauge control not '
+                                      'available' % mtype))
+        assert h.gauge.state == gc.UNKNOWN and h.gauge.wanted is None
         # 상태가 모름이므로 다음 노출에서 **다시 보낸다**.
         assert h.gauge.before_exposure() is True
         assert h.words == ['OFF', 'OFF'], h.sent
         await h.gauge.close()
     asyncio.run(run())
     assert any('was refused' in r.message for r in caplog.records)
+
+
+def test_a_done_whose_body_says_error_is_not_a_refusal(caplog):  # noqa: ANN001
+    """⛔ 거절은 **타입**으로 가른다 -- 본문에 `error` 낱말이 든 `DONE` 은 정상 답이다.
+
+    원문 부분 문자열 판정으로 되돌아가는 회귀를 막는 자리다 (DevNote 11.96).
+    """
+    caplog.set_level(logging.WARNING, logger='ics_archon.gaugectl')
+
+    async def run():  # noqa: ANN202
+        h = Harness(reply_timeout=5.0)
+        h.gauge.before_exposure()
+        h.gauge.note_reply(parse_line('ICG>ICS DONE: VACGAUGE Gauge=OFF LastError=none'))
+        state = h.gauge.state
+        await h.gauge.close()
+        return state
+    assert asyncio.run(run()) == gc.OFF
+    assert not any('was refused' in r.getMessage() for r in caplog.records)
 
 
 def test_the_summary_reads_back_the_state():
@@ -273,13 +287,14 @@ def test_the_timer_checks_the_state_before_switching_on():
     asyncio.run(run())
 
 
-def test_an_unknown_state_drops_the_pending_timer():
+@pytest.mark.parametrize('mtype', ['ERROR', 'FATAL'])
+def test_an_unknown_state_drops_the_pending_timer(mtype):  # noqa: ANN001
     """⚠️ 모르는 상태에서 켜짐대기를 남기면 **모르는 채로 켠다**."""
     async def run():  # noqa: ANN202
         h = Harness(reenable_after=5.0, reply_timeout=5.0)
         h.gauge.before_exposure()
         h.gauge.after_acquisition()
-        h.gauge.note_reply('ICG>ICS ERROR: VACGAUGE nope')
+        h.gauge.note_reply(parse_line('ICG>ICS %s: VACGAUGE nope' % mtype))
         assert h.gauge.state == gc.UNKNOWN
         assert not h.gauge.pending_reenable, '모르는 상태인데 타이머가 남았다'
         await h.gauge.close()
@@ -306,7 +321,8 @@ def test_a_gauge_that_was_on_gets_time_to_actually_turn_off():
     """⭐ **켜져 있어서 껐으면 기다린다.**
 
     ⛔ `VACGAUGE OFF` 는 즉시가 아니다 -- ICG 가 `APPLYDIO09` 를 내고 그것이
-    MOD10 VCPU 를 재시작한다.  `ccdflush = true` 면 그 사이에 `Prep`+`Flush` 가
+    MOD10 VCPU 를 재시작한다.  flush 가 켜져 있으면(`ccdflush_first`/`ccdflush_every`,
+    또는 게이지를 끈 `GO` 의 첫 장 flush) 그 사이에 `Prep`+`Flush` 가
     **필라멘트가 켜진 채로** 돌아 science 자료를 오염시킨다.
     """
     import time as _t
@@ -477,7 +493,7 @@ def test_cancel_reenable_only_drops_the_timer():
         h.gauge.before_exposure()
         h.gauge.after_acquisition()
         assert h.gauge.state == gc.PENDING_ON
-        h.gauge.cancel_reenable('시험')
+        h.gauge.cancel_reenable('test')
         await h.settle()                        # 만료 시각을 지나도 안 켠다
         assert h.words == ['OFF'] and h.gauge.state == gc.PENDING_ON
         await h.gauge.close()

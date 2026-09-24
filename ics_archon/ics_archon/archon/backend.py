@@ -321,10 +321,12 @@ class ArchonBackend:
         "이 프레임은 이미 준비했다" 는 표시로만 쓴다.
         """
         # ⭐ **방금 끈 진공게이지가 실제로 꺼질 때까지 기다린다** (운영자 지시
-        # 2026-09-04).  ⛔ `ccdflush = true` 면 `Prep`+`Flush` 가 **적분 직전**
-        # 에 돌므로, 게이지가 아직 살아 있으면 **필라멘트가 켜진 채로 flush**
-        # 한다.  여기가 프레임의 첫 백엔드 호출이라(`sequencer._frame` 의
-        # `initialize()` gather) 노출 시퀀스 전체가 그만큼 늦춰진다.
+        # 2026-09-04).  ⛔ flush 가 켜져 있으면(`ccdflush_first`/`ccdflush_every`,
+        # 또는 게이지를 끈 GO 의 첫 장 flush -- `_first_flush_for_this_frame`)
+        # `Prep`+`Flush` 가 **적분 직전**에 돌므로, 게이지가 아직 살아 있으면
+        # **필라멘트가 켜진 채로 flush** 한다.  여기가 프레임의 첫 백엔드 호출이라
+        # (`sequencer._frame` 의 `initialize()` gather) 노출 시퀀스 전체가 그만큼
+        # 늦춰진다.
         #
         # ⚠️ 락 **밖**이다 -- 두 컨트롤러가 같은 마감을 함께 기다린다(대기는
         # 마감 시각 기준이라 멱등이다).  안 그러면 한 대가 자는 동안 다른 대의
@@ -421,10 +423,15 @@ class ArchonBackend:
             # 앞 노출의 `NoIntMS` 가 남는데, 셔터를 안 여는 노출이 그 값을 제
             # 적분시간으로 쓰게 되면서(아래 `_readout_stream`) **앞 DARK 의 값이
             # 남아 셔터가 닫히기 전에 독출이 시작될** 수 있다.
-            # ⛔ `0` 이면 안 싣는다 -- 그건 "검사를 꺼 둔 것" 이고, 그때는 ACF
-            # 값이 정본이다 (`_enforce_shutter_close_dwell`).
-            dwell = int(getattr(self.acfg, 'shutter_close_ms', 0) or 0)
-            await c.trigger(ms, noint_ms=dwell if dwell > 0 else None,
+            # ⭐ 싣는 값은 **ACF 를 민 `prepare()`(첫 GO)에서 정한 `shutter_dwell_ms`**
+            # 다 (DevNote 11.96) -- ACF 값과 `shutter_close_ms` 가운데 큰 쪽,
+            # `shutter_close_ms=0`("검사를 꺼 둔 것")이면 ACF 값
+            # (`_enforce_shutter_close_dwell`).
+            # ⛔ 종전에는 `shutter_close_ms` 를 그대로 싣고 `0` 이면 **안 실었다** --
+            # 그러면 "ACF 값이 정본" 이 아니라 앞 DARK/BIAS 의 값이 갔고(BIAS 뒤면 0 이라
+            # 빛이 새고, 긴 DARK 뒤면 독출이 그만큼 늦어 시한에 걸린다), ACF 가 더 길면
+            # 하한이어야 할 눈금이 ACF 값을 깎았다.
+            await c.trigger(ms, noint_ms=getattr(c, 'shutter_dwell_ms', None),
                             suffix=self._suffix.get(c.tag, ''),
                             first_flush=first_flush)
 
@@ -444,7 +451,7 @@ class ArchonBackend:
         제어가 그 사실을 한 번 내주고(`take_flush_request`), 그것이 곧 이 GO 의 첫
         프레임이다.  둘째 장부터, 그리고 이미 꺼져 있던 GO 는 `None` -- ini/ACF 설정대로.
         올릴지 말지(설정 메모리가 이미 > 0 이면 그대로)는 컨트롤러 층이 정한다
-        (`ArchonController._raise_first_flush`).  `EveryFlush` 와는 무관하다.
+        (`ArchonController._plan_first_flush`).  `EveryFlush` 와는 무관하다.
         """
         gauge = getattr(self, 'gauge', None)
         take = getattr(gauge, 'take_flush_request', None)
@@ -480,19 +487,19 @@ class ArchonBackend:
         끊는 것**이고, 적분 자체는 남은 시간을 다 센다 (`controller.py` 머리말).
 
         ⛔ **종전 주석의 *"조기 종료(STOP · SHCLOSE)"* 는 낡았다** (2026-09-09
-        전수 조사).  둘 다 이제 이 자리를 안 지난다:
+        전수 조사).  둘 다 이제 이 자리를 안 지나고, `ABORT` 도 그렇다:
 
         * `STOP` 은 **적분을 안 끊는다** -- 현재 프레임을 저장까지 마치고 다음을
           안 건다 (운영자 확정 2026-09-05, `Sequencer.stop_integration`).
         * `SHCLOSE` 는 `IcsDispatcher` 가 갈아 끼웠다 -- **강제를 놓는다**
           (`TRIGOUTFORCE=0`), 붙드는 이 함수와 반대다 (`README.md`).
+        * `ABORT` 는 적분을 **`abort_now()` 로 끊는다**
+          (`Exposures=0` -> `RESETTIMING`, 운영자 지시 2026-09-09).  코어가 `Start:`
+          로 가고 그 첫 줄 상태 `RESET` 이 `CONTROL="0,0"` 으로 **6비트를 전부 0**
+          으로 몰아 셔터가 닫힌다 -- `TRIGOUTFORCE=1` 이 필요 없다 (ACF 실측).
 
-        ⏳ **`ABORT` 도 이 자리를 안 지난다** -- 시퀀서가 태스크를 취소할 뿐이라
-        science 는 컨트롤러의 적분이 **물리적으로 끝까지 간다**(셔터는
-        `NoIntMS` 에 닫히고 프레임만 안 쓴다).  ⭐ 끊으려면 `RESETTIMING` 이면
-        된다: 코어가 `Start:` 로 가고 그 첫 줄 상태 `RESET` 이 `CONTROL="0,0"`
-        으로 **6비트를 전부 0** 으로 몰아 셔터가 닫힌다 -- `TRIGOUTFORCE=1` 도
-        `NoIntMS` 전용 상태도 필요 없다 (ACF 실측, DevNote 11.50 미결).
+        ⭐ 그래서 이 함수가 실제로 끊는 경우는 **호스트 카운트다운이 컨트롤러 적분보다
+        먼저 끝난 때**뿐이다(`time_scale != 1` 등, `controller.py` 머리말).
 
         ⚠️ `APPLYSYSTEM` 을 적분 중에 보내는 것이 안전한지는 **실기 확인
         항목**이다.  그래서 "아직 적분 중" 일 때만 보낸다 -- 정상 경로에서
@@ -512,10 +519,11 @@ class ArchonBackend:
                     ', '.join('%s:%.1f' % (c.tag, left)
                               for c, left in remain))
         log.warning('shutter close arrived during integration '
-                    '(STOP/SHCLOSE) -- forcing TRIGOUTFORCE=1 to cut the '
-                    'light',
+                    '(host countdown ran ahead) -- forcing TRIGOUTFORCE=1 to '
+                    'cut the light',
                     extra={'detail': '적분은 남은 시간을 다 세고 끝나므로 '
-                                     'EXPTIME 은 요청값이다'})
+                                     'EXPTIME 은 요청값이다 (time_scale != 1 이면 '
+                                     '이렇게 된다)'})
         for c in still:
             try:
                 # ⛔ **레벨을 함께 쓴다** (2026-09-13).  종전에는

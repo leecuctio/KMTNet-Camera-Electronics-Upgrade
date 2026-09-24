@@ -199,7 +199,8 @@ class ControllersCfg:
     ctrl2_sn: str = ''
     ctrl2_cfg: str = ''
     #: FITS `RDMODE`(독출 모드 선언, raw spec 5.5절).  비면 코드 기본
-    #: `NORMAL`.  MEF `READMODE`(`'64AMP'`, 구조 선언)와 **별개**다.
+    #: `UNKNOWN`(`rawhdr.RDMODE`, 운영자 확정 2026-08-29 -- `NORMAL` 로 가리지
+    #: 않는다).  MEF `READMODE`(`'64AMP'`, 구조 선언)와 **별개**다.
     rdmode: str = ''
 
     #: "그 컨트롤러가 없다" 를 ini 에 적는 방법 -- **비워 두거나 `NC`** 다
@@ -446,10 +447,14 @@ class AuxControlCfg:
     ack_timeout: float = 1.0
     reconnect_sec: float = 2.0
     reconnect_max_sec: float = 30.0
-    #: true 면 성공(OK)도 콘솔에 찍는다.  기본은 실패만 눈에 띄게.
+    #: true 면 통과 줄(`OK`·`SUCCESS`, 그리고 `ECHO` 되울림 같은 값 응답)도
+    #: 간결 화면(`[behavior] verbose = off`)에 낸다.
+    #: ⭐ 로그 파일에는 이 값과 무관하게 늘 남는다 (`AuxControlClient._report`).
+    #: 기본은 실패만 눈에 띄게.
     verbose: bool = False
 
-    #: 접속 직후 1회 (예: ALL / ECHO hello).  비우면 생략
+    #: ini `hello_cmd` 의 첫 토큰과 나머지.  **(재)접속할 때마다** 붙은 직후 1회
+    #: (예: ALL / ECHO hello).  비우면 생략
     hello_subsystem: str = ''
     hello_command: str = ''
 
@@ -615,13 +620,15 @@ class SimConfig:
         if self.hardware.backend not in ('sim', 'archon'):
             raise ConfigError('backend 는 sim 또는 archon')
 
-        # AUX 의 SET_SH 는 HW 트리거의 시뮬레이션용 대체물이다.  실기에서는
-        # HE 박스의 TTL 이 셔터를 구동하므로, 둘을 함께 켜면 구동원이 둘이 된다.
+        # ⚠️ AUX 셔터 통지(SET_SH)는 2026-09-12 에 걷었다 -- 지금 AUX 접속이
+        # 하는 일은 접속 인사뿐이라 실기에서 켤 까닭이 없고, 서버가 없으면
+        # 재접속 경고만 쌓인다.  (종전 문면의 "구동원이 둘" 은 철거 전 이야기다.)
         if self.hardware.backend == 'archon' and self.auxcontrol.enabled:
             warn.append(
                 'backend=archon 인데 [auxcontrol] enabled=true 입니다 -> '
-                '실기에서는 HE 박스 TTL 이 셔터를 구동하므로 '
-                'AUX SET_SH 와 구동원이 겹칩니다.  끄는 것이 맞는지 확인하세요')
+                '실기에서 AUX 접속이 하는 일이 없습니다(셔터 통지는 '
+                '2026-09-12 에 걷었습니다).  서버가 없으면 재접속 경고만 '
+                '쌓이니 false 로 두세요')
 
         # DevNote 3.3 (2): 4번째 Acquisition Complete. 이후 EXPSTATUS=IDLE 까지
         if t.acq_to_idle > oa.idle_window_sec:
@@ -678,7 +685,8 @@ def _make_parser() -> configparser.ConfigParser:
 #:
 #: ⚠️ **`ics_archon`·`icg_archon` 의 `_bool` 과 같은 표여야 한다** -- 한
 #: 저장소에서 ini 규칙이 갈리면 운영자가 어느 파일이 무엇을 받는지 외워야
-#: 한다.  셋을 함께 고칠 것.
+#: 한다.  ⭐ 두 앱의 `_bool` 은 이 표를 **가리킴만** 한다(`ics_archon` 의
+#: `[archon]` 절은 2026-09-23 에 사본을 걷었다) -- 고칠 곳은 여기 하나다.
 #: ⭐⭐ **참/거짓 낱말의 정본**이다 (운영자 2026-09-11: *"1/ON/TRUE/ENABLE/HIGH
 #: 는 모두 같은 의미로, 0/OFF/FALSE/DISABLE/LOW 는 모두 같은 의미로"*).
 #: ini 도 명령 인자도 이 표를 본다 -- ⛔ **사본을 만들지 말 것**: 종전에 셋이
@@ -1033,6 +1041,16 @@ def load(path: str | None = None) -> SimConfig:
         lg.level = s.get('level', lg.level).strip().lower()
         lg.wire = _bool(s, 'wire', lg.wire)
         lg.file = _path_or(s, 'file', lg.file)
+        # ⚠️ **옛 자리의 `verbose` 는 안 읽는다** -- 2026-09-11 에
+        # `[behavior] verbose` 로 옮겼다 (`BehaviorCfg.verbose` 의 *"여기 있는
+        # 이유"*).  ⛔ 조용히 지나가면 운영자는 `off` 로 적어 두고 켜진 화면을
+        # 본다 -- 그래서 `[node]` 의 옛 키(`site`/`telid`/`site_from_ip`)처럼
+        # 기동에서 한 번 알린다.
+        if 'verbose' in s:
+            log.warning('[logging] verbose is ignored -- use [behavior] verbose',
+                        extra={'detail': '2026-09-11 에 [behavior] verbose 로 '
+                                         '옮겼다.  옛 자리의 값은 읽지 않으니 '
+                                         'ini 에서 [behavior] 로 옮겨 적을 것'})
 
     resolve_expnum_file(cfg)
     return cfg

@@ -52,11 +52,19 @@ class RecordingCtrl(ArchonController):
         self.parse_acf(acf)
         self.sent: list[str] = []
         self.fail_on = ''            # 이 글자가 든 명령을 실패시킨다
+        #: 실패의 모양 -- `True` 면 컨트롤러의 `?xx` 거부(`reply_error=True`,
+        #: 적용 안 됨이 확실), `False` 면 응답 유실(시한 초과·링크 끊김 -- 적용
+        #: 여부를 모른다).  `fail_exc` 를 주면 그 예외를 그대로 던진다.
+        self.fail_reply_error = False
+        self.fail_exc: BaseException | None = None
 
     async def cmd(self, command: str, timeout: float = 0.0) -> bytes:  # noqa: ANN001
         self.sent.append(command)
         if self.fail_on and self.fail_on in command:
-            raise ArchonError('시험이 일부러 실패시킨 명령 -- %s' % command)
+            if self.fail_exc is not None:
+                raise self.fail_exc
+            raise ArchonError('시험이 일부러 실패시킨 명령 -- %s' % command,
+                              cmd=command, reply_error=self.fail_reply_error)
         if command.startswith('RCONFIG'):
             line = int(command[7:11], 16)
             for key, val in self.config.items():
@@ -221,24 +229,220 @@ def test_an_unreadable_gauge_state_stays_unknown_and_does_not_block_dewpres():
     assert state.blocks_dewpres is False
 
 
-def test_the_gauge_state_rolls_back_when_the_round_trip_fails():
-    """⛔ 왕복이 실패하면 **껐다고 남겨 두지 않는다.**
+def test_the_gauge_state_rolls_back_when_the_round_trip_is_refused():
+    """⛔ 적용이 안 된 것이 **확실한** 실패는 **직전 상태로 되돌린다**
+    (`GaugeState.set` 머리말 표).
 
-    남겨 두면 반대 방향으로 거짓말한다 -- 필라멘트는 켜져 있는데 `DEWPRES` 만
-    sentinel 로 내려가고, science 오염을 막으려던 명령이 조용히 무력해진다.
+    확실한 경우는 둘이다 -- `APPLYDIO09` 를 컨트롤러가 `?xx` 로 거부했거나
+    (`reply_error=True`), 그 앞의 `WCONFIG` 에서 멈춰 `APPLYDIO09` 가 아예 안
+    나갔거나.  성공한 것처럼 남겨 두면 반대 방향으로 거짓말한다 -- 켜려다
+    실패했는데 켰다고 남기면 열손실 센서 값이 `DEWPRES` 로 실리고, 끄려다
+    실패했는데 껐다고 남기면 필라멘트는 켜져 있는데 `DEWPRES` 만 sentinel 로
+    내려간다.
     """
     ctrl = RecordingCtrl()
     state = gauge_mod.GaugeState()
     asyncio.run(state.load(ctrl))
     assert state.on is False             # R2619 ACF 는 꺼진 채로 나온다
-    ctrl.fail_on = 'APPLYDIO'
+    ctrl.fail_on, ctrl.fail_reply_error = 'APPLYDIO', True
     with pytest.raises(ArchonError):
         asyncio.run(state.set(ctrl, True))
     assert state.on is False, '실패한 왕복이 상태를 바꿨다'
+    # ⭐ 셋 다 돌아온다 -- `origin`·`on_at` 이 남으면 낱말(`WARMUP`)이 거짓이 된다.
+    assert state.origin == 'rconfig' and state.on_at is None
+    assert state.word == 'OFF'
     # ⭐ **방향이 뒤집혔다** (R2619 부터 ACF 가 꺼진 채로 나온다) -- 켜려다
     # 실패했으니 게이지는 여전히 꺼져 있고, 그러면 `DEWPRES` 를 **막아야**
     # 한다 (꺼도 같은 모듈의 열손실 센서가 값을 계속 낸다).
     assert state.blocks_dewpres is True
+
+    # ② 반대 방향 -- 켜진 게이지를 끄려다 거부되면 **켜진 채**로 남는다.
+    ctrl.fail_on = ''
+    asyncio.run(state.set(ctrl, True))
+    on_at = state.on_at
+    assert state.on is True and on_at is not None
+    ctrl.fail_on = 'APPLYDIO'
+    with pytest.raises(ArchonError):
+        asyncio.run(state.set(ctrl, False))
+    assert state.on is True, '끄기에 실패했는데 껐다고 남겼다'
+    assert state.origin == 'command' and state.on_at == on_at
+
+    # ③ `WCONFIG` 에서 멈추면 **예외 종류와 무관하게** 되돌린다 -- 응답을 잃어도
+    # `APPLYDIO09` 가 안 나갔으니 물리 상태는 직전 그대로다.
+    ctrl.fail_on, ctrl.fail_reply_error = 'WCONFIG', False
+    before = len(ctrl.applies())
+    with pytest.raises(ArchonError):
+        asyncio.run(state.set(ctrl, False))
+    assert len(ctrl.applies()) == before, 'WCONFIG 가 실패했는데 적용을 냈다'
+    assert state.on is True and state.on_at == on_at
+
+
+@pytest.mark.parametrize('exc', [
+    None,                                        # reply_error 없는 ArchonError
+    TimeoutError('시험이 일부러 잃은 응답'),
+    ConnectionResetError('시험이 일부러 끊은 링크'),   # OSError
+], ids=['archon-no-reply', 'timeout', 'oserror'])
+def test_a_lost_applydio_answer_leaves_the_gauge_unknown(exc):  # noqa: ANN001
+    """⛔ `APPLYDIO09` 의 응답을 잃으면 **모름**이다 -- 직전 상태로 되돌리지 않는다.
+
+    컨트롤러가 받아 **적용한 뒤 응답만 잃었을 수 있다**.  켜려다 그렇게 됐는데
+    직전 `OFF` 로 되돌리면, 실제로는 켜졌을 수 있는 게이지를 `OFF` 라 적고 --
+    ICS 는 `HKDATA NOW` 의 `VACGAUGE=OFF` 를 보면 `VACGAUGE OFF` 를 **건너뛰므로**
+    (`ics_archon/gaugectl.py` `before_exposure`) 필라멘트가 켜진 채 science
+    노출이 나간다.  `UNKNOWN` 이면 ICS 가 다음 science 노출 전에 `OFF` 를 보낸다.
+    """
+    ctrl = RecordingCtrl()
+    state = gauge_mod.GaugeState()
+    asyncio.run(state.load(ctrl))
+    assert state.word == 'OFF'
+    ctrl.fail_on, ctrl.fail_exc = 'APPLYDIO', exc
+    with pytest.raises(type(exc) if exc is not None else ArchonError):
+        asyncio.run(state.set(ctrl, True))
+    assert ctrl.applies() == ['APPLYDIO09'], 'APPLYDIO09 가 나가야 이 갈래다'
+    assert state.on is None and state.origin == 'failed' and state.on_at is None
+    assert state.word == 'UNKNOWN', '적용 여부를 모르는데 상태를 단정했다'
+    # 모름은 `DEWPRES` 를 막지 않는다 (`blocks_dewpres` 머리말).
+    assert state.blocks_dewpres is False
+
+
+def test_a_refused_applydio_puts_the_previous_value_back():
+    """⭐ `APPLYDIO09` 가 거부되면 **설정 메모리에 직전 값을 되쓴다** (`WCONFIG` 한 번).
+
+    `WCONFIG` 는 앉았으므로 메모리에 새 값이 남고, 뒤의 히터 쪽 `APPLYMOD09`
+    (`HTR*` 명령 · 과열 차단)가 그 값을 적용할 수 있다 (`GaugeState.set` 머리말의
+    *"새 값이 남는다"* 문단).  ⚠️ 되쓰기가 적용(`APPLY*`)을 또 내면 안 된다 --
+    적용은 VCPU 를 재시작한다.  ⭐ 올라오는 예외는 **원래 것**(`APPLYDIO09` 거부)이다.
+    """
+    ctrl = RecordingCtrl()
+    state = gauge_mod.GaugeState()
+    asyncio.run(state.load(ctrl))
+    assert state.word == 'OFF'
+    ctrl.fail_on, ctrl.fail_reply_error = 'APPLYDIO', True
+    with pytest.raises(ArchonError) as err:
+        asyncio.run(state.set(ctrl, True))
+    assert err.value.cmd == 'APPLYDIO09', '원래 예외가 아니다'
+    assert [w.split('MOD10/')[-1] for w in ctrl.writes()] == [
+        'DIO_POWER=1', 'DIO_POWER=0'], ctrl.writes()
+    assert ctrl.applies() == ['APPLYDIO09'], '되쓰기가 적용을 또 냈다'
+    assert ctrl.config['MOD10/DIO_POWER'] == '0'
+    assert state.word == 'OFF' and state.origin == 'rconfig'
+
+    # ② 직전 상태가 모름이면 **되쓸 값을 모르므로 쓰지 않는다** -- 모름 그대로.
+    ctrl2 = RecordingCtrl()
+    ctrl2.fail_on, ctrl2.fail_reply_error = 'APPLYDIO', True
+    blank = gauge_mod.GaugeState()
+    with pytest.raises(ArchonError):
+        asyncio.run(blank.set(ctrl2, True))
+    assert len(ctrl2.writes()) == 1, '모르는 직전 값을 지어내 되썼다'
+    assert blank.word == 'UNKNOWN'
+
+
+class _PutBackFailsCtrl(RecordingCtrl):
+    """`APPLYDIO09` 는 거부(`?xx`)하고, 그 뒤 **되쓰기(`DIO_POWER=0`)는 응답을 잃는다.**"""
+
+    async def cmd(self, command: str, timeout: float = 0.0) -> bytes:  # noqa: ANN001
+        if command.startswith('APPLYDIO'):
+            self.sent.append(command)
+            raise ArchonError('시험이 일부러 거부한 명령 -- %s' % command,
+                              cmd=command, reply_error=True)
+        if command.startswith('WCONFIG') and command.endswith('DIO_POWER=0'):
+            self.sent.append(command)
+            raise TimeoutError('시험이 일부러 잃은 되쓰기 응답')
+        return await super().cmd(command, timeout)
+
+
+def test_a_failed_put_back_leaves_the_gauge_unknown_and_keeps_the_original_error(
+        caplog):  # noqa: ANN001
+    """⛔ 되쓰기도 실패하면 **모름** -- 메모리에 새 값이 남았을 수 있다.
+
+    뒤의 히터 쪽 `APPLYMOD09` 가 그 값을 적용하면 게이지가 바뀌므로 직전 상태를
+    단정하지 않는다.  ⭐ 되쓰기의 실패가 **원래 예외를 가리지 않는다** -- 올라오는
+    것은 `APPLYDIO09` 거부이고, 되쓰기 실패는 경고 한 줄(영문 + `detail`)로 남는다.
+    """
+    import logging
+
+    ctrl = _PutBackFailsCtrl()
+    state = gauge_mod.GaugeState()
+    asyncio.run(state.load(ctrl))
+    assert state.word == 'OFF'
+    with caplog.at_level(logging.WARNING, logger='icg_archon.gauge'):
+        with pytest.raises(ArchonError) as err:
+            asyncio.run(state.set(ctrl, True))
+    assert err.value.cmd == 'APPLYDIO09' and err.value.reply_error is True
+    assert state.on is None and state.origin == 'failed' and state.on_at is None
+    assert state.word == 'UNKNOWN', '되쓰기가 실패했는데 직전 상태를 단정했다'
+    warns = [r for r in caplog.records if 'could not put' in r.getMessage()]
+    assert len(warns) == 1, [r.getMessage() for r in caplog.records]
+    assert 'APPLYMOD09' in warns[0].detail and 'TimeoutError' in warns[0].detail
+
+
+class _OverlapCtrl(RecordingCtrl):
+    """두 `set()` 을 **겹치게** 하는 문 둘.
+
+    * 첫 `APPLYDIO09` -- 나갔다고 알리고(`applydio_out`) 문(`lose`)이 열릴 때까지
+      매달렸다가 **응답을 잃는다** (`TimeoutError` -- 적용 여부 모름).
+    * `DIO_POWER=1` 을 쓰는 `WCONFIG` -- 문(`refuse`)이 열릴 때까지 매달렸다가
+      **실패한다** (`WCONFIG` 실패 -- 미적용이 확실하다).
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.applydio_out = asyncio.Event()
+        self.lose = asyncio.Event()
+        self.refuse = asyncio.Event()
+
+    async def cmd(self, command: str, timeout: float = 0.0) -> bytes:  # noqa: ANN001
+        if command.startswith('APPLYDIO') and not self.applydio_out.is_set():
+            self.sent.append(command)
+            self.applydio_out.set()
+            await self.lose.wait()
+            raise TimeoutError('시험이 일부러 잃은 APPLYDIO09 응답')
+        if command.startswith('WCONFIG') and command.endswith('DIO_POWER=1'):
+            self.sent.append(command)
+            await self.refuse.wait()
+            raise ArchonError('시험이 일부러 실패시킨 명령 -- %s' % command,
+                              cmd=command)
+        return await super().cmd(command, timeout)
+
+
+def test_overlapping_gauge_commands_never_leave_a_stale_off():
+    """⛔ 겹친 두 `set()` 이 **필라멘트가 켜졌을 수 있는데 `OFF`** 를 남기면 안 된다.
+
+    `VACGAUGE` 는 명령마다 태스크를 띄우므로(`commands._do_vacgauge`) 두 호출이
+    겹칠 수 있다.  켜진 게이지를 끄려던 앞 호출은 `APPLYDIO09` 응답을 잃어
+    `UNKNOWN` 이 되고, 켜려던 뒤 호출은 `WCONFIG` 에서 실패해 직전 상태로
+    되돌린다.  ⛔ 락이 없으면 뒤 호출의 직전 상태가 **앞 호출의 선반영 `OFF`**
+    라서 `UNKNOWN` 을 `OFF` 로 덮는다 -- ICS 는 `VACGAUGE=OFF` 를 보면
+    `VACGAUGE OFF` 를 건너뛰어 필라멘트가 켜진 채 science 노출이 나간다.
+    ⭐ `GaugeState._lock` 이 둘을 한 줄로 세운다 (`GaugeState.set` 머리말).
+    """
+    async def scenario():  # noqa: ANN202
+        ctrl = _OverlapCtrl()
+        ctrl.config['MOD10/DIO_POWER'] = '1'          # 켜진 게이지에서 시작
+        state = gauge_mod.GaugeState()
+        await state.load(ctrl)
+        assert state.word == 'ON'
+        first = asyncio.create_task(state.set(ctrl, False))
+        await ctrl.applydio_out.wait()                # 앞 호출이 APPLYDIO09 를 냈다
+        second = asyncio.create_task(state.set(ctrl, True))
+        for _ in range(10):                           # 뒤 호출이 갈 수 있는 데까지
+            await asyncio.sleep(0)
+        # ⭐ 뒤 호출은 앞 호출이 끝날 때까지 `WCONFIG` 도 내지 않는다.
+        assert len(ctrl.writes()) == 1, ctrl.writes()
+        ctrl.lose.set()
+        with pytest.raises(TimeoutError):
+            await first
+        # ⚠️ 여기서 낱말을 보지 않는다 -- 락을 넘겨받은 뒤 호출이 벌써 선반영
+        # (`WARMUP`)을 했을 수 있다.  보는 것은 뒤 호출이 끝난 뒤의 낱말이다.
+        ctrl.refuse.set()
+        with pytest.raises(ArchonError):
+            await second
+        return state, ctrl
+
+    state, ctrl = asyncio.run(scenario())
+    assert len(ctrl.writes()) == 2, ctrl.writes()
+    assert state.word != 'OFF', '켜졌을 수 있는 게이지를 OFF 라 적었다'
+    assert state.word == 'UNKNOWN' and state.origin == 'failed'
 
 
 def test_an_unknown_gauge_off_method_refuses_to_start():
@@ -701,6 +905,41 @@ def test_startup_only_writes_when_the_readback_disagrees():
     body = body[:body.index('\n    async def stop')]
     assert 'if self.gauge.on is want:' in body, '되읽은 값과 견준다'
     assert 'return' in body
+
+
+@pytest.mark.parametrize('reply_error, word, phrase', [
+    (True, 'OFF', '직전 상태(OFF)로 되돌렸다'),
+    (False, 'UNKNOWN', 'UNKNOWN'),
+], ids=['refused', 'answer-lost'])
+def test_a_startup_gauge_failure_says_which_state_it_left(
+        reply_error, word, phrase, caplog):  # noqa: ANN001
+    """⭐ 기동의 게이지 맞추기가 실패하면 **남은 상태를 그대로 말한다**.
+
+    `set()` 이 적용 안 됨이 확실하면 되돌리고, `APPLYDIO09` 응답을 잃으면
+    모름으로 둔다 -- 경고의 `detail` 이 둘을 갈라야 운영자가 무엇을 확인할지
+    안다 (종전에는 늘 *"상태를 모른다"* 였다).
+    """
+    import logging
+    import types
+
+    from icg_archon.app import IcgArchon
+
+    ctrl = RecordingCtrl()
+    state = gauge_mod.GaugeState()
+    asyncio.run(state.load(ctrl))
+    assert state.word == 'OFF'
+    ctrl.fail_on, ctrl.fail_reply_error = 'APPLYDIO', reply_error
+    icfg = IcgCfg()
+    icfg.gauge_on_start = 'on'                       # 켜려다 실패하게
+    fake = types.SimpleNamespace(icfg=icfg, gauge=state,
+                                 guide=types.SimpleNamespace(ctrl=ctrl))
+    with caplog.at_level(logging.WARNING, logger='icg_archon.app'):
+        asyncio.run(IcgArchon._settle_gauge(fake))
+    assert state.word == word
+    warns = [r for r in caplog.records
+             if 'could not set the ion gauge' in r.getMessage()]
+    assert len(warns) == 1, [r.getMessage() for r in caplog.records]
+    assert phrase in warns[0].detail, warns[0].detail
 
 
 def test_turning_it_on_starts_a_warmup_window():

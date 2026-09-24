@@ -136,19 +136,24 @@ def _unsigned(value, digits: int) -> str | None:  # noqa: ANN001
     return '%.*f' % (digits, value)
 
 
-async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
+async def body(app, *, now: bool = False) -> str:  # noqa: ANN001
     r"""`HKDATA`/`HK` 응답 본문 한 줄.
 
     ## ⭐ 갈래가 둘이다 (운영자 확정 2026-09-09)
 
-    | | 히터 설정 셋 (`HTREN`·`HTRSET`·`HTRFORCE`) | 왕복 |
+    | | 값의 원천 | 왕복 |
     |---|---|---|
-    | `now=False` (**기본**) | HK 폴러가 60초마다 받아 둔 값 (`sensors()`) | **없다** |
-    | `now=True` (`HKDATA NOW`) | `RCONFIG` **즉시 되읽기** | 셋 |
+    | `now=False` (**기본**) | HK 폴러가 `[hk] interval`(60초)마다 받아 둔 표본 (`sensors()`) | **없다** |
+    | `now=True` (`HKDATA NOW`) | `hk.refresh_now()` 가 **지금 한 바퀴 돌린** 표본 | `STATUS` 하나 + `RCONFIG` 셋 (+ Radionode) |
 
     ⭐ **기본이 폴링값인 것이 요점이다** -- 리모트 명령에 **왕복 없이 곧바로**
-    답한다.  ⛔ 나머지 값(RTD·진공·`HTROUT`·Radionode)은 **원래부터** 폴링값이라
-    갈래와 무관하다 -- `STATUS` 를 이 자리에서 다시 읽은 적이 없다.
+    답한다.  ⭐ `now=True` 는 **전부**를 되읽는다 -- RTD·진공·`HTROUT`(`STATUS`),
+    히터 설정 셋 `HTREN`·`HTRSET`·`HTRFORCE`(`RCONFIG`), Radionode(충분히 낡았을
+    때만, `[radionode] now_min_age`).  주기 바퀴와 **같은 함수**(`HkMonitor._tick`)
+    라 폴링 표본도 함께 갱신되고 다음 guide 헤더도 이 값을 본다 (운영자
+    2026-09-09).  ⚠️ 종전 이 자리의 *"`NOW` 는 히터 설정 셋만 즉시 되읽고 나머지는
+    원래부터 폴링값"* 은 낡은 문면이었다 -- 코드는 한 바퀴를 통째로 돌린다.
+    ⭐ ICS 는 `GO` 마다 `HKDATA NOW` 로 묻는다 (DevNote 11.90).
 
     ⚠️ **낡음을 숨기지 않는다** -- `HKUDATE`(가장 낡은 표본시각)와 `HKSTALE` 이
     그대로 나가므로, 방금 바꾼 설정이 아직 안 실렸으면 **시각으로 드러난다.**
@@ -159,8 +164,8 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
     한 줄로 세우므로 진행 중인 FETCH 뒤에 설 뿐이다 (실측 최악 108 ms,
     DevNote 11.55).  ⛔ 그러니 따로 기다리는 장치를 두지 않는다.
 
-    ⚠️ `now=True` 인데 컨트롤러가 없거나 왕복이 실패하면 **폴링값으로 물러난다**
-    -- 그 셋만 빼 버리면 `now` 가 오히려 정보를 줄인다.
+    ⚠️ `now=True` 인데 컨트롤러가 없거나 그 바퀴가 실패하면 **폴링값으로
+    물러난다** -- 실패를 이유로 값을 빼 버리면 `now` 가 오히려 정보를 줄인다.
     """
     hk = getattr(app, 'hk', None)
     if hk is None:
@@ -224,14 +229,14 @@ async def body(app, *, ctrl=None, now: bool = False) -> str:  # noqa: ANN001
     # ⭐ **기본은 폴링값이다** -- HK 가 한 바퀴마다 `RCONFIG` 로 받아 `_sample`
     # 에 담아 두므로(11.52-(2)) 여기서 왕복이 없다.  ⭐ 그래서 **헤더와
     # `HKDATA` 가 같은 원천**을 본다 -- 11.52 가 만들었던 갈림이 여기서 닫힌다.
-    ctrl = ctrl if ctrl is not None else getattr(hk, 'ctrl', None)
     htren = _word(vals.get('htren'))
     htrset = _signed_or_none(vals.get('htrset'))
     htrforce = _word(vals.get('htrforce'))
     # ⛔ **여기서 따로 되읽지 않는다** -- `NOW` 는 위에서 `hk.refresh_now()` 로
     # 한 바퀴를 돌렸고 그 바퀴가 히터 설정 셋도 `RCONFIG` 로 읽어 `_sample` 에
     # 담았다.  ⚠️ 여기서 또 읽으면 **왕복이 두 배**가 되고, 두 값이 갈리면
-    # 어느 쪽이 정본인지 다투게 된다 (11.52 가 그 부류였다).
+    # 어느 쪽이 정본인지 다투게 된다 (11.52 가 그 부류였다).  그래서 이 함수는
+    # 컨트롤러를 받지 않는다 -- 읽는 곳이 없던 `ctrl` 인자는 걷었다 (2026-09-24).
     pairs.append(('HTREN', htren))
     pairs.append(('HTRSET', htrset))
     # `HTROUT` 은 `STATUS` 에서 온다 -- HK 루프가 이미 읽어 뒀다 (11.30).

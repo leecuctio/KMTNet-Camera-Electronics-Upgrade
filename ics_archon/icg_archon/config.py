@@ -117,23 +117,26 @@ class RadionodeDevice:
 
 @dataclass
 class RadionodeCfg:
-    """`[radionode]` -- Tapaculo365 Open API 폴링 (RN320-BTH 는 LoRaWAN 이라
-    LAN 직접 폴링이 불가하다 -- 조사 기록은 DevNote 9장).
+    """`[radionode]` -- RN320-BTH 값을 받는 길 둘 (LoRaWAN 이라 LAN 직접 폴링이
+    불가하다 -- 조사 기록은 DevNote 9장): Tapaculo365 **Open API 폴링**(`openapi`)과
+    게이트웨이 내장 NS 의 **HTTP integration 수신**(`local_lns`).
 
-    ⚠️ **정확한 endpoint 는 콘솔 로그인 뒤의 "OPENAPI 매뉴얼" 에만 있다** --
-    그래서 URL·경로·인증 헤더 이름까지 전부 ini 로 뺐다.  운영자가 콘솔에서
-    KEY/SECRET 을 만들고 그 매뉴얼의 표를 ini 에 옮기면 코드는 안 바뀐다.
+    ⭐ `openapi` 의 인증은 **POST 본문 파라미터**(`api_key`/`api_secret`)이고 endpoint
+    (`channel/get_lst`)는 코드가 안다 -- 헤더 칸은 폐기됐다 (아래 `api_key` 주석,
+    DevNote 11.44).  ini 에 옮겨 적는 것은 키 둘뿐이다 (`base_url` 은 배포 ini 에 실값).
     """
 
-    #: `off`(기본 -- 결측 sentinel) · `openapi`(Tapaculo365 클라우드) ·
+    #: `off`(코드 기본 -- 결측 sentinel) · `openapi`(Tapaculo365 클라우드) ·
     #: `sim`(고정값, **헤더 경로로는 안 나간다** -- 배선 확인용) ·
-    #: ⏳ `local_lns`(사설 LoRaWAN 서버 -- **자리만 있고 구현은 없다**).
+    #: `local_lns`(게이트웨이 내장 NS 가 밀어 주는 uplink 를 받는다 -- ✅ 구현 ·
+    #: 시험 있음 · ⏳ 실기 미검증 · MQTT 만 있는 게이트웨이는 ⏳, DevNote 11.23).
     #:
     #: ⛔ **`openapi` 는 인터넷이 있어야 한다** -- 끊기면 세 카드
     #: (`HEBOX`/`FSATEMP`/`FSAHUM`)가 그동안 sentinel 이다.  운영자 확정
     #: 2026-09-04: **그 결측은 받아들일 수 없다** -- 그래서 `local_lns` 가
-    #: 대비책이고, 그것은 게이트웨이를 우리 안쪽 LNS(ChirpStack)로 돌려
-    #: **클라우드 없이** 받는 길이다 (DevNote 9.7 경로 2 · 11.22).
+    #: 대비책이고, 그것은 게이트웨이 내장 NS 에서 **클라우드 없이** 받는 길이다
+    #: (DevNote 9.7 경로 2 · 11.22).  ⏳ 남은 선행은 운영자 액션(게이트웨이 관리
+    #: 접근 · 웹 UI 확인 넷, INSTALL 7.3·7.4).
     backend: str = 'off'              # ⚠️ 코드 기본은 off (ini 줄이 없을 때).  **배포 ini 는 openapi** (운영자 2026-09-15)
     poll_period: float = 60.0
     timeout: float = 10.0
@@ -165,12 +168,12 @@ class RadionodeCfg:
     #: ⚠️ **장치 전송주기보다 작게 두지 말 것** -- 얻는 것 없이 쿼터만 쓴다.
     #: ⚠️ `0` 이면 **늘 친다** -- 쿼터를 태울 수 있으니 시험 때만.
     now_min_age: float = 60.0
-    #: 신선도 경보 문턱 [s] -- 장치 SEND INTERVAL 의 3배쪼.  이보다 낙은
-    #: 표본은 헤더에 싸지 않는다 (호출측이 sentinel 을 채운다).
+    #: 신선도 경보 문턱 [s] -- 장치 SEND INTERVAL 의 3배쯤.  이보다 낡은
+    #: 표본은 헤더에 싣지 않는다 (호출측이 sentinel 을 채운다).
     #: ⭐ **이 값은 초기값이다** -- `openapi` 백엔드는 첫 응답에서
     #: `device_interval` 을 배워 키별로 `x3` 으로 잡는다 (60s→180 ·
-    #: 600s→1800, DevNote 11.44).  그래서 느슬한 초기값이 맞다 --
-    #: 배우기 전에 좀기면 600s 장치가 첫 바퀴에 통째로 stale 이 된다.
+    #: 600s→1800, DevNote 11.44).  그래서 느슨한 초기값이 맞다 --
+    #: 배우기 전에 좁히면 600s 장치가 첫 바퀴에 통째로 stale 이 된다.
     #: ⚠ **`local_lns`(push) 는 배우지 못한다** -- 그 백엔드를 쓰면
     #: ini 값이 영구 창이라 장치 SEND INTERVAL 에 맞춰 적어야 한다
     #: (`INSTALL.md` 7.5 예시는 600s 장치 전제의 1800).
@@ -193,17 +196,23 @@ class RadionodeCfg:
 
 @dataclass
 class HkCfg:
-    """`[hk]` -- HK 취득·로깅 (1분 주기, `ics_archon` 이 소비한다)."""
+    """`[hk]` -- HK 취득·로깅 (1분 주기).  `ics_archon` 은 파일이 아니라 와이어
+    (`HKDATA NOW`)로 받는다."""
 
-    #: 주기 [s].  운영 확정값은 60 -- 로그가 곧 `ics_archon` 헤더의 원천이라
-    #: 이보다 성기면 science 헤더의 HK 나이가 그만큼 낡는다.
+    #: HK 한 바퀴(취득 + CSV 한 행) 주기 [s].  운영 확정값은 60.  guide 헤더와
+    #: `HKDATA`(NOW 없이)는 이 주기의 폴링값(`_sample`)을 싣고, 낡음 지평선
+    #: (`interval*3`, `sensors()`)도 여기서 나온다 -- 성기게 하면 그만큼 낡는다.
+    #: ⭐ science 헤더는 `GO` 마다 `HKDATA NOW` 가 새 바퀴를 돌려 받으므로 이 값에
+    #: 안 묶인다 (→ 11.90).
     interval: float = 60.0
     #: CSV 자리.  ⚠️ data_dir 밑에 두지 말 것 (아카이브 오염).
     #: ⛔ 종전 `latest_name`(`hk_latest.G.json` 스냅샷)은 없앴다 (2026-09-15) --
     #: ICS 는 와이어(`HKDATA NOW`)로 받는다.  ini 에 남아 있어도 읽지 않는다(무시).
     log_dir: str = '~/AIC/Logs'
-    #: AUX(`ENS1~7`)도 주기마다 TC 에 물어 로그에 싣나.  노출 사이클과 별개의
-    #: 질의라 TC 부하가 늘어난다 -- 레거시 ICG 는 노출당 1페어였다 (§5.3).
+    #: 마지막 `AUXSTATUS` 응답(`telem.aux_fields`)의 `ENS1~7` 을 CSV 행에 싣나.
+    #: ⛔ 여기서 질의는 **안 한다** -- 질의는 취득 경로가 하고 이 쪽은 받아 둔 값을
+    #: 읽기만 한다 (주기 질의는 취득 경로의 대기표와 겹쳐 헤더 AUX 블록을 비운다 --
+    #: `hk.py` `_tick` 주석).
     query_aux: bool = True
 
 
@@ -215,7 +224,8 @@ class IcgCfg:
     hosts: dict = field(default_factory=dict)          # {'G': ip}
     port: int = 4242
     sock_timeout: float = 1.0
-    #: ⛔ **4 다 -- science 와 같은 값** (2026-09-09 정정).  종전 `2` 는 근거
+    #: ⛔ **5 다 -- science(`ics_archon.ini`)와 같은 값** (2026-09-09 2→4, 2026-09-10
+    #: 운영자 4→5, DevNote 11.63 (4)).  종전 `2` 는 근거
     #: 없이 낮았고 `acf_retry` 가 `1` 이었던 것과 **같은 부류**다 (11.54).
     #: ⚠️ 컨트롤러가 어긋난 연결을 놓는 데 **약 10초**가 걸리는데 `2` 는
     #: 시도 사이 대기를 합쳐도 2초라 **거의 늘 포기했다** (벤치 로그의
@@ -270,12 +280,10 @@ class IcgCfg:
     progress_step: int = 5
     burst_len: int = 1024
     fetch_buffers: int = 2
-    #: FETCH 상한 [s] = **잠금 상한** -- 하한(1.251 s) 아래여야 한다 (DevNote
-    #: 10.6).  8.3 MiB ≈ 0.08 s 라 1 s 면 12배 여유.  `GuideBackend` 가 검사한다.
-    #: ⏳ **`HKDATA`/`HK` 지연을 `INFO` 로 남기는 임계 [ms]** (2026-09-09).
+    #: **`HKDATA`/`HK` 지연을 `INFO` 로 남기는 임계 [ms]** (2026-09-09).
     #: 수신부터 응답 본문 완성까지가 이 값을 넘으면 한 줄 남기고, 아래는
     #: `DEBUG` 로 내린다.  ⭐ **`0` 이면 전부 남긴다 -- 벤치 실측용 설정이다**
-    #: (평상 운용은 기본 50 ms 로 되돌린다).
+    #: (끝나면 운용값 150 ms 로 되돌린다).
     #: ⛔ **`TRIGOUT` 은 이 눈금을 안 탄다** -- 운영자가 칠 때만 나가는 드문
     #: 명령이라 늘 남긴다 (`commands._log_latency(always=True)`).
     #: ⚠️ 임계가 있는 이유는 **바깥 감시 계통이 `HKDATA` 를 초 단위로 물어
@@ -285,6 +293,8 @@ class IcgCfg:
     #: 종전 임시값 50 으로 두면 **14 %가 매번 `INFO`** 라 소음이 된다 --
     #: 최악값 위로 올려야 *"평시 조용 · 튀면 이상"* 이 된다.
     latency_warn_ms: float = 150.0
+    #: FETCH 상한 [s] = **잠금 상한** -- 하한(1.251 s) 아래여야 한다 (DevNote
+    #: 10.6).  8.3 MiB ≈ 0.08 s 라 1 s 면 12배 여유.  `GuideBackend` 가 검사한다.
     fetch_timeout: float = 1.0
     frame_dump: float = 0.0
     frame_timeout: float = 60.0
@@ -547,15 +557,20 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
             # 자격증명 없는 설치본(저장소 ini 그대로)도 떠야 한다.  폴러는 `off` 로
             # 내리고 크게 알린다: HEBOX/FSATEMP/FSAHUM 은 sentinel 이다.  종전(기본
             # `off`)에는 여기서 `IcgConfigError` 로 세웠다.
+            # ⛔ **안내는 재기동 하나다** (2026-09-23) -- 종전에는 *"재기동하거나
+            # `RADIONODE CONNECT`"* 였는데 `CONNECT` 는 ini 를 다시 읽지 않아 이
+            # 상황에서는 늘 거절된다.  출처도 README 의 표(고객사 정보변경)에 맞췄다.
             warn.append('[radionode] backend=openapi 인데 %s 가 없다 -- 폴링을 **off**'
-                        ' 로 내린다.  HEBOX/FSATEMP/FSAHUM 은 sentinel.  Tapaculo365 '
-                        '콘솔의 "OPENAPI 매뉴얼" 에서 옮겨 적고 재기동하거나 '
-                        '`RADIONODE CONNECT`' % ', '.join(missing))
+                        ' 로 내린다.  HEBOX/FSATEMP/FSAHUM 은 sentinel.  api_key/'
+                        'api_secret 은 s2.radionode365.com → 고객사 정보변경 → API '
+                        'Key/Secret 에서(base_url 실값은 https://oa.radionode365.com) '
+                        'ini 로 옮겨 적고 **ICG 를 재기동**할 것 (`RADIONODE CONNECT` '
+                        '는 ini 를 다시 읽지 않는다)' % ', '.join(missing))
             r.backend = 'off'
         if not r.devices:
             warn.append('[radionode.*] 장치 절이 없다 -- HEBOX/FSATEMP/FSAHUM '
                         '이 전부 sentinel 로 실린다')
-        # ⭐ `local_lns` 의 `deveui` 경고와 **짝이다** -- 자격증명 넷이 다 있어도
+        # ⭐ `local_lns` 의 `deveui` 경고와 **짝이다** -- 자격증명이 다 있어도
         # `mac` 이 비면 그 장치는 못 묻는다.  ⛔ 그런데 `CONNECT` 는 통과하므로
         # 4번 걸음(`HK`)에서 sentinel 만 보이고, 원인을 *"인터넷·계정 등급"* 에서
         # 찾게 된다 (`bench_test_plan.md` 1단계 "멈출 조건").  기동은 안 세운다 --
@@ -567,10 +582,13 @@ def validate(cfg: IcgCfg, backend: str) -> list[str]:
                         '(DevNote 11.44)' % ', '.join(r.retired_keys))
         no_mac = [d.alias for d in r.devices if not d.mac]
         if no_mac:
+            # ⚠️ 위에서 off 로 내렸어도 남긴다 -- MAC 은 재기동 전에 **같이** 채울
+            # 별개의 선결 조건이다.
             warn.append('[radionode] mac 이 없는 장치: %s -- 그 장치는 폴링에서 '
                         '건너뛰고 카드가 **계속 sentinel** 이다.  Radionode365 '
-                        '장치 목록의 MAC/시리얼을 옮겨 적을 것 (자격증명 넷과는 '
-                        '별개다)' % ', '.join(no_mac))
+                        '장치 목록의 MAC/시리얼을 옮겨 적을 것 (자격증명과는 '
+                        '별개다%s)' % (', '.join(no_mac),
+                                     ' -- 재기동 전에 같이 채울 것' if missing else ''))
     if r.backend == 'sim' and backend == 'icg_archon':
         # 실기 취득인데 환경센서만 시뮬 -- 상수가 헤더에 실물처럼 남으면
         # 아카이브에서 잰 값과 못 가른다.  값 경로는 `values_with_time()`

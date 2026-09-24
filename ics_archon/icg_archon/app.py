@@ -166,8 +166,10 @@ class IcgArchon(IcsSim):
                 ('htrpid [<P> <I> <D>]', 'PID 게인 셋'),
             )),
             ('House Keeping', (
-                ('hk', 'HK 한 줄 -- HKDATA 와 같은 본문'),
-                ('hkdata', 'ICS 가 헤더를 채우려고 묻는 것'),
+                ('hk [now]', 'HK 한 줄 -- HKDATA 와 같은 본문'),
+                ('hkdata [now]',
+                 'ICS 가 헤더를 채우려고 묻는 것 -- now 면 HK 한 바퀴를 지금 '
+                 '돌린다 (ICS 는 GO 마다 now 로 묻는다)'),
                 ('c1hkdata [now]',
                  'guide 컨트롤러 온도 8·전압/전류 8 한 줄 -- now 면 STATUS 를 지금 읽는다'),
                 ('c1hk [now]', '위의 별칭 -- 같은 본문'),
@@ -318,10 +320,20 @@ class IcgArchon(IcsSim):
         try:
             await self.gauge.set(self.guide.ctrl, want)
         except Exception as exc:  # noqa: BLE001
+            # ⭐ 남은 상태는 `set()` 이 정했다 (그 머리말 표) -- 적용이 안 된 것이
+            # 확실하면 직전 상태로 되돌렸고, `APPLYDIO09` 응답을 잃었으면 모름이다.
+            # 문구가 그 둘을 가려야 운영자가 무엇을 확인할지 안다.  ⚠️ 낱말로
+            # 가른다 -- 직전 상태가 이미 모름(`load()` 실패)이었으면 되돌려도 모름이다.
+            if self.gauge.word == 'UNKNOWN':
+                why = ('⚠️ 게이지 상태를 모른다 (UNKNOWN) -- ICS 는 다음 science '
+                       '노출 전에 VACGAUGE OFF 를 보낸다.  science 노출 중이면 '
+                       '`vacgauge off` 로 맞출 것')
+            else:
+                why = ('적용되지 않았다 -- 직전 상태(%s)로 되돌렸다'
+                       % self.gauge.word)
             log.warning('could not set the ion gauge %s at startup -- %s',
                         'ON' if want else 'OFF', exc,
-                        extra={'detail': '⚠️ 상태를 모른다 -- science 노출 '
-                                         '중이면 `vacgauge off` 로 확인할 것'})
+                        extra={'detail': why})
 
     async def stop(self) -> None:
         # ⭐ **취득 사이클을 먼저 세운다** (2026-08-31 교차검토).  사이클
@@ -345,7 +357,15 @@ class IcgArchon(IcsSim):
         if task is not None and not task.done():
             log.info('shutdown: cancelling the startup connect round trip')
             task.cancel()
-        await self.dispatch.release_pulse('종료')
+        # ⛔ **새 올림을 먼저 막는다** (2026-09-24) -- 소켓은 `super().stop()` 까지 열려
+        # 있어, 아래 `release_pulse` 뒤 창(HK·radionode 정지·저장 소화)에 온 `TRIGOUT <ms>`
+        # 가 선을 올리고 뒤이은 태스크 취소에 **내림 없이** 죽었다 (LED 가 켜진 채 종료).
+        # 이 표시가 서면 `cmd_trigout` 이 거절한다 (`IcgDispatcher.stopping`).  ⭐ 그 사이에
+        # `await` 가 없으므로 이 앞에 등록된 펄스는 모두 바로 아래 `release_pulse` 가 끊는다.
+        self.dispatch.stopping = True
+        # ⚠️ 사유는 영문 -- `release_pulse` 의 영문 로그 줄 머리에 박힌다
+        # (다른 호출처 `ABORT`·`EXPENABLE OFF` 와 같은 표기).
+        await self.dispatch.release_pulse('shutdown')
         if self.seq.busy:
             log.info('shutdown: stopping the running guide cycle')
             self.seq.cancel(save=False, requester='shutdown')

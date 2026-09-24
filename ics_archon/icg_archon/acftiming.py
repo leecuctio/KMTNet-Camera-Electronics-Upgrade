@@ -81,7 +81,9 @@ def parameters(config: dict) -> dict[str, int]:
     ⚠️ **슬롯 번호(`PARAMETERn` 의 n)는 여기서 버린다** -- 이름으로 찾는다.
     구판 ACF 는 슬롯 0 이 `ContinuousExposures` 였고 현행은 `FirstFlush` 다.
     (슬롯 **순서**는 `LOADPARAMS` 적용 순서라 별개 문제이고, 그것은
-    `ics_archon/config.py` 의 `param_*_slot` 이 든다.)
+    `ics_archon/archon/controller.py` 가 든다 -- `ArchonController.param_order`
+    (이름 -> 슬롯 번호, `parse_acf()` 가 채운다)와 그 순서 규약을 판정하는
+    `_require_exposures_last()`.)
     """
     out: dict[str, int] = {}
     for key, raw in (config or {}).items():
@@ -193,13 +195,16 @@ def script_matches(config: dict) -> list[str]:
     bad: list[str] = []
     for label, pattern in _SHAPE:
         body = blk.get(label)
+        # ⚠️ 문구는 영문이다 -- `backend.py` 가 이 목록을 영문 경고 한 줄에 그대로
+        # 잇는다.  정규식 원문(`FrameShift` 등)은 문구에 남긴다 -- 무엇이 빠졌는지가
+        # 그것으로 보인다.
         if body is None:
-            msg = '%s: 라벨이 없다' % label
+            msg = '%s: label missing' % label
             if msg not in bad:
                 bad.append(msg)
             continue
         if not any(re.search(pattern, text) for text in body):
-            bad.append('%s: %s 를 부르는 줄이 없다' % (label, pattern))
+            bad.append('%s: no line calls %s' % (label, pattern))
     return bad
 
 
@@ -406,8 +411,13 @@ def frame_timing(params: dict[str, int], *, lines: int, pixels: int,
 
 
 def describe(t: dict[str, float]) -> str:
-    return ('Pixels %d x Lines %d -- 트랜스퍼 %.1f ms · 독출 %.0f ms · '
-            'NoInt %.0f ms -> 최소 주기 %.3f s (트리거->트랜스퍼 %.0f ms)'
+    """`frame_timing()` 결과 한 줄 -- 기동 로그(`backend.py`)의 영문 한 줄에 잇는다.
+
+    ⭐ `Pixels x Lines` 를 **앞에** 찍는다 -- 트림(P-k)으로 `Pixels` 가 바뀌면
+    그것이 먼저 보여야 한다.
+    """
+    return ('Pixels %d x Lines %d -- transfer %.1f ms, readout %.0f ms, '
+            'NoInt %.0f ms -> min period %.3f s (trigger->transfer %.0f ms)'
             % (t.get('pixels', 0), t.get('lines', 0),
                t['transfer'] * 1e3, t['readout'] * 1e3, t['noint'] * 1e3,
                t['floor'], t['trigger_to_transfer'] * 1e3))

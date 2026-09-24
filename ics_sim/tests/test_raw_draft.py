@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (raw spec v1.8 5장).
+"""초안 헤더 v1.0 pair 와의 **카드 전량 대사** (현행 raw spec 5장).
 
 정본 견본은 `raw_fits_spec/header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v<판>.txt`
 (경로는 박지 않고 glob 으로 찾는다 -- `_find_draft`)
@@ -21,6 +21,7 @@ raw spec 검증 체크리스트 #3(카드 전량)·#5(pair 규칙)·#6(geometry 
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 
@@ -130,10 +131,15 @@ def test_template_matches_the_draft_structure():
     """
     parsed = [_parse(c) for c in _cards(DRAFTS['MK'])
               if c[:8].rstrip() != 'END']
+    # ⭐ 일부러 갈라 둔 자리(`rawcards.SPEC_PENDING`)만 현행으로 올려 견준다.
+    # ⛔ 규칙을 여기서 다시 짜지 않는다 -- 정본 함수 `apply_pending()` 이 삭제
+    # 항목(`None`)까지 다룬다 (손으로 짠 교체는 `None` 에서 TypeError 였다).
+    # 원문 값 열(p[4])은 이 시험이 안 쓰므로 뗀다.
+    parsed = rawcards.apply_pending([p[:4] for p in parsed])
     assert len(parsed) == len(rawcards.CARDS), (
         f'카드 수가 다르다 -- 견본 {len(parsed)} vs 템플릿 '
         f'{len(rawcards.CARDS)}')
-    for (pk, pkind, pwidth, pcomment, _), (tk, tkind, twidth, tcomment) \
+    for (pk, pkind, pwidth, pcomment), (tk, tkind, twidth, tcomment) \
             in zip(parsed, rawcards.CARDS):
         assert pk == tk, f'키 순서가 다르다: 견본 {pk} vs 템플릿 {tk}'
         if pk == 'COMMENT':
@@ -271,12 +277,162 @@ def test_assembly_reproduces_the_draft_byte_for_byte(tag):
     표기로 실리면(예: 온도 소수 자리, DEWPRES 지수 표기) 여기서 걸린다.
     """
     ours = _rebuild(tag)
-    want = [c for c in _cards(DRAFTS[tag])
+    ahead = _ahead_of_sample(tag)
+    # `None` 은 삭제 -- `SPEC_PENDING` 과 같은 꼴이라 조립기도 그 카드를 안 낸다.
+    want = [w for c in _cards(DRAFTS[tag])
             if c[:8].rstrip() not in rawcards.STRUCTURAL
-            and c[:8].rstrip() != 'END']
+            and c[:8].rstrip() != 'END'
+            and (w := ahead.get(c[:8].rstrip(), c)) is not None]
     assert len(ours) == len(want)
     for i, (o, w) in enumerate(zip(ours, want)):
         assert o == w, f'#{i}\nours: {o!r}\nwant: {w!r}'
+
+
+def _ahead_of_sample(tag: str) -> dict[str, str | None]:
+    """⭐ **ICS 가 견본보다 앞서 간 카드** -> 현행 카드 이미지 (`None` 은 삭제).
+
+    운영자가 정하고 규격·견본 갱신은 나중으로 미룬 자리.  바이트 대사는 이
+    카드만 **현행 이미지**로 견주고 나머지는 견본 그대로다.  ⛔ 규격이
+    따라잡으면 지운다 -- 그때는 `test_the_sample_has_not_caught_up_yet` 가 알린다.
+
+    * `EQUINOX` -- 실수형 (운영자 2026-09-23, `rawcards.SPEC_PENDING`).
+    * `DAZERR` -- 소수 2자리 (운영자 2026-09-15, DevNote 11.94-h).  견본의
+      `DSAZ`/`DSTELAZ` 는 와이어 값 그대로 되먹여서(`dome source = off`) 안
+      갈리고, **계산 카드**인 이것만 갈린다.
+
+    ⭐ 값은 **견본에서 만든다** -- 박아 두면 견본 값이 바뀌어도 이 대사가 모른다.
+    """
+    sample = _sample(tag)
+    return {
+        'EQUINOX': str(fits.Card('EQUINOX', float(sample['EQUINOX'].strip()),
+                                 'Coordinate System Equinox')),
+        'DAZERR': str(fits.Card(
+            'DAZERR', ('%+.2f' % float(sample['DAZERR'].strip())).ljust(18),
+            'Dome azimuth synchronization error')),
+    }
+
+
+def test_ahead_of_sample_matches_the_pending_list():
+    """템플릿이 갈린 카드는 바이트 대사의 예외 목록에도 있어야 한다."""
+    assert {k for k, _ in rawcards.SPEC_PENDING} <= set(_ahead_of_sample('MK'))
+    assert [k for k, _ in rawcards.SPEC_PENDING] == ['EQUINOX']
+
+
+@pytest.mark.parametrize('tag', ('MK', 'NT'))
+def test_the_sample_has_not_caught_up_yet(tag):
+    """⛔ **견본이 따라잡으면 예외 목록을 비운다** -- 그 시점을 이 시험이 알린다.
+
+    `rawcards.SPEC_PENDING` 주석이 *"채운 채로 오래 두지 말 것 -- 규격이
+    따라잡으면 곧바로 비운다"* 를 요구하는데, 대사 시험들은 따라잡은 견본에서도
+    **초록으로 지나간다** (같은 카드를 같은 카드로 바꿔 끼우는 셈이라서).  그래서
+    반대로 단정한다: 앞서 간 카드는 **견본과 아직 달라야** 한다.
+
+    * `SPEC_PENDING` -- 교체면 견본 카드의 (키, 형, 폭, comment)가 현행과 달라야
+      하고, 삭제(`None`)면 그 키가 견본에 아직 있어야 한다.
+    * `_ahead_of_sample()` -- 견본의 80바이트 이미지가 예외 이미지와 달라야 한다
+      (`SPEC_PENDING` 에 없는 `DAZERR` 까지 덮는다).
+
+    ⚠️ guide 쪽(`guidecards.SPEC_PENDING`)은 `ics_archon/tests/test_icg_cards.py`
+    몫이다.
+    """
+    images = {c[:8].rstrip(): c for c in _cards(DRAFTS[tag])}
+    for key, image in _ahead_of_sample(tag).items():
+        assert images.get(key) != image, (
+            f'{tag} {key}: 견본이 따라잡았다 -- `_ahead_of_sample` 과 '
+            '`rawcards/guidecards.SPEC_PENDING` 에서 지울 것')
+    parsed = {p[0]: p[:4] for p in (_parse(c) for c in _cards(DRAFTS[tag])
+                                    if c[:8].rstrip() != 'END')
+              if p[0] != 'COMMENT'}
+    for old, new in rawcards.SPEC_PENDING:
+        assert old in parsed, f'{tag} {old}: 견본에 그 카드가 없다'
+        assert new is None or parsed[old] != tuple(new), (
+            f'{tag} {old}: 견본이 따라잡았다 -- `rawcards/guidecards.'
+            'SPEC_PENDING` 과 `_ahead_of_sample` 에서 지울 것')
+
+
+def _equinox_warnings(caplog):  # noqa: ANN001, ANN202
+    """`_as_real` 이 `EQUINOX` 에 남긴 경고 (로거·문면으로 거른다)."""
+    return [r for r in caplog.records
+            if r.name == 'ics_sim.telemetry'
+            and r.levelno == logging.WARNING
+            and 'EQUINOX' in r.getMessage()
+            and 'not a finite number' in r.getMessage()]
+
+
+def _equinox_pool(value, relay=None):  # noqa: ANN001, ANN202
+    if relay is None:
+        relay = TelemetryRelay(SimConfig(), lambda *a, **k: None)
+    if value is not None:
+        relay.tcs_fields = [('EQUINOX', value)]
+    return relay.fits_header_dict('2026-09-23T00:00:00.000')
+
+
+def test_equinox_is_a_real_card(caplog):  # noqa: ANN001
+    """`EQUINOX` 는 실수 카드다 -- 와이어 문자열을 실수로 (운영자 2026-09-23).
+
+    결측(`NC`)·빈 값은 실수형 sentinel `-999.0` (5.0절) 이고 **조용하다** -- TC 가
+    안 보낸 것은 우리 결함이 아니다.  수치가 아닌 값도 sentinel 이되 **경고를
+    남긴다** -- 보낸 값이 헤더에서 사라지므로.
+    """
+    def warns(value):  # noqa: ANN001, ANN202
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='ics_sim.telemetry'):
+            got = _equinox_pool(value)['EQUINOX']
+        return got, _equinox_warnings(caplog)
+
+    got, hits = warns('J2000')
+    assert got == -999.0 and len(hits) == 1, (got, hits)
+    assert getattr(hits[0], 'detail', ''), '로그 규약: 이유는 extra detail 로'
+    for quiet in (None, 'NC', '2000.000', ' 2000.0 '):
+        _got, hits = warns(quiet)
+        assert hits == [], quiet
+
+    assert _equinox_pool('2000.000')['EQUINOX'] == 2000.0
+    assert _equinox_pool(' 2000.0 ')['EQUINOX'] == 2000.0
+    assert _equinox_pool(None)['EQUINOX'] == -999.0
+    assert _equinox_pool('NC')['EQUINOX'] == -999.0
+    cards = {k: v for k, v, _c in rawcards.render(_equinox_pool('2000.000'))}
+    assert isinstance(cards['EQUINOX'], float) and cards['EQUINOX'] == 2000.0
+    assert str(fits.Card('EQUINOX', cards['EQUINOX'],
+                         'Coordinate System Equinox')).startswith(
+        'EQUINOX =               2000.0 / ')
+
+
+def test_equinox_warning_is_said_once_per_value(caplog):  # noqa: ANN001
+    """⛔ **같은 값은 한 번만 경고한다** -- `fits_header_dict()` 는 프레임마다 불린다.
+
+    guide 는 1.3 s 마다 부르고 그동안 `TCSSTATUS` 스냅샷은 같은 값이라, 매번
+    경고하면 한 시간에 2천 줄이 넘는다 (그러면 사람이 경고를 무시하는 것을
+    배운다 -- `_telid_warned` 와 같은 이유).  규칙도 `TELID` 와 같다: **서로 다른
+    값마다 한 번** -- 값이 오갔다 돌아와도 다시 말하지 않는다.
+    """
+    relay = TelemetryRelay(SimConfig(), lambda *a, **k: None)
+    with caplog.at_level(logging.WARNING, logger='ics_sim.telemetry'):
+        for _ in range(3):
+            assert _equinox_pool('J2000', relay)['EQUINOX'] == -999.0
+        assert len(_equinox_warnings(caplog)) == 1
+        _equinox_pool('B1950', relay)             # 다른 값 -- 한 번 더
+        assert len(_equinox_warnings(caplog)) == 2
+        _equinox_pool('2000.0', relay)            # 정상 값 -- 조용
+        _equinox_pool('J2000', relay)             # 이미 말한 값 -- 조용
+        assert len(_equinox_warnings(caplog)) == 2
+    # 인스턴스마다 따로 센다 -- 새 relay 는 다시 한 번 알린다.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='ics_sim.telemetry'):
+        _equinox_pool('J2000')
+    assert len(_equinox_warnings(caplog)) == 1
+
+
+@pytest.mark.parametrize('text', ('nan', 'NaN', 'inf', '-inf', '1e999'))
+def test_a_non_finite_equinox_becomes_the_sentinel(text, caplog):  # noqa: ANN001
+    """⛔ `float()` 은 `nan`·`inf`·`1e999` 를 **받아 준다** -- 그대로 실으면
+    `EQUINOX = nan` 처럼 FITS 에서 쓸 수 없는 카드가 된다.  sentinel 로 바꾸고
+    수치가 아닌 값과 같은 한 번짜리 경고를 남긴다.
+    """
+    with caplog.at_level(logging.WARNING, logger='ics_sim.telemetry'):
+        got = _equinox_pool(text)['EQUINOX']
+    assert got == -999.0, (text, got)
+    assert len(_equinox_warnings(caplog)) == 1, text
 
 
 # -- 3) 견본과 무관하게 지켜야 하는 조립 성질 --------------------------------
@@ -288,7 +444,8 @@ def test_dalterr_is_computed_when_wire_does_not_send_it():
                         ('DSAZ', '12.3'), ('DSTELAZ', '12.1')]
     h = relay.fits_header_dict('2026-08-22T00:00:00.000')
     assert h['DALTERR'] == '-0.4'
-    assert h['DAZERR'] == '+0.2'
+    # ⭐ 방위차는 소수 2자리 (운영자 2026-09-15, DevNote 11.94-h)
+    assert h['DAZERR'] == '+0.20'
     # 피연산 카드가 없으면 지어내지 않는다
     empty = TelemetryRelay(SimConfig(), lambda *a, **k: None)
     h2 = empty.fits_header_dict('2026-08-22T00:00:00.000')

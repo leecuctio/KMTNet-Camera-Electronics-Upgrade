@@ -159,12 +159,21 @@ class TelemetryLog:
             if head is None or head == self.columns:
                 break
             seq += 1
-            log.warning('%s: %s has a different column layout -- splitting '
-                        'into %s.%d.csv instead of appending',
-                        self.tag, os.path.basename(path),
-                        os.path.basename(base), seq,
-                        extra={'detail': 'ACF 가 바뀌면 바이어스 채널 수가 '
-                                         '달라진다'})
+            if head == self._UNREADABLE:
+                log.warning('%s: cannot read the header of %s -- splitting into '
+                            '%s.%d.csv instead of appending',
+                            self.tag, os.path.basename(path),
+                            os.path.basename(base), seq,
+                            extra={'detail': '첫 줄이 UTF-8 CSV 가 아니거나 읽을 수 '
+                                             '없다 -- 열 구성을 모르는 파일에 이어 '
+                                             '쓰지 않는다.  옛 파일은 그대로 둔다'})
+            else:
+                log.warning('%s: %s has a different column layout -- splitting '
+                            'into %s.%d.csv instead of appending',
+                            self.tag, os.path.basename(path),
+                            os.path.basename(base), seq,
+                            extra={'detail': 'ACF 가 바뀌면 바이어스 채널 수가 '
+                                             '달라진다'})
             path = '%s.%d.csv' % (base, seq)
         fresh = self._existing_header(path) is None
         # `newline=''` 은 csv 모듈의 요구다 -- 없으면 윈도우에서 빈 줄이 낀다.
@@ -175,20 +184,39 @@ class TelemetryLog:
         self._date = date
         self.path = path
 
-    @staticmethod
-    def _existing_header(path: str) -> list[str] | None:
-        """이미 있는 파일의 첫 줄 (없으면 `None`, 비었으면 빈 목록)."""
+    #: 첫 줄을 못 읽은 파일의 헤더 자리표 -- 열 구성을 모르므로 **다르다고** 친다(가른다).
+    _UNREADABLE = ['<unreadable>']
+
+    @classmethod
+    def _existing_header(cls, path: str) -> list[str] | None:
+        """이미 있는 파일의 첫 줄 (없거나 **0바이트면** `None`, 못 읽으면 `_UNREADABLE`).
+
+        ⭐ **첫 줄만 바이트로 읽어 푼다** -- 텍스트 모드로 열면 첫 덩어리를 통째로 풀어서,
+        헤더는 멀쩡한데 뒤 행 하나가 깨진 파일까지 못 읽음으로 친다.
+        ⛔ **UTF-8 이 아니거나 CSV 로 못 나누면 가른다** (`_UNREADABLE`) -- 종전에는
+        `OSError` 만 잡아 `UnicodeDecodeError` 가 `write()` 를 뚫고 올라가 **감시 태스크가
+        죽었다**(`write()` 도 `OSError` 만 잡는다).  guide `icg_archon/hk.py` 의 같은 이름
+        함수와 같은 판단이지만 **따로 고쳐진다** -- 같은 규칙이라고 가정하지 말 것.
+        """
         if not os.path.isfile(path):
             return None
         try:
-            with open(path, encoding='utf-8', newline='') as fh:
-                for row in csv.reader(fh):
-                    return row
+            with open(path, 'rb') as fh:
+                raw = fh.readline()
+            if not raw:
+                # ⭐ **0바이트 파일은 없는 파일처럼** -- 헤더를 쓰고 이어 쓴다 (DevNote 11.96).
+                # `_open` 이 `'a'` 로 열고 첫 행 뒤에야 flush 하므로, 그 사이 죽으면 빈 파일이
+                # 남는다 -- 종전에는 `[]` 를 *"열 구성이 다르다"* 로 읽어 `.2.csv` 로 갈랐다.
+                return None
+            for row in csv.reader([raw.decode('utf-8').rstrip('\r\n')]):
+                return row
             return []
-        except OSError as exc:                  # pragma: no cover
+        except (OSError, UnicodeDecodeError, csv.Error) as exc:
             log.warning('cannot read the existing log file (%s) -- %s',
-                        exc, path)
-            return []
+                        exc, path,
+                        extra={'detail': '열 구성을 모르는 파일로 친다 -- 이어 쓰지 않고 '
+                                         '새 파일로 가른다'})
+            return list(cls._UNREADABLE)
 
     def write(self, row: list[str], when: float) -> None:
         """한 행.  **날짜가 바뀌면 파일을 갈아탄다.**
@@ -343,6 +371,7 @@ class TelemetryMonitor:
         # ⭐ **첫 표본은 지금** (운영자 지시 2026-09-15 벤치) -- 종전에는 첫 바퀴가
         # `interval` 뒤라 기동 뒤 20 s 동안 `status_live` 가 비어 `CnHKDATA` 가
         # 전 자리 결측(`CnSTALE=24`)이고 헤더용 감시값도 없었다.
+        # (시험: `test_monitor.py::test_the_first_sample_is_taken_at_start`)
         next_at = time.monotonic()
         try:
             while True:

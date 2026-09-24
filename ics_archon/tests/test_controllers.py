@@ -434,3 +434,92 @@ def test_repeated_same_level_does_not_open_a_second_span():
     c.note_trigger_level(True)
     c.note_trigger_level(True)
     assert len(c._trig_spans) == 1
+
+
+def _cancel_during_the_apply(c, high: bool) -> None:  # noqa: ANN001
+    """`set_trigger(high=…)` 를 부르고 **`APPLYSYSTEM` 왕복 중에** 취소한다."""
+    import asyncio
+
+    sent = []
+
+    async def set_config(key, value):  # noqa: ANN001, ANN202
+        sent.append('WCONFIG %s=%s' % (key, value))
+
+    async def cmd(command, timeout=0.0):  # noqa: ANN001, ANN202
+        sent.append(command)
+        await asyncio.Event().wait()           # 적용 왕복이 안 끝난다
+
+    c.set_config, c.cmd = set_config, cmd
+
+    async def run():  # noqa: ANN202
+        task = asyncio.ensure_future(c.set_trigger(high=high, forced=True))
+        while 'APPLYSYSTEM' not in sent:
+            await asyncio.sleep(0.005)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    asyncio.run(run())
+
+
+def test_a_cancel_during_the_apply_still_records_the_level():
+    """⭐ `APPLYSYSTEM` 을 기다리다 취소돼도 **레벨을 적는다** (DevNote 11.96).
+
+    `_locked_thread` 가 스레드를 끝까지 기다리므로 보낸 적용은 끝났다 -- 안 적으면 실제로
+    섰을 수 있는 펄스가 guide `TRIGOUT` 카드에서 빠진다(*"HIGH 인 적이 있었나"* 는 많이
+    적는 쪽이 안전하다).  ⚠️ LOW 도 적는다 -- 안 적으면 열린 구간이 다음 레벨 쓰기까지 모든
+    프레임을 HIGH 로 적는다.
+    """
+    import time
+    c = _latch()
+    t0 = time.time()
+    _cancel_during_the_apply(c, True)
+    assert c.trigger_was_high_between(t0, time.time()) is True
+    assert c._trig_spans[-1][1] is None, '올림이 열린 구간으로 남아야 한다'   # noqa: SLF001
+    _cancel_during_the_apply(c, False)
+    assert c._trig_spans[-1][1] is not None, '내림이 구간을 닫아야 한다'      # noqa: SLF001
+    later = time.time() + 1.0
+    assert c.trigger_was_high_between(later, later + 1.0) is False
+
+
+def _fail_the_apply(c, high: bool, exc) -> None:  # noqa: ANN001
+    """`set_trigger(high=…)` 의 `APPLYSYSTEM` 이 `exc` 로 깨진다 -- 그 예외가 그대로 올라온다."""
+    import asyncio
+
+    async def set_config(key, value):  # noqa: ANN001, ANN202
+        pass
+
+    async def cmd(command, timeout=0.0):  # noqa: ANN001, ANN202
+        raise exc
+
+    c.set_config, c.cmd = set_config, cmd
+    with pytest.raises(type(exc)):
+        asyncio.run(c.set_trigger(high=high, forced=True))
+
+
+def test_a_lost_apply_reply_still_records_the_level():
+    """⭐ `APPLYSYSTEM` 이 **시한 초과·답 잃음**(`reply_error=False`)으로 깨지면 적용됐을 수
+    있다 -- 취소와 같은 까닭으로 **적는다** (DevNote 11.96).  안 적으면 실제로 섰을 수 있는
+    펄스가 guide `TRIGOUT` 카드에서 빠진다."""
+    import time
+
+    from ics_archon.archon.protocol import ArchonError
+    c = _latch()
+    t0 = time.time()
+    _fail_the_apply(c, True, ArchonError('시험이 일부러 잃은 답', cmd='APPLYSYSTEM'))
+    assert c.trigger_was_high_between(t0, time.time()) is True
+    assert c._trig_spans[-1][1] is None, '올림이 열린 구간으로 남아야 한다'   # noqa: SLF001
+    _fail_the_apply(c, False, TimeoutError('시험이 일부러 넘긴 시한'))
+    assert c._trig_spans[-1][1] is not None, '내림이 구간을 닫아야 한다'      # noqa: SLF001
+
+
+def test_a_refused_apply_does_not_record_the_level():
+    """⛔ **거부(`?NN`)만** 안 적는다 -- 컨트롤러가 거절했으니 선은 그대로다."""
+    import time
+
+    from ics_archon.archon.protocol import ArchonError
+    c = _latch()
+    t0 = time.time()
+    _fail_the_apply(c, True, ArchonError('시험이 일부러 거부한 적용', cmd='APPLYSYSTEM',
+                                         reply_error=True))
+    assert c.trigger_was_high_between(t0, time.time()) is False
+    assert not c._trig_spans                                                # noqa: SLF001

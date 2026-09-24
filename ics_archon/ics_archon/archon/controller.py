@@ -42,12 +42,16 @@ before this operation"*, 실기 `?02` 거부로 확인 2026-09-01, DevNote 10.2)
 `IntMS=<적분시간>` 으로 들어가 스크립트가 셔터를 **열려고** 했고, 그것을
 `TRIGOUTFORCE=1` **하나**로만 막고 있었다.
 
-⚠️ **STOP(적분 조기 종료)은 컨트롤러의 적분을 자르지 못한다.**  타이밍
-스크립트가 이미 `IntMS` 만큼 세고 있으므로, 할 수 있는 것은 `TRIGOUTFORCE=1`
-로 **셔터를 강제로 닫아 빛을 끊는 것**뿐이다.  노출은 남은 시간을 다 세고
-끝나므로 헤더 `EXPTIME` 은 요청값이고 실제 개방 시간은 그보다 짧다.
-`FASTLOADPARAM IntMS 0`(매뉴얼 p.52)이 즉시 반영되는지는 **실기 확인
-항목**이다 -- 되면 그쪽이 맞다.
+⭐ **적분을 끊는 길은 ABORT 하나다** -- `abort_now()` 가 `Exposures=0` ->
+`RESETTIMING` 을 낸다 (운영자 지시 2026-09-09).  코어가 `Start:` 로 돌아가 그
+첫 상태 `RESET`(`CONTROL="0,0"`)이 6비트를 전부 0 으로 몰므로 셔터가 닫히고,
+진행 중 프레임은 미완료로 버려진다.  ⛔ **STOP 은 적분을 끊지 않는다** -- 현재
+프레임을 저장까지 마치고 다음을 안 건다 (운영자 확정 2026-09-05,
+`Sequencer.stop_integration`).
+⚠️ 남는 조기 차단은 **호스트 카운트다운이 컨트롤러 적분보다 먼저 끝난** 경우
+(`time_scale != 1` 등)뿐이다 -- `ArchonBackend.close_shutter()` 가
+`TRIGOUTFORCE=1`+`LEVEL=0` 으로 **빛만 끊고**, 적분은 남은 시간을 다 세므로
+헤더 `EXPTIME` 은 요청값이고 실제 개방 시간은 그보다 짧다.
 """
 
 from __future__ import annotations
@@ -56,6 +60,7 @@ import asyncio
 import configparser
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -154,6 +159,27 @@ def _unquote(text: str) -> str:
     거짓 어긋남을 내지 않도록 양쪽을 같은 형태로 접는다.
     """
     return text.strip().strip('"').strip()
+
+
+def _reap(fut: asyncio.Future) -> None:
+    """끊고 떠난 태스크의 결과를 거둔다 -- *"exception was never retrieved"* 경고 방지.
+
+    `_put_back()` 이 두 번째 취소에 기다림을 끊어도 왕복 태스크는 뒤에서 끝까지 간다
+    (`asyncio.shield`).  그 태스크의 예외를 아무도 안 읽으면 asyncio 가 나중에 경고를 찍는다.
+    """
+    if not fut.cancelled():
+        fut.exception()
+
+
+def _wconfig_line(word: str) -> int | None:
+    """바이패스 `WCONFIGnnnn…` 의 **Config 줄 번호**(`nnnn`, 0기점 4자리 16진).  못 읽으면 `None`.
+
+    `raw_command` 가 *"어느 줄을 썼나"* 를 가르는 데만 쓴다 -- 값은 보지 않는다.
+    """
+    digits = word[7:11]
+    if len(digits) != 4 or any(c not in '0123456789ABCDEF' for c in digits.upper()):
+        return None
+    return int(digits, 16)
 
 #: `POWERON` 뒤 `POWER` 를 다시 물어보는 간격 [s].
 #:
@@ -261,6 +287,30 @@ class ArchonController:
         #: 이번 `trigger()` 의 `LOADPARAMS` 가 실제로 나갔나 -- 취소가 그 앞에서
         #: 왔으면 컨트롤러는 유휴라 꼬리가 없다 (guide `_settle`, DevNote 9.15-(9)).
         self.loadparams_sent: bool = False
+        #: ⭐ **되돌리지 못한 임시 설정 줄** -- `{슬롯: 원래 값}` (DevNote 11.96).
+        #:
+        #: `trigger(first_flush=...)`·`flush_now()` 는 `FirstFlush` 를 잠시 올렸다가
+        #: `finally` 에서 되돌린다(`_put_back`).  그 되돌림 왕복마저 실패하거나 취소에
+        #: 끊기면 여기 남기고, **다음 `LOADPARAMS` 앞**(`trigger`·`flush_now`)이나
+        #: STOP 의 `LOADPARAMS` **뒤**(`set_exposures`)·ABORT 의 `RESETTIMING`
+        #: **뒤**(`abort_now`·`flush_now(reset=True)`)에서 다시 쓴다 (`_retry_pending_restore`).
+        #: ⭐ 되쓰기가 또 깨지면 `RCONFIG` 로 **되읽어** --
+        #: 메모리가 이미 원래 값이면 지운다(`_memory_holds`).  ACF 를 다시 밀면
+        #: (`APPLYALL`) 비운다 -- 설정 메모리가 통째로 파일 값이 되기 때문이다.
+        #: `ARCHON` 바이패스가 설정 메모리를 쓰면 역시 비운다 -- `WCONFIG` 는 **그 줄의**
+        #: 표시만, `CLEARCONFIG` 는 전부.  그 줄부터는 운영자 몫이다(`raw_command`).
+        #: ⛔ 안 남기면 올린 `FirstFlush` 가 세션 내내 설정 메모리에 남아 science 가
+        #: **매 장** flush 를 돈다(+5.5 s) -- `set_config` 가 왕복 전에 캐시부터 원래
+        #: 값으로 바꿔 두므로 캐시로는 아무도 모른다.
+        self._pending_restore: dict[str, str] = {}
+        #: ⭐ **셔터 노출이 노출마다 싣는 `NoIntMS`** [ms] -- ACF 를 민 `prepare()`(science
+        #: 는 첫 GO)에서 `_enforce_shutter_close_dwell()` 이 정한다: ACF 값과 `shutter_close_ms`
+        #: 가운데 큰 쪽(`shutter_close_ms=0` 이면 ACF 값, ACF 값을 못 읽으면
+        #: `shutter_close_ms`).  `None` 이면 슬롯이 없거나, 값을 못 읽었는데 바닥값도
+        #: 꺼 둔 것(`shutter_close_ms=0`)이라 셔터 노출은 `NoIntMS` 를 안 싣는다.
+        #: ⛔ 캐시(`config`)에서 그때그때 읽으면 안 된다 -- DARK/BIAS 가 노출마다 그
+        #: 슬롯을 적분시간/0 으로(ERASE flush 도 0 으로) 덮으므로 캐시는 **앞 노출의 값**이다.
+        self.shutter_dwell_ms: int | None = None
         #: 마지막으로 적용(또는 파싱)한 ACF 경로 -- FITS `CTRLnCFG`/`RDMODE`
         #: 의 근거다.  컨트롤러는 적용된 ACF 이름을 보고하지 않는다 (p.54).
         self.acf_path: str = ''
@@ -607,19 +657,29 @@ class ArchonController:
 
         ⭐ **이것은 이제 ACF 기본값 검사다** (2026-09-13 개정).  실제로 적용되는
         값은 `trigger(noint_ms=...)` 가 **노출마다** 쓴다 -- 셔터를 여는 노출에는
-        `shutter_close_ms`, DARK 에는 적분시간, BIAS 에는 0.  그래서 종전의
-        *"BIAS·DARK 에도 필요 없는 대기가 같이 붙는다"* 는 대가는 **없어졌다**.
-        여기 남는 몫은 두 가지다: ① ACF 기본값이 짧다는 **경고**(정본은 ACF다)
-        ② `noint_ms` 를 안 싣는 옛 경로에 대한 **바닥값**.
-        ⭐ **guide 는 이 자리를 안 지난다** -- `IcgCfg` 에 이 눈금이 없다
-        (셔터가 없다).  `ccdflush_first`/`ccdflush_every` 와 같은 방식이다.
+        여기서 정한 `shutter_dwell_ms`, DARK 에는 적분시간, BIAS 에는 0.  그래서
+        종전의 *"BIAS·DARK 에도 필요 없는 대기가 같이 붙는다"* 는 대가는 **없어졌다**.
+        여기 남는 몫은 셋이다: ① 셔터 노출의 값 `shutter_dwell_ms` 를 정한다 --
+        ACF 값과 `shutter_close_ms` 가운데 큰 쪽, `shutter_close_ms=0` 이면 ACF 값
+        (ACF 가 더 길면 깎지 않는다 -- 이 눈금은 **하한**이다).  ACF 값을 못 읽으면
+        `shutter_close_ms` 가 그 값이다 -- 슬롯은 건드리지 않아도 바닥값은 노출마다 나간다
+        ② ACF 기본값이 짧다는 **경고**(정본은 ACF다) ③ 짧으면 설정 메모리의 그 슬롯도
+        바닥값으로 올려 둔다 -- ⚠️ 이 값은 **첫 DARK/BIAS 나 ERASE flush(`flush()`,
+        `NoIntMS=0`)가 그 슬롯을 덮기 전까지만** 남는다.  셔터 노출은 어차피 노출마다
+        `shutter_dwell_ms` 를 싣는다.
+        ⛔ **ACF 를 민 직후에만 부른다** (`prepare()`, DevNote 11.96) -- 그때만
+        캐시가 곧 ACF 파일 값이다.  그 뒤로는 DARK/BIAS·ERASE flush 가 이 슬롯을 노출마다
+        덮으므로, 다시 읽으면 앞 노출의 값을 ACF 값으로 알고 BIAS 뒤마다 *"짧다"* 를 거짓으로
+        외친다.
+        ⭐ **guide 는 이 눈금이 없다** -- `IcgCfg` 에 `shutter_close_ms` 가 없어(셔터가
+        없다) 검사·바닥값 없이 ACF 값만 적어 두고 지나간다.  `ccdflush_first`/
+        `ccdflush_every` 와 같은 방식이다.
 
         ⚠️ `WCONFIG` 한 줄만 쓴다 -- 코어 RAM 에는 다음 노출의 `LOADPARAMS` 가
         실어 간다 (`LOADTIMING` 불필요).
         """
         want = int(getattr(self.cfg, 'shutter_close_ms', 0) or 0)
-        if want <= 0:
-            return                                    # 꺼 둔 것이다
+        self.shutter_dwell_ms = None
         slot = (self.param_slots or {}).get(self.PARAM_NOINT)
         if not slot:
             return                                    # 위에서 이미 경고했다
@@ -627,12 +687,21 @@ class ArchonController:
         try:
             have = int(raw.split('=', 1)[1])
         except (IndexError, ValueError):
-            log.warning('%scannot read %s from %r -- leaving it alone',
-                        self.ltag, self.PARAM_NOINT, raw,
-                        extra={'detail': 'ACF 의 그 줄이 `이름=값` 꼴이 아니다'})
+            # ⭐ 못 읽어도 **바닥값은 나간다** -- 슬롯은 그대로 두고, 셔터 노출이 노출마다
+            # `shutter_close_ms` 를 싣는다(`backend.open_shutter`).  `0`(검사를 꺼 둔 것 ·
+            # guide)이면 셀 기준이 없어 `None` -- 종전처럼 조용히 지나간다.
+            self.shutter_dwell_ms = want if want > 0 else None
+            if want > 0:
+                log.warning('%scannot read %s from %r -- shutter exposures carry the '
+                            '%d ms floor', self.ltag, self.PARAM_NOINT, raw, want,
+                            extra={'detail': 'ACF 의 그 줄이 `이름=값` 꼴이 아니다 -- 슬롯은 '
+                                             '그대로 두고 [archon] shutter_close_ms 를 싣는다'})
             return
-        if have >= want:
-            return
+        # ⭐ 셔터 노출은 노출마다 이 값을 싣는다 (`backend.open_shutter`) -- `0` 이면
+        # "검사를 꺼 둔 것" 이라 ACF 값 그대로다.
+        self.shutter_dwell_ms = max(have, want)
+        if want <= 0 or have >= want:
+            return                                    # 꺼 뒀거나 ACF 가 충분하다
         # ⭐ **화면에도 남긴다** -- 조용히 고치면 ACF 와 실제가 갈린 채로 간다.
         log.warning('%s%s is %d ms, shorter than the shutter close time '
                     '(%d ms) -- raising it', self.ltag, self.PARAM_NOINT,
@@ -713,6 +782,15 @@ class ArchonController:
         ⚠️ **`POLLON` 은 `finally` 로 되돌린다** -- 적용이 중간에 죽어 폴링이
         꺼진 채 남으면 `STATUS` 값이 통째로 낡는다.  ⭐ 벤더는 `POLLON` 을
         `APPLYALL` **앞**에 두는데 그대로 따랐다.
+        ⛔ 단 **스트림이 멀쩡할 때만** 그 자리에서 보낸다 (DevNote 11.96) -- 끝까지
+        갔거나 거부(`?NN`)로 끝난 경우다.  시한 초과·머리 어긋남·끊김이면 그 소켓에
+        보낸 `POLLON` 이 또 실패해 **원래 예외(어느 줄이 왜)를 덮고**, 무응답이면
+        `T_APPLY` 를 한 번 더 기다린다.  그때는 재시도가 새 연결 위에서 다시 켜고,
+        마지막 시도까지 깨졌으면 새 연결 위에서 한 번 켜 본다(`_pollon_best_effort`).
+        ⚠️ 거부 뒤의 `POLLON` 이 **스트림을 깨뜨리면**(시한 초과·끊김) 그 자리에서 연결을
+        새로 열고 그 위에서 `POLLON` 을 한 번 더 보낸다 -- 거부는 재시도·재접속 없이 곧바로
+        올라가므로 안 열면 깨진 소켓이 다음 명령까지 남고, 안 켜면 폴링이 꺼진 채 남는다.
+        그 두 걸음의 실패는 경고로 삼킨다(올라가는 것은 **거부**다).
 
         ⛔ **`WCONFIG` 는 한 줄씩 왕복한다 -- 눈금이 없다** (운영자 확정
         2026-09-10).  벤더도 그렇게 한다(같은 문서 결함표 C6: *"키 하나당 왕복
@@ -759,13 +837,75 @@ class ArchonController:
                     # ⭐ **벤더 절차** -- POLLOFF 로 배경 폴링을 세운다.
                     # ⚠️ 여기서 실패하면 폴링이 꺼진 채 남으므로 `finally`.
                     self.link.command('POLLOFF', timeout=T_APPLY)
+                    # ⭐ 스트림이 멀쩡한가 -- 끝까지 갔거나 **거부**로 끝났으면 멀쩡하다.
+                    stream_ok = rejected = False
                     try:
                         self.link.command('CLEARCONFIG', timeout=T_APPLY)
                         # ⛔ **한 줄씩 왕복한다** -- 몰아 보내면 어긋난다.
                         for one in cmds:
                             self.link.command(one, timeout=T_APPLY)
+                        stream_ok = True
+                    except ArchonError as exc:
+                        stream_ok = rejected = bool(exc.reply_error)
+                        raise
                     finally:
-                        self.link.command('POLLON', timeout=T_APPLY)
+                        # ⛔ 깨진 스트림(시한 초과·머리 어긋남·끊김)에는 보내지 않는다 --
+                        # 그 실패가 원래 예외를 덮는다.  재시도가 새 연결 위에서 켠다.
+                        if stream_ok:
+                            try:
+                                self.link.command('POLLON', timeout=T_APPLY)
+                            except (ArchonError, TimeoutError, OSError) as exc:
+                                if not rejected:
+                                    raise
+                                # 거부 사유가 이 실패에 가려지면 안 된다.
+                                log.warning('%scannot turn polling back on after the '
+                                            'rejected acf write (%s)', self.ltag, exc,
+                                            extra={'detail': '거부 사유를 가리지 않으려고 '
+                                                             '삼킨다.  POLLON 도 거부(?NN)됐으면 '
+                                                             '다음 ACF 적용 전까지 STATUS 값이 '
+                                                             '낡을 수 있고, 스트림이 깨졌으면 새 '
+                                                             '연결 위에서 한 번 더 켠다'})
+                                # ⛔ 이 `POLLON` 이 **거부가 아니라 스트림을 깨뜨렸으면**(시한
+                                # 초과·머리 어긋남·끊김) 여기서 새로 연다 -- 거부는 재시도·재접속
+                                # 없이 곧바로 올라가므로(`_apply_acf_loop`) 안 열면 깨진 소켓이 다음
+                                # 명령까지 남는다.  락을 쥔 자리라 끼어들 왕복이 없다.
+                                # ⭐ 새 연결 위에서 `POLLON` 을 **한 번 더** 보낸다 -- 안 보내면
+                                # 폴링이 꺼진 채 남는다(`POLLOFF` 는 컨트롤러 전역 상태라 재접속
+                                # 으로 풀린다는 근거가 없다, `_pollon_best_effort`).
+                                if not (isinstance(exc, ArchonError) and exc.reply_error):
+                                    try:
+                                        self.link.resync('POLLON after the rejected acf '
+                                                         'write broke the stream')
+                                    except (ArchonError, TimeoutError, OSError) as again:
+                                        # 재접속 실패도 거부 사유를 가리면 안 된다.
+                                        log.warning('%scannot reconnect after the rejected '
+                                                    'acf write (%s)', self.ltag, again,
+                                                    extra={'detail': '연결이 없는 채로 남는다 -- '
+                                                                     '다음 명령이 실패하며 다시 '
+                                                                     '세운다 (cmd 의 resync)'})
+                                    else:
+                                        try:
+                                            back = self.link.command_or_resync('POLLON',
+                                                                               T_FAST)
+                                        except (ArchonError, TimeoutError, OSError) as again:
+                                            back, why = None, again
+                                        else:
+                                            why = 'round trip failed'   # 사유는 이미 찍혔다
+                                        if back is None:
+                                            # 이것도 거부 사유를 가리면 안 된다 -- 삼킨다.
+                                            log.warning('%scannot turn polling back on over '
+                                                        'the new connection either (%s)',
+                                                        self.ltag, why,
+                                                        extra={'detail': '다음 ACF 적용 전까지 '
+                                                                         'STATUS 값이 낡을 수 '
+                                                                         '있다 -- ARCHON POLLON '
+                                                                         '으로 켤 수 있다'})
+                                        else:
+                                            log.info('%spolling back on over the new '
+                                                     'connection', self.ltag,
+                                                     extra={'detail': '거부된 ACF 적용 뒤 '
+                                                                      'POLLON 이 옛 연결을 '
+                                                                      '깨뜨려 새로 열고 켰다'})
                     self.link.command('APPLYALL', timeout=T_APPLY)
                 self.apply_count += 1        # `cmd()` 를 안 지나므로 여기서
                 await self._locked_thread(_push)
@@ -789,16 +929,41 @@ class ArchonController:
                                           'acf apply failed')
                 continue
             self.acf_applied = True
+            # ⭐ 설정 메모리가 통째로 파일 값이 됐다 -- 못 되돌린 임시 줄도 함께 풀렸다.
+            self._pending_restore.clear()
             log.info('%sacf applied', self.ltag, extra={'detail': path})
             return
+        # ⭐ 마지막 시도까지 깨졌다 -- `_push` 는 깨진 스트림에 `POLLON` 을 안 보내므로,
+        # 방금 재수립한 연결 위에서 한 번 켜 본다.  ⛔ 올리는 예외는 **원래 원인**이다.
+        await self._pollon_best_effort()
         raise ArchonError('%s: ACF 를 적용할 수 없다 (%s)' % (self.tag, last))
+
+    async def _pollon_best_effort(self) -> None:
+        """새 연결 위에서 `POLLON` 한 번 -- 실패는 경고만 하고 삼킨다.
+
+        ACF 적용이 끝내 실패했을 때 폴링을 꺼진 채 두지 않으려는 것이다 (`POLLOFF` 는
+        컨트롤러 전역 상태라 재접속으로 풀린다는 근거가 없다).  ⚠️ 부르는 쪽은 곧 원래
+        원인으로 `ArchonError` 를 올리므로, 여기서 예외를 내면 그 원인이 가려진다.
+        """
+        try:
+            got = await self._locked_thread(self.link.command_or_resync,
+                                            'POLLON', T_FAST)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            got, why = None, exc
+        else:
+            why = 'round trip failed'          # `command_or_resync` 가 사유를 이미 찍었다
+        if got is None:
+            log.warning('%scannot turn polling back on after the failed acf apply '
+                        '(%s)', self.ltag, why,
+                        extra={'detail': '다음 ACF 적용 전까지 STATUS 값이 낡을 수 '
+                                         '있다 -- ARCHON POLLON 으로 켤 수 있다'})
 
     async def set_config(self, key: str, value: str) -> None:
         """설정 줄 하나를 다시 쓴다 (labtest `SetConfig`).
 
         **Config 줄 번호는 ACF 파싱에서 온다.**  파싱을 안 했으면 어느 줄을
-        고칠지 모른다 -- `prepare()` 가 기동마다 ACF 를 읽어 적용하므로 번호는
-        늘 그 세션의 파일에서 온다.
+        고칠지 모른다 -- `prepare()` 가 세션마다 ACF 를 한 번 읽어 적용하므로(guide 는
+        기동에서, science 는 첫 `GO` 에서) 번호는 늘 그 세션의 파일에서 온다.
 
         ⭐ **번호가 둘이고 한 명령에 같이 실린다** (용어 정리, 운영자 2026-09-06):
 
@@ -965,7 +1130,10 @@ class ArchonController:
     # ⛔ **`verify_config_lines()` 는 걷었다** (2026-09-12) -- `RCONFIG` 로 줄
     # 번호 대응을 대조하던 함수다.  `apply_acf=false` 갈래의 안전장치였는데 그
     # 갈래를 없애면서 **호출자가 하나도 남지 않았다**.
-    # ⭐ 기동마다 `APPLYALL` 을 하므로 파일과 컨트롤러 메모리가 갈릴 자리가 없다.
+    # ⭐ `prepare()` 가 세션마다 한 번 `APPLYALL` 을 하므로(guide 는 기동에서, science 는
+    # 첫 `GO` 에서) 파일과 컨트롤러 메모리가 갈릴 자리는 **프로그램이 떠 있는 동안의
+    # 컨트롤러 REBOOT·전원 재투입**뿐이다 -- 그때는 프로그램을 다시 띄운다(`acf_applied`
+    # 가 세션에 한 번만 민다).  `ARCHON` 바이패스의 쓰기는 `config_dirty` 가 맡는다.
     # ⚠️ 같은 대조가 필요하면 `tools/probe_archon.py` 2단계가 그 일을 한다.
 
     # -- 전원 -------------------------------------------------------------
@@ -1004,15 +1172,25 @@ class ArchonController:
                 # 매뉴얼 p.51: *"An APPLYALL is required before this operation."*
                 # 설정 메모리에 줄이 있어도 **이 세션에서** APPLYALL 이 없었으면
                 # 거부한다.
-                # ⚠️ 이 프로그램은 기동마다 `APPLYALL` 을 하므로 여기까지 왔다면
-                # **그 APPLYALL 이 실패했거나 그 뒤에 REBOOT/전원 재투입이
-                # 있었다는 뜻이다** -- 기동 로그의 ACF 적용 줄을 먼저 볼 것.
+                # ⚠️ ACF 는 `prepare()` 가 **세션에 한 번** 민다(guide 는 기동에서,
+                # science 는 첫 `GO` 에서 -- ICS 기동은 접속만 한다).  그러니 여기까지
+                # 왔다면 **아직 그 자리를 안 지났거나**(science: 기동 뒤 `GO` 전의
+                # `CCDPOWON`), **그 APPLYALL 이 실패했거나**, **그 뒤 프로그램이 떠 있는
+                # 동안 REBOOT/전원 재투입이 있었다** -- 셋째는 `GO` 로도 안 풀린다
+                # (`acf_applied`), 프로그램을 다시 띄운다.  로그의 ACF 적용 줄을 먼저 볼 것.
+                # ⛔ 문면은 **ASCII** 다 -- science `CCDPOWON` 의 와이어 응답에 실린다
+                # (`app._fail_text`).
+                # ⛔ 예외 원문(`protocol` 의 한글 문면)은 싣지 않는다 -- 와이어에서 `?` 로
+                # 뭉개진다.  거절 코드만 뽑아 싣고 원문은 `from exc` 사슬·로그에 남긴다.
+                _code = re.search(r'\?[0-9A-Fa-f]{2}', str(exc))
                 raise ArchonError(
-                    '%s: POWERON 을 컨트롤러가 거부했다 (%s) -- 이 세션에서 '
-                    'APPLYALL 이 없었을 가능성이 크다 (매뉴얼 p.51).  ⚠️ 이 '
-                    '프로그램은 기동마다 APPLYALL 을 하므로, 기동 로그의 ACF '
-                    '적용 줄이 실패했는지 먼저 볼 것 (DevNote 10.2)'
-                    % (self.tag, exc),
+                    '%s: controller refused POWERON (%s) -- most likely no APPLYALL '
+                    'in this controller session (manual p.51).  The ACF is applied '
+                    'once per program session (guide at startup, science at the '
+                    'first GO -- on science send GO first); check the log for a '
+                    'failed acf apply, and after a controller REBOOT or power cycle '
+                    'restart the program (DevNote 10.2)'
+                    % (self.tag, 'reply %s' % _code.group(0) if _code else 'refused'),
                     cmd='POWERON', reply_error=True) from exc
             raise
         self.powered = True
@@ -1173,7 +1351,8 @@ class ArchonController:
         if not text:
             raise ArchonError('%s: empty command' % self.tag, cmd='')
         word = text.split(' ', 1)[0].upper()
-        if word.startswith('WCONFIG') or word == 'CLEARCONFIG':
+        touches = word.startswith('WCONFIG') or word == 'CLEARCONFIG'
+        if touches:
             # ⛔ **여기가 캐시와 컨트롤러가 갈리는 유일한 경로다.**  바이패스는
             # `set_config` 를 안 지나므로 설정 메모리만 바뀌고 `self.config` 는
             # 옛 값을 든다.  그 뒤 `set_flush_param`/`flush_now` 가 캐시를 믿고
@@ -1185,7 +1364,34 @@ class ArchonController:
             log.info('%s: bypass touched the config memory (%s) -- '
                      'marking the cache untrusted', self.tag, word,
                      extra={'detail': '다음 판단은 RCONFIG 되읽기로 한다'})
-        out = await self.cmd(text, timeout=timeout)
+        rejected = False
+        try:
+            out = await self.cmd(text, timeout=timeout)
+        except ArchonError as exc:
+            rejected = bool(exc.reply_error)
+            raise
+        finally:
+            # ⭐ **못 되돌린 임시 줄은 운영자에게 넘긴다** (DevNote 11.96) -- 바이패스로
+            # 설정 메모리를 쓴 뒤로는 그 줄이 운영자 몫이라, 다음 LOADPARAMS 앞의
+            # 되쓰기(`_retry_pending_restore`)가 운영자가 쓴 값을 덮으면 안 된다.
+            # ⚠️ 거부(`?NN`)면 메모리가 안 바뀌었으니 남긴다.
+            # ⭐ `WCONFIG` 는 **그 줄만** 넘긴다 -- 다른 줄에 남은 임시 값(`FirstFlush=1`
+            # 따위)은 여전히 우리 몫이라 다음 LOADPARAMS 앞에서 되쓴다.  `CLEARCONFIG`
+            # (와 줄 번호를 못 읽은 `WCONFIG`)는 메모리 전체를 건드렸다고 보고 다 넘긴다.
+            if touches and not rejected and self._pending_restore:
+                line = None if word == 'CLEARCONFIG' else _wconfig_line(word)
+                gone = sorted(
+                    (s, v) for s, v in self._pending_restore.items()
+                    if line is None or self.configline.get(
+                        s.upper().replace('\\', '/')) in (None, line))
+                if gone:
+                    log.warning('%s: bypass %s -- dropping the pending put-back of %s',
+                                self.tag, word, ', '.join('%s=%s' % kv for kv in gone),
+                                extra={'detail': '그 줄은 이제 운영자 몫이다 -- 되쓰기가 '
+                                                 '운영자 값을 덮지 않게 비운다.  확인은 '
+                                                 'ARCHON RCONFIG'})
+                    for s, _v in gone:
+                        del self._pending_restore[s]
         return out.decode('latin-1', 'replace').strip()
 
     async def config_value(self, key: str) -> str:
@@ -1210,6 +1416,142 @@ class ArchonController:
         self.config[key] = got
         return got
 
+    async def _put_back(self, slot: str, value: str, *, when: str = '') -> None:
+        """잠시 바꾼 설정 줄 하나를 **원래 값으로** 되쓴다 -- `finally` 에서 부른다.
+
+        ⛔ **예외를 올리지 않는다** (취소만 빼고) -- 부르는 자리는 대개 원래 예외
+        (`ArchonError`·`TimeoutError`·취소)가 올라가는 중이고, 되돌림의 실패가 그것을
+        가리면 원인이 사라진다.  ⭐ 한 번만 시도한다 -- 링크가 깨졌으면 실패한 명령이
+        이미 재수립했고(`cmd()`), 설정 메모리는 재접속에도 남으므로 되돌림은 여전히
+        필요하지만 여기서 매달릴 일은 아니다.
+        실패하면 오류 한 줄을 남기고 `config_dirty`(캐시는 이미 원래 값으로 바뀌어
+        있다 -- `set_config` 는 왕복 전에 캐시부터 바꾼다)와 `_pending_restore` 를 세운다.
+        다음 `LOADPARAMS` 앞에서 `_retry_pending_restore()` 가 다시 쓴다.
+        ⭐ **거부(`?NN`)면 곧바로 되읽는다** (DevNote 11.96) -- 거부는 스트림이 멀쩡하다는
+        뜻이라 `RCONFIG` 한 번이 싸다.  메모리가 이미 원래 값이면(올림 쓰기부터 거부돼
+        안 앉았다) 남길 것이 없다 -- 남기면 같은 식으로 거부되는 되쓰기가 세션 내내
+        GO·CCDFLUSH 를 막는다(`_memory_holds`).
+
+        `when` 은 오류 줄에 붙일 **그 순간의 사정** -- 부르는 쪽이 아는 짧은 한국어 한
+        마디다(`trigger` 는 노출이 걸렸는지, `flush_now` 는 flush 가 걸렸는지).  ⛔ 여기서
+        지어 붙이지 않는다 -- 종전 문면 *"이미 걸린 노출은 그대로 간다"* 는 노출을 걸기
+        전에 깨진 경우와 `flush_now` 에서도 똑같이 찍혔다.
+
+        ⭐ **취소를 막는다** (`asyncio.shield`) -- ABORT 위에 종료가 겹치면 두 번째
+        취소가 이 왕복을 끊는다.  끊겨도 왕복은 뒤에서 끝까지 가고, 결과를 모르므로
+        표시는 남긴다(다시 쓰는 것은 멱등이다).
+        """
+        self._pending_restore[slot] = value            # ⭐ 성공해야만 지운다
+        job = asyncio.ensure_future(self.set_config(slot, value))
+        job.add_done_callback(_reap)
+        try:
+            await asyncio.shield(job)
+        except asyncio.CancelledError:
+            self.config_dirty = True
+            log.warning('%s%s put-back to %s was interrupted by a cancel -- it goes '
+                        'on in the background', self.ltag, slot, value,
+                        extra={'detail': '앉았는지 모르므로 다음 LOADPARAMS 앞에서 '
+                                         '한 번 더 쓴다 (멱등)'})
+            raise
+        except Exception as exc:  # noqa: BLE001 -- 원래 예외를 가리지 않는다
+            if isinstance(exc, ArchonError) and exc.reply_error:
+                try:
+                    held = await self._memory_holds(slot, value)
+                except asyncio.CancelledError:
+                    self.config_dirty = True
+                    raise
+                if held:
+                    self._clear_pending(slot, value)
+                    log.warning('%s%s put-back to %s was refused (%s) but the config '
+                                'memory already holds it', self.ltag, slot, value, exc,
+                                extra={'detail': 'RCONFIG 로 되읽어 확인했다 -- 되쓸 것이 '
+                                                 '없다'})
+                    return
+            self.config_dirty = True
+            log.error('%s%s could not be put back to %s (%s) -- retrying before '
+                      'the next LOADPARAMS', self.ltag, slot, value, exc,
+                      extra={'detail': '잠시 바꾼 값이 설정 메모리에 남았을 수 있다 '
+                                       '(FirstFlush 면 science 는 매 장 flush, '
+                                       '+5.5 s).  %s확인은 ARCHON RCONFIG'
+                                       % ('%s.  ' % when if when else '')})
+            return
+        self._clear_pending(slot, value)
+
+    def _clear_pending(self, slot: str, value: str) -> None:
+        """`_pending_restore` 에서 그 줄을 지운다 -- **같은 값일 때만** (그 사이 새 값이 섰으면 둔다)."""
+        if self._pending_restore.get(slot) == value:
+            del self._pending_restore[slot]
+
+    async def _memory_holds(self, slot: str, value: str) -> bool | None:
+        """설정 메모리의 그 줄이 이미 `value` 인가 -- **`RCONFIG` 로 되읽어** 본다.
+
+        ⭐ 되돌림 쓰기가 실패해도 메모리는 이미 원래 값일 수 있다 -- 올림 쓰기부터
+        거부(`?NN`)돼 안 앉았거나, 되돌림이 앉았는데 답만 잃은 경우다.  그때 표시를
+        붙들고 있으면 **같은 식으로 실패하는 되쓰기가 세션 내내** GO·CCDFLUSH 를 막는다
+        (strict 인 `_retry_pending_restore`).
+        ⭐ **답이 셋이다** -- `True`(원래 값이다) · `False`(되읽은 값이 다르다) · `None`
+        (**되읽기가 실패했다** -- 모른다).  부르는 쪽은 `True` 일 때만 표시를 지운다(모르는
+        것은 *"아직 안 됐다"* 로 둔다 -- 표시를 남기는 쪽이 안전하다).  ⚠️ `None` 을
+        *"원래 값이 아니다"* 로 말하면 안 된다 -- 되읽지 못한 것이다.
+        """
+        try:
+            got = await self.read_config(slot)
+        except (ArchonError, TimeoutError, OSError) as exc:
+            log.warning('%s%s readback after the failed put-back failed too (%s)',
+                        self.ltag, slot, exc,
+                        extra={'detail': '확인하지 못했으니 표시는 남긴다'})
+            return None
+        return _unquote(got) == _unquote(value)
+
+    async def _retry_pending_restore(self, *, strict: bool = True) -> None:
+        """앞서 `_put_back()` 이 못 되돌린 설정 줄을 다시 쓴다.
+
+        비었으면 왕복이 없다.  ⭐ `strict` 면 실패를 그대로 올린다 -- **이 `LOADPARAMS`
+        앞**이라 아직 아무것도 걸지 않았으니 GO·CCDFLUSH 가 깨끗하게 실패하는 편이 잘못된
+        설정으로 노출을 거는 것보다 낫다 (`trigger`·`flush_now`).
+        ⭐ **되쓰기가 또 깨져도 막다른 길이 아니다** (DevNote 11.96) -- `RCONFIG` 로
+        되읽어 메모리가 이미 원래 값이면 표시를 지우고 간다(`_memory_holds`).  종전에는
+        같은 식으로 깨지는 되쓰기 하나가 메모리가 멀쩡한데도 세션 내내 GO·CCDFLUSH 를 막았다.
+        ⚠️ STOP·ABORT 길(`set_exposures`·`abort_now`·`flush_now(reset=True)`)은
+        `strict=False` 이고 **멈춘 뒤에** 부른다 -- 되돌림 하나 때문에 멈춤이 늦거나 못
+        나가면 안 된다.  실패는 경고로 남기고 표시는 둔다(다음 GO·CCDFLUSH 가 엄격히 다시
+        쓴다).
+        ⭐ 되읽기의 답은 셋이다(`_memory_holds`) -- 원래 값이다 · 아니다 · **되읽기도
+        깨졌다**.  오류 줄의 사정은 그 셋째를 *"원래 값이 아니다"* 로 말하지 않는다.
+        """
+        for slot, value in list(self._pending_restore.items()):
+            try:
+                await self.set_config(slot, value)
+            except (ArchonError, TimeoutError, OSError) as exc:
+                held = await self._memory_holds(slot, value)
+                if held:
+                    self._clear_pending(slot, value)
+                    log.warning('%s%s put-back to %s failed again (%s) but the config '
+                                'memory already holds it -- going on', self.ltag, slot,
+                                value, exc,
+                                extra={'detail': 'RCONFIG 로 되읽어 확인했다 -- 되쓸 것이 '
+                                                 '없다'})
+                    continue
+                self.config_dirty = True
+                if strict:
+                    log.error('%s%s still cannot be put back to %s (%s) -- not '
+                              'loading parameters', self.ltag, slot, value, exc,
+                              extra={'detail': '잠시 바꾼 값이 남은 채로 노출을 걸지 '
+                                               '않는다 (%s)'
+                                               % ('RCONFIG 로 되읽어도 원래 값이 아니다'
+                                                  if held is False else
+                                                  'RCONFIG 되읽기도 실패해 원래 값임을 '
+                                                  '확인하지 못했다')})
+                    raise
+                log.warning('%s%s still cannot be put back to %s (%s) -- the stop '
+                            'went out anyway', self.ltag, slot, value, exc,
+                            extra={'detail': 'STOP·ABORT 길은 멈춤이 먼저다.  다음 '
+                                             'GO·CCDFLUSH 가 LOADPARAMS 앞에서 다시 쓴다'})
+                continue
+            self._clear_pending(slot, value)
+            log.info('%s%s put back to %s', self.ltag, slot, value,
+                     extra={'detail': '앞서 되돌림이 실패했던 줄이다 (_put_back)'})
+
     async def flush_now(self, *, reset: bool = False) -> None:
         """CCD 를 한 바퀴 비운다 -- 타이밍 스크립트의 `FlushFrame` 을 한 번 돌린다.
 
@@ -1220,6 +1562,14 @@ class ArchonController:
         그대로** 되돌린다 -- guide 는 ACF 상수가 1 이라 쓸 것이 없다 (DevNote 11.33).
         ⛔ 종전에는 `0` 으로 고정 복원했는데, 새 설계에서 `FirstFlush` 는 **개수**라
         (`CALL FlushFrame(FirstFlush)`) 2 이상인 구성을 조용히 깎았다 (11.86-(12)).
+        ⛔ **되돌림은 `finally` 다 -- 오류·취소에도 되돌린다** (DevNote 11.96).  올림부터
+        `LOADPARAMS`(·`RESETTIMING`)까지 어디서 깨져도 원래 값을 되쓴다(올림 쓰기 자체가
+        깨졌어도 -- 앉았는지 모르니 되쓴다, 멱등이다).  되돌림마저 실패하면 원래 예외를
+        가리지 않고 오류 한 줄 + `config_dirty` + `_pending_restore` 를 남긴다 -- flush 가
+        이미 돌았으면 이 명령은 성공으로 끝난다(`_put_back`).
+        ⭐ 앞서 못 되돌린 줄이 있으면 **판정 전에** 먼저 되쓴다(`_retry_pending_restore`) --
+        안 그러면 `config_dirty` 가 되읽게 한 `FirstFlush=1` 을 *"이미 켜져 있다"* 로 보고
+        되돌리지 않아 1 이 영구히 남는다.  ⚠️ **`reset=True` 는 예외다** -- 아래 참조.
         ⭐ **`EveryFlush` 는 여기서 건드릴 필요가 없다** -- 일회성 flush 는 `Exposures=0`
         의 **유휴 경로**인데 `CALL FlushFrame(EveryFlush)` 는 `Exposure:` 블록 아래라
         유휴 코어가 그 줄에 닿지 않는다.
@@ -1228,9 +1578,17 @@ class ArchonController:
         flush 로 들어간다 -- abort/EXPENABLE=0 경로.  LOADPARAMS 가 파라미터 RAM 과 설정
         메모리를 같은 값으로 맞춘 뒤라, RESETTIMING 이 RAM 을 그대로 쓰든 메모리를 다시
         읽든 결과가 같다(⏳ 어느 쪽인지는 첫 구동 실측).
+        ⭐ 이 길은 **멈춤이 먼저다** (`abort_now` 와 같다) -- 앞서 못 되돌린 줄은 판정 전이
+        아니라 **`RESETTIMING` 뒤에** `strict=False` 로 되쓴다.  판정 전에 엄격히 되쓰면 그
+        되쓰기 하나가 깨질 때 ABORT/EXPENABLE=0 의 `RESETTIMING` 이 아예 안 나간다.  남은
+        `FirstFlush=1` 을 *"이미 켜져 있다"* 로 읽어도 해가 없다 -- 이번 flush 는 그 1 로 돌고,
+        뒤의 되쓰기가 원래 값을 쓴다(또 깨지면 표시가 남아 다음 GO·CCDFLUSH 가 엄격히 쓴다).
+        `RESETTIMING` 까지 가다 깨지면 되쓰기는 건너뛴다 -- 표시는 그대로 남는다.
 
         ACF 에 슬롯이 없으면(R2612 이하 guide · R2608 이하 science) `ArchonError`.
         """
+        if not reset:
+            await self._retry_pending_restore()
         fname = self.PARAM_FLUSH
         fslot = (self.param_slots or {}).get(fname)
         cur = _unquote(await self.config_value(fslot)) if fslot else ''
@@ -1239,17 +1597,30 @@ class ArchonController:
                               'with FlushFrame (guide R2613+ / science R2609+)'
                               % (self.tag, fname, fslot or '?'), cmd='WCONFIG')
         armed = cur == '%s=1' % fname
-        if not armed:
-            await self.set_config(fslot, '%s=1' % fname)
-        await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
-                              '%s=0' % self.PARAM_EXPOSURES)
-        await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
+        # LOADPARAMS 가 어디까지 갔나 -- 되돌림 오류 줄에 붙일 사정 (`_put_back(when=)`).
+        stage = ''
+        try:
+            if not armed:
+                await self.set_config(fslot, '%s=1' % fname)
+            await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
+                                  '%s=0' % self.PARAM_EXPOSURES)
+            stage = 'sent'
+            await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
+            stage = 'loaded'
+            if reset:
+                await self.reset_timing()
+        finally:
+            if not armed:
+                # ⭐ **원래 값으로 되돌린다** -- 0 으로 고정하면 `ccdflush_first`
+                # 가 1 보다 큰 구성에서 그 값을 조용히 지운다.  ⛔ 오류·취소에도.
+                await self._put_back(fslot, cur, when={
+                    'loaded': '일회성 flush 는 걸렸다 (flush_now)',
+                    'sent': 'LOADPARAMS 가 깨지거나 끊겨 일회성 flush 가 걸렸는지 '
+                            '모른다 (flush_now)',
+                }.get(stage, '일회성 flush 는 걸지 않았다 (flush_now)'))
         if reset:
-            await self.reset_timing()
-        if not armed:
-            # ⭐ **원래 값으로 되돌린다** -- 0 으로 고정하면 `ccdflush_first`
-            # 가 1 보다 큰 구성에서 그 값을 조용히 지운다.
-            await self.set_config(fslot, cur)
+            # ⭐ 멈춘 뒤에 -- 앞서 못 되돌린 줄 (위 docstring, `abort_now` 와 같은 자리).
+            await self._retry_pending_restore(strict=False)
         log.info('%sccd flush %s', self.ltag,
                  'after RESETTIMING (abort)' if reset else 'from idle')
 
@@ -1452,6 +1823,8 @@ class ArchonController:
         것이다 (`IcgDispatcher.cmd_shopen`).
         ⏳ 적용 하나가 몇 ms 인지는 아직 안 쟀다.
         ⛔ 둘 다 `None` 이면 아무것도 안 한다 -- 맨 `APPLYSYSTEM` 은 안 보낸다.
+        ⭐ 레벨 기록(`note_trigger_level`) -- 적용이 끝났거나 **적용됐을 수 있으면**(시한
+        초과·답 잃음·취소) 적고, **거부(`?NN`)** 면 안 적는다 (DevNote 11.96).
         """
         wrote = False
         if high is not None:
@@ -1461,9 +1834,31 @@ class ArchonController:
             await self.set_config('TRIGOUTFORCE', '1' if forced else '0')
             wrote = True
         if wrote:
-            await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
+            try:
+                await self.cmd('APPLYSYSTEM', timeout=T_SYSTEM)
+            except asyncio.CancelledError:
+                # ⭐ **취소면 적용됐다고 보고 적는다** (DevNote 11.96).  `_locked_thread` 가
+                # 스레드를 끝까지 기다리므로 보낸 적용은 이미 끝났다 -- 락을 기다리다
+                # 끊겼으면 안 나갔지만 둘을 가를 길이 없다.  guide `TRIGOUT` 카드는
+                # *"HIGH 인 적이 있었나"* 라 **많이 적는 쪽이 안전하다** -- HIGH 를 안 적으면
+                # 실제로 섰을 수 있는 펄스가 카드에서 빠진다.
+                # ⚠️ LOW 도 적는다 -- 안 적으면 열린 구간이 **다음 레벨 쓰기까지** 모든 프레임을
+                # HIGH 로 적는다(되읽기로 쉬는 상태가 확인되면 `ensure_trigger_resting` 도 안
+                # 쓴다).  대가는 락 대기 중 취소된 LOW 한 번의 과소 보고다.
+                if high is not None:
+                    self.note_trigger_level(bool(high))
+                raise
+            except (ArchonError, TimeoutError, OSError) as exc:
+                # ⭐ **거부(`?NN`)만 안 적는다** -- 컨트롤러가 거절했으니 선은 그대로다.
+                # 시한 초과·답 잃음·끊김은 **적용됐을 수 있다** -- 취소와 같은 까닭으로 적는다
+                # (많이 적는 쪽이 안전하다).
+                if (high is not None
+                        and not (isinstance(exc, ArchonError) and exc.reply_error)):
+                    self.note_trigger_level(bool(high))
+                raise
         # ⭐ **적용이 끝난 뒤에 적는다** -- 선이 실제로 바뀌는 시점이 여기다.
-        # 실패하면 위에서 예외가 올라가므로 **거짓 기록이 안 남는다**.
+        # ⚠️ 적용이 **거부(`?NN`)** 됐으면 위에서 예외가 올라가 적지 않는다 -- 안 섰다고
+        # 알 수 있는 것은 그것 하나다.  `WCONFIG` 에서 깨졌으면 적용이 아예 안 나갔다.
         if high is not None:
             self.note_trigger_level(bool(high))
 
@@ -1598,104 +1993,132 @@ class ArchonController:
                 셔터를 안 여는 노출(DARK)에서는 **적분 그 자체**다 --
                 `NoIntUnit` 은 `NOINT`(CONTROL 비트0 = 0)로 들어가므로
                 **트리거 선이 안 서고 셔터가 안 열린다**.  `None` 이면 안
-                쓴다(설정 메모리의 ACF 값이 그대로 간다).
+                쓴다 -- ⚠️ 그러면 설정 메모리에 **앞 노출이 쓴 값**이 그대로 간다
+                (DARK 뒤면 그 적분시간, BIAS 뒤면 0).  ACF 값이 아니다.
             first_flush: ⭐ **이 LOADPARAMS 에만** `FirstFlush` 를 적어도 이만큼
                 싣는다 -- 방금 끈 진공게이지의 잔류 전하를 첫 장 앞에서 비우는
                 자리 (운영자 2026-09-15, `gaugectl.take_flush_request`).  설정
-                메모리의 값이 이미 그 이상이면 손대지 않고, 올렸으면 LOADPARAMS
-                뒤 **원래 값으로 되돌린다** (`flush_now()` 와 같은 방식) -- science
-                는 프레임마다 LOADPARAMS 라 설정값을 남겨 두면 **매 장** flush 가
-                된다.  `EveryFlush` 는 보지 않는다(운영자: *"무조건 올려"*).  `None`
+                메모리의 값이 이미 그 이상이면 손대지 않고, 올렸으면 **원래 값으로
+                되돌린다** (`flush_now()` 와 같은 방식) -- science 는 프레임마다
+                LOADPARAMS 라 설정값을 남겨 두면 **매 장** flush 가 된다.
+                ⛔ 되돌림은 `finally` 다 -- 올림부터 `LOADPARAMS` 까지 어디서
+                깨지거나 취소돼도 되돌린다 (DevNote 11.96).  `LOADPARAMS` 가
+                성공했으면(노출이 걸렸으면) **표를 먼저 만들어 대기열에 넣고** 그
+                뒤에 되돌린다 -- 되돌림이 실패해도 그 노출은 간다(오류 한 줄 +
+                `_pending_restore`, 다음 LOADPARAMS 앞에서 다시 쓴다).
+                `EveryFlush` 는 보지 않는다(운영자: *"무조건 올려"*).  `None`
                 이면 안 건드린다.
         """
+        self.loadparams_sent = False
+        # ⭐ 앞서 못 되돌린 설정 줄부터 -- 실패하면 여기서 GO 가 깨끗하게 실패한다.
+        await self._retry_pending_restore()
         # **한 번의 `FRAME` 으로 둘을 뽑는다** -- 프레임 번호(기준값)와 세
         # 버퍼의 번호(기준선).  왕복은 종전과 같다.
-        self.loadparams_sent = False
         _fields = await self.query('FRAME', timeout=T_FAST)
         prev = parse.newest(_fields).frame
         before = parse.buffer_frames(_fields)
-        # ⭐ 첫 장 앞 flush -- 올렸으면 `(슬롯, 원래 값)` 을 받아 LOADPARAMS 뒤 되돌린다.
-        restore = (await self._raise_first_flush(int(first_flush))
-                   if first_flush is not None else None)
-        await self.set_config(self._param_slot(self.PARAM_INTMS),
-                              '%s=%d' % (self.PARAM_INTMS,
-                                         max(int(exptime_ms), 0)))
-        if noint_ms is not None:
-            # ⛔ **`Exposures` 앞이어야 한다** (KMTNet ACF 규약) -- LOADPARAMS 가
-            # 값을 하나씩 덮는 동안 코어는 계속 돌기 때문이다.  `Exposures` 를
-            # 마지막에 쓰는 아래 줄과 순서를 바꾸지 말 것.
-            slot = (self.param_slots or {}).get(self.PARAM_NOINT)
-            if slot:
-                await self.set_config(slot, '%s=%d'
-                                      % (self.PARAM_NOINT,
-                                         max(int(noint_ms), 0)))
-            else:
-                # 옛 ACF 에는 이 파라미터가 없다 -- 기동 검사가 이미 경고했다.
-                log.warning('%sacf has no %s -- the dwell cannot be set per '
-                            'exposure', self.ltag, self.PARAM_NOINT,
-                            extra={'detail': '셔터를 안 여는 노출의 적분과 '
-                                             '셔터 닫힘 대기가 둘 다 ACF '
-                                             '상수에 묶인다'})
-                noint_ms = None
-        await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
-                              '%s=%d' % (self.PARAM_EXPOSURES,
-                                         max(int(exposures), 1)))
-        # flush 는 설정 메모리의 `FirstFlush` 가 정한다 -- guide 는 ACF 상수 1(R2616+),
-        # science 는 `ccdflush_first`/`ccdflush_every`(`apply_flush_overrides`).
-        # ⭐ `EveryFlush` 는 **새 기능이 아니라** `FirstFlush` 의 뜻을 *"첫 장만"*
-        # 으로 되돌리는 것이다 -- 종전 `ccdflush=true` 가 이름과 달리 사실상
-        # *"매 노출"* 이었다 (11.86-(12)).
-        # 이 LOADPARAMS 가 그 값을 RAM 에
-        # 실어 코어가 `FlushFrame` 한 번을 돌고 `FirstFlush--` 로 소비한다.  호스트가
-        # 프레임마다 쓰고 되쓰는 플래그는 없다 (DevNote 11.33).
-        # 취소가 여기서 걸리면 `_locked_thread` 가 스레드를 끝까지 기다리므로
-        # 표시가 True 인 순간 ack 는 이미 (또는 곧) 받은 것이다.
-        self.loadparams_sent = True
-        await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
-        timing = getattr(self, 'last_cmd_timing', None)
-        if restore is not None:
-            # ⭐ **원래 값으로** -- RAM 에는 이미 실렸고, 설정 메모리는 다음 LOADPARAMS
-            # 가 읽는 것이라 여기서 되돌려야 둘째 장부터 ini/ACF 설정대로 간다.
-            await self.set_config(*restore)
-        # ⭐ **한 시각에서 둘을 뽑는다** -- `time.monotonic()` 을 두 번 부르면
-        # 두 값이 미세하게 어긋나 되짚을 때 헷갈린다.
-        _now = time.monotonic()
-        _dwell_ms = max(int(exptime_ms), 0) + max(int(noint_ms or 0), 0)
-        ticket = FrameTicket(
-            suffix=suffix,
-            prev_frame=prev,
-            prev_frames=before,
-            int_until=(_now + exptime_ms / 1000.0
-                       if exptime_ms > 0 else None),
-            dwell_until=(_now + _dwell_ms / 1000.0
-                         if (noint_ms is not None and _dwell_ms > 0)
-                         else None))
-        if timing is not None:
-            t_s, t_r, u_s = timing
-            ticket.armed_mono = (t_s + t_r) / 2.0
-            ticket.armed_utc = u_s + (t_r - t_s) / 2.0
-            ticket.arm_rtt = t_r - t_s
-            if ticket.arm_rtt > 0.020:
-                # ⛔ **종전 문면 *"링크가 느리다"* 는 오귀속이었다** (2026-09-09
-                # 정정).  링크는 빠르다 -- `RCONFIG` 3회가 **6 ms** 다.  느린
-                # 것은 **`LOADPARAMS` 자신의 처리**이고, APPLY 계열이 다 그렇다
-                # (`APPLYSYSTEM` ≈229 ms · `RESETTIMING` 246 ms 실측,
-                # DevNote 11.55).  ⚠️ 원인을 링크로 적으면 망을 들여다보게 만든다.
-                # ⭐ 경고를 남기는 이유는 그대로다: 이 왕복의 **중점**을
-                # `DATE-OBS` 로 쓰므로 불확도가 그 절반이다.
-                # ⚠️ **화면에서는 뺀다** (운영자 2026-09-11) -- 값이 매번 거의
-                # 같아(실측 239~240 ms) 노출마다 같은 줄이 되풀이된다.  ⭐ 자취는
-                # 로그 파일에 그대로 남으므로 나중에 세어 볼 수 있다.
-                log.warning('%sloadparams took %.1f ms', self.ltag,
-                            ticket.arm_rtt * 1e3,
-                            extra={'essential': False,
-                                   'detail': '첫 저장 프레임 DATE-OBS 의 불확도가 '
-                                             '그 절반이다.  ⚠️ 링크가 아니라 이 '
-                                             '명령 자체의 처리 시간이다 (APPLY '
-                                             '계열은 다 200 ms 대 -- 실측)'})
-        self._current = ticket
-        if queue:
-            self._queue.append(ticket)
+        # ⭐ 첫 장 앞 flush -- 올릴지부터 정한다(`(슬롯, 원래 값, 올릴 값)` 또는 `None`).
+        plan = (await self._plan_first_flush(int(first_flush))
+                if first_flush is not None else None)
+        restore = None
+        ticket = None                     # LOADPARAMS 가 돌아와야 선다 (되돌림 오류 줄의 사정)
+        try:
+            if plan is not None:
+                fslot, cur, want = plan
+                # ⚠️ **쓰기 전에** 되돌릴 값을 잡는다 -- 이 쓰기 자체가 시한을 넘겨도
+                # (앉았는지 모른다) `finally` 가 원래 값을 되쓴다 (멱등이다).
+                restore = (fslot, cur)
+                await self.set_config(fslot, '%s=%d' % (self.PARAM_FLUSH, want))
+            await self.set_config(self._param_slot(self.PARAM_INTMS),
+                                  '%s=%d' % (self.PARAM_INTMS,
+                                             max(int(exptime_ms), 0)))
+            if noint_ms is not None:
+                # ⛔ **`Exposures` 앞이어야 한다** (KMTNet ACF 규약) -- LOADPARAMS 가
+                # 값을 하나씩 덮는 동안 코어는 계속 돌기 때문이다.  `Exposures` 를
+                # 마지막에 쓰는 아래 줄과 순서를 바꾸지 말 것.
+                slot = (self.param_slots or {}).get(self.PARAM_NOINT)
+                if slot:
+                    await self.set_config(slot, '%s=%d'
+                                          % (self.PARAM_NOINT,
+                                             max(int(noint_ms), 0)))
+                else:
+                    # 옛 ACF 에는 이 파라미터가 없다 -- 기동 검사가 이미 경고했다.
+                    log.warning('%sacf has no %s -- the dwell cannot be set per '
+                                'exposure', self.ltag, self.PARAM_NOINT,
+                                extra={'detail': '셔터를 안 여는 노출의 적분과 '
+                                                 '셔터 닫힘 대기가 둘 다 ACF '
+                                                 '상수에 묶인다'})
+                    noint_ms = None
+            await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
+                                  '%s=%d' % (self.PARAM_EXPOSURES,
+                                             max(int(exposures), 1)))
+            # flush 는 설정 메모리의 `FirstFlush` 가 정한다 -- guide 는 ACF 상수 1(R2616+),
+            # science 는 `ccdflush_first`/`ccdflush_every`(`apply_flush_overrides`).
+            # ⭐ `EveryFlush` 는 **새 기능이 아니라** `FirstFlush` 의 뜻을 *"첫 장만"*
+            # 으로 되돌리는 것이다 -- 종전 `ccdflush=true` 가 이름과 달리 사실상
+            # *"매 노출"* 이었다 (11.86-(12)).
+            # 이 LOADPARAMS 가 그 값을 RAM 에
+            # 실어 코어가 `FlushFrame` 한 번을 돌고 `FirstFlush--` 로 소비한다.  호스트가
+            # 프레임마다 쓰고 되쓰는 플래그는 없다 (DevNote 11.33).
+            # 취소가 여기서 걸리면 `_locked_thread` 가 스레드를 끝까지 기다리므로
+            # 표시가 True 인 순간 ack 는 이미 (또는 곧) 받은 것이다.
+            self.loadparams_sent = True
+            await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
+            # ⛔ **곧바로 읽는다** -- 아래 되돌림 `WCONFIG` 도 `last_cmd_timing` 을
+            # 덮으므로, 늦게 읽으면 `DATE-OBS` 가 그 왕복 시각이 된다.
+            timing = getattr(self, 'last_cmd_timing', None)
+            # ⭐ **노출은 걸렸다 -- 표부터 만든다** (DevNote 11.96).  되돌림은 그
+            # 뒤다(`finally`): 되돌림이 실패해도 이미 도는 노출을 *"개시 실패"* 로
+            # 바꾸지 않고, `int_until`/`dwell_until` 에 되돌림 왕복이 끼지도 않는다.
+            # ⭐ **한 시각에서 둘을 뽑는다** -- `time.monotonic()` 을 두 번 부르면
+            # 두 값이 미세하게 어긋나 되짚을 때 헷갈린다.
+            _now = time.monotonic()
+            _dwell_ms = max(int(exptime_ms), 0) + max(int(noint_ms or 0), 0)
+            ticket = FrameTicket(
+                suffix=suffix,
+                prev_frame=prev,
+                prev_frames=before,
+                int_until=(_now + exptime_ms / 1000.0
+                           if exptime_ms > 0 else None),
+                dwell_until=(_now + _dwell_ms / 1000.0
+                             if (noint_ms is not None and _dwell_ms > 0)
+                             else None))
+            if timing is not None:
+                t_s, t_r, u_s = timing
+                ticket.armed_mono = (t_s + t_r) / 2.0
+                ticket.armed_utc = u_s + (t_r - t_s) / 2.0
+                ticket.arm_rtt = t_r - t_s
+                if ticket.arm_rtt > 0.020:
+                    # ⛔ **종전 문면 *"링크가 느리다"* 는 오귀속이었다** (2026-09-09
+                    # 정정).  링크는 빠르다 -- `RCONFIG` 3회가 **6 ms** 다.  느린
+                    # 것은 **`LOADPARAMS` 자신의 처리**이고, APPLY 계열이 다 그렇다
+                    # (`APPLYSYSTEM` ≈229 ms · `RESETTIMING` 246 ms 실측,
+                    # DevNote 11.55).  ⚠️ 원인을 링크로 적으면 망을 들여다보게 만든다.
+                    # ⭐ 경고를 남기는 이유는 그대로다: 이 왕복의 **중점**을
+                    # `DATE-OBS` 로 쓰므로 불확도가 그 절반이다.
+                    # ⚠️ **화면에서는 뺀다** (운영자 2026-09-11) -- 값이 매번 거의
+                    # 같아(실측 239~240 ms) 노출마다 같은 줄이 되풀이된다.  ⭐ 자취는
+                    # 로그 파일에 그대로 남으므로 나중에 세어 볼 수 있다.
+                    log.warning('%sloadparams took %.1f ms', self.ltag,
+                                ticket.arm_rtt * 1e3,
+                                extra={'essential': False,
+                                       'detail': '첫 저장 프레임 DATE-OBS 의 불확도가 '
+                                                 '그 절반이다.  ⚠️ 링크가 아니라 이 '
+                                                 '명령 자체의 처리 시간이다 (APPLY '
+                                                 '계열은 다 200 ms 대 -- 실측)'})
+            self._current = ticket
+            if queue:
+                self._queue.append(ticket)
+        finally:
+            if restore is not None:
+                # ⭐ **원래 값으로** -- RAM 에는 이미 실렸고(또는 노출이 안 걸렸고),
+                # 설정 메모리는 다음 LOADPARAMS 가 읽는 것이라 여기서 되돌려야 둘째
+                # 장부터 ini/ACF 설정대로 간다.  ⛔ 오류·취소에도 -- 실패는 삼키고
+                # 남긴다(`_put_back`).  `when` 은 오류 줄에 붙일 이 순간의 사정이다.
+                await self._put_back(*restore, when=(
+                    '노출은 이미 걸렸다 -- 그대로 간다' if ticket is not None else
+                    'LOADPARAMS 가 깨지거나 끊겨 노출이 걸렸는지 모른다'
+                    if self.loadparams_sent else '노출은 걸지 않았다 (LOADPARAMS 전)'))
         # ⭐ **기준선 세 버퍼를 함께 남긴다** (2026-09-11) -- `prev` 하나만으로는
         # 나중에 번호가 어긋났을 때 *"그때 버퍼가 어땠나"* 를 되짚을 수 없다.
         log.info('%sexposure armed: IntMS=%d%s Exposures=%d after frame %d%s',
@@ -1762,8 +2185,14 @@ class ArchonController:
         """`FRAME` 한 번 -- 지금 완료돼 있는 가장 새 프레임 번호 (-1 = 없음)."""
         return parse.newest(await self.query('FRAME', timeout=T_FAST)).frame
 
-    async def _raise_first_flush(self, want: int):  # noqa: ANN202
-        """설정 메모리의 `FirstFlush` 가 `want` 보다 작으면 올린다.  `(슬롯, 원래 값)` 또는 `None`.
+    async def _plan_first_flush(self, want: int):  # noqa: ANN202
+        """설정 메모리의 `FirstFlush` 가 `want` 보다 작으면 올릴 계획을 낸다.
+
+        `(슬롯, 원래 값, 올릴 값)` 또는 `None`.  ⛔ **여기서는 쓰지 않는다** (DevNote
+        11.96) -- 올리는 `WCONFIG` 는 `trigger()` 의 `try` 안에서 나간다.  종전에는 이
+        함수가 올리고 `(슬롯, 원래 값)` 을 돌려줬는데, 그 쓰기 자체가 실패하면(시한 초과면
+        앉았을 수도 있다) 되돌릴 값이 돌아오지 않아 **아무도 되돌리지 않았다** --
+        캐시는 `set_config` 가 이미 1 로 바꿔 둬서 다음 판단도 *"이미 켜져 있다"* 로 봤다.
 
         ⭐ **방금 끈 게이지의 잔류 전하를 첫 장 앞에서 비우는 자리**다 (운영자 지시
         2026-09-15): *"ACF 또는 ini 설정에서 FirstFlush=0 이면 1 로 노출 시퀀스 시작,
@@ -1793,27 +2222,36 @@ class ArchonController:
             have = 0
         if have >= want:
             return None                       # 기존 설정대로 -- 이미 flush 가 든다
-        await self.set_config(fslot, '%s=%d' % (fname, want))
         log.info('%sgauge was on -- %s %d -> %d for this frame only (flush before '
                  'the first exposure)', self.ltag, fname, have, want,
                  extra={'detail': '필라멘트가 켜져 있던 동안 쌓인 전하를 비운다.  '
-                                  'LOADPARAMS 뒤 설정 메모리는 %s 로 되돌린다 -- '
+                                  '설정 메모리는 %s 로 되돌린다(오류·취소에도) -- '
                                   '둘째 장부터 ini/ACF 설정대로' % cur})
-        return (fslot, cur)
+        return (fslot, cur, want)
 
-    async def set_exposures(self, n: int) -> None:
+    async def set_exposures(self, n: int, *, put_back: bool = True) -> None:
         """남은 연속 노출 수를 바꾼다 (`0` 이면 현재 프레임까지만).
 
         STOP 경로가 쓴다 -- 시퀀서는 `Exposures` 가 0 이 되면 현재 프레임을
         마치고 유휴 루프로 돌아간다 (타이밍 스크립트 `Start:`).  ⚠️ 설정 메모리의
         `FirstFlush` 가 1 이면(guide 상수, R2616+) 이 LOADPARAMS 도 flush 한 번을
         실어 **마지막 프레임 뒤 CCD 를 비우고** 유휴로 간다 (DevNote 11.33).
+        ⭐ 앞서 못 되돌린 설정 줄은 **`Exposures=0` 의 LOADPARAMS 뒤에** 되쓴다
+        (`strict=False`, DevNote 11.96) -- 이것은 STOP·ABORT 길이라 멈춤이 먼저다.
+        종전에는 그 앞에서 되써서 되쓰기 왕복(깨지면 `RCONFIG` 되읽기까지)만큼 멈춤이
+        늦었다.  실패해도 경고만 하고 표시는 두므로 다음 GO·CCDFLUSH 가 LOADPARAMS
+        앞에서 엄격히 다시 쓴다.  ⚠️ 그래서 이 LOADPARAMS 는 **남은 값을 그대로** 싣는다 --
+        남은 것이 `FirstFlush` 면 유휴에서 flush 한 번이 더 돌 수 있다(CCD 를 비울 뿐
+        해롭지 않다).
+        `put_back=False` 는 `abort_now()` 몫이다 -- 되쓰기를 `RESETTIMING` 뒤로 미룬다.
         """
         await self.set_config(self._param_slot(self.PARAM_EXPOSURES),
                               '%s=%d' % (self.PARAM_EXPOSURES,
                                          max(int(n), 0)))
         await self.cmd('LOADPARAMS', timeout=T_SYSTEM)
         log.info('%s: Exposures=%d written', self.tag, max(int(n), 0))
+        if put_back:
+            await self._retry_pending_restore(strict=False)
 
     async def abort_now(self) -> None:
         r"""**진행 중 적분을 지금 끊는다** (ABORT) -- `Exposures=0` -> `RESETTIMING`.
@@ -1834,9 +2272,14 @@ class ArchonController:
         뛴다 -- 끊긴 전하를 비우므로 해롭지 않다.  science 는 `ccdflush_first` 가
         정한다 (운영자: *"science 는 abort 뒤 flush 가 필요 없다"* -- 필요 없을
         뿐 해가 되지는 않는다).
+        ⭐ 앞서 못 되돌린 설정 줄은 **`RESETTIMING` 뒤에** 되쓴다 (`strict=False`,
+        DevNote 11.96) -- 끊는 것은 `RESETTIMING` 이라 그 앞에 왕복을 끼우면 셔터가 그만큼
+        늦게 닫힌다.  둘 중 하나가 깨지면 되쓰기는 건너뛴다 -- 표시는 남으니 다음
+        GO·CCDFLUSH 가 LOADPARAMS 앞에서 엄격히 다시 쓴다.
         """
-        await self.set_exposures(0)
+        await self.set_exposures(0, put_back=False)
         await self.reset_timing()
+        await self._retry_pending_restore(strict=False)
 
     @property
     def triggered(self) -> bool:
@@ -1952,8 +2395,12 @@ class ArchonController:
         `IntMS=0` 으로 노출을 걸어 축적된 전하를 읽어내고 그 프레임을 쓰지
         않는다.  레거시 `ERASE` 의 자리이고, 걸리는 시간은 **독출 1회분**이다
         (레거시 실측 7.24초는 IC 구현 값이라 실기와 다르다 -- 실측 대상).
+
+        ⭐ **`NoIntMS=0` 을 싣는다** (DevNote 11.96) -- 셔터를 안 여는 적분 0 노출
+        (BIAS 와 같은 꼴)이다.  안 실으면 앞 노출의 값이 남아, 600초 DARK 뒤의 flush 가
+        독출을 600초 늦게 열고 `frame_timeout` 에 걸린다.
         """
-        ticket = await self.trigger(0, queue=False)
+        ticket = await self.trigger(0, queue=False, noint_ms=0)
         async for _pct in self.wait_frame(ticket, poll=poll):
             pass
         self.release_current()
@@ -2369,8 +2816,9 @@ class ArchonController:
         """
         if not self.link.connected:
             await self.connect()
-        # ⭐ **ACF 는 늘 적용한다** (운영자 2026-09-12) -- 기동마다 컴퓨터의
-        # 파일을 읽어 컨트롤러를 재설정한다.
+        # ⭐ **ACF 는 늘 적용한다** (운영자 2026-09-12) -- 세션마다 한 번 컴퓨터의
+        # 파일을 읽어 컨트롤러를 재설정한다.  guide 는 기동에서(`icg_archon.app`),
+        # science 는 **첫 `GO` 의 이 자리**에서다 (기동은 접속만 한다, `app.py`).
         # ⛔ 종전에는 `apply_acf=false` 로 적용을 건너뛰고 **줄 번호만 대조**하는
         # 갈래가 있었는데, 그 길이 *"호스트가 읽은 파일"* 과 *"컨트롤러 메모리에
         # 실제로 든 것"* 이 갈릴 유일한 자리였다 -- 줄 대응이 맞아도 **그 세션에서
@@ -2381,14 +2829,23 @@ class ArchonController:
         if not acf:
             raise ArchonError(
                 '%s: ACF 경로가 비었다 -- ini 에 경로를 적을 것.\n'
-                '        ⭐ 기동마다 ACF 를 적용하는 것이 규범이다 '
-                '(운영자 2026-09-12) -- 건너뛰는 갈래는 없앴다' % self.tag)
-        if not self.acf_applied:
+                '        ⭐ 세션마다 ACF 를 적용하는 것이 규범이다 -- guide 는 기동에서, '
+                'science 는 첫 GO 에서 (운영자 2026-09-12).  건너뛰는 갈래는 없앴다'
+                % self.tag)
+        fresh = not self.acf_applied
+        if fresh:
             await self.apply_acf(acf)
         # ⭐ **KMTNet ACF 규약 판정은 여기서** -- 파싱 자리가 아니라 노출 준비다
         # (감시·진단도 같은 길로 ACF 를 읽으므로).
         self._require_param_slots()
-        await self._enforce_shutter_close_dwell()
+        if fresh:
+            # ⛔ **ACF 를 민 직후에만** (DevNote 11.96) -- 이때만 캐시가 곧 ACF 파일
+            # 값이다.  `prepare()` 는 프레임마다 불리는데, 그 사이 DARK/BIAS 가 `NoIntMS`
+            # 슬롯을 적분시간/0 으로, ERASE flush(`flush()`)가 0 으로 덮으므로 다시 보면
+            # **앞 노출의 값**을 ACF 값으로 안다 -- 셔터 노출의 값(`shutter_dwell_ms`)이 앞
+            # DARK 의 600초가 되고,
+            # BIAS 뒤마다 *"ACF 가 짧다"* 경고가 거짓으로 뜬다.
+            await self._enforce_shutter_close_dwell()
         # ⭐ CCD flush -- ACF 를 민 **뒤에** `FirstFlush` 한 줄만 쓴다 (컨트롤러
         # 메모리를 되읽어 판정하므로 앞 세션이 켜 둔 것을 되돌린다).
         # ⛔ **science 전용이다** -- `IcgCfg` 에는 이 설정이 아예 없으므로

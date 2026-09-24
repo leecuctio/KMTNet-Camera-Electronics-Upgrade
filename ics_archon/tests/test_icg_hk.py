@@ -6,7 +6,10 @@
   그대로 싣고, 한계 밖이라는 **사실만 따로 알린다**(`out_of_limit`).  종전의
   한계 폐기는 과열을 센서 결측으로 위장시켰다.
 * `DEWPRES` 신선도는 **Alive 증가**로만 안다 (짧은 응답은 옛 글자를 남긴다).
-* 스냅샷은 원자적이고, 낡은 표본은 `sensors()` 가 내지 않는다.
+* 낡은 표본은 `sensors()` 가 내지 않는다.  ⛔ 파일 스냅샷은 없다 (2026-09-15) --
+  ICS 는 `HKDATA NOW` 로 받고, CSV 는 기록용이다.
+* ⭐ CSV 는 **열 구성이 다르면 `.2.csv` 로 가른다** -- 옛 헤더 밑에 새 열 구성의
+  행을 쌓지 않는다 (`HkMonitor._open_csv`).
 """
 
 from __future__ import annotations
@@ -14,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import csv
 import datetime
-import json
 import logging
 import os
 import time
@@ -316,12 +318,239 @@ def test_science_backend_uses_the_hkdata_reply(caplog):  # noqa: ANN001
 
 
 def test_csv_columns_are_stable():
-    """열 구성은 소비 계약이다 -- 바꾸려면 ics_archon 쪽 독자와 함께."""
+    """열 구성은 CSV 를 읽는 사람·도구와의 계약이다 -- ICS 는 이 파일을 안
+    읽는다 (DevNote 11.90).  바꾸면 `_open_csv` 가 같은 날 파일을 `.2.csv` 로
+    가른다."""
     cols = hk_mod._COLUMNS
     assert cols[:5] == ['utc', 'expstatus', 'valid', 'alive', 'lag_ms']
     for key in ('t_backplane', 't_mod9', 'v_heater', 'i_p2v5', 'dewpres',
                 'ccdtemp', 'hebox', 'fsahum', 'ens7', 'event'):
         assert key in cols
+
+
+# -- CSV 가르기 -- 열 구성이 다르면 `.2.csv` (`archon/monitor.py` 의 가르기 규칙을
+# 따르되 빈 파일·못 읽는 파일의 규칙은 `HkMonitor._existing_header` 머리말 표) --
+
+
+def _csv_mon(tmp_path, monkeypatch, today):  # noqa: ANN001, ANN202
+    """날짜를 못박은 감시 -- `today[0]` 이 그날 날짜다 (자정을 넘는 실행에도
+    안 흔들리고, 시험이 날짜를 바꿔 볼 수 있다)."""
+    monkeypatch.setattr(hk_mod, 'stamp_compact', lambda: today[0])
+    icfg = IcgCfg()
+    icfg.hk.log_dir = str(tmp_path)
+    icfg.hk.query_aux = False
+    return HkMonitor(None, icfg)
+
+
+def _csv_rows(path) -> list[list[str]]:  # noqa: ANN001
+    with open(path, encoding='utf-8', newline='') as fh:
+        return list(csv.reader(fh))
+
+
+def _old_layout_file(path) -> list[str]:  # noqa: ANN001
+    """v1.10 전의 열 구성(`htrout` 없음)으로 헤더 + 한 행을 적는다."""
+    old_cols = [c for c in hk_mod._COLUMNS if c != 'htrout']
+    with open(path, 'w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(old_cols)
+        w.writerow(['old'] * len(old_cols))
+    return old_cols
+
+
+def test_a_csv_with_an_older_column_layout_is_split_not_appended(
+        tmp_path, monkeypatch, caplog):  # noqa: ANN001
+    """⛔ 옛 헤더 밑에 새 열 구성의 행을 쌓지 않는다 -- `.2.csv` 로 가른다.
+
+    실례: v1.10 에서 `htrout` 열이 늘었다.  같은 날 판을 올려 재기동하면 새 행이
+    옛 헤더 밑에 쌓여 `DictReader` 가 열을 밀어 **조용히 오독한다**.
+    ⭐ 가른 뒤에도 **행마다 다시 열거나 경고하지 않는다** -- 다시 열지는 날짜로
+    가른다.  경로로 가르면 `.2.csv` 와 매 행 계산하는 기본 경로가 늘 달라서
+    행마다 파일을 닫았다 열고 경고도 매번 낸다.
+    ⛔ 옛 파일은 한 바이트도 안 바뀐다 -- 실측 기록이다.
+    """
+    old = tmp_path / 'hk.G.20260923.csv'
+    _old_layout_file(old)
+    before = old.read_bytes()
+
+    mon = _csv_mon(tmp_path, monkeypatch, ['20260923'])
+    with caplog.at_level(logging.WARNING, logger='icg_archon.hk'):
+        mon._write_row({'ccdtemp': -100.0}, event='first')    # noqa: SLF001
+        mon._write_row({'ccdtemp': -101.0}, event='second')   # noqa: SLF001
+    mon._csv.close()                                           # noqa: SLF001
+
+    assert old.read_bytes() == before, '옛 파일을 건드렸다'
+    split = tmp_path / 'hk.G.20260923.2.csv'
+    rows = _csv_rows(split)
+    assert rows[0] == list(hk_mod._COLUMNS), '가른 파일의 헤더가 현행 열이 아니다'
+    with open(split, encoding='utf-8', newline='') as fh:
+        body = list(csv.DictReader(fh))
+    assert [r['event'] for r in body] == ['first', 'second'], '두 행 다 .2.csv 로'
+    assert body[1]['ccdtemp'] == '-101.0'
+    warns = [r for r in caplog.records if 'column layout' in r.getMessage()]
+    assert len(warns) == 1, '가르는 경고는 여는 번에 한 줄'
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        'hk.G.20260923.2.csv', 'hk.G.20260923.csv']
+
+
+def test_a_restart_on_the_same_day_appends_to_the_split_file(
+        tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ 같은 날 또 재기동하면 **헤더가 맞는 `.2.csv` 에 이어 쓴다** -- `.3.csv` 를
+    또 만들지 않고, 헤더를 두 번 쓰지도 않는다."""
+    _old_layout_file(tmp_path / 'hk.G.20260923.csv')
+    today = ['20260923']
+    first = _csv_mon(tmp_path, monkeypatch, today)
+    first._write_row({}, event='run1')                        # noqa: SLF001
+    first._csv.close()                                         # noqa: SLF001
+
+    second = _csv_mon(tmp_path, monkeypatch, today)
+    second._write_row({}, event='run2')                       # noqa: SLF001
+    second._csv.close()                                        # noqa: SLF001
+
+    rows = _csv_rows(tmp_path / 'hk.G.20260923.2.csv')
+    assert rows.count(list(hk_mod._COLUMNS)) == 1, '헤더가 두 번 들어갔다'
+    events = [r[hk_mod._COLUMNS.index('event')] for r in rows[1:]]
+    assert events == ['run1', 'run2']
+    assert not (tmp_path / 'hk.G.20260923.3.csv').exists()
+
+
+def test_an_empty_csv_gets_a_header_instead_of_a_split(tmp_path, monkeypatch):  # noqa: ANN001
+    """⚠️ 0바이트 파일(헤더도 없음)은 **가르지 않는다** -- 헤더를 써서 이어 쓴다.
+
+    가를 행이 없고, 헤더만 쓰다 죽은 자리를 매번 건너뛰면 번호만 는다
+    (`HkMonitor._existing_header` 머리말 표의 `0바이트` 줄).
+    """
+    empty = tmp_path / 'hk.G.20260923.csv'
+    empty.write_bytes(b'')
+    mon = _csv_mon(tmp_path, monkeypatch, ['20260923'])
+    mon._write_row({}, event='x')                             # noqa: SLF001
+    mon._csv.close()                                           # noqa: SLF001
+    rows = _csv_rows(empty)
+    assert rows[0] == list(hk_mod._COLUMNS) and len(rows) == 2
+    assert not (tmp_path / 'hk.G.20260923.2.csv').exists()
+
+
+def test_a_file_whose_first_line_is_blank_is_split_not_given_a_header(
+        tmp_path, monkeypatch, caplog):  # noqa: ANN001
+    """⛔ **비어 있지 않은데 첫 줄이 빈 파일은 0바이트가 아니다** -- 가른다.
+
+    `csv.reader` 의 첫 행으로 보면 둘 다 `[]` 라서, 종전 판별(첫 행이 비었나)은
+    이 파일에 헤더를 **한 번 더 써 옛 행 밑에** 붙였다.  비었는지는 크기로
+    가른다 (`HkMonitor._existing_header`).  ⛔ 옛 파일은 한 바이트도 안 바뀐다.
+    """
+    odd = tmp_path / 'hk.G.20260923.csv'
+    odd.write_bytes(b'\r\nold,row\r\n')
+    before = odd.read_bytes()
+    mon = _csv_mon(tmp_path, monkeypatch, ['20260923'])
+    with caplog.at_level(logging.WARNING, logger='icg_archon.hk'):
+        mon._write_row({}, event='x')                         # noqa: SLF001
+    mon._csv.close()                                           # noqa: SLF001
+    assert odd.read_bytes() == before, '옛 파일을 건드렸다'
+    rows = _csv_rows(tmp_path / 'hk.G.20260923.2.csv')
+    assert rows[0] == list(hk_mod._COLUMNS) and len(rows) == 2
+    # ⭐ 못 읽은 파일은 **헤더가 다른 파일과 다른 문구**다 -- 볼 곳이 다르다.
+    said = [r.getMessage() for r in caplog.records]
+    assert sum('cannot read the header' in m for m in said) == 1, said
+    assert not any('column layout' in m for m in said), said
+
+
+def test_a_base_file_that_is_not_utf8_is_split_and_left_untouched(
+        tmp_path, monkeypatch, caplog):  # noqa: ANN001
+    """⛔ 첫 줄이 UTF-8 이 아닌 파일 -- 열 구성을 모르니 **가르고**, 원본은 그대로.
+
+    ⚠️ 헤더를 또 쓰거나 이어 붙이면 이미 깨진 파일을 더 섞는다.  못 읽은
+    까닭(예외 이름)은 경고의 `detail` 에 남는다.
+    """
+    bad = tmp_path / 'hk.G.20260923.csv'
+    bad.write_bytes(b'\xff\xfeutc,\xc3(\n1,2\n')
+    before = bad.read_bytes()
+    mon = _csv_mon(tmp_path, monkeypatch, ['20260923'])
+    with caplog.at_level(logging.WARNING, logger='icg_archon.hk'):
+        mon._write_row({}, event='first')                     # noqa: SLF001
+        mon._write_row({}, event='second')                    # noqa: SLF001
+    mon._csv.close()                                           # noqa: SLF001
+    assert bad.read_bytes() == before, '깨진 원본을 건드렸다'
+    rows = _csv_rows(tmp_path / 'hk.G.20260923.2.csv')
+    assert rows[0] == list(hk_mod._COLUMNS)
+    events = [r[hk_mod._COLUMNS.index('event')] for r in rows[1:]]
+    assert events == ['first', 'second']
+    warns = [r for r in caplog.records
+             if 'cannot read the header' in r.getMessage()]
+    assert len(warns) == 1, '여는 번에 한 줄이다 -- 행마다가 아니다'
+    assert 'UnicodeDecodeError' in warns[0].detail
+
+
+def test_the_split_warning_waits_until_the_file_really_opens(
+        tmp_path, monkeypatch, caplog):  # noqa: ANN001
+    """⭐ 가르는 경고는 **`open()` 이 성공한 뒤에** 한 번 -- 실패한 행마다가 아니다.
+
+    열기가 실패하면 `_write_row` 가 `CSV write failed` 를 남기고 다음 행이 다시
+    연다.  종전에는 그 앞에서 경고를 내서 실패가 이어지는 동안 **행마다 같은
+    가르기 경고**가 붙었다.
+    """
+    _old_layout_file(tmp_path / 'hk.G.20260923.csv')
+    mon = _csv_mon(tmp_path, monkeypatch, ['20260923'])
+    fails = [2]
+
+    def flaky_open(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        if str(path).endswith('.2.csv') and fails[0] > 0:
+            fails[0] -= 1
+            raise PermissionError('시험이 일부러 막은 열기')
+        return open(path, *args, **kwargs)
+
+    # `hk` 모듈 안의 `open` 만 가린다 -- 내장을 갈면 로깅·pytest 까지 걸린다.
+    monkeypatch.setattr(hk_mod, 'open', flaky_open, raising=False)
+    with caplog.at_level(logging.WARNING, logger='icg_archon.hk'):
+        for n in range(3):
+            mon._write_row({}, event='row%d' % n)             # noqa: SLF001
+    monkeypatch.delattr(hk_mod, 'open')
+    mon._csv.close()                                           # noqa: SLF001
+    said = [r.getMessage() for r in caplog.records]
+    assert sum('CSV write failed' in m for m in said) == 2, said
+    assert sum('column layout' in m for m in said) == 1, said
+    rows = _csv_rows(tmp_path / 'hk.G.20260923.2.csv')
+    assert [r[hk_mod._COLUMNS.index('event')] for r in rows[1:]] == ['row2']
+
+
+def test_the_same_day_file_reopens_cleanly_after_it_was_closed(
+        tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ `run()` 이 끝나며 닫은 뒤 같은 날 다시 쓰면 **같은 파일에 이어 쓴다**.
+
+    다시 열지를 날짜로만 가르면 닫힌 손잡이에 써서 `ValueError`(*"I/O
+    operation on closed file"*)가 난다 -- 그래서 `_write_row` 는 닫힘도 본다.
+    헤더는 한 번, 행은 둘이다.
+    """
+    mon = _csv_mon(tmp_path, monkeypatch, ['20260923'])
+    mon._write_row({}, event='before')                        # noqa: SLF001
+    # `run()` 의 finally 와 같은 닫기.
+    mon._csv.close()                                           # noqa: SLF001
+    mon._csv = None                                            # noqa: SLF001
+    mon._write_row({}, event='after')                         # noqa: SLF001
+    mon._csv.close()                                           # noqa: SLF001
+    rows = _csv_rows(tmp_path / 'hk.G.20260923.csv')
+    assert rows.count(list(hk_mod._COLUMNS)) == 1, '헤더가 두 번 들어갔다'
+    assert [r[hk_mod._COLUMNS.index('event')] for r in rows[1:]] == [
+        'before', 'after']
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['hk.G.20260923.csv']
+
+
+def test_the_csv_reopens_on_a_new_date_not_on_every_row(tmp_path, monkeypatch):  # noqa: ANN001
+    """⭐ 다시 여는 기준은 **날짜**다 -- 같은 날은 같은 파일 손잡이로 쓰고,
+    날짜가 바뀌면 그날 파일을 새로 연다 (헤더도 새로)."""
+    today = ['20260923']
+    mon = _csv_mon(tmp_path, monkeypatch, today)
+    mon._write_row({}, event='a')                             # noqa: SLF001
+    handle = mon._csv                                          # noqa: SLF001
+    mon._write_row({}, event='b')                             # noqa: SLF001
+    assert mon._csv is handle, '같은 날인데 파일을 다시 열었다'   # noqa: SLF001
+    today[0] = '20260924'
+    mon._write_row({}, event='c')                             # noqa: SLF001
+    assert mon._csv is not handle and handle.closed            # noqa: SLF001
+    mon._csv.close()                                           # noqa: SLF001
+
+    day1 = _csv_rows(tmp_path / 'hk.G.20260923.csv')
+    day2 = _csv_rows(tmp_path / 'hk.G.20260924.csv')
+    assert len(day1) == 3 and len(day2) == 2
+    assert day2[0] == list(hk_mod._COLUMNS)
 
 
 def test_sensors_carries_hkudate_as_the_oldest_sample_time(tmp_path):
@@ -370,7 +599,7 @@ def test_htrout_is_sampled_from_mod10_heateraoutput(tmp_path, caplog):
 
     FW 1.0.1252 가 HeaterX 슬롯에 이 키를 내는 것을 펌웨어 이미지로 확인했다
     (매뉴얼 p.48 'Heater only' 는 오기).  키가 있으면 `_sample['htrout']` 로
-    들어가 스냅샷을 타고 `ics_archon.sensors()` 로 흘러가야 하고, STATUS 는
+    들어가 `sensors()` 를 타고 guide 헤더와 `HKDATA` 의 `HTROUT` 으로 가야 하고, STATUS 는
     왔는데 키가 없으면 **한 번** 경고하고 카드는 sentinel 로 나가야 한다 --
     조용히 넘어가면 아무도 모른다.
     """
@@ -390,7 +619,7 @@ def test_htrout_is_sampled_from_mod10_heateraoutput(tmp_path, caplog):
         async def refresh_status_live(self):  # noqa: ANN202
             return True
 
-    # ① 키가 있다 -- 값이 그대로 표본이 되고 스냅샷에 실린다.
+    # ① 키가 있다 -- 값이 그대로 표본이 되고 `sensors()` 에 실린다.
     mon = HkMonitor(_Ctrl(_status_with_rtd(**{'MOD10/HEATERAOUTPUT': '3.512'})), icfg)
     asyncio.run(mon._tick(0.0))
     assert mon._sample['htrout'][0] == 3.512

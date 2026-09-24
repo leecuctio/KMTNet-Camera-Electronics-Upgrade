@@ -39,6 +39,10 @@ log = logging.getLogger('ics_archon.xischeck')
 #: 허브 노드 이름 -- 레거시부터 이 이름이다 (`isis.ini` `ServerID`).
 XIS_ID = 'XIS'
 
+#: `PONG` 으로 치는 메시지 타입 (`msg.mtype`).  허브의 답은 타입 토큰이 없어 암묵
+#: `REQ` 로 풀린다 -- `ERROR`/`FATAL`/`EXEC` 은 답이 아니다 (`XisGate.note_message`).
+_PONG_TYPES = ('REQ', 'DONE')
+
 
 class XisUnreachable(RuntimeError):
     """허브에 닿지 않는다 -- 기동을 멈춘다."""
@@ -75,12 +79,21 @@ class XisGate:
         ⚠️ **보낸 이가 허브인지 함께 본다** -- 다른 노드도 `PONG` 을 낸다
         (`commands.cmd_ping` 이 브로드캐스트 `PING` 에 답한다).  그것을 세면
         *"허브는 죽었는데 옆 노드가 살아 있어서 통과"* 가 된다.
+
+        ⭐ **커맨드워드 + 타입으로 가른다** (DevNote 11.96) -- 허브의 답 `XIS>ICS PONG`
+        은 타입 토큰이 없는 암묵 REQ 라 파서가 `mtype='REQ'`·`cmdword='PONG'` 으로 푼다.
+        받는 타입은 `REQ` 와 `DONE` 둘이다 (`DONE: PONG` 꼴로 답하는 허브도 통과).
+        ⛔ 원문 부분 문자열로 보지 않는다 (2026-09-15 규약) -- 본문에만 `PONG` 이 든 줄
+        (`XIS>ICS ERROR: FOO PONG`)을 답으로 세면 안 된다.  ⛔ 커맨드워드만 봐도 안 된다
+        -- `XIS>ICS ERROR: PONG …` 은 허브의 **거절**이지 살아 있다는 답이 아니다.
+        ⚠️ `app._is_reply_to` 는 `DONE`/`ERROR`/`FATAL` 전용이라 여기에 못 쓴다.
         """
         if self._pong.is_set():
             return
         src = (getattr(msg, 'src', '') or '').upper()
-        raw = (getattr(msg, 'raw', '') or '').upper()
-        if src == XIS_ID and 'PONG' in raw:
+        word = (getattr(msg, 'cmdword', '') or '').upper()
+        mtype = (getattr(msg, 'mtype', '') or '').upper()
+        if src == XIS_ID and word == 'PONG' and mtype in _PONG_TYPES:
             self._pong.set()
 
     # -- 검사 -------------------------------------------------------------
