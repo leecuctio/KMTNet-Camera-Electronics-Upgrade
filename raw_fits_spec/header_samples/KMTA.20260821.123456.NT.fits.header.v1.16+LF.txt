@@ -22,11 +22,11 @@ AMPNAX1 =                 1200 / Columns per amplifier (prescan+image+overscan)
 AMPNAX2 =                 4700 / Rows per amplifier (prescan+image+overscan)    
 IMAGEX  =                 1152 / Image columns per amplifier                    
 IMAGEY  =                 4616 / Image rows per amplifier                       
-PRESCNX =                    0 / Prescan columns per amplifier (side varies)    
-PRESCNY =                    0 / Prescan rows per amplifier (frame-edge side)   
-OVRSCNX =                   48 / Overscan columns per amplifier (side varies)   
-OVRSCNY =                   84 / Overscan rows per amplifier (frame-center side)
-COMMENT   Map of CCD output channels, raw X ascending within each card          
+PRESCNX =                    0 / Prescan columns per amplifier                  
+PRESCNY =                    0 / Prescan rows per amplifier                     
+OVRSCNX =                   48 / Overscan columns per amplifier                 
+OVRSCNY =                   84 / Overscan rows per amplifier                    
+COMMENT   Map of CCD output channels, raw X ascending                           
 CHMAP_LT= 'NA08,NA07,NA06,NA05,NA04,NA03,NA02,NA01' / CCD out ch, left-half TOP 
 CHMAP_LB= 'ND09,ND10,ND11,ND12,ND13,ND14,ND15,ND16' / CCD out ch, left-half BOT 
 CHMAP_RT= 'TD16,TD15,TD14,TD13,TD12,TD11,TD10,TD09' / CCD out ch, right-half TOP
@@ -43,8 +43,8 @@ COMMENT   Exposure Information _______________________________________________
 PROJID  = 'ENG               ' / Project ID                                     
 IMAGETYP= 'BIAS              ' / Type of observation                            
 OBJECT  = 'bias              ' / Name of object                                 
-OBSTYPE = 'SCIENCE           ' / Type of observation                            
-EXPTIME =                    0 / Exposure time [seconds]                        
+OBSTYPE = 'SCIENCE           ' / User-defined observation type                  
+EXPTIME =                  0.0 / Exposure time [seconds]                        
 LEDFLASH=                    0 / Time to flash projector LEDs [milliseconds]    
 TIMESYS = 'UTC               ' / ICS Time System                                
 DATE-OBS= '2026-08-21T12:34:56.789' / UTC Date and Time at start of obs         
@@ -58,7 +58,7 @@ CTRL1CFG= 'KMTA_SCI_101_STA0288_R2608_MK' / Controller 1 Configuration
 CTRL2ID = 'KMTA-SCI-102            ' / Controller 2 identifier                  
 CTRL2SN = 'STA-0289                ' / Controller 2 serial number               
 CTRL2CFG= 'KMTA_SCI_102_STA0289_R2608_NT' / Controller 2 Configuration          
-ICSBUILD= 'v0.1.2:2026-08-21T18:09Z' / ICS/ICG software version and build Info  
+ICSBUILD= 'v0.1.2:2026-08-21T18:09Z' / ICS software version and build Info      
 RDMODE  = 'NORMAL                  ' / Readout mode setting                     
 COMMENT   Camera System House Keeping Data ___________________________________  
 HKUDATE = '2026-08-21T12:34:50' / UTC Date and Time of HK sample                
@@ -104,8 +104,8 @@ DSSAF   = 'INACTIVE          ' / Dome Shutter Safety Status
 DSAUTO  = 'ENABLED           ' / Dome Shutter Autosync Status                   
 DSALT   = '87.7              ' / Dome Shutter Altitude in degrees               
 DSAZ    = '12.300            ' / Dome Shutter Azimuth in degrees (S to E)       
-DSTELALT= '88.1              ' / DS-reported telescope altitude                 
-DSTELAZ = '12.100            ' / DS-reported telescope azimuth                  
+DSTELALT= '88.1              ' / DS-reported telescope altitude in degrees      
+DSTELAZ = '12.100            ' / DS-reported telescope azimuth in degrees       
 DALTERR = '-0.4              ' / Dome altitude synchronization error            
 DAZERR  = '+0.200            ' / Dome azimuth synchronization error             
 COMMENT   AUX Information and Status _________________________________________  
