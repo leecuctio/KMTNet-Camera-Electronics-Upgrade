@@ -11,78 +11,81 @@
 
 **Archon controller 가 직접 저장하는 raw FITS pair 의 규격을 관리한다.** `mef_fits_spec/` 이 출력(L0 MEF) 규격이라면 여기는 입력(Archon raw) 규격이다.
 
-## ✅ 현행 규격 — raw spec **v1.14** (2026-09-23 판올림)
+## ✅ 현행 규격 — raw spec **v1.15** (2026-09-24 판올림 · 정리판)
 
 > ▶ **이어서 시작하는 자리는 이 절이다.**
-> ⭐ **v1.14 는 `EQUINOX` 를 실수형으로 바꾸고**(운영자 확정 2026-09-23 — `EQUINOX = 2000.0`, 결측·비수치는 실수 sentinel `-999.0`, 5.7절 · 견본 6장은 이 카드 하나만 바뀌었고 크기·레코드 수는 그대로다), **같은 판에서 2026-09-23 전반 재검토의 발견 133건(반증을 통과한 것)을 다뤘다** — 대부분 반영했고, 규범을 그대로 두기로 한 것과 범위 밖으로 둔 제안 9건은 아래 「운영자 판단 대기」 표에 남는다(운영자 확정 2026-09-23).
+> ⭐ **v1.15 는 정리판이다** — v1.14 발행본 재검토(2026-09-24)에서 반증을 통과한 발견 100건을 **전부** 이 라운드에서 다뤘고 **규범은 바꾸지 않았다**(운영자 확정 2026-09-24).  사실 정정·빈틈 채우기와 층위 정리는 이 판 · 동반 판 · README · 인수인계에 실었고, 규범을 바꿔야만 풀리는 것은 아래 「운영자 판단 대기」 표로, 코드가 따라올 것은 「브랜치 후속」으로 넘겼다.  규격 쪽 전량은 12장 v1.15 행 ①·②.
 >
 > **문서별 한 줄**:
 >
-> - **규격 v1.14** — science HK 원천을 `GO` 마다 `HKDATA NOW` 로(5.6절) · KASI 관측일을 KST 날짜로(2.2절) · guide ~~OI-24~~ 종결(`BIAS` = 최소 노출 · 기동 `EXPTIME` 2 s) · converter v2.5.0 재대조(6장 — 카드 값 하드 실패 둘 · 경고 층 · D-023 WCS 행) · 운영자 결정 일곱(아래 4 ~ 10 — guide `TRIGOUT` 판정 창은 2026-09-24 에 노출 창 ± g(`[icg] trigout_guard`, 기본 0.15 s)로 좁혔다, 결정 5 개정 · 10.3절) · 표 렌더 결함 둘과 사실 정정.  전량은 12장 v1.14 행 ①~⑦.
-> - **원장 v1.20** (구판 `archive/…v1.19.md`) — converter v2.5.0 이 raw 에서 읽는 카드(새로 47장 · 더는 안 읽는 둘) · geometry 선언 대조 · 카드 값 하드 실패 둘을 여러 장에 반영하고, 운영자 결정 셋(4장 `DATE-OBS` · 3.3절 `CTRLnID`/`CTRLnSN` · 7장 `CHECKSUM`/`DATASUM`)을 옮겼다.  `Raw Archon`·도입 여부 판정은 그대로다.
-> - **통합 v1.0** (구판 `archive/…v0.10.md`) — 판 번호를 v0.11 대신 **v1.0** 으로 올리고 *(Draft)* 를 뗐다(운영자 2026-09-23).  §1 을 v2.5.0 과 다시 맞췄고(✅ C-11 · C-17 · C-18 · C-5/C-13 — 단 멈추지 않고 경고만 · ⚠️ C-12 는 커밋 제목에 올랐지만 코드가 그대로) §1.2(기존 C-항목 현황)와 기록 행 다섯을 새로 두었다.  ⭐ **§7 「MEF converter 및 PIPELINE 판단 필요 항목」** 이 MEF 쪽이 골라야 할 아홉(LEECU 여덟 · PIPELINE 하나 7-5 — 반쪽 pair 의 성한 절반 보관 — D-001 과 맞물린다 · raw 가 공급하지 않는 MEF 카드의 처분 · 멈춤 기준 · §6 미결 셋 등)을 모은다.  **LEECU 전달분 = 통합 Part 1** — 판단은 §7, 나머지 절은 수정 요청이다.
-> - **README** — 판 표 · 연동 기준 · 열린 항목(~~OI-7~~ · ~~OI-24~~ 종결) · 국문 ICD 미반영 절 목록을 현행으로.  **DECISION_LOG** — D-017 4항 개정(결정 1) · D-013 · D-014(결정 4 의 `DATE-OBS` 시점 포함) · D-017 개정 표시.
+> - **규격 v1.15** — ① **정오**: v1.14 결정을 못 따라간 자리(돔 방위 3자리 — 5.7절 `DAZERR` 행 · OI-31 ③ / `UNKNOWN` 재정의 — 5.0절 `SHUTTER` 문단 머리 · 5.7절 링크 카드 주석 · 5.8절 `SHUTTER` 행) · HK 와이어(측정 불가 사유 넷 · `HKSTALE` 정의 · `DEWPRES` 예외 · ICG 주소는 비워도 기본값 `ICG`) · 6장 변환 경고를 `HISTORY` 에 남는 것과 경고로만 나가는 것으로 · 판별 신호(RTD 배치 · `ICSBUILD`/`ICGBUILD`) · 검증 체크리스트(크기 등식 · pair 정규식 · 형식) · guide 표기 정정 · 미연결 RTD `'-273.15'`.  ② **층위 정리**: 머리말 「작성 규칙」(규범은 규칙과 출처 괄호 · 경위는 12장·원장·통합 · 읽는 쪽 안내는 `> 참고 —` · 구현 위치는 11장)과 *(브랜치)* 표지 · 소절 넷(5.2.1 `CAMVER` 범프 · 5.6.3 HK 원천·신선도 · 5.6.4 게이지 구간 · 10.3.1 `TRIGOUT`) · 표 셋(5.0절 출처 어휘 · 2.2절 관측일 열 · 10.4절 RTD 채널 대응) · 10.1-7 은 (a)~(g) 소항목으로(항목 번호는 그대로) · 8장·10.6절은 열린 OI 만 두고 닫힌 것은 8.1 · 10.6.1 로.  **기존 절 번호는 그대로다.**  걷은 경위는 12장 해당 판 행(v1.6 · v1.10 · v1.13 · v1.14)으로 옮겼고, v1.14 행은 요약으로 줄였다(전문은 `archive/…v1.14.md` 12장).
+> - ⭐ **redis 자릿수 사실** — 돔 제어 프로그램이 **2026-09-15 벤치 뒤** redis 에 방위를 `%.3f` 로 싣게 바뀌었다(운영자 확인 2026-09-24).  그 벤치 기록의 긴 소수(`239.8291459064219` — 브랜치 DevNote 11.94-h)는 바뀌기 전 값이다.  그래서 5.7.3절 (g) 의 *"유효자리를 지어내거나 버리지 않는다"* 근거는 그대로 두고 바뀐 시점 한 줄을 달았다.  같은 자리에 이미 찍힌 파일의 자릿수 호환 안내도 더했다 — v1.13 규칙은 받은 문자열 그대로(계산 `DAZERR` 만 소수 1자리)이고, 2026-09-15 운영자 지시(11.94-h)로 돈 취득 SW 는 세 장 모두 소수 2자리다(코드가 3자리를 따라오기 전까지 — 아래 「브랜치 후속」 결정 9).
+> - **원장 v1.21** (구판 `archive/…v1.20.md`) — 7장 `RDMODE` 결측을 `'NC'` 로(결정 8 이 v1.20 에 옮겨지지 않았다) · 3.7절 *"평균 파생"* 문구 갱신은 C-항목 해당 없음 · 8.2절에 `EXPID` 폐지·부활 경위 · 미연결 RTD `'-273.15'` · sentinel 사유 넷.  판정 불변.
+> - **통합 v1.1** (구판 `archive/…v1.0.md`) — L1 승계 근거를 `CARRY_EXCLUDE` 전량 승계로(`CARRY_KEYS` 는 `mef_pipeline` v1.8 이 2026-09-04 에 걷었다) · 기준 명령의 `-o`(릴리스 체크리스트 · SOP 경로에서도 교차검증이 돌지 않는다) · ICD §12 sentinel 명칭 · ICD §7.1 `RA`/`DEC` 생략과 `WCSSKY` 조건 · `CD` 무반전 주석을 §4 로 가리키는 인용 다섯 · **§7-10 신설**(MEF 에 변환에 쓴 raw 의 내용 해시).  ⭐ **§7 「MEF converter 및 PIPELINE 판단 필요 항목」은 이제 열이다** — LEECU 아홉 · PIPELINE 하나(7-5 `XTALKVER`·`REFVER`·`CATVER` 의 L0 수록): 7-1 반쪽 pair 의 성한 절반 보관(D-001 과 맞물린다) · 7-2 raw 가 공급하지 않는 MEF 카드의 처분 · 7-3 멈춤 기준 · 7-4 C-12 종결 여부 · 7-6 `NAMPS`·`AMPPCD` · 7-7~7-9 §6 미결 셋 · 7-10 raw 해시.  **LEECU 전달분 = 통합 Part 1** — 판단은 §7, 나머지 절은 수정 요청이다.
+> - **견본 6장** — 이름만 `v1.15` 로 바꿨다(내용 불변).
+> - **README** — 판 표 · 파일 목록을 v1.15 · v1.21 · v1.1 로 · 판별 요약은 「현재 기준선」 한 자리로(판 표 상태 칸 · 디렉토리 표 칸 · open item 단락의 변천사를 걷었다) · 태그 절을 「버전 / 관리 정책」 아래로 옮기고 git 동작을 실험(git 2.55)으로 확인해 고쳤다 — 브랜치를 적지 않은 `git pull`/`git fetch` 한정 · `pruneTags` 가 로컬 전용 태그도 지운다 · 옮긴 태그에서 pull 이 실패한다 · `--follow-tags` 도 옛 태그를 되살린다 · 옛 태그의 예외.  **DECISION_LOG** 는 고칠 자리가 없었다(판 표기는 결정 당시의 인용이다).
 >
-> ⭐ **LEECU 판올림 반영** — ICD **v4.3** · Keywords **v1.1** · converter **v2.5.0**(파일명 접미사 `_v2_1` 은 그대로이고 판은 `SOFTWARE_VERSION` 이 말한다) · **D-023**(L0 sky WCS = L1 Gaia 측성의 seed).  구 ICD v4.2 · Keywords v1.0 은 `../mef_fits_spec/archive/` 로 갔다.
->
-> ⭐ **운영자 결정** (이 라운드):
->
-> 1. **KASI(`KMTK`) 관측일 보정 +9 h** — 경계 UT 15:00 = KST 00:00, 관측일은 KST 날짜다(운영자 2026-09-12 · **D-017 4항 개정**).  이 규칙이 없는 코드(브랜치 `982ebe5`(2026-09-13) 이전 · 합류 전 `main` 의 `ics_sim`)로 찍은 KASI 파일은 보정 0(UT 날짜)이다.
-> 2. **5.0절 금지 열 장은 근거 문장만 고쳤다** — converter v2.5.0 은 거부하지 않는다(`EXPTIME`·`DATE-OBS` 는 기본값 0·변환 시각으로 채우고, geometry 여덟은 선언이 있을 때만 대조해 어긋나면 경고·`HISTORY`).  비운 결함은 7장 체크리스트 3·8번이 드러낸다.  C-항목은 올리지 않았다.
-> 3. **통합 문서 v1.0** — *(Draft)* 를 떼고 §7 을 두었다(위).
-> 4. **`DATE-OBS` = 모든 영상(`DARK`·`BIAS` 포함)의 적분 개시 시각** — 셔터 노출은 ICS 가 셔터 개방을 지시한 시각, 셔터 없는 노출은 컨트롤러에 적분을 건 시각, guide 는 10.1절이다(5.4절 · 5.7.1절 (c)).
-> 5. **guide `TRIGOUT` 판정 창 = `[DATE-OBS − g, t_next + g]`** (운영자 2026-09-24 — 2026-09-23 의 *"창 `[DATE-OBS, 독출 완료]` 의 겹침은 의도다"* 를 고친다 · 10.3절).  `t_next` 는 이 프레임의 트랜스퍼(FrameShift) 개시 = 다음 저장 장의 `DATE-OBS`(≈ `DATE-OBS + EXPTIME`)이고, 호스트는 `t_next` 를 이 프레임의 완료 관측에서 셈한다 — 다음 프레임을 기다리지 않는다.  즉 창의 뼈대는 **그 프레임의 노출 창**이다.  **g 는 호스트 시각 불확도 여유 — ICG INI `[icg] trigout_guard`, 기본 0.15 s**(권장 0.10 ~ 0.15 s)다.  호스트는 펄스 에지를 `APPLYSYSTEM` 응답 뒤에 적어 실제보다 0 ~ ≈0.24 s 늦게, 프레임 경계는 완료 폴링 지연으로 0 ~ ≈0.21 s 늦게 안다(브랜치 `ics_archon/DevNote.md` 11.55) — 최소 펄스 폭(≈235 ms — 코드 유도, 벤치 미확인)과 같은 크기라 여유 없이 좁히면 경계 근처 `0` 이 단언이 못 된다.  이웃 창은 **2g 만큼만** 겹친다 — 경계 ±g 안의 펄스는 이웃한 두 장에 `1` 로 찍힐 수 있다(의도, 이웃 장 거짓 `1` ≈ 2g/`EXPTIME`).  종전 창의 자기 독출 1.25 s 겹침(이웃 장 거짓 `1` ≈ 1.25 s/`EXPTIME`, 최소 노출 근처에서는 세 장까지)은 없어졌다.  창이 넓었던 출처는 v1.13 의 사실 오류(*"적분은 이 독출로 끝난다"* — 10.1-5 와 모순)였고 09-09 원래 뜻은 *"노출 창"* 이다 — 그래서 G 견본 comment `Trigger Out asserted during exposure (1=yes)` 는 **그대로 맞다**(견본·템플릿 불변).  ⚠️ 남는 한계 넷: ① 에지·경계 지연 차이가 g 를 넘는 드문 경우 경계 근처 거짓 `0` ② LED 가 image 를 포화시켜 독출 중 store 로 번진 빛은 그 프레임에 `1` 로 안 잡힌다(ABD 없음, 10.1-2(a)) ③ 마지막 저장 장의 `t_next + g` 뒤에 친 펄스는 어느 파일에도 안 남는다(저장 안 된 장을 비췄으므로 물리적으로 맞다) ④ 이진 플래그라 얼마나 비췄는지는 말하지 않는다.  `trigout_guard` 키는 아직 코드에 없다 — 규격이 먼저 섰고 코드가 따라온다(아래 「브랜치 후속」 — g 축소 조건도 거기).  science 에는 TRIG 계열 카드가 없다.
-> 6. **`CTRLnID`·`CTRLnSN` 은 INI 에 값이 없으면 `'NC'`** — Archon `SYSTEM` 값(펌웨어 문자열 · 16진 `BACKPLANE_ID`)으로 대신 채우지 않는다(5.5절 · 10.3절).
-> 7. **`CHECKSUM`·`DATASUM` 은 raw 미도입 확정** — ~~OI-7~~ 종결, 5.10절 폐지·미도입 목록 등재(원장 7장 `X` 와 같다).  MEF 의 같은 이름 카드는 converter 가 HDU 마다 쓰는 별개의 것이고 변환 뒤의 바이트만 보증한다.
-> 8. **`RDMODE` 결측도 `'NC'` 로 통일** (운영자 2026-09-24) — 2026-08-29 의 `'UNKNOWN'` 을 뒤집는다.  같은 처지(INI 전용 값이 비었다)인 결정 6 과 표기를 맞췄고, *"`NORMAL` 로 가리지 않는다"* 는 원래 목적은 `'NC'` 로도 지켜진다.  `'UNKNOWN'` 은 중계값 `SHUTTER` 에만 남는다(5.0절 표 · 5.5절 · 7장 8번 · 10.3절).  ⚠️ 2026-09-06 에도 같은 기억(*"NC 로 통일하기로 했었다"*)이 나왔는데 그때는 기록이 `UNKNOWN` 뿐이라 `UNKNOWN` 으로 등재됐다 — 이번이 **처음으로 `NC` 를 고른 결정**이다.
-> 9. **돔 방위 셋 `DSAZ`·`DSTELAZ`·`DAZERR` 은 소수 3자리** (운영자 2026-09-24 — redis 도 `%.3f`, `DAZERR` 는 부호 포함) — 5.7.3절 (g).  브랜치 11.94-h 의 소수 2자리를 대체한다.  견본 6장의 세 카드도 `'12.300'`·`'12.100'`·`'+0.200'` 으로 맞췄다(값·폭 불변).
-> 10. **`HKDATA NOW` 는 Radionode 를 치지 않는다** (운영자 2026-09-24) — 폴러의 표본을 싣고 클라우드는 INI 주기 폴링만 친다(5.6절).  2026-09-09 브랜치 DevNote 11.56 의 *"`now_min_age`(60 s)보다 낡았으면 `NOW` 가 한 번 친다"* 를 뒤집는다 — 11.52 (3) 의 *"즉시 조회해도 더 신선해지지 않는다"* 가 `NOW` 에도 맞기 때문이다.  시한은 **둘 다 그대로** — ICS `[archon] hk_query_timeout` **2 s** · ICG `[radionode] timeout` **5 s**(운영자 2026-09-24).  NOW 가 클라우드를 안 치면 Radionode 시한은 백그라운드 폴러와 종료 지연(≤5 s)에만 걸리고, 줄이면 느린 날 주기 조회 실패만 는다.  ⚠️ 이번에도 운영자 기억(*"NOW 에서는 안 치기로 했었다"*)과 기록(11.56)이 어긋났다 — 이 결정이 **처음으로** NOW 에서 Radionode 를 뺐다.
->
-> ✅ 태그 — `raw-spec-v1.13`(`ae3fbfe`)을 로컬·원격에서 지우고 **`raw-spec-v1.14`** 를 이 판의 마지막 커밋에 붙였다(2026-09-24 — 운영자가 *"최신 판에만"* 규칙 유지를 확정).  팀은 `main` 을 pull 하면 새 태그를 받는다.  지운 옛 태그까지 pull 로 정리되게 하려면 각자 **한 번만** `git config fetch.prune true` · `git config fetch.pruneTags true` 를 해 둔다(아래 태그 규칙 절 팀 알림 2026-09-24).
+> ✅ 태그 — `raw-spec-v1.14`(`ad7e0a5`)를 로컬·원격에서 지우고 **`raw-spec-v1.15`** 를 이 판의 마지막 커밋에 붙였다(2026-09-24).  v1.14 발행 뒤에 쓴 README 태그 절도 이 판의 커밋에 실었고 `raw-spec-v1.14` 는 옮기지 않았다(아래 판단 대기 `v1.15:R1-8`).  팀 안내는 README 「버전 / 관리 정책」의 태그 소절 한 곳이다.
 
 ### ⏳ 브랜치 후속 (`ics-archon-v1.0-build`)
 
-- ✅ **(구) v1.13 후속은 끝났다** — `bfc4ea6` · `cbffe40`(2026-09-12)이 아래 (구) v1.13 절의 일감을 처리했고, 합류(`5543234`) 뒤 전수가 통과했다(`ics_archon` 716 · `ics_sim` 425).
-- ⛔ **선결 — `EQUINOX` 실수형 구현이 아직 미커밋이다.**  `telemetry._as_real` · `rawcards`/`guidecards` 의 `'R'` · DevNote **11.95** 는 작업본에만 있고 HEAD `32b002d` 에는 없다.  규격 5.7절 표 아래 구현 요약과 12장 v1.14 행 ① 이 그것을 인용하므로 **`main` 에 v1.14 를 커밋하기 전에 브랜치 커밋이 먼저**다.
-- **`EQUINOX` 후속** — 규격이 따라잡은 뒤 할 것(DevNote 11.95 *"규격이 따라잡을 때 할 것"*, 작업본 기준): 두 `SPEC_PENDING` 비우기 · `ics_sim/tests/test_raw_draft.py` 의 `_ahead_of_sample()` 에서 **`EQUINOX` 만** 지우기(`DAZERR` 는 돔 방위 2자리가 규격 미반영이라 남는다 — 아래) · `test_icg_cards.test_only_equinox_runs_ahead_of_the_sample` 을 `== ()` 로 · `tools/gen_guidecards.py` 의 `SAMPLE` 을 `…G.fits.header.v1.14.txt` 로 올리고 재실행(지금은 `v1.13` 을 박아 두었다 — ⚠️ 합류 전 v1.13 견본으로 돌리면 guide `EQUINOX` 가 `'S'` 로 돌아간다) · labtest 다섯 사본의 `RAWCARDS` 와 TCS 결측값(`'NC'` → `-999.0`).
-  ⚠️ **합류하면 빨개지는 시험이 둘이다** — `test_icg_cards.test_template_matches_the_sample_generator`(`gen_guidecards.SAMPLE` 이 박아 둔 v1.13 견본이 v1.14 로 개명돼 없어서 도구가 `SystemExit` 로 멈춘다) · `test_raw_draft.test_the_sample_has_not_caught_up_yet`(MK·NT — 견본이 따라잡았다고 알리는 **의도된 신호**).  위 일감을 처리하면 둘 다 걷힌다.  나머지 바이트 대사는 초록일 것이다(`_ahead_of_sample()` 이 견본 값으로 현행 이미지를 만든다) — 합류 뒤 전수로 확인한다(`main` 에는 견본 대사 시험이 없다).
+> 결정 번호는 아래 「(구) v1.14」 절의 운영자 결정 번호다.  기준은 브랜치 로컬 HEAD **`e9e8f46`**(2026-09-24 — 워크트리 깨끗함, 원격은 `32b002d`)이다.  ⭐ 코드 자리는 줄 번호 대신 **함수 이름과 인용문**(grep 닻)으로 적는다 — 다른 세션이 계속 고치는 파일이라 줄 번호는 곧 밀린다.
+
+- ✅ **(구) v1.13 후속은 끝났다** — `bfc4ea6` · `cbffe40`(2026-09-12)이 아래 (구) v1.13 절의 일감을 처리했고, 합류(`5543234`) 뒤 전수가 통과했다(`ics_archon` 716 · `ics_sim` 425).  ⚠️ 하나는 그 목록에 없어 남았다 — TC 무응답 폴백의 링크 카드(규격 v1.13 부터 *"취득 SW 후속 대상"*, 아래 「넘겨받은 것」 canned 항목).
+- ⚠️ **순서가 뒤집혔다** — `main` v1.14(`ad7e0a5`, 태그 포함)가 브랜치 커밋보다 먼저 나갔다.  규격 11장 「구현 위치」 행 · 12장 v1.14 행 ① 이 인용하는 DevNote **11.95** · `telemetry._as_real` · `rawcards`/`guidecards` 의 `'R'` 형은 브랜치 로컬 커밋 **`e9e8f46`**(2026-09-24)에 들어갔고 **원격에는 아직 없다**.  push 되면 규격 문면이 사실이 된다.
+- **`EQUINOX` 후속** — 규격이 따라잡은 뒤 할 것(DevNote 11.95 *"규격이 따라잡을 때 할 것"*): 두 `SPEC_PENDING` 비우기 · `ics_sim/tests/test_raw_draft.py` 의 `_ahead_of_sample()` 에서 `EQUINOX` 지우기(`DAZERR` 는 결정 9 항목에서 함께 지운다 — 아래) · 같은 파일 `test_ahead_of_sample_matches_the_pending_list` 의 `== ['EQUINOX']` 단언 · `test_icg_cards.test_only_equinox_runs_ahead_of_the_sample` 을 `== ()` 로 · `tools/gen_guidecards.py` 의 `SAMPLE` 을 `…G.fits.header.v1.15.txt` 로 올리고 재실행(지금은 `v1.13` 을 박아 두었다 — ⚠️ 합류 전 v1.13 견본으로 돌리면 guide `EQUINOX` 가 `'S'` 로 돌아간다) · labtest 다섯 사본의 `RAWCARDS` 와 TCS 결측값(`'NC'` → `-999.0`) · 거짓이 된 주석 넷 — `telemetry.py` 의 *"규격 5.7절·견본은 아직 문자열이다"* · *"규격은 아직 문자열이다"*, `rawcards.py` 의 *"견본은 아직 문자열 `'2000.000'` 이다"*, `guidecards.py` 의 *"견본은 아직 문자열이라"*.  `SPEC_PENDING` 을 비우는 같은 커밋에서 한다.
+  ⚠️ **합류하면 빨개지는 시험이 둘이다** — `test_icg_cards.test_template_matches_the_sample_generator`(`gen_guidecards.SAMPLE` 이 박아 둔 v1.13 견본이 `main` 에서 v1.15 로 개명돼 없어서 도구가 `SystemExit` 로 멈춘다) · `test_raw_draft.test_the_sample_has_not_caught_up_yet`(MK·NT — 견본이 따라잡았다고 알리는 **의도된 신호**).  위 일감을 처리하면 둘 다 걷힌다.  나머지 바이트 대사는 초록일 것이다(`_ahead_of_sample()` 이 견본 값으로 현행 이미지를 만든다) — 합류 뒤 전수로 확인한다(`main` 에는 견본 대사 시험이 없다).
 - ⭐ **별도 세션 몫 — 코드 검토·보완** (운영자 2026-09-23 — 규격 규범은 그대로다):
   - **science `DARK` 의 적분 트리거를 `DATE-OBS` 시점으로** (결정 4) — 지금 `archon/backend.py` `begin_exposure()` 는 적분 초만 받아 두고, 트리거(`IntMS=0` · `NoIntMS`=적분시간)는 READOUT 국면의 `_readout_stream()` 이 건다.  그래서 `DATE-OBS` 가 실적분 개시보다 약 `EXPTIME` 앞선다.  트리거를 `begin_exposure()` 로 옮기고 호스트 카운트다운은 통보만 하게 하되, `_readout_stream()` 의 `pending` 판정과 컨트롤러 쪽 `dwell_until` 시한을 함께 본다.
   - **guide `STOP` 거동** — 규격 5.4.1-1 · 10.1-7 은 *"노출 중이던 프레임을 저장한 뒤 멈춘다 · 최악 한 주기"* 인데, 코드는 지금 장을 저장한 뒤에야 `Exposures=0` 을 보내 꼬리 한 장을 독출·폐기하고 조용함을 한 주기 더 확인한다(최악 약 3주기).
-  - **돔 방위 셋 소수 3자리** (결정 9) — `ics_sim/ics_sim/domeaz.py` `_read_once` 의 `DSAZ`/`DSTELAZ` `%.2f` → `%.3f` · `DAZERR` `%+.2f` → `%+.3f` · 계산 갈래 `telemetry._sync_error_az` `%+.2f` → `%+.3f` · 그 값을 단언하는 시험(`test_raw_draft` 의 `test_dalterr_…` · `test_dome_wiring`) · `test_raw_draft._AHEAD_OF_SAMPLE` 의 `DAZERR` 항목은 **지운다**(견본이 `'+0.200'` 으로 따라왔다 — `DSAZ`·`DSTELAZ` 는 `dome source = off` 로 견본 값 `'12.300'`·`'12.100'` 을 그대로 되먹인다) · `_sync_error_az` docstring 의 *"소수 1자리"*.
-  - **`RDMODE` INI 부재 = `'NC'`** (결정 8) — `ics_sim/ics_sim/rawhdr.py` `RDMODE = 'UNKNOWN'` → `'NC'` · 그것을 단언하는 시험 둘(`ics_sim/tests/test_raw_header.py` · `ics_archon/tests/test_ini_cards.py`) · `icg_archon/backend.py` 의 `rdmode` 두 자리 docstring · `ics_archon/ics_archon/app.py`·`config.py`·`ics_sim/ics_sim/config.py` 주석 · 배포 ini 두 벌의 `rdmode` 주석 · labtest 다섯의 `rdmode = 'UNKNOWN'` · `tools/sync_vendor.py` 재동기.
-  - **`CTRLnID`·`CTRLnSN` INI 부재 = `'NC'`** (결정 6) — INI 가 비면 science `archon/backend.py` `controller_info()` 는 `parse.unit_identity()` 의 `SYSTEM` 값으로, guide `icg_archon/backend.py` `controller_info()` 는 같은 값으로(`SYSTEM` 을 못 읽었으면 빈 문자열로) 채운다.  `ics_archon.ini` 주석 *"비우면 … 파생한다 (규격 5.5절)"* 은 `CTRLnCFG` 에만 맞다.  (와이어 `CnHKDATA` 답의 `CTRLnID=<BACKPLANE_ID>` — `app.py` · `commands.py` → `hkwire.py` — 는 헤더 경로가 아니다.)
-- **이 라운드 편집자들이 넘긴 것** (겹친 것은 하나로):
+  - **돔 방위 셋 소수 3자리** (결정 9) — 한 커밋에서:
+    - 코드 — `ics_sim/ics_sim/domeaz.py` `_read_once` 의 `DSAZ`/`DSTELAZ` `%.2f` → `%.3f` · `DAZERR` `%+.2f` → `%+.3f` · 계산 갈래 `telemetry._sync_error_az` `%+.2f` → `%+.3f`.
+    - 문면 — `telemetry._sync_error` docstring 의 *"(±180 접기 · 소수 2자리)"* 와 `_sync_error_az` 안 주석 *"소수 2자리 -- redis 가 준 `DAZERR` 와 같은 자리수"*(`DALTERR` 의 *"부호 포함 소수 1자리"* 는 그대로다) · `domeaz._read_once` 의 *"소수 2자리로 접는다"* 주석 · `rawcards.py` 의 *"`_ahead_of_sample()` 이 `DAZERR` 를 현행 이미지(소수 2자리 …)로 견준다"*.  (종전 이 항목이 짚은 *"`_sync_error_az` docstring 의 소수 1자리"* 는 없는 자리였다.)
+    - 시험 — `ics_sim/tests/test_dome_redis.py` 의 2자리 단언 전부(`'12.30'` · `'+0.20'` · `'-0.29'` 등) · `ics_sim/tests/test_telemetry.py` `test_azimuth_error_folds_into_plus_minus_180`(`'-90.00'` 등) · `test_raw_draft` 의 `test_dalterr_…` · `ics_archon/tests/test_dome_wiring.py` · `test_raw_draft._ahead_of_sample()` 의 `DAZERR` 항목은 **지운다**(견본이 `'+0.200'` 으로 따라왔다 — `DSAZ`·`DSTELAZ` 는 `dome source = off` 로 견본 값 `'12.300'`·`'12.100'` 을 그대로 되먹인다).
+    - 벤치 절차 — `ics_archon/bench_test_plan.md` 1-C 3번 칸과 판정 절의 `%.2f`/`%+.2f` · *"2자리"* · 예시 `-0.29` 를 3자리로.  규격 OI-31 ③ 이 이제 3자리를 묻는다 — 시험이 못 잡고 벤치 판정을 틀리게 만드는 자리다.
+    - ⭐ **비유한 값 거절** — `domeaz._read_once` 는 `float()` 만 보아 `'nan'`·`'inf'` 를 통과시키고 `_sync_error`/`_sync_error_az` 도 `'+nan'` 을 낸다.  `math.isfinite` 가 아니면 원문을 로그에 남기고 카드는 `'NC'`(규격 5.7.3절 (g) — `EQUINOX` 의 `telemetry._as_real` 과 같은 규칙) · `test_dome_redis` · `test_telemetry` 에 `'nan'`·`'inf'` 사례.
+    - `tools/sync_vendor.py` 재동기(`domeaz.py`·`telemetry.py` 는 `_vendor` 사본이 있다).
+  - **`RDMODE` INI 부재 = `'NC'`** (결정 8) — `ics_sim/ics_sim/rawhdr.py` `RDMODE = 'UNKNOWN'` → `'NC'` · 그것을 단언하는 시험 둘(`ics_sim/tests/test_raw_header.py` · `ics_archon/tests/test_ini_cards.py`) · `icg_archon/backend.py` 의 `rdmode` 두 자리 docstring · `ics_archon/ics_archon/app.py`·`config.py`·`ics_sim/ics_sim/config.py` 주석 · 배포 ini 두 벌의 `rdmode` 주석 · labtest 다섯의 `rdmode = 'UNKNOWN'` · `ics_archon/icg_first_run.md` 헤더 기대값 *"`RDMODE=UNKNOWN`"*(배포 ini 가 `rdmode = NORMAL` 이라 지금도 어긋난다 — 기대값은 `NORMAL`, ini 가 비면 `'NC'`) · `tools/sync_vendor.py` 재동기.
+  - **`CTRLnID`·`CTRLnSN` INI 부재 = `'NC'`** (결정 6) — INI 가 비면 science `archon/backend.py` `controller_info()` 는 `parse.unit_identity()` 의 `SYSTEM` 값으로, guide `icg_archon/backend.py` `controller_info()` 는 같은 값으로(`SYSTEM` 을 못 읽었으면 빈 문자열로) 채운다.  `ics_archon.ini` 주석 *"비우면 … 파생한다 (규격 5.5절)"* 은 `CTRLnCFG` 에만 맞다.  (와이어 `CnHKDATA` 답의 `CTRLnID=<BACKPLANE_ID>` — `app.py` · `commands.py` → `hkwire.py` — 는 헤더 경로가 아니다.)  동반: 시험 `ics_archon/tests/test_ini_cards.py` `test_ini_beats_the_controller_reported_serial`(ini 를 비우면 *"SYSTEM 값이 안 실렸다"* 로 `SYSTEM` 값을 요구한다 → 기대값 `'NC'`) · `tests/test_backend.py` 의 *"컨트롤러 정체는 SYSTEM 에서 오므로 살아 있어야 한다"* 단언 · ⚠️ 실기 점검 도구 `tools/probe_archon.py` 의 `_unit_of()` — 본편 `controller_info()` 의 **사본**이라 본편만 고치면 시험이 초록인 채로 결정 6 을 어긴 헤더를 계속 낸다(본편 유도를 불러 쓰게 합친다) · 같은 도구의 *"BACKPLANE_ID = … (FITS CTRLnSN 의 원천)"* 안내 · `tests/test_probe.py` 의 `CTRL1SN` 단언 둘.
+- **넘겨받은 것** (v1.14 · v1.15 라운드의 편집자와 재검토가 넘긴 것 — 겹친 것은 하나로):
   - guide `HKUDATE` 셈에 카드가 아닌 `'gauge'` 표본이 낀다 — `icg_archon/hk.py` `sensors()` 가 Radionode 키만 빼고 셈해서, 카드가 전부 sentinel 이어도 `HKUDATE` 가 *"방금"* 으로 실린다(`HKDATA` 를 거쳐 science 헤더에도 간다).  같은 파일 `_read_heater_settings` docstring 도 코드·규격과 반대다.
-  - science `OBSERVER` 기본값이 `'none'` 이다(`ics_sim/ics_sim/state.py`) — 규격 5.3절의 `'KMTNetOp'` · 자리채움 낱말 금지와 어긋난다.
-  - 낡은 코드 문면 — `telemetry.py` 의 `DATE-OBS` 빈 값 로그 detail *"converter 가 이 노출을 거부하게 한다"*(결정 2 와 반대 — converter 는 변환 시각으로 채운다) · 같은 파일의 *"`TCS relay or REDIS`"*(v1.13 에서 걷힌 어휘)와 *"규격 5.7절이 원래 정한 `ICS calculation`"*(지금 자리는 5.7.3절 (d)) · `rawhdr.py` 의 *"규격 5.4절의 … 는 낡았다 -- 갱신은 `main` 소관"*(`OBSTYPE` 어휘 — v1.13 이 이미 고쳤다) · `tcsclock.py` 의 폴백 `TCSQDATE` 이유 문장(폴백은 직전 실응답의 보존본이다) · 머리말 판 표기(아래 「판올림 규약」 절).
-  - **guide `TRIGOUT` 판정 창을 `[DATE-OBS − g, t_next + g]` 로** (결정 5 개정, 운영자 2026-09-24 — 종전 항목 *"창의 끝이 규격의 독출 완료와 같은 순간인지 확인"* 을 이것으로 대체한다).  ⛔ 순서: 다른 세션의 미커밋 편집(`sequencer.py` · `controller.py` · `test_icg_cards.py`)이 커밋된 뒤.  줄 번호는 작업본 기준이다.
-    - `icg_archon/sequencer.py` — `t_next = done_utc − fs_to_done` 을 `_dispatch_store` 호출(414) 앞에서 셈해 넘기고, 그것을 창 끝으로 써서 `[DATE-OBS − g, t_next + g]` 로 판정한다(지금은 `now = time.time()`(909) 으로 닫아 창이 자기 독출 ≈1.25 s 를 품는다).  418 의 `t_prev` 갱신은 같은 `t_next` 값을 다시 쓴다 — k 의 창 끝과 k+1 의 창 시작(`DATE-OBS`)이 한 변수라 이웃 창의 뼈대가 틈 없이 이어진다.  주석 *"창은 `[DATE-OBS, 지금]` 이다"* · *"이 독출로 끝난다"*(894-896 — 10.1-5 와 모순) 정정.  타지 않는 `t_prev is None` 갈래(910-911 — `t_prev` 는 arm 에서 늘 선다, 331-336)는 정리하거나 `t_next − exptime` 으로 바꾸고, 그 주석(897-898 *"`t_prev` 가 없으면(첫 프레임) 노출시간만큼 되짚는다"*)도 정정 — 남겨 두면 시작은 `now`, 끝은 `t_next` 기준이 되어 어긋난다.
+  - **히터 설정 0/1 → `OFF`/`ON` 변환이 두 벌이다** — 규격 5.6.2절 *"낱말 표기의 정본은 한 곳이다"* 와 달리, `HKDATA` 답(= science 헤더)은 `icg_archon/hkdata._word`(0 이 아닌 수면 `ON`)를, guide 헤더는 `guidehdr` → `rawhdr.thermal_header` → `rawhdr.format_word`(`'1'`/`'TRUE'`/`'ON'` 만 `ON`, 나머지는 경고 + `'NC'`)를 거친다 — 원값이 `'1.0'` 같으면 두 헤더가 갈린다.  변환을 `hkdata._word` 하나로 모으고(guide 가 `thermal_header` 앞에서 옮기거나 `hk._read_heater_settings` 가 낱말을 담는다) `format_word` 는 낱말만 받게 좁힌다.  `hk.py` 의 *"`hkdata._word` 가 유일해야 한다"* 문면도 실제와 맞추되 위 `_read_heater_settings` docstring 정정과 같은 커밋에서 한다.
+  - **science 노출 상태 기본값 셋이 규격과 다르다** — `ics_sim/ics_sim/state.py` `IcsState` 의 `imgtype='OBJECT'` · `objname='test'` · `observer='none'` 인데 규격 5.3·5.4절(과 원장 · 견본)은 `BIAS` · `'bias'` · `'KMTNetOp'`(자리채움 낱말 금지)다 — OI-32 가 *"코드가 규격에 맞출 자리"* 로 짚은 셋이다.  ⚠️ 함정 — guide 는 같은 `IcsState` 를 물려받고 `icg_archon/app.py` 가 *"OBJECT 는 기반 상태의 기본값 그대로"* 라며 `IMAGETYP` 을 누르지 않는다.  기반 기본을 `BIAS` 로 바꾸면 guide 가 `BIAS`(최소 노출 고정 · `EXP`/`GUIEXP` 거부)로 떠 규격 10.3절 기동 기본 `OBJECT` 와 어긋나므로, 같은 커밋에서 `icg_archon/app.py` 가 `imgtype = 'OBJECT'` 를 눌러 두고 그 주석을 고친다.  동반 시험: `tests/test_icg_cards.py` 의 `IcsState().observer == 'none'` 단언과 guide 누름 단언.
+  - 낡은 코드 문면:
+    - `telemetry.py` 의 `DATE-OBS` 빈 값 로그 detail *"converter 가 이 노출을 거부하게 한다"* · 같은 파일의 *"`TCS relay or REDIS`"*(v1.13 에서 걷힌 어휘) · `rawhdr.py` 의 *"규격 5.4절의 … 는 낡았다 -- 갱신은 `main` 소관"*(`OBSTYPE` 어휘 — v1.13 이 이미 고쳤다) · `tcsclock.py` 의 폴백 `TCSQDATE` 이유 문장(폴백은 직전 실응답의 보존본이다) · 머리말 판 표기(아래 「판올림 규약」 절).
+    - 결정 2 와 반대인 *"converter 가 거부한다 · 변환 실패 경로가 발동한다"* 투 — `rawhdr.py` 로그 *"카드를 비워 converter 가 이 노출을 거부하게 한다"* · `rawcards.py` 로그 *"converter 의 변환 실패 경로가 발동해야 한다"* · `guidecards.py` detail 둘 · `sequencer.py` *"converter 가 거부하게 한다"* · `telemetry.py` docstring *"converter 의 실패 경로(C-6)가 발동하지 않아"* · `rawhdr.py` docstring *"converter 의 실패 경로가 발동하지 않는다"* · 그 투를 옮긴 시험 docstring(`test_raw_header.py`).  *"카드를 비운다 — 7장 체크리스트 3·8번이 드러낸다(converter 는 기본값으로 채우고 거부하지 않는다)"* 투로 고치고, 인용하는 시험을 같은 커밋에서 고친다.
+    - *"규격 5.7절이 원래 정한 `ICS calculation`"* — `telemetry.py` 와 `domeaz.py` 두 곳(지금 자리는 5.7.3절 (d)) · `rawhdr.py` 의 *"`OBSERVAT` 는 … 유일한 변환 하드 실패 카드다"*(카드 값 하드 실패는 둘 — 6장) · `rawhdr.py` 머리말·HK 절의 *"standalone RTD"*(5.6절 계통은 ICG RTD · ICG heater · Radionode) · `fitsout.py` 의 *"(도입 여부 결정 대기)"*(결정 7 로 종결) · `icg_archon/guidehdr.py` 의 *"OI-24 의 종결 표시는 다음 `main` 라운드"*(v1.14 가 종결).
+    - `rawhdr.RADIONODE_KEYS` — 와이어 전환 뒤 쓰는 곳이 없는데 `hardware/base.py` 는 *"집합의 정본은 `rawhdr.RADIONODE_KEYS` 하나다"* 라고 한다.  지우거나 guide `all_keys()` 와 한 정본으로 합치고 그 문장도 맞춘다.
+    - `icg_archon/backend.py` docstring 둘의 `guideexp 2` → `GUIEXP 2`(규격 10.1-1 은 v1.15 에서 고쳤다).
+    - `ics_sim/ics_sim/rawhdr.py` 의 *"L1 `CARRY_KEYS` 가 이 이름을 요구하므로"* — `mef_pipeline` v1.8(2026-09-04)부터 L1 primary 는 L0 primary 를 전량 승계한다(규격 6장 — v1.15).  `main` 트리 사본(`ics_sim/ics_sim/rawhdr.py` · `ics_sim/tests/test_raw_header.py`)에도 같은 문장이 있고 합류 때 브랜치 판이 덮는다.
+  - **guide `TRIGOUT` 판정 창을 `[DATE-OBS − g, t_next + g]` 로** (결정 5 개정, 운영자 2026-09-24 — 종전 항목 *"창의 끝이 규격의 독출 완료와 같은 순간인지 확인"* 을 이것으로 대체한다).  ✅ 순서 조건이던 다른 세션의 편집(`sequencer.py` · `controller.py` · `test_icg_cards.py`)은 `e9e8f46` 으로 커밋됐다.
+    - `icg_archon/sequencer.py` — `t_next = done_utc − fs_to_done` 을 `_dispatch_store(...)` 호출 앞에서 셈해 넘기고, 그것을 창 끝으로 써서 `[DATE-OBS − g, t_next + g]` 로 판정한다(지금은 `_dispatch_store` 안의 `now = time.time()` 으로 닫아 창이 자기 독출 ≈1.25 s 를 품는다).  호출 뒤의 `t_prev = done_utc - timedelta(seconds=fs_to_done)` 갱신은 같은 `t_next` 값을 다시 쓴다 — k 의 창 끝과 k+1 의 창 시작(`DATE-OBS`)이 한 변수라 이웃 창의 뼈대가 틈 없이 이어진다.  주석 *"창은 `[DATE-OBS, 지금]` 이다"* · *"이 독출로 끝난다"*(10.1-5 와 모순) 정정.  타지 않는 `t_prev is None` 갈래(`t_prev` 는 arm 에서 늘 선다)는 정리하거나 `t_next − exptime` 으로 바꾸고, 그 주석 *"`t_prev` 가 없으면(첫 프레임) 노출시간만큼 되짚는다"* 도 정정 — 남겨 두면 시작은 `now`, 끝은 `t_next` 기준이 되어 어긋난다.
     - `icg_archon/config.py` `IcgCfg.trigout_guard`(초, 기본 0.15 s) + 로더 + `icg_archon.ini` `[icg]` 절에 한 줄.  ⚠️ 설정 객체가 **둘**(`cfg`/`icfg`)인 함정.
-    - `tests/test_icg_cards.py:394-395` — 시퀀서 원문을 리터럴 `trigger_was_high_between(start, now)` 로 잘라 보므로 변수 이름을 바꾸면 `ValueError` 로 빨개진다 — 같은 커밋에서 대조를 고친다.
+    - `tests/test_icg_cards.py` — 시퀀서 원문을 리터럴 `trigger_was_high_between(start, now)` 로 잘라 보므로 변수 이름을 바꾸면 `ValueError` 로 빨개진다 — 같은 커밋에서 대조를 고친다.  같은 파일 docstring 의 *"규격 10.3절 「`TRIGOUT` 값의 뜻」"* 은 v1.15 가 소절 제목을 그대로 두어(10.3.1절) 지금도 맞는다 — 고친다면 *"10.3.1절"* 로.
     - 창 위치 시험 3~4건 신설 — `fs_to_done≠0` 대역에 `_trig_spans` 를 epoch 로 심어: 독출 중 펄스는 k 에 `0` · k+1 에 `1` / 경계 ±g 에 걸친 펄스는 둘 다 `1` / 마지막 장 `t_next + g` 뒤 펄스는 어느 파일도 `1` 아님 / 타이밍 모델이 없을 때(`fs_to_done=0`)의 동작(기대값은 아래 「운영자 판단 대기」 표의 `fs_to_done=0` 행 판단 뒤).
-    - 낡은 문면 — `ics_archon/archon/controller.py:1741` 주석 *"선이 실제로 바뀌는 시점이 여기다"*(11.55-(6) 과 어긋난다 — 핀은 `APPLYSYSTEM` 처리 안의 모르는 지점에서 뒤집힌다) · guide ACF 출고값이 0(`TRIGOUTFORCE=0` — 타이밍 스크립트가 몬다)이라는 투의 문장, grep `출고값`(R2618 부터 `TRIGOUTFORCE=1` — `ics_archon/archon/controller.py:1829` · `icg_archon/commands.py:1060`·`1169` · `icg_archon/backend.py:424` · `tests/test_icg_backend.py:90`).
-    - `ics_archon/DevNote.md` 새 절(09-24 결정) + 11.58 에 빠진 카드 신설 결정 한 줄 보충.
+    - 낡은 문면 — `ics_archon/archon/controller.py` 주석 *"선이 실제로 바뀌는 시점이 여기다"*(11.55-(6) 과 어긋난다 — 핀은 `APPLYSYSTEM` 처리 안의 모르는 지점에서 뒤집힌다) · guide ACF 출고값이 0(`TRIGOUTFORCE=0` — 타이밍 스크립트가 몬다)이라는 투의 문장, grep `출고값`(R2618 부터 `TRIGOUTFORCE=1` — `ics_archon/archon/controller.py` · `icg_archon/commands.py` 두 곳 · `icg_archon/backend.py` · `tests/test_icg_backend.py`).
+    - ⭐ **`ICGBUILD` 올리기** — 규격 10.3.1절은 옛 창·새 창으로 판정한 파일을 `ICGBUILD` 로 가린다.  창 변경 커밋에서 `icg_archon/__init__.py` `__build_date__` 를 지금 값 `2026-09-24T00:00Z`(`e9e8f46`)와 다른 값으로 올리고(필요하면 `__version__` 도), 그 `ICGBUILD` 값을 DevNote 새 절에 옛 창·새 창의 경계로 적는다.  올리는 규범 일반은 아래 판단 대기 D4-10 이다.
+    - `ics_archon/DevNote.md` 새 절(09-24 결정) + 11.58 에 빠진 카드 신설 결정 한 줄 보충.  새 절이 서면 `main` 규격 10.3.1절 `> 참고 —` 블록의 `g` 도출 상세(11.55 · `frame_poll` 셈)를 그리로 옮기고 규격은 포인터로 줄인다(`main` 다음 판).
     - 후속 — 경계 추정 개선(`BUFnLINES` 외삽 · `frame_poll` 축소)과 `APPLYSYSTEM` 안 핀 반전 지점 실측이 되면 g 를 줄인다.
-  - **`HKDATA NOW` 에서 Radionode 제외** (결정 10) — `icg_archon/hk.py` `refresh_now()` 의 `radionode.poll_now()` 호출과 `_radionode_is_old()` 제거 · `[radionode] now_min_age` 설정(config·ini)과 그 시험(`test_the_threshold_comes_from_the_ini_not_the_poll_period` 등) 정리 · `hkdata.py` 표·docstring 의 *"(+ Radionode)"* · DevNote 에 11.56 을 뒤집는 절 · 배포 ini 는 **안 바꾼다**(ICS `hk_query_timeout = 2.0` · ICG `[radionode] timeout = 5.0` 그대로).  ✅ 그러면 종전의 *"ICG `[radionode] timeout` 5.0 s 가 ICS 시한 2.0 s 보다 길어 느린 날 HK 블록이 통째로 sentinel"* 위험은 사라진다(`GO` 경로에 인터넷 왕복이 없다).
+  - **guide 노출 잠금을 푸는 시점이 `FETCH` 전이다** — 규격 10.1-7 (b) 는 *"독출(`FETCH` 포함)이 끝난 직후에 `EXPENABLE 1`"* 인데, `ics_archon/expenablectl.py` 는 `_DONE_PHASES = ('WRITING', 'IDLE')` 로 `state.expstatus` 만 보고, science 시퀀서는 `FETCH`/`WRITING` 을 알림만 하고 `expstatus` 에 싣지 않은 채 `acq_to_idle`(0.40 s) 뒤 `IDLE` 로 간다.  그래서 science `FETCH`(실측 3.2~3.5 s)가 도는 중에 `EXPENABLE 1` 이 나간다(DevNote 의 운영자 단서 *"혹시 Fetch 에 방해가 된다면 fetch 후에"* 와도 반대다).  고칠 것: 원천 `ics_sim` `Sequencer` 에 *"fetch 가 안 끝난 저장 태스크 수"* 를 두고(`FETCH` 알림에서 올리고 `on_fetched`·예외·취소에서 내림) 잠금 해제를 그 수가 0 이고 READOUT 이 아닐 때로 · `expenablectl.py` 주석(*"`FETCH` 는 `READOUT` 안이므로 그 다음이다"* 등) · 가짜 Archon 으로 `GO 1` 통합 시험(단위 시험 `test_expenablectl.py` 는 `on_phase('WRITING')` 을 직접 넣어 이 경로를 못 잡는다) · `tools/sync_vendor.py` 재동기.  `FETCH` 까지 막을 필요가 없다고 보면 반대로 규격 10.1-7 (b) 문면을 바꿔야 하는데, 그건 운영자 판단이다.
+  - **TC 무응답 폴백(`tc_timeout_mode = canned`)이 링크 카드에 `Up` 을 싣는다** — 규격 5.7절 링크 카드 규약(*"폴백도 예외가 아니다 … 링크 카드는 `Down`"*)과 반대다: `ics_sim/ics_sim/telemetry.py` 의 `CANNED_AUX_VALUES` `'AUXLINK': 'Up'` · `CANNED_TCS_VALUES` `'TCSLINK': 'Up'` · `_apply_timeout()` canned 갈래의 `last_aux_ok = True`·`last_tcs_ok = True`.  고칠 것: 두 값을 `'Down'` 으로(또는 `_apply_timeout` 에서 덮고 `last_*_ok` 는 `False`) · 시험 신설(canned 무응답 뒤 FITS 링크 카드 `'Down'`).  배포 ini 두 벌은 `passthrough` 라 실기 영향은 canned 로 돌릴 때뿐이다.
+  - **science 가 와이어의 `DEWPRES` sentinel 을 *"게이지 이상"* 경고로 받는다** — ICG 는 게이지가 켜졌는데(또는 상태를 모르는데) 못 읽으면 `HKDATA` 답에 `DEWPRES=9.99e-9` 를 싣는다(규격 5.6.3절 규칙 1 의 `DEWPRES` 예외 — v1.15).  science `hkwire` 는 그 원문을 넘기고, `rawhdr.format_dewpres` 가 하한 `1e-8` 밖이라 파일마다(노출당 MK·NT 둘) *"… 인정 범위 … 밖이다 -- 게이지 이상으로 보고 …"* WARNING 을 낸다.  카드 값은 맞고 원인 표시만 틀린다 — 와이어의 정확한 `DEWPRES_NC` 문자열을 sentinel 로 알아보고 경고 없이 통과시킨다(`hkwire` 에서 `None` 으로 바꾸거나 `format_dewpres` 앞에서 거른다).
+  - **닿지 않는 `icg_node` 빈 값 갈래** — `ics_archon/ics_archon/config.py` 의 *"[archon] icg_node 가 비어 있다"* 알림과 `app.py` `fetch_icg_hk` 의 `if not dest` 갈래는 INI 로는 닿지 않는다(비우면 기본값 `ICG` 로 묻는다 — 규격 5.6.3절 규칙 3 은 v1.15 에서 그렇게 고쳤다).  살릴지 걷을지 정한다.
+  - **`HKDATA NOW` 에서 Radionode 제외** (결정 10) — `icg_archon/hk.py` `refresh_now()` 의 `radionode.poll_now()` 호출과 `_radionode_is_old()` 제거 · `[radionode] now_min_age` 설정(config·ini)과 그 시험(`test_the_threshold_comes_from_the_ini_not_the_poll_period` 등) 정리 · `hkdata.py` 표·docstring 의 *"(+ Radionode)"* · 옛 거동을 설명하는 문서 셋 — 사용자 문서 `ics_archon/README.md` 「`HKDATA` 는 두 갈래다」 절의 *"Radionode 는 `now_min_age` 제동"* · *"Radionode 만 제동이 있다"*, `icg_archon/commands.py` `cmd_hkdata` docstring, `icg_archon/radionode.py` 머리말 *"같은 `NOW` 에서 Radionode 도 다시 치기는 한다"* · DevNote 에 11.56 을 뒤집는 절 · 배포 ini 는 **안 바꾼다**(ICS `hk_query_timeout = 2.0` · ICG `[radionode] timeout = 5.0` 그대로).  ✅ 그러면 종전의 *"ICG `[radionode] timeout` 5.0 s 가 ICS 시한 2.0 s 보다 길어 느린 날 HK 블록이 통째로 sentinel"* 위험은 사라진다(`GO` 경로에 인터넷 왕복이 없다).
   - KASI +9 h — DevNote(`ics_sim` · `ics_archon`)에 결정 항목이 없다(근거는 `rawpair.py` 보정표 주석과 `982ebe5` 뿐).  항목을 만들면 DECISION_LOG D-017 배너의 *"DevNote … 에는 이 결정의 항목이 없고"* 도 함께 고친다.  브랜치 `ics_sim/DevNote.md` 의 *"보정 `0` 과 세 관측소 경계는 그대로다"* 현재형 문장 아래에는 개정 한 줄이 필요하다.  `main` 의 `ics_sim/ics_sim/rawpair.py` 는 합류 전까지 `'KMTK': 0` 이다.
-  - DevNote 11.90-(1) *"타이머 해제만은 수락 전에 한다"* 를 작업본의 *"거절된 GO"* 변경이 뒤집었는데 DevNote 는 그대로다.
+  - DevNote 11.90-(1) *"타이머 해제만은 수락 전에 한다"* — ✅ `e9e8f46` 의 DevNote 11.96 표가 그것을 뒤집은 변경(*"`cancel_reenable` 을 수락 뒤로"* — 거절된 `GO` 가 되켜기 타이머를 버리던 퇴행)을 적었다.  11.90 본문의 그 문장 곁에 11.96 포인터 한 줄만 남는다.
   - 폐지 카드 대사 — `ics_sim` RETIRED 목록에 5.10절 v1.10 미도입 넷(`HKQDATE` · `HTRPID` · `HTRRAMP` · `FORCELEVEL`)을 보태고, guide 헤더용 폐지 카드 대사 시험을 새로 둔다.
-  - 합류 때 — 브랜치의 `DECISION_LOG.md` 사본은 `main` 판(D-013 · D-014 · D-017 개정 표시 · D-023)을 정본으로 병합한다 · CR-003 은 브랜치 `CHANGE_CONTROL.md` 에만 있으니 `main` 으로 옮긴다.
-- ⏳ **`main` 쪽 문면 하나** (다른 문서 — 이 라운드에서 안 고쳤다): `project_management/operations/ICS_DEPLOYMENT_CHECKLIST.md` 관측일 경계 항목의 *"KASI 는 보정 0"*(결정 1 과 반대 — 배정자 없음).  ✅ 함께 적혀 있던 둘은 고쳤다 — DECISION_LOG D-014 결정 셋째 항목(*"`DATE-OBS` 는 `SHOPEN` 지시 시점"*)에 결정 4 개정 표시(머리 배너 · 항목 인라인 · 상태줄) · 통합 §1.1 대비표 `TRIGOUT` 행 *"노출 창"* → *"판정 창"*.
+  - 합류 때 — 브랜치의 `DECISION_LOG.md` 사본은 `main` 판(D-013 · D-014 · D-017 개정 표시 · D-023)을 정본으로 병합한다 · CR-003 은 브랜치 `CHANGE_CONTROL.md` 에만 있으니 `main` 으로 옮긴다 · `main` 규격에서 브랜치 상태를 말하는 자리 넷 — 머리말 `> 참고 —` 브랜치 블록 · 11장 「신규 ICS 구현·개발 노트」·「변경 관리」 행 · 본문의 *(브랜치)* 표지(grep) · 11장 「구현 위치」 행.
+- ⏳ **`main` 쪽 문면 하나** (다른 문서 — 이 라운드에서 안 고쳤다): `project_management/operations/ICS_DEPLOYMENT_CHECKLIST.md` 관측일 경계 항목의 *"KASI 는 보정 0"*(결정 1 과 반대 — 배정자 없음).  ✅ 함께 적혀 있던 둘은 v1.14 에서 고쳤다 — DECISION_LOG D-014 결정 셋째 항목(*"`DATE-OBS` 는 `SHOPEN` 지시 시점"*)에 결정 4 개정 표시(머리 배너 · 항목 인라인 · 상태줄) · 통합 §1.1 대비표 `TRIGOUT` 행 *"노출 창"* → *"판정 창"*.
 
-### ✅ 규격 미반영 — 없다 (돔 방위 자릿수는 결정 9 로 닫혔다)
+### ⏳ 운영자 판단 대기 — 규범을 바꾸지 않은 것 (운영자 확정 2026-09-23 · 2026-09-24)
 
-- ✅ ~~**돔 방위 카드 소수 2자리**~~ — **해소 (결정 9, 운영자 2026-09-24)**: 방위 셋은 **소수 3자리**(`%.3f` — redis 도 같다, `DAZERR` 는 `%+.3f`)로 규격 5.7.3절 (g) 와 견본 6장에 실었다.  브랜치 11.94-h 의 `%.2f` 는 코드 쪽이 따라올 일이다(아래 「브랜치 후속」).
-
-### ⏳ 운영자 판단 대기 — 규범을 바꾸지 않은 것 (운영자 확정 2026-09-23)
-
-> 번호는 2026-09-23 전반 재검토의 발견 번호다 — `C-n` 도 그 목록의 번호라 통합 문서의 C-항목과는 다른 번호 공간이다.  목록 원본은 세션 임시 폴더에 있어 저장소에 없으므로 행마다 내용을 적는다.
+> 번호 공간이 둘이다 — 맨 번호는 2026-09-23 전반 재검토(v1.14 라운드)의 발견 번호이고, `v1.15:` 를 붙인 것은 2026-09-24 발행본 재검토(v1.15 라운드)의 번호다.  두 목록이 모두 `C-n` 을 쓰고, 어느 쪽 `C-n` 도 통합 문서의 C-항목과는 다른 번호 공간이다.  목록 원본은 세션 임시 폴더에 있어 저장소에 없으므로 행마다 내용을 적는다.
 
 | 번호 | 무엇 | 물을 것 |
 |---|---|---|
 | D4-8 | 독출 뒤 저장(FETCH·쓰기)이 실패한 노출은 번호가 이미 넘어가 결번이 남는데, 2.3절 8항 *"결번이 남는 자리 넷"* 에 없다(science `_store()` · guide `_store_locked()` 는 오류만 낸다) | ⑤ 로 등재할지 · 되감기 조건(뒤 프레임이 번호를 안 집었을 때만)을 코드에 둘지 |
-| D4-10 | `ICSBUILD`/`ICGBUILD` 의 빌드일시가 8월 말에 멈춰 있다(`ics_archon` 08-28 · `icg_archon` 08-31 · `ics_sim` 08-22) | 배포 전에 올릴지 · 5.5절에 갱신 규범 한 줄(선택) |
+| D4-10 · `v1.15:R2-9` · `v1.15:C-2` · `v1.15:R4-6` | `ICSBUILD`/`ICGBUILD` 는 손으로 올리는 두 상수(`__version__` · `__build_date__`)에서 나오는데 언제 올리는지 정한 규범이 없다 — `e9e8f46`(2026-09-24)에서 `ics_archon`·`icg_archon` 의 빌드일시는 `2026-09-24T00:00Z` 로 올라갔고 `ics_sim` 은 `2026-08-22T09:00Z`, `__version__` 은 그대로다(`0.0.0` · `ics_sim` `0.2.0`).  ⭐ 10.3.1절(v1.14 가 10.3절에 세운 옛 `TRIGOUT` 창 판별)과 5.10절(v1.15 — 취득 SW 쪽 헤더 규칙의 세대)이 이 값을 판별자로 쓴다 | 배포 전에 올릴지 · 5.5절에 갱신 규범 한 줄 — 없으면 두 판별이 서지 않는다.  창 변경 커밋의 `__build_date__` 올리기는 규범과 별개로 위 「브랜치 후속」에 올렸다  → **ics-archon 브랜치 세션에서 검토·업데이트** (운영자 2026-09-24) — 규격은 그 결정을 따라간다. |
 | D4-19 | 5.7.2절 ICS↔TC 시계 비교가 guide 에 걸리는지 규격이 말하지 않고, ICG 에는 그 감시가 없다 | 10.1절에 적용 여부 한 줄 |
 | D2-3 · D7-9 | 견본의 `OBSTYPE` comment 가 `IMAGETYP` 과 같은 레거시 *"Type of observation"* 이다(뜻은 v1.13 에서 계통 식별로 바뀌었다) | 카드를 지목하면 견본 6장 · 템플릿 · 대사 시험을 한 커밋에 · 6장에 뜻 변경 행(선택) |
 | D7-13 | `DSTELALT`/`DSTELAZ` comment 에 단위가 없고, science `ICSBUILD` comment 에 *"ICS/ICG"* 가 있다 | 카드를 지목할 때만 고친다 |
@@ -91,12 +94,17 @@
 | D6-8 | 아래 「브랜치 상태」 절의 `raw-fits-spec-v1-review` 가 로컬·원격 어디에도 없다(합류 커밋 `e1cb82f` 는 남아 있다) | 되살릴지(`e1cb82f^2`) · 그 절을 *"지워졌다"* 로 고칠지 |
 | D6-14 | `main` 의 다른 폴더가 `archive/` 로 간 파일을 가리킨다 — `ICS_DEPLOYMENT_CHECKLIST` 관련 문서 절(→ Specification v1.9) · `ACTION_REGISTER` ACT-011(→ 원장 v1.16) · DECISION_LOG D-009~D-012 네 자리(→ 구명 `Pair_Spec_v1.2`) · `mef_fits_spec/README` | 판 무관 지시로 바꿀지 · DECISION_LOG 는 결정 당시 기록이니 경로만 고칠지 둘지 |
 | — (결정 5 개정 분석, 2026-09-24) | guide ACF 타이밍 모델이 없으면(형태 불일치·읽기 실패 → `timing=None` → `icg_archon/backend.py` `frameshift_to_done()` 이 `0`) `t_next` 가 곧 완료 관측이라 판정 창이 좁혀지지 않고, `DATE-OBS` 자체도 ≈1.25 s 늦어 창이 통째로 밀린다 | `fs_to_done=0`(ACF 타이밍 모델 없음)일 때 `TRIGOUT` 은 `-1`(판정 못 함)인가, 밀린 창 그대로인가 — 정해지면 위 「브랜치 후속」 창 위치 시험의 기대값이 된다 |
-| ~~—~~ ✅ **결정 9 로 해소** | ~~돔 방위 카드 소수 2자리~~ → **소수 3자리**(2026-09-24) | — |
-| ~~— (이 라운드 검증)~~ ✅ **결정 8 로 해소** (`RDMODE` 도 `'NC'`) | ~~결정 6 은 INI 에 없으면 `'NC'` 인데, 같은 INI 전용 값 `RDMODE` 는 *"독출 모드는 언제나 존재한다"*(5.0절 표)는 이유로 `'UNKNOWN'` 이다 — 시리얼도 물리적으로 늘 있어 5.0절 `NC`/`UNKNOWN` 구별과 부딪힌다~~ | ~~① 결정 6 을 유지하고 *"UNKNOWN 이 아닌 이유"* 한 줄을 넣을지(이유는 운영자가 준다) ② `CTRLnSN` 만 `'UNKNOWN'` 으로 할지 — 어느 쪽이든 5.0절 표 · 5.5절 · 10.3절을 같은 문면으로~~ |
-| ~~— (이 라운드 검증)~~ ✅ **종결 — 결정 5 개정** (2026-09-24, comment 가 그대로 맞다) | ~~G 견본 `TRIGOUT` comment `Trigger Out asserted during exposure (1=yes)` 가 10.3절 판정 창(노출 + 자기 독출, 이웃 창과 겹침 — 결정 5)보다 좁다~~ → 판정 창이 노출 창 ± g 로 좁혀져 *"during exposure"* 가 맞다(G 견본 · `guidecards` 템플릿 불변) | — |
+| `v1.15:R1-14` · `v1.15:R2-10` | 판 날짜의 뜻이 정해져 있지 않다 — 규격 v1.14 는 `2026-09-23` 인데 2026-09-24 결정 넷을 담고 발행 커밋 `ad7e0a5` 도 09-24 다(v1.12 · v1.13 은 판 날짜 = 발행 커밋 날짜) | 판올림 개시일인지 발행일인지를 「판올림 규약」 절에 한 줄로 — 발행일이면 v1.14 는 이력 그대로 두고 규격 12장 v1.14 행에만 *"(발행 2026-09-24)"* 를 덧붙인다.  원장 v1.20 · 통합 v1.0 구판 줄의 날짜도 같은 판단을 받는다  ✅ **해소 (운영자 2026-09-24): 판 날짜 = 발행일(태그를 붙이는 날).** 규격 12장 v1.14 행 · 원장 v1.20 · 통합 v1.0 의 날짜를 09-24 로 바로잡았다(v1.15 행). |
+| `v1.15:C-1` | science 는 완료 통보(`Acquisition Complete.`) 뒤 `acq_to_idle`(0.40 s) 창에 온 `ABORT` 가 지금 프레임의 저장 태스크(`Sequencer.cancel()` 의 `_frame_writers` — `FETCH`·쓰기)를 취소해 독출을 마친 프레임이 파일 없이 사라지고, guide 는 띄운 저장을 남긴다.  규격 5.4.1-2 는 *"진행 중이던 적분"* 과 *"이미 독출을 마친 앞 프레임"* 만 적고, 10.1-7 (g) 는 *"이미 fetch 를 마친 저장"* 으로 기준이 다르다 | 안: 5.4.1-2 에 *"컨트롤러 독출을 마친 프레임은 `FETCH`·쓰기 전이어도 저장을 마친다"* 를 명시하고 10.1-7 (g) 의 *"fetch 를 마친"* 을 *"독출을 마친"* 으로.  맞다고 하면 브랜치 후속으로 `Sequencer.cancel()` 을 고치고 되감기 조건(`_abort_kept_save` · `rewind_expnum`)도 함께 본다  → **ics-archon 브랜치 세션에서 검토·업데이트** (운영자 2026-09-24) — 규격은 그 결정을 따라간다. |
+| `v1.15:R2-8` ② | `OBSTYPE` 빈 값 폴백이 `IMAGETYP` 을 복사한다 — 5.4절이 *"`IMAGETYP` 의 사본이 아니다"* 라 하고 5.0절이 결측을 실제로 쓰이는 값으로 적지 말라는 것과 긴장이 있다.  v1.15 는 현행을 두고 *"운용 경로로는 빈 값이 오지 않는다(명령의 빈 인자는 조회 · INI 키 없음) — 내부 호출부가 인자를 빠뜨렸을 때만 타는 안전망"* 만 5.4절에 적었다 | 폴백을 `'NC'` 나 계통 기본값(`SCIENCE`/`GUIDE`)으로 바꿀지 — 규범 변경이고 브랜치 `rawhdr.py` 가 동반한다  → **ics-archon 브랜치 세션에서 검토·업데이트** (운영자 2026-09-24) — 규격은 그 결정을 따라간다. |
+| `v1.15:R1-8` · `v1.15:R6-4` | 발행 뒤 README·인수인계만 고친 커밋이 그 판의 *"마지막 커밋"* 에 드는지 아래 「태그 규칙」이 답하지 않는다(v1.9 선례는 발행 직후의 인수인계 커밋에 태그를 붙였다).  이번에는 v1.14 발행 뒤의 README 태그 절을 v1.15 커밋에 실어 `raw-spec-v1.14` 를 `ad7e0a5` 에서 옮기지 않았다(운영자 2026-09-24 — README·SMC 정정도 v1.15 한 커밋으로) | 규칙에 한 줄 — 발행 뒤의 동반 문서 커밋은 태그를 옮기지 않고 다음 판에 싣는다(이번 선례) / 옮긴다(그러면 `fetch.pruneTags` 를 켠 팀원은 `git pull` 이 실패해 `git fetch --tags --force` 가 필요하다) |
+| `v1.15:R5-14` (raw 쪽) | MEF 에 raw 내용 해시를 두어도(통합 §7-10 — LEECU 판단) **변환 전에** raw 가 입은 비트 오류는 잡히지 않는다 — converter 는 손상된 바이트의 해시를 셀 뿐이다.  그 틈을 닫으려면 raw 를 쓴 시점의 해시(취득 쪽 sidecar · 로그)가 있어야 한다 | raw/ICS 쪽에 취득 시점 해시를 둘지 — 새 규범이다.  raw 헤더 `CHECKSUM`/`DATASUM` 미도입(결정 7 — 헤더 카드의 말이다)과는 부딪히지 않는다 |
+| `v1.15` 층위 정리 — 호환 구절 | 층위 정리가 남긴 호환 구절 가운데 하나는 옛 파일이 실제로 있느냐에 달렸다 — 10.1-4 의 *"2026-09-05 이전 구현으로 찍힌 guide 파일의 `DATE-OBS` 는 트랜스퍼 종료다"* 는 **남겼고**, 5.6.4절의 *"guide R2619 이전 ACF 는 적용마다 게이지를 켰다"* 는 science 자료가 0장이라 **걷었다**(`acf/README.md` R2619 절 · 12장 v1.15 행 ②) | 그 시기 guide 파일이 아카이브에 없다고 보면 10.1-4 의 구절도 걷는다 |
+| `v1.15:R6-10` | `__reference/` 루트에 `KMTNk.20170209.044131.Rawheader.txt` 가 있다 — `Legacy raw fits header samples/` 안의 같은 이름 파일과 바이트 동일(2026-08-22 `e728e02` 부터) | 지울지(`__` 폴더라 운영자 몫) — 두면 README `__reference/` 표의 행(v1.15 에서 더했다)이 그대로 맞다 |
+| ~~—~~ ✅ **해소 셋** (2026-09-24) | ~~돔 방위 카드 소수 2자리~~ → **결정 9**(소수 3자리) · ~~같은 INI 전용 값인데 `CTRLnID`/`CTRLnSN` 은 `'NC'`, `RDMODE` 는 `'UNKNOWN'`~~ → **결정 8**(`RDMODE` 도 `'NC'`) · ~~G 견본 `TRIGOUT` comment *"during exposure"* 가 판정 창보다 좁다~~ → **결정 5 개정**(판정 창이 노출 창 ± g 로 좁혀져 comment 가 그대로 맞다 — G 견본 · `guidecards` 템플릿 불변) | — |
 | — | 결정 4~10 에 D-번호를 줄지 | 규격은 운영자 확정 날짜(*"2026-09-23"* · 결정 5 개정과 8 · 9 · 10 은 *"2026-09-24"*)로만 인용한다 |
 
-**범위 밖으로 둔 제안 9건** (규범 보강 제안 — 다음 판 후보):
+**범위 밖으로 둔 제안 9건** (v1.14 라운드의 규범 보강 제안 — 다음 판 후보 · 번호는 2026-09-23 목록):
 
 | 번호 | 제안 |
 |---|---|
@@ -109,6 +117,36 @@
 | D4-18 | 5.0절에 헤더 값 ASCII 제한(비ASCII 사용자 입력은 `?` 로 바뀐다) — 또는 코드 detail 의 근거를 FITS 표준으로 |
 | C-10 | 2.2절에 관측일을 정하는 순간(프레임 개시 — `DATE-OBS` 로 다시 센 날짜와 경계 근처에서 갈릴 수 있다) |
 | C-11 | 5.5절에 KASI 벤치 science 상자(`KMTK-SCI-112`/`-113` · `STA-0212`/`STA-0200`, 상자 하나가 MK·NT 어느 역할이든 한다) |
+
+### (구) v1.14 (2026-09-23 판올림 · 발행 커밋 `ad7e0a5` 2026-09-24)
+
+> ⭐ **v1.14 는 `EQUINOX` 를 실수형으로 바꾸고**(운영자 확정 2026-09-23 — `EQUINOX = 2000.0`, 결측·비수치는 실수 sentinel `-999.0`, 5.7절 · 견본 6장은 이 카드와 돔 방위 셋(`DSAZ`·`DSTELAZ`·`DAZERR` — 결정 9)의 자릿수만 바뀌었고 크기·레코드 수는 그대로다), **같은 판에서 2026-09-23 전반 재검토의 발견 133건(반증을 통과한 것)을 다뤘다** — 대부분 반영했고, 규범을 그대로 두기로 한 것과 범위 밖으로 둔 제안 9건은 위 현행 절의 「운영자 판단 대기」 표로 옮겼다(운영자 확정 2026-09-23).
+>
+> **문서별 한 줄**:
+>
+> - **규격 v1.14** — science HK 원천을 `GO` 마다 `HKDATA NOW` 로(5.6절) · KASI 관측일을 KST 날짜로(2.2절) · guide ~~OI-24~~ 종결(`BIAS` = 최소 노출 · 기동 `EXPTIME` 2 s) · converter v2.5.0 재대조(6장 — 카드 값 하드 실패 둘 · 경고 층 · D-023 WCS 행) · 운영자 결정 일곱(아래 4 ~ 10 — guide `TRIGOUT` 판정 창은 2026-09-24 에 노출 창 ± g(`[icg] trigout_guard`, 기본 0.15 s)로 좁혔다, 결정 5 개정 · 10.3절) · 표 렌더 결함 둘과 사실 정정.  전량은 `archive/…v1.14.md` 12장 v1.14 행 ①~⑦(현행 12장의 그 행은 요약이다).
+> - **원장 v1.20** (구판 `archive/…v1.19.md`) — converter v2.5.0 이 raw 에서 읽는 카드(새로 47장 · 더는 안 읽는 둘) · geometry 선언 대조 · 카드 값 하드 실패 둘을 여러 장에 반영하고, 운영자 결정 셋(4장 `DATE-OBS` · 3.3절 `CTRLnID`/`CTRLnSN` · 7장 `CHECKSUM`/`DATASUM`)을 옮겼다.  `Raw Archon`·도입 여부 판정은 그대로다.
+> - **통합 v1.0** (구판 `archive/…v0.10.md`) — 판 번호를 v0.11 대신 **v1.0** 으로 올리고 *(Draft)* 를 뗐다(운영자 2026-09-23).  §1 을 v2.5.0 과 다시 맞췄고(✅ C-11 · C-17 · C-18 · C-5/C-13 — 단 멈추지 않고 경고만 · ⚠️ C-12 는 커밋 제목에 올랐지만 코드가 그대로) §1.2(기존 C-항목 현황)와 기록 행 다섯을 새로 두었다.  ⭐ **§7 「MEF converter 및 PIPELINE 판단 필요 항목」** 이 MEF 쪽이 골라야 할 아홉(LEECU 여덟 · PIPELINE 하나 — 7-5 `XTALKVER`·`REFVER`·`CATVER` 의 L0 수록)을 모은다 — 7-1 반쪽 pair 의 성한 절반 보관(D-001 과 맞물린다) · 7-2 raw 가 공급하지 않는 MEF 카드의 처분 · 7-3 멈춤 기준 · 7-7~7-9 §6 미결 셋 등(v1.1 에서 7-10 이 더해져 열이 됐다).  **LEECU 전달분 = 통합 Part 1** — 판단은 §7, 나머지 절은 수정 요청이다.
+> - **README** — 판 표 · 연동 기준 · 열린 항목(~~OI-7~~ · ~~OI-24~~ 종결) · 국문 ICD 미반영 절 목록을 현행으로.  **DECISION_LOG** — D-017 4항 개정(결정 1) · D-013 · D-014(결정 4 의 `DATE-OBS` 시점 포함) · D-017 개정 표시.
+>
+> ⭐ **LEECU 판올림 반영** — ICD **v4.3** · Keywords **v1.1** · converter **v2.5.0**(파일명 접미사 `_v2_1` 은 그대로이고 판은 `SOFTWARE_VERSION` 이 말한다) · **D-023**(L0 sky WCS = L1 Gaia 측성의 seed).  구 ICD v4.2 · Keywords v1.0 은 `../mef_fits_spec/archive/` 로 갔다.
+>
+> ⭐ **운영자 결정** (이 라운드):
+>
+> 1. **KASI(`KMTK`) 관측일 보정 +9 h** — 경계 UT 15:00 = KST 00:00, 관측일은 KST 날짜다(운영자 2026-09-12 · **D-017 4항 개정**).  이 규칙이 없는 코드(브랜치 `982ebe5`(2026-09-13) 이전 · 합류 전 `main` 의 `ics_sim`)로 찍은 KASI 파일은 보정 0(UT 날짜)이다.
+> 2. **5.0절 금지 열 장은 근거 문장만 고쳤다** — converter v2.5.0 은 거부하지 않는다(`EXPTIME`·`DATE-OBS` 는 기본값 0·변환 시각으로 채우고, geometry 여덟은 선언이 있을 때만 대조해 어긋나면 경고·`HISTORY`).  비운 결함은 7장 체크리스트 3·8번이 드러낸다.  C-항목은 올리지 않았다.
+> 3. **통합 문서 v1.0** — *(Draft)* 를 떼고 §7 을 두었다(위).
+> 4. **`DATE-OBS` = 모든 영상(`DARK`·`BIAS` 포함)의 적분 개시 시각** — 셔터 노출은 ICS 가 셔터 개방을 지시한 시각, 셔터 없는 노출은 컨트롤러에 적분을 건 시각, guide 는 10.1절이다(5.4절 · 5.7.1절 (c)).
+> 5. **guide `TRIGOUT` 판정 창 = `[DATE-OBS − g, t_next + g]`** (운영자 2026-09-24 — 2026-09-23 의 *"창 `[DATE-OBS, 독출 완료]` 의 겹침은 의도다"* 를 고친다 · 10.3절).  `t_next` 는 이 프레임의 트랜스퍼(FrameShift) 개시 = 다음 저장 장의 `DATE-OBS`(≈ `DATE-OBS + EXPTIME`)이고, 호스트는 `t_next` 를 이 프레임의 완료 관측에서 셈한다 — 다음 프레임을 기다리지 않는다.  즉 창의 뼈대는 **그 프레임의 노출 창**이다.  **g 는 호스트 시각 불확도 여유 — ICG INI `[icg] trigout_guard`, 기본 0.15 s**(권장 0.10 ~ 0.15 s)다.  호스트는 펄스 에지를 `APPLYSYSTEM` 응답 뒤에 적어 실제보다 0 ~ ≈0.24 s 늦게, 프레임 경계는 완료 폴링 지연으로 0 ~ ≈0.21 s 늦게 안다(브랜치 `ics_archon/DevNote.md` 11.55) — 최소 펄스 폭(≈235 ms — 코드 유도, 벤치 미확인)과 같은 크기라 여유 없이 좁히면 경계 근처 `0` 이 단언이 못 된다.  이웃 창은 **2g 만큼만** 겹친다 — 경계 ±g 안의 펄스는 이웃한 두 장에 `1` 로 찍힐 수 있다(의도, 이웃 장 거짓 `1` ≈ 2g/`EXPTIME`).  종전 창의 자기 독출 1.25 s 겹침(이웃 장 거짓 `1` ≈ 1.25 s/`EXPTIME`, 최소 노출 근처에서는 세 장까지)은 없어졌다.  창이 넓었던 출처는 v1.13 의 사실 오류(*"적분은 이 독출로 끝난다"* — 10.1-5 와 모순)였고 09-09 원래 뜻은 *"노출 창"* 이다 — 그래서 G 견본 comment `Trigger Out asserted during exposure (1=yes)` 는 **그대로 맞다**(견본·템플릿 불변).  ⚠️ 남는 한계 넷: ① 에지·경계 지연 차이가 g 를 넘는 드문 경우 경계 근처 거짓 `0` ② LED 가 image 를 포화시켜 독출 중 store 로 번진 빛은 그 프레임에 `1` 로 안 잡힌다(ABD 없음, 10.1-2(a)) ③ 마지막 저장 장의 `t_next + g` 뒤에 친 펄스는 어느 파일에도 안 남는다(저장 안 된 장을 비췄으므로 물리적으로 맞다) ④ 이진 플래그라 얼마나 비췄는지는 말하지 않는다.  `trigout_guard` 키는 아직 코드에 없다 — 규격이 먼저 섰고 코드가 따라온다(위 「브랜치 후속」 — g 축소 조건도 거기).  science 에는 TRIG 계열 카드가 없다.
+> 6. **`CTRLnID`·`CTRLnSN` 은 INI 에 값이 없으면 `'NC'`** — Archon `SYSTEM` 값(펌웨어 문자열 · 16진 `BACKPLANE_ID`)으로 대신 채우지 않는다(5.5절 · 10.3절).
+> 7. **`CHECKSUM`·`DATASUM` 은 raw 미도입 확정** — ~~OI-7~~ 종결, 5.10절 폐지·미도입 목록 등재(원장 7장 `X` 와 같다).  MEF 의 같은 이름 카드는 converter 가 HDU 마다 쓰는 별개의 것이고 변환 뒤의 바이트만 보증한다.
+> 8. **`RDMODE` 결측도 `'NC'` 로 통일** (운영자 2026-09-24) — 2026-08-29 의 `'UNKNOWN'` 을 뒤집는다.  같은 처지(INI 전용 값이 비었다)인 결정 6 과 표기를 맞췄고, *"`NORMAL` 로 가리지 않는다"* 는 원래 목적은 `'NC'` 로도 지켜진다.  `'UNKNOWN'` 은 중계값 `SHUTTER` 에만 남는다(5.0절 표 · 5.5절 · 7장 8번 · 10.3절).  ⚠️ 2026-09-06 에도 같은 기억(*"NC 로 통일하기로 했었다"*)이 나왔는데 그때는 기록이 `UNKNOWN` 뿐이라 `UNKNOWN` 으로 등재됐다 — 이번이 **처음으로 `NC` 를 고른 결정**이다.
+> 9. **돔 방위 셋 `DSAZ`·`DSTELAZ`·`DAZERR` 은 소수 3자리** (운영자 2026-09-24 — redis 도 `%.3f`(돔 제어 프로그램이 2026-09-15 벤치 뒤 그렇게 바뀌었다 — 운영자 확인 2026-09-24, v1.15), `DAZERR` 는 부호 포함) — 5.7.3절 (g).  브랜치 11.94-h 의 소수 2자리를 대체한다.  견본 6장의 세 카드도 `'12.300'`·`'12.100'`·`'+0.200'` 으로 맞췄다(값·폭 불변).
+> 10. **`HKDATA NOW` 는 Radionode 를 치지 않는다** (운영자 2026-09-24) — 폴러의 표본을 싣고 클라우드는 INI 주기 폴링만 친다(5.6절).  2026-09-09 브랜치 DevNote 11.56 의 *"`now_min_age`(60 s)보다 낡았으면 `NOW` 가 한 번 친다"* 를 뒤집는다 — 11.52 (3) 의 *"즉시 조회해도 더 신선해지지 않는다"* 가 `NOW` 에도 맞기 때문이다.  시한은 **둘 다 그대로** — ICS `[archon] hk_query_timeout` **2 s** · ICG `[radionode] timeout` **5 s**(운영자 2026-09-24).  NOW 가 클라우드를 안 치면 Radionode 시한은 백그라운드 폴러와 종료 지연(≤5 s)에만 걸리고, 줄이면 느린 날 주기 조회 실패만 는다.  ⚠️ 이번에도 운영자 기억(*"NOW 에서는 안 치기로 했었다"*)과 기록(11.56)이 어긋났다 — 이 결정이 **처음으로** NOW 에서 Radionode 를 뺐다.
+>
+> ✅ 태그 — `raw-spec-v1.13`(`ae3fbfe`)을 로컬·원격에서 지우고 **`raw-spec-v1.14`** 를 이 판의 마지막 커밋 `ad7e0a5` 에 붙였다(2026-09-24 — 운영자가 *"최신 판에만"* 규칙 유지를 확정).  v1.15 발행으로 지웠다(2026-09-24).  이 자리에 적었던 팀 안내(*"`main` 을 pull 하면 새 태그를 받는다"* 와 한 번만 하는 설정)는 브랜치를 적지 않은 `git pull` 에만 맞아서, v1.15 에서 README 태그 소절로 옮겨 고쳤다.
+>
+> ✅ **규격 미반영은 없었다** — 돔 방위 자릿수는 결정 9 로 닫혔다: 방위 셋은 **소수 3자리**(`%.3f` — redis 도 같다, `DAZERR` 는 `%+.3f`)로 규격 5.7.3절 (g) 와 견본 6장에 실었고, 브랜치 11.94-h 의 `%.2f` 는 코드 쪽이 따라올 일이다(위 「브랜치 후속」).
 
 ### (구) v1.13 (2026-09-12 판올림)
 
@@ -135,6 +173,8 @@
 > `git fetch --tags --prune --prune-tags` 가 필요하다.
 
 ### ⭐ 판올림 규약이 바뀌었다 (운영자 확정 2026-09-06)
+
+⭐ **판 날짜는 발행일이다** (운영자 확정 2026-09-24) — 머리말·12장·구판 줄에 적는 판의 날짜는 판올림을 시작한 날이 아니라 **발행한 날(태그를 붙이는 날)**이다.  라운드가 날을 넘기면 발행 커밋에서 날짜를 맞춘다(v1.14 는 09-23 으로 적혔다가 v1.15 에서 09-24 로 바로잡혔다).
 
 ⛔ **안 바뀐 문서는 안 올린다.**  종전에는 규격·원장·통합 **셋을 늘 함께** 올렸는데(v1.8·v1.9 라운드),
 운영자 확정: *"버전번호 별도로 가고 있었기 때문에, 안 바뀌었으면 안 올리도록 해줘."*
@@ -184,7 +224,7 @@
     아니라 **그 문서가 관리하는 값**이라는 뜻이다.  기계 정본은
     `Detector_Ch_to_AmpID_Map_v1.1.txt` 다.  ⚠️ `C-11`(converter 가 `CHMAP_*` 를
     읽도록 개정) 자체는 **converter 쪽 개정 항목으로 남아 있다** — 그건 LEECU 몫이다.
-    ✅ **converter v2.5.0 이 닫았다** — `CHMAP_*` 4자 토큰으로 amp 정체를 유도한다(통합 v1.0 §1.2).
+    ✅ **converter v2.5.0 이 닫았다** — `CHMAP_*` 4자 토큰으로 amp 정체를 유도한다(통합 §1.2).
   - **`CTRLxCFG` 예시 값** — 규격 5장·원장 세 곳을 실제 ACF 이름 규칙으로 옮기고,
     **폴더 경로와 확장자(`.acf`/`.cfg`)를 뗀 이름**임을 규격에 명시했다.
   ✅ **코드 쪽도 끝났다** (2026-08-29, `ics-archon-v1.0-build` `3dabe21`) — `ics_archon` 이
@@ -263,16 +303,16 @@
 
 ⏳ **실측 확정 전인 것 — OI-20 으로 등재됐다** (v1.9 10.6절): 저장되는 528 이 시퀀서가 읽는 600(+1) 중 어느 구간인가. **데이터시트 대응은 나왔다** — CCD47-20 레지스터 반쪽은 `8 BLANK | 15 DARK REF | 1 transition | 512 active` 이고 blank 8 은 `PreSkipPixels=8` 로 건너뛰므로 **저장 528 의 선두 16 = 다크 기준열 15+1(차광 실컬럼, 프리스캔 아님)** 로 지목된다. ✅ **귀속은 v1.13 에서 닫혔다** — 운영자 확정 2026-09-08(CU 협의 완료): 선두 16 은 CCD 의 **dark reference columns** 를 읽은 값이므로 **`PRESCNX=16` · `OVRSCNX=0`** 이다(10.3절 · 9.1·9.4절 · G 견본 2장).  ⏳ 남은 것은 **실측 하나** — 528→512 추가 트림이 무손실인지(그 16 이 영상 정보를 담지 않는지)를 flat/bias 로 확인한다.  `gmon` 커미셔닝 §10-1 과 공동.
 
-- **절 구성이 구판과 다르다** — 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 현행 기준으로 재확인. ⚠️ **v1.4 에서 2.5절(Wrote 통보)이 삭제돼 절 번호가 또 바뀌었다**(2장은 2.1~2.4). `ics_sim` 쪽 참조 정리는 **완료**(2026-08-22, v1.3 정렬과 함께 — 아래 "다음 사람이 할 일" 3). ICD **v4.2** §12 의 위임 대상 갱신은 LEECU 몫으로 남아 있었다 — v4.2(2026-09-04)에서도 §2·§7·§12 가 구명 `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 를 가리켰다(세 곳).  ✅ **ICD v4.3(2026-09-23)이 그 참조를 걷고** `KMT_CEU_Raw_FITS_Specification_v1.13.md` 를 인용한다 — ⏳ v1.14 발행으로 그 파일이 `archive/` 로 가서 v1.14 로 다시 갱신할 것을 요청했다(통합 v1.0 §3).
-- 헤더 5장의 바이트 단위 정본은 **science 헤더 견본 pair**(`header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v1.14.txt`)다 — 구 "초안 헤더 v1.0 pair".  ⭐ **판 번호는 규격을 따라간다**(v1.10 에서 `header_samples/` 로 모으고 규격과 맞췄다) — 따로 '견본 승격' 판올림은 없다.
+- **절 구성이 구판과 다르다** — 구판 절 번호를 인용한 문서·코드 주석(`규격 5.7절` 등)은 현행 기준으로 재확인. ⚠️ **v1.4 에서 2.5절(Wrote 통보)이 삭제돼 절 번호가 또 바뀌었다**(2장은 2.1~2.4). `ics_sim` 쪽 참조 정리는 **완료**(2026-08-22, v1.3 정렬과 함께 — 아래 "다음 사람이 할 일" 3). ICD **v4.2** §12 의 위임 대상 갱신은 LEECU 몫으로 남아 있었다 — v4.2(2026-09-04)에서도 §2·§7·§12 가 구명 `KMT_CEU_Raw_FITS_Pair_Spec_v1.2.md` 를 가리켰다(세 곳).  ✅ **ICD v4.3(2026-09-23)이 그 참조를 걷고** `KMT_CEU_Raw_FITS_Specification_v1.13.md` 를 인용한다 — ⏳ v1.14 · v1.15 발행으로 그 파일이 `archive/` 로 가서 현행 경로로 다시 갱신할 것을 요청했다(통합 §3).
+- 헤더 5장의 바이트 단위 정본은 **science 헤더 견본 pair**(`header_samples/KMTA.20260821.123456.{MK,NT}.fits.header.v1.15.txt`)다 — 구 "초안 헤더 v1.0 pair".  ⭐ **판 번호는 규격을 따라간다**(v1.10 에서 `header_samples/` 로 모으고 규격과 맞췄다) — 따로 '견본 승격' 판올림은 없다.
 
 ## 먼저 읽을 것
 
 | 문서 | 지위 |
 |---|---|
-| `KMT_CEU_Raw_FITS_Specification_v1.14.md` | ✅ **현행 raw spec** — 최종 정의·규격 (science 1~8장 + guide 9·10장). 배경은 아래 원장·통합 문서로 링크 |
-| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.20.md` | **카드 판정 원장** (v1.20 = converter v2.5.0 재대조 — raw 에서 읽는 카드 · geometry 선언 대조 · 카드 값 하드 실패 둘 · 운영자 결정 셋, 판정 불변). **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기). converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다 — 최근 구판은 `archive/` |
-| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v1.0.md` | **통합 문서** (v1.0 = converter v2.5.0 재대조 · *(Draft)* 를 뗐다) — Part 1: LEECU 전달용 — C-항목 · 이름 대응 · ICD/정의서 개정 후보 · **§7 「MEF converter 및 PIPELINE 판단 필요 항목」**(판단은 여기, 나머지 절은 수정 요청) / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.5~v0.10 은 `archive/`, v0.4·v0.2 는 git 이력·외부 백업 |
+| `KMT_CEU_Raw_FITS_Specification_v1.15.md` | ✅ **현행 raw spec** — 최종 정의·규격 (science 1~8장 + guide 9·10장). 배경은 아래 원장·통합 문서로 링크 |
+| `KMT_CEU_Raw_FITS_Header_and_Refs_in_MEF_Converter_v1.21.md` | **카드 판정 원장** (v1.21 = 발행본 재검토 정정 — 7장 `RDMODE` 결측 `'NC'` 등 · v1.20 = converter v2.5.0 재대조 — raw 에서 읽는 카드 · geometry 선언 대조 · 카드 값 하드 실패 둘.  판정 불변). **0장이 판정 준거다**(준거 순위 · converter 3상태 × ICD 규정/침묵 · 준거 공백 크기). converter 가 읽는 것 · 읽지 않는 것 · 도입 후보·확정 · 폐지된 것을 13장으로 정리했다 — 최근 구판은 `archive/` |
+| `KMT_CEU_Raw_Rev_MEF_Impacts_and_Identity_v1.1.md` | **통합 문서** (v1.1 = LEECU 요청 정정·보강 · §7-10 신설 · v1.0 = converter v2.5.0 재대조 · *(Draft)* 를 뗐다) — Part 1: LEECU 전달용 — C-항목 · 이름 대응 · ICD/정의서 개정 후보 · **§7 「MEF converter 및 PIPELINE 판단 필요 항목」**(7-1~7-10 — 판단은 여기, 나머지 절은 수정 요청) / Part 2: 번호·충돌·정체성 **파급 요약**(정본 = raw spec 2.3절 + D-016). 전신 v0.5~v1.0 은 `archive/`, v0.4·v0.2 는 git 이력·외부 백업 |
 | `__reference/Legacy raw fits header samples/` | **raw 쪽 기준선.** `KMTNk.20170209.044131.Rawheader.txt` keyword 123개 |
 
 ## 개정 워크플로 — `__review/` 는 임시 왕복함 (운영자 확정 2026-08-22)
@@ -290,10 +330,11 @@
   git push --force origin refs/tags/raw-spec-v1.6
   ```
 
-- **태그를 옮기면 이미 그 태그로 체크아웃해 둔 사람은 자동으로 따라오지 않는다** — `git fetch --tags --force` 가 필요하다. 옮겼다는 사실을 팀에 알릴 것.
+- **태그를 옮기면 이미 그 태그로 체크아웃해 둔 사람은 자동으로 따라오지 않는다** — `git fetch --tags --force` 가 필요하다. 옮겼다는 사실을 팀에 알릴 것.  ⚠️ `fetch.pruneTags` 를 켠 저장소에서는 옮긴 뒤의 `git pull` 이 `would clobber existing tag` 로 **실패하고** `main` 도 따라오지 않는다(README 태그 소절 — git 2.55 실험) — 알릴 때 이 명령을 함께 안내한다.
 - 판이 끝났다는 판단이 서기 전에는 태그 대신 **커밋 해시로 인용**한다.
+- **태그를 붙이면 곧바로 push 한다** — `fetch.pruneTags` 를 켠 저장소에서 그 사이에 pull·fetch 하면 원격에 아직 없는 새 태그가 지워진다(README 태그 소절).
 - **보존 방침: 현행 판 태그만 남긴다** (운영자 확정 2026-08-25). 새 판을 태그할 때 **직전 판 태그는 지운다** — 2026-08-25 에 `raw-spec-v1.4` 를 로컬·원격에서 삭제했다.
-  - 지워도 안전한 근거: 판 본문은 `archive/` 에 남고(`…_v1.4.md` 등), 그 커밋은 `main` 의 조상이라 이력에서 사라지지 않는다. 저장소 문서가 태그 이름을 인용하는 곳도 없다.
+  - 지워도 안전한 근거: 판 본문은 `archive/` 에 남고(`…_v1.4.md` 등), 그 커밋은 `main` 의 조상이라 이력에서 사라지지 않는다. 판올림 때 함께 고치는 태그 이름은 현행 이름 하나이고, 그것을 적는 곳은 README 「현재 기준선」 · 이 절 태그 표의 현행 행 · 이 인수인계 현행 절의 태그 줄이다.  그 밖의 인용(README 태그 소절의 옛 태그 예외 · 이 절의 명령 예시와 팀 알림 · 「운영자 판단 대기」 표 · (구) 절과 지난 라운드 기록 · 규격 12장)은 이력이나 예시라 태그를 지워도 깨지지 않는다.
   - 잃는 것: **판 ↔ 커밋 연결**이다. 지우기 전에 그 판이 어느 커밋이었는지 여기 적어 둘 것.
 - ⛔ **발행 전 예고 문면을 발행된 문서에 남기지 않는다.** 12장 행에 *"이 판을 발행할 때 … 붙인다"* 같은 예고를 적어 두면 발행 뒤에도 그대로 남아 **발행본이 자기 상태를 거짓으로 말한다**(v1.12 행에서 실제로 났다). 발행 커밋에서 과거형(*"… 에 붙였다"*)으로 바꾸고 **발행 커밋 해시를 그 자리에 적는다.**
 
@@ -309,21 +350,14 @@
   | v1.11 | `ec9b3ec` (`Raw FITS Spec v1.11 -- 판올림 규약 명시 + 전수 검토 확인분 반영`) | **삭제됨 (2026-09-06, v1.12 발행)** — ⚠️ 태그가 판의 **첫** 커밋 `a55447f` 에 붙은 채 마지막 커밋으로 옮겨지지 않았다(위 규칙 위반) |
   | v1.12 | `8e3bdbf` (`Raw FITS Spec v1.12 -- 정합 수정 판올림`) | **삭제됨 (2026-09-12, v1.13 발행)** |
   | v1.13 | `ae3fbfe` (`Raw FITS Spec v1.13 -- 실기 라운드 반영`) | **삭제됨 (2026-09-24, v1.14 발행)** |
-  | **v1.14** | `Raw FITS Spec v1.14 -- EQUINOX 실수형 + 전반 재검토 반영` (이 판의 마지막 커밋) | **`raw-spec-v1.14` (현행)** |
+  | v1.14 | `ad7e0a5` (`Raw FITS Spec v1.14 -- EQUINOX 실수형 + 전반 재검토 반영`) | **삭제됨 (2026-09-24, v1.15 발행)** |
+  | **v1.15** | (이 판의 마지막 커밋) | **`raw-spec-v1.15` (현행)** |
 
   ⚠️ **팀 알림 (2026-08-30)**: `raw-spec-v1.7`·`raw-spec-v1.8` 이 원격에서 삭제되고 `raw-spec-v1.9` 가 신설됐다 — 이미 받아 둔 쪽은 `git fetch --tags --prune --prune-tags` 로 정리해야 한다.
 
   ⚠️ **팀 알림 (2026-09-06)**: 같은 날 태그가 두 번 갈렸다 — `raw-spec-v1.9` 삭제 → `raw-spec-v1.11` 신설 → 그것도 삭제하고 **`raw-spec-v1.12` 신설**(v1.10 은 태그를 안 붙였다). 정리 명령은 위와 같다.
 
-  ⚠️ **팀 알림 (2026-09-24)**: `raw-spec-v1.13` 삭제 → **`raw-spec-v1.14` 신설**.  ⭐ **매번 정리 명령을 칠 필요가 없게 — 저장소마다 한 번만**:
-
-  ```bash
-  git config fetch.prune true
-  git config fetch.pruneTags true
-  ```
-
-  그 뒤로는 `git pull` 이 원격에서 지운 태그를 로컬에서도 지운다.  설정하지 않아도 **새 태그는 pull 로 따라온다**(받아 오는 커밋을 가리키는 태그는 git 이 함께 받는다) — 지운 옛 태그가 로컬에 남을 뿐이고, 그 태그도 제 판의 발행 커밋을 가리키므로 틀린 정보는 아니다.  ⛔ 다만 그 상태로 `git push --tags` 를 하면 지운 태그가 원격에 **되살아나니** 하지 말 것.  ⚠️ 같은 이름의 태그를 다른 커밋으로 **옮기는** 경우(위 `git fetch --tags --force` 절)는 이 설정으로 해결되지 않는다 — 판마다 새 이름을 쓰는 지금 규칙에서는 생기지 않는다.
-
+  ⚠️ **팀 알림 (2026-09-24)**: `raw-spec-v1.13` 삭제 → `raw-spec-v1.14` 신설, 같은 날 v1.15 발행으로 `raw-spec-v1.14` 삭제 → **`raw-spec-v1.15` 신설**.  정리 방법 — 한 번만 하는 설정(`fetch.prune` · `fetch.pruneTags`) · 브랜치를 적지 않은 `git pull`/`git fetch` 한정 · 설정의 부작용 — 은 **README 「버전 / 관리 정책」의 태그 소절 한 곳**에 둔다(git 2.55 로 실험해 확인했다).  ⚠️ 이 자리에 v1.14 때 적었던 문면 셋은 틀렸었다 — *"`git pull` 이 원격에서 지운 태그를 지운다 · 새 태그는 pull 로 따라온다"* 는 브랜치를 적지 않은 pull 에만 맞고(`git pull origin main` 은 둘 다 안 한다), *"그 태그도 제 판의 발행 커밋을 가리킨다"* 는 v1.11 · v1.5 태그에 맞지 않으며(위 표 · 아래 v1.5 옮김 기록), *"같은 이름의 태그를 옮기는 경우는 지금 규칙에서 생기지 않는다"* 는 위 옮김 규칙 · v1.5 선례와 어긋났다.
 
 ## 준수 우선순위 (v0.7 검토 문서 0장에서 확립)
 
@@ -610,7 +644,7 @@ active Y = AMPNAX2 - OVERSCNY - PRESCANY = 4700 - 84 - 0 = 4616
 - 버전 문자열 9종은 `"ARCHON-v1.0"` 처럼 **그럴듯한 provenance** 가 박힌다
 - **카드 값으로 멈추는 것은 둘이다**(v2.5.0) — `OBSERVAT` ↔ 파일명 사이트 코드(D-011 — 기본 출력 이름 경로에서만: `-o` 없음 · 파일명이 정규식에 맞음 · `OBSERVAT` 가 네 값 안) · pair 양쪽 `EXPID` 가 둘 다 있고 서로 다를 때.  (구 문장: *"오류로 걸리는 것은 `OBSERVAT` 하나"*)
 
-**3. converter 는 raw geometry 로 자르지 않는다 — 선언은 대조에만 읽는다.** (구 제목 *"하나도 읽지 않는다"* — v2.5.0 부터 `check_raw_geometry()` 가 MK·NT 각각의 geometry 선언을 converter 상수와 대조해, 어긋나면 경고·`HISTORY` 를 남기고 카드가 없으면 대조 없이 지나간다.)  `OSCNPATT`·`ROWORDR`·`RDDIRT`/`RDDIRB`·`AMPMAP`·`AMOD`/`ACHN`·`NXTILE`·`CHIPS`/`CHIP1`/`CHIP2` 는 **소스에 이름조차 없다.** 나머지는 자기 상수로 만들어 내보낸다. `OVERSCAN_X=48` 은 표기용이 아니라 **실제 픽셀 절단 좌표 계산에 쓰인다.** → 변경점 C-5 · C-11 · C-12 · C-13 (✅ C-11 반영 · C-5/C-13 은 대조로 반영하되 멈추지 않고 경고만 · ⚠️ C-12 는 코드가 그대로 — 통합 v1.0 §1.2)
+**3. converter 는 raw geometry 로 자르지 않는다 — 선언은 대조에만 읽는다.** (구 제목 *"하나도 읽지 않는다"* — v2.5.0 부터 `check_raw_geometry()` 가 MK·NT 각각의 geometry 선언을 converter 상수와 대조해, 어긋나면 경고·`HISTORY` 를 남기고 카드가 없으면 대조 없이 지나간다.)  `OSCNPATT`·`ROWORDR`·`RDDIRT`/`RDDIRB`·`AMPMAP`·`AMOD`/`ACHN`·`NXTILE`·`CHIPS`/`CHIP1`/`CHIP2` 는 **소스에 이름조차 없다.** 나머지는 자기 상수로 만들어 내보낸다. `OVERSCAN_X=48` 은 표기용이 아니라 **실제 픽셀 절단 좌표 계산에 쓰인다.** → 변경점 C-5 · C-11 · C-12 · C-13 (✅ C-11 반영 · C-5/C-13 은 대조로 반영하되 멈추지 않고 경고만 · ⚠️ C-12 는 코드가 그대로 — 통합 §1.2 · §7-4)
 
 ## 조사로 확정된 사실 (문서에 아직 안 들어감)
 
